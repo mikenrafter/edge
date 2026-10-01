@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import hashlib
+import html
 import json
 import os
 import pathlib
@@ -91,6 +92,20 @@ def main():
         if code:
             failures.append(name)
     artifacts = {}
+    screenshots = sorted((output / 'screenshots').glob('*.png'))
+    cards = []
+    for path in screenshots:
+        relative = html.escape(str(path.relative_to(output)), quote=True)
+        label = html.escape(path.stem)
+        cards.append(f'<figure><a href="{relative}"><img src="{relative}" alt="{label}"></a><figcaption>{label}</figcaption></figure>')
+    (output / 'index.html').write_text(
+        '<!doctype html><html lang="en"><meta charset="utf-8"><title>Controls proof</title>'
+        '<style>body{font:16px system-ui;margin:24px}main{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}'
+        'figure{margin:0}img{width:100%;max-height:900px;object-fit:contain;object-position:top;background:#ddd}'
+        'figcaption{overflow-wrap:anywhere}</style><h1>Controls proof</h1>'
+        '<p>Synthetic fixtures. Open an image to inspect its full height. '
+        '<a href="manifest.json">Command results and limitations</a>.</p><main>'
+        + ''.join(cards) + '</main></html>\n')
     for path in output.rglob('*'):
         if path.is_file() and path.name not in ('manifest.json', 'artifacts-sha256.json'):
             artifacts[str(path.relative_to(output))] = hashlib.sha256(path.read_bytes()).hexdigest()

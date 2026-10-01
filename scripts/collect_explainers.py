@@ -93,6 +93,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--review', type=pathlib.Path)
+    parser.add_argument('--batch-dir', type=pathlib.Path)
+    parser.add_argument('--batch-size', type=int, default=250)
     args = parser.parse_args()
     rows = collect()
     if args.review:
@@ -118,8 +120,19 @@ def main():
         if missing or unexpected or duplicates:
             raise SystemExit(1)
     else:
+        if args.batch_size <= 0:
+            raise SystemExit('Batch size must be positive')
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in rows))
+        if args.batch_dir:
+            args.batch_dir.mkdir(parents=True, exist_ok=False)
+            index = []
+            for start in range(0, len(rows), args.batch_size):
+                name = f'{start // args.batch_size:03d}.jsonl'
+                batch = rows[start:start + args.batch_size]
+                (args.batch_dir / name).write_text(''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in batch))
+                index.append({'file': name, 'items': len(batch), 'first': batch[0]['id'], 'last': batch[-1]['id']})
+            (args.batch_dir / 'index.json').write_text(json.dumps(index, indent=2) + '\n')
         print(f"Collected {len(rows)} items into {args.output}")
 
 
