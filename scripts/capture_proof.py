@@ -44,7 +44,10 @@ def main():
         ('proof-tools', ['python3', '-m', 'unittest', 'discover', '-s', 'scripts', '-p', 'test_proof_tools.py']),
         ('toolchain', ['flutter', '--version']),
         ('pins', ['bash', '.github/scripts/check_sibling_pins.sh']),
+        ('localization', ['flutter', 'gen-l10n']),
         ('analyze', ['flutter', 'analyze']),
+        ('dst', ['env', 'TZ=America/Denver', 'flutter', 'test', '--concurrency=1',
+                 'test/controls/schedule_dst_test.dart', '--reporter=json']),
         ('tests', ['flutter', 'test', '--concurrency=1', '--reporter=json']),
         ('screenshots', ['flutter', 'test', '--concurrency=1', 'test/proof', '--reporter=json']),
     ]
@@ -70,7 +73,7 @@ def main():
         row = {'name': name, 'argv': full, 'exitCode': code,
                'durationSeconds': round(time.monotonic() - start, 2), 'log': logfile.name,
                'sha256': hashlib.sha256(logfile.read_bytes()).hexdigest()}
-        if name in ('tests', 'screenshots'):
+        if name in ('tests', 'screenshots', 'dst'):
             events = []
             for line in logfile.read_text().splitlines():
                 try:

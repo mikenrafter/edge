@@ -99,11 +99,16 @@ def main():
         originals = [json.loads(line) for line in args.output.read_text().splitlines()]
         reviewed = [json.loads(line) for line in args.review.read_text().splitlines() if line.strip()]
         expected = {row['id'] for row in originals}
+        line_counts = {row['id']: max(1, len(row['text'].splitlines())) for row in originals}
         counts = {}
         for row in reviewed:
             counts[row['id']] = counts.get(row['id'], 0) + 1
             if not row.get('comment') or row.get('action') not in ('keep', 'rephrase', 'remove', 'source', 'noncopy'):
                 raise SystemExit(f"Invalid review row: {row['id']}")
+            comments = row.get('lineComments', [])
+            if len(comments) != line_counts.get(row['id'], -1) or any(
+                    not isinstance(comment, str) or not comment.strip() for comment in comments):
+                raise SystemExit(f"Missing line comments: {row['id']}")
         missing = sorted(expected - counts.keys())
         unexpected = sorted(counts.keys() - expected)
         duplicates = sorted(key for key, count in counts.items() if count != 1)

@@ -39,10 +39,12 @@ class CopyInventoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             original = pathlib.Path(directory) / 'original.jsonl'
             review = pathlib.Path(directory) / 'review.jsonl'
-            original.write_text(json.dumps({'id': 'one'}) + '\n')
-            valid = {'id': 'one', 'action': 'keep', 'comment': 'Names the actual control.'}
-            cases = [[], [valid, valid], [{**valid, 'comment': ''}], [valid]]
-            for rows, expected in zip(cases, [1, 1, 1, 0]):
+            original.write_text(json.dumps({'id': 'one', 'text': 'One line.'}) + '\n')
+            valid = {'id': 'one', 'action': 'keep', 'comment': 'Names the actual control.',
+                     'lineComments': ['Names the actual control.']}
+            cases = [[], [valid, valid], [{**valid, 'comment': ''}],
+                     [{**valid, 'lineComments': []}], [valid]]
+            for rows, expected in zip(cases, [1, 1, 1, 1, 0]):
                 review.write_text(''.join(json.dumps(row) + '\n' for row in rows))
                 result = subprocess.run([sys.executable, str(copy.ROOT / 'scripts/collect_explainers.py'),
                                          str(original), '--review', str(review)], capture_output=True)
