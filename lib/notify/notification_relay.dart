@@ -353,6 +353,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     required this.isConnected,
     AlertDispatcher? dispatcher,
     this.worn,
+    @visibleForTesting this.debugSupported,
   }) : dispatcher =
            dispatcher ??
            AlertDispatcher(
@@ -394,7 +395,10 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Only Android can observe other apps' notifications. Everything below is a
   /// no-op when this is false, and the UI hides the feature entirely.
-  bool get supported => Platform.isAndroid;
+  bool get supported => debugSupported ?? Platform.isAndroid;
+
+  /// Tests only: pretend to be (or not be) Android.
+  final bool? debugSupported;
 
   bool _enabled = false;
   bool get enabled => _enabled;
@@ -638,8 +642,30 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     return ok;
   }
 
+  bool get _anyChannelOn => controller.channels.values.any((c) => c.enabled);
+
+  /// The one way a channel's own "Relay to the band" switch changes. The relay
+  /// exists only to buzz the band, so a channel reading On has to be able to
+  /// buzz: switching one on switches the relay on, and switching the last one
+  /// off switches the relay off.
+  Future<void> setChannel(String name, ChannelConfig next) async {
+    controller.putChannel(name, next);
+    if (next.enabled && !_enabled) {
+      await setEnabled(true);
+    } else if (!next.enabled && _enabled && !_anyChannelOn) {
+      await setEnabled(false);
+    }
+  }
+
   Future<void> setEnabled(bool on) async {
     if (!supported || on == _enabled) return;
+    // Switching the relay on with nothing armed would read On and do nothing.
+    if (on && !_anyChannelOn) {
+      controller.putChannel(
+        'apps',
+        controller.channels['apps']!.copyWith(enabled: true),
+      );
+    }
     _enabled = on;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kEnabled, on);

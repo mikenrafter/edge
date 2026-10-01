@@ -90,7 +90,7 @@ class _BandNotificationsState extends State<BandNotifications>
             RelayApp(p, icon: relay.iconFor(p), on: relay.isAppEnabled(p)),
         ],
         channels: relay.controller.channels,
-        onChannel: relay.controller.putChannel,
+        onChannel: relay.setChannel,
         onEnabled: relay.setEnabled,
         onGrant: relay.requestPermission,
         onApp: relay.setAppEnabled,
@@ -169,7 +169,8 @@ class BandNotificationsView extends StatelessWidget {
     final rhythm = _rhythms.indexWhere(
         (r) => r.$2.join(',') == cfg.fallbackPattern.join(','));
     return [
-      SwitchRow('Relay to the band', cfg.enabled,
+      // One relay: this reads On only when the master switch is on too.
+      SwitchRow('Relay to the band', cfg.enabled && enabled,
           (v) => put(cfg.copyWith(enabled: v))),
       if (name == 'alarms') ...[
         SwitchRow("Match Android's vibration", cfg.matchHaptics,

@@ -138,7 +138,7 @@ void main() {
         category: NotifCategory.health,
         title: 'Alert',
         body: 'Alert',
-        date: '2026-09-30',
+        date: todayLabel(),
       );
       await center.emit(event);
       await center.emit(event);
