@@ -232,7 +232,9 @@ class GattBandLink implements BandLink {
     // this app (gen5 deep buffers) writes through `ble_engine._write`, which
     // keeps its own carve-out, single and reviewed.
     final opcode = _opcodeOf(value);
-    // FOOTGUN(destructive-write): every adapter write passes this refusal gate.
+    // FOOTGUN(DATA_LOSS): every adapter write passes this refusal gate.
+    // FOOTGUN(LINK_LOSS): reboot and power-cycle commands are refused here.
+    // FOOTGUN(FIRMWARE): update-load commands are refused here.
     if (opcode != null &&
         (dangerousCmds.contains(opcode) || OpcodeSafety.isDestructive(opcode))) {
       log('REFUSED dangerous opcode 0x${opcode.toRadixString(16)} at BandLink');

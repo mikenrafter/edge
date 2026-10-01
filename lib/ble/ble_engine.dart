@@ -4454,7 +4454,9 @@ class BleEngine {
     _Session? owner,
     bool allowDangerous = false,
   }) {
-    // FOOTGUN(destructive-write): only the opt-in gen5 configuration path may bypass.
+    // FOOTGUN(DATA_LOSS): destructive commands are refused before the write queue.
+    // FOOTGUN(LINK_LOSS): reboot and power-cycle commands are refused here.
+    // FOOTGUN(FIRMWARE): update-load commands are refused here.
     final session = _session;
     // The dangerous-opcode block lives HERE, at the one write every command
     // funnels through, not only in `_send`: nine call sites build their own
@@ -6903,6 +6905,7 @@ class BleEngine {
   /// reviewed opt-in rather than the structural bypass it used to be, now that
   /// the block sits on `_write` itself.
   Future<void> enableGen5DeepBuffers() async {
+    // FOOTGUN(PERSISTENT_CONFIG): audited opt-in R22 configuration exception.
     if (!(_session?.band.isGen5 ?? false)) return;
     final frames = buildR22EnableSequence(startSeq: _seq.nextLive());
     _log('Sending gen5 R22 deep-buffer enable sequence (${frames.length} '
@@ -7735,7 +7738,7 @@ class BleEngine {
   /// honoured only on gen4; a gen5 link always plays the strap's fixed
   /// `[47, 152]` waveform pair (the only Maverick buzz byte-verified so far).
   Future<void> buzzPattern(int pattern) {
-    // FOOTGUN(haptic-capability): gen5 cannot reproduce arbitrary pattern choices.
+    // Gen5 cannot reproduce arbitrary pattern choices.
     if (_session?.band.isGen5 ?? false) {
       return _send(
         Cmd.runHapticPatternMaverick,
