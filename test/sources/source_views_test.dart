@@ -51,7 +51,7 @@ void main() {
         ),
       ]));
       expect(textLike('user-started'), findsWidgets);
-      expect(textLike('rrintervals'), findsWidgets,
+      expect(textLike(RegExp('beat-to-beat|rrintervals')), findsWidgets,
           reason: 'a supplied signal is named (any human label contains it or '
               'the signal name)');
       expect(textLike('bluetooth'), findsWidgets);

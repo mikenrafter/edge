@@ -246,6 +246,12 @@ const _notComponents = {
   // (there is nothing today to hand it — every install has one device); add
   // one and a gallery case together if that changes.
   'SignalPriorityScreen',
+  // The Sources area (Phase 4). The two Scaffold routes read AppState; their
+  // three pure views are drawn by test/sources/proof_views_test.dart (goldens at
+  // 390 px, light/dark, 1x/2x) and pumped by source_views_test.dart, which is
+  // where their keys and copy are pinned.
+  'SourceCatalogScreen', 'ResolvedDataScreen', 'SourceCatalogView',
+  'ResolvedDataView', 'SourcePriorityEditor',
   // The double-tap picker. A Scaffold route whose whole content is decided by
   // what the OS answered to a method channel, so a gallery case would be a
   // photograph of a fixture rather than of the screen. Rendered instead by

@@ -78,6 +78,8 @@ import '../../ble/adapters/_registry.dart'
         kZeTime,
         declaredSignals;
 import '../../ble/adapters/signals.dart' show InputSignal;
+import '../../data/coverage_resolver.dart'
+    show CoverageInterval, effectivePriority;
 import '../../ble/banglejs_link.dart' show BangleJsLink;
 import '../../ble/casio_link.dart' show CasioLink;
 import '../../ble/colmi_link.dart' show ColmiLink;
@@ -119,6 +121,8 @@ import '../../state/app_state.dart';
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
+import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
+import '../sources/source_views.dart' show SourceViews;
 import 'profile.dart';
 import 'settings.dart' show backToRoot;
 
@@ -296,10 +300,10 @@ class DeviceFilter extends StatelessWidget {
   }
 }
 
-/// The global per-signal priority editor: one drag-reorder list per contended
-/// signal, reached from `MyDevicesView`'s "Which source wins" row. Only
-/// contended signals get a list — a signal only one paired device declares
-/// has nothing to order (final-plan §4.5).
+/// The per-signal priority editor, reached from the Source catalog and from
+/// `MyDevicesView`'s "Which source wins" row. One section per signal any paired
+/// source declares, contended or not. Saving changes current and future
+/// computation only; rebuilding history is a separate Advanced action.
 class SignalPriorityScreen extends StatefulWidget {
   const SignalPriorityScreen({super.key});
 
@@ -308,11 +312,9 @@ class SignalPriorityScreen extends StatefulWidget {
 }
 
 class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
-  bool _loading = true;
-  List<InputSignal> _signals = const [];
-  Map<InputSignal, List<String>> _order = const {};
-  Map<String, String> _labels = const {};
-  Set<String> _userSet = const {};
+  bool _loading = true, _rebuilding = false;
+  bool _failed = false;
+  List<Map<String, Object?>> _signals = const [];
 
   @override
   void initState() {
@@ -321,49 +323,89 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
   }
 
   Future<void> _load() async {
-    final app = context.read<AppState>();
-    final sources = liveSources(app);
-    final signals = contendedSignalsOf(sources);
-    final labels = <String, String>{
-      // The phone has no `device` row, so no id. Coalesced to `''` its null
-      // collapsed onto the PRIMARY BAND's key, and a map literal keeps
-      // insertion order with last-write-wins — so a phone iterated after the
-      // band renamed the band's row in the reorder list. The user then drags
-      // a row labelled "Your phone" that actually moves the band, in the one
-      // editor that decides which device wins a signal.
-      for (final s in sources) ?deviceIdOf(s): s.name,
-    };
-    final priorities = await LocalDb.signalPriorities();
-    final order = <InputSignal, List<String>>{};
-    for (final sig in signals) {
-      final declaring = declaringDeviceIds(sources, sig);
-      final stored = priorities[sig.name];
-      order[sig] = stored != null && stored.isNotEmpty
-          ? [
-              for (final id in stored) if (declaring.contains(id)) id,
-              for (final id in declaring) if (!stored.contains(id)) id,
-            ]
-          : declaring;
+    final service = context.read<AppState>().sourceService;
+    try {
+      final names = {
+        for (final c in await service.cards())
+          if (c.deviceId != null) c.deviceId!: c.displayLabel,
+      };
+      final userSet = await LocalDb.userSetSignals();
+      final signals = [
+        for (final m in await service.prioritySignals())
+          {
+            ...m,
+            'userSet': userSet.contains(m['signal']),
+            'labels': {
+              for (final id in m['order'] as List) '$id': names['$id'] ?? '—',
+            },
+          },
+      ];
+      if (!mounted) return;
+      setState(() {
+        _signals = signals;
+        _loading = false;
+        _failed = false;
+      });
+    } catch (_) {
+      // A failed read is a retryable error, never an empty list.
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _failed = true;
+        });
+      }
     }
-    final userSet = await LocalDb.userSetSignals();
-    if (!mounted) return;
-    setState(() {
-      _signals = signals;
-      _labels = labels;
-      _order = order;
-      _userSet = userSet;
-      _loading = false;
-    });
   }
 
-  /// A write that did not land must never look like one that did — the list
-  /// snapping back with no sentence anywhere is how a user believes they set
-  /// a preference they did not.
+  /// A write that did not land must never look like one that did.
   Future<void> _sayNotSaved() => showReasonSheet(
         context,
         AppLocalizations.of(context)?.devicesOrderNotSaved ??
             'Could not save the order. The previous order is still in use.',
       );
+
+  Future<void> _save(String signal, List<String> order) async {
+    final service = context.read<AppState>().sourceService;
+    try {
+      await service.savePriority(InputSignal.values.byName(signal), order);
+    } catch (_) {
+      if (mounted) await _sayNotSaved();
+      return;
+    }
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Order saved. Current and future days use it.'),
+    ));
+  }
+
+  Future<void> _reset(String signal) async {
+    try {
+      await LocalDb.clearSignalPriority(InputSignal.values.byName(signal));
+    } catch (_) {
+      if (mounted) await _sayNotSaved();
+      return;
+    }
+    await _load();
+  }
+
+  Future<void> _rebuild() async {
+    final app = context.read<AppState>();
+    setState(() => _rebuilding = true);
+    try {
+      final n = await app.rebuildHistoryWithPriority();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(n == 1 ? 'Rebuilt 1 day.' : 'Rebuilt $n days.'),
+      ));
+    } catch (e) {
+      if (mounted) {
+        await showReasonSheet(context, 'Could not rebuild history. $e');
+      }
+    } finally {
+      if (mounted) setState(() => _rebuilding = false);
+    }
+  }
 
   @override
   Widget build(BuildContext c) {
@@ -379,76 +421,40 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
           ),
           if (_loading)
             const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_failed)
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(S.x4),
+                  child: StatusCard(
+                    'Could not read your sources',
+                    'Nothing was changed. Try again.',
+                    fix: 'Try again',
+                    icon: LucideIcons.triangleAlert,
+                    onFix: () {
+                      setState(() => _loading = true);
+                      _load();
+                    },
+                  ),
+                ),
+              ),
+            )
           else
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
                 children: [
-                  for (final sig in _signals) ...[
-                    Section(
-                      signalDisplayName(c, sig),
-                      Column(children: [
-                        ReorderableListView(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          onReorder: (from, to) async {
-                            final ids = [...?_order[sig]];
-                            // ReorderableListView's `to` is the index BEFORE removal.
-                            ids.insert(
-                                to > from ? to - 1 : to, ids.removeAt(from));
-                            try {
-                              await LocalDb.setSignalPriority(sig, ids);
-                            } catch (_) {
-                              // The stored order is unchanged, so leave the
-                              // list where it was rather than showing an order
-                              // nothing persisted. Same shape as `_saveRpe`.
-                              if (mounted) await _sayNotSaved();
-                              return;
-                            }
-                            if (!mounted) return;
-                            setState(() {
-                              _order = {..._order, sig: ids};
-                              _userSet = {..._userSet, sig.name};
-                            });
-                          },
-                          children: [
-                            for (final id in _order[sig] ?? const <String>[])
-                              ListTile(
-                                key: ValueKey(id),
-                                title: Text(_labels[id] ?? id),
-                              ),
-                          ],
-                        ),
-                        if (_userSet.contains(sig.name))
-                          Pressable(
-                            onTap: () async {
-                              try {
-                                await LocalDb.clearSignalPriority(sig);
-                              } catch (_) {
-                                if (mounted) await _sayNotSaved();
-                                return;
-                              }
-                              await _load();
-                            },
-                            semanticLabel: 'Reset ${signalDisplayName(c, sig)} '
-                                'to the default order',
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: S.x2),
-                              child: Text(
-                                l?.devicesResetToDefault ??
-                                    'Back to the default order',
-                                style: F.cap.copyWith(color: p.on(C.blue)),
-                              ),
-                            ),
-                          ),
-                      ]),
-                    ),
-                    const SizedBox(height: S.x4),
+                  if (_rebuilding) ...[
+                    const LinearProgressIndicator(),
+                    const SizedBox(height: S.x2),
+                    Text('Rebuilding history. This can take several minutes.',
+                        style: F.cap.copyWith(color: p.ink3)),
                   ],
-                  Text(
-                    l?.metricDetailHistoryKeepsSource ??
-                        'Finished days keep the source used to calculate them.',
-                    style: F.over.copyWith(color: p.ink3),
+                  const SourceViews().priorityEditor(
+                    signals: _signals,
+                    onSave: _save,
+                    onReset: _reset,
+                    onRebuild: _rebuilding ? () {} : _rebuild,
                   ),
                 ],
               ),
@@ -469,20 +475,31 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
 String signalDisplayName(BuildContext c, InputSignal s) {
   final l = AppLocalizations.of(c);
   return switch (s) {
-    InputSignal.rrIntervals =>
-      l?.signalRrIntervals ?? 'Beat-to-beat intervals',
-    InputSignal.hr1Hz => l?.signalHr1Hz ?? 'Continuous heart rate',
-    InputSignal.hrSparse => l?.signalHrSparse ?? 'Heart rate',
-    InputSignal.accel1Hz => l?.signalAccel1Hz ?? 'Movement',
-    InputSignal.accelHighRate =>
-      l?.signalAccelHighRate ?? 'High-rate movement',
-    InputSignal.ppgGreen => l?.signalPpgGreen ?? 'Green PPG',
-    InputSignal.ppgRedIr => l?.signalPpgRedIr ?? 'Red/infrared PPG',
-    InputSignal.skinTempRaw => l?.signalSkinTempRaw ?? 'Skin temperature',
-    InputSignal.vendorScalars =>
-      l?.signalVendorScalars ?? 'The device’s own numbers',
+    InputSignal.rrIntervals => l?.signalRrIntervals ?? signalLabelEn(s),
+    InputSignal.hr1Hz => l?.signalHr1Hz ?? signalLabelEn(s),
+    InputSignal.hrSparse => l?.signalHrSparse ?? signalLabelEn(s),
+    InputSignal.accel1Hz => l?.signalAccel1Hz ?? signalLabelEn(s),
+    InputSignal.accelHighRate => l?.signalAccelHighRate ?? signalLabelEn(s),
+    InputSignal.ppgGreen => l?.signalPpgGreen ?? signalLabelEn(s),
+    InputSignal.ppgRedIr => l?.signalPpgRedIr ?? signalLabelEn(s),
+    InputSignal.skinTempRaw => l?.signalSkinTempRaw ?? signalLabelEn(s),
+    InputSignal.vendorScalars => l?.signalVendorScalars ?? signalLabelEn(s),
   };
 }
+
+/// The English name of [s], for text built without a [BuildContext] and as the
+/// fallback [signalDisplayName] uses when no localizations are in scope.
+String signalLabelEn(InputSignal s) => switch (s) {
+      InputSignal.rrIntervals => 'Beat-to-beat intervals',
+      InputSignal.hr1Hz => 'Continuous heart rate',
+      InputSignal.hrSparse => 'Heart rate',
+      InputSignal.accel1Hz => 'Movement',
+      InputSignal.accelHighRate => 'High-rate movement',
+      InputSignal.ppgGreen => 'Green PPG',
+      InputSignal.ppgRedIr => 'Red/infrared PPG',
+      InputSignal.skinTempRaw => 'Skin temperature',
+      InputSignal.vendorScalars => 'The device’s own numbers',
+    };
 
 /// Why this device cannot serve a metric, from the signals it does NOT declare.
 ///
@@ -644,8 +661,9 @@ Future<Map<InputSignal, String?>> signalWinners(
   required Set<InputSignal> requires,
   required Map<String, List<String>> stored,
   String? fallback,
+  DateTime? now,
 }) async {
-  final now = DateTime.now();
+  now ??= DateTime.now();
   // Calendar subtraction on the DateTime constructor, not `* 86400` or
   // `Duration(days:)` — a day is not always 86400s across a DST transition
   // (AGENTS.md §3.7), and this file is under lib/ui2's token boundary, where
@@ -674,19 +692,11 @@ Future<Map<InputSignal, String?>> signalWinners(
   for (final sig in requires) {
     final declaring = declaringDeviceIds(sources, sig);
     final rawPriority = stored[sig.name] ?? const <String>[];
-    // Mirrors `_resolveOwnership`'s empty-priority rule: no stored row means
-    // the primary device owns this window, never "let every covering device
-    // in unranked" — a customized-but-narrower order still gets the coverage
-    // union below, only a NEVER-customized one gets this fixed default.
-    final order = rawPriority.isEmpty
-        ? const [LocalDb.kPrimaryDeviceId]
-        : [
-            ...rawPriority,
-            ...{for (final iv in coverageBySig[sig] ?? const []) iv.deviceId}
-                .difference(rawPriority.toSet())
-                .toList()
-              ..sort(),
-          ];
+    // The engine's own rule (`effectivePriority`): no stored row means the
+    // primary owns, and a customised order is unioned with covering devices.
+    final order = effectivePriority(rawPriority, [
+      for (final iv in coverageBySig[sig] ?? const <CoverageInterval>[]) iv.deviceId,
+    ]);
     String? winner;
     for (final id in order) {
       if (declaring.contains(id)) {
@@ -1066,6 +1076,7 @@ class MyDevices extends StatelessWidget {
       onAddSensor: () => addSensor(c),
       contendedSignals: contendedSignals(app),
       onSignalPriority: () => goto(c, const SignalPriorityScreen()),
+      onSourceCatalog: () => goto(c, const SourceCatalogScreen()),
     );
   }
 }
@@ -1429,7 +1440,7 @@ class MyDevicesView extends StatelessWidget {
   /// Empty on every single-device install, which keeps the priority-editor
   /// entry row absent by default (final-plan §4.5).
   final List<InputSignal> contendedSignals;
-  final VoidCallback? onSignalPriority;
+  final VoidCallback? onSignalPriority, onSourceCatalog;
 
   const MyDevicesView({
     super.key,
@@ -1439,6 +1450,7 @@ class MyDevicesView extends StatelessWidget {
     this.status,
     this.contendedSignals = const [],
     this.onSignalPriority,
+    this.onSourceCatalog,
   });
 
   @override
@@ -1523,17 +1535,30 @@ class MyDevicesView extends StatelessWidget {
                             'A heart-rate strap or a ring, alongside the band',
                         onTap: onAddSensor),
                   ),
-                // ONLY when something can actually contend. A reorder screen
-                // over one device is a control with nothing to order, which is
-                // the empty-rung problem this screen already refuses (§6.5).
-                if (contendedSignals.isNotEmpty && onSignalPriority != null) ...[
+                // The catalog comes first: what every source is and supplies,
+                // before the detail of who won what.
+                if (onSourceCatalog != null && sources.isNotEmpty) ...[
+                  const SizedBox(height: S.x3),
+                  Surface(
+                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                    child: SetRow(LucideIcons.layoutList, C.teal, 'Source catalog',
+                        sub: 'What each source is, supplies and is used for',
+                        onTap: onSourceCatalog),
+                  ),
+                ],
+                // ALWAYS offered once a source exists: the order is per signal,
+                // and a signal with one declaring source still shows its
+                // section so the order is set before a second source arrives.
+                if (onSignalPriority != null && sources.isNotEmpty) ...[
                   const SizedBox(height: S.x3),
                   Surface(
                     pad: const EdgeInsets.symmetric(horizontal: S.x4),
                     child: SetRow(LucideIcons.arrowUpDown, C.blue,
                         l?.devicesWhichSourceWins ?? 'Which source wins',
-                        sub: l?.devicesWhichSourceWinsSub ??
-                            'When two of your devices measure the same thing',
+                        sub: contendedSignals.isNotEmpty
+                            ? (l?.devicesWhichSourceWinsSub ??
+                                'When two of your devices measure the same thing')
+                            : 'Set the order for each signal',
                         onTap: onSignalPriority),
                   ),
                 ],

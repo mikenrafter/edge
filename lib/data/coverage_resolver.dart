@@ -46,17 +46,65 @@ const int kOwnershipBucketSeconds = 60;
 /// wrong; a knob here would be a knob nobody can set from evidence.
 const int kOwnershipHysteresisBuckets = 3;
 
+/// The signals whose rows are owned exclusively, one device per second. The
+/// derivation substrate load and the Sources view resolve exactly these;
+/// `accelHighRate` (steps) is additive and never listed.
+const List<InputSignal> kExclusiveOwnershipSignals = [
+  InputSignal.hr1Hz,
+  InputSignal.rrIntervals,
+  // These three ride bundled inside the same `decoded_onehz` row as hr —
+  // resolved so a contended second can be spliced field-by-field
+  // (see `composeOneHzFrames`) instead of the whole row silently following
+  // whichever device won hr1Hz.
+  InputSignal.accel1Hz,
+  InputSignal.ppgRedIr,
+  InputSignal.skinTempRaw,
+];
+
+/// The candidate list one signal resolves under, from its [stored]
+/// `signal_priority` order and the devices with real coverage in the window
+/// ([coveringIds]).
+///
+/// BINDING: `signal_priority` ships EMPTY by design. No stored row means "the
+/// primary device owns this window", never "skip masking" and never "let every
+/// candidate in unranked": an empty order becomes just the primary, not the
+/// empty list `resolveOwnership` reads as "nothing is a candidate". A second
+/// device's rows stay excluded until the user gives it a rank — the
+/// conservative default that keeps single-device installs byte-identical.
+///
+/// A device with a coverage row is definitionally declaring the signal, so one
+/// paired after the user last customised the order is unioned in BELOW the
+/// stored ranking (sorted) rather than excluded forever. Never persisted.
+/// The derivation engine, the Sources view and `signalWinners` all call this:
+/// one ownership rule.
+List<String> effectivePriority(
+  List<String> stored,
+  Iterable<String> coveringIds,
+) =>
+    stored.isEmpty
+        ? const [''] // the primary device, `LocalDb.kPrimaryDeviceId`
+        : [
+            ...stored,
+            ...{...coveringIds}.difference(stored.toSet()).toList()..sort(),
+          ];
+
 /// For ONE signal over ONE window, the exclusive-owner spans, in time order.
 ///
 /// [priority] is highest-first FOR THIS SIGNAL and is also the CANDIDATE list
 /// — a device absent from it is not competing, because it does not declare
 /// the signal (`BandAdapter.signals`). Candidacy before rank.
+///
+/// [identityShortCircuit] is the derivation engine's shortcut: with one
+/// candidate it owns the whole window, gaps included, so no row it wrote is
+/// ever excluded. A VIEW must pass false, or a hole in the only device's
+/// coverage reads as continuous recording.
 List<OwnedSpan> resolveOwnership({
   required List<CoverageInterval> coverage,
   required List<String> priority,
   required int from,
   required int to,
   required InputSignal signal,
+  bool identityShortCircuit = true,
 }) {
   // Credit for the step path is overlap-SUBTRACTION across spans
   // (`resolveDaySteps`, live_coverage_policy.dart), not exclusive ownership,
@@ -95,7 +143,9 @@ List<OwnedSpan> resolveOwnership({
     }
   }
   if (candidates == 0) return [(start: from, end: to, deviceId: null)];
-  if (candidates == 1) return [(start: from, end: to, deviceId: sole)];
+  if (candidates == 1 && identityShortCircuit) {
+    return [(start: from, end: to, deviceId: sole)];
+  }
 
   // ── PASS 1 — raw per-bucket winner ────────────────────────────────────────
   const g = kOwnershipBucketSeconds;
@@ -249,3 +299,16 @@ String priorityKey(Map<InputSignal, List<String>> priority) =>
           ..sort((a, b) => a.key.name.compareTo(b.key.name)))
         .map((e) => '${e.key.name}=${e.value.join('|')}')
         .join(';');
+
+/// The inverse of [priorityKey]: `{signal name: [deviceId, …]}` in rank order.
+/// A malformed segment is dropped, never guessed at, and an unknown signal
+/// name is kept as a string key (the caller looks up only the names it knows).
+Map<String, List<String>> parsePriorityKey(String key) {
+  final out = <String, List<String>>{};
+  for (final part in key.split(';')) {
+    final eq = part.indexOf('=');
+    if (eq <= 0) continue;
+    out[part.substring(0, eq)] = part.substring(eq + 1).split('|');
+  }
+  return out;
+}

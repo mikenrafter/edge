@@ -7513,6 +7513,59 @@ class LocalDb {
     ];
   }
 
+  /// `{deviceId: {signal: (start, end)}}`: the earliest start and latest end of
+  /// every device's `device_coverage` rows, for the Sources catalog. Extent
+  /// only, never a claim that the span between is gap-free.
+  static Future<Map<String, Map<String, ({int start, int end})>>>
+      coverageExtentByDevice() async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT device_id, signal, MIN(start_ts) AS s, MAX(end_ts) AS e '
+      'FROM device_coverage GROUP BY device_id, signal',
+    );
+    final out = <String, Map<String, ({int start, int end})>>{};
+    for (final r in rows) {
+      (out[r['device_id'] as String? ?? kPrimaryDeviceId] ??= {})[r['signal'] as String] = (
+        start: (r['s'] as num).toInt(),
+        end: (r['e'] as num).toInt(),
+      );
+    }
+    return out;
+  }
+
+  /// Mean retained heart rate per device over `[from, to)`, from `decoded_onehz`.
+  /// A device with no retained rows is absent: the substrate is pruned after
+  /// `rawRetentionDays`, and an absent mean is "nothing to compare", not zero.
+  static Future<Map<String, double>> meanHrByDevice(int from, int to) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT device_id, AVG(hr) AS m FROM decoded_onehz '
+      'WHERE rec_ts >= ? AND rec_ts < ? AND hr > 0 GROUP BY device_id',
+      [from, to],
+    );
+    return {
+      for (final r in rows)
+        if (r['m'] != null)
+          (r['device_id'] as String? ?? kPrimaryDeviceId): (r['m'] as num).toDouble(),
+    };
+  }
+
+  /// `{day: priority_hash}` for every day stamped with the priority order it
+  /// derived under (`metric_series_version`). A day with no stamp is absent.
+  static Future<Map<String, String>> priorityStampsByDay(
+    String fromDay,
+    String toDay,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'metric_series_version',
+      columns: ['date', 'priority_hash'],
+      where: 'date >= ? AND date <= ? AND priority_hash IS NOT NULL',
+      whereArgs: [fromDay, toDay],
+    );
+    return {for (final r in rows) r['date'] as String: r['priority_hash'] as String};
+  }
+
   /// WHICH DEVICES WERE PHYSICALLY RECORDING each LOCAL day in a window, per
   /// signal — from `device_coverage`, which is written at ingest and never
   /// pruned, so this answers for days whose 1 Hz substrate went at

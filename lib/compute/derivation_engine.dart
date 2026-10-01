@@ -2821,6 +2821,7 @@ class DerivationEngine {
     Set<String> days, {
     bool force = true,
     void Function(String day, int index, int total)? onDayDone,
+    void Function(String day)? onDayDerived,
   }) async {
     if (days.isEmpty) return 0;
     if (_running) return 0;
@@ -2884,6 +2885,7 @@ class DerivationEngine {
             await _derivePreparedDay(prepared, profile, dataNowSec, history);
             done++;
             _diag['done_days'] = done;
+            onDayDerived?.call(dayId);
           } else {
             _diag['skipped_days'] = (_diag['skipped_days'] as int) + 1;
             _diag['last_error'] = 'no_bounded_window_payload day=$dayId';
@@ -2939,6 +2941,35 @@ class DerivationEngine {
         ..['duration_ms'] = finishedAt - startedAt;
       _running = false;
     }
+  }
+
+  /// The explicit, Advanced "Rebuild history with this priority" action: force
+  /// re-derive [days] (finalized ones included) under the `signal_priority`
+  /// orders stored NOW, restamping each day's `priority_hash`.
+  ///
+  /// Idempotent by construction: it is `runDays(force: true)`, whose writes are
+  /// `day_id`-keyed REPLACEs, so a second run leaves one row per
+  /// `(day_id, kAlgoVersion)` and re-writes the same `metric_series` values (no
+  /// duplicate-day append). A day whose raw has been pruned keeps its stored row
+  /// (the "never write nothing over something" guard in `_derivePreparedDay`).
+  /// A save of a new order never calls this.
+  ///
+  /// Returns `days`, the ids actually rebuilt, and `priorityKey`, the encoding
+  /// of the stored orders (see `priorityKey`). A day's own stamp can carry extra
+  /// trailing ids for unranked devices that covered it; see `effectivePriority`.
+  Future<Map<String, Object?>> rebuildHistoryWithPriority(
+    Profile profile, {
+    required Set<String> days,
+  }) async {
+    final rebuilt = <String>[];
+    await runDays(profile, days, force: true, onDayDerived: rebuilt.add);
+    return {
+      'days': rebuilt..sort(),
+      'priorityKey': priorityKey({
+        for (final sig in kExclusiveOwnershipSignals)
+          sig: effectivePriority(await LocalDb.signalPriority(sig), const []),
+      }),
+    };
   }
 
   static const int _rawDecodeBatchSize = 2000;
@@ -3039,46 +3070,13 @@ class DerivationEngine {
     // `signal_priority` after the day computed (which could stamp an order
     // the user changed mid-derive, and cost a query per signal per day).
     final priority = <InputSignal, List<String>>{};
-    for (final sig in const [
-      InputSignal.hr1Hz,
-      InputSignal.rrIntervals,
-      // These three ride bundled inside the same `decoded_onehz` row as hr —
-      // resolved here so a contended second can be spliced field-by-field
-      // (see `composeOneHzFrames`) instead of the whole row silently
-      // following whichever device won hr1Hz.
-      InputSignal.accel1Hz,
-      InputSignal.ppgRedIr,
-      InputSignal.skinTempRaw,
-    ]) {
-      // BINDING: `signal_priority` ships EMPTY by design (M3 deliberately did
-      // not seed a physics ladder). "No priority row" means "the primary
-      // device owns this window", never "skip masking" and never "let every
-      // candidate in unranked" — so an empty read here becomes a
-      // single-candidate priority list of just the primary, not the raw
-      // empty list `resolveOwnership` would otherwise read as "nothing is a
-      // candidate; abstain". A second device's rows stay excluded from the
-      // substrate until the user (or a future milestone's physics ladder)
-      // gives it a rank — the conservative default, and the one that keeps
-      // today's single-device installs byte-identical.
+    for (final sig in kExclusiveOwnershipSignals) {
       final rawPriority = await LocalDb.signalPriority(sig);
       final coverage = await LocalDb.coverageIntervals(sig, from, to);
-      final resolved = rawPriority.isEmpty
-          ? const [LocalDb.kPrimaryDeviceId]
-          // A device with a coverage row here is definitionally declaring
-          // this signal (db.dart's own contract for `device_coverage`).
-          // Union it in below the stored ranking rather than dropping it —
-          // otherwise any device paired after the user last customized
-          // priority for this signal is silently excluded from ownership
-          // forever, with no automatic re-seed path. Never persisted (see
-          // note above): same in-memory-only property as the empty-priority
-          // fallback.
-          : [
-              ...rawPriority,
-              ...{for (final iv in coverage) iv.deviceId}
-                  .difference(rawPriority.toSet())
-                  .toList()
-                ..sort(),
-            ];
+      // One rule for the engine, the Sources view and `signalWinners`: see
+      // `effectivePriority` for the empty-order and unranked-device cases.
+      final resolved =
+          effectivePriority(rawPriority, [for (final iv in coverage) iv.deviceId]);
       priority[sig] = resolved;
       ownership[sig] = resolveOwnership(
         coverage: coverage,

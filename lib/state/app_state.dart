@@ -67,7 +67,9 @@ import 'alarm_schedule.dart';
 import 'smart_wake.dart';
 import 'prefs.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
-import '../ui2/profile/devices.dart' show liveSources, rankSources;
+import '../sources/source_catalog.dart' show SourceService;
+import '../ui2/profile/devices.dart' show HealthSource, liveSources, rankSources;
+import '../ui2/sources/source_views.dart' show SourceViews;
 import '../data/db.dart';
 import '../ecg/ble_ecg_transport.dart';
 import '../ecg/ecg_controller.dart';
@@ -2354,6 +2356,41 @@ class AppState extends ChangeNotifier {
       bumpInsights();
       return await repo?.getDaySleep(day) ?? <String, Object?>{};
     } finally { reanalyzing = false; notifyListeners(); }
+  }
+
+  /// The Sources read seam over the sources that exist right now. Reads only:
+  /// `device`, `device_coverage`, `signal_priority` and retained 1 Hz rows.
+  SourceService get sourceService => SourceService(sources: liveSources(this));
+
+  @visibleForTesting
+  SourceService debugSourceService({
+    required List<HealthSource> sources,
+    DateTime Function()? now,
+  }) => SourceService(sources: sources, now: now);
+
+  @visibleForTesting
+  SourceViews debugSourceViews() => const SourceViews();
+
+  /// The Advanced "Rebuild history with this priority" action: re-derive every
+  /// day that still has raw readings under the saved `signal_priority` orders.
+  /// Saving an order never calls this. Returns how many days were rebuilt.
+  Future<int> rebuildHistoryWithPriority() async {
+    await _waitForDerivation();
+    reanalyzing = true;
+    notifyListeners();
+    try {
+      final days = (await LocalDb.decodedRecTsMaxByDay()).keys.toSet();
+      final result =
+          await _derive.rebuildHistoryWithPriority(_profile, days: days);
+      final error = _derive.snapshot()['last_error'];
+      if (error != null) throw StateError('$error');
+      await LocalDb.refreshComputeFreshness();
+      bumpInsights();
+      return (result['days'] as List).length;
+    } finally {
+      reanalyzing = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _waitForDerivation() async {
