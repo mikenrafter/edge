@@ -28,6 +28,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/db.dart';
 import '../data/series_codec.dart';
+import '../state/prefs.dart';
 import 'health_heart_rate_batch.dart';
 import 'health_sleep_session.dart';
 
@@ -314,6 +315,7 @@ class HealthExporter {
     if (id == null || id.isEmpty) return false;
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(Prefs.demoModeEnabled) == true) return false;
       if (prefs.getBool(kHealthSyncPref) != true) return false;
       final row = await LocalDb.session(id);
       if (row == null) return false;
@@ -334,6 +336,7 @@ class HealthExporter {
   static Future<void> deleteWorkoutWindow(int startTs, int endTs) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(Prefs.demoModeEnabled) == true) return;
       if (prefs.getBool(kHealthSyncPref) != true) return;
       await shared._ensureConfigured();
       if (await shared._androidUnavailable() != null) return;
@@ -423,6 +426,7 @@ class HealthExporter {
     DateTime dayEnd,
   ) async {
     _stepsPurgedThrough ??= await LocalDb.getCursor(_kStepsPurgeCursor) ?? '';
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
     final through = _stepsPurgedThrough!;
     if (through.isNotEmpty && date.compareTo(through) <= 0) return;
     try {
@@ -431,6 +435,7 @@ class HealthExporter {
         startTime: dayStart,
         endTime: dayEnd,
       );
+      if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
       _stepsPurgedThrough = date;
       await LocalDb.setCursor(_kStepsPurgeCursor, date);
     } catch (e) {
@@ -450,6 +455,7 @@ class HealthExporter {
     DateTime start,
     DateTime end,
   ) async {
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
     try {
       return healthDeleteClearedRange(
         deleted: await _health.delete(
@@ -625,9 +631,12 @@ class HealthExporter {
     bool forceRetry = false,
     void Function(int days)? onProgress,
   }) async {
+    await Prefs.ensureLoaded();
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
     await _ensureConfigured();
     if (await _androidUnavailable() != null) return 0; // HC missing/outdated
     return _workoutLock.run(() async {
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
     try {
       await ensureHealthSleepExportEpoch(
         getCursor: LocalDb.getCursor,
@@ -730,6 +739,7 @@ class HealthExporter {
               return 0;
             }
             Future<void> recordPriorityFailure() async {
+              if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
               retryState[priorityDay!.key] = {
                 'attempts': attempts + 1,
                 'last_ms': nowMs,
@@ -746,7 +756,9 @@ class HealthExporter {
                 // day — so one entry is equivalent to the whole list, without
                 // holding 400 decoded bundles to re-derive the same answer.
                 newestFirstDays: [priorityDay],
-                write: _androidSleep.replace,
+                write: (bundle) async =>
+                    !Prefs.getBool(Prefs.demoModeEnabled, false) &&
+                    await _androidSleep.replace(bundle),
                 exportBulk: (androidSleepAlreadyWritten) async {
                   bulkDone = await exportBulk(androidSleepAlreadyWritten);
                 },
@@ -771,6 +783,7 @@ class HealthExporter {
         var newCursor = cursor;
         var prefixContiguous = true; // still extending the finalized prefix?
         for (final day in pendingDays.reversed) {
+          if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
           final date = day.date;
           final finalized = day.finalized;
           if (day.skipped) {
@@ -829,6 +842,9 @@ class HealthExporter {
               bundle,
               androidSleepAlreadyWritten: date == androidSleepAlreadyWritten,
             ); // delete-then-write (idempotent)
+            // Suppression is not an export failure or a success. Leave all
+            // progress/retry stamps untouched when demo mode interrupts a pass.
+            if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
             if (ok) {
               if (finalized) {
                 // Finalized + exported → the cursor advances past it; no
@@ -879,6 +895,7 @@ class HealthExporter {
             prefixContiguous = false;
           }
         }
+        if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
         if (newCursor != cursor) {
           await LocalDb.setCursor('health_export_through', newCursor);
         }
@@ -906,6 +923,7 @@ class HealthExporter {
     Map<String, dynamic> b, {
     bool androidSleepAlreadyWritten = false,
   }) async {
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
     final dayStart = _localMidnight(date);
     if (dayStart == null) return false;
     // DST-safe next local midnight (calendar-field construction, NOT +24h of
@@ -934,6 +952,7 @@ class HealthExporter {
       }
     }
     if (isApple) {
+      if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
       try {
         if (!await _appleSleep.replace(
           bundle: b,
@@ -1000,6 +1019,10 @@ class HealthExporter {
       DateTime t,
     ) async {
       if (v == null || v <= 0) return; // absent input, not a failure
+      if (Prefs.getBool(Prefs.demoModeEnabled, false)) {
+        success = false;
+        return;
+      }
       try {
         final wrote = await _health.writeHealthData(
           value: v.toDouble(),
@@ -1080,6 +1103,7 @@ class HealthExporter {
     if (cal > 0) {
       final calPerHour = cal / bucketCount;
       for (int i = 0; i < bucketCount; i++) {
+        if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
         try {
           final wrote = await _health.writeHealthData(
             value: calPerHour,
@@ -1106,6 +1130,7 @@ class HealthExporter {
       final basal = (calTotal - rawCal).toDouble();
       final basalPerHour = basal / bucketCount;
       for (int i = 0; i < bucketCount; i++) {
+        if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
         try {
           final wrote = await _health.writeHealthData(
             value: basalPerHour,
@@ -1167,13 +1192,16 @@ class HealthExporter {
       success = false;
     }
     if (hrRows != null) {
+      if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
       final wroteHeartRate = await exportContinuousHeartRateDay(
         rows: hrRows,
         start: dayStart,
         end: dayEnd,
         useAndroidBatch: Platform.isAndroid,
         androidWriter: _androidHeartRate,
-        writeGeneric: (sample, sampleEnd) => _health.writeHealthData(
+        writeGeneric: (sample, sampleEnd) async =>
+            !Prefs.getBool(Prefs.demoModeEnabled, false) &&
+            await _health.writeHealthData(
           value: sample.beatsPerMinute.toDouble(),
           type: HealthDataType.HEART_RATE,
           startTime: sample.time,
@@ -1253,6 +1281,8 @@ class HealthExporter {
   /// eventually "giving up" on — and silently pausing — that WHOLE day's real
   /// health export (RHR/HRV/steps/sleep), not just the still-live workout.
   Future<bool?> _writeOneWorkout(Map<String, Object?> r) async {
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
+    if (r['source'] == 'demo') return null;
     if ((r['status']?.toString() ?? '') == 'live') {
       return null; // skip, not a failure
     }
@@ -1305,6 +1335,11 @@ class HealthExporter {
   /// because writing beside a survivor is what turns a retry into a duplicate.
   /// See [healthDeleteClearedRange] for what "did not clear" means per store.
   Future<bool> exportWorkout(Map<String, Object?> session) async {
+    await Prefs.ensureLoaded();
+    if (Prefs.getBool(Prefs.demoModeEnabled, false) ||
+        session['source'] == 'demo') {
+      return false;
+    }
     if ((session['status']?.toString() ?? '') == 'live') return false;
     // Same fabricated-end_ts skip as _writeOneWorkout, but checked BEFORE any
     // delete: this session's window may still hold a real, previously
@@ -1315,6 +1350,7 @@ class HealthExporter {
     final en = (session['end_ts'] as num?)?.toInt();
     if (st == null || en == null || en <= st) return false;
     return _workoutLock.run(() async {
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
     try {
       await _ensureConfigured();
       if (await _androidUnavailable() != null) return false;

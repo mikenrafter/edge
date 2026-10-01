@@ -8,6 +8,7 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/data/auto_backup.dart';
+import 'package:openstrap_edge/health/health_export.dart';
 
 class _Paths extends PathProviderPlatform {
   _Paths(this.root);
@@ -133,6 +134,57 @@ void main() {
       Prefs.setBool(Prefs.demoModeEnabled, true);
     },
   );
+  test(
+    'direct background and workout export sinks preserve progress in demo mode',
+    () async {
+      await LocalDb.setCursor('health_export_through', '2026-09-01');
+      await LocalDb.setCursor('health_export_retry_state', 'retained-real-progress');
+      final exporter = HealthExporter();
+      expect(await exporter.exportAll(reset: true, forceRetry: true), 0);
+      final session = <String, Object?>{
+        'id': 'demo-export-session',
+        'start_ts': 1000,
+        'end_ts': 2000,
+        'status': 'done',
+        'type': 'running',
+        'source': 'demo',
+        'created_at': 1000000,
+      };
+      await LocalDb.putSession(session);
+      expect(await exporter.exportWorkout(session), false);
+      expect(
+        await HealthExporter.exportWorkoutId('demo-export-session'),
+        false,
+      );
+      await HealthExporter.deleteWorkoutWindow(1000, 2000);
+      expect(calls, isEmpty);
+      expect(await LocalDb.getCursor('health_export_through'), '2026-09-01');
+      expect(
+        await LocalDb.getCursor('health_export_retry_state'),
+        'retained-real-progress',
+      );
+      await LocalDb.setCursor('health_export_through', '');
+      await LocalDb.setCursor('health_export_retry_state', '');
+    },
+  );
+  test('a demo workout stays blocked after leaving demo mode', () async {
+    Prefs.setBool(Prefs.demoModeEnabled, false);
+    try {
+      expect(
+        await HealthExporter().exportWorkout({
+          'start_ts': 1000,
+          'end_ts': 2000,
+          'status': 'done',
+          'type': 'running',
+          'source': 'demo',
+        }),
+        false,
+      );
+      expect(calls, isEmpty);
+    } finally {
+      Prefs.setBool(Prefs.demoModeEnabled, true);
+    }
+  });
   test(
     'manual health export in demo mode never contacts the platform health store',
     () async {

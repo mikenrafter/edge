@@ -669,6 +669,7 @@ class AppState extends ChangeNotifier {
 
   /// Export all finalized-but-unexported days now. Returns days written.
   Future<int> healthSyncNow() async {
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
     // Both halves of this seam matter and neither subsumes the other: the
     // export runs through the single-flight guard (main), and the phone-steps
     // sync stays gated on the user's preference (this branch).
