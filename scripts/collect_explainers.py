@@ -73,10 +73,8 @@ def collect():
     # Include phrase literals without a length cutoff, so short explanations
     # survive. Generated l10n is not an editing source. Imports and machine
     # identifiers are excluded; ambiguous phrases stay for human review.
-    paths = list((ROOT / 'lib/ui2').rglob('*.dart'))
-    paths += list((ROOT / 'lib/demo').rglob('*.dart'))
-    paths += list((ROOT / 'lib/notify').rglob('*.dart'))
-    paths += [ROOT / 'lib/app.dart']
+    paths = [path for path in (ROOT / 'lib').rglob('*.dart')
+             if 'l10n' not in path.parts]
     for path in sorted(paths):
         source = path.read_text()
         for start, end, raw in dart_literals(source):
