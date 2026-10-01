@@ -87,6 +87,8 @@ import '../notify/med_buzzer.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
+import '../notify/alert_dispatcher.dart';
+import '../notify/alert_rule.dart';
 import '../gestures/gesture_settings.dart';
 import '../health/auto_workout_import.dart';
 import '../health/health_export.dart';
@@ -271,10 +273,89 @@ class AppState extends ChangeNotifier {
   final GestureSettings gestureSettings = GestureSettings();
   late final GestureDispatcher _gestureDispatcher;
 
+  late final AlertDispatcher alertDispatcher = AlertDispatcher(
+    phone: () async => false,
+    band: () async {
+      await engine.buzz();
+      return true;
+    },
+    isConnected: () => engine.isConnected,
+    supportedTargetsAtDelivery: () =>
+        AlertCapabilityRegistry.targetsForBandFamily(device.generation),
+    supportedBandModes: const {
+      AlertExecutionMode.phoneLive, AlertExecutionMode.bandNative,
+    },
+    ledger: const NotificationCenterDeliveryLedger(),
+  );
+
+  @visibleForTesting
+  AlertDispatcher debugAlertDispatcher({
+    required Future<bool> Function() phone,
+    required Future<bool> Function() band,
+    required bool Function() isConnected,
+    Set<String> supportedTargets = const {'phone', 'band'},
+    DateTime Function()? now,
+  }) => AlertDispatcher(
+    phone: phone,
+    band: band,
+    isConnected: isConnected,
+    supportedTargets: supportedTargets,
+    now: now,
+    ledger: MemoryAlertDeliveryLedger(),
+  );
+
+  Future<void> _dispatchBandAlert(
+    String ruleId, {
+    int? pattern,
+    DateTime? sourceTime,
+    String? eventId,
+    bool alarm = false,
+  }) async {
+    final time = sourceTime ?? DateTime.now();
+    final prefs = await NotificationPrefs.load();
+    await alertDispatcher.dispatch(
+      prefs.alertRule(ruleId),
+      eventId: eventId ?? '$ruleId:${time.microsecondsSinceEpoch}',
+      sourceTime: time,
+      historical: false,
+      targetAllowed: (_) => const {'breath', 'wake'}.contains(ruleId) ||
+          !prefs.inQuietHours(DateTime.now().hour * 60 + DateTime.now().minute),
+      phoneTransport: () => NotificationCenter.instance.emit(
+        NotificationEvent(
+          dedupeKey: eventId ?? '$ruleId:${time.microsecondsSinceEpoch}',
+          category: NotifCategory.reminders,
+          title: switch (ruleId) {
+            'zone' => 'Heart-rate zone changed',
+            'wake' => 'Wake alarm',
+            'breath' => 'Session cue',
+            'tasker' => 'Automation alert',
+            _ => 'Alert',
+          },
+          body: 'Your selected alert fired.',
+          date: dayLabelOf(time),
+        ),
+        ruleId: ruleId,
+        sourceTime: time,
+        phoneOnly: true,
+      ),
+      bandTransport: () async {
+        if (alarm) {
+          await engine.runAlarm();
+        } else if (pattern != null) {
+          await engine.buzzPattern(pattern);
+        } else {
+          await engine.buzz();
+        }
+        return true;
+      },
+    );
+  }
+
   /// Relay selected phone-app notifications to the strap as a buzz (Android only).
   /// Exposed for the settings UI; buzzes via the live BLE engine when connected.
   late final NotificationRelay notificationRelay = NotificationRelay(
     buzz: () => engine.buzz(),
+    dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
   );
 
@@ -282,6 +363,7 @@ class AppState extends ChangeNotifier {
   /// the band is connected). Armed at launch + whenever the toggle changes.
   late final WaterBuzzer _waterBuzzer = WaterBuzzer(
     buzz: () => engine.buzz(),
+    dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
   );
 
@@ -293,13 +375,14 @@ class AppState extends ChangeNotifier {
   /// read feeds both surfaces, so they cannot drift apart.
   late final MedBuzzer _medBuzzer = MedBuzzer(
     buzz: () => engine.buzz(),
+    dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
   );
 
   /// Tasker integration bridge — listens for Android broadcast intents from
   /// Tasker and buzzes the strap. Wired in the constructor.
   late final TaskerBridge taskerBridge = TaskerBridge(
-    buzzPattern: (p) => engine.buzzPattern(p),
+    buzzPattern: (p) => _dispatchBandAlert('tasker', pattern: p),
   );
   Sample? lastSynced;
   // REAL device time (epoch SECONDS) of the newest record we hold — the band's
@@ -1300,6 +1383,22 @@ class AppState extends ChangeNotifier {
 
   Future<void> setZoneAlertEnabled(bool on) async {
     Prefs.setBool(Prefs.zoneAlertEnabled, on);
+    final prefs = await NotificationPrefs.load();
+    await prefs
+        .withAlertRule(
+          prefs
+              .alertRule('zone')
+              .copyWith(
+                enabled: on,
+                destinations: on
+                    ? (prefs.alertRule('zone').destinations == 0
+                          ? 2
+                          : prefs.alertRule('zone').destinations)
+                    : 0,
+              )
+              .toJson(),
+        )
+        .save();
     notifyListeners();
   }
 
@@ -1347,10 +1446,10 @@ class AppState extends ChangeNotifier {
   AppState() {
     final views = WidgetsBinding.instance.platformDispatcher.views;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
-    final isHeadless = views.isEmpty || 
-                       lifecycle == AppLifecycleState.detached || 
-                       lifecycle == null || 
-                       lifecycle == AppLifecycleState.paused || 
+    final isHeadless = views.isEmpty ||
+                       lifecycle == AppLifecycleState.detached ||
+                       lifecycle == null ||
+                       lifecycle == AppLifecycleState.paused ||
                        lifecycle == AppLifecycleState.hidden;
     _background = isHeadless;
 
@@ -2120,7 +2219,7 @@ class AppState extends ChangeNotifier {
         // Strap haptic alongside the shade card — the WaterBuzzer trade in a
         // place that doesn't need its own timer: the live IMU feed this check
         // just read IS the proof of a recent link.
-        unawaited(engine.buzz());
+        // Band delivery is already handled by NotificationCenter.dispatcher.
       }
     } catch (_) {
       /* best-effort */
@@ -2153,7 +2252,7 @@ class AppState extends ChangeNotifier {
       // at the next launch. It is also what makes the slot allow-listed at all
       // (NotificationService.schedulableIds): a nudge with no off switch was
       // refused there, and had never once fired.
-      if (!(await NotificationPrefs.load()).movementEnabled) return;
+      if (!(await NotificationPrefs.load()).phoneDeliveryEnabled('movement')) return;
       await NotificationService.instance.cancel(NotificationService.idStillness);
       final at =
           DateTime.fromMillisecondsSinceEpoch(nowMs).add(const Duration(hours: 2));
@@ -2466,6 +2565,7 @@ class AppState extends ChangeNotifier {
   /// single launch. `main.dart` already wraps every OTHER start-up step exactly
   /// like this.
   Future<void> _init() async {
+    NotificationCenter.instance.dispatcher = alertDispatcher;
     try {
       await _initSteps();
     } catch (e, st) {
@@ -2621,27 +2721,10 @@ class AppState extends ChangeNotifier {
     try {
       final pattern = await TaskerBridge.peekPendingBuzz();
       if (pattern == null) return;
-      // A Tasker BUZZ_STRAP can arrive while the app is fully dead; the
-      // reconnect this _init() already kicked off may not have landed by the
-      // time we get here. Wait (bounded) for a live link rather than firing
-      // into a not-yet-connected engine and silently losing the request —
-      // and only clear the persisted flag once we actually attempt delivery
-      // on a live connection. If this 20s wait still times out, the request
-      // is NOT lost: _onEngineState calls back in here on every subsequent
-      // "became connected" transition for the rest of this process's life,
-      // so a slower reconnect still eventually delivers it instead of
-      // requiring a full app restart.
-      final connected = await _waitUntil(
-        () => engine.isConnected,
-        const Duration(seconds: 20),
-      );
-      if (!connected) {
-        _log('[tasker] pending buzz (pattern=$pattern) still queued — '
-            'no connection within 20s, will retry on the next reconnect');
-        return;
-      }
-      _log('[tasker] consuming pending buzz (pattern=$pattern) from headless intent');
-      await engine.buzzPattern(pattern);
+      // The legacy pending store carries a pattern but no source timestamp.
+      // Its freshness cannot be established after a process restart. Expire
+      // it instead of replaying an old haptic on the next successful reconnect.
+      _log('[tasker] expired pending request with unknown event time');
       await TaskerBridge.clearPendingBuzz();
     } finally {
       _taskerBuzzCheckInFlight = false;
@@ -2691,19 +2774,6 @@ class AppState extends ChangeNotifier {
     } finally {
       Prefs.setBool(Prefs.kAskAddPendingKey, false);
     }
-  }
-
-  /// Poll [check] every 500ms until it's true or [timeout] elapses. Small and
-  /// generic on purpose — currently only used for the Tasker pending-buzz
-  /// handoff, which needs to wait for a real BLE connection rather than a
-  /// fixed delay.
-  Future<bool> _waitUntil(bool Function() check, Duration timeout) async {
-    final deadline = DateTime.now().add(timeout);
-    while (!check()) {
-      if (DateTime.now().isAfter(deadline)) return check();
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-    return true;
   }
 
   /// (Re)register standing scheduled reminders per the user's prefs. Idempotent;
@@ -4786,7 +4856,8 @@ class AppState extends ChangeNotifier {
       // throws must not retry every 30 s for the rest of the window (that
       // would just be repeated buzzing), and the untouched fallback arm
       // still covers a write that genuinely failed.
-      await engine.runAlarm();
+      await _dispatchBandAlert('wake', alarm: true,
+          eventId: 'wake:$epoch', sourceTime: now);
       _log('[smart-wake] light sleep detected inside the window — early buzz.');
     } catch (e) {
       _log('[smart-wake] check failed (fallback alarm is unaffected): $e');
@@ -4956,7 +5027,7 @@ class AppState extends ChangeNotifier {
         date: todayLabel(),
         route: kRouteAlarm,
         osId: NotificationService.idAlarmLatchFailed,
-      ));
+      ), ruleId: 'alarmLatchFailed');
     } catch (e) {
       _log('[alarm] latch-failure notification skipped: $e');
     }
@@ -6016,7 +6087,7 @@ class AppState extends ChangeNotifier {
       BreathPhaseKind.exhale || BreathPhaseKind.rest => 0,
       BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => 2,
     };
-    unawaited(engine.buzzPattern(pattern).catchError((_) {}));
+    unawaited(_dispatchBandAlert('breath', pattern: pattern));
   }
 
   /// The whole session is over, as opposed to one phase of it.
@@ -6028,7 +6099,7 @@ class AppState extends ChangeNotifier {
   /// "round over" from "session over".
   void buzzSessionComplete() {
     if (!isConnected) return;
-    unawaited(engine.buzzPattern(4).catchError((_) {}));
+    unawaited(_dispatchBandAlert('breath', pattern: 4));
   }
 
   Future<void> _recomputeBreathingCoherence() async {
@@ -6950,7 +7021,7 @@ class AppState extends ChangeNotifier {
     // and buzz twice for a connection hiccup that was never a real crossing.
     final alert = _zoneAlert;
     if (alert != null && hr != null && alert.onTick(DateTime.now(), _zoneFor(hr))) {
-      unawaited(engine.buzz());
+      unawaited(_dispatchBandAlert('zone'));
     }
 
     // Forgotten-session watch: judged against the SAME gate calories bill

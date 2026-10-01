@@ -1,18 +1,21 @@
-// notification_prefs.dart — user control over what reaches the OS shade.
-//
-// Persisted in shared_preferences. The in-app feed is ALWAYS written (it's the
-// user's own history); these prefs only gate whether an event also fires an OS
-// notification, and whether it may break through the quiet-hours window.
-//
-// Decision (user-chosen): health-critical alerts override quiet hours by default;
-// recovery + reminders stay silent during the quiet window.
+// Alert destinations, execution policies, and legacy notification switches.
+// The versioned SharedPreferences blob owns destinations and rule policies. Legacy
+// keys are migrated once and remain mirrors for existing headless consumers.
+// The in-app feed is always written, regardless of outbound delivery settings.
 
+import 'dart:convert';
+
+import 'alert_rule.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_event.dart';
 import 'tap_router.dart';
 
 class NotificationPrefs {
+  static const schemaVersion = 1;
+  static const storageKey = 'notif_alert_rules_v1';
+  final Map<String, AlertRule> alertRules;
+
   /// The day's aggregated health exception (illness, unusual physiology,
   /// elevated temperature, an irregular-rhythm screen, low readiness, a shifted
   /// resting-HR trend — one notification, not six).
@@ -134,6 +137,7 @@ class NotificationPrefs {
   static const int batteryPctDefault = 15;
 
   const NotificationPrefs({
+    this.alertRules = const {},
     this.healthEnabled = true,
     this.recoveryEnabled = true,
     this.remindersEnabled = true,
@@ -181,9 +185,40 @@ class NotificationPrefs {
   static const _kAlarmLatchFailed = 'notif_alarm_latch_failed';
   static const _kAlarmNightCheck = 'notif_alarm_night_check';
 
-  static Future<NotificationPrefs> load() async {
+  static Future<void> _storeTail = Future.value();
+
+  static Future<T> _serialize<T>(Future<T> Function() action) {
+    final next = _storeTail.then((_) => action());
+    _storeTail = next.then<void>((_) {}, onError: (Object _, StackTrace trace) {});
+    return next;
+  }
+
+  static Future<NotificationPrefs> load() => _serialize(_load);
+
+  static Future<NotificationPrefs> _load() async {
     final p = await SharedPreferences.getInstance();
-    return NotificationPrefs(
+    final stored = p.getString(storageKey);
+    if (stored != null) {
+      // Once written, the blob owns rule policies. Legacy flags cannot
+      // re-run migration or add a destination the user removed.
+      final rules = NotificationPrefs.fromJson(
+        Map<String, dynamic>.from(jsonDecode(stored) as Map),
+      );
+      // Existing background consumers can adjust quiet hours and schedule
+      // settings without changing delivery targets or re-running migration.
+      return rules.copyWith(
+        quietEnabled: p.getBool(_kQuietEnabled) ?? rules.quietEnabled,
+        quietStartMin: p.getInt(_kQuietStart) ?? rules.quietStartMin,
+        quietEndMin: p.getInt(_kQuietEnd) ?? rules.quietEndMin,
+        criticalOverridesQuiet:
+            p.getBool(_kCriticalOverride) ?? rules.criticalOverridesQuiet,
+        waterIntervalMin: p.getInt(_kWaterInterval) ?? rules.waterIntervalMin,
+        batteryAlertPct: (p.getInt(_kBatteryPct) ?? rules.batteryAlertPct)
+            .clamp(batteryPctMin, batteryPctMax)
+            .toInt(),
+      );
+    }
+    final legacy = NotificationPrefs(
       healthEnabled: p.getBool(_kHealth) ?? true,
       recoveryEnabled: p.getBool(_kRecovery) ?? true,
       remindersEnabled: p.getBool(_kReminders) ?? true,
@@ -198,18 +233,51 @@ class NotificationPrefs {
       movementEnabled: p.getBool(_kMovement) ?? false,
       medsEnabled: p.getBool(_kMeds) ?? false,
       checkInEnabled: p.getBool(_kCheckIn) ?? false,
-      batteryAlertPct: ((p.getInt(_kBatteryPct) ?? batteryPctDefault)
-              .clamp(batteryPctMin, batteryPctMax))
-          .toInt(),
+      batteryAlertPct: ((p.getInt(_kBatteryPct) ?? batteryPctDefault).clamp(
+        batteryPctMin,
+        batteryPctMax,
+      )).toInt(),
       stepGoalEnabled: p.getBool(_kStepGoal) ?? true,
       windDownEnabled: p.getBool(_kWindDown) ?? false,
       alarmLatchFailedEnabled: p.getBool(_kAlarmLatchFailed) ?? true,
       alarmNightCheckEnabled: p.getBool(_kAlarmNightCheck) ?? true,
     );
+    final migrated = legacy.copyWith(
+      alertRules: {
+        ...legacy.effectiveAlertRules,
+        'zone': legacyRule(
+          'zone',
+          p.getBool('workout.zone_alert_enabled') ?? false,
+          2,
+        ),
+        'relay': legacyRule(
+          'relay',
+          p.getBool('notif_relay_enabled') ?? false,
+          2,
+        ),
+        'gesture': legacyRule(
+          'gesture',
+          (p.getString('gesture_double_tap') ?? 'none') != 'none',
+          2,
+        ),
+        'wake': legacyRule('wake', true, 2),
+      },
+    );
+    if (!await p.setString(storageKey, jsonEncode(migrated.toJson()))) {
+      throw StateError('Unable to migrate alert preferences');
+    }
+    return migrated;
   }
 
-  Future<void> save() async {
+  Future<void> save() => _serialize(_save);
+
+  Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
+    // One write commits every destination and policy together. The old keys
+    // remain mirrors for headless consumers still using the legacy seam.
+    if (!await p.setString(storageKey, jsonEncode(toJson()))) {
+      throw StateError('Unable to save alert preferences');
+    }
     await p.setBool(_kHealth, healthEnabled);
     await p.setBool(_kRecovery, recoveryEnabled);
     await p.setBool(_kReminders, remindersEnabled);
@@ -225,14 +293,19 @@ class NotificationPrefs {
     await p.setBool(_kMeds, medsEnabled);
     await p.setBool(_kCheckIn, checkInEnabled);
     await p.setInt(
-        _kBatteryPct, batteryAlertPct.clamp(batteryPctMin, batteryPctMax).toInt());
+      _kBatteryPct,
+      batteryAlertPct.clamp(batteryPctMin, batteryPctMax).toInt(),
+    );
     await p.setBool(_kStepGoal, stepGoalEnabled);
     await p.setBool(_kWindDown, windDownEnabled);
     await p.setBool(_kAlarmLatchFailed, alarmLatchFailedEnabled);
     await p.setBool(_kAlarmNightCheck, alarmNightCheckEnabled);
+    await p.setBool('workout.zone_alert_enabled', alertRule('zone').enabled);
+    await p.setBool('notif_relay_enabled', alertRule('relay').enabled);
   }
 
   NotificationPrefs copyWith({
+    Map<String, AlertRule>? alertRules,
     bool? healthEnabled,
     bool? recoveryEnabled,
     bool? remindersEnabled,
@@ -252,38 +325,316 @@ class NotificationPrefs {
     bool? windDownEnabled,
     bool? alarmLatchFailedEnabled,
     bool? alarmNightCheckEnabled,
-  }) =>
-      NotificationPrefs(
-        healthEnabled: healthEnabled ?? this.healthEnabled,
-        recoveryEnabled: recoveryEnabled ?? this.recoveryEnabled,
-        remindersEnabled: remindersEnabled ?? this.remindersEnabled,
-        deviceEnabled: deviceEnabled ?? this.deviceEnabled,
-        quietEnabled: quietEnabled ?? this.quietEnabled,
-        quietStartMin: quietStartMin ?? this.quietStartMin,
-        quietEndMin: quietEndMin ?? this.quietEndMin,
-        criticalOverridesQuiet:
-            criticalOverridesQuiet ?? this.criticalOverridesQuiet,
-        waterEnabled: waterEnabled ?? this.waterEnabled,
-        waterIntervalMin: waterIntervalMin ?? this.waterIntervalMin,
-        autoDetectEnabled: autoDetectEnabled ?? this.autoDetectEnabled,
-        movementEnabled: movementEnabled ?? this.movementEnabled,
-        medsEnabled: medsEnabled ?? this.medsEnabled,
-        checkInEnabled: checkInEnabled ?? this.checkInEnabled,
-        batteryAlertPct: batteryAlertPct ?? this.batteryAlertPct,
-        stepGoalEnabled: stepGoalEnabled ?? this.stepGoalEnabled,
-        windDownEnabled: windDownEnabled ?? this.windDownEnabled,
-        alarmLatchFailedEnabled:
-            alarmLatchFailedEnabled ?? this.alarmLatchFailedEnabled,
-        alarmNightCheckEnabled:
-            alarmNightCheckEnabled ?? this.alarmNightCheckEnabled,
+  }) {
+    final rules = {...effectiveAlertRules, ...?alertRules};
+    if (healthEnabled != null) {
+      final old = rules['health']!;
+      rules['health'] = old.copyWith(
+        enabled: healthEnabled,
+        destinations: healthEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (recoveryEnabled != null) {
+      final old = rules['recovery']!;
+      rules['recovery'] = old.copyWith(
+        enabled: recoveryEnabled,
+        destinations: recoveryEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (remindersEnabled != null) {
+      final old = rules['reminders']!;
+      rules['reminders'] = old.copyWith(
+        enabled: remindersEnabled,
+        destinations: remindersEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (deviceEnabled != null) {
+      final old = rules['device']!;
+      rules['device'] = old.copyWith(
+        enabled: deviceEnabled,
+        destinations: deviceEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (waterEnabled != null) {
+      final old = rules['water']!;
+      rules['water'] = old.copyWith(
+        enabled: waterEnabled,
+        destinations: waterEnabled
+            ? (old.destinations == 0 ? 3 : old.destinations)
+            : 0,
+      );
+    }
+    if (autoDetectEnabled != null) {
+      final old = rules['autoDetect']!;
+      rules['autoDetect'] = old.copyWith(
+        enabled: autoDetectEnabled,
+        destinations: autoDetectEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (movementEnabled != null) {
+      final old = rules['movement']!;
+      rules['movement'] = old.copyWith(
+        enabled: movementEnabled,
+        destinations: movementEnabled
+            ? (old.destinations == 0 ? 3 : old.destinations)
+            : 0,
+      );
+    }
+    if (medsEnabled != null) {
+      final old = rules['meds']!;
+      rules['meds'] = old.copyWith(
+        enabled: medsEnabled,
+        destinations: medsEnabled
+            ? (old.destinations == 0 ? 3 : old.destinations)
+            : 0,
+      );
+    }
+    if (checkInEnabled != null) {
+      final old = rules['checkIn']!;
+      rules['checkIn'] = old.copyWith(
+        enabled: checkInEnabled,
+        destinations: checkInEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (stepGoalEnabled != null) {
+      final old = rules['stepGoal']!;
+      rules['stepGoal'] = old.copyWith(
+        enabled: stepGoalEnabled,
+        destinations: stepGoalEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (windDownEnabled != null) {
+      final old = rules['windDown']!;
+      rules['windDown'] = old.copyWith(
+        enabled: windDownEnabled,
+        destinations: windDownEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (alarmLatchFailedEnabled != null) {
+      final old = rules['alarmLatchFailed']!;
+      rules['alarmLatchFailed'] = old.copyWith(
+        enabled: alarmLatchFailedEnabled,
+        destinations: alarmLatchFailedEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    if (alarmNightCheckEnabled != null) {
+      final old = rules['alarmNightCheck']!;
+      rules['alarmNightCheck'] = old.copyWith(
+        enabled: alarmNightCheckEnabled,
+        destinations: alarmNightCheckEnabled
+            ? (old.destinations == 0 ? 1 : old.destinations)
+            : 0,
+      );
+    }
+    return NotificationPrefs(
+      alertRules: Map.unmodifiable(rules),
+      healthEnabled:
+          rules['health']!.enabled && rules['health']!.destinations != 0,
+      recoveryEnabled:
+          rules['recovery']!.enabled && rules['recovery']!.destinations != 0,
+      remindersEnabled:
+          rules['reminders']!.enabled && rules['reminders']!.destinations != 0,
+      deviceEnabled:
+          rules['device']!.enabled && rules['device']!.destinations != 0,
+      quietEnabled: quietEnabled ?? this.quietEnabled,
+      quietStartMin: quietStartMin ?? this.quietStartMin,
+      quietEndMin: quietEndMin ?? this.quietEndMin,
+      criticalOverridesQuiet:
+          criticalOverridesQuiet ?? this.criticalOverridesQuiet,
+      waterEnabled:
+          rules['water']!.enabled && rules['water']!.destinations != 0,
+      waterIntervalMin: waterIntervalMin ?? this.waterIntervalMin,
+      autoDetectEnabled:
+          rules['autoDetect']!.enabled &&
+          rules['autoDetect']!.destinations != 0,
+      movementEnabled:
+          rules['movement']!.enabled && rules['movement']!.destinations != 0,
+      medsEnabled: rules['meds']!.enabled && rules['meds']!.destinations != 0,
+      checkInEnabled:
+          rules['checkIn']!.enabled && rules['checkIn']!.destinations != 0,
+      batteryAlertPct: batteryAlertPct ?? this.batteryAlertPct,
+      stepGoalEnabled:
+          rules['stepGoal']!.enabled && rules['stepGoal']!.destinations != 0,
+      windDownEnabled:
+          rules['windDown']!.enabled && rules['windDown']!.destinations != 0,
+      alarmLatchFailedEnabled:
+          rules['alarmLatchFailed']!.enabled &&
+          rules['alarmLatchFailed']!.destinations != 0,
+      alarmNightCheckEnabled:
+          rules['alarmNightCheck']!.enabled &&
+          rules['alarmNightCheck']!.destinations != 0,
+    );
+  }
+
+  static AlertRule legacyRule(String id, bool enabled, int destinations) =>
+      AlertRule(
+        id: id,
+        kind: id,
+        enabled: enabled,
+        destinations: enabled ? destinations : 0,
+        executionMode: switch (id) {
+          'nativeAlarm' => AlertExecutionMode.bandNative,
+          'water' ||
+          'meds' ||
+          'movement' ||
+          'zone' ||
+          'wake' ||
+          'breath' ||
+          'tasker' ||
+          'relay' ||
+          'gesture' => AlertExecutionMode.phoneLive,
+          'checkIn' || 'windDown' => AlertExecutionMode.osScheduled,
+          _ => AlertExecutionMode.phoneDerived,
+        },
+        channelPolicyId: id,
       );
 
+  Map<String, AlertRule> get effectiveAlertRules => {
+    'health': legacyRule('health', healthEnabled, 1),
+    'recovery': legacyRule('recovery', recoveryEnabled, 1),
+    'reminders': legacyRule('reminders', remindersEnabled, 1),
+    'device': legacyRule('device', deviceEnabled, 1),
+    'water': legacyRule('water', waterEnabled, 3),
+    'autoDetect': legacyRule('autoDetect', autoDetectEnabled, 1),
+    'movement': legacyRule('movement', movementEnabled, 3),
+    'meds': legacyRule('meds', medsEnabled, 3),
+    'checkIn': legacyRule('checkIn', checkInEnabled, 1),
+    'stepGoal': legacyRule('stepGoal', stepGoalEnabled, 1),
+    'windDown': legacyRule('windDown', windDownEnabled, 1),
+    'alarmLatchFailed': legacyRule(
+      'alarmLatchFailed',
+      alarmLatchFailedEnabled,
+      1,
+    ),
+    'alarmNightCheck': legacyRule('alarmNightCheck', alarmNightCheckEnabled, 1),
+    'alarm': legacyRule('alarm', true, 1),
+    'nativeAlarm': legacyRule('nativeAlarm', true, 2),
+    for (final id in ['zone', 'wake', 'breath', 'tasker', 'relay', 'gesture'])
+      id: legacyRule(id, ['wake', 'breath', 'tasker'].contains(id), 2),
+    ...alertRules,
+  };
+
+  AlertRule alertRule(String id) =>
+      effectiveAlertRules[id] ?? legacyRule(id, false, 0);
+
+  bool phoneDeliveryEnabled(String id) => alertRule(id).phoneSelected;
+  bool bandDeliveryEnabled(String id) => alertRule(id).bandSelected;
+
+  NotificationPrefs withAlertRule(Map<String, Object?> json) {
+    final rule = AlertRule.fromJson(json);
+    return copyWith(alertRules: {rule.id: rule});
+  }
+
+  Map<String, Object?> toJson() => {
+    'schemaVersion': schemaVersion,
+    'preferences': {
+      'healthEnabled': healthEnabled,
+      'recoveryEnabled': recoveryEnabled,
+      'remindersEnabled': remindersEnabled,
+      'deviceEnabled': deviceEnabled,
+      'quietEnabled': quietEnabled,
+      'quietStartMin': quietStartMin,
+      'quietEndMin': quietEndMin,
+      'criticalOverridesQuiet': criticalOverridesQuiet,
+      'waterEnabled': waterEnabled,
+      'waterIntervalMin': waterIntervalMin,
+      'autoDetectEnabled': autoDetectEnabled,
+      'movementEnabled': movementEnabled,
+      'medsEnabled': medsEnabled,
+      'checkInEnabled': checkInEnabled,
+      'batteryAlertPct': batteryAlertPct
+          .clamp(batteryPctMin, batteryPctMax)
+          .toInt(),
+      'stepGoalEnabled': stepGoalEnabled,
+      'windDownEnabled': windDownEnabled,
+      'alarmLatchFailedEnabled': alarmLatchFailedEnabled,
+      'alarmNightCheckEnabled': alarmNightCheckEnabled,
+    },
+    'rules': {
+      for (final entry in effectiveAlertRules.entries)
+        entry.key: entry.value.toJson(),
+    },
+  };
+
+  factory NotificationPrefs.fromJson(Map<String, dynamic> json) {
+    if (json['schemaVersion'] != schemaVersion) {
+      throw const FormatException(
+        'Unsupported notification preferences version',
+      );
+    }
+    final values = Map<String, dynamic>.from(json['preferences'] as Map);
+    final defaults = const NotificationPrefs();
+    final rules = Map<String, dynamic>.from(json['rules'] as Map);
+    final prefs = NotificationPrefs(
+      healthEnabled: values['healthEnabled'] as bool? ?? defaults.healthEnabled,
+      recoveryEnabled:
+          values['recoveryEnabled'] as bool? ?? defaults.recoveryEnabled,
+      remindersEnabled:
+          values['remindersEnabled'] as bool? ?? defaults.remindersEnabled,
+      deviceEnabled: values['deviceEnabled'] as bool? ?? defaults.deviceEnabled,
+      quietEnabled: values['quietEnabled'] as bool? ?? defaults.quietEnabled,
+      quietStartMin: values['quietStartMin'] as int? ?? defaults.quietStartMin,
+      quietEndMin: values['quietEndMin'] as int? ?? defaults.quietEndMin,
+      criticalOverridesQuiet:
+          values['criticalOverridesQuiet'] as bool? ??
+          defaults.criticalOverridesQuiet,
+      waterEnabled: values['waterEnabled'] as bool? ?? defaults.waterEnabled,
+      waterIntervalMin:
+          values['waterIntervalMin'] as int? ?? defaults.waterIntervalMin,
+      autoDetectEnabled:
+          values['autoDetectEnabled'] as bool? ?? defaults.autoDetectEnabled,
+      movementEnabled:
+          values['movementEnabled'] as bool? ?? defaults.movementEnabled,
+      medsEnabled: values['medsEnabled'] as bool? ?? defaults.medsEnabled,
+      checkInEnabled:
+          values['checkInEnabled'] as bool? ?? defaults.checkInEnabled,
+      batteryAlertPct:
+          values['batteryAlertPct'] as int? ?? defaults.batteryAlertPct,
+      stepGoalEnabled:
+          values['stepGoalEnabled'] as bool? ?? defaults.stepGoalEnabled,
+      windDownEnabled:
+          values['windDownEnabled'] as bool? ?? defaults.windDownEnabled,
+      alarmLatchFailedEnabled:
+          values['alarmLatchFailedEnabled'] as bool? ??
+          defaults.alarmLatchFailedEnabled,
+      alarmNightCheckEnabled:
+          values['alarmNightCheckEnabled'] as bool? ??
+          defaults.alarmNightCheckEnabled,
+    );
+    return prefs.copyWith(
+      alertRules: {
+        for (final entry in rules.entries)
+          entry.key: AlertRule.fromJson(
+            Map<String, dynamic>.from(entry.value as Map),
+          ),
+      },
+    );
+  }
+
   bool categoryEnabled(NotifCategory c) => switch (c) {
-        NotifCategory.health => healthEnabled,
-        NotifCategory.recovery => recoveryEnabled,
-        NotifCategory.reminders => remindersEnabled,
-        NotifCategory.device => deviceEnabled,
-      };
+    NotifCategory.health => healthEnabled,
+    NotifCategory.recovery => recoveryEnabled,
+    NotifCategory.reminders => remindersEnabled,
+    NotifCategory.device => deviceEnabled,
+  };
 
   /// True if [minuteOfDay] falls inside the quiet window (inclusive start,
   /// exclusive end), handling the midnight-wrap case.
@@ -319,15 +670,13 @@ class NotificationPrefs {
     // two-hour-still one-shot (which never passes through here; it is gated at
     // NotificationService.schedulableIds) and this foreground desk-posture
     // check, which does.
-    if (!movementEnabled &&
-        routePath(event.route ?? '') == kRouteMovement) {
+    if (!movementEnabled && routePath(event.route ?? '') == kRouteMovement) {
       return false;
     }
     // The step-goal achievement's off switch — same route-keyed shape. (The
     // recovery-ready note needs no extra branch here: it rides the recovery
     // category, and categoryEnabled below already reads recoveryEnabled.)
-    if (!stepGoalEnabled &&
-        routePath(event.route ?? '') == kRouteSteps) {
+    if (!stepGoalEnabled && routePath(event.route ?? '') == kRouteSteps) {
       return false;
     }
     final klass = classOf(event);

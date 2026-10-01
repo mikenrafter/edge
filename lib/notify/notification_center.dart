@@ -34,6 +34,7 @@ import '../data/day_label.dart';
 import '../data/journal_fields.dart';
 import '../data/med_store.dart';
 import 'fired_keys.dart';
+import 'alert_dispatcher.dart';
 import 'notification_event.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
@@ -42,6 +43,57 @@ import 'tap_router.dart';
 class NotificationCenter {
   NotificationCenter._();
   static final NotificationCenter instance = NotificationCenter._();
+
+  /// AppState installs the connected-band transport; headless callers still
+  /// use this same dispatcher with the phone transport available.
+  AlertDispatcher dispatcher = AlertDispatcher(
+    phone: () async => false,
+    band: () async => false,
+    isConnected: () => false,
+    ledger: const NotificationCenterDeliveryLedger(),
+  );
+
+  Future<bool> emit(
+    NotificationEvent e, {
+    bool allowPermissionPrompt = true,
+    DateTime? sourceTime,
+    bool historical = false,
+    String? ruleId,
+    bool phoneOnly = false,
+  }) async {
+    final prefs = await NotificationPrefs.load();
+    final id =
+        ruleId ??
+        switch (routePath(e.route ?? '')) {
+          kRouteMovement => 'movement',
+          kRouteSteps => 'stepGoal',
+          kRouteRecovery => 'recovery',
+          kRouteWorkoutSuggestion => 'autoDetect',
+          _ => classOf(e) == NotifClass.alarm ? 'alarm' : e.category.name,
+        };
+    final minuteOfDay = DateTime.now().hour * 60 + DateTime.now().minute;
+    final explicitAction = ruleId != null &&
+        const {'zone', 'breath', 'tasker', 'wake', 'relay'}.contains(ruleId);
+    final out = await dispatcher.dispatch(
+      prefs.alertRule(id),
+      eventId: e.dedupeKey,
+      sourceTime: sourceTime ?? DateTime.now(),
+      historical: historical,
+      targetAllowed: (_) => explicitAction
+          ? !prefs.inQuietHours(minuteOfDay)
+          : prefs.shouldFireOs(e, minuteOfDay),
+      // Legacy derived reports may describe yesterday. Their receipt time
+      // cannot authorize a time-sensitive band haptic.
+      transportTargets: phoneOnly || e.date.compareTo(todayLabel()) < 0
+          ? const {'phone'} : null,
+      phoneTransport: () => _emitPhone(
+        e,
+        allowPermissionPrompt: allowPermissionPrompt,
+        explicitAction: explicitAction,
+      ),
+    );
+    return out.targets.contains('phone');
+  }
 
   /// The persistent "already fired this dedupeKey" guard. See [FiredKeyStore].
   final FiredKeyStore _fired = const FiredKeyStore();
@@ -75,7 +127,7 @@ class NotificationCenter {
   /// without a device; defaults to the real service.
   @visibleForTesting
   Future<bool> Function(NotificationEvent e, {bool allowPermissionPrompt})
-      presentSink = NotificationService.instance.presentEvent;
+  presentSink = NotificationService.instance.presentEvent;
 
   /// Present to the OS (if allowed). Never throws.
   ///
@@ -93,16 +145,21 @@ class NotificationCenter {
   /// it off this, never off the mere fact that emit was called: the event is
   /// dropped outright when [NotificationPrefs.shouldFireOs] says no (quiet
   /// hours, category muted) or when the OS present fails.
-  Future<bool> emit(
+  Future<bool> _emitPhone(
     NotificationEvent e, {
     bool allowPermissionPrompt = true,
+    bool explicitAction = false,
   }) async {
     var presented = false;
     try {
       final prefs = await NotificationPrefs.load();
       final now = DateTime.now();
       final minuteOfDay = now.hour * 60 + now.minute;
-      if (!prefs.shouldFireOs(e, minuteOfDay)) return false;
+      if (explicitAction) {
+        if (prefs.inQuietHours(minuteOfDay)) return false;
+      } else if (!prefs.shouldFireOs(e, minuteOfDay)) {
+        return false;
+      }
       // Enforce the dedupeKey's "fires at most once" contract (issue #136).
       // The OS id only REPLACES a prior post of the same key — it still
       // re-alerts — and derivation re-runs on every BLE sync, so an insight
@@ -132,7 +189,9 @@ class NotificationCenter {
         }
         presented = shown;
       });
-    } catch (_) {/* OS present best-effort */}
+    } catch (_) {
+      /* OS present best-effort */
+    }
     return presented;
   }
 
@@ -174,7 +233,9 @@ class NotificationCenter {
     if (shown && prefs != null) {
       try {
         await prefs.setString(prefsKey, dayId);
-      } catch (_) {/* guard is an optimisation; FiredKeyStore is the truth */}
+      } catch (_) {
+        /* guard is an optimisation; FiredKeyStore is the truth */
+      }
     }
     return shown;
   }
@@ -231,16 +292,17 @@ class NotificationCenter {
     List<MedDef>? medDefs,
     Map<String, Map<int, Map<String, Object?>>> medDosesToday = const {},
     bool armedTonight = false,
-  }) =>
-      _synchronized(() => _scheduleStandingReminders(
-            prefs,
-            bedtimeMinOfDay: bedtimeMinOfDay,
-            weeklyFinding: weeklyFinding,
-            checkInDoneToday: checkInDoneToday,
-            medDefs: medDefs,
-            medDosesToday: medDosesToday,
-            armedTonight: armedTonight,
-          ));
+  }) => _synchronized(
+    () => _scheduleStandingReminders(
+      prefs,
+      bedtimeMinOfDay: bedtimeMinOfDay,
+      weeklyFinding: weeklyFinding,
+      checkInDoneToday: checkInDoneToday,
+      medDefs: medDefs,
+      medDosesToday: medDosesToday,
+      armedTonight: armedTonight,
+    ),
+  );
 
   Future<void> _scheduleStandingReminders(
     NotificationPrefs prefs, {
@@ -261,7 +323,7 @@ class NotificationCenter {
     // back, and only that. A null slot (switch off, or no LEARNED bedtime yet)
     // cancels; a real slot is armed below.
     final windDownMin = windDownSlot(prefs, bedtimeMinOfDay);
-    if (windDownMin == null) {
+    if (windDownMin == null || !prefs.phoneDeliveryEnabled('windDown')) {
       await svc.cancel(NotificationService.idWindDown);
     }
     // The check-in and the medication band follow the same rule as the
@@ -273,7 +335,7 @@ class NotificationCenter {
     // unrelated toggle. Cancelling then would drop tonight's prompt, and
     // re-arming would risk asking for a day already answered, so neither
     // happens and the next foreground pass (which does know) decides.
-    if (!prefs.checkInEnabled || checkInDoneToday != null) {
+    if (!prefs.phoneDeliveryEnabled('checkIn') || checkInDoneToday != null) {
       await svc.cancel(NotificationService.idCheckIn);
     }
     // The medication band is cancelled when the switch is OFF — that is where
@@ -294,7 +356,7 @@ class NotificationCenter {
     // re-arming is impossible and cancelling would silently disarm doses that
     // are still real. Collapsing both into `const []` chose preserve for both,
     // so the deleted-medication case never got its cancel.
-    if (!prefs.medsEnabled || medDefs != null) {
+    if (!prefs.phoneDeliveryEnabled('meds') || medDefs != null) {
       for (var i = 0; i < NotificationService.maxMedSlots; i++) {
         await svc.cancel(NotificationService.idMedsBase + i);
       }
@@ -310,23 +372,37 @@ class NotificationCenter {
     //
     // The one cancel that IS correct here is the user's own switch: this is
     // where a movement nudge that was just turned off actually goes away.
-    if (!prefs.movementEnabled) {
+    if (!prefs.phoneDeliveryEnabled('movement')) {
       await svc.cancel(NotificationService.idStillness);
     }
     for (var i = 0; i < NotificationService.maxWaterSlots; i++) {
       await svc.cancel(NotificationService.idWaterBase + i);
     }
-    final water = waterSlotMinutes(prefs);
-    final wantWeekly = prefs.remindersEnabled && weeklyFinding != null;
+    final water = prefs.phoneDeliveryEnabled('water')
+        ? waterSlotMinutes(prefs)
+        : <int>[];
+    final wantWeekly =
+        prefs.phoneDeliveryEnabled('reminders') && weeklyFinding != null;
     final now = DateTime.now();
     final checkIn = checkInDoneToday == null
         ? null
-        : checkInSlot(prefs, bedtimeMinOfDay,
-            doneToday: checkInDoneToday, nowMin: now.hour * 60 + now.minute);
-    final meds =
-        medPromptSlots(prefs, medDefs ?? const [], medDosesToday, now: now);
-    final nightCheck = alarmNightCheckSlot(prefs,
-        armedTonight: armedTonight, nowMin: now.hour * 60 + now.minute);
+        : checkInSlot(
+            prefs,
+            bedtimeMinOfDay,
+            doneToday: checkInDoneToday,
+            nowMin: now.hour * 60 + now.minute,
+          );
+    final meds = medPromptSlots(
+      prefs,
+      medDefs ?? const [],
+      medDosesToday,
+      now: now,
+    );
+    final nightCheck = alarmNightCheckSlot(
+      prefs,
+      armedTonight: armedTonight,
+      nowMin: now.hour * 60 + now.minute,
+    );
     if (water.isEmpty &&
         !wantWeekly &&
         windDownMin == null &&
@@ -341,17 +417,25 @@ class NotificationCenter {
     await svc.ensureTimezone();
     await _armWaterSlots(svc, water);
     if (wantWeekly) await _armWeeklyLookback(svc, weeklyFinding);
-    if (windDownMin != null) await _armWindDown(svc, windDownMin);
-    if (checkIn != null) await _armCheckIn(svc, checkIn);
-    await _armMedSlots(svc, meds);
+    if (windDownMin != null && prefs.phoneDeliveryEnabled('windDown')) {
+      await _armWindDown(svc, windDownMin);
+    }
+    if (checkIn != null && prefs.phoneDeliveryEnabled('checkIn')) {
+      await _armCheckIn(svc, checkIn);
+    }
+    if (prefs.phoneDeliveryEnabled('meds')) await _armMedSlots(svc, meds);
     // Recomputed fresh right before arming, not reused from the `now` this
     // call started with — the awaits above (zone resolve + every slot ahead
     // of this one) are real wall-clock time, and this is the one slot whose
     // hour boundary (19:00) a stale `nowMin` could cross mid-call.
     final freshNow = DateTime.now();
-    final freshNightCheck = alarmNightCheckSlot(prefs,
-        armedTonight: armedTonight, nowMin: freshNow.hour * 60 + freshNow.minute);
-    if (freshNightCheck != null) {
+    final freshNightCheck = alarmNightCheckSlot(
+      prefs,
+      armedTonight: armedTonight,
+      nowMin: freshNow.hour * 60 + freshNow.minute,
+    );
+    if (freshNightCheck != null &&
+        prefs.phoneDeliveryEnabled('alarmNightCheck')) {
       await _armAlarmNightCheck(svc, freshNightCheck);
     }
   }
@@ -381,7 +465,10 @@ class NotificationCenter {
   /// reason the check-in and med slots are: "armed for tonight" is a fact
   /// about today specifically, and a repeat would go on warning about a night
   /// that, by the next evening, may well have a real alarm set.
-  Future<void> _armAlarmNightCheck(NotificationService svc, int minuteOfDay) async {
+  Future<void> _armAlarmNightCheck(
+    NotificationService svc,
+    int minuteOfDay,
+  ) async {
     await svc.scheduleOnce(
       id: NotificationService.idAlarmNightCheck,
       category: NotifCategory.reminders,
@@ -405,7 +492,10 @@ class NotificationCenter {
   /// Quiet hours are deliberately NOT applied: this is the user's own entered
   /// time, the same reasoning that exempts the alarm. Someone who takes a pill
   /// at 23:00 typed 23:00.
-  Future<void> _armMedSlots(NotificationService svc, List<MedSlot> slots) async {
+  Future<void> _armMedSlots(
+    NotificationService svc,
+    List<MedSlot> slots,
+  ) async {
     for (var i = 0; i < slots.length; i++) {
       final s = slots[i];
       final at = medSlotInstant(s);
@@ -484,7 +574,8 @@ class NotificationCenter {
       id: NotificationService.idWindDown,
       category: NotifCategory.reminders,
       title: 'Wind down',
-      body: 'Your bedtime is around ${_hhmm(minuteOfDay + windDownBeforeBedMin)}. '
+      body:
+          'Your bedtime is around ${_hhmm(minuteOfDay + windDownBeforeBedMin)}. '
           'Start slowing down.',
       hour: minuteOfDay ~/ 60,
       minute: minuteOfDay % 60,
@@ -521,8 +612,8 @@ class NotificationCenter {
     // Wrap across midnight, staying non-negative (Dart % can go negative for
     // negative operands only when the modulus is... it cannot here — but the
     // +1440 makes the intent explicit and survives sign changes).
-    var t = ((bedtimeMinOfDay.round() - windDownBeforeBedMin) % 1440 + 1440) %
-        1440;
+    var t =
+        ((bedtimeMinOfDay.round() - windDownBeforeBedMin) % 1440 + 1440) % 1440;
     if (prefs.quietEnabled && prefs.quietStartMin > prefs.quietEndMin) {
       final cap = prefs.quietStartMin - _windDownQuietMarginMin;
       if (t > cap) t = cap;
@@ -549,8 +640,7 @@ class NotificationCenter {
   /// — the reason the slot sat unwired for so long was that nothing honest
   /// could fill it. Priority: medical flags first (they are the sanctioned
   /// detections), then a plainly-stated resting-HR drift, then silence.
-  static String? weeklyLookbackFinding(
-      List<Map<String, dynamic>> recentDays) {
+  static String? weeklyLookbackFinding(List<Map<String, dynamic>> recentDays) {
     final days = recentDays
         .where((d) => d['unsettled'] != true)
         .toList(growable: false);
@@ -595,7 +685,9 @@ class NotificationCenter {
   }
 
   Future<void> _armWeeklyLookback(
-      NotificationService svc, String finding) async {
+    NotificationService svc,
+    String finding,
+  ) async {
     await svc.scheduleOnce(
       id: NotificationService.idWeeklyRecap,
       category: NotifCategory.reminders,
@@ -625,8 +717,9 @@ class NotificationCenter {
     if (!prefs.waterEnabled) return const [];
 
     final interval = prefs.waterIntervalMin.clamp(
-        NotificationPrefs.waterIntervalMinAllowed,
-        NotificationPrefs.waterIntervalMaxAllowed);
+      NotificationPrefs.waterIntervalMinAllowed,
+      NotificationPrefs.waterIntervalMaxAllowed,
+    );
 
     // Waking window = outside quiet hours when enabled, else the daytime default.
     // quietEnd is wake-up; quietStart is bedtime. Fall back to 08:00–22:00 if the
@@ -643,9 +736,11 @@ class NotificationCenter {
     }
 
     final slots = <int>[];
-    for (var t = startMin;
-        t < endMin && slots.length < NotificationService.maxWaterSlots;
-        t += interval) {
+    for (
+      var t = startMin;
+      t < endMin && slots.length < NotificationService.maxWaterSlots;
+      t += interval
+    ) {
       slots.add(t);
     }
     return slots;
@@ -758,8 +853,12 @@ class NotificationCenter {
     final out = <MedSlot>[];
     for (var d = 0; d < medHorizonDays; d++) {
       final day = dayLabelOf(DateTime(at.year, at.month, at.day + d));
-      for (final s in slotsForDay(defs, day, d == 0 ? dosesToday : const {},
-          now: at)) {
+      for (final s in slotsForDay(
+        defs,
+        day,
+        d == 0 ? dosesToday : const {},
+        now: at,
+      )) {
         if (s.state != DoseState.upcoming) continue;
         // Two pills at 08:00 are ONE interruption. The list is in time order,
         // so an instant equal to the last kept one is the same moment — and

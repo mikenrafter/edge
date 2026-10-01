@@ -9,6 +9,11 @@
 // ChangeNotifier idiom as GestureSettings/ThemeController so the settings UI is live.
 
 import 'dart:async';
+import 'alert_dispatcher.dart';
+import 'notification_prefs.dart';
+import 'notification_center.dart';
+import 'notification_event.dart';
+import '../data/day_label.dart';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 
@@ -19,13 +24,28 @@ import 'package:notification_listener_service/notification_listener_service.dart
 import 'package:shared_preferences/shared_preferences.dart';
 
 class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
-  NotificationRelay({required this.buzz, required this.isConnected});
+  NotificationRelay({
+    required this.buzz,
+    required this.isConnected,
+    AlertDispatcher? dispatcher,
+  }) : dispatcher =
+           dispatcher ??
+           AlertDispatcher(
+             phone: () async => false,
+             band: () async {
+               await buzz();
+               return true;
+             },
+             isConnected: isConnected,
+           );
+  final AlertDispatcher dispatcher;
 
   // The plugin's own MethodChannel. v1.0.0's Dart API doesn't expose the native
   // rebind/health handlers, so we invoke them directly to self-heal when Android
   // unbinds the NotificationListenerService (it does this routinely over time).
-  static const MethodChannel _pluginChannel =
-      MethodChannel('x-slayer/notifications_channel');
+  static const MethodChannel _pluginChannel = MethodChannel(
+    'x-slayer/notifications_channel',
+  );
   // 15 min, not 120 s: the heal is a belt-and-braces rebind for a listener
   // Android rarely unbinds, foreground resume already heals eagerly, and a
   // missed buzz during the window costs nothing — while the timer itself ran
@@ -151,7 +171,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     if (!supported) return false;
     try {
       await NotificationListenerService.requestPermission();
-    } catch (_) {/* user may just back out */}
+    } catch (_) {
+      /* user may just back out */
+    }
     final ok = await refreshPermission();
     _resync();
     return ok;
@@ -162,6 +184,20 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     _enabled = on;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kEnabled, on);
+    final alerts = await NotificationPrefs.load();
+    final rule = alerts.alertRule('relay');
+    await alerts
+        .withAlertRule(
+          rule
+              .copyWith(
+                enabled: on,
+                destinations: on
+                    ? (rule.destinations == 0 ? 2 : rule.destinations)
+                    : 0,
+              )
+              .toJson(),
+        )
+        .save();
     _resync();
     notifyListeners();
   }
@@ -218,7 +254,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         },
         cancelOnError: true,
       );
-    } catch (_) {/* stream unavailable — stay inert */}
+    } catch (_) {
+      /* stream unavailable — stay inert */
+    }
   }
 
   // Ask the native side whether the listener is still bound; if not, force a
@@ -231,10 +269,16 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       final connected =
           await _pluginChannel.invokeMethod<bool>('isServiceConnected') ?? true;
       if (!connected) {
-        try { await _pluginChannel.invokeMethod('forceRequestRebind'); } catch (_) {}
-        try { await _pluginChannel.invokeMethod('reconnectService'); } catch (_) {}
+        try {
+          await _pluginChannel.invokeMethod('forceRequestRebind');
+        } catch (_) {}
+        try {
+          await _pluginChannel.invokeMethod('reconnectService');
+        } catch (_) {}
       }
-    } catch (_) {/* handler absent on this plugin build — ignore */}
+    } catch (_) {
+      /* handler absent on this plugin build — ignore */
+    }
   }
 
   /// Remember that [pkg] notifies, so the picker has something to offer.
@@ -281,8 +325,6 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     // the one the picker needs to be able to offer you.
     noteSeen(pkg, e.appIcon);
     if (!_packages.contains(pkg)) return;
-    if (!isConnected()) return;
-
     final now = DateTime.now().millisecondsSinceEpoch;
     final lastForPkg = _lastBuzzMs[pkg] ?? 0;
     if (now - lastForPkg < _perAppCooldownMs) return;
@@ -290,7 +332,35 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     _lastBuzzMs[pkg] = now;
     _lastAnyBuzzMs = now;
     // Fire-and-forget; never let a BLE hiccup throw into the system callback.
-    unawaited(buzz().catchError((_) {}));
+    unawaited(_dispatchRelay(pkg, e.id, e.timestamp));
+  }
+
+  Future<void> _dispatchRelay(
+    String package,
+    int notificationId,
+    int sourceMs,
+  ) async {
+    final prefs = await NotificationPrefs.load();
+    await dispatcher.dispatch(
+      prefs.alertRule('relay'),
+      eventId: '$package:$notificationId:$sourceMs',
+      sourceTime: DateTime.fromMillisecondsSinceEpoch(sourceMs),
+      historical: false,
+      targetAllowed: (_) => !prefs.inQuietHours(
+          DateTime.now().hour * 60 + DateTime.now().minute),
+      phoneTransport: () => NotificationCenter.instance.emit(
+        NotificationEvent(
+          dedupeKey: '$package:$notificationId:$sourceMs',
+          category: NotifCategory.reminders,
+          title: 'Relayed alert',
+          body: 'A selected app posted an alert.',
+          date: dayLabelOf(DateTime.fromMillisecondsSinceEpoch(sourceMs)),
+        ),
+        sourceTime: DateTime.fromMillisecondsSinceEpoch(sourceMs),
+        ruleId: 'relay',
+        phoneOnly: true,
+      ),
+    );
   }
 
   @override
@@ -315,10 +385,23 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
 /// because "Android" under every second icon is not a name.
 String appLabel(String pkg) {
   const generic = {
-    'android', 'app', 'apps', 'client', 'mobile', 'main', 'ui',
-    'free', 'pro', 'lite', 'beta', 'release',
+    'android',
+    'app',
+    'apps',
+    'client',
+    'mobile',
+    'main',
+    'ui',
+    'free',
+    'pro',
+    'lite',
+    'beta',
+    'release',
   };
-  final parts = [for (final p in pkg.split('.')) if (p.isNotEmpty) p];
+  final parts = [
+    for (final p in pkg.split('.'))
+      if (p.isNotEmpty) p,
+  ];
   if (parts.isEmpty) return pkg;
   var i = parts.length - 1;
   while (i > 0 && generic.contains(parts[i].toLowerCase())) {
