@@ -169,6 +169,13 @@ relay behavior follows the selected channel policy without altering system DND.
 
 ## Phase 4 — Source catalog, identity, priority, and resolved-data view
 
+### Proof to retain
+
+Retain a two-device SQLite fixture and its resolved intervals before and after
+reordering. Capture the source catalog and resolved rows in light/dark mode at
+1×/2× text scale using headless Flutter widget tests. Record the selected
+source IDs and unchanged historical rows in machine-readable test output.
+
 ### Scope
 
 1. Add a full Source Catalog before the resolved/fused detail screen.
@@ -198,6 +205,14 @@ A user can tell what every source contributes, which source won each contested
 signal, why it won, and what changing order will affect.
 
 ## Phase 5 — Timestamp-correct gestures and multi-action mappings
+
+### Proof to retain
+
+Replay delayed, duplicate, fractional-time, and out-of-order events through the
+production event dispatcher in headless tests. Retain input frames, expected
+stored timestamps, and action outcomes. Physical tap classification needs
+labeled real-band recordings and measured error rates; widget captures cannot
+establish classifier accuracy or battery cost.
 
 ### 5A: ship the reliable capability
 
@@ -233,6 +248,14 @@ Firmware double tap is timestamp-correct and supports multiple actions. Physical
 tap-count mappings ship only on a measured, capability-gated path.
 
 ## Phase 6 — Split Smart Wake into Natural Wake and Gradual Wake
+
+### Proof to retain
+
+Replay held-out nights through the causal Analytics API, retain evidence age
+and each decision trace, and test all windows and failure paths without an
+emulator. Capture the four UI configurations and DST schedule cases. Confirm
+native alarm firing on each claimed generation with real hardware. Retain
+separate Android and macOS/iOS background-execution results.
 
 ### 6A: analytics prerequisite
 
@@ -290,6 +313,14 @@ abstains. The native must-be-up-by alarm remains the safety net.
 
 ## Phase 7 — Hardening, rollout, and removal of legacy paths
 
+### Proof to retain
+
+Archive analyzer output, serial Flutter JSON test events, native JVM test
+reports, widget PNGs, and a manifest containing tool versions and source
+hashes. List skipped checks with their missing fixture/platform requirement.
+Repeat the same capture after copy changes. Release evidence must identify
+which hardware and OS combinations were actually exercised.
+
 ### Scope
 
 1. Feature-flag the alert dispatcher, native Android relay, source resolver UI,
@@ -332,4 +363,3 @@ abstains. The native must-be-up-by alarm remains the safety net.
 - No Natural Wake for naps.
 - No removal of the fixed native must-be-up-by alarm.
 - No raw-command, reboot, force-trim, firmware-load, or unsafe debug UI.
-

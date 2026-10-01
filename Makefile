@@ -2,6 +2,15 @@
 	install install-device install-emulator install/emulator emulator analyze test \
 	logs crash clear-logs clean
 
+PROOF_DIR ?= build/proof/$(shell date -u +%Y%m%dT%H%M%SZ)
+
+.PHONY: proof proof-native
+proof:
+	python3 scripts/capture_proof.py $(PROOF_DIR)
+
+proof-native:
+	python3 scripts/capture_proof.py $(PROOF_DIR) --native
+
 SESSION_ENV = DISPLAY="$$DISPLAY" WAYLAND_DISPLAY="$$WAYLAND_DISPLAY" \
   XDG_RUNTIME_DIR="$$XDG_RUNTIME_DIR" XDG_SESSION_TYPE="$$XDG_SESSION_TYPE" \
   XDG_CURRENT_DESKTOP="$$XDG_CURRENT_DESKTOP" QT_QPA_PLATFORM="$$QT_QPA_PLATFORM"
@@ -25,6 +34,8 @@ help:
 	@echo "  install-emulator  Boot/reuse an emulator, build, and install"
 	@echo "  emulator          Boot/reuse an emulator without installing"
 	@echo "  run               Run Edge on a selected Flutter device"
+	@echo "  proof             Capture headless tests, screenshots, and source hashes"
+	@echo "  proof-native      Also capture Android JVM unit tests"
 
 doctor:
 	$(RUN) flutter doctor -v

@@ -7,7 +7,10 @@ import re
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PATTERN = re.compile(
     r"dangerousCmds|OpcodeSafety|allowDangerous|Cmd\.(?:forceTrim|reboot|"
-    r"powerCycle|loadFirmware|setFfValue)|FOOTGUN\("
+    r"powerCycle|loadFirmware|setFfValue)|FOOTGUN\(|"
+    r"static const int (?:forceTrim|rebootStrap|powerCycleStrap|"
+    r"startUpdateLoad|loadUpdateData|endUpdateLoad|setFfValue|"
+    r"gen5StartUpdateLoad|gen5LoadUpdateData|gen5EndUpdateLoad)\s*="
 )
 
 
@@ -23,13 +26,30 @@ def inventory():
                 paths.extend((base / "lib").rglob("*.dart"))
     rows = []
     for path in sorted(paths):
-        for number, line in enumerate(path.read_text().splitlines(), 1):
-            if PATTERN.search(line):
+        source = path.read_text()
+        block = re.search(r'const Set<int> dangerousCmds\s*=\s*\{([\s\S]*?)\};', source)
+        risky_names = set(re.findall(r'Cmd\.([A-Za-z0-9_]+)', block.group(1))) if block else set()
+        for number, line in enumerate(source.splitlines(), 1):
+            definition = re.search(r'static const int ([A-Za-z0-9_]+)\s*=', line)
+            risky_definition = definition and definition.group(1) in risky_names
+            if PATTERN.search(line) or risky_definition:
                 try:
                     name = str(path.relative_to(ROOT))
                 except ValueError:
                     name = str(path)
-                rows.append({"file": name, "line": number, "source": line.strip()})
+                row = {"file": name, "line": number, "source": line.strip()}
+                if risky_definition:
+                    symbol = definition.group(1)
+                    if symbol in {'forceTrim', 'setReadPointer'}:
+                        category = 'DATA_LOSS'
+                    elif symbol in {'rebootStrap', 'powerCycleStrap', 'forgetBonds'}:
+                        category = 'LINK_LOSS'
+                    elif symbol in {'startUpdateLoad', 'loadUpdateData', 'processUpdateImage'}:
+                        category = 'FIRMWARE'
+                    else:
+                        category = 'PERSISTENT_CONFIG'
+                    row.update(symbol=symbol, classification=f'FOOTGUN({category})')
+                rows.append(row)
     return rows
 
 

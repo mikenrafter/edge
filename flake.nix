@@ -58,6 +58,7 @@
               bashInteractive
               git
               gnumake
+              python3
               unzip
               which
               zlib
