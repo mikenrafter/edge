@@ -555,23 +555,29 @@ class OuraLink {
     var finished = false;
     final done = host.run(link).whenComplete(() => finished = true);
     var served = 0;
-    for (var spin = 0; spin < 800 && !finished; spin++) {
-      await Future<void>.delayed(Duration.zero);
-      while (served < link.writes.length) {
-        for (final f in reply(served, link.writes[served].$2)) {
-          link.feed(kOuraNotifyChar, f, atSec: _now());
+    final deadline = Stopwatch()..start();
+    try {
+      // A turn count can expire while SQLite is committing the first batch.
+      // Wait for session completion against a real bound instead, allowing the
+      // commit-confirm chain to request later batches under a busy scheduler.
+      while (!finished && deadline.elapsed < const Duration(seconds: 30)) {
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+        while (served < link.writes.length) {
+          for (final f in reply(served, link.writes[served].$2)) {
+            link.feed(kOuraNotifyChar, f, atSec: _now());
+          }
+          served++;
         }
-        served++;
       }
+      if (!finished) throw TimeoutException('Oura replay did not finish');
+      await done;
+    } finally {
+      await link.close();
+      await host.stop();
+      _host = null;
+      _anchor = null;
+      _deviceId = null;
     }
-    await link.close();
-    // Same real-commit hazard as `timeouts` above (`BandHost.stop`'s own
-    // final flush is the same sqflite write), so the same generous bound.
-    await done.timeout(const Duration(seconds: 30), onTimeout: () {});
-    await host.stop();
-    _host = null;
-    _anchor = null;
-    _deviceId = null;
     return link;
   }
 }
