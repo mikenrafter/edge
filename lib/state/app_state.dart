@@ -98,6 +98,8 @@ import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
 import '../gestures/gesture_dispatcher.dart';
+import '../gestures/moment_stamp.dart';
+import '../gestures/strap_event.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
 import '../live/live_activity.dart';
@@ -1467,12 +1469,9 @@ class AppState extends ChangeNotifier {
       onRecord: _onRecord,
       onState: (s) => _onEngineState(LocalDb.kPrimaryDeviceId, s),
       log: _log,
-      // M2: forward the session's real device id once DeviceSession exists;
-      // BleEngine's EventSink typedef has no device field, so the id names
-      // itself at this construction closure rather than widening the
-      // engine's callback shape for a value it does not have.
-      onEvent: (id, ts, hex) =>
-          _onLiveEvent(id, ts, hex, LocalDb.kPrimaryDeviceId),
+      // M2: the engine stamps LocalDb.kPrimaryDeviceId on each StrapEvent;
+      // forward the session's real device id here once DeviceSession exists.
+      onEvent: _onLiveEvent,
       onEcgEvent: (e) => _ecgTransport?.onEngineEvent(e),
       onReadyEcgRecovery: _recoverEcgGuardOnReady,
       // Gated for the same reason as [_onRecord] — this one is wired straight
@@ -1612,8 +1611,7 @@ class AppState extends ChangeNotifier {
           onState: (s) => _onEngineState(LocalDb.kPrimaryDeviceId, s),
           log: _log,
           // M2: same marker as the constructor above.
-          onEvent: (id, ts, hex) =>
-              _onLiveEvent(id, ts, hex, LocalDb.kPrimaryDeviceId),
+          onEvent: _onLiveEvent,
           liveOwners: _liveOwners,
         );
     // Same wiring as the real constructor, and for the same reason it is safe
@@ -2552,14 +2550,20 @@ class AppState extends ChangeNotifier {
   // Live (foreground / kept-alive) event path: persist every event, then let the
   // gesture dispatcher act on it. Headless drain (background_sync) persists only —
   // it must never replay an old tap as a live action.
-  void _onLiveEvent(int id, int ts, String hex, String deviceId) {
+  void _onLiveEvent(StrapEvent e) {
     if (_resetting) return; // see [_resetting]
-    LocalDb.insertEvent(id, ts, hex, deviceId: deviceId);
+    unawaited(
+      LocalDb.insertStrapEvent(e).catchError(
+        (Object err) => _log('[event] persist failed: $err'),
+      ),
+    );
     // M3: gesture dispatch and the alarm handler stay unscoped — neither is
     // device-scoped in M3's scope, and a double-tap on either band should
     // still log water.
-    _handleAlarmEvent(id, ts);
-    _gestureDispatcher.onEvent(id, ts, hex);
+    _handleAlarmEvent(e.eventId, e.tsEpoch);
+    // handle() never throws; the outcomes are logged per action by the
+    // dispatcher, so nothing here needs them.
+    unawaited(_gestureDispatcher.handle(e));
   }
 
   /// Why start-up failed, or null if it did not. Drives [AppRoute.failed].
@@ -6897,7 +6901,7 @@ class AppState extends ChangeNotifier {
   /// Double-tap → start a workout if none is live, else end the active one.
   /// CLOUD EXCISED: the workout now lives purely in-app (the local live engine).
   /// The repo seam start/end calls will be re-wired to local persistence later.
-  Future<void> _toggleWorkoutFromGesture() async {
+  Future<void> _toggleWorkoutFromGesture(StrapEvent _) async {
     try {
       if (activeWorkout != null) {
         final id = activeWorkout!.workoutId;
@@ -6934,7 +6938,7 @@ class AppState extends ChangeNotifier {
 
   /// Double-tap → add one glass to today's water. Step and ceiling come from the
   /// journal field spec, so a wrist tap and the on-screen `+` always agree.
-  Future<void> _logWaterFromGesture() async {
+  Future<void> _logWaterFromGesture(StrapEvent _) async {
     final r = repo;
     if (r == null || _writingWaterFromGesture) return;
     _writingWaterFromGesture = true;
@@ -6958,41 +6962,48 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Double-tap → stamp a timestamped tag onto today's journal (read-modify-write so
-  /// existing tags/note survive). "Remember this" for a spike, a set, a feeling.
-  Future<void> _markMomentFromGesture() async {
+  /// Tail of the Mark-moment journal read-modify-write chain. `postJournal`
+  /// REPLACES the day, so two overlapping taps that both read before either
+  /// wrote would lose a tag. Each tap runs after the previous one settles; a
+  /// failure is swallowed on the CHAIN (never on the tap's own future), so one
+  /// failed write can't wedge every later tap.
+  Future<void> _momentChain = Future<void>.value();
+
+  /// Double-tap → stamp a timestamped tag onto the journal day the tap happened
+  /// on (the event's own time — a tap replayed from history lands on its real
+  /// day and minute, not on whenever it reached the phone). Read-modify-write so
+  /// existing tags/note survive. A write failure propagates, so the dispatcher
+  /// reports it and gives the occurrence's claim back.
+  Future<void> _markMomentFromGesture(StrapEvent e) {
     final r = repo;
-    if (r == null) return;
-    try {
-      final now = DateTime.now();
-      final date =
-          '${now.year.toString().padLeft(4, '0')}-'
-          '${now.month.toString().padLeft(2, '0')}-'
-          '${now.day.toString().padLeft(2, '0')}';
-      final hhmm =
-          '${now.hour.toString().padLeft(2, '0')}:'
-          '${now.minute.toString().padLeft(2, '0')}';
+    if (r == null) return Future<void>.value();
+    final stamp = momentStampFor(e);
+    final run = _momentChain.then((_) async {
       List<String> tags = [];
       String note = '';
       try {
-        final journal = await r.getJournal(range: '7d');
-        final today = journal.firstWhere(
-          (e) => e['date'] == date,
+        // 'all': a replayed tap can belong to a day older than any fixed
+        // window, and a miss here would overwrite that day's tags.
+        final journal = await r.getJournal(range: 'all');
+        final day = journal.firstWhere(
+          (j) => j['date'] == stamp.date,
           orElse: () => <String, dynamic>{},
         );
-        tags =
-            (today['tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
-        note = (today['note'] as String?) ?? '';
-      } catch (_) {
-        /* fresh day / seam not implemented — start clean */
+        tags = (day['tags'] as List?)?.map((t) => t.toString()).toList() ?? [];
+        note = (day['note'] as String?) ?? '';
+      } on UnimplementedError {
+        /* seam without a journal — start clean */
       }
-      tags.add('moment $hhmm');
-      await r.postJournal(date, tags, note);
-      _log('[gesture] moment marked at $hhmm');
-      await HapticFeedback.mediumImpact();
-    } catch (e) {
-      _log('[gesture] mark moment failed: $e');
-    }
+      // Any other read failure propagates: posting after a failed read would
+      // replace the day with only this tag. The dispatcher reports it and gives
+      // the claim back, and the strap re-sends the tap on the next connect.
+      await r.postJournal(stamp.date, withMomentTag(tags, stamp), note);
+      _log('[gesture] moment marked at ${stamp.hhmm} (${stamp.timeSource.name})');
+      // The tag is already saved; a missing buzz must not fail the action.
+      await HapticFeedback.mediumImpact().catchError((Object _) {});
+    });
+    _momentChain = run.then<void>((_) {}, onError: (Object _) {});
+    return run;
   }
 
   /// Ask about a session that has gone quiet — the [WorkoutIdleWatch] ask.

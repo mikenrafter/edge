@@ -140,11 +140,12 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       onState: (_) {},
       // This path drains exactly the one paired band (PairedDevice.load()),
       // so kPrimaryDeviceId is the correct value here, not a placeholder.
-      onEvent: (id, ts, hex) async {
+      // The engine stamps kPrimaryDeviceId on the event itself. Persist only:
+      // the headless drain must NOT dispatch gestures.
+      onEvent: (e) async {
         if (ResetGate.active) return;
-        await LocalDb.insertEvent(id, ts, hex,
-            deviceId: LocalDb.kPrimaryDeviceId);
-        await handleHeadlessAlarmEvent(id);
+        await LocalDb.insertStrapEvent(e);
+        await handleHeadlessAlarmEvent(e.eventId);
       },
       log: (l) => debugPrint('[bgsync] $l'),
       onRecordsBatch: (raws, samples) async {

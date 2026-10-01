@@ -1726,14 +1726,30 @@ class LocalDb {
   /// Undated keys (e.g. `alarm_fired:<epoch>`) are left alone: they have no day
   /// to expire against, and they're rare enough to be self-limiting. Matches
   /// the retention semantics of the SharedPreferences fallback exactly.
-  static Future<void> pruneNotifFired(String cutoffDate) async {
+  ///
+  /// The one exception is `gesture:` claims (one row per double-tap per action,
+  /// see lib/gestures/gesture_dispatcher.dart). They carry no date, so they
+  /// expire by `fired_at` after [gestureClaimRetention]. A tap that old can only
+  /// matter again if the band re-sent it, long past any replay window.
+  static const Duration gestureClaimRetention = Duration(days: 90);
+
+  static Future<void> pruneNotifFired(String cutoffDate, {int? nowMs}) async {
+    final gestureCutoff = (nowMs ?? DateTime.now().millisecondsSinceEpoch) -
+        gestureClaimRetention.inMilliseconds;
     await _guardedWrite<int>(
-      (db) => db.rawDelete(
-        "DELETE FROM notif_fired "
-        "WHERE substr(key, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
-        "AND substr(key, 1, 10) < ?",
-        [cutoffDate],
-      ),
+      (db) async {
+        final dated = await db.rawDelete(
+          "DELETE FROM notif_fired "
+          "WHERE substr(key, 1, 10) GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' "
+          "AND substr(key, 1, 10) < ?",
+          [cutoffDate],
+        );
+        final gestures = await db.rawDelete(
+          "DELETE FROM notif_fired WHERE key LIKE 'gesture:%' AND fired_at < ?",
+          [gestureCutoff],
+        );
+        return dated + gestures;
+      },
       bestEffort: true,
     );
   }

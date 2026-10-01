@@ -44,6 +44,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import '../data/db.dart';
 import '../data/models.dart';
+import '../gestures/strap_event.dart';
 import '../platform/tasker_bridge.dart';
 import '../sync/paired_device.dart' show cleanDeviceLabel;
 import '../sync/sync_policy.dart';
@@ -61,7 +62,10 @@ int u32(Uint8List b, int o) =>
 typedef SampleSink = Future<void> Function(Sample? sample, RawRecord raw);
 typedef StateSink = void Function(DeviceState state);
 typedef LogSink = void Function(String line);
-typedef EventSink = void Function(int eventId, int tsEpoch, String hex);
+/// A band event, with the strap's own timestamp (incl. sub-second ticks), the
+/// phone's receipt time and the raw hex. The engine has no device id of its
+/// own, so it stamps [LocalDb.kPrimaryDeviceId]; a sink may `copyWith`.
+typedef EventSink = void Function(StrapEvent event);
 typedef BatchSink =
     Future<void> Function(List<RawRecord> raws, List<Sample?> samples);
 
@@ -919,6 +923,10 @@ class BleEngine {
   final LogSink? log;
   final EventSink? onEvent;
 
+  /// Receipt-time source for [StrapEvent.receivedAt]; read once per event
+  /// frame. Injectable so tests can drive recency without sleeping.
+  final DateTime Function() clock;
+
   /// If provided, historical-drain records are buffered and flushed in batches
   /// (one DB transaction per ACK boundary) instead of one-by-one via [onRecord].
   final BatchSink? onRecordsBatch;
@@ -981,6 +989,7 @@ class BleEngine {
     required this.onState,
     this.log,
     this.onEvent,
+    DateTime Function()? clock,
     this.onRecordsBatch,
     this.onDataStored,
     this.onLiveFrame,
@@ -997,7 +1006,7 @@ class BleEngine {
     this.isForegroundActive = _defaultIsForegroundActive,
     this.gen5DeepBuffersEnabled = _defaultGen5DeepBuffersDisabled,
     this.onKeepAlive,
-  });
+  }) : clock = clock ?? DateTime.now;
 
   /// Fired at the tail of every keep-alive tick (~[kKeepAliveIntervalSeconds]
   /// while connected). A thin hook so app-level periodic checks (Smart Wake
@@ -4915,7 +4924,14 @@ class BleEngine {
       );
       if (e != null) {
         _handleEventInfo(e);
-        onEvent?.call(e.eventId, e.tsEpoch, _innerHex(frame.inner));
+        onEvent?.call(
+          StrapEvent.fromEventInfo(
+            e,
+            receivedAt: clock(),
+            hex: _innerHex(frame.inner),
+            deviceId: LocalDb.kPrimaryDeviceId,
+          ),
+        );
       }
     }
     final entry = _session?.entry ?? kWhoopGen4;
