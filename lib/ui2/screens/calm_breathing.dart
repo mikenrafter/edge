@@ -854,8 +854,8 @@ class _Setup extends StatelessWidget {
                                 .join(', ')) ??
                         'Six minutes: '
                             '${kPaceSweepRates.map((r) => r.toStringAsFixed(1)).join(', ')} '
-                            'breaths a minute, two minutes each. It takes '
-                            'two sittings that agree before anything changes.')
+                            'breaths a minute, two minutes each. Resonance changes its pace only after '
+                            'two sittings agree.')
                     : (l?.calmBreathingSweepAgreed(yours.toStringAsFixed(1)) ??
                         'Two sittings agreed on '
                         '${yours.toStringAsFixed(1)} breaths a minute. '

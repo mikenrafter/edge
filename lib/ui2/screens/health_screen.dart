@@ -809,11 +809,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                         illnessZ >= 0
                             ? (l.healthDirectionAbove)
                             : (l.healthDirectionBelow)) ??
-                    'Your nocturnal resting heart rate has been running above '
-                        'your own baseline; that night sat '
-                        '${illnessZ.abs().toStringAsFixed(1)} standard deviations '
-                        '${illnessZ >= 0 ? 'above' : 'below'} it. This watches '
-                        'one signal only. It names a pattern, not a cause.'),
+                    'Your overnight resting heart rate has been running above '
+                    'your own baseline. That night it was '
+                    '${illnessZ.abs().toStringAsFixed(1)} standard deviations '
+                    '${illnessZ >= 0 ? 'above' : 'below'} it. This tracks one signal '
+                    'and cannot tell you the cause.'),
             advice: l?.healthIllnessAdvice ??
                 'If it lasts more than a couple of days, take note.',
           );
@@ -1639,8 +1639,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(l?.healthStillHoldsResults(results, m.label) ??
             '${m.label} still holds $results '
-                '${results == 1 ? 'result' : 'results'}. Remove those first — '
-                'the marker is what labels them.'),
+                '${results == 1 ? 'result' : 'results'}. Remove those first. '
+                'Each result is labelled by its marker.'),
       ));
       return;
     }

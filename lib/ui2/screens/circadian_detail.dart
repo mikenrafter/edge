@@ -463,10 +463,9 @@ class _CircadianDetailState extends State<CircadianDetail> {
         footnote: l?.circadianDetailStillnessFootnote(lo, hi, d.hourlyDays, drawn) ??
             'Each hour is the middle value of $lo–$hi five-minute '
                 'stretches you were actually still, over the last '
-                '${d.hourlyDays} day${d.hourlyDays == 1 ? '' : 's'} — never '
-                'today\'s alone. $drawn of 24 hours had at least three '
-                'stretches; the rest are blank. Not a stress score — sitting '
-                'up, a warm room or a coffee move it just as much.',
+                '${d.hourlyDays} day${d.hourlyDays == 1 ? '' : 's'}. Today alone is never used. $drawn of 24 hours had at least three '
+                'stretches; the rest are blank. Not a stress score: sitting up, '
+                'a warm room or a coffee moves it just as much.',
         child: CustomPaint(
           size: Size.infinite,
           // Uncoloured. A hue here would be a verdict about an hour of your
@@ -679,9 +678,8 @@ class _CircadianDetailState extends State<CircadianDetail> {
                 'From a run of days with every hour of heart rate recorded. '
                 'The hours shown have your highest and lowest heart rate.')
             : (l?.circadianDetailStrengthFootnoteKnown(used) ??
-                'From $used fully-recorded day${used == 1 ? '' : 's'} of '
-                    'heart rate. These are your highest and lowest '
-                    'heart-rate hours, not your busiest.'),
+                'From $used fully-recorded day${used == 1 ? '' : 's'} of heart rate. The hours shown have your highest and '
+                'lowest heart rate.'),
         style: F.over.copyWith(color: p.ink3, height: 1.5),
       ),
     ]);

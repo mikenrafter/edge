@@ -1224,7 +1224,7 @@
   "@phoneImportLower": {
     "description": "Comparison word: lower."
   },
-  "phoneImportDisagreeBody": "{store} puts your resting heart rate {delta} bpm {dir} than this band measures it over {nights} nights. They are not describing the same thing, so it stays unused.",
+  "phoneImportDisagreeBody": "Over {nights} nights, {store} puts your resting heart rate {delta} bpm {dir} than this band does. The app does not use the {store} value.",
   "@phoneImportDisagreeBody": {
     "description": "Status card body: disagreement.",
     "placeholders": {
@@ -1242,7 +1242,7 @@
       }
     }
   },
-  "phoneImportAgreeBody": "Over {nights} nights the band lands within {delta} bpm of what {store} said. It still is not used for anything.",
+  "phoneImportAgreeBody": "Over {nights} nights, the resting heart rate from this band is within {delta} bpm of the {store} value. The app does not use it.",
   "@phoneImportAgreeBody": {
     "description": "Status card body: agreement.",
     "placeholders": {
@@ -2927,7 +2927,7 @@
       }
     }
   },
-  "beatsScatterTitle": "Each interval, plotted against the previous one",
+  "beatsScatterTitle": "Beat intervals",
   "@beatsScatterTitle": {
     "description": "Chart title for the Poincaré (beat vs previous beat) scatter"
   },
@@ -10116,10 +10116,6 @@
   "@activitySummaryNoRoundsTitle": {
     "description": "Title of the status card when an interval session has no rounds recorded"
   },
-  "activitySummaryNoRoundsBody": "0 rounds logged.",
-  "@activitySummaryNoRoundsBody": {
-    "description": "Body of the status card when an interval session has no rounds recorded"
-  },
   "activitySummaryIntervalLadderTitle": "INTERVAL LADDER",
   "@activitySummaryIntervalLadderTitle": {
     "description": "Chart title above the interval work/rest ladder"
@@ -10162,10 +10158,6 @@
   "activitySummaryNoLapsTitle": "No laps counted",
   "@activitySummaryNoLapsTitle": {
     "description": "Title of the status card when a laps session has no laps counted"
-  },
-  "activitySummaryNoLapsBody": "0 laps tapped.",
-  "@activitySummaryNoLapsBody": {
-    "description": "Body of the status card when a laps session has no laps counted"
   },
   "activitySummaryLapsTitle": "LAPS",
   "@activitySummaryLapsTitle": {
@@ -10375,10 +10367,6 @@
   "activitySummaryHr": "HR",
   "@activitySummaryHr": {
     "description": "Column header for average heart rate in the route splits table"
-  },
-  "activitySummarySetsLoggedZero": "0 sets logged.",
-  "@activitySummarySetsLoggedZero": {
-    "description": "Status card body on the Splits tab when a strength session has no sets logged"
   },
   "activitySummaryRoundHeader": "R",
   "@activitySummaryRoundHeader": {
@@ -12065,7 +12053,7 @@
   "@signalSkinTempRaw": {
     "description": "Human name for the skinTempRaw input signal."
   },
-  "signalVendorScalars": "The device\u2019s own numbers",
+  "signalVendorScalars": "Values the band reports",
   "@signalVendorScalars": {
     "description": "Human name for the vendorScalars input signal."
   },

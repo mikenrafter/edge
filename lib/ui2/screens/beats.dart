@@ -332,8 +332,7 @@ class _BeatsState extends State<Beats> {
       Surface(
         child: Column(children: [
           ChartFrame(
-            title: l?.beatsScatterTitle ??
-                'Each interval, plotted against the previous one',
+            title: l?.beatsScatterTitle ?? 'Beat intervals',
             unit: 'ms',
             height: 260,
             yAxis: axis,

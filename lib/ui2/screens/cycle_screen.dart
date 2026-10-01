@@ -677,10 +677,10 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
                   s.daysByWeek.join(', '),
                   s.cycles,
                 ) ??
-                'Four numbers, one per week of the cycle, counted back to your own '
-                    'logged starts. You logged something on ${s.daysByWeek.join(', ')} '
-                    'days of each week across ${s.cycles} cycles — those are the only '
-                    'days in any of this.',
+                'Four numbers, one per week of the cycle, counted from your logged '
+                'starts. You logged something on ${s.daysByWeek.join(', ')} '
+                'days of each week across ${s.cycles} cycles. Only days you '
+                'logged are counted.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
@@ -1268,9 +1268,8 @@ class _CycleHistoryState extends State<_CycleHistory> {
               gaps.length,
               kCycleLengthReviewMinGaps,
             ) ??
-            'This needs a long run: ${gaps.length} of '
-                '$kCycleLengthReviewMinGaps gaps so far, which is about a year of '
-                'logging every start.',
+            'This needs $kCycleLengthReviewMinGaps gaps, about a year of '
+            'logging every start. You have ${gaps.length} so far.',
         icon: LucideIcons.ruler,
       );
     }

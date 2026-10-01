@@ -287,8 +287,8 @@ class _PhoneImportState extends State<PhoneImport> {
                                   '${cmp.deltaBpm.abs().toStringAsFixed(1)} bpm '
                                   '${cmp.deltaBpm > 0 ? 'higher' : 'lower'} than '
                                   'this band measures it over '
-                                  '${cmp.bandNights} nights. They are not describing '
-                                  'the same thing, so it stays unused.')
+                                  '${cmp.bandNights} nights. The app does not '
+                                  'use the phone value.')
                           : (l?.phoneImportAgreeBody(
                                   cmp.bandNights,
                                   cmp.deltaBpm.abs().toStringAsFixed(1),

@@ -385,12 +385,9 @@ Future<void> _toggleHealthShare(BuildContext c, AppState app) async {
                       last.toLocal().toString().split('.').first) ??
                   'Nothing further will be uploaded.\n\n'
                       'One copy of your database was uploaded on '
-                      '${last.toLocal().toString().split('.').first}. The server '
-                      'keeps only the most recent copy per device. We tried to '
-                      'tell it your consent is withdrawn — that message is sent '
-                      'once and is not retried, so if this phone is offline it '
-                      'will not have arrived, and we cannot show you that the copy '
-                      'is gone either.'),
+                      '${last.toLocal().toString().split('.').first}. The server keeps only the most recent copy per device. '
+                      'The app sent a withdrawal message once and does not retry it. '
+                      'If this phone was offline, the message did not arrive, and the app cannot confirm the copy is deleted.'),
         ),
         actions: [
           TextButton(
@@ -1335,8 +1332,7 @@ class EditProfile extends StatelessWidget {
         if (changes.isEmpty) {
           return (
             l?.settingsImportNoChange(snap.found.join(', ')) ??
-                'Read ${snap.found.join(', ')}. Your profile already says the '
-                    'same thing, so nothing changed.',
+                'Read ${snap.found.join(', ')}. Your profile already matches, so nothing changed.',
             false,
             merged,
           );

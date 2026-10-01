@@ -38,6 +38,29 @@ Skipped rows are in `apply-report.json` with a reason:
   ("That did not work" in `device_picker.dart` and `pairSensorThatDidNotWork`).
 - Only English ARB text changed. Other locales keep their translations.
 
+## Remainder pass
+
+`scripts/apply_copy_remainder.py` applied the rows the first pass had to skip for
+mechanical reasons (see `remainder-report.json`). Corpus offsets belong to the
+pre-rewrite source, so each row is found by its exact text instead.
+
+- 24 of the 28 cut literals applied by script. The other four (two repeated NOOP
+  backup messages, the WHOOP no-export message, the day timeline note) and the
+  three rows with repeated or reordered placeholders were applied by hand, with
+  the same replacement text. One ARB row was reworded: "the band's ... {store}'s"
+  became "the resting heart rate from this band ... the {store} value", because an
+  ASCII apostrophe next to a placeholder is an escape in gen-l10n.
+- Sonnet's circadian rewrite dropped "Not a stress score". A test pins that
+  disclaimer, so it was kept: "Not a stress score: sitting up, a warm room or a
+  coffee moves it just as much."
+- `remove` rows now applied. Sets, rounds and laps empty-state cards have a title
+  and no body (`StatusCard` already draws a card without one), and their three ARB
+  keys are deleted in all locales. The nutrition fallback now matches the English
+  ARB text ("Give every occasion in a day an energy figure ..."), which is what
+  users saw. The beats scatter title is "Beat intervals" instead of restating the
+  section title. `StatusCard`'s semantic label skips empty parts.
+- Still not applied: the 60 legal-page rows, for the owner.
+
 ## Gaps in the corpus
 
 The collector does not read `<meta>` description or Open Graph `content` attributes,

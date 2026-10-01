@@ -336,7 +336,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
           counted == 0
               ? StatusCard(
                   l?.nutritionNoCompleteDayTitle ?? 'No complete day to average yet',
-                  l?.nutritionNoCompleteDayBody ?? 'You have none.',
+                  l?.nutritionNoCompleteDayBody ??
+                      'Give every occasion in a day an energy figure and that '
+                      'day counts toward the average.',
                   icon: LucideIcons.chartNoAxesColumn,
                 )
               : Surface(

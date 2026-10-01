@@ -970,7 +970,7 @@ class StatusCard extends StatelessWidget {
       elevation: 0,
       color: p.card2,
       onTap: onFix,
-      semanticLabel: '$what. $why. $fix'.trim(),
+      semanticLabel: [what, why, fix].where((s) => s.isNotEmpty).join('. '),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

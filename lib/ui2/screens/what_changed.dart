@@ -176,10 +176,10 @@ List<Widget> whatChangedBody(BuildContext c, WhatChangedData d) {
       StatusCard(
         l?.whatChangedLearningTitle ?? 'Not enough history yet',
         l?.whatChangedLearningBody(d.longestHistory, kSweepMinHistory) ??
-            'Unusual only means anything against a range, and there '
-                '${d.longestHistory == 1 ? 'is' : 'are'} ${d.longestHistory} '
+            'A day counts as unusual only against your range, and there '
+            '${d.longestHistory == 1 ? 'is' : 'are'} ${d.longestHistory} '
                 'day${d.longestHistory == 1 ? '' : 's'} of history behind this '
-                'one. The sweep starts at $kSweepMinHistory.',
+                'one. The comparison starts at $kSweepMinHistory days.',
         icon: LucideIcons.hourglass,
       ),
     ] else if (d.findings.isEmpty)

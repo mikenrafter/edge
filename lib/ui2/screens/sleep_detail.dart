@@ -904,8 +904,8 @@ class _SleepDetailState extends State<SleepDetail> {
                 'No wake-ups of 5 minutes or more. '
                 'Shorter ones are not detected.')
             : (l?.sleepDetailAtLeastWakeups(w) ??
-                'At least $w wake-up${w == 1 ? '' : 's'} of 5 minutes or more; '
-                    'shorter ones are invisible to a wrist.'),
+                'At least $w wake-up${w == 1 ? '' : 's'} of 5 minutes or more. '
+                'Shorter ones are not detected.'),
       if (longest != null)
         l?.sleepDetailLongestStretch(hm(longest)) ??
             'Longest unbroken stretch ${hm(longest)}.',

@@ -215,7 +215,7 @@ class NoopBackupImporter {
     // derived, so its absence is a wrong-file error rather than an empty import.
     if (!tables.contains('hrSample')) {
       throw ImportFormatException(
-        'That database is not a NOOP backup — it has no `hrSample` table '
+        'That database has no `hrSample` table, so it is not a NOOP backup '
         '(found: ${tables.take(6).join(', ')}${tables.length > 6 ? '…' : ''}).',
       );
     }
@@ -279,10 +279,10 @@ class NoopBackupImporter {
     final span = await _span(src, readable, corrupt);
     if (span == null) {
       throw ImportFormatException(corrupt.isNotEmpty
-          ? 'That NOOP backup file is corrupted — SQLite cannot read '
-              '${corrupt.join(', ')}, and those are every table this app '
-              'imports. There is nothing left to recover from this file; '
-              'export a new backup from NOOP.'
+          ? 'That NOOP backup file is corrupted. SQLite cannot read '
+              '${corrupt.join(', ')}, which are all the tables this app '
+              'imports. Nothing can be recovered from this file. '
+              'Export a new backup from NOOP.'
           : 'That NOOP backup holds no samples, so there is nothing to import.');
     }
     final (minTs, maxTs) = span;
@@ -350,10 +350,10 @@ class NoopBackupImporter {
       // this is not "the backup is empty", it is "SQLite itself cannot read
       // the file", and the two must never share a message.
       throw ImportFormatException(corrupt.isNotEmpty
-          ? 'That NOOP backup file is corrupted — SQLite cannot read '
-              '${corrupt.join(', ')}, and those are every table this app '
-              'imports. There is nothing left to recover from this file; '
-              'export a new backup from NOOP.'
+          ? 'That NOOP backup file is corrupted. SQLite cannot read '
+              '${corrupt.join(', ')}, which are all the tables this app '
+              'imports. Nothing can be recovered from this file. '
+              'Export a new backup from NOOP.'
           : 'That NOOP backup holds no samples we could read.');
     }
     await ingest.finish();

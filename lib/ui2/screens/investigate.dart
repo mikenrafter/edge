@@ -721,9 +721,9 @@ class _InvestigateState extends State<Investigate> {
         footnote: l?.investigateRhythmStripFootnote(ran, raised) ??
             'Ran on $ran day${ran == 1 ? '' : 's'}, raised its flag on '
             '$raised. An outlined square is a day it did not run. A clear '
-            'strip is not a negative result: this is a screen on pulse '
-            'timing, and it cannot tell an ectopic beat from a dropped beat '
-            'from the band moving on your wrist.',
+            'strip does not rule anything out. The screen reads pulse '
+            'timing and cannot tell an ectopic beat from a dropped beat '
+            'or from the band moving on your wrist.',
         child: CustomPaint(
           size: Size.infinite,
           painter: HeatMap(grid, p.on(C.purple), p.line),

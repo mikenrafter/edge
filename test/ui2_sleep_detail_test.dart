@@ -345,7 +345,7 @@ void main() {
     );
     expect(find.textContaining('At least 3 wake-ups of 5 minutes or more'),
         findsOneWidget);
-    expect(find.textContaining('invisible to a wrist'), findsOneWidget);
+    expect(find.textContaining('Shorter ones are not detected'), findsOneWidget);
     expect(
         find.textContaining('Longest unbroken stretch 2h 42m'), findsOneWidget);
   });

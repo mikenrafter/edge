@@ -251,7 +251,7 @@ const _notComponents = {
   // 390 px, light/dark, 1x/2x) and pumped by source_views_test.dart, which is
   // where their keys and copy are pinned.
   'SourceCatalogScreen', 'ResolvedDataScreen', 'SourceCatalogView',
-  'ResolvedDataView', 'SourcePriorityEditor',
+  'ResolvedDataView', 'ResolvedWindowPicker', 'SourcePriorityEditor',
   // The double-tap picker. A Scaffold route whose whole content is decided by
   // what the OS answered to a method channel, so a gallery case would be a
   // photograph of a fixture rather than of the screen. Rendered instead by

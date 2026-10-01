@@ -753,17 +753,17 @@ class ImportReport extends StatelessWidget {
           [
             if (o.strandedDays > 0)
               l?.welcomeStrandedDays(o.strandedDays) ??
-                  '${o.strandedDays} day${o.strandedDays == 1 ? '' : 's'} arrived '
-                  'out of order and were only used as context for the day '
-                  'that followed.',
+                  '${o.strandedDays} day${o.strandedDays == 1 ? '' : 's'} arrived out of order. The app used them only as '
+                  'context for the '
+                  'following day.',
             if (o.lateRows > 0)
               l?.welcomeLateRows(o.lateRows) ??
                   '${o.lateRows} row${o.lateRows == 1 ? '' : 's'} arrived after '
                       'their day had already been scored and closed.',
             if (o.corruptTables.isNotEmpty)
-              '${o.corruptTables.join(', ')} could not be read — SQLite '
-                  'reported the file itself as corrupted for those tables. '
-                  'Every other table imported normally.',
+              '${o.corruptTables.join(', ')} could not be read. SQLite reported those tables as '
+              'corrupted in the file. '
+              'Every other table imported normally.',
           ].join(' '),
           fix: o.corruptTables.isNotEmpty
               ? (l?.actionTryAnotherFile ?? 'Try another file')

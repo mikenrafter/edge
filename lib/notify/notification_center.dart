@@ -656,7 +656,7 @@ class NotificationCenter {
     if (anomaly > 0) parts.add('unusual physiology ×$anomaly');
     if (temp > 0) parts.add('elevated skin temperature ×$temp');
     if (parts.isNotEmpty) {
-      return 'This week flagged: ${parts.join(', ')}. Details live on Health.';
+      return 'This week flagged: ${parts.join(', ')}. See Health for details.';
     }
 
     // Resting-HR drift across the week: mean of the last three nights vs the

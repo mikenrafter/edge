@@ -751,7 +751,7 @@ void main() {
       expect(find.textContaining('Ran on 10 days, raised its flag on 1'),
           findsOneWidget);
       // The permanent line. Not a tooltip, and not optional.
-      expect(find.textContaining('A clear strip is not a negative result'),
+      expect(find.textContaining('A clear strip does not rule anything out'),
           findsOneWidget);
     });
   });

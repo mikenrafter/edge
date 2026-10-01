@@ -1360,7 +1360,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
           return [
             StatusCard(
               l?.activitySummaryNoRoundsTitle ?? 'No rounds recorded',
-              l?.activitySummaryNoRoundsBody ?? '0 rounds logged.',
+              '',
               icon: LucideIcons.timer,
             ),
           ];
@@ -1438,7 +1438,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
           return [
             StatusCard(
               l?.activitySummaryNoLapsTitle ?? 'No laps counted',
-              l?.activitySummaryNoLapsBody ?? '0 laps tapped.',
+              '',
               icon: LucideIcons.waves,
             ),
           ];
@@ -1942,7 +1942,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
           return [
             StatusCard(
               l?.activitySummaryNoSetsTitle ?? 'No sets logged',
-              l?.activitySummarySetsLoggedZero ?? '0 sets logged.',
+              '',
               icon: LucideIcons.dumbbell,
             ),
           ];
@@ -1971,7 +1971,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
         if (r.rounds.isEmpty) {
           return [
             StatusCard(l?.activitySummaryNoRoundsTitle ?? 'No rounds recorded',
-                l?.activitySummaryNoRoundsBody ?? '0 rounds logged.',
+                '',
                 icon: LucideIcons.timer),
           ];
         }
@@ -2043,7 +2043,7 @@ class _ActivitySummaryState extends State<ActivitySummary> {
         if (r.lapSecs.isEmpty) {
           return [
             StatusCard(l?.activitySummaryNoLapsTitle ?? 'No laps counted',
-                l?.activitySummaryNoLapsBody ?? '0 laps tapped.',
+                '',
                 icon: LucideIcons.waves),
           ];
         }

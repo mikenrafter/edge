@@ -828,8 +828,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
               child: Text(
                 l?.dayTimelineDeviceBounded(_deviceOldest ?? '') ??
                     'Per-device detail is kept for recent days only. Before '
-                        '${_deviceOldest ?? ''} we know which device recorded, '
-                        'not what it said.',
+                        '${_deviceOldest ?? ''} we only know which device recorded, '
+                        'not its readings.',
                 style: F.over.copyWith(color: P.of(c).ink3),
               ),
             ),
