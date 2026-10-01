@@ -31,6 +31,7 @@ import '../ble/adapters/adapter.dart' show NeutralSample;
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../import/import_container.dart';
 import 'coverage_resolver.dart' show CoverageInterval;
+import '../gestures/strap_event.dart';
 import 'day_label.dart';
 import 'journal_fields.dart';
 import 'live_coverage_policy.dart';
@@ -349,7 +350,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 54;
+  static const int schemaVersion = 55;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1072,6 +1073,19 @@ class LocalDb {
           // this feature was on its own branch, so the store moved up to the
           // next free rung rather than collide with any of them.
           await _createEcgTables(db);
+        }
+        if (oldV < 55) {
+          // Strap-event sub-second remainder (1/32768 s) so two taps in one
+          // strap second stay distinct occurrences. One ADD COLUMN, no
+          // backfill (old rows read 0, which is what they were stored as);
+          // _addColumnIfMissing makes a re-run a no-op. No kAlgoVersion bump:
+          // nothing derived moves.
+          await _addColumnIfMissing(
+            db,
+            'events',
+            'ts_subsec',
+            'INTEGER NOT NULL DEFAULT 0',
+          );
         }
       },
       onOpen: (db) async {
@@ -6123,9 +6137,18 @@ class LocalDb {
         event_id INTEGER,
         ts INTEGER,
         captured_at INTEGER NOT NULL,
+        ts_subsec INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (device_id, hex)
       )
     ''');
+    // Same-version builds whose table predates schema 55 self-heal here: this
+    // runs on every open via _repairOpenSchema.
+    await _addColumnIfMissing(
+      db,
+      'events',
+      'ts_subsec',
+      'INTEGER NOT NULL DEFAULT 0',
+    );
     // The PK is the frame hex, so a `ts` window (the timeline's day query, and
     // the retention prune) was a full table scan. Cheap to build — `events` is
     // pruned to the retention window.
@@ -6376,8 +6399,10 @@ class LocalDb {
     int ts,
     String hex, {
     required String deviceId,
+    int? tsSubsec,
+    DateTime? receivedAt,
   }) async {
-    final capturedAt = DateTime.now().millisecondsSinceEpoch;
+    final capturedAt = (receivedAt ?? DateTime.now()).millisecondsSinceEpoch;
     // Parse BEFORE acquiring the handle so both inserts run back-to-back on one
     // validated `db` with no intervening await — minimizing the closed-DB race
     // window. Best-effort: a background teardown that closes the DB mid-write
@@ -6397,6 +6422,7 @@ class LocalDb {
         'event_id': eventId,
         'ts': ts,
         'captured_at': capturedAt,
+        'ts_subsec': tsSubsec ?? parsed?.tsSubsec ?? 0,
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
       await db.insert('band_events', {
         'device_id': deviceId,
@@ -6417,6 +6443,63 @@ class LocalDb {
         );
       }
     }, bestEffort: true);
+  }
+
+  /// [insertEvent] for a [StrapEvent]: keeps its sub-second remainder and the
+  /// time the frame was received. A re-insert keeps the FIRST receipt time.
+  static Future<void> insertStrapEvent(StrapEvent e) => insertEvent(
+    e.eventId,
+    e.tsEpoch,
+    e.hex,
+    deviceId: e.deviceId,
+    tsSubsec: e.tsSubsec,
+    receivedAt: e.receivedAt,
+  );
+
+  /// Stored events as [StrapEvent]s, oldest first by `(ts, ts_subsec)`. The
+  /// strap's clock and the receipt time (`captured_at`) come back separately.
+  static Future<List<StrapEvent>> strapEvents({
+    String? deviceId,
+    int? eventId,
+    int? sinceTsEpoch,
+    int limit = 1000,
+  }) async {
+    final db = await instance;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (deviceId != null) {
+      where.add('device_id = ?');
+      args.add(deviceId);
+    }
+    if (eventId != null) {
+      where.add('event_id = ?');
+      args.add(eventId);
+    }
+    if (sinceTsEpoch != null) {
+      where.add('ts >= ?');
+      args.add(sinceTsEpoch);
+    }
+    final rows = await db.query(
+      'events',
+      where: where.isEmpty ? null : where.join(' AND '),
+      whereArgs: args,
+      orderBy: 'ts ASC, ts_subsec ASC',
+      limit: limit,
+    );
+    return [
+      for (final r in rows)
+        StrapEvent(
+          eventId: (r['event_id'] as num?)?.toInt() ?? 0,
+          tsEpoch: (r['ts'] as num?)?.toInt() ?? 0,
+          tsSubsec: (r['ts_subsec'] as num?)?.toInt() ?? 0,
+          receivedAt: DateTime.fromMillisecondsSinceEpoch(
+            (r['captured_at'] as num).toInt(),
+            isUtc: true,
+          ),
+          hex: r['hex'] as String,
+          deviceId: r['device_id'] as String,
+        ),
+    ];
   }
 
   /// The `band_battery` row an incoming band event carries, or null when it

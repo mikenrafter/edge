@@ -205,6 +205,12 @@ extension DeviceActionX on DeviceAction {
 
   bool get isNative => this != DeviceAction.none && !isInApp;
 
+  /// Safe to run for a tap that is replayed from history (the band's flash)
+  /// rather than felt now. True only for actions that record a moment in time;
+  /// anything that acts on the phone right now (media, torch, water, workout)
+  /// would fire hours late.
+  bool get supportsHistoricalReplay => this == DeviceAction.markMoment;
+
   static DeviceAction? fromId(String? id) {
     if (id == null) return null;
     for (final a in DeviceAction.values) {

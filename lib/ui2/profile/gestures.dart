@@ -36,9 +36,13 @@ class BandGestures extends StatelessWidget {
     return ListenableBuilder(
       listenable: g,
       builder: (c, _) => BandGesturesView(
-        chosen: g.doubleTap,
+        // TODO(5A-G6): temporary single-select shim over the multi-action set;
+        // the view becomes a switch per action.
+        chosen: g.doubleTapActions.isEmpty
+            ? DeviceAction.none
+            : g.doubleTapActions.first,
         supported: g.supported,
-        onPick: g.setDoubleTap,
+        onPick: (a) => g.setDoubleTapActions({a}),
       ),
     );
   }

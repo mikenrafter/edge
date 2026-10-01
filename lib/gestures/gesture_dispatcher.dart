@@ -42,7 +42,11 @@ class GestureDispatcher {
   /// for non-gesture events — it returns immediately.
   void onEvent(int eventId, int tsEpoch, String hex) {
     if (eventId != _doubleTapEventId) return;
-    final action = settings.doubleTap;
+    // TODO(5A-G2): temporary shim so the tree compiles — the dispatcher rewrite
+    // runs EVERY selected action, not just the first.
+    final action = settings.doubleTapActions.isEmpty
+        ? DeviceAction.none
+        : settings.doubleTapActions.first;
     if (action == DeviceAction.none) return;
 
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
