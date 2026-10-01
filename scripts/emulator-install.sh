@@ -95,9 +95,7 @@ done
 [[ "$started" == true ]] && sleep "$SETTLE"
 
 if [[ "$NO_INSTALL" != true ]]; then
-  flutter build apk --debug
-  adb -s "$device" install -r build/app/outputs/flutter-apk/app-debug.apk
-  echo "Installed Edge on $device"
+  EDGE_DEVICE="$device" bash "$ROOT/scripts/install-device.sh"
 else
   echo "Emulator ready: $device"
 fi

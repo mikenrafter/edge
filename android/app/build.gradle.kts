@@ -71,6 +71,9 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
 
+        // The launcher label comes from here so a debug build can say "Dev".
+        manifestPlaceholders["appLabel"] = "Edge"
+
         // Retain FULL native debug symbols in the release bundle so Play Console
         // AND Crashlytics can symbolicate native/ANR frames. Without this, ANRs
         // sampled in native code (e.g. libm.so __kernel_rem_pio2 / sin / cos, and
@@ -94,6 +97,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            // A debug build is a different app: its own id, label and data, so
+            // `make install` sits beside a release install instead of failing
+            // with INSTALL_FAILED_UPDATE_INCOMPATIBLE (different signing key)
+            // or replacing the copy that holds real history.
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appLabel"] = "Edge Dev"
+        }
         release {
             // Use the real release key when it's configured (local key.properties or CI
             // env), otherwise fall back to debug so `flutter run --release` still works.
@@ -138,4 +150,14 @@ dependencies {
     // code at compile time — declare it explicitly for our native Worker.
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     testImplementation("junit:junit:4.13.2")
+}
+
+// A real google-services.json lists the package ids it was registered for. The
+// debug build's id is `<release id>.dev`; when the file has no client for it the
+// plugin fails the whole debug build ("No matching client found"). Skip it for
+// debug in that case: a debug install then has no Firebase, which is fine.
+if (hasRealGoogleServicesJson &&
+    !file("google-services.json").readText().contains("wtf.openstrap.openstrap_edge.dev")
+) {
+    tasks.matching { it.name == "processDebugGoogleServices" }.configureEach { enabled = false }
 }

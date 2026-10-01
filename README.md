@@ -168,6 +168,11 @@ flutter pub get
 flutter run --dart-define-from-file=.env
 ```
 
+A debug build installs as **Edge Dev** (`wtf.openstrap.openstrap_edge.dev`), a separate app with
+its own data, so it never replaces a release install. In the Nix shell, `make install` builds it
+and installs it on the one attached phone (`EDGE_DEVICE=<serial>` when there are several), and
+`make install-emulator` boots an emulator first.
+
 Quit the official WHOOP app before you pair — Bluetooth only lets one app own the band at
 a time. iOS signing and the App Group setup for the widget/Live Activity is its own
 longer story — see `guides/IOS_INSTALLATION.md`.

@@ -30,10 +30,10 @@ help:
 	@echo "  check             Run the sibling-pin guard, analyzer, and serial tests"
 	@echo "  apk | bundle      Build Android release artifacts"
 	@echo "  debug             Build the Android debug APK"
-	@echo "  install-device    Build and install on the selected adb device"
+	@echo "  install           Build and install \"Edge Dev\" (separate app id) on the one adb device; EDGE_DEVICE=<serial> to choose"
 	@echo "  install-emulator  Boot/reuse an emulator, build, and install"
 	@echo "  emulator          Boot/reuse an emulator without installing"
-	@echo "  run               Run Edge on a selected Flutter device"
+	@echo "  run               Run Edge on a Flutter device (DEVICE=<id> to choose; hot reload)"
 	@echo "  proof             Capture headless tests, screenshots, and source hashes"
 	@echo "  proof-native      Also capture Android JVM unit tests"
 
@@ -62,15 +62,16 @@ debug:
 linux:
 	$(RUN) flutter build linux --release
 
+# DEVICE=<id> skips flutter's device prompt when an emulator and a phone are both attached.
 run:
-	$(RUN) flutter run
+	$(RUN) flutter run $(if $(DEVICE),-d $(DEVICE),)
 
 devices:
 	$(RUN) flutter devices
 
 install install-device:
-	$(RUN) flutter build apk --debug
-	$(RUN) adb install -r build/app/outputs/flutter-apk/app-debug.apk
+	@chmod +x scripts/install-device.sh
+	$(RUN) bash scripts/install-device.sh
 
 install/emulator install-emulator:
 	@chmod +x scripts/emulator-install.sh
