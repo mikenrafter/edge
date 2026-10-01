@@ -242,7 +242,7 @@ void main() {
     () async {
       final writes = <int>[];
       final c = sleep(
-        persist: (_, s, __) async {
+        persist: (_, s, _) async {
           writes.add(s);
         },
         derive: (_) async => {'sleep_source': 'manual', 'duration_min': 420},
@@ -266,7 +266,7 @@ void main() {
       final writes = <int>[];
       var derives = 0;
       final c = sleep(
-        persist: (_, s, __) async {
+        persist: (_, s, _) async {
           writes.add(s);
         },
         derive: (_) async {
@@ -304,7 +304,7 @@ void main() {
       () async {
         var failOnce = true, persisted = false;
         final c = sleep(
-          persist: (_, __, ___) async {
+          persist: (_, _, _) async {
             if (failure == 'persist' && failOnce) {
               failOnce = false;
               throw StateError('disk');
@@ -344,7 +344,7 @@ void main() {
     () async {
       final schedules = <Map<String, Object?>>[];
       final c = sleep(
-        persist: (_, __, ___) async {},
+        persist: (_, _, _) async {},
         derive: (_) async => {},
         saveSchedule: (s) async {
           schedules.add(s);

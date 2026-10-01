@@ -36,6 +36,7 @@
 // derives from it yet, because no one on this project has held one
 // (ASSUMPTIONS R6).
 
+import '../sync_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothDevice;
@@ -1893,7 +1894,8 @@ class _DeviceDetailState extends State<DeviceDetail> {
       // primary band's link, its restore identity and its trim cursor, none of
       // which a sensor has — pointing this at it would have unpaired the
       // WHOOP from a chest strap's page.
-      onSync: switch (s.family) {
+      syncPresentation: app?.syncPresentation,
+      onSync: app != null ? app.syncNow : switch (s.family) {
         'oura' || 'ringconn' || 'o2ring' || 'ring11m' =>
           () => _syncRing(c, s.family),
         'coros' => () => _syncCorosWatch(c),
@@ -2519,6 +2521,7 @@ Future<void> _confirmForget(BuildContext c, AppState app, String name) async {
 class DeviceDetailView extends StatelessWidget {
   final HealthSource s;
   final VoidCallback? onFind, onForget, onSync;
+  final SyncPresentationState? syncPresentation;
 
   /// The beat arriving right now, or null when nothing fresh is streaming.
   /// Passed IN rather than read from a provider here: this view is rendered in
@@ -2547,6 +2550,7 @@ class DeviceDetailView extends StatelessWidget {
       this.onFind,
       this.onForget,
       this.onSync,
+      this.syncPresentation,
       this.onRename,
       this.liveHr,
       this.status,
@@ -2576,6 +2580,8 @@ class DeviceDetailView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
+                if (syncPresentation case final state?)
+                  SyncControl(state: state, onSync: onSync),
                 Center(
                   child: Container(
                     width: 120,
@@ -2651,7 +2657,7 @@ class DeviceDetailView extends StatelessWidget {
                       // does, and putting it on a schedule would have it
                       // contending for the radio with the band's own link
                       // for no reason a user asked for.
-                      if (onSync != null) ...[
+                      if (onSync != null && syncPresentation == null) ...[
                         Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.downloadCloud, C.blue,
                             l?.devicesSyncNow ?? 'Sync now',

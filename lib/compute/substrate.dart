@@ -1067,12 +1067,17 @@ List<PhysioDay> calendarDays(
   final sleepHistory = <({int startSec, int endSec, String dayKey})>[
     ...priorSleep,
   ];
-  var dayStart = _localMidnight(dataStart);
+  final assertedDay = override == null ? null : DateTime.tryParse(override.dayId);
+  final assertedStart = assertedDay == null ? null : assertedDay.millisecondsSinceEpoch ~/ 1000;
+  var dayStart = assertedStart == null ? _localMidnight(dataStart)
+    : math.min(_localMidnight(dataStart), assertedStart);
+  final walkEnd = assertedStart == null ? dataEnd : math.max(dataEnd, _nextLocalMidnight(assertedStart));
   var guard = 0;
-  while (dayStart < dataEnd && guard++ < 400) {
+  while (dayStart < walkEnd && guard++ < 400) {
     final dayEnd = _nextLocalMidnight(dayStart);
-    final cs = math.max(dayStart, dataStart);
-    final ce = math.min(dayEnd, dataEnd);
+    final assertedHere = assertedStart == dayStart;
+    final cs = assertedHere ? dayStart : math.max(dayStart, dataStart);
+    final ce = assertedHere ? dayEnd : math.min(dayEnd, dataEnd);
     if (ce <= cs) {
       dayStart = dayEnd;
       continue;
@@ -1084,18 +1089,19 @@ List<PhysioDay> calendarDays(
     // prev-18:00 → noon window missed late wakes and forced the detector to act
     // like there was only one candidate sleep. The richer selector needs the
     // full set of sessions that can legitimately end today.
-    final searchStart = math.max(dataStart, dayStart - kNocturnalSearchLookbackSec);
-    final searchEnd = math.min(dataEnd, dayEnd);
+    final dayLabel = localDateLabel(dayStart);
+    final ov = (override != null && override.dayId == dayLabel) ? override : null;
+    final searchStart = math.max(dataStart, ov == null
+      ? dayStart - kNocturnalSearchLookbackSec
+      : math.min(dayStart - kNocturnalSearchLookbackSec, ov.onsetSec));
+    final searchEnd = math.min(dataEnd, ov == null ? dayEnd : math.max(dayEnd, ov.offsetSec));
     final loS = _lowerBound(sub.tsSec, searchStart);
     final hiS = _lowerBound(sub.tsSec, searchEnd);
 
     var seg = ana.SleepSegmentation.absent;
     var sleepLo = 0, sleepHi = 0;
     var sleepSource = 'none';
-    final dayLabel = localDateLabel(dayStart);
-    // Does the user have an override (manual / confirmed) for THIS day?
-    final ov =
-        (override != null && override.dayId == dayLabel) ? override : null;
+
     if (hiS - loS >= 600 || ov != null) {
       // The habitual-midsleep prior converts each HISTORICAL sleep block's epoch
       // seconds to a local time-of-day. Using `DateTime.now()`'s offset applied
@@ -1226,6 +1232,8 @@ List<PhysioDay> calendarDays(
             ));
           }
         }
+      } else if (ov != null) {
+        sleepSource = ov.source;
       } else if (src == 'rejected') {
         // No window to stage (deliberately), but the day still needs to know
         // it was a rejection rather than an ordinary absence — sleep_detail

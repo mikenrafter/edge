@@ -436,7 +436,9 @@ class _SleepDetailState extends State<SleepDetail> {
           (d.night['sleep_source'] as String?) == 'rejected' && rejectedDay != null;
       return detailScaffold(c, title, [
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
+        ..._nightControls(d),
         const SizedBox(height: S.x2),
+        ...?_windowCard(c, P.of(c), d, d.night),
         // A day CAN be in `availableDays` and still hold no night — the band
         // was worn through the day and off overnight. Stepping onto one of
         // those says so and leaves the stepper above it, so it is a day you
@@ -480,6 +482,7 @@ class _SleepDetailState extends State<SleepDetail> {
     return detailScaffold(c, title,
         sub: d.days.length < 2 ? (d.day ?? '').toUpperCase() : '', [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
+      ..._nightControls(d),
 
       // ── 1 · THE ANSWER ──
       _answer(c, p, d, n),
@@ -657,6 +660,17 @@ class _SleepDetailState extends State<SleepDetail> {
               ),
             ),
           ]),
+          if (mine) ...[
+            const SizedBox(height: S.x2),
+            Text('${dayLabelOf(DateTime.fromMillisecondsSinceEpoch(t0 * 1000))} '
+              '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t0 * 1000)).format(c)}'
+              ' to ${dayLabelOf(DateTime.fromMillisecondsSinceEpoch(t1 * 1000))} '
+              '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t1 * 1000)).format(c)}',
+              style: F.cap.copyWith(color: p.ink3)),
+            if (!d.hasNight)
+              Text('Your times are saved. Recordings are insufficient for sleep metrics.',
+                style: F.cap.copyWith(color: p.ink3)),
+          ],
           if (fallback) ...[
             const SizedBox(height: S.x2),
             Text(
@@ -714,15 +728,7 @@ class _SleepDetailState extends State<SleepDetail> {
             Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
                 style: F.cap.copyWith(color: p.ink3)),
           ],
-          if (!busy && _overrideFailed != null) ...[
-            const SizedBox(height: S.x3),
-            StatusCard(
-              l?.sleepDetailCorrectionFailedTitle ??
-                  'That correction has not been applied',
-              _overrideFailed!,
-              icon: LucideIcons.triangleAlert,
-            ),
-          ],
+
         ]),
       ),
     ];
@@ -768,51 +774,55 @@ class _SleepDetailState extends State<SleepDetail> {
       newWake = DateTime(
           onset.year, onset.month, onset.day + 1, up.hour, up.minute);
     }
-    await _runOverride(
-      () => context.read<AppState>().setSleepOverride(day, newOnset, newWake),
-    );
+    final app = context.read<AppState>();
+    final useSchedule = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Apply sleep times'),
+      content: const Text('Choose whether these times apply only to this night or become your expected sleep schedule.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('This night only')),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Use this schedule going forward')),
+      ],
+    ));
+    if (useSchedule == null || !mounted) return;
+    await _runOverride(() => app.setSleepOverride(day, newOnset, newWake, useSchedule: useSchedule));
   }
 
-  /// Every override path is the same shape: write it, wait for the forced
-  /// re-derive, then reload the screen from what the engine produced. The
-  /// screen must not keep drawing the old night's numbers under a new window.
-  Future<void> _runOverride(Future<void> Function() write) async {
+  List<Widget> _nightControls(SleepData d) {
+    final day = _day ?? d.day ?? todayLabel();
+    AppState? app;
+    try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
+    return [
+      TextButton(onPressed: _saving || app == null ? null : () =>
+        _runOverride(() => app!.recalculateSleep(day)),
+        child: const Text('Recalculate this night')),
+      if (!d.hasNight && d.night['onset_ts'] == null)
+        TextButton(onPressed: _saving || app == null ? null : () {
+          final wakeDate = DateTime.parse(day);
+          final expected = app!.sleepOperations.expectedWindowFor(wakeDate);
+          final onset = expected?.$1 ?? DateTime(wakeDate.year, wakeDate.month, wakeDate.day - 1, 23);
+          final wake = expected?.$2 ?? DateTime(wakeDate.year, wakeDate.month, wakeDate.day, 7);
+          _editWindow(day, onset.millisecondsSinceEpoch ~/ 1000, wake.millisecondsSinceEpoch ~/ 1000);
+        }, child: const Text('Set sleep times')),
+      if (_overrideFailed case final error?)
+        StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
+    ];
+  }
+
+  Future<void> _runOverride(Future<dynamic> Function() write) async {
     if (_saving) return;
-    setState(() {
-      _saving = true;
-      _overrideFailed = null;
-    });
-    String? failed;
+    setState(() { _saving = true; _overrideFailed = null; });
+    String? message;
     try {
-      await write();
-    } catch (e) {
-      failed = '$e';
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-    final before = _source;
+      final result = await write();
+      if (result is SleepOperationResult) {
+        if (!result.success) { message = result.error ?? 'Sleep calculation failed. Please retry.'; }
+        else if (!result.metricsAvailable) { message = 'Times saved. Recordings are insufficient for sleep metrics.'; }
+      }
+    } catch (e) { message = '$e'; }
+    finally { if (mounted) setState(() => _saving = false); }
     if (mounted) await _load();
-    if (!mounted) return;
-    // EVERY failure below this screen is silent: the forced re-derive catches
-    // and logs its own throw, and it returns at its first line when another
-    // re-analysis is already running. Both leave the write in the database and
-    // the night on screen unchanged — indistinguishable from a correction that
-    // worked, which is how a rejected one got dropped without a word. The
-    // window's source changes on all three actions, so an unchanged source
-    // means nothing was restaged.
-    if (failed != null || _source == before) {
-      final l = AppLocalizations.of(context);
-      setState(() => _overrideFailed = failed ??
-          l?.sleepDetailReanalyseFailed ??
-          'The night was not re-analysed — another re-analysis was already '
-              'running, or it failed. The times you set are saved; '
-              'Re-analyze everything on Your data applies them.');
-    }
+    if (mounted) setState(() => _overrideFailed = message);
   }
-
-  /// Where the drawn window came from: 'auto', 'auto_fallback', 'manual' or
-  /// 'confirmed'.
-  String? get _source => (_d?.night['sleep_source'] as String?) ?? 'auto';
 
   /// The hypnogram, as the centrepiece rather than as an illustration. The
   /// cycle count rides underneath it because it is a property of this shape,

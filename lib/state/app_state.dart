@@ -23,6 +23,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/widgets.dart';
 
+import 'control_operations.dart';
+export 'control_operations.dart';
+
 import '../ai/ai_prefs.dart';
 import '../ai/briefing.dart';
 import '../ai/briefing_engine.dart';
@@ -1618,6 +1621,8 @@ class AppState extends ChangeNotifier {
     notificationRelay.dispose();
     gestureSettings.dispose();
     navRequest.dispose();
+    syncOperations.dispose();
+    sleepOperations.dispose();
     screenRequest.dispose();
     insightsRevision.dispose();
     super.dispose();
@@ -2177,7 +2182,7 @@ class AppState extends ChangeNotifier {
   /// ignoring the derived cursor, then refresh the UI. Returns the number of days
   /// derived (for a result message). Use when screens are empty despite stored raw.
   Future<int> reanalyzeAll() async {
-    if (reanalyzing) return 0;
+    await _waitForDerivation();
     reanalyzing = true;
     reanalyzeProgress = 'Analyzing…';
     notifyListeners();
@@ -2195,12 +2200,14 @@ class AppState extends ChangeNotifier {
           }
         },
       );
+      final error = _derive.snapshot()['last_error'];
+      if (error != null) throw StateError('$error');
       await LocalDb.refreshComputeFreshness();
       bumpInsights();
       return n;
     } catch (e) {
       _log('[derive] reanalyze failed: $e');
-      return 0;
+      rethrow;
     } finally {
       reanalyzing = false;
       reanalyzeProgress = '';
@@ -2213,40 +2220,91 @@ class AppState extends ChangeNotifier {
   /// Manual sleep entry (Approach 1): the user gives the in-bed window for [date]
   /// (local YYYY-MM-DD). Stored as the source of truth, then a force re-derive
   /// restages that day FROM the window — even if it was finalized/locked.
-  Future<void> setSleepOverride(
-    String date,
-    DateTime onset,
-    DateTime offset, {
-    String source = 'manual',
-  }) async {
-    final onsetSec = onset.millisecondsSinceEpoch ~/ 1000;
-    final offsetSec = offset.millisecondsSinceEpoch ~/ 1000;
-    if (offsetSec <= onsetSec) return;
-    await LocalDb.putSleepOverride(
-      dayId: date,
-      onsetTs: onsetSec,
-      offsetTs: offsetSec,
-      source: source,
-    );
-    await _reanalyzeForOverride();
+  late final SleepCoordinator sleepOperations = SleepCoordinator(
+    persist: (day, start, end) => LocalDb.putSleepOverride(
+      dayId: day, onsetTs: start, offsetTs: end, source: 'manual'),
+    derive: _deriveSleepDay,
+    saveSchedule: (json) async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('expected_sleep_schedule_v1', jsonEncode(json));
+    },
+  )..addListener(notifyListeners);
+
+  Future<void> loadExpectedSleepSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('expected_sleep_schedule_v1');
+    if (raw != null) {
+      try {
+        sleepOperations.schedule = ExpectedSleepSchedule.fromJson(
+          (jsonDecode(raw) as Map).cast<String, Object?>());
+      } on FormatException catch (e) { _log('[schedule] $e'); }
+      on TypeError { _log('[schedule] Invalid saved sleep schedule'); }
+    }
   }
+
+  Future<Map<String, Object?>> _deriveSleepDay(String day) async {
+    await _waitForDerivation();
+    reanalyzing = true;
+    notifyListeners();
+    try {
+      await _derive.runDays(_profile, {day}, force: true);
+      final error = _derive.snapshot()['last_error'];
+      if (error != null) throw StateError('$error');
+      await LocalDb.refreshComputeFreshness();
+      bumpInsights();
+      return await repo?.getDaySleep(day) ?? <String, Object?>{};
+    } finally { reanalyzing = false; notifyListeners(); }
+  }
+
+  Future<void> _waitForDerivation() async {
+    final deadline = DateTime.now().add(const Duration(minutes: 10));
+    while (_derive.running || reanalyzing) {
+      if (DateTime.now().isAfter(deadline)) throw TimeoutException('Another calculation did not finish');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
+  Future<SleepOperationResult> recalculateSleep(String day) => sleepOperations.recalculate(day);
+
+  Future<SleepOperationResult> setSleepOverride(String date, DateTime onset, DateTime offset,
+      {String source = 'manual', bool useSchedule = false}) {
+    if (source != 'manual') {
+      return _setConfirmedSleep(date, onset, offset, source);
+    }
+    return sleepOperations.setOverride(date, onset, offset, useSchedule: useSchedule).then((result) async {
+      if (useSchedule) await _refreshHighFreqWakeWindow();
+      return result;
+    });
+  }
+
+  Future<SleepOperationResult> _setConfirmedSleep(String date, DateTime onset,
+      DateTime offset, String source) => sleepOperations.mutate(date, () async {
+    if (!offset.isAfter(onset)) throw ArgumentError('Wake time must follow sleep onset');
+    await LocalDb.putSleepOverride(dayId: date,
+      onsetTs: onset.millisecondsSinceEpoch ~/ 1000,
+      offsetTs: offset.millisecondsSinceEpoch ~/ 1000, source: source);
+  });
+
+  @visibleForTesting
+  SleepCoordinator debugSleepCoordinator({
+    required Future<void> Function(String, int, int) persist,
+    required Future<Map<String, Object?>> Function(String) derive,
+    required Future<void> Function(Map<String, Object?>) saveSchedule,
+  }) => SleepCoordinator(persist: persist, derive: derive, saveSchedule: saveSchedule);
 
   /// Confirm the HR-led fallback's proposal for [date] (Approach 2): accept the
   /// window it already computed, promoting 'auto_fallback' → 'confirmed' so the
   /// prompt stops showing. Reads the current window from the derived day.
-  Future<void> confirmSleep(String date) async {
-    if (repo == null) return;
+  Future<SleepOperationResult> confirmSleep(String date) async {
+    if (repo == null) return const SleepOperationResult(success: false, error: 'Sleep data is unavailable.');
     final sleep = await repo!.getDaySleep(date);
     final onset = (sleep['onset_ts'] as num?)?.toInt();
     final offset = (sleep['wake_ts'] as num?)?.toInt();
-    if (onset == null || offset == null || offset <= onset) return;
-    await LocalDb.putSleepOverride(
-      dayId: date,
-      onsetTs: onset,
-      offsetTs: offset,
-      source: 'confirmed',
-    );
-    await _reanalyzeForOverride();
+    if (onset == null || offset == null || offset <= onset) {
+      return const SleepOperationResult(success: false, error: 'There is no detected window to confirm.');
+    }
+    return _setConfirmedSleep(date, DateTime.fromMillisecondsSinceEpoch(onset * 1000),
+      DateTime.fromMillisecondsSinceEpoch(offset * 1000), 'confirmed');
   }
 
   /// Reject a day's detected main sleep entirely — "this was not sleep at
@@ -2256,8 +2314,8 @@ class AppState extends ChangeNotifier {
   /// `calendarDays` (substrate.dart) to skip staging this window rather than
   /// force it, so the day re-derives with no main sleep at all. Reversible
   /// the same way as any other override: [clearSleepOverride].
-  Future<void> rejectSleep(String date) async {
-    if (repo == null) return;
+  Future<SleepOperationResult> rejectSleep(String date) async {
+    if (repo == null) return const SleepOperationResult(success: false, error: 'Sleep data is unavailable.');
     final sleep = await repo!.getDaySleep(date);
     final onset = (sleep['onset_ts'] as num?)?.toInt();
     final offset = (sleep['wake_ts'] as num?)?.toInt();
@@ -2266,25 +2324,22 @@ class AppState extends ChangeNotifier {
     // outright), so an absent detected window falls back to a harmless
     // same-day placeholder rather than blocking the rejection.
     final fallback = DateTime.parse(date).millisecondsSinceEpoch ~/ 1000;
-    await LocalDb.putSleepOverride(
+    return sleepOperations.mutate(date, () => LocalDb.putSleepOverride(
       dayId: date,
       onsetTs: onset ?? fallback,
       offsetTs: offset ?? (fallback + 1),
       source: 'rejected',
-    );
-    await _reanalyzeForOverride();
+    ));
   }
 
   /// Remove a manual/confirmed override for [date] — revert to auto/fallback.
-  Future<void> clearSleepOverride(String date) async {
-    await LocalDb.deleteSleepOverride(date);
-    await _reanalyzeForOverride();
-  }
+  Future<SleepOperationResult> clearSleepOverride(String date) =>
+    sleepOperations.mutate(date, () => LocalDb.deleteSleepOverride(date));
 
   /// Force-derive after a sleep-override change so the affected day restages from
   /// the user's window (the engine force-includes override days even if locked).
   Future<void> _reanalyzeForOverride() async {
-    if (reanalyzing) return;
+    await _waitForDerivation();
     reanalyzing = true;
     notifyListeners();
     try {
@@ -2295,6 +2350,7 @@ class AppState extends ChangeNotifier {
       bumpInsights();
     } catch (e) {
       _log('[derive] sleep-override re-derive failed: $e');
+      rethrow;
     } finally {
       reanalyzing = false;
       notifyListeners();
@@ -2429,6 +2485,7 @@ class AppState extends ChangeNotifier {
     final pairedSerial = paired?.serial;
     pairedIsMaverick = pairedSerial != null &&
         await _ecgGuard.isRememberedMaverick(pairedSerial);
+    await loadExpectedSleepSchedule();
     await refreshSensors();
     await _loadProfile();
     await _refreshNightlyRhr();
@@ -5463,7 +5520,43 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> syncNow() => openSession();
+  late final SyncCoordinator syncOperations = SyncCoordinator(
+    run: _manualSync,
+    isConnected: () => isConnected,
+    reloadLocal: () async { bumpInsights(); },
+  )..addListener(notifyListeners);
+  SyncPresentationState get syncPresentation => syncOperations.presentation;
+  Future<void> syncNow() async { await syncOperations.syncNow(); }
+  Future<void> refreshData() async { await syncOperations.refresh(); }
+
+  Future<void> _manualSync(void Function(String) progress) async {
+    progress('connecting');
+    if (!engine.isConnected) {
+      if (paired == null) throw StateError('Pair a band before syncing');
+      await openSession();
+      if (!engine.isConnected) throw StateError('Could not connect to the band');
+    }
+    progress('downloading');
+    final report = await _kickSyncBurst(kickFirst: true);
+    if (!engine.isConnected) throw StateError('Band disconnected during sync');
+    if (!report.complete) throw StateError('Download stopped before completion. Retry sync.');
+    progress('deriving');
+    await _waitForDerivation();
+    await _derive.run(_profile, heavy: true);
+    final error = _derive.snapshot()['last_error'];
+    if (error != null) throw StateError('$error');
+    await LocalDb.refreshComputeFreshness();
+    bumpInsights();
+  }
+
+  @visibleForTesting
+  SyncCoordinator debugSyncCoordinator({
+    required Future<void> Function(void Function(String)) run,
+    required bool Function() isConnected,
+    required Future<void> Function() reloadLocal,
+    required Duration timeout,
+  }) => SyncCoordinator(run: run, isConnected: isConnected,
+      reloadLocal: reloadLocal, timeout: timeout);
 
   /// The ONE place the band's HIGH_FREQ_SYNC prompt is programmed. Two
   /// requesters, one decision (`BandPromptPolicy`): the smart-wake window
@@ -5509,6 +5602,7 @@ class AppState extends ChangeNotifier {
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armed?.windowEnd,
         scheduledWindowMinutes: armed?.minutes ?? 0,
+        expectedSchedule: sleepOperations.schedule,
       );
       final target = plan.targetWake;
       final iosBackgrounded = _background && Platform.isIOS;

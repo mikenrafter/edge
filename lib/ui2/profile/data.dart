@@ -169,6 +169,13 @@ class _DataScreenState extends State<DataScreen> {
 
   Future<_Note> _reanalyze(AppState app) async {
     final l = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      title: const Text('Rebuild all history?'),
+      content: const Text('Recalculating all stored days can take several minutes and use battery. Keep Edge open until it finishes. Days whose recordings were already removed cannot be recomputed.'),
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Rebuild all history'))],
+    ));
+    if (confirmed != true) return ('', false);
     final n = await app.reanalyzeAll();
     return (
       l?.dataDaysReanalyzed(n) ?? '$n day${n == 1 ? '' : 's'} re-analyzed.',
@@ -323,13 +330,13 @@ class _DataScreenState extends State<DataScreen> {
                       onTap: _busy ? null : () => goto(c, const PhoneImport())),
                 ]),
                 const SizedBox(height: S.x5),
-                settingsGroup(c, l?.dataRebuildGroup ?? 'Rebuild', [
+                settingsGroup(c, 'Advanced', [
                   // The engine puts days on hold after a ≥3 h timezone jump
                   // "until Re-analyze data runs" — and nothing in the app ran
                   // it. A flight abroad quietly stopped days updating with no
                   // control anywhere to release them.
                   SetRow(LucideIcons.refreshCcw, C.blue,
-                      l?.dataReanalyzeEverything ?? 'Re-analyze everything',
+                      'Rebuild all history',
                       sub: l?.dataReanalyzeEverythingSub ??
                           'Scores every day again from what is stored. Needed '
                               'after a long-haul flight, and after an import that '
@@ -365,7 +372,7 @@ class _DataScreenState extends State<DataScreen> {
                             'cross-day summaries over them threw '
                             '(${app.importRollupError}), so trends and insights '
                             'still describe the data you had before.',
-                    fix: l?.dataReanalyzeEverything ?? 'Re-analyze everything',
+                    fix: 'Rebuild all history',
                     icon: LucideIcons.triangleAlert,
                     onFix: _busy ? null : () => _run(() => _reanalyze(app)),
                   ),

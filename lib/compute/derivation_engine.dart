@@ -1719,7 +1719,9 @@ import 'substrate.dart';
 // withheld — a fabricated-metric bug on `circadian_lifestyle`'s stored
 // output. kAnalyticsPin repinned to analytics main's tip (one commit past
 // PR #75's merge SHA).
-const int kAlgoVersion = 97;
+// v98: Manual sleep candidate loading unions the asserted interval with the
+// automatic search range, retaining daytime and atypical cross-midnight input.
+const int kAlgoVersion = 98;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -2924,6 +2926,7 @@ class DerivationEngine {
       }
       return done;
     } catch (e, st) {
+      _diag['last_error'] = '$e';
       _log('derive selected ERROR: $e\n$st');
       return 0;
     } finally {
@@ -3124,7 +3127,9 @@ class DerivationEngine {
         }
       }
     }
-    final range = _targetDayWindow(dayId);
+    final range = _targetDayWindow(dayId,
+      overrideOnsetSec: override?.onsetSec,
+      overrideOffsetSec: override?.offsetSec);
     // OWNED ROWS ONLY, the same as every other substrate load. This window is
     // candidate-independent, so ownership CAN be resolved before the candidate
     // exists — and it has to be: staging the night off both devices' rows
@@ -8619,17 +8624,26 @@ class DerivationEngine {
   /// clipped the search right back to the slice start, so the widening was a
   /// no-op and any sleep onset before 18:00 was truncated. Load the whole
   /// window the day model asks for, from the one shared constant.
-  (int, int) _targetDayWindow(String dayId) {
+  (int, int) _targetDayWindow(String dayId, {int? overrideOnsetSec, int? overrideOffsetSec}) {
     final startSec = _localDayLabelToSec(dayId);
     final endSec = _localNextDayLabelToSec(dayId);
-    return (math.max(0, startSec - kNocturnalSearchLookbackSec), endSec - 1);
+    final normalStart = math.max(0, startSec - kNocturnalSearchLookbackSec);
+    final normalEnd = endSec - 1;
+    if (overrideOnsetSec == null || overrideOffsetSec == null || overrideOffsetSec <= overrideOnsetSec) {
+      return (normalStart, normalEnd);
+    }
+    const margin = 3 * 3600;
+    return (math.max(0, math.min(normalStart, overrideOnsetSec - margin)),
+      math.max(normalEnd, overrideOffsetSec + margin));
   }
 
   /// Test seam for [_targetDayWindow] — the bug was that this loader and
   /// [calendarDays]' search window silently disagreed, so the agreement is
   /// pinned directly.
   @visibleForTesting
-  (int, int) debugTargetDayWindow(String dayId) => _targetDayWindow(dayId);
+  (int, int) debugTargetDayWindow(String dayId,
+      {int? overrideOnsetSec, int? overrideOffsetSec}) => _targetDayWindow(dayId,
+        overrideOnsetSec: overrideOnsetSec, overrideOffsetSec: overrideOffsetSec);
 
   /// Test seam for [_sleepPeriods] — "an unjudged day publishes no total" is a
   /// one-line invariant guarding a user-visible number, so it is pinned

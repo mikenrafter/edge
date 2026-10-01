@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../data/db.dart';
+import '../state/control_operations.dart' show ExpectedSleepSchedule;
 
 class HighFreqWakePlan {
   final bool shouldEnable;
@@ -33,6 +34,7 @@ class HighFreqWakeWindow {
     DateTime? now,
     DateTime? scheduledWindowEnd,
     int scheduledWindowMinutes = 0,
+    ExpectedSleepSchedule? expectedSchedule,
   }) async {
     final rows = await LocalDb.recentDayResults(historyDays);
     return planFromRows(
@@ -40,6 +42,7 @@ class HighFreqWakeWindow {
       now ?? DateTime.now(),
       scheduledWindowEnd: scheduledWindowEnd,
       scheduledWindowMinutes: scheduledWindowMinutes,
+      expectedSchedule: expectedSchedule,
     );
   }
 
@@ -48,6 +51,7 @@ class HighFreqWakeWindow {
     DateTime now, {
     DateTime? scheduledWindowEnd,
     int scheduledWindowMinutes = 0,
+    ExpectedSleepSchedule? expectedSchedule,
   }) {
     final wakeMinutes = <int>[];
     for (final row in rows) {
@@ -84,6 +88,20 @@ class HighFreqWakeWindow {
         source: 'habitual_wake',
         sampleCount: wakeMinutes.length,
       );
+    }
+
+    // A saved expectation is collection planning only. It never creates a
+    // measured night or automatically arms an alarm. Calendar construction
+    // preserves the selected wall-clock time on either side of DST.
+    if (expectedSchedule != null) {
+      var window = expectedSchedule.windowFor(now);
+      if (!now.isBefore(window.$2)) {
+        window = expectedSchedule.windowFor(DateTime(now.year, now.month, now.day + 1));
+      }
+      final start = window.$2.subtract(lease);
+      habitualPlan = HighFreqWakePlan(
+        shouldEnable: !now.isBefore(start) && now.isBefore(window.$2),
+        targetWake: window.$2, source: 'expected_sleep_schedule', sampleCount: 0);
     }
 
     // The scheduled-alarm window only takes over when the habitual window

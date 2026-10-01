@@ -877,7 +877,19 @@ class LocalRepositoryImpl extends LocalRepository {
 
   Future<Map<String, dynamic>> _daySleep(String date) async {
     final b = await _bundleForDate(date);
-    if (b == null) return const {};
+    final assertion = await LocalDb.getSleepOverride(date);
+    final asserted = assertion != null && assertion['source'] != 'rejected';
+    final savedWindow = <String, dynamic>{
+      if (asserted) 'onset_ts': assertion['onset_ts'],
+      if (asserted) 'wake_ts': assertion['offset_ts'],
+    };
+    if (b == null) {
+      return {
+        'has_sleep': false,
+        if (assertion != null) 'sleep_source': assertion['source'],
+        ...savedWindow,
+      };
+    }
     // Each is a Metric envelope — read the inner `.value` where the fields live.
     final acct = _sub(b, 'sleep.accounting.value');
     final win = _sub(b, 'sleep.window.value');
@@ -901,11 +913,12 @@ class LocalRepositoryImpl extends LocalRepository {
       // know instead of claiming nothing happened.
       final napPeriods = _periodsWithMainStages(b, const {});
       if (napPeriods.isEmpty) {
-        return {'has_sleep': false, 'sleep_source': sleepSource};
+        return {'has_sleep': false, 'sleep_source': assertion?['source'] ?? sleepSource, ...savedWindow};
       }
       return {
         'has_sleep': false,
-        'sleep_source': sleepSource,
+        'sleep_source': assertion?['source'] ?? sleepSource,
+        ...savedWindow,
         'periods': napPeriods,
         'total_asleep_min': _totalAsleepMin(b, napPeriods),
       };

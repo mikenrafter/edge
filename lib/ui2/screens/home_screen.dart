@@ -26,6 +26,7 @@
 // data layer. They live here rather than in a fourth file because there are
 // only three of them and they are read together.
 
+import '../sync_control.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -1568,6 +1569,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
 
     if (d == null) {
       return _refreshable(ListView(padding: pad, children: [
+        const HomeSyncControl(),
         const SizedBox(height: S.x8),
         // No day on screen ⇒ no `todayId`, so this renders the dated form.
         // Shown here TOO: a first run, a failed read and a sync in flight are
@@ -1640,6 +1642,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     final rebuilt = dbRebuiltCard(dbRebuildOf(c), l);
 
     return _refreshable(ListView(padding: pad, children: [
+      const HomeSyncControl(),
       if (rebuilt != null) ...[const SizedBox(height: S.x3), rebuilt],
 
       // ── the one observation Home is allowed to make ──
@@ -1866,8 +1869,13 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// Pull to reload. The screen also reloads itself on `insightsRevision`, but
   /// a derive that fails silently, an import, or anything that lands without
   /// bumping it still leaves the user a way to ask.
+  // HomeSyncControl renders AppState's shared SyncPresentationState.
   Widget _refreshable(Widget list) =>
-      RefreshIndicator(onRefresh: _load, child: list);
+      RefreshIndicator(onRefresh: () async {
+        try { await context.read<AppState>().refreshData(); }
+        on ProviderNotFoundException { /* Standalone fixture has local data only. */ }
+        if (mounted) await _load();
+      }, child: list);
 
   Widget _glance(BuildContext c, HomeData d) {
     final l = AppLocalizations.of(c);
