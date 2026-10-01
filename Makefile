@@ -29,7 +29,7 @@ help:
 doctor:
 	$(RUN) flutter doctor -v
 
-deps:
+deps: pins
 	$(RUN) flutter pub get
 
 # Run before pub get: a local pubspec_overrides.yaml deliberately fails the CI

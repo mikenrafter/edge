@@ -4454,6 +4454,7 @@ class BleEngine {
     _Session? owner,
     bool allowDangerous = false,
   }) {
+    // FOOTGUN(destructive-write): only the opt-in gen5 configuration path may bypass.
     final session = _session;
     // The dangerous-opcode block lives HERE, at the one write every command
     // funnels through, not only in `_send`: nine call sites build their own
@@ -7734,6 +7735,7 @@ class BleEngine {
   /// honoured only on gen4; a gen5 link always plays the strap's fixed
   /// `[47, 152]` waveform pair (the only Maverick buzz byte-verified so far).
   Future<void> buzzPattern(int pattern) {
+    // FOOTGUN(haptic-capability): gen5 cannot reproduce arbitrary pattern choices.
     if (_session?.band.isGen5 ?? false) {
       return _send(
         Cmd.runHapticPatternMaverick,
