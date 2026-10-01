@@ -27,8 +27,8 @@ SCHEMA = {
 def review(batch_path, out_dir, review_dir):
     name = batch_path.stem
     rows = [json.loads(l) for l in batch_path.read_text().splitlines()]
-    sent = [{k: r[k] for k in ('id', 'file', 'location', 'text', 'kind', 'line') if k in r}
-            for r in rows]
+    sent = [{**{k: r[k] for k in ('id', 'file', 'location', 'text', 'kind', 'line') if k in r},
+             'lineCount': max(1, len(r['text'].splitlines()))} for r in rows]
     prompt = ('Review these rows.\n' + ''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in sent))
     system = (review_dir / 'prompt.md').read_text() + '\n\n# Writing rules\n\n' + (review_dir / 'skills.txt').read_text()
     done = out_dir / f'{name}.result.json'

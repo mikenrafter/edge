@@ -124,10 +124,10 @@ extension DeviceActionX on DeviceAction {
       case DeviceAction.workoutToggle:
         return 'Begin or end a workout from your wrist.';
       case DeviceAction.logWater:
-        return 'Add a glass to today\'s water, same step as the + on the '
-            'nutrition screen.';
+        return 'Add one glass to today\'s water total, like the + button on the '
+               'nutrition screen.';
       case DeviceAction.broadcastToTasker:
-        return 'Fire a broadcast intent so Tasker can trigger any automation.';
+        return 'Send an Android broadcast message that a Tasker task can listen for.';
     }
   }
 

@@ -61,7 +61,7 @@ class _DemoModeBannerState extends State<DemoModeBanner> {
             const SizedBox(width: S.x3),
             Expanded(
               child: Text(
-                'Demo mode — this is made-up data, not a real device.',
+                'Demo mode. All data on screen is generated sample data.',
                 style: F.cap.copyWith(
                   color: p.on(C.orange),
                   fontWeight: FontWeight.w600,

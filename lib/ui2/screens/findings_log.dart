@@ -73,9 +73,8 @@ class FindingsLog extends StatelessWidget {
           StatusCard(
             l?.findingsLogEmptyTitle ?? 'Nothing has stood out',
             l?.findingsLogEmptyBody ??
-                'The watches for illness, unusual overnight physiology, skin '
-                    'temperature and a shift in your resting heart rate have '
-                    'all been quiet. That is an outcome, not an empty screen.',
+                'The illness, overnight physiology, skin temperature and '
+                'resting heart rate checks all came back clear.',
             icon: LucideIcons.check,
           )
         else ...[
@@ -109,9 +108,8 @@ class FindingsLog extends StatelessWidget {
           // re-derived changes here with it — including out of existence.
           Text(
             l?.findingsLogDerivedNote ??
-                'Worked out from your own days each time this opens, not '
-                    'written down when it happened — so if a day is '
-                    're-analysed, what it says here changes with it.',
+                'Recalculated from your stored days each time you open this screen. '
+                'If a day is re-analysed, this list changes with it.',
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
         ],

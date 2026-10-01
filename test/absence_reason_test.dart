@@ -51,12 +51,12 @@ void main() {
       // The input, never the metric that wanted it: "calories" is not something
       // a user can go and fix.
       expect(whyFromNote('need_input:name=weight_kg'),
-          contains('weight is not on file'));
-      expect(whyFromNote('need_input:name=age'), contains('age is not on file'));
+          contains('your weight, which is not on file'));
+      expect(whyFromNote('need_input:name=age'), contains('your age, which is not on file'));
       expect(whyFromNote('need_input:name=wake_hr'),
           contains('No waking heart rate'));
       expect(whyFromNote('need_input:name=nn_beats,have=12,need=20'),
-          endsWith('There were 12, and it needs 20.'));
+          endsWith('The app has 12 and needs 20.'));
     });
 
     // The map degrades SILENTLY: a name with no sentence renders as "we do not

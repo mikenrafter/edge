@@ -473,7 +473,7 @@ class NotificationCenter {
       id: NotificationService.idAlarmNightCheck,
       category: NotifCategory.reminders,
       title: 'No alarm set for tonight',
-      body: 'You have no wake alarm armed for tonight.',
+      body: 'The band will not wake you tomorrow.',
       at: svc.nextDailyInstant(minuteOfDay ~/ 60, minuteOfDay % 60),
       route: kRouteAlarm,
     );
@@ -530,7 +530,7 @@ class NotificationCenter {
       category: NotifCategory.reminders,
       title: 'How was today?',
       // No guilt, no count, no reference to a day that was missed.
-      body: 'Mood, energy, stress — a minute of it.',
+      body: 'Log mood, energy and stress. It takes about a minute.',
       at: svc.nextDailyInstant(minuteOfDay ~/ 60, minuteOfDay % 60),
       route: kRouteJournalCompose,
     );

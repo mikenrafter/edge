@@ -293,12 +293,12 @@ const kCsvExportSets = <CsvExportSet>[
 /// construction, which is exactly what makes it the wrong format for reading
 /// and the right one for keeping.
 const kCsvExportExclusions = <String>[
-  'Raw 1 Hz sensor rows and beat-to-beat intervals — millions of rows, and a '
-      'spreadsheet cannot open them',
+  'Raw 1 Hz sensor rows and beat-to-beat intervals. At 86,400 rows a day, '
+  'they are too large for a spreadsheet to open.',
   'Undecodable band frames',
   'GPS route points',
-  'Sync state and rolling baselines — internal bookkeeping, not measurements',
-  'Your profile, preferences and API key — settings, not data',
+  'Sync state and rolling baselines the app uses internally.',
+  'Your profile, preferences and API key. Settings are not exported.',
 ];
 
 /// Characters that make Excel, Google Sheets and LibreOffice treat a cell as a

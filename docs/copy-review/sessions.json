@@ -1,0 +1,889 @@
+[
+ {
+  "batch": "000",
+  "session_id": "aa8eacf4-a881-44d6-a6f3-b5dbf18dd156",
+  "cost": 0.2376652,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "001",
+  "session_id": "8a350b10-1fb8-4996-857f-3437ae520176",
+  "cost": 0.2411482,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "002",
+  "session_id": "d00ef283-095e-4fdd-b839-e4dfdd34b1bb",
+  "cost": 0.2704962,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "003",
+  "session_id": "0927e0b3-f269-4de5-a5e3-824f0dc7b72c",
+  "cost": 0.2571832,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "004",
+  "session_id": "0e04dff1-fbb0-481c-a04a-e4e813960413",
+  "cost": 0.2607662,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "005",
+  "session_id": "6a9a9c99-c524-44f8-8022-22218fcb59cd",
+  "cost": 0.267343,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "006",
+  "session_id": "f2bb1526-4c98-475e-937e-11bf12f0b3f1",
+  "cost": 0.2323618,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "007",
+  "session_id": "dca76a6a-1be7-4bb0-8a47-0cedec314241",
+  "cost": 0.2323788,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "008",
+  "session_id": "f9c2abe3-c15f-40f1-9077-42c1199916d9",
+  "cost": 0.2087448,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "009",
+  "session_id": "cabca13b-c01b-4c97-ab70-1aa062bc73e5",
+  "cost": 0.1950508,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "010",
+  "session_id": "8410e66a-6b4e-41b3-a055-d921a7620302",
+  "cost": 0.26502020000000004,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "011",
+  "session_id": "5bb10278-fbe5-490d-beda-2124bf524f64",
+  "cost": 0.2752808,
+  "turns": 5,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "012",
+  "session_id": "3cd2128c-5adb-4677-a70f-0214e695618f",
+  "cost": 0.2590912,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "013",
+  "session_id": "30cec916-46cc-40dc-b64d-506a02d1e157",
+  "cost": 0.2089188,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "014",
+  "session_id": "276d62c6-2adb-4bc8-baae-2913e0641d3f",
+  "cost": 0.2102698,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "015",
+  "session_id": "ba43a3f6-47ea-4199-8484-df492ec53a5c",
+  "cost": 0.20493179999999997,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "016",
+  "session_id": "95184d0e-6c3c-4c53-bf2b-0531e3c9b750",
+  "cost": 0.2172938,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "017",
+  "session_id": "f0f35a8f-3620-42ec-9751-d7b8eae163c3",
+  "cost": 0.21453580000000003,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "018",
+  "session_id": "c1ec96ea-15b6-4b27-ac54-ed7dbb233edd",
+  "cost": 0.2526176,
+  "turns": 7,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "019",
+  "session_id": "e4c62267-962c-484d-840d-98c439d905b1",
+  "cost": 0.25063440000000003,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "020",
+  "session_id": "7cae4fc0-b280-4960-a04c-ab498398225e",
+  "cost": 0.2056048,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "021",
+  "session_id": "e4dc96d1-ab02-425e-92e0-459a5089d198",
+  "cost": 0.22232780000000002,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "022",
+  "session_id": "836cfba7-4c0a-413f-92f7-f448bfb2173d",
+  "cost": 0.26075040000000005,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "023",
+  "session_id": "04eef3d9-a1de-4db5-b388-ee59a453fd22",
+  "cost": 0.24094480000000004,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "024",
+  "session_id": "2a739520-ff69-4b0f-a699-734bf507f934",
+  "cost": 0.19958779999999998,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "025",
+  "session_id": "f01d0920-4173-4427-94e4-0f1f3b42512b",
+  "cost": 0.30260180000000003,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "026",
+  "session_id": "6136273d-cdce-4dda-a95e-c73047a55823",
+  "cost": 0.18497580000000002,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "027",
+  "session_id": "69112c7c-4c01-4636-979b-d69aaa0e00d8",
+  "cost": 0.1938568,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "028",
+  "session_id": "79f7d725-3a55-4c5c-b311-1deab5e01424",
+  "cost": 0.22032219999999997,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "029",
+  "session_id": "f0a7354a-a9c3-4b2d-82a3-857fe08e2833",
+  "cost": 0.2199988,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "030",
+  "session_id": "45141fe6-eb14-4b10-85af-628b4ea39428",
+  "cost": 0.21613780000000002,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "031",
+  "session_id": "97f0bc73-5054-449a-8429-15797927e7bc",
+  "cost": 0.2139918,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "032",
+  "session_id": "36ee8d5f-1c1e-4cd9-a4d5-52f91cae19c2",
+  "cost": 0.1940918,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "033",
+  "session_id": "d0901995-cfdf-427e-9151-4e5a8196e18c",
+  "cost": 0.2221428,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "034",
+  "session_id": "eb9b8a7e-e465-4d0d-b94e-9e273213b0b8",
+  "cost": 0.37696880000000005,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "035",
+  "session_id": "123b9899-d483-4cd8-93c6-36fefdaf71ca",
+  "cost": 0.2365678,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "036",
+  "session_id": "f65fd29c-0a38-496f-9495-0ffd2c5e0bd4",
+  "cost": 0.26428280000000004,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "037",
+  "session_id": "9d4c0884-eab4-45c4-95e0-5a33cf87c042",
+  "cost": 0.2320228,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "038",
+  "session_id": "33bdc7c1-682c-4ef7-a54e-3e2de2b56077",
+  "cost": 0.3396558,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "039",
+  "session_id": "7e1e2026-600b-414a-a3db-593be156e5fa",
+  "cost": 0.2181908,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "040",
+  "session_id": "53c6f9bb-9ce1-4ac0-8763-16554f618852",
+  "cost": 0.18977080000000002,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "041",
+  "session_id": "8efe41f2-4d13-407f-876e-693f62f8231e",
+  "cost": 0.2100338,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "042",
+  "session_id": "76821d75-5e0a-4595-972d-b46096d89c4c",
+  "cost": 0.1844688,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "043",
+  "session_id": "2bb1b6d5-7637-4915-8865-3f6df0797600",
+  "cost": 0.17583529999999997,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "044",
+  "session_id": "fc6cb6f5-ab14-400e-8c42-5bb2597508ff",
+  "cost": 0.1643268,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "045",
+  "session_id": "1e098c89-78db-4f4c-b373-49facdae29d9",
+  "cost": 0.2203648,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "046",
+  "session_id": "8104db58-3fd0-4c21-9999-9b6424041509",
+  "cost": 0.1895188,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "047",
+  "session_id": "922f9432-0d4f-43c7-b52b-d2f7659fb1da",
+  "cost": 0.2636989,
+  "turns": 8,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "048",
+  "session_id": "78c99b1d-5442-43e0-a0a3-b280f42e063f",
+  "cost": 0.2081171,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "049",
+  "session_id": "0442d964-ee3f-4348-b48f-ca54417fc1da",
+  "cost": 0.1803813,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "050",
+  "session_id": "c591ca97-b547-45c5-b8e1-4cb67195888d",
+  "cost": 0.18455890000000003,
+  "turns": 6,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "051",
+  "session_id": "b72dcb00-b75f-4f8c-8ea5-63d53d704233",
+  "cost": 0.186013,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "052",
+  "session_id": "724f4819-93c0-4b07-b34a-0e1869e4fea0",
+  "cost": 0.2096273,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "053",
+  "session_id": "65887d58-8deb-4c01-8ae1-7e9d263eb4ea",
+  "cost": 0.2452547,
+  "turns": 7,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "054",
+  "session_id": "512b701e-78de-4184-807d-3abab10ad30e",
+  "cost": 0.2265038,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "055",
+  "session_id": "2784b9e0-9d59-43b6-8998-9d133c1a367b",
+  "cost": 0.2324108,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "056",
+  "session_id": "30d7f4d8-33bf-4fad-90fe-56ccb5e4f190",
+  "cost": 0.3092058,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "057",
+  "session_id": "1017f1bd-664c-4361-9a62-0da6b2cc5a2b",
+  "cost": 0.2077088,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "058",
+  "session_id": "5ac61aef-b8f5-4204-84cc-5d4e49264fd4",
+  "cost": 0.1958288,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "059",
+  "session_id": "d9a51dec-0416-488b-9480-6c9d0067ad56",
+  "cost": 0.1750203,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "060",
+  "session_id": "88109181-5d4f-4876-bb32-370d23b268c4",
+  "cost": 0.2453688,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "061",
+  "session_id": "b587d697-c3d8-4be4-af27-28ffa3de57f3",
+  "cost": 0.2776951,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "062",
+  "session_id": "dfd8b3af-6ccf-4cd5-9947-4eaeef4bd43e",
+  "cost": 0.2690038,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "063",
+  "session_id": "c2d9516b-ece5-43ab-9e5a-041c7616df5e",
+  "cost": 0.29416549999999997,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "064",
+  "session_id": "bbcd2097-35ea-4973-8188-4ceff0bd5171",
+  "cost": 0.21602480000000002,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "065",
+  "session_id": "7c95e484-a914-4b4d-994f-63275df7b301",
+  "cost": 0.24958170000000005,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "066",
+  "session_id": "328c8bc2-c253-44fc-b509-77ae0f1593bb",
+  "cost": 0.2127138,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "067",
+  "session_id": "88076a3c-764f-41f5-95c6-d030222fd4d4",
+  "cost": 0.27861389999999997,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "068",
+  "session_id": "48c6fd4c-95f0-449d-a104-31052d1a6097",
+  "cost": 0.2312588,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "069",
+  "session_id": "ec923d67-6ca9-4002-9bec-ccc401d5a7aa",
+  "cost": 0.2521492,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "070",
+  "session_id": "2879cc36-0216-41e1-a0dc-68df755a78a6",
+  "cost": 0.2556914,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "071",
+  "session_id": "108c6972-d56b-4a44-9d08-3d5853d9cdbe",
+  "cost": 0.31061439999999996,
+  "turns": 3,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "072",
+  "session_id": "eff50206-29f8-4a44-a048-19a8a7422744",
+  "cost": 0.24160179999999998,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "073",
+  "session_id": "da5639ed-07be-4584-abae-075600b5791f",
+  "cost": 0.23320580000000002,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "074",
+  "session_id": "44f30f46-e331-4f42-9413-943ea3f6a32c",
+  "cost": 0.2000708,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "075",
+  "session_id": "39a2639a-d1d2-4651-a3c6-9f13c5e80193",
+  "cost": 0.2295584,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "076",
+  "session_id": "75aee3a0-3e67-49ef-ae5f-55b7740fa75e",
+  "cost": 0.2258438,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "077",
+  "session_id": "dc870bfa-5be4-4d37-a080-ee5c99afed2e",
+  "cost": 0.20525279999999999,
+  "turns": 4,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "078",
+  "session_id": "57d4a00c-73a6-4f9f-91f7-73cd86cfaa0e",
+  "cost": 0.3770213,
+  "turns": 5,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "079",
+  "session_id": "11b25ee6-489b-4be0-99e5-7833c539acbe",
+  "cost": 0.1185698,
+  "turns": 2,
+  "is_error": false,
+  "models": [
+   "claude-haiku-4-5-20251001",
+   "claude-sonnet-5-5"
+  ]
+ },
+ {
+  "batch": "repair",
+  "session_id": "7e6c25e8-aa39-4653-89b9-1ae97fae3c25",
+  "cost": 0.15405549999999998,
+  "turns": 3,
+  "note": "22 rows re-asked for exact line-comment counts; extra row settingsZoneAlertRowSubStub dropped"
+ }
+]

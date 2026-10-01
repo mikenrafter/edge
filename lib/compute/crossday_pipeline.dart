@@ -963,9 +963,10 @@ _Circadian _crossDayCircadian(List<Map<String, dynamic>> days) {
 /// Append the substrate caveat to an envelope's note, so the claim never leaves
 /// this file without saying what it was computed FROM.
 Map<String, dynamic> _withInputNote(Map<String, dynamic> envelope) {
-  const caveat = 'computed on hourly HEART-RATE means, not accelerometry '
-      '(no multi-day accel survives raw pruning): M10/L5 are the highest- and '
-      'lowest-HR windows and RA is an HR amplitude ratio';
+  const caveat = 'Computed from hourly mean heart rate, because raw accelerometer data '
+                 'is pruned and no multi-day accelerometer data remains. M10 is the '
+                 'highest-HR window, L5 is the lowest-HR window and RA is the HR '
+                 'amplitude ratio.';
   final existing = envelope['note'];
   // Never overwrite a `need_baseline:` note — the edge parses it verbatim.
   if (existing is String && existing.startsWith('need_baseline:')) {

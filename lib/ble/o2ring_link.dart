@@ -234,8 +234,8 @@ Future<String?> pairO2Ring(BluetoothDevice device) async {
   try {
     return await withSecondaryLinkSlot<String?>(
       timeout: const Duration(seconds: 30),
-      onTimeout: () => 'Another sensor is using this phone’s Bluetooth right '
-          'now. Try pairing again in a moment.',
+      onTimeout: () => "Another sensor is using this phone's Bluetooth. "
+                       'Try pairing again in a moment.',
       () async {
         try {
           await device.connect(timeout: const Duration(seconds: 20));
@@ -249,8 +249,8 @@ Future<String?> pairO2Ring(BluetoothDevice device) async {
           final missing =
               localLink.missingCharacteristics(kO2Ring.requiredCharacteristics);
           if (missing.isNotEmpty) {
-            return 'That device does not expose the ring service this app '
-                'speaks.';
+            return 'That device does not offer the Bluetooth service '
+                   'this app uses for the ring.';
           }
           await LocalDb.upsertDevice(
             id: deviceId,

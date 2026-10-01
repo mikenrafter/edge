@@ -222,7 +222,7 @@ class SleepCoordinator extends ChangeNotifier {
         const SleepOperationResult(
           success: false,
           error:
-              'Sleep calculation timed out. Saved times are retained. Please retry.',
+              'Sleep calculation timed out. Your saved times are unchanged. Retry.',
         ),
       ),
     );

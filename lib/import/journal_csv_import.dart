@@ -237,7 +237,7 @@ JournalCsvParse parseJournalCsv(String text, {DateTime? today}) {
     }
 
     if (tags.isEmpty && note.trim().isEmpty) {
-      rejected.add(RejectedRow(line, 'no tags and no note — nothing to import'));
+      rejected.add(RejectedRow(line, 'no tags and no note, so there is nothing to import'));
       continue;
     }
     rows.add(JournalCsvRow(date, tags, note));

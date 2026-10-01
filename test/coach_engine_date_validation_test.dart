@@ -99,7 +99,7 @@ void main() {
       final engine = await run('log_journal', {'date': 'yesterday', 'note': 'x'}, repo);
       expect(repo.journalDate, isNull);
       final toolResult = engine.debugHistory.firstWhere((m) => m['role'] == 'tool');
-      expect(toolResult['content'], contains('is not a day'));
+      expect(toolResult['content'], contains('is invalid'));
     });
   });
 
@@ -123,7 +123,7 @@ void main() {
       final engine = await run('log_period', {'date': 'today'}, repo);
       expect(repo.cycleDate, isNull);
       final toolResult = engine.debugHistory.firstWhere((m) => m['role'] == 'tool');
-      expect(toolResult['content'], contains('is not a day'));
+      expect(toolResult['content'], contains('is invalid'));
     });
   });
 }

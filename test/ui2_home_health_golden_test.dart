@@ -958,7 +958,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Nothing separated itself yet'), findsOneWidget);
+      expect(find.text('No clear pattern yet'), findsOneWidget);
 
       await tester.pumpWidget(
         _frame(
@@ -1041,7 +1041,7 @@ void main() {
         findsOneWidget,
       );
       // Nothing here may read as a cause or a recommendation.
-      expect(find.textContaining('never a cause'), findsOneWidget);
+      expect(find.textContaining('does not show a cause'), findsOneWidget);
     },
   );
 

@@ -1,0 +1,329 @@
+## test/resting_hr_nocturnal_only_test.dart :: a day with no scored sleep publishes no resting HR
+Expected: contains 'no sleep was scored'
+  Actual: 'No sleep was scored for this day. Resting HR is measured only over a sleep window.'
+   Which: does not contain 'no sleep was scored'
+
+
+## test/ui2_cycle_history_test.dart :: across your cycles opens from the tab and builds with no store above it
+Test failed. See exception logs above.
+The test description was: opens from the tab and builds with no store above it
+
+## test/band_gestures_test.dart :: the picker renders native unreachable: the in-app actions stand, and the missing ones state their reason
+Test failed. See exception logs above.
+The test description was: native unreachable: the in-app actions stand, and the missing ones state their reason
+
+## test/ui2_wellness_recovery_paint_test.dart :: recovery paints its cards — light, 1.0x text
+Test failed. See exception logs above.
+The test description was: recovery paints its cards — light, 1.0x text
+
+## test/ui2_wellness_recovery_paint_test.dart :: recovery paints its cards — light, 2.0x text
+Test failed. See exception logs above.
+The test description was: recovery paints its cards — light, 2.0x text
+
+## test/ui2_wiring_r2_test.dart :: held-over overnight the absence says which of the two it is
+Expected: contains 'still being worked out'
+  Actual: 'Last night is still being processed.'
+   Which: does not contain 'still being worked out'
+
+
+## test/ui2_wiring_r2_test.dart :: illness watch on Home a negative z says BELOW while the run is still up
+Test failed. See exception logs above.
+The test description was: a negative z says BELOW while the run is still up
+
+## test/ui2_wellness_recovery_paint_test.dart :: recovery paints its cards — dark, 1.0x text
+Test failed. See exception logs above.
+The test description was: recovery paints its cards — dark, 1.0x text
+
+## test/ui2_wellness_recovery_paint_test.dart :: recovery paints its cards — dark, 2.0x text
+Test failed. See exception logs above.
+The test description was: recovery paints its cards — dark, 2.0x text
+
+## test/ui2_wiring_r2_test.dart :: alertness forecast a shape, a named window, and the refusal on the card
+Test failed. See exception logs above.
+The test description was: a shape, a named window, and the refusal on the card
+
+## test/ui2_wiring_r2_test.dart :: the across-nights breathing screen it names no condition, no number and no severity
+Test failed. See exception logs above.
+The test description was: it names no condition, no number and no severity
+
+## test/ui2_wiring_r2_test.dart :: the across-nights breathing screen a quiet screen refuses to clear anything
+Test failed. See exception logs above.
+The test description was: a quiet screen refuses to clear anything
+
+## test/ui2_wiring_r2_test.dart :: the across-nights breathing screen the card survives 3.1x text
+Test failed. See exception logs above.
+The test description was: the card survives 3.1x text
+
+## test/ui2_wiring_r2_test.dart :: the pair that broke your regularity two rows, behind a tap, and never a verdict
+Test failed. See exception logs above.
+The test description was: two rows, behind a tap, and never a verdict
+
+## test/ui2_wiring_r2_test.dart :: the shape of the night three lines on one axis — the band, not a line
+Test failed. See exception logs above.
+The test description was: three lines on one axis — the band, not a line
+
+## test/ui2_wiring_r2_test.dart :: resting breathing rate while awake the night is not the day — sleep windows are excluded
+Test failed. See exception logs above.
+The test description was: the night is not the day — sleep windows are excluded
+
+## test/ui2_wiring_r2_test.dart :: resting breathing rate while awake the common case is nothing, and it is written as such
+Test failed. See exception logs above.
+The test description was: the common case is nothing, and it is written as such
+
+## test/hr_ceiling_zones_test.dart :: zonesWhy names the measured ceiling when the set was measured
+Expected: contains 'measured, not estimated'
+  Actual: 'Zone edges are percentages of the highest heart rate recorded for you (184 bpm).'
+   Which: does not contain 'measured, not estimated'
+
+
+## test/start_session_card_test.dart :: the copy is not squeezed by the mascot
+Test failed. See exception logs above.
+The test description was: the copy is not squeezed by the mascot
+
+## test/nightly_sweep_test.dart :: two findings on one day are two findings the pairing states coincidence and refuses a cause
+Expected: contains 'not a measured relationship'
+  Actual: 'HRV 18 ms and resting heart rate 68 bpm were both outside your usual range on the same day. The app has not measured any link between them.'
+   Which: does not contain 'not a measured relationship'
+
+
+## test/ui2_activity_test.dart :: screens day strain states only a cause it was handed
+Test failed. See exception logs above.
+The test description was: day strain states only a cause it was handed
+
+## test/ui2_activity_test.dart :: screens a cold plunge with no pulse says why, and offers no fix
+Test failed. See exception logs above.
+The test description was: a cold plunge with no pulse says why, and offers no fix
+
+## test/ui2_activity_test.dart :: screens the unpriced activity offers no number it cannot source
+Test failed. See exception logs above.
+The test description was: the unpriced activity offers no number it cannot source
+
+## test/ui2_activity_test.dart :: screens the unpriced session still explains a measured figure
+Test failed. See exception logs above.
+The test description was: the unpriced session still explains a measured figure
+
+## test/ui2_day_steps_test.dart :: a mixed day names both devices, and the walk it watched
+Test failed. See exception logs above.
+The test description was: a mixed day names both devices, and the walk it watched
+
+## test/ui2_day_steps_test.dart :: a phone-only day is never told about wrists
+Test failed. See exception logs above.
+The test description was: a phone-only day is never told about wrists
+
+## test/ui2_router_test.dart :: the device disclosure an unknown family is a refusal, not gen4 by default
+Expected: contains 'abstain'
+  Actual: 'This band has not reported its generation, and imported or older days never include it. Metrics that depend on the sensor stay blank.'
+   Which: does not contain 'abstain'
+
+
+## test/ecg_ui_test.dart :: capture body per phase inconclusive offers exactly the one retry
+Test failed. See exception logs above.
+The test description was: inconclusive offers exactly the one retry
+
+## test/ecg_ui_test.dart :: capture body per phase cancelled / failed copy, incl. incomplete cleanup
+Test failed. See exception logs above.
+The test description was: cancelled / failed copy, incl. incomplete cleanup
+
+## test/ai_briefing_test.dart :: refused metrics a refusal is stated with its reason, never sent as a value
+Expected: contains 'resting_hr (There is no scored night to read this from.)'
+  Actual: [
+            'readiness (Need 8 more nights)',
+            'resting_hr (This metric needs a scored night, and there is none.)',
+            'sleep_efficiency_pct',
+            'sleep_debt_min',
+            'deep_min',
+            'rem_min',
+            'awake_min',
+            'bedtime',
+            'wake_time'
+          ]
+   Which: does not contain 'resting_hr (There is no scored night to read this from.)'
+
+
+## test/ai_briefing_test.dart :: refused metrics the system prompt forbids inferring a withheld metric
+Expected: contains 'reasoned out of the numbers you WERE given'
+  Actual: 'You write a health briefing for a local-first fitness band app. Summarize last night\'s sleep and recovery, and what they mean for the day ahead.\n'
+            'HARD RULES:\n'
+            '- Do NOT open with a greeting or a reference to the time of day. The app shows its own greeting, computed when the reader opens it, and this text may be read hours after it was written. Start with the substance.\n'
+            '- Use ONLY the numbers provided. Do not invent, estimate or mention a metric that is not in the data. No medical advice or diagnosis.\n'
+            '- Anything under "withheld" was REFUSED by the measuremen
+
+## test/ai_briefing_test.dart :: prompt building (pure) system prompt scopes by period and forbids invention
+Expected: contains 'never assert a cause'
+  Actual: 'you write one short note at the end of the day for a local-first fitness band app.\n'
+            'you receive only findings: measurements that are unusual for this user compared with their own history. you do not receive the ordinary numbers from their day.\n'
+            'hard rules:\n'
+            '- do not summarise the day. do not restate a number as news. every number you write must be one you were given.\n'
+            '- no diagnosis, no severity, no "consult a professional", no disclaimer of any kind.\n'
+            '- no praise, no encouragement, no streaks, no score, no grade.\n'
+            '- do not assert a cause. if two find
+
+## test/ui2_sleep_detail_test.dart :: a night with a hole names the window it was measured over
+Test failed. See exception logs above.
+The test description was: a night with a hole names the window it was measured over
+
+## test/ui2_sleep_detail_test.dart :: a fully observed night says nothing about watching
+Test failed. See exception logs above.
+The test description was: a fully observed night says nothing about watching
+
+## test/breathing_session_effect_test.dart :: breathingEffect no sessions reads as an explanation, not as a result
+Expected: contains 'quiet minutes either side'
+  Actual: 'The app compares two quiet minutes before and after each session. It shows a result once about 12 sessions have both.'
+   Which: does not contain 'quiet minutes either side'
+
+
+## test/breathing_session_effect_test.dart :: breathingEffect no per-session number is reachable from the result
+Expected: contains 'cannot tell the two apart'
+  Actual: 'You knew you were breathing on purpose and you sat still for ten minutes. Sitting still alone could change the result, and this comparison cannot separate the two. It only covers a few minutes either side of a session.'
+   Which: does not contain 'cannot tell the two apart'
+
+
+## test/device_picker_test.dart :: a scan failure is its own card, distinct from "nothing found"
+Test failed. See exception logs above.
+The test description was: a scan failure is its own card, distinct from "nothing found"
+
+## test/ui2_home_health_golden_test.dart :: journal findings say nothing when nothing survived, and phrase a dose and a tick box as the different things they are
+Test failed. See exception logs above.
+The test description was: journal findings say nothing when nothing survived, and phrase a dose and a tick box as the different things they are
+
+## test/wear_gap_reason_test.dart :: wearGapWhy a night on the charger is named, in the local clock
+Expected: 'Your band was off your wrist 11:20 PM – 2:14 AM.'
+  Actual: 'Your band was off your wrist from 11:20 PM to 2:14 AM.'
+   Which: is different.
+          Expected: ... our wrist 11:20 PM – ...
+            Actual: ... our wrist from 11:20 ...
+                                  ^
+           Differ at offset 29
+
+
+## test/wear_gap_reason_test.dart :: wearGapWhy the two days are joined across midnight
+Expected: 'Your band was off your wrist 12:00 AM – 2:14 AM.'
+  Actual: 'Your band was off your wrist from 12:00 AM to 2:14 AM.'
+   Which: is different.
+          Expected: ... our wrist 12:00 AM – ...
+            Actual: ... our wrist from 12:00 ...
+                                  ^
+           Differ at offset 29
+
+
+## test/wear_gap_reason_test.dart :: wearGapWhy the longest overlapping gap wins, not the first
+Expected: 'Your band was off your wrist 2:00 AM – 8:00 AM.'
+  Actual: 'Your band was off your wrist from 2:00 AM to 8:00 AM.'
+   Which: is different.
+          Expected: ... our wrist 2:00 AM –  ...
+            Actual: ... our wrist from 2:00  ...
+                                  ^
+           Differ at offset 29
+
+
+## test/wear_gap_reason_test.dart :: StatusCard.forMetric the pipeline keeps its reason and the gap is added to it
+Expected: a string starting with 'Too few clean beat-to-beat intervals'
+  Actual: 'Not enough clean beat-to-beat intervals to calculate this. Your band was off your wrist 11:20 PM – 2:14 AM.'
+
+
+## test/crossday_circadian_test.dart :: circadian computes on a full week the note discloses that the input is HR, not accelerometry
+Expected: contains 'HEART-RATE'
+  Actual: 'IS/IV/RA/L5/M10 (van Someren 1999); circadian phase anchored on the L5 nocturnal trough, not the daytime peak; Computed from hourly mean heart rate, because raw accelerometer data is pruned and no multi-day accelerometer data remains. M10 is the highest-HR window, L5 is the lowest-HR window and RA is the HR amplitude ratio.'
+   Which: does not contain 'HEART-RATE'
+M10/L5 here are highest/lowest-HR windows, not step counts; a reader who assumes actigraphy would misread the units
+
+
+## test/ui2_labs_delete_test.dart :: the confirm names the reading, and Keep it keeps it
+Test failed. See exception logs above.
+The test description was: the confirm names the reading, and Keep it keeps it
+
+## test/ui2_labs_delete_test.dart :: a marker you named yourself goes once nothing is logged under it
+Test failed. See exception logs above.
+The test description was: goes once nothing is logged under it
+
+## test/import_container_test.dart :: resolveImportCsvPaths an uncompressed-size mismatch with a WRONG crc is still refused
+Expected: throws <Instance of 'ImportFormatException'> with `message`: contains 'does not hold what it says'
+  Actual: <Instance of 'Future<ResolvedNoopDatabase?>'>
+   Which: threw ImportFormatException:<“tampered.noopbak” is damaged. Its database does not match the archive checksum. Export it again.>
+          stack package:openstrap_edge/import/import_container.dart 547:9  resolveNoopDatabase
+                ===== asynchronous gap ===========================
+                package:matcher                                            expectLater
+                package:flutter_test/src/widget_tester.dart 507:8          expectLater
+                test/import_container_test.dart 273:13       
+
+## test/controls/stable_alert_controls_test.dart :: relay enable does not move capability summary or reveal unrelated groups
+Test failed. See exception logs above.
+The test description was: relay enable does not move capability summary or reveal unrelated groups
+
+## test/controls/alert_capability_registry_test.dart :: reminder phone schedule and live band delivery have separate labels
+Expected: 'On phone — system scheduled'
+  Actual: 'On phone, scheduled by the system'
+   Which: is different.
+          Expected: On phone — system  ...
+            Actual: On phone, schedule ...
+                            ^
+           Differ at offset 8
+
+
+## test/controls/alert_capability_registry_test.dart :: derived findings sent to band still require live phone and link
+Expected: 'On phone — Edge must be running; On band — phone must be connected'
+  Actual: 'On phone, Edge must be running; On band, phone must be connected'
+   Which: is different.
+          Expected: On phone — Edge mu ...
+            Actual: On phone, Edge mus ...
+                            ^
+           Differ at offset 8
+
+
+## test/controls/alert_capability_registry_test.dart :: native autonomy requires known native capability and valid destination
+Expected: 'On band — works without phone'
+  Actual: 'On band, works without phone'
+   Which: is different.
+          Expected: On band — works w ...
+            Actual: On band, works wi ...
+                           ^
+           Differ at offset 7
+
+
+## test/ui2_beats_test.dart :: the rhythm panel screens, never diagnoses, and never reassures
+Test failed. See exception logs above.
+The test description was: the rhythm panel screens, never diagnoses, and never reassures
+
+## test/ui2_beats_test.dart :: the pipeline's own notes do not leak onto the card
+Test failed. See exception logs above.
+The test description was: the pipeline's own notes do not leak onto the card
+
+## test/widget_service_sentinels_test.dart :: a night that is not today's a night still being worked out is a different sentence — it resolves on its own and asks nothing of anyone
+Expected: 'Last night is still being worked out.'
+  Actual: 'Last night is still processing.'
+   Which: is different.
+          Expected: ...  is still being work ...
+            Actual: ...  is still processing ...
+                                  ^
+           Differ at offset 20
+
+
+## test/absence_reason_test.dart :: whyFromNote need_input names the INPUT, and counts it when it is countable
+Expected: contains 'weight is not on file'
+  Actual: 'This metric needs your weight, which is not on file.'
+   Which: does not contain 'weight is not on file'
+
+
+## test/coach_engine_date_validation_test.dart :: log_journal a relative date is rejected, never written
+Expected: contains 'is not a day'
+  Actual: 'Tool log_journal failed: Date "yesterday" is invalid. Use YYYY-MM-DD. Today is 2026-09-30.'
+   Which: does not contain 'is not a day'
+
+
+## test/coach_engine_date_validation_test.dart :: log_period a relative date is rejected, never written
+Expected: contains 'is not a day'
+  Actual: 'Tool log_period failed: Date "today" is invalid. Use YYYY-MM-DD. Today is 2026-09-30.'
+   Which: does not contain 'is not a day'
+
+
+## test/band_notifications_test.dart :: the relay screen an empty app list states its reason, not a bare emptiness
+Test failed. See exception logs above.
+The test description was: an empty app list states its reason, not a bare emptiness
+
+## test/band_notifications_test.dart :: the relay screen each seen app is a row you can arm, with its package under it
+Test failed. See exception logs above.
+The test description was: each seen app is a row you can arm, with its package under it
+
+## test/band_notifications_test.dart :: the relay screen iOS gets a reason, not a dead switch
+Test failed. See exception logs above.
+The test description was: iOS gets a reason, not a dead switch

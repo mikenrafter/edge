@@ -279,7 +279,7 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
       query: _query,
       title: l?.devicePickerTitle ?? 'Connect your devices',
       subtitle:
-          l?.devicePickerSubtitle ?? 'Bring whatever you use. You can add more anytime.',
+          l?.devicePickerSubtitle ?? 'Pair a device now or add more later.',
       found: _found,
       scanning: _scanning,
       heldBack: _heldBack,
@@ -313,46 +313,46 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
     final l = AppLocalizations.of(c);
     return switch (e.id) {
       'gen4' || 'gen5' => l?.devicePickerBlurbBand ??
-          'The strap this app is built around. WHOOP 4 or 5.',
+          'A WHOOP 4 or 5 strap.',
       'oura' => l?.devicePickerBlurbRing ??
-          'Reads the ring directly — no Oura account or subscription.',
+          'Reads the ring directly, without an Oura account or subscription.',
       'polar_pmd' => l?.devicePickerBlurbPolarPmd ??
-          'A Polar Verity Sense or OH1. Beat timing measured optically, '
-              'streamed during a workout, same as a chest strap.',
+          'A Polar Verity Sense or OH1. Measures beat timing optically '
+          'and streams it during a workout.',
       'coros' => l?.devicePickerBlurbCoros ??
-          'A sports watch. Reads battery and live heart rate — recorded '
-              'activities stay on the watch.',
+          'A sports watch. Reads battery and live heart rate. '
+          'Recorded activities stay on the watch.',
       // No l10n key: this is the one new category blurb that has not gone
       // through translation yet — see the PR notes rather than the other
       // localised branches above for why.
-      'ultrahuman' => 'Reads the ring directly — no account, no key exchange.',
+      'ultrahuman' => 'Reads the ring directly. It needs no account and no key exchange.',
       'withings_steel_hr' => l?.devicePickerBlurbWithingsSteelHr ??
-          'Pairs and connects — nothing it captures is decoded into a '
-              'number yet.',
+          'Pairs and connects. Nothing it captures is decoded into a '
+          'number yet.',
       'miband234' => l?.devicePickerBlurbMiband234 ??
           'A Mi Band 2, 3 or 4. Pairs and connects; nothing derives from it '
               'yet.',
-      'pebble' => 'Pebble 2 or Pebble 2 SE only. Pairs only for now — '
-          'nothing is read or stored yet.',
+      'pebble' => 'Pebble 2 or Pebble 2 SE only. It pairs, but nothing is '
+                  'read or stored yet.',
       // No localized key: English-only until this one earns one, same as
       // every other category blurb below the first two.
-      'makibeshr3' => 'An unbranded Makibes HR3 board. Pairs and banks its '
-          'raw data; nothing is derived from it yet.',
-      'id115' => 'An unbranded ID115 board. Pairs and banks its raw data; '
-          'nothing is derived from it yet.',
-      'smaq2oss' => 'An SMA-Q2-OSS smartwatch. Pairs and banks its raw '
-          'data; nothing is derived from it yet.',
-      'xwatch' => 'An unbranded XWatch board. Pairs and banks its raw data; '
-          'nothing is derived from it yet.',
-      'watch9' => 'An unbranded Watch9 board. Pairs and banks its raw data; '
-          'nothing is derived from it yet.',
-      'tlw64' => 'A TLW64 or NO1 F1 fitness band. Pairs and banks its raw '
-          'data; nothing is derived from it yet.',
+      'makibeshr3' => 'An unbranded Makibes HR3 board. Pairs and saves its '
+                      'raw data. Nothing is derived from it yet.',
+      'id115' => 'An unbranded ID115 board. Pairs and saves its raw data. '
+                 'Nothing is derived from it yet.',
+      'smaq2oss' => 'An SMA-Q2-OSS smartwatch. Pairs and saves its raw '
+                    'data. Nothing is derived from it yet.',
+      'xwatch' => 'An unbranded XWatch board. Pairs and saves its raw data. '
+                  'Nothing is derived from it yet.',
+      'watch9' => 'An unbranded Watch9 board. Pairs and saves its raw data. '
+                  'Nothing is derived from it yet.',
+      'tlw64' => 'A TLW64 or NO1 F1 fitness band. Pairs and saves its raw '
+                 'data. Nothing is derived from it yet.',
       // No localized string yet — this device is new enough that adding one
       // is out of scope here; the English fallback the other cases carry is
       // this one's only copy for now.
-      'dafit' => 'An unbranded DaFit/MOYOUNG-style watch. Pairs and banks '
-          'its own data; nothing derives from it yet.',
+      'dafit' => 'An unbranded DaFit/MOYOUNG-style watch. Pairs and saves '
+                 'its own data. Nothing is derived from it yet.',
       'o2ring' => l?.devicePickerBlurbO2Ring ??
           'Reads its battery, model and serial. No reading from the ring '
               'itself is decoded yet.',
@@ -365,17 +365,17 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
       // banks, nothing decoded yet" sentence `kPairableSensors` already
       // carries for it, English-only like every other category blurb until
       // it earns one.
-      'dt78' => 'Pairs and banks its raw data — nothing is decoded yet.',
+      'dt78' => 'Pairs and saves its raw data. Nothing is decoded yet.',
       // No l10n key yet — added when this device gets one, same as every
       // other string here started life as a fallback before its key existed.
       'lefun' => 'A generic ring or band sold under many storefront names. '
           'Pairs and connects; reports nothing yet.',
-      'hplus' => 'A generic HPlus-family HR band. Pairs and banks its '
-          'history; nothing is decoded into a number yet.',
+      'hplus' => 'A generic HPlus-family HR band. Pairs and saves its '
+                 'history. Nothing is decoded into a number yet.',
       // No dedicated l10n key yet — same untranslated sentence
       // `kPairableSensors` already carries for this entry.
-      'pinetime' => 'Pairs and banks its raw data in the background, but '
-          'does not derive anything from it yet.',
+      'pinetime' => 'Pairs and saves its raw data in the background. '
+                    'Nothing is derived from it yet.',
       // No localized string for this entry yet — l10n keys are generated
       // across every locale file, which is out of scope for a single-device
       // PR. Plain English only, same shape as every other blurb's fallback.
@@ -383,19 +383,19 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
         'The original Fossil/Skagen hybrid smartwatch, not the newer '
             'Hybrid HR. Pairs and connects; nothing derives from it yet.',
       'colmi' => l?.devicePickerBlurbColmi ??
-          'A Colmi ring. Pairs and banks its history; nothing is decoded '
-              'into a number yet.',
+          'A Colmi ring. Pairs and saves its history. Nothing is '
+          'decoded into a number yet.',
       // 'casio' takes no special case here, same as every other notify-class
       // sensor: the generic sensor blurb below already fits, and it is the
       // one that is actually localized.
       // No localized key: this falls through to English only, the same
       // reason `asteroidos`'s own row (a different, unbuilt PR) does.
-      'jyou' => 'A budget activity band. Pairs and banks its raw data, but '
-          'nothing is derived from it yet.',
+      'jyou' => 'A budget activity band. Pairs and saves its raw data. '
+                'Nothing is derived from it yet.',
       'banglejs' => l?.devicePickerBlurbBangleJs ??
-          'Pairs any Espruino/Nordic-UART device generically, not just '
-              'Bangle.js-branded watches. Banks raw bytes only; nothing is '
-              'decoded into a number.',
+          'Pairs any Espruino/Nordic-UART device, including '
+          'Bangle.js watches. Saves raw bytes only. '
+          'Nothing is decoded into a number.',
       _ => l?.devicePickerBlurbSensor ??
           'A chest strap or armband, for beat timing during a workout.',
     };
@@ -525,8 +525,8 @@ class DevicePickerView extends StatelessWidget {
                     Expanded(
                       child: Text(
                         l?.devicePickerPrivacyNote ??
-                            'Everything stays on this phone. Nothing is sent '
-                                'anywhere unless you choose to export it.',
+                            'Your data stays on this phone. It leaves only when you '
+                            'export it, turn on telemetry or add an AI key.',
                         style: F.cap.copyWith(color: p.ink3, height: 1.4),
                       ),
                     ),
@@ -566,9 +566,9 @@ class DevicePickerView extends StatelessWidget {
                       // it earns one, same as every other untranslated
                       // fallback in this file.
                       'Demo mode fills the app with about two months of made-up '
-                          'data, including one fake run near you, so you can see '
-                          'how it all looks. Nothing here is real, and it goes '
-                          'away the moment you pair an actual device.',
+                      'data, including one fake run near you. '
+                      'Nothing is real. '
+                      'The demo data is removed when you pair a device.',
                       style: F.cap.copyWith(color: p.ink3),
                     ),
                   ],

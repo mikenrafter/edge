@@ -162,8 +162,8 @@ class _NapsScreenState extends State<NapsScreen> {
       final l = AppLocalizations.of(context);
       setState(() => _failed = failed ??
           l?.napsNotReanalysed ??
-              'The day was not re-analysed — another analysis was already '
-                  'running. Your edit is saved and will apply next time.');
+              'The day was not re-analysed because another analysis was '
+              'running. Your edit is saved and applies on the next analysis.');
     }
   }
 
@@ -217,15 +217,15 @@ class _NapsScreenState extends State<NapsScreen> {
     // Both refusals are the shared rules, not a second copy written here.
     if (!manualNapWindowIsValid(s, e)) {
       setState(() => _failed = l?.napsInvalidWindow ??
-          'A nap is between 5 minutes and 6 hours. '
-              'Anything longer is a sleep, and it belongs in the night where the '
-              'stages can be read.');
+          'A nap lasts 5 minutes to 6 hours. '
+          'Longer sleep goes in the night view, '
+          'where sleep stages are shown.');
       return;
     }
     if (napOverlapsExisting(s, e, _d?.naps ?? const [])) {
       setState(() => _failed = l?.napsOverlap ??
-          'That overlaps a nap already on this day. '
-              'Remove that one first, rather than counting the same hour twice.');
+          'This overlaps a nap already on this day. '
+          'Remove that nap first.');
       return;
     }
     await _edit(() => LocalDb.putNapEdit(
@@ -260,16 +260,16 @@ class _NapsScreenState extends State<NapsScreen> {
             l?.napsNoReadingTitle ?? 'No nap reading for this day',
             whyFromNote(d.note, unit: 'days') ??
                 l?.napsNoReadingBody ??
-                    'Naps are worked out from the same 1 Hz recording the rest of '
-                        'the day is, and this day does not have enough of it.',
+                    'Naps come from the 1 Hz recording, '
+                    'and this day has too little of it.',
             icon: LucideIcons.circleHelp,
           )
         else if (d.naps.isEmpty)
           StatusCard(
             l?.napsEmptyTitle ?? 'No naps on this day',
             l?.napsEmptyBody ??
-                'Nothing on this day was still enough, for long enough, with the '
-                    'heart-rate dip that goes with sleeping through it.',
+                'No period on this day was still for long enough '
+                'with the heart-rate dip of sleep.',
             icon: LucideIcons.sun,
           )
         else ...[
@@ -295,7 +295,7 @@ class _NapsScreenState extends State<NapsScreen> {
               // edit is a recompute: these minutes come off tonight's sleep
               // need and your sleep debt one for one.
               l?.napsCountsToward(hm(d.napMin)) ??
-                  '${hm(d.napMin)} of nap counts toward tonight’s sleep need.',
+                  "${hm(d.napMin)} of nap counts toward tonight's sleep need.",
               style: F.cap.copyWith(color: p.ink3, height: 1.5),
             ),
           ],
@@ -352,8 +352,8 @@ class _NapsScreenState extends State<NapsScreen> {
           const SizedBox(height: S.x2),
           Text(
             l?.napsRemovalKept ??
-                'A removal is kept as a window rather than an id, so it still '
-                    'applies after the detector’s edges move.',
+                "A removal is stored as a time window, so it still "
+                "applies if the detector later shifts a nap's start or end.",
             style: F.cap.copyWith(color: p.ink3, height: 1.5),
           ),
         ],

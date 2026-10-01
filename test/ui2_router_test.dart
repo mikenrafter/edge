@@ -595,7 +595,7 @@ void main() {
     test('an unknown family is a refusal, not gen4 by default', () {
       final d = calibrationDisclosure(band(null))!;
       expect(d.$1, isNot(contains('WHOOP 4')));
-      expect(d.$2, contains('abstain'));
+      expect(d.$2, contains('stay blank'));
       // Same answer for a family this build does not know.
       expect(calibrationDisclosure(band('gen9'))!.$1, d.$1);
     });

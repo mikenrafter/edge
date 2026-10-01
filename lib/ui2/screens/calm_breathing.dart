@@ -127,7 +127,7 @@ BreathPattern paceAt(double rate, [AppLocalizations? l]) {
     label: l?.calmBreathingResonanceLabel ?? 'Resonance',
     description: l?.calmBreathingResonanceDescription(rate.toStringAsFixed(1)) ??
         'Even in and out at about ${rate.toStringAsFixed(1)} breaths a '
-        'minute. The one with a coherence score.',
+        'minute. This mode gives a coherence score.',
     phases: [
       BreathPhase(BreathPhaseKind.inhale, half),
       BreathPhase(BreathPhaseKind.exhale, half),
@@ -656,7 +656,7 @@ class _Setup extends StatelessWidget {
         // the band will accept the session, so it is not promised here. The
         // `!banded` card during the run is where that gets said.
         Text(
-          l?.calmBreathingRingLeads ?? 'The ring leads. Put the phone down.',
+          l?.calmBreathingRingLeads ?? 'Follow the ring. Put the phone down.',
           style: F.cap.copyWith(color: p.ink2, height: 1.5),
         ),
         for (final b in patternsFor(yours, l))
@@ -797,8 +797,7 @@ class _Setup extends StatelessWidget {
                 Text(
                   !connected
                       ? (l?.calmBreathingNeedsBandBeatTiming ??
-                          'Needs the band on — the comparison is made from '
-                              'beat timing.')
+                          'Needs the band on. The comparison uses beat timing.')
                       : breathingEffectLine(e ?? _noSessionsYet),
                   style: F.cap.copyWith(color: p.ink3, height: 1.4),
                 ),
@@ -838,7 +837,7 @@ class _Setup extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                l?.calmBreathingFindYourPace ?? 'Find the pace your heart follows',
+                l?.calmBreathingFindYourPace ?? 'Find your resonance pace',
                 style: F.body.copyWith(
                   color: connected ? p.ink : p.ink3,
                   fontWeight: FontWeight.w600,
@@ -848,8 +847,7 @@ class _Setup extends StatelessWidget {
               Text(
                 !connected
                     ? (l?.calmBreathingNeedsBandBeatTiming ??
-                        'Needs the band on — the comparison is made from '
-                            'beat timing.')
+                        'Needs the band on. The comparison uses beat timing.')
                     : yours == null
                     ? (l?.calmBreathingSweepIntro(kPaceSweepRates
                                 .map((r) => r.toStringAsFixed(1))
@@ -860,9 +858,9 @@ class _Setup extends StatelessWidget {
                             'two sittings that agree before anything changes.')
                     : (l?.calmBreathingSweepAgreed(yours.toStringAsFixed(1)) ??
                         'Two sittings agreed on '
-                            '${yours.toStringAsFixed(1)} breaths a minute, '
-                            'and Resonance is paced there. Run it again to '
-                            'check.'),
+                        '${yours.toStringAsFixed(1)} breaths a minute. '
+                        'Resonance now paces at that rate. Run the sweep again to '
+                        'check.'),
                 style: F.cap.copyWith(color: p.ink3, height: 1.4),
               ),
             ],
@@ -940,8 +938,8 @@ class _Running extends StatelessWidget {
           StatusCard(
             l?.calmBreathingNoScoreForSession ?? 'No coherence score for this session',
             l?.calmBreathingScoringNeedsBand ??
-                'Scoring needs beat timing from the band. Not connected, so '
-                    'this one paces you but is not saved.',
+                'Scoring needs beat timing from the band, and the band is not connected. '
+                'This session paces your breathing but is not saved.',
             icon: LucideIcons.bluetoothOff,
           ),
         ],
@@ -992,8 +990,8 @@ class _Quiet extends StatelessWidget {
         const SizedBox(height: S.x3),
         Text(
           l?.calmBreathingNothingPacingScored ??
-              'Breathe however you normally would. Nothing is pacing you and '
-              'nothing is being scored.',
+              'Breathe normally. No pacing guide runs '
+              'and no score is calculated.',
           textAlign: TextAlign.center,
           style: F.cap.copyWith(color: p.ink2, height: 1.5),
         ),
@@ -1087,17 +1085,16 @@ class _Result extends StatelessWidget {
       m,
       why: !rated
           ? (l?.calmBreathingPatternNotScored(app.breathingPattern.label) ??
-              '${app.breathingPattern.label} is not scored. Resonance is the '
-                  'one paced at the rate the score is built for.')
+              '${app.breathingPattern.label} sessions get no score. Only Resonance '
+              'paces you at the rate the score is built for.')
           : app.breathingError ??
                 (l?.calmBreathingTooFewBeatTimings ??
-                    'Too few clean beat timings across the session to score '
-                        'it.'),
+                    'Too few clean beat timings to score this session.'),
     );
     return ListView(
       children: [
         const SizedBox(height: S.x8),
-        Text(l?.calmBreathingThatIsDone ?? 'That is done.',
+        Text(l?.calmBreathingThatIsDone ?? 'Session complete.',
             style: F.t1.copyWith(color: p.ink)),
         const SizedBox(height: S.x5),
         if (absent != null)
@@ -1146,8 +1143,8 @@ class _SweepResult extends StatelessWidget {
         const SizedBox(height: S.x8),
         Text(
           aborted
-              ? (l?.calmBreathingStoppedThere ?? 'Stopped there.')
-              : (l?.calmBreathingThatIsDone ?? 'That is done.'),
+              ? (l?.calmBreathingStoppedThere ?? 'Pace test stopped early.')
+              : (l?.calmBreathingThatIsDone ?? 'Pace test finished.'),
           style: F.t1.copyWith(color: p.ink),
         ),
         const SizedBox(height: S.x5),
@@ -1210,10 +1207,10 @@ class _SweepResult extends StatelessWidget {
         const SizedBox(height: S.x3),
         Text(
           l?.calmBreathingRankingExplainer ??
-              'A ranking of three paces from one sitting. The blocks run back '
-              'to back, so each pace is measured while you are still settling '
-              'out of the one before. It says which pace your heart rate '
-              'followed most strongly, and nothing else.',
+              'Ranks three paces from one sitting. The blocks run back '
+              'to back, so each pace starts while you are still settling '
+              'from the one before. The top pace is the one your heart rate '
+              'followed most strongly.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
       ],
@@ -1223,27 +1220,27 @@ class _SweepResult extends StatelessWidget {
   String _verdict(double? winner, double? agreed, AppLocalizations? l) {
     if (aborted) {
       return l?.calmBreathingVerdictAborted ??
-          'You stopped part way, so there was nothing to compare. Nothing '
-              'has changed.';
+          'You stopped part way, so no paces were compared. '
+          'Your resonance pace is unchanged.';
     }
     if (winner == null) {
       return scores.any((s) => s == null)
           ? (l?.calmBreathingVerdictCouldNotScore ??
-              'At least one pace could not be scored, so there is nothing to '
-                  'rank. Nothing has changed.')
+              'At least one pace could not be scored, so no ranking is possible. '
+              'Your resonance pace is unchanged.')
           : (l?.calmBreathingVerdictTied ??
-              'Two of the paces scored the same, so this sitting cannot '
-                  'separate them. Nothing has changed.');
+              'Two paces scored the same, so this sitting cannot separate them. '
+              'Your resonance pace is unchanged.');
     }
     final w = l?.calmBreathingBreathsAMinute(winner.toStringAsFixed(1)) ??
         '${winner.toStringAsFixed(1)} breaths a minute';
     return agreed == winner
         ? (l?.calmBreathingVerdictConfirmed(w) ??
-            'Of the paces tested, $w gave your strongest response — and that '
-                'is now two sittings in a row. Resonance is paced there.')
+            'Of the paces tested, $w gave your strongest response in two '
+            'sittings in a row. Resonance now paces you at that rate.')
         : (l?.calmBreathingVerdictFirstWin(w) ??
-            'Of the paces tested, $w gave your strongest response. Nothing '
-                'is set yet: the pace only changes when two sittings pick the '
-                'same one.');
+            'Of the paces tested, $w gave your strongest response. Your pace is '
+            'unchanged for now. It changes when two sittings pick '
+            'the same rate.');
   }
 }

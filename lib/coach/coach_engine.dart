@@ -207,15 +207,13 @@ class CoachEngine {
 
   final Random _rand = Random();
   static const List<String> _shenanigans = [
-    'Reading your overnight RR…',
-    'Doing the Banister math…',
-    'Asking your heart rate a few questions…',
-    'Decoding last night…',
-    'Auditing 90 days of you…',
-    'Letting the data confess…',
-    'Lining up the z-scores…',
-    'Chasing a hunch through your HRV…',
-    'Pulling the thread…',
+    'Reading overnight beat intervals…',
+    'Computing training load…',
+    'Reading heart rate data…',
+    'Reading last night\'s sleep…',
+    'Reading 90 days of data…',
+    'Comparing against your baseline…',
+    'Checking your HRV…',
   ];
 
   CoachEngine({
@@ -263,7 +261,7 @@ class CoachEngine {
     final cap = _capFor(tool);
     return s.length <= cap
         ? s
-        : '${s.substring(0, cap)}…(truncated — narrow the query)';
+        : '${s.substring(0, cap)}… (truncated, narrow the query)';
   }
 
   int _historyChars() {
@@ -557,7 +555,7 @@ class CoachEngine {
         });
       }
     }
-    emit(CoachItem.assistant('I dug through several steps but couldn’t wrap that up — try narrowing the question.'));
+    emit(CoachItem.assistant('The coach ran out of steps before finishing. Ask a narrower question.'));
     onStatus(null);
   }
 
@@ -664,10 +662,10 @@ class CoachEngine {
     final payload = jsonEncode(body);
     if (payload.length > kMaxRequestBytes) {
       throw CoachException(
-          'That request grew to ${payload.length ~/ 1024} KB, over the '
-          '${kMaxRequestBytes ~/ 1024} KB safety limit for data leaving this '
-          'device. Start a new chat or ask a narrower question (aggregate with '
-          'AVG/MIN/MAX/COUNT instead of selecting every row).');
+          'That request is ${payload.length ~/ 1024} KB, over the '
+          '${kMaxRequestBytes ~/ 1024} KB limit on data sent from this '
+          'device. Start a new chat or ask a narrower question. Aggregate with '
+          'AVG/MIN/MAX/COUNT instead of selecting every row.');
     }
     try {
       final resp = await c
@@ -689,8 +687,8 @@ class CoachEngine {
         j = jsonDecode(utf8.decode(resp.bodyBytes));
       } catch (_) {
         throw CoachException(
-            'Provider returned a non-JSON response. Check the API base URL — '
-            'it must point at an OpenAI-compatible /chat/completions endpoint.');
+            'Provider returned a non-JSON response. Check the API base URL. '
+            'It must point at an OpenAI-compatible /chat/completions endpoint.');
       }
       if (j is! Map) throw CoachException('Unexpected response from provider.');
       final choices = (j['choices'] as List?) ?? const [];
@@ -709,8 +707,8 @@ class CoachEngine {
       final text = first['text'];
       if (text is String) return <String, dynamic>{'content': text};
       throw CoachException(
-          'Provider returned an unsupported response shape (no message/delta). '
-          'Streaming-only endpoints are not supported — use a standard '
+          'Provider returned a response with no message or delta. '
+          'The coach does not support streaming-only endpoints. Use an '
           'OpenAI-compatible /chat/completions endpoint.');
     } finally {
       if (client == null) c.close();

@@ -885,8 +885,8 @@ String? wearGapWhy(
   // The stretch's OWN bounds, not the part of it inside the window: the gap is
   // a thing that happened, and clipping it to the question would report a
   // shorter absence than the one that was measured.
-  return 'Your band was off your wrist ${_clock(bestStart)} – '
-      '${_clock(bestEnd)}.';
+  return 'Your band was off your wrist from ${_clock(bestStart)} to '
+         '${_clock(bestEnd)}.';
 }
 
 String _clock(int epochSec) {
@@ -956,8 +956,8 @@ class StatusCard extends StatelessWidget {
               (why.isNotEmpty
                   ? why
                   : need != null
-                      ? 'Not enough history yet to know what normal looks like for you.'
-                      : 'Nothing recorded says why this is missing.'),
+                      ? 'Not enough history to set your baseline yet.'
+                      : 'The app has no record of why this is missing.'),
       fix: need ?? '',
       onFix: onFix,
     );

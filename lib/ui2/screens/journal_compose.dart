@@ -115,7 +115,7 @@ class _JournalComposeState extends State<JournalCompose> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(l?.journalComposeNotReady ??
-                'Not ready yet — open the app first.')),
+                'Not ready. Open the app first.')),
       );
       return;
     }
@@ -130,7 +130,7 @@ class _JournalComposeState extends State<JournalCompose> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(l?.journalComposeSaveFailed ??
-                'Could not save it — check storage and retry.')),
+                'Could not save. Free up storage and try again.')),
       );
       return;
     }
@@ -757,7 +757,7 @@ class _WeightRow extends StatelessWidget {
             const SizedBox(height: S.x3),
             Text(
               l?.journalComposeWeightScaleNote ??
-                  'What you or your scale read. The band does not measure this.',
+                  'Enter what your scale shows. The band does not measure weight.',
               style: F.over.copyWith(color: P.of(dc).ink3, height: 1.4),
             ),
           ],
@@ -872,8 +872,8 @@ class _WeightTrendState extends State<_WeightTrend> {
         StatusCard(
           l?.journalComposeNotEnoughEntriesTitle ?? 'Not enough entries for a trend',
           l?.journalComposeNotEnoughEntriesBody ??
-              'The line is a seven-day average through what you entered, so it '
-                  'needs at least two days. Nothing is filled in between them.',
+              'The trend line is a seven-day average of your entries and needs '
+              'entries on at least two days. Days without an entry stay empty.',
           icon: LucideIcons.scale,
         ),
       ]);
@@ -908,7 +908,7 @@ class _WeightTrendState extends State<_WeightTrend> {
           yAxis: axis,
           xLabels: [days.first, days.last],
           footnote: l?.journalComposeTrendFootnote ??
-              'Entered by you. Days with no entry are left empty.',
+              'You enter this. Days with no entry stay empty.',
           series: vals,
           empty: axis == null ? const NoData() : null,
           child: axis == null
@@ -1057,8 +1057,8 @@ class _JournalAiSheetState extends State<_JournalAiSheet> {
                         child: Padding(
                           padding: const EdgeInsets.all(S.x4),
                           child: Text(
-                            'Tell it about your day — it proposes tags and a '
-                            'note, you decide what to keep.',
+                            'Describe your day. The AI proposes tags and a note, and you '
+                            'choose what to keep.',
                             textAlign: TextAlign.center,
                             style: F.body.copyWith(color: p.ink3),
                           ),

@@ -546,7 +546,7 @@ class _InvestigateState extends State<Investigate> {
           note?.isNotEmpty == true
               ? note!
               : (l?.investigateTooFewBeatsToBin ??
-                  'The night carried too few clean beats to bin.'),
+                  'Too few clean beats to split this night into bins.'),
           icon: LucideIcons.activity,
         ),
       ];
@@ -603,11 +603,11 @@ class _InvestigateState extends State<Investigate> {
           ],
           series: mid,
           footnote: l?.investigateShapeFootnote(drawn, bins.length) ??
-              '$drawn of ${bins.length} bins carried enough beats to '
-              'read; the rest are gaps, not zeroes. The outer pair is the '
-              "estimator's own sampling spread, not a range you were in. This "
-              'describes the night and cannot explain it — a low first third '
-              'is equally consistent with alcohol, a late meal, late training, '
+              '$drawn of ${bins.length} bins had enough beats to read. '
+              'The rest are gaps, not zeroes. '
+              "The outer pair is the estimator's own sampling spread, not a range you were in. "
+              'This describes the night and cannot explain it. '
+              'A low first third fits alcohol, a late meal, late training, '
               'a warm room, an illness starting, or nothing at all.',
           child: Stack(children: [
             Positioned.fill(
@@ -670,14 +670,14 @@ class _InvestigateState extends State<Investigate> {
         series: win,
         footnote: beats is num
             ? (l?.investigateDcFootnoteWithBeats(thousands(beats)) ??
-                'Your own nights only — no reference range, and none exists '
-                    'for pulse arrivals. Night-to-night signal quality moves '
-                    'this line on its own, and last night was '
-                    '${thousands(beats)} beats.')
+                'This line compares only your own nights. No reference range exists '
+                'for pulse arrivals. Signal quality varies by night and moves '
+                'this line on its own; last night counted '
+                '${thousands(beats)} beats.')
             : (l?.investigateDcFootnote ??
-                'Your own nights only — no reference range, and none exists '
-                    'for pulse arrivals. Night-to-night signal quality moves '
-                    'this line on its own.'),
+                'This line compares only your own nights. No reference range exists '
+                'for pulse arrivals. Signal quality varies by night and moves '
+                'this line on its own.'),
         child: CustomPaint(
           size: Size.infinite,
           // p.ink3, not an accent. A colour here would be a verdict.
@@ -775,9 +775,9 @@ class _InvestigateState extends State<Investigate> {
             'No resting breathing rate away from sleep',
         l?.investigateNoRestingBreathingRateBody ??
             'This reads breathing only from three-minute stretches where the '
-                'band saw you almost completely still, outside the sleep '
-                'window. Most days have none — a day with none is a day you '
-                'were moving, not a day anything went wrong.',
+            'band saw you almost completely still, outside the sleep '
+            'window. Most days have none because you were moving '
+            'throughout.',
         icon: LucideIcons.wind,
       ),
     ];
@@ -816,10 +816,9 @@ class _InvestigateState extends State<Investigate> {
         elevation: 0,
         child: Text(
           l?.investigateFloorNotRateBody ??
-              'A floor, not a rate for the day. Only stretches where you were '
-              'almost completely still can be read at all, so these are the '
-              'stillest few minutes the band saw outside your sleep — nothing '
-              'here describes the rest of your day, and breathing while you '
+              'These are the stillest few minutes the band saw outside your '
+              'sleep, the only stretches where breathing can be read. They '
+              'say nothing about the rest of your day. Breathing while you '
               'move cannot be recovered from beat timing.',
           style: F.cap.copyWith(color: P.of(context).ink2, height: 1.6),
         ),
@@ -950,7 +949,7 @@ class _InvestigateState extends State<Investigate> {
           m.note?.isNotEmpty == true
               ? m.note!
               : (l?.investigateNeedsSeveralNights ??
-                  'This needs several nights with a few observed hours each.'),
+                  'This view needs more nights, each with enough observed hours to count cycles.'),
           icon: LucideIcons.wind,
         ),
       ];
@@ -979,41 +978,38 @@ class _InvestigateState extends State<Investigate> {
           Text(
             v.aboveOwnUsual
                 ? (l?.investigateCvhrAboveUsual(n) ??
-                    'Over your most recent nights, the heart-rate cycling '
-                        'this screen counts has been running higher than '
-                        'across the $n nights behind it.')
+                    'Heart-rate cycling over your most recent nights is '
+                    'higher than across the $n nights before them.')
                 : (l?.investigateCvhrInsideUsual(n) ??
-                    'Over your most recent nights, the heart-rate cycling '
-                        'this screen counts has stayed inside the range of '
-                        'the $n nights behind it.'),
+                    'Heart-rate cycling over your most recent nights is '
+                    'within the range of the $n nights before them.'),
             style: F.body.copyWith(color: p.ink, height: 1.5),
           ),
           const SizedBox(height: S.x3),
           Text(
             l?.investigateCvhrExplainer ??
-                'It is a pattern in your pulse, not a measurement of your '
-                'breathing, and it is not a test for anything. The same '
-                'cycling comes from an irregular rhythm, from being at '
-                'altitude, and from any broken-up night — and beta-blockers, '
-                'diabetes and nerve conditions flatten it, so genuinely '
-                'disturbed breathing often leaves nothing here at all.',
+                'This is a pattern in your pulse. It does not measure your '
+                'breathing and is not a test for anything. An irregular rhythm, '
+                'altitude and any broken-up night produce the same '
+                'cycling. Beta-blockers, '
+                'diabetes and nerve conditions flatten it, so disturbed '
+                'breathing can leave nothing here at all.',
             style: F.cap.copyWith(color: p.ink2, height: 1.6),
           ),
           const SizedBox(height: S.x3),
           Text(
             l?.investigateCvhrNotNegativeResult ??
-                'So nothing here is a negative result and nothing here '
-                'clears anything, and none of it says anything about any one '
-                'night — a single night’s count moves for a dozen reasons on '
-                'its own.',
+                "A low or unchanged count does not rule anything out. "
+                "It says nothing about any one night, because a single "
+                "night's count varies on its own.",
             style: F.cap.copyWith(color: p.ink2, height: 1.6),
           ),
           const SizedBox(height: S.x3),
           Text(
             l?.investigateCvhrSeeClinicianIfSymptoms ??
                 'If you snore, wake unrefreshed, or someone has seen you '
-                'stop breathing in your sleep, a clinician can test that '
-                'properly.',
+                'stop breathing in your sleep, ask a clinician '
+                'about a sleep test.',
             style: F.cap.copyWith(color: p.ink2, height: 1.6),
           ),
           if (dropped.isNotEmpty) ...[

@@ -806,7 +806,7 @@ void main() {
           reason: 'the night WAS scored — a cause nobody gave this screen');
       expect(find.textContaining('Wear the band through the day'), findsNothing,
           reason: 'an action that cannot change the outcome is worse than none');
-      expect(find.textContaining('Nothing recorded says why'), findsOneWidget);
+      expect(find.textContaining('No record explains why this day has no strain'), findsOneWidget);
 
       // The same absence WITH the pipeline's reason attached renders that
       // reason, and still offers nothing to tap — no button can fix it.
@@ -815,7 +815,7 @@ void main() {
           coveragePct: 89,
           note: 'unknown_device_family:id=none'));
       expect(find.textContaining('which strap'), findsOneWidget);
-      expect(find.textContaining('Nothing recorded says why'), findsNothing);
+      expect(find.textContaining('No record explains why this day has no strain'), findsNothing);
 
       // A day the band genuinely never saw is the ONE state where "wear the
       // band" is an instruction rather than an insult, so it survives there.
@@ -942,7 +942,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(find.text('—'), findsNothing);
-      expect(find.textContaining('vessels the sensor reads through'),
+      expect(find.textContaining('blood vessels in your wrist'),
           findsOneWidget);
       expect(find.text('Check band connection'), findsNothing,
           reason: 'there is no connection to check — the blood moved');
@@ -1667,7 +1667,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('per 30 min'), findsNothing);
       expect(find.textContaining('Calories need your weight'), findsNothing);
-      expect(find.textContaining('No estimate up front'), findsOneWidget);
+      expect(find.textContaining('No estimate is shown up front'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -1698,7 +1698,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('MET,'), findsNothing);
       expect(find.textContaining('MET and your weight'), findsNothing);
-      expect(find.textContaining('No MET is in this figure'), findsOneWidget);
+      expect(find.textContaining('no MET (metabolic equivalent) value applies'), findsOneWidget);
 
       // WITHOUT calories: the missing-anchors explanation is the one that
       // applies, and it is about heart rate, not about a MET either.
@@ -1715,7 +1715,7 @@ void main() {
           Brightness.light,
           1.0));
       await tester.pumpAndSettle();
-      expect(find.textContaining('No calorie figure for this session'),
+      expect(find.textContaining('No calories for this session'),
           findsOneWidget);
       expect(tester.takeException(), isNull);
     });

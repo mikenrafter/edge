@@ -96,8 +96,8 @@ class BreathPattern {
 const _resonance = BreathPattern(
   key: 'resonance',
   label: 'Resonance',
-  description: 'Even in and out at about 5.5 breaths a minute. The one with a '
-      'coherence score.',
+  description: 'Equal inhale and exhale at about 5.5 breaths a minute. '
+               'This pattern gets a coherence score.',
   phases: [
     BreathPhase(BreathPhaseKind.inhale, 5.45),
     BreathPhase(BreathPhaseKind.exhale, 5.45),
@@ -110,8 +110,7 @@ const kBreathPatterns = <BreathPattern>[
   BreathPattern(
     key: 'box',
     label: 'Box',
-    description: 'Four counts each way, holds included. Steadying when your '
-        'head is racing.',
+    description: 'Four counts each for inhale, hold, exhale and hold.',
     phases: [
       BreathPhase(BreathPhaseKind.inhale, 4),
       BreathPhase(BreathPhaseKind.holdIn, 4),
@@ -122,8 +121,7 @@ const kBreathPatterns = <BreathPattern>[
   BreathPattern(
     key: 'four_seven_eight',
     label: '4-7-8',
-    description: 'A long hold and a longer exhale. Usually used to get to '
-        'sleep.',
+    description: 'Inhale for 4, hold for 7, exhale for 8.',
     phases: [
       BreathPhase(BreathPhaseKind.inhale, 4),
       BreathPhase(BreathPhaseKind.holdIn, 7),
@@ -133,8 +131,7 @@ const kBreathPatterns = <BreathPattern>[
   BreathPattern(
     key: 'extended_exhale',
     label: 'Long exhale',
-    description: 'Out for twice as long as in. No holds, so it is easy to keep '
-        'up for a while.',
+    description: 'Inhale for 4, exhale for 8. No holds.',
     phases: [
       BreathPhase(BreathPhaseKind.inhale, 4),
       BreathPhase(BreathPhaseKind.exhale, 8),
@@ -182,7 +179,7 @@ BreathPattern intervalPattern({
 }) => BreathPattern(
   key: 'interval',
   label: 'Interval',
-  description: 'Work and rest, buzzed at each change.',
+  description: 'Alternates work and rest periods. The band buzzes at each change.',
   phases: [
     BreathPhase(BreathPhaseKind.work, work.inMilliseconds / 1000),
     if (rest > Duration.zero)

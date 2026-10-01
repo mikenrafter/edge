@@ -327,8 +327,8 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
       chip
           ? (l?.dayStepsStrapCounterBody(thousands(d.dayTotal), when) ??
                 'The ${thousands(d.dayTotal)} steps counted $when came from the '
-                    'strap\'s own step counter, which reports a running day total '
-                    'and no times. There is nothing to place on a clock.')
+                'strap\'s step counter. It reports a running day total with no '
+                'times, so the steps cannot be placed on a clock.')
           : whyFromNote(d.note, unit: 'days') ??
                 (l?.dayStepsNothingCounted(when) ??
                     'Nothing that can count steps recorded $when.'),
@@ -421,17 +421,16 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
     final l = AppLocalizations.of(c);
     return d.mixed
         ? (l?.dayStepsHonestyMixed ??
-              'Counted at your wrist and by your phone, and the two miscount '
-                  'differently: a wrist reads a real walk low and can read rhythmic '
-                  'hand work as walking, while a phone counts only the steps you had '
-                  'it on you for.')
+              'Steps come from your wrist and your phone. A wrist reads a real walk '
+              'low and can count rhythmic hand work as walking. A phone counts only '
+              'the steps taken while you had it on you.')
         : d.strap > 0
         ? (l?.dayStepsHonestyStrap ??
-              'Counted at your wrist, where a real walk tends to read low and '
-                  'rhythmic hand work can read as walking.')
+              'Counted at your wrist. A real walk tends to read low, and '
+              'rhythmic hand work can read as walking.')
         : (l?.dayStepsHonestyPhone ??
-              'Counted by your phone, so only the steps you had it on you for '
-                  'are here.');
+              'Counted by your phone, so only steps taken while you carried it '
+              'are here.');
   }
 
   // ── the stretches themselves ───────────────────────────────────────────────

@@ -338,7 +338,7 @@ String? staleOvernightNote(Map<String, dynamic> today, [AppLocalizations? l]) {
   if (heldOverNightOf(today) == null) return null;
   final st = today['status'];
   return (st is Map ? st['overnight_state']?.toString() : null) == 'building'
-      ? l?.homeOvernightBuilding ?? 'Last night is still being worked out.'
+      ? l?.homeOvernightBuilding ?? 'Last night is still being processed.'
       : l?.homeOvernightNothingYet ??
           'Nothing from last night has reached the app yet.';
 }
@@ -508,9 +508,9 @@ StatusCard? dbRebuiltCard(DbRebuild? r, [AppLocalizations? l]) {
 StatusCard workoutHoldCard([AppLocalizations? l]) => StatusCard(
       l?.homeWorkoutHoldTitle ?? 'A workout is still running',
       l?.homeWorkoutHoldBody ??
-          'Today is on hold while a workout is live: the band keeps recording, '
-          'but the numbers are computed once the session ends. Finish the workout '
-          'from the bar below and today fills in — syncing will not.',
+          'Today stays empty while a workout is live. The band keeps recording, '
+          'and the app computes today\'s numbers when the session ends. Finish the workout '
+          'from the bar below. Syncing does not fill today in.',
       icon: LucideIcons.timer,
     );
 
@@ -526,10 +526,10 @@ StatusCard? staleInsightsCard(
           'How these are computed changed with the last update.',
       'stale' => built == null || built.isEmpty
           ? (l?.homeInsightsStaleOverWeek ??
-              'The last rollup was built over a week ago, which is too old to stand behind.')
+              'The last summary of past days was built over a week ago. It is too old to show.')
           : (l?.homeInsightsStaleOnDay(prettyDay(built, l)) ??
-              'The last rollup was built on ${prettyDay(built, l)}, which is too old to stand behind.'),
-      _ => l?.homeInsightsNoVersionStamp ?? 'The stored rollup carries no version stamp.',
+              'The last summary of past days was built on ${prettyDay(built, l)}. It is too old to show.'),
+      _ => l?.homeInsightsNoVersionStamp ?? 'The stored summary has no version number.',
     },
     fix: onSync == null ? '' : (l?.homeSyncBand ?? 'Sync the band'),
     icon: LucideIcons.refreshCw,
@@ -989,7 +989,7 @@ _RingState _gap(HomeRingKind k, String label, IconData icon, Color color,
       why: whyFromNote(m.note, unit: unit) ??
           (fallbackWhy.isNotEmpty
               ? fallbackWhy
-              : (l?.homeGapNoReason ?? 'Nothing recorded says why this is missing.')));
+              : (l?.homeGapNoReason ?? 'The app has no record of why this is missing.')));
 }
 
 /// The dial itself. An empty [frac] draws the track and nothing else — which is
@@ -1488,23 +1488,23 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     if (syncing) {
       return StatusCard(
         l?.homeSyncingTitle ?? 'Syncing with your band',
-        l?.homeSyncingBody ?? 'Pulling data now — this can take a few minutes '
-            'on a full backlog.',
+        l?.homeSyncingBody ?? 'Downloading data from the band. '
+                              'A full backlog can take a few minutes.',
         leading: spinner,
       );
     }
     if (deriving) {
       return StatusCard(
-        l?.homeAnalyzingTitle ?? 'Crunching last night\'s numbers',
-        l?.homeAnalyzingBody ?? 'The data is in — sleep, recovery and strain '
-            'are next.',
+        l?.homeAnalyzingTitle ?? 'Processing last night\'s data',
+        l?.homeAnalyzingBody ?? 'The data has arrived. '
+                                'Sleep, recovery and strain are computed next.',
         leading: spinner,
       );
     }
     if (_syncTapped) {
       return StatusCard(
         l?.homeConnectingTitle ?? 'Connecting to your band',
-        l?.homeConnectingBody ?? 'Hang on — this usually takes a few seconds.',
+        l?.homeConnectingBody ?? 'This usually takes a few seconds.',
         leading: spinner,
       );
     }
@@ -1588,8 +1588,8 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
           StatusCard(
             l?.homeLoadFailedTitle ?? 'Today could not be read',
             l?.homeLoadFailedBody ??
-                'The stored day failed to load. Nothing was deleted — this is a '
-                'read that went wrong, not missing data.',
+                'The stored day failed to load. Nothing was deleted, '
+                'and the data is still on this device.',
             fix: l?.homeTryAgain ?? 'Try again',
             icon: LucideIcons.databaseZap,
             onFix: () {
@@ -1774,7 +1774,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
                   // absence the note convention did not cover. The door below
                   // is what actually answers it.
                   : whyFromNote(d.readiness.note) ??
-                      (l?.homeReadinessNoReason ?? 'Nothing recorded says why.'),
+                      (l?.homeReadinessNoReason ?? 'No reason was recorded.'),
               fix: l?.homeSeeWhatWasMissing ?? 'See what was missing',
               icon: LucideIcons.batteryCharging,
               onFix: () => go(c, const ReadinessDetail()),
@@ -1837,28 +1837,28 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     return [
       Observation(
         state == 'red'
-            ? (l?.homeIllnessRedTitle ?? 'Several nights in a row are away from your normal')
+            ? (l?.homeIllnessRedTitle ?? 'Several nights in a row were outside your normal range')
             : sameNight
-                ? (l?.homeIllnessAmberSameNight ?? 'Last night sat outside your normal range')
+                ? (l?.homeIllnessAmberSameNight ?? 'Last night was outside your normal range')
                 : (l?.homeIllnessAmberOtherNight(prettyDay(d.illnessDay, l)) ??
-                    '${prettyDay(d.illnessDay, l)} sat outside your normal range'),
+                    '${prettyDay(d.illnessDay, l)} was outside your normal range'),
         z == null
             ? (l?.homeIllnessBodyNoZ ??
-                'Your nocturnal resting heart rate has been running above your own '
-                'baseline. This reads one signal. It names a pattern, and it does '
-                'not name a cause.')
+                'Your resting heart rate during sleep has been above your own '
+                'baseline. This uses one signal and cannot tell '
+                'you the cause.')
             : (z >= 0
                 ? (l?.homeIllnessBodyAbove(zAbs) ??
-                    'Your nocturnal resting heart rate has been running above your own '
-                    'baseline; that night sat $zAbs standardised deviations above it. '
-                    'This reads one signal. It names a pattern, and it does not name '
-                    'a cause.')
+                    'Your resting heart rate during sleep has been above your own '
+                    'baseline. That night was $zAbs standard deviations above it. '
+                    'This uses one signal and cannot tell '
+                    'you the cause.')
                 : (l?.homeIllnessBodyBelow(zAbs) ??
-                    'Your nocturnal resting heart rate has been running above your own '
-                    'baseline; that night sat $zAbs standardised deviations below it. '
-                    'This reads one signal. It names a pattern, and it does not name '
-                    'a cause.')),
-        advice: l?.homeIllnessAdvice ?? 'Worth noting if it continues past a couple of days.',
+                    'Your resting heart rate during sleep has moved away from your own '
+                    'baseline. That night was $zAbs standard deviations below it. '
+                    'This uses one signal and cannot tell '
+                    'you the cause.')),
+        advice: l?.homeIllnessAdvice ?? 'Watch it if it lasts more than two days.',
         onTap: () => go(c, const MetricDetail('resting_hr')),
       ),
       const SizedBox(height: S.x3),
@@ -1919,7 +1919,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       () => StatusCard.forMetric(l?.homeNoRestingHr ?? 'No resting heart rate', d.rhr,
           why: d.sleepMin.isEmpty
               ? (l?.homeNoRestingHrWhy ??
-                  'Resting heart rate is read from sleep, and no sleep was recorded.')
+                  'Resting heart rate comes from sleep, and no sleep was recorded.')
               : ''),
     );
     // Steps keeps its tile whether or not a counter reported. Zero steps is a
@@ -2065,7 +2065,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
                 // is a wrong answer when the baselines exist and are being
                 // withheld.
                 why: d.insightsStale != null
-                    ? (l?.homeNoPlanWhyStale ?? 'The cross-day rollup they come from is being rebuilt.')
+                    ? (l?.homeNoPlanWhyStale ?? 'The cross-day summary they come from is being rebuilt.')
                     : (l?.homeNoPlanWhyNone ?? 'None are established yet.')) ??
             const SizedBox.shrink()
         : Surface(

@@ -18,17 +18,17 @@ void main() {
         );
         expect(
           AlertCapabilityRegistry.summary(rule.copyWith(destinations: 1)),
-          'On phone — system scheduled',
+          'On phone, scheduled by the system',
         );
         expect(
           AlertCapabilityRegistry.summary(rule.copyWith(destinations: 2)),
-          'On band — phone must be connected',
+          'On band, phone must be connected',
         );
         final both = AlertCapabilityRegistry.summary(
           rule,
           bandConnected: false,
         );
-        expect(both, contains('On phone — system scheduled'));
+        expect(both, contains('On phone, scheduled by the system'));
         expect(both, contains('Band disconnected'));
       }
     },
@@ -37,7 +37,7 @@ void main() {
     final rule = NotificationPrefs.legacyRule('health', true, 3);
     expect(
       AlertCapabilityRegistry.summary(rule),
-      'On phone — Edge must be running; On band — phone must be connected',
+      'On phone, Edge must be running; On band, phone must be connected',
     );
     expect(
       AlertCapabilityRegistry.destinationSupportReason(rule, 'phone'),
@@ -71,7 +71,7 @@ void main() {
           bandConnected: false,
           supportedBandModes: knownNative,
         ),
-        'On band — works without phone',
+        'On band, works without phone',
       );
       expect(
         AlertCapabilityRegistry.destinationSupportReason(rule, 'phone'),

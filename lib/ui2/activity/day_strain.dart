@@ -218,7 +218,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
         ] else ...[
           ..._trace(p, l, d),
           ..._zones(p, l, d),
-          Section(l?.dayStrainInputsSection ?? 'What this is made of',
+          Section(l?.dayStrainInputsSection ?? 'What day strain is built from',
               _inputs(p, l, d)),
         ],
       ],
@@ -256,10 +256,10 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
           s == null
               ? why ??
                   (l?.dayStrainNoReasonBody ??
-                      'Nothing recorded says why this day produced no strain.')
+                      'No record explains why this day has no strain.')
               : (l?.dayStrainScoredNoTraceBody(s.toStringAsFixed(1)) ??
-                  'The day strain is ${s.toStringAsFixed(1)}. The waking minutes '
-                      'it was built from are not stored for this day.'),
+                  'Day strain is ${s.toStringAsFixed(1)}. '
+                  'This day has no stored waking minutes to chart.'),
           fix: (s == null && !saw)
               ? (l?.dayStrainWearBandFix ?? 'Wear the band through the day')
               : '',
@@ -280,10 +280,9 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             xLabels: const ['00:00', '12:00', '24:00'],
             series: d.curve,
             footnote: l?.dayStrainChartFootnote(drawn) ??
-                'Effort banked above your usual waking pace — it can ease '
-                    'later in the day if intensity drops back toward that '
-                    'pace, even though the STEEP parts already happened. '
-                    'Built from $drawn recorded waking minutes.',
+                'Effort above your usual waking pace. The line can fall later in the day '
+                'if intensity returns to that pace. '
+                'Built from $drawn recorded waking minutes.',
             child: CustomPaint(
               size: Size.infinite,
               painter: LineChart(d.curve, p.on(C.purple),
@@ -309,11 +308,11 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
           padding: const EdgeInsets.only(top: S.x4),
           child: StatusCard(
             l?.dayStrainLowCoverageTitle(d.coveragePct!) ??
-                'The band saw ${d.coveragePct}% of this day',
+                'The band recorded ${d.coveragePct}% of this day',
             l?.dayStrainLowCoverageBody ??
-                'Strain is a total over the minutes that were recorded, so a '
-                    'partly-worn day reads lower than a full one and the two are '
-                    'not comparable.',
+                'Strain sums the recorded minutes, so a partly worn day scores '
+                'lower than a fully worn day. '
+                'Do not compare the two.',
             icon: LucideIcons.watch,
           ),
         ),
@@ -354,7 +353,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
         // Progressive disclosure: this day screen gains a LINK, not a row. The
         // ceiling, the edges in bpm and the 28-day distribution are all one tap
         // behind it.
-        action: l?.dayStrainHowSet ?? 'How these are set',
+        action: l?.dayStrainHowSet ?? 'How strain is calculated',
         onAction: () => Navigator.of(context)
             .push(MaterialPageRoute(builder: (_) => const ZonesDetail())),
       ),
@@ -370,24 +369,23 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
       child: Text(
         [
           l?.dayStrainInputsBase ??
-              'Banister TRIMP over your waking heart rate, scaled to 0–21.',
+              'Banister TRIMP (training impulse) over your waking heart rate, scaled to 0–21.',
           if (max != null)
             l?.dayStrainInputsMaxHr(max.round()) ??
-                'It was integrated against an assumed maximum of '
-                    '${max.round()} bpm — estimated from your age and your strap, '
-                    'not measured.',
+                'Strain uses an assumed maximum heart rate of '
+                '${max.round()} bpm, estimated from your age and your strap.',
           // Said out loud because the zone bar above can now be banded on a
           // MEASURED ceiling while this number is still the age estimate, and
           // two different ceilings on one screen with nothing saying so is
           // exactly the defect TS-03a removed.
           if (max != null && d.zoneSource != null && d.zoneSource != 'tanaka')
             l?.dayStrainInputsMeasuredCeilingNote ??
-                'The zone bar above uses the measured ceiling instead; strain has '
-                    'not been moved onto it, because that would rewrite every '
-                    'strain score you have ever seen.',
+                'The zone bar above uses the highest heart rate recorded for you. '
+                'Strain keeps the assumed maximum, because changing it '
+                'would alter every past strain score.',
           l?.dayStrainInputsRhrAnchor ??
-              'The other anchor is your resting heart rate from the night before, '
-                  'so a night the band missed moves the whole day.',
+              'The other input is your resting heart rate from the night before. '
+              'If the band missed that night, the strain for the whole day shifts.',
         ].join(' '),
         style: F.cap.copyWith(color: p.ink3, height: 1.5),
       ),

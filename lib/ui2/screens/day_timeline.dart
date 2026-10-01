@@ -923,8 +923,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d) {
       StatusCard(
         l?.dayTimelineNothingRecordedTitle ?? 'Nothing was recorded on this day',
         l?.dayTimelineNothingRecordedBody ??
-            'No sleep, no session, no log and no band event carrying a time. A day '
-                'with nothing on it is usually a day the band was off.',
+            'This day has no sleep, session, log or timed band event. '
+            'The band was probably off.',
         icon: LucideIcons.circleSlash,
       )
     else ...[
@@ -988,8 +988,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d) {
           padding: const EdgeInsets.only(top: S.x2, left: S.x1),
           child: Text(
             l?.dayTimelineNoTimeNote ??
-                'These were recorded against the day and carry no time of day, so '
-                    'they are not placed on it.',
+                'These entries belong to this day but have no time of day, so '
+                'they are not on the timeline.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
           ),
         ),
@@ -997,8 +997,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d) {
     const SizedBox(height: S.x4),
     Text(
       l?.dayTimelinePatternsNote ??
-          'Patterns in your own logs, not causes. Two things next to each other '
-              'here happened near each other, which is all this page claims.',
+          'Items shown together happened close in time in your own logs. '
+          'That does not show one caused the other.',
       style: F.over.copyWith(color: p.ink3, height: 1.5),
     ),
   ];

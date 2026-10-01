@@ -5477,7 +5477,7 @@ class DerivationEngine {
           priority: NotifPriority.critical,
           title: one
               ? findings.first.title
-              : '${findings.length} things to look at',
+              : '${findings.length} findings to review',
           body: one
               ? findings.first.detail
               : findings.map((f) => '• ${f.title} — ${f.detail}').join('\n'),
@@ -6366,21 +6366,16 @@ class DerivationEngine {
                 ],
       'note': haveRealSteps
           ? (useBand
-              ? 'the strap\'s own on-chip pedometer, summed from its cumulative '
-                  'counter; wrapped and reset boundaries contribute nothing '
-                  'rather than a guess'
+              ? 'Steps from the strap\'s on-chip pedometer, summed from its cumulative counter. '
+                'Intervals where the counter wrapped or reset add no steps.'
               : (strap > 0 && phone > 0)
-                  ? 'counted over measured windows only, each window by the '
-                      'better sensor that was actually recording it — the '
-                      'strap while it streamed, your phone the rest of the '
-                      'time. Overlaps are counted once, and time no sensor '
-                      'covered is not counted rather than estimated'
-                  : 'real pedometer count over measured windows only; time '
-                      'outside those windows is not counted rather than '
-                      'estimated')
-          : 'no step count: nothing that can resolve gait measured this day. '
-              'A 1 Hz wrist stream cannot count steps, so no number is shown '
-              'instead of an invented one',
+                  ? 'Counted over measured windows only. In each window the better sensor '
+                    'that was recording supplies the count: the strap while it streamed, '
+                    'your phone the rest of the time. Overlaps count once. Time that no '
+                    'sensor covered is left out and is not estimated.'
+                  : 'Pedometer count over measured windows only. Time outside those windows adds no steps.')
+          : 'No step count: no sensor that can resolve gait recorded this day. '
+            'A 1 Hz wrist stream cannot count steps, so the app shows no number.',
     };
   }
 
@@ -6491,8 +6486,7 @@ class DerivationEngine {
         'inputs_used': const ['dyn_amp_1hz', 'personal_dyn_floor'],
         'note': v == null
             ? (est.note ?? 'need_baseline')
-            : 'minutes of sustained wrist movement — activity volume, NOT '
-                'walking, and deliberately not converted to steps',
+            : 'Minutes of sustained wrist movement. This is activity volume, and the app does not convert it to steps.',
       };
       // ENERGY IS NOT COMPUTED HERE. `_applyWakeDayFeatures` has already
       // published `calories`, `calories_total` and the TDEE block from the
@@ -6782,10 +6776,9 @@ class DerivationEngine {
         'confidence': 0.6,
         'tier': 'ESTIMATE',
         'inputs_used': const ['accel_1hz'],
-        'note': 'minutes of wrist movement over wake (1 Hz). This is activity '
-            'volume, NOT walking, and is never converted to steps: at the '
-            'wrist, arm work registers as strongly as ambulation. Real step '
-            'counts come only from the 100 Hz or phone pedometer',
+        'note': 'Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, '
+                'because at the wrist arm work registers as strongly as walking. '
+                'Step counts come only from the 100 Hz stream or the phone pedometer.',
       },
       'activity_curve': _activityCurve(daySub),
       'zones': zones,
@@ -7519,11 +7512,10 @@ class DerivationEngine {
       'minutes': (sec / 60).round(),
       'spans': spans,
       'note':
-          'the strap was charging for part of this night. it stayed on your '
-          'wrist and kept recording, so heart rate and beat timing are '
-          'measured as usual — but the pack warms the strap, so this night\'s '
-          'skin temperature is not comparable to a night without it, and '
-          'clipping the pack on and off registers as wrist movement.',
+          'The strap charged for part of this night. It stayed on your wrist and kept recording, '
+          'so heart rate and beat timing are measured as usual. '
+          'The charge pack warms the strap, so this night\'s skin temperature does not compare with nights without it. '
+          'Clipping the pack on and off registers as wrist movement.',
     };
   }
 
@@ -7644,7 +7636,7 @@ class DerivationEngine {
       // no reader knows how to rank.
       'tier': ana.Tier.auth,
       'inputs_used': const ['user'],
-      'note': '$note — showing what you logged',
+      'note': '$note. Showing what you logged.',
     };
     scMap?['nap_min'] = napMinutes(merged).toDouble();
     return [
@@ -8573,9 +8565,9 @@ class DerivationEngine {
         'epochs': tilts.length,
         'confidence': 'low',
         'tier': ana.Tier.relative,
-        'note': 'WRIST orientation during sleep (gravity-tilt). A body-position '
-            'PROXY, NOT supine/side/prone body position — the wrist moves '
-            'independently of the torso.',
+        'note': 'Wrist orientation during sleep, from gravity tilt. '
+                'It cannot tell supine, side or prone position, '
+                'because the wrist moves independently of the torso.',
       };
     } catch (e) {
       if (kDebugMode) debugPrint('[derive] wrist-orientation FAILED/skipped: $e');

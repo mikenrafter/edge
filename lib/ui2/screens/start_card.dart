@@ -90,7 +90,7 @@ class StartCard extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final subText = sub ?? (l?.startCardDefaultSub ?? 'Pick one and go');
+    final subText = sub ?? (l?.startCardDefaultSub ?? 'Pick a session');
     // No side radius when bleeding — a rounded corner against the screen edge
     // reads as a card that failed to fit.
     final card = Pressable(

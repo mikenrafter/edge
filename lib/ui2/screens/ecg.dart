@@ -184,8 +184,7 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
             StatusCard(
               l?.ecgHistoryEmpty ?? 'No readings yet.',
               l?.ecgHistoryEmptyWhy ??
-                  'Readings you take are saved here and stay readable while '
-                      'the band is away.',
+                  'Your saved readings appear here and open without the band connected.',
               icon: LucideIcons.activity,
             ),
           if (_readings.isNotEmpty)
@@ -662,8 +661,8 @@ class EcgCaptureBody extends StatelessWidget {
               const SizedBox(height: S.x3),
               body(
                 l?.ecgCleanupIncomplete ??
-                    'The band may still be generating. It will be stopped on '
-                        'the next connection.',
+                    'The band may still be recording. The app will stop it on '
+                    'the next connection.',
               ),
             ],
             const SizedBox(height: S.x6),
@@ -730,8 +729,8 @@ class EcgCaptureBody extends StatelessWidget {
               const SizedBox(height: S.x3),
               body(
                 l?.ecgCleanupIncomplete ??
-                    'The band may still be generating. It will be stopped on '
-                        'the next connection.',
+                    'The band may still be recording. The app will stop it on '
+                    'the next connection.',
               ),
             ],
             const SizedBox(height: S.x6),

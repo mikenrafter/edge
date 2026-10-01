@@ -67,8 +67,7 @@ List<AiReminderSlot> aiReminderPlan(
       out.add(AiReminderSlot(
         id: NotificationService.idMorningBrief,
         title: 'Your morning briefing is ready',
-        body: 'Tap for last night\'s sleep, recovery and what it means for '
-            'today.',
+        body: 'Tap to read last night\'s sleep and recovery summary.',
         route: kRouteAiMorning,
         hour: m ~/ 60,
         minute: m % 60,
@@ -93,9 +92,9 @@ List<AiReminderSlot> aiReminderPlan(
     final m = prefs.resolvedJournalMin(bedtimeMinOfDay: bedtimeMinOfDay);
     out.add(AiReminderSlot(
       id: NotificationService.idJournalLog,
-      title: 'About your bedtime — log your day',
-      body: 'A minute of notes tonight teaches OpenStrap what actually moves '
-          'your recovery.',
+      title: 'Log your day before bed',
+      body: 'OpenStrap compares your journal tags with your recovery scores. '
+            'Notes take about a minute.',
       route: kRouteJournalCompose,
       hour: m ~/ 60,
       minute: m % 60,

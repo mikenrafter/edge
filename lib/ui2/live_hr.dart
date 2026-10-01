@@ -163,9 +163,8 @@ class LiveHrCard extends StatelessWidget {
           ),
           const SizedBox(height: S.x2),
           Text(
-            'The last ${trace.length} readings — ${trace.reduce(math.min)}'
-            '–${trace.reduce(math.max)} bpm. Not stored; this is '
-            'the live stream, not a record of your day.',
+            'The last ${trace.length} readings, ${trace.reduce(math.min)}'
+            ' to ${trace.reduce(math.max)} bpm. The live stream is not saved.',
             style: F.over.copyWith(color: p.ink3),
           ),
         ],
@@ -181,8 +180,8 @@ class LiveHrCard extends StatelessWidget {
         : !connected
             ? (
                 'Your band is not connected.',
-                'Live beats need an open link — the app connects when you open '
-                    'it with the band in range.'
+                'The app connects when you open it with the band in range. '
+                'Live beats need that connection.'
               )
             : (
                 'No beat in the last ${AppState.liveHrMaxAge.inSeconds} '

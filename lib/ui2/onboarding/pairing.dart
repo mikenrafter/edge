@@ -229,8 +229,8 @@ class PairingView extends StatelessWidget {
               const SizedBox(height: S.x2),
               Text(
                 AppLocalizations.of(c)?.pairingSkipNote ??
-                    'The app opens without a band. Nothing is measured until one '
-                        'is paired.',
+                    'The app opens without a band. It records nothing until '
+                    'you pair one.',
                 style: F.cap.copyWith(color: p.ink3),
               ),
             ],
@@ -264,18 +264,18 @@ class PairingView extends StatelessWidget {
           c, bandStatusFor(connection: 'disconnected', blocker: blocker))
         .reason,
       PairPhase.idle => l?.pairingIdleBody ??
-          'Take the band off the charger, put it on your wrist and keep the '
-              'phone within arm’s reach.',
+          "Take the band off the charger, put it on your wrist and keep the "
+          "phone within arm's reach.",
       PairPhase.scanning => l?.pairingScanningBody ??
-          'A band that has just come off the charger can take up to half a '
-              'minute to start advertising.',
+          'A band that just came off the charger can take a while to '
+          'show up in the scan.',
       PairPhase.notFound => l?.pairingNotFoundBody ??
-          'Nothing answered the scan. The band advertises only when it is '
-              'awake and not already connected to another phone.',
+          'No band answered the scan. A band shows up only when it is '
+          'awake and not connected to another phone.',
       PairPhase.bondRefused => l?.pairingBondRefusedBody ??
-          'The link came up, but the band would not accept the encryption '
-              'key. That is almost always a stale pairing record on this '
-              'phone rather than a fault in the band.',
+          'The band rejected the encryption key. An old pairing record '
+          'on this phone causes this. Forget the band in Bluetooth '
+          'settings, then scan again.',
       PairPhase.cancelled => l?.pairingCancelledBody ??
           'The system picker was dismissed before a band was chosen.',
       PairPhase.failed => l?.pairingFailedBody ??
@@ -303,10 +303,10 @@ class PairingView extends StatelessWidget {
           const SizedBox(height: S.x6),
           StatusCard(
             l?.pairingNotFoundAdviceTitle ??
-                'Three things stop a band answering',
+                'Why the band does not answer',
             l?.pairingNotFoundAdviceBody ??
-                'It is still on the charger; it is out of range; or it is '
-                    'still connected to another phone or to the vendor app.',
+                'The band is on the charger, out of range, or connected to '
+                'another phone or the vendor app.',
             fix: l?.pairingNotFoundAdviceFix ??
                 'Force-quit the other app, then scan again',
             icon: LucideIcons.searchX,
@@ -318,9 +318,9 @@ class PairingView extends StatelessWidget {
             l?.pairingBondRefusedAdviceTitle ??
                 'Forget the band in Bluetooth settings first',
             l?.pairingBondRefusedAdviceBody ??
-                'Open the phone’s Bluetooth settings, forget the band, '
-                    'then scan again here. The refused key is the old pairing '
-                    'record, and only the system can clear it.',
+                "Open the phone's Bluetooth settings, forget the band, then "
+                "scan again here. The old pairing record caused the refused "
+                "key, and only the system can clear it.",
             fix: l?.pairingBondRefusedAdviceFix ?? 'Open Bluetooth settings',
             icon: LucideIcons.unlink,
           ),
@@ -335,7 +335,7 @@ class PairingView extends StatelessWidget {
             l?.pairingFailedAdviceTitle ??
                 'The band was found but the session did not finish',
             l?.pairingFailedAdviceBody ??
-                'Scanning again from a metre away normally works.',
+                'Scan again with the band about a metre from the phone.',
             icon: LucideIcons.triangleAlert,
           ),
           if (detail.isNotEmpty) ...[

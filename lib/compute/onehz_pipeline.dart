@@ -446,8 +446,8 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       : const Metric<NocturnalRhr>.absent(
           tier: Tier.high,
           inputs_used: ['hr_1hz', 'sleep_window'],
-          note: 'no sleep was scored for this day — resting HR is only ever '
-              'measured over a sleep window, never over waking hours',
+          note: 'No sleep was scored for this day. Resting HR is '
+                'measured only over a sleep window.',
         );
   // HR dip: day-side = waking HR outside the sleep window; night-side = sleep HR.
   final dayOnly = _dayHrOutsideSleep(d);
@@ -516,9 +516,9 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // oxygenation. No firmware capture and no packet work changes that; it is a
   // property of the bytes. The raw channels stay in the substrate because they
   // ARE the bytes at those offsets.
-  const kSpo2Refusal = 'refused: the red and IR channels are one signal — '
-      'ir − red is a fixed offset within a session, so any ratio built from '
-      'them measures baseline drift, not oxygenation';
+  const kSpo2Refusal = 'refused: within a session the IR channel is the red channel '
+                       'plus a fixed offset. A red/IR ratio therefore '
+                       'tracks baseline drift and cannot give blood oxygen';
   const odi = Metric<RelativeOdiResult>.absent(
     tier: Tier.relative,
     inputs_used: ['spo2_red_raw', 'spo2_ir_raw'],
@@ -1054,8 +1054,8 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       // _skinTempFor / _skinTempUnit for the read-side gate.
       'inputs_used': const ['skin_temp_raw', 'skin_temp_c'],
       'note':
-          'relative deviation (z) vs your baseline; raw sensor units, '
-          'never an absolute °C',
+          'Deviation (z-score) from your baseline, in raw sensor units. '
+          'Absolute °C is not available.',
     },
   };
 
@@ -1125,7 +1125,7 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
     'confidence': stress.present ? _round(stress.confidence, 4) : 0,
     'tier': Tier.estimate,
     'inputs_used': const ['rr_cleaned'],
-    'note': 'Baevsky Stress Index → 0–100; resting autonomic tension (PRV).',
+    'note': 'Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV).',
   };
 
   // ── SpO₂ — REFUSED, permanently. See kSpo2Refusal above: the red and IR

@@ -248,7 +248,7 @@ class CoachDb {
       }
       if (c == '"' || c == '`' || c == '[' || c == ']') {
         throw SqlGuardError(
-            'Quoted identifiers are not allowed — use bare view names.');
+            'Quoted identifiers are not allowed. Use bare view names.');
       }
       out.write(c);
       i++;
@@ -357,7 +357,7 @@ class CoachDb {
         if (!n.ident) {
           if (n.text == '(') {
             throw SqlGuardError(
-                'Subqueries in FROM are not allowed — query a view directly.');
+                'Subqueries in FROM are not allowed. Query a view directly.');
           }
           throw SqlGuardError('Expected a view name after FROM/JOIN.');
         }
@@ -459,7 +459,7 @@ class CoachDb {
   static Future<void> _assertAllowedBtrees(Database db, String sql) async {
     final allowed = await _allowedRootPages(db);
     if (allowed.isEmpty) {
-      throw SqlGuardError('Query surface unavailable.');
+      throw SqlGuardError('The coach database is unavailable.');
     }
     final Set<int> used;
     try {

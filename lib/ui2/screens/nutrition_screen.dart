@@ -223,7 +223,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (day == null || !day.logged)
           StatusCard(
             l?.nutritionEmptyTodayTitle ?? 'Nothing logged today',
-            l?.nutritionEmptyTodayBody ?? 'One tap is a complete log.',
+            l?.nutritionEmptyTodayBody ?? 'Add an entry with one tap. Numbers are optional.',
             fix: l?.nutritionLogOccasionFix ?? 'Log an eating occasion',
             icon: LucideIcons.utensils,
             onFix: _logFood,
@@ -280,11 +280,11 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (day != null && day.logged && day.kcal.isFloor) ...[
           const SizedBox(height: S.x4),
           StatusCard(
-            l?.nutritionFloorTitle ?? 'Today\'s energy is a floor, not a total',
+            l?.nutritionFloorTitle ?? 'Today\'s energy is a minimum',
             l?.nutritionFloorBody(day.kcal.unknown, day.entries.length) ??
-                '${day.kcal.unknown} of ${day.entries.length} occasions were '
-                    'logged without an energy figure, so the number above is '
-                    'the least you ate rather than what you ate.',
+                '${day.kcal.unknown} of ${day.entries.length} occasions have '
+                'no energy figure, so the number above is '
+                'a minimum.',
             fix: l?.nutritionAddNumbersFix ?? 'Add the numbers to an occasion',
             icon: LucideIcons.circleDashed,
             onFix: _logFood,
@@ -325,8 +325,8 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
             partial == 0
                 ? (l?.nutritionDaysLoggedLabel ?? 'Days with something logged')
                 : (l?.nutritionPartialExcluded(partial) ??
-                    '$partial logged but partial, so excluded from '
-                        'every average below'),
+                    '$partial partial, left out of '
+                    'every average below'),
             C.domFood,
           ),
         ),
@@ -545,7 +545,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         if (set.isEmpty)
           StatusCard(
             l?.nutritionNoTargetsTitle ?? 'No targets set',
-            l?.nutritionNoTargetsBody ?? 'A target here is one you type.',
+            l?.nutritionNoTargetsBody ?? 'Targets are values you enter.',
             fix: l?.nutritionSetTargetFix ?? 'Set a target',
             icon: LucideIcons.target,
             onFix: _editTargets,
@@ -629,19 +629,19 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         // completeness is a sentence the user can see is false.
         (m?.floorDays ?? 0) > 0
             ? (l?.nutritionFloorAverageBody(nutrient) ??
-                'Every complete day had an occasion logged without a '
-                    '$nutrient figure, so the average would only be a lower '
-                    'bound.')
+                'Every complete day has an entry with no '
+                '$nutrient figure, so an average would '
+                'be a minimum.')
             : (_week?.counted.length ?? 0) > 0
                 ? (l?.nutritionCountedNoFigureBody(
                         _week!.counted.length, _week!.span, nutrient) ??
                     '${_week!.counted.length} of the last ${_week!.span} days '
-                        'counted, but none of them carried a $nutrient '
-                        'figure.')
+                    'counted, but none had a $nutrient '
+                    'figure.')
                 : (l?.nutritionDayCountsRuleFull(_week?.span ?? 7) ??
                     'A day counts once every occasion carries a figure and '
-                        'the log reaches the evening. None of the last '
-                        '${_week?.span ?? 7} days has.'),
+                    'the log reaches the evening. None of the last '
+                    '${_week?.span ?? 7} days qualifies.'),
         fix: (m?.floorDays ?? 0) > 0 || (_week?.counted.length ?? 0) > 0
             ? (l?.nutritionAddNumbersFix ?? 'Add the numbers to an occasion')
             : (l?.nutritionLogOccasionFix ?? 'Log an eating occasion'),
@@ -901,8 +901,8 @@ class _Mean extends StatelessWidget {
       sub: mean.value == null
           ? (floors > 0
                 ? (l?.nutritionEveryDayNoFigure(label.toUpperCase()) ??
-                    'EVERY COMPLETE DAY HAD AN OCCASION WITH NO '
-                        '${label.toUpperCase()} FIGURE')
+                    'EVERY COMPLETE DAY HAD AN ENTRY WITH NO '
+                    '${label.toUpperCase()} FIGURE')
                 : (l?.nutritionNoDayRecorded(label.toUpperCase()) ??
                     'NO COMPLETE DAY RECORDED ${label.toUpperCase()}'))
           : (l?.nutritionMeanOfCompleteDaysCaps(n) ??
@@ -910,7 +910,7 @@ class _Mean extends StatelessWidget {
               (floors == 0
                   ? ''
                   : (l?.nutritionLeftOutAsFloor(floors) ??
-                      ' · $floors LEFT OUT AS A FLOOR')),
+                      ' · $floors AT-LEAST VALUES LEFT OUT')),
     );
   }
 }

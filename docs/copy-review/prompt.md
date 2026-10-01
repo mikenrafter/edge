@@ -33,8 +33,9 @@ For every row return one object with:
               reaches logs, debug output, assertions or telemetry. Developer
               docs and logs are out of scope. Still write the comments.
 - comment: one or two sentences saying what is wrong and why, or why it is fine.
-- lineComments: an array with exactly one non-empty string per physical line of
-  the row's `text` (split on newline), each commenting on that line.
+- lineComments: an array with exactly `lineCount` non-empty strings, one per
+  physical line of the row's `text` (split on newline), each commenting on that
+  line. Count the newlines in `text` before writing it.
 - replacement: required for rephrase, remove and source. The complete
   replacement for the row's `text`, in the SAME syntax as the input:
     * kind dart: a complete, valid Dart string-literal expression, adjacent

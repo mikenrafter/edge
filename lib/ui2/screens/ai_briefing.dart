@@ -62,7 +62,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
         setState(
           () => _error = e is CoachException
               ? e.message
-              : (l?.aiBriefingFailedGeneric('$e') ?? 'It failed: $e'),
+              : (l?.aiBriefingFailedGeneric('$e') ?? 'Could not write the briefing: $e'),
         );
       }
     } finally {
@@ -99,9 +99,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
                     StatusCard(
                       l?.aiBriefingNoModelTitle ?? 'No model is set up',
                       l?.aiBriefingNoModelBody ??
-                          'A briefing is written by a model you choose. Until you '
-                              'pick one there is nothing to generate and nothing '
-                              'has been sent anywhere.',
+                          'A model you choose writes the briefing. Pick one to generate briefings. Nothing has been sent anywhere.',
                       fix: l?.aiBriefingChooseModel ?? 'Choose a model',
                       icon: LucideIcons.sparkles,
                       onFix: () => go(c, const CoachSetup()),
@@ -110,8 +108,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
                     StatusCard(
                       l?.aiBriefingNothingTitle ?? 'Nothing written for today',
                       l?.aiBriefingNothingBody ??
-                          'Briefings are generated on a schedule, or on demand '
-                              'here.',
+                          'Briefings generate on a schedule. You can also write one here.',
                       fix: _busy
                           ? (l?.aiBriefingWriting ?? 'Writing…')
                           : (l?.aiBriefingWriteNow ?? 'Write one now'),
@@ -151,7 +148,7 @@ class _AiBriefingScreenState extends State<AiBriefingScreen> {
                   if (_error != null) ...[
                     const SizedBox(height: S.x3),
                     StatusCard(
-                      l?.aiBriefingFailedTitle ?? 'That did not go through',
+                      l?.aiBriefingFailedTitle ?? 'Briefing failed',
                       _error!,
                       icon: LucideIcons.triangleAlert,
                     ),
@@ -246,16 +243,13 @@ class SentPayload extends StatelessWidget {
                   child: Text(
                     none
                         ? (l?.aiBriefingNoneBody ??
-                            'Nothing. There was no request — the note above was '
-                                'written on this phone.')
+                            'Nothing. The note above was written on this phone, so no request was made.')
                         : local
                             ? (l?.aiBriefingLocalBody(host) ??
                                 'These numbers went to $host, on this machine. '
                                     'Nothing left it.')
                             : (l?.aiBriefingCloudBody(host, config.model) ??
-                                'These numbers, and nothing else, were sent to '
-                                    '$host as ${config.model}. No raw '
-                                    'recordings, no name, no identifier.'),
+                                'The app sent only these numbers to $host as ${config.model}. It sent no raw recordings, name or identifier.'),
                     style: F.cap.copyWith(color: p.ink, height: 1.5),
                   ),
                 ),
@@ -265,18 +259,16 @@ class SentPayload extends StatelessWidget {
           const SizedBox(height: S.x3),
           if (none)
             StatusCard(
-              l?.aiBriefingNoneCardTitle ?? 'Nothing stood out, so nothing was asked',
+              l?.aiBriefingNoneCardTitle ?? 'Nothing stood out, so no model was called',
               l?.aiBriefingNoneCardBody ??
-                  'The sweep runs on this phone. It only calls a model when it has '
-                      'a finding to hand it, and today it had none.',
+                  'The check for findings runs on this phone. It calls a model only when it finds something, and today it found nothing.',
               icon: LucideIcons.circleSlash,
             )
           else if (keys.isEmpty)
             StatusCard(
               l?.aiBriefingEmptyCardTitle ?? 'Nothing was available to send',
               l?.aiBriefingEmptyCardBody ??
-                  'No metric had a value when this was written, so the prompt '
-                      'carried none.',
+                  'No metric had a value when this was written, so the prompt held no numbers.',
               icon: LucideIcons.circleSlash,
             )
           else

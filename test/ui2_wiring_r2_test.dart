@@ -353,7 +353,7 @@ void main() {
     // absences: one resolves itself, the other wants a sync.
     test('the absence says which of the two it is', () async {
       final building = await HomeData.load(_FakeRepo(today: bundle('building')));
-      expect(building.readiness.note, contains('still being worked out'));
+      expect(building.readiness.note, contains('still being processed'));
 
       final missing = await HomeData.load(_FakeRepo(today: bundle('missing')));
       expect(missing.readiness.note, contains('reached the app'));
@@ -448,7 +448,7 @@ void main() {
       // nights back under. Printing "1.3 deviations" without a direction read
       // as "above your baseline, 1.3 below it".
       await t.pumpWidget(frame(base.copyOrIllness('red', '2026-05-20', -1.3)));
-      expect(find.textContaining('1.3 standardised deviations below it'),
+      expect(find.textContaining('1.3 standard deviations below it'),
           findsOneWidget);
     });
 
@@ -887,11 +887,11 @@ void main() {
       expect(find.text('Today, predicted'), findsOneWidget);
       expect(find.textContaining('flattest stretch lands in'), findsOneWidget);
       // No score, and the chart says why there is no axis to read one off.
-      expect(find.textContaining('No scale — the shape is the whole output'),
+      expect(find.textContaining('The curve has no scale'),
           findsOneWidget);
       // The safety refusal is COPY, on the card, in both directions.
-      expect(find.textContaining('not a fitness-to-drive check'), findsOneWidget);
-      expect(find.textContaining('does not say you are impaired'),
+      expect(find.textContaining('decide whether you can drive'), findsOneWidget);
+      expect(find.textContaining('does not measure impairment'),
           findsOneWidget);
       expect(find.textContaining('a prediction, not a reading'), findsOneWidget);
     });
@@ -955,7 +955,7 @@ void main() {
     testWidgets('it names no condition, no number and no severity', (t) async {
       await pumpI(t, ana.cvhrPersonalDistribution(nights(20, recent: 3)));
       expect(find.textContaining('ACROSS 20 OF YOUR OWN NIGHTS'), findsOneWidget);
-      expect(find.textContaining('running higher'), findsOneWidget);
+      expect(find.textContaining('is higher than'), findsOneWidget);
       // The vocabulary that turns a screen into a diagnosis, in any casing.
       final page = t
           .widgetList<Text>(find.byType(Text))
@@ -980,12 +980,12 @@ void main() {
       await pumpI(t, ana.cvhrPersonalDistribution(nights(20)));
       // The same-card refusal, in the state where a user most wants it to be
       // reassurance. Not a footnote, not a tooltip, not conditional.
-      expect(find.textContaining('nothing here is a negative result'),
+      expect(find.textContaining('does not rule anything out'),
           findsOneWidget);
-      expect(find.textContaining('a clinician can test that properly'),
+      expect(find.textContaining('ask a clinician about a sleep test'),
           findsOneWidget);
       // And it never generalises from the aggregate to a night.
-      expect(find.textContaining('says anything about any one night'),
+      expect(find.textContaining('says nothing about any one night'),
           findsOneWidget);
     });
 
@@ -994,7 +994,7 @@ void main() {
       await pumpI(t, ana.cvhrPersonalDistribution(nights(3)));
       expect(find.text('Not enough nights for the across-nights view'),
           findsOneWidget);
-      expect(find.textContaining('running higher'), findsNothing);
+      expect(find.textContaining('is higher than'), findsNothing);
       // The pipeline's own reason, VERBATIM. This is Nerd stats — the raw
       // diagnostic is what the surface is FOR, and the prettifier that used to
       // rewrite `need_baseline:nights=3/5` into English threw away the one
@@ -1004,7 +1004,7 @@ void main() {
 
     testWidgets('the card survives 3.1x text', (t) async {
       await pumpI(t, ana.cvhrPersonalDistribution(nights(20)), scale: 3.1);
-      expect(find.textContaining('nothing here is a negative result'),
+      expect(find.textContaining('does not rule anything out'),
           findsOneWidget);
     });
   });
@@ -1083,7 +1083,7 @@ void main() {
       expect(find.textContaining('14 Aug'), findsNothing);
       // The guard the item is mostly made of.
       expect(find.textContaining('The pair that matched least'), findsOneWidget);
-      expect(find.textContaining('not a worse night'), findsOneWidget);
+      expect(find.textContaining('a schedule difference'), findsOneWidget);
     });
 
     testWidgets('no pairs, no tap', (t) async {
@@ -1178,7 +1178,7 @@ void main() {
       expect(find.text('Sampling range'), findsOneWidget);
       expect(find.textContaining('describes the night and cannot explain it'),
           findsOneWidget);
-      expect(find.textContaining('equally consistent with alcohol'),
+      expect(find.textContaining('fits alcohol'),
           findsOneWidget);
       // The ratio is a ratio. No adjective, no direction, no colour.
       expect(find.text('1.55'), findsOneWidget);
@@ -1280,9 +1280,9 @@ void main() {
       expect(find.text('16.8 br/min'), findsOneWidget);
       expect(find.textContaining('11.0'), findsNothing);
       // It is a floor and it says so, in both directions.
-      expect(find.textContaining('A floor, not a rate for the day'),
+      expect(find.textContaining('say nothing about the rest of your day'),
           findsOneWidget);
-      expect(find.textContaining('breathing while you move cannot be '
+      expect(find.textContaining('Breathing while you move cannot be '
           'recovered'), findsOneWidget);
     });
 
@@ -1302,8 +1302,7 @@ void main() {
       );
       expect(find.text('No resting breathing rate away from sleep'),
           findsOneWidget);
-      expect(find.textContaining('a day you were moving, not a day anything '
-          'went wrong'), findsOneWidget);
+      expect(find.textContaining('Most days have none because you were moving'), findsOneWidget);
       expect(find.text('Lowest'), findsNothing);
     });
 

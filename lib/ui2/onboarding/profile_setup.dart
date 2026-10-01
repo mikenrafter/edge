@@ -140,8 +140,8 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
             const SizedBox(height: S.x3),
             Text(
               l?.profileSetupBody ??
-                  'Four numbers change how your data is scored. Leave any of them '
-                      'blank and only the metrics that need it stay unavailable.',
+                  'Sex, age, height and weight change how your data is scored. '
+                  'If you leave one blank, only the metrics that need it are unavailable.',
               style: F.body.copyWith(color: p.ink2),
             ),
             const SizedBox(height: S.x6),
@@ -167,9 +167,9 @@ class _ProfileSetupViewState extends State<ProfileSetupView> {
               const SizedBox(height: S.x2),
               Text(
                 l?.profileSetupOtherSexNote ??
-                    'Calories use the mean of the two published sets. Training '
-                        'load and strain have only two published constants and no '
-                        'third, so they use the male pair.',
+                    'Calories average the male and female constants. Training load '
+                    'and strain use Banister TRIMP, which has only a male and a '
+                    'female set, so they use the male constants.',
                 style: F.cap.copyWith(color: p.ink3, height: 1.45),
               ),
             ],

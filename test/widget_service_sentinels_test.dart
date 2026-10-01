@@ -339,7 +339,7 @@ void main() {
     test('a night still being worked out is a different sentence — it resolves '
         'on its own and asks nothing of anyone', () async {
       await WidgetService.push(TodayData.fromJson(heldOver('building')));
-      expect(written['ring_sleep_why'], 'Last night is still being worked out.');
+      expect(written['ring_sleep_why'], 'Last night is still being processed.');
     });
 
     test('the DAY\'s strain is not an overnight figure and survives', () async {

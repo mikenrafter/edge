@@ -106,7 +106,7 @@ class NotificationService {
       AndroidNotificationChannel(
     'recovery',
     'Recovery',
-    description: 'Daily recovery readiness from your own data',
+    description: 'Daily recovery readiness',
     importance: Importance.defaultImportance,
   );
   static const AndroidNotificationChannel _remindersChannel =

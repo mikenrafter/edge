@@ -282,9 +282,9 @@ void main() {
   group('zonesWhy', () {
     test('names the measured ceiling when the set was measured', () {
       expect(zonesWhy('observed', 184), contains('184 bpm'));
-      expect(zonesWhy('observed', 184), contains('measured, not estimated'));
+      expect(zonesWhy('observed', 184), contains('recorded for you'));
       expect(zonesWhy('karvonen', 184), contains('184 bpm'));
-      expect(zonesWhy('karvonen', 184), contains('Both measured on you'));
+      expect(zonesWhy('karvonen', 184), contains('your measured resting heart rate'));
       // The estimate's sentence is the one thing a measured set must not say.
       expect(zonesWhy('observed', 184), isNot(kZonesWhy));
       expect(zonesWhy('karvonen', 184), isNot(kZonesWhy));

@@ -275,8 +275,8 @@ Future<RoughNight?> loadRoughNight(
           illnessFlagged = true;
           knows.add(
             l?.roughNightIllness ??
-                'The illness watch flagged this night too — a sustained rise '
-                    'against your own baseline, not a diagnosis.',
+                'The illness watch flagged this night too. It saw a sustained rise '
+                'against your own baseline. This is not a diagnosis.',
           );
           break;
         }
@@ -303,7 +303,7 @@ Future<RoughNight?> loadRoughNight(
   if (counted.tempMoved) {
     knows.add(
       l?.roughNightWarmRoom ??
-          'Your skin ran warmer than your usual — a warm room does this too.',
+          'Your skin ran warmer than your usual. A warm room does this too.',
     );
   }
 
@@ -457,8 +457,7 @@ class _RoughNightCardState extends State<RoughNightCard> {
           const SizedBox(height: S.x3),
           Text(
             l?.roughNightSummary(_sentence(l, n.moved)) ??
-                '${_sentence(l, n.moved)}, against your own nights. '
-                    'This is a measurement of the night, not a verdict on you.',
+                '${_sentence(l, n.moved)}, against your own nights.',
             style: F.cap.copyWith(color: p.ink2, height: 1.5),
           ),
           // WHAT THE APP ALREADY KNOWS. Stated, never asked — a screen that
@@ -503,7 +502,7 @@ class _RoughNightCardState extends State<RoughNightCard> {
       else
         Text(
           l?.roughNightNothingToAnswer ??
-              'Nothing to answer — this card only reports the night.',
+              'Nothing to answer. This card only reports the night.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
     ];

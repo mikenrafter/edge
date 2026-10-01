@@ -96,7 +96,7 @@ void main() {
         expect(find.text(label), findsOneWidget, reason: label);
       }
       // No "why is this missing" note when nothing is missing.
-      expect(find.textContaining('could not reach the system'), findsNothing);
+      expect(find.textContaining('could not ask the system'), findsNothing);
     });
 
     testWidgets('native unreachable: the in-app actions stand, and the '
@@ -110,7 +110,7 @@ void main() {
       // In-app actions act on our own data, so they are unaffected.
       expect(find.text('Log water'), findsOneWidget);
       expect(find.text('Mark a moment'), findsOneWidget);
-      expect(find.textContaining('could not reach the system'), findsOneWidget);
+      expect(find.textContaining('could not ask the system'), findsOneWidget);
       // Absence explains itself; it is never a bare dash.
       expect(find.text('—'), findsNothing);
     });

@@ -97,10 +97,9 @@ const _specs = <String, MetricSpec>{
     color: C.red,
     icon: LucideIcons.heart,
     higherBetter: false,
-    method: 'The lowest sustained sleeping heart rate of the night, taken over '
-        'a rolling window of the overnight series. Not a spot reading, and not '
-        'a daytime minimum.',
-    citation: 'Nocturnal heart-rate minimum; personal baseline, not population',
+    method: 'The lowest sustained heart rate during sleep, found with a rolling '
+            'window over the overnight series.',
+    citation: 'Nocturnal heart-rate minimum, compared with your own baseline',
     requires: {InputSignal.hr1Hz},
   ),
   'hrv': MetricSpec(
@@ -109,10 +108,10 @@ const _specs = <String, MetricSpec>{
     unit: 'ms',
     color: C.green,
     icon: LucideIcons.activity,
-    method: 'RMSSD over the longest artefact-free window during sleep. Beat '
-        'timing is recovered from the band\'s 1 Hz records and corrected by '
-        'the Lipponen–Tarvainen method before any statistic is taken. '
-        'Pulse-derived, so this is PRV: real and trendable, but not ECG HRV.',
+    method: 'RMSSD (root mean square of successive differences between beats) over '
+            'the longest artefact-free window during sleep. Beat timing comes from '
+            'the band\'s 1 Hz records and is corrected with the Lipponen–Tarvainen '
+            'method before any statistic is taken. This is pulse rate variability (PRV) measured at the wrist, and it differs from ECG HRV.',
     citation: 'Task Force 1996 · Lipponen & Tarvainen 2019',
     requires: {InputSignal.rrIntervals},
   ),
@@ -124,10 +123,10 @@ const _specs = <String, MetricSpec>{
     // The weights are DATA — `readiness_glassbox` emits one per input and the
     // Readiness screen renders them. Repeating them as prose here meant two
     // surfaces could disagree about the same composite, silently, forever.
-    method: 'A weighted composite of a handful of inputs, each scored against '
-        'your own history. Every input\'s weight, and whether last night had '
-        'enough history to use it, is listed on the Readiness screen. Missing '
-        'inputs are re-weighted, never zero-filled.',
+    method: 'A weighted score from several inputs, each compared with your own '
+            'history. The Readiness screen lists each input\'s weight and whether '
+            'last night had enough history to use it. When an input is missing, '
+            'the remaining weights are rescaled.',
     citation: 'Plews 2013 (lnRMSSD) · Hopkins smallest-worthwhile-change gate',
     requires: {
       InputSignal.rrIntervals,
@@ -143,9 +142,9 @@ const _specs = <String, MetricSpec>{
     color: C.teal,
     icon: LucideIcons.wind,
     higherBetter: false,
-    method: 'Breathing rate recovered from respiratory sinus arrhythmia — the '
-        'periodic modulation breathing imposes on beat timing — over a grid of '
-        'candidate rates.',
+    method: 'Breathing rate estimated from respiratory sinus arrhythmia, the rise '
+            'and fall in beat timing that breathing causes. The app tests a grid '
+            'of candidate rates and picks the best fit.',
     citation: 'Pimentel 2017',
     requires: {InputSignal.rrIntervals},
   ),
@@ -155,8 +154,8 @@ const _specs = <String, MetricSpec>{
     unit: 'min',
     color: C.blue,
     icon: LucideIcons.moon,
-    method: 'Total sleep time from the wrist z-angle sleep window, staged by a '
-        'combined actigraphy and heart-rate model.',
+    method: 'Total sleep time within the sleep window found from wrist angle. '
+            'Stages come from a model that combines movement (actigraphy) and heart rate.',
     citation: 'van Hees 2015 · Webster / Cole–Kripke rescoring',
     requires: {InputSignal.accel1Hz, InputSignal.hr1Hz},
   ),
@@ -176,9 +175,9 @@ const _specs = <String, MetricSpec>{
     unit: 'min',
     color: C.blue,
     icon: LucideIcons.moon,
-    method: 'A low-confidence overlay: a wrist sensor cannot see slow-wave '
-        'activity, so deep sleep here is heart-rate flatness inside NREM.',
-    citation: 'Cole–Kripke wake spine + HRV overlay',
+    method: 'Low confidence. A wrist sensor cannot measure slow-wave activity, so '
+            'deep sleep here is a period of steady heart rate during non-REM (NREM) sleep.',
+    citation: 'Cole–Kripke wake scoring + HRV overlay',
     requires: {InputSignal.accel1Hz, InputSignal.hr1Hz},
   ),
   'rem': MetricSpec(
@@ -187,8 +186,8 @@ const _specs = <String, MetricSpec>{
     unit: 'min',
     color: C.teal,
     icon: LucideIcons.moon,
-    method: 'Staged from beat-timing variability and movement. A wrist sensor '
-        'separates REM from light sleep only approximately.',
+    method: 'Staged from beat-timing variability and movement. Treat the split '
+            'between REM and light sleep as an estimate.',
     citation: 'Webster / Cole–Kripke rescoring + HRV staging',
     requires: {InputSignal.accel1Hz, InputSignal.hr1Hz},
   ),
@@ -198,14 +197,11 @@ const _specs = <String, MetricSpec>{
     unit: 'steps',
     color: C.green,
     icon: LucideIcons.footprints,
-    method: 'Counted, never modelled. A step count comes from a gait-capable '
-        'counter: the band\'s 100 Hz pedometer while it streams, or your '
-        'phone\'s. Each stretch of the day is counted by whichever of the two '
-        'was actually recording it, and a stretch both covered is counted '
-        'once, so a session never takes the day from the sensor that carried '
-        'the rest of it. There is no 1 Hz estimate — walking cadence sits above what '
-        'one sample a second can resolve, so a day with no counter behind it '
-        'reports no steps rather than a guess.',
+    method: 'Steps come from a pedometer: the band\'s 100 Hz pedometer while it '
+            'streams, or your phone\'s. Each stretch of the day uses whichever of '
+            'the two was recording it. A stretch both covered counts once. '
+            'Walking cadence is above what one sample a second can resolve, so '
+            '1 Hz data gives no step estimate. A day with no pedometer data shows no steps.',
     citation: 'AN-2554 pedometer · phone pedometer (HealthKit / Health Connect)',
     // Deliberately EMPTY — see final-plan §4.6. Steps are resolved by
     // `live_coverage_policy.dart`, which ranks by SPAN not device and credits
@@ -220,8 +216,8 @@ const _specs = <String, MetricSpec>{
     unit: 'kcal',
     color: C.orange,
     icon: LucideIcons.flame,
-    method: 'Heart-rate-to-energy regression over the waking span, anchored on '
-        'your weight, age and sex. An estimate, and sensitive to all three.',
+    method: 'Energy estimated from heart rate across the waking hours with a '
+            'regression on your weight, age and sex. Changing any of the three changes the result.',
     citation: 'Keytel 2005 · Harris–Benedict / Mifflin BMR floor',
     requires: {InputSignal.hr1Hz},
   ),
@@ -230,7 +226,7 @@ const _specs = <String, MetricSpec>{
     title: 'Strain',
     color: C.purple,
     icon: LucideIcons.zap,
-    method: 'Cardiovascular load over the day, compressed onto a 0–21 scale.',
+    method: 'Cardiovascular load for the day, scaled logarithmically to 0–21.',
     citation: 'Banister TRIMP family · log-compressed',
     requires: {InputSignal.hr1Hz},
   ),
@@ -239,8 +235,8 @@ const _specs = <String, MetricSpec>{
     title: 'Training load',
     color: C.purple,
     icon: LucideIcons.dumbbell,
-    method: 'Training impulse: time in each heart-rate zone, weighted by the '
-        'physiological cost of that zone.',
+    method: 'Training impulse (TRIMP): time in each heart-rate zone, multiplied '
+            'by a weight for that zone.',
     citation: 'Banister 1975 · Edwards 1993',
     requires: {InputSignal.hr1Hz},
   ),
@@ -250,20 +246,20 @@ const _specs = <String, MetricSpec>{
     color: C.purple,
     icon: LucideIcons.brain,
     higherBetter: false,
-    method: 'Baevsky stress index over a resting window: a histogram measure of '
-        'how tightly beat intervals cluster. There is deliberately no fallback '
-        'when the resting window is missing.',
+    method: 'Baevsky stress index over a resting window. It builds a histogram of '
+            'beat intervals and measures how tightly they cluster. With no '
+            'resting window, no value is shown.',
     citation: 'Baevsky 2008',
     requires: {InputSignal.rrIntervals},
   ),
   'dip': MetricSpec(
     chartKey: 'dip',
-    title: 'Nocturnal HR dip',
+    title: 'Nocturnal heart-rate dip',
     unit: '%',
     color: C.indigo,
     icon: LucideIcons.trendingDown,
     method: 'How far sleeping heart rate falls below the waking average.',
-    citation: 'Nocturnal dipping literature; personal baseline',
+    citation: 'Personal baseline',
     requires: {InputSignal.hr1Hz},
   ),
   'hrr': MetricSpec(
@@ -272,8 +268,8 @@ const _specs = <String, MetricSpec>{
     unit: 'bpm',
     color: C.red,
     icon: LucideIcons.heartPulse,
-    method: 'The drop in heart rate over the 60 seconds after a bout ends, '
-        'averaged across the day\'s bouts.',
+    method: 'The drop in heart rate in the 60 seconds after an effort ends, '
+            'averaged over the day\'s efforts.',
     citation: 'Cole 1999 (HRR-60)',
     requires: {InputSignal.hr1Hz},
   ),
@@ -283,8 +279,8 @@ const _specs = <String, MetricSpec>{
     color: C.purple,
     icon: LucideIcons.audioWaveform,
     method: 'The ratio of low- to high-frequency power in beat-interval '
-        'variability, from a Lomb–Scargle periodogram (the series is unevenly '
-        'sampled, so an FFT would be wrong).',
+            'variability. A Lomb–Scargle periodogram computes it because beat '
+            'intervals arrive at uneven times, which a standard FFT cannot handle.',
     citation: 'Laguna 1998 · Bigger 1992',
     requires: {InputSignal.rrIntervals},
   ),
@@ -296,7 +292,7 @@ const _specs = <String, MetricSpec>{
     icon: LucideIcons.activity,
     higherBetter: false,
     method: 'Night-to-night coefficient of variation of RMSSD.',
-    citation: 'Within-user dispersion',
+    citation: 'Spread across your own nights',
     requires: {InputSignal.rrIntervals},
   ),
   'brv': MetricSpec(
@@ -307,7 +303,7 @@ const _specs = <String, MetricSpec>{
     higherBetter: false,
     method: 'Coefficient of variation of per-window respiratory rate across '
         'the night.',
-    citation: 'Within-user dispersion',
+    citation: 'Spread across your own nights',
     requires: {InputSignal.rrIntervals},
   ),
   // Both of these were written to `metric_series` on every derive since v55 and
@@ -319,9 +315,9 @@ const _specs = <String, MetricSpec>{
     unit: 'min',
     color: C.indigo,
     icon: LucideIcons.moon,
-    method: 'Minutes of sleep detected OUTSIDE the main night: the same wrist '
-        'z-angle window detector the night uses, confirmed by a heart-rate dip. '
-        'Naps are counted separately and never folded into time asleep.',
+    method: 'Minutes of sleep detected outside the main night. The same '
+            'wrist-angle detector as the night finds the window, and a heart-rate '
+            'dip confirms it. Naps count here and are excluded from time asleep.',
     citation: 'van Hees 2015 window detection + nocturnal HR dip',
     requires: {InputSignal.accel1Hz, InputSignal.hr1Hz},
   ),
@@ -331,11 +327,11 @@ const _specs = <String, MetricSpec>{
     unit: 'min',
     color: C.green,
     icon: LucideIcons.activity,
-    method: 'Minutes whose acceleration sits above a movement floor. That floor '
-        'is pooled from your own recent days once there are enough of them, and '
-        'a population one before that. This is activity VOLUME, not locomotion: '
-        'steps are counted by a pedometer and are never derived from it.',
-    citation: 'ENMO over a personal dynamic-range floor',
+    method: 'Minutes with acceleration above a movement threshold. The threshold '
+            'comes from your own recent days once there are enough of them, and '
+            'from a population value until then. Steps come from a pedometer, '
+            'not from this measure.',
+    citation: 'ENMO (Euclidean norm minus one) over a personal threshold',
     requires: {InputSignal.accel1Hz},
   ),
   'wear': MetricSpec(
@@ -344,9 +340,9 @@ const _specs = <String, MetricSpec>{
     unit: 'min',
     color: C.green,
     icon: LucideIcons.watch,
-    method: 'Minutes with a band record present. The band logs to flash only '
-        'while it is on a wrist, so record presence IS wear.',
-    citation: 'Record-presence, not heart-rate validity',
+    method: 'Minutes with at least one band record. The band logs to flash only '
+            'while on a wrist, so a record means the band was worn.',
+    citation: 'Counted from record presence',
     requires: {InputSignal.accel1Hz},
   ),
 
@@ -357,13 +353,12 @@ const _specs = <String, MetricSpec>{
     color: C.orange,
     icon: LucideIcons.thermometer,
     higherBetter: false,
-    suppress: 'A deviation, not a temperature. Imported nights carry different '
-              'units, so they are not charted together.',
+    suppress: 'Shown as a deviation from your usual level. Imported nights use '
+              'different units and are left out of the chart.',
     suppressFix: 'Shown tonight on Vitals',
-    method: 'The night\'s mean raw sensor reading, expressed as distance from '
-        'your own recent nights. There is no conversion to degrees anywhere in '
-        'the path.',
-    citation: 'Relative only — uncalibrated ADC',
+    method: 'The night\'s mean raw sensor reading, shown as its distance from '
+            'your recent nights. The app does not convert it to degrees.',
+    citation: 'Relative only, uncalibrated sensor reading',
     requires: {InputSignal.skinTempRaw},
   ),
   // `spo2`, `odi_per_hour` and `strain_effort` used to live here as cards that
@@ -870,8 +865,7 @@ class _MetricDetailState extends State<MetricDetail> {
                     ? (l?.metricDetailNoValueYet ??
                         'Today has not produced a value yet.')
                     : (l?.metricDetailNoValueYetWiderRanges ??
-                        'Today has not produced a value yet. The wider ranges '
-                            'above hold the days that did.'))
+                        'Today has no value yet. The wider ranges above show earlier days that do.'))
                 : (l?.metricDetailNoValueInWindow ??
                     'No day in this window produced a value.'),
             // Today opens first now, so this card is what someone with months
@@ -944,7 +938,7 @@ class _MetricDetailState extends State<MetricDetail> {
               LucideIcons.heartPulse,
               l?.metricDetailBeatsLinkTitle ?? 'Beats',
               l?.metricDetailBeatsLinkSub ??
-                  'The intervals a night is made of, drawn',
+                  'Beat intervals for the night',
               () => go(c, const Beats())),
           const SizedBox(height: S.x3),
         ],
@@ -964,7 +958,7 @@ class _MetricDetailState extends State<MetricDetail> {
               LucideIcons.footprints,
               l?.metricDetailBreakdownLinkTitle ?? 'Breakdown',
               l?.metricDetailBreakdownLinkSub ??
-                  'Each stretch of today, and what counted it',
+                  'Each period of today and the source that counted it',
               () => go(c, const DayStepsDetail())),
           const SizedBox(height: S.x3),
         ],
@@ -1103,7 +1097,7 @@ class _MetricDetailState extends State<MetricDetail> {
         await showReasonSheet(
           context,
           AppLocalizations.of(context)?.devicesRequestNotSaved ??
-              'That request could not be saved. Please try again.',
+              'Could not save the change. Try again.',
         );
         await _load();
         return;
@@ -1262,12 +1256,10 @@ class _MetricDetailState extends State<MetricDetail> {
                 ? null
                 : (l?.metricDetailAlgoBreakFootnote(marks.length) ??
                     (marks.length == 1
-                        ? 'The dotted line is a change in how these days were '
-                            'computed. Readings either side of it came from '
-                            'different versions.'
-                        : 'The dotted lines are changes in how these days were '
-                            'computed. Readings either side of one came from '
-                            'different versions.')),
+                        ? 'The dotted line marks a change in how these days are computed. '
+                          'Readings before and after it come from different versions.'
+                        : 'The dotted lines mark changes in how these days are computed. '
+                          'Readings on either side of a line come from different versions.')),
             // The window IS the span now: `series` has one slot per calendar
             // day whether or not that day derived, so both edges are dates
             // rather than array positions. It used to read the length of a
@@ -1402,9 +1394,9 @@ class _MetricDetailState extends State<MetricDetail> {
                 yAxis: axis,
                 series: hrs,
                 footnote: l?.metricDetailWearFootnote(have.length, win) ??
-                    '${have.length} of these $win days have a wear '
-                        'record. The rest are gaps in both charts — the line above '
-                        'is not carried across one.',
+                    '${have.length} of these $win days have a wear record. The other '
+                    'days show as gaps in both charts, and the line above does not '
+                    'connect across them.',
                 child: CustomPaint(
                   size: Size.infinite,
                   painter: Bars(hrs, p.ink3, axis: axis),
@@ -1481,7 +1473,7 @@ class _MetricDetailState extends State<MetricDetail> {
       // may be stated.
       if ((d.recording[day] ?? const []).isEmpty) {
         return l?.metricDetailSlotNothingRecording(pretty) ??
-            '$pretty, nothing was recording';
+            '$pretty, no data recorded';
       }
     }
     return l?.metricDetailSlotNoRecord(pretty) ?? '$pretty, no record';
@@ -1608,7 +1600,7 @@ class _MetricDetailState extends State<MetricDetail> {
                               'history.')
                       : (l?.metricDetailPercentileTodayBand(ordinal, band) ??
                           'Today sits at the $ordinal percentile of your own '
-                              'history — $band.'))
+                          'history, $band.'))
                   : (band == null
                       ? (l?.metricDetailPercentileFromNoBand(
                               axisDay(latestTs), ordinal) ??
@@ -1617,8 +1609,8 @@ class _MetricDetailState extends State<MetricDetail> {
                       : (l?.metricDetailPercentileFromBand(
                               axisDay(latestTs), ordinal, band) ??
                           'Your reading from ${axisDay(latestTs)} sits at the '
-                              '$ordinal percentile of your own history — '
-                              '$band.'))),
+                          '$ordinal percentile of your own history, '
+                          '$band.'))),
           style: F.cap.copyWith(color: p.ink3, height: 1.5),
         ),
       ]),
@@ -1772,7 +1764,7 @@ class _StepGoalGaugeState extends State<_StepGoalGauge> {
     if (typed < 500 || typed > 100000) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content:
-            Text('A step goal of 500–100,000 is a real one. Nothing was saved.'),
+            Text('Enter a step goal from 500 to 100,000. Nothing was saved.'),
       ));
       return;
     }
@@ -2049,7 +2041,7 @@ Widget investigateRow(BuildContext c, VoidCallback onTap) => detailLinkRow(
     // other `detailLinkRow` in the app, which is a layout change dressed up as
     // a copy change — keep it at or under the old string's length.
     AppLocalizations.of(c)?.metricDetailNerdStatsSub ??
-        'The figures behind the picture',
+        'The numbers behind this chart',
     onTap);
 
 /// A two-column legend. Used by the hypnogram and the overnight stack.

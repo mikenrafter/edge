@@ -158,7 +158,7 @@ class _PassphraseDialogState extends State<_PassphraseDialog> {
       }
       if (v != _b.text) {
         setState(() => _error = l?.welcomePassphraseMismatch ??
-            'The two do not match.');
+            'The passphrases do not match.');
         return;
       }
     } else if (v.isEmpty) {
@@ -183,10 +183,9 @@ class _PassphraseDialogState extends State<_PassphraseDialog> {
             // open this file without the passphrase, including us, because
             // there is no account and no server holding a key.
             ? (l?.welcomePassphraseCreateNote ??
-                'The file is unreadable without it. And a forgotten passphrase '
-                    'means that backup is gone — there is no recovery, because '
-                    'there is no account and no server holding a key. That is the '
-                    'same thing that keeps it private.')
+                'The backup cannot be opened without the passphrase. '
+                'If you forget it, the backup is lost. OpenStrap keeps no account '
+                'or server copy of the key, so nothing can recover it.')
             : (l?.welcomePassphraseOpenNote ??
                 'The one you chose when this backup was written.')),
         const SizedBox(height: S.x4),
@@ -322,7 +321,7 @@ Future<ImportOutcome> runImport(
     }
     if (askPassphrase == null) {
       cryptoError = 'That file is an encrypted backup. Open it from '
-          'Settings → Your data, where the passphrase can be asked for.';
+                    'Settings → Your data, which asks for the passphrase.';
       continue;
     }
     final pass = await askPassphrase();
@@ -562,7 +561,7 @@ class WelcomeView extends StatelessWidget {
           children: [
             Icon(LucideIcons.activity, size: 40, color: p.on(C.green)),
             const SizedBox(height: S.x5),
-            Text(l?.welcomeHeadline ?? 'Your band, decoded here',
+            Text(l?.welcomeHeadline ?? 'Your band, analyzed on this phone',
                 style: F.display.copyWith(color: p.ink)),
             const SizedBox(height: S.x3),
             Text(
@@ -571,7 +570,7 @@ class WelcomeView extends StatelessWidget {
               style: F.body.copyWith(color: p.ink2),
             ),
             const SizedBox(height: S.x6),
-            Pill(l?.pillLocalNoCloud ?? 'Local · no cloud', C.green,
+            Pill(l?.pillLocalNoCloud ?? 'Stored on this phone', C.green,
                 icon: LucideIcons.shieldCheck),
             const SizedBox(height: S.x8),
             BigButton(l?.welcomeSetUpMyBand ?? 'Set up my band',
@@ -597,10 +596,10 @@ class WelcomeView extends StatelessWidget {
               // protects data: no import overwrites a day this band measured.
               l?.welcomeImportFooterNote ??
                   'Raw sensor exports, an OpenStrap backup (encrypted or not), '
-                      'or a vendor CSV. '
-                      'Imported days sit alongside days this app measured and feed '
-                      'the same baselines — but a day the band already measured is '
-                      'never overwritten.',
+                  'or a vendor CSV. '
+                  'Imported days feed the same baselines as days this app '
+                  'measured. A day the band already measured is '
+                  'never overwritten.',
               style: F.cap.copyWith(color: p.ink3),
             ),
             if (busy) ...[
@@ -649,9 +648,8 @@ class ImportReport extends StatelessWidget {
                 'Every row was refused: ${_rejects(o)}')
             : o.readError ??
                 (l?.welcomeNothingUsableInFile ??
-                    'The file was read but there was nothing in it this app could '
-                        'use, or every day in it was one this band had already '
-                        'measured.'),
+                    'The file had no data this app can use, or every day in it '
+                    'was already measured by this band.'),
         fix: l?.actionTryAnotherFile ?? 'Try another file',
         icon: LucideIcons.fileWarning,
       );
@@ -719,8 +717,8 @@ class ImportReport extends StatelessWidget {
               '${o.rejectedRows.length} '
                   'row${o.rejectedRows.length == 1 ? ' was' : 's were'} refused',
           l?.welcomeRejectedDetail(_rejects(o)) ??
-              '${_rejects(o)} Nothing was trimmed to fit — fix those lines and '
-                  'import again.',
+              '${_rejects(o)} Nothing was trimmed to fit. Fix those lines and '
+              'import again.',
           icon: LucideIcons.fileWarning,
         ),
       ],
@@ -738,12 +736,12 @@ class ImportReport extends StatelessWidget {
         const SizedBox(height: S.x3),
         StatusCard(
           l?.welcomeSummariesDidNotTitle ??
-              'The days landed, the summaries did not',
+              'Days imported, summaries not rebuilt',
           l?.welcomeSummariesDidNotBody('${o.rollupError}') ??
-              'Every imported row is in the database, but rebuilding the cross-day '
-                  'summaries over them threw (${o.rollupError}), so trends and '
-                  'insights still describe the data you had before. Re-analyze '
-                  'everything from Your data rebuilds them.',
+              'Every imported row is saved, but rebuilding the cross-day '
+              'summaries failed (${o.rollupError}). Trends and '
+              'insights still show your earlier data. Run Re-analyze '
+              'everything in Your data to rebuild them.',
           icon: LucideIcons.triangleAlert,
         ),
       ],
@@ -783,5 +781,5 @@ class ImportReport extends StatelessWidget {
 String _rejects(ImportOutcome o) {
   final shown = o.rejectedRows.take(6).join('; ');
   final more = o.rejectedRows.length - 6;
-  return more > 0 ? '$shown; and $more more.' : '$shown.';
+  return more > 0 ? '$shown, and $more more.' : '$shown.';
 }

@@ -136,8 +136,7 @@ enum SourceTier {
   wristOptical(
     2,
     'Wrist optical pulse',
-    'Continuous 24/7 pulse, sleep and temperature. Beat timing is inferred '
-        'from a pulse wave, so HRV here is PRV.',
+    'Measures pulse, sleep and temperature around the clock. It infers beat timing from a pulse wave, so heart rate variability (HRV) here is pulse rate variability (PRV).',
     C.blue,
   ),
 
@@ -145,7 +144,7 @@ enum SourceTier {
   phone(
     3,
     'Steps only',
-    'The phone’s own motion coprocessor. Steps and nothing else.',
+    'The motion coprocessor in the phone. Counts steps only.',
     C.orange,
   );
 
@@ -363,7 +362,7 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
   Future<void> _sayNotSaved() => showReasonSheet(
         context,
         AppLocalizations.of(context)?.devicesOrderNotSaved ??
-            'That order could not be saved. Nothing changed.',
+            'Could not save the order. The previous order is still in use.',
       );
 
   @override
@@ -448,8 +447,7 @@ class _SignalPriorityScreenState extends State<SignalPriorityScreen> {
                   ],
                   Text(
                     l?.metricDetailHistoryKeepsSource ??
-                        'Days already finished keep the source they were '
-                            'calculated with.',
+                        'Finished days keep the source used to calculate them.',
                     style: F.over.copyWith(color: p.ink3),
                   ),
                 ],
@@ -767,18 +765,14 @@ class NotYet {
 const List<NotYet> kNotYet = [
   NotYet(
     'Polar 360 and Loop',
-    'Screenless, no subscription, worn around the clock, with beat-to-beat '
-        'intervals the vendor documents. Nobody has written the driver.',
+    'A screenless band with no subscription, worn around the clock. The vendor documents its beat-to-beat intervals. No driver exists yet.',
     'Planned',
     LucideIcons.watch,
   ),
   NotYet(
     'Fitbit, Withings, Xiaomi and Zepp bands',
-    'Their pairing key is issued by the vendor’s own server. A driver would '
-        'work only while their app stayed installed and signed in, and would '
-        'stop the day they changed it — so the band would be ours to support '
-        'and theirs to switch off.',
-    'Not a matter of time',
+    'The vendor server issues the pairing key. A driver would work only while the vendor app stays installed and signed in, and would break whenever the vendor changes it. We would have to support the band, and the vendor could disable it.',
+    'Not planned',
     LucideIcons.cloudOff,
   ),
 ];
@@ -869,8 +863,7 @@ class HealthSource {
   if (label != null) {
     return (
       label,
-      'Metrics that depend on the sensor use this band’s own constants, so two '
-          'different bands can land on different tiers for the same physiology.'
+      'Sensor-dependent metrics use constants specific to each band, so two bands can show different tiers for the same person.'
     );
   }
   // Null is the honest majority case, not an error: every row banked before
@@ -880,9 +873,7 @@ class HealthSource {
   // WHOOP 4.
   return (
     'Not stated yet',
-    'This band has not said which generation it is, and imported or older '
-        'days never will. Metrics that depend on the sensor abstain rather '
-        'than borrow another band’s numbers.'
+    'This band has not reported its generation, and imported or older days never include it. Metrics that depend on the sensor stay blank.'
   );
 }
 
@@ -1089,24 +1080,20 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
     kPairableSensors = [
   (
     entry: kBleHrs,
-    blurb: 'A chest strap or armband. Beat timing measured electrically, '
-        'which a wrist pulse cannot match. Runs during a workout.',
+    blurb: 'A chest strap or armband. Measures beat timing electrically. Runs during a workout.',
     // Null means the plain notify-class pairing, which is the whole of what a
     // heart-rate sensor needs.
     pick: null,
   ),
   (
     entry: kOura,
-    blurb: 'Reads the ring directly, with no Oura account and no subscription. '
-        'The ring must be factory reset FIRST — one that is already set up in '
-        'the Oura app cannot be re-keyed. Reset it from the Oura app (remove/'
-        'unpair the ring), then close that app before pairing here.',
+    blurb: 'Reads the ring directly. No Oura account or subscription needed. Factory reset the ring first, because a ring already set up in the Oura app cannot be re-keyed. '
+           'To reset it, remove the ring in the Oura app, then close that app before pairing here.',
     pick: pairOuraRing,
   ),
   (
     entry: kPolarPmd,
-    blurb: 'A Polar Verity Sense or OH1. Beat timing measured optically, '
-        'streamed during a workout, same as a chest strap.',
+    blurb: 'A Polar Verity Sense or OH1. Measures beat timing optically and streams it during a workout, like a chest strap.',
     // Null: no handshake and no key — the START/STOP toggle this sensor
     // needs belongs to the workout session, not to pairing. Same as
     // [kBleHrs].
@@ -1114,9 +1101,7 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kRing11m,
-    blurb: 'An unbranded smart ring sold under many storefront names '
-        '(not the Colmi R11/R12). No account or key needed. Banks its own '
-        'data; nothing else derives from it yet.',
+    blurb: 'An unbranded smart ring sold under many storefront names, excluding the Colmi R11 and R12. No account or key needed. The app saves its data but derives no metrics from it yet.',
     // Null means the plain notify-class pairing — no key exchange needed
     // before the row can be written. The negotiation runs inside the
     // adapter's own session, once connected.
@@ -1124,19 +1109,15 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kCoros,
-    blurb: 'A Coros sports watch. Reads battery, model/serial/firmware and '
-        'live heart rate — no pairing needed. Recorded runs, sleep and steps '
-        'stay on the watch; there is no public way to pull them off yet.',
+    blurb: 'A Coros sports watch. Reads battery, model, serial number, firmware and live heart rate without pairing. Recorded runs, sleep and steps stay on the watch because there is no public way to pull them off yet.',
     // Null means the plain notify-class pairing — no key needed before the
     // row can be written.
     pick: null,
   ),
   (
     entry: kGarmin,
-    blurb: 'A Garmin sports watch. Before pairing here, put the watch into '
-        'its own Settings → Sensors & Accessories → Phone → Pair Phone '
-        'screen — it will not accept a new connection otherwise. Reads its '
-        'model, firmware and battery; nothing else derives from it yet.',
+    blurb: 'A Garmin sports watch. Before pairing, open Settings → Sensors & Accessories → Phone → Pair Phone on the watch. '
+           'It accepts no new connection otherwise. Reads model, firmware and battery; the app derives nothing else yet.',
     // Null means the plain notify-class pairing — no key exchange this pass
     // implements. The Multi-Link/GFDI handshake runs inside the adapter's
     // own session, once connected.
@@ -1144,94 +1125,74 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kUltrahuman,
-    blurb: 'Reads the ring directly. No account, no key exchange — just pair '
-        'it like a chest strap.',
+    blurb: 'Reads the ring directly. No account or key exchange needed. Pair it as you would a chest strap.',
     // Null: this wire has no auth at all, so there is no key/handshake step
     // beyond the plain notify-class pairing — same as `kBleHrs`.
     pick: null,
   ),
   (
     entry: kWithingsSteelHr,
-    blurb: 'Pairs and connects, with no account and no subscription. Nothing '
-        'it captures is decoded into a number yet — no one on this project '
-        'has held one.',
+    blurb: 'Pairs and connects without an account or subscription. The app decodes nothing it captures yet, because no one on this project has one to test.',
     pick: pairWithingsSteelHr,
   ),
   (
     entry: kMiBand234,
-    blurb: 'A Mi Band 2, 3 or 4. It must have no key installed yet — one '
-        'still bound to Mi Fit or Zepp will refuse to pair. Unpair it from '
-        'that app first, or use a factory-reset unit. Pairs and connects; '
-        'nothing derives from it yet.',
+    blurb: 'A Mi Band 2, 3 or 4 with no key installed. A band still bound to Mi Fit or Zepp refuses to pair, so unpair it from that app first or factory reset it. '
+           'Pairs and connects; the app derives nothing from it yet.',
     pick: pairMiBand234,
   ),
   (
     entry: kPebble,
-    blurb: 'Pebble 2 or Pebble 2 SE only — older Pebbles need Bluetooth '
-        'Classic, which this app cannot reach. Nothing is decoded yet — raw '
-        'bytes are archived for a future update to make sense of.',
+    blurb: 'Pebble 2 and Pebble 2 SE only. Older Pebbles need Bluetooth Classic, which this app does not support. The app archives raw bytes and decodes nothing yet.',
     // Same generic notify-class pairing as the chest strap above — no key,
     // no pre-pairing step.
     pick: null,
   ),
   (
     entry: kMakibesHr3,
-    blurb: 'An unbranded Makibes HR3 board. Pairs and banks its raw data in '
-        'the background, but does not derive anything from it yet — nobody '
-        'on this project owns one to verify its numbers against.',
+    blurb: 'An unbranded Makibes HR3 board. Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing — no key, no clock write
     // needed before the row can be written.
     pick: null,
   ),
   (
     entry: kId115,
-    blurb: 'An unbranded ID115 board. Pairs and banks its raw data in the '
-        'background, but does not derive anything from it yet — nobody on '
-        'this project owns one to verify its numbers against.',
+    blurb: 'An unbranded ID115 board. Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing — no key, no clock write
     // needed before the row can be written.
     pick: null,
   ),
   (
     entry: kSmaq2oss,
-    blurb: 'An SMA-Q2-OSS smartwatch. Pairs and banks its raw data in the '
-        'background, but does not derive anything from it yet — nobody on '
-        'this project owns one to verify its numbers against.',
+    blurb: 'An SMA-Q2-OSS smartwatch. Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing — no key, no clock write
     // needed before the row can be written.
     pick: null,
   ),
   (
     entry: kXWatch,
-    blurb: 'An unbranded XWatch board. Pairs and banks its raw data in the '
-        'background, but does not derive anything from it yet — nobody on '
-        'this project owns one to verify its numbers against.',
+    blurb: 'An unbranded XWatch board. Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing — no key, no clock write
     // needed before the row can be written.
     pick: null,
   ),
   (
     entry: kWatch9,
-    blurb: 'An unbranded Watch9 board. Pairs and banks its raw data in the '
-        'background, but does not derive anything from it yet — nobody on '
-        'this project owns one to verify its numbers against.',
+    blurb: 'An unbranded Watch9 board. Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing — no key, no clock write
     // needed before the row can be written.
     pick: null,
   ),
   (
     entry: kNo1Band,
-    blurb: 'A TLW64 or NO1 F1 fitness band. Pairs and banks its raw data in '
-        'the background, but does not derive anything from it yet — nobody '
-        'on this project owns one to verify its numbers against.',
+    blurb: 'A TLW64 or NO1 F1 fitness band. Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing — no key, no clock write
     // needed before the row can be written.
     pick: null,
   ),
   (
     entry: kDafit,
-    blurb: 'An unbranded DaFit/MOYOUNG-style watch, sold under many storefront '
-        'names. Banks its own data; nothing else derives from it yet.',
+    blurb: 'An unbranded DaFit/MOYOUNG-style watch, sold under many storefront names. Saves its own data; the app derives nothing from it yet.',
     // Null means the plain notify-class pairing — no key, no clock write
     // needed before the row can be written. The init handshake runs inside
     // the adapter's own session, once connected.
@@ -1239,51 +1200,38 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kO2Ring,
-    blurb: 'Reads its battery, model and serial. No SpO2 or pulse reading '
-        'from the ring itself appears anywhere in the app yet.',
+    blurb: 'Reads its battery level, model and serial number. The app shows no blood oxygen (SpO2) or pulse reading from the ring yet.',
     pick: pairO2Ring,
   ),
   (
     entry: kZeTime,
-    blurb: 'Pairs and connects. Nothing is decoded from it yet beyond its own '
-        'battery level — no one on this project has held one to confirm what '
-        'its other data means.',
+    blurb: 'Pairs and connects. The app decodes only its battery level, because no one on this project has one to confirm what its other data means.',
     pick: pairZeTime,
   ),
   (
     entry: kWearFit,
-    blurb: 'A Howear-branded band (HK8 Ultra, HK8 Pro Max and similar), paired '
-        'through the WearFit app family. Banks its own battery report and '
-        'whatever else it sends; nothing else derives from it yet.',
+    blurb: 'A Howear-branded band such as the HK8 Ultra or HK8 Pro Max, which pairs through the WearFit app family. Saves its battery report and any other data it sends; the app derives nothing else from it yet.',
     // Null means the plain notify-class pairing — no key, no clock, no
     // handshake needed before the row can be written.
     pick: null,
   ),
   (
     entry: kRingConn,
-    blurb: 'Pairs directly, no app or account needed. Every sync starts from '
-        'now rather than a saved bookmark, so a sync run right after the '
-        'RingConn app’s own sync can come back looking emptier than expected '
-        '— the ring shares one resume point between whichever app reads it '
-        'first.',
+    blurb: 'Pairs directly. No app or account needed. Every sync starts from the current time, with no saved position. The ring keeps one resume point shared by whichever app reads it first, so a sync right after a sync in the RingConn app can return less data than expected.',
     // Null means the plain notify-class pairing — the whole handshake lives
     // inside RingConnAdapter.run, same as kBleHrs.
     pick: null,
   ),
   (
     entry: kDt78,
-    blurb: 'Pairs and banks its raw data in the background, but does not '
-        'derive anything from it yet — nobody on this project owns one to '
-        'verify its numbers against.',
+    blurb: 'Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing, which is the whole of what
     // this watch needs — no auth, no key.
     pick: null,
   ),
   (
     entry: kLefun,
-    blurb: 'A generic Bluetooth ring or band from the family sold under many '
-        'storefront names. Pairs and connects, but reports nothing yet — '
-        'nobody on this project has held one to verify what its numbers mean.',
+    blurb: 'A generic Bluetooth ring or band from a family sold under many storefront names. Pairs and connects but reports no data yet, because nobody on this project owns one to check what its numbers mean.',
     // No key, no handshake — plain notify-class pairing, with no measurement
     // tier: this device declares no signal at all (`LefunAdapter.signals` is
     // `const {}`), so there is no quality to rank it against another source.
@@ -1296,26 +1244,21 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kHPlus,
-    blurb: 'A generic HPlus-family HR band (HPlus, Makibes F68, Zeblaze and '
-        'similar). No account, no handshake — it pairs and banks what it '
-        'sends, but nothing is decoded into a number yet.',
+    blurb: 'A generic HPlus-family heart rate band, such as the HPlus, Makibes F68 or Zeblaze. No account or handshake needed. It pairs and saves what it sends; the app decodes no numbers from it yet.',
     // Null: no auth step, so the plain notify-class pairing is the whole of
     // what this band needs — same as [kBleHrs].
     pick: null,
   ),
   (
     entry: kPineTime,
-    blurb: 'Pairs and banks its raw data in the background, but does not '
-        'derive anything from it yet — nobody on this project owns one to '
-        'verify its numbers against.',
+    blurb: 'Pairs and saves its raw data in the background. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing, which is the whole of what
     // this watch needs — no auth, no key.
     pick: null,
   ),
   (
     entry: kQHybrid,
-    blurb: 'The original Fossil/Skagen hybrid smartwatch line, not the newer '
-        'Hybrid HR. Pairs and connects; nothing derives from it yet.',
+    blurb: 'The original Fossil/Skagen hybrid smartwatch line, excluding the newer Hybrid HR. Pairs and connects; the app derives nothing from it yet.',
     // NOT plain notify-class pairing (`pick: null`): unlike a heart-rate
     // strap, which a workout arms, this band has no workout role, so
     // `pairQHybrid` is what runs its first real session — the adapter's own
@@ -1327,34 +1270,28 @@ final List<({BandEntry entry, String blurb, Future<String?> Function(BluetoothDe
   ),
   (
     entry: kColmi,
-    blurb: 'A Colmi ring. No account, no handshake — it pairs and banks its '
-        'history, but nothing is decoded into a number yet.',
+    blurb: 'A Colmi ring. No account or handshake needed. It pairs and saves its history; the app decodes no numbers from it yet.',
     // Null: no auth step, so the plain notify-class pairing is the whole of
     // what this ring needs — same as [kBleHrs].
     pick: null,
   ),
   (
     entry: kCasio,
-    blurb: 'GBX100, GW-B5600, GMW-B5000, ECB-S100 and current Casio '
-        'smartwatches. Pairs and connects; nothing derives from it yet.',
+    blurb: 'GBX100, GW-B5600, GMW-B5000, ECB-S100 and current Casio smartwatches. Pairs and connects; the app derives nothing from it yet.',
     // Null means the plain notify-class pairing — standard BLE bonding is
     // the whole of what this watch needs.
     pick: null,
   ),
   (
     entry: kJyou,
-    blurb: 'Pairs and banks its raw data, but does not derive anything from '
-        'it yet — nobody on this project owns one to verify its numbers '
-        'against.',
+    blurb: 'Pairs and saves its raw data. Nothing is derived yet, because nobody on this project owns one to check its numbers against.',
     // Null means the plain notify-class pairing, same as the heart-rate
     // sensor above.
     pick: null,
   ),
   (
     entry: kBangleJs,
-    blurb: 'Pairs any Espruino/Nordic-UART device generically, not just '
-        'Bangle.js-branded watches. Banks raw bytes only; nothing is decoded '
-        'into a number.',
+    blurb: 'Pairs any Espruino or Nordic UART device, including Bangle.js watches. Saves raw bytes only; the app decodes nothing.',
     // Plain notify-class pairing — no handshake to run at pick time.
     pick: null,
   ),
@@ -1383,8 +1320,7 @@ Future<void> addSensor(BuildContext c) async {
         c,
         AppLocalizations.of(c)
                 ?.devicesSensorLimit(kMaxConcurrentSecondaryLinks) ??
-            'This phone will pair at most $kMaxConcurrentSecondaryLinks '
-                'sensors alongside your band. Remove one to add another.');
+            'This phone pairs at most $kMaxConcurrentSecondaryLinks sensors alongside your band. Remove one to add another.');
     return;
   }
   if (!c.mounted) return;
@@ -1417,7 +1353,7 @@ Future<void> addFramedBand(BuildContext c) async {
     await showReasonSheet(
         c,
         AppLocalizations.of(c)?.devicesRequestNotSaved ??
-            'That request could not be saved. Please try again.');
+            'Could not save the request. Try again.');
     return;
   }
   await showRestartRequiredSheet(c);
@@ -1434,9 +1370,7 @@ Future<void> showRestartRequiredSheet(BuildContext c) async {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
         child: Text(
-          'iOS can only show the system pairing sheet before the app has used '
-          'Bluetooth. Close OpenStrap completely, then reopen it — the sheet '
-          'appears on its own.',
+          'iOS shows the system pairing sheet only before the app has used Bluetooth. Close OpenStrap completely and reopen it. The sheet then appears automatically.',
           style: F.body.copyWith(color: p.ink),
         ),
       ),
@@ -1550,13 +1484,9 @@ class MyDevicesView extends StatelessWidget {
                             'Nothing is measuring yet'),
                     phoneCounting
                         ? (l?.devicesPhoneCountingBody ??
-                            'The phone counts steps and nothing else. Heart '
-                                'rate, sleep, recovery and temperature all abstain '
-                                'until a band is paired.')
+                            'The phone counts steps only. Heart rate, sleep, recovery and temperature stay blank until you pair a band.')
                         : (l?.devicesNothingMeasuringBody ??
-                            'No band is paired and no phone steps are arriving, '
-                                'so every metric in the app will abstain rather '
-                                'than estimate.'),
+                            'No band is paired and no phone steps are arriving, so every metric stays blank.'),
                     fix: l?.devicesPairABand ?? 'Pair a band',
                     icon: LucideIcons.watch,
                     onFix: onPair,
@@ -1611,7 +1541,7 @@ class MyDevicesView extends StatelessWidget {
                 // (owner's call, live review). `kNotYet`/`NotYet` still hold
                 // the reasons and permanences below; only the render is gone.
                 const SizedBox(height: S.x5),
-                Text(l?.devicesQualityLadder ?? 'THE QUALITY LADDER',
+                Text(l?.devicesQualityLadder ?? 'SOURCE RANKING',
                     style: F.over.copyWith(color: p.ink3)),
                 const SizedBox(height: S.x3),
                 for (final t in SourceTier.values)
@@ -2389,9 +2319,9 @@ Future<void> _confirmForgetSensor(BuildContext c, HealthSource s) async {
       title: Text(l?.devicesForgetSensor(s.name) ?? 'Forget ${s.name}?'),
       content: Text(
         l?.devicesForgetSensorBody ??
-            'It stops being used during workouts and has to be paired again. '
-                'Everything already banked on this phone is kept — this removes the '
-                'source, not the data.',
+            'The app stops using it during workouts until you pair it again. '
+            'Data already saved on this phone stays. '
+            'Only the device is removed.',
       ),
       actions: [
         TextButton(
@@ -2498,9 +2428,9 @@ Future<void> _confirmForget(BuildContext c, AppState app, String name) async {
       title: Text(l?.devicesForgetBand(name) ?? 'Forget $name?'),
       content: Text(
         l?.devicesForgetBandBody ??
-            'The band stops syncing and has to be paired again to measure '
-                'anything. Everything already banked on this phone is kept — this '
-                'removes the source, not the data.',
+            'The band stops syncing until you pair it again. '
+            'Data already saved on this phone stays. '
+            'Only the device is removed.',
       ),
       actions: [
         TextButton(
@@ -2627,28 +2557,28 @@ class DeviceDetailView extends StatelessWidget {
                           l?.devicesSupport ?? 'Support',
                           value: l?.devicesExperimental ?? 'Experimental',
                           sub: l?.devicesSensorExperimentalSub ??
-                              'Decoded from the protocol, never checked '
-                                  'against the hardware — nobody here owns one.',
+                              'Decoded from the protocol. Nobody on the project owns one, '
+                              'so it has not been tested on hardware.',
                           chevron: false),
                       Divider(color: p.line, height: 1),
                       SetRow(LucideIcons.database, C.teal,
                           l?.devicesWhatItDoes ?? 'What it does',
                           sub: s.tier == null
                               ? (l?.devicesWhatItDoesUnranked ??
-                                  'Everything it sends is stored and attributed '
-                                      'to it. Nothing in the app is calculated '
-                                      'from it yet.')
+                                  'The app stores everything it sends and labels it with this '
+                                  'device. No metric '
+                                  'uses that data yet.')
                               : (l?.devicesWhatItDoesRanked ??
-                                  'Beat timing is stored and attributed to it '
-                                      'during a workout. Nothing in the app is '
-                                      'calculated from it yet.'),
+                                  'The app stores its beat timing during a workout and labels it '
+                                  'with this device. No metric '
+                                  'uses that data yet.'),
                           chevron: false),
                       Divider(color: p.line, height: 1),
                       SetRow(LucideIcons.refreshCw, C.purple,
                           l?.devicesLastData ?? 'Last data',
                           value: last == null ? '' : formatDayTime(last, l),
                           sub: last == null
-                              ? (l?.devicesNothingBankedYet ?? 'Nothing banked yet')
+                              ? (l?.devicesNothingBankedYet ?? 'Nothing saved yet')
                               : '',
                           chevron: false),
                       // MANUAL, and only for a sensor that holds history.
@@ -2671,9 +2601,9 @@ class DeviceDetailView extends StatelessWidget {
                             // the connect does not keep.
                             sub: s.family == 'oura'
                                 ? (l?.devicesSyncNowSub ??
-                                    'Fetch whatever it has been holding')
+                                    'Download the data it has stored')
                                 : (l?.devicesSyncNowSubListen ??
-                                    'Listen for whatever it sends right now'),
+                                    'Receive its live data'),
                             onTap: onSync),
                       ],
                     ]),
@@ -2742,7 +2672,7 @@ class DeviceDetailView extends StatelessWidget {
                           l?.devicesLastData ?? 'Last data',
                           value: last == null ? '' : formatDayTime(last, l),
                           sub: last == null
-                              ? (l?.devicesNothingBankedYet ?? 'Nothing banked yet')
+                              ? (l?.devicesNothingBankedYet ?? 'Nothing saved yet')
                               : '',
                           chevron: false),
                       if (calibration != null) ...[
@@ -2763,16 +2693,16 @@ class DeviceDetailView extends StatelessWidget {
                             l?.devicesSupport ?? 'Support',
                             value: l?.devicesExperimental ?? 'Experimental',
                             sub: l?.devicesBandExperimentalSub ??
-                                'This band is decoded but nobody here has worn '
-                                    'one. Its numbers have not been checked against '
-                                    'the hardware, only against the protocol.',
+                                'Nobody on the project has worn this band. Its decoding '
+                                'follows the protocol and has not '
+                                'been tested on hardware.',
                             chevron: false),
                       ],
                       if (onFind != null) ...[
                         Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.bellRing, C.orange,
                             l?.devicesBuzzTheBand ?? 'Buzz the band',
-                            sub: l?.devicesFindItByFeel ?? 'Find it by feel',
+                            sub: l?.devicesFindItByFeel ?? 'Vibrate the band to locate it',
                             chevron: false,
                             onTap: onFind),
                       ],

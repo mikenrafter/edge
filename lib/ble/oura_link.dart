@@ -102,11 +102,9 @@ const FlutterSecureStorage _secure = FlutterSecureStorage();
 /// factory reset, so the reset comes FIRST and pairing second — reversed, the
 /// user resets a ring this app has just keyed and loses both.
 const String _kResetFirst =
-    'The ring would not take a new key. It only accepts one while it is '
-    'factory reset, so reset it first and then pair here — that is the order, '
-    'and resetting is what frees the ring from whatever set it up before. '
-    'The ring has no reset button: open the Oura app and remove/unpair the '
-    'ring there, then fully close that app before pairing here.';
+    'The ring rejected the new key. It accepts a key only while factory reset. '
+    'The ring has no reset button, so open the Oura app and remove the ring '
+    'there, then fully close that app and pair here.';
 
 String _hex(List<int> b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
@@ -636,8 +634,8 @@ Future<String?> pairOuraRing(BluetoothDevice device) async {
     // anyone's patience.
     return await withSecondaryLinkSlot<String?>(
       timeout: const Duration(seconds: 30),
-      onTimeout: () => 'Another sensor is using this phone’s Bluetooth right '
-          'now. Try pairing again in a moment.',
+      onTimeout: () => "Another sensor is using this phone's Bluetooth. "
+                       'Try pairing again in a moment.',
       () async {
     try {
     await device.connect(timeout: const Duration(seconds: 20));
@@ -650,7 +648,7 @@ Future<String?> pairOuraRing(BluetoothDevice device) async {
     link = localLink; // captured var, so the outer `finally` can still close it
     final missing = localLink.missingCharacteristics(kOura.requiredCharacteristics);
     if (missing.isNotEmpty) {
-      return 'That device does not expose the ring service this app speaks.';
+      return 'That device does not offer the Bluetooth service this app uses for the Oura ring.';
     }
 
     // Install, then prove — over the real wire builders and nothing else.
@@ -730,8 +728,8 @@ Future<String?> pairOuraRing(BluetoothDevice device) async {
       // else, and only a reset frees it.
       final result = ouraAuthResult(replyFrame);
       if (result == kOuraAuthFactoryReset) {
-        return 'The ring took the key but is still waiting for one, which '
-            'should not happen. Try pairing again.';
+        return 'The ring took the key but still reports that it needs one. '
+               'Try pairing again.';
       }
       if (result != 0) {
         return _kResetFirst;

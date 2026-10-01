@@ -225,8 +225,8 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
                   l?.readinessDetailInputsFooter(
                           d.inputsUsed, d.breakdown.length) ??
                       '${d.inputsUsed}/${d.breakdown.length} inputs. Each one is '
-                          'ranked against your own history — a parallel view of the '
-                          'same inputs, not slices of the number above.',
+                      'ranked against your own history on its own, so the figures '
+                      'do not add up to the number above.',
                   style: F.cap.copyWith(color: p.ink3, height: 1.5),
                 ),
               ),
@@ -355,13 +355,13 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
       Text(
         need != null
             ? (l?.readinessDetailNeedSuffix(need) ??
-                '$need. Each input is ranked against your own nights, so the '
-                    'score cannot start before there are enough of them.')
+                '$need. Each input is ranked against your own nights, so '
+                'scoring waits until there are enough of them.')
             : (note != null && note.isNotEmpty
                 ? note
                 : (l?.readinessDetailNoNoteFallback ??
-                    'Everything above was present, and the comparison against '
-                        'your own history still could not be made.')),
+                    'Every input above was present, but the comparison against '
+                    'your own history could not be made.')),
         style: F.cap.copyWith(color: p.ink3, height: 1.5),
       ),
     ]);
@@ -412,7 +412,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
       // An unlabelled glyph is not an explanation. This is the
       // smallest-worthwhile-change gate, so it says what it means.
       if (used && !pastMdc)
-        l?.readinessDetailWithinSpread ?? 'within your usual spread',
+        l?.readinessDetailWithinSpread ?? 'within your usual range',
     ];
 
     return Padding(

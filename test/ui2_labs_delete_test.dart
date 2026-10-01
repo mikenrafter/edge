@@ -147,7 +147,7 @@ void main() {
     // one going.
     expect(find.text('Remove Ferritin from 2026-03-04?'), findsOneWidget);
     expect(find.textContaining('42 ng/mL'), findsOneWidget);
-    expect(find.textContaining('no undo'), findsOneWidget);
+    expect(find.textContaining('You cannot undo it'), findsOneWidget);
 
     await t.tap(find.text('Keep it'));
     await t.pumpAndSettle();
@@ -284,7 +284,7 @@ void main() {
       await t.tap(_control('Remove the Lp(a) marker'));
       await t.pumpAndSettle();
       expect(find.text('Remove Lp(a)?'), findsOneWidget);
-      expect(find.textContaining('Nothing measured goes with it'),
+      expect(find.textContaining('no measurements are deleted'),
           findsOneWidget);
 
       await t.tap(find.text('Remove'));

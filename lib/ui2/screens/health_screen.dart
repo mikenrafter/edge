@@ -349,33 +349,33 @@ class _Cat {
 const _catalogue = <_Cat>[
   _Cat('Heart & rhythm', [
     _CatRow('resting_hr', 'rhr', 'The lowest sustained rate of the night'),
-    _CatRow('hrv', 'rmssd', 'RMSSD over the cleanest window of sleep'),
-    _CatRow('hrv_cv', 'hrv_cv', 'How much that swings from night to night'),
-    _CatRow('lf_hf', 'lf_hf', 'Where beat-timing power sits across frequencies'),
+    _CatRow('hrv', 'rmssd', 'RMSSD (beat-to-beat variation) over the cleanest stretch of sleep'),
+    _CatRow('hrv_cv', 'hrv_cv', 'How much HRV varies from night to night'),
+    _CatRow('lf_hf', 'lf_hf', 'Beat-to-beat variation split by frequency band'),
     _CatRow('dip', 'dip_pct', 'How far your heart rate falls while you sleep'),
-    _CatRow('hrr', 'hrr_bpm', 'How fast it falls in the minute after a bout'),
+    _CatRow('hrr', 'hrr_bpm', 'How fast your heart rate drops in the minute after exercise'),
   ]),
   _Cat('Sleep', [
     _CatRow('sleep', 'tst_min', 'Time asleep, from motion and beat timing'),
     _CatRow('efficiency', 'efficiency', 'Asleep as a share of time in bed'),
-    _CatRow('deep', 'deep_min', 'Heart-rate flatness inside NREM'),
-    _CatRow('rem', 'rem_min', 'Staged from beat variability and movement'),
+    _CatRow('deep', 'deep_min', 'Heart-rate steadiness during non-REM sleep'),
+    _CatRow('rem', 'rem_min', 'Sleep stages from beat variability and movement'),
     _CatRow('nap_min', 'nap_min', 'Sleep detected outside the main night'),
   ]),
   _Cat('Breathing', [
-    _CatRow('resp_rate', 'resp_rate', 'Breaths per minute, recovered from beat timing'),
+    _CatRow('resp_rate', 'resp_rate', 'Breaths per minute, estimated from beat timing'),
     _CatRow('brv', 'brv_cv', 'How much that rate varies across the night'),
   ]),
   _Cat('Movement & load', [
-    _CatRow('steps', 'steps', 'Counted by a pedometer, never modelled'),
-    _CatRow('active_min', 'active_min', 'Minutes of movement volume, not locomotion'),
+    _CatRow('steps', 'steps', 'Counted by a pedometer'),
+    _CatRow('active_min', 'active_min', 'Minutes of body movement, walking or not'),
     _CatRow('calories', 'calories', 'Active energy from heart rate and your profile'),
     _CatRow('strain', 'strain', 'Cardiovascular load over the day, on 0–21'),
-    _CatRow('trimp', 'trimp', 'Time in each zone, weighted by its cost'),
+    _CatRow('trimp', 'trimp', 'Minutes in each heart-rate zone, weighted by zone intensity'),
   ]),
   _Cat('Body & wear', [
-    _CatRow('skin_temp', 'skin_temp_z', 'Distance from your own recent nights'),
-    _CatRow('wear', 'worn_min', 'Minutes with a band record present'),
+    _CatRow('skin_temp', 'skin_temp_z', 'Skin temperature vs your recent nights, in standard deviations'),
+    _CatRow('wear', 'worn_min', 'Minutes the band recorded data'),
   ]),
 ];
 
@@ -583,8 +583,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     return StatusCard(
       l?.healthCouldNotRead(what) ?? 'Could not read your $what',
       l?.healthReadFailedBody ??
-          'The stored rows failed to load. Nothing was deleted — this is a '
-              'read that went wrong.',
+          'The stored rows failed to load. Nothing was deleted.',
       fix: l?.healthTryAgain ?? 'Try again',
       icon: LucideIcons.databaseZap,
       onFix: retry,
@@ -696,7 +695,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         rising: Rising.bad,
         whyAbsent: sleepMin.isEmpty
             ? (l?.healthWhyReadFromSleep ??
-                'Read from sleep, and no night was scored.')
+                'Comes from sleep only. No night has been scored.')
             : '');
 
     final hrvMetric = d.hrv;
@@ -709,7 +708,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         // sensor produced dirty data on a night that never happened.
         whyAbsent: sleepMin.isEmpty
             ? (l?.healthWhyReadOnlyFromSleep ??
-                'Read only from sleep, and no night was scored.')
+                'Comes from sleep only. No night has been scored.')
             : '');
 
     row(sleepMin, LucideIcons.moon, C.blue, l?.healthRowSleep ?? 'Sleep',
@@ -742,7 +741,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         // gates stress abstains on, asserted for all of them.
         whyAbsent: sleepMin.isEmpty
             ? (l?.healthWhyReadFromNight ??
-                'Read from the night, and no night was scored.')
+                'Comes from sleep only. No night has been scored.')
             : '');
 
     final respMetric = d.resp;
@@ -765,7 +764,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             ? respMetric.note!
             : (sleepMin.isEmpty
                 ? (l?.healthWhyReadOnlyFromSleep ??
-                    'Read only from sleep, and no night was scored.')
+                    'Comes from sleep only. No night has been scored.')
                 : (l?.healthWhyNoReadingLastNight ??
                     'No reading from last night.')));
 
@@ -789,12 +788,12 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         : Observation(
             state == 'red'
                 ? (l?.healthIllnessRedTitle ??
-                    'Several nights in a row are away from your normal')
+                    'Several nights in a row were outside your normal range')
                 : (illnessBehind == null || illnessBehind <= 0
                     ? (l?.healthIllnessLastNightTitle ??
-                        'Last night sat outside your normal range')
+                        'Last night was outside your normal range')
                     : (l?.healthIllnessDayTitle(prettyDay(illnessDay)) ??
-                        '${prettyDay(illnessDay)} sat outside your normal range')),
+                        '${prettyDay(illnessDay)} was outside your normal range')),
             // The RUN is what is above baseline — the accumulator only clears
             // after two nights back under. The stored z is the LATEST night's
             // own deviation and can be negative while the run is still up,
@@ -802,9 +801,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             // below it".
             illnessZ == null
                 ? (l?.healthIllnessBodyNoZ ??
-                    'Your nocturnal resting heart rate has been running above '
-                        'your own baseline. This watches one signal only. It '
-                        'names a pattern, not a cause.')
+                    'Your overnight resting heart rate has been above '
+                    'your own baseline. This tracks that one signal '
+                    'and cannot tell you the cause.')
                 : (l?.healthIllnessBodyWithZ(
                         illnessZ.abs().toStringAsFixed(1),
                         illnessZ >= 0
@@ -816,7 +815,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                         '${illnessZ >= 0 ? 'above' : 'below'} it. This watches '
                         'one signal only. It names a pattern, not a cause.'),
             advice: l?.healthIllnessAdvice ??
-                'Worth noting if it continues past a couple of days.',
+                'If it lasts more than a couple of days, take note.',
           );
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -881,9 +880,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                     : (l?.healthNoNapReadingFor(prettyDay(d.napDay)) ??
                         'No nap reading for ${prettyDay(d.napDay)}'),
                 l?.healthNapsBody ??
-                    'Naps come off the same second-by-second recording as the '
-                        'rest of the day, and this day does not have enough of '
-                        'it.',
+                    'Naps are detected from the same second-by-second recording '
+                    'as the rest of the day. This day has too little '
+                    'of it.',
                 icon: LucideIcons.sun,
               )
             : Surface(
@@ -1087,7 +1086,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             d.daysWithData.clamp(0, 30),
             30,
             l?.healthDaysWithRecord ??
-                'Days with a derived record in the last 30 days',
+                'Days with analysed data in the last 30 days',
             C.domHealth,
           ),
         ),
@@ -1222,7 +1221,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               l?.healthHeartRateVariability ?? 'Heart rate variability',
               '${rmssd.round()}',
               'ms',
-              l?.healthTimeFrequencyNonLinear ?? 'Time, frequency and non-linear',
+              l?.healthTimeFrequencyNonLinear ?? 'Time-domain, frequency-domain and non-linear measures',
               C.green,
               preview: _hrvPreview(c, d),
               onTap: () => go(c, const Investigate('hrv'))),
@@ -1259,7 +1258,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             ],
       empty: have.length < 2
           ? NoData(
-              message: l?.healthOneNightNotTrend ?? 'One night is not a trend yet')
+              message: l?.healthOneNightNotTrend ?? 'A trend needs more than one night')
           : null,
       series: win,
       child: CustomPaint(
@@ -1308,7 +1307,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       // method in full, and the paper it came from.
       Text(
           l?.healthEachOneOpens ??
-              'Each one opens its chart, your own range, and how it is worked out.',
+              'Each one opens its chart, your range and how it is calculated.',
           style: F.over.copyWith(color: p.ink3, height: 1.6)),
       for (final f in _catalogue) _family(c, p, f, e.counts),
     ]);
@@ -1425,8 +1424,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         StatusCard(
           loc?.healthNoLabResults ?? 'No lab results',
           loc?.healthNoLabResultsBody ??
-              'Nothing logged. Anything you add here stays on this device, '
-                  'and anything you remove is gone from it.',
+              'Nothing logged yet. Results you add stay on this device. '
+              'Removing a result deletes it from the device.',
           icon: LucideIcons.testTube,
         )
       else ...[
@@ -1554,8 +1553,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       title: loc?.healthRemoveLabelFrom(label, takenOn) ??
           'Remove $label from $takenOn?',
       body: (loc?.healthRemoveLabBody(m?.format(v) ?? _num(v), unit) ??
-              'The ${m?.format(v) ?? _num(v)} $unit you logged for that draw. '
-                  'It leaves this device and there is no undo.') +
+              'This deletes the ${m?.format(v) ?? _num(v)} $unit you logged for that draw. '
+              'You cannot undo it.') +
           (older == null
               ? ''
               : (loc?.healthRemoveLabOlderNote(older) ??
@@ -1649,8 +1648,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       context,
       title: l?.healthRemoveMarkerQ(m.label) ?? 'Remove ${m.label}?',
       body: l?.healthRemoveMarkerBody ??
-          'It leaves the marker list, so you can no longer log it. Nothing '
-              'measured goes with it — you have no results under it.',
+          'Deleting it removes the marker from the list, so you can no longer log results for it. '
+          'It has no results, so no measurements are deleted.',
     );
     if (!ok || !mounted) return;
     await LocalDb.deleteLabMarkerDef(m.key);
@@ -1733,8 +1732,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(v.value == null
               ? (loc?.healthValueMustBeNumber ??
-                  'The value needs to be a number on its own, without the unit. '
-                      'Nothing was saved.')
+                  'Enter the value as a number without the unit. '
+                  'Nothing was saved.')
               : (loc?.healthDateFormatError ??
                   'The date needs to be YYYY-MM-DD. Nothing was saved.')),
         ));
@@ -1751,7 +1750,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(loc?.healthCouldNotSaveIt(e.toString()) ??
-                  'Could not save it: $e')));
+                  'Could not save the result: $e')));
         }
         return;
       }

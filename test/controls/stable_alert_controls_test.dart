@@ -21,10 +21,10 @@ void main() {
     (t) async {
       addTearDown(t.view.reset);
       await pump(t, const BandNotificationsView(enabled: false, granted: true));
-      final before = t.getTopLeft(find.text('One buzz, not a stream'));
+      final before = t.getTopLeft(find.text('One buzz per notification'));
       await pump(t, const BandNotificationsView(enabled: true, granted: true));
       expect(
-        t.getTopLeft(find.text('One buzz, not a stream')),
+        t.getTopLeft(find.text('One buzz per notification')),
         before,
         reason: 'details expand only through an explicit accordion',
       );

@@ -256,9 +256,9 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
           l?.cycleRemoveLogTitle(_short(date, l)) ?? 'Remove ${_short(date, l)}?',
       body:
           l?.cycleRemoveLogBody ??
-          'Cycle day, phase and the predicted next date are all counted from '
-              'the days you log. Only today can be logged, so this one cannot be '
-              'put back.',
+          'Cycle day, phase and the predicted next date all count from '
+          'the days you log. You can only log today, so you cannot add '
+          'this day back.',
     );
     if (!ok || !mounted) return;
     final repo = context.read<AppState>().repo;
@@ -821,7 +821,7 @@ String _reproDisplayWhy(AppLocalizations? l, String key) => switch (key) {
   'none' =>
     l?.cycleReproNoneWhy ??
         'No phase and no predicted next. Your biometrics still show.',
-  _ => l?.cyclePreferNotToSayWhy ?? 'The app keeps the phase off.',
+  _ => l?.cyclePreferNotToSayWhy ?? 'The app shows no phase.',
 };
 
 /// Localized display label for a `kCycleSymptoms` key. The key itself stays
@@ -1031,8 +1031,8 @@ class _CycleHistoryState extends State<_CycleHistory> {
         l?.cycleNotEnoughDescribeDayTitle ??
             'Not enough cycles to describe a cycle day yet',
         l?.cycleNotEnoughDescribeDayBody ??
-            'Every point here is the middle of the same day across two or more of '
-                'your own cycles. Nothing has two behind it yet.',
+            'Each point is the middle of the same cycle day across two or more of '
+            'your cycles. No day has two cycles yet.',
         icon: LucideIcons.circleDot,
       );
     }
@@ -1043,9 +1043,9 @@ class _CycleHistoryState extends State<_CycleHistory> {
           if (w != null) ...[w, const SizedBox(height: S.x3)],
         Text(
           l?.cycleOwnPastCyclesDescribed ??
-              'Your own past cycles, described. Days that only one cycle reached '
-                  'are left empty rather than drawn — one night is not a middle. It '
-                  'describes what happened, not what will.',
+              'A summary of your past cycles. Days that only one cycle reached '
+              'are left empty, because one night has no middle. '
+              'It predicts nothing about future cycles.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
         const SizedBox(height: S.x4),
@@ -1145,7 +1145,7 @@ class _CycleHistoryState extends State<_CycleHistory> {
         cd == null
             ? (l?.cycleCompareBodyGeneric ??
                   'This puts today next to the same day of your own previous '
-                      'cycles. It needs three of them that got that far.')
+                  'cycles. It needs three previous cycles that reached the same day.')
             : (l?.cycleCompareBodyWithDay(cd) ??
                   'This puts today next to the same day of your own previous '
                       'cycles. It needs three of them that reached day $cd.'),
@@ -1178,9 +1178,8 @@ class _CycleHistoryState extends State<_CycleHistory> {
           ],
           Text(
             l?.cycleComparisonNotCorrection ??
-                'A comparison, not a correction. Nothing on your readiness has '
-                    'been rescaled by this, and nothing here is a training '
-                    'instruction.',
+                'This comparison does not change your readiness score. '
+                'It gives no training advice.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
@@ -1250,11 +1249,11 @@ class _CycleHistoryState extends State<_CycleHistory> {
 
     if (!_lengthReview) {
       return StatusCard(
-        l?.cycleLengthsTitle ?? 'Your cycle lengths against a published range',
+        l?.cycleLengthsTitle ?? 'Your cycle lengths against a 24 to 38 day range',
         l?.cycleLengthsBody ??
-            'Off unless you ask for it. It draws the days between your own logged '
-                'starts next to the range published for an adult cycle, and says '
-                'nothing else about them.',
+            'Off by default. When on, it draws the days between your logged '
+            'starts next to the published adult cycle range, 24 to 38 days. '
+            'It adds no comment on them.',
         fix: l?.cycleShowIt ?? 'Show it',
         icon: LucideIcons.ruler,
         onFix: _app == null
@@ -1281,9 +1280,8 @@ class _CycleHistoryState extends State<_CycleHistory> {
         l?.cycleGapTitle ?? 'There is a gap in your logged starts',
         l?.cycleGapBody(kCycleLengthUnloggableGapDays) ??
             'One of them is more than $kCycleLengthUnloggableGapDays days after '
-                'the one before it. A start you never logged and a cycle that '
-                'genuinely ran that long look the same from here, so nothing is '
-                'drawn.',
+            'the one before it. The data cannot tell an unlogged start from a '
+            'cycle that long, so nothing is drawn.',
         icon: LucideIcons.ruler,
       );
     }
@@ -1351,10 +1349,10 @@ class _CycleHistoryState extends State<_CycleHistory> {
         // Non-dismissible, and deliberately not a card that can be closed.
         Text(
           l?.cycleLengthChangesReasons ??
-              'Cycle length changes for many reasons — thyroid, stress, weight '
-                  'change, contraception, PCOS and others. This is your own logged '
-                  'data next to a published range. It is a reason to ask a clinician, '
-                  'not an answer from one.',
+              'Thyroid conditions, stress, weight change, contraception and '
+              'polycystic ovary syndrome (PCOS) can change cycle length. This chart '
+              'shows your logged data next to a published range. If your cycles '
+              'fall outside it, ask a clinician.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
         const SizedBox(height: S.x3),
@@ -1415,7 +1413,7 @@ Widget _currentCycleChart(BuildContext c, CycleData d) {
               l?.cycleDayOneLabel ?? 'Day 1',
               l?.cycleDayNLabel(last) ?? 'Day $last',
             ],
-      footnote: l?.cycleDescriptiveOnly ?? 'Descriptive only.',
+      footnote: l?.cycleDescriptiveOnly ?? 'Describes past nights only.',
       empty: axis == null
           ? NoData(
               message:
@@ -1462,12 +1460,12 @@ String _mdcNote(
   final n = '${noise.toStringAsFixed(1)} $unit';
   return swing < noise
       ? (l?.cycleMdcNoteInsideSpread(s, n) ??
-            ' Every day drawn here is inside your own night-to-night spread: the '
-                'biggest gap between two of them is $s, and $n is the smallest '
-                'change this can tell from noise. A shape, not a shift.')
+            ' Every day drawn here is within your own night-to-night spread. '
+            'The biggest gap between two days is $s. The smallest change this '
+            'can tell from noise is $n.')
       : (l?.cycleMdcNoteVaries(n, s) ??
             ' Your nights vary by $n on their own, so days closer together than '
-                'that are not separated. The biggest gap here is $s.');
+            'that cannot be told apart. The biggest gap here is $s.');
 }
 
 /// A z with its sign always printed — "0.3" and "−0.3" are different findings

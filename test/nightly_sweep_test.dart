@@ -115,7 +115,7 @@ void main() {
       ]);
       final pair = sweepPairing(f)!;
       expect(pair, contains('same day'));
-      expect(pair, contains('not a measured relationship'));
+      expect(pair, contains('has not measured any link'));
       for (final word in ['caused', 'because', 'due to']) {
         expect(pair.toLowerCase(), isNot(contains(word)));
       }

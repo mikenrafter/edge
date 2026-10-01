@@ -235,7 +235,7 @@ void main() {
           log: log,
         ),
       );
-      expect(_allText(t), contains('try once more'));
+      expect(_allText(t), contains('Try once more'));
       await t.tap(find.text('Try once more'));
       expect(log, ['retry']);
     });
@@ -264,7 +264,7 @@ void main() {
       final text = _allText(t);
       expect(text, contains('Reading failed'));
       expect(text, contains('The band disconnected.'));
-      expect(text, contains('stopped on the next connection'));
+      expect(text, contains('will stop it the next time it connects'));
       await _pump(
         t,
         _body(

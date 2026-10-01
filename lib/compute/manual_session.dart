@@ -68,8 +68,8 @@ extension ManualWindowErrorMessage on ManualWindowError {
         ManualWindowError.endNotAfterStart =>
           'The end time has to be after the start time.',
         ManualWindowError.tooShort => 'A workout has to be at least a minute.',
-        ManualWindowError.tooLong => "That's longer than 24 hours — check the date.",
-        ManualWindowError.inFuture => "That window hasn't happened yet.",
+        ManualWindowError.tooLong => "A workout can't be longer than 24 hours. Check the date.",
+        ManualWindowError.inFuture => "A workout can't end in the future.",
         ManualWindowError.overlapsExisting =>
           'That overlaps a workout already in your log.',
       };

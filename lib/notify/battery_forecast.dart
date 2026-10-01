@@ -359,13 +359,13 @@ class BatteryForecaster {
     final m = empty.minute.toString().padLeft(2, '0');
     final head = 'At ${rate.toStringAsFixed(1)}%/h it runs out around $h:$m';
     if (empty.isBefore(wakeAt)) {
-      return '$head — before you wake. Charge it now to keep tonight\'s sleep.';
+      return '$head, before you wake. Charge it now to keep tonight\'s sleep.';
     }
     final atWake = f.predictedPctAtWake;
     if (atWake != null && atWake <= reservePct) {
-      return '$head, just after your usual wake time — about '
-          '${atWake.round()}% left when you get up. Charge it now to keep '
-          'tonight\'s sleep.';
+      return '$head, just after your usual wake time. '
+             'The band will have about ${atWake.round()}% left when you get up. '
+             'Charge it now to keep tonight\'s sleep.';
     }
     return '$head, after your usual wake time.';
   }

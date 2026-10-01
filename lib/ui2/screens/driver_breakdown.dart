@@ -360,10 +360,9 @@ class _DriverBreakdownState extends State<DriverBreakdown> {
         color: p.card2,
         child: Text(
           l?.driverBreakdownFooter ??
-              'Each input is ranked against your own history — a parallel view of '
-                  'the same inputs, not slices of the score itself. "Measurement '
-                  'noise" is how far a reading can move on its own without '
-                  'anything having changed. Patterns in your own logs, not causes.',
+              'Each input is ranked against your own history. The ranking sits beside the score and does not add up to it. '
+              '"Measurement noise" is how far a reading can move with nothing having changed. '
+              'These are patterns in your logs, not causes.',
           style: F.cap.copyWith(color: p.ink3, height: 1.5),
         ),
       ),
@@ -564,12 +563,12 @@ StatusCard driverAbsenceCard(
       l?.driverBreakdownAbsenceTitle ?? 'No breakdown to show',
       switch (stale['kind']) {
         'algo_version' => l?.driverBreakdownAbsenceAlgoVersion ??
-            'How readiness is worked out changed with the last '
-                'update, and it is being rebuilt.',
+            'The last update changed how readiness is calculated. '
+            'The breakdown is being rebuilt.',
         'stale' => l?.driverBreakdownAbsenceStale ??
-            'The last rollup is too old to stand behind.',
+            'The stored summary for last night is out of date.',
         _ => l?.driverBreakdownAbsenceNoVersion ??
-            'The stored rollup carries no version stamp.',
+            'The stored summary has no version number.',
       },
       fix: onSync == null ? '' : (l?.driverBreakdownSyncTheBand ?? 'Sync the band'),
       onFix: onSync,
@@ -580,7 +579,7 @@ StatusCard driverAbsenceCard(
     l?.driverBreakdownAbsenceTitle ?? 'No breakdown to show',
     whyFromNote(note) ??
         (l?.driverBreakdownAbsenceNoReason ??
-            'Nothing recorded says why last night has no breakdown.'),
+            'No reason for the missing breakdown was recorded.'),
     icon: LucideIcons.listTree,
   );
 }

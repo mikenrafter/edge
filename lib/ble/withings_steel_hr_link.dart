@@ -302,8 +302,7 @@ Future<String?> pairWithingsSteelHr(BluetoothDevice device) async {
   try {
     return await withSecondaryLinkSlot<String?>(
       timeout: const Duration(seconds: 30),
-      onTimeout: () => 'Another sensor is using this phone’s Bluetooth right '
-          'now. Try pairing again in a moment.',
+      onTimeout: () => 'Another sensor is using this phone\'s Bluetooth. Try pairing again in a moment.',
       () async {
         try {
           await device.connect(timeout: const Duration(seconds: 20));
@@ -317,7 +316,7 @@ Future<String?> pairWithingsSteelHr(BluetoothDevice device) async {
           final missing = localLink.missingCharacteristics(
               kWithingsSteelHr.requiredCharacteristics);
           if (missing.isNotEmpty) {
-            return 'That device does not expose the service this app speaks.';
+            return 'That device does not offer the Bluetooth service this app needs.';
           }
           final ok = await localLink.write(
             kWithingsWriteChar,

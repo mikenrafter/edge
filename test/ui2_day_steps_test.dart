@@ -73,7 +73,8 @@ void main() {
     expect(find.textContaining('9:00 AM – 10:00 AM'), findsOneWidget);
     expect(find.text('Your phone'), findsWidgets);
     // ONE accuracy line, and it names both failure directions.
-    expect(find.textContaining('the two miscount differently'), findsOneWidget);
+    expect(find.textContaining('A wrist reads a real walk low'), findsOneWidget);
+    expect(find.textContaining('A phone counts only'), findsOneWidget);
   });
 
   testWidgets('a phone-only day is never told about wrists', (t) async {
@@ -81,7 +82,7 @@ void main() {
       t,
       DayStepsData(spans: [_span(0, 60, 1200)], total: 1200, phone: 1200),
     );
-    expect(find.textContaining('had it on you for'), findsOneWidget);
+    expect(find.textContaining('steps taken while you carried it'), findsOneWidget);
     expect(find.textContaining('wrist'), findsNothing);
     // One sensor is not a legend.
     expect(find.text('WHOOP 4'), findsNothing);

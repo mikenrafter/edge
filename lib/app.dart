@@ -300,9 +300,9 @@ class _InitFailed extends StatelessWidget {
                     style: F.t2.copyWith(color: p.ink)),
                 const SizedBox(height: 8),
                 Text(
-                  'Your data is still on this device — nothing was deleted. '
-                  'This is a start-up step failing, and it will fail the same '
-                  'way each launch until it is fixed.',
+                  'Your data is still on this device and nothing was deleted. '
+                  'A start-up step failed. It will fail again on each launch '
+                  'until the cause is fixed.',
                   style: F.body.copyWith(color: p.ink2, height: 1.5),
                 ),
                 const SizedBox(height: 16),
@@ -643,7 +643,7 @@ class _LiveSessionBar extends StatelessWidget {
                 const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
             child: Row(children: [
               Expanded(
-                child: Text('Session running — tap to finish',
+                child: Text('Session running. Tap to finish.',
                     style: F.body.copyWith(color: p.ink)),
               ),
               Icon(LucideIcons.square, size: 18, color: p.ink3),

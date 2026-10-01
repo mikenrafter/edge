@@ -232,7 +232,7 @@ void main() {
       testWidgets('recovery paints its cards — $where', (t) async {
         await _openRecovery(t, dark: dark, scale: scale, repo: _Repo());
 
-        expect(find.text('What charged and drained you'), findsOneWidget);
+        expect(find.text('What raised and lowered your readiness'), findsOneWidget);
         expect(find.text('Sleep need tonight'), findsOneWidget);
         expect(find.byType(DriverBreakdown), findsOneWidget);
         _expectCardPainted(t);

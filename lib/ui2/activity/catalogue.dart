@@ -244,8 +244,8 @@ const activityLibrary = <ActGroup>[
 /// What the app has to say about a calorie figure, in one place because it was
 /// said in four and drifted: one site kept quoting a "±15%" error bar that no
 /// estimator computes, long after the others dropped it.
-const kCalorieWhy = 'MET value × your weight, refined by heart rate — or '
-    'heart rate alone, for an activity that carries no MET.';
+const kCalorieWhy = 'Calories use the activity MET (metabolic equivalent) value × your weight, adjusted by heart rate. '
+                    'Activities with no MET value use heart rate alone.';
 
 /// TS-03 — what every zone chart in the app has to admit about its own edges.
 ///
@@ -268,7 +268,7 @@ const kCalorieWhy = 'MET value × your weight, refined by heart rate — or '
 /// age alone, and swapping the strap does not move it by one bpm. The sentence
 /// named an input that provably has no effect on the number it describes.
 const kZonesWhy = 'Zone edges are percentages of a maximum heart rate '
-    'estimated from your age — not one measured on you.';
+                  'estimated from your age.';
 
 /// English, non-localized fallback/test seam — see [zonesWhyFootnote] and
 /// [zonesWhy] for the localized callers actually used by the UI.
@@ -295,13 +295,12 @@ String zonesWhy(String? source, num? maxHr, [AppLocalizations? l]) => maxHr == n
     : switch (source) {
         'karvonen' =>
           l?.dayStrainZoneFootnoteKarvonen(maxHr.round()) ??
-              'Zone edges span the gap between your measured resting heart rate '
-                  'and the highest we have seen (${maxHr.round()} bpm). Both '
-                  'measured on you.',
+              'Zone edges are set between your measured resting heart rate '
+              'and the highest heart rate recorded for you (${maxHr.round()} bpm).',
         'observed' =>
           l?.dayStrainZoneFootnoteObserved(maxHr.round()) ??
-              'Zone edges are percentages of the highest heart rate we have seen '
-                  '(${maxHr.round()} bpm) — measured, not estimated.',
+              'Zone edges are percentages of the highest heart rate recorded for you '
+              '(${maxHr.round()} bpm).',
         _ => zonesWhyFootnote(l),
       };
 

@@ -69,8 +69,8 @@ class CoachActions {
     final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(s);
     if (m == null) {
       throw CoachActionError(
-        'Date "$s" is not a day. Use YYYY-MM-DD (today is '
-        '${todayLabel(now ?? DateTime.now())}).',
+        'Date "$s" is invalid. Use YYYY-MM-DD. '
+        'Today is ${todayLabel(now ?? DateTime.now())}.',
       );
     }
     final y = int.parse(m.group(1)!);
@@ -180,7 +180,7 @@ class CoachActions {
         'min_uv': reading.minUv,
         'max_uv': reading.maxUv,
         'rms_uv': reading.rmsUv,
-        'source': 'WHOOP MG band (HeartKey result; category is the band\'s)',
+        'source': 'WHOOP MG band. The category is the HeartKey result the band reports.',
         'unit': reading.sampleCount == 0 ? null : kEcgSampleUnit,
         'sample_rate_hz': kEcgSampleRateHz,
         'waveform': {
@@ -196,27 +196,26 @@ class CoachActions {
         // otherwise infers intervals from avg_hr and reads QRS width as if the
         // trace were a 500 Hz diagnostic ECG.
         'how_to_read': {
-          'sample_rate': 'The band acquires at 500 Hz and hands HeartKey those '
-              'raw samples; what you get here is the band\'s own filtered and '
-              '5:1 decimated 100 Hz output. One sample is 10 ms, so every '
-              'interval or width you measure is quantised to 10 ms — enough '
-              'for rate and regularity, coarse for QRS width, and marginal '
-              'for P-wave detail. The 500 Hz raw is not available to you.',
+          'sample_rate': 'The band samples at 500 Hz and gives HeartKey the raw samples. '
+                         'This field holds the band\'s filtered output, decimated 5:1 to 100 Hz. '
+                         'One sample is 10 ms, so every interval or width you measure has 10 ms resolution. '
+                         'That suits heart rate and rhythm regularity. '
+                         'It is too coarse for QRS width and P-wave detail. '
+                         'The 500 Hz raw data is not available to you.',
           'units': 'Integer input-referred microvolts, already scaled on the '
               'band. No further conversion.',
           'polarity': 'Anatomical lead orientation is NOT proven. Do not infer '
               'axis, or read R/S direction as anatomical.',
-          'avg_hr': 'The BAND\'s own average over the reading. It is not '
-              'measured from these samples. If you state an RR interval or '
-              'beat-to-beat variation, measure it from the samples and say so '
-              '— do not present 60/avg_hr as a measurement.',
+          'avg_hr': 'The band\'s own average over the reading, not measured from these samples. '
+                    'To state an RR interval or beat-to-beat variation, measure it from the samples and say so. '
+                    'Do not present 60/avg_hr as a measurement.',
           'quality': 'The band\'s own 0-3 signal-quality scale, higher is '
               'better; it climbs as contact settles.',
           'interruptions': 'Times contact was lost and the band restarted its '
               'progress. missing_segments are whole seconds absent from the '
               'accepted window, and appear as null runs in samples.',
-          'category': 'The band\'s HeartKey result mapped by the app. Your own '
-              'reading of the trace is your own; say plainly if they differ.',
+          'category': 'The band\'s HeartKey result, mapped by the app. '
+                      'If your own reading of the trace differs, say so.',
         },
         'note': 'Band-reported. Not a diagnosis: no lead polarity is proven and '
             'the phone classifies nothing from the waveform.',

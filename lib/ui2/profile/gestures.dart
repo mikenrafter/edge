@@ -89,10 +89,9 @@ class BandGesturesView extends StatelessWidget {
                   Surface(
                     child: Text(
                       l?.gesturesSectionBody ??
-                          'Only while the app is connected and awake. A tap the '
-                              'band stored while your phone was away arrives later with '
-                              'an old timestamp, and is ignored rather than fired hours '
-                              'after you meant it.',
+                          'Works only while the app is connected and awake. If you tap while your '
+                          'phone is away, the band stores the tap and sends it later with an old '
+                          'timestamp. The app ignores that tap.',
                       style: F.body.copyWith(color: p.ink2, height: 1.4),
                     ),
                   ),
@@ -112,10 +111,9 @@ class BandGesturesView extends StatelessWidget {
                     Surface(
                       child: Text(
                         l?.gesturesNoPhoneActionsBody ??
-                            'Ringing your phone and the flashlight are missing '
-                                'because the app could not reach the system to ask what '
-                                'this device allows. Reopen the app and come back; the '
-                                'in-app actions above work either way.',
+                            'Ringing your phone and the flashlight are missing because the app could '
+                            'not ask the system what this device allows. Reopen the app to try '
+                            'again. The in-app actions above still work.',
                         style: F.body.copyWith(color: p.ink2, height: 1.4),
                       ),
                     ),

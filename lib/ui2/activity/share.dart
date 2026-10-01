@@ -316,10 +316,10 @@ class _ShareSheetState extends State<ShareSheet> {
                       child: SetRow(
                         LucideIcons.map,
                         r.activity.color,
-                        l?.activityShareDrawMap ?? 'Draw the real map',
+                        l?.activityShareDrawMap ?? 'Draw the map',
                         sub: l?.activityShareMapHint ??
-                            'Asks openstreetmap.org for the tiles covering '
-                                'this route. Off, the route draws on its own',
+                            'Downloads the map tiles for this route from openstreetmap.org. '
+                            'When off, the card draws the route alone.',
                         value: _mapConsent
                             ? (l?.stateOn ?? 'On')
                             : (l?.stateOff ?? 'Off'),
@@ -337,7 +337,7 @@ class _ShareSheetState extends State<ShareSheet> {
                     StatusCard(
                       l?.activityShareFetchingMapTitle ?? 'Fetching the map',
                       l?.activityShareFetchingMapBody ??
-                          'The card draws as soon as every tile is here.',
+                          'The card draws once every tile has downloaded.',
                       icon: LucideIcons.map,
                     ),
                   ]
@@ -353,9 +353,8 @@ class _ShareSheetState extends State<ShareSheet> {
                     StatusCard(
                       l?.activityShareNoMapTitle ?? 'No map for this card',
                       l?.activityShareNoMapBody ??
-                          'The map tiles could not be fetched, so the route is '
-                              'drawn on its own. Everything else on the card is '
-                              'unchanged.',
+                          'Map tiles failed to download. '
+                          'The card shows the route alone.',
                       icon: LucideIcons.mapPinOff,
                     ),
                   ],

@@ -130,7 +130,7 @@ class BandNotificationsView extends StatelessWidget {
 
   List<Widget> _appRows(BuildContext c, AppLocalizations? l) => [
     SetRow(LucideIcons.listChecks, C.teal,
-        l?.bandNotifAppsArmed ?? 'Apps armed',
+        l?.bandNotifAppsArmed ?? 'Apps that can buzz',
         value: '$_armed', chevron: false),
     if (apps.isEmpty)
       Padding(
@@ -143,10 +143,10 @@ class BandNotificationsView extends StatelessWidget {
           // app, and it resolves itself within minutes of ordinary use.
           Text(
               l?.bandNotifEmptyBody ??
-                  'Apps appear here the first time each one notifies you '
-                      'while the relay is on. Nothing is missed in the '
-                      'meantime — the first ping is what puts an app on this '
-                      'list, and the second can buzz.',
+                  'An app appears here after its first notification while '
+                  'the relay is on. That first notification only adds '
+                  'the app to the list. Later notifications from it '
+                  'can buzz.',
               style: F.over.copyWith(color: P.of(c).ink3)),
         ]),
       )
@@ -174,9 +174,9 @@ class BandNotificationsView extends StatelessWidget {
       if (name == 'alarms') ...[
         SwitchRow("Match Android's vibration", cfg.matchHaptics,
             (v) => put(cfg.copyWith(matchHaptics: v)),
-            sub: "When Android's own pattern cannot be read, the fallback "
-                'rhythm below is used. The band plays one buzz per pulse, up '
-                'to three — not the exact rhythm.'),
+            sub: "If Android's vibration pattern cannot be read, the band "
+                 'uses the fallback rhythm below. It plays one buzz per '
+                 'pulse, up to three.'),
         if (cfg.matchHaptics)
           SetRow(LucideIcons.waves, C.purple, 'Fallback rhythm',
               value: rhythm < 0 ? 'Custom' : _rhythms[rhythm].$1,
@@ -239,7 +239,7 @@ class BandNotificationsView extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
             child: NavBar(l?.bandNotifNavTitle ?? 'Band notifications',
-                sub: l?.bandNotifNavSub ?? 'WHAT MAKES THE STRAP BUZZ'),
+                sub: l?.bandNotifNavSub ?? 'WHAT MAKES THE BAND BUZZ'),
           ),
           Expanded(
             child: ListView(
@@ -247,11 +247,11 @@ class BandNotificationsView extends StatelessWidget {
               children: [
                 if (!supported)
                   StatusCard(
-                    l?.bandNotifUnsupportedTitle ?? 'This phone cannot do it',
+                    l?.bandNotifUnsupportedTitle ?? 'Not available on this phone',
                     l?.bandNotifUnsupportedBody ??
-                        'Reading which app posted a notification is an Android '
-                            'capability. iOS gives no app that access, including '
-                            'this one.',
+                        'Only Android lets an app read which app posted a '
+                        'notification. iOS does not, so Edge cannot relay '
+                        'notifications on this phone.',
                     icon: LucideIcons.smartphone,
                   )
                 else ...[
@@ -266,11 +266,9 @@ class BandNotificationsView extends StatelessWidget {
                         // an app without asking for the permission that
                         // enumerates every app you have installed. "Nothing is
                         // stored" was the wrong claim to make about it.
+                        // Wraps to the same line count with On or Off (stable_alert_controls_test).
                         sub: l?.bandNotifBuzzSub ??
-                            'The strap buzzes when one of the apps below '
-                                'notifies you. What a notification says is never '
-                                'read or sent — only which app posted, kept on '
-                                'this phone to build the list',
+                            'The band buzzes when an app below notifies you. Edge never reads or sends what a notification says. It keeps only which app posted, on this phone, to build the list.',
                         value: enabled
                             ? (l?.stateOn ?? 'On')
                             : (l?.stateOff ?? 'Off'),
@@ -281,23 +279,23 @@ class BandNotificationsView extends StatelessWidget {
                   // the relay is switched on, so it never jumps under a finger.
                   const SizedBox(height: S.x4),
                   StatusCard(
-                    l?.bandNotifOneBuzzTitle ?? 'One buzz, not a stream',
-                    'An update to a notification never buzzes again; a new '
-                        'one does. Ongoing notifications (media players, '
-                        'downloads) never buzz, and nothing buzzes while the '
-                        'band is disconnected unless you choose the phone '
-                        'alert below.',
+                    l?.bandNotifOneBuzzTitle ?? 'One buzz per notification',
+                    'Updating a notification does not buzz again. A new '
+                    'notification does. Ongoing notifications such as '
+                    'media players and downloads never buzz. While the '
+                    'band is disconnected nothing buzzes, unless you '
+                    'turn on the phone alert below.',
                     icon: LucideIcons.waves,
                   ),
                   if (enabled && !granted) ...[
                     const SizedBox(height: S.x4),
                     StatusCard(
                       l?.bandNotifPermissionTitle ??
-                          'Android needs to let us see notifications',
+                          'Android must allow Edge to read notifications',
                       l?.bandNotifPermissionBody ??
-                          'The permission says which app posted, and that is all '
-                              'this uses it for. The names stay on this phone and '
-                              'nothing leaves it.',
+                          'Edge uses this permission only to read which app '
+                          'posted a notification. The names stay on this phone '
+                          'and nothing leaves it.',
                       fix: l?.bandNotifGrantAccess ?? 'Grant notification access',
                       icon: LucideIcons.shieldCheck,
                       onFix: onGrant,

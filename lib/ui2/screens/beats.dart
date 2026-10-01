@@ -260,8 +260,7 @@ class _BeatsState extends State<Beats> {
           StatusCard(
             l?.beatsNoNightTitle ?? 'No night to draw yet',
             l?.beatsNoNightBody ??
-                'Nothing on this phone has produced a derived night, so '
-                    'there are no beat intervals to plot.',
+                'This phone has no derived night yet, so there are no beat intervals to plot.',
             fix: l?.beatsNoNightFix ?? 'Wear the band overnight, then sync',
             icon: LucideIcons.heartPulse,
           )
@@ -343,9 +342,7 @@ class _BeatsState extends State<Beats> {
             // trend this picture does not draw. The footnote below carries the
             // meaning instead, and the frame speaks it.
             footnote: l?.beatsScatterFootnote ??
-                'The diagonal is where a beat came out the same length '
-                    'as the one before it. Spread across that line is SD1, '
-                    'beat to beat; spread along it is SD2, the slower drift.',
+                'Points on the diagonal are beats the same length as the one before. SD1, the standard deviation across the diagonal, is beat-to-beat variation. SD2, along the diagonal, is slower drift.',
             child: CustomPaint(
               size: Size.infinite,
               painter: Poincare(d.nn, p.on(C.green), axis: axis, grid: p.line),
@@ -371,8 +368,7 @@ class _BeatsState extends State<Beats> {
                 'are not in the cloud')}. '
             '${l?.beatsPulseNotEcg ?? 'Pulse, not ECG — real and yours, but '
                 'not the picture an ECG draws.'}'
-            '${d.deviceFamily == null ? '' : ' ${l?.beatsMeasuredOn(d.deviceFamily!) ?? 'Measured on ${d.deviceFamily}; '
-                'straps do not read the same numbers as each other.'}'}',
+            '${d.deviceFamily == null ? '' : ' ${l?.beatsMeasuredOn(d.deviceFamily!) ?? 'Measured on ${d.deviceFamily}. Other strap models give different values.'}'}',
           ),
         ]),
       ),
@@ -402,8 +398,7 @@ class _BeatsState extends State<Beats> {
                 d.shape,
                 unit: l?.beatsUnitNights ?? 'nights',
                 why: l?.beatsVariabilityWhy ??
-                    'No half-hour bin of this night held enough clean beats '
-                        'to publish an RMSSD.') ??
+                    'No half-hour bin had enough clean beats to calculate RMSSD, the root mean square of successive differences.') ??
             StatusCard(
                 l?.beatsVariabilitySection ?? 'Variability across the night',
                 l?.beatsNoBinsStored ?? 'No bins were stored for this night.'),
@@ -502,7 +497,7 @@ class _BeatsState extends State<Beats> {
       Surface(
         child: Column(children: [
           ChartFrame(
-            title: l?.beatsDcChartTitle ?? 'Your own nights, in order',
+            title: l?.beatsDcChartTitle ?? 'Deceleration capacity by night',
             unit: 'ms',
             height: 130,
             yAxis: axis,
@@ -535,14 +530,8 @@ class _BeatsState extends State<Beats> {
           _note(
             p,
             l?.beatsDcNote ??
-                'Yours only. Compare it against your own other nights and '
-                    'nothing else — there is no reference band for a '
-                    'wrist.\n\n'
-                    'It averages the beats around each moment your heart '
-                    'slowed. A rising line can be a cleaner signal rather '
-                    'than a different heart, so read it beside the anchor '
-                    'count and clean-beat share above. If you changed straps '
-                    'inside this window, the two halves do not compare.',
+                'Compare it with your own other nights only. There is no reference range for wrist readings.\n\n'
+                'It averages the beats around each moment your heart slowed. A rising line can mean a cleaner signal, so read it beside the anchor count and clean-beat share above. If you changed straps inside this window, the two halves are not comparable.',
           ),
         ]),
       ),
@@ -609,11 +598,8 @@ class _BeatsState extends State<Beats> {
           _note(
             p,
             l?.beatsScreenNote ??
-                'A screen, not a test.\n\n'
-                    'A day the screen did not fire is not a day you were '
-                    'cleared — it cannot rule anything out, and it never '
-                    'could. Outlined days were not screened at all: too few '
-                    'clean beats, or too much movement.\n\n'
+                'A day the screen did not fire does not mean you were cleared. The screen cannot rule anything out.\n\n'
+                'Outlined days were not screened because they had too few clean beats or too much movement.\n\n'
                     // "a clinician can test that properly" is the project's
                     // settled termination for this whole surface — the same
                     // sentence the CVHR card ends on. It ends in a person,
@@ -621,8 +607,7 @@ class _BeatsState extends State<Beats> {
                     // keep the string "you have" off the screen entirely:
                     // that is the grammar of a diagnosis, and the wiring
                     // test greps for it on the neighbouring card.
-                    'Wrist pulse is not an ECG. If symptoms are what brought '
-                    'you here, a clinician can test that properly.',
+                    'A wrist pulse reading cannot replace an ECG. If symptoms are why you are here, see a clinician for an ECG.',
           ),
           const SizedBox(height: S.x3),
           _note(

@@ -238,32 +238,30 @@ BandStatus bandStatusFor({
   bool syncClockLost = false,
   int bondRefusals = 0,
 }) {
-  const repairFix = 'Forget the band in the phone’s Bluetooth settings, '
-      'then pair it again here';
+  const repairFix = "Forget the band in your phone's Bluetooth settings, then pair it again here";
   switch (blocker) {
     case BleBlocker.permissionDenied:
       return const BandStatus(
         BandCondition.bluetoothDenied,
-        'Bluetooth is switched off for this app',
-        'The phone is withholding the Bluetooth radio from OpenStrap, so '
-            'nothing can be scanned or connected. This is not the band — '
-            'walking closer to it will not help.',
+        'OpenStrap is blocked from using Bluetooth',
+        'Your phone blocks OpenStrap from using Bluetooth, so it cannot scan for or connect to the band. '
+        'Moving closer to the band will not help.',
         fix: 'Open Settings → OpenStrap and allow Bluetooth',
       );
     case BleBlocker.adapterOff:
       return const BandStatus(
         BandCondition.bluetoothOff,
         'Bluetooth is turned off',
-        'The phone’s radio is off, so the band cannot be reached by any app. '
-            'The band keeps recording meanwhile; nothing is lost.',
+        'Bluetooth is off on this phone, so no app can reach the band. '
+        'The band keeps recording and sends the data when you reconnect.',
         fix: 'Turn Bluetooth on',
       );
     case BleBlocker.unsupported:
       return const BandStatus(
         BandCondition.bluetoothUnsupported,
         'This phone has no Bluetooth Low Energy radio',
-        'The band can only be reached over Bluetooth Low Energy. Imported '
-            'data still works; a live link does not.',
+        'The band connects only over Bluetooth Low Energy. You can still '
+        'import data, but you cannot sync live.',
       );
     case null:
       break;
@@ -271,11 +269,11 @@ BandStatus bandStatusFor({
   if (autoReconnectPaused) {
     return BandStatus(
       BandCondition.reconnectPaused,
-      'Reconnecting has been paused',
+      'Reconnecting stopped',
       'The band refused the pairing key $bondRefusals times in a row, so the '
-          'app stopped retrying rather than pin the radio and drain both '
-          'batteries on a link that will not open. Nothing is reconnecting '
-          'until you act.',
+      'app stopped retrying to avoid draining both batteries on a link that '
+      'will not open. The app does not reconnect '
+      'until you act.',
       fix: repairFix,
       bondRefusals: bondRefusals,
     );
@@ -284,9 +282,9 @@ BandStatus bandStatusFor({
     return const BandStatus(
       BandCondition.repairNeeded,
       'The band needs to be paired again',
-      'The link comes up, but the band rejects the encryption key the phone '
-          'holds, so every command is dropped and no data moves. Your '
-          'recordings are safe on the band.',
+      'The link opens, but the band rejects the encryption key stored on the '
+      'phone, so it drops every command and no data moves. Your '
+      'recordings stay on the band.',
       fix: repairFix,
     );
   }
@@ -295,29 +293,29 @@ BandStatus bandStatusFor({
       BandCondition.syncStuck,
       'One batch of recordings will not finish transferring',
       'The band keeps re-sending the same batch because the app cannot get '
-          'its confirmation through. Everything in it is already saved here — '
-          'nothing is lost — but the band cannot move on until the '
-          'confirmation lands.',
+      'its confirmation through. The app already saved everything in the '
+      'batch. The band cannot move on until the '
+      'confirmation arrives.',
       fix: 'Reconnect the band; if it repeats tomorrow, pair it again',
     );
   }
   if (strapNeedsReboot) {
     return const BandStatus(
       BandCondition.strapUnresponsive,
-      'The band has stopped handing over its recordings',
+      'The band is not sending its recordings',
       'The band reports newer recordings than it will send. Those recordings '
-          'are still on the band and still safe; it just is not passing them '
-          'across.',
+      'remain on the band, but it is not sending them '
+      'to the phone.',
       fix: 'Put the band on its charger for a minute, then reconnect',
     );
   }
   if (syncClockLost) {
     return const BandStatus(
       BandCondition.clockLost,
-      'Syncs are finishing with no data in them',
-      'The band completes each sync without handing over a single sensor '
-          'reading, which almost always means its onboard clock has lost '
-          'sync. The app keeps resetting it on every connect.',
+      'Syncs finish with no data',
+      'The band completes each sync without sending any sensor readings, '
+      'which usually means its internal clock is wrong. The app resets '
+      'the clock on every connect.',
       fix: 'Leave the band connected for a few minutes; if nothing arrives '
           'by tomorrow, pair it again',
     );
@@ -327,26 +325,26 @@ BandStatus bandStatusFor({
       return const BandStatus(
         BandCondition.connected,
         'Connected',
-        'The band is linked and handing over its recordings.',
+        'The band is connected and sending its recordings.',
       );
     case 'connecting':
       return const BandStatus(
         BandCondition.connecting,
         'Connecting',
-        'Opening the link to the band.',
+        'Connecting to the band.',
       );
     case 'scanning':
       return const BandStatus(
         BandCondition.scanning,
         'Looking for the band',
-        'Listening for the band to advertise itself.',
+        'Scanning for a Bluetooth signal from the band.',
       );
     default:
       return const BandStatus(
         BandCondition.disconnected,
         'Not connected',
-        'The band is out of range, on its charger, or held by another app. '
-            'It keeps recording either way.',
+        'The band is out of range, charging, or connected to another app. '
+        'It keeps recording.',
         fix: 'Bring the band near the phone, and close any other app '
             'connected to it',
       );

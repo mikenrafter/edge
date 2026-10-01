@@ -75,7 +75,7 @@ String _solBand(BuildContext c, double m) {
 Widget _noOvernightLines(BuildContext c) {
   final l = AppLocalizations.of(c);
   return StatusCard(
-    l?.sleepDetailNoOvernightTitle ?? 'No overnight signal lines',
+    l?.sleepDetailNoOvernightTitle ?? 'No overnight signals',
     l?.sleepDetailNoOvernightBody ?? 'No overnight recordings reached this day.',
     icon: LucideIcons.activity,
   );
@@ -449,8 +449,8 @@ class _SleepDetailState extends State<SleepDetail> {
               : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
           rejected
               ? (l?.sleepDetailRejectedBody ??
-                  'You told us this stretch was not sleep, so nothing is '
-                      'scored for it.')
+                  'You marked this stretch as not sleep, so it has '
+                  'no score.')
               : (l?.sleepDetailNoNightBody ??
                   'No stretch of band recordings long enough to score.'),
           fix: rejected ? '' : (l?.sleepDetailNoNightFix ??
@@ -462,7 +462,7 @@ class _SleepDetailState extends State<SleepDetail> {
           TextButton(
             onPressed: _saving ? null : () => _clearWindow(rejectedDay),
             child: Text(
-                l?.sleepDetailUndoRejection ?? 'Undo — go back to automatic'),
+                l?.sleepDetailUndoRejection ?? 'Undo and return to automatic'),
           ),
         ],
         // A day with no main-sleep window can still have naps — worn all
@@ -574,7 +574,7 @@ class _SleepDetailState extends State<SleepDetail> {
               (l?.sleepDetailWatched ?? 'WATCHED', hm(watched), C.sky),
             if (eff != null)
               (watched == null
-                  ? (l?.sleepDetailAsleepOfThat ?? 'ASLEEP OF THAT')
+                  ? (l?.sleepDetailAsleepOfThat ?? 'ASLEEP WHILE WATCHED')
                   : (l?.sleepDetailAsleep ?? 'ASLEEP'),
                   _pct(eff * 100), C.green),
           ]),
@@ -583,9 +583,9 @@ class _SleepDetailState extends State<SleepDetail> {
           const SizedBox(height: S.x3),
           Text(
             l?.sleepDetailWatchedExplain(hm(watched), hm(inBed!)) ??
-                'We watched ${hm(watched)} of your ${hm(inBed!)} in bed; the rest '
-                    'is not a measurement. Asleep, and the stage shares below, are out '
-                    'of the time we watched.',
+                'The band recorded ${hm(watched)} of your ${hm(inBed!)} in bed. '
+                'Asleep time and the stage shares below cover only the '
+                'recorded time.',
             style: F.over.copyWith(color: p.ink3, height: 1.5),
           ),
         ],
@@ -668,15 +668,15 @@ class _SleepDetailState extends State<SleepDetail> {
               '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t1 * 1000)).format(c)}',
               style: F.cap.copyWith(color: p.ink3)),
             if (!d.hasNight)
-              Text('Your times are saved. Recordings are insufficient for sleep metrics.',
+              Text('Your times are saved. The recordings do not cover enough time for sleep metrics.',
                 style: F.cap.copyWith(color: p.ink3)),
           ],
           if (fallback) ...[
             const SizedBox(height: S.x2),
             Text(
               l?.sleepDetailWindowFallbackBody ??
-                  'Staging could not find the edges, so the times are a best '
-                      'guess.',
+                  'Staging could not locate the start and end of sleep, so '
+                  'the times are estimates.',
               style: F.cap.copyWith(color: p.ink3),
             ),
           ],
@@ -725,7 +725,7 @@ class _SleepDetailState extends State<SleepDetail> {
           ]),
           if (busy) ...[
             const SizedBox(height: S.x2),
-            Text(l?.sleepDetailReanalysing ?? 'Re-analysing the night…',
+            Text(l?.sleepDetailReanalysing ?? 'Recalculating this night…',
                 style: F.cap.copyWith(color: p.ink3)),
           ],
 
@@ -777,7 +777,7 @@ class _SleepDetailState extends State<SleepDetail> {
     final app = context.read<AppState>();
     final useSchedule = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
       title: const Text('Apply sleep times'),
-      content: const Text('Choose whether these times apply only to this night or become your expected sleep schedule.'),
+      content: const Text('Apply these times to this night only, or use them as your expected sleep schedule.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('This night only')),
         TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Use this schedule going forward')),
@@ -815,8 +815,8 @@ class _SleepDetailState extends State<SleepDetail> {
     try {
       final result = await write();
       if (result is SleepOperationResult) {
-        if (!result.success) { message = result.error ?? 'Sleep calculation failed. Please retry.'; }
-        else if (!result.metricsAvailable) { message = 'Times saved. Recordings are insufficient for sleep metrics.'; }
+        if (!result.success) { message = result.error ?? 'Sleep calculation failed. Try again.'; }
+        else if (!result.metricsAvailable) { message = 'Times saved. Not enough data was recorded in that window to compute sleep metrics.'; }
       }
     } catch (e) { message = '$e'; }
     finally { if (mounted) setState(() => _saving = false); }
@@ -832,9 +832,9 @@ class _SleepDetailState extends State<SleepDetail> {
     final stages = d.stages;
     if (stages.isEmpty) {
       return StatusCard(
-        l?.sleepDetailNoHypnogramTitle ?? 'No hypnogram for this night',
+        l?.sleepDetailNoHypnogramTitle ?? 'No sleep stage chart for this night',
         l?.sleepDetailNoHypnogramBody ??
-            'Staging needs movement and beat timing. One was missing.',
+            'Staging needs both movement and beat timing, and one of them is missing.',
         icon: LucideIcons.chartNoAxesColumn,
       );
     }
@@ -874,7 +874,7 @@ class _SleepDetailState extends State<SleepDetail> {
                           '${cycles == 1 ? 'cycle' : 'cycles'}, ${hm(mean)} '
                           'on average.'))
               : (l?.sleepDetailTapDragNone ??
-                  'Tap or drag the chart for any moment of the night.'),
+                  'Tap or drag the chart to see the values at that moment.'),
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
         if (_shape(c, d) case final shape?) ...[
@@ -901,8 +901,8 @@ class _SleepDetailState extends State<SleepDetail> {
       if (w != null)
         w == 0
             ? (l?.sleepDetailNoWakeups ??
-                'No wake-ups of 5 minutes or more; shorter ones are invisible to '
-                    'a wrist.')
+                'No wake-ups of 5 minutes or more. '
+                'Shorter ones are not detected.')
             : (l?.sleepDetailAtLeastWakeups(w) ??
                 'At least $w wake-up${w == 1 ? '' : 's'} of 5 minutes or more; '
                     'shorter ones are invisible to a wrist.'),
@@ -1165,9 +1165,9 @@ class _SleepDetailState extends State<SleepDetail> {
         // rather than one published figure applied to every night.
         Text(
             l?.sleepDetailStageRangeExplain ??
-                'Each stage is a range, not a count — the better we saw the night, '
-                    'the narrower it is. Deep is the widest. Awake stays one figure. '
-                    'Nerd stats has the exact counts.',
+                'Each stage shows a range that narrows when more of the night was recorded. '
+                'Deep has the widest range. Awake is one figure. '
+                'Nerd stats has the exact counts.',
             style: F.over.copyWith(color: p.ink3, height: 1.5)),
       ],
     ]);
@@ -1341,16 +1341,16 @@ class _SleepDetailState extends State<SleepDetail> {
         items.add(InsightCard(
             lowLabel,
             l?.sleepDetailLessThanAny(noun, fmt(v), hist.length, fmt(lo)) ??
-                '$noun ${fmt(v)} — less than any of your last ${hist.length} '
-                    'nights, the lowest of which was ${fmt(lo)}.',
+                '$noun ${fmt(v)}, lower than any of your last ${hist.length} '
+                'nights. The lowest was ${fmt(lo)}.',
             icon: LucideIcons.trendingDown,
             color: C.orange));
       } else if (v > hi) {
         items.add(InsightCard(
             highLabel,
             l?.sleepDetailMoreThanAny(noun, fmt(v), hist.length, fmt(hi)) ??
-                '$noun ${fmt(v)} — more than any of your last ${hist.length} '
-                    'nights, the highest of which was ${fmt(hi)}.',
+                '$noun ${fmt(v)}, higher than any of your last ${hist.length} '
+                'nights. The highest was ${fmt(hi)}.',
             icon: LucideIcons.trendingUp,
             color: C.green));
       }
@@ -1397,9 +1397,9 @@ class _SleepDetailState extends State<SleepDetail> {
       items.add(InsightCard(
         l?.sleepDetailSleepingHrHighTitle ?? 'Sleeping heart rate ran high',
         l?.sleepDetailSleepingHrHighBody(vsBase.toStringAsFixed(1)) ??
-            '${vsBase.toStringAsFixed(1)} bpm above your own baseline. Common '
-                'after alcohol, a late meal, a hard session or an infection '
-                'starting — this is a measurement, not a diagnosis.',
+            '${vsBase.toStringAsFixed(1)} bpm above your own baseline. This often follows '
+            'alcohol, a late meal, a hard session or the start of an infection. '
+            'It is a measurement, not a diagnosis.',
         icon: LucideIcons.heartPulse,
         color: C.red,
       ));
@@ -1733,7 +1733,7 @@ class _Compare extends StatelessWidget {
         const SizedBox(height: S.x1),
         Text(
             l?.sleepDetailNoPersonalRangeYet(history.length, _minNights) ??
-                'No personal range yet — ${history.length} of $_minNights nights.',
+                'No personal range yet. ${history.length} of $_minNights nights recorded.',
             style: F.over.copyWith(color: p.ink3)),
       ]);
     }

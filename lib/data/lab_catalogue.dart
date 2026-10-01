@@ -157,8 +157,7 @@ const kLabMarkers = <LabMarker>[
       LabRefRange(low: 30, high: 400, scope: LabRefScope.male),
       LabRefRange(low: 15, high: 200, scope: LabRefScope.female),
     ],
-    note: 'Rises with inflammation, so a normal value does not by itself rule '
-        'out low iron stores.',
+    note: 'Inflammation raises this value, so a normal result can coexist with low iron stores.',
   ),
   LabMarker(
     key: 'transferrin_saturation',
@@ -175,7 +174,7 @@ const kLabMarkers = <LabMarker>[
     unit: '%',
     category: LabCategory.metabolic,
     ranges: [LabRefRange(low: 4.0, high: 5.6)],
-    note: 'Reflects roughly the last three months, not today.',
+    note: 'Averages blood glucose over roughly the last three months.',
   ),
   LabMarker(
     key: 'glucose_fasting',
@@ -263,7 +262,7 @@ const kLabMarkers = <LabMarker>[
       LabRefRange(low: 300, high: 1000, scope: LabRefScope.male),
       LabRefRange(low: 15, high: 70, scope: LabRefScope.female),
     ],
-    note: 'Varies through the day — morning draws are the comparable ones.',
+    note: 'Varies through the day. Compare only morning draws.',
   ),
   LabMarker(
     key: 'cortisol_am',
@@ -344,8 +343,7 @@ const kLabMarkers = <LabMarker>[
       LabRefRange(low: 0.74, high: 1.35, scope: LabRefScope.male),
       LabRefRange(low: 0.59, high: 1.04, scope: LabRefScope.female),
     ],
-    note: 'Muscle mass lifts this, so it reads high in some athletes without '
-        'anything being wrong.',
+    note: 'Muscle mass raises this value, so some athletes read high with no health problem.',
   ),
   LabMarker(
     key: 'egfr',

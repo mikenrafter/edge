@@ -250,12 +250,12 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                 'Reps × load over the sets you logged with a weight. ') +
             (d.tonnagePartial
                 ? (loc?.workoutTonnageFootnotePartial ??
-                    'Sets logged without one are not in it, so '
-                        'this is a floor rather than a total. ')
+                    'Sets logged without a weight are excluded, '
+                    'so the figure is a minimum. ')
                 : '') +
             (loc?.workoutTonnageFootnoteOutro ??
-                'Exact for what you typed and worthless across exercises — '
-                    'kept out of strain and recovery for that reason.'),
+                'It sums the weights you typed. Kilograms do not compare across '
+                'exercises, so strain and recovery exclude it.'),
         series: d.tonnage7,
         child: CustomPaint(
           size: Size.infinite,
@@ -289,9 +289,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
               'heart rate was above your usual on ${o.nightsElevated} of '
               '${o.nightsConsidered} nights.',
       loc?.workoutOverreachBody ??
-          'Two measurements that happen to point the same way. Illness, travel, '
-              'altitude, alcohol and a run of poor sleep all produce this same '
-              'pair, and nothing here can tell them apart.',
+          'Both measures moved together. Illness, travel, '
+          'altitude, alcohol and poor sleep can all produce this '
+          'pair, and the app cannot tell them apart.',
       icon: LucideIcons.activity,
       color: C.orange,
     );
@@ -344,8 +344,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
                   _weekdayLetter(c, end.subtract(Motion.tick * 86400 * i)),
               ],
               footnote: (loc?.workoutDailyLoadFootnoteIntro ??
-                      'Banister training impulse — minutes weighted by '
-                          'heart-rate reserve. ') +
+                      'Banister training impulse: minutes weighted by '
+                      'heart-rate reserve. ') +
                   (days == 7
                       ? (loc?.workoutDailyLoadAllDays ?? 'Last seven days.')
                       : (loc?.workoutDailyLoadPartialDays(days) ??
@@ -504,11 +504,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
       StatusCard(
         loc?.workoutSuggestionsTitle(n) ??
             (n == 1
-                ? '$n effort we spotted but did not log'
-                : '$n efforts we spotted but did not log'),
+                ? '$n effort detected, not logged'
+                : '$n efforts detected, not logged'),
         loc?.workoutSuggestionsBody ??
-            'The band saw sustained work and nothing was started for it. Nothing '
-                'is logged until you say so.',
+            'The band detected sustained activity while no workout was running. '
+            'Nothing is logged until you confirm.',
         fix: loc?.workoutReviewFix(n) ?? 'Review ${n == 1 ? 'it' : 'them'}',
         icon: LucideIcons.radar,
         onFix: () =>
@@ -524,8 +524,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
     return StatusCard(
       loc?.workoutLogPastTitle ?? 'Did something the band missed?',
       loc?.workoutLogPastBody ??
-          'Enter the times yourself and it is scored from the heart rate '
-              'recorded across them, like any other session.',
+          'Enter the start and end times. OpenStrap scores the session from '
+          'the heart rate recorded in that window.',
       fix: loc?.workoutLogPastFix ?? 'Log a past workout',
       icon: LucideIcons.calendarPlus,
       onFix: () => _push(c, const LogWorkout()),
@@ -575,10 +575,10 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         const SizedBox(height: S.x3),
         Text(
           loc?.workoutImportedThisWeekNote(importedThisWeek, storeName) ??
-              '$importedThisWeek of this week’s sessions came from $storeName. '
-                  'They count here, and they are left out of weekly load — an '
-                  'imported workout arrives with no heart-rate trace, and a load '
-                  'number without one would be invented.',
+              '$importedThisWeek of this week\'s sessions came from $storeName. '
+              'They appear in your sessions but not in weekly load. '
+              'Imported workouts have no heart-rate trace, '
+              'and weekly load needs one.',
           style: F.cap.copyWith(color: p.ink3, height: 1.5),
         ),
       ],
@@ -631,11 +631,11 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
           'Delete this ${w.activity.name.toLowerCase()}?',
       body: w.importedFrom == null
           ? (loc?.workoutDeleteBodyOwn(storeName) ??
-              'It disappears from OpenStrap. A copy in $storeName, if there is '
-                  'one, stays where it is.')
+              'OpenStrap deletes this session. Any copy in $storeName '
+              'stays.')
           : (loc?.workoutDeleteBodyImported(storeName) ??
-              'It disappears from OpenStrap and will not be re-imported. '
-                  'The original in $storeName stays.'),
+              'OpenStrap deletes this session and will not import it again. '
+              'The original in $storeName stays.'),
     );
     if (!ok || !mounted) return;
     if (w.importedFrom != null && w.id.isNotEmpty) {
@@ -761,7 +761,7 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         final loc = AppLocalizations.of(context);
         setState(() {
           _importNote = loc?.workoutImportDenied(storeName) ??
-              '$storeName did not grant workouts. Nothing was read.';
+              '$storeName did not give OpenStrap access to workouts. Nothing was imported.';
           _importFailed = true;
         });
         return;
@@ -772,8 +772,8 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         final loc = AppLocalizations.of(context);
         setState(() {
           _importNote = loc?.workoutImportEmpty(storeName) ??
-              'Nothing came back. $storeName holds no workouts '
-                  'inside the window it will share.';
+              'No workouts returned. $storeName has none '
+              'in the date range it shares.';
           _importFailed = false;
         });
         return;
@@ -844,9 +844,9 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
             const SizedBox(height: S.x3),
             Text(
               loc?.workoutMorningAfterBody ??
-                  'Your own history, not a rule about the activity — these '
-                      'mornings also had whatever evening came with them. Nothing '
-                      'here is a reason to skip a session.',
+                  'Drawn from your own sessions. What you did '
+                  'that evening also affects these mornings. '
+                  'Use it as context.',
               style: F.cap.copyWith(color: p.ink3, height: 1.5),
             ),
           ]),
@@ -1113,7 +1113,7 @@ class _HistoryRow extends StatelessWidget {
       : [
           (timeLabel, hms(w.duration), null),
           if (w.calories == null)
-            (caloriesLabel, loc?.workoutNotCostedValue ?? 'Not costed', null)
+            (caloriesLabel, loc?.workoutNotCostedValue ?? 'No calorie estimate', null)
           else
             (caloriesLabel, grouped(w.calories!), 'kcal'),
           if (w.maxHr == null)

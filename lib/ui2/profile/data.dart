@@ -127,7 +127,7 @@ class _DataScreenState extends State<DataScreen> {
     await Share.shareXFiles([XFile(path)],
         subject: 'OpenStrap database', sharePositionOrigin: origin);
     return (
-      l?.dataDatabaseShared ?? 'Database shared. It is the complete copy.',
+      l?.dataDatabaseShared ?? 'Database shared.',
       false
     );
   }
@@ -161,8 +161,8 @@ class _DataScreenState extends State<DataScreen> {
         subject: 'OpenStrap encrypted backup', sharePositionOrigin: origin);
     return (
       l?.dataEncryptedBackupShared ??
-          'Encrypted backup shared. Without that passphrase nobody can open it — '
-              'including this app, and including us.',
+          'Encrypted backup shared. Without the passphrase nobody '
+          'can open it, including this app and us.',
       false
     );
   }
@@ -260,26 +260,26 @@ class _DataScreenState extends State<DataScreen> {
                       // byte-identical. An empty source cell is unknown
                       // provenance — never back-filled to 'band'.
                       sub: l?.dataExportSpreadsheetsSub(kCsvExportSets.length) ??
-                          '${kCsvExportSets.length} CSV files — daily metrics, '
-                              'workouts, sleep, journal, labs, and everything you '
-                              'typed in. Each day carries where it came from and '
-                              'which algorithm version scored it',
+                          '${kCsvExportSets.length} CSV files: daily metrics, '
+                          'workouts, sleep, journal, labs and your manual '
+                          'entries. Each day lists its data source and the '
+                          'algorithm version that scored it.',
                       onTap: _busy ? null : () => _run(_exportCsv)),
                   SetRow(LucideIcons.database, C.blue,
                       l?.dataExportDatabase ?? 'Export the database',
                       sub: l?.dataExportDatabaseSub ??
-                          'One .db file. Lossless, and the only format that '
-                              'restores onto another phone. Readable by anything '
-                              'that opens SQLite — including anyone who gets the '
-                              'file',
+                          'One .db file with all your data. It is the only format '
+                          'that restores onto another phone. Any SQLite reader '
+                          'can open it, so anyone who gets the file can read '
+                          'your data.',
                       onTap: _busy ? null : () => _run(_exportDb)),
                   SetRow(LucideIcons.lock, C.purple,
                       l?.dataExportEncrypted ?? 'Export an encrypted backup',
                       sub: l?.dataExportEncryptedSub ??
-                          'The same complete copy, sealed with a passphrase, '
-                              'for somewhere like iCloud. Forget the passphrase '
-                              'and that file is gone — there is no recovery, '
-                              'because there is no account holding a key',
+                          'The same copy as the database export, encrypted with '
+                          'a passphrase. Store it somewhere like iCloud. If '
+                          'you forget the passphrase, the file cannot be opened '
+                          'and there is no recovery.',
                       onTap: _busy ? null : () => _run(_exportEncrypted)),
                 ]),
                 const SizedBox(height: S.x5),
@@ -314,10 +314,8 @@ class _DataScreenState extends State<DataScreen> {
                   SetRow(LucideIcons.upload, C.orange,
                       l?.dataImportFile ?? 'Import a file',
                       sub: l?.dataImportFileSub ??
-                          'An OpenStrap backup (encrypted or not), a journal '
-                              'CSV you edited, a raw sensor export, or a vendor '
-                              'CSV. Days this band already measured are never '
-                              'overwritten',
+                          'Accepts an OpenStrap backup (encrypted or not), an edited journal CSV, a raw sensor export, or a vendor CSV. '
+                          'Import never overwrites days this band already measured.',
                       onTap: _busy ? null : () => _run(() => _import(app))),
                   // Progressive disclosure: two health-store reads, each with
                   // its own consent and its own ceiling, behind one row rather
@@ -338,9 +336,7 @@ class _DataScreenState extends State<DataScreen> {
                   SetRow(LucideIcons.refreshCcw, C.blue,
                       'Rebuild all history',
                       sub: l?.dataReanalyzeEverythingSub ??
-                          'Scores every day again from what is stored. Needed '
-                              'after a long-haul flight, and after an import that '
-                              'landed days out of order',
+                          'Recalculates every day from stored data. Run it after a long-haul flight or after an import that added days out of order.',
                       value: app.reanalyzeProgress,
                       onTap: _busy || app.reanalyzing
                           ? null
@@ -365,13 +361,11 @@ class _DataScreenState extends State<DataScreen> {
                   const SizedBox(height: S.x5),
                   StatusCard(
                     l?.welcomeSummariesDidNotTitle ??
-                        'The days landed, the summaries did not',
+                        'Days imported, summaries not rebuilt',
                     l?.dataSummariesDidNotBodyShort(
                             '${app.importRollupError}') ??
-                        'Every imported row is in the database, but rebuilding the '
-                            'cross-day summaries over them threw '
-                            '(${app.importRollupError}), so trends and insights '
-                            'still describe the data you had before.',
+                        'The import saved every row, but rebuilding the cross-day summaries failed (${app.importRollupError}). '
+                        'Trends and insights still reflect your data from before the import. Run Rebuild all history to retry.',
                     fix: 'Rebuild all history',
                     icon: LucideIcons.triangleAlert,
                     onFix: _busy ? null : () => _run(() => _reanalyze(app)),

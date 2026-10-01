@@ -163,8 +163,8 @@ class _ActivitySetupState extends State<ActivitySetup> {
                           LucideIcons.mapPin,
                           l?.activitySetupRouteLabel ?? 'Route',
                           l?.activitySetupRouteDetail ??
-                              'Recorded if location is available, and kept '
-                                  'on this phone',
+                              'Recorded when location is available. '
+                              'Stays on this phone.',
                           null),
                       Divider(color: p.line, height: 1),
                     ],
@@ -237,13 +237,10 @@ class _ActivitySetupState extends State<ActivitySetup> {
                       child: Text(
                           a.met == null
                               ? (l?.activitySetupNoMetEstimate ??
-                                  'No estimate up front: no published MET '
-                                      'applies to a session that names no '
-                                      'activity. Calories come from your '
-                                      'heart rate instead — when your age, '
-                                      'weight and sex are set, and your '
-                                      'resting and maximum rates are '
-                                      'measured rather than assumed.')
+                                  'No estimate is shown up front because no published MET (metabolic '
+                                  'equivalent of task) value applies to a session with no named '
+                                  'activity. Calories come from your heart rate once your age, weight '
+                                  'and sex are set and your resting and maximum rates are measured.')
                               : est == null
                                   ? (l?.activitySetupCaloriesNeedWeight ??
                                       'Calories need your weight.')
@@ -291,7 +288,7 @@ class _ActivitySetupState extends State<ActivitySetup> {
   /// and pace" that nothing in this app can measure indoors.
   String _trackLabel(Track t, AppLocalizations? l) => switch (t) {
         Track.sets =>
-          l?.activitySetupTrackSets ?? 'Sets, reps and load — logged by you',
+          l?.activitySetupTrackSets ?? 'Sets, reps and load you log',
         Track.distance when widget.a.gps =>
           l?.activitySetupTrackDistanceGps ?? 'Distance, pace and heart rate',
         Track.distance || Track.duration =>

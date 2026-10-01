@@ -245,20 +245,20 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
       OffOutcome.ok => StatusCard(
           l?.logFoodNoNumbersTitle ?? 'No numbers for this one',
           l?.logFoodNoNumbersBody ??
-              'Open Food Facts has the product but nothing usable on its '
-                  'nutrition — or what it had did not survive a sanity check.',
+              'Open Food Facts lists this product but has no usable nutrition '
+              'data. Its values were missing or failed the app\'s range checks.',
           icon: LucideIcons.scanBarcode,
         ),
       OffOutcome.notFound => StatusCard(
           l?.logFoodNotFoundTitle ?? 'Not in Open Food Facts',
-          l?.logFoodNotFoundBody ?? 'Nobody has added this barcode yet.',
+          l?.logFoodNotFoundBody ?? 'Open Food Facts has no entry for this barcode.',
           icon: LucideIcons.scanBarcode,
         ),
       OffOutcome.flagged => StatusCard(
           l?.logFoodFlaggedTitle ?? 'This record is flagged as wrong',
           l?.logFoodFlaggedBody ??
-              'Open Food Facts marks this product as containing errors, so none '
-                  'of its numbers were filled in.',
+              'Open Food Facts marks this product as containing errors, so the '
+              'app left every number blank.',
           icon: LucideIcons.triangleAlert,
         ),
       OffOutcome.unreachable => StatusCard(
@@ -270,7 +270,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
       OffOutcome.refused => StatusCard(
           l?.logFoodRefusedTitle ?? 'Barcode lookup is off',
           l?.logFoodRefusedBody ??
-              'Nothing was sent. You can turn it on in Settings › Privacy.',
+              'Nothing was sent. Turn it on in Settings › Privacy.',
           icon: LucideIcons.scanBarcode,
         ),
     };
@@ -282,12 +282,12 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
   String _portionNote(BuildContext c, OffProduct p) {
     final l = AppLocalizations.of(c);
     final base = l?.logFoodPortionNoteBase ??
-        'Open Food Facts lists this per 100 g. Change the portion and '
-            'the numbers follow.';
+        'Open Food Facts lists values per 100 g. The numbers scale when '
+        'you change the portion.';
     if (p.servingLabel.isEmpty && p.servingG == null) return base;
     final serving =
         p.servingLabel.isNotEmpty ? p.servingLabel : '${_plain(p.servingG)} g';
-    return l?.logFoodPortionNoteServing(serving) ?? '$base The pack’s own serving is $serving.';
+    return l?.logFoodPortionNoteServing(serving) ?? '$base The pack lists a serving of $serving.';
   }
 
   void _fillFrom(OffProduct p, double grams) {
@@ -442,9 +442,9 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                   l?.logFoodScanBarcode ?? 'Scan a barcode',
                   sub: offLookupAllowed
                       ? (l?.logFoodScanSubOn ??
-                          'Asks openfoodfacts.org about the barcode, and fills '
-                              'in what it can stand behind')
-                      : (l?.logFoodScanSubOff ?? 'Looks the pack up online. Asks first'),
+                          'Sends the barcode to openfoodfacts.org and fills in the values '
+                          'that pass range checks')
+                      : (l?.logFoodScanSubOff ?? 'Looks the pack up online. Asks permission first.'),
                   chevron: false,
                   onTap: _looking ? null : _scan,
                 ),
@@ -454,7 +454,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                 StatusCard(
                   l?.logFoodLookingUpTitle ?? 'Looking it up',
                   l?.logFoodLookingUpBody ??
-                      'The boxes fill as soon as the answer is here.',
+                      'The fields fill when the answer arrives.',
                   icon: LucideIcons.scanBarcode,
                 ),
               ] else if (_lookupProblem(c) != null) ...[
@@ -505,7 +505,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
               const SizedBox(height: S.x3),
               Text(
                 l?.logFoodBlankHint ??
-                    'A blank number stays blank. Only "What" is needed.',
+                    'Only "What" is required. Blank numbers stay blank.',
                 style: F.cap.copyWith(color: p.ink3, height: 1.45),
               ),
               // ODbL asks for attribution "reasonably calculated" to make a
@@ -528,7 +528,7 @@ class _LogFoodSheetState extends State<LogFoodSheet> {
                   if (label.isEmpty) {
                     ScaffoldMessenger.of(c).showSnackBar(SnackBar(
                       content: Text(
-                          l?.logFoodSayWhatFirst ?? 'Say what it was first.'),
+                          l?.logFoodSayWhatFirst ?? 'Enter what you ate first.'),
                     ));
                     return;
                   }
@@ -629,17 +629,16 @@ Future<bool?> _askLookupConsent(BuildContext c) => showModalBottomSheet<bool>(
                 const SizedBox(height: S.x3),
                 Text(
                   l?.logFoodConsentBody2 ??
-                      'Their numbers are typed in by the public and a fair few of '
-                          'them are wrong, so anything that fails a sanity check is '
-                          'left blank rather than filled in. Everything it does fill '
-                          'in is yours to edit before you save.',
+                      'Anyone can edit Open Food Facts, so some of its numbers are '
+                      'wrong. The app leaves blank any value that fails a range check. '
+                      'You can edit every value it fills in before you save.',
                   style: F.body.copyWith(color: p.ink2, height: 1.5),
                 ),
                 const SizedBox(height: S.x3),
                 Text(
                   l?.logFoodConsentBody3 ??
-                      'You can turn this back off in Settings › Privacy. Typing '
-                          'the numbers off the pack works either way.',
+                      'You can turn this off again in Settings › Privacy. Typing the '
+                      'numbers from the pack works with lookups on or off.',
                   style: F.cap.copyWith(color: p.ink3, height: 1.45),
                 ),
                 const SizedBox(height: S.x5),

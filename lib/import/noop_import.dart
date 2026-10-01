@@ -142,8 +142,8 @@ class NoopImporter {
       final names = usable.map(_basenameOf).take(4).join(', ');
       await resolved.dispose();
       throw ImportFormatException(
-        'That archive holds ${usable.length} CSV files ($names…). Import the '
-        'raw sensor CSV on its own so nothing is silently skipped.',
+        'The archive holds ${usable.length} CSV files ($names…). '
+        'Import the raw sensor CSV by itself.',
       );
     }
     file = File(usable.first);
@@ -255,11 +255,11 @@ class NoopImporter {
           : ' (first line: "${head.length > 80 ? '${head.substring(0, 80)}…' : head}")';
       throw ImportFormatException(
         sawHeader
-            ? 'That NOOP export has a header we recognise but no rows we could '
-                'read — every row was empty or out of range.'
-            : 'That file does not look like a NOOP raw-sensor export: no '
-                '"unix_s,…" header row was found$preview. In NOOP, use '
-                'Export → raw sensor CSV, or import a .noopbak backup.',
+            ? 'The NOOP export has a header but no readable rows. '
+              'Every row was empty or out of range.'
+            : 'No "unix_s,…" header row was found$preview. '
+              'In NOOP, use Export → raw sensor CSV, '
+              'or import a .noopbak backup.',
       );
     }
 

@@ -129,9 +129,9 @@ class _ActivityPickerState extends State<ActivityPicker> {
                       l?.activityPickerNoMatchTitle ??
                           'No activity matches that',
                       l?.activityPickerNoMatchBody ??
-                          'The catalogue covers about seventy activities '
-                              'with a published energy cost. Pick the '
-                              'closest one.',
+                          'Activities come from the Compendium of Physical '
+                          'Activities, which lists an energy cost (MET) for each. '
+                          'Pick the closest one.',
                       icon: LucideIcons.search,
                     )
                   else

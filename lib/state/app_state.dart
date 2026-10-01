@@ -2151,7 +2151,7 @@ class AppState extends ChangeNotifier {
           // stepGoalEnabled.
           priority: NotifPriority.normal,
           title: 'Step goal reached',
-          body: 'You hit about $steps steps — at or above your $goal goal.',
+          body: 'You reached about $steps steps. Your goal is $goal.',
           date: date,
           route: kRouteSteps,
         ),
@@ -2209,7 +2209,7 @@ class AppState extends ChangeNotifier {
           priority: NotifPriority.normal,
           title: 'Time to move',
           body:
-              'You’ve been in a typing posture for over 90 minutes without walking.',
+              'You have been in a typing posture for over 90 minutes without walking.',
           date: today,
           route: kRouteMovement,
         ),
@@ -2401,7 +2401,7 @@ class AppState extends ChangeNotifier {
     final onset = (sleep['onset_ts'] as num?)?.toInt();
     final offset = (sleep['wake_ts'] as num?)?.toInt();
     if (onset == null || offset == null || offset <= onset) {
-      return const SleepOperationResult(success: false, error: 'There is no detected window to confirm.');
+      return const SleepOperationResult(success: false, error: 'No detected sleep window to confirm.');
     }
     return _setConfirmedSleep(date, DateTime.fromMillisecondsSinceEpoch(onset * 1000),
       DateTime.fromMillisecondsSinceEpoch(offset * 1000), 'confirmed');
@@ -3370,9 +3370,9 @@ class AppState extends ChangeNotifier {
   String? get liveStepsAbsentReason {
     final t = activeWorkout?.type;
     if (t != null && !isGaitStepType(t)) {
-      return 'Steps are only counted from the strap while you are on foot — '
-          'a wrist counts arm rhythm as strides. Your phone covers these '
-          'minutes.';
+      return 'The strap counts steps only while you are on foot, '
+             'because a wrist reads arm rhythm as strides. '
+             'Your phone counts these minutes.';
     }
     if (_liveTooSlow) {
       final hz = _liveHz;
@@ -4180,7 +4180,7 @@ class AppState extends ChangeNotifier {
       // THIS device only — a second device's trace is a separate session.
       _clearLiveHrTrace(deviceId);
       if (_keepAlive && isPaired && !_reconnecting && !device.autoReconnectPaused) {
-        _log('Connection dropped — reconnecting…');
+        _log('Connection dropped. Reconnecting…');
         _stopBackfillTimer();
         if (_background) {
           // Backgrounded: arm the OS-durable restore path FIRST and wait for it to
@@ -4912,7 +4912,7 @@ class AppState extends ChangeNotifier {
       _alarm.isPending(DateTime.now().millisecondsSinceEpoch);
 
   Future<void> setAlarm(DateTime when) async {
-    if (!isConnected) throw Exception('Connect to your strap first');
+    if (!isConnected) throw Exception('Connect your band first.');
     // Pass the DateTime through so the engine computes REAL sub-seconds for the
     // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
     // engine owns the exact on-wire layout). Persist the wall instant the
@@ -5023,7 +5023,7 @@ class AppState extends ChangeNotifier {
         category: NotifCategory.device,
         priority: NotifPriority.critical,
         title: 'Alarm not confirmed',
-        body: 'The band did not confirm this alarm — check the strap.',
+        body: 'The band did not confirm this alarm. Check the strap.',
         date: todayLabel(),
         route: kRouteAlarm,
         osId: NotificationService.idAlarmLatchFailed,
@@ -5036,12 +5036,12 @@ class AppState extends ChangeNotifier {
   /// Fire the strap's alarm haptics immediately — a "test buzz" so the user can
   /// confirm the band actually fires before trusting the scheduled wake.
   Future<void> testAlarmBuzz() async {
-    if (!isConnected) throw Exception('Connect to your strap first');
+    if (!isConnected) throw Exception('Connect your band first.');
     await engine.runAlarm();
   }
 
   Future<void> testBuzzPattern(int pattern) async {
-    if (!isConnected) throw Exception('Connect to your strap first');
+    if (!isConnected) throw Exception('Connect your band first.');
     await engine.buzzPattern(pattern);
   }
 
@@ -5061,7 +5061,7 @@ class AppState extends ChangeNotifier {
   /// weekly schedule — not just the currently-armed instant — so nothing left
   /// in `alarm_schedule` can silently re-arm this on the next connect/sync.
   Future<void> disableAlarm() async {
-    if (!isConnected) throw Exception('Connect to your strap first');
+    if (!isConnected) throw Exception('Connect your band first.');
     await engine.disableAlarm();
     _savedAlarm = null;
     device.alarmEpoch = null;
@@ -5148,7 +5148,7 @@ class AppState extends ChangeNotifier {
         category: NotifCategory.reminders,
         priority: NotifPriority.critical,
         title: 'Alarm',
-        body: 'Your strap alarm just fired.',
+        body: 'Your band alarm fired.',
         date: todayLabel(),
         route: '/today',
       ));
@@ -5158,7 +5158,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> renameStrap(String name) async {
-    if (!isConnected) throw Exception('Connect to your strap first');
+    if (!isConnected) throw Exception('Connect your band first.');
     await engine.setStrapName(name);
     device.strapName = name; // optimistic
     await engine.getStrapName();

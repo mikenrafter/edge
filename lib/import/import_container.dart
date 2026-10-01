@@ -348,8 +348,8 @@ Future<String?> inflateGzip(String path, Directory dir) async {
         out.addError(
           ImportFormatException(
             '“${p.basename(path)}” unpacks to more than '
-            '${_kMaxInflatedBytes ~/ (1024 * 1024 * 1024)} GB, which is not '
-            'something we can import.',
+            '${_kMaxInflatedBytes ~/ (1024 * 1024 * 1024)} GB, which is over '
+            'the import limit.',
           ),
         );
         out.close();
@@ -419,7 +419,7 @@ Future<void> _checkGzipTrailer(
 }
 
 ImportFormatException _gzipTruncated(String path) => ImportFormatException(
-  '“${p.basename(path)}” is incomplete or damaged — the compressed data does '
+  '“${p.basename(path)}” is incomplete or damaged. The compressed data does '
   'not match the checksum stored in the file. If it came from a cloud folder, '
   'wait for it to finish downloading, or export it again.',
 );
@@ -488,8 +488,8 @@ Future<ResolvedNoopDatabase?> resolveNoopDatabase(String path) async {
     if (db.size > _kMaxUncompressedBytes) {
       throw ImportFormatException(
         '“${p.basename(path)}” unpacks to '
-        '${(db.size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB, which is '
-        'not something we can import.',
+        '${(db.size / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB, which is over '
+        'the import limit.',
       );
     }
     final tempDir = await Directory.systemTemp.createTemp('openstrap_noopbak_');
@@ -525,8 +525,8 @@ Future<ResolvedNoopDatabase?> resolveNoopDatabase(String path) async {
         throw ImportFormatException(
           'Unpacking that backup stopped at '
           '${(written / (1024 * 1024)).round()} MB of '
-          '${(db.size / (1024 * 1024)).round()} MB — the phone is probably out '
-          'of space. Free some up and try again.',
+          '${(db.size / (1024 * 1024)).round()} MB. The phone is probably out '
+          'of space. Free some space and try again.',
         );
       }
       // CRC is checked whenever the archive gives us one — not only on an
@@ -545,9 +545,9 @@ Future<ResolvedNoopDatabase?> resolveNoopDatabase(String path) async {
       final crc = db.crc32;
       if (db.size > 0 && crc != null && await _fileCrc32(destPath) != crc) {
         throw ImportFormatException(
-          '“${p.basename(path)}” does not hold what it says it does — its '
-          'database does not match the archive checksum. It is likely '
-          'damaged; export it again.',
+          '“${p.basename(path)}” is damaged. Its '
+          'database does not match the archive checksum. '
+          'Export it again.',
         );
       }
       return ResolvedNoopDatabase(destPath, tempDir);
@@ -616,8 +616,8 @@ Future<ResolvedImportFiles> resolveImportCsvPaths(
           // Only reachable for WHOOP now — a NOOP database (loose or inside a
           // `.noopbak`) is claimed by [resolveNoopDatabase] before this runs.
           throw ImportFormatException(
-            '“${p.basename(path)}” is a database file, not a $flavor CSV '
-            'export.',
+            '“${p.basename(path)}” is a database file. '
+            'Pick the $flavor CSV export.',
           );
         case ImportContainer.gzip:
           // Used to be a flat refusal ("unzip it first"). It is inflated now:
@@ -648,8 +648,8 @@ Future<ResolvedImportFiles> resolveImportCsvPaths(
           );
         case ImportContainer.binary:
           throw ImportFormatException(
-            '“${p.basename(path)}” is not a text file, so there is nothing to '
-            'read as a $flavor CSV export.',
+            '“${p.basename(path)}” is not a text file. '
+            'Pick the $flavor CSV export.',
           );
       }
     }
@@ -685,8 +685,8 @@ Future<List<String>> _extractCsvMembers(
 
   if (archive.files.length > _kMaxArchiveMembers) {
     throw ImportFormatException(
-      '“$name” holds ${archive.files.length} entries, which is far more than '
-      'any $flavor export — refusing to unpack it.',
+      '“$name” holds ${archive.files.length} entries, far more than '
+      'any $flavor export, so it was not unpacked.',
     );
   }
 
@@ -701,7 +701,7 @@ Future<List<String>> _extractCsvMembers(
     throw ImportFormatException(
       '“$name” unpacks to more than '
       '${(declaredBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB of '
-      'CSV, which is not something we can import.',
+      'CSV, which is over the import limit.',
     );
   }
 

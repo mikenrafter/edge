@@ -283,7 +283,7 @@ class NoopBackupImporter {
               '${corrupt.join(', ')}, and those are every table this app '
               'imports. There is nothing left to recover from this file; '
               'export a new backup from NOOP.'
-          : 'That NOOP backup holds no samples — there is nothing to import.');
+          : 'That NOOP backup holds no samples, so there is nothing to import.');
     }
     final (minTs, maxTs) = span;
 

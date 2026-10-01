@@ -140,7 +140,7 @@ void main() {
       final np = _npOf(buildCrossDayBundle(_days(10), profile));
       expect(
         np['note'],
-        contains('HEART-RATE'),
+        contains('hourly mean heart rate'),
         reason: 'M10/L5 here are highest/lowest-HR windows, not step counts; a '
             'reader who assumes actigraphy would misread the units',
       );

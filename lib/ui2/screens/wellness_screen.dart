@@ -261,7 +261,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                 count: kBreathPatterns.length,
                 noun: l?.wellnessExercisesNoun ?? 'exercises',
                 sub: last == null
-                    ? (l?.wellnessPickOneAndGo ?? 'Pick one and go')
+                    ? (l?.wellnessPickOneAndGo ?? 'Pick a session')
                     : (l?.wellnessLastMinutes(
                             (_reading(last['seconds']) ?? 0) ~/ 60) ??
                         'Last: ${(_reading(last['seconds']) ?? 0) ~/ 60} min'),
@@ -332,7 +332,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
         ),
         const SizedBox(height: S.x4),
         ActionCard(
-          l?.wellnessWriteTheDayDown ?? 'Write the day down',
+          l?.wellnessWriteTheDayDown ?? 'Log your day',
           // Named from the field specs the journal actually holds. The old
           // literal listed four fields and went stale the moment a custom one
           // was added.
@@ -356,14 +356,14 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               ? StatusCard(
                   l?.wellnessNoStressTitle ?? 'No stress reading last night',
                   l?.wellnessNoStressBody ??
-                      'Stress is read from beat timing while you were resting '
-                          'overnight, and last night produced no reading.',
+                      'Stress comes from beat timing recorded while you rest overnight. '
+                      'Last night had no reading.',
                   icon: LucideIcons.activity,
                 )
               : SignalCard(
                   LucideIcons.activity,
                   C.purple,
-                  l?.wellnessAutonomicTension ?? 'Autonomic tension',
+                  l?.wellnessAutonomicTension ?? 'Overnight stress',
                   score.round().toString(),
                   unit: '/100',
                   sub: (level ?? '').toUpperCase(),
@@ -446,9 +446,9 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               l?.wellnessTurnInBy(formatMinuteOfDay(bedMin.round())) ??
                   'Turn in by ${formatMinuteOfDay(bedMin.round())}',
               l?.wellnessDebtBody(_hm(debtH * 60), _hm(needSec / 60)) ??
-                  'You are ${_hm(debtH * 60)} down against your own need, and '
-                      'tonight\'s is ${_hm(needSec / 60)}.',
-              l?.wellnessSeeWhatLastNightCost ?? 'See what last night cost you',
+                  'You are ${_hm(debtH * 60)} short of your sleep need. '
+                  'Tonight\'s need is ${_hm(needSec / 60)}.',
+              l?.wellnessSeeWhatLastNightCost ?? 'Review last night',
               color: C.indigo,
               onTap: () => Navigator.of(c).push(
                 MaterialPageRoute<void>(builder: (_) => const SleepDetail()),
@@ -456,7 +456,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
             ),
           ),
         Section(
-          l?.wellnessWhatChargedAndDrained ?? 'What charged and drained you',
+          l?.wellnessWhatChargedAndDrained ?? 'What raised and lowered your readiness',
           // Two words and a full stop, before: "hrv", "rhr". No reading, no
           // usual, no direction, no size, and no way to tell a move that
           // mattered from one inside the noise — all of which were already
@@ -466,8 +466,8 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                   l?.wellnessNoDriversTitle ?? 'No readiness drivers yet',
                   whyFromNote(metricOf(_stress['readiness']).note) ??
                       (l?.wellnessNoDriversBody ??
-                          'Needs enough nights to know what normal looks like '
-                              'for you.'),
+                          'Readiness drivers need enough nights to '
+                          'set your baseline.'),
                   icon: LucideIcons.sparkles,
                 )
               : DriverBreakdown(_drivers),
@@ -482,8 +482,8 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                   l?.wellnessNoSleepNeedTitle ?? 'No sleep need yet',
                   whyFromNote(_noteOf(coachMap?['need'])) ??
                       (l?.wellnessNoSleepNeedBody ??
-                          'Nothing recorded says why there is no need for '
-                              'tonight.'),
+                          'Tonight\'s sleep need could not be '
+                          'calculated from the recorded data.'),
                   icon: LucideIcons.bedDouble,
                 )
               : Surface(
@@ -634,7 +634,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
         ActionCard(
           l?.wellnessWhatYouLogTitle ?? 'What you log, against your numbers',
           l?.wellnessWhatYouLogSubtitle ??
-              'Dose, habit difference, and the day of the week',
+              'Dose, days with and without it, and weekday',
           l?.wellnessOpen ?? 'Open',
           LucideIcons.scatterChart,
           C.domMind,
@@ -667,7 +667,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
       title: l?.wellnessRemoveHabitConfirmTitle(h.label) ??
           'Remove ${h.label}?',
       body: l?.wellnessRemoveHabitConfirmBody ??
-          'It stops being asked. The days you already recorded stay.',
+          'The app stops asking about this habit. Days you already recorded stay.',
     );
     if (!ok || !mounted) return;
     final repo = context.read<AppState>().repo;
@@ -793,7 +793,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                       _adherence.taken,
                       _adherence.of,
                       l?.wellnessTakenOfScheduled ??
-                          'Taken, of those scheduled in the last seven days.',
+                          'Doses taken out of doses scheduled in the last seven days.',
                       C.blue,
                       // Doses, not days — three a day over a week is 21 of
                       // them inside a seven-day window.
@@ -899,7 +899,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               sub: skipped
                   ? (l?.wellnessBackToNotTaken ?? 'Back to not taken.')
                   : (l?.wellnessRecordedAsDecision ??
-                      'Recorded as a decision, not a miss.'),
+                      'Recorded as a deliberate skip.'),
               onTap: () {
                 Navigator.of(sheet).pop();
                 _skipDose(s);
@@ -919,7 +919,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               l?.wellnessRemoveMedTitle(s.def.label) ??
                   'Remove ${s.def.label}',
               sub: l?.wellnessRemoveMedBody ??
-                  'It stops being scheduled. Marked doses stay.',
+                  'This medication is no longer scheduled. Doses you marked stay.',
               onTap: () {
                 Navigator.of(sheet).pop();
                 _confirmRemoveMed(s.def);
@@ -1563,11 +1563,11 @@ class _JournalFindingsState extends State<JournalFindings> {
       const SizedBox(height: S.x2),
       if (_rows.isEmpty)
         StatusCard(
-          l?.wellnessNothingSeparatedTitle ?? 'Nothing separated itself yet',
+          l?.wellnessNothingSeparatedTitle ?? 'No clear pattern yet',
           l?.wellnessNothingSeparatedBody ??
-              'Everything you log is tested against your recovery, HRV, '
-                  'resting heart rate and sleep efficiency. Nothing has '
-                  'cleared the bar yet.',
+              'Each item you log is compared with your recovery, HRV, '
+              'resting heart rate and sleep efficiency. None has shown '
+              'a difference yet.',
           icon: LucideIcons.scatterChart,
         )
       else ...[
@@ -1584,8 +1584,8 @@ class _JournalFindingsState extends State<JournalFindings> {
         const SizedBox(height: S.x2),
         Text(
           l?.wellnessLinkNeverCause ??
-              'A link on your own days — never a cause. The days you do a '
-                  'thing are days you were already that kind of day.',
+              'This shows an association in your own days. It does not show a cause. '
+              'Days when you do something often differ in other ways too.',
           style: F.over.copyWith(color: p.ink3, height: 1.5),
         ),
       ],
@@ -1747,8 +1747,8 @@ class _JournalFindingsState extends State<JournalFindings> {
       return StatusCard(
         l?.wellnessNotEnoughWeeksTitle ?? 'Not enough weeks yet',
         l?.wellnessNotEnoughWeeksBody ??
-            'Comparing seven weekdays needs at least eight weeks of days, '
-                'with five of every weekday in them.',
+            'Weekday comparison needs at least eight weeks of data, '
+            'with at least five days of each weekday.',
         icon: LucideIcons.calendarDays,
       );
     }
@@ -1756,8 +1756,8 @@ class _JournalFindingsState extends State<JournalFindings> {
       return StatusCard(
         l?.wellnessNoDayStandsOutTitle ?? 'No day of the week stands out',
         l?.wellnessNoDayStandsOutBody ??
-            'No day stands apart from the other six once we account for '
-                'having checked all seven.',
+            'After correcting for comparing seven weekdays, '
+            'no day differs from the other six.',
         icon: LucideIcons.calendarDays,
       );
     }
@@ -1779,8 +1779,8 @@ class _JournalFindingsState extends State<JournalFindings> {
             '${_weekdayName(day)}s: readiness runs '
                 '${delta.abs().round()} $direction than your overall median',
         detail: l?.wellnessWeekdayDetail('$n') ??
-            'From $n of them. A weekday is not a cause — it is a container '
-                'for what you do on it. Nothing here is advice.',
+            'From $n of them. A weekday causes nothing; it groups what you did on it. '
+            'This is not advice.',
       ),
     );
   }

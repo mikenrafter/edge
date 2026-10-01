@@ -122,7 +122,7 @@ class _CoachScreenState extends State<CoachScreen> {
       l?.coachStarterSleep ?? 'How has my sleep been this week?',
       l?.coachStarterAteYesterday ?? 'What did I eat yesterday?',
       l?.coachStarterLogWater ?? 'Log 500 ml of water for today',
-      l?.coachStarterLogRun ?? 'I ran for 40 minutes this morning — log it',
+      l?.coachStarterLogRun ?? 'I ran for 40 minutes this morning. Log it.',
     ];
   }
 
@@ -207,7 +207,7 @@ class _CoachScreenState extends State<CoachScreen> {
               e is CoachException
                   ? e.message
                   : (AppLocalizations.of(context)?.coachSomethingWrong('$e') ??
-                      'Something went wrong: $e'),
+                      'Coach request failed: $e'),
             ),
           );
         });
@@ -363,7 +363,7 @@ class _CoachScreenState extends State<CoachScreen> {
                     if (list.isEmpty) {
                       return Text(
                         l?.coachNoChatsYet ??
-                            'Nothing yet — this is your first conversation.',
+                            'No past chats yet.',
                         style: F.cap.copyWith(color: p.ink3),
                       );
                     }
@@ -463,8 +463,8 @@ class _CoachScreenState extends State<CoachScreen> {
           StatusCard(
             l?.coachKeyStillSavedTitle ?? 'Your key is still saved',
             l?.coachKeyStillSavedBody ??
-                'It could not be read from the keychain this time, which happens '
-                    'when the app is woken while the phone is locked.',
+                'The keychain did not return your saved API key. This happens '
+                'when the app wakes while the phone is locked.',
             fix: l?.coachTryAgainFix ?? 'Try again',
             icon: LucideIcons.lock,
             onFix: () async {
@@ -483,9 +483,9 @@ class _CoachScreenState extends State<CoachScreen> {
           StatusCard(
             l?.coachNotSetUpTitle ?? 'The coach is not set up',
             l?.coachNotSetUpBody ??
-                'It runs on a model you choose — one on your own machine, or any '
-                    'OpenAI-compatible provider with your own key. Nothing goes '
-                    'through OpenStrap either way.',
+                'The coach runs on a model you pick: one on your own machine, or any '
+                'OpenAI-compatible provider with your own key. Requests go '
+                'straight to that model and never pass through OpenStrap.',
             fix: l?.coachChooseModelFix ?? 'Choose a model',
             icon: LucideIcons.sparkles,
             onFix: () => go(c, const CoachSetup()),
@@ -501,8 +501,7 @@ class _CoachScreenState extends State<CoachScreen> {
           StatusCard(
             l?.coachNoDataTitle ?? 'No data to read yet',
             l?.coachNoDataBody ??
-                'The coach answers from your own derived days, and there are none '
-                    'on this device yet.',
+                'The coach answers from your daily results. This device has none yet.',
             icon: LucideIcons.database,
           ),
         ],
@@ -519,26 +518,11 @@ class _CoachScreenState extends State<CoachScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(
-                      LucideIcons.sparkles,
-                      size: 17,
-                      color: p.on(kCoachAccent),
-                    ),
-                    const SizedBox(width: S.x2),
-                    Text(
-                      l?.coachYourDataYourModel ?? 'YOUR DATA, YOUR MODEL',
-                      style: F.over.copyWith(color: p.on(kCoachAccent)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: S.x3),
                 Text(
                   l?.coachIntroBody ??
-                      'Ask about anything the app measures, and it can log food, '
-                          'water, workouts, doses and how you felt — always asking '
-                          'first.',
+                      'Ask about any metric the app measures. The coach can also log food, '
+                      'water, workouts, doses and how you felt, and asks you to confirm '
+                      'before saving each entry.',
                   style: F.body.copyWith(color: p.ink, height: 1.45),
                 ),
               ],
@@ -904,7 +888,7 @@ class _CoachSetupState extends State<CoachSetup> {
         _models = ids;
         _msg = ids.isEmpty
             ? (l?.coachNoModelsListed ??
-                'That endpoint listed no models. Type one below instead.')
+                'That endpoint returned no models. Type a model id below.')
             : (l?.coachModelsFound(ids.length) ?? '${ids.length} models. Tap one.');
       });
     } catch (e) {
@@ -949,7 +933,7 @@ class _CoachSetupState extends State<CoachSetup> {
     } catch (e) {
       if (mounted) {
         setState(() =>
-            _msg = l?.coachKeychainRefused('$e') ?? 'The keychain refused the key: $e');
+            _msg = l?.coachKeychainRefused('$e') ?? 'Could not save the key to the keychain: $e');
       }
       return;
     }
@@ -1143,9 +1127,9 @@ class _CoachSetupState extends State<CoachSetup> {
                     ),
                     const SizedBox(height: S.x3),
                     Text(
-                      'A local model can take a while to load before its first '
-                      'reply. Default is 5 minutes (300s). Cloud providers use '
-                      'a fixed 2-minute timeout and are not affected by this.',
+                      'A local model can be slow to load before its first reply, so the '
+                      'default is 5 minutes (300s). Cloud providers use a fixed '
+                      '2-minute timeout and ignore this setting.',
                       style: F.cap.copyWith(color: p.ink3, height: 1.5),
                     ),
                   ],

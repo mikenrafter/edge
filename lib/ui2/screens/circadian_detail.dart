@@ -500,7 +500,7 @@ class _CircadianDetailState extends State<CircadianDetail> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         ChartFrame(
           title: l?.circadianDetailForecastTitle ??
-              'How today is likely to run',
+              'Predicted alertness curve for today',
           // There is no unit. Saying so is more honest than borrowing one, and
           // the frame renders it in the slot a unit would have occupied.
           unit: 'shape only',
@@ -513,7 +513,7 @@ class _CircadianDetailState extends State<CircadianDetail> {
           // No `series:`. A shape has no reading; handing the frame one would
           // have it speak numbers off a curve that deliberately has none.
           footnote: l?.circadianDetailForecastFootnote ??
-              'No scale — the shape is the whole output.',
+              'The curve has no scale. Read its shape only.',
           child: CustomPaint(
             size: Size.infinite,
             // p.ink3, like every other mark on this screen that is not a
@@ -538,14 +538,14 @@ class _CircadianDetailState extends State<CircadianDetail> {
           '${l?.circadianDetailPredictionDisclaimer ?? 'This is a prediction, not a reading. Nothing on the band measures '
               'how alert you are, and it knows last night and nothing else — a '
               'nap, coffee, or anything that happens today never reaches it.'}'
-          '${assumedPhase ? ' ${l?.circadianDetailAssumedPhaseNote ?? 'Your own clock peak is not worked out yet, so this uses an average one.'}' : ''}',
+          '${assumedPhase ? ' ${l?.circadianDetailAssumedPhaseNote ?? 'The app has not calculated your own clock peak yet, so this uses an average peak.'}' : ''}',
           style: F.cap.copyWith(color: p.ink2, height: 1.6),
         ),
         const SizedBox(height: S.x3),
         Text(
           l?.circadianDetailNotADrivingCheck ??
-              'It is not a fitness-to-drive check and not a shift-safety '
-                  'tool, and it does not say you are impaired.',
+              'Do not use it to decide whether you can drive or work a shift safely. '
+              'It does not measure impairment.',
           style: F.cap.copyWith(color: p.ink2, height: 1.6),
         ),
       ]),
@@ -612,10 +612,10 @@ class _CircadianDetailState extends State<CircadianDetail> {
       const SizedBox(height: S.x3),
       Text(
         l?.circadianDetailPairFootnote(d.sriPairs.length) ??
-            'The pair that matched least, out of ${d.sriPairs.length}. A '
-                'weekend that runs late is a different schedule, not a worse '
-                'night. Pairs where too little of either day was recorded '
-                'are left out.',
+            'The pair that matched least, out of ${d.sriPairs.length}. A late '
+            'weekend shows up here as a schedule difference. '
+            'Pairs with too little recorded on either day '
+            'are left out.',
         style: F.over.copyWith(color: p.ink3, height: 1.5),
       ),
     ]);
@@ -676,9 +676,8 @@ class _CircadianDetailState extends State<CircadianDetail> {
       Text(
         used == null
             ? (l?.circadianDetailStrengthFootnoteUnknown ??
-                'From a run of fully-recorded days of heart rate. These are '
-                    'your highest and lowest heart-rate hours, not your '
-                    'busiest.')
+                'From a run of days with every hour of heart rate recorded. '
+                'The hours shown have your highest and lowest heart rate.')
             : (l?.circadianDetailStrengthFootnoteKnown(used) ??
                 'From $used fully-recorded day${used == 1 ? '' : 's'} of '
                     'heart rate. These are your highest and lowest '

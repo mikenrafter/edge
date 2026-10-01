@@ -76,7 +76,7 @@ void main() {
     // that the headline ellipsised. Finding the exact string is the check;
     // an ellipsised RenderParagraph would not match it.
     expect(find.text('71 activities'), findsOneWidget);
-    expect(find.text('Pick one and go'), findsOneWidget);
+    expect(find.text('Pick a session'), findsOneWidget);
   });
 
   testWidgets('nothing overflows at 2.0x text', (t) async {

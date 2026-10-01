@@ -297,13 +297,13 @@ void main() {
     );
     expect(find.text('WATCHED'), findsOneWidget);
     expect(find.text('6h 20m'), findsOneWidget);
-    expect(find.textContaining('is not a measurement'), findsOneWidget);
+    expect(find.textContaining('cover only the recorded time'), findsOneWidget);
   });
 
   testWidgets('a fully observed night says nothing about watching', (t) async {
     await _pump(t, SleepData(day: '2026-05-20', night: _night()));
     expect(find.text('WATCHED'), findsNothing);
-    expect(find.text('ASLEEP OF THAT'), findsOneWidget);
+    expect(find.text('ASLEEP WHILE WATCHED'), findsOneWidget);
   });
 
   // ── SLP-02 · settling time, forced windows only ───────────────────────────

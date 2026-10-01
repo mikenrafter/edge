@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>OpenStrap Edge — use your WHOOP 4.0, 5, or MG without a subscription</title>
+<title>OpenStrap Edge: use your WHOOP 4.0, 5, or MG without a subscription</title>
 <meta name="description" content="An open-source app that makes a WHOOP band useful without a WHOOP subscription. Pairs over Bluetooth, computes recovery, strain and sleep entirely on your phone. No cloud, no account, MIT licensed.">
 <meta property="og:title" content="OpenStrap Edge — use your WHOOP band without a subscription">
 <meta property="og:description" content="Pairs over Bluetooth, computes everything on your phone. No cloud, no account, MIT licensed.">
@@ -41,12 +41,12 @@
 
   <main>
     <section class="hero">
-      <h1>Your strap doesn&rsquo;t stop working when the subscription does.</h1>
+      <h1>Use your WHOOP strap without a subscription.</h1>
       <p class="lede">
-        Only the app goes dark. Edge pairs with your band over Bluetooth, decodes what it
-        recorded, and works out your sleep, recovery, strain and the rest &mdash;
-        entirely on your phone. No account, no subscription, and no server that ever
-        receives your health data.
+        Edge pairs with your band over Bluetooth, decodes what it recorded,
+        and computes your sleep, recovery, strain and other metrics on your
+        phone. It needs no account or subscription, and no server receives
+        your health data.
       </p>
 
       <div class="cta-row">
@@ -68,16 +68,16 @@
     <section class="honest" aria-label="Device support">
       <h2>Supports</h2>
       <ul>
-        <li><strong>WHOOP 4, WHOOP 5, MG</strong> &mdash; full support: sleep, recovery,
-          strain, everything computed on-device. WHOOP 4 gets the most daily wear-testing.</li>
-        <li><strong>Any standard Bluetooth heart-rate strap</strong> &mdash; pairs for
-          workout tracking today (heart rate and beat timing, stored and shown). Full
-          metrics from it are on the roadmap.</li>
-        <li><strong>Oura Ring</strong> &mdash; the protocol groundwork is in the codebase;
-          not pairable in the app yet.</li>
+        <li><strong>WHOOP 4, WHOOP 5, MG</strong> : sleep, recovery, strain and the other metrics, all computed on-device.
+          WHOOP 4 is the most tested model.</li>
+        <li><strong>Any standard Bluetooth heart-rate strap</strong> : pairs for workout tracking.
+          Edge stores and shows heart rate and beat timing.
+          Full metrics are planned.</li>
+        <li><strong>Oura Ring</strong> : the protocol code is in the repository,
+          but the app cannot pair with it yet.</li>
       </ul>
       <p class="fineprint">
-        More device support is ongoing work, not a promise with a date &mdash; see the
+        More devices are in development, with no release date. See the
         <a href="https://github.com/OpenStrap/protocol">protocol</a> repo for what's decoded
         so far.
       </p>
@@ -137,42 +137,29 @@
       <div class="card">
         <h2>It runs on your phone</h2>
         <p>
-          The band talks to the app, the app decodes the bytes and computes every metric
-          locally, and the results are stored on the device. There&rsquo;s no server that
-          sees your health data &mdash; that isn&rsquo;t a setting, it&rsquo;s the
-          architecture.
+          The band sends bytes to the app. The app decodes them, computes every metric on the phone, and stores the results on the device. No server receives your health data.
         </p>
         <p class="fineprint">
-          Precisely, because &ldquo;no cloud&rdquo; gets said too loosely: GitHub Release
-          builds send anonymous crash diagnostics by default (switchable off); store
-          builds send none. Neither ever includes health data.
+          GitHub Release builds send anonymous crash diagnostics by default. You can switch them off. Store builds send none. Neither build sends health data.
           <a href="privacy.html">Detail &rarr;</a>
         </p>
       </div>
       <div class="card">
         <h2>Published methods, cited</h2>
         <p>
-          Banister TRIMP, Cole&ndash;Kripke, Lomb&ndash;Scargle, van&nbsp;Hees and friends.
-          Nothing invented, no neural net guessing at WHOOP&rsquo;s formulas. You can go
-          read the paper and decide whether you trust the number.
+          The metrics use Banister TRIMP (training load), Cole-Kripke (sleep scoring), Lomb-Scargle (heart-rate variability from uneven beat spacing) and van Hees (wrist-angle sleep detection). The analytics code cites the paper for each method.
         </p>
       </div>
       <div class="card">
-        <h2>It admits what it doesn&rsquo;t know</h2>
+        <h2>Missing data shows as a dash</h2>
         <p>
-          Every metric carries a confidence and a tier. When the data isn&rsquo;t there
-          you get a dash, not a plausible-looking guess. SpO<sub>2</sub> and skin
-          temperature are relative-only, because that&rsquo;s what the band actually
-          gives up.
+          Every metric carries a confidence and a tier. When data is missing, the app shows a dash. SpO<sub>2</sub> and skin temperature are relative-only, because the band does not report absolute values.
         </p>
       </div>
       <div class="card">
-        <h2>Not a WHOOP clone</h2>
+        <h2>How it differs from WHOOP</h2>
         <p>
-          Different algorithms, different numbers. They have years of research and a
-          team; this is textbook methods over a reverse-engineered byte stream. It trends
-          correctly and it&rsquo;ll tell you when you&rsquo;re under-recovered. It
-          isn&rsquo;t their secret sauce and never claims to be.
+          OpenStrap applies published methods to the decoded band data. It does not use WHOOP's algorithms, so its numbers differ from WHOOP's.
         </p>
       </div>
     </section>
@@ -181,9 +168,9 @@
       <h2>Before you install</h2>
       <ul>
         <li><strong>Quit the official WHOOP app before pairing.</strong> Bluetooth only lets one app own the band at a time.</li>
-        <li><strong>Pick one and stay on it.</strong> A firmware push from the official app could change the records this depends on, and there&rsquo;s no fixing that from here.</li>
+        <li><strong>Use one app per band.</strong> A firmware update from the official app could change the records OpenStrap reads, and OpenStrap cannot undo it.</li>
         <li><strong>Not medical-grade.</strong> These are approximations from published research, not validated against a lab. Nothing here is a diagnosis.</li>
-        <li><strong>There are bugs.</strong> It&rsquo;s a beta built by one person. <a href="https://github.com/OpenStrap/edge/issues">Open an issue</a> when something looks wrong &mdash; that&rsquo;s genuinely the most useful thing you can do.</li>
+        <li><strong>There are bugs.</strong> It&rsquo;s a beta built by one person. <a href="https://github.com/OpenStrap/edge/issues">Open an issue</a> when something looks wrong. Reports are the most useful contribution.</li>
       </ul>
     </section>
 
@@ -197,57 +184,55 @@
         </a>
         <a href="https://github.com/OpenStrap/protocol">
           protocol
-          <span>The decoders. Raw band bytes into named fields. Pure Dart, zero dependencies.</span>
+          <span>Decodes raw band bytes into named fields. Pure Dart with no dependencies.</span>
         </a>
         <a href="https://github.com/OpenStrap/analytics">
           analytics
-          <span>The math. Published, peer-reviewed methods with citations in the code.</span>
+          <span>Computes HRV, sleep staging, readiness and strain, with paper citations in the code.</span>
         </a>
         <a href="https://github.com/OpenStrap/research">
           research
-          <span>The lab notebook. The protocol written down, plus a Python client.</span>
+          <span>Protocol documentation and a Python client.</span>
         </a>
       </div>
     </section>
 
     <section class="growth">
-      <h2>Where it&rsquo;s got to</h2>
+      <h2>Star history</h2>
       <img src="star-history.svg" alt="Star history for OpenStrap/edge"
            width="760" loading="lazy">
       <p class="fineprint">
-        The cliff in mid-July is Hackaday and Adafruit covering it on the same day.
-        Chart generated from the GitHub API and served from this site, rather than
-        embedded from star-history.com or starchart.cc &mdash; there is no analytics or
-        third-party service on this page. (The screenshots above load from GitHub, which
-        also hosts it.)
+        The jump in mid-July is Hackaday and Adafruit covering the project on the same day.
+The chart is generated from the GitHub API and served from this site.
+This page uses no analytics or third-party service.
+The screenshots above load from GitHub, which also hosts the repository.
       </p>
     </section>
 
     <section class="support" id="support">
       <div class="donate">
-        <h2>☕ Like it? Help keep it going.</h2>
+        <h2>Support OpenStrap</h2>
         <p class="donate-lede">
-          No subscription, no paywall, no company behind this. If OpenStrap gave your
-          band a second life, a small tip genuinely helps.
+          OpenStrap is free, has no subscription and has no company behind it.
+Tips are optional.
         </p>
 
         <dl class="addr">
           <dt>Bitcoin</dt>
           <dd><code>bc1qvtcch38dcwp967ar764uu6eetw7tf907844wfq</code></dd>
-          <dt>EVM &mdash; Ethereum &middot; Base &middot; Arbitrum &middot; Optimism &middot; Polygon</dt>
+          <dt>EVM chains: Ethereum, Base, Arbitrum, Optimism, Polygon</dt>
           <dd><code>0x8310C89393366b7eBCD47ABa82e1dfB5ECeFFbD9</code></dd>
         </dl>
 
         <p class="fineprint">
-          Tap an address to select it. What this actually pays for: the Apple Developer
-          membership that keeps the TestFlight build alive, a second band to get
-          WHOOP&nbsp;5 support tested, and coffee.
+          Tap an address to select it.
+Tips pay for the Apple Developer membership that keeps the TestFlight build available
+and for a second band to test WHOOP 5 support.
           <a href="https://github.com/OpenStrap/edge/blob/main/DONATE.md">More &rarr;</a>
         </p>
         <p class="fineprint">
-          <strong>Nothing is gated behind paying, and nothing ever will be.</strong>
-          Bug reports from real bands are worth more than money &mdash; there&rsquo;s only
-          one person&rsquo;s physiology in the test data otherwise.
+          <strong>No feature requires payment.</strong>
+          Bug reports from other bands help more than money. The test data comes from one person.
         </p>
       </div>
     </section>

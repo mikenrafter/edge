@@ -271,7 +271,7 @@ class WidgetService {
                 frac: s.value! / 21),
         sleep.isEmpty
             ? _gapRing('sleep', sleep, 'No sleep',
-                fallbackWhy: 'No night long enough to score was recorded.')
+                fallbackWhy: 'The band recorded no night long enough to score.')
             : _Ring('sleep',
                 value: hm(sleep.value),
                 sub: needMin <= 0 ? 'No target yet' : 'of ${hm(need.value)}',
@@ -582,7 +582,7 @@ class WidgetService {
   static String? _heldOverWhy(TodayStatus? s) {
     if (s == null || !s.showingPriorOvernight) return null;
     return s.overnightBuilding
-        ? 'Last night is still being worked out.'
+        ? 'Last night is still being processed.'
         : 'Nothing from last night has reached the app yet.';
   }
 
@@ -609,7 +609,7 @@ class WidgetService {
         why: whyFromNote(m.note, unit: unit) ??
             (fallbackWhy.isNotEmpty
                 ? fallbackWhy
-                : 'Nothing recorded says why this is missing.'));
+                : 'No reason for the missing value was recorded.'));
   }
 
   static String _coachLine(CoachData? c) {

@@ -275,7 +275,7 @@ Map<String, Widget> goldenCases() => {
       'recommendation': const Recommendation(
         'Keep it easy today',
         'HRV is six milliseconds below your baseline and resting heart rate '
-            'is up three — the same pattern as the day before your last cold.',
+        'is up three. The same pattern appeared the day before your last cold.',
         'See what changed',
       ),
       'goal_trajectory': const GoalTrajectory(
@@ -283,7 +283,7 @@ Map<String, Widget> goldenCases() => {
       'observation': const Observation(
         'Your resting heart rate has risen on six of the last seven nights',
         'From 51 to 58 bpm, alongside a 0.4° skin-temperature rise.',
-        advice: 'Worth mentioning if it continues past a week.',
+        advice: 'Tell your doctor if it continues past a week.',
       ),
       'consistency': const Consistency(
           18, 24, 'Nights with a full sleep record', C.domHealth),
@@ -334,7 +334,7 @@ Map<String, Widget> goldenCases() => {
       'day_nav_today': DayNav(
           day: _navDays.first, days: _navDays, onDay: (_) {}),
       'section': const Section('Recovery', StatusCard('Nothing yet today',
-          'The first sync of the day has not landed.'),
+          'The strap has not synced yet today.'),
           action: 'History'),
       ..._chartCases(),
       ..._coachFigureCases(),
@@ -436,9 +436,9 @@ Map<String, Widget> _chartCases() {
           yAxis: AxisSpec.of(rhr, floor: 40),
           xLabels: const ['30 Jul', '14 Aug', 'Today'],
           xMarks: const [.55],
-          footnote: 'The dotted line is a change in how these days were '
-              'computed. Readings either side of it came from different '
-              'versions.',
+          footnote: 'The dotted line marks a change in how these days were computed. '
+                    'Readings on either side came from different '
+                    'versions.',
           series: rhr,
           child: CustomPaint(
             size: Size.infinite,
@@ -798,7 +798,7 @@ Map<String, Widget> extraCases() => {
       // place with the gap added after it.
       'status_wear_gap': StatusCard.forMetric('No sleep', Metric.empty,
           why: 'No sleep period long enough to score was recorded.',
-          gap: 'Your band was off your wrist 11:20 PM – 2:14 AM.')!,
+          gap: 'Your band was off your wrist from 11:20 PM to 2:14 AM.')!,
       // The three nap states, which are three different answers and must not
       // read as one: a day with naps, a judged day that had none (a MEASURED
       // zero, so it says None rather than a dash), and a day nothing could be
@@ -811,8 +811,7 @@ Map<String, Widget> extraCases() => {
           sub: 'None detected · Sunday, 16 August'),
       'nap_unjudged': const StatusCard(
         'No nap reading for Sunday, 16 August',
-        'Naps come off the same 1 Hz recording the rest of the day does, and '
-            'this day does not have enough of it.',
+        'Naps are detected from the 1 Hz recording. This day has too little of it.',
         icon: LucideIcons.sun,
       ),
       // A health watch in the log. Two accents across six detectors, not six:
@@ -823,7 +822,7 @@ Map<String, Widget> extraCases() => {
       'status_wear_gap_after_pipeline': StatusCard.forMetric(
         'No respiratory rate',
         const Metric(note: 'need_input:name=nn_beats,have=12,need=20'),
-        gap: 'Your band was off your wrist 11:20 PM – 2:14 AM.',
+        gap: 'Your band was off your wrist from 11:20 PM to 2:14 AM.',
       )!,
       // Both asks stacked, default (unloaded) Prefs state — the same state
       // an actual first run starts from, since an unset dismissed/last-shown
@@ -832,8 +831,7 @@ Map<String, Widget> extraCases() => {
       'surface': Builder(
         builder: (c) => Surface(
           child: Text(
-            'The base card. Elevation, not outline — and the only surface a '
-            'component may sit on.',
+            'The base card. It has elevation and no outline. Every component sits on it.',
             style: F.body.copyWith(color: P.of(c).ink),
           ),
         ),
@@ -877,7 +875,7 @@ Map<String, Widget> extraCases() => {
             title: 'Readiness',
             unit: 'out of 100',
             height: 120,
-            footnote: 'Against your own 14-day baseline, not a population.',
+            footnote: 'Compared with your own 14-day baseline.',
             child: CustomPaint(
                 size: Size.infinite,
                 painter: Ring(.72, p.on(C.green), p.track)),
@@ -1170,8 +1168,7 @@ const _roughFull = RoughNight(
   day: '2026-08-15',
   signs: 4,
   illnessFlagged: true,
-  descriptor: 'a rougher night than usual for you — your body worked harder '
-      'overnight',
+  descriptor: 'your body worked harder than usual overnight',
   moved: [
     'your resting heart rate ran higher',
     'your HRV ran lower',
@@ -1180,11 +1177,10 @@ const _roughFull = RoughNight(
   ],
   knows: [
     'You trained until 9:40 PM, which often does this on its own.',
-    'The illness watch flagged this night too — a sustained rise against your '
-        'own baseline, not a diagnosis.',
+    'The illness watch flagged this night too, after a sustained rise against your own baseline. It does not diagnose illness.',
     'You are in the luteal phase, which lifts resting heart rate and skin '
         'temperature by itself.',
-    'Your skin ran warmer than your usual — a warm room does this too.',
+    'Your skin ran warmer than usual. A warm room does this too.',
   ],
 );
 
@@ -1193,8 +1189,7 @@ const _roughFull = RoughNight(
 const _roughBare = RoughNight(
   day: '2026-08-15',
   signs: 2,
-  descriptor: 'a rougher night than usual for you — your body worked harder '
-      'overnight',
+  descriptor: 'your body worked harder than usual overnight',
   moved: ['your resting heart rate ran higher', 'your HRV ran lower'],
   knows: [],
 );
@@ -1204,8 +1199,7 @@ const _roughBare = RoughNight(
 const _roughTwoSign = RoughNight(
   day: '2026-08-15',
   signs: 2,
-  descriptor: 'a rougher night than usual for you — your body worked harder '
-      'overnight',
+  descriptor: 'your body worked harder than usual overnight',
   moved: [
     'your HRV ran lower',
     'your heart rate dropped less overnight than it usually does',
@@ -1464,7 +1458,7 @@ Map<String, Widget> _listCases() => {
       'set_row': Builder(
         builder: (c) => settingsGroup(c, 'Settings row', [
           SetRow(LucideIcons.bell, C.purple, 'Manage notifications',
-              sub: 'Bedtime, recovery, and the ones the band raises itself',
+              sub: 'Bedtime, recovery and band-raised alerts',
               onTap: () {}),
           SetRow(LucideIcons.ruler, C.blue, 'Units',
               value: 'Metric', onTap: () {}),
@@ -1733,13 +1727,12 @@ Map<String, Widget> _monthGridCases() => {
 const _wcFindings = [
   SweepFinding(
       key: 'rhr',
-      text: 'resting heart rate 68 bpm — the highest in 45 days '
-          '(usually 53–55 bpm)',
+      text: 'resting heart rate 68 bpm, the highest in 45 days, against a usual 53–55 bpm',
       z: 3.4,
       high: true),
   SweepFinding(
       key: 'rmssd',
-      text: 'HVR 32 ms — below your usual range (usually 41–58 ms)',
+      text: 'HRV 32 ms, below your usual range of 41–58 ms',
       z: -2.7,
       high: false),
 ];
@@ -1788,8 +1781,7 @@ Map<String, Widget> _onboardingCases() => {
           source: 'WHOOP export', days: 412, lateRows: 38, strandedDays: 2)),
       'import_report_failed': const ImportReport(ImportOutcome(
           source: 'physiological_cycles.csv',
-          error: 'The first row named columns this importer does not know, so '
-              'nothing in the file could be placed.')),
+          error: 'The first row has columns this importer does not recognise, so it could not place any data from the file.')),
     };
 
 /// A REAL run, on a real park loop, so the poster can be seen doing the one
@@ -1998,7 +1990,7 @@ class _PosterPreviewState extends State<_PosterPreview> {
         child: Column(children: [
           SetRow(LucideIcons.map, C.green,
               _mosaic == null ? 'Load the map' : 'Reload the map',
-              sub: 'A real lap of Cubbon Park — fetches OpenStreetMap tiles',
+              sub: 'A real lap of Cubbon Park. Fetches OpenStreetMap tiles over the network.',
               value: _loading ? 'Loading' : '',
               onTap: _loading ? null : _load),
           Divider(color: p.line, height: 1),
@@ -2012,7 +2004,7 @@ class _PosterPreviewState extends State<_PosterPreview> {
           ],
           Divider(color: p.line, height: 1),
           SetRow(LucideIcons.share2, C.blue, 'Share this card',
-              sub: 'The real export — the boundary above, at 3×',
+              sub: 'The exported image: the boundary above, rendered at 3×',
               chevron: false, onTap: _share),
         ]),
       ),
@@ -2020,8 +2012,7 @@ class _PosterPreviewState extends State<_PosterPreview> {
         const SizedBox(height: S.x3),
         const StatusCard(
           'No map came back',
-          'The tiles could not be fetched, so the route is drawn on its own — '
-              'which is exactly what the card does on a phone with no signal.',
+          'The tiles could not be fetched, so the route is drawn without a map. The card does the same on a phone with no signal.',
           icon: LucideIcons.mapPinOff,
         ),
       ],
@@ -2292,7 +2283,7 @@ class _FlowScreen extends StatelessWidget {
           const ActivityPicker()),
       ('Set up', LucideIcons.sliders, 'Goal, target and privacy',
           ActivitySetup(a)),
-      ('Live', LucideIcons.circleDot, 'Runs for real, with no band behind it',
+      ('Live', LucideIcons.circleDot, 'Runs a live session without a band',
           liveFor(a)),
       ('Summary', LucideIcons.flag, 'What this session becomes',
           ActivitySummary(r, weightKg: _fixtureWeightKg)),
@@ -2332,18 +2323,16 @@ class _FlowScreen extends StatelessWidget {
                 if (synthetic)
                   const StatusCard(
                     'These numbers are invented',
-                    'Derived from this activity\'s MET and name so the '
-                        'screens have something to draw — or from a '
-                        'preview-only stand-in, where the activity has no '
-                        'MET. The SHAPE is real: the fields this archetype '
-                        'fills, and the ones it leaves empty.',
+                    'Derived from this activity\'s MET and name, or from a preview-only '
+                    'stand-in when the activity has no MET. The fields this archetype '
+                    'fills and the ones it leaves empty are real.',
                     icon: LucideIcons.flaskConical,
                   )
                 else
                   const StatusCard(
                     'A hand-written fixture',
-                    'This one carries a real loop, a heart-rate dropout and a '
-                        'named top set — the awkward cases the goldens shoot.',
+                    'This one has a real loop, a heart-rate dropout and a named top set, '
+                    'the cases the golden tests cover.',
                     icon: LucideIcons.pin,
                   ),
               ],

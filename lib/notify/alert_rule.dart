@@ -207,10 +207,10 @@ class AlertCapabilityRegistry {
   }
 
   static String describe(AlertExecutionMode mode) => switch (mode) {
-    AlertExecutionMode.bandNative => 'On band — works without phone',
-    AlertExecutionMode.phoneLive => 'On band — phone must be connected',
-    AlertExecutionMode.osScheduled => 'On phone — system scheduled',
-    AlertExecutionMode.phoneDerived => 'On phone — Edge must be running',
+    AlertExecutionMode.bandNative => 'On band, works without phone',
+    AlertExecutionMode.phoneLive => 'On band, phone must be connected',
+    AlertExecutionMode.osScheduled => 'On phone, scheduled by the system',
+    AlertExecutionMode.phoneDerived => 'On phone, Edge must be running',
   };
 
   static String summary(

@@ -72,25 +72,25 @@ class Finding {
 
   String get title => switch (kind) {
         FindingKind.illness => 'Possible illness onset',
-        FindingKind.anomaly => 'Unusual overnight physiology',
+        FindingKind.anomaly => 'Unusual overnight readings',
         FindingKind.tempElevated => 'Skin temperature elevated',
-        FindingKind.irregularRhythm => 'Irregular heart rhythm — screen',
+        FindingKind.irregularRhythm => 'Irregular heart rhythm flagged',
         FindingKind.lowReadiness => 'Low readiness today',
         FindingKind.rhrShift => 'Your resting heart-rate trend shifted',
       };
 
   String get detail => switch (kind) {
         FindingKind.illness =>
-          'Elevated resting HR + suppressed HRV over recent nights.',
+          'Resting heart rate is up and heart rate variability (HRV) is down over recent nights.',
         FindingKind.anomaly =>
-          'Your nightly signals deviate from your personal baseline.',
+          'Your overnight readings are outside your usual range.',
         FindingKind.tempElevated =>
-          'Sustained rise vs your baseline — a possible illness signal.',
+          'Sustained rise above your baseline, which can be a sign of illness.',
         FindingKind.irregularRhythm =>
           'Your beat-to-beat pattern looked irregular today. This is a '
-              'screen, not a diagnosis — see a clinician if you have symptoms.',
+          'screen for irregularity and not a diagnosis. See a clinician if you have symptoms.',
         FindingKind.lowReadiness =>
-          'Your recovery markers are below your usual range — ease off.',
+          'Your recovery markers are below your usual range. Take an easier day.',
         FindingKind.rhrShift =>
           'Your resting HR has ${risen == false ? 'fallen' : 'risen'} '
               'noticeably versus your recent baseline.',

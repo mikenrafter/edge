@@ -617,9 +617,9 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
         // morning. The 48-hour cooldown below is therefore only spent when the
         // event was actually presented.
         priority: NotifPriority.normal,
-        title: "Your band hasn't synced in a while",
+        title: "Your band has not synced",
         body: 'No new data for about $hoursStale hours. Open OpenStrap to '
-            'reconnect — background sync may have stalled.',
+              'reconnect the band.',
         date: now.toIso8601String().substring(0, 10),
         route: '/today',
       ),

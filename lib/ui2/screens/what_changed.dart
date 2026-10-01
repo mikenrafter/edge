@@ -166,16 +166,15 @@ List<Widget> whatChangedBody(BuildContext c, WhatChangedData d) {
   return [
     if (!d.hadToday)
       StatusCard(
-        l?.whatChangedNoDataTitle ?? 'Nothing has landed for this day yet',
+        l?.whatChangedNoDataTitle ?? 'No data for this day yet',
         l?.whatChangedNoDataBody ??
-            'The sweep compares a day against the ones before it, and this day has '
-                'no value to compare. Nothing about it is unusual because nothing '
-                'about it is known.',
+            'The comparison checks each day against the days before it. '
+            'This day has no values yet.',
         icon: LucideIcons.circleSlash,
       )
     else if (d.findings.isEmpty && d.longestHistory < kSweepMinHistory) ...[
       StatusCard(
-        l?.whatChangedLearningTitle ?? 'Still learning your usual',
+        l?.whatChangedLearningTitle ?? 'Not enough history yet',
         l?.whatChangedLearningBody(d.longestHistory, kSweepMinHistory) ??
             'Unusual only means anything against a range, and there '
                 '${d.longestHistory == 1 ? 'is' : 'are'} ${d.longestHistory} '
@@ -191,8 +190,8 @@ List<Widget> whatChangedBody(BuildContext c, WhatChangedData d) {
       StatusCard(
         l?.whatChangedNothingTitle ?? 'Nothing stood out',
         l?.whatChangedNothingBody ??
-            'Every metric with enough history sat inside the range your own days '
-                'have set. That is the normal answer, and it is a complete one.',
+            'Every metric with enough history stayed inside '
+            'the range of your earlier days.',
         icon: LucideIcons.check,
       )
     else ...[
@@ -213,9 +212,9 @@ List<Widget> whatChangedBody(BuildContext c, WhatChangedData d) {
       const SizedBox(height: S.x3),
       Text(
         l?.whatChangedMethodologyNote ??
-            'Measured against your own trailing days, in your own units, with the '
-            'window attached — so you can disbelieve it. Nothing here is a cause '
-            'and nothing here is a diagnosis.',
+            'Each change is compared with your own trailing days, in your units, '
+            'and shows the window it used. '
+            'It does not identify causes or diagnose anything.',
         style: F.over.copyWith(color: p.ink3, height: 1.5),
       ),
     ],

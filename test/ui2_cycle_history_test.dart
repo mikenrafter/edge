@@ -200,7 +200,7 @@ void _screen() {
       expect(find.text('By day of your cycle'), findsOneWidget);
       // WH-08 sits below the fold on a phone-sized viewport.
       await t.dragUntilVisible(
-        find.text('Your cycle lengths against a published range'),
+        find.text('Your cycle lengths against a 24 to 38 day range'),
         find.byType(ListView).last,
         const Offset(0, -200),
       );

@@ -186,51 +186,48 @@ final _noteInput = RegExp(r'name=([a-z0-9_]+)');
 /// through to null and the card says it does not know — which is correct, and
 /// is the only safe default for a key added after this map was written.
 const _inputWhy = {
-  'age': 'Your age is not on file, and this is worked out from it.',
-  'weight_kg': 'Your weight is not on file, and this is worked out from it.',
-  'height_cm': 'Your height is not on file, and this is worked out from it.',
-  'sex': 'Your sex is not on file, and the formula behind this needs it.',
+  'age': 'This metric needs your age, which is not on file.',
+  'weight_kg': 'This metric needs your weight, which is not on file.',
+  'height_cm': 'This metric needs your height, which is not on file.',
+  'sex': 'This metric needs your sex, which is not on file.',
   'wake_hr': 'No waking heart rate was recorded for this day.',
-  'hr_samples': 'Too few heart-rate samples were recorded to work this out.',
+  'hr_samples': 'Not enough heart-rate samples to calculate this.',
   'resting_hr':
-      'There is no resting heart rate from a scored night to measure against.',
-  'scored_night': 'There is no scored night to read this from.',
-  'nn_beats': 'Too few clean beat-to-beat intervals to work this out.',
+      'No scored night gives a resting heart rate to compare against.',
+  'scored_night': 'This metric needs a scored night, and there is none.',
+  'nn_beats': 'Not enough clean beat-to-beat intervals to calculate this.',
   'resp_windows':
-      'Too few half-hour stretches of clean breathing through the night to '
-          'compare against each other.',
-  'accel_1hz': 'No motion was recorded alongside the heart rate.',
+      'Not enough half-hour stretches of clean breathing '
+      'overnight to compare.',
+  'accel_1hz': 'The band recorded heart rate but no motion data.',
   // NOT a wait-and-it-fills absence: an imported day has no raw behind it to
   // re-derive from, so the copy must not imply that wearing the band will
   // backfill it. 284 of whoop-5's 287 days are this.
   'imported_day':
-      'This day came from an imported export, which carries the night only — '
-          'nothing was recorded for the waking day, and there is no raw behind '
-          'it to work one out from.',
+      'This day comes from an imported export, which holds the night only. '
+      'The app has no waking-day data and no raw records to compute it from.',
   'today_activity':
-      'Today has not produced any activity to read yet — nothing has reached '
-          'the app for it.',
-  'tst_min': 'That night has no total sleep time behind it.',
-  'wake_time': 'That night has no wake time behind it.',
-  'efficiency': 'That night has no sleep efficiency behind it.',
+      'No activity data has reached the app for today yet.',
+  'tst_min': 'That night has no total sleep time recorded.',
+  'wake_time': 'That night has no wake time recorded.',
+  'efficiency': 'That night has no sleep efficiency recorded.',
   'observed_ceiling':
-      'The band has not yet held a high enough heart rate through a hard '
-          'effort to measure a ceiling from.',
+      'Your heart rate has not yet stayed high enough during a hard effort '
+      'to measure your maximum.',
   // DISTINCT from `observed_ceiling`, and the distinction is the whole point:
   // there IS a held ceiling, it is on the screen with its date, and the card
   // would otherwise ask for the thing it is simultaneously showing.
   'maximal_effort':
-      'The highest heart rate held so far sits well below what your age '
-          'predicts, so it reads as an effort that was never maximal rather '
-          'than as your ceiling — the zones stay on the age estimate until the '
-          'band sees a harder one.',
+      'Your highest recorded heart rate is well below the age-based estimate, '
+      'so the app treats it as a submaximal effort. '
+      'Zones use the age estimate until the band records a harder effort.',
   'resting_hr_days':
-      'Not enough nights of resting heart rate behind the reserve yet.',
+      'Heart rate reserve needs more nights of resting heart rate.',
   'manual_zones':
-      'You have set your zones manually, so there is no measured reserve '
-          'anchor to plot a distribution against.',
+      'You set your zones manually, so there is no heart rate reserve '
+      'to plot a distribution against.',
   'sessions':
-      'Too few recorded sessions to describe a pattern rather than noise.',
+      'Too few recorded sessions to show a pattern.',
 };
 
 /// THE REASON THE DATA GAVE, as a sentence — or null when nothing said why.
@@ -252,12 +249,11 @@ String? whyFromNote(String? note, {String unit = 'nights'}) {
     final why = _inputWhy[_noteInput.firstMatch(s)?.group(1)];
     if (why == null) return null;
     final c = _noteCounts.firstMatch(s);
-    return c == null ? why : '$why There were ${c[1]}, and it needs ${c[2]}.';
+    return c == null ? why : '$why The app has ${c[1]} and needs ${c[2]}.';
   }
   if (s.startsWith('unknown_device_family')) {
-    return 'These recordings are not stamped with which strap made them, and '
-        'this number has to be calibrated per strap, so it is withheld rather '
-        'than guessed.';
+    return 'These recordings do not say which strap made them. '
+           'This number needs a per-strap calibration, so the app withholds it.';
   }
   // The pipeline's own "we could not attribute this" marker. It exists so an
   // absence never has to borrow a plausible reason, so it renders as no reason.

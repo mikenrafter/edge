@@ -133,7 +133,7 @@ class AlarmScreenView extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
             child: NavBar(l?.alarmNavTitle ?? 'Alarm',
-                sub: l?.alarmNavSub ?? 'Wakes you on the band, not the phone'),
+                sub: l?.alarmNavSub ?? 'The band wakes you at the set time'),
           ),
           Expanded(
             child: ListView(
@@ -168,9 +168,9 @@ class AlarmScreenView extends StatelessWidget {
                     l?.alarmNotConnectedTitle ?? 'The band is not connected',
                     l?.alarmNotConnectedBody ??
                         'Changing the schedule, testing and cancelling all '
-                            'write to the band, so they need a live '
-                            'connection. An alarm that is already armed is '
-                            'unaffected — it lives on the band.',
+                        'write to the band, so they need a live '
+                        'connection. An alarm that is already armed keeps '
+                        'running on the band.',
                     icon: LucideIcons.bluetoothOff,
                   )
                 else ...[
@@ -263,8 +263,8 @@ class AlarmScreenView extends StatelessWidget {
         () => onSetSmartWindow!(day.weekday, picked),
         picked == 0
             ? 'Smart wake off'
-            : 'Smart wake on — the band still buzzes at the wake time '
-                'either way');
+            : 'Smart wake on. The band still buzzes at the '
+              'wake time.');
   }
 
   /// Run a band/schedule write and report what happened. Every one of these
@@ -307,7 +307,7 @@ class AlarmScreenView extends StatelessWidget {
         .inDays;
     if (days < 0) {
       return l?.alarmInThePast ??
-          'In the past — it has already fired or been missed';
+          'Already passed';
     }
     if (days == 0) return l?.alarmLaterToday ?? 'Later today';
     if (days == 1) return l?.alarmTomorrow ?? 'Tomorrow';
@@ -354,7 +354,7 @@ class AlarmScreenView extends StatelessWidget {
       AlarmArmState.confirmed =>
         l?.alarmHeadlineConfirmed ?? 'The band has this alarm',
       AlarmArmState.pending =>
-        l?.alarmHeadlinePending ?? 'Sent — waiting for the band to confirm',
+        l?.alarmHeadlinePending ?? 'Sent, waiting for the band to confirm',
       AlarmArmState.unknown =>
         l?.alarmHeadlineUnknown ?? 'We cannot tell whether this will fire',
       AlarmArmState.none => l?.alarmHeadlineNone ?? 'No alarm is set',
@@ -365,15 +365,15 @@ class AlarmScreenView extends StatelessWidget {
     final l = AppLocalizations.of(c);
     return switch (s) {
       AlarmArmState.confirmed => l?.alarmDetailConfirmed ??
-          'The band reported that it latched the alarm.',
+          'The band confirmed it stored the alarm.',
       AlarmArmState.pending => l?.alarmDetailPending ??
           'The write reached the band. Its confirmation usually arrives within '
               'a few seconds.',
       AlarmArmState.unknown => l?.alarmDetailUnknown ??
-          'The time above is what this app last sent. The band never confirmed '
-              'it — or it was set in an earlier run of the app, and there is no '
-              'way to ask the band what it is holding. Set it again while '
-              'connected if you need to be sure.',
+          'The time above is the last one this app sent. The band '
+          'has not confirmed it, or you set it in an earlier '
+          'session, and the app cannot read the alarm stored on '
+          'the band. Set it again while connected to be sure.',
       AlarmArmState.none => null,
     };
   }

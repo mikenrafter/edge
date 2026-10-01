@@ -296,11 +296,9 @@ class PairSensorView extends StatelessWidget {
                   Surface(
                     child: Text(
                       l?.pairSensorExplainer ??
-                          'A sensor is used only while a workout is running, and '
-                              'only for heart rate and beat timing. It does not '
-                              'replace your band, it is never used overnight, and '
-                              'nothing it records feeds a score yet — its readings are '
-                              'stored and shown, and that is all.',
+                          'A sensor records heart rate and beat timing during workouts only. '
+                          'It is not used overnight. Its readings are stored and shown, '
+                          'and no score uses them yet.',
                       style: F.cap.copyWith(color: p.ink3, height: 1.5),
                     ),
                   ),

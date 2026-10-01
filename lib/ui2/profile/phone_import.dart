@@ -144,8 +144,8 @@ class _PhoneImportState extends State<PhoneImport> {
     if (state == null) {
       return (
         l?.phoneImportRhrNothingUsable ??
-            'Nothing usable came back. A store with no resting heart rate in it, '
-                'or too few days to describe a range, cannot become a baseline.',
+            'No baseline was made. Either the store has no resting heart rate, '
+            'or it has too few days to set a range.',
         true,
       );
     }
@@ -172,8 +172,8 @@ class _PhoneImportState extends State<PhoneImport> {
     return n == 0
         ? (
             l?.phoneImportNothingCameBack(storeName) ??
-                'Nothing came back. $storeName holds no readings of these kinds, '
-                    'or none inside the window it will share.',
+                'Nothing came back. $storeName has no readings of these kinds, '
+                'or none in the window it shares.',
             false,
           )
         : (
@@ -213,9 +213,8 @@ class _PhoneImportState extends State<PhoneImport> {
                         children: [
                           Text(
                             l?.phoneImportRhrExplainer(storeName) ??
-                                'Reads your resting heart rate from $storeName, so '
-                                    'the app has a rough idea of your normal before the '
-                                    'band has measured one.',
+                                'Reads your resting heart rate from $storeName so the app can compare '
+                                'it with what the band measures.',
                             style: F.body.copyWith(color: p.ink2, height: 1.4),
                           ),
                           const SizedBox(height: S.x3),
@@ -227,11 +226,9 @@ class _PhoneImportState extends State<PhoneImport> {
                             // can never be a chart value — another device's
                             // resting HR is on another device's scale.
                             l?.phoneImportRhrLimit ??
-                                'Nothing uses it yet. It waits until the band has '
-                                    'measured 14 of its own nights, then gets compared '
-                                    'against them below. It never becomes a reading of '
-                                    'its own: no night on the sleep chart, no day with '
-                                    'a score.',
+                                'Nothing uses it yet. After the band has measured 14 nights, the app '
+                                'compares the two below. The imported value adds no night to the '
+                                'sleep chart and no day with a score.',
                             style: F.cap.copyWith(color: p.ink3, height: 1.5),
                           ),
                           const SizedBox(height: S.x4),
@@ -296,10 +293,10 @@ class _PhoneImportState extends State<PhoneImport> {
                                   cmp.bandNights,
                                   cmp.deltaBpm.abs().toStringAsFixed(1),
                                   storeName) ??
-                              'Over ${cmp.bandNights} nights the band lands within '
-                                  '${cmp.deltaBpm.abs().toStringAsFixed(1)} bpm of '
-                                  'what $storeName said. It still is not used for '
-                                  'anything.'),
+                              'Over ${cmp.bandNights} nights the band measures within '
+                              '${cmp.deltaBpm.abs().toStringAsFixed(1)} bpm of '
+                              'what $storeName reported. The app does not '
+                              'use the phone value.'),
                       icon: cmp.disagrees
                           ? LucideIcons.triangleAlert
                           : LucideIcons.check,
@@ -315,18 +312,16 @@ class _PhoneImportState extends State<PhoneImport> {
                         children: [
                           Text(
                             l?.phoneImportMeasuredElsewhereBody ??
-                                'A cuff, a glucose meter, a thermometer. This band '
-                                    'cannot measure any of them, which is the entire '
-                                    'reason they are worth showing — and why the app '
-                                    'that recorded each reading is named beside it.',
+                                'Readings from a blood pressure cuff, glucose meter or thermometer. '
+                                'The band cannot measure these, so each reading shows the app '
+                                'that recorded it.',
                             style: F.body.copyWith(color: p.ink2, height: 1.4),
                           ),
                           const SizedBox(height: S.x3),
                           Text(
                             l?.phoneImportNeverAveraged ??
-                                'Shown as they arrived. Never averaged into one of '
-                                    'this app’s own numbers, never used to teach it to '
-                                    'guess one from the wrist.',
+                                "Shown as they arrived. Never averaged into this app's own numbers "
+                                "or used to estimate them from the wrist.",
                             style: F.cap.copyWith(color: p.ink3, height: 1.5),
                           ),
                           const SizedBox(height: S.x4),
@@ -360,9 +355,8 @@ class _PhoneImportState extends State<PhoneImport> {
                   StatusCard(
                     l?.phoneImportMovedTitle ?? 'Height, weight and workouts moved',
                     l?.phoneImportMovedBody ??
-                        'Height and weight are on Edit profile now, and workouts '
-                            'this phone recorded are on Workout, under History. '
-                            'Each one sits on the screen it fills.',
+                        'Height and weight are on Edit profile now. Workouts this phone '
+                        'recorded are on Workout, under History.',
                     icon: LucideIcons.arrowRight,
                   ),
                   const SizedBox(height: S.x2),

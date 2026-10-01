@@ -188,7 +188,7 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
         await LocalDb.dismissWorkoutSuggestion(s.id);
       } catch (_) {/* the reason is already on screen */}
     } catch (_) {
-      message = l?.logWorkoutCouldNotLog ?? 'Could not log this one — try again.';
+      message = l?.logWorkoutCouldNotLog ?? 'Could not log this activity. Try again.';
     }
     if (!mounted) return;
     setState(() => _busy = false);
@@ -205,7 +205,7 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
     } catch (_) {
       if (mounted) {
         _say(l?.logWorkoutCouldNotDismiss ??
-            'Could not dismiss this one — try again.');
+            'Could not dismiss this activity. Try again.');
       }
     }
     if (!mounted) return;
@@ -255,7 +255,7 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
             child: NavBar(l?.logWorkoutDetectedActivityTitle ?? 'Detected activity',
-                sub: l?.logWorkoutYoursToConfirmSub ?? 'YOURS TO CONFIRM'),
+                sub: l?.logWorkoutYoursToConfirmSub ?? 'AWAITING CONFIRMATION'),
           ),
           Expanded(
             child: ListView(
@@ -266,8 +266,8 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
                     l?.logWorkoutReadFailedTitle ??
                         'Could not read your detected activity',
                     l?.logWorkoutReadFailedBody ??
-                        'The store did not answer. Nothing has been logged or '
-                            'dismissed.',
+                        'The local database did not respond. Nothing was logged or '
+                        'dismissed.',
                     fix: l?.logWorkoutTryAgain ?? 'Try again',
                     icon: LucideIcons.refreshCw,
                     onFix: _load,
@@ -275,12 +275,12 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
                 else if (items == null)
                   NoData(
                       message: l?.logWorkoutReadingSpotted ??
-                          'Reading what the band spotted…')
+                          'Loading detected activity…')
                 else if (items.isEmpty)
                   StatusCard(
                     l?.logWorkoutNothingToReviewTitle ?? 'Nothing to review',
                     l?.logWorkoutNothingToReviewBody ??
-                        'This one may already have been logged or dismissed.',
+                        'You may have already logged or dismissed it.',
                     icon: LucideIcons.circleCheck,
                   )
                 else
@@ -296,11 +296,11 @@ class _WorkoutSuggestionScreenState extends State<WorkoutSuggestionScreen> {
                 const SizedBox(height: S.x3),
                 StatusCard(
                   l?.logWorkoutHardMinutesTitle ??
-                      'These are the hard minutes, not the whole session',
+                      'This window covers the hard minutes only',
                   l?.logWorkoutHardMinutesBody ??
-                      'Detection reports the sustained effort it could see, so a '
-                          'warm-up and the rest between sets fall outside it. '
-                          'Adjust the times before logging if the window is short.',
+                      'Detection reports only sustained effort, so a warm-up and the '
+                      'rests between sets fall outside the window. If the window is '
+                      'short, adjust the times before logging.',
                   icon: LucideIcons.scissors,
                 ),
               ],
@@ -600,9 +600,9 @@ class _LogWorkoutState extends State<LogWorkout> {
         setState(() {
           _saving = false;
           _wrote = l?.logWorkoutUnscoredSaved ??
-              'Saved. No heart rate was recorded over that window, so it '
-                  'has no strain and no calorie figure — the times are all this '
-                  'one carries.';
+              'Saved. No heart rate was recorded in that window, so this entry '
+              'has no strain or calories. It keeps only the start and end '
+              'times.';
         });
         return;
       }
@@ -613,7 +613,7 @@ class _LogWorkoutState extends State<LogWorkout> {
       if (mounted) {
         setState(() {
           _saving = false;
-          _wrote = l?.logWorkoutCouldNotSave ?? 'Could not save that — try again.';
+          _wrote = l?.logWorkoutCouldNotSave ?? 'Could not save. Try again.';
         });
       }
     }
@@ -635,8 +635,8 @@ class _LogWorkoutState extends State<LogWorkout> {
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
             child: NavBar(title,
                 sub: retime
-                    ? (l?.logWorkoutWindowRescoredSub ?? 'THE WINDOW, RE-SCORED')
-                    : (l?.logWorkoutYourOwnTimesSub ?? 'YOUR OWN TIMES')),
+                    ? (l?.logWorkoutWindowRescoredSub ?? 'RESCORED WITH NEW TIMES')
+                    : (l?.logWorkoutYourOwnTimesSub ?? 'START AND END TIMES')),
           ),
           Expanded(
             child: ListView(
@@ -684,9 +684,8 @@ class _LogWorkoutState extends State<LogWorkout> {
                   StatusCard(
                     l?.logWorkoutScoredTitle ?? 'Scored from what the band recorded',
                     l?.logWorkoutScoredBody ??
-                        'Strain and calories come from the 1-second heart rate '
-                            'inside these times, through the same method the day '
-                            'uses. Nothing is estimated from the duration.',
+                        'Strain and calories use the 1-second heart rate between these '
+                        'times, calculated the same way as the day total.',
                     icon: LucideIcons.heartPulse,
                   ),
                 const SizedBox(height: S.x4),

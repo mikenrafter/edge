@@ -108,8 +108,8 @@ class _ScanSheetState extends State<_ScanSheet> {
             const SizedBox(height: S.x4),
             Text(
               l?.scanBarcodeInstructions ??
-                  'Hold the barcode inside the frame. Nothing is recorded — '
-                      'the digits are all this reads.',
+                  'Hold the barcode inside the frame. The scanner reads only the '
+                  'digits and records nothing else.',
               style: F.cap.copyWith(color: p.ink3, height: 1.45),
             ),
           ],
@@ -138,10 +138,9 @@ class _CameraProblem extends StatelessWidget {
               : (l?.scanBarcodeCameraFailedTitle ?? 'The camera did not start'),
           denied
               ? (l?.scanBarcodeNoAccessBody ??
-                  'Scanning needs the camera, and this app has not been '
-                      'given it.')
+                  'Scanning needs camera permission. Allow it in system settings.')
               : (l?.scanBarcodeCameraFailedBody ??
-                  'This device would not open its camera for the scanner.'),
+                  'The camera failed to open.'),
           fix: l?.scanBarcodeTypeInstead ?? 'Type the numbers instead',
           icon: LucideIcons.cameraOff,
           onFix: () => Navigator.of(c).pop(),

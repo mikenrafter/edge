@@ -256,11 +256,11 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<Map<String, dynamic>> setStepGoal(int goal) async {
     if (goal < 500 || goal > 100000) {
-      throw RepositoryException(400, 'A step goal of $goal is not a real one.');
+      throw RepositoryException(400, 'A step goal of $goal is outside the allowed range of 500 to 100000.');
     }
     final save = saveProfileFields;
     if (save == null) {
-      throw RepositoryException(500, 'This process cannot change the profile.');
+      throw RepositoryException(500, 'Profile changes are unavailable here because no profile saver is registered.');
     }
     return save({'step_goal': goal});
   }
