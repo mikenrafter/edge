@@ -26,7 +26,6 @@
 // data layer. They live here rather than in a fourth file because there are
 // only three of them and they are read together.
 
-import '../sync_control.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';

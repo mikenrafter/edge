@@ -30,7 +30,8 @@ import '../../l10n/app_localizations.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
-import 'profile.dart' show SetRow, settingsGroup;
+import 'profile.dart' show SetRow, SettingsAccordion, SwitchRow, settingsGroup;
+import 'settings.dart' show NotificationSettingsView;
 
 /// One row's worth of the picker.
 class RelayApp {
@@ -88,6 +89,8 @@ class _BandNotificationsState extends State<BandNotifications>
           for (final p in relay.seenPackages)
             RelayApp(p, icon: relay.iconFor(p), on: relay.isAppEnabled(p)),
         ],
+        channels: relay.controller.channels,
+        onChannel: relay.controller.putChannel,
         onEnabled: relay.setEnabled,
         onGrant: relay.requestPermission,
         onApp: relay.setAppEnabled,
@@ -104,13 +107,19 @@ class BandNotificationsView extends StatelessWidget {
     this.enabled = false,
     this.granted = false,
     this.apps = const [],
+    this.channels = const {},
     this.onEnabled,
     this.onGrant,
     this.onApp,
+    this.onChannel,
   });
 
   final bool supported, enabled, granted;
   final List<RelayApp> apps;
+
+  /// Per-channel policy by name (apps, alarms, calls). Absent means defaults.
+  final Map<String, ChannelConfig> channels;
+  final void Function(String channel, ChannelConfig next)? onChannel;
   final ValueChanged<bool>? onEnabled;
   final VoidCallback? onGrant;
   final void Function(String pkg, bool on)? onApp;
@@ -118,6 +127,106 @@ class BandNotificationsView extends StatelessWidget {
   /// How many apps are actually armed — the one number that says whether the
   /// feature will do anything at all.
   int get _armed => apps.where((a) => a.on).length;
+
+  List<Widget> _appRows(BuildContext c, AppLocalizations? l) => [
+    SetRow(LucideIcons.listChecks, C.teal,
+        l?.bandNotifAppsArmed ?? 'Apps armed',
+        value: '$_armed', chevron: false),
+    if (apps.isEmpty)
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: S.x3),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(l?.bandNotifEmptyTitle ?? 'No app has notified you yet',
+              style: F.body.copyWith(color: P.of(c).ink)),
+          // Absence with its reason, not an empty list: this is the cost of
+          // not asking for the permission that enumerates every installed
+          // app, and it resolves itself within minutes of ordinary use.
+          Text(
+              l?.bandNotifEmptyBody ??
+                  'Apps appear here the first time each one notifies you '
+                      'while the relay is on. Nothing is missed in the '
+                      'meantime — the first ping is what puts an app on this '
+                      'list, and the second can buzz.',
+              style: F.over.copyWith(color: P.of(c).ink3)),
+        ]),
+      )
+    else
+      for (final a in apps) _AppRow(a, onChanged: onApp),
+  ];
+
+  /// Fallback rhythms for alarm matching, tapped through in place.
+  static const _rhythms = [
+    ('One short', [0, 250]),
+    ('Two long', [0, 400, 100, 400]),
+    ('Three short', [0, 150, 100, 150, 100, 150]),
+  ];
+
+  /// The policy every channel carries once: Do Not Disturb, vibrate, silent,
+  /// worn, phone alert and quiet hours.
+  List<Widget> _policyRows(BuildContext c, String name) {
+    final cfg = channels[name] ?? ChannelConfig.forChannel(name);
+    void put(ChannelConfig next) => onChannel?.call(name, next);
+    final rhythm = _rhythms.indexWhere(
+        (r) => r.$2.join(',') == cfg.fallbackPattern.join(','));
+    return [
+      SwitchRow('Relay to the band', cfg.enabled,
+          (v) => put(cfg.copyWith(enabled: v))),
+      if (name == 'alarms') ...[
+        SwitchRow("Match Android's vibration", cfg.matchHaptics,
+            (v) => put(cfg.copyWith(matchHaptics: v)),
+            sub: "When Android's own pattern cannot be read, the fallback "
+                'rhythm below is used. The band plays one buzz per pulse, up '
+                'to three — not the exact rhythm.'),
+        if (cfg.matchHaptics)
+          SetRow(LucideIcons.waves, C.purple, 'Fallback rhythm',
+              value: rhythm < 0 ? 'Custom' : _rhythms[rhythm].$1,
+              chevron: false,
+              onTap: () => put(cfg.copyWith(
+                  fallbackPattern:
+                      _rhythms[(rhythm + 1) % _rhythms.length].$2))),
+      ],
+      SwitchRow('Buzz during Do Not Disturb', cfg.allowDuringDnd,
+          (v) => put(cfg.copyWith(allowDuringDnd: v)),
+          sub: name == 'calls'
+              ? 'Calls respect Do Not Disturb unless you switch this on. '
+                  'Edge never changes your Do Not Disturb setting.'
+              : 'Off respects Do Not Disturb. Edge never changes your Do '
+                  'Not Disturb setting.'),
+      SwitchRow('Buzz in vibrate mode', cfg.includeVibrate,
+          (v) => put(cfg.copyWith(includeVibrate: v))),
+      SwitchRow('Buzz in silent mode', cfg.includeSilent,
+          (v) => put(cfg.copyWith(includeSilent: v))),
+      SwitchRow('Only while worn', cfg.onlyWhileWorn,
+          (v) => put(cfg.copyWith(onlyWhileWorn: v)),
+          sub: 'If wear cannot be confirmed, nothing buzzes.'),
+      SwitchRow('Phone alert if the band is away', cfg.phoneFallback,
+          (v) => put(cfg.copyWith(phoneFallback: v)),
+          sub: 'A generic notice on this phone when the band is not '
+              'connected. It follows the Do Not Disturb choice above.'),
+      SwitchRow(
+          'Quiet hours',
+          cfg.quietStartMinute != null && cfg.quietEndMinute != null,
+          (v) => put(v
+              ? cfg.copyWith(quietStartMinute: 22 * 60, quietEndMinute: 7 * 60)
+              : cfg.copyWith(clearQuiet: true))),
+      if (cfg.quietStartMinute != null && cfg.quietEndMinute != null) ...[
+        SetRow(LucideIcons.sunset, C.blue, 'Starts',
+            value: NotificationSettingsView.hhmm(cfg.quietStartMinute!),
+            chevron: false, onTap: () async {
+          final v = await NotificationSettingsView.pickMinute(
+              c, cfg.quietStartMinute!);
+          if (v != null) put(cfg.copyWith(quietStartMinute: v));
+        }),
+        SetRow(LucideIcons.sunrise, C.yellow, 'Ends',
+            value: NotificationSettingsView.hhmm(cfg.quietEndMinute!),
+            chevron: false, onTap: () async {
+          final v = await NotificationSettingsView.pickMinute(
+              c, cfg.quietEndMinute!);
+          if (v != null) put(cfg.copyWith(quietEndMinute: v));
+        }),
+      ],
+    ];
+  }
 
   @override
   Widget build(BuildContext c) {
@@ -167,11 +276,19 @@ class BandNotificationsView extends StatelessWidget {
                             : (l?.stateOff ?? 'Off'),
                         chevron: false,
                         onTap: () => onEnabled?.call(!enabled)),
-                    if (enabled && granted)
-                      SetRow(LucideIcons.listChecks, C.teal,
-                          l?.bandNotifAppsArmed ?? 'Apps armed',
-                          value: '$_armed', chevron: false),
                   ]),
+                  // Fixed position: nothing above this card changes height when
+                  // the relay is switched on, so it never jumps under a finger.
+                  const SizedBox(height: S.x4),
+                  StatusCard(
+                    l?.bandNotifOneBuzzTitle ?? 'One buzz, not a stream',
+                    'An update to a notification never buzzes again; a new '
+                        'one does. Ongoing notifications (media players, '
+                        'downloads) never buzz, and nothing buzzes while the '
+                        'band is disconnected unless you choose the phone '
+                        'alert below.',
+                    icon: LucideIcons.waves,
+                  ),
                   if (enabled && !granted) ...[
                     const SizedBox(height: S.x4),
                     StatusCard(
@@ -186,41 +303,18 @@ class BandNotificationsView extends StatelessWidget {
                       onFix: onGrant,
                     ),
                   ],
-                  if (enabled && granted) ...[
-                    if (apps.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: S.x4),
-                        child: StatusCard(
-                          l?.bandNotifEmptyTitle ?? 'No app has notified you yet',
-                          // Absence with its reason, not an empty list: this
-                          // is the cost of not asking for the permission that
-                          // enumerates every installed app, and it resolves
-                          // itself within minutes of ordinary use.
-                          l?.bandNotifEmptyBody ??
-                              'Apps appear here the first time each one notifies '
-                                  'you while the relay is on. Nothing is missed in '
-                                  'the meantime — the first ping is what puts an '
-                                  'app on this list, and the second can buzz.',
-                          icon: LucideIcons.hourglass,
-                        ),
-                      )
-                    else
-                      settingsGroup(
-                          c, l?.bandNotifAppsGroup ?? 'Apps that notify you', [
-                        for (final a in apps)
-                          _AppRow(a, onChanged: onApp),
+                  // Three channels, each with its own policy. Per-app choices
+                  // exist only on App notifications.
+                  SettingsAccordion('App notifications',
+                      initiallyExpanded: true,
+                      children: [
+                        if (enabled && granted) ..._appRows(c, l),
+                        ..._policyRows(c, 'apps'),
                       ]),
-                  ],
-                  const SizedBox(height: S.x4),
-                  StatusCard(
-                    l?.bandNotifOneBuzzTitle ?? 'One buzz, not a stream',
-                    l?.bandNotifOneBuzzBody ??
-                        'Repeat posts from the same app are ignored for four '
-                            'seconds, ongoing notifications (media players, '
-                            'downloads) never buzz, and nothing buzzes at all '
-                            'while the band is disconnected.',
-                    icon: LucideIcons.waves,
-                  ),
+                  SettingsAccordion('Alarms & timers',
+                      children: _policyRows(c, 'alarms')),
+                  SettingsAccordion('Incoming calls',
+                      children: _policyRows(c, 'calls')),
                 ],
               ],
             ),

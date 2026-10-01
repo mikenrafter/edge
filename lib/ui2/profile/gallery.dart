@@ -56,6 +56,7 @@ import '../onboarding/welcome.dart' show ImportOutcome, ImportReport;
 // Screens are deliberately not re-exported from the ui2 barrel (see the
 // barrel test), so their components are imported by path.
 import '../screens/screens.dart';
+import '../../state/control_operations.dart';
 import '../ui2.dart';
 import 'devices.dart';
 import 'profile.dart';
@@ -1473,6 +1474,22 @@ Map<String, Widget> _listCases() => {
               danger: true, onTap: () {}),
         ]),
       ),
+      'sync_control': SyncControl(
+        state: SyncPresentationState(
+          phase: 'failed',
+          error: 'Bluetooth is turned off on this phone',
+          lastSuccess: DateTime(2026, 8, 16, 4, 12),
+        ),
+        onSync: () {},
+      ),
+      'settings_accordion': SettingsAccordion('Alarms & Wake',
+          initiallyExpanded: true,
+          children: [
+            SwitchRow('Buzz during Do Not Disturb', true, (_) {},
+                sub: 'Off respects Do Not Disturb. Edge never changes your '
+                    'Do Not Disturb setting.'),
+            SwitchRow('Only while worn', false, (_) {}),
+          ]),
       'source_row': Column(children: [
         SourceRow(
           HealthSource(

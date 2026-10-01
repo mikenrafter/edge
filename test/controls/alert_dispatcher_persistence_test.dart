@@ -183,6 +183,12 @@ void main() {
       final at = DateTime.now().add(const Duration(milliseconds: 60));
       a.configure(slotInstants: [at]);
       b.configure(slotInstants: [at]);
+      // Poll for the first delivery so a loaded machine cannot fail the test
+      // on timing, then wait out a second delivery before counting.
+      final deadline = DateTime.now().add(const Duration(seconds: 5));
+      while (calls == 0 && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
       await Future<void>.delayed(const Duration(milliseconds: 250));
       expect(calls, 1);
     },

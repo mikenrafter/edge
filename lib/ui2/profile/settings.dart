@@ -25,6 +25,7 @@ import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../platform/tasker_bridge.dart';
+import '../../notify/alert_rule.dart';
 import '../../notify/notification_prefs.dart';
 import '../../notify/notification_service.dart';
 import '../../platform/app_icon.dart';
@@ -910,6 +911,73 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   }
 }
 
+/// One alert: its name, a single destination picker, and what that choice needs
+/// in order to run. A destination this alert cannot honour is shown disabled.
+class _AlertRow extends StatelessWidget {
+  const _AlertRow(this.icon, this.color, this.title, this.sub, this.rule,
+      this.onMask);
+  final IconData icon;
+  final Color color;
+  final String title, sub;
+  final AlertRule rule;
+  final ValueChanged<int> onMask;
+
+  static const _options = [
+    (0, 'Off'),
+    (AlertRule.phone, 'Phone'),
+    (AlertRule.band, 'Band'),
+    (AlertRule.phone | AlertRule.band, 'Phone + Band'),
+  ];
+
+  bool _supported(int mask) => [
+        if (mask & AlertRule.phone != 0) 'phone',
+        if (mask & AlertRule.band != 0) 'band',
+      ].every(
+          (t) => AlertCapabilityRegistry.destinationSupportReason(rule, t) == null);
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final mask = rule.enabled ? rule.destinations : 0;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SetRow(icon, color, title, sub: sub, chevron: false),
+      Wrap(spacing: S.x2, children: [
+        for (final (m, label) in _options)
+          Pressable(
+            onTap: _supported(m) ? () => onMask(m) : null,
+            semanticLabel:
+                '$label${m == mask ? ', selected' : ''}${_supported(m) ? '' : ', unavailable'}',
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: S.x3, vertical: S.x2),
+              decoration: BoxDecoration(
+                color: m == mask ? p.wash(C.blue) : null,
+                borderRadius: R.rSm,
+                border:
+                    Border.all(color: m == mask ? p.on(C.blue) : p.line),
+              ),
+              child: Text(label,
+                  style: F.cap.copyWith(
+                      color: m == mask
+                          ? p.on(C.blue)
+                          : _supported(m)
+                              ? p.ink
+                              : p.ink3,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ),
+      ]),
+      if (mask != 0)
+        Padding(
+          padding: const EdgeInsets.only(top: S.x1),
+          child: Text(AlertCapabilityRegistry.summary(rule),
+              style: F.over.copyWith(color: p.ink3)),
+        ),
+      const SizedBox(height: S.x3),
+    ]);
+  }
+}
+
 class NotificationSettingsView extends StatelessWidget {
   final NotificationPrefs prefs;
   final bool loaded, granted;
@@ -938,6 +1006,13 @@ class NotificationSettingsView extends StatelessWidget {
     final on = l?.stateOn ?? 'On';
     final off = l?.stateOff ?? 'Off';
     void set(NotificationPrefs next) => onChanged?.call(next);
+    Widget row(String id, IconData icon, Color color, String title, String sub) {
+      final rule = prefs.alertRule(id);
+      return _AlertRow(icon, color, title, sub, rule,
+          (mask) => set(prefs.withAlertRule(
+              {...rule.toJson(), 'enabled': mask != 0, 'destinations': mask})));
+    }
+
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -963,59 +1038,119 @@ class NotificationSettingsView extends StatelessWidget {
                     onFix: onRequestPermission,
                   ),
                 if (loaded) ...[
-                  settingsGroup(
-                      c,
-                      l?.settingsGroupManageNotifications ??
-                          'Manage notifications', [
-                    SetRow(LucideIcons.heartPulse, C.red,
+                  // Stable groups: each stays in place whether or not anything in
+                  // it is on, and opens only through its own header. Every alert
+                  // has one destination picker and says what it needs to run.
+                  SettingsAccordion(
+                      'Alarms & Wake',
+                      initiallyExpanded: true,
+                      children: [
+                        // On by default: this exists to catch a wake alarm that
+                        // silently isn't going to fire.
+                        row('alarmLatchFailed', LucideIcons.alarmClock, C.red,
+                            l?.settingsAlarmLatchFailedRowTitle ??
+                                'Alarm not confirmed',
+                            l?.settingsAlarmLatchFailedRowSub ??
+                                'Warn when the band never confirms an alarm '
+                                    'this app just armed'),
+                        // Also on by default; silent whenever an alarm IS armed.
+                        row('alarmNightCheck', LucideIcons.moon, C.red,
+                            l?.settingsAlarmNightCheckRowTitle ??
+                                'No-alarm check-in',
+                            l?.settingsAlarmNightCheckRowSub ??
+                                'A 7pm heads-up on any night with no wake alarm '
+                                    'armed — silent otherwise'),
+                      ]),
+                  SettingsAccordion('Health', children: [
+                    row('health', LucideIcons.heartPulse, C.red,
                         l?.settingsHealthExceptionsRowTitle ??
                             'Health exceptions',
-                        sub: l?.settingsHealthExceptionsRowSub ??
+                        l?.settingsHealthExceptionsRowSub ??
                             'One a day at most, and only when something in '
-                                'your own baseline moved',
-                        value: prefs.healthEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            healthEnabled: !prefs.healthEnabled))),
-                    SetRow(LucideIcons.watch, C.orange,
+                                'your own baseline moved'),
+                    row('recovery', LucideIcons.activity, C.green,
+                        l?.settingsRecoveryReadyRowTitle ?? 'Recovery ready',
+                        l?.settingsRecoveryReadyRowSub ??
+                            'One note when your morning recovery score lands'),
+                  ]),
+                  SettingsAccordion(
+                      'Activity',
+                      children: [
+                        // The auto-detector's off switch: it stops the prompt,
+                        // not the detection itself.
+                        row('autoDetect', LucideIcons.radar, C.green,
+                            l?.settingsDetectedWorkoutsRowTitle ??
+                                'Detected workouts',
+                            l?.settingsDetectedWorkoutsRowSub ??
+                                'Ask about efforts the band spotted that you did '
+                                    'not start. Off hides the prompt and the '
+                                    'review cards; the band goes on measuring '
+                                    'either way'),
+                        row('movement', LucideIcons.footprints, C.orange,
+                            l?.settingsMovementNudgeRowTitle ?? 'Movement nudge',
+                            'Nudges you after a still stretch — two hours with '
+                                'no movement at all, or 90 minutes in a desk '
+                                'posture'),
+                        row('stepGoal', LucideIcons.trophy, C.orange,
+                            l?.settingsStepGoalAlertsRowTitle ??
+                                'Step goal alerts',
+                            l?.settingsStepGoalAlertsRowSub ??
+                                'Tells you once when today crosses your steps '
+                                    'goal'),
+                      ]),
+                  SettingsAccordion(
+                      'Reminders',
+                      children: [
+                        row('reminders', LucideIcons.calendarDays, C.purple,
+                            l?.settingsWeeklyLookbackRowTitle ??
+                                'Weekly lookback',
+                            l?.settingsWeeklyLookbackRowSub ??
+                                'Sunday evening, but only for a week that '
+                                    'actually found something. Most weeks are '
+                                    'quiet'),
+                        // The notification names no drug: it lands on a lock
+                        // screen in front of whoever is in the room.
+                        row('meds', LucideIcons.pill, C.blue,
+                            l?.settingsMedicationRemindersRowTitle ??
+                                'Medication reminders',
+                            'One alert per scheduled dose, at the times you '
+                                'entered. Nothing is sent for a dose already '
+                                'marked taken or skipped'),
+                        row('checkIn', LucideIcons.notebookPen, C.purple,
+                            l?.settingsDailyCheckInRowTitle ?? 'Daily check-in',
+                            l?.settingsDailyCheckInRowSub ??
+                                'One prompt in the evening to write the day — '
+                                    'mood, energy, stress. Skipped once the day '
+                                    'already has a rating in it'),
+                        // A prompt to log, not a reading: the app measures no
+                        // hydration and this may never imply it does.
+                        row('water', LucideIcons.glassWater, C.teal,
+                            l?.settingsWaterReminderRowTitle ?? 'Water reminder',
+                            'A reminder through your waking hours to log a '
+                                'drink. Nothing is measured either way'),
+                        if (prefs.waterEnabled)
+                          SetRow(LucideIcons.timer, C.teal,
+                              l?.settingsRemindMeEveryRowTitle ??
+                                  'Remind me every',
+                              value: _everyLabel(prefs.waterIntervalMin),
+                              chevron: false,
+                              onTap: () => set(prefs.copyWith(
+                                  waterIntervalMin:
+                                      _nextEvery(prefs.waterIntervalMin)))),
+                        // Silent until the Sleep Coach has LEARNED a bedtime.
+                        row('windDown', LucideIcons.moonStar, C.indigo,
+                            l?.settingsWindDownRowTitle ?? 'Wind-down',
+                            l?.settingsWindDownRowSub ??
+                                'A heads-up about 45 minutes before the bedtime '
+                                    'learned from your own nights, kept clear of '
+                                    'your quiet hours. Appears after about a '
+                                    'week of wear'),
+                      ]),
+                  SettingsAccordion('Device', children: [
+                    row('device', LucideIcons.watch, C.orange,
                         l?.settingsBandAlertsRowTitle ?? 'Band alerts',
-                        sub: l?.settingsBandAlertsRowSub ??
-                            'Flat battery, on the charger, gone quiet',
-                        value: prefs.deviceEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            deviceEnabled: !prefs.deviceEnabled))),
-                    // On by default, unlike the reminders below: this exists to
-                    // catch a wake alarm that silently isn't going to fire, and
-                    // starting silent would defeat the point.
-                    SetRow(LucideIcons.alarmClock, C.red,
-                        l?.settingsAlarmLatchFailedRowTitle ??
-                            'Alarm not confirmed',
-                        sub: l?.settingsAlarmLatchFailedRowSub ??
-                            'Warn when the band never confirms an alarm this '
-                                'app just armed',
-                        value: prefs.alarmLatchFailedEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            alarmLatchFailedEnabled:
-                                !prefs.alarmLatchFailedEnabled))),
-                    // Also on by default, same reasoning: silent whenever an
-                    // alarm IS armed for tonight, so it only ever speaks up
-                    // about a real gap.
-                    SetRow(LucideIcons.moon, C.red,
-                        l?.settingsAlarmNightCheckRowTitle ??
-                            'No-alarm check-in',
-                        sub: l?.settingsAlarmNightCheckRowSub ??
-                            'A 7pm heads-up on any night with no wake alarm '
-                                'armed — silent otherwise',
-                        value: prefs.alarmNightCheckEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            alarmNightCheckEnabled:
-                                !prefs.alarmNightCheckEnabled))),
-                    // The low-battery threshold, only while band alerts are
-                    // on — an interval for a muted alert is furniture, same
-                    // rule as the water row below.
+                        l?.settingsBandAlertsRowSub ??
+                            'Flat battery, on the charger, gone quiet'),
                     if (prefs.deviceEnabled)
                       SetRow(LucideIcons.batteryLow, C.orange,
                           l?.settingsAlertMeAtRowTitle ?? 'Alert me at',
@@ -1027,160 +1162,22 @@ class NotificationSettingsView extends StatelessWidget {
                           onTap: () => set(prefs.copyWith(
                               batteryAlertPct:
                                   _nextBatteryPct(prefs.batteryAlertPct)))),
-                    // The retained recovery-channel switch, now with a real
-                    // event behind it again: the morning "recovery is ready"
-                    // note. It was cut in the three-class cull and sat dead —
-                    // emitted, classified null, dropped.
-                    SetRow(LucideIcons.activity, C.green,
-                        l?.settingsRecoveryReadyRowTitle ?? 'Recovery ready',
-                        sub: l?.settingsRecoveryReadyRowSub ??
-                            'One note when your morning recovery score '
-                                'lands',
-                        value: prefs.recoveryEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            recoveryEnabled: !prefs.recoveryEnabled))),
-                    // Says what it DOES now: the finding is computed from the
-                    // week's own crossday rollup (medical flags first, then a
-                    // plainly-stated resting-HR drift), and most weeks still
-                    // say nothing — which is the point.
-                    SetRow(LucideIcons.calendarDays, C.purple,
-                        l?.settingsWeeklyLookbackRowTitle ??
-                            'Weekly lookback',
-                        sub: l?.settingsWeeklyLookbackRowSub ??
-                            'Sunday evening, but only for a week that '
-                                'actually found something. Most weeks are quiet',
-                        value: prefs.remindersEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            remindersEnabled: !prefs.remindersEnabled))),
-                    // The auto-detector's off switch, asked for twice (#102,
-                    // #149) and never built: the bouts were written, the
-                    // prompt was emitted, and nothing anywhere could stop
-                    // either. The sub-line says exactly what it stops,
-                    // because it does NOT stop the detection itself.
-                    SetRow(LucideIcons.radar, C.green,
-                        l?.settingsDetectedWorkoutsRowTitle ??
-                            'Detected workouts',
-                        sub: l?.settingsDetectedWorkoutsRowSub ??
-                            'Ask about efforts the band spotted that you did '
-                                'not start. Off hides the prompt and the review '
-                                'cards; the band goes on measuring either way',
-                        value: prefs.autoDetectEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            autoDetectEnabled: !prefs.autoDetectEnabled))),
-                    // Off by default, and it is the switch that lets the nudge
-                    // be scheduled at all — see
-                    // NotificationService.schedulableIds. It had none, so it
-                    // was refused there and had never once fired. Covers BOTH
-                    // sedentary surfaces: the OS-scheduled two-hour-still
-                    // one-shot, and the foreground desk-posture check (which
-                    // also buzzes the band when it fires).
-                    SetRow(LucideIcons.footprints, C.orange,
-                        l?.settingsMovementNudgeRowTitle ?? 'Movement nudge',
-                        sub: l?.settingsMovementNudgeRowSub ??
-                            'Nudges you after a still stretch — two hours '
-                                'with no movement at all, or 90 minutes in a '
-                                'desk posture. Phone notification plus a buzz '
-                                'on the band while it is connected',
-                        value: prefs.movementEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            movementEnabled: !prefs.movementEnabled))),
-                    // The wind-down nudge. Silent until the Sleep Coach has
-                    // actually LEARNED a bedtime — the nudge's whole content
-                    // is that time, so there is no honest fallback.
-                    SetRow(LucideIcons.moonStar, C.indigo,
-                        l?.settingsWindDownRowTitle ?? 'Wind-down',
-                        sub: l?.settingsWindDownRowSub ??
-                            'A heads-up about 45 minutes before the bedtime '
-                                'learned from your own nights, kept clear of your '
-                                'quiet hours. Appears after about a week of wear',
-                        value: prefs.windDownEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            windDownEnabled: !prefs.windDownEnabled))),
-                    // The step-goal achievement's off switch. On by default:
-                    // once a day at most, and only on a real crossing.
-                    SetRow(LucideIcons.trophy, C.orange,
-                        l?.settingsStepGoalAlertsRowTitle ??
-                            'Step goal alerts',
-                        sub: l?.settingsStepGoalAlertsRowSub ??
-                            'Tells you once when today crosses your steps '
-                                'goal',
-                        value: prefs.stepGoalEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            stepGoalEnabled: !prefs.stepGoalEnabled))),
-                    // The one prompt whose time is not a guess: it is the
-                    // schedule already typed into the Medication tab. Only a
-                    // dose still due is armed, and the notification names no
-                    // drug — it lands on a lock screen in front of whoever is
-                    // in the room.
-                    SetRow(LucideIcons.pill, C.blue,
-                        l?.settingsMedicationRemindersRowTitle ??
-                            'Medication reminders',
-                        sub: l?.settingsMedicationRemindersRowSub ??
-                            'One notification per scheduled dose, at the '
-                                'times you entered — with a buzz on the band if '
-                                'it is connected. Nothing is sent for a dose '
-                                'already marked taken or skipped',
-                        value: prefs.medsEnabled ? on : off,
-                        chevron: false,
-                        onTap: () =>
-                            set(prefs.copyWith(medsEnabled: !prefs.medsEnabled))),
-                    // ONE prompt for the whole journal, not one per field —
-                    // mood, energy, stress and the rest are all the same
-                    // screen, so five rows would be five interruptions for one
-                    // minute of typing.
-                    SetRow(LucideIcons.notebookPen, C.purple,
-                        l?.settingsDailyCheckInRowTitle ?? 'Daily check-in',
-                        sub: l?.settingsDailyCheckInRowSub ??
-                            'One prompt in the evening to write the day — '
-                                'mood, energy, stress. Skipped once the day '
-                                'already has a rating in it',
-                        value: prefs.checkInEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(prefs.copyWith(
-                            checkInEnabled: !prefs.checkInEnabled))),
-                    // A prompt to log, not a reading. The app measures no
-                    // hydration and this row may never imply it does.
-                    SetRow(LucideIcons.glassWater, C.teal,
-                        l?.settingsWaterReminderRowTitle ?? 'Water reminder',
-                        sub: l?.settingsWaterReminderRowSub ??
-                            'A buzz on the strap and a notification on your '
-                                'phone through your waking hours, to remind you to '
-                                'log a drink. Nothing is measured either way',
-                        value: prefs.waterEnabled ? on : off,
-                        chevron: false,
-                        onTap: () => set(
-                            prefs.copyWith(waterEnabled: !prefs.waterEnabled))),
-                    // only while it's on — the group is dense enough, and an
-                    // interval for a reminder nobody armed is furniture.
-                    if (prefs.waterEnabled)
-                      SetRow(LucideIcons.timer, C.teal,
-                          l?.settingsRemindMeEveryRowTitle ??
-                              'Remind me every',
-                          value: _everyLabel(prefs.waterIntervalMin),
-                          chevron: false,
-                          onTap: () => set(prefs.copyWith(
-                              waterIntervalMin:
-                                  _nextEvery(prefs.waterIntervalMin)))),
                   ]),
+                  // Android only; omitted elsewhere rather than disabled.
                   if (relaySupported)
-                    settingsGroup(c, l?.settingsGroupTheStrap ?? 'The strap', [
-                      // The other direction: not what this app sends you, but
-                      // what your phone's apps make the band do. The permission
-                      // for it has been in the manifest all along with nothing
-                      // in the app that could reach it.
-                      SetRow(LucideIcons.bellRing, C.purple,
-                          l?.settingsBuzzOnAppNotificationsRowTitle ??
-                              'Buzz on app notifications',
-                          sub: l?.settingsBuzzOnAppNotificationsRowSub ??
-                              'Pick which phone apps make the strap buzz',
-                          onTap: () => goto(c, const BandNotifications())),
-                    ]),
+                    SettingsAccordion(
+                        'Android Relay',
+                        children: [
+                          SetRow(LucideIcons.bellRing, C.purple,
+                              l?.settingsBuzzOnAppNotificationsRowTitle ??
+                                  'Buzz on app notifications',
+                              sub: prefs.alertRule('relay').enabled
+                                  ? AlertCapabilityRegistry.summary(
+                                      prefs.alertRule('relay'))
+                                  : 'Choose which apps, alarms and calls make '
+                                      'the band buzz',
+                              onTap: () => goto(c, const BandNotifications())),
+                        ]),
                   settingsGroup(c, l?.settingsGroupQuietHours ?? 'Quiet hours', [
                     SetRow(LucideIcons.moon, C.indigo,
                         l?.settingsQuietHoursRowTitle ?? 'Quiet hours',
@@ -1192,18 +1189,18 @@ class NotificationSettingsView extends StatelessWidget {
                             prefs.copyWith(quietEnabled: !prefs.quietEnabled))),
                     SetRow(LucideIcons.sunset, C.blue,
                         l?.settingsQuietHoursStartsRowTitle ?? 'Starts',
-                        value: _hhmm(prefs.quietStartMin),
+                        value: hhmm(prefs.quietStartMin),
                         chevron: false,
                         onTap: () async {
-                          final v = await _pickMinute(c, prefs.quietStartMin);
+                          final v = await pickMinute(c, prefs.quietStartMin);
                           if (v != null) set(prefs.copyWith(quietStartMin: v));
                         }),
                     SetRow(LucideIcons.sunrise, C.yellow,
                         l?.settingsQuietHoursEndsRowTitle ?? 'Ends',
-                        value: _hhmm(prefs.quietEndMin),
+                        value: hhmm(prefs.quietEndMin),
                         chevron: false,
                         onTap: () async {
-                          final v = await _pickMinute(c, prefs.quietEndMin);
+                          final v = await pickMinute(c, prefs.quietEndMin);
                           if (v != null) set(prefs.copyWith(quietEndMin: v));
                         }),
                     SetRow(LucideIcons.triangleAlert, C.red,
@@ -1265,13 +1262,13 @@ class NotificationSettingsView extends StatelessWidget {
     return batteryChoices[(i + 1) % batteryChoices.length];
   }
 
-  static String _hhmm(int minuteOfDay) {
+  static String hhmm(int minuteOfDay) {
     final m = minuteOfDay % 1440;
     return '${(m ~/ 60).toString().padLeft(2, '0')}:'
         '${(m % 60).toString().padLeft(2, '0')}';
   }
 
-  static Future<int?> _pickMinute(BuildContext c, int current) async {
+  static Future<int?> pickMinute(BuildContext c, int current) async {
     final picked = await showTimePicker(
       context: c,
       initialTime: TimeOfDay(hour: (current ~/ 60) % 24, minute: current % 60),

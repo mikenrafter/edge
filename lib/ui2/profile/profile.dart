@@ -126,6 +126,85 @@ Widget settingsGroup(BuildContext c, String title, List<Widget> rows) {
   );
 }
 
+/// A titled card whose rows open and close behind an explicit header tap. The
+/// header always stays in place, so a group never appears or moves because some
+/// setting elsewhere changed; only this header's own tap changes its height.
+class SettingsAccordion extends StatefulWidget {
+  const SettingsAccordion(this.title,
+      {super.key, required this.children, this.initiallyExpanded = false});
+  final String title;
+  final List<Widget> children;
+  final bool initiallyExpanded;
+
+  @override
+  State<SettingsAccordion> createState() => _SettingsAccordionState();
+}
+
+class _SettingsAccordionState extends State<SettingsAccordion> {
+  late bool _open = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Padding(
+      padding: const EdgeInsets.only(top: S.x3),
+      child: Surface(
+        pad: const EdgeInsets.symmetric(horizontal: S.x4),
+        child: Column(children: [
+          Pressable(
+            onTap: () => setState(() => _open = !_open),
+            semanticLabel: '${widget.title}, ${_open ? 'expanded' : 'collapsed'}',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              child: Row(children: [
+                Expanded(
+                    child: Text(widget.title,
+                        style: F.body.copyWith(
+                            color: p.ink, fontWeight: FontWeight.w600))),
+                Icon(_open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                    size: 17, color: p.ink3),
+              ]),
+            ),
+          ),
+          if (_open)
+            for (final row in widget.children) ...[
+              Divider(color: p.line, height: 1),
+              row,
+            ],
+        ]),
+      ),
+    );
+  }
+}
+
+/// A label with a switch. The switch carries the state, so the row prints no
+/// "On"/"Off" word that a screen would then have to count.
+class SwitchRow extends StatelessWidget {
+  const SwitchRow(this.title, this.value, this.onChanged,
+      {super.key, this.sub = ''});
+  final String title, sub;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: S.x2),
+      child: Row(children: [
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: F.body.copyWith(color: p.ink)),
+            if (sub.isNotEmpty) Text(sub, style: F.over.copyWith(color: p.ink3)),
+          ]),
+        ),
+        const SizedBox(width: S.x2),
+        Switch(value: value, onChanged: onChanged),
+      ]),
+    );
+  }
+}
+
 /// Push a screen, keeping the enclosing domain accent. Returns when it pops,
 /// so a caller whose own numbers the pushed screen can change is able to
 /// re-read them.

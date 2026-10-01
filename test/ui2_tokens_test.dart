@@ -195,6 +195,9 @@ void main() {
 const _notComponents = {
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
+  // Reads AppState from Provider; `SyncControl` is its pure half and is in
+  // the gallery.
+  'HomeSyncControl',
   // WHOOP MG ECG routes: the Heart Screener entry reads the database and
   // pushes; the capture screen owns a live BLE reading (a gallery case would
   // start one); the detail screen reads and deletes a reading and routes to

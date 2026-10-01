@@ -48,7 +48,7 @@ class EdgeApplication : Application() {
             FlutterEngineCache.getInstance().get(ENGINE_ID)?.let { return it }
             val app = context.applicationContext
             // Constructor auto-registers plugins (GeneratedPluginRegistrant) →
-            // flutter_blue_plus, notification_listener_service, shared_preferences,
+            // flutter_blue_plus, shared_preferences,
             // etc. are all available headless.
             val engine = FlutterEngine(app)
             // Register platform channels on the engine BEFORE Dart starts, so they

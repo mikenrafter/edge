@@ -236,11 +236,11 @@
             </intent-filter>
         </receiver>
 
-        <!-- Notification relay (notification_listener_service plugin). The system binds
-             this to deliver posted notifications; gated behind the user granting
-             "Notification access" in system settings. Class lives in the plugin. -->
+        <!-- Notification relay. The system binds this app-owned listener to deliver
+             posted-notification METADATA (never title or body); gated behind the user
+             granting "Notification access" in system settings. -->
         <service
-            android:name="notification.listener.service.NotificationListener"
+            android:name=".OpenStrapNotificationListener"
             android:label="OpenStrap notification relay"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">

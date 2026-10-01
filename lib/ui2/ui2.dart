@@ -15,4 +15,5 @@ export 'nudges.dart';
 export 'paint_activity.dart';
 export 'revision.dart';
 export 'scroll_hint.dart';
+export 'sync_control.dart';
 export 'theme.dart';

@@ -36,7 +36,6 @@
 // derives from it yet, because no one on this project has held one
 // (ASSUMPTIONS R6).
 
-import '../sync_control.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart'
     show BluetoothDevice;

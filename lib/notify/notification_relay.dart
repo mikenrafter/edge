@@ -1,15 +1,22 @@
-// notification_relay.dart — relay selected phone-app notifications to the strap as
-// a haptic buzz. ANDROID ONLY: it rides Android's NotificationListenerService (the
-// `notification_listener_service` plugin). iOS has no API to observe other apps'
+// notification_relay.dart — relay selected phone notifications to the strap as a
+// haptic buzz. ANDROID ONLY: it rides an app-owned NotificationListenerService
+// (OpenStrapNotificationListener.kt). iOS has no API to observe other apps'
 // notifications, so on iOS this whole feature is inert and the UI never shows it.
 //
-// Flow: user grants "Notification access" + picks apps → we subscribe to the system
-// notification stream → for each NEW notification whose package is on the allow-list,
-// we buzz the band (Cmd.runHapticsPattern, via the injected callback). Same persisted
-// ChangeNotifier idiom as GestureSettings/ThemeController so the settings UI is live.
+// PRIVACY. Dart receives routing metadata only — category, package, a hash of
+// the system key, post/remove time, filter/ringer state, ongoing/group flags,
+// channel importance and a readable vibration pattern. Never a title or body.
+//
+// Three independent channels (apps, alarms, calls), each with its own policy.
+// [RelayController] is the pure decision engine; [NotificationRelay] is the
+// persisted ChangeNotifier that owns the platform bridge and feeds it. Delivery
+// goes through [AlertDispatcher], so staleness, band availability and the
+// optional phone fallback are decided in the one shared place.
 
 import 'dart:async';
+import 'dart:convert';
 import 'alert_dispatcher.dart';
+import 'alert_rule.dart';
 import 'notification_prefs.dart';
 import 'notification_center.dart';
 import 'notification_event.dart';
@@ -17,17 +24,335 @@ import '../data/day_label.dart';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show MethodChannel;
+import 'package:flutter/services.dart' show MethodCall, MethodChannel;
 import 'package:flutter/widgets.dart';
-import 'package:notification_listener_service/notification_event.dart';
-import 'package:notification_listener_service/notification_listener_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// The relay's channels. `category=alarm` covers alarms and timers;
+/// `category=call` covers system and VoIP calls; everything else is an app.
+const relayChannels = ['apps', 'alarms', 'calls'];
+
+String relayChannelOf(Object? category) => switch (category) {
+  'alarm' => 'alarms',
+  'call' => 'calls',
+  _ => 'apps',
+};
+
+/// One channel's policy. Defaults: apps relay when the feature is on; alarms and
+/// calls are opt-in; Do Not Disturb, vibrate and silent are all respected.
+class ChannelConfig {
+  const ChannelConfig({
+    this.enabled = false,
+    this.matchHaptics = false,
+    this.fallbackPattern = const [0, 400, 100, 400],
+    this.quietStartMinute,
+    this.quietEndMinute,
+    this.allowDuringDnd = false,
+    this.includeVibrate = true,
+    this.includeSilent = false,
+    this.onlyWhileWorn = false,
+    this.phoneFallback = false,
+  });
+  /// Apps relay once the feature is on; alarms and calls are opt-in.
+  factory ChannelConfig.forChannel(String name) =>
+      ChannelConfig(enabled: name == 'apps');
+
+  final bool enabled, matchHaptics, allowDuringDnd, includeVibrate;
+  final bool includeSilent, onlyWhileWorn, phoneFallback;
+  final List<int> fallbackPattern;
+  final int? quietStartMinute, quietEndMinute;
+
+  ChannelConfig copyWith({
+    bool? enabled,
+    bool? matchHaptics,
+    List<int>? fallbackPattern,
+    int? quietStartMinute,
+    int? quietEndMinute,
+    bool clearQuiet = false,
+    bool? allowDuringDnd,
+    bool? includeVibrate,
+    bool? includeSilent,
+    bool? onlyWhileWorn,
+    bool? phoneFallback,
+  }) => ChannelConfig(
+    enabled: enabled ?? this.enabled,
+    matchHaptics: matchHaptics ?? this.matchHaptics,
+    fallbackPattern: fallbackPattern ?? this.fallbackPattern,
+    quietStartMinute: clearQuiet
+        ? null
+        : quietStartMinute ?? this.quietStartMinute,
+    quietEndMinute: clearQuiet ? null : quietEndMinute ?? this.quietEndMinute,
+    allowDuringDnd: allowDuringDnd ?? this.allowDuringDnd,
+    includeVibrate: includeVibrate ?? this.includeVibrate,
+    includeSilent: includeSilent ?? this.includeSilent,
+    onlyWhileWorn: onlyWhileWorn ?? this.onlyWhileWorn,
+    phoneFallback: phoneFallback ?? this.phoneFallback,
+  );
+
+  /// The per-channel half of the decision policy. The environment half (DND,
+  /// ringer, connectivity, wear) comes from the policy source and wins on overlap.
+  Map<String, Object?> get policy => {
+    'respectDnd': true,
+    'allowDuringDnd': allowDuringDnd,
+    'includeVibrate': includeVibrate,
+    'includeSilent': includeSilent,
+    'onlyWhileWorn': onlyWhileWorn,
+    'fallback': phoneFallback ? 'phoneIfBandUnavailable' : 'none',
+  };
+
+  Map<String, Object?> toJson() => {
+    'enabled': enabled,
+    'matchHaptics': matchHaptics,
+    'fallbackPattern': fallbackPattern,
+    'quietStartMinute': quietStartMinute,
+    'quietEndMinute': quietEndMinute,
+    'allowDuringDnd': allowDuringDnd,
+    'includeVibrate': includeVibrate,
+    'includeSilent': includeSilent,
+    'onlyWhileWorn': onlyWhileWorn,
+    'phoneFallback': phoneFallback,
+  };
+
+  factory ChannelConfig.fromJson(Map<String, Object?> j, ChannelConfig d) =>
+      ChannelConfig(
+        enabled: j['enabled'] as bool? ?? d.enabled,
+        matchHaptics: j['matchHaptics'] as bool? ?? d.matchHaptics,
+        fallbackPattern:
+            (j['fallbackPattern'] as List?)?.cast<int>() ?? d.fallbackPattern,
+        quietStartMinute: j['quietStartMinute'] as int?,
+        quietEndMinute: j['quietEndMinute'] as int?,
+        allowDuringDnd: j['allowDuringDnd'] as bool? ?? d.allowDuringDnd,
+        includeVibrate: j['includeVibrate'] as bool? ?? d.includeVibrate,
+        includeSilent: j['includeSilent'] as bool? ?? d.includeSilent,
+        onlyWhileWorn: j['onlyWhileWorn'] as bool? ?? d.onlyWhileWorn,
+        phoneFallback: j['phoneFallback'] as bool? ?? d.phoneFallback,
+      );
+}
+
+class RelayResult {
+  const RelayResult({
+    this.targets = const [],
+    this.suppression,
+    this.usedFallbackPattern = false,
+  });
+  final List<String> targets;
+  final String? suppression;
+  final bool usedFallbackPattern;
+}
+
+/// Decides, per posted notification, whether the band (or the opted-in phone
+/// fallback) alerts. No platform access: everything arrives as metadata.
+///
+/// Policy keys read from [policy] (environment wins over the channel's own):
+/// enabled, dnd, respectDnd, allowDuringDnd, ringer (normal|vibrate|silent),
+/// includeVibrate, includeSilent, connected, fallback, worn (worn|notWorn|
+/// unknown), onlyWhileWorn, packages, staleAfterMs, minuteOfDay.
+class RelayController {
+  RelayController({
+    required this.dispatcher,
+    required this.buzz,
+    required this.phone,
+    required this.policy,
+    required this.nowMs,
+    this.onChanged,
+  });
+  final AlertDispatcher dispatcher;
+  final Future<bool> Function(List<int> pattern) buzz;
+  final Future<bool> Function() phone;
+  final Map<String, Object?> Function(Map<String, Object?> metadata) policy;
+  final int Function() nowMs;
+  final VoidCallback? onChanged;
+
+  final Map<String, ChannelConfig> channels = {
+    for (final c in relayChannels) c: ChannelConfig.forChannel(c),
+  };
+
+  // Stable-key lifetime: a key is "live" from its first post until its removal,
+  // so updates never re-buzz and a reposted notification does.
+  final Set<String> _live = {};
+  final Set<String> _inFlight = {};
+  int _seq = 0;
+  bool _listening = true;
+
+  bool get listening => _listening;
+  bool get busy => _inFlight.isNotEmpty;
+
+  void setChannel(
+    String name, {
+    bool? enabled,
+    bool? matchHaptics,
+    List<int>? fallbackPattern,
+    int? quietStartMinute,
+    int? quietEndMinute,
+    bool clearQuiet = false,
+    bool? allowDuringDnd,
+    bool? includeVibrate,
+    bool? includeSilent,
+    bool? onlyWhileWorn,
+    bool? phoneFallback,
+  }) => putChannel(
+    name,
+    channels[name]!.copyWith(
+      enabled: enabled,
+      matchHaptics: matchHaptics,
+      fallbackPattern: fallbackPattern,
+      quietStartMinute: quietStartMinute,
+      quietEndMinute: quietEndMinute,
+      clearQuiet: clearQuiet,
+      allowDuringDnd: allowDuringDnd,
+      includeVibrate: includeVibrate,
+      includeSilent: includeSilent,
+      onlyWhileWorn: onlyWhileWorn,
+      phoneFallback: phoneFallback,
+    ),
+  );
+
+  void putChannel(String name, ChannelConfig cfg) {
+    channels[name] = cfg;
+    onChanged?.call();
+  }
+
+  Future<RelayResult> handleMetadata(Map<String, Object?> m) async {
+    if (!_listening) return const RelayResult(suppression: 'notListening');
+    final key = '${m['keyHash']}';
+    if (m['kind'] == 'remove') {
+      _live.remove(key);
+      return const RelayResult(suppression: 'removed');
+    }
+    final channel = relayChannelOf(m['category']);
+    final cfg = channels[channel]!;
+    final env = {...cfg.policy, ...policy(m)};
+    if (env['enabled'] != true || !cfg.enabled) {
+      return const RelayResult(suppression: 'disabled');
+    }
+    if (m['groupSummary'] == true) {
+      return const RelayResult(suppression: 'groupSummary');
+    }
+    // Only app posts are filtered by ongoing flag and the per-app allow-list.
+    // Alarms and calls are chosen by category, not by package.
+    if (channel == 'apps' &&
+        (m['ongoing'] == true ||
+            !((env['packages'] as List?)?.contains(m['package']) ?? false))) {
+      return const RelayResult(suppression: 'notSelected');
+    }
+    // Claimed synchronously, before any await: concurrent posts of one key
+    // reach here one at a time.
+    if (!_live.add(key)) return const RelayResult(suppression: 'duplicate');
+    _inFlight.add(key);
+    try {
+      if (env['dnd'] == true &&
+          env['respectDnd'] != false &&
+          env['allowDuringDnd'] != true) {
+        return const RelayResult(suppression: 'dnd');
+      }
+      final ringer = env['ringer'];
+      if ((ringer == 'vibrate' && env['includeVibrate'] != true) ||
+          (ringer == 'silent' && env['includeSilent'] != true)) {
+        return const RelayResult(suppression: 'ringer');
+      }
+      // Unknown wear abstains: only an explicit "worn" lets a buzz through.
+      if (env['onlyWhileWorn'] == true && env['worn'] != 'worn') {
+        return const RelayResult(suppression: 'notWorn');
+      }
+      final start = cfg.quietStartMinute, end = cfg.quietEndMinute;
+      if (start != null && end != null) {
+        final now = DateTime.fromMillisecondsSinceEpoch(nowMs());
+        final minute = env['minuteOfDay'] as int? ?? now.hour * 60 + now.minute;
+        if (NotificationPrefs(
+          quietEnabled: true,
+          quietStartMin: start,
+          quietEndMin: end,
+        ).inQuietHours(minute)) {
+          return const RelayResult(suppression: 'quietHours');
+        }
+      }
+      final readable = _readable(m['hapticPattern']);
+      final usedFallback = cfg.matchHaptics && readable == null;
+      final pattern = !cfg.matchHaptics
+          ? const [0, 250]
+          : readable ?? cfg.fallbackPattern;
+      final postMs = m['postTimeMs'] as int? ?? nowMs();
+      final outcome = await dispatcher.dispatch(
+        AlertRule(
+          id: 'relay',
+          kind: 'relay',
+          destinations: AlertRule.band,
+          executionMode: AlertExecutionMode.phoneLive,
+          fallback: env['fallback'] == 'phoneIfBandUnavailable'
+              ? AlertFallback.phoneIfBandUnavailable
+              : AlertFallback.none,
+          staleAfter: Duration(
+            milliseconds: env['staleAfterMs'] as int? ?? 30000,
+          ),
+          channelPolicyId: 'relay',
+        ),
+        // The sequence keeps a reposted key (same hash, same post time after a
+        // removal) from colliding with its own earlier delivery claim.
+        // ponytail: a restart can re-deliver an entry still posted within the
+        // stale window; widen with a persisted high-water mark if that bites.
+        eventId: '$channel:$key:$postMs:${_seq++}',
+        sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
+        historical: false,
+        phoneTransport: phone,
+        bandTransport: () => buzz(pattern),
+      );
+      return RelayResult(
+        targets: outcome.targets,
+        suppression: outcome.suppressionReason,
+        usedFallbackPattern: usedFallback && outcome.targets.contains('band'),
+      );
+    } finally {
+      _inFlight.remove(key);
+    }
+  }
+
+  List<int>? _readable(Object? raw) {
+    if (raw is! List || raw.isEmpty || raw.any((e) => e is! int)) return null;
+    return raw.cast<int>();
+  }
+
+  /// The system unbound the listener. Live keys are kept so a reconnect does
+  /// not replay notifications that already alerted.
+  Future<void> listenerDisconnected() async {
+    _listening = false;
+    _inFlight.clear();
+  }
+
+  /// Bound again. [active] is what the system still shows: keys removed while
+  /// we were away are forgotten, known keys stay quiet, and anything older than
+  /// the stale window is refused by the dispatcher rather than replayed.
+  Future<void> listenerConnected(List<Object?> active) async {
+    _listening = true;
+    final entries = [
+      for (final e in active) Map<String, Object?>.from(e as Map),
+    ];
+    _live.retainAll({for (final m in entries) '${m['keyHash']}'});
+    for (final m in entries) {
+      await handleMetadata({...m, 'kind': 'post'});
+    }
+  }
+
+  /// Service destroyed or access revoked: drop every latch. Channel policy is
+  /// kept, so the next [listenerConnected] restores it.
+  Future<void> stop(String reason) async {
+    _listening = false;
+    _live.clear();
+    _inFlight.clear();
+  }
+
+  void dispose() {
+    _listening = false;
+    _live.clear();
+    _inFlight.clear();
+  }
+}
 
 class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   NotificationRelay({
     required this.buzz,
     required this.isConnected,
     AlertDispatcher? dispatcher,
+    this.worn,
   }) : dispatcher =
            dispatcher ??
            AlertDispatcher(
@@ -40,19 +365,14 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
            );
   final AlertDispatcher dispatcher;
 
-  // The plugin's own MethodChannel. v1.0.0's Dart API doesn't expose the native
-  // rebind/health handlers, so we invoke them directly to self-heal when Android
-  // unbinds the NotificationListenerService (it does this routinely over time).
-  static const MethodChannel _pluginChannel = MethodChannel(
-    'x-slayer/notifications_channel',
+  /// "worn" / "notWorn" / "unknown". Null means no wear source: unknown, so an
+  /// only-while-worn channel abstains rather than guessing.
+  final String Function()? worn;
+
+  // The app-owned listener bridge (OpenStrapNotificationListener.kt).
+  static const MethodChannel _native = MethodChannel(
+    'openstrap/notification_relay',
   );
-  // 15 min, not 120 s: the heal is a belt-and-braces rebind for a listener
-  // Android rarely unbinds, foreground resume already heals eagerly, and a
-  // missed buzz during the window costs nothing — while the timer itself ran
-  // a platform-channel round trip forever in an always-alive process.
-  // 120 s. The active-gate above already confines this timer to installs that
-  // actually use the relay, so the drain saved by a longer period is small
-  // and the cost is silent non-buzzing for up to the whole interval.
   static const Duration _healEvery = Duration(seconds: 120);
   Timer? _healTimer;
 
@@ -65,6 +385,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   static const _kEnabled = 'notif_relay_enabled';
   static const _kPackages = 'notif_relay_packages';
   static const _kSeen = 'notif_relay_seen';
+  static const _kChannels = 'notif_relay_channels';
 
   /// How many apps the "seen" list remembers. A phone posts from a long tail
   /// of packages over a week; past this the list stops being a list you can
@@ -91,9 +412,8 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   /// interrupt you.
   final List<String> _seen = [];
 
-  /// Per-package icon, straight off the notification the OS handed us. RAM
-  /// only, deliberately: the packages persist, the bitmaps do not, and a
-  /// freshly-launched app simply shows names until each one posts again.
+  /// Per-package icon. The native bridge sends none (icons are not routing
+  /// metadata), so the picker shows its placeholder; kept for the picker API.
   final Map<String, Uint8List> _icons = {};
 
   List<String> get seenPackages => List.unmodifiable(_seen);
@@ -104,17 +424,110 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   bool isAppEnabled(String pkg) => _packages.contains(pkg);
   int get appCount => _packages.length;
 
-  /// True only when everything needed to actually buzz is in place.
-  bool get active => supported && _enabled && _granted && _packages.isNotEmpty;
+  /// True only when the relay can actually alert: on, permitted, on Android.
+  /// Alarms and calls need no app selected, so the app list does not gate it.
+  bool get active => supported && _enabled && _granted;
 
-  StreamSubscription<ServiceNotificationEvent>? _sub;
-  // Per-package de-dupe: ignore repeat posts of the same app within this window
-  // (apps re-post the same notification as it updates), plus a global floor so a
-  // burst never machine-guns the strap.
-  final Map<String, int> _lastBuzzMs = {};
-  int _lastAnyBuzzMs = 0;
-  static const _perAppCooldownMs = 4000;
-  static const _globalFloorMs = 800;
+  late final RelayController controller = RelayController(
+    dispatcher: dispatcher,
+    buzz: _playPattern,
+    phone: _phoneFallback,
+    policy: _policy,
+    nowMs: () => DateTime.now().millisecondsSinceEpoch,
+    onChanged: _channelsChanged,
+  );
+
+  /// Tests only: the same production controller with injected sinks and a
+  /// fixed policy, an in-memory delivery ledger and a fixed clock.
+  @visibleForTesting
+  RelayController debugController({
+    required Map<String, Object?> policy,
+    required Future<bool> Function(List<int>) buzz,
+    required Future<bool> Function() phone,
+    required int Function() nowMs,
+  }) {
+    var connected = true;
+    return RelayController(
+      // isConnected is read synchronously at the top of dispatch, right after
+      // this closure's policy call, so the shared variable cannot interleave.
+      dispatcher: AlertDispatcher(
+        phone: phone,
+        band: () async => false,
+        isConnected: () => connected,
+        now: () => DateTime.fromMillisecondsSinceEpoch(nowMs()),
+        ledger: MemoryAlertDeliveryLedger(),
+      ),
+      buzz: buzz,
+      phone: phone,
+      policy: (_) {
+        connected = policy['connected'] == true;
+        return policy;
+      },
+      nowMs: nowMs,
+    );
+  }
+
+  Map<String, Object?> _policy(Map<String, Object?> m) => {
+    'enabled': _enabled && _granted,
+    // INTERRUPTION_FILTER_ALL = 1; unknown (0) is not treated as DND.
+    'dnd': const {2, 3, 4}.contains(m['interruptionFilter']),
+    'ringer': switch (m['ringerMode']) {
+      0 => 'silent',
+      1 => 'vibrate',
+      2 => 'normal',
+      _ => 'unknown',
+    },
+    'connected': isConnected(),
+    'worn': worn?.call() ?? 'unknown',
+    'packages': _packages.toList(),
+  };
+
+  /// A phone alert that names neither the app nor the content.
+  Future<bool> _phoneFallback() {
+    final now = DateTime.now();
+    return NotificationCenter.instance.emit(
+      NotificationEvent(
+        dedupeKey: 'relay:${now.microsecondsSinceEpoch}',
+        category: NotifCategory.reminders,
+        title: 'Relayed alert',
+        body: 'A selected alert arrived while the band was away.',
+        date: dayLabelOf(now),
+      ),
+      sourceTime: now,
+      ruleId: 'relay',
+      phoneOnly: true,
+    );
+  }
+
+  /// The band takes a pattern id, not a waveform, so Android's rhythm is
+  /// approximated by its pulse count (odd entries are the "on" segments).
+  // ponytail: pulse count only, capped at 3; exact rhythm needs a band opcode.
+  Future<bool> _playPattern(List<int> pattern) async {
+    final pulses = [
+      for (var i = 1; i < pattern.length; i += 2)
+        if (pattern[i] > 0) i,
+    ].length.clamp(1, 3);
+    for (var i = 0; i < pulses; i++) {
+      if (i > 0) await Future<void>.delayed(const Duration(milliseconds: 350));
+      await buzz();
+    }
+    return true;
+  }
+
+  void _channelsChanged() {
+    SharedPreferences.getInstance()
+        .then(
+          (p) => p.setString(
+            _kChannels,
+            jsonEncode({
+              for (final e in controller.channels.entries)
+                e.key: e.value.toJson(),
+            }),
+          ),
+        )
+        .catchError((_) => false);
+    notifyListeners();
+  }
 
   /// Load saved state, refresh permission, and start listening if active. Call
   /// once at startup. No-op on iOS.
@@ -128,20 +541,63 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     _seen
       ..clear()
       ..addAll(prefs.getStringList(_kSeen) ?? const []);
+    final stored = prefs.getString(_kChannels);
+    if (stored != null) {
+      final saved = Map<String, Object?>.from(jsonDecode(stored) as Map);
+      for (final c in relayChannels) {
+        final j = saved[c];
+        if (j is Map) {
+          controller.channels[c] = ChannelConfig.fromJson(
+            Map<String, Object?>.from(j),
+            controller.channels[c]!,
+          );
+        }
+      }
+    }
     // An app already on the allow-list belongs in the picker whether or not it
     // has posted since launch — otherwise turning the feature on and reopening
     // the screen shows an empty list with your choices invisibly still active.
     for (final p in _packages) {
       if (!_seen.contains(p)) _seen.add(p);
     }
+    _native.setMethodCallHandler(_onNative);
     WidgetsBinding.instance.addObserver(this);
     await refreshPermission();
     _resync();
     notifyListeners();
   }
 
-  // The OS can unbind the listener and kill our stream while we're backgrounded.
-  // On every foreground return, re-check the grant and force the listener back.
+  // Native -> Dart. Errors never propagate back into the system callback.
+  Future<void> _onNative(MethodCall call) async {
+    try {
+      final a = call.arguments;
+      switch (call.method) {
+        case 'metadata':
+          final m = Map<String, Object?>.from(a as Map);
+          // BEFORE the allow-list check: an app you have not chosen yet is
+          // exactly the one the picker needs to be able to offer you.
+          final pkg = m['package'];
+          if (m['kind'] == 'post' &&
+              pkg is String &&
+              pkg.isNotEmpty &&
+              relayChannelOf(m['category']) == 'apps') {
+            noteSeen(pkg, null);
+          }
+          await controller.handleMetadata(m);
+        case 'connected':
+          await controller.listenerConnected(a as List);
+        case 'disconnected':
+          await controller.listenerDisconnected();
+        case 'destroyed':
+          await controller.stop('destroyed');
+      }
+    } catch (_) {
+      /* a bad event is dropped, never thrown at the platform */
+    }
+  }
+
+  // The OS can unbind the listener while we're backgrounded. On every
+  // foreground return, re-check the grant and re-arm.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && supported) {
@@ -154,13 +610,16 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Re-query the OS "Notification access" grant (it can change while we're
   /// backgrounded — user revokes it in Settings). Returns the current value.
+  /// A revocation clears every listener latch.
   Future<bool> refreshPermission() async {
     if (!supported) return false;
+    final was = _granted;
     try {
-      _granted = await NotificationListenerService.isPermissionGranted();
+      _granted = await _native.invokeMethod<bool>('isPermissionGranted') ?? false;
     } catch (_) {
       _granted = false;
     }
+    if (was && !_granted) await controller.stop('permissionRevoked');
     notifyListeners();
     return _granted;
   }
@@ -170,7 +629,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> requestPermission() async {
     if (!supported) return false;
     try {
-      await NotificationListenerService.requestPermission();
+      await _native.invokeMethod('requestPermission');
     } catch (_) {
       /* user may just back out */
     }
@@ -211,73 +670,40 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_kPackages, _packages.toList());
-    _resync();
     notifyListeners();
   }
 
-  // Subscribe only when the feature can actually do something; otherwise tear the
-  // stream down so we're not holding a system callback for nothing. Also runs a
-  // periodic heal so a system-unbound listener gets re-armed while we're alive.
+  // Tell the platform whether metadata should flow at all, and when arming pull
+  // what is currently posted so the controller restores state without replay.
+  // The heal timer only runs while armed.
   void _resync() {
-    // [active] (which includes `_packages.isNotEmpty`), not just
-    // enabled+granted: with ZERO apps selected the feature can never produce a
-    // buzz, yet it used to hold the stream subscription (every phone
-    // notification crossing the platform channel into Dart just to be
-    // discarded) and the heal timer, forever, in a process the FGS keeps
-    // alive. setAppEnabled calls back in here, so selecting the first app
-    // arms everything again.
     final shouldListen = active;
+    _native.invokeMethod('setArmed', shouldListen).then((_) async {
+      if (shouldListen) {
+        final list = await _native.invokeMethod<List<Object?>>('activeMetadata');
+        await controller.listenerConnected(list ?? const []);
+      } else {
+        await controller.stop('disarmed');
+      }
+    }).catchError((_) {});
     if (shouldListen) {
-      _startListening();
       _healTimer ??= Timer.periodic(_healEvery, (_) => _heal());
     } else {
-      _sub?.cancel();
-      _sub = null;
       _healTimer?.cancel();
       _healTimer = null;
     }
   }
 
-  void _startListening() {
-    if (_sub != null) return;
-    try {
-      _sub = NotificationListenerService.notificationsStream.listen(
-        _onNotification,
-        // If the stream errors or closes, drop it and let the next _resync/heal
-        // re-arm — a dead subscription must never silently stay dead.
-        onError: (_) {
-          _sub?.cancel();
-          _sub = null;
-        },
-        onDone: () {
-          _sub = null;
-        },
-        cancelOnError: true,
-      );
-    } catch (_) {
-      /* stream unavailable — stay inert */
-    }
-  }
-
-  // Ask the native side whether the listener is still bound; if not, force a
-  // rebind + reconnect via the plugin's (Dart-unexposed) handlers. All best-effort
-  // — older plugin builds or pre-API-24 devices simply no-op.
+  // Ask the native side whether the listener is still bound; if not, request a
+  // rebind. Best-effort — the system also rebinds on its own schedule.
   Future<void> _heal() async {
     if (!active) return;
-    _startListening(); // re-arm the Dart stream if it died
     try {
-      final connected =
-          await _pluginChannel.invokeMethod<bool>('isServiceConnected') ?? true;
-      if (!connected) {
-        try {
-          await _pluginChannel.invokeMethod('forceRequestRebind');
-        } catch (_) {}
-        try {
-          await _pluginChannel.invokeMethod('reconnectService');
-        } catch (_) {}
+      if (!(await _native.invokeMethod<bool>('isConnected') ?? true)) {
+        await _native.invokeMethod('rebind');
       }
     } catch (_) {
-      /* handler absent on this plugin build — ignore */
+      /* handler absent — ignore */
     }
   }
 
@@ -315,59 +741,11 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  void _onNotification(ServiceNotificationEvent e) {
-    // Only fresh, user-facing posts: skip removals and persistent/ongoing ones
-    // (media players, foreground-service notifications) — those aren't "a ping".
-    if (e.hasRemoved || e.onGoing) return;
-    final pkg = e.packageName;
-    if (pkg.isEmpty) return;
-    // BEFORE the allow-list check: an app you have not chosen yet is exactly
-    // the one the picker needs to be able to offer you.
-    noteSeen(pkg, e.appIcon);
-    if (!_packages.contains(pkg)) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final lastForPkg = _lastBuzzMs[pkg] ?? 0;
-    if (now - lastForPkg < _perAppCooldownMs) return;
-    if (now - _lastAnyBuzzMs < _globalFloorMs) return;
-    _lastBuzzMs[pkg] = now;
-    _lastAnyBuzzMs = now;
-    // Fire-and-forget; never let a BLE hiccup throw into the system callback.
-    unawaited(_dispatchRelay(pkg, e.id, e.timestamp));
-  }
-
-  Future<void> _dispatchRelay(
-    String package,
-    int notificationId,
-    int sourceMs,
-  ) async {
-    final prefs = await NotificationPrefs.load();
-    await dispatcher.dispatch(
-      prefs.alertRule('relay'),
-      eventId: '$package:$notificationId:$sourceMs',
-      sourceTime: DateTime.fromMillisecondsSinceEpoch(sourceMs),
-      historical: false,
-      targetAllowed: (_) => !prefs.inQuietHours(
-          DateTime.now().hour * 60 + DateTime.now().minute),
-      phoneTransport: () => NotificationCenter.instance.emit(
-        NotificationEvent(
-          dedupeKey: '$package:$notificationId:$sourceMs',
-          category: NotifCategory.reminders,
-          title: 'Relayed alert',
-          body: 'A selected app posted an alert.',
-          date: dayLabelOf(DateTime.fromMillisecondsSinceEpoch(sourceMs)),
-        ),
-        sourceTime: DateTime.fromMillisecondsSinceEpoch(sourceMs),
-        ruleId: 'relay',
-        phoneOnly: true,
-      ),
-    );
-  }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _healTimer?.cancel();
-    _sub?.cancel();
+    controller.dispose();
     super.dispose();
   }
 }
