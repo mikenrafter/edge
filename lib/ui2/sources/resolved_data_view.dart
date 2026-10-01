@@ -8,6 +8,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../sources/resolved_window.dart'
+    show kResolvedWindowChoices;
 import '../grammar.dart';
 import '../theme.dart';
 import 'source_catalog_view.dart' show kAbsent, signalNameOf, stampRange;
@@ -188,6 +190,31 @@ class _Row extends StatelessWidget {
           Text('${row['reason']}', style: F.cap.copyWith(color: p.ink3)),
         ],
       ),
+    );
+  }
+}
+
+
+/// The window choice: presets and "No cutoff". Pure; the screen stores it.
+class ResolvedWindowPicker extends StatelessWidget {
+  final int? days;
+  final ValueChanged<int?> onChanged;
+  const ResolvedWindowPicker({super.key, required this.days, required this.onChanged});
+
+  static String _label(int? d) => switch (d) {
+        null => 'No cutoff',
+        1 => '1 day',
+        final n => '$n days',
+      };
+
+  @override
+  Widget build(BuildContext c) {
+    final i = kResolvedWindowChoices.indexOf(days);
+    return SubTabs(
+      [for (final d in kResolvedWindowChoices) _label(d)],
+      i < 0 ? 0 : i,
+      (j) => onChanged(kResolvedWindowChoices[j]),
+      color: C.teal,
     );
   }
 }
