@@ -2101,7 +2101,6 @@
   "activityLiveSkipRest": "Passer le repos",
   "gesturesNavTitle": "Double appui",
   "gesturesSectionTitle": "Appuyez deux fois sur le bracelet",
-  "gesturesSectionBody": "Uniquement lorsque l’app est connectée et éveillée. Un appui que le bracelet a enregistré pendant l’absence de votre téléphone arrive plus tard avec un horodatage ancien, et il est ignoré plutôt que déclenché des heures après coup.",
   "gesturesItDoesTitle": "Cela fait",
   "gesturesNoPhoneActionsTitle": "Rien sur le téléphone ?",
   "gesturesNoPhoneActionsBody": "Faire sonner votre téléphone et la lampe torche sont absents car l’app n’a pas pu demander au système ce que cet appareil autorise. Rouvrez l’app et revenez ; les actions internes ci-dessus fonctionnent de toute façon.",

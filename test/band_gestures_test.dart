@@ -1,4 +1,4 @@
-// THE DOUBLE-TAP PICKER — and the one action that made it worth building.
+// THE DOUBLE-TAP SCREEN — and the one action that made it worth building.
 //
 // The whole gesture engine shipped without this screen, so the mapping could
 // never leave `none`. Two things it may not get wrong:
@@ -9,14 +9,25 @@
 //
 // Rendered, not read: this project has paid three times for layout faults that
 // inspecting a widget tree does not find.
+//
+// Multi-select, replay-row and 2x-text coverage lives in
+// test/gestures/band_gestures_view_test.dart; this file keeps the cases that
+// are about the screen's contract with the phone (what it offers, what it says
+// when native is silent, 3.1x text) and the water action end to end. Dropped as
+// superseded by the 5A rewrite: the "Do nothing" row (the empty set is the off
+// state now) and the 2 s debounce case (the dispatcher now claims each
+// occurrence by its own identity; covered in gesture_dispatcher_test.dart).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/gesture_dispatcher.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
+import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SwitchRow;
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// What `GestureSettings.bootstrap` builds on a phone whose native side
 /// answered: `none`, every in-app action, and the reported native ones.
@@ -29,8 +40,8 @@ Set<DeviceAction> _supported(Set<DeviceAction> native) => {
 Future<void> _pump(
   WidgetTester t, {
   required Set<DeviceAction> supported,
-  DeviceAction chosen = DeviceAction.none,
-  ValueChanged<DeviceAction>? onPick,
+  Set<DeviceAction> chosen = const {},
+  void Function(DeviceAction, bool)? onToggle,
   double scale = 1,
   Brightness brightness = Brightness.light,
 }) async {
@@ -45,7 +56,7 @@ Future<void> _pump(
         home: BandGesturesView(
           chosen: chosen,
           supported: supported,
-          onPick: onPick,
+          onToggle: onToggle,
         ),
       ),
     ),
@@ -54,7 +65,7 @@ Future<void> _pump(
 }
 
 void main() {
-  group('the picker renders', () {
+  group('the screen renders', () {
     testWidgets('an iPhone is offered ring and torch, never volume or Tasker',
         (t) async {
       await _pump(t,
@@ -65,7 +76,7 @@ void main() {
       expect(find.text('Ring my phone'), findsOneWidget);
       expect(find.text('Flashlight'), findsOneWidget);
       expect(find.text('Log water'), findsOneWidget);
-      expect(find.text('Do nothing'), findsOneWidget);
+      expect(find.text('Do nothing'), findsNothing);
       // Not offerable on iOS, so not drawn.
       expect(find.text('Volume up'), findsNothing);
       expect(find.text('Broadcast to Tasker'), findsNothing);
@@ -115,26 +126,30 @@ void main() {
       expect(find.text('—'), findsNothing);
     });
 
-    testWidgets('a tap reports the action it is drawn next to', (t) async {
-      DeviceAction? picked;
+    testWidgets('a switch reports the action it is drawn next to', (t) async {
+      final calls = <(DeviceAction, bool)>[];
       await _pump(t,
           supported: _supported({DeviceAction.ringPhone}),
-          onPick: (a) => picked = a);
+          onToggle: (a, v) => calls.add((a, v)));
 
-      await t.tap(find.text('Log water'));
+      Finder sw(String label) => find.descendant(
+          of: find.widgetWithText(SwitchRow, label),
+          matching: find.byType(Switch));
+      await t.tap(sw('Log water'));
       await t.pumpAndSettle();
-      expect(picked, DeviceAction.logWater);
-
-      await t.tap(find.text('Ring my phone'));
+      await t.tap(sw('Ring my phone'));
       await t.pumpAndSettle();
-      expect(picked, DeviceAction.ringPhone);
+      expect(calls, [
+        (DeviceAction.logWater, true),
+        (DeviceAction.ringPhone, true),
+      ]);
     });
 
     testWidgets('nothing overflows at 3.1x, in either theme', (t) async {
       for (final b in Brightness.values) {
         await _pump(t,
             supported: _supported({DeviceAction.ringPhone, DeviceAction.torch}),
-            chosen: DeviceAction.logWater,
+            chosen: {DeviceAction.logWater, DeviceAction.markMoment},
             scale: 3.1,
             brightness: b);
         expect(layoutFaults, isEmpty, reason: '$b');
@@ -143,37 +158,47 @@ void main() {
   });
 
   group('log water dispatches', () {
-    GestureDispatcher build(DeviceAction mapped, {required void Function() water,
-        void Function()? moment}) {
-      final s = GestureSettings()..doubleTap = mapped;
-      return GestureDispatcher(
-        settings: s,
-        onLogWater: () async => water(),
-        onMarkMoment: () async => moment?.call(),
+    // The same tap, as the engine now hands it over: a StrapEvent whose own
+    // clock decides whether it is live.
+    StrapEvent tap({required Duration late}) {
+      final at = DateTime.utc(2026, 3, 14, 12);
+      final ts = at.millisecondsSinceEpoch ~/ 1000;
+      return StrapEvent(
+        eventId: 14,
+        tsEpoch: ts,
+        receivedAt: at.add(late),
+        hex: '',
+        deviceId: 'dev-a',
       );
     }
 
-    int now() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    Future<GestureDispatcher> build(DeviceAction mapped,
+        {required void Function() water}) async {
+      SharedPreferences.setMockInitialValues({});
+      final s = GestureSettings();
+      await s.setDoubleTapActions({mapped});
+      return GestureDispatcher(
+        settings: s,
+        onLogWater: (_) async => water(),
+        onMarkMoment: (_) async {},
+        claim: (_) async => true,
+        release: (_) async {},
+      );
+    }
 
-    test('a live double-tap mapped to water calls the water handler', () {
+    test('a live double-tap mapped to water calls the water handler', () async {
       var n = 0;
-      build(DeviceAction.logWater, water: () => n++).onEvent(14, now(), '');
+      final d = await build(DeviceAction.logWater, water: () => n++);
+      await d.handle(tap(late: const Duration(seconds: 1)));
       expect(n, 1);
     });
 
-    test('the 2 s debounce still owns the second tap', () {
+    test('a tap drained from flash is too old to pour a glass', () async {
       var n = 0;
-      final d = build(DeviceAction.logWater, water: () => n++);
-      d.onEvent(14, now(), '');
-      d.onEvent(14, now(), '');
-      expect(n, 1, reason: 'one physical tap can arrive twice from the band');
-    });
-
-    test('a tap drained from flash is too old to pour a glass', () {
-      var n = 0;
-      build(DeviceAction.logWater, water: () => n++)
-          .onEvent(14, now() - 3600, '');
+      final d = await build(DeviceAction.logWater, water: () => n++);
+      final out = await d.handle(tap(late: const Duration(hours: 1)));
       expect(n, 0);
+      expect(out.single.status, GestureStatus.skippedStale);
     });
 
     test('water is in-app, so it is offerable with no native at all', () {

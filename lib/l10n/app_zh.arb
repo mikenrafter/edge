@@ -2101,7 +2101,6 @@
   "activityLiveSkipRest": "跳过休息",
   "gesturesNavTitle": "双击",
   "gesturesSectionTitle": "轻点手环两次",
-  "gesturesSectionBody": "仅在应用已连接且处于唤醒状态时有效。如果手机不在身边，手环记录的敲击会带着过时的时间戳延迟到达，届时会被忽略，而不会在几小时后才触发。",
   "gesturesItDoesTitle": "它会执行",
   "gesturesNoPhoneActionsTitle": "手机上没有可用操作？",
   "gesturesNoPhoneActionsBody": "“让手机响铃”和“手电筒”未显示，因为应用无法向系统询问此设备允许哪些操作。重新打开应用后再回到此处；上方的应用内操作无论如何都能使用。",

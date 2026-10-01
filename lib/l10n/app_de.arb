@@ -2101,7 +2101,6 @@
   "activityLiveSkipRest": "Pause überspringen",
   "gesturesNavTitle": "Doppeltippen",
   "gesturesSectionTitle": "Zweimal auf das Band tippen",
-  "gesturesSectionBody": "Nur solange die App verbunden und aktiv ist. Ein Tippen, das das Band gespeichert hat, während dein Telefon nicht erreichbar war, kommt später mit einem alten Zeitstempel an und wird ignoriert, statt Stunden später ausgelöst zu werden.",
   "gesturesItDoesTitle": "Es tut",
   "gesturesNoPhoneActionsTitle": "Nichts auf dem Telefon?",
   "gesturesNoPhoneActionsBody": "Telefon klingeln lassen und die Taschenlampe fehlen, weil die App das System nicht fragen konnte, was dieses Gerät erlaubt. Öffne die App erneut und komm zurück; die App-internen Aktionen oben funktionieren so oder so.",

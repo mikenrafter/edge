@@ -2113,7 +2113,6 @@
   "activityLiveSkipRest": "Saltar descanso",
   "gesturesNavTitle": "Doble toque",
   "gesturesSectionTitle": "Toca el band dos veces",
-  "gesturesSectionBody": "Solo mientras la app está conectada y activa. Un toque que el band guardó mientras tu teléfono no estaba disponible llega más tarde con una marca de tiempo antigua, y se ignora en lugar de activarse horas después de lo que querías.",
   "gesturesItDoesTitle": "Hace esto",
   "gesturesNoPhoneActionsTitle": "¿Nada en el teléfono?",
   "gesturesNoPhoneActionsBody": "Hacer sonar tu teléfono y la linterna no aparecen porque la app no pudo consultar al sistema qué permite este dispositivo. Vuelve a abrir la app y regresa; las acciones dentro de la app de arriba funcionan de todos modos.",

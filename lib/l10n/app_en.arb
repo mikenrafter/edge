@@ -11013,9 +11013,17 @@
   "@gesturesSectionTitle": {
     "description": "Section heading explaining the double-tap gesture on the band"
   },
-  "gesturesSectionBody": "Taps work only while the app is connected and awake. If you tap while your phone is away, the band stores the tap and sends it later with an old timestamp. The app ignores it.",
-  "@gesturesSectionBody": {
-    "description": "Body text explaining when the double-tap gesture actually works"
+  "gesturesSectionBodyMulti": "Works only while the app is connected and awake. Turn on as many actions as you like; with every action off, a double-tap does nothing. If you tap while your phone is away, the band stores the tap and sends it later. A late tap runs only an action that says it can.",
+  "@gesturesSectionBodyMulti": {
+    "description": "Body text on the double-tap screen: several actions can be on at once, all off means a double-tap does nothing, and a tap the band delivers late runs only actions that allow it"
+  },
+  "gesturesReplayTitle": "Also run for taps replayed from history",
+  "@gesturesReplayTitle": {
+    "description": "Switch title shown under the Mark a moment action: also act on a double-tap the band stored while the phone was away and delivered later"
+  },
+  "gesturesReplaySub": "A tap the band delivers late is still stamped with the minute and day it happened. Other actions never run for a late tap.",
+  "@gesturesReplaySub": {
+    "description": "Subtitle of the replay switch: what a late tap does for Mark a moment (stamped with when it happened) and what it does not do (other actions never run)"
   },
   "gesturesItDoesTitle": "It does",
   "@gesturesItDoesTitle": {

@@ -13,9 +13,11 @@
 // only Android has the Tasker broadcast, so on an iPhone those are simply not in
 // the list. When native answers with nothing at all, the phone actions are
 // absent AND SAY SO, rather than leaving a gap to guess at.
+//
+// Several actions can be on at once. There is no "do nothing" row: every action
+// off IS the off state, and the copy says so.
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../gestures/device_action.dart';
@@ -31,46 +33,53 @@ class BandGestures extends StatelessWidget {
   Widget build(BuildContext c) {
     // `gestureSettings` is a ChangeNotifier the dispatcher reads live, so the
     // screen listens to the same object rather than keeping its own copy —
-    // picking an action has to move the thing the band is about to consult.
+    // flipping a switch has to move the thing the band is about to consult.
     final g = c.read<AppState>().gestureSettings;
     return ListenableBuilder(
       listenable: g,
       builder: (c, _) => BandGesturesView(
-        // TODO(5A-G6): temporary single-select shim over the multi-action set;
-        // the view becomes a switch per action.
-        chosen: g.doubleTapActions.isEmpty
-            ? DeviceAction.none
-            : g.doubleTapActions.first,
+        chosen: g.doubleTapActions,
         supported: g.supported,
-        onPick: (a) => g.setDoubleTapActions({a}),
+        onToggle: g.toggleDoubleTapAction,
+        replay: g.replayActions,
+        onReplay: g.setReplayHistorical,
       ),
     );
   }
 }
 
 class BandGesturesView extends StatelessWidget {
-  final DeviceAction chosen;
+  /// The actions that are on. Empty is the off state.
+  final Set<DeviceAction> chosen;
 
-  /// What this phone can do. Always contains [DeviceAction.none].
+  /// What this phone can do. Contains [DeviceAction.none] but it is never drawn.
   final Set<DeviceAction> supported;
 
-  final ValueChanged<DeviceAction>? onPick;
+  final void Function(DeviceAction, bool)? onToggle;
+
+  /// Actions that also run for a tap the band delivered late. Only
+  /// [DeviceAction.markMoment] can be replayed safely; the row for it is the
+  /// only replay control drawn.
+  final Set<DeviceAction> replay;
+
+  final void Function(DeviceAction, bool)? onReplay;
 
   const BandGesturesView({
     super.key,
     required this.chosen,
     required this.supported,
-    this.onPick,
+    this.onToggle,
+    this.replay = const {},
+    this.onReplay,
   });
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    // Enum order, filtered to this phone: nothing first (it is the default and
-    // the way back out), then the in-app actions, then whatever the OS offered.
+    // Enum order, filtered to this phone: the in-app actions, then whatever the
+    // OS offered. `none` is not an action — it has no row.
     final offered = [
-      DeviceAction.none,
       ...DeviceAction.values.where((a) => a.isInApp && supported.contains(a)),
       ...DeviceAction.values.where((a) => a.isNative && supported.contains(a)),
     ];
@@ -92,21 +101,38 @@ class BandGesturesView extends StatelessWidget {
                   l?.gesturesSectionTitle ?? 'Tap the band twice',
                   Surface(
                     child: Text(
-                      l?.gesturesSectionBody ??
-                          'Works only while the app is connected and awake. If you tap while your '
-                          'phone is away, the band stores the tap and sends it later with an old '
-                          'timestamp. The app ignores that tap.',
+                      l?.gesturesSectionBodyMulti ??
+                          'Works only while the app is connected and awake. Turn on as many '
+                              'actions as you like; with every action off, a double-tap does '
+                              'nothing. If you tap while your phone is away, the band stores '
+                              'the tap and sends it later. A late tap runs only an action '
+                              'that says it can.',
                       style: F.body.copyWith(color: p.ink2, height: 1.4),
                     ),
                   ),
                 ),
                 settingsGroup(c, l?.gesturesItDoesTitle ?? 'It does', [
-                  for (final a in offered)
-                    _ActionRow(
-                      action: a,
-                      selected: a == chosen,
-                      onTap: onPick == null ? null : () => onPick!(a),
+                  for (final a in offered) ...[
+                    SwitchRow(
+                      a.localizedLabel(c),
+                      chosen.contains(a),
+                      onToggle == null ? null : (v) => onToggle!(a, v),
+                      sub: a.localizedBlurb(c),
                     ),
+                    // Directly under the one action that can be replayed
+                    // safely, and only while it is on.
+                    if (a.supportsHistoricalReplay && chosen.contains(a))
+                      SwitchRow(
+                        l?.gesturesReplayTitle ??
+                            'Also run for taps replayed from history',
+                        replay.contains(a),
+                        onReplay == null ? null : (v) => onReplay!(a, v),
+                        sub: l?.gesturesReplaySub ??
+                            'A tap the band delivers late is still stamped with the '
+                                'minute and day it happened. Other actions never run for '
+                                'a late tap.',
+                      ),
+                  ],
                 ]),
                 if (noPhoneActions) ...[
                   const SizedBox(height: S.x5),
@@ -116,8 +142,8 @@ class BandGesturesView extends StatelessWidget {
                       child: Text(
                         l?.gesturesNoPhoneActionsBody ??
                             'Ringing your phone and the flashlight are missing because the app could '
-                            'not ask the system what this device allows. Reopen the app to try '
-                            'again. The in-app actions above still work.',
+                                'not ask the system what this device allows. Reopen the app to try '
+                                'again. The in-app actions above still work.',
                         style: F.body.copyWith(color: p.ink2, height: 1.4),
                       ),
                     ),
@@ -126,48 +152,6 @@ class BandGesturesView extends StatelessWidget {
               ],
             ),
           ),
-        ]),
-      ),
-    );
-  }
-}
-
-/// One choice. Label, what it does, and a tick when it is the live mapping.
-class _ActionRow extends StatelessWidget {
-  final DeviceAction action;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  const _ActionRow({required this.action, required this.selected, this.onTap});
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    return Pressable(
-      onTap: onTap,
-      semanticLabel: '${action.localizedLabel(c)}. ${action.localizedBlurb(c)}'
-          '${selected ? (l?.settingsSelectedSuffix ?? ' Selected.') : ''}',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(children: [
-          // THE ROW RULE (see SetRow): exactly one flexible child, so every
-          // tick in the list lands on the same right edge. Two would split the
-          // width by ratio instead.
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(action.localizedLabel(c),
-                  style: F.body.copyWith(
-                      color: selected ? p.on(C.indigo) : p.ink,
-                      fontWeight: selected ? FontWeight.w600 : null)),
-              Text(action.localizedBlurb(c),
-                  style: F.over.copyWith(color: p.ink3)),
-            ]),
-          ),
-          const SizedBox(width: S.x2),
-          Icon(selected ? LucideIcons.check : LucideIcons.circle,
-              size: 17, color: selected ? p.on(C.indigo) : p.line),
         ]),
       ),
     );

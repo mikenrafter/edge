@@ -67,12 +67,11 @@ class GestureSettings extends ChangeNotifier {
   Future<void> bootstrap() async {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getInt(_kActions);
+    final legacy = DeviceActionX.fromId(prefs.getString(_kLegacyDoubleTap));
     var actions = stored != null
         ? actionsOfMask(stored)
         : {
-            if (DeviceActionX.fromId(prefs.getString(_kLegacyDoubleTap))
-                case final a? when a != DeviceAction.none)
-              a,
+            if (legacy != null && legacy != DeviceAction.none) legacy,
           };
     _replay.clear();
     for (final a in DeviceAction.values) {

@@ -7,9 +7,11 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/demo/demo_mode_banner.dart';
+import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
 import 'package:openstrap_edge/ui2/profile/band_notifications.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
+import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/screens/sleep_detail.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -48,6 +50,15 @@ Widget syncFixture(SyncPresentationState state) => Scaffold(
     child: SyncControl(state: state, onSync: () {}),
   ),
 );
+
+const _gesturesSupported = {
+  DeviceAction.none,
+  DeviceAction.markMoment,
+  DeviceAction.workoutToggle,
+  DeviceAction.logWater,
+  DeviceAction.ringPhone,
+  DeviceAction.torch,
+};
 
 void main() {
   setUpAll(loadFonts);
@@ -135,6 +146,24 @@ void main() {
     'relay_enabled': (
       3000,
       const BandNotificationsView(enabled: true, granted: true),
+    ),
+    // What an iPhone offers: every in-app action plus ring and flashlight.
+    'gestures_none_selected': (
+      2200,
+      const BandGesturesView(
+        chosen: {},
+        supported: _gesturesSupported,
+      ),
+    ),
+    'gestures_mark_moment_and_flashlight': (
+      2200,
+      BandGesturesView(
+        chosen: const {DeviceAction.markMoment, DeviceAction.torch},
+        supported: _gesturesSupported,
+        replay: const {DeviceAction.markMoment},
+        onToggle: (_, _) {},
+        onReplay: (_, _) {},
+      ),
     ),
     'demo_disclosure': (
       300,
