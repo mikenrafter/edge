@@ -21,6 +21,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('output', type=pathlib.Path)
     parser.add_argument('--native', action='store_true', help='also run Android JVM tests')
+    parser.add_argument('--direct', action='store_true', help='use an already installed pinned CI SDK')
     args = parser.parse_args()
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -56,7 +57,7 @@ def main():
     for name, command in commands:
         print(f"Capturing {name}", flush=True)
         start = time.monotonic()
-        full = ['nix', 'develop', '--command', 'edge-fhs', *command]
+        full = command if args.direct else ['nix', 'develop', '--command', 'edge-fhs', *command]
         logfile = output / f'{name}.log'
         with logfile.open('w') as log:
             try:

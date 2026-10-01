@@ -65,14 +65,19 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
-
       # --concurrency=1: the suite uses sqflite_common_ffi against real database
       # files, and parallel workers race on them.
       #
       # The golden capture (whoop_hist.jsonl) is a real band recording kept
       # beside the repo rather than committed to it, so the two derivation-replay
       # tests SKIP here and run locally.
-      - name: Test
-        run: flutter test --concurrency=1 --reporter=expanded
+      - name: Capture headless proof
+        run: python3 scripts/capture_proof.py build/proof/ci --direct
+
+      - name: Retain proof and failure logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-proof-${{ github.sha }}
+          path: build/proof/ci
+          if-no-files-found: error
