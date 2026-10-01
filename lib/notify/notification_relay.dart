@@ -32,6 +32,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// `category=call` covers system and VoIP calls; everything else is an app.
 const relayChannels = ['apps', 'alarms', 'calls'];
 
+/// What the band itself reports about being worn: `DeviceState.wristOn` as the
+/// policy's vocabulary. A band that has said nothing is unknown, never worn.
+String wearReportOf(bool? wristOn) => switch (wristOn) {
+  true => 'worn',
+  false => 'notWorn',
+  null => 'unknown',
+};
+
 String relayChannelOf(Object? category) => switch (category) {
   'alarm' => 'alarms',
   'call' => 'calls',
@@ -50,7 +58,6 @@ class ChannelConfig {
     this.allowDuringDnd = false,
     this.includeVibrate = true,
     this.includeSilent = false,
-    this.onlyWhileWorn = false,
     this.phoneFallback = false,
   });
   /// Apps relay once the feature is on; alarms and calls are opt-in.
@@ -58,7 +65,7 @@ class ChannelConfig {
       ChannelConfig(enabled: name == 'apps');
 
   final bool enabled, matchHaptics, allowDuringDnd, includeVibrate;
-  final bool includeSilent, onlyWhileWorn, phoneFallback;
+  final bool includeSilent, phoneFallback;
   final List<int> fallbackPattern;
   final int? quietStartMinute, quietEndMinute;
 
@@ -72,7 +79,6 @@ class ChannelConfig {
     bool? allowDuringDnd,
     bool? includeVibrate,
     bool? includeSilent,
-    bool? onlyWhileWorn,
     bool? phoneFallback,
   }) => ChannelConfig(
     enabled: enabled ?? this.enabled,
@@ -85,7 +91,6 @@ class ChannelConfig {
     allowDuringDnd: allowDuringDnd ?? this.allowDuringDnd,
     includeVibrate: includeVibrate ?? this.includeVibrate,
     includeSilent: includeSilent ?? this.includeSilent,
-    onlyWhileWorn: onlyWhileWorn ?? this.onlyWhileWorn,
     phoneFallback: phoneFallback ?? this.phoneFallback,
   );
 
@@ -96,7 +101,6 @@ class ChannelConfig {
     'allowDuringDnd': allowDuringDnd,
     'includeVibrate': includeVibrate,
     'includeSilent': includeSilent,
-    'onlyWhileWorn': onlyWhileWorn,
     'fallback': phoneFallback ? 'phoneIfBandUnavailable' : 'none',
   };
 
@@ -109,7 +113,6 @@ class ChannelConfig {
     'allowDuringDnd': allowDuringDnd,
     'includeVibrate': includeVibrate,
     'includeSilent': includeSilent,
-    'onlyWhileWorn': onlyWhileWorn,
     'phoneFallback': phoneFallback,
   };
 
@@ -124,7 +127,6 @@ class ChannelConfig {
         allowDuringDnd: j['allowDuringDnd'] as bool? ?? d.allowDuringDnd,
         includeVibrate: j['includeVibrate'] as bool? ?? d.includeVibrate,
         includeSilent: j['includeSilent'] as bool? ?? d.includeSilent,
-        onlyWhileWorn: j['onlyWhileWorn'] as bool? ?? d.onlyWhileWorn,
         phoneFallback: j['phoneFallback'] as bool? ?? d.phoneFallback,
       );
 }
@@ -146,7 +148,8 @@ class RelayResult {
 /// Policy keys read from [policy] (environment wins over the channel's own):
 /// enabled, dnd, respectDnd, allowDuringDnd, ringer (normal|vibrate|silent),
 /// includeVibrate, includeSilent, connected, fallback, worn (worn|notWorn|
-/// unknown), onlyWhileWorn, packages, staleAfterMs, minuteOfDay.
+/// unknown), onlyWhileWorn (one setting for the relay), packages,
+/// staleAfterMs, minuteOfDay.
 class RelayController {
   RelayController({
     required this.dispatcher,
@@ -188,7 +191,6 @@ class RelayController {
     bool? allowDuringDnd,
     bool? includeVibrate,
     bool? includeSilent,
-    bool? onlyWhileWorn,
     bool? phoneFallback,
   }) => putChannel(
     name,
@@ -202,7 +204,6 @@ class RelayController {
       allowDuringDnd: allowDuringDnd,
       includeVibrate: includeVibrate,
       includeSilent: includeSilent,
-      onlyWhileWorn: onlyWhileWorn,
       phoneFallback: phoneFallback,
     ),
   );
@@ -384,6 +385,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   final bool Function() isConnected;
 
   static const _kEnabled = 'notif_relay_enabled';
+  static const _kOnlyWorn = 'notif_relay_only_worn';
   static const _kPackages = 'notif_relay_packages';
   static const _kSeen = 'notif_relay_seen';
   static const _kChannels = 'notif_relay_channels';
@@ -402,6 +404,21 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
 
   bool _enabled = false;
   bool get enabled => _enabled;
+
+  /// One setting for the whole relay: hold every buzz unless the band reports
+  /// it is on the wrist. Off by default. The report comes from [worn].
+  bool _onlyWhileWorn = false;
+  bool get onlyWhileWorn => _onlyWhileWorn;
+
+  Future<void> setOnlyWhileWorn(bool on) async {
+    if (on == _onlyWhileWorn) return;
+    _onlyWhileWorn = on;
+    notifyListeners();
+    await (await SharedPreferences.getInstance()).setBool(_kOnlyWorn, on);
+  }
+
+  /// The band's wear report right now: worn, notWorn or unknown.
+  String get wearReport => worn?.call() ?? 'unknown';
 
   bool _granted = false;
   bool get permissionGranted => _granted;
@@ -471,6 +488,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
+  @visibleForTesting
+  Map<String, Object?> debugPolicy(Map<String, Object?> m) => _policy(m);
+
   Map<String, Object?> _policy(Map<String, Object?> m) => {
     'enabled': _enabled && _granted,
     // INTERRUPTION_FILTER_ALL = 1; unknown (0) is not treated as DND.
@@ -482,7 +502,8 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       _ => 'unknown',
     },
     'connected': isConnected(),
-    'worn': worn?.call() ?? 'unknown',
+    'onlyWhileWorn': _onlyWhileWorn,
+    'worn': wearReport,
     'packages': _packages.toList(),
   };
 
@@ -539,6 +560,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     if (!supported) return;
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool(_kEnabled) ?? false;
+    _onlyWhileWorn = prefs.getBool(_kOnlyWorn) ?? false;
     _packages
       ..clear()
       ..addAll(prefs.getStringList(_kPackages) ?? const []);

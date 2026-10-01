@@ -64,7 +64,7 @@ both alarms and timers; `category=call` applies equally to system and VoIP apps.
 `handleMetadata(map)` returns usedFallbackPattern. `listenerDisconnected()`,
 `listenerConnected(activeMetadataList)`, `stop(reason)`, `dispose()`, `listening`,
 and `busy` provide lifecycle behavior. Unknown wear state abstains when
-onlyWhileWorn is selected. DND suppresses phone fallback too. Key removal ends
+the relay-wide only-while-worn setting is on. DND suppresses phone fallback too. Key removal ends
 the dedupe lifetime. Distinct keys are not collapsed by a package cooldown.
 
 Widget tests use existing pure views. Groups must be visible when disabled;

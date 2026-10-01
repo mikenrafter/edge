@@ -359,6 +359,7 @@ class AppState extends ChangeNotifier {
     buzz: () => engine.buzz(),
     dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
+    worn: () => wearReportOf(engine.state.wristOn),
   );
 
   /// Fires a strap haptic at each water-reminder slot (best-effort, only when

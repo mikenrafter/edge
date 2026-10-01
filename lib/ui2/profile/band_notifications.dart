@@ -80,7 +80,8 @@ class _BandNotificationsState extends State<BandNotifications>
   Widget build(BuildContext c) {
     final relay = _relay;
     return AnimatedBuilder(
-      animation: relay,
+      // The wear line follows the band, which AppState announces.
+      animation: Listenable.merge([relay, context.read<AppState>()]),
       builder: (c, _) => BandNotificationsView(
         supported: relay.supported,
         enabled: relay.enabled,
@@ -92,6 +93,9 @@ class _BandNotificationsState extends State<BandNotifications>
         channels: relay.controller.channels,
         onChannel: relay.setChannel,
         onEnabled: relay.setEnabled,
+        onlyWhileWorn: relay.onlyWhileWorn,
+        wearReport: relay.wearReport,
+        onOnlyWhileWorn: relay.setOnlyWhileWorn,
         onGrant: relay.requestPermission,
         onApp: relay.setAppEnabled,
       ),
@@ -109,6 +113,9 @@ class BandNotificationsView extends StatelessWidget {
     this.apps = const [],
     this.channels = const {},
     this.onEnabled,
+    this.onlyWhileWorn = false,
+    this.wearReport = 'unknown',
+    this.onOnlyWhileWorn,
     this.onGrant,
     this.onApp,
     this.onChannel,
@@ -121,12 +128,28 @@ class BandNotificationsView extends StatelessWidget {
   final Map<String, ChannelConfig> channels;
   final void Function(String channel, ChannelConfig next)? onChannel;
   final ValueChanged<bool>? onEnabled;
+
+  /// One setting for the whole relay, and what the band says about being worn
+  /// right now (worn, notWorn or unknown).
+  final bool onlyWhileWorn;
+  final String wearReport;
+  final ValueChanged<bool>? onOnlyWhileWorn;
   final VoidCallback? onGrant;
   final void Function(String pkg, bool on)? onApp;
 
   /// How many apps are actually armed — the one number that says whether the
   /// feature will do anything at all.
   int get _armed => apps.where((a) => a.on).length;
+
+  String get _wearSub => switch ((onlyWhileWorn, wearReport)) {
+    (false, _) =>
+      'Off. The band buzzes whether or not it is on your wrist.',
+    (true, 'worn') => 'On. The band says it is on your wrist.',
+    (true, 'notWorn') =>
+      'On. The band says it is off your wrist, so nothing buzzes.',
+    _ => 'On. This band has not reported wear, so nothing buzzes. '
+        'Turn this off to buzz anyway.',
+  };
 
   List<Widget> _appRows(BuildContext c, AppLocalizations? l) => [
     SetRow(LucideIcons.listChecks, C.teal,
@@ -162,7 +185,7 @@ class BandNotificationsView extends StatelessWidget {
   ];
 
   /// The policy every channel carries once: Do Not Disturb, vibrate, silent,
-  /// worn, phone alert and quiet hours.
+  /// phone alert and quiet hours.
   List<Widget> _policyRows(BuildContext c, String name) {
     final cfg = channels[name] ?? ChannelConfig.forChannel(name);
     void put(ChannelConfig next) => onChannel?.call(name, next);
@@ -197,9 +220,6 @@ class BandNotificationsView extends StatelessWidget {
           (v) => put(cfg.copyWith(includeVibrate: v))),
       SwitchRow('Buzz in silent mode', cfg.includeSilent,
           (v) => put(cfg.copyWith(includeSilent: v))),
-      SwitchRow('Only while worn', cfg.onlyWhileWorn,
-          (v) => put(cfg.copyWith(onlyWhileWorn: v)),
-          sub: 'If wear cannot be confirmed, nothing buzzes.'),
       SwitchRow('Phone alert if the band is away', cfg.phoneFallback,
           (v) => put(cfg.copyWith(phoneFallback: v)),
           sub: 'A generic notice on this phone when the band is not '
@@ -275,6 +295,12 @@ class BandNotificationsView extends StatelessWidget {
                             : (l?.stateOff ?? 'Off'),
                         chevron: false,
                         onTap: () => onEnabled?.call(!enabled)),
+                  ]),
+                  // One setting for the whole relay, not one per channel.
+                  settingsGroup(c, 'Wear', [
+                    SwitchRow('Only buzz while worn', onlyWhileWorn,
+                        onOnlyWhileWorn,
+                        sub: _wearSub),
                   ]),
                   // Fixed position: nothing above this card changes height when
                   // the relay is switched on, so it never jumps under a finger.
