@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'ai/briefing.dart' show BriefingPeriod;
 import 'coach/coach_config.dart';
+import 'demo/demo_mode_banner.dart';
 import 'l10n/app_localizations.dart';
 import 'notify/notification_service.dart';
 import 'notify/tap_router.dart';
@@ -240,10 +241,23 @@ class _Gate extends StatelessWidget {
               onDone: () => OnboardingBypass.mark(OnboardingBypass.kProfile)),
           AppRoute.shell => const _Shell(),
         };
+        // Demo mode's persistent reminder — pinned below EVERY route this
+        // switch can produce (onboarding steps included), so there is no
+        // screen where it is possible to forget the data on it is fake. Read
+        // directly off Prefs rather than AppState: nothing about demo mode is
+        // a property of a paired device, and OnboardingBypass.revision (which
+        // this ValueListenableBuilder already listens to) is bumped on both
+        // entering and exiting it, so this re-evaluates at the right times.
+        final withBanner = Prefs.getBool(Prefs.demoModeEnabled, false)
+            ? Column(children: [
+                Expanded(child: resolved),
+                const DemoModeBanner(),
+              ])
+            : resolved;
         // Cold-start splash: covers the whole loading phase and cross-fades out
         // the instant AppState finishes initializing, even mid-play. Shown once
         // per launch; BootSplash latches itself off after.
-        return BootSplash(ready: route != AppRoute.loading, child: resolved);
+        return BootSplash(ready: route != AppRoute.loading, child: withBanner);
       },
     );
   }

@@ -41,9 +41,10 @@ import '../../ble/band_status_l10n.dart' show localizedBandStatus;
 import '../../ble/ble_state.dart'
     show BleUnavailableException, bandStatusFor, classifyBleBlocker;
 import '../../ble/hrs_link.dart';
+import '../../demo/demo_data_generator.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
-import '../onboarding/pairing.dart' show PairingScreen;
+import '../onboarding/pairing.dart' show OnboardingBypass, PairingScreen;
 import '../ui2.dart';
 import '../profile/devices.dart' show kPairableSensors, sensorIcon;
 import '../profile/pair_sensor.dart' show PairSensorScreen;
@@ -80,6 +81,11 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
   /// mid-pair, so the rest of the screen can stop accepting taps rather
   /// than starting a second pairing attempt underneath the first.
   String? _busy;
+
+  /// Set while [DemoDataGenerator.generate] is running — the picker's other
+  /// actions stay tappable (this isn't a BLE radio op, nothing to race), but
+  /// the demo button itself shows progress and won't fire twice.
+  bool _demoBusy = false;
 
   static List<BandEntry> get _notifyEntries =>
       kBandRegistry.where((e) => !e.isFramed).toList(growable: false);
@@ -221,6 +227,41 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
     // `RePair`'s own post-frame pop) reacts to that on its own.
   }
 
+  /// Skip pairing entirely into a synthetic ~2-month history instead of an
+  /// empty app. Only offered at true first-run onboarding (same gate as
+  /// [widget.onSkip]) — see [DemoDataGenerator]'s header for why this writes
+  /// through the same seams a real derived day / manual workout would, and
+  /// `AppState._persistPaired` for where it gets purged the moment a real
+  /// band is actually paired.
+  Future<void> _startDemoMode() async {
+    // Captured before any `await` — never re-read `context` after one (this
+    // file's own AGENTS.md-tracked bug pattern 4.5).
+    final app = context.read<AppState>();
+    setState(() {
+      _demoBusy = true;
+      _problem = null;
+    });
+    try {
+      await DemoDataGenerator.generate(app);
+      if (!mounted) return;
+      OnboardingBypass.mark(OnboardingBypass.kPairing);
+      OnboardingBypass.mark(OnboardingBypass.kProfile);
+    } catch (e) {
+      // Whatever partial rows a failed generate() left behind (it writes
+      // day-by-day, not in one transaction) are still tagged 'demo' — clean
+      // them up so a retry starts from nothing rather than layering on top,
+      // and so they can't outlive a user who gives up and pairs for real
+      // without knowing this failed silently in the background.
+      await DemoDataGenerator.purge(app: app);
+      // No l10n key: Demo Mode is new and English-only until it earns one,
+      // same as every other untranslated fallback in this file.
+      if (!mounted) return;
+      setState(() => _problem = 'Could not set up demo data: $e');
+    } finally {
+      if (mounted) setState(() => _demoBusy = false);
+    }
+  }
+
   bool _matches(String label, String sub) {
     if (_q.isEmpty) return true;
     final q = _q.toLowerCase();
@@ -257,6 +298,11 @@ class _DevicePickerScreenState extends State<DevicePickerScreen> {
       onPickNearby: _pickNearby,
       onOpenEntry: _openEntry,
       onSkip: widget.onSkip,
+      // Same gate as onSkip: only offered at true first-run onboarding, never
+      // from a re-pair or add-a-sensor push (there is a real paired band or a
+      // real history to protect in both of those).
+      onDemoMode: widget.onSkip != null ? _startDemoMode : null,
+      demoBusy: _demoBusy,
     );
   }
 
@@ -378,6 +424,12 @@ class DevicePickerView extends StatelessWidget {
   final void Function(BandEntry)? onOpenEntry;
   final VoidCallback? onSkip;
 
+  /// Non-null only alongside [onSkip] (true first-run onboarding). Backfills
+  /// a synthetic ~2-month history instead of walking past pairing to an
+  /// empty app.
+  final VoidCallback? onDemoMode;
+  final bool demoBusy;
+
   const DevicePickerView({
     super.key,
     required this.query,
@@ -393,6 +445,8 @@ class DevicePickerView extends StatelessWidget {
     this.onPickNearby,
     this.onOpenEntry,
     this.onSkip,
+    this.onDemoMode,
+    this.demoBusy = false,
   });
 
   @override
@@ -480,8 +534,24 @@ class DevicePickerView extends StatelessWidget {
                 ),
                 if (onSkip != null) ...[
                   const SizedBox(height: S.x5),
-                  BigButton(l?.pairingSkipForNow ?? 'Skip for now',
-                      color: C.blue, soft: true, onTap: onSkip),
+                  Row(children: [
+                    Expanded(
+                      child: BigButton(l?.pairingSkipForNow ?? 'Skip for now',
+                          color: C.blue, soft: true, onTap: onSkip),
+                    ),
+                    if (onDemoMode != null) ...[
+                      const SizedBox(width: S.x3),
+                      Expanded(
+                        child: BigButton(
+                          demoBusy ? 'Setting up…' : 'Try demo mode',
+                          icon: demoBusy ? null : LucideIcons.sparkles,
+                          color: C.orange,
+                          soft: true,
+                          onTap: demoBusy ? null : onDemoMode,
+                        ),
+                      ),
+                    ],
+                  ]),
                   const SizedBox(height: S.x2),
                   Text(
                     l?.pairingSkipNote ??
@@ -489,6 +559,19 @@ class DevicePickerView extends StatelessWidget {
                             'one is paired.',
                     style: F.cap.copyWith(color: p.ink3),
                   ),
+                  if (onDemoMode != null) ...[
+                    const SizedBox(height: S.x1),
+                    Text(
+                      // No l10n key: Demo Mode is new and English-only until
+                      // it earns one, same as every other untranslated
+                      // fallback in this file.
+                      'Demo mode fills the app with about two months of made-up '
+                          'data, including one fake run near you, so you can see '
+                          'how it all looks. Nothing here is real, and it goes '
+                          'away the moment you pair an actual device.',
+                      style: F.cap.copyWith(color: p.ink3),
+                    ),
+                  ],
                 ],
               ],
             ),

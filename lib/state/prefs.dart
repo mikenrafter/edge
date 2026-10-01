@@ -107,4 +107,10 @@ class Prefs {
   /// reasonable "stay in this effort band" target with no session history to
   /// personalise it from.
   static const String zoneAlertTargetZone = 'workout.zone_alert_target_zone';
+
+  /// Demo Mode: the app is showing a synthetic ~2-month backfill instead of a
+  /// paired band's real data. Checked by `_Gate` (persistent banner) and by
+  /// `AppState._persistPaired` (purge before a real pairing ever touches the
+  /// database) — see `lib/demo/demo_data_generator.dart`.
+  static const String demoModeEnabled = 'demo.mode_enabled';
 }

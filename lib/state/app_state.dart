@@ -38,6 +38,7 @@ import '../ble/ble_engine.dart';
 import '../ble/hrs_link.dart';
 import '../ble/live_cadence.dart';
 import '../ble/polar_pmd_link.dart';
+import '../demo/demo_data_generator.dart';
 import '../ble/live_step_runs.dart';
 import '../ble/ble_state.dart'
     show AlarmConfirmation, AlarmEffect, LiveStreamOwners, SyncActivityWindow;
@@ -643,12 +644,21 @@ class AppState extends ChangeNotifier {
   }
 
   /// Toggle continuous export. Enabling requests permission + does a first sync.
+  ///
+  /// The permission request and first sync are skipped while demo mode is
+  /// active: `exportAll()`/`sessionsInRange()` carry no source filter, so a
+  /// sync here would write every `source: 'demo'` day and workout straight
+  /// into the user's REAL Apple Health / Health Connect store — a mutation
+  /// outside this app's own database that `DemoDataGenerator.purge()` could
+  /// never undo. The preference still persists, so real data syncs normally
+  /// the moment there is any (pairing purges demo mode before it can produce
+  /// real days for a since-enabled toggle to pick up).
   Future<void> setHealthSync(bool on) async {
     healthSyncEnabled = on;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kHealthSync, on);
     notifyListeners();
-    if (on) {
+    if (on && !Prefs.getBool(Prefs.demoModeEnabled, false)) {
       await requestHealth();
       if (healthState == HealthLinkState.ready) unawaited(healthSyncNow());
     }
@@ -1031,7 +1041,16 @@ class AppState extends ChangeNotifier {
   /// Take one now, whatever the schedule says. Returns what happened so the
   /// caller can say so — a backup that silently did not happen is the failure
   /// this feature exists to prevent.
+  ///
+  /// Skipped outright while demo mode is active: a backup is a snapshot of
+  /// the WHOLE local database, so one taken now would carry every
+  /// `source: 'demo'` row into a file `DemoDataGenerator.purge()` never
+  /// touches — restoring it later, after a real pairing purged the live DB,
+  /// would bring the synthetic history straight back.
   Future<BackupOutcome> runBackupNow() async {
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) {
+      return const BackupOutcome(skipped: true);
+    }
     final outcome = await runBackup();
     if (outcome.succeeded) _markBackupRun(DateTime.now());
     return outcome;
@@ -1045,6 +1064,8 @@ class AppState extends ChangeNotifier {
   /// finishing, and start a duplicate export.
   Future<void> runBackupIfDue() async {
     if (backupCadence == BackupCadence.off) return;
+    // Same reasoning as [runBackupNow] — see its doc comment.
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
     // Guarded: this is fired with `unawaited` from the resume hook, and
     // `markRun` notifies listeners — which throws if the state was disposed
     // during a long export, surfacing as an unhandled async error.
@@ -4370,6 +4391,18 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _persistPaired(String remoteId, String? serial) async {
+    // A real band is about to become the source of truth for this install.
+    // Demo mode's synthetic ~2-month backfill must be gone BEFORE anything
+    // below touches the database — `openSession` at the end of this method
+    // starts BLE history sync, which derives real days into the very tables
+    // demo mode wrote to. Checked here, in the one method both [pairWith] and
+    // [pairViaAccessorySetup] funnel through, rather than in each of them —
+    // one guarantee, one place, instead of trusting every future call site to
+    // remember it.
+    if (Prefs.getBool(Prefs.demoModeEnabled, false)) {
+      Prefs.setBool(Prefs.demoModeEnabled, false);
+      await DemoDataGenerator.purge(app: this);
+    }
     // Which band this is, if the link has already said. Passed HERE and not at
     // the two call sites (`pairWith`, `pairViaAccessorySetup`) so neither can
     // forget it — and COALESCE'd inside `upsertDevice`, so a null leaves
