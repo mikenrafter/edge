@@ -158,7 +158,7 @@ class ChannelConfig {
         appSequences: {
           if (j['appSequences'] case final Map m)
             for (final e in m.entries)
-              if (_sequenceOf(e.value) case final seq?) '${e.key}': seq,
+              '${e.key}': ?_sequenceOf(e.value),
         },
       );
 

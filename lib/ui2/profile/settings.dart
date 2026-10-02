@@ -26,6 +26,7 @@ import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../platform/tasker_bridge.dart';
 import '../../notify/alert_rule.dart';
+import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_prefs.dart';
 import '../../notify/notification_service.dart';
 import '../../platform/app_icon.dart';
@@ -37,6 +38,7 @@ import '../../theme/theme_controller.dart';
 import '../ui2.dart';
 import 'alarm.dart';
 import 'band_notifications.dart';
+import 'buzz_pattern.dart';
 import 'data.dart';
 import 'gallery.dart';
 import 'gestures.dart';
@@ -904,6 +906,21 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       relaySupported: _relaySupported,
       onChanged: _apply,
       onRequestPermission: _requestPermission,
+      onBuzzPattern: _pickPattern,
+    );
+  }
+
+  void _pickPattern(String id) {
+    final p = _prefs;
+    if (p == null) return;
+    final app = context.read<AppState>();
+    showBuzzPatternSheet(
+      context,
+      initial: p.buzzSequenceFor(id),
+      bandConnected: app.engine.isConnected,
+      onPlay: app.previewBuzzSequence,
+      onSave: (s) => _apply(
+          p.withAlertRule({...p.alertRule(id).toJson(), 'buzzSequence': s.toJson()})),
     );
   }
 }
@@ -912,12 +929,17 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 /// in order to run. A destination this alert cannot honour is shown disabled.
 class _AlertRow extends StatelessWidget {
   const _AlertRow(this.icon, this.color, this.title, this.sub, this.rule,
-      this.onMask);
+      this.onMask, {this.sequence, this.onBuzzPattern});
   final IconData icon;
   final Color color;
   final String title, sub;
   final AlertRule rule;
   final ValueChanged<int> onMask;
+
+  /// What this alert buzzes the band with, and the opener for the sheet that
+  /// changes it. Null [sequence] means the alert cannot reach the band.
+  final BuzzSequence? sequence;
+  final VoidCallback? onBuzzPattern;
 
   static const _options = [
     (0, 'Off'),
@@ -970,6 +992,15 @@ class _AlertRow extends StatelessWidget {
           child: Text(AlertCapabilityRegistry.summary(rule),
               style: F.over.copyWith(color: p.ink3)),
         ),
+      // Present for every alert that can reach the band, usable only while
+      // Band is one of its destinations.
+      if (sequence != null)
+        BuzzPatternRow(
+          key: ValueKey('buzz-pattern:${rule.id}'),
+          sequence: sequence!,
+          enabled: mask & AlertRule.band != 0 && onBuzzPattern != null,
+          onTap: onBuzzPattern,
+        ),
       const SizedBox(height: S.x3),
     ]);
   }
@@ -986,6 +1017,9 @@ class NotificationSettingsView extends StatelessWidget {
   final Future<void> Function(NotificationPrefs next)? onChanged;
   final VoidCallback? onRequestPermission;
 
+  /// Opens the buzz-pattern sheet for one alert (by rule id).
+  final void Function(String ruleId)? onBuzzPattern;
+
   const NotificationSettingsView({
     super.key,
     this.prefs = const NotificationPrefs(),
@@ -994,6 +1028,7 @@ class NotificationSettingsView extends StatelessWidget {
     this.relaySupported = false,
     this.onChanged,
     this.onRequestPermission,
+    this.onBuzzPattern,
   });
 
   @override
@@ -1007,7 +1042,13 @@ class NotificationSettingsView extends StatelessWidget {
       final rule = prefs.alertRule(id);
       return _AlertRow(icon, color, title, sub, rule,
           (mask) => set(prefs.withAlertRule(
-              {...rule.toJson(), 'enabled': mask != 0, 'destinations': mask})));
+              {...rule.toJson(), 'enabled': mask != 0, 'destinations': mask})),
+          sequence: AlertCapabilityRegistry.destinationSupportReason(
+                      rule, 'band') ==
+                  null
+              ? prefs.buzzSequenceFor(id)
+              : null,
+          onBuzzPattern: () => onBuzzPattern?.call(id));
     }
 
     return Scaffold(
@@ -1072,6 +1113,7 @@ class NotificationSettingsView extends StatelessWidget {
                   ]),
                   SettingsAccordion(
                       'Activity',
+                      initiallyExpanded: true,
                       children: [
                         // The auto-detector's off switch: it stops the prompt,
                         // not the detection itself.
@@ -1096,6 +1138,7 @@ class NotificationSettingsView extends StatelessWidget {
                       ]),
                   SettingsAccordion(
                       'Reminders',
+                      initiallyExpanded: true,
                       children: [
                         row('reminders', LucideIcons.calendarDays, C.purple,
                             l?.settingsWeeklyLookbackRowTitle ??

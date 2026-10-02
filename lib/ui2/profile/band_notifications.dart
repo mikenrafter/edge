@@ -27,9 +27,11 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
+import 'buzz_pattern.dart';
 import 'profile.dart' show SetRow, SettingsAccordion, SwitchRow, settingsGroup;
 import 'settings.dart' show NotificationSettingsView;
 
@@ -98,7 +100,39 @@ class _BandNotificationsState extends State<BandNotifications>
         onOnlyWhileWorn: relay.setOnlyWhileWorn,
         onGrant: relay.requestPermission,
         onApp: relay.setAppEnabled,
+        onChannelBuzzPattern: (name) => _pick(
+          relay.controller.channels[name] ?? ChannelConfig.forChannel(name),
+          (cfg) => relay.setChannel(name, cfg),
+        ),
+        onAppBuzzPattern: (pkg) {
+          final cfg = relay.controller.channels['apps'] ??
+              ChannelConfig.forChannel('apps');
+          _pick(
+            cfg,
+            (cfg) => relay.setChannel('apps', cfg),
+            pkg: pkg,
+          );
+        },
       ),
+    );
+  }
+
+  /// Opens the sheet for a channel's own rhythm, or for [pkg]'s when given, and
+  /// writes the take back into [cfg].
+  void _pick(
+    ChannelConfig cfg,
+    void Function(ChannelConfig next) put, {
+    String? pkg,
+  }) {
+    final app = context.read<AppState>();
+    showBuzzPatternSheet(
+      context,
+      initial: pkg == null ? cfg.effectiveSequence : cfg.sequenceForApp(pkg),
+      bandConnected: app.engine.isConnected,
+      onPlay: app.previewBuzzSequence,
+      onSave: (s) => put(pkg == null
+          ? cfg.copyWith(buzzSequence: s)
+          : cfg.copyWith(appSequences: {...cfg.appSequences, pkg: s})),
     );
   }
 }
@@ -119,6 +153,8 @@ class BandNotificationsView extends StatelessWidget {
     this.onGrant,
     this.onApp,
     this.onChannel,
+    this.onAppBuzzPattern,
+    this.onChannelBuzzPattern,
   });
 
   final bool supported, enabled, granted;
@@ -136,6 +172,10 @@ class BandNotificationsView extends StatelessWidget {
   final ValueChanged<bool>? onOnlyWhileWorn;
   final VoidCallback? onGrant;
   final void Function(String pkg, bool on)? onApp;
+
+  /// Open the buzz-pattern sheet for one app / for one channel (by name).
+  final void Function(String pkg)? onAppBuzzPattern;
+  final void Function(String channel)? onChannelBuzzPattern;
 
   /// How many apps are actually armed — the one number that says whether the
   /// feature will do anything at all.
@@ -174,7 +214,12 @@ class BandNotificationsView extends StatelessWidget {
         ]),
       )
     else
-      for (final a in apps) _AppRow(a, onChanged: onApp),
+      for (final a in apps)
+        _AppRow(a,
+            onChanged: onApp,
+            sequence: (channels['apps'] ?? ChannelConfig.forChannel('apps'))
+                .sequenceForApp(a.package),
+            onBuzzPattern: onAppBuzzPattern),
   ];
 
   /// Fallback rhythms for alarm matching, tapped through in place.
@@ -209,6 +254,14 @@ class BandNotificationsView extends StatelessWidget {
                   fallbackPattern:
                       _rhythms[(rhythm + 1) % _rhythms.length].$2))),
       ],
+      // Not offered while the channel mirrors Android's own vibration, which
+      // is what the buzz follows then.
+      BuzzPatternRow(
+        key: ValueKey('buzz-pattern:channel:$name'),
+        sequence: cfg.effectiveSequence,
+        enabled: !cfg.matchHaptics && onChannelBuzzPattern != null,
+        onTap: () => onChannelBuzzPattern?.call(name),
+      ),
       SwitchRow('Buzz during Do Not Disturb', cfg.allowDuringDnd,
           (v) => put(cfg.copyWith(allowDuringDnd: v)),
           sub: name == 'calls'
@@ -354,9 +407,11 @@ class BandNotificationsView extends StatelessWidget {
 /// caption under it, derived from the package name because the app's real
 /// label is behind a permission this feature does not ask for.
 class _AppRow extends StatelessWidget {
-  const _AppRow(this.app, {this.onChanged});
+  const _AppRow(this.app, {this.onChanged, this.sequence, this.onBuzzPattern});
   final RelayApp app;
   final void Function(String pkg, bool on)? onChanged;
+  final BuzzSequence? sequence;
+  final void Function(String pkg)? onBuzzPattern;
 
   @override
   Widget build(BuildContext c) {
@@ -412,6 +467,23 @@ class _AppRow extends StatelessWidget {
               style: F.cap.copyWith(
                   color: app.on ? p.on(C.green) : p.ink3,
                   fontWeight: FontWeight.w600)),
+          // The app's own rhythm. Present for every app, usable only for one
+          // that is switched on.
+          if (sequence != null)
+            Pressable(
+              key: ValueKey('buzz-pattern:app:${app.package}'),
+              onTap: app.on && onBuzzPattern != null
+                  ? () => onBuzzPattern!(app.package)
+                  : null,
+              semanticLabel: 'Buzz pattern, ${buzzSummary(sequence!)}',
+              child: Opacity(
+                opacity: app.on && onBuzzPattern != null ? 1 : .4,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: S.x3),
+                  child: Icon(LucideIcons.waves, size: 20, color: p.on(C.purple)),
+                ),
+              ),
+            ),
         ]),
       ),
     );
