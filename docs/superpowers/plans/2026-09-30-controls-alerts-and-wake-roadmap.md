@@ -535,8 +535,102 @@ Tests: switch disabled on non-MG; live tap with switch on starts exactly one
 capture; late tap starts none; switch off starts none; log entries carry both
 timestamps.
 
+### 8J — Alarm screen as sections
+
+Alarm & wake becomes `SettingsAccordion` sections, expanded by default:
+Alarm (time, days, on/off), Wake (Natural Wake, Gradual Wake — phase 6),
+Haptics (pattern, strength, buzz sequence from 8D), and Status (armed state,
+last confirmation, band capability). Each section's detail lines are always
+visible: a collapsed section still shows a one-line summary under its header,
+and an expanded one shows every row, disabled where not applicable (8K).
+
+### 8K — Disable and dim, never reveal
+
+Anywhere in the app a setting row appears only when another setting is on
+(hidden → visible), it is instead **always shown, disabled and dimmed** while
+it does not apply, with a short reason when the reason is not obvious. This
+covers alarms and notifications and every other screen. Platform-irrelevant
+rows (iOS-only on Android) are still omitted, per phase 3.
+
+Tests: a source guard that flags `if (<setting>) <Row>(` style conditional
+rows in settings views (allow-list documented for platform gates and
+permission cards), plus widget tests on Alarm, Notifications, Band
+notifications and Gestures that a dependent row is present and disabled when
+its parent is off.
+
+### 8I note — what the extended gestures say
+
+The Device lab and the Gestures screen both state plainly that ECG on double
+tap needs a WHOOP MG, that WHOOP 4.0 has no ECG sensor, and that one-to-four
+tap counts are not available until measured (5B).
+
+### 8L — Draft 3–5 tap gestures (ECG contact counting, WHOOP MG only)
+
+Firmware gives a double tap and nothing else, so taps 3–5 are counted as
+**touches on the ECG sensor** after the double tap. Tap 1 is not offered.
+This is a draft behind the Device lab and the Gestures screen, MG-only; on
+WHOOP 4.0 the rows are shown disabled with "This band has no ECG sensor".
+
+Terms (all times measured on ECG sample time, not phone receipt time):
+
+- **contact**: ECG lead-on / nonzero signal. **Engage** = 200 ms of
+  continuous contact. **Release** = 200 ms of continuous no-contact; contact
+  that returns inside those 200 ms is the same touch.
+- **max** = the highest tap count the user has mapped (2–5).
+
+Sequence after a live firmware double tap (count = 2):
+
+1. Start the ECG stream at once, and acknowledge with two buzzes.
+2. If max = 2: done, run the 2-tap actions. No wait.
+3. Otherwise open a 300 ms window from the end of the acknowledgement.
+   No contact starts in it → confirm with one buzz, run 2-tap actions.
+4. Contact starts in the window and becomes an engage → count = 3, one buzz.
+   If count = max → run at once, no further wait.
+5. The touch may last any time. On release, the user has a further 200 ms
+   (200–400 ms after contact ended) to start the next touch. An engage that
+   started in that window → count + 1, one buzz; at max, run at once.
+6. No touch starts by 400 ms after contact ended → confirm with one buzz and
+   run the actions for the current count.
+7. Stop the ECG stream when the gesture ends. Nothing is persisted
+   (invariant 14). A link drop or stream stall abandons the gesture with no
+   action.
+
+Examples (max = 5):
+`2`: taptap · buzz buzz · 300 ms · buzz.
+`3`: taptap · buzz buzz · touch < 300 ms · buzz · release · > 400 ms · buzz.
+`4`: … release · touch 200–400 ms · buzz · release · > 400 ms · buzz.
+`5`: … release · touch 200–400 ms · buzz (max, runs at once).
+
+Adjustable windows (Device lab and Gestures screen, stored with gesture
+settings). Each moves from its default −100 ms to +800 ms in 50 ms steps:
+
+| setting | default | range | meaning |
+|---|---|---|---|
+| start threshold | 300 ms | 200–1100 | window after the ack for the first touch |
+| gap threshold | 200 ms | 100–1000 | contact/no-contact must hold this long to count as engage or release |
+| confirmation threshold | 200 ms | 100–1000 | extra window after a release for the next touch; no touch by gap + confirmation → final |
+
+The tests above use the defaults; add tests that a changed threshold moves
+each boundary and that out-of-range or off-step values are rejected.
+
+Device lab: while its own **"Toggle ECG recording on double tap"** switch is
+on, every normal gesture action is suspended; the lab runs this counter and
+logs each step (contact edges, window outcomes, buzz send times, final
+count) so the user can judge whether it works. Gestures screen: rows for
+2, 3, 4 and 5 taps, the 3–5 rows marked draft.
+
+Code: a pure `EcgTapCounter` state machine (inputs: ack done, contact
+samples with sample time, clock ticks; outputs: buzz requests, final count,
+abandon) in `lib/gestures/`, so the timing is testable without a band.
+Buzzes go through `AlertDispatcher` as live-only band alerts.
+
+Tests: each example above; max = 2/3/4/5; a contact blip < 200 ms neither
+engages nor releases; re-engage at 199 ms vs 201 ms vs 401 ms after release;
+link drop mid-gesture → no action; late (non-live) double tap never starts
+the counter; lab switch on suspends normal actions.
+
 ### Order
 
-8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8A, 8B, 8I
-(UI). Then resume 5B → 6 → 7 where the remaining work does not need hardware
+8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,
+8B, 8I, 8L (UI). Then resume 5B → 6 → 7 where the remaining work does not need hardware
 or the analytics repo; record what was blocked.
