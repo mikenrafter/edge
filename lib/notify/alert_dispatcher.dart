@@ -42,6 +42,7 @@ class AlertDispatcher {
     required this.phone,
     required this.band,
     this.bandSequence,
+    this.bandSequenceDelivery,
     required this.isConnected,
     this.supportedTargets = const {'phone', 'band'},
     this.supportedTargetsAtDelivery,
@@ -58,6 +59,10 @@ class AlertDispatcher {
   /// Shared saved-pattern delivery covers notification emitters and reminder
   /// timers that use the dispatcher without choosing a transport themselves.
   final Future<bool> Function(BuzzSequence)? bandSequence;
+
+  /// The tri-state form of [bandSequence] (preferred when both are given): the
+  /// dispatcher keeps its claim whenever the band may have buzzed.
+  final Future<BuzzDelivery> Function(BuzzSequence)? bandSequenceDelivery;
   final bool Function() isConnected;
   final Set<String> supportedTargets;
   final Set<String> Function()? supportedTargetsAtDelivery;
@@ -76,6 +81,11 @@ class AlertDispatcher {
     required bool historical,
     Future<bool> Function()? phoneTransport,
     Future<bool> Function()? bandTransport,
+    // A band transport that can say what it did to the band (see
+    // [BuzzDelivery]). Preferred over [bandTransport]. The claim is released only
+    // for [BuzzDelivery.rejected]; after a partial or unknown delivery it is
+    // KEPT (outcome reason 'deliveryUnconfirmed'), so a retry cannot buzz twice.
+    Future<BuzzDelivery> Function()? bandDelivery,
     Set<String>? transportTargets,
     bool Function(String target)? targetAllowed,
     // A band transport that legitimately runs longer than [transportTimeout]
@@ -141,12 +151,12 @@ class AlertDispatcher {
         if (!claimed) continue;
         final saved = typed.buzzSequence;
         final sequencePlayer = bandSequence;
+        final sequenceDelivery = bandSequenceDelivery;
         final implicitSequence = target == 'band' &&
-            bandTransport == null && saved != null && sequencePlayer != null;
-        final transport = target == 'phone'
-            ? phoneTransport ?? phone
-            : bandTransport ??
-                (implicitSequence ? () => sequencePlayer(saved) : band);
+            bandTransport == null &&
+            bandDelivery == null &&
+            saved != null &&
+            (sequencePlayer != null || sequenceDelivery != null);
         // Do not release a timed-out ownership: the platform write may still
         // complete. A late success must never race a fresh retry into two buzzes.
         var limit = transportTimeout;
@@ -156,14 +166,49 @@ class AlertDispatcher {
             limit = saved.transportTimeout;
           }
         }
-        success = await transport().timeout(
-          limit,
-          onTimeout: () {
-            claimed = false;
-            reason = 'deliveryUnconfirmed';
-            return false;
-          },
-        );
+        final Future<BuzzDelivery> Function()? delivery = target != 'band'
+            ? null
+            : bandDelivery ??
+                (implicitSequence && sequenceDelivery != null
+                    ? () => sequenceDelivery(saved)
+                    : null);
+        if (delivery != null) {
+          final d = await delivery().timeout(
+            limit,
+            onTimeout: () {
+              claimed = false;
+              reason = 'deliveryUnconfirmed';
+              return BuzzDelivery.unknown;
+            },
+          );
+          switch (d) {
+            case BuzzDelivery.complete:
+              success = true;
+            case BuzzDelivery.rejected:
+              reason ??= 'deliveryFailed';
+            case BuzzDelivery.partial:
+            case BuzzDelivery.unknown:
+              // The band may have buzzed (or will, when a queued write lands):
+              // the claim stays consumed. A lost alert, never a second buzz.
+              claimed = false;
+              reason = 'deliveryUnconfirmed';
+          }
+        } else {
+          final transport = target == 'phone'
+              ? phoneTransport ?? phone
+              : bandTransport ??
+                  (implicitSequence && sequencePlayer != null
+                      ? () => sequencePlayer(saved)
+                      : band);
+          success = await transport().timeout(
+            limit,
+            onTimeout: () {
+              claimed = false;
+              reason = 'deliveryUnconfirmed';
+              return false;
+            },
+          );
+        }
         if (success) {
           delivered.add(target);
         } else {

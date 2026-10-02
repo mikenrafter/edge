@@ -8,15 +8,44 @@
 // is mapped to finishes at once. Only live taps count: a tap that reached the
 // phone late (drained from the band's flash) never opens or extends a window.
 //
-// Pure timing: no BLE, no storage, no wall-clock reads beyond `clock.now()` for
-// the trace. The buzz is injected (AppState routes it through AlertDispatcher).
-// Every exit goes through [_finish], which resets every flag in `finally`.
+// GROUPING IS BY THE BAND'S TIME (review finding I). Receipt time only says when
+// the phone heard about a tap: a link that was down delivers several taps in one
+// burst, and grouping on the receipt clock would call two taps 3 s apart a triple
+// because they arrived together. While the strap clock is believable
+// (StrapEvent.plausible) an event joins the open group only if its effective
+// (band) time is within the window of a member's (inclusive): adjacent taps
+// chain, so a long run of quick taps is one group. A LATER tap further than that
+// ends the group and starts the next ([RepeatOffer.newGroup]); an EARLIER one is
+// a member if it falls within the window of one (bounded reordering) and is
+// otherwise unrelated and ignored. Receipt time (`clock.now()`, the window
+// timer) is the fallback only when the opener or the tap has an implausible
+// clock. Known limit: the window TIMER still runs on the phone clock, so a tap
+// that is within the window by band time but delivered after the timer fired
+// opens the next group.
+//
+// Pure timing: no BLE, no storage. The buzz is injected (AppState routes it
+// through AlertDispatcher). Every exit goes through [_finish], which resets
+// every flag in `finally`.
 
 import 'dart:async';
 
 import 'package:clock/clock.dart';
 
 import 'strap_event.dart';
+
+/// What [DoubleTapRepeatSession.offer] did with a tap.
+enum RepeatOffer {
+  /// Joined the open group.
+  counted,
+
+  /// Not part of this gesture (a re-send, a late tap, an older stray tap).
+  ignored,
+
+  /// Happened too long after the group's last tap, by the band clock: the open
+  /// group was FINISHED (its count is final) and the caller should treat this
+  /// tap as the first of a new one.
+  newGroup,
+}
 
 class DoubleTapRepeatSession {
   DoubleTapRepeatSession({
@@ -60,6 +89,9 @@ class DoubleTapRepeatSession {
   DateTime? _lastTapAt;
   DateTime? _lastReceipt;
   final Set<String> _seen = {};
+  // Effective (band) times of the members, while every member's clock is
+  // believable; null once any member's is not (receipt time then decides).
+  List<DateTime>? _bandTimes;
   int _buzzes = 0;
 
   bool get open => _done != null;
@@ -78,6 +110,7 @@ class DoubleTapRepeatSession {
       ..clear()
       ..add(first.identity);
     _lastReceipt = first.receivedAt;
+    _bandTimes = first.plausible ? [first.effectiveTime] : null;
     _lastTapAt = clock.now();
     _buzzes = 0;
     final w = window();
@@ -92,12 +125,16 @@ class DoubleTapRepeatSession {
   }
 
   /// Offer a further double tap. True when it was counted.
-  bool add(StrapEvent e) {
-    if (!open) return false;
+  bool add(StrapEvent e) => offer(e) == RepeatOffer.counted;
+
+  /// Offer a further double tap and say what happened to it. A
+  /// [RepeatOffer.newGroup] has already finished the open group.
+  RepeatOffer offer(StrapEvent e) {
+    if (!open) return RepeatOffer.ignored;
     if (!e.isLive) {
       step?.call('Ignored a late double tap (it reached the phone too long '
           'after it happened).');
-      return false;
+      return RepeatOffer.ignored;
     }
     final seenBefore = e.plausible
         ? _seen.contains(e.identity)
@@ -105,7 +142,42 @@ class DoubleTapRepeatSession {
             _receiptDebounce;
     if (seenBefore) {
       step?.call('Ignored the same double tap seen again.');
-      return false;
+      return RepeatOffer.ignored;
+    }
+    final times = _bandTimes;
+    if (times != null && e.plausible) {
+      final w = window();
+      final at = e.effectiveTime;
+      var nearest = times.first;
+      for (final t in times) {
+        if ((at.difference(t)).abs() < (at.difference(nearest)).abs()) {
+          nearest = t;
+        }
+      }
+      final delta = at.difference(nearest);
+      if (delta.abs() > w) {
+        final latest = times.reduce((a, b) => a.isAfter(b) ? a : b);
+        if (at.isAfter(latest)) {
+          step?.call('This double tap came ${delta.inMilliseconds} ms after '
+              'the last one by the band clock, more than the '
+              '${w.inMilliseconds} ms window: the group ends at $_count and '
+              'this one starts the next.');
+          _finish();
+          return RepeatOffer.newGroup;
+        }
+        step?.call('Ignored a double tap that happened ${-delta.inMilliseconds} '
+            'ms before the nearest one by the band clock (older than the '
+            '${w.inMilliseconds} ms window, so not part of this gesture).');
+        return RepeatOffer.ignored;
+      }
+      step?.call('Band clock: this tap is ${delta.inMilliseconds.abs()} ms '
+          '${delta.isNegative ? 'before the nearest tap' : 'after the nearest earlier tap'}'
+          ' by the band clock.');
+      times.add(at);
+    } else {
+      // An implausible strap clock on this tap or an earlier one: receipt time
+      // is all there is.
+      _bandTimes = null;
     }
     _seen.add(e.identity);
     _lastReceipt = e.receivedAt;
@@ -124,7 +196,7 @@ class DoubleTapRepeatSession {
     } else {
       _arm(window());
     }
-    return true;
+    return RepeatOffer.counted;
   }
 
   /// Finish a waiting gesture with the count so far (the app is going away).
@@ -182,6 +254,7 @@ class DoubleTapRepeatSession {
       _first = null;
       _count = 0;
       _seen.clear();
+      _bandTimes = null;
       _lastTapAt = null;
       _lastReceipt = null;
     }

@@ -460,8 +460,9 @@ light/dark × 1x/2x, goldens `test/proof/goldens/phase8_<case>_<b>_<s>x.png`:
   the band within N ms") through `log` and `onBuzzDiagnostic`; it never gates.
   MG hold >= 500 ms uses overallLoop 2; gen4 plays a long hold as one short pulse.
   Tests: `test/ecg_ble_engine_test.dart`, `buzz_delivery_test.dart`.
-- ECG sessions request the two-pulse ack only after `EcgStreamReadiness` (a second
-  packet within 1.5 s with a later strap time). `startTimeout` is 20 s (`no_stream`).
+- ECG sessions request the two-pulse ack only after `EcgStreamReadiness` (SUPERSEDED
+  by the review-fix section below: sample-clock continuity, not just "a second
+  packet within 1.5 s"). `startTimeout` is 20 s (`no_stream`).
   `ack_failed` only when the ack write itself failed.
 - `DoubleTapRepeatSession` (lib/gestures/double_tap_repeat.dart): the method that
   needs no ECG. Slot n = n taps for both methods; labels differ per method.
@@ -469,3 +470,66 @@ light/dark × 1x/2x, goldens `test/proof/goldens/phase8_<case>_<b>_<s>x.png`:
   250 ms, default 2500), `repeatTapsLab`.
 - Device lab lines: `time | tap +N ms | last +N ms | text`; `labLogText` feeds the
   pinned "Copy all logs" button.
+
+## Review fixes: ECG taps, repeated double taps, band buzz (Oct 2, supersede the above where they differ)
+
+Tests: `test/gestures/ecg_tap_counter_gap_test.dart`, `ecg_stream_readiness_test.dart`,
+`ecg_sample_clock_test.dart`, `ecg_tap_session_clock_test.dart`,
+`ecg_tap_begin_test.dart`, `ecg_tap_session_lifecycle_test.dart`,
+`double_tap_repeat_grouping_test.dart`, `double_tap_repeat_claims_test.dart`,
+`test/phase8/buzz_delivery_tristate_test.dart`.
+
+- **E, sample gaps (`EcgTapCounter.maxSampleGap`, default 50 ms = 10 ms sample period
+  + 40 ms tolerance).** Contact and no-contact only count when OBSERVED. Consecutive
+  samples further apart than that are a discontinuity: a pending engage candidate is
+  dropped (contact must be seen again for the full gap threshold); a release timer
+  restarts at the first sample after the hole and contact that returns after a hole
+  is the same touch; a hole that swallows a window deadline abandons the gesture with
+  reason `sample_gap` (no confirm buzz, no action: whether a touch started in the
+  unseen part cannot be known); a hole that ends before the deadline only costs the
+  unseen time. The first sample after `ackDone` is checked against the ack boundary.
+  This replaces "contact already present at ack counts after 200 ms" across a 600 ms
+  unobserved gap (`ecg_tap_session_test.dart` now continues the clock at 1002.4).
+- **F, readiness and the ack boundary.** `EcgStreamReadiness.offer({at, strapTime,
+  sampleCount = 100})` is steady when two consecutive packets are contiguous on the
+  sample clock (start within 50 ms of the previous end), advance in step with the wall
+  clock (within 600 ms) and arrive <= 1.5 s apart. A stale burst (1 s of samples in
+  20 ms) and strap-clock jumps (100 -> 1000) are not steady. `EcgSampleClock` maps phone
+  time to sample time through the LEAST-delayed of the last 8 packets (min of receipt
+  minus newest-sample time). The first touch window opens at the ack-write wall time
+  mapped through it (the old "end of last packet + wall since arrival" anchored the
+  window behind the true sample clock by however late that packet was). Trace lines:
+  each `Packet N:` line ends with `<continuity>, received X ms behind the freshest
+  packet so far`; the window line is preceded by `Sample clock: ...` naming how many
+  ms later than the receipt-time estimate the boundary is. Stall detection still uses
+  time since the last packet RECEIVED.
+- **G, late starts.** `EcgTapSession.generation` bumps per gesture. `beginEcgForTap`
+  (lib/gestures/ecg_tap_begin.dart) checks the generation after the wrist lookup and
+  after `ecg.begin`, never starts for a dead gesture, and stops a capture it started
+  for one, only if `EcgController.captureEpoch` still matches (an ECG the user started
+  is never stopped). A new `start()` waits (<= `endTimeout`) for the previous
+  gesture's stream stop.
+- **R, 8N interval.** `_finish`: flags reset -> `onFinished` -> stop the stream (if it
+  was up, or the start timed out) -> `recordSession` with `strapEnd = max(last packet
+  end, strapNow-after-stop + 1)` (whole-second clock, rounded up). A slow database can
+  no longer leave recorded ECG outside the interval or keep the stream running.
+- **H, tri-state buzz.** `deliverBuzzSequence` -> `BuzzDelivery {complete, rejected,
+  partial, unknown}`; `playBuzzSequence` keeps its `Future<bool>` (true only for
+  complete). `AlertDispatcher.dispatch(bandDelivery:)` and the `bandSequenceDelivery`
+  ctor param release the claim ONLY for `rejected`; `partial`/`unknown` keep it
+  (outcome reason `deliveryUnconfirmed`). `BleEngine.buzzBand({maxQueueWait =
+  buzzQueueDeadline (5 s)})` drops a write still queued after its deadline.
+  AppState (`_ecgTapBuzz`, preview, `_dispatchBandAlert`, default sequence transport)
+  and the relay use the tri-state path (`_dispatchBandAlert` source guard now looks for
+  `deliverBuzzSequence(`).
+- **I, repeat grouping.** `DoubleTapRepeatSession.offer(e)` -> `RepeatOffer {counted,
+  ignored, newGroup}` (`add` = `offer == counted`). While the strap clock is
+  believable a tap joins only within the window (inclusive) of a member's band time;
+  later and further -> the open group is finished and the tap starts the next
+  (`newGroup`); earlier than every member by more than the window -> ignored;
+  an older tap inside the window is a member (bounded reordering). Receipt time is
+  the fallback for implausible clocks. The window timer still runs on the phone clock.
+- **J, member claims.** `GestureDispatcher._repeatTap` claims every tap
+  (`gesture:<identity>:rep`, plausible clocks) before the session accepts it. A claim
+  that fails or is already held skips the tap; counted/ignored members keep their
+  claim; a `newGroup` member opens its window with the claim it already holds.

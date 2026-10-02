@@ -29,6 +29,7 @@ StrapEvent _tap({int sec = 0}) => StrapEvent(
 /// sample index with signal (earlier samples are zero).
 LabradorR17 _packet(
   int sec, {
+  int subMs = 0,
   int contactFrom = 100,
   int? contactTo,
   int n = 100,
@@ -37,7 +38,7 @@ LabradorR17 _packet(
   headerSecondary: 0,
   sequence: sec,
   strapSeconds: sec,
-  subseconds: 0,
+  subseconds: (subMs * 32768 / 1000).round(),
   quality: 0,
   flags: const LabradorFlags(0x0a),
   result: 0,
@@ -516,15 +517,20 @@ void main() {
         ack.complete(true); // window opens at 1002.3
         await r.settle();
         r.now = _t0.add(const Duration(milliseconds: 2200));
-        r.session.onFrame(_packet(1002, contactFrom: 0, n: 40));
+        r.session.onFrame(_packet(1002, contactFrom: 0, n: 40)); // to 1002.4
         expect(
           r.results,
           isEmpty,
           reason: 'pre-ack contact does not satisfy the debounce',
         );
         expect(r.buzzes.map((b) => b.$1), [2]);
+        // The next packet CONTINUES the sample clock (1002.4), so the contact
+        // is observed straight through. (This test used to continue at 1003.0:
+        // it expected a count across 600 ms of samples nobody saw, which is
+        // the bug finding E fixed. That case is in
+        // ecg_tap_session_clock_test.dart.)
         r.now = _t0.add(const Duration(milliseconds: 3000));
-        r.session.onFrame(_packet(1003, contactFrom: 0));
+        r.session.onFrame(_packet(1002, subMs: 400, contactFrom: 0, n: 60));
         await r.settle();
         expect(r.results, [(3, null)]);
         expect(r.buzzes.map((b) => b.$1), [2, 1]);

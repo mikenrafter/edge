@@ -243,7 +243,9 @@ void main() {
       final src = File('lib/state/app_state.dart').readAsStringSync();
       final body = bodyOf(src, 'Future<AlertDeliveryOutcome> _dispatchBandAlert(');
       expect(body, isNotEmpty);
-      expect(codeOnly(body), contains('playBuzzSequence('));
+      // deliverBuzzSequence is playBuzzSequence's tri-state form (finding H):
+      // the claim must survive a partial or unanswered delivery.
+      expect(codeOnly(body), contains('deliverBuzzSequence('));
       expect(codeOnly(body), contains('buzzSequenceFor('));
     });
 

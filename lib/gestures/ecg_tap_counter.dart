@@ -19,6 +19,20 @@
 //    [E + gap, E + gap + confirm).
 //  * Every output is a request. The caller routes buzzes through
 //    AlertDispatcher; this class sends nothing.
+//
+// DISCONTINUITY POLICY (review finding E). Contact and no-contact only count
+// when they are OBSERVED. Two consecutive samples further apart than
+// [EcgTapCounter.maxSampleGap] (one 10 ms sample period + 40 ms tolerance) mean
+// samples are missing, and the missing time is evidence of nothing:
+//  * a pending engage candidate is dropped (contact has to be seen again for
+//    the full gap threshold);
+//  * a release timer restarts at the first sample after the hole, so unseen
+//    time never completes a release; contact that is back after a hole during
+//    a release is the same touch;
+//  * a hole that swallows a window's deadline abandons the gesture with reason
+//    `sample_gap`: whether a touch started inside the unseen part cannot be
+//    known, and running the wrong count's actions is worse than running none;
+//  * a hole that ends before the deadline only costs the unseen time.
 
 import 'strap_event.dart';
 
@@ -120,6 +134,7 @@ class EcgTapCounter {
     required int max,
     EcgTapThresholds? thresholds,
     this.stallAfter = const Duration(milliseconds: 500),
+    this.maxSampleGap = const Duration(milliseconds: 50),
   })  : max = _checkMax(max),
         thresholds = thresholds ?? EcgTapThresholds();
 
@@ -134,6 +149,11 @@ class EcgTapCounter {
   /// No sample for this long (sample-clock time as advanced by the caller's
   /// ticks) abandons the gesture.
   final Duration stallAfter;
+
+  /// Two consecutive samples further apart than this are a discontinuity (see
+  /// the policy above). 100 Hz samples are 10 ms apart; the rest is tolerance
+  /// for packet-boundary timestamp jitter, well under the 200 ms touch debounce.
+  final Duration maxSampleGap;
 
   int _count = 0;
   bool _started = false;
@@ -176,6 +196,11 @@ class EcgTapCounter {
     if (last != null && at < last) return const []; // out of order
     _lastSampleAt = at;
     final out = <EcgTapOutput>[];
+
+    if (last != null && at - last > maxSampleGap) {
+      final gone = _onGap(at, contact);
+      if (gone != null) return gone;
+    }
 
     // A touch that has ended its release wait falls through to the idle rules
     // for this same sample.
@@ -224,6 +249,24 @@ class EcgTapCounter {
         break;
     }
     return out;
+  }
+
+  /// A hole in the sample clock ended at [at]. Returns the outputs when the
+  /// hole decided the gesture (abandon), or null to carry on with the sample.
+  List<EcgTapOutput>? _onGap(Duration at, bool contact) {
+    switch (_phase) {
+      case _Phase.candidate:
+        _phase = _Phase.idle; // contact must be seen again from scratch
+        if (at >= _deadline) return _abandon(at, 'sample_gap');
+      case _Phase.idle:
+        if (at >= _deadline) return _abandon(at, 'sample_gap');
+      case _Phase.releasing:
+        _noContactStart = at; // unseen time is not no-contact
+      case _Phase.touching:
+      case _Phase.awaitingAck:
+        break;
+    }
+    return null;
   }
 
   /// Stall detection only. [now] is on the same clock as [sample].
