@@ -208,16 +208,38 @@ class BuzzRecorder {
   void dispose() => _timer?.cancel();
 }
 
+/// What a band buzz delivery may have done to the band, for deciding whether a
+/// durable alert claim can be given back (review finding H).
+///
+/// Only [rejected] is safe to retry: nothing could have reached the band. After
+/// [partial] a retry would replay the pulses that already played; after
+/// [unknown] a queued write may still land, so a retry would buzz twice.
+enum BuzzDelivery {
+  /// Every step was written.
+  complete,
+
+  /// Nothing was (or could have been) written: not connected, or the first
+  /// write definitively failed.
+  rejected,
+
+  /// At least one step was written and a later one was not.
+  partial,
+
+  /// A step did not answer in time. Its write may still land.
+  unknown,
+}
+
 /// Preserve the hold and release gap even when command acknowledgement is slow.
 /// Failed or disconnected deliveries stop the remaining steps. Without a
 /// duration-aware [buzzForDuration], a held press plays as a short buzz (the
 /// rhythm is kept; it never fails the sequence).
 ///
-/// A step whose write does not answer within [stepTimeout] fails the sequence
-/// and no later step is sent: the dispatcher gives up on a slow band at its own
-/// deadline, and a stuck write finishing late must not then play the rest of the
-/// rhythm after the caller has already moved on.
-Future<bool> playBuzzSequence(
+/// A step whose write does not answer within [stepTimeout] ends the sequence as
+/// [BuzzDelivery.unknown] and no later step is sent: the dispatcher gives up on a
+/// slow band at its own deadline, and a stuck write finishing late must not then
+/// play the rest of the rhythm after the caller has already moved on. The stuck
+/// write itself may still land, which is why that is NOT [BuzzDelivery.rejected].
+Future<BuzzDelivery> deliverBuzzSequence(
   BuzzSequence s, {
   required Future<bool> Function() buzz,
   Future<bool> Function(int holdMs)? buzzForDuration,
@@ -225,15 +247,24 @@ Future<bool> playBuzzSequence(
   Duration stepTimeout = const Duration(seconds: 5),
 }) async {
   final watch = clock.stopwatch()..start();
+  var written = 0;
+  BuzzDelivery failed() =>
+      written > 0 ? BuzzDelivery.partial : BuzzDelivery.rejected;
   try {
     for (var i = 0; i < s.length; i++) {
-      if (!isConnected()) return false;
+      if (!isConnected()) return failed();
       final start = watch.elapsedMilliseconds;
-      final ok = await (buzzForDuration == null
-              ? buzz()
-              : buzzForDuration(s.durationsMs[i]))
-          .timeout(stepTimeout);
-      if (!ok) return false;
+      final bool ok;
+      try {
+        ok = await (buzzForDuration == null
+                ? buzz()
+                : buzzForDuration(s.durationsMs[i]))
+            .timeout(stepTimeout);
+      } on TimeoutException {
+        return BuzzDelivery.unknown;
+      }
+      if (!ok) return failed();
+      written++;
       final remainingHold =
           start + s.durationsMs[i] - watch.elapsedMilliseconds;
       if (remainingHold > 0) {
@@ -249,8 +280,27 @@ Future<bool> playBuzzSequence(
         if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
       }
     }
-    return true;
+    return BuzzDelivery.complete;
   } catch (_) {
-    return false;
+    return failed();
   }
 }
+
+/// [deliverBuzzSequence] reduced to "was every step written". Callers that
+/// decide anything durable on the result (an alert claim) must use
+/// [deliverBuzzSequence]: `false` here does not say whether the band buzzed.
+Future<bool> playBuzzSequence(
+  BuzzSequence s, {
+  required Future<bool> Function() buzz,
+  Future<bool> Function(int holdMs)? buzzForDuration,
+  required bool Function() isConnected,
+  Duration stepTimeout = const Duration(seconds: 5),
+}) async =>
+    await deliverBuzzSequence(
+      s,
+      buzz: buzz,
+      buzzForDuration: buzzForDuration,
+      isConnected: isConnected,
+      stepTimeout: stepTimeout,
+    ) ==
+    BuzzDelivery.complete;

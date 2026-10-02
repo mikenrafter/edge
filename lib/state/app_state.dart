@@ -438,7 +438,7 @@ class AppState extends ChangeNotifier {
       eventId: eventId,
       sourceTime: now,
       historical: false,
-      bandTransport: () => playBuzzSequence(seq,
+      bandDelivery: () => deliverBuzzSequence(seq,
           buzz: () => engine.buzzBand(),
           isConnected: () => engine.isConnected),
     );
@@ -454,6 +454,10 @@ class AppState extends ChangeNotifier {
     // The default sequence transport also serves NotificationCenter and the
     // water/medication timers; every entry path honors the rule's saved rhythm.
     bandSequence: (s) => playBuzzSequence(s,
+        buzz: _bandBuzz,
+        buzzForDuration: _bandBuzzForDuration,
+        isConnected: () => engine.isConnected),
+    bandSequenceDelivery: (s) => deliverBuzzSequence(s,
         buzz: _bandBuzz,
         buzzForDuration: _bandBuzzForDuration,
         isConnected: () => engine.isConnected),
@@ -501,7 +505,7 @@ class AppState extends ChangeNotifier {
       sourceTime: now,
       historical: false,
       bandTimeout: s.transportTimeout,
-      bandTransport: () => playBuzzSequence(s,
+      bandDelivery: () => deliverBuzzSequence(s,
           buzz: _bandBuzz,
           buzzForDuration: _bandBuzzForDuration,
           isConnected: () => engine.isConnected),
@@ -557,21 +561,25 @@ class AppState extends ChangeNotifier {
       bandTimeout: alarm || pattern != null
           ? null
           : (sequence ?? prefs.buzzSequenceFor(ruleId)).transportTimeout,
-      bandTransport: () async {
-        if (alarm) {
-          await engine.runAlarm();
-        } else if (pattern != null) {
-          await engine.buzzPattern(pattern);
-        } else {
-          // The rule's own rhythm (or its registry default), played as one
-          // delivery: the dispatcher's claim covers every step.
-          return playBuzzSequence(sequence ?? prefs.buzzSequenceFor(ruleId),
+      bandTransport: alarm || pattern != null
+          ? () async {
+              if (alarm) {
+                await engine.runAlarm();
+              } else {
+                await engine.buzzPattern(pattern!);
+              }
+              return true;
+            }
+          : null,
+      // The rule's own rhythm (or its registry default), played as one
+      // delivery: the dispatcher's claim covers every step, and survives a
+      // partial or unanswered delivery.
+      bandDelivery: alarm || pattern != null
+          ? null
+          : () => deliverBuzzSequence(sequence ?? prefs.buzzSequenceFor(ruleId),
               buzz: _bandBuzz,
               buzzForDuration: _bandBuzzForDuration,
-              isConnected: () => engine.isConnected);
-        }
-        return true;
-      },
+              isConnected: () => engine.isConnected),
     );
   }
 

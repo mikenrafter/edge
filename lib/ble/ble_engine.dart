@@ -4458,10 +4458,16 @@ class BleEngine implements AlarmBandWriter {
   /// `dangerousCmds` on purpose (persistent config writes) and are sent only
   /// behind an explicit user opt-in with a restore-defaults companion. Pass it
   /// nowhere else without the same justification.
+  ///
+  /// [notAfter] is a delivery deadline: a write still waiting in the queue when
+  /// it passes is DROPPED, not sent. The caller that queued it has given up by
+  /// then (and may have retried or moved on), so writing it late is a stale
+  /// duplicate (review finding H).
   Future<bool> _write(
     Uint8List raw, {
     _Session? owner,
     bool allowDangerous = false,
+    DateTime? notAfter,
   }) {
     // FOOTGUN(DATA_LOSS): destructive commands are refused before the write queue.
     // FOOTGUN(LINK_LOSS): reboot and power-cycle commands are refused here.
@@ -4482,6 +4488,11 @@ class BleEngine implements AlarmBandWriter {
       return Future.value(false);
     }
     return _writeChain.add<bool>(() async {
+      if (notAfter != null && DateTime.now().isAfter(notAfter)) {
+        _log('write dropped: its delivery deadline passed while it waited '
+            'in the write queue.');
+        return false;
+      }
       try {
         // Readiness and ownership are checked BEFORE the test seam, not after,
         // so a hooked write rejects a stale-session ACK exactly like the real
@@ -4626,6 +4637,7 @@ class BleEngine implements AlarmBandWriter {
     Duration timeout = CommandAwaiter.defaultTimeout,
     Uint8List Function(int seq)? frameBuilder,
     _Session? owner,
+    Duration? maxQueueWait,
   }) async {
     if (_refuseDangerousOpcode(opcode)) {
       return (written: false, response: Future<CorrelatedResponse?>.value());
@@ -4634,7 +4646,9 @@ class BleEngine implements AlarmBandWriter {
     final pending = _awaiter.register(seq, opcode, timeout: timeout);
     final frame = frameBuilder?.call(seq) ??
         buildCommand(seq, opcode, payload, _session?.band ?? BandProfile.gen4);
-    if (!await _write(frame, owner: owner)) {
+    final notAfter =
+        maxQueueWait == null ? null : DateTime.now().add(maxQueueWait);
+    if (!await _write(frame, owner: owner, notAfter: notAfter)) {
       pending.cancel();
       _log('WRITE FAILED for opcode 0x${opcode.toRadixString(16)} — '
           'command not delivered.');
@@ -7757,6 +7771,11 @@ class BleEngine implements AlarmBandWriter {
   /// How long a buzz's reply is waited for, to LOG it. Not a delivery limit.
   static const Duration buzzReplyLogWindow = Duration(seconds: 3);
 
+  /// How long a buzz may wait in the write queue before it is stale: the
+  /// sequence player's per-step timeout (`playBuzzSequence.stepTimeout`), after
+  /// which the player has already reported the step as unanswered.
+  static const Duration buzzQueueDeadline = Duration(seconds: 5);
+
   /// Buzz the band once. True when the haptic command was written to the band
   /// (the GATT write-with-response succeeded), exactly as every other haptic and
   /// toggle write here is judged. The band's own correlated reply is NOT waited
@@ -7769,7 +7788,16 @@ class BleEngine implements AlarmBandWriter {
   /// supported waveform twice (overallLoop 2). Gen4 has no duration-capable
   /// waveform verified, so a long hold plays as its one short pulse: it never
   /// fails the sequence.
-  Future<bool> buzzBand({int holdMs = 0}) async {
+  ///
+  /// [maxQueueWait] is the buzz's delivery deadline in the GATT write queue: if a
+  /// stuck earlier write holds the queue longer than that, this buzz is dropped
+  /// (false) instead of playing late, after the sequence player has already
+  /// given up on it and a retry may have been made. Defaults to
+  /// [buzzQueueDeadline], the sequence player's per-step timeout.
+  Future<bool> buzzBand({
+    int holdMs = 0,
+    Duration maxQueueWait = buzzQueueDeadline,
+  }) async {
     final owner = _session;
     if (owner?.connected != true) return false;
     if (holdMs < 0) return false;
@@ -7782,6 +7810,7 @@ class BleEngine implements AlarmBandWriter {
           : [hapticShortPulse, 0, 0, 0, 0],
       timeout: buzzReplyLogWindow,
       owner: owner,
+      maxQueueWait: maxQueueWait,
     );
     if (!out.written) return false;
     unawaited(out.response.then((reply) {

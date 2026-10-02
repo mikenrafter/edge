@@ -203,6 +203,7 @@ class RelayController {
     required this.nowMs,
     this.onChanged,
     this.playSequence,
+    this.deliverSequence,
   });
   final AlertDispatcher dispatcher;
   final Future<bool> Function(List<int> pattern) buzz;
@@ -210,6 +211,10 @@ class RelayController {
   /// Plays a user-chosen rhythm as one band delivery. When set, it replaces the
   /// fixed one-buzz pattern unless the channel mirrors the app's own haptics.
   final Future<bool> Function(BuzzSequence)? playSequence;
+
+  /// [playSequence] that can say what it did to the band, preferred when set:
+  /// the dispatcher then keeps its claim after a partial or unanswered delivery.
+  final Future<BuzzDelivery> Function(BuzzSequence)? deliverSequence;
   final Future<bool> Function() phone;
   final Map<String, Object?> Function(Map<String, Object?> metadata) policy;
   final int Function() nowMs;
@@ -358,6 +363,9 @@ class RelayController {
         bandTransport: sequence == null
             ? () => buzz(pattern)
             : () => play!(sequence),
+        bandDelivery: sequence == null || deliverSequence == null
+            ? null
+            : () => deliverSequence!(sequence),
       );
       return RelayResult(
         targets: outcome.targets,
@@ -529,6 +537,15 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     dispatcher: dispatcher,
     buzz: _playPattern,
     playSequence: (s) => playBuzzSequence(
+      s,
+      buzz: () async {
+        await buzz();
+        return true;
+      },
+      buzzForDuration: buzzForDuration,
+      isConnected: isConnected,
+    ),
+    deliverSequence: (s) => deliverBuzzSequence(
       s,
       buzz: () async {
         await buzz();
