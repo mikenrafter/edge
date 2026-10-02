@@ -8143,11 +8143,17 @@ class LocalDb {
       // (or seed, for a brand-new day) the value tomorrow's readiness/illness
       // baseline reads via metric_series. The next successful (non-partial)
       // pass writes the real value once it lands.
+      //
+      // The blanked keys are the exception, and are deleted whether or not the
+      // row is partial. Withholding a value is what `partial` is for; a night
+      // the user blanked has no value to wait for, and leaving its old rows
+      // until a non-partial pass lands keeps feeding them to every baseline
+      // for as long as that pass keeps failing.
+      for (final k in blankKeys) {
+        await txn.delete('metric_series',
+            where: 'date = ? AND key = ?', whereArgs: [dayId, k]);
+      }
       if (!partial) {
-        for (final k in blankKeys) {
-          await txn.delete('metric_series',
-              where: 'date = ? AND key = ?', whereArgs: [dayId, k]);
-        }
         for (final e in series.entries) {
           if (e.value == null && blankKeys.contains(e.key)) continue;
           await txn.insert('metric_series', {
