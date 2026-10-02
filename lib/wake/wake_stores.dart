@@ -35,6 +35,11 @@ class DbWakeStateStore implements WakeStateStore {
       LocalDb.wakeMetaSet(kWakeRunStateKey, jsonEncode(state));
 }
 
+/// The most trace rows one read returns (the newest). A night's trace is a few
+/// dozen rows; this is a ceiling so a screen that reloads on every tick stays
+/// cheap.
+const int kWakeTraceReadLimit = 400;
+
 class DbWakeTraceStore implements WakeTraceStore {
   const DbWakeTraceStore();
 
@@ -48,7 +53,8 @@ class DbWakeTraceStore implements WakeTraceStore {
 
   @override
   Future<List<WakeTraceEntry>> forWake(int wakeEpochSec) async => [
-        for (final r in await LocalDb.wakeTraceRows(wakeEpochSec))
+        for (final r in await LocalDb.wakeTraceRows(wakeEpochSec,
+            limit: kWakeTraceReadLimit))
           WakeTraceEntry(
             wakeEpochSec: (r['wake_epoch'] as num).toInt(),
             atMs: (r['at_ms'] as num).toInt(),

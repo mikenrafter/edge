@@ -5376,6 +5376,7 @@ class AppState extends ChangeNotifier {
     ),
     stateStore: const DbWakeStateStore(),
     traceStore: const DbWakeTraceStore(),
+    onTraceChanged: wake.noteTraceChanged,
   );
 
   FallbackStatus _wakeFallbackStatus(DateTime wakeAt) => FallbackStatus(

@@ -356,6 +356,7 @@ class WakeOrchestrator {
     NaturalStageObserver? observer,
     DateTime Function()? now,
     this.opTimeout = const Duration(seconds: 30),
+    this.onTraceChanged,
   })  : observer = observer ?? const IsolateNaturalStageObserver(),
         _now = now ?? DateTime.now;
 
@@ -365,6 +366,20 @@ class WakeOrchestrator {
   final WakeTraceStore traceStore;
   final Duration opTimeout;
   final DateTime Function() _now;
+
+  /// Called ONCE after a tick (or an acknowledgement) that appended trace rows,
+  /// never per row, so a screen showing the trace can reload without a rebuild
+  /// storm. Never throws into the orchestrator.
+  final void Function()? onTraceChanged;
+  bool _traceDirty = false;
+
+  void _signalTrace() {
+    if (!_traceDirty) return;
+    _traceDirty = false;
+    try {
+      onTraceChanged?.call();
+    } catch (_) {}
+  }
 
   bool _ticking = false;
 
@@ -418,6 +433,7 @@ class WakeOrchestrator {
       return const WakeTickOutcome();
     } finally {
       _ticking = false;
+      _signalTrace();
     }
   }
 
@@ -434,6 +450,7 @@ class WakeOrchestrator {
     if (out == null) {
       await _trace(plan.wakeSec, 'skip',
           {'reason': 'headlessGateBusy', 'owner': owner});
+      _signalTrace();
     }
     return out;
   }
@@ -480,6 +497,7 @@ class WakeOrchestrator {
       'cancelled': cancelled,
       'fallbackArmed': armed,
     });
+    _signalTrace();
     return WakeAckOutcome(
       nativeCancelRequested: cancelNative,
       nativeCancelled: cancelled == true,
@@ -879,6 +897,7 @@ class WakeOrchestrator {
             data: data,
           ))
           .timeout(opTimeout);
+      _traceDirty = true;
     } catch (_) {}
   }
 }
