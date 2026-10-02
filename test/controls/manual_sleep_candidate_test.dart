@@ -28,11 +28,11 @@ void main() {
           dayId: '2026-09-30',
           onsetSec: start + 1800,
           offsetSec: start + 4 * 3600 + 1800,
-          source: 'manual',
+          source: 'confirmed',
         ),
       );
       expect(candidate.dayId, '2026-09-30');
-      expect(candidate.sleepSource, 'manual');
+      expect(candidate.sleepSource, 'confirmed');
       expect(candidate.present, isTrue);
       expect(candidate.sleepOnsetSec, lessThan(start + 3600));
       expect(candidate.sleepOffsetSec, greaterThan(start + 4 * 3600));

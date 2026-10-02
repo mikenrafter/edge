@@ -675,7 +675,7 @@ class _SleepDetailState extends State<SleepDetail> {
               '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t1 * 1000)).format(c)}',
               style: F.cap.copyWith(color: p.ink3)),
             if (!d.hasNight)
-              Text('Your times are saved. The recordings do not cover enough time for sleep metrics.',
+              Text('Your times are saved. Sleep numbers stay blank for times you set.',
                 style: F.cap.copyWith(color: p.ink3)),
           ],
           if (fallback) ...[
@@ -705,6 +705,10 @@ class _SleepDetailState extends State<SleepDetail> {
           ],
           const SizedBox(height: S.x2),
           Wrap(spacing: S.x2, children: [
+            // The one recalculation control on this screen: it lives in the
+            // card that says where the window came from, not in a strip of
+            // its own above it.
+            _recalculateButton(day),
             if (fallback)
               TextButton(
                 onPressed: busy ? null : () => _confirmWindow(day),
@@ -744,11 +748,13 @@ class _SleepDetailState extends State<SleepDetail> {
   Future<void> _confirmWindow(String day) =>
       _runOverride(() => context.read<AppState>().confirmSleep(day));
 
-  Future<void> _clearWindow(String day) =>
-      _runOverride(() => context.read<AppState>().clearSleepOverride(day));
+  Future<void> _clearWindow(String day) => _runOverride(
+      () => context.read<AppState>().clearSleepOverride(day),
+      timesSaved: false);
 
-  Future<void> _rejectWindow(String day) =>
-      _runOverride(() => context.read<AppState>().rejectSleep(day));
+  Future<void> _rejectWindow(String day) => _runOverride(
+      () => context.read<AppState>().rejectSleep(day),
+      timesSaved: false);
 
   /// Two pickers, seeded from the window we already have — the user is
   /// correcting times, not entering a date, so the DATES stay as measured and
@@ -794,14 +800,28 @@ class _SleepDetailState extends State<SleepDetail> {
     await _runOverride(() => app.setSleepOverride(day, newOnset, newWake, useSchedule: useSchedule));
   }
 
+  /// "Recalculate this night". Drawn by [_windowCard] when there is a window to
+  /// describe, and by [_nightControls] only when there is not — never both.
+  Widget _recalculateButton(String day) {
+    AppState? app;
+    try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
+    return TextButton(onPressed: _saving || app == null ? null : () =>
+      _runOverride(() => app!.recalculateSleep(day), timesSaved: false),
+      child: const Text('Recalculate this night'));
+  }
+
+  /// Whether [_windowCard] will draw for [d]: it needs a day and a window.
+  bool _hasWindowCard(SleepData d) =>
+      d.day != null &&
+      d.night['onset_ts'] is num &&
+      d.night['wake_ts'] is num;
+
   List<Widget> _nightControls(SleepData d) {
     final day = _day ?? d.day ?? todayLabel();
     AppState? app;
     try { app = context.read<AppState>(); } on ProviderNotFoundException { /* pure view */ }
     return [
-      TextButton(onPressed: _saving || app == null ? null : () =>
-        _runOverride(() => app!.recalculateSleep(day)),
-        child: const Text('Recalculate this night')),
+      if (!_hasWindowCard(d)) _recalculateButton(day),
       if (!d.hasNight && d.night['onset_ts'] == null)
         TextButton(onPressed: _saving || app == null ? null : () {
           final wakeDate = DateTime.parse(day);
@@ -816,7 +836,10 @@ class _SleepDetailState extends State<SleepDetail> {
     ];
   }
 
-  Future<void> _runOverride(Future<dynamic> Function() write) async {
+  /// [timesSaved] is false for actions that are not about a window ("Not
+  /// sleep", recalculate, back to automatic): "Times saved…" would be a lie.
+  Future<void> _runOverride(Future<dynamic> Function() write,
+      {bool timesSaved = true}) async {
     if (_saving) return;
     setState(() { _saving = true; _overrideFailed = null; });
     String? message;
@@ -824,7 +847,7 @@ class _SleepDetailState extends State<SleepDetail> {
       final result = await write();
       if (result is SleepOperationResult) {
         if (!result.success) { message = result.error ?? 'Sleep calculation failed. Try again.'; }
-        else if (!result.metricsAvailable) { message = 'Times saved. Not enough data was recorded in that window to compute sleep metrics.'; }
+        else if (!result.metricsAvailable && timesSaved) { message = 'Times saved. Sleep numbers stay blank for times you set.'; }
       }
     } catch (e) { message = '$e'; }
     finally { if (mounted) setState(() => _saving = false); }

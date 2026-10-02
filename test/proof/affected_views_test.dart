@@ -240,6 +240,21 @@ void main() {
         ),
       ),
     ),
+    // The one Recalculate button lives inside this card (not in a strip above).
+    'sleep_inferred_window': (
+      2000,
+      SleepDetail(
+        data: SleepData(
+          day: '2026-09-30',
+          night: {
+            'sleep_source': 'auto_fallback',
+            'onset_ts':
+                DateTime(2026, 9, 29, 23, 10).millisecondsSinceEpoch ~/ 1000,
+            'wake_ts': DateTime(2026, 9, 30, 6, 40).millisecondsSinceEpoch ~/ 1000,
+          },
+        ),
+      ),
+    ),
     'primary_band_sync': (
       2400,
       DeviceDetailView(
