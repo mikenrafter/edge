@@ -316,7 +316,8 @@ class LiveStreamChart extends StatelessWidget {
           return ago == 0 ? 'now' : '$ago s ago';
         },
         keys: [
-          ChartKey.slots(label, p.on(C.blue), series,
+          // The stream's name is the heading above; the key says what a slot is.
+          ChartKey.slots('Reading (½ s mean)', p.on(C.blue), series,
               (i, v) => v.toStringAsFixed(v.abs() >= 100 ? 0 : 1)),
         ],
         child: SizedBox(

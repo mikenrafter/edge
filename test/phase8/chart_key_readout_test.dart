@@ -40,6 +40,11 @@ ChartScrub _scrub({
 
 Future<void> _pump(WidgetTester t, Widget chart,
     {double scale = 1, double h = 220}) async {
+  // A phone-width view tall enough for the tallest case; the test surface is
+  // 800x600 by default and would clamp the chart's box.
+  t.view.devicePixelRatio = 1;
+  t.view.physicalSize = const Size(400, 3000);
+  addTearDown(t.view.reset);
   await t.pumpWidget(MaterialApp(
     theme: buildTheme(Brightness.light),
     home: MediaQuery(
@@ -207,6 +212,42 @@ void main() {
       expect(find.text('Not recorded'), findsNothing);
     });
 
+    testWidgets('"Not recorded" says Here on a hole, shading keys aside',
+        (t) async {
+      await _pump(
+          t,
+          _scrub(gaps: true, keys: [
+            ChartKey.slots(
+                'Heart rate (bpm)', _red, _hr, (i, v) => '${v.round()} bpm'),
+            // Names a shaded stretch; "No" is not a recording.
+            ChartKey('Asleep', _blue, (at) => 'No', latest: null, data: false),
+          ]));
+      await t.tapAt(_at(t, 2 / 3));
+      await t.pump();
+      expect(
+          find.descendant(
+              of: _value('Not recorded'), matching: find.text('Here')),
+          findsOneWidget);
+      await t.tapAt(_at(t, 0));
+      await t.pump();
+      expect(find.text('Here'), findsNothing);
+    });
+
+    testWidgets('a long label wraps in full, it is never clipped', (t) async {
+      const label = 'Movement (% of time moving)';
+      await _pump(
+          t,
+          _scrub(keys: [
+            ChartKey.slots(
+                'Heart rate (bpm)', _red, _hr, (i, v) => '${v.round()} bpm'),
+            ChartKey.slots(label, _blue, const [10, 20, 30, 40],
+                (i, v) => '${v.round()}%'),
+          ]));
+      final text = t.widget<Text>(find.text(label));
+      expect(text.overflow, isNull);
+      expect(text.maxLines, isNull);
+    });
+
     testWidgets('the spoken value is the same text the row shows', (t) async {
       final handle = t.ensureSemantics();
       await _pump(t, _scrub());
@@ -233,7 +274,7 @@ void main() {
                   const [10, 20, null, 40], (i, v) => '${v.round()}%'),
             ]),
             scale: scale,
-            h: 1400);
+            h: 2200);
         final rest = t.getSize(find.byType(ChartKeyReadout));
         await t.tapAt(_at(t, 0));
         await t.pump();

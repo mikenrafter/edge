@@ -317,8 +317,13 @@ class ChartKey {
   /// place along the x axis (a scatter's last point). Wins over [value] at rest.
   final String? Function()? atRest;
 
+  /// Whether this entry is a recording. False for one that only names a shaded
+  /// stretch (asleep, a workout): it says yes or no, and neither means the band
+  /// was there, so it takes no part in deciding that a point is a gap.
+  final bool data;
+
   const ChartKey(this.label, this.color, this.value,
-      {this.latest = 1.0, this.active, this.atRest});
+      {this.latest = 1.0, this.active, this.atRest, this.data = true});
 
   /// A dense series — one entry per slot, `null` in the holes, the same list
   /// the painter draws. Lines read the slot nearest the finger; with [bars] the
@@ -437,8 +442,11 @@ class ChartScrub extends StatefulWidget {
             active: pos != null && (k.active?.call(pos) ?? false)),
     ];
     if (gaps) {
-      // "Here" only while the finger is on a hole in every series.
-      final onGap = at != null && cells.every((c) => c.value == null);
+      // "Here" only while the finger is on a hole in every recorded series.
+      final onGap = at != null &&
+          keys.any((k) => k.data) &&
+          [for (var i = 0; i < keys.length; i++) if (keys[i].data) cells[i]]
+              .every((c) => c.value == null);
       cells.add(ChartCell(ChartKeyReadout.notRecorded, null,
           value: onGap ? ChartKeyReadout.here : null, hasValue: onGap));
     }
@@ -679,11 +687,31 @@ class ChartKeyReadout extends StatelessWidget {
             : items.length;
         final cellW =
             w.isFinite ? ((w - gap * (cols - 1)) / cols) - .01 : minW;
-        return Wrap(
-          spacing: gap,
-          runSpacing: S.x2,
+        // Rows of equal cells. Within a row every cell is as tall as the
+        // tallest, with its value pinned to the foot, so the values line up
+        // along one baseline however many lines a label wrapped to.
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final it in items) SizedBox(width: cellW, child: it),
+            for (var r = 0; r * cols < items.length; r++) ...[
+              if (r > 0) const SizedBox(height: S.x2),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var k = 0; k < cols; k++) ...[
+                      if (k > 0) const SizedBox(width: gap),
+                      SizedBox(
+                        width: cellW,
+                        child: r * cols + k < items.length
+                            ? items[r * cols + k]
+                            : null,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ],
         );
       },
@@ -693,21 +721,23 @@ class ChartKeyReadout extends StatelessWidget {
   Widget _time(P p) => Column(
         key: timeKey,
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(scrubbed ? selected : latest,
               style: F.over.copyWith(color: p.ink3),
               maxLines: 1,
               overflow: TextOverflow.ellipsis),
-          const SizedBox(height: 2),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(time!,
-                maxLines: 1,
-                style: F.cap.copyWith(
-                    color: time == absent ? p.ink3 : p.ink,
-                    fontWeight: FontWeight.w600)),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(time!,
+                  maxLines: 1,
+                  style: F.cap.copyWith(
+                      color: time == absent ? p.ink3 : p.ink,
+                      fontWeight: FontWeight.w600)),
+            ),
           ),
         ],
       );
@@ -719,7 +749,7 @@ class ChartKeyReadout extends StatelessWidget {
     return Column(
       key: ValueKey('chart-key-cell:${cell.label}'),
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -743,9 +773,9 @@ class ChartKeyReadout extends StatelessWidget {
             ),
             const SizedBox(width: S.x1),
             Expanded(
+              // Never truncated: a label is a constant, so letting it wrap
+              // costs nothing in stability and a clipped key names nothing.
               child: Text(cell.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: F.over.copyWith(
                       color: cell.active ? p.ink : p.ink3,
                       fontWeight:
@@ -753,17 +783,19 @@ class ChartKeyReadout extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 2),
-        FittedBox(
-          key: ValueKey('chart-key-value:${cell.label}'),
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(shown,
-              maxLines: 1,
-              style: F.cap.copyWith(
-                  color: present ? p.ink : p.ink3,
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: const [FontFeature.tabularFigures()])),
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: FittedBox(
+            key: ValueKey('chart-key-value:${cell.label}'),
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(shown,
+                maxLines: 1,
+                style: F.cap.copyWith(
+                    color: present ? p.ink : p.ink3,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: const [FontFeature.tabularFigures()])),
+          ),
         ),
       ],
     );

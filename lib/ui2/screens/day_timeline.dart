@@ -932,6 +932,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g) {
           return spans.any((x) => m >= x.$1 && m < x.$2) ? 'Yes' : 'No';
         },
         latest: null,
+        data: false,
       );
 
   return Surface(

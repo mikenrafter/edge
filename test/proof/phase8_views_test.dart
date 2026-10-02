@@ -65,11 +65,12 @@ Widget _scrub() => Scaffold(
       body: Center(
         child: SizedBox(
           width: 340,
-          height: 160,
+          height: 300,
           child: ChartScrub(
             label: 'Heart rate',
             gaps: true,
-            time: (at) => '0${7 + ChartScrub.slotAt(5, at)}:00',
+            time: (at) =>
+                '${(7 + ChartScrub.slotAt(5, at)).toString().padLeft(2, '0')}:00',
             keys: [
               ChartKey.slots('Heart rate (bpm)', const Color(0xFFE5484D),
                   const [58, 61, null, 66, 64], (i, v) => '${v.round()} bpm'),
