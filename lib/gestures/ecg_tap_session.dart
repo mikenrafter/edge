@@ -12,6 +12,16 @@
 // later, and the receiving side needs the interval to label those packets as
 // gesture contact (8N), never a reading.
 //
+// Time. Samples are on the stream's own (strap) clock; the phone only knows when
+// a packet ARRIVED, and BLE can hold packets back by a second or more. So the
+// first touch window is opened at the acknowledgement's wall time mapped through
+// [EcgSampleClock] (the least-delayed recent packet), never "end of the last
+// packet plus the wall time since it arrived". The stream is called steady only
+// when the sample clock is continuous and in step with the wall clock
+// ([EcgStreamReadiness]). Missing samples are the counter's discontinuity
+// policy (see ecg_tap_counter.dart). The trace prints, per packet, how far it
+// sits behind the freshest packet and whether it continues the previous one.
+//
 // Why the wait: a start command being written only means the command left the
 // phone. The band can take many seconds to begin sending, and an
 // acknowledgement before that tells the wearer to touch a sensor that is not
@@ -91,6 +101,7 @@ class EcgTapSession {
     this.step,
     DateTime Function()? now,
     this.stallAfter = const Duration(seconds: 3),
+    this.maxSampleGap = const Duration(milliseconds: 50),
     this.startTimeout = const Duration(seconds: 20),
     this.pollEvery = const Duration(milliseconds: 250),
     this.beginTimeout = const Duration(seconds: 15),
@@ -145,6 +156,10 @@ class EcgTapSession {
   /// timeout is a few packets, not its 500 ms default.
   final Duration stallAfter;
 
+  /// Samples further apart than this are a discontinuity: see
+  /// [EcgTapCounter.maxSampleGap].
+  final Duration maxSampleGap;
+
   /// No steady stream this long after the stream command was written abandons
   /// (`no_stream`). Startup is slow; do not give up early.
   final Duration startTimeout;
@@ -172,6 +187,8 @@ class EcgTapSession {
   bool _acked = false;
   EcgTapCounter? _counter;
   EcgStreamReadiness _readiness = EcgStreamReadiness();
+  EcgSampleClock _clock = EcgSampleClock();
+  Duration? _prevEnd; // sample time just after the previous packet's last sample
   StrapEvent? _tap;
   DateTime? _tapAt; // when the phone got the tap (never in the future)
   Timer? _timer;
@@ -210,8 +227,11 @@ class EcgTapSession {
       max: maxTaps(),
       thresholds: t,
       stallAfter: stallAfter,
+      maxSampleGap: maxSampleGap,
     );
     _readiness = EcgStreamReadiness();
+    _clock = EcgSampleClock();
+    _prevEnd = null;
     try {
       onStarted?.call(tap, t.summary);
     } catch (_) {}
@@ -263,12 +283,30 @@ class EcgTapSession {
     for (final s in r.samples) {
       if (s != 0) contact++;
     }
+    final base = Duration(microseconds: (r.strapTime * 1000000).round());
+    final end = base + _samplePeriod * r.samples.length;
+    final prevEnd = _prevEnd;
+    _clock.add(receivedAt: wall, sampleEnd: end);
+    final behind = _clock.excessOf(receivedAt: wall, sampleEnd: end)!;
     final gap = prevWall == null
         ? 'first packet'
         : '${wall.difference(prevWall).inMilliseconds} ms since the last packet';
+    final String continuity;
+    if (prevEnd == null) {
+      continuity = 'no earlier packet to compare';
+    } else {
+      final holeMs = ((base - prevEnd).inMicroseconds / 1000).round();
+      continuity = holeMs.abs() <= maxSampleGap.inMilliseconds
+          ? 'continuous with the last packet'
+          : holeMs > 0
+              ? 'gap of $holeMs ms before this packet'
+              : 'overlaps the last packet by ${-holeMs} ms';
+    }
     step?.call(
       'Packet $_packets: ${r.samples.length} samples, $contact with contact, '
-      'strap time ${r.strapTime.toStringAsFixed(3)}, $gap',
+      'strap time ${r.strapTime.toStringAsFixed(3)}, $gap, $continuity, '
+      'received ${(behind.inMicroseconds / 1000).round()} ms behind the '
+      'freshest packet so far',
     );
     if (_packets == 1) {
       step?.call('First packet arrived ${_sinceTap()} ms after the tap.');
@@ -284,27 +322,26 @@ class EcgTapSession {
     _lastEndStrapSec = _lastEndStrapSec == null || endSec > _lastEndStrapSec!
         ? endSec
         : _lastEndStrapSec;
-    final base = Duration(microseconds: (r.strapTime * 1000000).round());
     _lastFrameWall = wall;
-    _lastEnd = base + _samplePeriod * r.samples.length;
+    _lastEnd = end;
+    _prevEnd = end;
 
     if (!_readiness.ready &&
-        _readiness.offer(at: wall, strapTime: r.strapTime)) {
+        _readiness.offer(
+          at: wall,
+          strapTime: r.strapTime,
+          sampleCount: r.samples.length,
+        )) {
       step?.call(
         'Stream is steady, ${_sinceTap()} ms after the tap '
-        '(two packets within ${EcgStreamReadiness.pairWindow.inMilliseconds} '
-        'ms of each other).',
+        '(two packets continuous on the sample clock, advancing in step with '
+        'the wall clock, within '
+        '${EcgStreamReadiness.pairWindow.inMilliseconds} ms of each other).',
       );
     }
     _maybeAskForAck();
 
-    final ackAt = _ackFinishedAt;
-    if (ackAt != null && !_acked) {
-      // A packet may contain samples acquired before the haptic round trip.
-      // Estimate its END at receipt, then subtract elapsed wall time to
-      // locate the acknowledgement within the buffered sample timeline.
-      _ackAt(_lastEnd! - wall.difference(ackAt));
-    }
+    if (_ackFinishedAt != null && !_acked) _openWindow();
     if (!_acked) return;
     for (var i = 0; i < r.samples.length && _active; i++) {
       final t = base + _samplePeriod * i;
@@ -319,7 +356,7 @@ class EcgTapSession {
     if (!_active || _asked || !_streamUp || !_readiness.ready) return;
     if (c == null || tap == null) return;
     _asked = true;
-    _handle(c.start(tap, at: _streamNow() ?? Duration.zero));
+    _handle(c.start(tap, at: _clock.sampleAt(_now()) ?? Duration.zero));
   }
 
   /// Stall and liveness checks; also what the periodic timer runs.
@@ -341,7 +378,7 @@ class EcgTapSession {
       _abandon('no_stream');
       return;
     }
-    final now = _streamNow();
+    final now = _stallNow();
     if (now != null) _handle(c.tick(now));
   }
 
@@ -350,28 +387,51 @@ class EcgTapSession {
     unawaited(_finish(null, reason));
   }
 
-  /// The ECG sample clock "now": the end of the last packet plus the wall time
-  /// since it arrived. Null before any packet.
-  Duration? _streamNow() {
+  /// "Now" for STALL detection only: the end of the last packet plus the wall
+  /// time since it arrived, so the counter's stall test measures time since the
+  /// last packet RECEIVED (a packet that was itself late must not look like a
+  /// stalled stream). Null before any packet. Never used to place the touch
+  /// window: that goes through [_clock].
+  Duration? _stallNow() {
     final end = _lastEnd, at = _lastFrameWall;
     if (end == null || at == null) return null;
     return end + _now().difference(at);
   }
 
-  void _ackAt(Duration t) {
+  /// Open the first touch window at the acknowledgement's wall time mapped onto
+  /// the sample clock through the least-delayed recent packet. (The haptic
+  /// itself may start a little after the write completes: unknown, not
+  /// modelled; the counter's debounce absorbs a few tens of ms.)
+  void _openWindow() {
+    final wall = _ackFinishedAt;
+    final boundary = wall == null ? null : _clock.sampleAt(wall);
+    if (wall == null || boundary == null) return;
     _acked = true;
+    final end = _lastEnd, at = _lastFrameWall;
+    final legacy = end == null || at == null ? null : end + wall.difference(at);
+    final shift = legacy == null
+        ? ''
+        : ' The boundary is ${(boundary - legacy).inMilliseconds} ms later '
+            'than the receipt-time estimate (end of the last packet plus the '
+            'wall time since it arrived) would have put it.';
     step?.call(
-      'Touch window open at sample time ${t.inMilliseconds} ms '
+      'Sample clock: from ${_packets.clamp(0, _clock.keep)} packets, the '
+      'least-delayed one puts the phone clock at the strap clock plus '
+      '${(_clock.baseline!.inMicroseconds / 1e6).toStringAsFixed(3)} s (the '
+      'real clock offset and that packet\'s own latency, which cannot be told '
+      'apart).$shift',
+    );
+    step?.call(
+      'Touch window open at sample time ${boundary.inMilliseconds} ms '
       '(${_sinceTap()} ms after the tap).',
     );
-    _handle(_counter!.ackDone(t));
+    _handle(_counter!.ackDone(boundary));
   }
 
   void _ackFinishedByBuzz() {
     _ackFinishedAt = _now();
     if (!_active || _acked) return;
-    final now = _streamNow();
-    if (now != null) _ackAt(now);
+    _openWindow();
   }
 
   void _handle(List<EcgTapOutput> outs) {
