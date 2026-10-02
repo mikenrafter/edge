@@ -302,12 +302,23 @@ class LiveStreamChart extends StatelessWidget {
             style: F.cap.copyWith(color: p.ink3)),
       ]),
       const SizedBox(height: S.x1),
-      // 8F: wrap in ChartScrub
       SizedBox(
         height: 72,
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: LineChart(series, p.on(C.blue), fill: false),
+        child: ChartScrub(
+          label: label,
+          // Each slot is half a second of the window; the readout names how
+          // long ago that slot was and its mean, never a neighbour's value.
+          readout: ChartScrub.slots(series, (i, v) {
+            final ago = window.inMilliseconds * (series.length - 1 - i) ~/
+                series.length ~/
+                1000;
+            final when = ago == 0 ? 'now' : '$ago s ago';
+            return '$when · ${v.toStringAsFixed(v.abs() >= 100 ? 0 : 1)}';
+          }),
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: LineChart(series, p.on(C.blue), fill: false),
+          ),
         ),
       ),
     ]);
