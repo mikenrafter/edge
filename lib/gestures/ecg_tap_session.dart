@@ -4,8 +4,11 @@
 // live double tap it: starts the ECG stream, sends the two-pulse acknowledgement
 // once the stream is running, turns each R17 packet into 100 Hz samples on the
 // stream's own clock, forwards every buzz request, and stops the stream when the
-// gesture ends. Nothing is persisted (invariant 14): the packets are consumed
-// and dropped here.
+// gesture ends. No sample is persisted (invariant 14): the packets are consumed
+// and dropped here. The one thing kept is the session's strap-clock INTERVAL
+// (see [EcgGestureRecord]): turning the stream on makes the band save raw ECG
+// that ordinary history sync delivers later, and the receiving side needs the
+// interval to label those packets as gesture contact (8N), never a reading.
 //
 // Everything that touches the world is injected (stream start/stop, buzz,
 // clocks), so the latch discipline is testable. One gesture at a time; every
@@ -39,6 +42,32 @@ const AlertRule kEcgTapRule = AlertRule(
   channelPolicyId: 'gesture',
 );
 
+/// What a finished gesture leaves behind: its interval on the STRAP clock
+/// (whole seconds, the same clock as `ecg_raw_packet.strap_seconds`) and the
+/// outcome. No samples. [strapStart]/[strapEnd] are null when the session never
+/// learned the strap clock.
+class EcgGestureRecord {
+  const EcgGestureRecord({
+    required this.strapStart,
+    required this.strapEnd,
+    required this.finalCount,
+    required this.reason,
+  });
+
+  final int? strapStart;
+  final int? strapEnd;
+
+  /// The final count, or null when the gesture was abandoned.
+  final int? finalCount;
+
+  /// Why it was abandoned (null when counted).
+  final String? reason;
+
+  @override
+  String toString() =>
+      'EcgGestureRecord($strapStart..$strapEnd count=$finalCount reason=$reason)';
+}
+
 class EcgTapSession {
   EcgTapSession({
     required this.beginStream,
@@ -48,6 +77,8 @@ class EcgTapSession {
     required this.maxTaps,
     required this.thresholds,
     required this.onFinished,
+    this.recordSession,
+    this.strapNow,
     this.step,
     DateTime Function()? now,
     this.stallAfter = const Duration(seconds: 3),
@@ -72,6 +103,18 @@ class EcgTapSession {
 
   /// The gesture ended: [count] taps, or null when abandoned (with [reason]).
   final void Function(int? count, String? reason) onFinished;
+
+  /// Write the finished gesture's interval (8N). Called once on EVERY exit
+  /// (counted, abandoned, link lost, start failed), after [onFinished] and
+  /// before the stream is stopped. May throw: the failure is swallowed, so a
+  /// storage error can never wedge the latch or keep the stream running.
+  final Future<void> Function(EcgGestureRecord record)? recordSession;
+
+  /// The strap clock now, in whole seconds, estimated from the phone-to-strap
+  /// clock correlation; null when unknown. Only used for a session that never
+  /// saw a packet (a start that failed), so the interval is a coarse estimate
+  /// there and exact (from the packets) everywhere else.
+  final int? Function()? strapNow;
 
   /// A line for the Device lab's trace.
   final void Function(String line)? step;
@@ -100,6 +143,9 @@ class EcgTapSession {
   Duration? _lastEnd;
   int _buzzes = 0;
 
+  // The strap-clock interval seen on the wire this session (8N).
+  int? _firstStrapSec, _lastEndStrapSec, _strapAtBegin;
+
   bool get active => _active;
 
   /// Begin the gesture for a live double tap. Returns once the stream is
@@ -110,6 +156,7 @@ class EcgTapSession {
     if (_active) return;
     _active = true;
     _tap = tap;
+    _strapAtBegin = _strapNowSafe();
     _counter = EcgTapCounter(
         max: maxTaps(), thresholds: thresholds(), stallAfter: stallAfter);
     try {
@@ -138,6 +185,18 @@ class EcgTapSession {
   void onFrame(LabradorR17 r) {
     final c = _counter;
     if (!_active || c == null || !_streamUp) return;
+    // Interval bookkeeping: whole strap seconds, start floored and end
+    // ceiled, in integers (no float drift at a second boundary).
+    final startSec = r.strapSeconds;
+    final subMs = (r.subseconds * 1000 + 32767) ~/ 32768;
+    final endSec =
+        startSec + (subMs + r.samples.length * 10 + 999) ~/ 1000;
+    _firstStrapSec = _firstStrapSec == null || startSec < _firstStrapSec!
+        ? startSec
+        : _firstStrapSec;
+    _lastEndStrapSec = _lastEndStrapSec == null || endSec > _lastEndStrapSec!
+        ? endSec
+        : _lastEndStrapSec;
     final base = Duration(microseconds: (r.strapTime * 1000000).round());
     _lastFrameWall = _now();
     _lastEnd = base + _samplePeriod * r.samples.length;
@@ -236,6 +295,15 @@ class EcgTapSession {
   Future<void> _finish(int? count, String? reason) async {
     if (!_active) return;
     final up = _streamUp;
+    // The interval: the packets' own bounds when any arrived, else the strap
+    // clock estimate at begin and now (a start that failed). Taken before the
+    // flags reset below.
+    final record = EcgGestureRecord(
+      strapStart: _firstStrapSec ?? _strapAtBegin,
+      strapEnd: _lastEndStrapSec ?? (_strapAtBegin == null ? null : _strapNowSafe()),
+      finalCount: count,
+      reason: reason,
+    );
     try {
       _timer?.cancel();
     } finally {
@@ -250,16 +318,30 @@ class EcgTapSession {
       _lastFrameWall = null;
       _lastEnd = null;
       _buzzes = 0;
+      _firstStrapSec = _lastEndStrapSec = _strapAtBegin = null;
     }
     // Both are best effort and must not leak an error out of an unawaited
     // call; the stream is stopped even if the listener throws.
     try {
       onFinished(count, reason);
     } catch (_) {}
+    // 8N: the interval is written on every exit, and a failure here must not
+    // stop the stream from being stopped.
+    try {
+      await recordSession?.call(record);
+    } catch (_) {}
     if (up) {
       try {
         await endStream();
       } catch (_) {}
+    }
+  }
+
+  int? _strapNowSafe() {
+    try {
+      return strapNow?.call();
+    } catch (_) {
+      return null;
     }
   }
 }
