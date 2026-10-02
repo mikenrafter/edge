@@ -221,11 +221,77 @@ class _DataScreenState extends State<DataScreen> {
   @override
   Widget build(BuildContext c) {
     final app = c.watch<AppState>();
+    return DataScreenView(
+      rebuiltCard: dbRebuiltCard(app.dbRebuild),
+      busy: _busy,
+      note: _note,
+      noteFailed: _noteFailed,
+      outcome: _outcome,
+      cadence: app.backupCadence,
+      lastBackup: app.lastBackupAt,
+      reanalyzeProgress: app.reanalyzeProgress,
+      reanalyzing: app.reanalyzing,
+      importRollupError: app.importRollupError,
+      onExportCsv: () => _run(_exportCsv),
+      onExportDb: () => _run(_exportDb),
+      onExportEncrypted: () => _run(_exportEncrypted),
+      onCycleCadence: () => app.setBackupCadence(_nextCadence(app.backupCadence)),
+      onBackupNow: () => _run(() => _backupNow(app)),
+      onImport: () => _run(() => _import(app)),
+      onPhoneImport: () => goto(c, const PhoneImport()),
+      onReanalyze: () => _run(() => _reanalyze(app)),
+    );
+  }
+}
+
+/// Your data without AppState, so it can be pumped headless. Every input is
+/// optional; a null callback is an inert row.
+class DataScreenView extends StatelessWidget {
+  const DataScreenView({
+    super.key,
+    this.rebuiltCard,
+    this.busy = false,
+    this.note,
+    this.noteFailed = false,
+    this.outcome,
+    this.cadence = BackupCadence.off,
+    this.lastBackup,
+    this.reanalyzeProgress = '',
+    this.reanalyzing = false,
+    this.importRollupError,
+    this.onExportCsv,
+    this.onExportDb,
+    this.onExportEncrypted,
+    this.onCycleCadence,
+    this.onBackupNow,
+    this.onImport,
+    this.onPhoneImport,
+    this.onReanalyze,
+  });
+
+  final Widget? rebuiltCard;
+  final bool busy, noteFailed, reanalyzing;
+  final String? note, importRollupError;
+  final String reanalyzeProgress;
+  final ImportOutcome? outcome;
+  final BackupCadence cadence;
+  final DateTime? lastBackup;
+  final VoidCallback? onExportCsv,
+      onExportDb,
+      onExportEncrypted,
+      onCycleCadence,
+      onBackupNow,
+      onImport,
+      onPhoneImport,
+      onReanalyze;
+
+  @override
+  Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final last = app.lastBackupAt;
-    final o = _outcome;
-    final rebuilt = dbRebuiltCard(app.dbRebuild);
+    final last = lastBackup;
+    final o = outcome;
+    final rebuilt = rebuiltCard;
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -251,7 +317,7 @@ class _DataScreenState extends State<DataScreen> {
                   rebuilt,
                   const SizedBox(height: S.x5),
                 ],
-                settingsGroup(c, l?.dataExportGroup ?? 'Export', [
+                SettingsAccordion(l?.dataExportGroup ?? 'Export', children: [
                   SetRow(LucideIcons.fileSpreadsheet, C.green,
                       l?.dataExportSpreadsheets ?? 'Export as spreadsheets',
                       // export-provenance: the daily file now carries `source`
@@ -264,7 +330,7 @@ class _DataScreenState extends State<DataScreen> {
                           'workouts, sleep, journal, labs and your manual '
                           'entries. Each day lists its data source and the '
                           'algorithm version that scored it.',
-                      onTap: _busy ? null : () => _run(_exportCsv)),
+                      onTap: busy ? null : onExportCsv),
                   SetRow(LucideIcons.database, C.blue,
                       l?.dataExportDatabase ?? 'Export the database',
                       sub: l?.dataExportDatabaseSub ??
@@ -272,7 +338,7 @@ class _DataScreenState extends State<DataScreen> {
                           'that restores onto another phone. Any SQLite reader '
                           'can open it, so anyone who gets the file can read '
                           'your data.',
-                      onTap: _busy ? null : () => _run(_exportDb)),
+                      onTap: busy ? null : onExportDb),
                   SetRow(LucideIcons.lock, C.purple,
                       l?.dataExportEncrypted ?? 'Export an encrypted backup',
                       sub: l?.dataExportEncryptedSub ??
@@ -280,10 +346,9 @@ class _DataScreenState extends State<DataScreen> {
                           'a passphrase. Store it somewhere like iCloud. If '
                           'you forget the passphrase, the file cannot be opened '
                           'and there is no recovery.',
-                      onTap: _busy ? null : () => _run(_exportEncrypted)),
+                      onTap: busy ? null : onExportEncrypted),
                 ]),
-                const SizedBox(height: S.x5),
-                settingsGroup(c, l?.dataAutoBackupGroup ?? 'Automatic backup', [
+                SettingsAccordion(l?.dataAutoBackupGroup ?? 'Automatic backup', children: [
                   SetRow(LucideIcons.calendarClock, C.purple,
                       l?.dataHowOften ?? 'How often',
                       // Unencrypted, and it says so. The encrypted format is
@@ -294,11 +359,8 @@ class _DataScreenState extends State<DataScreen> {
                       sub: l?.dataHowOftenSub(kBackupDirName, kBackupsKept) ??
                           'Writes a compressed, unencrypted copy to '
                               '$kBackupDirName, keeping the last $kBackupsKept',
-                      value: app.backupCadence.label,
-                      onTap: _busy
-                          ? null
-                          : () => app.setBackupCadence(_nextCadence(
-                              app.backupCadence))),
+                      value: cadence.label,
+                      onTap: busy ? null : onCycleCadence),
                   SetRow(LucideIcons.clock, C.n500,
                       l?.dataLastBackup ?? 'Last backup',
                       value: last == null
@@ -307,16 +369,15 @@ class _DataScreenState extends State<DataScreen> {
                       chevron: false),
                   SetRow(LucideIcons.hardDriveDownload, C.teal,
                       l?.dataBackUpNow ?? 'Back up now',
-                      onTap: _busy ? null : () => _run(() => _backupNow(app))),
+                      onTap: busy ? null : onBackupNow),
                 ]),
-                const SizedBox(height: S.x5),
-                settingsGroup(c, l?.dataBringDataInGroup ?? 'Bring data in', [
+                SettingsAccordion(l?.dataBringDataInGroup ?? 'Bring data in', children: [
                   SetRow(LucideIcons.upload, C.orange,
                       l?.dataImportFile ?? 'Import a file',
                       sub: l?.dataImportFileSub ??
                           'Accepts an OpenStrap backup (encrypted or not), an edited journal CSV, a raw sensor export, or a vendor CSV. '
                           'Import never overwrites days this band already measured.',
-                      onTap: _busy ? null : () => _run(() => _import(app))),
+                      onTap: busy ? null : onImport),
                   // Progressive disclosure: two health-store reads, each with
                   // its own consent and its own ceiling, behind one row rather
                   // than two more rows on this screen.
@@ -325,10 +386,9 @@ class _DataScreenState extends State<DataScreen> {
                       sub: l?.dataFromYourPhoneSub ??
                           'Resting heart rate, blood pressure, glucose and '
                               'body temperature',
-                      onTap: _busy ? null : () => goto(c, const PhoneImport())),
+                      onTap: busy ? null : onPhoneImport),
                 ]),
-                const SizedBox(height: S.x5),
-                settingsGroup(c, 'Advanced', [
+                SettingsAccordion('Advanced', children: [
                   // The engine puts days on hold after a ≥3 h timezone jump
                   // "until Re-analyze data runs" — and nothing in the app ran
                   // it. A flight abroad quietly stopped days updating with no
@@ -337,38 +397,36 @@ class _DataScreenState extends State<DataScreen> {
                       'Rebuild all history',
                       sub: l?.dataReanalyzeEverythingSub ??
                           'Recalculates every day from stored data. Run it after a long-haul flight or after an import that added days out of order.',
-                      value: app.reanalyzeProgress,
-                      onTap: _busy || app.reanalyzing
-                          ? null
-                          : () => _run(() => _reanalyze(app))),
+                      value: reanalyzeProgress,
+                      onTap: busy || reanalyzing ? null : onReanalyze),
                 ]),
-                if (_busy) ...[
+                if (busy) ...[
                   const SizedBox(height: S.x6),
                   Center(child: CircularProgressIndicator(color: p.on(C.blue))),
                 ],
-                if (_note != null && _note!.isNotEmpty) ...[
+                if (note != null && note!.isNotEmpty) ...[
                   const SizedBox(height: S.x5),
                   StatusCard(
-                      _noteFailed
+                      noteFailed
                           ? (l?.dataThatDidNotWork ?? 'That did not work')
                           : (l?.actionDone ?? 'Done'),
-                      _note!,
-                      icon: _noteFailed
+                      note!,
+                      icon: noteFailed
                           ? LucideIcons.triangleAlert
                           : LucideIcons.check),
                 ],
-                if (app.importRollupError != null) ...[
+                if (importRollupError != null) ...[
                   const SizedBox(height: S.x5),
                   StatusCard(
                     l?.welcomeSummariesDidNotTitle ??
                         'Days imported, summaries not rebuilt',
                     l?.dataSummariesDidNotBodyShort(
-                            '${app.importRollupError}') ??
-                        'The import saved every row, but rebuilding the cross-day summaries failed (${app.importRollupError}). '
+                            '$importRollupError') ??
+                        'The import saved every row, but rebuilding the cross-day summaries failed ($importRollupError). '
                         'Trends and insights still reflect your data from before the import. Run Rebuild all history to retry.',
                     fix: 'Rebuild all history',
                     icon: LucideIcons.triangleAlert,
-                    onFix: _busy ? null : () => _run(() => _reanalyze(app)),
+                    onFix: busy ? null : onReanalyze,
                   ),
                 ],
                 // The onboarding report, not a second copy of it. This

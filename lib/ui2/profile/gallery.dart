@@ -56,8 +56,10 @@ import '../onboarding/welcome.dart' show ImportOutcome, ImportReport;
 // Screens are deliberately not re-exported from the ui2 barrel (see the
 // barrel test), so their components are imported by path.
 import '../screens/screens.dart';
+import '../../notify/buzz_sequence.dart';
 import '../../state/control_operations.dart';
 import '../ui2.dart';
+import 'buzz_pattern.dart';
 import 'devices.dart';
 import 'profile.dart';
 
@@ -1523,14 +1525,48 @@ Map<String, Widget> _listCases() => {
         ),
         onSync: () {},
       ),
-      'settings_accordion': SettingsAccordion('Alarms & Wake',
-          initiallyExpanded: true,
-          children: [
-            SwitchRow('Buzz during Do Not Disturb', true, (_) {},
-                sub: 'Off respects Do Not Disturb. Edge never changes your '
-                    'Do Not Disturb setting.'),
-            SwitchRow('Only while worn', false, (_) {}),
-          ]),
+      'settings_accordion': Column(children: [
+        SettingsAccordion('Alarms & Wake', children: [
+          SwitchRow('Buzz during Do Not Disturb', true, (_) {},
+              sub: 'Off respects Do Not Disturb. Edge never changes your '
+                  'Do Not Disturb setting.'),
+          SwitchRow('Only while worn', false, (_) {}),
+          // 8K: present, dimmed and inert, with its reason.
+          const SwitchRow('Also run for taps replayed from history', false, null,
+              enabled: false, sub: 'Turn on Mark a moment first'),
+          const SetRow(LucideIcons.target, C.red, 'Target zone',
+              enabled: false,
+              sub: 'Turn on HR zone alert first',
+              value: 'Zone 3',
+              chevron: false),
+        ]),
+        // Folded: the summary stays under the header.
+        const SettingsAccordion('Haptics',
+            summary: 'The band alarm uses the band\'s own buzz',
+            initiallyExpanded: false,
+            children: [Text('Buzz pattern')]),
+      ]),
+      'buzz_pattern_row': Surface(
+        child: Column(children: [
+          BuzzPatternRow(sequence: BuzzSequence.defaultFor(4), onTap: () {}),
+          BuzzPatternRow(
+              sequence: BuzzSequence.defaultFor(4), enabled: false),
+        ]),
+      ),
+      'buzz_pattern_sheet': BuzzPatternSheet(
+        initial: BuzzSequence.defaultFor(4),
+        bandConnected: true,
+      ),
+      'moment_group_row': Surface(
+        child: MomentGroupRow(MomentGroup([
+          for (final m in [20, 21, 22])
+            Moment(
+                at: _tlAt(8, m),
+                title: 'You double-tapped the band',
+                icon: LucideIcons.hand,
+                eventId: 14),
+        ])),
+      ),
       'source_row': Column(children: [
         SourceRow(
           HealthSource(

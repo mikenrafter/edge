@@ -36,11 +36,11 @@ class BuzzPatternRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    final row = SetRow(LucideIcons.waves, C.purple, 'Buzz pattern',
+    return SetRow(LucideIcons.waves, C.purple, 'Buzz pattern',
         value: buzzSummary(sequence),
         chevron: false,
-        onTap: enabled ? onTap : null);
-    return enabled ? row : Opacity(opacity: .4, child: row);
+        enabled: enabled,
+        onTap: onTap);
   }
 }
 

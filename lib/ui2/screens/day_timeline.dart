@@ -1128,8 +1128,10 @@ class _MomentGroupRowState extends State<MomentGroupRow> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
+        Pressable(
           onTap: () => setState(() => _open = !_open),
+          semanticLabel:
+              '${f.title}, ${g.count} times, ${_open ? 'expanded' : 'collapsed'}',
           child: Row(
             children: [
               Expanded(

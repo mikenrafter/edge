@@ -206,7 +206,10 @@ class _MoreSettingsState extends State<MoreSettings> {
       expectedSleepSchedule: app.sleepOperations.schedule,
       onEditSleepSchedule: () => _editSleepSchedule(app),
       onEditProfile: () => goto(c, const EditProfile()),
+      relaySupported: defaultTargetPlatform == TargetPlatform.android,
       onAlarm: () => goto(c, const AlarmScreen()),
+      onBandNotifications: () => goto(c, const BandNotifications()),
+      onGestures: () => goto(c, const BandGestures()),
       onNotifications: () => goto(c, const NotificationSettings()),
       onData: () => goto(c, const DataScreen()),
       onAutomation: () => goto(c, const AutomationSettings()),
@@ -557,8 +560,14 @@ class MoreSettingsView extends StatelessWidget {
   final ExpectedSleepSchedule? expectedSleepSchedule;
   final VoidCallback? onEditSleepSchedule;
 
+  /// Android only, like the relay itself: where it cannot run, the Band
+  /// notifications row is omitted rather than shown against nothing.
+  final bool relaySupported;
+
   final VoidCallback? onEditProfile,
       onAlarm,
+      onBandNotifications,
+      onGestures,
       onNotifications,
       onData,
       onAutomation,
@@ -603,8 +612,11 @@ class MoreSettingsView extends StatelessWidget {
     this.onGallery,
     this.expectedSleepSchedule,
     this.onEditSleepSchedule,
+    this.relaySupported = false,
     this.onEditProfile,
     this.onAlarm,
+    this.onBandNotifications,
+    this.onGestures,
     this.onNotifications,
     this.onData,
     this.onAutomation,
@@ -643,16 +655,26 @@ class MoreSettingsView extends StatelessWidget {
                 // No "Edit profile" here. It lives in one place — Quick access
                 // on the Profile screen — because two doors to one form is how
                 // a user ends up unsure which one is the real setting.
-                settingsGroup(c, l?.settingsGroupTheBand ?? 'The band', [
+                SettingsAccordion(l?.settingsGroupTheBand ?? 'The band', children: [
                   SetRow(LucideIcons.alarmClock, C.orange,
                       l?.settingsAlarmRowTitle ?? 'Alarm',
                       sub: l?.settingsAlarmRowSub ??
                           'Buzzes on your wrist and runs on the band\'s clock',
                       onTap: onAlarm),
+                  // The relay and the gestures live one push from here, not
+                  // behind Notifications and Automation (8A). The relay row
+                  // is Android-only and omitted elsewhere.
+                  if (relaySupported)
+                    SetRow(LucideIcons.bellRing, C.purple, 'Band notifications',
+                        sub: 'Which apps, alarms and calls make the band buzz',
+                        onTap: onBandNotifications),
+                  SetRow(LucideIcons.hand, C.orange, 'Gestures',
+                      sub: l?.settingsDoubleTapRowSub ??
+                          'What a double-tap on the band does',
+                      onTap: onGestures),
                   // Off by default — an existing user did not ask their band
                   // to start buzzing mid-workout. The target-zone row below
-                  // only appears once this is on; a target for an alert
-                  // that's off is furniture, same rule as battery/water above.
+                  // is always drawn and dimmed while this is off (8K).
                   SetRow(LucideIcons.heartPulse, C.red,
                       l?.settingsZoneAlertRowTitle ?? 'HR zone alert',
                       sub: l?.settingsZoneAlertRowSub ??
@@ -661,14 +683,17 @@ class MoreSettingsView extends StatelessWidget {
                       value: zoneAlertEnabled ? on : off,
                       chevron: false,
                       onTap: onToggleZoneAlert),
-                  if (zoneAlertEnabled)
-                    SetRow(LucideIcons.target, C.red,
-                        l?.settingsZoneAlertTargetRowTitle ?? 'Target zone',
-                        value: l?.settingsZoneAlertTargetRowValue(
-                                zoneAlertZone) ??
-                            'Zone $zoneAlertZone',
-                        chevron: false,
-                        onTap: onCycleZoneAlertZone),
+                  SetRow(LucideIcons.target, C.red,
+                      l?.settingsZoneAlertTargetRowTitle ?? 'Target zone',
+                      enabled: zoneAlertEnabled,
+                      sub: zoneAlertEnabled
+                          ? 'The zone to stay in'
+                          : 'Turn on HR zone alert first',
+                      value:
+                          l?.settingsZoneAlertTargetRowValue(zoneAlertZone) ??
+                              'Zone $zoneAlertZone',
+                      chevron: false,
+                      onTap: onCycleZoneAlertZone),
                 ]),
                 // NOT in Preferences. Units and Appearance change how numbers
                 // are drawn; this one asks the OS for a sensor and decides
@@ -676,7 +701,7 @@ class MoreSettingsView extends StatelessWidget {
                 // band, because the two together are the step ladder — the
                 // band covers the workout, the phone covers the rest — and
                 // "This phone" is what the sources screen already calls it.
-                settingsGroup(c, l?.settingsGroupThisPhone ?? 'This phone', [
+                SettingsAccordion(l?.settingsGroupThisPhone ?? 'This phone', children: [
                   SetRow(LucideIcons.footprints, C.teal,
                       l?.settingsStepsRowTitle ?? 'Steps',
                       sub: l?.settingsStepsRowSub ??
@@ -685,8 +710,7 @@ class MoreSettingsView extends StatelessWidget {
                       value: phoneSteps ? on : off,
                       onTap: onTogglePhoneSteps),
                 ]),
-                settingsGroup(
-                    c, l?.settingsGroupNotifications ?? 'Notifications', [
+                SettingsAccordion(l?.settingsGroupNotifications ?? 'Notifications', children: [
                   SetRow(LucideIcons.bell, C.blue,
                       l?.settingsManageNotificationsRowTitle ??
                           'Manage notifications',
@@ -695,7 +719,7 @@ class MoreSettingsView extends StatelessWidget {
                           'quiet hours',
                       onTap: onNotifications),
                 ]),
-                settingsGroup(c, l?.settingsGroupPreferences ?? 'Preferences', [
+                SettingsAccordion(l?.settingsGroupPreferences ?? 'Preferences', children: [
                   SetRow(LucideIcons.ruler, C.blue,
                       l?.settingsUnitsRowTitle ?? 'Units',
                       value: units, onTap: onCycleUnits),
@@ -722,7 +746,7 @@ class MoreSettingsView extends StatelessWidget {
                       value: cycleTracking ? on : off,
                       onTap: onToggleCycleTracking),
                 ]),
-                settingsGroup(c, l?.settingsGroupYourData ?? 'Your data', [
+                SettingsAccordion(l?.settingsGroupYourData ?? 'Your data', children: [
                   SetRow(LucideIcons.download, C.green,
                       l?.settingsExportBackupImportRowTitle ??
                           'Export, backup, import',
@@ -741,19 +765,7 @@ class MoreSettingsView extends StatelessWidget {
                       value: healthSync ? on : off,
                       onTap: onToggleHealthSync),
                 ]),
-                settingsGroup(c, l?.settingsGroupAutomation ?? 'Automation', [
-                  // The picker died with the old ui tree and the engine kept
-                  // running against a mapping nothing could set — the whole
-                  // feature was live code pinned at "do nothing".
-                  Builder(
-                      builder: (c) => SetRow(
-                          LucideIcons.hand, C.orange,
-                          AppLocalizations.of(c)?.settingsDoubleTapRowTitle ??
-                              'Double-tap',
-                          sub: AppLocalizations.of(c)
-                                  ?.settingsDoubleTapRowSub ??
-                              'What a double-tap on the band does',
-                          onTap: () => goto(c, const BandGestures()))),
+                SettingsAccordion(l?.settingsGroupAutomation ?? 'Automation', children: [
                   SetRow(LucideIcons.workflow, C.indigo,
                       l?.settingsTaskerShortcutsRowTitle ??
                           'Tasker and Shortcuts',
@@ -765,7 +777,7 @@ class MoreSettingsView extends StatelessWidget {
                           'but cannot receive events from it',
                       onTap: onAutomation),
                 ]),
-                settingsGroup(c, l?.settingsGroupPrivacy ?? 'Privacy', [
+                SettingsAccordion(l?.settingsGroupPrivacy ?? 'Privacy', children: [
                   SetRow(LucideIcons.bug, C.orange,
                       l?.settingsCrashReportsRowTitle ?? 'Crash reports',
                       sub: l?.settingsCrashReportsRowSub ??
@@ -809,7 +821,7 @@ class MoreSettingsView extends StatelessWidget {
                         value: updateChecks ? on : off,
                         onTap: onToggleUpdateChecks),
                 ]),
-                settingsGroup(c, l?.settingsGroupAbout ?? 'About', [
+                SettingsAccordion(l?.settingsGroupAbout ?? 'About', children: [
                   if (version.isNotEmpty)
                     SetRow(LucideIcons.info, C.n500,
                         l?.settingsVersionRowTitle ?? 'Version',
@@ -828,7 +840,7 @@ class MoreSettingsView extends StatelessWidget {
                           mode: LaunchMode.externalApplication)),
                 ]),
                 if (devMode)
-                  settingsGroup(c, l?.settingsGroupDeveloper ?? 'Developer', [
+                  SettingsAccordion(l?.settingsGroupDeveloper ?? 'Developer', children: [
                     SetRow(LucideIcons.layoutGrid, C.purple,
                         l?.settingsComponentGalleryRowTitle ??
                             'Component gallery',
@@ -1029,12 +1041,23 @@ class _AlertRow extends StatelessWidget {
             ),
           ),
       ]),
-      if (mask != 0)
-        Padding(
-          padding: const EdgeInsets.only(top: S.x1),
-          child: Text(AlertCapabilityRegistry.summary(rule),
-              style: F.over.copyWith(color: p.ink3)),
+      // Always drawn ("Off" when off) and reserved at three lines, the most a
+      // phone + band summary takes at the default width, so switching an alert
+      // on does not push every section header below it down.
+      Padding(
+        padding: const EdgeInsets.only(top: S.x1),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+              minHeight: 3 *
+                  MediaQuery.textScalerOf(c).scale(
+                      (F.over.fontSize ?? 12) * (F.over.height ?? 1.3))),
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: Text(AlertCapabilityRegistry.summary(rule),
+                style: F.over.copyWith(color: p.ink3)),
+          ),
         ),
+      ),
       // Present for every alert that can reach the band, usable only while
       // Band is one of its destinations.
       if (sequence != null)
@@ -1209,10 +1232,14 @@ class NotificationSettingsView extends StatelessWidget {
                             l?.settingsWaterReminderRowTitle ?? 'Water reminder',
                             'Reminds you during your waking hours to log a '
                             'drink'),
-                        if (prefs.waterEnabled)
-                          SetRow(LucideIcons.timer, C.teal,
+                        // Always drawn; dimmed while the reminder is off (8K).
+                        SetRow(LucideIcons.timer, C.teal,
                               l?.settingsRemindMeEveryRowTitle ??
                                   'Remind me every',
+                              enabled: prefs.waterEnabled,
+                              sub: prefs.waterEnabled
+                                  ? 'How often the reminder repeats'
+                                  : 'Turn on the water reminder first',
                               value: _everyLabel(prefs.waterIntervalMin),
                               chevron: false,
                               onTap: () => set(prefs.copyWith(
@@ -1232,12 +1259,14 @@ class NotificationSettingsView extends StatelessWidget {
                         l?.settingsBandAlertsRowTitle ?? 'Band alerts',
                         l?.settingsBandAlertsRowSub ??
                             'Low battery, charging status, and a band that stops reporting'),
-                    if (prefs.deviceEnabled)
-                      SetRow(LucideIcons.batteryLow, C.orange,
+                    SetRow(LucideIcons.batteryLow, C.orange,
                           l?.settingsAlertMeAtRowTitle ?? 'Alert me at',
-                          sub: l?.settingsAlertMeAtRowSub ??
-                              'Warns when the band\'s charge falls below this '
-                              'level',
+                          enabled: prefs.deviceEnabled,
+                          sub: !prefs.deviceEnabled
+                              ? 'Turn on band alerts first'
+                              : l?.settingsAlertMeAtRowSub ??
+                                  'Warns when the band\'s charge falls below this '
+                                  'level',
                           value: '${prefs.batteryAlertPct}%',
                           chevron: false,
                           onTap: () => set(prefs.copyWith(
@@ -1259,7 +1288,7 @@ class NotificationSettingsView extends StatelessWidget {
                                       'the band buzz',
                               onTap: () => goto(c, const BandNotifications())),
                         ]),
-                  settingsGroup(c, l?.settingsGroupQuietHours ?? 'Quiet hours', [
+                  SettingsAccordion(l?.settingsGroupQuietHours ?? 'Quiet hours', children: [
                     SetRow(LucideIcons.moon, C.indigo,
                         l?.settingsQuietHoursRowTitle ?? 'Quiet hours',
                         sub: l?.settingsQuietHoursRowSub ??
@@ -1615,46 +1644,61 @@ class _EditProfileViewState extends State<EditProfileView> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                _text(c, _name, l?.settingsNameFieldLabel ?? 'NAME',
-                    TextInputType.name),
-                const SizedBox(height: S.x4),
-                Text(l?.settingsSexFieldLabel ?? 'SEX',
-                    style: F.over.copyWith(color: p.ink3)),
-                const SizedBox(height: S.x2),
-                Wrap(spacing: S.x2, runSpacing: S.x2, children: [
-                  for (final (key, label) in [
-                    ('m', l?.settingsSexMale ?? 'Male'),
-                    ('f', l?.settingsSexFemale ?? 'Female'),
-                    ('other', l?.settingsSexPreferNotToSay ?? 'Prefer not to say'),
-                  ])
-                    Pressable(
-                      onTap: () => setState(() => _sex = key),
-                      semanticLabel: label,
-                      child: Container(
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: S.x4, vertical: S.x2),
-                        decoration: BoxDecoration(
-                          color: _sex == key ? p.wash(C.green) : p.card,
-                          borderRadius: R.rPill,
-                          border: Border.all(
-                              color: _sex == key ? p.on(C.green) : p.line),
-                        ),
-                        child: Text(label,
-                            style: F.cap.copyWith(
-                                color: _sex == key ? p.on(C.green) : p.ink2)),
-                      ),
-                    ),
+                SettingsAccordion('About you', children: [
+                  _text(c, _name, l?.settingsNameFieldLabel ?? 'NAME',
+                      TextInputType.name),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(l?.settingsSexFieldLabel ?? 'SEX',
+                              style: F.over.copyWith(color: p.ink3)),
+                          const SizedBox(height: S.x2),
+                          Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+                            for (final (key, label) in [
+                              ('m', l?.settingsSexMale ?? 'Male'),
+                              ('f', l?.settingsSexFemale ?? 'Female'),
+                              (
+                                'other',
+                                l?.settingsSexPreferNotToSay ?? 'Prefer not to say'
+                              ),
+                            ])
+                              Pressable(
+                                onTap: () => setState(() => _sex = key),
+                                semanticLabel: label,
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: S.x4, vertical: S.x2),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        _sex == key ? p.wash(C.green) : p.card,
+                                    borderRadius: R.rPill,
+                                    border: Border.all(
+                                        color: _sex == key
+                                            ? p.on(C.green)
+                                            : p.line),
+                                  ),
+                                  child: Text(label,
+                                      style: F.cap.copyWith(
+                                          color: _sex == key
+                                              ? p.on(C.green)
+                                              : p.ink2)),
+                                ),
+                              ),
+                          ]),
+                        ]),
+                  ),
+                  _text(c, _age, l?.settingsAgeYearsFieldLabel ?? 'AGE (YEARS)',
+                      TextInputType.number),
                 ]),
-                const SizedBox(height: S.x4),
-                _text(c, _age, l?.settingsAgeYearsFieldLabel ?? 'AGE (YEARS)',
-                    TextInputType.number),
-                const SizedBox(height: S.x4),
-                _text(c, _height, _u.heightLabel.toUpperCase(),
-                    TextInputType.number),
-                const SizedBox(height: S.x4),
-                _text(c, _weight, _u.weightLabel.toUpperCase(),
-                    TextInputType.number),
+                SettingsAccordion('Body', children: [
+                  _text(c, _height, _u.heightLabel.toUpperCase(),
+                      TextInputType.number),
+                  _text(c, _weight, _u.weightLabel.toUpperCase(),
+                      TextInputType.number),
+                ]),
                 ..._importBlock(p, c),
                 const SizedBox(height: S.x6),
                 StatusCard(
@@ -1680,9 +1724,11 @@ class _EditProfileViewState extends State<EditProfileView> {
     if (widget.onImport == null) return const [];
     final l = AppLocalizations.of(c);
     return [
-      const SizedBox(height: S.x6),
-      Surface(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SettingsAccordion('From $storeName', children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             isAppleHealth
                 ? (l?.settingsImportBlockAppleHealth(storeName) ??
@@ -1713,7 +1759,8 @@ class _EditProfileViewState extends State<EditProfileView> {
             ),
           ],
         ]),
-      ),
+        ),
+      ]),
     ];
   }
 
@@ -1721,7 +1768,10 @@ class _EditProfileViewState extends State<EditProfileView> {
       TextInputType kind) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: S.x2),
+      child:
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(label, style: F.over.copyWith(color: p.ink3)),
       TextField(
         controller: ctl,
@@ -1738,7 +1788,7 @@ class _EditProfileViewState extends State<EditProfileView> {
               UnderlineInputBorder(borderSide: BorderSide(color: p.on(C.green))),
         ),
       ),
-    ]);
+    ]));
   }
 }
 
@@ -1787,11 +1837,25 @@ class _AutomationSettingsState extends State<AutomationSettings> {
   }
 
   @override
+  Widget build(BuildContext c) =>
+      AutomationSettingsView(token: _token, copied: _copied, onCopy: _copy);
+}
+
+/// The Automation screen without its token fetch, so it can be pumped headless.
+/// [token] is null until the bridge answers.
+class AutomationSettingsView extends StatelessWidget {
+  const AutomationSettingsView(
+      {super.key, this.token, this.copied = false, this.onCopy});
+  final String? token;
+  final bool copied;
+  final VoidCallback? onCopy;
+
+  @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final android = defaultTargetPlatform == TargetPlatform.android;
-    final token = _token;
+    final token = this.token;
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -1804,10 +1868,12 @@ class _AutomationSettingsState extends State<AutomationSettings> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                Section(
+                SettingsAccordion(
                   l?.settingsSyncFinishesSectionTitle ??
                       'When a sync finishes',
-                  Surface(
+                  children: [
+                    Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1835,12 +1901,14 @@ class _AutomationSettingsState extends State<AutomationSettings> {
                                 style: F.over.copyWith(color: p.ink3)),
                           ],
                         ]),
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: S.x5),
-                Section(
+                SettingsAccordion(
                   l?.settingsNeverSendSectionTitle ?? 'What it will never send',
-                  Surface(
+                  children: [
+                    Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
                     child: Text(
                       l?.settingsNeverSendBody ??
                           'It sends no readiness, strain or sleep score on either platform. '
@@ -1848,13 +1916,15 @@ class _AutomationSettingsState extends State<AutomationSettings> {
                           'Only facts about the sync go out, never measurements.',
                       style: F.body,
                     ),
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: S.x5),
-                Section(
+                SettingsAccordion(
                   l?.settingsBuzzFromShortcutSectionTitle ??
                       'Buzzing the band from a shortcut',
-                  Surface(
+                  children: [
+                    Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -1878,20 +1948,21 @@ class _AutomationSettingsState extends State<AutomationSettings> {
                                   style: F.cap.copyWith(color: p.ink)),
                               const SizedBox(height: S.x3),
                               BigButton(
-                                  _copied
+                                  copied
                                       ? (l?.settingsCopied ?? 'Copied')
                                       : (l?.settingsCopyTheToken ??
                                           'Copy the token'),
-                                  icon: _copied
+                                  icon: copied
                                       ? LucideIcons.check
                                       : LucideIcons.copy,
                                   color: C.indigo,
                                   soft: true,
-                                  onTap: _copy),
+                                  onTap: onCopy),
                             ],
                           ],
                         ]),
-                  ),
+                    ),
+                  ],
                 ),
               ],
             ),

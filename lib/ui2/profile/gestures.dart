@@ -141,7 +141,7 @@ class BandGesturesView extends StatelessWidget {
                     ),
                   ),
                 ),
-                settingsGroup(c, l?.gesturesItDoesTitle ?? 'It does', [
+                SettingsAccordion(l?.gesturesItDoesTitle ?? 'It does', children: [
                   for (final a in offered) ...[
                     SwitchRow(
                       a.localizedLabel(c),
@@ -150,23 +150,27 @@ class BandGesturesView extends StatelessWidget {
                       sub: a.localizedBlurb(c),
                     ),
                     // Directly under the one action that can be replayed
-                    // safely, and only while it is on.
-                    if (a.supportsHistoricalReplay && chosen.contains(a))
+                    // safely. Always drawn; inert and dimmed while the action
+                    // itself is off (8K).
+                    if (a.supportsHistoricalReplay)
                       SwitchRow(
                         l?.gesturesReplayTitle ??
                             'Also run for taps replayed from history',
                         replay.contains(a),
                         onReplay == null ? null : (v) => onReplay!(a, v),
-                        sub: l?.gesturesReplaySub ??
-                            'A tap the band delivers late is still stamped with the '
-                                'minute and day it happened. Other actions never run for '
-                                'a late tap.',
+                        enabled: chosen.contains(a),
+                        sub: !chosen.contains(a)
+                            ? 'Turn on ${a.localizedLabel(c)} first'
+                            : l?.gesturesReplaySub ??
+                                'A tap the band delivers late is still stamped with the '
+                                    'minute and day it happened. Other actions never run for '
+                                    'a late tap.',
                       ),
                   ],
                 ]),
                 // 2 taps is the switches above; there is no 1-tap row. 3–5 are
                 // a DRAFT: touches of the ECG sensor after the double tap.
-                settingsGroup(c, 'Tap counts', [
+                SettingsAccordion('Tap counts', children: [
                   _TapCountRow(
                     taps: 2,
                     summary: _summary(chosen),
@@ -193,15 +197,12 @@ class BandGesturesView extends StatelessWidget {
                   ),
                 ),
                 if (onThresholds != null)
-                  Section(
-                    'Touch windows',
-                    Surface(
-                      child: EcgThresholdAdjusters(
-                        thresholds: thresholds ?? EcgTapThresholds(),
-                        onChanged: ecgSupported ? onThresholds : null,
-                      ),
+                  SettingsAccordion('Touch windows', children: [
+                    EcgThresholdAdjusters(
+                      thresholds: thresholds ?? EcgTapThresholds(),
+                      onChanged: ecgSupported ? onThresholds : null,
                     ),
-                  ),
+                  ]),
                 if (noPhoneActions) ...[
                   const SizedBox(height: S.x5),
                   Section(
@@ -321,6 +322,6 @@ class _TapCountRow extends StatelessWidget {
         ]),
       ),
     );
-    return enabled ? row : Opacity(opacity: .45, child: row);
+    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
   }
 }
