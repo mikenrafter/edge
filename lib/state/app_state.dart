@@ -65,6 +65,10 @@ import '../stress/breath_phases.dart';
 import '../data/auto_backup.dart' as backup show runBackupIfDue;
 import 'alarm_schedule.dart';
 import 'smart_wake.dart';
+import '../wake/wake_controller.dart';
+import '../wake/wake_orchestrator.dart';
+import '../wake/wake_settings.dart';
+import '../wake/wake_stores.dart';
 import 'prefs.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../sources/source_catalog.dart' show SourceService;
@@ -447,16 +451,17 @@ class AppState extends ChangeNotifier {
     channelPolicyId: 'buzz_preview',
   );
 
-  Future<void> _dispatchBandAlert(
+  Future<AlertDeliveryOutcome> _dispatchBandAlert(
     String ruleId, {
     int? pattern,
     DateTime? sourceTime,
     String? eventId,
     bool alarm = false,
+    BuzzSequence? sequence,
   }) async {
     final time = sourceTime ?? DateTime.now();
     final prefs = await NotificationPrefs.load();
-    await alertDispatcher.dispatch(
+    return alertDispatcher.dispatch(
       prefs.alertRule(ruleId),
       eventId: eventId ?? '$ruleId:${time.microsecondsSinceEpoch}',
       sourceTime: time,
@@ -484,7 +489,7 @@ class AppState extends ChangeNotifier {
       // A recorded rhythm can outlast the dispatcher's flat 10 s.
       bandTimeout: alarm || pattern != null
           ? null
-          : prefs.buzzSequenceFor(ruleId).transportTimeout,
+          : (sequence ?? prefs.buzzSequenceFor(ruleId)).transportTimeout,
       bandTransport: () async {
         if (alarm) {
           await engine.runAlarm();
@@ -493,7 +498,7 @@ class AppState extends ChangeNotifier {
         } else {
           // The rule's own rhythm (or its registry default), played as one
           // delivery: the dispatcher's claim covers every step.
-          return playBuzzSequence(prefs.buzzSequenceFor(ruleId),
+          return playBuzzSequence(sequence ?? prefs.buzzSequenceFor(ruleId),
               buzz: _bandBuzz, isConnected: () => engine.isConnected);
         }
         return true;
@@ -1835,6 +1840,7 @@ class AppState extends ChangeNotifier {
     _stopReconnectSupervisor();
     _alarmGraceTimer?.cancel();
     _alarmGraceTimer = null;
+    wake.dispose();
     _breathingRecomputeTimer?.cancel();
     _breathingRecomputeTimer = null;
     _workoutTimer?.cancel();
@@ -4950,6 +4956,11 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       _log('[alarm] schedule load failed: $e');
     }
+    try {
+      await wake.reload();
+    } catch (e) {
+      _log('[wake] reload failed: $e');
+    }
   }
 
   /// One-time 49→50 seed: a legacy single-alarm value with nothing yet in
@@ -4998,17 +5009,35 @@ class AppState extends ChangeNotifier {
       minute: minute,
       enabled: enabled,
       smartWindowMinutes: smartWindowMinutes,
+      // The pre-split row still sets "Smart Wake" through this parameter. Once
+      // the Natural Wake explanation is settled that IS the Natural window;
+      // while it is pending only the legacy window moves, so nothing starts
+      // running estimated-REM behaviour before the user has seen why.
+      naturalWindowMinutes: smartWindowMinutes != null &&
+              !wake.upgradeExplanationPending
+          ? normalizeWakeWindow(smartWindowMinutes)
+          : null,
     );
+    await _persistScheduleEntry(next);
+    notifyListeners();
+    if (isConnected) await _armNextAlarmOccurrence();
+  }
+
+  Future<void> _persistScheduleEntry(AlarmScheduleEntry next) async {
     await LocalDb.setAlarmScheduleDay(
       weekday: next.weekday,
       hour: next.hour,
       minute: next.minute,
       enabled: next.enabled,
       smartWindowMinutes: next.smartWindowMinutes,
+      naturalWindowMinutes: next.naturalWindowMinutes,
+      gradualWindowMinutes: next.gradualWindowMinutes,
+      gradualPattern: next.gradualPattern.name,
+      gradualCadenceSec: next.gradualCadenceSec,
     );
     await _loadAlarmSchedule();
-    notifyListeners();
-    if (isConnected) await _armNextAlarmOccurrence();
+    // A new Natural window changes how early collection must start.
+    if (isConnected) unawaited(_refreshHighFreqWakeWindow());
   }
 
   /// Compute + arm the next scheduled occurrence, skipping the write when it
@@ -5042,6 +5071,7 @@ class AppState extends ChangeNotifier {
         engine: engine,
         schedule: _schedule,
         currentArmedEpoch: _savedAlarm ?? device.alarmEpoch,
+        ackedThroughEpochSec: prefs.getInt(_kWakeAckedEpochPref),
       );
       if (result.disabled) {
         // Every weekday got disabled since the last arm — the strap doesn't
@@ -5058,61 +5088,169 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// The armed epoch (unix sec) a Smart Wake Window early-fire already ran
-  /// for, so a re-arm of the SAME occurrence on every 30 s tick does not buzz
-  /// the band again on every tick once light sleep is first seen.
+  // ── Natural Wake / Gradual Wake (phase 6B) ─────────────────────────────────
+  // The view-model the UI binds to is [wake] (see lib/wake/wake_controller.dart
+  // for its API). The orchestration lives in lib/wake/wake_orchestrator.dart;
+  // this section only supplies its environment.
+  //
+  // SAFETY: the keep-alive tick below can only ever cause an EARLY haptic
+  // (RUN_ALARM or a buzz rhythm, never SET_ALARM). The only code that cancels
+  // the native alarm at T is [_cancelNativeAlarmForWake], reached only from
+  // [WakeOrchestrator.acknowledge] on an explicit acknowledgement, and a
+  // failed cancel is followed by a re-arm.
+
+  static const String _kWakeAckedEpochPref = 'wake_acked_epoch';
+
+  late final WakeController wake = WakeController(
+    schedule: () => _schedule,
+    saveEntry: _persistScheduleEntry,
+    loadUpgradeState: loadWakeUpgradeState,
+    saveUpgradeState: saveWakeUpgradeState,
+    acknowledgeWake: _acknowledgeWake,
+    traceFor: (t) => const DbWakeTraceStore()
+        .forWake(t.millisecondsSinceEpoch ~/ 1000),
+  )..addListener(notifyListeners);
+
+  late final WakeOrchestrator _wakeOrchestrator = WakeOrchestrator(
+    env: CallbackWakeEnv(
+      isConnected: () => isConnected,
+      loadSamples: loadWakeSamples,
+      status: (wakeAt) async => _wakeFallbackStatus(wakeAt),
+      arm: (wakeAt) async {
+        await _armNextAlarmOccurrence();
+        return _wakeFallbackStatus(wakeAt);
+      },
+      cancel: _cancelNativeAlarmForWake,
+      sendHaptic: _sendWakeHaptic,
+    ),
+    stateStore: const DbWakeStateStore(),
+    traceStore: const DbWakeTraceStore(),
+  );
+
+  FallbackStatus _wakeFallbackStatus(DateTime wakeAt) => FallbackStatus(
+        armedForWake: alarmEpoch == wakeAt.millisecondsSinceEpoch ~/ 1000,
+        confirmed: _alarm.confirmed,
+      );
+
+  Future<WakeHapticResult> _sendWakeHaptic(WakeHapticRequest r) async {
+    final o = await _dispatchBandAlert(
+      'wake',
+      // Natural keeps the long-standing RUN_ALARM haptic; Gradual plays its
+      // escalating rhythm as one dispatcher delivery per step.
+      alarm: r.kind == WakeHapticKind.natural,
+      sequence: r.sequence,
+      eventId: r.eventId,
+      sourceTime: r.sourceTime,
+    );
+    return WakeHapticResult(
+        delivered: o.targets, suppressionReason: o.suppressionReason);
+  }
+
+  /// Explicit-acknowledgement path ONLY. Records the occurrence as
+  /// acknowledged (so no connect/sync re-arms it), then disables the band
+  /// alarm. Returns false on any failure, leaving the arm as it was.
+  Future<bool> _cancelNativeAlarmForWake(DateTime wakeAt) async {
+    if (!isConnected) return false;
+    try {
+      await engine.disableAlarm();
+    } catch (e) {
+      _log('[wake] native cancel failed (fallback stays armed): $e');
+      return false;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kWakeAckedEpochPref, wakeAt.millisecondsSinceEpoch ~/ 1000);
+    _clearArmedAlarmState();
+    notifyListeners();
+    unawaited(_armNextAlarmOccurrence());
+    return true;
+  }
+
+  /// The plan for the currently-armed alarm, or null when none is armed or its
+  /// weekday has no entry.
+  WakePlanInput? _currentWakePlan() {
+    final epoch = alarmEpoch;
+    if (epoch == null) return null;
+    final wakeAt = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+    final entry =
+        _schedule.where((e) => e.weekday == wakeAt.weekday - 1).firstOrNull;
+    if (entry == null) return null;
+    return WakePlanInput(
+      wakeAt: wakeAt,
+      naturalMinutes: entry.naturalWindowMinutes,
+      gradualMinutes: entry.gradualWindowMinutes,
+      gradualPattern: entry.gradualPattern,
+      gradualCadenceSec: entry.gradualCadenceSec,
+      expectedSchedule: sleepOperations.schedule,
+      upgradePending: wake.upgradeExplanationPending,
+    );
+  }
+
+  Future<WakeAckOutcome> _acknowledgeWake(bool cancelNative) async {
+    final plan = _currentWakePlan();
+    if (plan == null) {
+      return const WakeAckOutcome(
+          nativeCancelRequested: false, nativeCancelled: false, fallbackArmed: false);
+    }
+    return _wakeOrchestrator.acknowledge(plan, cancelNative: cancelNative);
+  }
+
+  /// The armed epoch (unix sec) the LEGACY Smart Wake Window early-fire already
+  /// ran for, so a re-arm of the SAME occurrence on every 30 s tick does not
+  /// buzz the band again once light sleep is first seen.
   int? _smartWakeFiredForEpoch;
 
-  /// Smart Wake Window's periodic check, run from [BleEngine.onKeepAlive] —
-  /// the engine's existing 30 s keep-alive tick, not a new timer.
-  ///
-  /// SAFETY: this method can only ever cause an EARLY extra buzz
-  /// (`engine.runAlarm()`, RUN_ALARM — haptics only, it does not touch
-  /// SET_ALARM). It never calls `setAlarm`, `disableAlarm`, or anything else
-  /// that could change or clear the armed fallback epoch, in any branch,
-  /// including every early `return` below and the catch clause. The band's
-  /// own already-armed SET_ALARM is what actually guarantees the wake — it
-  /// keeps firing at [alarmEpoch] exactly as scheduled, on the band's own
-  /// clock, whether this method ever runs, throws, or finds nothing at all.
+  /// The engine's 30 s keep-alive tick (no second timer). Hands the armed
+  /// wake to the orchestrator, which decides whether anything is due. While a
+  /// Smart Wake user's upgrade explanation is pending, Natural stays inactive
+  /// and the old light-sleep heuristic keeps doing what they signed up for.
   Future<void> _checkSmartWake() async {
     try {
       if (!isConnected) return;
-      final epoch = alarmEpoch;
-      if (epoch == null || epoch == _smartWakeFiredForEpoch) return;
-      final armed = armedSmartWakeWindow(epoch: epoch, schedule: _schedule);
-      if (armed == null) return;
-      final now = DateTime.now();
-      if (!inSmartWakeWindow(
-          windowEnd: armed.windowEnd, minutes: armed.minutes, now: now)) {
+      final plan = _currentWakePlan();
+      if (plan == null) return;
+      if (wake.upgradeExplanationPending) await _checkLegacySmartWake(plan.wakeAt);
+      // With neither feature on there is nothing to orchestrate: the existing
+      // arm engine already keeps the native alarm armed.
+      if (plan.configuration == WakeConfiguration.neither &&
+          !wake.upgradeExplanationPending) {
         return;
       }
-      final recentRows = await LocalDb.onehzHrAccelBetween(
-        now.subtract(const Duration(minutes: 3)).millisecondsSinceEpoch ~/
-            1000,
-        now.millisecondsSinceEpoch ~/ 1000,
-      );
-      final baselineRows = await LocalDb.onehzHrAccelBetween(
-        now.subtract(const Duration(minutes: 93)).millisecondsSinceEpoch ~/
-            1000,
-        now.subtract(const Duration(minutes: 3)).millisecondsSinceEpoch ~/
-            1000,
-      );
-      final detected = likelyLightSleep(
-        baseline: [for (final r in baselineRows) SmartWakeSample.fromRow(r)],
-        recent: [for (final r in recentRows) SmartWakeSample.fromRow(r)],
-      );
-      if (!detected) return;
-      _smartWakeFiredForEpoch = epoch; // set BEFORE the write — see below
-      // Marked fired before the write goes out on purpose: a write that
-      // throws must not retry every 30 s for the rest of the window (that
-      // would just be repeated buzzing), and the untouched fallback arm
-      // still covers a write that genuinely failed.
-      await _dispatchBandAlert('wake', alarm: true,
-          eventId: 'wake:$epoch', sourceTime: now);
-      _log('[smart-wake] light sleep detected inside the window — early buzz.');
+      await _wakeOrchestrator.tick(plan);
     } catch (e) {
-      _log('[smart-wake] check failed (fallback alarm is unaffected): $e');
+      _log('[wake] tick failed (fallback alarm is unaffected): $e');
     }
+  }
+
+  /// The pre-split Smart Wake heuristic (state/smart_wake.dart), kept ONLY for
+  /// users whose upgrade explanation is pending. Same safety argument as
+  /// before: it can only add an early buzz and never touches the arm.
+  Future<void> _checkLegacySmartWake(DateTime windowEnd) async {
+    final epoch = windowEnd.millisecondsSinceEpoch ~/ 1000;
+    if (epoch == _smartWakeFiredForEpoch) return;
+    final armed = armedSmartWakeWindow(epoch: epoch, schedule: _schedule);
+    if (armed == null) return;
+    final now = DateTime.now();
+    if (!inSmartWakeWindow(
+        windowEnd: armed.windowEnd, minutes: armed.minutes, now: now)) {
+      return;
+    }
+    final recentRows = await LocalDb.onehzHrAccelBetween(
+      now.subtract(const Duration(minutes: 3)).millisecondsSinceEpoch ~/ 1000,
+      now.millisecondsSinceEpoch ~/ 1000,
+    );
+    final baselineRows = await LocalDb.onehzHrAccelBetween(
+      now.subtract(const Duration(minutes: 93)).millisecondsSinceEpoch ~/ 1000,
+      now.subtract(const Duration(minutes: 3)).millisecondsSinceEpoch ~/ 1000,
+    );
+    final detected = likelyLightSleep(
+      baseline: [for (final r in baselineRows) SmartWakeSample.fromRow(r)],
+      recent: [for (final r in recentRows) SmartWakeSample.fromRow(r)],
+    );
+    if (!detected) return;
+    _smartWakeFiredForEpoch = epoch; // set BEFORE the write
+    await _dispatchBandAlert('wake', alarm: true,
+        eventId: 'wake:$epoch', sourceTime: now);
+    _log('[smart-wake] light sleep detected inside the window — early buzz.');
   }
 
   /// Whether the currently-armed alarm — from either source, the schedule
@@ -5954,7 +6092,11 @@ class AppState extends ChangeNotifier {
   Future<void> _refreshHighFreqWakeWindowOnce() async {
     if (!engine.isConnected) return;
     try {
-      final armed = armedSmartWakeWindow(epoch: alarmEpoch, schedule: _schedule);
+      final armed = armedCollectionWindow(
+        epoch: alarmEpoch,
+        schedule: _schedule,
+        upgrade: wake.upgradeState,
+      );
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armed?.windowEnd,
         scheduledWindowMinutes: armed?.minutes ?? 0,
@@ -5966,7 +6108,7 @@ class AppState extends ChangeNotifier {
         smartWake: plan.shouldEnable && target != null
             ? BandPromptRequest.smartWake(
                 target: target,
-                lease: HighFreqWakeWindow.lease,
+                lease: plan.lease,
                 source: plan.source,
               )
             : null,

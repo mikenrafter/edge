@@ -241,7 +241,7 @@ void main() {
   group('AppState plays the rule sequence (source guard)', () {
     test('_dispatchBandAlert band transport plays the rule\'s sequence', () {
       final src = File('lib/state/app_state.dart').readAsStringSync();
-      final body = bodyOf(src, 'Future<void> _dispatchBandAlert(');
+      final body = bodyOf(src, 'Future<AlertDeliveryOutcome> _dispatchBandAlert(');
       expect(body, isNotEmpty);
       expect(codeOnly(body), contains('playBuzzSequence('));
       expect(codeOnly(body), contains('buzzSequenceFor('));

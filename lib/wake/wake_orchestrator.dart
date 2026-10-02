@@ -1,0 +1,782 @@
+// wake_orchestrator.dart — runs Natural Wake and Gradual Wake for one wake
+// occurrence, and keeps the native band alarm at T armed throughout.
+//
+// One call, [WakeOrchestrator.tick], is the whole contract. The caller (the
+// 30 s keep-alive tick in AppState, or a headless wake source through
+// [WakeOrchestrator.tickThroughGate]) hands it the plan for the armed alarm
+// and it:
+//   1. verifies the fixed native alarm at T is armed, re-arming it if the
+//      phone lost track (reboot, restart). This happens in EVERY
+//      configuration, including "neither".
+//   2. Natural: feeds the causal stager (off the UI isolate) and, only for the
+//      main sleep, fires ONE early haptic when estimated REM has held
+//      `runSec >= 120` inside [T-N, T) — otherwise records why it abstained.
+//   3. Gradual: sends the next due step of its own cadence from T-G. It never
+//      reads the stager and is not borrowed from Natural's window.
+//   4. persists its run state (so an app death, restart or reboot resumes
+//      instead of re-firing) and appends decision-trace rows.
+//
+// SAFETY, stated once. Nothing in this file disarms, moves or shortens the
+// native alarm at T. The ONLY call that can cancel it is [acknowledge] with
+// `cancelNative: true`, which is an explicit user acknowledgement. If that
+// cancel fails, throws or hangs, the fallback is verified and re-armed. An
+// early haptic, a failed haptic, a skipped tick and an abstention all leave T
+// exactly as it was.
+//
+// Latches. `_ticking` coalesces overlapping ticks and is cleared in `finally`.
+// Every call into the environment (samples, observer, haptic, band alarm) is
+// bounded by [opTimeout]; a timeout is recorded and the tick moves on.
+
+import 'dart:async';
+import 'dart:convert';
+
+import '../notify/buzz_sequence.dart';
+import '../state/control_operations.dart' show ExpectedSleepSchedule;
+import '../sync/headless_gate.dart';
+import 'natural_wake.dart';
+import 'wake_settings.dart';
+
+/// [HeadlessSyncGate] owner for background wake ticks.
+const String kWakeGateOwner = 'wake_tick';
+
+/// A tick later than this after the previous one means the app was suspended
+/// or disconnected in between; recorded so the trace can say so.
+const Duration kWakeTickGap = Duration(minutes: 5);
+
+/// Ticks outside [earliest timeline part - this, T + [kWakeClosingGrace]] do
+/// nothing and touch no store: the keep-alive calls every 30 s all night.
+const Duration kWakeActiveMargin = Duration(minutes: 10);
+
+/// How long after T a tick may still write the closing summary.
+const Duration kWakeClosingGrace = Duration(minutes: 2);
+
+/// A Gradual step the OS ran later than this after its due time is skipped,
+/// not played late (a stale buzz is worse than a missed one; T still fires).
+const Duration kGradualStepGrace = Duration(seconds: 90);
+
+// ── environment seams ───────────────────────────────────────────────────────
+
+/// Samples as plain columns, absolute epoch ms:
+///   hr [tsMs, bpm]  accel [tsMs, x, y, z]  rr [tsMs, rrMs]
+class WakeSamples {
+  const WakeSamples({required this.hr, required this.accel, required this.rr});
+  const WakeSamples.empty()
+      : hr = const [],
+        accel = const [],
+        rr = const [];
+  final List<List<double>> hr;
+  final List<List<double>> accel;
+  final List<List<double>> rr;
+}
+
+class FallbackStatus {
+  const FallbackStatus({required this.armedForWake, required this.confirmed});
+
+  /// The band holds an alarm for exactly this wake time.
+  final bool armedForWake;
+
+  /// The band confirmed the arm (event 56).
+  final bool confirmed;
+}
+
+enum WakeHapticKind { natural, gradual }
+
+class WakeHapticRequest {
+  const WakeHapticRequest({
+    required this.kind,
+    required this.eventId,
+    required this.wakeAt,
+    required this.sourceTime,
+    this.stepIndex,
+    this.sequence,
+  });
+  final WakeHapticKind kind;
+
+  /// Stable per occurrence (and per step), so the dispatcher's durable ledger
+  /// refuses a duplicate after a restart.
+  final String eventId;
+  final DateTime wakeAt;
+  final DateTime sourceTime;
+  final int? stepIndex;
+  final BuzzSequence? sequence;
+}
+
+class WakeHapticResult {
+  const WakeHapticResult({
+    this.delivered = const [],
+    this.suppressionReason,
+    this.error,
+  });
+  final List<String> delivered;
+  final String? suppressionReason;
+  final String? error;
+  bool get ok => delivered.isNotEmpty;
+}
+
+abstract interface class WakeEnv {
+  /// Live phone-to-band link.
+  bool get connected;
+
+  /// Samples in [from, to), oldest first. May be empty.
+  Future<WakeSamples> samples(DateTime from, DateTime to);
+
+  Future<FallbackStatus> fallbackStatus(DateTime wakeAt);
+
+  /// Arm (or re-arm) the native alarm at exactly [wakeAt] and report the
+  /// result. Never arms any other time.
+  Future<FallbackStatus> ensureFallbackArmed(DateTime wakeAt);
+
+  /// Cancel the native alarm for [wakeAt]. Reached only from [acknowledge].
+  Future<bool> cancelNativeAlarm(DateTime wakeAt);
+
+  /// One live-only haptic through the AlertDispatcher.
+  Future<WakeHapticResult> haptic(WakeHapticRequest request);
+}
+
+/// A [WakeEnv] assembled from callbacks, for AppState (which owns the BLE
+/// engine, the alarm bookkeeping and the dispatcher this must reach).
+class CallbackWakeEnv implements WakeEnv {
+  CallbackWakeEnv({
+    required bool Function() isConnected,
+    required this.loadSamples,
+    required this.status,
+    required this.arm,
+    required this.cancel,
+    required this.sendHaptic,
+  }) : _isConnected = isConnected;
+
+  final bool Function() _isConnected;
+  final Future<WakeSamples> Function(DateTime from, DateTime to) loadSamples;
+  final Future<FallbackStatus> Function(DateTime wakeAt) status;
+  final Future<FallbackStatus> Function(DateTime wakeAt) arm;
+  final Future<bool> Function(DateTime wakeAt) cancel;
+  final Future<WakeHapticResult> Function(WakeHapticRequest r) sendHaptic;
+
+  @override
+  bool get connected => _isConnected();
+  @override
+  Future<WakeSamples> samples(DateTime from, DateTime to) => loadSamples(from, to);
+  @override
+  Future<FallbackStatus> fallbackStatus(DateTime wakeAt) => status(wakeAt);
+  @override
+  Future<FallbackStatus> ensureFallbackArmed(DateTime wakeAt) => arm(wakeAt);
+  @override
+  Future<bool> cancelNativeAlarm(DateTime wakeAt) => cancel(wakeAt);
+  @override
+  Future<WakeHapticResult> haptic(WakeHapticRequest r) => sendHaptic(r);
+}
+
+// ── plan / outcomes ─────────────────────────────────────────────────────────
+
+class WakePlanInput {
+  const WakePlanInput({
+    required this.wakeAt,
+    required this.naturalMinutes,
+    required this.gradualMinutes,
+    required this.gradualPattern,
+    required this.gradualCadenceSec,
+    this.expectedSchedule,
+    this.sleepOnset,
+    this.upgradePending = false,
+  });
+
+  /// T, the armed native alarm instant.
+  final DateTime wakeAt;
+  final int naturalMinutes;
+  final int gradualMinutes;
+  final GradualPattern gradualPattern;
+  final int gradualCadenceSec;
+
+  /// The configured main sleep, for the main-sleep/nap decision.
+  final ExpectedSleepSchedule? expectedSchedule;
+  final DateTime? sleepOnset;
+
+  /// The Smart Wake -> Natural Wake explanation has not been acknowledged:
+  /// Natural stays inactive.
+  final bool upgradePending;
+
+  int get wakeSec => wakeAt.millisecondsSinceEpoch ~/ 1000;
+  WakeConfiguration get configuration => wakeConfigurationOf(
+      naturalMinutes: naturalMinutes, gradualMinutes: gradualMinutes);
+}
+
+class WakeTickOutcome {
+  const WakeTickOutcome({
+    this.natural,
+    this.naturalFired = false,
+    this.gradualStepFired,
+    this.coalesced = false,
+    this.closed = false,
+  });
+  final NaturalReason? natural;
+  final bool naturalFired;
+  final int? gradualStepFired;
+
+  /// Another tick was already running; this one did nothing.
+  final bool coalesced;
+
+  /// T has passed; the native alarm owns the wake now.
+  final bool closed;
+}
+
+class WakeAckOutcome {
+  const WakeAckOutcome({
+    required this.nativeCancelRequested,
+    required this.nativeCancelled,
+    required this.fallbackArmed,
+  });
+  final bool nativeCancelRequested;
+  final bool nativeCancelled;
+
+  /// The native alarm at T is armed after this acknowledgement.
+  final bool fallbackArmed;
+}
+
+// ── trace / state stores ────────────────────────────────────────────────────
+
+/// One decision-trace row for a wake occurrence.
+///
+/// kinds: plan, fallback, natural, natural_haptic, gradual, gap, ack, skip,
+/// error, closed.
+class WakeTraceEntry {
+  const WakeTraceEntry({
+    required this.wakeEpochSec,
+    required this.atMs,
+    required this.kind,
+    required this.data,
+  });
+  final int wakeEpochSec;
+  final int atMs;
+  final String kind;
+  final Map<String, Object?> data;
+}
+
+abstract interface class WakeTraceStore {
+  Future<void> append(WakeTraceEntry entry);
+  Future<List<WakeTraceEntry>> forWake(int wakeEpochSec);
+}
+
+abstract interface class WakeStateStore {
+  Future<Map<String, Object?>?> load();
+  Future<void> save(Map<String, Object?> state);
+}
+
+/// Test doubles; production uses the DB-backed stores in wake_stores.dart.
+class MemoryWakeStateStore implements WakeStateStore {
+  Map<String, Object?>? value;
+  @override
+  Future<Map<String, Object?>?> load() async => value == null
+      ? null
+      : (jsonDecode(jsonEncode(value)) as Map).cast<String, Object?>();
+  @override
+  Future<void> save(Map<String, Object?> state) async =>
+      // A JSON round trip, as the real store does: unserialisable state fails
+      // here, not on a user's phone.
+      value = (jsonDecode(jsonEncode(state)) as Map).cast<String, Object?>();
+}
+
+class MemoryWakeTraceStore implements WakeTraceStore {
+  final List<WakeTraceEntry> all = [];
+  @override
+  Future<void> append(WakeTraceEntry entry) async => all.add(WakeTraceEntry(
+        wakeEpochSec: entry.wakeEpochSec,
+        atMs: entry.atMs,
+        kind: entry.kind,
+        data: (jsonDecode(jsonEncode(entry.data)) as Map).cast<String, Object?>(),
+      ));
+  @override
+  Future<List<WakeTraceEntry>> forWake(int wakeEpochSec) async =>
+      [for (final e in all) if (e.wakeEpochSec == wakeEpochSec) e];
+}
+
+// ── persisted run state ─────────────────────────────────────────────────────
+
+class _Run {
+  _Run(this.wakeEpoch);
+  final int wakeEpoch;
+  Map<String, Object?>? stager;
+  double? lastFedMs;
+  bool naturalFired = false;
+  int gradualNext = 0;
+  int gradualFired = 0;
+  bool acknowledged = false;
+  bool closed = false;
+  bool planLogged = false;
+  int? lastTickMs;
+  String? naturalSig;
+  String? fallbackSig;
+
+  /// Anything unreadable falls back to the default: the worst a corrupt state
+  /// can do is cost a warm-up, never crash a wake.
+  factory _Run.from(Map<String, Object?>? j, int wakeEpoch) {
+    final r = _Run(wakeEpoch);
+    if (j == null || j['wakeEpoch'] != wakeEpoch) return r;
+    final stager = j['stager'];
+    r.stager = stager is Map ? stager.cast<String, Object?>() : null;
+    final fed = j['lastFedMs'];
+    r.lastFedMs = fed is num && fed.isFinite ? fed.toDouble() : null;
+    r.naturalFired = j['naturalFired'] == true;
+    final next = j['gradualNext'];
+    r.gradualNext = next is int && next >= 0 ? next : 0;
+    final fired = j['gradualFired'];
+    r.gradualFired = fired is int && fired >= 0 ? fired : 0;
+    r.acknowledged = j['acknowledged'] == true;
+    r.closed = j['closed'] == true;
+    r.planLogged = j['planLogged'] == true;
+    final tick = j['lastTickMs'];
+    r.lastTickMs = tick is int ? tick : null;
+    r.naturalSig = j['naturalSig'] as String?;
+    r.fallbackSig = j['fallbackSig'] as String?;
+    return r;
+  }
+
+  Map<String, Object?> toJson() => {
+        'wakeEpoch': wakeEpoch,
+        'stager': stager,
+        'lastFedMs': lastFedMs,
+        'naturalFired': naturalFired,
+        'gradualNext': gradualNext,
+        'gradualFired': gradualFired,
+        'acknowledged': acknowledged,
+        'closed': closed,
+        'planLogged': planLogged,
+        'lastTickMs': lastTickMs,
+        'naturalSig': naturalSig,
+        'fallbackSig': fallbackSig,
+      };
+}
+
+// ── orchestrator ────────────────────────────────────────────────────────────
+
+class WakeOrchestrator {
+  WakeOrchestrator({
+    required this.env,
+    required this.stateStore,
+    required this.traceStore,
+    NaturalStageObserver? observer,
+    DateTime Function()? now,
+    this.opTimeout = const Duration(seconds: 30),
+  })  : observer = observer ?? const IsolateNaturalStageObserver(),
+        _now = now ?? DateTime.now;
+
+  final WakeEnv env;
+  final NaturalStageObserver observer;
+  final WakeStateStore stateStore;
+  final WakeTraceStore traceStore;
+  final Duration opTimeout;
+  final DateTime Function() _now;
+
+  bool _ticking = false;
+
+  /// Run one tick. Coalesces with a tick already in flight. Never throws.
+  Future<WakeTickOutcome> tick(WakePlanInput plan, {DateTime? scheduledFor}) async {
+    if (_ticking) return const WakeTickOutcome(coalesced: true);
+    _ticking = true;
+    try {
+      return await _tick(plan, scheduledFor);
+    } catch (e) {
+      await _trace(plan.wakeSec, 'error', {'where': 'tick', 'error': '$e'});
+      return const WakeTickOutcome();
+    } finally {
+      _ticking = false;
+    }
+  }
+
+  /// [tick] for a headless/background wake source: serialised through the
+  /// process-wide [HeadlessSyncGate], SKIPPED (not queued) when another
+  /// headless run holds it. Returns null on a skip, recorded in the trace.
+  Future<WakeTickOutcome?> tickThroughGate(
+    WakePlanInput plan, {
+    DateTime? scheduledFor,
+    String owner = kWakeGateOwner,
+  }) async {
+    final out = await HeadlessSyncGate.tryRun<WakeTickOutcome>(
+        owner, () => tick(plan, scheduledFor: scheduledFor));
+    if (out == null) {
+      await _trace(plan.wakeSec, 'skip',
+          {'reason': 'headlessGateBusy', 'owner': owner});
+    }
+    return out;
+  }
+
+  /// The user explicitly acknowledged this wake. Stops the remaining
+  /// phone-driven steps. With [cancelNative] it also REQUESTS cancellation of
+  /// the native alarm; if that fails, throws or hangs, the alarm at T is
+  /// verified and re-armed. This is the only code path that can cancel T.
+  Future<WakeAckOutcome> acknowledge(
+    WakePlanInput plan, {
+    bool cancelNative = false,
+  }) async {
+    final run = _Run.from(await _loadState(), plan.wakeSec)..acknowledged = true;
+    await _save(run);
+    bool? cancelled;
+    var armed = false;
+    if (cancelNative) {
+      try {
+        cancelled = await env.cancelNativeAlarm(plan.wakeAt).timeout(opTimeout);
+      } catch (_) {
+        cancelled = false;
+      }
+    }
+    if (cancelled != true) {
+      // Not cancelled (or never asked): T must still be armed. Confirm, and
+      // re-arm when the state is unknown or gone.
+      FallbackStatus? st;
+      try {
+        st = await env.fallbackStatus(plan.wakeAt).timeout(opTimeout);
+      } catch (_) {}
+      if (st == null || !st.armedForWake) {
+        try {
+          st = await env.ensureFallbackArmed(plan.wakeAt).timeout(opTimeout);
+        } catch (_) {}
+      }
+      armed = st?.armedForWake ?? false;
+    }
+    await _trace(plan.wakeSec, 'ack', {
+      'cancelNative': cancelNative,
+      'cancelled': cancelled,
+      'fallbackArmed': armed,
+    });
+    return WakeAckOutcome(
+      nativeCancelRequested: cancelNative,
+      nativeCancelled: cancelled == true,
+      fallbackArmed: armed,
+    );
+  }
+
+  // ── tick body ─────────────────────────────────────────────────────────────
+
+  Future<WakeTickOutcome> _tick(WakePlanInput plan, DateTime? scheduledFor) async {
+    final now = _now();
+    final sec = plan.wakeSec;
+    if (!_inActiveSpan(plan, now)) return const WakeTickOutcome();
+    final run = _Run.from(await _loadState(), sec);
+
+    if (!now.isBefore(plan.wakeAt)) {
+      // T has passed: the native alarm owns the wake. Leave one summary row.
+      if (!run.closed) {
+        run.closed = true;
+        await _trace(sec, 'closed', {
+          'naturalFired': run.naturalFired,
+          'gradualSteps': run.gradualFired,
+          'acknowledged': run.acknowledged,
+        });
+        await _save(run);
+      }
+      return const WakeTickOutcome(closed: true);
+    }
+
+    if (!run.planLogged) {
+      run.planLogged = true;
+      await _trace(sec, 'plan', {
+        'configuration': plan.configuration.name,
+        'naturalMinutes': plan.naturalMinutes,
+        'gradualMinutes': plan.gradualMinutes,
+        'gradualPattern': plan.gradualPattern.name,
+        'gradualCadenceSec': plan.gradualCadenceSec,
+        'upgradePending': plan.upgradePending,
+        'wakeAtMs': plan.wakeAt.millisecondsSinceEpoch,
+        'utcOffsetMin': plan.wakeAt.timeZoneOffset.inMinutes,
+      });
+    }
+    final lastTick = run.lastTickMs;
+    if (lastTick != null &&
+        now.millisecondsSinceEpoch - lastTick > kWakeTickGap.inMilliseconds) {
+      await _trace(sec, 'gap', {
+        'sinceLastTickSec': (now.millisecondsSinceEpoch - lastTick) ~/ 1000,
+      });
+    }
+
+    await _verifyFallback(plan, run);
+
+    NaturalReason? naturalReason;
+    var naturalFired = false;
+    try {
+      final r = await _natural(plan, run, now, scheduledFor);
+      naturalReason = r.$1;
+      naturalFired = r.$2;
+    } catch (e) {
+      await _trace(sec, 'error', {'where': 'natural', 'error': '$e'});
+    }
+    await _save(run);
+
+    int? gradualFired;
+    try {
+      gradualFired = await _gradual(plan, run, now);
+    } catch (e) {
+      await _trace(sec, 'error', {'where': 'gradual', 'error': '$e'});
+    }
+
+    run.lastTickMs = now.millisecondsSinceEpoch;
+    await _save(run);
+    return WakeTickOutcome(
+      natural: naturalReason,
+      naturalFired: naturalFired,
+      gradualStepFired: gradualFired,
+    );
+  }
+
+  static bool _inActiveSpan(WakePlanInput plan, DateTime now) {
+    final first = WakeTimeline.compute(
+      wakeAt: plan.wakeAt,
+      naturalMinutes: plan.naturalMinutes,
+      gradualMinutes: plan.gradualMinutes,
+    ).parts.first.at;
+    return !now.isBefore(first.subtract(kWakeActiveMargin)) &&
+        now.isBefore(plan.wakeAt.add(kWakeClosingGrace));
+  }
+
+  /// Step 1, every configuration: T is armed. Re-arm when it is not.
+  Future<void> _verifyFallback(WakePlanInput plan, _Run run) async {
+    FallbackStatus? st;
+    var rearmed = false;
+    try {
+      st = await env.fallbackStatus(plan.wakeAt).timeout(opTimeout);
+    } catch (e) {
+      await _trace(plan.wakeSec, 'error', {'where': 'fallbackStatus', 'error': '$e'});
+    }
+    if (st != null && !st.armedForWake) {
+      try {
+        st = await env.ensureFallbackArmed(plan.wakeAt).timeout(opTimeout);
+        rearmed = true;
+      } catch (e) {
+        await _trace(plan.wakeSec, 'error', {'where': 'ensureFallback', 'error': '$e'});
+      }
+    }
+    final sig = '${st?.armedForWake}/${st?.confirmed}/$rearmed';
+    if (sig != run.fallbackSig) {
+      run.fallbackSig = sig;
+      await _trace(plan.wakeSec, 'fallback', {
+        'armed': st?.armedForWake,
+        'confirmed': st?.confirmed,
+        'rearmed': rearmed,
+      });
+    }
+  }
+
+  Future<(NaturalReason?, bool)> _natural(
+    WakePlanInput plan,
+    _Run run,
+    DateTime now,
+    DateTime? scheduledFor,
+  ) async {
+    final n = plan.naturalMinutes;
+    final sec = plan.wakeSec;
+    if (n <= 0) return (null, false);
+
+    Future<void> log(NaturalReason reason, Map<String, Object?> extra,
+        {bool force = false}) async {
+      final sig = '${reason.name}|${extra['samples']}|${extra['stage']}|'
+          '${extra['confidence'] is num ? ((extra['confidence'] as num) * 10).round() : ''}';
+      if (!force && sig == run.naturalSig) return;
+      run.naturalSig = sig;
+      await _trace(sec, 'natural', {'reason': reason.name, ...extra});
+    }
+
+    if (plan.upgradePending) {
+      await log(NaturalReason.upgradePending, const {});
+      return (NaturalReason.upgradePending, false);
+    }
+    if (now.isBefore(plan.wakeAt.subtract(naturalCollectionLead(n)))) {
+      return (NaturalReason.beforeWindow, false); // collection has not begun
+    }
+    final eligibility = NaturalWakePlanner.classify(
+      wakeAt: plan.wakeAt,
+      expected: plan.expectedSchedule,
+      sleepOnset: plan.sleepOnset,
+    );
+    if (eligibility != SleepEligibility.mainSleep) {
+      final d = NaturalWakePlanner.decide(_input(plan, run, now, eligibility, null, Duration.zero));
+      await log(d.reason, {'eligibility': eligibility.name});
+      return (d.reason, false);
+    }
+    if (run.acknowledged) return (NaturalReason.acknowledged, false);
+    if (run.naturalFired) return (NaturalReason.alreadyFired, false);
+
+    final lateness = scheduledFor == null
+        ? Duration.zero
+        : (now.isAfter(scheduledFor) ? now.difference(scheduledFor) : Duration.zero);
+
+    // Feed the stager only while a link exists: without one nothing new is
+    // arriving and the haptic could not be sent anyway.
+    NaturalObservation? obs;
+    var samplesFailed = false;
+    if (env.connected) {
+      final fromMs = run.lastFedMs ??
+          plan.wakeAt.subtract(naturalCollectionLead(n)).millisecondsSinceEpoch.toDouble();
+      final toMs = now.millisecondsSinceEpoch.toDouble();
+      WakeSamples? samples;
+      try {
+        samples = await env
+            .samples(DateTime.fromMillisecondsSinceEpoch(fromMs.round()), now)
+            .timeout(opTimeout);
+      } catch (e) {
+        samplesFailed = true;
+        await _trace(sec, 'error', {'where': 'samples', 'error': '$e'});
+      }
+      if (samples != null) {
+        try {
+          final result = await observer
+              .observe(NaturalObserveRequest(
+                nowMs: toMs,
+                hr: samples.hr,
+                accel: samples.accel,
+                rr: samples.rr,
+                priorState: run.stager,
+              ))
+              .timeout(opTimeout * 2);
+          obs = result.observation;
+          run.stager = result.nextState;
+          run.lastFedMs = toMs;
+        } catch (e) {
+          await _trace(sec, 'error', {'where': 'observer', 'error': '$e'});
+        }
+      }
+    }
+
+    final decision = samplesFailed
+        ? const NaturalDecision(NaturalReason.samplesUnavailable)
+        : NaturalWakePlanner.decide(
+            _input(plan, run, now, eligibility, obs, lateness));
+    final detail = <String, Object?>{
+      'samples': decision.samplesCurrent == null
+          ? null
+          : (decision.samplesCurrent! ? 'current' : 'stale'),
+      'stage': obs?.stage,
+      'confidence': obs?.confidence,
+      'runSec': obs?.runSec,
+      'evidenceAgeMs': obs?.evidenceAgeMs,
+      'abstention': obs?.abstention,
+      if (lateness > Duration.zero) 'latenessSec': lateness.inSeconds,
+    };
+    await log(decision.reason, detail, force: decision.fire);
+    if (!decision.fire) return (decision.reason, false);
+
+    // Marked fired and persisted BEFORE the write: a crash, a timeout or a
+    // throw must not turn into a second buzz, and T still covers a haptic
+    // that never landed.
+    run.naturalFired = true;
+    await _save(run);
+    final eventId = 'wake:natural:$sec';
+    await _trace(sec, 'natural_haptic', {
+      'phase': 'request',
+      'eventId': eventId,
+      'stage': obs?.stage,
+      'confidence': obs?.confidence,
+      'runSec': obs?.runSec,
+    });
+    await _haptic(
+      sec,
+      'natural_haptic',
+      WakeHapticRequest(
+        kind: WakeHapticKind.natural,
+        eventId: eventId,
+        wakeAt: plan.wakeAt,
+        sourceTime: now,
+      ),
+    );
+    return (NaturalReason.fire, true);
+  }
+
+  NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
+          SleepEligibility eligibility, NaturalObservation? obs, Duration lateness) =>
+      NaturalDecisionInput(
+        now: now,
+        wakeAt: plan.wakeAt,
+        windowMinutes: plan.naturalMinutes,
+        eligibility: eligibility,
+        observation: obs,
+        connected: env.connected,
+        alreadyFired: run.naturalFired,
+        acknowledged: run.acknowledged,
+        lateness: lateness,
+      );
+
+  Future<int?> _gradual(WakePlanInput plan, _Run run, DateTime now) async {
+    if (plan.gradualMinutes <= 0 || run.acknowledged) return null;
+    final sec = plan.wakeSec;
+    final steps = GradualWakeSchedule.steps(
+      wakeAt: plan.wakeAt,
+      windowMinutes: plan.gradualMinutes,
+      cadenceSec: plan.gradualCadenceSec,
+      pattern: plan.gradualPattern,
+    );
+    final due = [
+      for (final s in steps)
+        if (s.index >= run.gradualNext && !s.at.isAfter(now)) s
+    ];
+    if (due.isEmpty) return null;
+    final latest = due.last;
+    // Persist the cursor first, for the same reason as the Natural flag.
+    run.gradualNext = latest.index + 1;
+    await _save(run);
+    for (final s in due.where((s) => s.index != latest.index)) {
+      await _trace(sec, 'gradual', {'index': s.index, 'result': 'skippedLate'});
+    }
+    if (now.difference(latest.at) > kGradualStepGrace) {
+      await _trace(sec, 'gradual', {'index': latest.index, 'result': 'skippedLate'});
+      return null;
+    }
+    run.gradualFired++;
+    await _haptic(
+      sec,
+      'gradual',
+      WakeHapticRequest(
+        kind: WakeHapticKind.gradual,
+        eventId: 'wake:gradual:$sec:${latest.index}',
+        wakeAt: plan.wakeAt,
+        sourceTime: now,
+        stepIndex: latest.index,
+        sequence: latest.sequence,
+      ),
+    );
+    return latest.index;
+  }
+
+  Future<void> _haptic(int sec, String kind, WakeHapticRequest req) async {
+    WakeHapticResult res;
+    try {
+      res = await env.haptic(req).timeout(opTimeout);
+    } catch (e) {
+      res = WakeHapticResult(error: '$e');
+    }
+    await _trace(sec, kind, {
+      if (kind == 'natural_haptic') 'phase': 'result',
+      if (req.stepIndex != null) 'index': req.stepIndex,
+      'eventId': req.eventId,
+      'result': res.ok ? 'sent' : 'notDelivered',
+      'delivered': res.delivered,
+      'suppression': res.suppressionReason,
+      'error': res.error,
+    });
+  }
+
+  // ── persistence helpers (a store failure never breaks a wake) ─────────────
+
+  Future<Map<String, Object?>?> _loadState() async {
+    try {
+      return await stateStore.load().timeout(opTimeout);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _save(_Run run) async {
+    try {
+      await stateStore.save(run.toJson()).timeout(opTimeout);
+    } catch (_) {}
+  }
+
+  Future<void> _trace(int sec, String kind, Map<String, Object?> data) async {
+    try {
+      await traceStore
+          .append(WakeTraceEntry(
+            wakeEpochSec: sec,
+            atMs: _now().millisecondsSinceEpoch,
+            kind: kind,
+            data: data,
+          ))
+          .timeout(opTimeout);
+    } catch (_) {}
+  }
+}

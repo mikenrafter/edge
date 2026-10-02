@@ -9,6 +9,7 @@
 
 import '../ble/ble_engine.dart';
 import '../ble/ble_state.dart' show AlarmConfirmation;
+import '../wake/wake_settings.dart';
 
 /// One weekday's slot in the schedule. Immutable — callers build a new one to
 /// change a field.
@@ -24,7 +25,22 @@ class AlarmScheduleEntry {
   /// this is how much EARLIER than that the app may try an early buzz once it
   /// detects light sleep. It never moves, shortens, or cancels the fallback
   /// arm; see smart_wake.dart.
+  ///
+  /// LEGACY: superseded by [naturalWindowMinutes]. Kept (never dropped) so a
+  /// rollback finds what it expects, and because it still drives the old
+  /// light-sleep heuristic for users whose Smart Wake upgrade explanation is
+  /// pending ([WakeUpgradeState.pending]).
   final int smartWindowMinutes;
+
+  /// Natural Wake window, minutes before the must-be-up-by time (0 = off,
+  /// 15..120 in steps of 15). Independent of [gradualWindowMinutes].
+  final int naturalWindowMinutes;
+
+  /// Gradual Wake window, minutes before the must-be-up-by time (0 = off).
+  /// Never enabled by a migration.
+  final int gradualWindowMinutes;
+  final GradualPattern gradualPattern;
+  final int gradualCadenceSec;
 
   const AlarmScheduleEntry({
     required this.weekday,
@@ -32,6 +48,10 @@ class AlarmScheduleEntry {
     required this.minute,
     this.enabled = true,
     this.smartWindowMinutes = 0,
+    this.naturalWindowMinutes = 0,
+    this.gradualWindowMinutes = 0,
+    this.gradualPattern = GradualPattern.ramp,
+    this.gradualCadenceSec = kGradualCadenceDefaultSec,
   });
 
   AlarmScheduleEntry copyWith({
@@ -39,6 +59,10 @@ class AlarmScheduleEntry {
     int? minute,
     bool? enabled,
     int? smartWindowMinutes,
+    int? naturalWindowMinutes,
+    int? gradualWindowMinutes,
+    GradualPattern? gradualPattern,
+    int? gradualCadenceSec,
   }) =>
       AlarmScheduleEntry(
         weekday: weekday,
@@ -46,6 +70,10 @@ class AlarmScheduleEntry {
         minute: minute ?? this.minute,
         enabled: enabled ?? this.enabled,
         smartWindowMinutes: smartWindowMinutes ?? this.smartWindowMinutes,
+        naturalWindowMinutes: naturalWindowMinutes ?? this.naturalWindowMinutes,
+        gradualWindowMinutes: gradualWindowMinutes ?? this.gradualWindowMinutes,
+        gradualPattern: gradualPattern ?? this.gradualPattern,
+        gradualCadenceSec: gradualCadenceSec ?? this.gradualCadenceSec,
       );
 
   factory AlarmScheduleEntry.fromRow(Map<String, Object?> row) =>
@@ -55,6 +83,11 @@ class AlarmScheduleEntry {
         minute: row['minute'] as int,
         enabled: (row['enabled'] as int) != 0,
         smartWindowMinutes: (row['smart_window_minutes'] as int?) ?? 0,
+        naturalWindowMinutes: (row['natural_window_minutes'] as int?) ?? 0,
+        gradualWindowMinutes: (row['gradual_window_minutes'] as int?) ?? 0,
+        gradualPattern: GradualPattern.parse(row['gradual_pattern']),
+        gradualCadenceSec:
+            (row['gradual_cadence_sec'] as int?) ?? kGradualCadenceDefaultSec,
       );
 
   @override
@@ -64,16 +97,51 @@ class AlarmScheduleEntry {
       other.hour == hour &&
       other.minute == minute &&
       other.enabled == enabled &&
-      other.smartWindowMinutes == smartWindowMinutes;
+      other.smartWindowMinutes == smartWindowMinutes &&
+      other.naturalWindowMinutes == naturalWindowMinutes &&
+      other.gradualWindowMinutes == gradualWindowMinutes &&
+      other.gradualPattern == gradualPattern &&
+      other.gradualCadenceSec == gradualCadenceSec;
 
   @override
-  int get hashCode =>
-      Object.hash(weekday, hour, minute, enabled, smartWindowMinutes);
+  int get hashCode => Object.hash(weekday, hour, minute, enabled,
+      smartWindowMinutes, naturalWindowMinutes, gradualWindowMinutes,
+      gradualPattern, gradualCadenceSec);
 
   @override
   String toString() =>
       'AlarmScheduleEntry(weekday: $weekday, hour: $hour, minute: $minute, '
-      'enabled: $enabled, smartWindowMinutes: $smartWindowMinutes)';
+      'enabled: $enabled, smartWindowMinutes: $smartWindowMinutes, '
+      'naturalWindowMinutes: $naturalWindowMinutes, '
+      'gradualWindowMinutes: $gradualWindowMinutes)';
+}
+
+/// The window whose lead time high-frequency collection must cover for [e]:
+/// Natural once the upgrade explanation is settled, the legacy Smart window
+/// while it is pending (that is the behaviour still running).
+int collectionWindowMinutes(AlarmScheduleEntry e, WakeUpgradeState upgrade) =>
+    upgrade == WakeUpgradeState.pending
+        ? e.smartWindowMinutes
+        : e.naturalWindowMinutes;
+
+/// The armed alarm's collection window under [upgrade], or null when there is
+/// no armed [epoch] or that weekday has no window. Same lookup as
+/// [armedSmartWakeWindow], but follows Natural Wake instead of the legacy
+/// Smart window once the upgrade is settled.
+({DateTime windowEnd, int minutes})? armedCollectionWindow({
+  required int? epoch,
+  required List<AlarmScheduleEntry> schedule,
+  required WakeUpgradeState upgrade,
+}) {
+  if (epoch == null) return null;
+  final windowEnd = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+  final entry = schedule
+      .where((e) => e.weekday == windowEnd.weekday - 1)
+      .firstOrNull;
+  if (entry == null) return null;
+  final minutes = collectionWindowMinutes(entry, upgrade);
+  if (minutes <= 0) return null;
+  return (windowEnd: windowEnd, minutes: minutes);
 }
 
 /// Whether a smart-wake early-fire attempt should happen right now.
@@ -182,6 +250,16 @@ DateTime? nextAlarmOccurrence(List<AlarmScheduleEntry> schedule, DateTime now) {
 /// persisted/optimistic epoch for.
 typedef AlarmArmResult = ({int? epoch, bool disabled});
 
+/// Where the search for the next occurrence starts. Normally [now]; but after
+/// the user explicitly acknowledged a wake and cancelled its native alarm
+/// ([ackedThroughEpochSec], unix s), that occurrence must not be re-armed by
+/// the next connect or sync, so the search starts just after it.
+DateTime armSearchFrom(DateTime now, int? ackedThroughEpochSec) {
+  if (ackedThroughEpochSec == null) return now;
+  final acked = DateTime.fromMillisecondsSinceEpoch(ackedThroughEpochSec * 1000);
+  return acked.isBefore(now) ? now : acked.add(const Duration(seconds: 1));
+}
+
 /// Arms [engine] with the next scheduled occurrence, if one exists and it
 /// differs from [currentArmedEpoch] (unix seconds) — the "don't hammer the
 /// strap on every sync" rule. See [AlarmArmResult] for what's returned.
@@ -194,8 +272,10 @@ Future<AlarmArmResult> armNextScheduledOccurrence({
   required List<AlarmScheduleEntry> schedule,
   required int? currentArmedEpoch,
   DateTime? now,
+  int? ackedThroughEpochSec,
 }) async {
-  final next = nextAlarmOccurrence(schedule, now ?? DateTime.now());
+  final next = nextAlarmOccurrence(
+      schedule, armSearchFrom(now ?? DateTime.now(), ackedThroughEpochSec));
   if (next == null) {
     // Nothing enabled. Toggling every weekday off individually (rather than
     // an explicit cancel-all) must not leave the strap holding its last arm

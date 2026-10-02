@@ -130,8 +130,8 @@ void main() {
     Future<List<Map<String, Object?>>> rows(String device) =>
         db.query('events', where: 'device_id = ?', whereArgs: [device]);
 
-    test('the schema is 55', () {
-      expect(LocalDb.schemaVersion, 55);
+    test('the schema is at least 55 (the ts_subsec rung)', () {
+      expect(LocalDb.schemaVersion, greaterThanOrEqualTo(55));
     });
 
     test('a fresh install has the ts_subsec column, NOT NULL DEFAULT 0',
@@ -254,7 +254,7 @@ void main() {
 
       final rows = await db.rawQuery('PRAGMA user_version');
       expect((rows.first.values.first as num).toInt(), LocalDb.schemaVersion);
-      expect(LocalDb.schemaVersion, 55);
+      expect(LocalDb.schemaVersion, greaterThanOrEqualTo(55));
 
       final names = (await _eventsCols(db)).map((c) => c['name']).toSet();
       expect(names, contains('ts_subsec'));

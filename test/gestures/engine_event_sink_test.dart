@@ -182,7 +182,9 @@ void main() {
     test('schema 55 is on the ladder', () {
       final src = read('lib/data/db.dart');
       expect(src, contains('if (oldV < 55)'));
-      expect(src, contains('static const int schemaVersion = 55;'));
+      final m = RegExp(r'static const int schemaVersion = (\d+);').firstMatch(src);
+      expect(int.parse(m!.group(1)!), greaterThanOrEqualTo(55),
+          reason: 'later rungs ride the same ladder; 55 is a floor here');
     });
   });
 }

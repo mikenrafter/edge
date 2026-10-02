@@ -54,6 +54,7 @@ import '../data/db.dart';
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_recovery.dart';
 import '../ecg/ecg_transport.dart';
+import '../wake/wake_stores.dart' show loadWakeUpgradeState;
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../state/alarm_schedule.dart';
@@ -240,9 +241,10 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
           AlarmScheduleEntry.fromRow(r),
       ]);
       final preSyncPrefs = await SharedPreferences.getInstance();
-      final armedWindow = armedSmartWakeWindow(
+      final armedWindow = armedCollectionWindow(
         epoch: preSyncPrefs.getInt('alarm_epoch'),
         schedule: preSyncSchedule,
+        upgrade: await loadWakeUpgradeState(),
       );
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armedWindow?.windowEnd,
@@ -251,7 +253,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       await engine.applyHighFreqWakeWindow(
         enabled: plan.shouldEnable,
         targetWake: plan.targetWake,
-        duration: HighFreqWakeWindow.lease,
+        duration: plan.lease,
         intervalSeconds: 61, // gen5 rejects <= 60
 
         reason: plan.source,
@@ -284,6 +286,9 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
           engine: engine,
           schedule: schedule,
           currentArmedEpoch: prefs.getInt('alarm_epoch'),
+          // An occurrence the user acknowledged and cancelled must not be
+          // re-armed by a background sync.
+          ackedThroughEpochSec: prefs.getInt('wake_acked_epoch'),
         );
         if (result.disabled) {
           await prefs.remove('alarm_epoch');
