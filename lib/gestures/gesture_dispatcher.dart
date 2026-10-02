@@ -23,6 +23,12 @@
 // is on, a live double tap starts the ECG capture through [onEcgTap] instead of
 // its actions, which are suspended (the Device lab owns that mode). It takes the
 // same once-ever claim / receipt debounce as an action, under `...:ecg`.
+// With the switch OFF, on an MG with a 3-5 tap mapping, a live double tap runs
+// the same capture as a touch COUNTER ([onCountTaps]): the actions mapped to the
+// final count (2-5) then run through the path above, claimed per tap identity
+// and count (`gesture:<identity>:t<count>:<action>`; a count of 2 keeps the plain
+// key). An abandoned count runs nothing; its outcomes carry `taps`, which keeps
+// the 8H tap-ack quiet (the counter's own buzzes are the acknowledgement).
 //
 // One action failing never stops the next, and nothing escapes as an unhandled
 // async error: [handle] always completes with a list of outcomes.
@@ -48,6 +54,7 @@ class GestureOutcome {
     required this.status,
     required this.timeSource,
     this.error,
+    this.taps,
   });
 
   final DeviceAction action;
@@ -58,6 +65,10 @@ class GestureOutcome {
 
   /// Non-null iff [status] is [GestureStatus.failed].
   final Object? error;
+
+  /// The touch counter's final count when this ran because of a counted tap
+  /// (8L); null for an immediate double tap.
+  final int? taps;
 }
 
 typedef GestureHandler = Future<void> Function(StrapEvent event);
@@ -79,6 +90,12 @@ class GestureDispatcher {
   /// claim back so a retry can run.
   final GestureHandler? onEcgTap;
 
+  /// 8L: count the taps of this live double tap (the ECG touch counter) and
+  /// complete with the final count, or null when the gesture was abandoned (a
+  /// link drop or stall). Throws when it could not start; the claim is then
+  /// given back and the double-tap actions run at once, as without counting.
+  final Future<int?> Function(StrapEvent)? onCountTaps;
+
   final Future<bool> Function(String actionId) _performNative;
   final Future<bool> Function(String key) _claim;
   final Future<void> Function(String key) _release;
@@ -91,6 +108,7 @@ class GestureDispatcher {
     this.onLogWater,
     this.ecgSupported,
     this.onEcgTap,
+    this.onCountTaps,
     Future<bool> Function(String actionId)? performNative,
     Future<bool> Function(String key)? claim,
     Future<void> Function(String key)? release,
@@ -115,58 +133,116 @@ class GestureDispatcher {
       if (e.isLive) await _ecgTap(e);
       return const [];
     }
-    final actions = settings.doubleTapActions;
-    if (actions.isEmpty) return const [];
+    // 8L: on a WHOOP MG with a 3-5 tap mapping, a live double tap is counted
+    // and its actions wait for the final count. A late tap is never counted
+    // (the touch would be for a tap from the past) and runs as before.
+    if (onCountTaps != null &&
+        e.isLive &&
+        ecgSupported?.call() == true &&
+        settings.maxMappedTaps > 2) {
+      return _countedTap(e);
+    }
+    return _runActions(e, settings.doubleTapActions);
+  }
 
+  Future<List<GestureOutcome>> _runActions(StrapEvent e, Set<DeviceAction> actions,
+      {int? taps}) async {
     final out = <GestureOutcome>[];
     for (final a in actions) {
-      out.add(await _handleOne(e, a));
+      out.add(await _handleOne(e, a, taps: taps));
     }
     return out;
   }
 
-  Future<void> _ecgTap(StrapEvent e) async {
-    final start = onEcgTap;
-    if (start == null) return;
+  /// Take the once-ever claim (or the receipt debounce) for the ECG session of
+  /// this tap, under `...:ecg`. Null: skip, this tap already has one.
+  Future<({String? claimKey, String debounceKey})?> _takeEcgTap(
+      StrapEvent e) async {
     final debounceKey = '${e.identity}:ecg';
     String? claimKey;
     if (e.plausible) {
       claimKey = 'gesture:$debounceKey';
       try {
-        if (!await _claim(claimKey)) return;
+        if (!await _claim(claimKey)) return null;
       } catch (err) {
         log?.call('[gesture] ecg: claim failed: $err');
-        return;
+        return null;
       }
     } else {
       final last = _lastAccepted[debounceKey];
       if (last != null && e.receivedAt.difference(last) < _receiptDebounce) {
-        return;
+        return null;
       }
       _lastAccepted.removeWhere(
           (_, t) => e.receivedAt.difference(t) >= _receiptDebounce);
       _lastAccepted[debounceKey] = e.receivedAt;
     }
+    return (claimKey: claimKey, debounceKey: debounceKey);
+  }
+
+  Future<void> _giveBackEcgTap(
+      ({String? claimKey, String debounceKey}) taken) async {
+    final claimKey = taken.claimKey;
+    if (claimKey != null) {
+      try {
+        await _release(claimKey);
+      } catch (relErr) {
+        log?.call('[gesture] ecg: claim release failed: $relErr');
+      }
+    } else {
+      _lastAccepted.remove(taken.debounceKey);
+    }
+  }
+
+  Future<void> _ecgTap(StrapEvent e) async {
+    final start = onEcgTap;
+    if (start == null) return;
+    final taken = await _takeEcgTap(e);
+    if (taken == null) return;
     try {
       log?.call('[gesture] double-tap → ecg');
       await start(e);
     } catch (err) {
       log?.call('[gesture] ecg start failed: $err');
-      if (claimKey != null) {
-        try {
-          await _release(claimKey);
-        } catch (relErr) {
-          log?.call('[gesture] ecg: claim release failed: $relErr');
-        }
-      } else {
-        _lastAccepted.remove(debounceKey);
-      }
+      await _giveBackEcgTap(taken);
     }
   }
 
-  Future<GestureOutcome> _handleOne(StrapEvent e, DeviceAction a) async {
+  /// 8L: count the taps, then run the final count's actions. An abandoned
+  /// gesture runs nothing and keeps its claim (a re-send is the same tap). One
+  /// that could not START never counted anything, so it gives the claim back
+  /// and the tap does what it always did.
+  Future<List<GestureOutcome>> _countedTap(StrapEvent e) async {
+    final taken = await _takeEcgTap(e);
+    if (taken == null) return const [];
+    final int? count;
+    try {
+      log?.call('[gesture] double-tap → counting taps');
+      count = await onCountTaps!(e);
+    } catch (err) {
+      log?.call('[gesture] tap counting did not start: $err');
+      await _giveBackEcgTap(taken);
+      return _runActions(e, settings.doubleTapActions);
+    }
+    if (count == null) {
+      log?.call('[gesture] tap counting abandoned; no action');
+      return const [];
+    }
+    log?.call('[gesture] counted $count taps');
+    return _runActions(e, settings.actionsForTaps(count), taps: count);
+  }
+
+  Future<GestureOutcome> _handleOne(StrapEvent e, DeviceAction a,
+      {int? taps}) async {
     GestureOutcome outcome(GestureStatus s, [Object? error]) => GestureOutcome(
-        action: a, status: s, timeSource: e.timeSource, error: error);
+        action: a,
+        status: s,
+        timeSource: e.timeSource,
+        error: error,
+        taps: taps);
+
+    // A count of 2 is the plain double tap; 3-5 are their own occurrences.
+    final scope = taps == null || taps == 2 ? '' : 't$taps:';
 
     // a. Stale check first, before any claim is taken.
     if (!e.isLive &&
@@ -176,11 +252,11 @@ class GestureDispatcher {
       return outcome(GestureStatus.skippedStale);
     }
 
-    final debounceKey = '${e.identity}:${a.id}';
+    final debounceKey = '${e.identity}:$scope${a.id}';
     String? claimKey;
     if (e.plausible) {
       // b. Persistent, atomic once-ever claim. Fail closed.
-      claimKey = 'gesture:${e.identity}:${a.id}';
+      claimKey = 'gesture:${e.identity}:$scope${a.id}';
       try {
         if (!await _claim(claimKey)) {
           return outcome(GestureStatus.skippedDuplicate);

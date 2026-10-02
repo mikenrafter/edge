@@ -301,6 +301,7 @@ class AppState extends ChangeNotifier {
         onLogWater: _logWaterFromGesture,
         ecgSupported: () => engine.isMaverick,
         onEcgTap: _ecgTapSession.start,
+        onCountTaps: _countTaps,
       );
 
   /// 8L: counts ECG-sensor touches after a live double tap. Built lazily so
@@ -314,13 +315,38 @@ class AppState extends ChangeNotifier {
     },
     isStreamAlive: () => ecg.isCapturing,
     buzz: _ecgTapBuzz,
-    maxTaps: () => gestureSettings.maxMappedTaps,
+    maxTaps: () => gestureSettings.ecgTapMax,
     thresholds: () => gestureSettings.ecgTapThresholds,
-    onFinished: (count, reason) => deviceLab.addStep(count != null
-        ? 'Result: $count taps. This is a draft; no action was run.'
-        : 'Result: abandoned ($reason). No action was run.'),
+    onFinished: (count, reason) {
+      final lab = gestureSettings.ecgOnDoubleTap;
+      deviceLab.addStep(count != null
+          ? 'Result: $count taps.${lab ? ' This is a draft; no action was run.' : ''}'
+          : 'Result: abandoned ($reason). No action was run.');
+      final waiting = _tapCount;
+      _tapCount = null;
+      if (waiting != null && !waiting.isCompleted) waiting.complete(count);
+    },
     step: deviceLab.addStep,
   );
+
+  /// The gesture the dispatcher is waiting on (outside the lab), completed by
+  /// the session's onFinished. Cleared on every exit.
+  Completer<int?>? _tapCount;
+
+  /// [GestureDispatcher.onCountTaps]: run the session for this tap and wait for
+  /// its final count (null = abandoned). One gesture at a time: a second double
+  /// tap while one is counting is ignored. Throws when the stream did not start.
+  Future<int?> _countTaps(StrapEvent e) async {
+    if (_ecgTapSession.active) return null;
+    final done = _tapCount = Completer<int?>();
+    try {
+      await _ecgTapSession.start(e);
+    } catch (_) {
+      _tapCount = null;
+      rethrow;
+    }
+    return done.future;
+  }
 
   /// Start the ECG stream for a tap through the existing controller. The wrist
   /// is the one remembered from a normal ECG reading; without it the lab says
@@ -334,7 +360,9 @@ class AppState extends ChangeNotifier {
           'the lab knows which wrist the band is on.');
       return false;
     }
-    await ecg.begin(wrist);
+    // persist: false: a long touch can reach a normal terminal, and a gesture
+    // must never leave an ECG reading behind (invariant 14).
+    await ecg.begin(wrist, persist: false);
     return ecg.isCapturing;
   }
 

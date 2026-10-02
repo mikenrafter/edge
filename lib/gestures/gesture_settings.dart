@@ -76,6 +76,12 @@ class GestureSettings extends ChangeNotifier {
     return 2;
   }
 
+  /// The highest tap count the counter session waits for. In the Device lab
+  /// (switch on) it is always 5 so the whole sequence can be tested; otherwise
+  /// the highest mapped count, since a count nothing is mapped to is not worth
+  /// waiting for.
+  int get ecgTapMax => _ecgOnDoubleTap ? 5 : maxMappedTaps;
+
   /// 8I: a live double tap starts an ECG capture instead of its actions
   /// (WHOOP MG only; the Device lab owns the switch). Off by default.
   bool get ecgOnDoubleTap => _ecgOnDoubleTap;
