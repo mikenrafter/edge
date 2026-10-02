@@ -868,6 +868,27 @@ Map<String, Widget> extraCases() => {
           ),
         );
       }),
+      // Nothing selected, like 'scrubber': the cursor and pill appear on touch.
+      'chart_scrub': Builder(builder: (c) {
+        final p = P.of(c);
+        const hr = <double?>[58, 61, null, 66, 72, 69];
+        return Surface(
+          child: ChartFrame(
+            title: 'Heart rate',
+            unit: 'bpm',
+            height: 96,
+            xLabels: const ['07:00', '12:00'],
+            child: ChartScrub(
+              label: 'Heart rate',
+              readout: ChartScrub.slots(
+                  hr, (i, v) => '${7 + i}:00 · ${v.round()} bpm'),
+              child: CustomPaint(
+                  size: Size.infinite,
+                  painter: LineChart(hr, p.on(C.red))),
+            ),
+          ),
+        );
+      }),
       'chart_ring': Builder(builder: (c) {
         final p = P.of(c);
         return Surface(

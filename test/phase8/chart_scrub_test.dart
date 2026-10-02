@@ -17,7 +17,9 @@ const _series = <double?>[60, 64, null, 70];
 String? _readout(double at) {
   final i = (at * (_series.length - 1)).round();
   final v = _series[i];
-  return v == null ? null : '0${7 + i}:00 · ${v.round()} bpm';
+  return v == null
+      ? null
+      : '${(7 + i).toString().padLeft(2, '0')}:00 · ${v.round()} bpm';
 }
 
 Future<void> _pump(WidgetTester t, Widget chart) async {
