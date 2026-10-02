@@ -7,8 +7,7 @@
 // storage/UI indexing choice, not a replacement for `DateTime.weekday`
 // (1=Mon..7=Sun), which every conversion below still goes through explicitly.
 
-import '../ble/ble_engine.dart';
-import '../ble/ble_state.dart' show AlarmConfirmation;
+import '../ble/ble_state.dart' show AlarmBandWriter, AlarmConfirmation;
 import '../wake/wake_settings.dart';
 
 /// One weekday's slot in the schedule. Immutable — callers build a new one to
@@ -89,6 +88,19 @@ class AlarmScheduleEntry {
         gradualCadenceSec:
             (row['gradual_cadence_sec'] as int?) ?? kGradualCadenceDefaultSec,
       );
+
+  /// The `alarm_schedule` row for this entry; the inverse of [fromRow].
+  Map<String, Object?> toRow() => {
+        'weekday': weekday,
+        'hour': hour,
+        'minute': minute,
+        'enabled': enabled ? 1 : 0,
+        'smart_window_minutes': smartWindowMinutes,
+        'natural_window_minutes': naturalWindowMinutes,
+        'gradual_window_minutes': gradualWindowMinutes,
+        'gradual_pattern': gradualPattern.name,
+        'gradual_cadence_sec': gradualCadenceSec,
+      };
 
   @override
   bool operator ==(Object other) =>
@@ -247,8 +259,11 @@ DateTime? nextAlarmOccurrence(List<AlarmScheduleEntry> schedule, DateTime now) {
 /// was refused/failed). [disabled] is true only when this call actively sent
 /// DISABLE_ALARM because the schedule now has nothing enabled but the strap
 /// still held a live arm — the case a caller must clear its own
-/// persisted/optimistic epoch for.
-typedef AlarmArmResult = ({int? epoch, bool disabled});
+/// persisted/optimistic epoch for. [refused] is true when a SET_ALARM was
+/// attempted and the band did not take it (the write never left the phone, or
+/// the strap answered no): the one case where "epoch is null" means failure
+/// rather than "nothing to do".
+typedef AlarmArmResult = ({int? epoch, bool disabled, bool refused});
 
 /// Where the search for the next occurrence starts. Normally [now]; but after
 /// the user explicitly acknowledged a wake and cancelled its native alarm
@@ -268,7 +283,7 @@ DateTime armSearchFrom(DateTime now, int? ackedThroughEpochSec) {
 /// tested independently with no engine, and the wire form is whatever
 /// `engine.setAlarm` already sends (rev1 gen4 / gen5 rich — unchanged here).
 Future<AlarmArmResult> armNextScheduledOccurrence({
-  required BleEngine engine,
+  required AlarmBandWriter engine,
   required List<AlarmScheduleEntry> schedule,
   required int? currentArmedEpoch,
   DateTime? now,
@@ -280,15 +295,23 @@ Future<AlarmArmResult> armNextScheduledOccurrence({
     // Nothing enabled. Toggling every weekday off individually (rather than
     // an explicit cancel-all) must not leave the strap holding its last arm
     // forever — nothing else in this flow ever tells the band to give it up.
-    if (currentArmedEpoch == null) return (epoch: null, disabled: false);
+    if (currentArmedEpoch == null) {
+      return (epoch: null, disabled: false, refused: false);
+    }
     await engine.disableAlarm();
-    return (epoch: null, disabled: true);
+    return (epoch: null, disabled: true, refused: false);
   }
   final epoch = next.millisecondsSinceEpoch ~/ 1000;
-  if (epoch == currentArmedEpoch) return (epoch: null, disabled: false);
+  if (epoch == currentArmedEpoch) {
+    return (epoch: null, disabled: false, refused: false);
+  }
   final armed = await engine.setAlarm(next);
-  if (armed == null) return (epoch: null, disabled: false);
-  return (epoch: armed.millisecondsSinceEpoch ~/ 1000, disabled: false);
+  if (armed == null) return (epoch: null, disabled: false, refused: true);
+  return (
+    epoch: armed.millisecondsSinceEpoch ~/ 1000,
+    disabled: false,
+    refused: false
+  );
 }
 
 /// The weekday/hour/minute a legacy single-alarm epoch maps onto, for the

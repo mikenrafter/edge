@@ -2161,6 +2161,23 @@ class LocalDb {
     );
   }
 
+  /// Write several `alarm_schedule` rows (shape of `AlarmScheduleEntry.toRow`)
+  /// in ONE transaction: all of them land or none do. The alarm screen's Save
+  /// uses this for the whole week, so a half-written schedule can never be
+  /// armed. No schema change.
+  static Future<void> setAlarmScheduleRows(
+      List<Map<String, Object?>> rows) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      for (final row in rows) {
+        batch.insert('alarm_schedule', row,
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await batch.commit(noResult: true);
+    });
+  }
+
   /// Wipe the whole weekly schedule — the "Cancel-all" half of disabling the
   /// alarm (see AppState.disableAlarm), so a cancelled alarm cannot silently
   /// re-arm itself from a schedule the user thought they'd cleared.

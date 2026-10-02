@@ -24,7 +24,12 @@
 //   traceFor(wakeAt)                the persisted decision trace for that wake
 //
 // Writing (each validates, persists, notifies; invalid input throws
-// ArgumentError, never silently clamps):
+// ArgumentError, never silently clamps). NONE of these writes the band: this
+// class has no band access, and the saveEntry it is given only stores the row.
+// Natural and Gradual are phone-orchestrated; only the fixed alarm at T is ever
+// stored on the band, and that is armed by AppState, once per alarm-screen Save.
+// (The alarm screen edits a draft and stores the whole week in one transaction
+// instead of calling these per row; they remain for other callers.)
 //   setNaturalWindow(weekday, minutes)
 //   setGradualWindow(weekday, minutes)
 //   setGradualPattern(weekday, pattern)
@@ -48,7 +53,8 @@
 //     sleep; naps never use it. Say which parts are band-native (the alarm at
 //     T) and which need the phone (everything before T).
 //   * `setScheduleDay(smartWindowMinutes:)` on AppState still exists for the
-//     old row; new UI should use these setters instead.
+//     old row and for programmatic callers (Siri); the alarm screen uses
+//     neither it nor these setters but its draft (lib/state/alarm_draft.dart).
 
 import 'package:flutter/foundation.dart';
 
@@ -109,7 +115,19 @@ class WakeController extends ChangeNotifier {
 
   /// The exact schedule for the alarm resolving to [wakeAt] (an absolute
   /// instant; its LOCAL weekday picks the configured day).
-  WakeTimeline timelineAt(DateTime wakeAt) {
+  ///
+  /// [entry] previews a DRAFT day (the alarm screen edits a draft that is not
+  /// saved yet); without it the saved schedule is used. The upgrade gate
+  /// applies either way.
+  WakeTimeline timelineAt(DateTime wakeAt, {AlarmScheduleEntry? entry}) {
+    if (entry != null) {
+      return WakeTimeline.compute(
+        wakeAt: wakeAt,
+        naturalMinutes:
+            upgradeExplanationPending ? 0 : entry.naturalWindowMinutes,
+        gradualMinutes: entry.gradualWindowMinutes,
+      );
+    }
     final weekday = wakeAt.toLocal().weekday - 1;
     return WakeTimeline.compute(
       wakeAt: wakeAt,

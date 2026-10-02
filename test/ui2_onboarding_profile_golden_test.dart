@@ -123,7 +123,7 @@ Map<String, Widget> _cases() => {
           connected: true,
           schedule: _alarmSchedule,
           onTest: () async {},
-          onCancel: () async {}),
+          onCancelAlarm: () async {}),
       'alarm_unconfirmed': AlarmScreenView(
           armedAt: _alarmAt,
           now: _alarmNow,
@@ -131,7 +131,35 @@ Map<String, Widget> _cases() => {
           connected: true,
           schedule: _alarmSchedule,
           onTest: () async {},
-          onCancel: () async {}),
+          onCancelAlarm: () async {}),
+      // The Wake section (8O): Gradual on, Natural dimmed with its reason.
+      'alarm_wake_no_sleep_schedule': AlarmScreenView(
+          connected: true,
+          now: _alarmNow,
+          hasExpectedSleep: false,
+          schedule: fillDefaultAlarmSchedule(const [
+            AlarmScheduleEntry(
+                weekday: 5,
+                hour: 6,
+                minute: 30,
+                enabled: true,
+                gradualWindowMinutes: 30,
+                gradualCadenceSec: 120),
+          ])),
+      // Smart Wake -> Natural Wake explanation, waiting to be read.
+      'alarm_wake_upgrade': AlarmScreenView(
+          connected: true,
+          now: _alarmNow,
+          upgradePending: true,
+          expectedSleepLabel: '23:00 to 07:00',
+          schedule: fillDefaultAlarmSchedule(const [
+            AlarmScheduleEntry(
+                weekday: 5,
+                hour: 6,
+                minute: 30,
+                enabled: true,
+                naturalWindowMinutes: 45),
+          ])),
       'alarm_disconnected': AlarmScreenView(
           armedAt: _alarmAt,
           now: _alarmNow,
