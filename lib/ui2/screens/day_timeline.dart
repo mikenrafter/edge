@@ -912,7 +912,23 @@ Widget? dayGraphCard(BuildContext c, DayGraph g) {
         if (gaps.isNotEmpty) (l?.dayTimelineNotRecorded ?? 'Not recorded', p.card2),
       ],
       series: g.hr,
-      child: Stack(children: [
+      // One slot per minute. The readout is the heart-rate minute under the
+      // finger, with the stretch it falls in (asleep, workout) when there is
+      // one; a minute with no heart rate reads "No data here" even if the
+      // movement strip has a bar there.
+      child: ChartScrub(
+        label: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
+        readout: ChartScrub.slots(g.hr, (m, v) {
+          bool within(List<(int, int, Color)> xs) =>
+              xs.any((s) => m >= s.$1 && m < s.$2);
+          final during = within(g.rest)
+              ? ' · ${l?.dayTimelineAsleep ?? 'Asleep'}'
+              : within(g.work)
+                  ? ' · ${l?.dayTimelineWorkout ?? 'Workout'}'
+                  : '';
+          return '${ChartScrub.clock(m)} · ${v.round()} bpm$during';
+        }),
+        child: Stack(children: [
         Positioned.fill(
           child: CustomPaint(
             size: Size.infinite,
@@ -938,7 +954,8 @@ Widget? dayGraphCard(BuildContext c, DayGraph g) {
             painter: LineChart(g.hr, p.on(C.red), fill: false, axis: axis),
           ),
         ),
-      ]),
+        ]),
+      ),
     ),
   );
 }

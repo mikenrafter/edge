@@ -354,9 +354,29 @@ class _CircadianDetailState extends State<CircadianDetail> {
               footnote: l?.circadianDetailSleepFootnote(drawn) ??
                   '$drawn night${drawn == 1 ? '' : 's'}, one column each. '
                       'Darker is more of that hour asleep.',
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: Actogram(d.actogram, p.on(C.indigo)),
+              // A grid: the finger selects the night (column) it is over. Each
+              // column is 24 hourly shares of that hour asleep, so the sum is
+              // the hours asleep that the shading adds up to. A night with no
+              // column is a night that was not recorded.
+              child: ChartScrub(
+                label: l?.circadianDetailSleepTitle ?? 'Sleep, night by night',
+                mode: ChartScrubMode.nearest,
+                readout: (at) {
+                  final n = d.actogram.length;
+                  if (n == 0) return null;
+                  final i = (at * n).floor().clamp(0, n - 1);
+                  final col = d.actogram[i];
+                  if (col == null) return null;
+                  final asleep = col
+                      .where((v) => v.isFinite)
+                      .fold<double>(0, (a, v) => a + v.clamp(0.0, 1.0));
+                  final day = i < d.labels.length ? '${d.labels[i]} · ' : '';
+                  return '$day${axisHm(asleep * 60)} asleep';
+                },
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: Actogram(d.actogram, p.on(C.indigo)),
+                ),
               ),
             ),
           ),
@@ -470,11 +490,20 @@ class _CircadianDetailState extends State<CircadianDetail> {
                 '${d.hourlyDays} day${d.hourlyDays == 1 ? '' : 's'}. Today alone is never used. $drawn of 24 hours had at least three '
                 'stretches; the rest are blank. Not a stress score: sitting up, '
                 'a warm room or a coffee moves it just as much.',
-        child: CustomPaint(
-          size: Size.infinite,
-          // Uncoloured. A hue here would be a verdict about an hour of your
-          // day, and there is no verdict available.
-          painter: Bars(d.hourly, p.ink3, axis: axis, t: animate(c, 1)),
+        child: ChartScrub(
+          label: l?.circadianDetailStillnessTitle ??
+              'Beat-to-beat variability while still',
+          // 24 bars, one per local hour; an hour without three stretches is
+          // blank on the chart and reads "No data here".
+          readout: ChartScrub.slots(d.hourly,
+              (h, v) => '${ChartScrub.clock(h * 60)} · ${v.round()} ms',
+              bars: true),
+          child: CustomPaint(
+            size: Size.infinite,
+            // Uncoloured. A hue here would be a verdict about an hour of your
+            // day, and there is no verdict available.
+            painter: Bars(d.hourly, p.ink3, axis: axis, t: animate(c, 1)),
+          ),
         ),
       ),
     );
@@ -517,12 +546,26 @@ class _CircadianDetailState extends State<CircadianDetail> {
           // have it speak numbers off a curve that deliberately has none.
           footnote: l?.circadianDetailForecastFootnote ??
               'The curve has no scale. Read its shape only.',
-          child: CustomPaint(
-            size: Size.infinite,
-            // p.ink3, like every other mark on this screen that is not a
-            // verdict. A colour would make the trough a warning.
-            painter: LineChart(v.shape, p.ink3,
-                fill: false, t: animate(c, 1)),
+          // The readout keeps the card's rule: a time and, inside the named
+          // window, that it is the flattest stretch. No figure comes off a
+          // curve that has no scale. The span is the 0 / +9 / +18 h the x
+          // labels above print.
+          child: ChartScrub(
+            label: l?.circadianDetailForecastTitle ??
+                'Predicted alertness curve for today',
+            readout: ChartScrub.slots(v.shape, (i, _) {
+              final h = v.startHour + 18 * i / (v.shape.length - 1);
+              final inTrough = h >= v.troughStartHour && h <= v.troughEndHour;
+              return '${_hourClock(h)} · shape only'
+                  '${inTrough ? ', the flattest stretch' : ''}';
+            }),
+            child: CustomPaint(
+              size: Size.infinite,
+              // p.ink3, like every other mark on this screen that is not a
+              // verdict. A colour would make the trough a warning.
+              painter: LineChart(v.shape, p.ink3,
+                  fill: false, t: animate(c, 1)),
+            ),
           ),
         ),
         const SizedBox(height: S.x3),

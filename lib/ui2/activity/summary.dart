@@ -1681,10 +1681,16 @@ class _ActivitySummaryState extends State<ActivitySummary> {
       xLabels: [l?.activitySummaryStart ?? 'Start', hms(r.duration)],
       footnote: note.isEmpty ? null : note.join(' '),
       series: r.hr,
-      child: CustomPaint(
-          size: Size.infinite,
-          painter: LineChart(r.hr, p.on(C.red),
-              axis: axis, t: animate(context, 1))),
+      child: ChartScrub(
+        label: l?.activitySummaryHeartRateTitle ?? 'Heart rate',
+        // One slot per minute of the session, as the series is built.
+        readout: ChartScrub.slots(
+            r.hr, (i, v) => 'Minute $i · ${v.round()} bpm'),
+        child: CustomPaint(
+            size: Size.infinite,
+            painter: LineChart(r.hr, p.on(C.red),
+                axis: axis, t: animate(context, 1))),
+      ),
     );
   }
 
@@ -1700,8 +1706,13 @@ class _ActivitySummaryState extends State<ActivitySummary> {
             ('Z${i + 1} · ${r.zoneMinutes[i].round()}m', ZoneBar.cols(p)[i]),
         ],
         footnote: zonesWhy(r.zoneSource, r.zoneMaxHr, AppLocalizations.of(context)),
-        child: CustomPaint(
-            size: Size.infinite, painter: ZoneBar(_zoneFractions(), p)),
+        child: ChartScrub(
+          label: AppLocalizations.of(context)?.activitySummaryTimeInZonesTitle ??
+              'Time in zones',
+          readout: ChartScrub.zoneMinutes(r.zoneMinutes),
+          child: CustomPaint(
+              size: Size.infinite, painter: ZoneBar(_zoneFractions(), p)),
+        ),
       );
 
   // ─────────── ARCHETYPE BODY ───────────
@@ -2193,10 +2204,15 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                 // the phone recorded alongside it.
                 footnote: g.$1 == 'Heart rate' ? _traceNote : null,
                 series: g.$4,
-                child: CustomPaint(
-                    size: Size.infinite,
-                    painter: LineChart(g.$4, p.on(g.$3),
-                        axis: axis, t: animate(context, 1))),
+                child: ChartScrub(
+                  label: g.$1,
+                  readout: ChartScrub.slots(
+                      g.$4, (i, v) => 'Minute $i · ${v.round()} ${g.$2}'),
+                  child: CustomPaint(
+                      size: Size.infinite,
+                      painter: LineChart(g.$4, p.on(g.$3),
+                          axis: axis, t: animate(context, 1))),
+                ),
               );
             }),
           ),

@@ -609,24 +609,37 @@ class _InvestigateState extends State<Investigate> {
               'This describes the night and cannot explain it. '
               'A low first third fits alcohol, a late meal, late training, '
               'a warm room, an illness starting, or nothing at all.',
-          child: Stack(children: [
-            Positioned.fill(
-              child: CustomPaint(
-                painter: LineChart(lo, p.ink3, fill: false, axis: axis),
+          // One bin per slot. The readout is the bin's estimate and its own
+          // sampling spread, stated only where the estimate exists; a bin with
+          // too few beats is a gap and reads "No data here".
+          child: ChartScrub(
+            label: l?.investigateShapeOfTheNight ?? 'Shape of the night',
+            readout: ChartScrub.slots(mid, (i, v) {
+              final a = lo[i], b = hi[i];
+              final when = at(i);
+              return '${when.isEmpty ? 'Bin ${i + 1} of ${mid.length}' : when}'
+                  ' · ${v.toStringAsFixed(1)} ms'
+                  '${a == null || b == null ? '' : ' (${a.toStringAsFixed(1)}–${b.toStringAsFixed(1)})'}';
+            }),
+            child: Stack(children: [
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: LineChart(lo, p.ink3, fill: false, axis: axis),
+                ),
               ),
-            ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: LineChart(hi, p.ink3, fill: false, axis: axis),
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: LineChart(hi, p.ink3, fill: false, axis: axis),
+                ),
               ),
-            ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: LineChart(mid, p.on(C.green),
-                    fill: false, t: animate(c, 1), axis: axis),
+              Positioned.fill(
+                child: CustomPaint(
+                  painter: LineChart(mid, p.on(C.green),
+                      fill: false, t: animate(c, 1), axis: axis),
+                ),
               ),
-            ),
-          ]),
+            ]),
+          ),
         ),
       ),
       const SizedBox(height: S.x3),
@@ -678,12 +691,19 @@ class _InvestigateState extends State<Investigate> {
                 'This line compares only your own nights. No reference range exists '
                 'for pulse arrivals. Signal quality varies by night and moves '
                 'this line on its own.'),
-        child: CustomPaint(
-          size: Size.infinite,
-          // p.ink3, not an accent. A colour here would be a verdict.
-          painter: LineChart(win, p.ink3,
-              fill: false, dots: true, dotInk: p.card, t: animate(c, 1),
-              axis: axis),
+        child: ChartScrub(
+          label: l?.investigateDecelerationCapacity ?? 'Deceleration capacity',
+          readout: ChartScrub.slots(
+              win,
+              (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
+                  '${v.toStringAsFixed(1)} ms'),
+          child: CustomPaint(
+            size: Size.infinite,
+            // p.ink3, not an accent. A colour here would be a verdict.
+            painter: LineChart(win, p.ink3,
+                fill: false, dots: true, dotInk: p.card, t: animate(c, 1),
+                axis: axis),
+          ),
         ),
       ),
     );
@@ -724,9 +744,27 @@ class _InvestigateState extends State<Investigate> {
             'strip does not rule anything out. The screen reads pulse '
             'timing and cannot tell an ectopic beat from a dropped beat '
             'or from the band moving on your wrist.',
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: HeatMap(grid, p.on(C.purple), p.line),
+        // A grid: the finger selects the week (column) it is over, and the
+        // readout counts that week's squares. A week with no day on which the
+        // screen ran reads "No data here".
+        child: ChartScrub(
+          label: l?.investigateIrregularRhythmScreen ?? 'Irregular-rhythm screen',
+          mode: ChartScrubMode.nearest,
+          readout: (at) {
+            final w = (at * weeks).floor().clamp(0, weeks - 1);
+            final ran = grid[w].where((v) => v != null).length;
+            if (ran == 0) return null;
+            final flagged = grid[w].where((v) => v != null && v >= 1).length;
+            final back = DateTime.now().weekday - 1 + (weeks - 1 - w) * 7;
+            final name = w == weeks - 1
+                ? 'This week'
+                : 'Week of ${ChartScrub.dayBack(back)}';
+            return '$name · ran $ran of 7 days, flag raised on $flagged';
+          },
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: HeatMap(grid, p.on(C.purple), p.line),
+          ),
         ),
       ),
     );

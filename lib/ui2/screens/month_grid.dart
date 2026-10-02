@@ -174,12 +174,26 @@ class MonthGrid extends StatelessWidget {
                             'a value. Shaded against your own range.',
                     child: SizedBox(
                       height: 22,
-                      child: CustomPaint(
-                        size: Size.infinite,
-                        painter: HeatMap(
-                          [for (final v in r.cells) [v]],
-                          p.on(r.spec.color),
-                          p.line,
+                      // A grid: the finger selects the day (cell) it is over.
+                      // The cells hold only the shade, so that is what is said:
+                      // that the day has a value and how far up the person's
+                      // own range it sat. An outlined cell reads "No data
+                      // here".
+                      child: ChartScrub(
+                        label: r.spec.title,
+                        mode: ChartScrubMode.nearest,
+                        readout: ChartScrub.slots(
+                            r.cells,
+                            (i, v) => '${ChartScrub.dayBack(r.cells.length - 1 - i)}'
+                                ' · ${(v.clamp(0.0, 1.0) * 100).round()}% of the way up your range',
+                            bars: true),
+                        child: CustomPaint(
+                          size: Size.infinite,
+                          painter: HeatMap(
+                            [for (final v in r.cells) [v]],
+                            p.on(r.spec.color),
+                            p.line,
+                          ),
                         ),
                       ),
                     ),

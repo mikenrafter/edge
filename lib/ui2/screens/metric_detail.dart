@@ -1397,9 +1397,19 @@ class _MetricDetailState extends State<MetricDetail> {
                     '${have.length} of these $win days have a wear record. The other '
                     'days show as gaps in both charts, and the line above does not '
                     'connect across them.',
-                child: CustomPaint(
-                  size: Size.infinite,
-                  painter: Bars(hrs, p.ink3, axis: axis),
+                // The window ends today, one bar per day; a day with no wear
+                // record has no bar and reads "No data here".
+                child: ChartScrub(
+                  label: l?.metricDetailWornChartTitle ?? 'Worn',
+                  readout: ChartScrub.slots(
+                      hrs,
+                      (i, v) => '${ChartScrub.dayBack(hrs.length - 1 - i)} · '
+                          '${v.toStringAsFixed(1)} h',
+                      bars: true),
+                  child: CustomPaint(
+                    size: Size.infinite,
+                    painter: Bars(hrs, p.ink3, axis: axis),
+                  ),
                 ),
               ),
             );

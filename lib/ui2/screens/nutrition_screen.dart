@@ -439,10 +439,21 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
         series: vals,
         child: axis == null
             ? const SizedBox.shrink()
-            : CustomPaint(
-                size: Size.infinite,
-                painter: Bars(vals, C.domFood,
-                    highlight: vals.length - 1, t: animate(c, 1), axis: axis),
+            // Seven bars, oldest first; an unlogged day has no bar and reads
+            // "No data here", and a partial day says it is a floor.
+            : ChartScrub(
+                label: l?.nutritionEnergyLoggedTitle ?? 'Energy logged',
+                readout: ChartScrub.slots(
+                    vals,
+                    (i, v) => '${_dayShort(w.days[i].date, l)} · '
+                        '${v.round()} kcal'
+                        '${w.days[i].state == DayLogState.partial ? ' (partial day)' : ''}',
+                    bars: true),
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: Bars(vals, C.domFood,
+                      highlight: vals.length - 1, t: animate(c, 1), axis: axis),
+                ),
               ),
       ),
     );

@@ -1102,14 +1102,23 @@ class _CycleHistoryState extends State<_CycleHistory> {
             '${ns.first == ns.last ? (l?.cycleMiddleOfNCycles(ns.first) ?? 'Middle of ${ns.first} cycles at each day.') : (l?.cycleMiddleOfRangeCycles(ns.first, ns.last) ?? 'Middle of between ${ns.first} and ${ns.last} cycles at each day.')}'
             '${_mdcNote(l, med.values, unit, noise)}',
         series: vals,
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: LineChart(
-            vals,
-            p.on(color),
-            fill: false,
-            t: animate(c, 1),
-            axis: axis,
+        child: ChartScrub(
+          label: title,
+          // Slot i is cycle day i + 1; a day with no median is a hole and
+          // reads "No data here".
+          readout: ChartScrub.slots(
+              vals,
+              (i, v) => 'Day ${i + 1} · ${axisFixedOrInt(v)} $unit · '
+                  'middle of ${byDay[i + 1]?.length ?? 0} cycles'),
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: LineChart(
+              vals,
+              p.on(color),
+              fill: false,
+              t: animate(c, 1),
+              axis: axis,
+            ),
           ),
         ),
       ),
@@ -1321,26 +1330,37 @@ class _CycleHistoryState extends State<_CycleHistory> {
                 'The two lines are ${kPublishedCycleDays.low.round()} and '
                     '${kPublishedCycleDays.high.round()} days.',
             series: vals,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                CustomPaint(
-                  painter: Bars(
-                    vals,
-                    p.on(C.pink),
-                    t: animate(c, 1),
-                    axis: axis,
+            // Bar i is the stretch from start i to start i + 1, so it is named
+            // by the start it ran up to.
+            child: ChartScrub(
+              label: l?.cycleDaysBetweenStarts ??
+                  'Days between your logged starts',
+              readout: ChartScrub.slots(
+                  vals,
+                  (i, v) => '${_short(_ymdOf(starts[i + 1]), l)} · '
+                      '${v.round()} ${l?.cycleUnitDays ?? 'days'}',
+                  bars: true),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CustomPaint(
+                    painter: Bars(
+                      vals,
+                      p.on(C.pink),
+                      t: animate(c, 1),
+                      axis: axis,
+                    ),
                   ),
-                ),
-                for (final v in [
-                  kPublishedCycleDays.low,
-                  kPublishedCycleDays.high,
-                ])
-                  Align(
-                    alignment: Alignment(0, 1 - 2 * axis.t(v)),
-                    child: Container(height: 1, color: p.ink3),
-                  ),
-              ],
+                  for (final v in [
+                    kPublishedCycleDays.low,
+                    kPublishedCycleDays.high,
+                  ])
+                    Align(
+                      alignment: Alignment(0, 1 - 2 * axis.t(v)),
+                      child: Container(height: 1, color: p.ink3),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -1425,14 +1445,21 @@ Widget _currentCycleChart(BuildContext c, CycleData d) {
           ? const SizedBox.shrink()
           // No fill: a filled area under a heart-rate axis that starts at 52 is
           // the truncated-axis form with the truncation hidden.
-          : CustomPaint(
-              size: Size.infinite,
-              painter: LineChart(
-                vals,
-                p.on(C.pink),
-                fill: false,
-                t: animate(c, 1),
-                axis: axis,
+          : ChartScrub(
+              label: l?.cycleRestingHeartRate ?? 'Resting heart rate',
+              readout: ChartScrub.slots(
+                  vals,
+                  (i, v) => 'Day ${i + 1} · ${v.round()} '
+                      '${l?.cycleUnitBpm ?? 'bpm'}'),
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: LineChart(
+                  vals,
+                  p.on(C.pink),
+                  fill: false,
+                  t: animate(c, 1),
+                  axis: axis,
+                ),
               ),
             ),
     ),

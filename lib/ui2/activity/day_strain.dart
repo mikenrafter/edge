@@ -283,10 +283,18 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
                 'Effort above your usual waking pace. The line can fall later in the day '
                 'if intensity returns to that pace. '
                 'Built from $drawn recorded waking minutes.',
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: LineChart(d.curve, p.on(C.purple),
-                  axis: axis, t: animate(context, 1)),
+            child: ChartScrub(
+              label: l?.dayStrainChartTitle ?? 'Strain through the day',
+              // One slot per minute of the local day, as the grid was built.
+              readout: ChartScrub.slots(
+                  d.curve,
+                  (i, v) => '${ChartScrub.clock(i)} · '
+                      'strain ${v.toStringAsFixed(1)}'),
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: LineChart(d.curve, p.on(C.purple),
+                    axis: axis, t: animate(context, 1)),
+              ),
             ),
           ),
           if (d.strain != null || d.peakHr != null || d.wornMin != null) ...[
@@ -344,9 +352,13 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             // distribution is NOT here — it lives one tap away and is gated on
             // the same anchors (TS-05).
             footnote: zonesWhy(d.zoneSource, d.zoneMaxHr, l),
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: ZoneBar([for (final v in z) v / total], p),
+            child: ChartScrub(
+              label: l?.dayStrainZonesChartTitle ?? 'Time in zones',
+              readout: ChartScrub.zoneMinutes(z),
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: ZoneBar([for (final v in z) v / total], p),
+              ),
             ),
           ),
         ),

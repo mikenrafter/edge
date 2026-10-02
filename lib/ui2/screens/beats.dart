@@ -342,9 +342,20 @@ class _BeatsState extends State<Beats> {
             // meaning instead, and the frame speaks it.
             footnote: l?.beatsScatterFootnote ??
                 'Points on the diagonal are beats the same length as the one before. SD1, the standard deviation across the diagonal, is beat-to-beat variation. SD2, along the diagonal, is slower drift.',
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: Poincare(d.nn, p.on(C.green), axis: axis, grid: p.line),
+            // The plot is the largest centred square, so the finger's x has
+            // to be mapped through the same square the painter uses.
+            child: LayoutBuilder(
+              builder: (_, box) => ChartScrub(
+                label: l?.beatsScatterTitle ?? 'Beat intervals',
+                mode: ChartScrubMode.nearest,
+                readout: (at) => _poincareReadout(
+                    d.nn, axis, at, box.maxWidth, box.maxHeight),
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter:
+                      Poincare(d.nn, p.on(C.green), axis: axis, grid: p.line),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: S.x4),
@@ -506,14 +517,20 @@ class _BeatsState extends State<Beats> {
             ],
             series: series,
             empty: axis == null ? const NoData() : null,
-            child: CustomPaint(
-              size: Size.infinite,
-              // Neutral ink and no fill, on purpose. A green line is a verdict,
-              // and a filled area is a quantity measured from a baseline this
-              // number does not have.
-              painter: LineChart(series, p.ink2,
-                  fill: false, dots: true, t: animate(c, 1), dotInk: p.card,
-                  axis: axis),
+            child: ChartScrub(
+              label: l?.beatsDcChartTitle ?? 'Deceleration capacity by night',
+              readout: ChartScrub.slots(series,
+                  (i, v) => '${ChartScrub.dayBack(win - 1 - i)} · '
+                      '${v.toStringAsFixed(1)} ms'),
+              child: CustomPaint(
+                size: Size.infinite,
+                // Neutral ink and no fill, on purpose. A green line is a
+                // verdict, and a filled area is a quantity measured from a
+                // baseline this number does not have.
+                painter: LineChart(series, p.ink2,
+                    fill: false, dots: true, t: animate(c, 1), dotInk: p.card,
+                    axis: axis),
+              ),
             ),
           ),
           const SizedBox(height: S.x4),
@@ -768,4 +785,35 @@ class _RhythmStrip extends StatelessWidget {
             }(),
         ]);
       });
+}
+
+/// What the Poincaré cloud holds under the finger, read off the same `nn` the
+/// painter draws and through the same centred square.
+///
+/// A scatter has two coordinates and a scrub carries one, so this selects the
+/// NEAREST POINT ALONG x: the interval closest to the touched x value, stated
+/// with the interval that followed it. Outside the square, or with no interval
+/// within a fortieth of the axis, there is nothing to say — never a value from
+/// further away.
+String? _poincareReadout(
+    List<double> nn, AxisSpec axis, double at, double w, double h) {
+  final side = w < h ? w : h;
+  if (side <= 0 || axis.max <= axis.min) return null;
+  final x = (at * w - (w - side) / 2) / side;
+  if (x < 0 || x > 1) return null;
+  final target = axis.min + x * (axis.max - axis.min);
+  final reach = (axis.max - axis.min) / 40;
+  int? best;
+  var bestGap = reach;
+  for (var i = 0; i + 1 < nn.length; i++) {
+    final a = nn[i], b = nn[i + 1];
+    if (!a.isFinite || !b.isFinite) continue;
+    final gap = (a - target).abs();
+    if (gap <= bestGap) {
+      bestGap = gap;
+      best = i;
+    }
+  }
+  if (best == null) return null;
+  return '${nn[best].round()} ms, then ${nn[best + 1].round()} ms';
 }
