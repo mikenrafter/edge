@@ -113,10 +113,7 @@ class DeviceLabView extends StatelessWidget {
     ));
     if (!c.mounted) return;
     ScaffoldMessenger.of(c).showSnackBar(
-      const SnackBar(
-        content: Text('Log copied'),
-        duration: Duration(seconds: 2),
-      ),
+      const SnackBar(content: Text('Log copied')),
     );
   }
 

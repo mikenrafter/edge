@@ -60,6 +60,7 @@ import '../../notify/buzz_sequence.dart';
 import '../../state/control_operations.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
+import 'device_lab.dart' show RepeatWindowAdjuster;
 import 'devices.dart';
 import 'profile.dart';
 
@@ -1620,6 +1621,12 @@ Map<String, Widget> _listCases() => {
           BuzzPatternRow(sequence: BuzzSequence.defaultFor(4), onTap: () {}),
           BuzzPatternRow(
               sequence: BuzzSequence.defaultFor(4), enabled: false),
+        ]),
+      ),
+      'repeat_window_adjuster': Surface(
+        child: Column(children: [
+          RepeatWindowAdjuster(windowMs: 2500, onChanged: (_) {}),
+          const RepeatWindowAdjuster(windowMs: 2500),
         ]),
       ),
       'buzz_pattern_sheet': BuzzPatternSheet(
