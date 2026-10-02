@@ -675,7 +675,7 @@ class _SleepDetailState extends State<SleepDetail> {
               '${TimeOfDay.fromDateTime(DateTime.fromMillisecondsSinceEpoch(t1 * 1000)).format(c)}',
               style: F.cap.copyWith(color: p.ink3)),
             if (!d.hasNight)
-              Text('Your times are saved. The recordings do not cover enough time for sleep metrics.',
+              Text('Your times are saved. Sleep numbers stay blank for times you set.',
                 style: F.cap.copyWith(color: p.ink3)),
           ],
           if (fallback) ...[
@@ -847,7 +847,7 @@ class _SleepDetailState extends State<SleepDetail> {
       final result = await write();
       if (result is SleepOperationResult) {
         if (!result.success) { message = result.error ?? 'Sleep calculation failed. Try again.'; }
-        else if (!result.metricsAvailable && timesSaved) { message = 'Times saved. Not enough data was recorded in that window to compute sleep metrics.'; }
+        else if (!result.metricsAvailable && timesSaved) { message = 'Times saved. Sleep numbers stay blank for times you set.'; }
       }
     } catch (e) { message = '$e'; }
     finally { if (mounted) setState(() => _saving = false); }

@@ -1003,7 +1003,7 @@ class SleepWindowOverride {
   final String dayId;
   final int onsetSec;
   final int offsetSec;
-  final String source; // 'manual' | 'confirmed' | 'rejected'
+  final String source; // 'manual' | 'confirmed' | 'rejected' (manual and rejected blank the metrics)
   // 'rejected': onsetSec/offsetSec still carry the window being rejected (the
   // auto-detected window at the time of rejection, same convention the
   // already-shipped rejected-nap rows use), but the window is never staged —
@@ -1016,6 +1016,12 @@ class SleepWindowOverride {
     required this.source,
   });
 }
+
+/// Whether an override of this [source] blanks the night's metrics: "Not
+/// sleep" and the user's own times both mean absence rather than a number the
+/// app worked out. Only 'confirmed' (the user agreeing with the app's own
+/// window) still stages.
+bool userBlanksNight(String source) => source == 'rejected' || source == 'manual';
 
 /// Local YYYY-MM-DD label for an epoch-second instant.
 String localDateLabel(int epochSec) =>
@@ -1139,13 +1145,15 @@ List<PhysioDay> calendarDays(
 
       ana.SleepSegmentation s;
       String src;
-      if (ov != null && ov.source == 'rejected') {
-        // The user's word again, the other direction: this was NOT sleep at
-        // all. Skip detection/staging entirely rather than force a window —
-        // the day derives with no main sleep, same as the already-shipped
-        // rejected-nap path (`sleep_nap` source='rejected').
+      if (ov != null && userBlanksNight(ov.source)) {
+        // The user's word: this was NOT sleep ('rejected'), or the times are
+        // theirs and the metrics are not ('manual'). Skip detection/staging
+        // entirely rather than force a window — the day derives with no main
+        // sleep, same as the already-shipped rejected-nap path
+        // (`sleep_nap` source='rejected'). A 'manual' window's bounds are still
+        // on the override row and are what the Sleep screen shows.
         s = ana.SleepSegmentation.absent;
-        src = 'rejected';
+        src = ov.source;
       } else if (ov != null) {
         // The user's word — force the window, skip detection entirely.
         s = ana.segmentSleep(

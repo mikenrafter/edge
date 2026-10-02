@@ -1732,8 +1732,9 @@ import 'substrate.dart';
 // habitual-midsleep prior is fed only nights that have a total sleep time.
 // Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
 // v100 (a night the user blanked stays blank): "Not sleep", and a window of
-// the user's own that the band's samples cannot back, now REMOVE the night
-// instead of leaving the old one in place. Three stores kept it: the edge#305
+// the user's own ('Set the times myself'), now REMOVE the night instead of
+// leaving the old one in place; the user's window bounds are still stored and
+// shown, its metrics are blank. Three stores kept it: the edge#305
 // "never write night-null over night-real" guard read the user's own blanking
 // as a pruned-raw regression and declined to write, so the old `day_result`
 // went on being served and scored; `metric_series` is REPLACE-per-key, so a
@@ -1744,8 +1745,8 @@ import 'substrate.dart';
 // (`kSleepDerivedMetricKeys`), drops that day's readiness pin, and — for a day
 // whose raw is already pruned — replaces just the night's blocks in the stored
 // bundle. The next nights are re-derived after the edit
-// (`rederiveAfterSleepEdit`) so their baselines no longer hold it. A window of
-// the user's own with data inside it still computes from that data only.
+// (`rederiveAfterSleepEdit`) so their baselines no longer hold it. Only
+// 'confirmed' (agreeing with the app's own window) still stages a night.
 // Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
 const int kAlgoVersion = 100;
 /// The sibling SHAs this version was derived against, asserted against
@@ -5109,13 +5110,10 @@ class DerivationEngine {
   }) => sleepSubEmpty && nightScalarsNull;
 
   /// Whether the user has blanked [dayId]'s night: the override source when
-  /// this derive found no night to compute, else null.
-  ///
-  /// "Not sleep" always blanks. A window of the user's own blanks when the
-  /// samples inside it cannot make a night (a window with data computes from
-  /// that data, as before) AND the edit is newer than the stored result — an
-  /// older override over a night whose raw has since been pruned is the
-  /// edge#305 regression, not a blanking, and keeps the stored night.
+  /// this derive found no night to compute, else null. "Not sleep" and a
+  /// window of the user's own ('manual') both blank; only 'confirmed' stages.
+  /// A user's override beats the edge#305 "raw was pruned" reading: with it the
+  /// stored night is the thing to remove, not to protect.
   Future<String?> _userBlankedNight(
     String dayId,
     Map<String, dynamic>? scalars,
@@ -5123,12 +5121,7 @@ class DerivationEngine {
     final ov = await LocalDb.getSleepOverride(dayId);
     if (ov == null || scalars?['tst_min'] != null) return null;
     final source = ov['source'] as String? ?? 'manual';
-    if (source == 'rejected') return source;
-    final existing = await LocalDb.dayResult(dayId);
-    final editedMs = ((ov['created_at'] as num?)?.toInt() ?? 0) * 1000;
-    final computedMs = (existing?['computed_at'] as num?)?.toInt() ?? 0;
-    // `created_at` is whole seconds: count the rest of that second as the edit.
-    return editedMs + 1000 > computedMs ? source : null;
+    return userBlanksNight(source) ? source : null;
   }
 
   /// Drop the pinned morning readiness when it belongs to [dayId]: the pin is a

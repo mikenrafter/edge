@@ -4,6 +4,9 @@
 // The reported bug: pressing "Not sleep", or setting the times by hand, left
 // the night's old sleep numbers on screen and in the scores. Three stores kept
 // them:
+//   * (a window the user sets blanks the metrics whether or not samples sit
+//     inside it; only a CONFIRMED window, the user agreeing with the app's
+//     own, still stages)
 //   * the edge#305 guard in `_derivePreparedDay` ("never write night-null over
 //     night-real") treated the user's own blanking as a pruned-raw regression
 //     and declined to write, so the old `day_result` kept being served;
@@ -320,7 +323,7 @@ void main() {
     });
   });
 
-  group('a user-set window', () {
+  group('a user-set window blanks the night, with or without samples', () {
     test('over hours the band did not record: the old night is blanked, the '
         'saved window survives', () async {
       await _realNight(_d2, prevDay: 4);
@@ -345,13 +348,33 @@ void main() {
       expect(n['wake_ts'], wake);
     });
 
-    test('over hours the band DID record: computed strictly from the window',
+    test('over hours the band DID record: still blank, window still shown',
         () async {
-      await _override(_d2, _sec(2025, 9, 5, 0, 0), _sec(2025, 9, 5, 5, 0),
-          'manual');
+      await _realNight(_d2, prevDay: 4);
+      final onset = _sec(2025, 9, 5, 0, 0);
+      final wake = _sec(2025, 9, 5, 5, 0);
+      await _override(_d2, onset, wake, 'manual');
       await _derive(_d2);
-      expect((await _scalars(_d2))['tst_min'], 300,
-          reason: 'five in-window hours, not the auto night\'s seven');
+
+      final sc = await _scalars(_d2);
+      for (final k in ['tst_min', 'efficiency', 'rhr', 'rem_min', 'sol_min']) {
+        expect(sc[k], isNull, reason: '$k: the user\'s times blank the metrics');
+      }
+      final series = await _series(_d2);
+      for (final k in _sleepKeys) {
+        expect(series.containsKey(k), isFalse, reason: k);
+      }
+      final repo = LocalRepositoryImpl(getProfileMap: () => {});
+      final n = await repo.getDaySleep(_d2);
+      expect(n['has_sleep'], isFalse);
+      expect(n['sleep_source'], 'manual');
+      expect(n['onset_ts'], onset);
+      expect(n['wake_ts'], wake);
+    });
+
+    test('a confirmed window (agreeing with the app) still computes', () async {
+      await _realNight(_d2, prevDay: 4);
+      expect((await _scalars(_d2))['tst_min'], 420);
     });
 
     test('is idempotent too', () async {
