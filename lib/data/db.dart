@@ -9658,6 +9658,80 @@ class LocalDb {
     return rows.isEmpty ? null : rows.first;
   }
 
+  // ── "raw changed since last derive" ─────────────────────────────────────────
+  //
+  // A manual sync derives only days whose input changed. The input a derive
+  // reads is the day's decoded 1 Hz rows, so the proof of "unchanged" is a
+  // fingerprint of exactly those rows, recorded when the day was last derived
+  // and compared on the next sync. `compute_freshness` already holds this kind
+  // of bookkeeping (and is wiped with the rest of the compute state), so the
+  // fingerprints live there, one key per day, and need no migration.
+
+  static const String _derivedFpPrefix = 'derived_fp:';
+
+  /// `{day -> "MAX(rec_ts):COUNT(*)"}` over the canonical decoded 1 Hz rows of
+  /// each of [days] that has any. The count matters as much as the newest
+  /// timestamp: a gap filled behind the day's newest record changes the rows a
+  /// derive reads without moving MAX(rec_ts). Both are single range reads on
+  /// the `rec_ts` primary key.
+  static Future<Map<String, String>> decodedDayFingerprints(
+    Iterable<String> days,
+  ) async {
+    final db = await instance;
+    final out = <String, String>{};
+    for (final day in days.toSet()) {
+      final lo = localDayStartSec(day), hi = localDayEndSec(day);
+      if (lo == null || hi == null) continue;
+      final rows = await db.rawQuery(
+        'SELECT MAX(rec_ts) AS mx, COUNT(*) AS n FROM decoded_onehz '
+        'WHERE rec_ts > 0 AND ${derivableSourceSql()} '
+        'AND rec_ts >= ? AND rec_ts < ?',
+        [lo, hi],
+      );
+      final mx = rows.isEmpty ? null : (rows.first['mx'] as num?)?.toInt();
+      if (mx == null) continue;
+      out[day] = '$mx:${(rows.first['n'] as num?)?.toInt() ?? 0}';
+    }
+    return out;
+  }
+
+  /// The fingerprint each day was last derived from, at [algoVersion]. A row
+  /// written under another version is not returned, so a version bump makes
+  /// every day look changed (which is exactly right: the code that reads it
+  /// changed).
+  static Future<Map<String, String>> derivedFingerprints(
+    int algoVersion,
+  ) async {
+    final db = await instance;
+    final rows = await db.query(
+      'compute_freshness',
+      where: 'key LIKE ?',
+      whereArgs: ['$_derivedFpPrefix%'],
+    );
+    final out = <String, String>{};
+    for (final r in rows) {
+      try {
+        final m = jsonDecode(r['payload_json'] as String);
+        if (m is Map && m['v'] == algoVersion && m['fp'] is String) {
+          out[(r['key'] as String).substring(_derivedFpPrefix.length)] =
+              m['fp'] as String;
+        }
+      } catch (_) {
+        // A row that does not parse is the same as no row: the day re-derives.
+      }
+    }
+    return out;
+  }
+
+  static Future<void> putDerivedFingerprint(
+    String day,
+    int algoVersion,
+    String fingerprint,
+  ) => putComputeFreshness(
+    '$_derivedFpPrefix$day',
+    jsonEncode({'v': algoVersion, 'fp': fingerprint}),
+  );
+
   /// Bookkeeping key for the one-time walk in [reencodeLegacyDayResults].
   static const String kReencodeCursorKey = 'series_reencode';
 
@@ -10100,6 +10174,19 @@ class LocalDb {
       'UPDATE compute_jobs SET state = ?, '
       'attempts = MAX(attempts - 1, 0), updated_at = ? WHERE id = ?',
       ['queued', DateTime.now().millisecondsSinceEpoch, id],
+    );
+  }
+
+  /// Drop every QUEUED light derive job; returns how many. A running job and
+  /// any heavy job are left alone (a heavy one carries the finalize extras).
+  /// Used by a manual sync that has just derived the very data those jobs were
+  /// queued for.
+  static Future<int> cancelQueuedLightDerive() async {
+    final db = await instance;
+    return db.delete(
+      'compute_jobs',
+      where: 'scope = ? AND state = ? AND type = ?',
+      whereArgs: ['derive', 'queued', 'derive_light'],
     );
   }
 

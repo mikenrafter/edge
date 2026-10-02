@@ -74,6 +74,26 @@ class DeriveScheduler {
   // derives DO run; their cadence is capped by DeriveDebouncer's background
   // tier, not blocked here.) Held exactly like _offloadActive.
   bool _background = false;
+
+  /// Manual syncs currently holding the scheduler, keyed by the id
+  /// [beginManualSync] returned; the value is the [_storedSeq] seen when that
+  /// sync's own derive started (null until then). More than one can exist for a
+  /// moment: a run the coordinator timed out may still be unwinding when its
+  /// replacement starts.
+  ///
+  /// A manual sync derives the data its download just stored. While it is in
+  /// charge, a debounced light derive for that same data would compute it a
+  /// second time, so the scheduler stands down: no timer, no drain. The queued
+  /// job stays durable and is dropped only if the sync really derived what it
+  /// was queued for ([endManualSync] with `absorb`).
+  final Map<int, int?> _manualHolds = {};
+  int _nextHold = 0;
+
+  /// Bumped by every [markStoredData]. A hold compares it with the value at the
+  /// moment its derive started: any change means data landed that derive may
+  /// not have read, so its light job must survive.
+  int _storedSeq = 0;
+  bool get _manualHeld => _manualHolds.isNotEmpty;
   bool _running = false;
   bool _pendingLight = false;
   bool _pendingHeavy = false;
@@ -99,9 +119,56 @@ class DeriveScheduler {
         'running': _running,
         'pending_light': _pendingLight,
         'pending_heavy': _pendingHeavy,
+        'manual_sync_hold': _manualHeld,
       };
 
+  /// A manual sync takes charge of derivation. Returns the handle to pass to
+  /// [markManualDeriveStarted] and [endManualSync]; the caller MUST end it in a
+  /// `finally`.
+  int beginManualSync() {
+    final id = ++_nextHold;
+    _manualHolds[id] = null;
+    _timer?.cancel();
+    _timer = null;
+    log('[derive-scheduler] manual sync in charge — holding derive work');
+    onChanged();
+    return id;
+  }
+
+  /// The manual sync's own derive is about to read the database.
+  void markManualDeriveStarted(int hold) {
+    if (_manualHolds.containsKey(hold)) _manualHolds[hold] = _storedSeq;
+  }
+
+  /// Hand derivation back. With [absorb] (the sync's derive completed) a queued
+  /// light job is dropped as already done, unless more data was stored after
+  /// that derive started. Without it (failed, cancelled) the job stays and runs.
+  /// Safe to call twice.
+  Future<void> endManualSync(int hold, {required bool absorb}) async {
+    if (!_manualHolds.containsKey(hold)) return;
+    final startedAt = _manualHolds.remove(hold);
+    try {
+      if (absorb && startedAt != null && startedAt == _storedSeq) {
+        final dropped = await LocalDb.cancelQueuedLightDerive();
+        if (dropped > 0) {
+          log('[derive-scheduler] manual sync derived this data — '
+              'dropped $dropped queued light job(s)');
+        }
+      }
+    } catch (e) {
+      log('[derive-scheduler] could not drop absorbed light job: $e');
+    } finally {
+      await _refreshSnapshot();
+      if (!_manualHeld) {
+        log('[derive-scheduler] manual sync done — derive may run');
+        _arm();
+      }
+      onChanged();
+    }
+  }
+
   void markStoredData() {
+    _storedSeq++;
     unawaited(_enqueue(type: 'derive_light', reason: 'stored_data'));
   }
 
@@ -189,7 +256,9 @@ class DeriveScheduler {
   }
 
   void _arm() {
-    if (_running || _offloadActive || _background || _workoutHeld) return;
+    if (_running || _offloadActive || _background || _workoutHeld || _manualHeld) {
+      return;
+    }
     if (!_pendingLight && !_pendingHeavy) {
       unawaited(_refreshSnapshot());
       return;
@@ -202,7 +271,9 @@ class DeriveScheduler {
   }
 
   Future<void> _drain() async {
-    if (_running || _offloadActive || _background || _workoutHeld) return;
+    if (_running || _offloadActive || _background || _workoutHeld || _manualHeld) {
+      return;
+    }
     _timer?.cancel();
     _timer = null;
     final job = await LocalDb.takeNextComputeJob();
@@ -216,7 +287,7 @@ class DeriveScheduler {
     // land) inside it — at which point running the pass is exactly what the
     // gate exists to prevent. The job is already marked `running` by
     // takeNextComputeJob, so hand it back rather than leaving it claimed.
-    if (_offloadActive || _background || _workoutHeld) {
+    if (_offloadActive || _background || _workoutHeld || _manualHeld) {
       if (id != null && id.isNotEmpty) {
         await LocalDb.requeueComputeJob(id);
       }

@@ -2162,6 +2162,40 @@ Future<List<List<double>>> debugSweepBaselineWindows(
   return (days: [pendingDays.last], reason: 'latest-pending');
 }
 
+/// The fingerprint a day's derive is recorded under, or null when the day has
+/// no decoded rows to fingerprint (unknown is never "unchanged").
+///
+/// A day's night search reaches back into the PREVIOUS local day
+/// (`kNocturnalSearchLookbackSec`), so the previous day's rows are part of its
+/// input. Profile fields feed HRmax/calories/TRIMP, so they are too. The algo
+/// version is not folded in: [LocalDb.derivedFingerprints] filters on it.
+@visibleForTesting
+String? deriveFingerprint({
+  required String profileSig,
+  required String? own,
+  required String? previous,
+}) => own == null ? null : '$profileSig|$own|${previous ?? '-'}';
+
+/// Of [todoDays], the ones a manual sync must derive: those whose input
+/// fingerprint differs from the one recorded when they were last derived, plus
+/// any day whose raw cannot be pruned until it has a COMPLETE result
+/// (invariant 9: a day held by the prune is never skipped, so a transient
+/// failure keeps getting its chance). A day with no current fingerprint is not
+/// provably unchanged, so it runs.
+@visibleForTesting
+List<String> selectChangedDays({
+  required List<String> todoDays,
+  required Map<String, String?> current,
+  required Map<String, String> derived,
+  required Set<String> prunePending,
+}) => [
+  for (final day in todoDays)
+    if (prunePending.contains(day) ||
+        current[day] == null ||
+        current[day] != derived[day])
+      day,
+];
+
 class _DeriveScope {
   final bool fullHistory;
   final List<String> targetDays;
@@ -2573,11 +2607,19 @@ class DerivationEngine {
   /// pending day. [heavy]=true sweeps every recomputable day.
   /// [force]=true recomputes EVERY non-finalized day regardless of the cursor.
   /// Re-entrant calls are coalesced. Returns the number of days computed.
+  ///
+  /// [changedOnly] (a manual sync) narrows the todo set to days whose input
+  /// changed since they were last derived — see [selectChangedDays]. [onScope]
+  /// is told how many days this pass will compute as soon as that is known
+  /// (0 = nothing to do), before the first day starts. It is not called when
+  /// the pass is refused (already running) or fails before it has a scope.
   Future<int> run(
     Profile profile, {
     bool heavy = false,
     bool force = false,
+    bool changedOnly = false,
     void Function(String day, int index, int total)? onDayDone,
+    void Function(int total)? onScope,
   }) async {
     if (_running) return 0;
     _running = true;
@@ -2600,6 +2642,7 @@ class DerivationEngine {
       ..['todo_days'] = 0
       ..['done_days'] = 0
       ..['skipped_days'] = 0
+      ..['unchanged_days'] = 0
       ..['active_days'] = <String>[]
       ..['concurrency'] = _deriveConcurrency
       ..['last_error'] = null;
@@ -2625,6 +2668,7 @@ class DerivationEngine {
       final dataNowSec = await LocalDb.lastDecodedRecTs() ?? 0;
       if (dataNowSec <= 0) {
         _log('derive: no decoded data');
+        onScope?.call(0);
         return 0;
       }
       final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
@@ -2637,16 +2681,58 @@ class DerivationEngine {
         // A nap edit on a finalized day has to take effect too — same reason.
         ...await LocalDb.napEditDays(),
       };
-      final todoDays = [
+      var todoDays = [
         for (final day in scope.targetDays)
           if (!finalized.contains(day) || overrideDays.contains(day)) day,
       ];
+      // What each candidate day's input looks like right now. Taken BEFORE the
+      // derive reads anything, so rows that land mid-derive make the recorded
+      // fingerprint stale (=> re-derive next time), never falsely current.
+      final profileSig = jsonEncode(profile.toMap());
+      final fps = todoDays.isEmpty
+          ? const <String, String>{}
+          : await LocalDb.decodedDayFingerprints({
+              for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
+            });
+      final dayFp = <String, String?>{
+        for (final d in todoDays)
+          d: deriveFingerprint(
+            profileSig: profileSig,
+            own: fps[d],
+            previous: fps[_adjacentDayIds(d).first],
+          ),
+      };
+      if (changedOnly && !force && todoDays.isNotEmpty) {
+        final changed = selectChangedDays(
+          todoDays: todoDays,
+          current: dayFp,
+          derived: await LocalDb.derivedFingerprints(kAlgoVersion),
+          prunePending: prunePendingDays(
+            rawDays: scope.rawDays,
+            derivedDayIds: await LocalDb.dayResultIds(kAlgoVersion),
+            dataNowSec: dataNowSec,
+          ),
+        );
+        _diag['unchanged_days'] = todoDays.length - changed.length;
+        if (changed.length != todoDays.length) {
+          _log(
+            'derive: ${todoDays.length - changed.length} of '
+            '${todoDays.length} day(s) unchanged since their last derive — '
+            'skipped',
+          );
+        }
+        todoDays = changed;
+      }
       if (todoDays.isEmpty) {
-        _log('derive: all days finalized — nothing to do');
+        _log(changedOnly && (_diag['unchanged_days'] as int) > 0
+            ? 'derive: nothing changed — nothing to do'
+            : 'derive: all days finalized — nothing to do');
+        onScope?.call(0);
         await _pruneOldDecoded(scope.rawDays, dataNowSec);
         return 0;
       }
       _diag['todo_days'] = todoDays.length;
+      onScope?.call(todoDays.length);
       _diag['stage'] = 'history';
       final history = await _BaselineHistoryCache.load();
       _log(
@@ -2701,6 +2787,7 @@ class DerivationEngine {
             await _derivePreparedDay(prepared, profile, dataNowSec, history);
             done++;
             _diag['done_days'] = done;
+            await _recordDerivedFingerprint(dayId, dayFp[dayId]);
           } else {
             _log('derive day $dayId skipped: no bounded window payload');
             await _markDaySkipped(
@@ -2712,16 +2799,24 @@ class DerivationEngine {
             _diag['skipped_days'] = (_diag['skipped_days'] as int) + 1;
             _diag['last_error'] = 'no_bounded_window_payload day=$dayId';
             failures++;
+            // Structural (the same input will fail the same way): record it so
+            // an unchanged day is not retried on every sync. Transient
+            // failures, below, are never recorded.
+            await _recordDerivedFingerprint(dayId, dayFp[dayId]);
           }
         } catch (e) {
           _log('derive day $dayId FAILED/skipped: $e');
           final dayEndSec = _localNextDayLabelToSec(dayId);
+          final skipReason = _skipReasonForError(e);
           await _markDaySkipped(
             dayId,
             dayEndSec,
             dataNowSec,
-            reason: _skipReasonForError(e),
+            reason: skipReason,
           );
+          if (!_transientSkipReasons.contains(skipReason)) {
+            await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+          }
           _diag['skipped_days'] = (_diag['skipped_days'] as int) + 1;
           _diag['last_error'] = '$e';
           failures++;
@@ -2822,6 +2917,18 @@ class DerivationEngine {
         ..['duration_ms'] = finishedAt - startedAt;
       
       try { await runTrace?.stop(); } catch (_) {}
+    }
+  }
+
+  /// Remember what a day's input looked like when it was derived, so a later
+  /// manual sync can prove nothing changed. Best-effort: a failed write only
+  /// costs one redundant derive.
+  Future<void> _recordDerivedFingerprint(String dayId, String? fingerprint) async {
+    if (fingerprint == null) return;
+    try {
+      await LocalDb.putDerivedFingerprint(dayId, kAlgoVersion, fingerprint);
+    } catch (e) {
+      _log('derive $dayId: could not record fingerprint: $e');
     }
   }
 
@@ -5654,6 +5761,26 @@ class DerivationEngine {
   /// never becomes finalized either. One such day used to latch pruning off for
   /// the whole install, forever, at ~12 MB/day.
   static const int _maxRawHoldDays = 14;
+
+  /// Days whose raw is held back by the prune only because they lack a
+  /// COMPLETE result: they start before the retention cutoff and are not in
+  /// [derivedDayIds]. PURE. A manual sync that skips unchanged days must still
+  /// derive these (invariant 9), or a stuck day would never get another chance
+  /// to finish and release its raw.
+  @visibleForTesting
+  static Set<String> prunePendingDays({
+    required List<String> rawDays,
+    required Set<String> derivedDayIds,
+    required int dataNowSec,
+  }) {
+    final cutoffSec = dataNowSec - rawRetentionDays * 86400;
+    if (cutoffSec <= 0) return const {};
+    return {
+      for (final day in rawDays)
+        if (!derivedDayIds.contains(day) && _localDayLabelToSec(day) < cutoffSec)
+          day,
+    };
+  }
 
   /// The `rec_ts` below which decoded substrate may be deleted, or null when
   /// nothing may be. PURE — the decision the raw prune is, separated from the

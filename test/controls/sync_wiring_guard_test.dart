@@ -26,7 +26,7 @@ void main() {
   test('manual sync forwards onDayDone and clears waiting in finally', () {
     final start = app.indexOf('Future<void> _manualSync');
     final body = app.substring(start, app.indexOf('@visibleForTesting', start));
-    expect(body, contains('onDayDone'));
+    expect(body, contains('onDay:'));
     expect(body, contains('reportDay('));
     expect(body, contains('} finally {'));
     expect(body, contains('reportWaitingForCalculation(false)'));

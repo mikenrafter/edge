@@ -83,7 +83,7 @@ class _SyncControlState extends State<SyncControl> {
     final elapsed = s.elapsed(now);
     final title = switch (s.phase) {
       'connecting' || 'downloading' || 'deriving' => 'Syncing with your band',
-      'completed' => 'Sync completed',
+      'completed' => s.partial ? 'Sync partly completed' : 'Sync completed',
       'failed' => 'Sync failed',
       _ => 'Band sync',
     };
@@ -207,6 +207,8 @@ class _StepRow extends StatelessWidget {
             'Synced through ${formatDayTime(through.toLocal())}',
           if (running && backlog != null)
             'Band time still to fetch: ${_span(backlog)}',
+          // A download that stopped early says so, and what to do about it.
+          if (!running && note != null) note,
         ];
       case SyncStepId.calculate:
         final d = step.calculate;
@@ -221,7 +223,7 @@ class _StepRow extends StatelessWidget {
         }
         return [running ? 'Working it out…' : 'Finished'];
       case SyncStepId.done:
-        return const ['Finished'];
+        return [note ?? 'Finished'];
     }
   }
 

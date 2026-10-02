@@ -6,6 +6,9 @@ enum SyncStepId { connect, download, calculate, done }
 
 enum SyncStepStatus { waiting, running, done, failed, skipped }
 
+/// Calculate's note when the derivation found nothing that changed.
+const String kCalculateSkippedNote = 'Skipped — nothing new';
+
 /// What the download has banked. Counts are for THIS sync only; the engine's
 /// own report accumulates across the whole connection and cannot say that.
 class SyncDownloadDetail {
@@ -34,9 +37,57 @@ class SyncDownloadDetail {
   }
 }
 
+/// What a finished download amounts to for the sync that asked for it.
+enum DownloadVerdict {
+  /// The band said its history is complete.
+  complete,
+
+  /// The session ended (time cap, stalled batch) after this sync had banked
+  /// records. What arrived is real and is calculated; the rest is a later sync.
+  partial,
+
+  /// Nothing usable: a dropped link, a terminal Stuck, or no progress at all.
+  failed,
+}
+
+/// Pure so the rule is stated once and tested without a band. A download that
+/// stopped before completion is [DownloadVerdict.partial] only when it made
+/// progress in THIS sync; a lost link or a terminal Stuck stay failures.
+DownloadVerdict classifyDownload({
+  required bool connected,
+  required bool complete,
+  required bool progressed,
+  required bool stuck,
+}) {
+  if (!connected || stuck) return DownloadVerdict.failed;
+  if (complete) return DownloadVerdict.complete;
+  return progressed ? DownloadVerdict.partial : DownloadVerdict.failed;
+}
+
+/// Raised by [SyncCancelToken.throwIfCancelled] inside a run the coordinator
+/// has already retired. Never user-visible: a retired run publishes nothing.
+class SyncCancelled implements Exception {
+  const SyncCancelled();
+  @override
+  String toString() => 'Sync cancelled';
+}
+
+/// Handed to each run by the coordinator. Set when the coordinator gives up on
+/// the run (timeout), so the run stops between steps instead of carrying on
+/// beside the retry that replaced it.
+class SyncCancelToken {
+  bool _cancelled = false;
+  bool get isCancelled => _cancelled;
+  void cancel() => _cancelled = true;
+  void throwIfCancelled() {
+    if (_cancelled) throw const SyncCancelled();
+  }
+}
+
 class SyncCalculateDetail {
-  /// Days finished so far and how many this pass will do; both null until the
-  /// first day finishes (the engine reports nothing earlier).
+  /// Days finished so far and how many this pass will do. [dayTotal] is known
+  /// as soon as the derivation has chosen its days (with [dayIndex] 0); both
+  /// are null before that.
   final int? dayIndex, dayTotal;
 
   /// The day that finished most recently.
@@ -112,6 +163,10 @@ class SyncPresentationState {
   /// Why the sync failed, in words a person can act on. [error] keeps the raw
   /// text for existing callers.
   final String? failureReason;
+
+  /// The sync finished, but the band was not fully drained: more remains and
+  /// another sync continues it. Not a failure.
+  final bool partial;
   const SyncPresentationState({
     this.phase = 'offline',
     this.busy = false,
@@ -122,6 +177,7 @@ class SyncPresentationState {
     this.startedAt,
     this.finishedAt,
     this.failureReason,
+    this.partial = false,
   });
 
   SyncStep step(SyncStepId id) =>
@@ -147,13 +203,14 @@ class SyncPresentationState {
         startedAt: startedAt,
         finishedAt: finishedAt,
         failureReason: failureReason,
+        partial: partial,
       );
 
   String get description => switch (phase) {
     'connecting' => 'Connecting to the band…',
     'downloading' => 'Downloading recordings…',
     'deriving' => 'Calculating from recordings…',
-    'completed' => 'Sync completed',
+    'completed' => partial ? 'Sync partly completed' : 'Sync completed',
     'failed' => 'Sync failed: ${error ?? 'Please retry'}',
     _ => 'Local data refreshed. Band not contacted.',
   };
@@ -175,7 +232,10 @@ String syncFailureReason(Object e) {
 class SyncOperationResult {
   final bool success;
   final String? error;
-  const SyncOperationResult(this.success, [this.error]);
+
+  /// Succeeded, but the band still holds more than this sync fetched.
+  final bool partial;
+  const SyncOperationResult(this.success, [this.error, this.partial = false]);
 }
 
 /// One operation shared by every manual sync control. Retire progress after a
@@ -194,9 +254,16 @@ class SyncCoordinator extends ChangeNotifier {
   final DateTime Function() _clock;
   final void Function(String)? _log;
   final Duration progressInterval;
+
+  /// How long a new sync waits for a run this coordinator timed out (and
+  /// cancelled) to finish unwinding before it starts anyway.
+  final Duration retireGrace;
   SyncPresentationState presentation = const SyncPresentationState();
   Future<SyncOperationResult>? _active;
   int _generation = 0;
+  SyncCancelToken _token = SyncCancelToken();
+  Future<void>? _retiredRun;
+  bool _partial = false;
   bool _disposed = false;
   DateTime? _lastNotify;
   Timer? _heldBack;
@@ -210,6 +277,7 @@ class SyncCoordinator extends ChangeNotifier {
     DateTime Function()? clock,
     void Function(String)? log,
     this.progressInterval = const Duration(milliseconds: 250),
+    this.retireGrace = const Duration(seconds: 30),
   }) : _clock = clock ?? DateTime.now,
        _log = log;
 
@@ -245,6 +313,7 @@ class SyncCoordinator extends ChangeNotifier {
     DateTime? startedAt,
     DateTime? finishedAt,
     String? failureReason,
+    bool partial = false,
   }) {
     if (_disposed) return;
     presentation = SyncPresentationState(
@@ -257,6 +326,7 @@ class SyncCoordinator extends ChangeNotifier {
       startedAt: startedAt,
       finishedAt: finishedAt,
       failureReason: failureReason,
+      partial: partial,
     );
     _emit(immediate: true);
   }
@@ -339,6 +409,56 @@ class SyncCoordinator extends ChangeNotifier {
     );
   }
 
+  /// The token for the sync now running; set when the coordinator retires it.
+  /// A run reads it once at its start and checks it between steps.
+  SyncCancelToken get cancelToken => _token;
+
+  /// The download ended before the band said it was complete, after banking
+  /// records in this sync. Marks the Download step with a plain note and the
+  /// sync as partial; Calculate still runs on what arrived. A no-op outside a
+  /// sync.
+  void reportPartialDownload() {
+    if (_active == null || _disposed) return;
+    _partial = true;
+    _patch(
+      SyncStepId.download,
+      (s) => s.copyWith(
+        note: 'More remains on the band — sync again to continue',
+      ),
+      immediate: true,
+    );
+  }
+
+  /// The derivation has chosen its days: [total] of them (0 = nothing new to
+  /// calculate). Shows "day 0 of N" at once instead of nothing until the first
+  /// day ends, or marks Calculate skipped. A no-op outside a sync.
+  void reportScope(int total) {
+    if (_active == null || _disposed || presentation.calculate == null) return;
+    if (total <= 0) {
+      final now = _clock();
+      _patch(
+        SyncStepId.calculate,
+        (s) => s.copyWith(
+          status: SyncStepStatus.skipped,
+          note: kCalculateSkippedNote,
+          endedAt: now,
+        ),
+        immediate: true,
+      );
+      return;
+    }
+    _patch(
+      SyncStepId.calculate,
+      (s) => s.copyWith(
+        calculate: SyncCalculateDetail(
+          dayIndex: 0,
+          dayTotal: total,
+          waiting: s.calculate?.waiting ?? false,
+        ),
+      ),
+    );
+  }
+
   /// A day finished in the derivation (its `onDayDone`). A no-op outside a sync.
   void reportDay(String day, int index, int total) {
     if (_active == null || _disposed || presentation.calculate == null) return;
@@ -396,8 +516,10 @@ class SyncCoordinator extends ChangeNotifier {
     final completer = Completer<SyncOperationResult>();
     _active = completer.future;
     final token = ++_generation;
+    final cancel = _token = SyncCancelToken();
     _waited = Duration.zero;
     _waitingSince = null;
+    _partial = false;
     () async {
       _publish(
         'connecting',
@@ -409,11 +531,30 @@ class SyncCoordinator extends ChangeNotifier {
       SyncOperationResult result;
       var failed = false;
       try {
-        await run((phase) {
+        // A run this coordinator timed out was told to stop; give it a moment
+        // to do so, so the new run does not start beside it. A run that never
+        // unwinds is abandoned (its progress is already ignored), not waited
+        // on forever.
+        if (_retiredRun case final old?) {
+          await old.timeout(retireGrace, onTimeout: () {});
+        }
+        final running = run((phase) {
           if (token == _generation) _enter(phase);
-        }).timeout(
+        });
+        await running.timeout(
           timeout,
-          onTimeout: () => throw TimeoutException(null),
+          onTimeout: () {
+            // Stop the run between its steps, and remember it so the next sync
+            // can wait for it. Its eventual error (it will usually throw
+            // SyncCancelled) belongs to nobody.
+            cancel.cancel();
+            late final Future<void> unwound;
+            unwound = running.then<void>((_) {}, onError: (_) {}).whenComplete(() {
+              if (identical(_retiredRun, unwound)) _retiredRun = null;
+            });
+            _retiredRun = unwound;
+            throw TimeoutException(null);
+          },
         );
         if (token == _generation) {
           final now = _clock();
@@ -423,9 +564,10 @@ class SyncCoordinator extends ChangeNotifier {
             steps: _finish(now),
             startedAt: presentation.startedAt,
             finishedAt: now,
+            partial: _partial,
           );
         }
-        result = const SyncOperationResult(true);
+        result = SyncOperationResult(true, null, _partial);
       } catch (e) {
         failed = true;
         if (token == _generation) {
@@ -460,7 +602,12 @@ class SyncCoordinator extends ChangeNotifier {
   List<SyncStep> _finish(DateTime now) => [
     for (final s in presentation.steps)
       if (s.id == SyncStepId.done)
-        s.copyWith(status: SyncStepStatus.done, startedAt: now, endedAt: now)
+        s.copyWith(
+          status: SyncStepStatus.done,
+          startedAt: now,
+          endedAt: now,
+          note: _partial ? 'Done (partial)' : null,
+        )
       else if (s.status == SyncStepStatus.running)
         s.copyWith(status: SyncStepStatus.done, endedAt: now)
       else if (s.status == SyncStepStatus.waiting)
@@ -497,14 +644,16 @@ class SyncCoordinator extends ChangeNotifier {
         : _waited + end.difference(_waitingSince!);
     final calcTime = calc.duration(end);
     final dl = download.download;
+    final skipped = calc.status == SyncStepStatus.skipped &&
+        calc.note == kCalculateSkippedNote;
     log(
       '[sync-timing] connect=${ms(p.step(SyncStepId.connect).duration())} '
       'download=${ms(download.duration())}'
       '${dl == null ? '' : ' (${dl.records} records, ${dl.chunks} chunks)'} '
       'wait=${ms(waited)} '
-      'calculate=${ms(calcTime == null ? null : calcTime - waited)} '
+      'calculate=${skipped ? 'skipped' : ms(calcTime == null ? null : calcTime - waited)} '
       '(${calc.calculate?.dayIndex ?? 0} days) total=${ms(p.elapsed(end))}'
-      '${failed ? ' FAILED' : ''}',
+      '${failed ? ' FAILED' : ''}${!failed && _partial ? ' PARTIAL' : ''}',
     );
   }
 

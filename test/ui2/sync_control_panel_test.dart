@@ -296,6 +296,117 @@ void main() {
     expect(find.textContaining('Last successful sync'), findsOneWidget);
   });
 
+  testWidgets('partial: download note, calculate done, Done (partial)', (
+    t,
+  ) async {
+    final state = SyncPresentationState(
+      phase: 'completed',
+      contactedBand: true,
+      partial: true,
+      lastSuccess: _t0.add(const Duration(seconds: 20)),
+      startedAt: _t0,
+      finishedAt: _t0.add(const Duration(seconds: 20)),
+      steps: [
+        _step(
+          SyncStepId.connect,
+          SyncStepStatus.skipped,
+          note: 'Already connected',
+        ),
+        _step(
+          SyncStepId.download,
+          SyncStepStatus.done,
+          start: _t0,
+          end: _t0.add(const Duration(seconds: 12)),
+          note: 'More remains on the band — sync again to continue',
+          download: const SyncDownloadDetail(records: 900, chunks: 3),
+        ),
+        _step(
+          SyncStepId.calculate,
+          SyncStepStatus.done,
+          start: _t0,
+          end: _t0.add(const Duration(seconds: 5)),
+        ),
+        _step(
+          SyncStepId.done,
+          SyncStepStatus.done,
+          start: _t0,
+          end: _t0,
+          note: 'Done (partial)',
+        ),
+      ],
+    );
+    await t.pumpWidget(
+      _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
+    );
+    expect(find.text('Sync partly completed'), findsOneWidget);
+    expect(
+      find.text('More remains on the band — sync again to continue'),
+      findsOneWidget,
+    );
+    expect(find.text('Done (partial)'), findsOneWidget);
+    expect(find.text('Sync now'), findsOneWidget);
+  });
+
+  testWidgets('calculate with nothing new reads skipped — nothing new', (
+    t,
+  ) async {
+    final state = SyncPresentationState(
+      phase: 'completed',
+      contactedBand: true,
+      startedAt: _t0,
+      finishedAt: _t0.add(const Duration(seconds: 8)),
+      steps: [
+        _step(
+          SyncStepId.connect,
+          SyncStepStatus.skipped,
+          note: 'Already connected',
+        ),
+        _step(
+          SyncStepId.download,
+          SyncStepStatus.done,
+          start: _t0,
+          end: _t0.add(const Duration(seconds: 8)),
+        ),
+        _step(
+          SyncStepId.calculate,
+          SyncStepStatus.skipped,
+          note: kCalculateSkippedNote,
+        ),
+        _step(SyncStepId.done, SyncStepStatus.done, start: _t0, end: _t0),
+      ],
+    );
+    await t.pumpWidget(
+      _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
+    );
+    expect(find.text('Skipped — nothing new'), findsOneWidget);
+  });
+
+  testWidgets('calculate shows day 0 of N before the first day ends', (
+    t,
+  ) async {
+    final state = SyncPresentationState(
+      phase: 'deriving',
+      busy: true,
+      contactedBand: true,
+      startedAt: _t0,
+      steps: [
+        _step(SyncStepId.connect, SyncStepStatus.skipped),
+        _step(SyncStepId.download, SyncStepStatus.done, start: _t0, end: _t0),
+        _step(
+          SyncStepId.calculate,
+          SyncStepStatus.running,
+          start: _t0,
+          calculate: const SyncCalculateDetail(dayIndex: 0, dayTotal: 3),
+        ),
+        _step(SyncStepId.done, SyncStepStatus.waiting),
+      ],
+    );
+    await t.pumpWidget(
+      _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
+    );
+    expect(find.text('Day 0 of 3'), findsOneWidget);
+  });
+
   testWidgets('3.1x text scale does not overflow', (t) async {
     await t.pumpWidget(
       _host(
