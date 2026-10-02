@@ -150,30 +150,31 @@ class LiveHrCard extends StatelessWidget {
         ]),
         if (trace.length > 2) ...[
           const SizedBox(height: S.x3),
-          SizedBox(
-            height: 56,
-            child: ChartScrub(
+          // Bare scrub: no frame, so it draws its own key row under the trace.
+          // The 56 pt belongs to the trace alone, not to the row beneath it.
+          Builder(builder: (_) {
+            final live = [for (final v in trace) v.toDouble()];
+            return ChartScrub(
               label: 'Live heart rate',
               // The stream carries no timestamps, so the position is "how many
               // readings ago", counted from the newest.
-              readout: ChartScrub.slots(
-                [for (final v in trace) v.toDouble()],
-                (i, v) {
-                  final ago = trace.length - 1 - i;
-                  return '${v.round()} bpm · '
-                      '${ago == 0 ? 'latest' : '$ago readings ago'}';
-                },
-              ),
-              child: CustomPaint(
-                painter: LineChart(
-                  [for (final v in trace) v.toDouble()],
-                  C.red,
-                  fill: false,
+              time: (at) {
+                final ago = live.length - 1 - ChartScrub.slotAt(live.length, at);
+                return ago == 0 ? 'Latest' : '$ago readings ago';
+              },
+              keys: [
+                ChartKey.slots('Heart rate (bpm)', C.red, live,
+                    (i, v) => '${v.round()} bpm'),
+              ],
+              child: SizedBox(
+                height: 56,
+                child: CustomPaint(
+                  painter: LineChart(live, C.red, fill: false),
+                  size: Size.infinite,
                 ),
-                size: Size.infinite,
               ),
-            ),
-          ),
+            );
+          }),
           const SizedBox(height: S.x2),
           Text(
             'The last ${trace.length} readings, ${trace.reduce(math.min)}'

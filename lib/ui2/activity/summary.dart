@@ -1684,8 +1684,12 @@ class _ActivitySummaryState extends State<ActivitySummary> {
       child: ChartScrub(
         label: l?.activitySummaryHeartRateTitle ?? 'Heart rate',
         // One slot per minute of the session, as the series is built.
-        readout: ChartScrub.slots(
-            r.hr, (i, v) => 'Minute $i · ${v.round()} bpm'),
+        gaps: hasChartGaps([r.hr]),
+        time: (at) => 'Minute ${ChartScrub.slotAt(r.hr.length, at)}',
+        keys: [
+          ChartKey.slots('Heart rate (bpm)', p.on(C.red), r.hr,
+              (i, v) => '${v.round()} bpm'),
+        ],
         child: CustomPaint(
             size: Size.infinite,
             painter: LineChart(r.hr, p.on(C.red),
@@ -1702,14 +1706,14 @@ class _ActivitySummaryState extends State<ActivitySummary> {
         unit: 'minutes',
         height: 10,
         legend: [
-          for (var i = 0; i < 5; i++)
-            ('Z${i + 1} · ${r.zoneMinutes[i].round()}m', ZoneBar.cols(p)[i]),
+          for (var i = 0; i < 5; i++) ('Z${i + 1}', ZoneBar.cols(p)[i]),
         ],
         footnote: zonesWhy(r.zoneSource, r.zoneMaxHr, AppLocalizations.of(context)),
         child: ChartScrub(
           label: AppLocalizations.of(context)?.activitySummaryTimeInZonesTitle ??
               'Time in zones',
-          readout: ChartScrub.zoneMinutes(r.zoneMinutes),
+          // The minutes live in the key's value row, under each zone's name.
+          keys: ChartScrub.zoneKeys(p, r.zoneMinutes),
           child: CustomPaint(
               size: Size.infinite, painter: ZoneBar(_zoneFractions(), p)),
         ),
@@ -2206,8 +2210,13 @@ class _ActivitySummaryState extends State<ActivitySummary> {
                 series: g.$4,
                 child: ChartScrub(
                   label: g.$1,
-                  readout: ChartScrub.slots(
-                      g.$4, (i, v) => 'Minute $i · ${v.round()} ${g.$2}'),
+                  gaps: hasChartGaps([g.$4]),
+                  time: (at) =>
+                      'Minute ${ChartScrub.slotAt(g.$4.length, at)}',
+                  keys: [
+                    ChartKey.slots('${g.$1} (${g.$2})', p.on(g.$3), g.$4,
+                        (i, v) => '${v.round()} ${g.$2}'),
+                  ],
                   child: CustomPaint(
                       size: Size.infinite,
                       painter: LineChart(g.$4, p.on(g.$3),

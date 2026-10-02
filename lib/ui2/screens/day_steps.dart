@@ -342,6 +342,8 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
     final (band, phone) = hourlySteps(d.spans);
     final totals = [for (var h = 0; h < 24; h++) band[h] ?? phone[h]];
     final axis = AxisSpec.of(totals.whereType<double>(), floor: 0);
+    String steps(int h, double v) =>
+        '${thousands(v)} ${l?.dayStepsUnit ?? 'steps'}';
     return Surface(
       child: Column(
         children: [
@@ -366,15 +368,29 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
             // the readout names each; it never adds them together.
             child: ChartScrub(
               label: l?.dayStepsChartTitle ?? 'When they were counted',
-              readout: ChartScrub.slots(totals, (h, v) {
-                final b = band[h], ph = phone[h];
-                final split = b != null && ph != null
-                    ? ' (${d.bandLabel} ${thousands(b)}, '
-                        '${l?.dayStepsYourPhone ?? 'Your phone'} ${thousands(ph)})'
-                    : '';
-                return '${ChartScrub.clock(h * 60)} · '
-                    '${thousands(v)} ${l?.dayStepsUnit ?? 'steps'}$split';
-              }, bars: true),
+              gaps: hasChartGaps([totals]),
+              time: (at) => ChartScrub.clock(
+                  ChartScrub.slotAt(totals.length, at, bars: true) * 60),
+              // When both sensors counted the hour the row names each, under
+              // its own key; it never adds them together.
+              keys: d.mixed
+                  ? [
+                      ChartKey.slots(d.bandLabel, p.on(C.green), band, steps,
+                          bars: true),
+                      ChartKey.slots(l?.dayStepsYourPhone ?? 'Your phone',
+                          p.on(C.teal), phone, steps,
+                          bars: true),
+                    ]
+                  : [
+                      ChartKey.slots(
+                          d.strap > 0
+                              ? d.bandLabel
+                              : (l?.dayStepsYourPhone ?? 'Your phone'),
+                          d.strap > 0 ? p.on(C.green) : p.on(C.teal),
+                          totals,
+                          steps,
+                          bars: true),
+                    ],
               child: Stack(
                 children: [
                   CustomPaint(

@@ -129,38 +129,61 @@ reach it without a pointer, and `describe` is what those steps say out loud.
 ### ChartScrub — every chart is scrubbable
 
 ```dart
-ChartScrub({required String label, required String? Function(double at) readout,
-            required Widget child, ChartScrubMode mode = ChartScrubMode.line,
-            double step = .05})
+ChartScrub({required String label, required List<ChartKey> keys, required Widget child,
+            String? Function(double at)? time, bool gaps = false,
+            ChartScrubMode mode = ChartScrubMode.line, double step = .05})
 ```
 
 Wrap the chart painter (inside the `ChartFrame` child) and a tap or drag places
-a cursor line that follows the finger and a pill saying what the chart holds
-there. It is a `Scrubber` underneath, so the slider role and the spoken value
-come with it. Nothing is drawn until the first touch, so a chart at rest is
-unchanged, and it adds no size of its own.
+a cursor line that follows the finger. **There is no tooltip**: a pill sits under
+the thumb that placed it. The values go in a row UNDER the chart, in the chart's
+key (`ChartKeyReadout`): the time first (`Latest` at rest, `Selected` while
+scrubbing), then a cell per series with its colour swatch, its label and the
+value under them. It is a `Scrubber` underneath, so the slider role and the
+spoken value (time, then `label value` per series) come with it. It adds no size
+of its own to a framed chart.
 
-`readout` takes 0…1 across the chart and returns the value-and-time text, or
-**null where the data has nothing**, which reads `No data here`. Never read a
-neighbour's value or interpolate across a hole. Build it from the same series
-the painter draws:
+Each `ChartKey` is one series: `label` (units in it — `Heart rate (bpm)`),
+`color`, and `value(at)` for a position 0…1 across the chart, **null where the
+series has nothing**, which reads `—`. Never read a neighbour's value, never
+interpolate across a hole, never show a 0. Build it from the same series the
+painter draws:
 
 ```dart
-ChartScrub(
-  label: 'Heart rate',
-  readout: ChartScrub.slots(hr, (i, v) => '${ChartScrub.clock(i)} · ${v.round()} bpm'),
-  child: CustomPaint(size: Size.infinite, painter: LineChart(hr, color, axis: axis)),
+ChartFrame(
+  title: 'Heart rate', unit: 'bpm', legend: [('Heart rate (bpm)', red)],
+  child: ChartScrub(
+    label: 'Heart rate',
+    gaps: hasChartGaps([hr]),                       // "Not recorded", only if true
+    time: (at) => ChartScrub.clock(ChartScrub.slotAt(hr.length, at)),
+    keys: [ChartKey.slots('Heart rate (bpm)', red, hr, (i, v) => '${v.round()} bpm')],
+    child: CustomPaint(size: Size.infinite, painter: LineChart(hr, red, axis: axis)),
+  ),
 )
 ```
 
-Helpers: `ChartScrub.slots(series, say, {bars})` for a dense series (line: the
-nearest slot; `bars: true`: the bar under the finger), `ChartScrub.zoneMinutes`
-and `ChartScrub.bands` for a `ZoneBar`, `ChartScrub.dayBack(n)` / `day(date)` /
-`clock(minute)` for the time half. Scatter and grid charts (Poincaré, `HeatMap`,
-month grid) pass `mode: ChartScrubMode.nearest`: the pill only, no line, naming
-the nearest point or the column under the finger. `test/phase8/chart_scrub_guard_test.dart`
-fails any `painter: LineChart(…)` (or other chart painter) in `screens/`,
-`activity/` or `live_hr.dart` that is not inside a `ChartScrub` or `Scrubber`.
+Inside a `ChartFrame` the row IS the frame's key: each legend entry gets its
+value directly under it, matched to the series by **label** (so share the
+string), in the legend's order; a series with no legend entry is appended, and a
+legend entry with no series (a shaded stretch) stays a plain key. Without a
+frame the scrub draws its own row under the chart; give the chart its own height
+(`child: SizedBox(height: 72, …)`), not a `SizedBox` around the `ChartScrub`.
+The row is as tall for `—` as for a number, so scrubbing moves nothing.
+
+Helpers: `ChartKey.slots(label, color, series, say, {bars})` for a dense series
+(line: the nearest slot; `bars: true`: the bar under the finger; also finds the
+latest point), `ChartKey.fixed` for a value that does not depend on the finger,
+`ChartScrub.zoneKeys(p, minutes)` / `bandKeys` for a `ZoneBar`,
+`ChartScrub.slotAt(n, at, {bars})` for the index a position reads,
+`ChartScrub.dayBack(n)` / `day(date)` / `clock(minute)` for the time half.
+`gaps` adds a `Not recorded` entry; pass `hasChartGaps(series)`: a hole between
+readings, or before the first, is a gap; nothing at all is no data, and holes
+after the last reading are not a gap unless `trailing: true` (a finished
+window). Scatter and grid charts (Poincaré, `HeatMap`, month grid) pass
+`mode: ChartScrubMode.nearest`: the row only, no line through the picture.
+`test/phase8/chart_scrub_guard_test.dart` fails any `painter: LineChart(…)` (or
+other chart painter) in `screens/`, `activity/` or `live_hr.dart` that is not
+inside a `ChartScrub` or `Scrubber`.
 
 ### Layout primitives
 

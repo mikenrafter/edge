@@ -348,8 +348,11 @@ class _BeatsState extends State<Beats> {
               builder: (_, box) => ChartScrub(
                 label: l?.beatsScatterTitle ?? 'Beat intervals',
                 mode: ChartScrubMode.nearest,
-                readout: (at) => _poincareReadout(
-                    d.nn, axis, at, box.maxWidth, box.maxHeight),
+                // A scatter point is a pair: the interval and the one after it.
+                // Under the finger it is the nearest point along x; at rest it
+                // is the last pair in the night.
+                keys: _poincareKeys(
+                    d.nn, axis, box.maxWidth, box.maxHeight, p.on(C.green)),
                 child: CustomPaint(
                   size: Size.infinite,
                   painter:
@@ -519,9 +522,13 @@ class _BeatsState extends State<Beats> {
             empty: axis == null ? const NoData() : null,
             child: ChartScrub(
               label: l?.beatsDcChartTitle ?? 'Deceleration capacity by night',
-              readout: ChartScrub.slots(series,
-                  (i, v) => '${ChartScrub.dayBack(win - 1 - i)} · '
-                      '${v.toStringAsFixed(1)} ms'),
+              gaps: hasChartGaps([series]),
+              time: (at) => ChartScrub.dayBack(
+                  win - 1 - ChartScrub.slotAt(series.length, at)),
+              keys: [
+                ChartKey.slots('Deceleration capacity (ms)', p.ink2, series,
+                    (i, v) => '${v.toStringAsFixed(1)} ms'),
+              ],
               child: CustomPaint(
                 size: Size.infinite,
                 // Neutral ink and no fill, on purpose. A green line is a
@@ -795,7 +802,7 @@ class _RhythmStrip extends StatelessWidget {
 /// with the interval that followed it. Outside the square, or with no interval
 /// within a fortieth of the axis, there is nothing to say — never a value from
 /// further away.
-String? _poincareReadout(
+int? _poincareNearest(
     List<double> nn, AxisSpec axis, double at, double w, double h) {
   final side = w < h ? w : h;
   if (side <= 0 || axis.max <= axis.min) return null;
@@ -814,6 +821,29 @@ String? _poincareReadout(
       best = i;
     }
   }
-  if (best == null) return null;
-  return '${nn[best].round()} ms, then ${nn[best + 1].round()} ms';
+  return best;
+}
+
+/// The two numbers of a Poincaré point, as a pair of keys for the row under the
+/// chart: the interval, and the one that followed it.
+List<ChartKey> _poincareKeys(List<double> nn, AxisSpec axis, double w, double h,
+    Color ink) {
+  String? at(int? i, int off) => i == null || i + off >= nn.length
+      ? null
+      : '${nn[i + off].round()} ms';
+  var last = -1;
+  for (var i = 0; i + 1 < nn.length; i++) {
+    if (nn[i].isFinite && nn[i + 1].isFinite) last = i;
+  }
+  ChartKey key(String label, int off) => ChartKey(
+        label,
+        ink,
+        (x) => at(_poincareNearest(nn, axis, x, w, h), off),
+        latest: null,
+        atRest: () => at(last < 0 ? null : last, off),
+      );
+  return [
+    key('Beat interval (ms)', 0),
+    key('Next interval (ms)', 1),
+  ];
 }

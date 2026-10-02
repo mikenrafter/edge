@@ -302,19 +302,25 @@ class LiveStreamChart extends StatelessWidget {
             style: F.cap.copyWith(color: p.ink3)),
       ]),
       const SizedBox(height: S.x1),
-      SizedBox(
-        height: 72,
-        child: ChartScrub(
-          label: label,
-          // Each slot is half a second of the window; the readout names how
-          // long ago that slot was and its mean, never a neighbour's value.
-          readout: ChartScrub.slots(series, (i, v) {
-            final ago = window.inMilliseconds * (series.length - 1 - i) ~/
-                series.length ~/
-                1000;
-            final when = ago == 0 ? 'now' : '$ago s ago';
-            return '$when · ${v.toStringAsFixed(v.abs() >= 100 ? 0 : 1)}';
-          }),
+      // Each slot is half a second of the window; the row under the trace names
+      // how long ago that slot was and its mean, never a neighbour's value. The
+      // 72 pt is the trace alone: the key row sits beneath it.
+      ChartScrub(
+        label: label,
+        gaps: hasChartGaps([series]),
+        time: (at) {
+          final i = ChartScrub.slotAt(series.length, at);
+          final ago = window.inMilliseconds * (series.length - 1 - i) ~/
+              series.length ~/
+              1000;
+          return ago == 0 ? 'now' : '$ago s ago';
+        },
+        keys: [
+          ChartKey.slots(label, p.on(C.blue), series,
+              (i, v) => v.toStringAsFixed(v.abs() >= 100 ? 0 : 1)),
+        ],
+        child: SizedBox(
+          height: 72,
           child: CustomPaint(
             size: Size.infinite,
             painter: LineChart(series, p.on(C.blue), fill: false),

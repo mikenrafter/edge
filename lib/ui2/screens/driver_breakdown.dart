@@ -494,11 +494,25 @@ Widget _chart(BuildContext c, P p, DriverFacts f) {
         : ChartScrub(
             label: f.label,
             // The window ends today, one slot per day.
-            readout: ChartScrub.slots(
-                win,
-                (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
-                    '${metricValue(f.spec.unit, v)}'
+            gaps: hasChartGaps([win], trailing: true),
+            time: (at) => ChartScrub.dayBack(
+                win.length - 1 - ChartScrub.slotAt(win.length, at)),
+            keys: [
+              ChartKey.slots(
+                  unit.isEmpty ? f.label : '${f.label} ($unit)',
+                  ink,
+                  win,
+                  (i, v) => '${metricValue(f.spec.unit, v)}'
+                      '${unit.isEmpty ? '' : ' $unit'}'),
+              // The shaded band behind the line, with the numbers it spans.
+              if (band != null)
+                ChartKey.fixed(
+                    'Usual range',
+                    p.wash(f.spec.color),
+                    '${metricValue(f.spec.unit, band.$1)}–'
+                    '${metricValue(f.spec.unit, band.$2)}'
                     '${unit.isEmpty ? '' : ' $unit'}'),
+            ],
             child: Stack(fit: StackFit.expand, children: [
               if (band != null)
                 _Band(band.$1, band.$2, axis, p.wash(f.spec.color)),

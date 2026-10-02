@@ -68,12 +68,12 @@ Widget _scrub() => Scaffold(
           height: 160,
           child: ChartScrub(
             label: 'Heart rate',
-            readout: (at) {
-              const s = <double?>[58, 61, null, 66, 64];
-              final i = (at * (s.length - 1)).round();
-              final v = s[i];
-              return v == null ? null : '0${7 + i}:00 · ${v.round()} bpm';
-            },
+            gaps: true,
+            time: (at) => '0${7 + ChartScrub.slotAt(5, at)}:00',
+            keys: [
+              ChartKey.slots('Heart rate (bpm)', const Color(0xFFE5484D),
+                  const [58, 61, null, 66, 64], (i, v) => '${v.round()} bpm'),
+            ],
             child: CustomPaint(
               size: Size.infinite,
               painter: LineChart(

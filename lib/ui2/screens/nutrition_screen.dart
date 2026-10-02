@@ -443,12 +443,19 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
             // "No data here", and a partial day says it is a floor.
             : ChartScrub(
                 label: l?.nutritionEnergyLoggedTitle ?? 'Energy logged',
-                readout: ChartScrub.slots(
-                    vals,
-                    (i, v) => '${_dayShort(w.days[i].date, l)} · '
-                        '${v.round()} kcal'
-                        '${w.days[i].state == DayLogState.partial ? ' (partial day)' : ''}',
-                    bars: true),
+                gaps: hasChartGaps([vals], trailing: true),
+                time: (at) => _dayShort(
+                    w.days[ChartScrub.slotAt(vals.length, at, bars: true)].date,
+                    l),
+                keys: [
+                  ChartKey.slots(
+                      l?.nutritionEnergyLoggedTitle ?? 'Energy logged',
+                      C.domFood,
+                      vals,
+                      (i, v) => '${v.round()} kcal'
+                          '${w.days[i].state == DayLogState.partial ? ' (partial day)' : ''}',
+                      bars: true),
+                ],
                 child: CustomPaint(
                   size: Size.infinite,
                   painter: Bars(vals, C.domFood,

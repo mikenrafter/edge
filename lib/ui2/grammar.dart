@@ -243,66 +243,215 @@ class Scrubber extends StatelessWidget {
 /// ── CHARTSCRUB ── every chart is scrubbable ──────────────────────────────
 ///
 /// One wrapper over any chart painter: a tap or a drag places a cursor that
-/// follows the finger and a pill that says what the chart holds at that point.
-/// It is a [Scrubber] underneath, so the slider role and [Scrubber.describe]
-/// come with it — the pill text and the spoken value are the same string.
+/// follows the finger, and the values at that point appear in a row UNDER the
+/// chart ([ChartKeyReadout]) — not in a pill over it. A pill sits under the
+/// thumb that placed it, and on a phone the finger is the one thing that
+/// always covers the number it is asking for.
 ///
-/// [readout] takes 0…1 across the chart and returns the value-and-time text, or
-/// null where the series has nothing. Null reads [noData]; a position between
-/// two samples with a gap between them is never interpolated across. Nothing is
-/// drawn until the first touch, so a chart at rest looks exactly as it did.
+/// It is a [Scrubber] underneath, so the slider role and [Scrubber.describe]
+/// come with it; the spoken value is the same time-and-values the row shows.
+///
+/// [keys] is one [ChartKey] per series: its colour, its label (units in it) and
+/// what it reads at a position 0…1 across the chart, or null where it has
+/// nothing. A null reads "—" in the row — a gap is never the value of a
+/// neighbour, never interpolated and never a 0. [time] names the position (a
+/// clock, a day); it is still said over a gap, because the finger is there
+/// even when the data is not.
+///
+/// Nothing is placed until the first touch, and then the row has nothing to
+/// follow: it shows the LATEST point's values and time, and "—" where the chart
+/// has no data at all. The row's height does not depend on what it says.
+///
+/// Inside a [ChartFrame] the row is the frame's key: each value sits directly
+/// under the legend entry of the same label, in that entry's column. Outside a
+/// frame the scrub draws its own key row under the chart.
+///
+/// [gaps] adds a "Not recorded" entry — pass `hasChartGaps(series)` (or the
+/// chart's own gap list) so it appears only when the window really has a hole.
 ///
 /// [ChartScrubMode.nearest] is for scatter and grid charts (Poincaré, heat map,
-/// month grid): the pill alone, no line through the picture.
+/// month grid): the row alone, no line through the picture.
 enum ChartScrubMode { line, nearest }
+
+/// Whether any of [series] has a stretch with nothing recorded that its chart
+/// draws as a gap. Pure; the one rule behind every "Not recorded" key.
+///
+/// A slot is absent when it is null or not finite. A series with no reading at
+/// all is NO DATA, not a gap (the frame says so in words). Leading and interior
+/// holes are gaps; trailing ones are only gaps when [trailing] is set, because a
+/// window that runs to "now" has no recorded future to be missing.
+bool hasChartGaps(Iterable<List<double?>> series, {bool trailing = false}) {
+  bool ok(double? v) => v != null && v.isFinite;
+  for (final d in series) {
+    final first = d.indexWhere(ok);
+    if (first < 0) continue;
+    if (first > 0) return true;
+    final last = d.lastIndexWhere(ok);
+    for (var i = first; i <= last; i++) {
+      if (!ok(d[i])) return true;
+    }
+    if (trailing && last < d.length - 1) return true;
+  }
+  return false;
+}
+
+/// One series in a chart's key: what it is called, what colour draws it, and
+/// what it reads at a position along the chart.
+@immutable
+class ChartKey {
+  final String label;
+  final Color color;
+
+  /// The value at 0…1 across the chart, already worded with its unit, or null
+  /// where the series has nothing.
+  final String? Function(double at) value;
+
+  /// Where the latest reading sits, 0…1 — what the row shows when nothing is
+  /// scrubbed. Null means this series never has one.
+  final double? latest;
+
+  /// Whether the finger is on this entry's own mark (a stacked bar's band).
+  final bool Function(double at)? active;
+
+  /// What to say when nothing is scrubbed, for a chart whose "latest" is not a
+  /// place along the x axis (a scatter's last point). Wins over [value] at rest.
+  final String? Function()? atRest;
+
+  const ChartKey(this.label, this.color, this.value,
+      {this.latest = 1.0, this.active, this.atRest});
+
+  /// A dense series — one entry per slot, `null` in the holes, the same list
+  /// the painter draws. Lines read the slot nearest the finger; with [bars] the
+  /// finger reads the bar it is over. A hole or a non-finite sample reads null.
+  factory ChartKey.slots(
+    String label,
+    Color color,
+    List<double?> d,
+    String Function(int i, double v) say, {
+    bool bars = false,
+  }) {
+    bool ok(double? v) => v != null && v.isFinite;
+    final last = d.lastIndexWhere(ok);
+    return ChartKey(
+      label,
+      color,
+      (at) {
+        if (d.isEmpty) return null;
+        final i = ChartScrub.slotAt(d.length, at, bars: bars);
+        final v = d[i];
+        return ok(v) ? say(i, v!) : null;
+      },
+      latest: last < 0
+          ? null
+          : bars
+              ? (last + .5) / d.length
+              : d.length < 2
+                  ? 0.0
+                  : last / (d.length - 1),
+    );
+  }
+
+  /// A value that does not depend on where the finger is — a zone's minutes in
+  /// a stacked bar. [active] marks the entry the finger is on.
+  factory ChartKey.fixed(String label, Color color, String? value,
+          {bool Function(double at)? active}) =>
+      ChartKey(label, color, (_) => value,
+          latest: null, active: active, atRest: () => value);
+}
+
+/// One cell of the key row. A null [color] is the "Not recorded" entry.
+@immutable
+class ChartCell {
+  final String label;
+  final Color? color;
+
+  /// Null with [hasValue] reads "—" (the series has nothing here). A cell with
+  /// no [hasValue] is a plain key entry with no series behind it.
+  final String? value;
+  final bool hasValue;
+  final bool active;
+  const ChartCell(this.label, this.color,
+      {this.value, this.hasValue = true, this.active = false});
+}
+
+/// What the row says at one position: the time, then a cell per series.
+@immutable
+class ChartReadout {
+  /// Null when the chart has no time axis to name.
+  final String? time;
+  final bool scrubbed;
+  final List<ChartCell> cells;
+  const ChartReadout(
+      {required this.time, required this.scrubbed, required this.cells});
+
+  /// Everything the row would draw, as one string — compared to decide whether
+  /// a frame's key is stale.
+  String get signature => [
+        time,
+        scrubbed,
+        for (final c in cells) '${c.label}|${c.value}|${c.hasValue}|${c.active}',
+      ].join('\u0001');
+}
 
 class ChartScrub extends StatefulWidget {
   final String label;
-  final String? Function(double at) readout;
+  final List<ChartKey> keys;
+  final String? Function(double at)? time;
+  final bool gaps;
   final Widget child;
   final ChartScrubMode mode;
   final double step;
 
   static const cursorKey = ValueKey('chart-scrub-cursor');
-  static const readoutKey = ValueKey('chart-scrub-readout');
   static const noData = 'No data here';
 
-  /// A [readout] for a dense series (one entry per slot, `null` in the holes —
-  /// the same list the painter draws). Line charts read the slot nearest the
-  /// finger; with [bars] the finger reads the bar it is over. A hole or a
-  /// non-finite sample reads null, so a gap is "No data here" and never the
-  /// value of a neighbour.
-  static String? Function(double) slots(
-    List<double?> d,
-    String Function(int i, double v) say, {
-    bool bars = false,
-  }) =>
-      (at) {
-        if (d.isEmpty) return null;
-        final i = (bars ? (at * d.length).floor() : (at * (d.length - 1)).round())
-            .clamp(0, d.length - 1);
-        final v = d[i];
-        return v == null || !v.isFinite ? null : say(i, v);
-      };
+  /// The slot a position reads: the nearest sample for a line, the bar under
+  /// the finger for [bars]. Clamped, so either edge is a real slot.
+  static int slotAt(int length, double at, {bool bars = false}) {
+    if (length <= 0) return 0;
+    final i = bars ? (at * length).floor() : (at * (length - 1)).round();
+    return i.clamp(0, length - 1);
+  }
 
-  /// A [readout] for a stacked bar ([ZoneBar]): the band under the finger, by
-  /// the same running total of [fracs] the painter lays out. Past the last
-  /// band, where nothing is drawn, it reads null. A band with no width cannot
-  /// be hit, and neither can a non-finite one.
-  static String? Function(double) bands(
-    List<double> fracs,
-    String Function(int i, double frac) say,
-  ) =>
-      (at) {
-        var lo = 0.0;
-        for (var i = 0; i < fracs.length; i++) {
-          final f = fracs[i];
-          if (!f.isFinite || f <= 0) continue;
-          if (at >= lo && at < lo + f) return say(i, f);
-          lo += f;
-        }
-        return null;
-      };
+  /// What the row says at [at] (null: nothing scrubbed — the latest point).
+  static ChartReadout resolve({
+    required List<ChartKey> keys,
+    String? Function(double at)? time,
+    bool gaps = false,
+    double? at,
+  }) {
+    double? latest;
+    for (final k in keys) {
+      final l = k.latest;
+      if (l != null && (latest == null || l > latest)) latest = l;
+    }
+    final pos = at ?? latest;
+    final cells = <ChartCell>[
+      for (final k in keys)
+        ChartCell(k.label, k.color,
+            value: at == null && k.atRest != null
+                ? k.atRest!()
+                : pos == null
+                    ? null
+                    : k.value(pos),
+            active: pos != null && (k.active?.call(pos) ?? false)),
+    ];
+    if (gaps) {
+      // "Here" only while the finger is on a hole in every series.
+      final onGap = at != null && cells.every((c) => c.value == null);
+      cells.add(ChartCell(ChartKeyReadout.notRecorded, null,
+          value: onGap ? ChartKeyReadout.here : null, hasValue: onGap));
+    }
+    return ChartReadout(
+      time: time == null
+          ? null
+          : pos == null
+              ? ChartKeyReadout.absent
+              : (time(pos) ?? ChartKeyReadout.absent),
+      scrubbed: at != null,
+      cells: cells,
+    );
+  }
 
   /// Local minutes past midnight as "7:05 AM" — the time half of a readout.
   static String clock(int minuteOfDay) => formatMinuteOfDay(minuteOfDay);
@@ -327,28 +476,62 @@ class ChartScrub extends StatefulWidget {
     return '${wd[d.weekday - 1]} ${d.day} ${mo[d.month - 1]}';
   }
 
-  /// [bands] over five zones of minutes, laid out the way callers feed
-  /// [ZoneBar] (each zone's share of the total). No minutes at all draws no
-  /// bar, so it reads null everywhere.
-  static String? Function(double) zoneMinutes(List<num> minutes) {
-    final total = minutes.fold<double>(0, (a, b) => a + b);
-    if (!(total > 0)) return (_) => null;
-    return bands(
-      [for (final m in minutes) m / total],
-      (i, f) => 'Zone ${i + 1} · ${minutes[i].round()} min · '
-          '${(f * 100).round()}%',
-    );
+  /// One [ChartKey] per band of a stacked bar ([ZoneBar]), laid out the way the
+  /// painter lays them out (running total of [fracs]). Each band's value is its
+  /// own, wherever the finger is; the band under the finger is [active]. A band
+  /// with no width cannot be hit, and neither can a non-finite one.
+  static List<ChartKey> bandKeys(
+    List<String> labels,
+    List<Color> colors,
+    List<double> fracs,
+    List<String?> values,
+  ) {
+    bool live(double f) => f.isFinite && f > 0;
+    bool hit(int i, double at) {
+      var lo = 0.0;
+      for (var k = 0; k < fracs.length; k++) {
+        final f = fracs[k];
+        if (!live(f)) continue;
+        if (at >= lo && at < lo + f) return k == i;
+        lo += f;
+      }
+      return false;
+    }
+
+    return [
+      for (var i = 0; i < labels.length; i++)
+        ChartKey.fixed(
+            labels[i], colors[i % colors.length], i < values.length ? values[i] : null,
+            active: (at) => hit(i, at)),
+    ];
   }
 
-  /// [bands] over fractions already handed to [ZoneBar].
-  static String? Function(double) zoneShares(List<double> fracs) => bands(
-      fracs, (i, f) => 'Zone ${i + 1} · ${(f * 100).round()}% of the time');
+  /// [bandKeys] over five zones of minutes, named Z1…Z5 and coloured the way
+  /// [ZoneBar] draws them. Each reads its own minutes and share of the total;
+  /// a zone with no minutes reads "0 min", a measured nothing. No minutes at all
+  /// draws no bar and reads "—" everywhere.
+  static List<ChartKey> zoneKeys(P p, List<num> minutes) {
+    final total = minutes.fold<double>(0, (a, b) => a + b);
+    final has = total > 0;
+    final fracs = [for (final m in minutes) has ? m / total : 0.0];
+    return bandKeys(
+      [for (var i = 0; i < minutes.length; i++) 'Z${i + 1}'],
+      ZoneBar.cols(p),
+      fracs,
+      [
+        for (var i = 0; i < minutes.length; i++)
+          has ? '${minutes[i].round()} min · ${(fracs[i] * 100).round()}%' : null,
+      ],
+    );
+  }
 
   const ChartScrub({
     super.key,
     required this.label,
-    required this.readout,
+    required this.keys,
     required this.child,
+    this.time,
+    this.gaps = false,
     this.mode = ChartScrubMode.line,
     this.step = .05,
   });
@@ -359,21 +542,59 @@ class ChartScrub extends StatefulWidget {
 
 class _ChartScrubState extends State<ChartScrub> {
   double? _at;
+  _ChartHub? _hub;
 
-  String _text(double v) => widget.readout(v) ?? ChartScrub.noData;
+  ChartReadout _resolve(double? at) => ChartScrub.resolve(
+      keys: widget.keys, time: widget.time, gaps: widget.gaps, at: at);
+
+  /// The same time-and-values the row shows, as a sentence.
+  String _spoken(double at) {
+    final r = _resolve(at);
+    final vals = [
+      for (final c in r.cells)
+        if (c.color != null && c.value != null) '${c.label} ${c.value}',
+    ];
+    return [
+      if (r.time != null && r.time != ChartKeyReadout.absent) r.time!,
+      if (vals.isEmpty) ChartScrub.noData else ...vals,
+    ].join(', ');
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final h = _ChartHubScope.maybeOf(context);
+    if (!identical(h, _hub)) {
+      _hub?.detach(this);
+      _hub = h;
+    }
+  }
+
+  @override
+  void dispose() {
+    _hub?.detach(this);
+    super.dispose();
+  }
+
+  void _place(double x) {
+    setState(() => _at = x);
+    _hub?.setAt(x);
+  }
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final v = _at;
-    return Scrubber(
+    final hub = _hub;
+    hub?.attach(this, _resolve, v);
+    final plot = Scrubber(
       value: v,
-      onChanged: (x) => setState(() => _at = x),
+      onChanged: _place,
       label: widget.label,
-      describe: _text,
+      describe: _spoken,
       step: widget.step,
-      // Passthrough: the chart keeps the size it always had; the cursor and pill
-      // are positioned overlays and add nothing to the layout.
+      // Passthrough: the chart keeps the size it always had; the cursor is a
+      // positioned overlay and adds nothing to the layout.
       child: Stack(fit: StackFit.passthrough, children: [
         widget.child,
         if (v != null && widget.mode == ChartScrubMode.line)
@@ -386,45 +607,257 @@ class _ChartScrubState extends State<ChartScrub> {
                     top: 0,
                     bottom: 0,
                     width: 2,
-                    child: ColoredBox(
-                        key: ChartScrub.cursorKey, color: p.ink),
+                    child: ColoredBox(key: ChartScrub.cursorKey, color: p.ink),
                   ),
                 ]),
               ),
             ),
           ),
-        if (v != null)
-          Positioned.fill(
-            // The slider already speaks this text as its value; a second
-            // semantics node would be merged into the label and read twice.
-            child: ExcludeSemantics(
-              child: IgnorePointer(
-                // Aligned by fraction, so the pill follows the finger and
-                // stays inside the chart at either edge without measuring it.
-                child: Align(
-                  alignment: Alignment(v * 2 - 1, -1),
-                  child: Container(
-                    key: ChartScrub.readoutKey,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: S.x2, vertical: S.x1),
-                    decoration: BoxDecoration(
-                      color: p.ink,
-                      borderRadius: R.rMd,
-                    ),
-                    child: Text(
-                      _text(v),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: F.cap.copyWith(color: p.bg),
-                    ),
-                  ),
+      ]),
+    );
+    // In a frame the frame draws the row, under its own x labels. Bare, the row
+    // goes directly under the chart.
+    if (hub != null) return plot;
+    final row = ChartKeyReadout.of(_resolve(v));
+    return LayoutBuilder(
+      builder: (_, box) => Column(
+        mainAxisSize:
+            box.hasBoundedHeight ? MainAxisSize.max : MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (box.hasBoundedHeight) Expanded(child: plot) else plot,
+          const SizedBox(height: S.x2),
+          ExcludeSemantics(child: row),
+        ],
+      ),
+    );
+  }
+}
+
+/// ── CHARTKEYREADOUT ── the key row, with the values in it ───────────────────
+///
+/// The time first (a "Latest" or "Selected" caption over the clock or day),
+/// then one cell per series: colour swatch, label, and the value under them. A
+/// value is always one line — it shrinks to fit before it wraps — and the row
+/// is as tall for "—" as for a number, so scrubbing never moves what is below
+/// it. Cells share the width equally and wrap to further rows when the text
+/// scale leaves no room for them side by side.
+class ChartKeyReadout extends StatelessWidget {
+  final String? time;
+  final bool scrubbed;
+  final List<ChartCell> cells;
+
+  const ChartKeyReadout(
+      {super.key, required this.cells, this.time, this.scrubbed = false});
+
+  factory ChartKeyReadout.of(ChartReadout r) =>
+      ChartKeyReadout(cells: r.cells, time: r.time, scrubbed: r.scrubbed);
+
+  static const timeKey = ValueKey('chart-key-time');
+  static const latest = 'Latest';
+  static const selected = 'Selected';
+  static const absent = '—';
+  static const notRecorded = 'Not recorded';
+  static const here = 'Here';
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final scale = MediaQuery.textScalerOf(c).scale(1).clamp(1.0, 1.8);
+    final items = <Widget>[
+      if (time != null) _time(p),
+      for (final cell in cells) _cell(p, cell),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+    const gap = S.x3;
+    final minW = 92.0 * scale;
+    return LayoutBuilder(
+      builder: (_, box) {
+        final w = box.maxWidth;
+        final cols = w.isFinite
+            ? ((w + gap) / (minW + gap)).floor().clamp(1, items.length)
+            : items.length;
+        final cellW =
+            w.isFinite ? ((w - gap * (cols - 1)) / cols) - .01 : minW;
+        return Wrap(
+          spacing: gap,
+          runSpacing: S.x2,
+          children: [
+            for (final it in items) SizedBox(width: cellW, child: it),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _time(P p) => Column(
+        key: timeKey,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(scrubbed ? selected : latest,
+              style: F.over.copyWith(color: p.ink3),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(time!,
+                maxLines: 1,
+                style: F.cap.copyWith(
+                    color: time == absent ? p.ink3 : p.ink,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ],
+      );
+
+  Widget _cell(P p, ChartCell cell) {
+    final gapKey = cell.color == null;
+    final shown = cell.hasValue ? (cell.value ?? absent) : ' ';
+    final present = cell.hasValue && cell.value != null;
+    return Column(
+      key: ValueKey('chart-key-cell:${cell.label}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2.5),
+              child: Container(
+                key: ValueKey('chart-key-swatch:${cell.label}'),
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  // The swatch is the mark's real colour so the two match, and
+                  // a pale mark still needs an edge to be findable. A gap has
+                  // no colour of its own: it is the ground, outlined.
+                  color: gapKey ? p.card2 : cell.color,
+                  border: Border.all(
+                      color: gapKey ? p.ink3 : p.line, width: gapKey ? 1 : .5),
                 ),
               ),
             ),
-          ),
-      ]),
+            const SizedBox(width: S.x1),
+            Expanded(
+              child: Text(cell.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: F.over.copyWith(
+                      color: cell.active ? p.ink : p.ink3,
+                      fontWeight:
+                          cell.active ? FontWeight.w700 : FontWeight.w600)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        FittedBox(
+          key: ValueKey('chart-key-value:${cell.label}'),
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(shown,
+              maxLines: 1,
+              style: F.cap.copyWith(
+                  color: present ? p.ink : p.ink3,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
+        ),
+      ],
     );
   }
+}
+
+/// ── the frame ↔ scrub hand-off ─────────────────────────────────────────────
+///
+/// The scrub lives inside the plot and the key row lives under the x axis, so
+/// they have to share a position. [ChartFrame] hosts a hub; a [ChartScrub]
+/// below it attaches what it reads and where the finger is. Attaching during
+/// build is synchronous — the key row is built after the plot, so it sees the
+/// scrub on the first frame; a scrub that builds later (inside a LayoutBuilder)
+/// or changes under a still frame is caught by comparing what the row last drew
+/// with what it would draw now.
+class _ChartHub extends ChangeNotifier {
+  Object? _owner;
+  ChartReadout Function(double? at)? _resolve;
+  double? at;
+  String? rendered;
+  bool _pending = false;
+  bool _dead = false;
+
+  ChartReadout? read() => _resolve?.call(at);
+
+  void attach(Object owner, ChartReadout Function(double? at) resolve,
+      double? position) {
+    _owner = owner;
+    _resolve = resolve;
+    at = position;
+    _check();
+  }
+
+  void detach(Object owner) {
+    if (!identical(_owner, owner)) return;
+    _owner = null;
+    _resolve = null;
+    at = null;
+    _check();
+  }
+
+  void setAt(double? x) {
+    at = x;
+    if (!_dead) notifyListeners();
+  }
+
+  void _check() {
+    if (_pending || _dead) return;
+    _pending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pending = false;
+      if (_dead) return;
+      if (rendered != (read()?.signature ?? '')) notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _dead = true;
+    super.dispose();
+  }
+}
+
+class _ChartHubScope extends InheritedWidget {
+  final _ChartHub hub;
+  const _ChartHubScope({required this.hub, required super.child});
+
+  static _ChartHub? maybeOf(BuildContext c) =>
+      c.getInheritedWidgetOfExactType<_ChartHubScope>()?.hub;
+
+  @override
+  bool updateShouldNotify(_ChartHubScope old) => !identical(hub, old.hub);
+}
+
+class _ChartHubHost extends StatefulWidget {
+  final Widget Function(_ChartHub hub) builder;
+  const _ChartHubHost({required this.builder});
+
+  @override
+  State<_ChartHubHost> createState() => _ChartHubHostState();
+}
+
+class _ChartHubHostState extends State<_ChartHubHost> {
+  final _hub = _ChartHub();
+
+  @override
+  void dispose() {
+    _hub.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext c) =>
+      _ChartHubScope(hub: _hub, child: widget.builder(_hub));
 }
 
 /// The base card surface. Elevation, not outline.
@@ -2368,7 +2801,8 @@ class ChartFrame extends StatelessWidget {
     }
     final inset = a == null ? 0.0 : gutter + S.x2;
 
-    return Semantics(
+    return _ChartHubHost(
+      builder: (hub) => Semantics(
       container: true,
       // Keeps `child` as its own node. Without it a container merges every
       // descendant into itself, so an interactive child's label is swallowed
@@ -2499,42 +2933,10 @@ class ChartFrame extends StatelessWidget {
               ),
             ),
 
-          // ── legend ──
-          if (legend.isNotEmpty)
-            ExcludeSemantics(
-              child: Padding(
-                padding: const EdgeInsets.only(top: S.x3),
-                child: Wrap(
-                  spacing: S.x3,
-                  runSpacing: S.x1,
-                  children: [
-                    for (final (label, colour) in legend)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 9,
-                            height: 9,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: colour,
-                              // The swatch is the mark's real colour so the two match,
-                              // and a pale mark still needs an edge to be findable.
-                              border: Border.all(color: p.line, width: .5),
-                            ),
-                          ),
-                          const SizedBox(width: S.x1),
-                          // Flexible, because `Wrap` hands each item the frame's full
-                          // width and no more: a key like "Breathing (br/min)" is wider
-                          // than a 390 pt card at 2× text and overflowed the item
-                          // rather than wrapping inside it.
-                          Flexible(child: Text(label, style: tick)),
-                        ],
-                      ),
-                  ],
-                ),
-              ),
-            ),
+          // ── key ──
+          // The legend, and under each entry the value at the scrubbed point
+          // (or the latest one). A frame with no scrub keeps the plain legend.
+          _FrameKeys(hub: hub, legend: legend, tick: tick, line: p.line),
 
           if (footnote != null)
             ExcludeSemantics(
@@ -2544,6 +2946,93 @@ class ChartFrame extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    ));
+  }
+}
+
+/// The key under a [ChartFrame]: its legend, with the scrubbed point's values
+/// under each entry when a [ChartScrub] is attached.
+///
+/// Entries are matched to the scrub's series by label, so a legend built from a
+/// painter's own palette and a scrub keyed on the same strings line up. A legend
+/// entry no series answers to (a shaded stretch, say) stays a plain key; a
+/// series with no legend entry is added after them, and "Not recorded" last.
+class _FrameKeys extends StatelessWidget {
+  final _ChartHub hub;
+  final List<(String, Color)> legend;
+  final TextStyle tick;
+  final Color line;
+  const _FrameKeys(
+      {required this.hub,
+      required this.legend,
+      required this.tick,
+      required this.line});
+
+  @override
+  Widget build(BuildContext c) => ListenableBuilder(
+        listenable: hub,
+        builder: (c, _) {
+          final r = hub.read();
+          hub.rendered = r?.signature ?? '';
+          if (r == null) return _plain(c);
+          final used = <ChartCell>{};
+          final cells = <ChartCell>[];
+          for (final (label, colour) in legend) {
+            final m = r.cells.where((x) => x.label == label).firstOrNull;
+            if (m == null) {
+              cells.add(ChartCell(label, colour, hasValue: false));
+            } else {
+              used.add(m);
+              cells.add(ChartCell(label, m.color == null ? null : colour,
+                  value: m.value, hasValue: m.hasValue, active: m.active));
+            }
+          }
+          cells.addAll(r.cells.where((x) => !used.contains(x)));
+          return ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: ChartKeyReadout(
+                  cells: cells, time: r.time, scrubbed: r.scrubbed),
+            ),
+          );
+        },
+      );
+
+  Widget _plain(BuildContext c) {
+    if (legend.isEmpty) return const SizedBox.shrink();
+    return ExcludeSemantics(
+      child: Padding(
+        padding: const EdgeInsets.only(top: S.x3),
+        child: Wrap(
+          spacing: S.x3,
+          runSpacing: S.x1,
+          children: [
+            for (final (label, colour) in legend)
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colour,
+                      // The swatch is the mark's real colour so the two match,
+                      // and a pale mark still needs an edge to be findable.
+                      border: Border.all(color: line, width: .5),
+                    ),
+                  ),
+                  const SizedBox(width: S.x1),
+                  // Flexible, because `Wrap` hands each item the frame's full
+                  // width and no more: a key like "Breathing (br/min)" is wider
+                  // than a 390 pt card at 2× text and overflowed the item
+                  // rather than wrapping inside it.
+                  Flexible(child: Text(label, style: tick)),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

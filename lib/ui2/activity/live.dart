@@ -838,12 +838,11 @@ class LiveHeart extends StatelessWidget {
           unit: 'minutes',
           height: 10,
           legend: [
-            for (var i = 0; i < 5; i++)
-              ('Z${i + 1} · ${feed.zoneMinutes[i].round()}m', ZoneBar.cols(p)[i]),
+            for (var i = 0; i < 5; i++) ('Z${i + 1}', ZoneBar.cols(p)[i]),
           ],
           child: ChartScrub(
             label: l?.activityLiveTimeInZonesTitle ?? 'Time in zones',
-            readout: ChartScrub.zoneMinutes(feed.zoneMinutes),
+            keys: ChartScrub.zoneKeys(p, feed.zoneMinutes),
             child: CustomPaint(
                 size: Size.infinite,
                 painter: ZoneBar(_fractions(feed.zoneMinutes), p)),

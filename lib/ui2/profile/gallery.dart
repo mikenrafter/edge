@@ -882,8 +882,12 @@ Map<String, Widget> extraCases() => {
             xLabels: const ['07:00', '12:00'],
             child: ChartScrub(
               label: 'Heart rate',
-              readout: ChartScrub.slots(
-                  hr, (i, v) => '${7 + i}:00 · ${v.round()} bpm'),
+              gaps: hasChartGaps([hr]),
+              time: (at) => '${7 + ChartScrub.slotAt(hr.length, at)}:00',
+              keys: [
+                ChartKey.slots('Heart rate (bpm)', p.on(C.red), hr,
+                    (i, v) => '${v.round()} bpm'),
+              ],
               child: CustomPaint(
                   size: Size.infinite,
                   painter: LineChart(hr, p.on(C.red))),
