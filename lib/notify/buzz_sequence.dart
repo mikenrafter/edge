@@ -28,6 +28,13 @@ class BuzzSequence {
 
   int get length => offsetsMs.length;
 
+  /// From the first write to the last one's start.
+  Duration get playTime => Duration(milliseconds: offsetsMs.last);
+
+  /// How long a dispatcher should wait for the whole rhythm to be written:
+  /// its play time plus room for the last write to be acknowledged.
+  Duration get transportTimeout => playTime + const Duration(seconds: 5);
+
   static List<int> _validated(List<int> o) {
     if (o.isEmpty || o.length > maxBuzzes) {
       throw ArgumentError.value(o.length, 'offsetsMs', 'need 1–$maxBuzzes buzzes');

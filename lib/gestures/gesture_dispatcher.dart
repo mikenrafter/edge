@@ -19,6 +19,11 @@
 //  • Receipt debounce — an unset or wild RTC makes every tap share one identity,
 //    so a persistent claim would lock the feature out forever. For those the only
 //    guard is a 2 s in-memory window on RECEIPT time.
+// ECG on double tap (8I/8L, WHOOP MG only): while GestureSettings.ecgOnDoubleTap
+// is on, a live double tap starts the ECG capture through [onEcgTap] instead of
+// its actions, which are suspended (the Device lab owns that mode). It takes the
+// same once-ever claim / receipt debounce as an action, under `...:ecg`.
+//
 // One action failing never stops the next, and nothing escapes as an unhandled
 // async error: [handle] always completes with a list of outcomes.
 //
@@ -67,6 +72,13 @@ class GestureDispatcher {
   final GestureHandler? onWorkoutToggle;
   final GestureHandler? onLogWater;
 
+  /// 8I: true only on a positively identified WHOOP MG.
+  final bool Function()? ecgSupported;
+
+  /// 8I: start the ECG capture for this live double tap. A throw gives the
+  /// claim back so a retry can run.
+  final GestureHandler? onEcgTap;
+
   final Future<bool> Function(String actionId) _performNative;
   final Future<bool> Function(String key) _claim;
   final Future<void> Function(String key) _release;
@@ -77,6 +89,8 @@ class GestureDispatcher {
     this.onMarkMoment,
     this.onWorkoutToggle,
     this.onLogWater,
+    this.ecgSupported,
+    this.onEcgTap,
     Future<bool> Function(String actionId)? performNative,
     Future<bool> Function(String key)? claim,
     Future<void> Function(String key)? release,
@@ -94,6 +108,13 @@ class GestureDispatcher {
   /// Feed every live event here. Cheap for non-gesture events. Never throws.
   Future<List<GestureOutcome>> handle(StrapEvent e) async {
     if (e.eventId != _doubleTapEventId) return const [];
+    // Lab mode: suspended whether or not the capture below can start (a late
+    // tap, a duplicate, a failed start) so a tap never runs half the lab and
+    // half the normal actions.
+    if (settings.ecgOnDoubleTap && ecgSupported?.call() == true) {
+      if (e.isLive) await _ecgTap(e);
+      return const [];
+    }
     final actions = settings.doubleTapActions;
     if (actions.isEmpty) return const [];
 
@@ -102,6 +123,45 @@ class GestureDispatcher {
       out.add(await _handleOne(e, a));
     }
     return out;
+  }
+
+  Future<void> _ecgTap(StrapEvent e) async {
+    final start = onEcgTap;
+    if (start == null) return;
+    final debounceKey = '${e.identity}:ecg';
+    String? claimKey;
+    if (e.plausible) {
+      claimKey = 'gesture:$debounceKey';
+      try {
+        if (!await _claim(claimKey)) return;
+      } catch (err) {
+        log?.call('[gesture] ecg: claim failed: $err');
+        return;
+      }
+    } else {
+      final last = _lastAccepted[debounceKey];
+      if (last != null && e.receivedAt.difference(last) < _receiptDebounce) {
+        return;
+      }
+      _lastAccepted.removeWhere(
+          (_, t) => e.receivedAt.difference(t) >= _receiptDebounce);
+      _lastAccepted[debounceKey] = e.receivedAt;
+    }
+    try {
+      log?.call('[gesture] double-tap → ecg');
+      await start(e);
+    } catch (err) {
+      log?.call('[gesture] ecg start failed: $err');
+      if (claimKey != null) {
+        try {
+          await _release(claimKey);
+        } catch (relErr) {
+          log?.call('[gesture] ecg: claim release failed: $relErr');
+        }
+      } else {
+        _lastAccepted.remove(debounceKey);
+      }
+    }
   }
 
   Future<GestureOutcome> _handleOne(StrapEvent e, DeviceAction a) async {

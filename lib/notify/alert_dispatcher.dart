@@ -72,6 +72,10 @@ class AlertDispatcher {
     Future<bool> Function()? bandTransport,
     Set<String>? transportTargets,
     bool Function(String target)? targetAllowed,
+    // A band transport that legitimately runs longer than [transportTimeout]
+    // (a recorded rhythm: up to 8 buzzes, 2 s apart) asks for the time it
+    // needs. Never shorter than the default.
+    Duration? bandTimeout,
   }) async {
     final typed = rule is AlertRule
         ? rule
@@ -134,8 +138,13 @@ class AlertDispatcher {
             : bandTransport ?? band;
         // Do not release a timed-out ownership: the platform write may still
         // complete. A late success must never race a fresh retry into two buzzes.
+        final limit = target == 'band' &&
+                bandTimeout != null &&
+                bandTimeout > transportTimeout
+            ? bandTimeout
+            : transportTimeout;
         success = await transport().timeout(
-          transportTimeout,
+          limit,
           onTimeout: () {
             claimed = false;
             reason = 'deliveryUnconfirmed';

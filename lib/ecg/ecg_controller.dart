@@ -15,6 +15,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
 import 'ecg_guard_store.dart';
 import 'ecg_models.dart';
@@ -138,6 +139,11 @@ class EcgController extends ChangeNotifier {
   final int Function() nowMs;
 
   static const String screenOwner = 'ecg';
+
+  /// Every live packet that passes the armed gate, before the reducer sees it.
+  /// A tap on the stream for a consumer that only reads (the Device lab's
+  /// touch counter); it must not throw and is never awaited.
+  void Function(LabradorR17 r17)? onFrame;
 
   EcgController({
     required this.transport,
@@ -372,6 +378,11 @@ class EcgController extends ChangeNotifier {
   void _onFrame(int epoch, EcgTransportFrame e) {
     if (!_armed || _restartInFlight) return;
     final r17 = e.r17;
+    try {
+      onFrame?.call(r17);
+    } catch (err) {
+      log('[ECG] frame listener failed: $err');
+    }
     // The live preview shows real samples from the moment the pipeline is
     // armed (zeros before contact); only the accepted window is ever saved.
     live.push(r17.samples);

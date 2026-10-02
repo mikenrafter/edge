@@ -7,8 +7,10 @@
 //     ONLY while Mark moment is selected, and never under an action that cannot
 //     be replayed safely;
 //   * only what this phone can do is offered;
-//   * it never names, mentions or enables one/three/four-tap gestures — those
-//     are Phase 5B and gated on a measured classifier;
+//   * it never names, mentions or offers a one-tap gesture. Two taps is the
+//     firmware's double tap; 3–5 taps are the draft ECG-touch counts of 8L
+//     (WHOOP MG only, test/phase8/gestures_draft_taps_test.dart), so those
+//     words are allowed now; single-tap wording stays banned;
 //   * nothing overflows at 2x text.
 
 import 'dart:io';
@@ -245,7 +247,7 @@ void main() {
   });
 
   group('Phase 5B stays out of this screen', () {
-    testWidgets('no text names or offers one, three or four taps', (t) async {
+    testWidgets('no text names or offers a one-tap gesture', (t) async {
       await _pump(t,
           supported: _supported({
             DeviceAction.mediaPlayPause,
@@ -255,9 +257,10 @@ void main() {
           }),
           chosen: {DeviceAction.markMoment},
           replay: {DeviceAction.markMoment});
-      final forbidden = RegExp(
-          r'one tap|three tap|four tap|single tap|triple tap|1 tap|3 tap|4 tap',
-          caseSensitive: false);
+      // 8L adds the draft "3 taps"/"4 taps"/"5 taps" rows (ECG touches on a
+      // WHOOP MG), so only one-tap wording is forbidden here.
+      final forbidden =
+          RegExp(r'one tap|single tap|\b1 tap', caseSensitive: false);
       final texts = t
           .widgetList<Text>(find.byType(Text))
           .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '')

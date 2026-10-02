@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../platform/device_actions.dart';
 import 'device_action.dart';
+import 'ecg_tap_counter.dart';
 
 class GestureSettings extends ChangeNotifier {
   static const _kActions = 'gesture_double_tap_actions';
@@ -20,6 +21,14 @@ class GestureSettings extends ChangeNotifier {
   /// for the one-time `gesture` alert-rule migration.
   static const _kLegacyDoubleTap = 'gesture_double_tap';
   static const _kReplayPrefix = 'gesture_replay_';
+
+  /// 3–5 taps (8L draft): one bitmask per count, same layout as [_kActions].
+  /// 2 taps stays on [_kActions].
+  static const _kTapActionsPrefix = 'gesture_tap_actions_';
+  static const _kEcgOnDoubleTap = 'gesture_ecg_on_double_tap';
+  static const _kEcgStartMs = 'gesture_ecg_start_ms';
+  static const _kEcgGapMs = 'gesture_ecg_gap_ms';
+  static const _kEcgConfirmMs = 'gesture_ecg_confirm_ms';
 
   static int maskOf(Iterable<DeviceAction> actions) {
     var m = 0;
@@ -38,6 +47,12 @@ class GestureSettings extends ChangeNotifier {
 
   Set<DeviceAction> _actions = const {};
 
+  /// Actions for 3, 4 and 5 taps (8L draft). Absent key = no actions.
+  final Map<int, Set<DeviceAction>> _tapActions = {};
+
+  bool _ecgOnDoubleTap = false;
+  EcgTapThresholds _ecgThresholds = EcgTapThresholds();
+
   /// Explicit user choices only; absence means "follow the default".
   final Map<DeviceAction, bool> _replay = {};
 
@@ -45,6 +60,28 @@ class GestureSettings extends ChangeNotifier {
   /// off state — opt-in, so we never surprise a user (or pay the iOS bg
   /// keep-alive cost) until they switch an action on.
   Set<DeviceAction> get doubleTapActions => Set.unmodifiable(_actions);
+
+  /// Actions for [n] taps, 2..5. `n == 2` is [doubleTapActions].
+  Set<DeviceAction> actionsForTaps(int n) {
+    if (n < 2 || n > 5) throw ArgumentError.value(n, 'n', 'must be 2..5');
+    if (n == 2) return doubleTapActions;
+    return Set.unmodifiable(_tapActions[n] ?? const <DeviceAction>{});
+  }
+
+  /// The highest tap count with an action mapped; 2 when none of 3..5 is.
+  int get maxMappedTaps {
+    for (var n = 5; n >= 3; n--) {
+      if ((_tapActions[n] ?? const <DeviceAction>{}).isNotEmpty) return n;
+    }
+    return 2;
+  }
+
+  /// 8I: a live double tap starts an ECG capture instead of its actions
+  /// (WHOOP MG only; the Device lab owns the switch). Off by default.
+  bool get ecgOnDoubleTap => _ecgOnDoubleTap;
+
+  /// 8L: the three adjustable ECG-touch windows.
+  EcgTapThresholds get ecgTapThresholds => _ecgThresholds;
 
   /// Actions offerable on THIS platform: `none` always, plus whatever native says
   /// it can do. Until bootstrap() runs we only know `none`.
@@ -78,6 +115,21 @@ class GestureSettings extends ChangeNotifier {
       final v = prefs.getBool('$_kReplayPrefix${a.id}');
       if (v != null) _replay[a] = v;
     }
+    _ecgOnDoubleTap = prefs.getBool(_kEcgOnDoubleTap) ?? false;
+    // A stored value that is out of range or off the 50 ms grid falls back to
+    // THAT field's default; the other fields keep what was stored.
+    int field(String key, int dflt, (int, int) range) {
+      final v = prefs.getInt(key);
+      return v != null && EcgTapThresholds.isValid(v, range) ? v : dflt;
+    }
+
+    final d = EcgTapThresholds();
+    _ecgThresholds = EcgTapThresholds(
+      startMs: field(_kEcgStartMs, d.startMs, EcgTapThresholds.startRange),
+      gapMs: field(_kEcgGapMs, d.gapMs, EcgTapThresholds.gapRange),
+      confirmMs:
+          field(_kEcgConfirmMs, d.confirmMs, EcgTapThresholds.confirmRange),
+    );
 
     final caps = await DeviceActions.capabilities();
     supported = {
@@ -93,6 +145,12 @@ class GestureSettings extends ChangeNotifier {
     // mapped to something unsupported.
     actions = actions.where(supported.contains).toSet();
     _actions = actions;
+    _tapActions.clear();
+    for (var n = 3; n <= 5; n++) {
+      final m = prefs.getInt('$_kTapActionsPrefix$n');
+      if (m == null) continue;
+      _tapActions[n] = actionsOfMask(m).where(supported.contains).toSet();
+    }
     final mask = maskOf(actions);
     if (stored != mask) await prefs.setInt(_kActions, mask);
     notifyListeners();
@@ -107,6 +165,38 @@ class GestureSettings extends ChangeNotifier {
     _actions = next;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kActions, maskOf(next));
+    notifyListeners();
+  }
+
+  Future<void> setActionsForTaps(int n, Set<DeviceAction> actions) async {
+    if (n < 2 || n > 5) throw ArgumentError.value(n, 'n', 'must be 2..5');
+    if (n == 2) return setDoubleTapActions(actions);
+    final next = {
+      for (final a in DeviceAction.values)
+        if (a != DeviceAction.none && actions.contains(a)) a,
+    };
+    if (setEquals(next, actionsForTaps(n))) return;
+    _tapActions[n] = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('$_kTapActionsPrefix$n', maskOf(next));
+    notifyListeners();
+  }
+
+  Future<void> setEcgOnDoubleTap(bool on) async {
+    if (_ecgOnDoubleTap == on) return;
+    _ecgOnDoubleTap = on;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEcgOnDoubleTap, on);
+    notifyListeners();
+  }
+
+  Future<void> setEcgTapThresholds(EcgTapThresholds t) async {
+    if (t == _ecgThresholds) return;
+    _ecgThresholds = t;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kEcgStartMs, t.startMs);
+    await prefs.setInt(_kEcgGapMs, t.gapMs);
+    await prefs.setInt(_kEcgConfirmMs, t.confirmMs);
     notifyListeners();
   }
 
