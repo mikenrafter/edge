@@ -54,6 +54,7 @@ class Moment {
     this.color,
     this.until,
     this.detail = '',
+    this.eventId,
   });
 
   /// Epoch seconds. The ONLY sort key — nothing on this page is ranked.
@@ -71,6 +72,36 @@ class Moment {
   /// not on. Those render in muted ink, because a colour is a claim that the
   /// row belongs to a domain and none of them do.
   final Color? color;
+
+  /// The band event id this line came from, or NULL for anything else. Only
+  /// equal non-null ids can be folded together by [groupRepeatedEvents].
+  final int? eventId;
+}
+
+/// A run of consecutive moments that are the same band event.
+@immutable
+class MomentGroup {
+  const MomentGroup(this.moments);
+  final List<Moment> moments;
+  int get count => moments.length;
+  Moment get first => moments.first;
+}
+
+/// Folds each run of consecutive moments sharing one non-null [Moment.eventId]
+/// into a single group. Pure; order is kept and nothing is dropped. A moment
+/// with no event id is always a group of one — equal titles are not identity.
+List<MomentGroup> groupRepeatedEvents(List<Moment> sorted) {
+  final out = <List<Moment>>[];
+  for (final m in sorted) {
+    if (out.isNotEmpty &&
+        m.eventId != null &&
+        out.last.last.eventId == m.eventId) {
+      out.last.add(m);
+    } else {
+      out.add([m]);
+    }
+  }
+  return [for (final g in out) MomentGroup(g)];
 }
 
 /// Something that was logged for this day and carries no time of day. Kept
@@ -238,6 +269,7 @@ List<Moment> dayMoments({
       title: def.$1,
       detail: clockOfTs(t),
       icon: def.$2,
+      eventId: id,
     ));
   }
 
@@ -944,7 +976,8 @@ List<Widget> timelineBody(BuildContext c, TimelineData d) {
             pad: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
             child: Column(
               children: [
-                for (final m in d.moments) MomentRow(m),
+                for (final g in groupRepeatedEvents(d.moments))
+                  g.count > 1 ? MomentGroupRow(g) : MomentRow(g.first),
               ],
             ),
           ),
@@ -1053,6 +1086,61 @@ class MomentRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A run of the same band event as one line, "<title> · N times", that opens
+/// to the individual times. Collapsed by default: five double taps in a row is
+/// one thing that happened, not five.
+class MomentGroupRow extends StatefulWidget {
+  const MomentGroupRow(this.group, {super.key});
+  final MomentGroup group;
+
+  @override
+  State<MomentGroupRow> createState() => _MomentGroupRowState();
+}
+
+class _MomentGroupRowState extends State<MomentGroupRow> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final g = widget.group, f = g.first;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _open = !_open),
+          child: Row(
+            children: [
+              Expanded(
+                child: MomentRow(Moment(
+                  at: f.at,
+                  title: '${f.title} · ${g.count} times',
+                  icon: f.icon,
+                  color: f.color,
+                )),
+              ),
+              Icon(_open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
+                  size: 17, color: p.ink3),
+            ],
+          ),
+        ),
+        if (_open)
+          Padding(
+            padding: const EdgeInsets.only(left: S.x4, bottom: S.x2),
+            child: Wrap(
+              spacing: S.x4,
+              runSpacing: S.x1,
+              children: [
+                for (final m in g.moments)
+                  Text(clockOfTs(m.at), style: F.n17.copyWith(color: p.ink2)),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
