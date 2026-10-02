@@ -23,11 +23,13 @@ import 'profile.dart';
 export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 
 /// The 8I note, said on this screen and on Gestures: what extended gestures
-/// need and what is not offered yet. Never names a single tap.
+/// need, and that 3–5 taps are a draft to try here first. Never names a
+/// single tap.
 const String kExtendedGesturesNote =
     'ECG on double tap and the 3–5 tap rows need a WHOOP MG. '
     'WHOOP 4.0 has no ECG sensor. '
-    'Other tap counts are not available until they are measured (phase 5B).';
+    'The 3–5 tap rows are a draft. Try them here first: every step is '
+    'logged with its timing.';
 
 class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});

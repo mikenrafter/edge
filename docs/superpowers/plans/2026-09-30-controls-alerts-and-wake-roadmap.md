@@ -561,8 +561,9 @@ its parent is off.
 ### 8I note — what the extended gestures say
 
 The Device lab and the Gestures screen both state plainly that ECG on double
-tap needs a WHOOP MG, that WHOOP 4.0 has no ECG sensor, and that one-to-four
-tap counts are not available until measured (5B).
+tap needs a WHOOP MG, that WHOOP 4.0 has no ECG sensor, and that the 3–5
+tap rows are a draft to try in the Device lab first. (5B's IMU tap
+classifier was dropped in favour of 8L, so nothing waits on a measurement.)
 
 ### 8L — Draft 3–5 tap gestures (ECG contact counting, WHOOP MG only)
 

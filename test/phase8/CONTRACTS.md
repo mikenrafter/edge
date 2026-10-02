@@ -338,7 +338,8 @@ text containing `No device`.
 - `DeviceDetailView` gains `VoidCallback? onDeviceLab`; band → row `Device lab`.
 - 8I note copy (DeviceLabView and, in `gestures_copy_test.dart` *compile-safe*,
   BandGesturesView): text containing `WHOOP MG`, `WHOOP 4.0 has no ECG sensor`,
-  and a line matching `/tap counts.*not available/i`. Never names a single tap
+  and a line matching `/3–5 tap rows are a draft/i` (the earlier "not available
+  until measured" line described the dropped IMU classifier). Never names a single tap
   (`one tap|single tap|1 tap`).
 
 ## 8L — draft 3–5 taps

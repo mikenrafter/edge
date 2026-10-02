@@ -1,7 +1,8 @@
 // 8I note — the Gestures screen states plainly that ECG on double tap needs a
-// WHOOP MG, that WHOOP 4.0 has no ECG sensor, and that other tap counts are
-// not available until measured (5B). Tap 1 is never offered or named; the
-// draft 3–5 ECG-touch rows (8L) are the only other counts on the screen.
+// WHOOP MG, that WHOOP 4.0 has no ECG sensor, and that the 3–5 ECG-touch
+// rows (8L) are a draft to try in the Device lab first. Tap 1 is never offered
+// or named. (An earlier note said other counts were "not available until
+// measured"; that described the dropped IMU tap classifier, not 8L.)
 // See test/phase8/CONTRACTS.md §8I and §8L.
 
 import 'package:flutter/material.dart';
@@ -28,8 +29,9 @@ void main() {
     expect(find.textContaining('WHOOP 4.0 has no ECG sensor'), findsWidgets);
     expect(
         find.textContaining(
-            RegExp(r'tap counts.*not available', caseSensitive: false)),
+            RegExp(r'3–5 tap rows are a draft', caseSensitive: false)),
         findsWidgets);
+    expect(find.textContaining('not available until'), findsNothing);
     final texts = t
         .widgetList<Text>(find.byType(Text))
         .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '');

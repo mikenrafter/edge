@@ -184,7 +184,7 @@ void main() {
       expect(find.textContaining('WHOOP 4.0 has no ECG sensor'), findsWidgets);
       expect(
           find.textContaining(
-              RegExp(r'tap counts.*not available', caseSensitive: false)),
+              RegExp(r'3–5 tap rows are a draft', caseSensitive: false)),
           findsWidgets);
     });
   });
