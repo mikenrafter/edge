@@ -145,11 +145,11 @@ void main() {
     final c = h.build();
     await c.reload();
     final t = DateTime(2026, 10, 5, 7, 0); // a Monday
-    final tl = c.timelineAt(t)!;
+    final tl = c.timelineAt(t);
     expect(tl.configuration, WakeConfiguration.both);
     expect(tl.parts.where((p) => p.bandNative).map((p) => p.id), ['fallback']);
     expect(tl.parts.where((p) => p.requiresPhone), isNotEmpty);
-    expect(c.timelineAt(DateTime(2026, 10, 6, 7, 0))!.configuration,
+    expect(c.timelineAt(DateTime(2026, 10, 6, 7, 0)).configuration,
         WakeConfiguration.neither);
   });
 

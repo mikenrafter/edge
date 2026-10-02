@@ -66,7 +66,7 @@ void main() {
     test('the orchestrator reaches inference only through the observer seam',
         () {
       final orch = _code('lib/wake/wake_orchestrator.dart');
-      expect(orch, contains('observer.observe('));
+      expect(RegExp(r'observer\s*\.observe\(').hasMatch(orch), isTrue);
       expect(orch, isNot(contains('CausalStager')));
     });
 
@@ -86,6 +86,14 @@ void main() {
       final r = observeNaturalSync(_night(minutes: 5));
       expect(r.observation.stage, 'absent');
       expect(r.observation.abstention, 'warmup');
+    });
+
+    test('after warm-up a quiet night is staged, with bounded confidence', () {
+      final r = observeNaturalSync(_night(minutes: 50));
+      expect(r.observation.stage, isIn(['wake', 'nrem', 'rem']));
+      expect(r.observation.abstention, isNull);
+      expect(r.observation.confidence, inInclusiveRange(0.15, 0.6));
+      expect(r.observation.evidenceAgeMs, lessThanOrEqualTo(kNaturalMaxEvidenceAgeMs));
     });
 
     test('empty input abstains rather than guessing', () {

@@ -229,6 +229,39 @@ void main() {
       expect(await const DbWakeStateStore().load(), isNull);
     });
 
+    test('loadWakeSamples reads the collected 1 Hz store and RR beats, and '
+        'omits a NULL hr or accel instead of reading it as zero', () async {
+      final db = await LocalDb.instance;
+      Future<void> row(int sec, int? hr, double? ax) => db.insert('decoded_onehz', {
+            'device_id': '',
+            'ts_ms': sec * 1000,
+            'rec_ts': sec,
+            'counter': sec,
+            'hr': hr,
+            'ax': ax,
+            'ay': ax == null ? null : 0.0,
+            'az': ax == null ? null : 1.0,
+          });
+      await row(100, 55, 0.0);
+      await row(101, null, 0.0); // no HR this second
+      await row(102, 0, 0.0); // off-skin sentinel is a real value
+      await row(103, 57, null); // no accel this second
+      await row(200, 60, 0.0); // outside the range
+      await db.insert('decoded_rr', {
+        'device_id': '', 'ts_ms': 100000, 'rec_ts': 100,
+        'beat_index': 0, 'rr_ts_ms': 100000, 'rr_ms': 980,
+      });
+      final got = await loadWakeSamples(
+          DateTime.fromMillisecondsSinceEpoch(100000),
+          DateTime.fromMillisecondsSinceEpoch(104000));
+      expect(got.hr.map((e) => e[0]), [100000, 102000, 103000]);
+      expect(got.hr.map((e) => e[1]), [55, 0, 57]);
+      expect(got.accel.map((e) => e[0]), [100000, 101000, 102000]);
+      expect(got.rr, [
+        [100000.0, 980.0]
+      ]);
+    });
+
     test('the upgrade state is stored in wake_meta', () async {
       expect(await loadWakeUpgradeState(), WakeUpgradeState.none);
       await saveWakeUpgradeState(WakeUpgradeState.pending);

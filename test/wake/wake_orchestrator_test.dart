@@ -5,7 +5,6 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/sync/headless_gate.dart';
-import 'package:openstrap_edge/wake/natural_wake.dart';
 import 'package:openstrap_edge/wake/wake_orchestrator.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 
@@ -57,7 +56,7 @@ void main() {
   group('four configurations', () {
     test('neither: no samples fetched, no haptic, fallback still verified',
         () async {
-      final r = Rig(at: _t.subtract(const Duration(minutes: 20)));
+      final r = Rig(at: _t.subtract(const Duration(minutes: 5)));
       await r.tick(planFor(_t));
       expect(r.env.haptics, isEmpty);
       expect(r.observer.requests, isEmpty);
@@ -105,7 +104,7 @@ void main() {
 
     test('the native alarm at T is armed in every configuration', () async {
       for (final (n, g) in [(0, 0), (60, 0), (0, 15), (60, 15)]) {
-        final r = Rig(at: _t.subtract(const Duration(minutes: 40)));
+        final r = Rig(at: _t.subtract(const Duration(minutes: 5)));
         r.env.armedEpochSec = null; // nothing armed yet
         await r.tick(planFor(_t, natural: n, gradual: g));
         expect(r.env.armCalls, [_tSec], reason: 'config natural=$n gradual=$g');
@@ -460,6 +459,15 @@ void main() {
       final steps = await r.entries('gradual');
       expect(steps.where((e) => e.data['result'] == 'skippedLate'), isNotEmpty);
       expect(r.env.haptics.length, lessThanOrEqualTo(2));
+    });
+
+    test('outside the active span a tick does nothing and touches no store',
+        () async {
+      final r = Rig(at: _t.subtract(const Duration(hours: 5)));
+      await r.tick(planFor(_t, natural: 60, gradual: 30));
+      expect(r.trace.all, isEmpty);
+      expect(r.state.value, isNull);
+      expect(r.env.armCalls, isEmpty);
     });
 
     test('nothing fires at or after T: the native alarm owns T', () async {

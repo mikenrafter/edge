@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../data/db.dart';
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
+import '../wake/wake_settings.dart' show naturalCollectionLead;
 
 class HighFreqWakePlan {
   final bool shouldEnable;
@@ -9,16 +10,33 @@ class HighFreqWakePlan {
   final String source;
   final int sampleCount;
 
+  /// How long the band is asked to keep prompting: [HighFreqWakeWindow.lease]
+  /// by default, longer when a Natural Wake window needs its warm-up covered.
+  final Duration lease;
+
   const HighFreqWakePlan({
     required this.shouldEnable,
     required this.targetWake,
     required this.source,
     required this.sampleCount,
+    this.lease = HighFreqWakeWindow.lease,
   });
 }
 
 class HighFreqWakeWindow {
+  /// The floor. A Natural Wake window longer than 30 minutes needs more: see
+  /// [leaseFor].
   static const Duration lease = Duration(minutes: 90);
+
+  /// Lead time for an armed window of [naturalMinutes] (0 = none): the window
+  /// itself plus the causal stager's warm-up and a margin
+  /// ([naturalCollectionLead]), never less than [lease]. 90 minutes cannot
+  /// cover 120 + 20.
+  static Duration leaseFor(int naturalMinutes) {
+    if (naturalMinutes <= 0) return lease;
+    final need = naturalCollectionLead(naturalMinutes);
+    return need > lease ? need : lease;
+  }
   static const int historyDays = 14;
   static const int minSamples = 3;
 
@@ -53,6 +71,7 @@ class HighFreqWakeWindow {
     int scheduledWindowMinutes = 0,
     ExpectedSleepSchedule? expectedSchedule,
   }) {
+    final lease = leaseFor(scheduledWindowMinutes);
     final wakeMinutes = <int>[];
     for (final row in rows) {
       final minute = _wakeMinuteOfDay(row);
@@ -87,6 +106,7 @@ class HighFreqWakeWindow {
         targetWake: targetWake,
         source: 'habitual_wake',
         sampleCount: wakeMinutes.length,
+        lease: lease,
       );
     }
 
@@ -101,7 +121,8 @@ class HighFreqWakeWindow {
       final start = window.$2.subtract(lease);
       habitualPlan = HighFreqWakePlan(
         shouldEnable: !now.isBefore(start) && now.isBefore(window.$2),
-        targetWake: window.$2, source: 'expected_sleep_schedule', sampleCount: 0);
+        targetWake: window.$2, source: 'expected_sleep_schedule', sampleCount: 0,
+        lease: lease);
     }
 
     // The scheduled-alarm window only takes over when the habitual window
@@ -117,6 +138,7 @@ class HighFreqWakeWindow {
           targetWake: scheduledWindowEnd,
           source: 'scheduled_alarm',
           sampleCount: wakeMinutes.length,
+          lease: lease,
         );
       }
     }

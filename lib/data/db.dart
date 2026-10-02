@@ -350,7 +350,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 55;
+  static const int schemaVersion = 56;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -462,6 +462,7 @@ class LocalDb {
         await _createNotifFired(db);
         await _createNotifSlots(db);
         await _createAlarmSchedule(db);
+        await _createWakeTables(db);
         await _ensureCoachViews(db);
       },
       onUpgrade: (db, oldV, newV) async {
@@ -1087,6 +1088,16 @@ class LocalDb {
             'INTEGER NOT NULL DEFAULT 0',
           );
         }
+        if (oldV < 56) {
+          // Natural Wake / Gradual Wake split (phase 6B). Additive only: four
+          // columns on alarm_schedule, two new tables, and a once-only copy of
+          // the legacy Smart Wake window into natural_window_minutes guarded
+          // by a wake_meta marker. smart_window_minutes is kept, never
+          // dropped. Gradual Wake is NEVER enabled here. No kAlgoVersion
+          // bump: nothing derived moves. _repairOpenSchema re-runs all of
+          // this on every open, so a same-version merged build self-heals.
+          await _ensureWakeSchema(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1176,6 +1187,7 @@ class LocalDb {
       db, 'alarm_schedule', 'smart_window_minutes',
       'INTEGER NOT NULL DEFAULT 0',
     );
+    await _ensureWakeSchema(db);
     await _createEcgTables(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
@@ -1764,9 +1776,165 @@ class LocalDb {
         minute  INTEGER NOT NULL,
         enabled INTEGER NOT NULL DEFAULT 1,
         smart_window_minutes INTEGER NOT NULL DEFAULT 0,
+        natural_window_minutes INTEGER NOT NULL DEFAULT 0,
+        gradual_window_minutes INTEGER NOT NULL DEFAULT 0,
+        gradual_pattern TEXT NOT NULL DEFAULT 'ramp',
+        gradual_cadence_sec INTEGER NOT NULL DEFAULT 180,
         PRIMARY KEY (weekday)
       )
     ''');
+  }
+
+  // ── Natural Wake / Gradual Wake (phase 6B) ──────────────────────────────
+
+  /// Creates the wake tables, adds the per-weekday columns, and runs the
+  /// once-only Smart Wake split. Idempotent and cheap; called from the v56
+  /// rung AND every open.
+  static Future<void> _ensureWakeSchema(Database db) async {
+    // Mid-ladder the table may not exist yet on an old DB (it is created by the
+    // v50 rung and by repair); IF NOT EXISTS makes this safe either way.
+    await _createAlarmSchedule(db);
+    await _createWakeTables(db);
+    await _addColumnIfMissing(db, 'alarm_schedule', 'natural_window_minutes',
+        'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(db, 'alarm_schedule', 'gradual_window_minutes',
+        'INTEGER NOT NULL DEFAULT 0');
+    await _addColumnIfMissing(
+        db, 'alarm_schedule', 'gradual_pattern', "TEXT NOT NULL DEFAULT 'ramp'");
+    await _addColumnIfMissing(db, 'alarm_schedule', 'gradual_cadence_sec',
+        'INTEGER NOT NULL DEFAULT 180');
+    try {
+      await _migrateWakeSplit(db);
+    } catch (_) {
+      // Never brick an open over a copy of one number (invariant 11). No marker
+      // is written on failure, so the next open's repair pass retries.
+    }
+  }
+
+  /// `wake_meta` is a tiny key/value table (upgrade-explanation state, the
+  /// persisted orchestrator run state). `wake_trace` is the per-wake decision
+  /// trace, pruned by [appendWakeTrace].
+  static Future<void> _createWakeTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS wake_meta (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS wake_trace (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        wake_epoch INTEGER NOT NULL,
+        at_ms      INTEGER NOT NULL,
+        kind       TEXT NOT NULL,
+        data_json  TEXT NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_wake_trace_wake '
+        'ON wake_trace(wake_epoch, id)');
+  }
+
+  /// Smart Wake -> Natural Wake, ONCE (marker `wake_split_v1`). A day that had
+  /// a Smart Wake window carries it into natural_window_minutes, rounded to the
+  /// 15-minute step, and the user is flagged `upgrade_explanation` = 'pending':
+  /// estimated-REM behaviour does not run until they acknowledge. Gradual Wake
+  /// is not touched. Alarm hour/minute/enabled and smart_window_minutes are
+  /// never modified. A re-run is a no-op, so a later user edit is never undone.
+  static Future<void> _migrateWakeSplit(DatabaseExecutor db) async {
+    final done = await db.query('wake_meta',
+        where: 'key = ?', whereArgs: ['wake_split_v1'], limit: 1);
+    if (done.isNotEmpty) return;
+    final rows = await db.query('alarm_schedule',
+        columns: ['weekday', 'smart_window_minutes'],
+        where: 'smart_window_minutes > 0');
+    for (final r in rows) {
+      final smart = (r['smart_window_minutes'] as num).toInt();
+      final steps = (smart / 15).round().clamp(1, 8).toInt();
+      await db.update('alarm_schedule', {'natural_window_minutes': steps * 15},
+          where: 'weekday = ?', whereArgs: [r['weekday']]);
+    }
+    if (rows.isNotEmpty) {
+      await db.insert('wake_meta', {'key': _wakeUpgradeKey, 'value': 'pending'},
+          conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
+    await db.insert('wake_meta', {'key': 'wake_split_v1', 'value': '1'},
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  @visibleForTesting
+  static Future<void> debugRunWakeSplitMigration() async =>
+      _migrateWakeSplit(await instance);
+
+  /// Key in `wake_meta`: 'pending' | 'acknowledged'; absent = nothing to
+  /// explain. (wake_stores.dart names the same key for the app side.)
+  static const String _wakeUpgradeKey = 'upgrade_explanation';
+
+  static Future<String?> wakeMetaGet(String key) async {
+    final db = await instance;
+    final r = await db.query('wake_meta',
+        columns: ['value'], where: 'key = ?', whereArgs: [key], limit: 1);
+    return r.isEmpty ? null : r.first['value'] as String;
+  }
+
+  static Future<void> wakeMetaSet(String key, String value) async {
+    final db = await instance;
+    await db.insert('wake_meta', {'key': key, 'value': value},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Append one decision-trace row, pruning wakes older than 14 days (by the
+  /// absolute wake epoch, so a DST or zone change cannot shift the cutoff).
+  static Future<void> appendWakeTrace({
+    required int wakeEpochSec,
+    required int atMs,
+    required String kind,
+    required String dataJson,
+  }) async {
+    final db = await instance;
+    await db.insert('wake_trace', {
+      'wake_epoch': wakeEpochSec,
+      'at_ms': atMs,
+      'kind': kind,
+      'data_json': dataJson,
+    });
+    await db.delete('wake_trace',
+        where: 'wake_epoch < ?', whereArgs: [wakeEpochSec - 14 * 86400]);
+  }
+
+  static Future<List<Map<String, Object?>>> wakeTraceRows(
+      int wakeEpochSec) async {
+    final db = await instance;
+    return db.query('wake_trace',
+        where: 'wake_epoch = ?', whereArgs: [wakeEpochSec], orderBy: 'id ASC');
+  }
+
+  /// HR/accel for the causal stager: `decoded_onehz` rows with `rec_ts` (unix
+  /// s) in [sinceSec, untilSec). Unlike [onehzHrAccelBetween] a row with a
+  /// NULL hr or accel is returned as-is, so the stager can abstain with the
+  /// right reason (`missingHr`/`missingAccel`) rather than the gap vanishing.
+  static Future<List<Map<String, Object?>>> onehzForStager(
+      int sinceSec, int untilSec) async {
+    final db = await instance;
+    return db.query(
+      'decoded_onehz',
+      columns: const ['rec_ts', 'hr', 'ax', 'ay', 'az'],
+      where: 'rec_ts >= ? AND rec_ts < ?',
+      whereArgs: [sinceSec, untilSec],
+      orderBy: 'rec_ts ASC',
+    );
+  }
+
+  /// RR beats for the same span: `rr_ts_ms` is the record second in ms.
+  static Future<List<Map<String, Object?>>> rrForStager(
+      int sinceMs, int untilMs) async {
+    final db = await instance;
+    return db.query(
+      'decoded_rr',
+      columns: const ['rr_ts_ms', 'rr_ms'],
+      where: 'rr_ts_ms >= ? AND rr_ts_ms < ?',
+      whereArgs: [sinceMs, untilMs],
+      orderBy: 'rr_ts_ms ASC, beat_index ASC',
+    );
   }
 
   /// Every configured weekday row, in no particular order — callers that care
@@ -1970,6 +2138,10 @@ class LocalDb {
     required int minute,
     required bool enabled,
     int smartWindowMinutes = 0,
+    int naturalWindowMinutes = 0,
+    int gradualWindowMinutes = 0,
+    String gradualPattern = 'ramp',
+    int gradualCadenceSec = 180,
   }) async {
     final db = await instance;
     await db.insert(
@@ -1980,6 +2152,10 @@ class LocalDb {
         'minute': minute,
         'enabled': enabled ? 1 : 0,
         'smart_window_minutes': smartWindowMinutes,
+        'natural_window_minutes': naturalWindowMinutes,
+        'gradual_window_minutes': gradualWindowMinutes,
+        'gradual_pattern': gradualPattern,
+        'gradual_cadence_sec': gradualCadenceSec,
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
