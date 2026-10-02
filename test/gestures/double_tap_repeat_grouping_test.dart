@@ -36,7 +36,7 @@ StrapEvent _tap(int sec, {int ms = 0, int lateMs = 1000}) {
 }
 
 class _Rig {
-  _Rig({this.max = 5, this.windowMs = 2500}) {
+  _Rig({this.max = 5}) {
     session = DoubleTapRepeatSession(
       maxTaps: () => max,
       window: () => Duration(milliseconds: windowMs),
@@ -44,7 +44,8 @@ class _Rig {
       onFinished: finished.add,
     );
   }
-  int max, windowMs;
+  int max;
+  int windowMs = 2500;
   late final DoubleTapRepeatSession session;
   final steps = <String>[];
   final finished = <int>[];

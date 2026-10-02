@@ -55,9 +55,6 @@ class _Rig {
     this.endGate,
     this.recordGate,
     this.strapClock,
-    this.beginTimeout = const Duration(milliseconds: 40),
-    this.endTimeout = const Duration(milliseconds: 40),
-    this.recordTimeout = const Duration(milliseconds: 40),
   }) {
     session = EcgTapSession(
       beginStream: () async {
@@ -98,7 +95,9 @@ class _Rig {
   }
 
   final Completer<void>? beginGate, endGate, recordGate;
-  final Duration beginTimeout, endTimeout, recordTimeout;
+  static const Duration beginTimeout = Duration(milliseconds: 40);
+  static const Duration endTimeout = Duration(milliseconds: 40);
+  static const Duration recordTimeout = Duration(milliseconds: 40);
   int Function()? strapClock;
   void Function()? stopTakesStrapSec;
   bool alive = true;

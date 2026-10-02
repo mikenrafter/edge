@@ -63,7 +63,7 @@ LabradorR17 _packet(
     );
 
 class _Rig {
-  _Rig({this.max = 3}) {
+  _Rig() {
     session = EcgTapSession(
       beginStream: () async => true,
       endStream: () async => ended++,
@@ -81,7 +81,7 @@ class _Rig {
     );
   }
 
-  final int max;
+  final int max = 3;
   final Completer<bool> ack = Completer<bool>();
   DateTime now = _t0;
   late final EcgTapSession session;
