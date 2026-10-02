@@ -4,8 +4,9 @@
 # install on purpose, so this never replaces or conflicts with the real app.
 #
 # Device choice: EDGE_DEVICE or ANDROID_SERIAL if set; otherwise the only
-# attached device. With none or several it stops and says what to do, rather
-# than letting `adb` fail with "more than one device".
+# attached device, or the only physical one when emulators are also
+# running. With none or several it stops and says what to do, rather than
+# letting `adb` fail with "more than one device".
 #
 # --profile builds Flutter's profile mode instead: AOT-compiled like a release,
 # so derivation and sync run at release speed. Flutter's profile build type
@@ -51,6 +52,10 @@ if [[ -n "$want" ]]; then
   device="$want"
 elif (( ${#ready[@]} == 1 )); then
   device="${ready[0]}"
+elif mapfile -t phones < <(printf '%s\n' "${ready[@]}" | grep -v '^emulator-') &&
+     (( ${#phones[@]} == 1 )); then
+  # An emulator left running beside one real phone: the phone is the target.
+  device="${phones[0]}"
 elif (( ${#ready[@]} == 0 )); then
   echo "error: no adb device is ready." >&2
   (( ${#blocked[@]} )) && printf '  not usable: %s\n' "${blocked[@]}" >&2
