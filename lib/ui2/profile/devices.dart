@@ -2479,6 +2479,10 @@ class DeviceDetailView extends StatelessWidget {
   final VoidCallback? onFind, onForget, onSync;
   final SyncPresentationState? syncPresentation;
 
+  /// The sync panel's time source. Production leaves it null (wall clock);
+  /// the proof goldens pin it so a ticking elapsed time stays reproducible.
+  final DateTime Function()? syncClock;
+
   /// Open the Device lab (band rows only). Null hides the row.
   final VoidCallback? onDeviceLab;
 
@@ -2511,6 +2515,7 @@ class DeviceDetailView extends StatelessWidget {
       this.onSync,
       this.onDeviceLab,
       this.syncPresentation,
+      this.syncClock,
       this.onRename,
       this.liveHr,
       this.status,
@@ -2540,8 +2545,10 @@ class DeviceDetailView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                if (syncPresentation case final state?)
-                  SyncControl(state: state, onSync: onSync),
+                if (syncPresentation case final state?) ...[
+                  SyncControl(state: state, onSync: onSync, clock: syncClock),
+                  const SizedBox(height: S.x4),
+                ],
                 Center(
                   child: Container(
                     width: 120,

@@ -1,18 +1,154 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 
+/// The four things a manual sync does, in order.
+enum SyncStepId { connect, download, calculate, done }
+
+enum SyncStepStatus { waiting, running, done, failed, skipped }
+
+/// What the download has banked. Counts are for THIS sync only; the engine's
+/// own report accumulates across the whole connection and cannot say that.
+class SyncDownloadDetail {
+  final int records, chunks;
+
+  /// The band's own clock on the newest record committed so far.
+  final DateTime? syncedThrough;
+
+  /// The band's own clock on the newest record IT says it holds. Null until
+  /// the band has said so: nothing downstream may guess a total from nothing.
+  final DateTime? bandNewest;
+  const SyncDownloadDetail({
+    this.records = 0,
+    this.chunks = 0,
+    this.syncedThrough,
+    this.bandNewest,
+  });
+
+  /// How much band time is still to come, or null when the band has not said
+  /// or says nothing newer than we already hold. Never a percentage.
+  Duration? get backlog {
+    final through = syncedThrough, newest = bandNewest;
+    if (through == null || newest == null) return null;
+    final d = newest.difference(through);
+    return d > Duration.zero ? d : null;
+  }
+}
+
+class SyncCalculateDetail {
+  /// Days finished so far and how many this pass will do; both null until the
+  /// first day finishes (the engine reports nothing earlier).
+  final int? dayIndex, dayTotal;
+
+  /// The day that finished most recently.
+  final String? day;
+
+  /// Another calculation holds the lock, so this one has not started.
+  final bool waiting;
+  const SyncCalculateDetail({
+    this.dayIndex,
+    this.dayTotal,
+    this.day,
+    this.waiting = false,
+  });
+}
+
+class SyncStep {
+  final SyncStepId id;
+  final SyncStepStatus status;
+  final DateTime? startedAt, endedAt;
+
+  /// Plain words for a step that did not run ("Already connected").
+  final String? note;
+  final SyncDownloadDetail? download;
+  final SyncCalculateDetail? calculate;
+  const SyncStep({
+    required this.id,
+    this.status = SyncStepStatus.waiting,
+    this.startedAt,
+    this.endedAt,
+    this.note,
+    this.download,
+    this.calculate,
+  });
+
+  /// How long the step took, or has taken so far when it is still running and
+  /// [now] is given. Null for a step that never started.
+  Duration? duration([DateTime? now]) {
+    final start = startedAt;
+    if (start == null) return null;
+    final end = endedAt ?? now;
+    return end?.difference(start);
+  }
+
+  SyncStep copyWith({
+    SyncStepStatus? status,
+    DateTime? startedAt,
+    DateTime? endedAt,
+    String? note,
+    SyncDownloadDetail? download,
+    SyncCalculateDetail? calculate,
+  }) => SyncStep(
+    id: id,
+    status: status ?? this.status,
+    startedAt: startedAt ?? this.startedAt,
+    endedAt: endedAt ?? this.endedAt,
+    note: note ?? this.note,
+    download: download ?? this.download,
+    calculate: calculate ?? this.calculate,
+  );
+}
+
 class SyncPresentationState {
   final String phase;
   final bool busy, contactedBand;
   final DateTime? lastSuccess;
   final String? error;
+
+  /// Empty when no sync has run (offline refresh, first launch); otherwise one
+  /// entry per [SyncStepId], in order.
+  final List<SyncStep> steps;
+  final DateTime? startedAt, finishedAt;
+
+  /// Why the sync failed, in words a person can act on. [error] keeps the raw
+  /// text for existing callers.
+  final String? failureReason;
   const SyncPresentationState({
     this.phase = 'offline',
     this.busy = false,
     this.contactedBand = false,
     this.lastSuccess,
     this.error,
+    this.steps = const [],
+    this.startedAt,
+    this.finishedAt,
+    this.failureReason,
   });
+
+  SyncStep step(SyncStepId id) =>
+      steps.firstWhere((s) => s.id == id, orElse: () => SyncStep(id: id));
+  SyncDownloadDetail? get download => step(SyncStepId.download).download;
+  SyncCalculateDetail? get calculate => step(SyncStepId.calculate).calculate;
+
+  /// Time since the sync began; frozen at its end once it has ended.
+  Duration? elapsed(DateTime now) {
+    final start = startedAt;
+    if (start == null) return null;
+    return (finishedAt ?? now).difference(start);
+  }
+
+  SyncPresentationState withSteps(List<SyncStep> next) =>
+      SyncPresentationState(
+        phase: phase,
+        busy: busy,
+        contactedBand: contactedBand,
+        lastSuccess: lastSuccess,
+        error: error,
+        steps: next,
+        startedAt: startedAt,
+        finishedAt: finishedAt,
+        failureReason: failureReason,
+      );
+
   String get description => switch (phase) {
     'connecting' => 'Connecting to the band…',
     'downloading' => 'Downloading recordings…',
@@ -23,6 +159,19 @@ class SyncPresentationState {
   };
 }
 
+/// A failure as a sentence, not a stack-trace label.
+String syncFailureReason(Object e) {
+  if (e is TimeoutException) {
+    return e.message ?? 'It took too long and was stopped.';
+  }
+  if (e is StateError) return e.message;
+  var text = '$e';
+  for (final prefix in const ['Exception: ', 'Error: ']) {
+    if (text.startsWith(prefix)) text = text.substring(prefix.length);
+  }
+  return text;
+}
+
 class SyncOperationResult {
   final bool success;
   final String? error;
@@ -31,27 +180,71 @@ class SyncOperationResult {
 
 /// One operation shared by every manual sync control. Retire progress after a
 /// timeout so a delayed transport cannot claim success over a newer operation.
+///
+/// Progress arrives two ways: the [run] callback names the phase it has
+/// entered, and [reportCommit] / [reportDay] / [reportWaitingForCalculation]
+/// carry the live counts from the engine and the derivation. Counts are always
+/// current in [presentation]; only the NOTIFICATION is throttled to one per
+/// [progressInterval], so a large drain cannot become a rebuild storm.
 class SyncCoordinator extends ChangeNotifier {
   final Future<void> Function(void Function(String)) run;
   final bool Function() isConnected;
   final Future<void> Function() reloadLocal;
   final Duration timeout;
+  final DateTime Function() _clock;
+  final void Function(String)? _log;
+  final Duration progressInterval;
   SyncPresentationState presentation = const SyncPresentationState();
   Future<SyncOperationResult>? _active;
   int _generation = 0;
   bool _disposed = false;
+  DateTime? _lastNotify;
+  Timer? _heldBack;
+  Duration _waited = Duration.zero;
+  DateTime? _waitingSince;
   SyncCoordinator({
     required this.run,
     required this.isConnected,
     required this.reloadLocal,
     this.timeout = const Duration(minutes: 65),
-  });
+    DateTime Function()? clock,
+    void Function(String)? log,
+    this.progressInterval = const Duration(milliseconds: 250),
+  }) : _clock = clock ?? DateTime.now,
+       _log = log;
+
+  /// Notify now, or hold the notification back so listeners hear at most one
+  /// per [progressInterval] (plus one trailing, so the last update is never
+  /// lost). [immediate] is for phase changes and the end of a sync.
+  void _emit({bool immediate = false}) {
+    if (_disposed) return;
+    final now = _clock();
+    final last = _lastNotify;
+    if (immediate || last == null || now.difference(last) >= progressInterval) {
+      _heldBack?.cancel();
+      _heldBack = null;
+      _lastNotify = now;
+      notifyListeners();
+      return;
+    }
+    _heldBack ??= Timer(progressInterval - now.difference(last), () {
+      _heldBack = null;
+      if (_disposed) return;
+      _lastNotify = _clock();
+      notifyListeners();
+    });
+  }
+
   void _publish(
     String phase, {
     bool busy = false,
     bool contacted = true,
     DateTime? success,
     String? error,
+    List<SyncStep> steps = const [],
+    DateTime? startedAt,
+    DateTime? finishedAt,
+    String? failureReason,
   }) {
     if (_disposed) return;
     presentation = SyncPresentationState(
@@ -60,8 +253,142 @@ class SyncCoordinator extends ChangeNotifier {
       contactedBand: contacted,
       lastSuccess: success ?? presentation.lastSuccess,
       error: error,
+      steps: steps,
+      startedAt: startedAt,
+      finishedAt: finishedAt,
+      failureReason: failureReason,
     );
-    notifyListeners();
+    _emit(immediate: true);
+  }
+
+  static List<SyncStep> _fresh() => [
+    for (final id in SyncStepId.values) SyncStep(id: id),
+  ];
+
+  /// Open step [to]. Anything before it still running is finished; anything
+  /// before it that never ran is skipped, so the list never shows a gap.
+  static List<SyncStep> _advance(
+    List<SyncStep> from,
+    SyncStepId to,
+    DateTime now,
+  ) => [
+    for (final s in from)
+      if (s.id.index < to.index && s.status == SyncStepStatus.running)
+        s.copyWith(status: SyncStepStatus.done, endedAt: now)
+      else if (s.id.index < to.index && s.status == SyncStepStatus.waiting)
+        s.copyWith(
+          status: SyncStepStatus.skipped,
+          note: s.id == SyncStepId.connect ? 'Already connected' : 'Not needed',
+        )
+      else if (s.id == to)
+        s.copyWith(
+          status: SyncStepStatus.running,
+          startedAt: now,
+          download: to == SyncStepId.download
+              ? (s.download ?? const SyncDownloadDetail())
+              : null,
+          calculate: to == SyncStepId.calculate
+              ? (s.calculate ?? const SyncCalculateDetail())
+              : null,
+        )
+      else
+        s,
+  ];
+
+  void _enter(String phase) {
+    final to = switch (phase) {
+      'connecting' => SyncStepId.connect,
+      'downloading' => SyncStepId.download,
+      'deriving' => SyncStepId.calculate,
+      _ => null,
+    };
+    final p = presentation;
+    _publish(
+      phase,
+      busy: true,
+      steps: to == null ? p.steps : _advance(p.steps, to, _clock()),
+      startedAt: p.startedAt,
+    );
+  }
+
+  /// Live record count from one committed history chunk. Call only AFTER the
+  /// chunk is durable: this reports progress and must never be able to fail,
+  /// delay or reorder a commit. A no-op outside a sync.
+  void reportCommit({
+    required int records,
+    DateTime? newest,
+    DateTime? bandNewest,
+  }) {
+    if (_active == null || _disposed) return;
+    final old = presentation.download;
+    if (old == null) return; // not downloading (yet, or any more)
+    final through = old.syncedThrough;
+    _patch(
+      SyncStepId.download,
+      (s) => s.copyWith(
+        download: SyncDownloadDetail(
+          records: old.records + records,
+          chunks: old.chunks + 1,
+          syncedThrough: newest != null &&
+                  (through == null || newest.isAfter(through))
+              ? newest
+              : through,
+          bandNewest: bandNewest ?? old.bandNewest,
+        ),
+      ),
+    );
+  }
+
+  /// A day finished in the derivation (its `onDayDone`). A no-op outside a sync.
+  void reportDay(String day, int index, int total) {
+    if (_active == null || _disposed || presentation.calculate == null) return;
+    _patch(
+      SyncStepId.calculate,
+      (s) => s.copyWith(
+        calculate: SyncCalculateDetail(
+          dayIndex: index,
+          dayTotal: total,
+          day: day,
+        ),
+      ),
+    );
+  }
+
+  /// Another calculation holds the lock; this sync is waiting its turn.
+  void reportWaitingForCalculation(bool waiting) {
+    if (_active == null || _disposed) return;
+    final old = presentation.calculate;
+    if (old == null || old.waiting == waiting) return;
+    final now = _clock();
+    if (waiting) {
+      _waitingSince = now;
+    } else if (_waitingSince case final since?) {
+      _waited += now.difference(since);
+      _waitingSince = null;
+    }
+    _patch(
+      SyncStepId.calculate,
+      (s) => s.copyWith(
+        calculate: SyncCalculateDetail(
+          dayIndex: old.dayIndex,
+          dayTotal: old.dayTotal,
+          day: old.day,
+          waiting: waiting,
+        ),
+      ),
+      immediate: true,
+    );
+  }
+
+  void _patch(
+    SyncStepId id,
+    SyncStep Function(SyncStep) change, {
+    bool immediate = false,
+  }) {
+    presentation = presentation.withSteps([
+      for (final s in presentation.steps) s.id == id ? change(s) : s,
+    ]);
+    _emit(immediate: immediate);
   }
 
   Future<SyncOperationResult> syncNow() {
@@ -69,35 +396,116 @@ class SyncCoordinator extends ChangeNotifier {
     final completer = Completer<SyncOperationResult>();
     _active = completer.future;
     final token = ++_generation;
+    _waited = Duration.zero;
+    _waitingSince = null;
     () async {
-      _publish('connecting', busy: true, contacted: false);
+      _publish(
+        'connecting',
+        busy: true,
+        contacted: false,
+        steps: _fresh(),
+        startedAt: _clock(),
+      );
       SyncOperationResult result;
+      var failed = false;
       try {
         await run((phase) {
-          if (token == _generation) _publish(phase, busy: true);
-        }).timeout(timeout);
+          if (token == _generation) _enter(phase);
+        }).timeout(
+          timeout,
+          onTimeout: () => throw TimeoutException(null),
+        );
         if (token == _generation) {
-          _publish('completed', success: DateTime.now());
+          final now = _clock();
+          _publish(
+            'completed',
+            success: now,
+            steps: _finish(now),
+            startedAt: presentation.startedAt,
+            finishedAt: now,
+          );
         }
         result = const SyncOperationResult(true);
       } catch (e) {
+        failed = true;
         if (token == _generation) {
+          final now = _clock();
           _publish(
             'failed',
             error: '$e',
             contacted: presentation.contactedBand,
+            steps: _fail(now),
+            startedAt: presentation.startedAt,
+            finishedAt: now,
+            failureReason: syncFailureReason(e),
           );
         }
         result = SyncOperationResult(false, '$e');
       } finally {
+        // Every latch this operation set, on every exit: success, throw,
+        // timeout. A retired run (token already moved on) owns nothing.
         if (token == _generation) {
           ++_generation;
           _active = null;
+          _heldBack?.cancel();
+          _heldBack = null;
+          _logTiming(failed);
         }
       }
       completer.complete(result);
     }();
     return completer.future;
+  }
+
+  List<SyncStep> _finish(DateTime now) => [
+    for (final s in presentation.steps)
+      if (s.id == SyncStepId.done)
+        s.copyWith(status: SyncStepStatus.done, startedAt: now, endedAt: now)
+      else if (s.status == SyncStepStatus.running)
+        s.copyWith(status: SyncStepStatus.done, endedAt: now)
+      else if (s.status == SyncStepStatus.waiting)
+        s.copyWith(status: SyncStepStatus.skipped, note: 'Not needed')
+      else
+        s,
+  ];
+
+  List<SyncStep> _fail(DateTime now) => [
+    for (final s in presentation.steps)
+      if (s.status == SyncStepStatus.running)
+        s.copyWith(status: SyncStepStatus.failed, endedAt: now)
+      else if (s.status == SyncStepStatus.waiting)
+        s.copyWith(status: SyncStepStatus.skipped, note: 'Not reached')
+      else
+        s,
+  ];
+
+  /// `[sync-timing] connect=…ms download=…ms (N records, M chunks) wait=…ms
+  /// calculate=…ms (K days) total=…ms` — once per sync, so a slow phase can be
+  /// found in a device log. A step that never ran prints `-`. `wait` is the
+  /// time spent blocked on another calculation, and is taken OUT of
+  /// `calculate`.
+  void _logTiming(bool failed) {
+    final log = _log;
+    if (log == null) return;
+    final p = presentation;
+    String ms(Duration? d) => d == null ? '-' : '${d.inMilliseconds}ms';
+    final download = p.step(SyncStepId.download);
+    final calc = p.step(SyncStepId.calculate);
+    final end = p.finishedAt ?? _clock();
+    final waited = _waitingSince == null
+        ? _waited
+        : _waited + end.difference(_waitingSince!);
+    final calcTime = calc.duration(end);
+    final dl = download.download;
+    log(
+      '[sync-timing] connect=${ms(p.step(SyncStepId.connect).duration())} '
+      'download=${ms(download.duration())}'
+      '${dl == null ? '' : ' (${dl.records} records, ${dl.chunks} chunks)'} '
+      'wait=${ms(waited)} '
+      'calculate=${ms(calcTime == null ? null : calcTime - waited)} '
+      '(${calc.calculate?.dayIndex ?? 0} days) total=${ms(p.elapsed(end))}'
+      '${failed ? ' FAILED' : ''}',
+    );
   }
 
   Future<SyncOperationResult> refresh() async {
@@ -108,7 +516,12 @@ class SyncCoordinator extends ChangeNotifier {
       _publish('offline', contacted: false);
       return const SyncOperationResult(true);
     } catch (e) {
-      _publish('failed', contacted: false, error: '$e');
+      _publish(
+        'failed',
+        contacted: false,
+        error: '$e',
+        failureReason: syncFailureReason(e),
+      );
       return SyncOperationResult(false, '$e');
     }
   }
@@ -116,6 +529,8 @@ class SyncCoordinator extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _heldBack?.cancel();
+    _heldBack = null;
     ++_generation;
     super.dispose();
   }

@@ -44,12 +44,86 @@ Future<void> loadFonts() async {
   }
 }
 
+final _syncT0 = DateTime(2026, 9, 30, 9, 15);
+
+/// The time the sync panels are drawn at: 75 s into a running sync.
+DateTime _syncNow() => _syncT0.add(const Duration(seconds: 75));
+
 Widget syncFixture(SyncPresentationState state) => Scaffold(
   body: Padding(
     padding: const EdgeInsets.all(24),
-    child: SyncControl(state: state, onSync: () {}),
+    // Top-aligned so the panel is as tall as its content, not the fixture.
+    child: Align(
+      alignment: Alignment.topCenter,
+      child: SyncControl(state: state, onSync: () {}, clock: _syncNow),
+    ),
   ),
 );
+
+SyncStep _s(
+  SyncStepId id,
+  SyncStepStatus status, {
+  int? start,
+  int? end,
+  String? note,
+  SyncDownloadDetail? download,
+  SyncCalculateDetail? calculate,
+}) => SyncStep(
+  id: id,
+  status: status,
+  startedAt: start == null ? null : _syncT0.add(Duration(seconds: start)),
+  endedAt: end == null ? null : _syncT0.add(Duration(seconds: end)),
+  note: note,
+  download: download,
+  calculate: calculate,
+);
+
+SyncPresentationState _running(List<SyncStep> steps, String phase) =>
+    SyncPresentationState(
+      phase: phase,
+      busy: true,
+      contactedBand: true,
+      startedAt: _syncT0,
+      steps: steps,
+    );
+
+final _downloadingState = _running([
+  _s(SyncStepId.connect, SyncStepStatus.done, start: 0, end: 2),
+  _s(
+    SyncStepId.download,
+    SyncStepStatus.running,
+    start: 2,
+    download: SyncDownloadDetail(
+      records: 12400,
+      chunks: 31,
+      syncedThrough: DateTime(2026, 9, 29, 22, 15),
+      bandNewest: DateTime(2026, 9, 30, 8, 45),
+    ),
+  ),
+  _s(SyncStepId.calculate, SyncStepStatus.waiting),
+  _s(SyncStepId.done, SyncStepStatus.waiting),
+], 'downloading');
+
+SyncPresentationState _calculatingState(SyncCalculateDetail d) => _running([
+  _s(
+    SyncStepId.connect,
+    SyncStepStatus.skipped,
+    note: 'Already connected',
+  ),
+  _s(
+    SyncStepId.download,
+    SyncStepStatus.done,
+    start: 0,
+    end: 58,
+    download: SyncDownloadDetail(
+      records: 41800,
+      chunks: 104,
+      syncedThrough: DateTime(2026, 9, 30, 9, 10),
+    ),
+  ),
+  _s(SyncStepId.calculate, SyncStepStatus.running, start: 58, calculate: d),
+  _s(SyncStepId.done, SyncStepStatus.waiting),
+], 'deriving');
 
 const _gesturesSupported = {
   DeviceAction.none,
@@ -64,32 +138,87 @@ void main() {
   setUpAll(loadFonts);
   final fixtures = <String, (double, Widget)>{
     'sync_offline': (300, syncFixture(const SyncPresentationState())),
-    'sync_downloading': (
-      300,
+    'sync_downloading': (1300, syncFixture(_downloadingState)),
+    'sync_calculating': (
+      1300,
       syncFixture(
-        const SyncPresentationState(
-          phase: 'downloading',
-          busy: true,
-          contactedBand: true,
+        _calculatingState(
+          const SyncCalculateDetail(
+            dayIndex: 2,
+            dayTotal: 5,
+            day: '2026-09-29',
+          ),
         ),
       ),
     ),
+    'sync_waiting': (
+      1300,
+      syncFixture(_calculatingState(const SyncCalculateDetail(waiting: true))),
+    ),
     'sync_failed': (
-      300,
+      1300,
       syncFixture(
-        const SyncPresentationState(
+        SyncPresentationState(
           phase: 'failed',
-          error: 'Band disconnected',
+          error: 'Bad state: Band disconnected during sync',
+          failureReason: 'Band disconnected during sync',
+          lastSuccess: DateTime(2026, 9, 29, 7, 40),
+          startedAt: _syncT0,
+          finishedAt: _syncT0.add(const Duration(seconds: 41)),
+          steps: [
+            _s(SyncStepId.connect, SyncStepStatus.done, start: 0, end: 3),
+            _s(
+              SyncStepId.download,
+              SyncStepStatus.failed,
+              start: 3,
+              end: 41,
+              download: const SyncDownloadDetail(records: 2200, chunks: 6),
+            ),
+            _s(
+              SyncStepId.calculate,
+              SyncStepStatus.skipped,
+              note: 'Not reached',
+            ),
+            _s(SyncStepId.done, SyncStepStatus.skipped, note: 'Not reached'),
+          ],
         ),
       ),
     ),
     'sync_completed': (
-      300,
+      1300,
       syncFixture(
         SyncPresentationState(
           phase: 'completed',
           contactedBand: true,
           lastSuccess: DateTime(2026, 9, 30, 9, 15),
+          startedAt: _syncT0.subtract(const Duration(seconds: 70)),
+          finishedAt: _syncT0,
+          steps: [
+            _s(SyncStepId.connect, SyncStepStatus.done, start: -70, end: -67),
+            _s(
+              SyncStepId.download,
+              SyncStepStatus.done,
+              start: -67,
+              end: -20,
+              download: SyncDownloadDetail(
+                records: 41800,
+                chunks: 104,
+                syncedThrough: DateTime(2026, 9, 30, 9, 10),
+              ),
+            ),
+            _s(
+              SyncStepId.calculate,
+              SyncStepStatus.done,
+              start: -20,
+              end: 0,
+              calculate: const SyncCalculateDetail(
+                dayIndex: 5,
+                dayTotal: 5,
+                day: '2026-09-26',
+              ),
+            ),
+            _s(SyncStepId.done, SyncStepStatus.done, start: 0, end: 0),
+          ],
         ),
       ),
     ),
@@ -123,11 +252,8 @@ void main() {
           isBand: true,
           family: 'gen4',
         ),
-        syncPresentation: const SyncPresentationState(
-          phase: 'downloading',
-          busy: true,
-          contactedBand: true,
-        ),
+        syncPresentation: _downloadingState,
+        syncClock: _syncNow,
         onSync: () {},
       ),
     ),
@@ -201,7 +327,11 @@ void main() {
           expect(tester.takeException(), isNull);
           if (fixture.key.startsWith('sync_') ||
               fixture.key == 'primary_band_sync') {
-            expect(find.text('Sync now'), findsOneWidget);
+            // One control: "Sync now", or "Retry" once the last attempt failed.
+            expect(
+              find.text(fixture.key == 'sync_failed' ? 'Retry' : 'Sync now'),
+              findsOneWidget,
+            );
           }
           if (fixture.key.startsWith('sleep_')) {
             expect(find.text('Recalculate this night'), findsOneWidget);

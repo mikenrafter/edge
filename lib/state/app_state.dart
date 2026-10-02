@@ -1613,10 +1613,15 @@ class AppState extends ChangeNotifier {
         if (ResetGate.active) {
           throw StateError('data reset in progress — refusing to commit');
         }
-        return _bandHost.commitNativeBatch(raws, samples, trimTokenHex,
+        await _bandHost.commitNativeBatch(raws, samples, trimTokenHex,
             archives: archives,
             ecgRawPackets: ecgRawPackets,
             deviceFamily: deviceFamily);
+        // The chunk is durable. PROGRESS ONLY from here: the sync panel's
+        // counts. It runs after the commit and can never throw (see
+        // [_reportSyncCommit]), so it cannot fail, delay or reorder the ACK.
+        _reportSyncCommit(raws.length + (archives?.length ?? 0),
+            raws.map((r) => r.recTs));
       },
       // Pre-setup fallback only: the drain path archives inside commitSyncBatch.
       onArchiveRecord: (raw) async {
@@ -5814,14 +5819,37 @@ class AppState extends ChangeNotifier {
     run: _manualSync,
     isConnected: () => isConnected,
     reloadLocal: () async { bumpInsights(); },
+    log: _log,
   )..addListener(notifyListeners);
   SyncPresentationState get syncPresentation => syncOperations.presentation;
   Future<void> syncNow() async { await syncOperations.syncNow(); }
   Future<void> refreshData() async { await syncOperations.refresh(); }
 
+  /// Feed the sync panel from one committed history chunk. Called strictly
+  /// AFTER the chunk's atomic commit returned, so it is progress reporting and
+  /// nothing else; it swallows every error so a UI counter can never turn a
+  /// durable commit into a "failed" one (which would block the ACK).
+  void _reportSyncCommit(int records, Iterable<int?> recTs) {
+    try {
+      int? newest;
+      for (final t in recTs) {
+        if (t != null && (newest == null || t > newest)) newest = t;
+      }
+      DateTime? at(int? sec) =>
+          sec == null ? null : DateTime.fromMillisecondsSinceEpoch(sec * 1000);
+      syncOperations.reportCommit(
+        records: records,
+        newest: at(newest),
+        bandNewest: at(engine.strapHistoryNewestTs),
+      );
+    } catch (_) {}
+  }
+
   Future<void> _manualSync(void Function(String) progress) async {
-    progress('connecting');
+    // A link that is already up never announces 'connecting': the panel then
+    // shows "Already connected" instead of timing a step that did not happen.
     if (!engine.isConnected) {
+      progress('connecting');
       if (paired == null) throw StateError('Pair a band before syncing');
       await openSession();
       if (!engine.isConnected) throw StateError('Could not connect to the band');
@@ -5831,8 +5859,18 @@ class AppState extends ChangeNotifier {
     if (!engine.isConnected) throw StateError('Band disconnected during sync');
     if (!report.complete) throw StateError('Download stopped before completion. Retry sync.');
     progress('deriving');
-    await _waitForDerivation();
-    await _derive.run(_profile, heavy: true);
+    // Blocked behind another calculation? Say so, and clear the flag on every
+    // exit (the wait throws on its own 10-minute deadline).
+    final blocked = _derive.running || reanalyzing;
+    if (blocked) syncOperations.reportWaitingForCalculation(true);
+    try {
+      await _waitForDerivation();
+    } finally {
+      if (blocked) syncOperations.reportWaitingForCalculation(false);
+    }
+    await _derive.run(_profile, heavy: true,
+        onDayDone: (day, index, total) =>
+            syncOperations.reportDay(day, index, total));
     final error = _derive.snapshot()['last_error'];
     if (error != null) throw StateError('$error');
     await LocalDb.refreshComputeFreshness();

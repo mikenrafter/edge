@@ -1492,8 +1492,34 @@ Map<String, Widget> _listCases() => {
       'sync_control': SyncControl(
         state: SyncPresentationState(
           phase: 'failed',
-          error: 'Bluetooth is turned off on this phone',
+          error: 'Bad state: Bluetooth is turned off on this phone',
+          failureReason: 'Bluetooth is turned off on this phone',
           lastSuccess: DateTime(2026, 8, 16, 4, 12),
+          startedAt: DateTime(2026, 8, 16, 9),
+          finishedAt: DateTime(2026, 8, 16, 9, 0, 8),
+          steps: [
+            SyncStep(
+              id: SyncStepId.connect,
+              status: SyncStepStatus.failed,
+              startedAt: DateTime(2026, 8, 16, 9),
+              endedAt: DateTime(2026, 8, 16, 9, 0, 8),
+            ),
+            const SyncStep(
+              id: SyncStepId.download,
+              status: SyncStepStatus.skipped,
+              note: 'Not reached',
+            ),
+            const SyncStep(
+              id: SyncStepId.calculate,
+              status: SyncStepStatus.skipped,
+              note: 'Not reached',
+            ),
+            const SyncStep(
+              id: SyncStepId.done,
+              status: SyncStepStatus.skipped,
+              note: 'Not reached',
+            ),
+          ],
         ),
         onSync: () {},
       ),
