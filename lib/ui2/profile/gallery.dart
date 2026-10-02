@@ -870,7 +870,72 @@ Map<String, Widget> extraCases() => {
           ),
         );
       }),
-      // Nothing selected, like 'scrubber': the cursor and pill appear on touch.
+      // Two series keyed in the legend, the values under each key, and a hole in
+      // the heart rate so "Not recorded" is on show. Nothing is scrubbed, so the
+      // row reads the latest point.
+      'chart_key_readout': Builder(builder: (c) {
+        final p = P.of(c);
+        const hr = <double?>[58, 61, null, 66, 72, 69];
+        const mv = <double?>[.1, .2, .1, .5, .7, .3];
+        return Surface(
+          child: ChartFrame(
+            title: 'Heart rate and movement',
+            unit: 'bpm',
+            height: 96,
+            xLabels: const ['07:00', '12:00'],
+            legend: [
+              ('Movement (% of time moving)', p.on(C.domMove)),
+              ('Heart rate (bpm)', p.on(C.red)),
+            ],
+            child: ChartScrub(
+              label: 'Heart rate and movement',
+              gaps: hasChartGaps([hr, mv]),
+              time: (at) => '${7 + ChartScrub.slotAt(hr.length, at)}:00',
+              keys: [
+                ChartKey.slots('Movement (% of time moving)',
+                    p.on(C.domMove), mv, (i, v) => '${(v * 100).round()}%'),
+                ChartKey.slots('Heart rate (bpm)', p.on(C.red), hr,
+                    (i, v) => '${v.round()} bpm'),
+              ],
+              child: CustomPaint(
+                  size: Size.infinite,
+                  painter: LineChart(hr, p.on(C.red))),
+            ),
+          ),
+        );
+      }),
+      // The row on its own: a scrubbed point with every value, and a scrubbed
+      // point on a hole, where each series says "—" and "Not recorded" says why.
+      'chart_key_readout_row': Builder(builder: (c) {
+        final p = P.of(c);
+        return Surface(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            ChartKeyReadout(
+              scrubbed: true,
+              time: '9:40 AM',
+              cells: [
+                ChartCell('Movement (% of time moving)', p.on(C.domMove),
+                    value: '34%'),
+                ChartCell('Heart rate (bpm)', p.on(C.red), value: '72 bpm'),
+                const ChartCell('Not recorded', null, hasValue: false),
+              ],
+            ),
+            const SizedBox(height: S.x4),
+            ChartKeyReadout(
+              scrubbed: true,
+              time: '2:15 AM',
+              cells: [
+                ChartCell('Movement (% of time moving)', p.on(C.domMove)),
+                ChartCell('Heart rate (bpm)', p.on(C.red)),
+                const ChartCell('Not recorded', null,
+                    value: ChartKeyReadout.here),
+              ],
+            ),
+          ]),
+        );
+      }),
+      // Nothing selected, like 'scrubber': the cursor appears on touch and the
+      // values in the row under the chart follow it.
       'chart_scrub': Builder(builder: (c) {
         final p = P.of(c);
         const hr = <double?>[58, 61, null, 66, 72, 69];
@@ -882,8 +947,12 @@ Map<String, Widget> extraCases() => {
             xLabels: const ['07:00', '12:00'],
             child: ChartScrub(
               label: 'Heart rate',
-              readout: ChartScrub.slots(
-                  hr, (i, v) => '${7 + i}:00 · ${v.round()} bpm'),
+              gaps: hasChartGaps([hr]),
+              time: (at) => '${7 + ChartScrub.slotAt(hr.length, at)}:00',
+              keys: [
+                ChartKey.slots('Heart rate (bpm)', p.on(C.red), hr,
+                    (i, v) => '${v.round()} bpm'),
+              ],
               child: CustomPaint(
                   size: Size.infinite,
                   painter: LineChart(hr, p.on(C.red))),

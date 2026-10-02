@@ -286,10 +286,13 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             child: ChartScrub(
               label: l?.dayStrainChartTitle ?? 'Strain through the day',
               // One slot per minute of the local day, as the grid was built.
-              readout: ChartScrub.slots(
-                  d.curve,
-                  (i, v) => '${ChartScrub.clock(i)} · '
-                      'strain ${v.toStringAsFixed(1)}'),
+              gaps: hasChartGaps([d.curve]),
+              time: (at) =>
+                  ChartScrub.clock(ChartScrub.slotAt(d.curve.length, at)),
+              keys: [
+                ChartKey.slots('Strain (0–21)', p.on(C.purple), d.curve,
+                    (i, v) => v.toStringAsFixed(1)),
+              ],
               child: CustomPaint(
                 size: Size.infinite,
                 painter: LineChart(d.curve, p.on(C.purple),
@@ -342,8 +345,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             unit: 'minutes',
             height: 10,
             legend: [
-              for (var i = 0; i < 5; i++)
-                ('Z${i + 1} · ${z[i]}m', ZoneBar.cols(p)[i]),
+              for (var i = 0; i < 5; i++) ('Z${i + 1}', ZoneBar.cols(p)[i]),
             ],
             // TS-03/TS-04 — the edges, and where THIS day's came from. Stated
             // per day, not as a standing hedge: the same screen tomorrow can be
@@ -354,7 +356,7 @@ class _DayStrainDetailState extends State<DayStrainDetail> {
             footnote: zonesWhy(d.zoneSource, d.zoneMaxHr, l),
             child: ChartScrub(
               label: l?.dayStrainZonesChartTitle ?? 'Time in zones',
-              readout: ChartScrub.zoneMinutes(z),
+              keys: ChartScrub.zoneKeys(p, z),
               child: CustomPaint(
                 size: Size.infinite,
                 painter: ZoneBar([for (final v in z) v / total], p),

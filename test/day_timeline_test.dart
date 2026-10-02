@@ -372,8 +372,125 @@ void _graphTests() {
       // Every lane with something in it is named, and none that is empty.
       expect(find.text('Asleep'), findsOneWidget);
       expect(find.text('Workout'), findsOneWidget);
-      expect(find.text('Moving'), findsOneWidget);
+      expect(find.text('Movement (% of time moving)'), findsOneWidget);
+      expect(find.text('Heart rate (bpm)'), findsOneWidget);
       expect(find.text('Not recorded'), findsOneWidget);
+    });
+
+    // The three keys the heart-rate chart is read by: the movement stat (with
+    // what it is measured in), the heart rate, and the gap — and the gap only
+    // when the day has one.
+    testWidgets('keyed by movement, heart rate and (with gaps) not recorded',
+        (t) async {
+      final d = TimelineData(
+        day: _gDay,
+        graph: dayGraph(_gTimeline(
+          hr: [
+            for (var m = 300; m < 1200; m++)
+              {'t': _gStart + m * 60, 'v': 55 + (m % 40)},
+          ],
+          activity: [
+            for (var m = 300; m < 1200; m += 5)
+              {'t': _gStart + m * 60, 'v': 0.5},
+          ],
+        )),
+      );
+      await t.pumpWidget(frame(d));
+      for (final k in [
+        'Movement (% of time moving)',
+        'Heart rate (bpm)',
+        'Not recorded'
+      ]) {
+        expect(find.byKey(ValueKey('chart-key-cell:$k')), findsOneWidget,
+            reason: k);
+      }
+      // No sleep, no workout: these three and nothing else.
+      expect(find.byWidgetPredicate((w) =>
+          w.key is ValueKey &&
+          '${(w.key as ValueKey).value}'.startsWith('chart-key-cell:')),
+          findsNWidgets(3));
+      final order = [
+        for (final k in [
+          'Movement (% of time moving)',
+          'Heart rate (bpm)',
+          'Not recorded'
+        ])
+          t.getTopLeft(find.byKey(ValueKey('chart-key-cell:$k'))).dx
+      ];
+      expect(order, [...order]..sort());
+    });
+
+    testWidgets('the movement stat is a percentage, and says how it is made',
+        (t) async {
+      final d = TimelineData(
+        day: _gDay,
+        graph: dayGraph(_gTimeline(
+          hr: [
+            for (var m = 0; m < 1440; m++)
+              {'t': _gStart + m * 60, 'v': 60},
+          ],
+          // 0.5 → half of those five minutes had the wrist turning.
+          activity: [
+            for (var m = 0; m < 1440; m += 5)
+              {'t': _gStart + m * 60, 'v': 0.5},
+          ],
+        )),
+      );
+      await t.pumpWidget(frame(d));
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey(
+                  'chart-key-value:Movement (% of time moving)')),
+              matching: find.text('50%')),
+          findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey('chart-key-value:Heart rate (bpm)')),
+              matching: find.text('60 bpm')),
+          findsOneWidget);
+      expect(find.textContaining('turned more than 5'), findsOneWidget);
+    });
+
+    testWidgets('a day with no gaps has no "Not recorded" key', (t) async {
+      final d = TimelineData(
+        day: _gDay,
+        graph: dayGraph(_gTimeline(
+          hr: [
+            for (var m = 0; m < 1440; m++)
+              {'t': _gStart + m * 60, 'v': 60},
+          ],
+        )),
+      );
+      await t.pumpWidget(frame(d));
+      expect(find.text('Not recorded'), findsNothing);
+      expect(find.text('Heart rate (bpm)'), findsOneWidget);
+    });
+
+    testWidgets('a minute with heart rate but no movement reads "—" for the '
+        'movement, not 0%', (t) async {
+      final d = TimelineData(
+        day: _gDay,
+        graph: dayGraph(_gTimeline(
+          hr: [
+            for (var m = 0; m < 1440; m++)
+              {'t': _gStart + m * 60, 'v': 60},
+          ],
+          activity: [
+            {'t': _gStart, 'v': 0.5},
+          ],
+        )),
+      );
+      await t.pumpWidget(frame(d));
+      // At rest the row shows the latest heart rate; the movement had its
+      // last bucket at 00:00, so the row's "latest" is the last minute with
+      // either. Movement has nothing there.
+      expect(
+          find.descendant(
+              of: find.byKey(const ValueKey(
+                  'chart-key-value:Movement (% of time moving)')),
+              matching: find.text('—')),
+          findsOneWidget);
+      expect(find.text('0%'), findsNothing);
     });
 
     testWidgets('nothing overflows at 3.1x', (t) async {

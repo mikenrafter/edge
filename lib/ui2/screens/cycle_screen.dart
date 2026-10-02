@@ -1105,11 +1105,15 @@ class _CycleHistoryState extends State<_CycleHistory> {
         child: ChartScrub(
           label: title,
           // Slot i is cycle day i + 1; a day with no median is a hole and
-          // reads "No data here".
-          readout: ChartScrub.slots(
-              vals,
-              (i, v) => 'Day ${i + 1} · ${axisFixedOrInt(v)} $unit · '
-                  'middle of ${byDay[i + 1]?.length ?? 0} cycles'),
+          // reads "—".
+          gaps: hasChartGaps([vals]),
+          time: (at) => 'Day ${ChartScrub.slotAt(vals.length, at) + 1}',
+          keys: [
+            ChartKey.slots('$title ($unit)', p.on(color), vals,
+                (i, v) => '${axisFixedOrInt(v)} $unit'),
+            ChartKey.slots('Cycles behind it', p.ink3, vals,
+                (i, v) => '${byDay[i + 1]?.length ?? 0}'),
+          ],
           child: CustomPaint(
             size: Size.infinite,
             painter: LineChart(
@@ -1335,11 +1339,25 @@ class _CycleHistoryState extends State<_CycleHistory> {
             child: ChartScrub(
               label: l?.cycleDaysBetweenStarts ??
                   'Days between your logged starts',
-              readout: ChartScrub.slots(
-                  vals,
-                  (i, v) => '${_short(_ymdOf(starts[i + 1]), l)} · '
-                      '${v.round()} ${l?.cycleUnitDays ?? 'days'}',
-                  bars: true),
+              gaps: hasChartGaps([vals]),
+              time: (at) => _short(
+                  _ymdOf(starts[ChartScrub.slotAt(vals.length, at, bars: true) + 1]),
+                  l),
+              keys: [
+                ChartKey.slots(
+                    l?.cycleLegendYourCycles ?? 'Your cycles',
+                    p.on(C.pink),
+                    vals,
+                    (i, v) => '${v.round()} ${l?.cycleUnitDays ?? 'days'}',
+                    bars: true),
+                // The two lines on the chart, with the numbers they stand at.
+                ChartKey.fixed(
+                    l?.cycleLegendPublishedRange ?? 'Published range',
+                    p.ink3,
+                    '${kPublishedCycleDays.low.round()}–'
+                    '${kPublishedCycleDays.high.round()} '
+                    '${l?.cycleUnitDays ?? 'days'}'),
+              ],
               child: Stack(
                 fit: StackFit.expand,
                 children: [
@@ -1447,10 +1465,16 @@ Widget _currentCycleChart(BuildContext c, CycleData d) {
           // the truncated-axis form with the truncation hidden.
           : ChartScrub(
               label: l?.cycleRestingHeartRate ?? 'Resting heart rate',
-              readout: ChartScrub.slots(
-                  vals,
-                  (i, v) => 'Day ${i + 1} · ${v.round()} '
-                      '${l?.cycleUnitBpm ?? 'bpm'}'),
+              gaps: hasChartGaps([vals]),
+              time: (at) => 'Day ${ChartScrub.slotAt(vals.length, at) + 1}',
+              keys: [
+                ChartKey.slots(
+                    '${l?.cycleRestingHeartRate ?? 'Resting heart rate'} '
+                    '(${l?.cycleUnitBpm ?? 'bpm'})',
+                    p.on(C.pink),
+                    vals,
+                    (i, v) => '${v.round()} ${l?.cycleUnitBpm ?? 'bpm'}'),
+              ],
               child: CustomPaint(
                 size: Size.infinite,
                 painter: LineChart(

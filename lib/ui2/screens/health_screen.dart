@@ -1265,10 +1265,13 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         label: l?.healthHeartRateVariability ?? 'Heart rate variability',
         // Thirty calendar nights ending last night; a night with no record is
         // a hole.
-        readout: ChartScrub.slots(
-            win,
-            (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
-                '${v.round()} ms'),
+        gaps: hasChartGaps([win], trailing: true),
+        time: (at) =>
+            ChartScrub.dayBack(win.length - 1 - ChartScrub.slotAt(win.length, at)),
+        keys: [
+          ChartKey.slots('RMSSD (ms)', p.on(C.green), win,
+              (i, v) => '${v.round()} ms'),
+        ],
         child: CustomPaint(
           size: Size.infinite,
           painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis),

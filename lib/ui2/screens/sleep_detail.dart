@@ -1652,23 +1652,22 @@ class _SleepDetailState extends State<SleepDetail> {
           // the lanes are visibly separate — a paragraph explaining that they
           // are separate was describing the picture instead of letting it work.
           // One column reads every lane (they share the night's clock). A lane
-          // with nothing in that bucket is left out; a column where every lane
-          // is empty reads "No data here".
+          // with nothing in that bucket reads "—"; the lanes' keys are the
+          // legend above, with the reading under each.
           child: ChartScrub(
             label: loc?.sleepDetailThroughTheNight ?? 'Through the night',
-            readout: (at) {
+            gaps: hasChartGaps(series),
+            time: (at) {
               final cols = series.first.length;
               if (cols < 2) return null;
-              final i = (at * (cols - 1)).round().clamp(0, cols - 1);
-              final parts = <String>[
-                for (var k = 0; k < series.length; k++)
-                  if (series[k][i] != null)
-                    '${names[k]} ${axisFixedOrInt(series[k][i]!)} ${units[k]}',
-              ];
-              if (parts.isEmpty) return null;
-              final t = t0 + ((t1 - t0) * i / (cols - 1)).round();
-              return '${clockOfTs(t)} · ${parts.join(', ')}';
+              final i = ChartScrub.slotAt(cols, at);
+              return clockOfTs(t0 + ((t1 - t0) * i / (cols - 1)).round());
             },
+            keys: [
+              for (var k = 0; k < series.length; k++)
+                ChartKey.slots(legend[k].$1, colors[k], series[k],
+                    (i, v) => '${axisFixedOrInt(v)} ${units[k]}'),
+            ],
             child: CustomPaint(
                 size: Size.infinite,
                 painter: NightStack(series, colors, axes: axes)),

@@ -165,27 +165,43 @@ present (no data needed).
 
 ## 8F — ChartScrub
 
-`chart_scrub_test.dart` — in `lib/ui2/grammar.dart` or `charts.dart` (so
-`ui2.dart` exports it):
+`chart_scrub_test.dart`, `chart_key_readout_test.dart` — in
+`lib/ui2/grammar.dart` (so `ui2.dart` exports it):
 ```dart
 enum ChartScrubMode { line, nearest }
-class ChartScrub extends StatefulWidget {
-  const ChartScrub({super.key, required this.label,
-      required this.readout, required this.child,
-      this.mode = ChartScrubMode.line, this.step = .05});
-  final String label;                       // Scrubber label
-  final String? Function(double at) readout; // 0..1; null => no data
-  static const cursorKey = ValueKey('chart-scrub-cursor');
-  static const readoutKey = ValueKey('chart-scrub-readout');
-  static const noData = 'No data here';
+class ChartKey {            // one series: label (units in it), colour, value
+  const ChartKey(String label, Color color, String? Function(double at) value,
+      {double? latest = 1.0, bool Function(double at)? active,
+       String? Function()? atRest});
+  factory ChartKey.slots(label, color, List<double?> d,
+      String Function(int i, double v) say, {bool bars = false});
+  factory ChartKey.fixed(label, color, String? value, {active});
 }
+class ChartScrub extends StatefulWidget {
+  const ChartScrub({super.key, required this.label, required this.keys,
+      required this.child, this.time, this.gaps = false,
+      this.mode = ChartScrubMode.line, this.step = .05});
+  static const cursorKey = ValueKey('chart-scrub-cursor');
+  static const noData = 'No data here';          // spoken only
+  static int slotAt(int length, double at, {bool bars = false});
+}
+bool hasChartGaps(Iterable<List<double?>> series, {bool trailing = false});
+class ChartKeyReadout extends StatelessWidget { ... }
 ```
-Built on `Scrubber` (one `Scrubber` descendant; its `describe` returns the same
-readout text). Fills its parent; cursor and pill overlay the child. Nothing
+Built on `Scrubber` (one `Scrubber` descendant; its `describe` says the time and
+`label value` for each series that has one, else `No data here`). Nothing is
 drawn before a touch. Tap/drag: in `line` mode a cursor (key `cursorKey`)
-centred on the finger x (±2 px) and a pill (key `readoutKey`) containing a
-`Text` equal to `readout(v)` or `No data here`. `nearest` mode: pill only, no
-cursor.
+centred on the finger x (±2 px); `nearest` mode: no cursor. THERE IS NO TOOLTIP.
+The values go to a `ChartKeyReadout` row under the chart: the time first
+(`Latest` at rest, `Selected` while scrubbed), then a cell per series
+(`chart-key-cell:<label>` holding a `chart-key-swatch:<label>` and the value
+`chart-key-value:<label>`). The value sits under the swatch, in the legend
+entry's own column. Inside a `ChartFrame` the row IS the frame's key (legend
+entries match series by label; extra series are appended); bare, `ChartScrub`
+draws its own row under the chart. At rest the row shows the latest point; with
+no data every value is `—`; an absent value is `—`, never 0. The row's height
+does not change with what it says. A `Not recorded` cell is appended only when
+`gaps` is true (callers pass `hasChartGaps(series)`).
 
 `chart_scrub_guard_test.dart` (*compile-safe*): in
 `lib/ui2/{screens,activity}/**/*.dart`, `lib/ui2/live_hr.dart` (and

@@ -873,6 +873,16 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
   }
 }
 
+/// What the movement lane plots, in the words its key and note use. The lane is
+/// `activity_curve`: per 5 minutes, the share of seconds in which the wrist's
+/// orientation changed by more than 5 degrees between consecutive readings
+/// (0…1, shown as a percentage). It is a share of time, not a count of steps or
+/// an acceleration, so the unit is "% of time moving".
+const _movementLabel = 'Movement (% of time moving)';
+const _hrLabel = 'Heart rate (bpm)';
+const _movementNote = 'Movement is the share of each 5 minutes in which your '
+    'wrist turned more than 5° between readings. It is not steps or effort.';
+
 /// The graph, or nothing.
 ///
 /// NOTHING when there is no heart-rate curve: the curve is what the y axis is
@@ -889,7 +899,42 @@ Widget? dayGraphCard(BuildContext c, DayGraph g) {
   if (axis == null) return null;
 
   final asleep = p.on(C.blue), workout = p.on(C.orange);
+  final hrInk = p.on(C.red), moveInk = p.on(C.domMove);
+  final hasMovement = g.movement.any((v) => v != null);
+  final asleepLabel = l?.dayTimelineAsleep ?? 'Asleep';
+  final workoutLabel = l?.dayTimelineWorkout ?? 'Workout';
   final gaps = g.unmeasured;
+
+  bool present(double? v) => v != null && v.isFinite;
+  // A lane of the day, one slot per minute; the lane's own holes read null.
+  ChartKey lane(String label, Color ink, List<double?> d,
+      String Function(double v) say) {
+    final last = d.lastIndexWhere(present);
+    return ChartKey(
+      label,
+      ink,
+      (at) {
+        final i = ChartScrub.slotAt(n, at);
+        return i < d.length && present(d[i]) ? say(d[i]!) : null;
+      },
+      latest: last < 0 || n < 2 ? null : last / (n - 1),
+    );
+  }
+
+  // A shaded stretch: whether the finger is inside one. It never sets the
+  // "latest" point — a night does not make the last minute of the day.
+  ChartKey shade(String label, Color ink, List<(int, int, Color)> spans) =>
+      ChartKey(
+        label,
+        ink,
+        (at) {
+          final m = ChartScrub.slotAt(n, at);
+          return spans.any((x) => m >= x.$1 && m < x.$2) ? 'Yes' : 'No';
+        },
+        latest: null,
+        data: false,
+      );
+
   return Surface(
     child: ChartFrame(
       title: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
@@ -904,30 +949,34 @@ Widget? dayGraphCard(BuildContext c, DayGraph g) {
         l?.dayTimelineNoon ?? 'Noon',
         l?.dayTimelineMidnight ?? 'Midnight',
       ],
+      // The keys this chart is read by, in the order they are read: the
+      // movement stat, the heart rate, and (only when the day has a hole in it)
+      // "Not recorded", which ChartScrub appends. Asleep and Workout name the
+      // shaded stretches and appear only when the day has one.
       legend: [
-        if (g.rest.isNotEmpty) (l?.dayTimelineAsleep ?? 'Asleep', asleep),
-        if (g.work.isNotEmpty) (l?.dayTimelineWorkout ?? 'Workout', workout),
-        if (g.movement.any((v) => v != null))
-          (l?.dayTimelineMoving ?? 'Moving', p.on(C.domMove)),
-        if (gaps.isNotEmpty) (l?.dayTimelineNotRecorded ?? 'Not recorded', p.card2),
+        if (hasMovement) (_movementLabel, moveInk),
+        (_hrLabel, hrInk),
+        if (g.rest.isNotEmpty) (asleepLabel, asleep),
+        if (g.work.isNotEmpty) (workoutLabel, workout),
       ],
+      footnote: hasMovement ? _movementNote : null,
       series: g.hr,
-      // One slot per minute. The readout is the heart-rate minute under the
-      // finger, with the stretch it falls in (asleep, workout) when there is
-      // one; a minute with no heart rate reads "No data here" even if the
-      // movement strip has a bar there.
+      // One slot per minute. The row under the chart is the minute under the
+      // finger (or the latest one) for each lane, with "—" for a lane that has
+      // nothing in that minute: a minute with movement but no heart rate shows
+      // the movement and a dash, never a 0.
       child: ChartScrub(
         label: l?.dayTimelineHeartRateTitle ?? 'Heart rate',
-        readout: ChartScrub.slots(g.hr, (m, v) {
-          bool within(List<(int, int, Color)> xs) =>
-              xs.any((s) => m >= s.$1 && m < s.$2);
-          final during = within(g.rest)
-              ? ' · ${l?.dayTimelineAsleep ?? 'Asleep'}'
-              : within(g.work)
-                  ? ' · ${l?.dayTimelineWorkout ?? 'Workout'}'
-                  : '';
-          return '${ChartScrub.clock(m)} · ${v.round()} bpm$during';
-        }),
+        gaps: gaps.isNotEmpty,
+        time: (at) => ChartScrub.clock(ChartScrub.slotAt(n, at)),
+        keys: [
+          if (hasMovement)
+            lane(_movementLabel, moveInk, g.movement,
+                (v) => '${(v * 100).round()}%'),
+          lane(_hrLabel, hrInk, g.hr, (v) => '${v.round()} bpm'),
+          if (g.rest.isNotEmpty) shade(asleepLabel, asleep, g.rest),
+          if (g.work.isNotEmpty) shade(workoutLabel, workout, g.work),
+        ],
         child: Stack(children: [
         Positioned.fill(
           child: CustomPaint(
@@ -951,7 +1000,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g) {
             // No fill under the line: the area would swallow the bands behind
             // it, and the bands are the half of this picture the curve cannot
             // say on its own.
-            painter: LineChart(g.hr, p.on(C.red), fill: false, axis: axis),
+            painter: LineChart(g.hr, hrInk, fill: false, axis: axis),
           ),
         ),
         ]),

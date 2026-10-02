@@ -191,6 +191,13 @@ class CoachFigure extends StatelessWidget {
     }
     final l = AppLocalizations.of(c);
     final inks = _inks(p);
+    // The series' own names, in the legend and the row under it alike. One
+    // unnamed series has no legend, so it is just "Value".
+    String lineLabel(int i) => series[i].name.isNotEmpty
+        ? series[i].name
+        : series.length < 2
+            ? 'Value'
+            : (l?.coachFiguresSeriesN(i + 1) ?? 'Series ${i + 1}');
     return _frame(
       c,
       title,
@@ -198,24 +205,24 @@ class CoachFigure extends StatelessWidget {
       ChartScrub(
         label: title.isEmpty ? (l?.coachFiguresFigure ?? 'Figure') : title,
         // Every series that has a reading at this slot, by the coach's own
-        // names; a series with a hole there is left out, not filled in.
-        readout: (at) {
-          final parts = <String>[];
-          String? name;
-          for (var k = 0; k < series.length; k++) {
-            final v = series[k].values;
-            if (v.length < 2) continue;
-            final i = _nearest(at, v.length);
-            final x = v[i];
-            if (x == null || !x.isFinite) continue;
-            name ??= _slotName(
-                spec['x_labels'] ?? spec['labels'] ?? spec['x'], i, v.length);
-            final who = series[k].name;
-            parts.add(
-                '${who.isEmpty ? '' : '$who '}${axisFixedOrInt(x)}${unit.isEmpty ? '' : ' $unit'}');
-          }
-          return parts.isEmpty ? null : '$name · ${parts.join(', ')}';
+        // names; a series with a hole there reads "—", not a neighbour's value.
+        gaps: hasChartGaps([for (final x in series) x.values]),
+        time: (at) {
+          final span = series.fold<int>(
+              0, (n, x) => x.values.length > n ? x.values.length : n);
+          return span < 2
+              ? null
+              : _slotName(spec['x_labels'] ?? spec['labels'] ?? spec['x'],
+                  _nearest(at, span), span);
         },
+        keys: [
+          for (var k = 0; k < series.length; k++)
+            if (series[k].values.length >= 2)
+              ChartKey.slots(
+                  lineLabel(k), inks[k % inks.length], series[k].values,
+                  (i, v) =>
+                      '${axisFixedOrInt(v)}${unit.isEmpty ? '' : ' $unit'}'),
+        ],
         child: Stack(
           children: [
             for (var i = 0; i < series.length; i++)
@@ -242,12 +249,7 @@ class CoachFigure extends StatelessWidget {
           ? const []
           : [
               for (var i = 0; i < series.length; i++)
-                (
-                  series[i].name.isEmpty
-                      ? (l?.coachFiguresSeriesN(i + 1) ?? 'Series ${i + 1}')
-                      : series[i].name,
-                  inks[i % inks.length],
-                ),
+                (lineLabel(i), inks[i % inks.length]),
             ],
       series: series.length == 1 ? series.first.values : const [],
     );
@@ -277,11 +279,19 @@ class CoachFigure extends StatelessWidget {
         label: title.isEmpty
             ? (AppLocalizations.of(c)?.coachFiguresFigure ?? 'Figure')
             : title,
-        readout: ChartScrub.slots(
-            d,
-            (i, v) => '${_slotName(spec['x_labels'] ?? spec['labels'] ?? spec['x'], i, d.length)}'
-                ' · ${axisFixedOrInt(v)}${unit.isEmpty ? '' : ' $unit'}',
-            bars: true),
+        gaps: hasChartGaps([d]),
+        time: (at) => _slotName(spec['x_labels'] ?? spec['labels'] ?? spec['x'],
+            ChartScrub.slotAt(d.length, at, bars: true), d.length),
+        keys: [
+          ChartKey.slots(
+              series.isNotEmpty && series.first.name.isNotEmpty
+                  ? series.first.name
+                  : 'Value',
+              p.on(C.blue),
+              d,
+              (i, v) => '${axisFixedOrInt(v)}${unit.isEmpty ? '' : ' $unit'}',
+              bars: true),
+        ],
         child: CustomPaint(
           size: Size.infinite,
           painter: Bars(d, p.on(C.blue), axis: axis),
@@ -328,6 +338,9 @@ class CoachFigure extends StatelessWidget {
       for (final k in const ['left', 'right'])
         if (spec[k] is Map) _str((spec[k] as Map)['unit']),
     ];
+    String laneLabel(int i) => series[i].name.isEmpty
+        ? (loc?.coachFiguresLaneN(i + 1) ?? 'Lane ${i + 1}')
+        : series[i].name;
     return _frame(
       c,
       title,
@@ -335,28 +348,25 @@ class CoachFigure extends StatelessWidget {
       ChartScrub(
         label: title.isEmpty ? (loc?.coachFiguresFigure ?? 'Figure') : title,
         // One time base, so one slot reads every lane; a lane with a hole at
-        // that slot is left out. Lanes of another length are not drawn by the
+        // that slot reads "—". Lanes of another length are not drawn by the
         // painter, so they are not read either.
-        readout: (at) {
+        gaps: hasChartGaps(lanes),
+        time: (at) {
           final span =
               lanes.fold<int>(0, (n, l) => l.length > n ? l.length : n);
-          if (span < 2) return null;
-          final i = _nearest(at, span);
-          final parts = <String>[];
-          for (var k = 0; k < lanes.length && k < series.length; k++) {
-            if (lanes[k].length != span) continue;
-            final x = lanes[k][i];
-            if (x == null || !x.isFinite) continue;
-            final name = series[k].name.isEmpty
-                ? (loc?.coachFiguresLaneN(k + 1) ?? 'Lane ${k + 1}')
-                : series[k].name;
-            parts.add('$name ${axisFixedOrInt(x)}');
-          }
-          return parts.isEmpty
+          return span < 2
               ? null
-              : '${_slotName(spec['x_labels'] ?? spec['labels'] ?? spec['x'], i, span)}'
-                  ' · ${parts.join(', ')}';
+              : _slotName(spec['x_labels'] ?? spec['labels'] ?? spec['x'],
+                  _nearest(at, span), span);
         },
+        keys: [
+          for (var k = 0; k < lanes.length && k < series.length; k++)
+            if (lanes[k].length ==
+                lanes.fold<int>(0, (n, l) => l.length > n ? l.length : n))
+              ChartKey.slots(laneLabel(k), inks[k % inks.length], lanes[k],
+                  (i, v) =>
+                      '${axisFixedOrInt(v)}${k < units.length && units[k].isNotEmpty ? ' ${units[k]}' : ''}'),
+        ],
         child: CustomPaint(
           size: Size.infinite,
           painter: NightStack(lanes, [
@@ -374,12 +384,7 @@ class CoachFigure extends StatelessWidget {
       xLabels: _xLabels(spec['x_labels'] ?? spec['labels'] ?? spec['x']),
       legend: [
         for (var i = 0; i < series.length && i < lanes.length; i++)
-          (
-            series[i].name.isEmpty
-                ? (loc?.coachFiguresLaneN(i + 1) ?? 'Lane ${i + 1}')
-                : series[i].name,
-            inks[i % inks.length],
-          ),
+          (laneLabel(i), inks[i % inks.length]),
       ],
     );
   }
@@ -420,6 +425,46 @@ class CoachFigure extends StatelessWidget {
         grid[i] = stage;
       }
     }
+    // Minutes per stage, and seconds of the night the segments actually cover
+    // (the union, so overlapping segments are not counted twice).
+    final stageMin = <String, double>{};
+    final spans = <(double, double)>[];
+    for (final s in segs) {
+      final a = _num(s['start']), b = _num(s['end']);
+      if (a == null || b == null || b <= a) continue;
+      final key = switch (_str(s['stage']).toLowerCase()) {
+        'deep' => 'deep',
+        'rem' => 'rem',
+        'light' => 'light',
+        _ => 'awake',
+      };
+      stageMin[key] = (stageMin[key] ?? 0) + (b - a) / 60;
+      spans.add((a, b));
+    }
+    spans.sort((x, y) => x.$1.compareTo(y.$1));
+    var covered = 0.0;
+    double? edge;
+    for (final (a, b) in spans) {
+      final from = edge == null || a > edge ? a : edge;
+      if (b > from) covered += b - from;
+      if (edge == null || b > edge) edge = b;
+    }
+    String? stageAt(double t) {
+      for (final s in segs) {
+        final a = _num(s['start']), b = _num(s['end']);
+        if (a == null || b == null || b <= a) continue;
+        if (t >= a && t < b) {
+          return switch (_str(s['stage']).toLowerCase()) {
+            'deep' => 'deep',
+            'rem' => 'rem',
+            'light' => 'light',
+            _ => 'awake',
+          };
+        }
+      }
+      return null;
+    }
+
     String hhmm(double epochSec) {
       final d = DateTime.fromMillisecondsSinceEpoch(
         (epochSec * 1000).round(),
@@ -436,20 +481,29 @@ class CoachFigure extends StatelessWidget {
         label: title.isEmpty ? (l?.coachFiguresFigure ?? 'Figure') : title,
         // Read off the coach's segments, not the painter's grid: the grid
         // fills every uncovered minute with "awake", which is a drawing
-        // default and not something the coach said. A time inside no segment
-        // is "No data here".
-        readout: (at) {
-          final t = t0 + (t1 - t0) * at;
-          for (final s in segs) {
-            final a = _num(s['start']), b = _num(s['end']);
-            if (a == null || b == null || b <= a) continue;
-            if (t >= a && t < b) {
-              final stage = _str(s['stage']);
-              return '${hhmm(t)} · ${stage.isEmpty ? 'unnamed stage' : stage}';
-            }
-          }
-          return null;
-        },
+        // default and not something the coach said. Each stage's key carries
+        // its total minutes and is lit while the finger is on it; a time inside
+        // no segment reads "—" on every stage and "Not recorded".
+        gaps: covered < (t1 - t0) - 1,
+        time: (at) => hhmm(t0 + (t1 - t0) * at),
+        keys: [
+          for (final (i, st) in SleepStage.values.indexed)
+            ChartKey(
+              st.label,
+              Hypnogram.legend(p)[i].$2,
+              (at) {
+                final t = t0 + (t1 - t0) * at;
+                final inside = segs.any((s) {
+                  final a = _num(s['start']), b = _num(s['end']);
+                  return a != null && b != null && t >= a && t < b;
+                });
+                final m = stageMin[st.name];
+                return inside && m != null ? '${m.round()} min' : null;
+              },
+              latest: .9999,
+              active: (at) => stageAt(t0 + (t1 - t0) * at) == st.name,
+            ),
+        ],
         child: CustomPaint(size: Size.infinite, painter: Hypnogram(grid, p)),
       ),
       height: 130,
@@ -494,8 +548,17 @@ class CoachFigure extends StatelessWidget {
       'min',
       ChartScrub(
         label: title.isEmpty ? (l?.coachFiguresFigure ?? 'Figure') : title,
-        readout: ChartScrub.bands(fracs,
-            (i, f) => 'Zone ${i + 1} · ${z[i].round()} min · ${(f * 100).round()}%'),
+        // Every zone's own minutes and share, wherever the finger is; the
+        // zone under it is lit.
+        keys: ChartScrub.bandKeys(
+          [for (final e in ZoneBar.legend(p).take(fracs.length)) e.$1],
+          [for (final e in ZoneBar.legend(p)) e.$2],
+          fracs,
+          [
+            for (var i = 0; i < fracs.length; i++)
+              '${z[i].round()} min · ${(fracs[i] * 100).round()}%',
+          ],
+        ),
         child: CustomPaint(size: Size.infinite, painter: ZoneBar(fracs, p)),
       ),
       height: 56,
@@ -629,28 +692,32 @@ class CoachFigure extends StatelessWidget {
     if (weeks.isEmpty || weeks.every((w) => w.every((v) => v == null))) {
       return _frame(c, title, unit, const SizedBox.shrink(), empty: const NoData());
     }
+    final rows = weeks.fold<int>(0, (n, w) => w.length > n ? w.length : n);
     return _frame(
       c,
       title,
       unit,
-      // A grid: the finger selects the column it is over, and the readout lists
-      // that column's cells. An unmeasured cell is shown as a dash and a column
-      // with nothing measured reads "No data here".
+      // A grid: the finger selects the column it is over, and the row under the
+      // chart has a cell per row of the grid for that column. An unmeasured
+      // cell is a dash.
       ChartScrub(
         label: title.isEmpty
             ? (AppLocalizations.of(c)?.coachFiguresFigure ?? 'Figure')
             : title,
         mode: ChartScrubMode.nearest,
-        readout: (at) {
-          final i = (at * weeks.length).floor().clamp(0, weeks.length - 1);
-          final col = weeks[i];
-          if (col.every((v) => v == null)) return null;
-          final cells = [
-            for (final v in col) v == null ? '–' : axisFixedOrInt(v),
-          ];
-          return '${_slotName(spec['x_labels'] ?? spec['labels'], i, weeks.length)}'
-              ' · ${cells.join(' ')}${unit.isEmpty ? '' : ' $unit'}';
-        },
+        gaps: false,
+        time: (at) => _slotName(spec['x_labels'] ?? spec['labels'],
+            ChartScrub.slotAt(weeks.length, at, bars: true), weeks.length),
+        keys: [
+          for (var r = 0; r < rows; r++)
+            ChartKey.slots(
+              rows == 7 ? const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][r] : 'Row ${r + 1}',
+              p.on(C.blue),
+              [for (final col in weeks) r < col.length ? col[r] : null],
+              (i, v) => '${axisFixedOrInt(v)}${unit.isEmpty ? '' : ' $unit'}',
+              bars: true,
+            ),
+        ],
         child: CustomPaint(
           size: Size.infinite,
           painter: HeatMap(weeks, p.on(C.blue), p.track),

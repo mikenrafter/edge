@@ -361,18 +361,35 @@ class _CircadianDetailState extends State<CircadianDetail> {
               child: ChartScrub(
                 label: l?.circadianDetailSleepTitle ?? 'Sleep, night by night',
                 mode: ChartScrubMode.nearest,
-                readout: (at) {
-                  final n = d.actogram.length;
-                  if (n == 0) return null;
-                  final i = (at * n).floor().clamp(0, n - 1);
-                  final col = d.actogram[i];
-                  if (col == null) return null;
-                  final asleep = col
-                      .where((v) => v.isFinite)
-                      .fold<double>(0, (a, v) => a + v.clamp(0.0, 1.0));
-                  final day = i < d.labels.length ? '${d.labels[i]} · ' : '';
-                  return '$day${axisHm(asleep * 60)} asleep';
+                // A night with no column was not recorded: the "Not recorded"
+                // entry, only when there is one.
+                gaps: hasChartGaps([
+                  [for (final col in d.actogram) col == null ? null : 1.0]
+                ], trailing: true),
+                time: (at) {
+                  final i = ChartScrub.slotAt(d.actogram.length, at, bars: true);
+                  return i < d.labels.length ? d.labels[i] : null;
                 },
+                keys: [
+                  ChartKey(
+                    l?.circadianDetailAsleep ?? 'Asleep',
+                    C.indigo,
+                    (at) {
+                      final n = d.actogram.length;
+                      if (n == 0) return null;
+                      final col = d.actogram[ChartScrub.slotAt(n, at, bars: true)];
+                      if (col == null) return null;
+                      final asleep = col
+                          .where((v) => v.isFinite)
+                          .fold<double>(0, (a, v) => a + v.clamp(0.0, 1.0));
+                      return axisHm(asleep * 60);
+                    },
+                    latest: () {
+                      final last = d.actogram.lastIndexWhere((col) => col != null);
+                      return last < 0 ? null : (last + .5) / d.actogram.length;
+                    }(),
+                  ),
+                ],
                 child: CustomPaint(
                   size: Size.infinite,
                   painter: Actogram(d.actogram, p.on(C.indigo)),
@@ -495,9 +512,14 @@ class _CircadianDetailState extends State<CircadianDetail> {
               'Beat-to-beat variability while still',
           // 24 bars, one per local hour; an hour without three stretches is
           // blank on the chart and reads "No data here".
-          readout: ChartScrub.slots(d.hourly,
-              (h, v) => '${ChartScrub.clock(h * 60)} · ${v.round()} ms',
-              bars: true),
+          gaps: hasChartGaps([d.hourly], trailing: true),
+          time: (at) => ChartScrub.clock(
+              ChartScrub.slotAt(d.hourly.length, at, bars: true) * 60),
+          keys: [
+            ChartKey.slots('HRV while still (ms)', p.ink3, d.hourly,
+                (h, v) => '${v.round()} ms',
+                bars: true),
+          ],
           child: CustomPaint(
             size: Size.infinite,
             // Uncoloured. A hue here would be a verdict about an hour of your
@@ -553,12 +575,19 @@ class _CircadianDetailState extends State<CircadianDetail> {
           child: ChartScrub(
             label: l?.circadianDetailForecastTitle ??
                 'Predicted alertness curve for today',
-            readout: ChartScrub.slots(v.shape, (i, _) {
-              final h = v.startHour + 18 * i / (v.shape.length - 1);
-              final inTrough = h >= v.troughStartHour && h <= v.troughEndHour;
-              return '${_hourClock(h)} · shape only'
-                  '${inTrough ? ', the flattest stretch' : ''}';
-            }),
+            gaps: hasChartGaps([v.shape]),
+            time: (at) => _hourClock(v.startHour +
+                18 * ChartScrub.slotAt(v.shape.length, at) / (v.shape.length - 1)),
+            keys: [
+              ChartKey.slots(
+                  'Predicted alertness',
+                  p.ink3,
+                  v.shape, (i, _) {
+                final h = v.startHour + 18 * i / (v.shape.length - 1);
+                final inTrough = h >= v.troughStartHour && h <= v.troughEndHour;
+                return inTrough ? 'Flattest stretch' : 'Shape only';
+              }),
+            ],
             child: CustomPaint(
               size: Size.infinite,
               // p.ink3, like every other mark on this screen that is not a

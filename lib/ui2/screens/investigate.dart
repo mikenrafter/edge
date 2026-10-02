@@ -614,13 +614,29 @@ class _InvestigateState extends State<Investigate> {
           // too few beats is a gap and reads "No data here".
           child: ChartScrub(
             label: l?.investigateShapeOfTheNight ?? 'Shape of the night',
-            readout: ChartScrub.slots(mid, (i, v) {
-              final a = lo[i], b = hi[i];
+            gaps: hasChartGaps([mid]),
+            time: (x) {
+              final i = ChartScrub.slotAt(mid.length, x);
               final when = at(i);
-              return '${when.isEmpty ? 'Bin ${i + 1} of ${mid.length}' : when}'
-                  ' · ${v.toStringAsFixed(1)} ms'
-                  '${a == null || b == null ? '' : ' (${a.toStringAsFixed(1)}–${b.toStringAsFixed(1)})'}';
-            }),
+              return when.isEmpty ? 'Bin ${i + 1} of ${mid.length}' : when;
+            },
+            keys: [
+              ChartKey.slots(l?.investigateBinRmssd ?? 'Bin RMSSD',
+                  p.on(C.green), mid, (i, v) => '${v.toStringAsFixed(1)} ms'),
+              // The outer pair, stated only where the estimate exists.
+              ChartKey(
+                l?.investigateSamplingRange ?? 'Sampling range',
+                p.ink3,
+                (x) {
+                  final i = ChartScrub.slotAt(mid.length, x);
+                  final a = lo[i], b = hi[i];
+                  return mid[i] == null || a == null || b == null
+                      ? null
+                      : '${a.toStringAsFixed(1)}–${b.toStringAsFixed(1)} ms';
+                },
+                latest: null,
+              ),
+            ],
             child: Stack(children: [
               Positioned.fill(
                 child: CustomPaint(
@@ -693,10 +709,13 @@ class _InvestigateState extends State<Investigate> {
                 'this line on its own.'),
         child: ChartScrub(
           label: l?.investigateDecelerationCapacity ?? 'Deceleration capacity',
-          readout: ChartScrub.slots(
-              win,
-              (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
-                  '${v.toStringAsFixed(1)} ms'),
+          gaps: hasChartGaps([win], trailing: true),
+          time: (x) => ChartScrub.dayBack(
+              win.length - 1 - ChartScrub.slotAt(win.length, x)),
+          keys: [
+            ChartKey.slots('Deceleration capacity (ms)', p.ink3, win,
+                (i, v) => '${v.toStringAsFixed(1)} ms'),
+          ],
           child: CustomPaint(
             size: Size.infinite,
             // p.ink3, not an accent. A colour here would be a verdict.
@@ -728,6 +747,23 @@ class _InvestigateState extends State<Investigate> {
     final grid = _weekGrid(d.rhythmPoints, weeks);
     final ran = d.rhythmPoints.length;
     final raised = d.rhythmPoints.where((e) => e.v >= 1).length;
+    final ranLabel = l?.investigateScreenRan ?? 'Screen ran';
+    // Days from the start of the grid to today; the rest of this week is the
+    // future, which is not a day the screen failed to run.
+    final elapsedDays = weeks * 7 - (7 - DateTime.now().weekday);
+    // One key per count: that week's days, "N of 7". A week with no day on
+    // which the screen ran has nothing to count and reads "—".
+    ChartKey weekKey(String label, Color ink, int Function(List<double?>) n) {
+      String? say(double at) {
+        final col = grid[ChartScrub.slotAt(weeks, at, bars: true)];
+        return col.every((v) => v == null) ? null : '${n(col)} of 7 days';
+      }
+
+      final last = grid.lastIndexWhere((col) => col.any((v) => v != null));
+      return ChartKey(label, ink, say,
+          latest: last < 0 ? null : (last + .5) / weeks);
+    }
+
     return Surface(
       child: ChartFrame(
         title: l?.investigateIrregularRhythmScreen ?? 'Irregular-rhythm screen',
@@ -737,7 +773,7 @@ class _InvestigateState extends State<Investigate> {
           l?.investigate12WeeksAgo ?? '12 weeks ago',
           l?.investigateThisWeek ?? 'This week',
         ],
-        legend: [(l?.investigateScreenRan ?? 'Screen ran', p.on(C.purple))],
+        legend: [(ranLabel, p.on(C.purple))],
         footnote: l?.investigateRhythmStripFootnote(ran, raised) ??
             'Ran on $ran day${ran == 1 ? '' : 's'}, raised its flag on '
             '$raised. An outlined square is a day it did not run. A clear '
@@ -750,17 +786,24 @@ class _InvestigateState extends State<Investigate> {
         child: ChartScrub(
           label: l?.investigateIrregularRhythmScreen ?? 'Irregular-rhythm screen',
           mode: ChartScrubMode.nearest,
-          readout: (at) {
-            final w = (at * weeks).floor().clamp(0, weeks - 1);
-            final ran = grid[w].where((v) => v != null).length;
-            if (ran == 0) return null;
-            final flagged = grid[w].where((v) => v != null && v >= 1).length;
+          // Outlined squares are days it did not run: that is the "Not
+          // recorded" entry, and it appears only when there is one.
+          gaps: hasChartGaps([
+            [for (final col in grid) ...col].sublist(0, elapsedDays)
+          ], trailing: true),
+          time: (at) {
+            final w = ChartScrub.slotAt(weeks, at, bars: true);
             final back = DateTime.now().weekday - 1 + (weeks - 1 - w) * 7;
-            final name = w == weeks - 1
+            return w == weeks - 1
                 ? 'This week'
                 : 'Week of ${ChartScrub.dayBack(back)}';
-            return '$name · ran $ran of 7 days, flag raised on $flagged';
           },
+          keys: [
+            weekKey(ranLabel, p.on(C.purple),
+                (col) => col.where((v) => v != null).length),
+            weekKey('Flag raised', p.on(C.purple),
+                (col) => col.where((v) => v != null && v >= 1).length),
+          ],
           child: CustomPaint(
             size: Size.infinite,
             painter: HeatMap(grid, p.on(C.purple), p.line),

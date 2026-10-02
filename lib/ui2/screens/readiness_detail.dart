@@ -304,10 +304,17 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
       child: ChartScrub(
         label: l?.readinessDetailTitle ?? 'Readiness',
         // The last slot is today, as the x labels say.
-        readout: ChartScrub.slots(
-            win,
-            (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
-                '${v.round()}${l?.readinessDetailUnit ?? '/100'}'),
+        gaps: hasChartGaps([win], trailing: true),
+        time: (at) =>
+            ChartScrub.dayBack(win.length - 1 - ChartScrub.slotAt(win.length, at)),
+        keys: [
+          ChartKey.slots(
+              '${l?.readinessDetailTitle ?? 'Readiness'} '
+              '(${l?.readinessDetailUnit ?? '/100'})',
+              p.on(C.green),
+              win,
+              (i, v) => '${v.round()}${l?.readinessDetailUnit ?? '/100'}'),
+        ],
         child: CustomPaint(
           size: Size.infinite,
           painter: LineChart(win, p.on(C.green), dots: false, t: animate(c, 1),

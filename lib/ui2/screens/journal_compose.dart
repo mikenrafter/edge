@@ -919,10 +919,17 @@ class _WeightTrendState extends State<_WeightTrend> {
                   label: l?.journalComposeSevenDayTrend ?? 'Seven-day trend',
                   // Slot i is calendar day i after the first entry; a day with
                   // no trend value is a hole.
-                  readout: ChartScrub.slots(
-                      vals,
-                      (i, v) => '${dayLabelOf(DateTime(first.year, first.month, first.day + i))}'
-                          ' · ${axisFixed(v)} ${u?.isImperial == true ? 'lb' : 'kg'}'),
+                  gaps: hasChartGaps([vals]),
+                  time: (at) => dayLabelOf(DateTime(first.year, first.month,
+                      first.day + ChartScrub.slotAt(vals.length, at))),
+                  keys: [
+                    ChartKey.slots(
+                        'Weight (${u?.isImperial == true ? 'lb' : 'kg'})',
+                        p.on(C.blue),
+                        vals,
+                        (i, v) =>
+                            '${axisFixed(v)} ${u?.isImperial == true ? 'lb' : 'kg'}'),
+                  ],
                   child: CustomPaint(
                     size: Size.infinite,
                     painter: LineChart(

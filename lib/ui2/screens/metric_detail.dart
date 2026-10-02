@@ -1401,11 +1401,18 @@ class _MetricDetailState extends State<MetricDetail> {
                 // record has no bar and reads "No data here".
                 child: ChartScrub(
                   label: l?.metricDetailWornChartTitle ?? 'Worn',
-                  readout: ChartScrub.slots(
-                      hrs,
-                      (i, v) => '${ChartScrub.dayBack(hrs.length - 1 - i)} · '
-                          '${v.toStringAsFixed(1)} h',
-                      bars: true),
+                  gaps: hasChartGaps([hrs], trailing: true),
+                  time: (at) => ChartScrub.dayBack(hrs.length -
+                      1 -
+                      ChartScrub.slotAt(hrs.length, at, bars: true)),
+                  keys: [
+                    ChartKey.slots(
+                        'Worn (${l?.metricDetailHoursADayUnit ?? 'h a day'})',
+                        p.ink3,
+                        hrs,
+                        (i, v) => '${v.toStringAsFixed(1)} h',
+                        bars: true),
+                  ],
                   child: CustomPaint(
                     size: Size.infinite,
                     painter: Bars(hrs, p.ink3, axis: axis),

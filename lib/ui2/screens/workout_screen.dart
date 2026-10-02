@@ -261,11 +261,21 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
         // weighted set has no bar; the sum is a minimum, as the footnote says.
         child: ChartScrub(
           label: loc?.workoutMechanicalLoadTitle ?? 'Mechanical load',
-          readout: ChartScrub.slots(
-              d.tonnage7,
-              (i, v) => '${ChartScrub.day(DateTime(end.year, end.month, end.day - (6 - i)))}'
-                  ' · ${v.round()} ${loc?.workoutKgLiftedUnit ?? 'kg lifted'}',
-              bars: true),
+          gaps: hasChartGaps([d.tonnage7], trailing: true),
+          time: (at) {
+            final i = ChartScrub.slotAt(d.tonnage7.length, at, bars: true);
+            return ChartScrub.day(
+                DateTime(end.year, end.month, end.day - (6 - i)));
+          },
+          keys: [
+            ChartKey.slots(
+                loc?.workoutMechanicalLoadTitle ?? 'Mechanical load',
+                p.on(C.orange),
+                d.tonnage7,
+                (i, v) =>
+                    '${v.round()} ${loc?.workoutKgLiftedUnit ?? 'kg lifted'}',
+                bars: true),
+          ],
           child: CustomPaint(
             size: Size.infinite,
             painter: Bars(d.tonnage7, p.on(C.orange),
@@ -364,11 +374,22 @@ class _WorkoutScreenState extends State<WorkoutScreen> with RevisionReload {
               series: d.trimp7,
               child: ChartScrub(
                 label: loc?.workoutDailyLoadTitle ?? 'Daily load',
-                readout: ChartScrub.slots(
-                    d.trimp7,
-                    (i, v) => '${ChartScrub.day(DateTime(end.year, end.month, end.day - (6 - i)))}'
-                        ' · ${v.round()} ${loc?.workoutTrimpUnit ?? 'TRIMP'}',
-                    bars: true),
+                gaps: hasChartGaps([d.trimp7], trailing: true),
+                time: (at) {
+                  final i =
+                      ChartScrub.slotAt(d.trimp7.length, at, bars: true);
+                  return ChartScrub.day(
+                      DateTime(end.year, end.month, end.day - (6 - i)));
+                },
+                keys: [
+                  ChartKey.slots(
+                      loc?.workoutDailyLoadTitle ?? 'Daily load',
+                      p.on(C.purple),
+                      d.trimp7,
+                      (i, v) =>
+                          '${v.round()} ${loc?.workoutTrimpUnit ?? 'TRIMP'}',
+                      bars: true),
+                ],
                 child: CustomPaint(
                     size: Size.infinite,
                     // Today is the last slot, always — not "the newest value".
@@ -1060,12 +1081,11 @@ class _HistoryRow extends StatelessWidget {
             unit: loc?.workoutMinutesUnit ?? 'minutes',
             height: 8,
             legend: [
-              for (var i = 0; i < 5; i++)
-                ('Z${i + 1} · ${w.zoneMinutes[i].round()}m', ZoneBar.cols(p)[i]),
+              for (var i = 0; i < 5; i++) ('Z${i + 1}', ZoneBar.cols(p)[i]),
             ],
             child: ChartScrub(
               label: loc?.workoutTimeInZonesTitle ?? 'Time in zones',
-              readout: ChartScrub.zoneMinutes(w.zoneMinutes),
+              keys: ChartScrub.zoneKeys(p, w.zoneMinutes),
               child: CustomPaint(
                   size: Size.infinite, painter: ZoneBar(w.zoneFractions, p)),
             ),

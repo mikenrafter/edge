@@ -172,21 +172,27 @@ class MonthGrid extends StatelessWidget {
                             r.spec.title, r.have, kGridDays) ??
                         '${r.spec.title}: ${r.have} of $kGridDays days have '
                             'a value. Shaded against your own range.',
-                    child: SizedBox(
-                      height: 22,
-                      // A grid: the finger selects the day (cell) it is over.
-                      // The cells hold only the shade, so that is what is said:
-                      // that the day has a value and how far up the person's
-                      // own range it sat. An outlined cell reads "No data
-                      // here".
-                      child: ChartScrub(
-                        label: r.spec.title,
-                        mode: ChartScrubMode.nearest,
-                        readout: ChartScrub.slots(
-                            r.cells,
-                            (i, v) => '${ChartScrub.dayBack(r.cells.length - 1 - i)}'
-                                ' · ${(v.clamp(0.0, 1.0) * 100).round()}% of the way up your range',
+                    // A grid: the finger selects the day (cell) it is over. The
+                    // cells hold only the shade, so that is what is said: that
+                    // the day has a value and how far up the person's own range
+                    // it sat. An outlined cell is "—". The row under the strip
+                    // is its key; the 22 pt belongs to the strip alone.
+                    child: ChartScrub(
+                      label: r.spec.title,
+                      mode: ChartScrubMode.nearest,
+                      gaps: hasChartGaps([r.cells], trailing: true),
+                      time: (at) => ChartScrub.dayBack(r.cells.length -
+                          1 -
+                          ChartScrub.slotAt(r.cells.length, at, bars: true)),
+                      keys: [
+                        ChartKey.slots('Position in your range',
+                            p.on(r.spec.color), r.cells,
+                            (i, v) =>
+                                '${(v.clamp(0.0, 1.0) * 100).round()}% up',
                             bars: true),
+                      ],
+                      child: SizedBox(
+                        height: 22,
                         child: CustomPaint(
                           size: Size.infinite,
                           painter: HeatMap(
