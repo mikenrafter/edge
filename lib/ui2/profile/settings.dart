@@ -106,28 +106,8 @@ class _MoreSettingsState extends State<MoreSettings> {
     if (mounted) setState(() => _icon = now);
   }
 
-  /// Two time pickers, seeded from the saved schedule (or 23:00 / 07:00). Works
-  /// with no data at all: it writes the schedule, not a night.
-  Future<void> _editSleepSchedule(AppState app) async {
-    final cur = app.sleepOperations.schedule;
-    TimeOfDay at(int m) => TimeOfDay(hour: m ~/ 60, minute: m % 60);
-    final bed = await showTimePicker(
-      context: context,
-      initialTime: at(cur?.onsetMinute ?? 23 * 60),
-      helpText: 'WHEN YOU USUALLY GO TO BED',
-    );
-    if (bed == null || !mounted) return;
-    final up = await showTimePicker(
-      context: context,
-      initialTime: at(cur?.wakeMinute ?? 7 * 60),
-      helpText: 'WHEN YOU USUALLY GET UP',
-    );
-    if (up == null || !mounted) return;
-    await app.setExpectedSleepSchedule(ExpectedSleepSchedule(
-      onsetMinute: bed.hour * 60 + bed.minute,
-      wakeMinute: up.hour * 60 + up.minute,
-    ));
-  }
+  Future<void> _editSleepSchedule(AppState app) =>
+      editExpectedSleepSchedule(context, app);
 
   Future<void> _readVersion() async {
     try {
@@ -509,6 +489,30 @@ Future<void> _confirmReset(BuildContext c, AppState app) async {
   // without this the user stays on Settings, reading a profile that has been
   // deleted.
   if (c.mounted) backToRoot(c);
+}
+
+/// Two time pickers, seeded from the saved schedule (or 23:00 / 07:00). Works
+/// with no data at all: it writes the schedule, not a night. Shared by Settings
+/// and the alarm screen (Natural Wake needs it).
+Future<void> editExpectedSleepSchedule(BuildContext context, AppState app) async {
+  final cur = app.sleepOperations.schedule;
+  TimeOfDay at(int m) => TimeOfDay(hour: m ~/ 60, minute: m % 60);
+  final bed = await showTimePicker(
+    context: context,
+    initialTime: at(cur?.onsetMinute ?? 23 * 60),
+    helpText: 'WHEN YOU USUALLY GO TO BED',
+  );
+  if (bed == null || !context.mounted) return;
+  final up = await showTimePicker(
+    context: context,
+    initialTime: at(cur?.wakeMinute ?? 7 * 60),
+    helpText: 'WHEN YOU USUALLY GET UP',
+  );
+  if (up == null || !context.mounted) return;
+  await app.setExpectedSleepSchedule(ExpectedSleepSchedule(
+    onsetMinute: bed.hour * 60 + bed.minute,
+    wakeMinute: up.hour * 60 + up.minute,
+  ));
 }
 
 class MoreSettingsView extends StatelessWidget {

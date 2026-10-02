@@ -1304,6 +1304,16 @@ class AlarmPayloads {
       when.subtract(Duration(seconds: driftSec));
 }
 
+/// The two band writes the weekly-schedule arm logic may make. Exists so a test
+/// can count them with a fake; [BleEngine] is the only real implementation.
+abstract interface class AlarmBandWriter {
+  /// SET_ALARM. Null when the write never reached the band or it refused.
+  Future<DateTime?> setAlarm(DateTime when);
+
+  /// DISABLE_ALARM.
+  Future<void> disableAlarm();
+}
+
 /// Effect of a strap alarm-lifecycle event, for the caller to act on.
 enum AlarmEffect { confirmed, fired, cleared }
 

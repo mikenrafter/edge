@@ -917,7 +917,7 @@ class _FbpGattOps implements GattBootstrapOps {
   }
 }
 
-class BleEngine {
+class BleEngine implements AlarmBandWriter {
   final SampleSink onRecord;
   final StateSink onState;
   final LogSink? log;
@@ -7561,6 +7561,7 @@ class BleEngine {
   /// arm because a read-back never came back would break wake alarms on any
   /// band that does not echo the originating sequence. The log line is the
   /// signal that the arm went out unconfirmed.
+  @override
   Future<DateTime?> setAlarm(
     DateTime when, {
     int index = 0,
@@ -7680,6 +7681,7 @@ class BleEngine {
   /// (the earlier `[0x00]` body was ACKed but did not clear the alarm); gen5
   /// needs revision 2 plus the alarm id, defaulting to "all slots" — see
   /// [AlarmPayloads.disableForBand].
+  @override
   Future<void> disableAlarm({int? id}) {
     final isGen5 = _session?.band.isGen5 ?? false;
     return _send(

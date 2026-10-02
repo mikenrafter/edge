@@ -86,10 +86,10 @@ void main() {
     final wake = find.text('Wake time');
     expect(wake, findsNWidgets(_schedule.length),
         reason: 'one wake-time row per day, enabled or not');
-    for (final e in wake.evaluate()) {
-      expect(isDimmed(t, find.byWidget(e.widget)), isTrue,
-          reason: 'rows that cannot write to a disconnected band are dimmed');
-    }
+    // 8O: edits are a draft, so a missing band does not block them. Only the
+    // days that are off dim their time row, connected or not.
+    final dimmed = wake.evaluate().where((e) => isDimmed(t, find.byWidget(e.widget)));
+    expect(dimmed, hasLength(_schedule.where((d) => !d.enabled).length));
   });
 
   testWidgets('connected: a day that is off still shows its wake time, dimmed',

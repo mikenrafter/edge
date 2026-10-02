@@ -63,6 +63,7 @@ import '../stress/breath_phases.dart';
 // `runBackupIfDue` is also the name of the AppState method below, so the pure
 // scheduler is imported under an alias rather than shadowed by it.
 import '../data/auto_backup.dart' as backup show runBackupIfDue;
+import 'alarm_draft.dart';
 import 'alarm_schedule.dart';
 import 'smart_wake.dart';
 import '../wake/wake_controller.dart';
@@ -5108,8 +5109,12 @@ class AppState extends ChangeNotifier {
   /// edited schedule or a just-fired alarm re-arms with no manual step, and a
   /// fired one-shot (which clears `_savedAlarm`) picks up its next occurrence
   /// on the very next connect.
-  Future<void> _armNextAlarmOccurrence() async {
-    if (!isConnected) return;
+  ///
+  /// Returns what the pass did to the band so the alarm screen's Save can say
+  /// so. Failures are logged AND reported, never thrown: every other caller is
+  /// fire-and-forget and must not crash on a dropped link.
+  Future<AlarmArmReport> _armNextAlarmOccurrence() async {
+    if (!isConnected) return const AlarmArmReport();
     try {
       // A headless re-arm (background_sync.dart) can have rewritten
       // `alarm_epoch`/`alarm_epoch_confirmed` under this same live process
@@ -5133,18 +5138,64 @@ class AppState extends ChangeNotifier {
         currentArmedEpoch: _savedAlarm ?? device.alarmEpoch,
         ackedThroughEpochSec: prefs.getInt(_kWakeAckedEpochPref),
       );
+      final report = armReportOf(result);
       if (result.disabled) {
         // Every weekday got disabled since the last arm — the strap doesn't
         // give up its old alarm on its own (PR #329 review).
         _clearArmedAlarmState();
         notifyListeners();
-        return;
+        return report;
       }
       final epoch = result.epoch;
-      if (epoch == null) return;
+      if (epoch == null) return report;
       await _onArmed(DateTime.fromMillisecondsSinceEpoch(epoch * 1000), epoch);
+      return report;
     } catch (e) {
       _log('[alarm] weekly-schedule arm failed: $e');
+      return AlarmArmReport(error: e);
+    }
+  }
+
+  // ── alarm screen: draft Save (8O) ────────────────────────────────────────
+  // The alarm screen edits an AlarmDraft (lib/state/alarm_draft.dart) and calls
+  // this ONCE per Save. It is the only entry the screen has: setScheduleDay
+  // (immediate save + arm) stays for programmatic callers such as the Siri
+  // shortcut and is not reachable from the screen.
+
+  /// Persist the whole week in one transaction, apply the Natural/Gradual
+  /// settings (stored with the week; they are NEVER written to the band), then
+  /// arm the fixed alarm at T exactly once, deduped against what the band holds.
+  Future<AlarmSaveOutcome> saveAlarmDraft(List<AlarmScheduleEntry> entries) =>
+      saveAlarmSchedule(
+        entries: entries,
+        isConnected: () => isConnected,
+        persist: _persistScheduleBatch,
+        arm: _armNextAlarmOccurrence,
+        awaitConfirmed: _awaitAlarmConfirmed,
+      );
+
+  Future<void> _persistScheduleBatch(List<AlarmScheduleEntry> entries) async {
+    await LocalDb.setAlarmScheduleRows([for (final e in entries) e.toRow()]);
+    await _loadAlarmSchedule();
+    notifyListeners();
+    // New Natural windows change how early collection must start.
+    if (isConnected) unawaited(_refreshHighFreqWakeWindow());
+  }
+
+  /// True once the band's ALARM_SET (event 56) arrives, false on [timeout].
+  /// Reads the existing [AlarmConfirmation] machine; adds no state of its own.
+  Future<bool> _awaitAlarmConfirmed(Duration timeout) async {
+    if (_alarm.confirmed) return true;
+    final done = Completer<bool>();
+    void check() {
+      if (_alarm.confirmed && !done.isCompleted) done.complete(true);
+    }
+
+    addListener(check);
+    try {
+      return await done.future.timeout(timeout, onTimeout: () => false);
+    } finally {
+      removeListener(check);
     }
   }
 
