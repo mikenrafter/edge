@@ -653,6 +653,27 @@ Tests: coordinator publishes each step with timings; download counts
 advance; derive progress maps onDayDone; waiting state shows; only one sync
 control on Home; failure shows reason and Retry; latches reset in finally.
 
+### 8N — Gesture ECG is never mistaken for a reading
+
+Starting ECG for a tap gesture turns on the band's raw recording, so raw R16
+packets from the gesture later arrive through ordinary history sync into
+`ecg_raw_packet`. That is fine, and no sync is forced at gesture time. The
+receiving side must label them:
+
+- Each gesture session stores only its interval (device id, strap start/end
+  seconds, final count or abandoned). No samples (invariant 14).
+- When raw packets land, any packet inside a gesture interval is tagged as
+  gesture contact (for example `ecg_raw_packet.origin = 'gesture'`, an
+  additive, idempotent column), never linked to an `ecg_reading`.
+- Every ECG consumer (readings list, reading detail, exports, Health export,
+  coach views, any future raw-ECG analysis) ignores gesture-tagged packets.
+- A packet that arrives before its gesture interval is known (a sync racing
+  the session end) is re-tagged when the interval is written.
+
+Tests: packets inside, at the edges of, and outside a gesture interval;
+out-of-order arrival; a real reading next to a gesture keeps its own
+packets; the migration is idempotent.
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,
