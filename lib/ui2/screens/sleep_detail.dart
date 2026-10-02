@@ -441,6 +441,9 @@ class _SleepDetailState extends State<SleepDetail> {
       final rejectedDay = d.day;
       final rejected =
           (d.night['sleep_source'] as String?) == 'rejected' && rejectedDay != null;
+      // Times the user set leave the night blank on purpose (no numbers from
+      // a window the app did not find), so "wear the band" would be wrong here.
+      final userSet = (d.night['sleep_source'] as String?) == 'manual';
       return detailScaffold(c, title, [
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         ..._nightControls(d),
@@ -453,15 +456,22 @@ class _SleepDetailState extends State<SleepDetail> {
         StatusCard(
           rejected
               ? (l?.sleepDetailRejectedTitle ?? 'Marked as not sleep')
-              : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
+              : userSet
+                  ? 'Your times, no sleep numbers'
+                  : (l?.sleepDetailNoNightTitle ?? 'No night to show'),
           rejected
               ? (l?.sleepDetailRejectedBody ??
                   'You marked this stretch as not sleep, so it has '
                   'no score.')
-              : (l?.sleepDetailNoNightBody ??
-                  'No stretch of band recordings long enough to score.'),
-          fix: rejected ? '' : (l?.sleepDetailNoNightFix ??
-              'Wear the band overnight and sync in the morning'),
+              : userSet
+                  ? 'You set this night\'s times, so its sleep numbers stay '
+                      'blank and it does not count toward your scores.'
+                  : (l?.sleepDetailNoNightBody ??
+                      'No stretch of band recordings long enough to score.'),
+          fix: rejected || userSet
+              ? ''
+              : (l?.sleepDetailNoNightFix ??
+                  'Wear the band overnight and sync in the morning'),
           icon: rejected ? LucideIcons.undo2 : LucideIcons.moon,
         ),
         if (rejected) ...[
