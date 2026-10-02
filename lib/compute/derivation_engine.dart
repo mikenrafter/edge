@@ -1906,7 +1906,11 @@ const int kAlgoVersion = 99;
 // skin-temp window (see pubspec.yaml's comment beside the `ref:` for the
 // verification command). kAlgoVersion bumped 96 -> 97, see the changelog
 // entry above.
-const String kAnalyticsPin = '0441ef9e6fc6d5681c309ce6341911285e829f20';
+// REPIN @ 7fe67a7 — user's fork mikenrafter/openstrap-analytics, branch
+// feat/causal-stage-api: 0441ef9 plus the additive causal stage API for
+// Natural Wake (phase 6B). No existing analytics output changed, so no
+// kAlgoVersion bump comes from the pin itself.
+const String kAnalyticsPin = '7fe67a700e1ce23e7ff810098c0a90b5d2b6e06a';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
