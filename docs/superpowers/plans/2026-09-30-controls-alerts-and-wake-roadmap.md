@@ -363,3 +363,180 @@ which hardware and OS combinations were actually exercised.
 - No Natural Wake for naps.
 - No removal of the fixed native must-be-up-by alarm.
 - No raw-command, reboot, force-trim, firmware-load, or unsafe debug UI.
+
+---
+
+## Phase 8 — UX addenda (2026-10-02)
+
+Added after phase 5A shipped. These run **before** 5B/6/7 because the user is
+testing the app live on a band. Each workstream follows the same rules as the
+phases above: shippable on its own, absent data shows "—", no new direct band
+buzz outside `AlertDispatcher`, live streams stay RAM-only.
+
+Proof for every workstream: red tests first, then green; headless proof PNGs
+under `test/proof` (light/dark, 1×/2× text) with committed baselines; emulator
+screenshots of the same screens via `make install-emulator` + `adb exec-out
+screencap`, saved under `screenshots/phase8/`.
+
+### 8A — Flatter navigation
+
+Today Band notifications sits four pushes deep (Profile → Settings →
+Notifications → Band notifications) and Gestures three. Target: **every
+setting is at most two pushes from Profile home**, and the most-used controls
+are one push away.
+
+1. Settings (`MoreSettings`) shows every group as a `SettingsAccordion`,
+   expanded by default.
+2. Band notifications, Gestures and Alarm get direct rows in Settings' "The
+   band" group. Notifications keeps its row; its band-relay row stays as a
+   second entry, not the only one.
+3. Profile home gets a **Live devices** row (8B) in Quick access.
+4. Write `docs/navigation-depth.md`: one row per settings screen with its
+   push path before and after.
+
+Test: a widget test pumps Profile home and walks each listed destination by
+tapping rows; asserts depth ≤ 2 for every settings screen in the table.
+
+### 8B — Live devices screen
+
+A screen listing every connected device (the band plus any paired BLE sensor)
+with a graph of the **last 30 s** of data each one streamed.
+
+- One card per connected device: name, kind, connection state, battery if known.
+- **Every data stream of every device gets its own graph** — HR, RR
+  intervals, IMU axes (accel x/y/z, gyro x/y/z), skin temp, SpO2/PPG,
+  battery, and any paired sensor's streams. A new stream kind shows up as a
+  new graph without a UI change: graphs are built from whatever stream keys
+  the device reported. X axis is the last 30 s of wall time.
+- Buffer: a 30 s ring buffer in memory, fed from the existing live callbacks.
+  Never persisted (invariant 14). Samples older than 30 s drop off.
+- A signal with no samples in the window shows "No data in the last 30 s",
+  never a flat line at zero. A disconnected device shows its last-seen time
+  and no chart.
+- The chart is scrubbable (8F).
+
+Tests: ring buffer eviction at exactly 30 s; out-of-order sample drop;
+no-sample state; disconnected state; source guard that the buffer has no DB
+writer.
+
+### 8C — Sections for every settings list
+
+Every settings screen that shows a list of configurable settings is split into
+named `SettingsAccordion` sections, **expanded by default**, like Band
+notifications. Covers at least: Settings, Notifications, Band notifications
+(its three channel accordions become expanded), Alarm, Gestures, Automation,
+Data, Device detail, Edit profile. Section headers never move when a setting
+inside another section changes.
+
+Test: each of those views, pumped headless, has ≥ 1 `SettingsAccordion` and
+every accordion starts expanded.
+
+### 8D — Per-notification buzz sequences
+
+Every notification type (each `AlertRule` with a band destination, and each
+per-app relay entry) can choose its own buzz sequence.
+
+Encoding: `BuzzSequence` = list of onset offsets in ms from the first buzz,
+e.g. `[0, 500, 1000]`. 1–8 buzzes, offsets strictly increasing, each gap
+150–2000 ms. Stored as JSON on the rule / per-app relay entry; absent means
+the default below. Additive, idempotent migration.
+
+Defaults: rule types in their stable registry order take
+`(count, gap)` from `[1,2,3] × [500,1000,1500] ms`, count-major
+(1×500, 2×500, 3×500, 1×1000, …), wrapping after nine. Per-app relay entries
+default to the App notifications channel's sequence.
+
+Recorder: a "Tap your pattern" button. The first tap starts recording and
+buzzes the phone; each tap appends its offset. **2 s without a tap ends the
+recording.** More than 8 taps ends it at 8. Then it plays back on the band if
+connected (labelled "phone must be connected"), with Save / Record again.
+
+Playback: one `AlertDispatcher` delivery plays the whole sequence; each step is
+the existing single buzz (gen5 plays its fixed waveform per step). The band
+transport reports success only if every step was written; a disconnect mid-
+sequence stops further steps.
+
+Tests: JSON round-trip and rejection of bad sequences; default assignment
+order; recorder ends after 2 s idle and at 8 taps (fake clock); playback
+schedules steps at the right offsets and stops on disconnect; dispatcher still
+claims once per (rule, event, target).
+
+### 8E — Sleep window without data
+
+The user can always set a sleep window — from Settings (expected schedule)
+and from any night on the Sleep screen, including nights with no recording.
+
+- Saving never depends on samples existing. The window persists and shows as
+  "You set this window".
+- Where the samples do not cover the window, every sleep metric for that
+  night is blank ("—"), not zero.
+- Any calculation that depends on sleep (sleep baselines and averages, sleep
+  debt, consistency, readiness's sleep input, trends) treats that night as
+  **not recorded for that metric**: it is skipped, not counted as 0 h, and it
+  does not shorten or reset a streak by itself.
+- If this changes derived output, bump `kAlgoVersion` with a changelog entry.
+
+Tests: set window on a no-data night → persisted, metrics null; 7-night
+average over 6 real + 1 blank night equals the 6-night average; readiness
+sleep input abstains for that night; repeated derivation keeps the same
+result (idempotent).
+
+### 8F — Every graph is scrubbable
+
+One shared `ChartScrub` widget (built on `Scrubber`) wraps every chart in
+`lib/ui2` outside the gallery: tap or drag places a vertical cursor line that
+tracks the finger and a readout pill with the value and time at that point,
+like the hypnogram. Scatter and grid charts (Poincaré, heat map, month grid)
+select the nearest point/cell instead of drawing a line. A position with no
+data reads "No data here", never an interpolated value.
+
+Test: a source guard that every `painter: <ChartPainter>(` site in
+`lib/ui2/{screens,activity}` and `live_hr.dart` sits under `ChartScrub` or
+`Scrubber`; widget tests for the cursor/readout on a line chart, a bar chart
+and a gap in the data.
+
+### 8G — Day breakdown: collapse repeated taps
+
+In the day timeline, a run of consecutive identical band events (double taps
+first) with nothing else between them collapses into one row:
+"You double-tapped the band · 5 times", which expands to the individual times.
+A single tap stays a plain row.
+
+Test: the pure grouping function on runs, interleaved events and singles; a
+widget test for expand/collapse.
+
+### 8H — Tap acknowledgement buzz
+
+When the band reports a **live** double tap and at least one action ran, buzz
+the band once so the user knows it was received. Late taps (`!isLive`,
+drained from flash or held back), duplicates and taps where every action was
+skipped get no buzz. The ack goes through `AlertDispatcher` as a band-only,
+live-only rule with a short stale deadline, so a reconnect never replays it.
+
+Tests: live tap → one ack; stale tap → none; duplicate → none; all actions
+failed → none; ack is claimed once per tap identity.
+
+### 8I — Device lab (5B exploration)
+
+A "Device lab" screen under Device detail for exploring extended gestures on
+the real band:
+
+- A live log of band events: event id, event time, receipt time, delay, live
+  or late, and which actions ran.
+- A switch: **"Toggle ECG recording on double tap"**. When on, a live double
+  tap starts an ECG capture and the band buzzes; the user then touches the
+  sensor. The log records tap → capture-start delay and the capture result so
+  the user can judge whether the sequence works.
+- ECG needs a WHOOP MG. On any other band the switch is shown disabled with
+  "This band has no ECG sensor". No continuous ECG.
+- The switch is off by default and stored with the gesture settings.
+
+Tests: switch disabled on non-MG; live tap with switch on starts exactly one
+capture; late tap starts none; switch off starts none; log entries carry both
+timestamps.
+
+### Order
+
+8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8A, 8B, 8I
+(UI). Then resume 5B → 6 → 7 where the remaining work does not need hardware
+or the analytics repo; record what was blocked.
