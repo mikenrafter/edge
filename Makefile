@@ -1,5 +1,5 @@
 .PHONY: help doctor deps pins check build apk bundle debug linux run devices \
-	install install-device install-emulator install/emulator emulator analyze test \
+	install install-device install-profile install-emulator install/emulator emulator analyze test \
 	logs crash clear-logs clean
 
 PROOF_DIR ?= build/proof/$(shell date -u +%Y%m%dT%H%M%SZ)
@@ -31,6 +31,7 @@ help:
 	@echo "  apk | bundle      Build Android release artifacts"
 	@echo "  debug             Build the Android debug APK"
 	@echo "  install           Build and install \"Edge Dev\" (separate app id) on the one adb device; EDGE_DEVICE=<serial> to choose"
+	@echo "  install-profile   Same app as install, built in profile mode (AOT, release speed)"
 	@echo "  install-emulator  Boot/reuse an emulator, build, and install"
 	@echo "  emulator          Boot/reuse an emulator without installing"
 	@echo "  run               Run Edge on a Flutter device (DEVICE=<id> to choose; hot reload)"
@@ -72,6 +73,10 @@ devices:
 install install-device:
 	@chmod +x scripts/install-device.sh
 	$(RUN) bash scripts/install-device.sh
+
+install-profile:
+	@chmod +x scripts/install-device.sh
+	$(RUN) bash scripts/install-device.sh --profile
 
 install/emulator install-emulator:
 	@chmod +x scripts/emulator-install.sh

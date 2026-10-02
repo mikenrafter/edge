@@ -106,6 +106,15 @@ android {
             versionNameSuffix = "-dev"
             manifestPlaceholders["appLabel"] = "Edge Dev"
         }
+        // Flutter's plugin creates `profile` from `debug` before this block
+        // runs, so it does not inherit the suffix above. Set it again, so
+        // `make install-profile` is the same Edge Dev app (id, label, debug
+        // key, data) at AOT speed rather than a second copy of release.
+        getByName("profile") {
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            manifestPlaceholders["appLabel"] = "Edge Dev"
+        }
         release {
             // Use the real release key when it's configured (local key.properties or CI
             // env), otherwise fall back to debug so `flutter run --release` still works.

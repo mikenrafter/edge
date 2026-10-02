@@ -7,7 +7,12 @@
 # attached device. With none or several it stops and says what to do, rather
 # than letting `adb` fail with "more than one device".
 #
-#   scripts/install-device.sh [--no-build] [--no-launch]
+# --profile builds Flutter's profile mode instead: AOT-compiled like a release,
+# so derivation and sync run at release speed. Flutter's profile build type
+# starts from debug, so it keeps the ".dev" id, the "Edge Dev" label and the
+# debug signing key, and installs over a debug install without losing data.
+#
+#   scripts/install-device.sh [--profile] [--no-build] [--no-launch]
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,7 +20,7 @@ cd "$ROOT"
 
 APP_ID="wtf.openstrap.openstrap_edge.dev"
 ACTIVITY="wtf.openstrap.openstrap_edge.MainActivity"
-APK="build/app/outputs/flutter-apk/app-debug.apk"
+MODE=debug
 
 BUILD=true
 LAUNCH=true
@@ -23,9 +28,12 @@ for arg in "$@"; do
   case "$arg" in
     --no-build) BUILD=false ;;
     --no-launch) LAUNCH=false ;;
+    --profile) MODE=profile ;;
     *) echo "error: unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
+
+APK="build/app/outputs/flutter-apk/app-$MODE.apk"
 
 command -v adb >/dev/null || { echo "error: adb not found; run inside 'nix develop'" >&2; exit 1; }
 adb start-server >/dev/null 2>&1 || true
@@ -59,7 +67,7 @@ model="$(adb -s "$device" shell getprop ro.product.model 2>/dev/null | tr -d '\r
 echo "Device: $device ${model:+($model)}"
 
 if [[ "$BUILD" == true ]]; then
-  flutter build apk --debug
+  flutter build apk "--$MODE"
 fi
 [[ -f "$APK" ]] || { echo "error: $APK not found; build first" >&2; exit 1; }
 
@@ -75,7 +83,7 @@ if ! out="$(adb -s "$device" install -r -d "$APK" 2>&1)"; then
   fi
   exit 1
 fi
-echo "Installed $APP_ID on $device"
+echo "Installed $APP_ID ($MODE) on $device"
 
 if [[ "$LAUNCH" == true ]]; then
   adb -s "$device" shell am start -n "$APP_ID/$ACTIVITY" >/dev/null
