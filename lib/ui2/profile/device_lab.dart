@@ -28,8 +28,8 @@ export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 const String kExtendedGesturesNote =
     'ECG on double tap and the 3–5 tap rows need a WHOOP MG. '
     'WHOOP 4.0 has no ECG sensor. '
-    'The 3–5 tap rows are a draft. Try them here first: every step is '
-    'logged with its timing.';
+    'The 3–5 tap rows are a draft. Try them first in the Device lab, under '
+    'your band in Devices: it logs every step with its timing.';
 
 class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});
