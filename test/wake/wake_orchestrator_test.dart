@@ -207,14 +207,19 @@ void main() {
       expect(r.observer.requests, isEmpty);
     });
 
-    test('sample feeding is incremental from the last fed instant', () async {
+    test('sample feeding is incremental from the newest sample received',
+        () async {
       final r = Rig(at: _t.subtract(const Duration(minutes: 70)));
       final plan = planFor(_t, natural: 60);
+      final base = r.clock.now.millisecondsSinceEpoch.toDouble();
+      for (var s = 40; s > 0; s--) {
+        r.env.store(base - s * 1000);
+      }
+      final newest = base - 1000;
       await r.tick(plan);
-      final firstEnd = r.env.sampleRanges.first.$2;
       r.clock.advance(const Duration(seconds: 30));
       await r.tick(plan);
-      expect(r.env.sampleRanges.last.$1, firstEnd);
+      expect(r.env.sampleRanges.last.$1.millisecondsSinceEpoch, newest.round());
       expect(r.observer.requests.last.priorState, {'v': 1, 'calls': 1});
     });
   });

@@ -1912,11 +1912,26 @@ class LocalDb {
         where: 'wake_epoch < ?', whereArgs: [wakeEpochSec - 14 * 86400]);
   }
 
+  /// The trace for one wake, oldest first. With [limit], the NEWEST [limit]
+  /// rows (still returned oldest first), so a screen that reloads on every tick
+  /// reads a bounded amount however long the night was.
   static Future<List<Map<String, Object?>>> wakeTraceRows(
-      int wakeEpochSec) async {
+    int wakeEpochSec, {
+    int? limit,
+  }) async {
     final db = await instance;
-    return db.query('wake_trace',
-        where: 'wake_epoch = ?', whereArgs: [wakeEpochSec], orderBy: 'id ASC');
+    if (limit == null) {
+      return db.query('wake_trace',
+          where: 'wake_epoch = ?',
+          whereArgs: [wakeEpochSec],
+          orderBy: 'id ASC');
+    }
+    final newest = await db.query('wake_trace',
+        where: 'wake_epoch = ?',
+        whereArgs: [wakeEpochSec],
+        orderBy: 'id DESC',
+        limit: limit);
+    return newest.reversed.toList();
   }
 
   /// HR/accel for the causal stager: `decoded_onehz` rows with `rec_ts` (unix

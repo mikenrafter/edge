@@ -91,6 +91,26 @@ class WakeController extends ChangeNotifier {
 
   WakeUpgradeState _upgrade = WakeUpgradeState.none;
 
+  /// Bumped once each time a tick (or an acknowledgement) added rows to the
+  /// decision trace. A screen that shows the trace listens to this, NOT to the
+  /// controller: the trace changes every few seconds overnight and must not
+  /// rebuild everything that listens to [WakeController] (or AppState).
+  final ValueNotifier<int> traceRevision = ValueNotifier<int>(0);
+
+  bool _disposed = false;
+
+  /// A tick can finish after the app state is gone; that is not an error.
+  void noteTraceChanged() {
+    if (!_disposed) traceRevision.value++;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    traceRevision.dispose();
+    super.dispose();
+  }
+
   /// Re-read persisted state. Call after the schedule is (re)loaded.
   Future<void> reload() async {
     _upgrade = await _loadUpgradeState();

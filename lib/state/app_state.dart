@@ -44,7 +44,12 @@ import '../ble/polar_pmd_link.dart';
 import '../demo/demo_data_generator.dart';
 import '../ble/live_step_runs.dart';
 import '../ble/ble_state.dart'
-    show AlarmConfirmation, AlarmEffect, LiveStreamOwners, SyncActivityWindow;
+    show
+        AlarmBandWriter,
+        AlarmConfirmation,
+        AlarmEffect,
+        LiveStreamOwners,
+        SyncActivityWindow;
 import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
 import '../compute/derivation_engine.dart';
@@ -5144,7 +5149,96 @@ class AppState extends ChangeNotifier {
   /// Returns what the pass did to the band so the alarm screen's Save can say
   /// so. Failures are logged AND reported, never thrown: every other caller is
   /// fire-and-forget and must not crash on a dropped link.
-  Future<AlarmArmReport> _armNextAlarmOccurrence() async {
+  Future<AlarmArmReport> _armNextAlarmOccurrence() =>
+      _joinArmFlight(_armPass);
+
+  // ── single-flight arming (N) ───────────────────────────────────────────────
+  // Save, a connect, a sync completion, the wake tick's re-arm and the grace
+  // retry all reach the band through here. Without one lock two of them could
+  // both see the old saved epoch and write the same occurrence twice, or a
+  // slower older pass could land after a newer one. So there is at most ONE
+  // flight. A caller that arrives while it runs does not start a second write:
+  // it marks the flight dirty and shares its result. When the running pass
+  // ends, a dirty flight runs ONE more pass, which re-reads the schedule and
+  // dedupes against the epoch the previous pass recorded, so the band ends on
+  // the NEWEST state and an unchanged one costs no write.
+  Future<AlarmArmReport>? _armFlight;
+  bool _armAgain = false;
+
+  Future<AlarmArmReport> _joinArmFlight(
+    Future<AlarmArmReport> Function() first,
+  ) {
+    final running = _armFlight;
+    if (running != null) {
+      _armAgain = true;
+      return running;
+    }
+    final done = Completer<AlarmArmReport>();
+    _armFlight = done.future;
+    unawaited(() async {
+      var report = const AlarmArmReport();
+      try {
+        var pass = first;
+        do {
+          _armAgain = false;
+          report = _mergeArmReports(report, await pass());
+          pass = _armPass; // any later pass is a plain, deduped arm
+        } while (_armAgain && !_disposed);
+      } catch (e) {
+        report = AlarmArmReport(error: e);
+      } finally {
+        // Cleared on every exit (§4.3), with no await between the loop's last
+        // check and here, so a caller can never join a flight that is over.
+        _armFlight = null;
+        _armAgain = false;
+      }
+      done.complete(report);
+    }());
+    return done.future;
+  }
+
+  /// What a flight of several passes did, for the Save header: a failure of the
+  /// newest pass wins; otherwise the newest write; otherwise an earlier write.
+  static AlarmArmReport _mergeArmReports(AlarmArmReport a, AlarmArmReport b) {
+    if (b.failed || b.wrote) return b;
+    return a.failed ? b : a;
+  }
+
+  late final AlarmBandWriter _armWriter = _TrackedAlarmWriter(
+    set: _writeAlarm,
+    disable: () => engine.disableAlarm(),
+  );
+
+  // ── early ALARM_SET (O) ────────────────────────────────────────────────────
+  // The band can emit event 56 before the SET_ALARM reply reaches
+  // `engine.setAlarm`, i.e. before [_onArmed] runs. The write is registered
+  // here BEFORE it goes out, so an event 56 that lands in between is recorded
+  // on it and [_onArmed] merges it rather than resetting `confirmed` and
+  // starting a grace timer that ends in a needless second write. The event
+  // carries no epoch, but only one write is ever in flight (N), so "the
+  // pending write" is the occurrence it confirms.
+  _PendingArm? _pendingArm;
+  int _armGeneration = 0;
+
+  /// The ONE place SET_ALARM is sent from this class.
+  Future<DateTime?> _writeAlarm(DateTime when) async {
+    final pending = _PendingArm(
+      when.millisecondsSinceEpoch ~/ 1000,
+      ++_armGeneration,
+    );
+    _pendingArm = pending;
+    DateTime? armed;
+    try {
+      armed = await engine.setAlarm(when);
+    } finally {
+      // Nothing landed: there is nothing for an event 56 to confirm. A write
+      // that did land stays registered until [_onArmed] consumes it.
+      if (armed == null && identical(_pendingArm, pending)) _pendingArm = null;
+    }
+    return armed;
+  }
+
+  Future<AlarmArmReport> _armPass() async {
     if (!isConnected) return const AlarmArmReport();
     try {
       // A headless re-arm (background_sync.dart) can have rewritten
@@ -5164,7 +5258,7 @@ class AppState extends ChangeNotifier {
         }
       }
       final result = await armNextScheduledOccurrence(
-        engine: engine,
+        engine: _armWriter,
         schedule: _schedule,
         currentArmedEpoch: _savedAlarm ?? device.alarmEpoch,
         ackedThroughEpochSec: prefs.getInt(_kWakeAckedEpochPref),
@@ -5196,14 +5290,29 @@ class AppState extends ChangeNotifier {
   /// Persist the whole week in one transaction, apply the Natural/Gradual
   /// settings (stored with the week; they are NEVER written to the band), then
   /// arm the fixed alarm at T exactly once, deduped against what the band holds.
-  Future<AlarmSaveOutcome> saveAlarmDraft(List<AlarmScheduleEntry> entries) =>
+  Future<AlarmSaveOutcome> saveAlarmDraft(
+    List<AlarmScheduleEntry> entries, {
+    Duration confirmWait = kAlarmConfirmWait,
+  }) =>
       saveAlarmSchedule(
         entries: entries,
         isConnected: () => isConnected,
         persist: _persistScheduleBatch,
         arm: _armNextAlarmOccurrence,
         awaitConfirmed: _awaitAlarmConfirmed,
+        confirmWait: confirmWait,
       );
+
+  /// One arm pass through the single flight, as a connect or sync callback
+  /// makes it. Tests only.
+  @visibleForTesting
+  Future<AlarmArmReport> debugArmNextAlarmOccurrence() =>
+      _armNextAlarmOccurrence();
+
+  /// Re-read the saved weekly schedule, as [saveAlarmDraft] does after it
+  /// persists. Tests only.
+  @visibleForTesting
+  Future<void> debugLoadAlarmSchedule() => _loadAlarmSchedule();
 
   Future<void> _persistScheduleBatch(List<AlarmScheduleEntry> entries) async {
     await LocalDb.setAlarmScheduleRows([for (final e in entries) e.toRow()]);
@@ -5267,6 +5376,7 @@ class AppState extends ChangeNotifier {
     ),
     stateStore: const DbWakeStateStore(),
     traceStore: const DbWakeTraceStore(),
+    onTraceChanged: wake.noteTraceChanged,
   );
 
   FallbackStatus _wakeFallbackStatus(DateTime wakeAt) => FallbackStatus(
@@ -5424,7 +5534,7 @@ class AppState extends ChangeNotifier {
   // as display truth: we no longer guess from an unconfirmed readback — we know.
   // The transitions live in the pure, unit-testable [AlarmConfirmation]; AppState
   // just wires the strap event stream + persistence + the fired notification.
-  final AlarmConfirmation _alarm = AlarmConfirmation();
+  AlarmConfirmation _alarm = AlarmConfirmation();
   Timer? _alarmGraceTimer;
   // Event 56 is a one-shot BLE notification — if that single packet gets
   // dropped by an ordinary momentary disconnect right after the write (the
@@ -5438,6 +5548,15 @@ class AppState extends ChangeNotifier {
   /// The strap emitted ALARM_SET (event 56) — the alarm is confirmed armed.
   bool get alarmConfirmed => _alarm.confirmed;
 
+  /// The grace window passed without a confirmation and the app wrote the same
+  /// alarm once more; still unconfirmed. The Save header says so (M).
+  bool get alarmResentUnconfirmed =>
+      _alarmAutoRetried && _alarm.targetEpoch != null && !_alarm.confirmed;
+
+  /// Shorten the confirmation grace window. Tests only.
+  @visibleForTesting
+  void debugSetAlarmGraceMs(int ms) => _alarm = AlarmConfirmation(graceMs: ms);
+
   /// A SET was written but not yet confirmed, still inside the grace window —
   /// the UI shows a neutral "Setting alarm…" state.
   bool get alarmPending =>
@@ -5449,7 +5568,7 @@ class AppState extends ChangeNotifier {
     // rich 20-byte firing form (a hardcoded 0 subsec would still fire, but the
     // engine owns the exact on-wire layout). Persist the wall instant the
     // engine reports armed (null = write never reached the band).
-    final armed = await engine.setAlarm(when);
+    final armed = await _writeAlarm(when);
     if (armed == null) {
       // Do NOT persist or start the confirmation machine, or we'd strand a
       // phantom alarm "waiting for the strap to confirm" that can never fire.
@@ -5469,18 +5588,30 @@ class AppState extends ChangeNotifier {
   /// timer. [setAlarm] (an explicit write) and [_armNextAlarmOccurrence] (the
   /// schedule engine) both funnel through here so the two can never drift
   /// apart on what "armed" means.
-  Future<void> _onArmed(DateTime when, int epoch) async {
+  Future<void> _onArmed(DateTime when, int epoch, {bool isRetry = false}) async {
+    // An event 56 that beat the write's reply (see [_pendingArm]) is the
+    // confirmation of THIS arm: keep it instead of resetting it.
+    final pending = _pendingArm;
+    final early =
+        pending != null && pending.epoch == epoch && pending.confirmedEarly;
+    _pendingArm = null;
     _savedAlarm = epoch;
     device.alarmEpoch = epoch; // optimistic display
     _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch); // await event 56
-    _alarmAutoRetried = false; // a fresh arm gets its one retry
+    if (early) _alarm.confirmed = true;
+    if (!isRetry) _alarmAutoRetried = false; // a fresh arm gets its one retry
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('alarm_epoch', epoch);
-    // Not confirmed yet — event 56 (below, in _handleAlarmEvent) flips this.
-    await prefs.setBool('alarm_epoch_confirmed', false);
-    // Nudge the UI once the grace window elapses so an unconfirmed alarm flips to
-    // its soft warning even if no event ever arrives.
-    _armAlarmGraceTimer(when);
+    // Not confirmed yet unless event 56 already came — it (below, in
+    // _handleAlarmEvent) flips this otherwise.
+    await prefs.setBool('alarm_epoch_confirmed', early);
+    if (early) {
+      _alarmGraceTimer?.cancel();
+    } else {
+      // Nudge the UI once the grace window elapses so an unconfirmed alarm
+      // flips to its soft warning even if no event ever arrives.
+      _armAlarmGraceTimer(when);
+    }
     notifyListeners();
   }
 
@@ -5504,34 +5635,56 @@ class AppState extends ChangeNotifier {
     // A newer alarm was armed while this timer was pending — that set owns the
     // confirmation machine now; retrying the stale time would clobber it.
     if (_savedAlarm != epoch) return;
+    // Never write while another arm is in flight (N). Wait for it, then look
+    // again: it may have re-armed (its own grace timer owns the confirmation),
+    // or the alarm may have been confirmed or replaced meanwhile.
+    final inFlight = _armFlight;
+    if (inFlight != null) {
+      await inFlight;
+      if (_disposed || _alarm.confirmed || _savedAlarm != epoch) return;
+      if (_alarmGraceTimer?.isActive ?? false) return;
+    }
     if (_alarmAutoRetried || !isConnected) {
       notifyListeners();
       unawaited(_notifyAlarmLatchFailed(epoch));
       return;
     }
     _alarmAutoRetried = true;
-    var rearmed = false;
-    try {
-      // gen5 made setAlarm return the armed instant (null = the write never
-      // reached the band) where it used to return a bool. Same signal, so the
-      // retry bookkeeping below is unchanged.
-      rearmed = await engine.setAlarm(when) != null;
-    } catch (e) {
-      _log('[alarm] auto-retry re-arm failed: $e');
+    // The single retry is a pass of the same flight as every other arm. If
+    // another arm took the flight first, this retry did not run and is not
+    // spent: that arm's own grace timer now owns the confirmation.
+    var sent = false;
+    final report = await _joinArmFlight(() async {
+      sent = true;
+      try {
+        // gen5 made setAlarm return the armed instant (null = the write never
+        // reached the band) where it used to return a bool.
+        final armed = await _writeAlarm(when);
+        if (armed == null) {
+          return const AlarmArmReport(
+              error: 'the band did not take the alarm. Try again');
+        }
+        await _onArmed(armed, epoch, isRetry: true);
+        return const AlarmArmReport(wrote: true, awaitsConfirmation: true);
+      } catch (e) {
+        _log('[alarm] auto-retry re-arm failed: $e');
+        return AlarmArmReport(error: e);
+      }
+    });
+    if (!sent) {
+      _alarmAutoRetried = false;
+      return;
     }
     // The write itself never landed, so the one retry was not actually spent —
     // give it back rather than latching this alarm out of any future retry.
-    if (!rearmed) _alarmAutoRetried = false;
+    if (report.failed) _alarmAutoRetried = false;
     // dispose() ran while the write was in flight — do NOT create a timer it
     // no longer has any chance to cancel (it would keep poking a torn-down
     // engine on every fire).
     if (_disposed) return;
-    // Re-check staleness after the await for the same reason as above.
-    if (rearmed && _savedAlarm == epoch && !_alarm.confirmed) {
-      _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch);
-      _armAlarmGraceTimer(when);
-      return;
-    }
+    // Landed: [_onArmed] restarted the grace window (or recorded an early
+    // confirmation), so the confirmation machine is already current.
+    if (!report.failed) return;
     notifyListeners();
     unawaited(_notifyAlarmLatchFailed(epoch));
   }
@@ -5649,6 +5802,8 @@ class AppState extends ChangeNotifier {
     switch (effect) {
       case AlarmEffect.confirmed:
         _alarmGraceTimer?.cancel();
+        // A write is in flight: this confirms it (see [_pendingArm]).
+        _pendingArm?.confirmedEarly = true;
         // Diagnostic: ALARM_SET (event 56) means the arm LATCHED on the band.
         // Its absence after a SET is the tell that the write never took.
         _log('[alarm] strap CONFIRMED arm — ALARM_SET (event $id) received.');
@@ -5689,6 +5844,7 @@ class AppState extends ChangeNotifier {
     _savedAlarm = null;
     device.alarmEpoch = null;
     _alarm.disable();
+    _pendingArm = null;
     _alarmGraceTimer?.cancel();
     unawaited(() async {
       try {
@@ -8162,4 +8318,28 @@ class LiveWorkoutState {
     );
     _scoreCalories();
   }
+}
+
+/// An SET_ALARM write that is on its way to the band (see
+/// `AppState._pendingArm`). [confirmedEarly] is set when the band's ALARM_SET
+/// (event 56) arrives before the write's reply does.
+class _PendingArm {
+  _PendingArm(this.epoch, this.generation);
+  final int epoch;
+  final int generation;
+  bool confirmedEarly = false;
+}
+
+/// The [AlarmBandWriter] the schedule arm uses, so every SET_ALARM goes through
+/// `AppState._writeAlarm` and is registered before it is sent.
+class _TrackedAlarmWriter implements AlarmBandWriter {
+  _TrackedAlarmWriter({required this.set, required this.disable});
+  final Future<DateTime?> Function(DateTime when) set;
+  final Future<void> Function() disable;
+
+  @override
+  Future<DateTime?> setAlarm(DateTime when) => set(when);
+
+  @override
+  Future<void> disableAlarm() => disable();
 }

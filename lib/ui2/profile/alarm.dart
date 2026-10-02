@@ -82,9 +82,13 @@ class AlarmScreen extends StatefulWidget {
 class _AlarmScreenState extends State<AlarmScreen> {
   Future<List<String>>? _trace;
   int? _traceEpoch;
+  int _traceRevision = -1;
 
-  /// The plain-words decision trace for the armed wake. Reloaded only when the
-  /// armed occurrence changes.
+  /// The plain-words decision trace for the armed wake. Reloaded when the armed
+  /// occurrence changes AND each time a tick appends to it (the revision on
+  /// [WakeController.traceRevision]). A reload is one bounded query; the
+  /// FutureBuilder drops a result whose screen is gone or superseded, so no
+  /// state is touched after an await.
   static Future<List<String>> _loadTrace(AppState app, int epoch) async {
     try {
       final entries = await app.wake.traceFor(
@@ -100,42 +104,49 @@ class _AlarmScreenState extends State<AlarmScreen> {
   Widget build(BuildContext c) {
     final app = c.watch<AppState>();
     final epoch = app.alarmEpoch;
-    if (epoch != _traceEpoch) {
-      _traceEpoch = epoch;
-      _trace = epoch == null ? null : _loadTrace(app, epoch);
-    }
     final sleep = app.sleepOperations.schedule;
-    return FutureBuilder<List<String>>(
-      future: _trace,
-      builder: (c, trace) => AlarmScreenView(
-        armedAt: epoch == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(epoch * 1000),
-        state: epoch == null
-            ? AlarmArmState.none
-            : app.alarmConfirmed
-            ? AlarmArmState.confirmed
-            : app.alarmPending
-            ? AlarmArmState.pending
-            : AlarmArmState.unknown,
-        connected: app.isConnected,
-        schedule: app.alarmSchedule,
-        onSave: app.saveAlarmDraft,
-        onTest: app.testAlarmBuzz,
-        onCancelAlarm: app.disableAlarm,
-        upgradePending:
-            app.wake.naturalEnabled && app.wake.upgradeExplanationPending,
-        naturalWakeSupported: app.wake.naturalEnabled,
-        onAcknowledgeUpgrade: (enable) =>
-            app.wake.acknowledgeUpgrade(enableNatural: enable),
-        hasExpectedSleep: sleep != null,
-        expectedSleepLabel: sleep == null
-            ? null
-            : '${_clock(sleep.onsetMinute)} to ${_clock(sleep.wakeMinute)}',
-        onSetSleepSchedule: () => editExpectedSleepSchedule(c, app),
-        timelineFor: (at, entry) => app.wake.timelineAt(at, entry: entry),
-        wakeTrace: trace.data ?? const [],
-      ),
+    return ValueListenableBuilder<int>(
+      valueListenable: app.wake.traceRevision,
+      builder: (c, revision, _) {
+        if (epoch != _traceEpoch || revision != _traceRevision) {
+          _traceEpoch = epoch;
+          _traceRevision = revision;
+          _trace = epoch == null ? null : _loadTrace(app, epoch);
+        }
+        return FutureBuilder<List<String>>(
+          future: _trace,
+          builder: (c, trace) => AlarmScreenView(
+            armedAt: epoch == null
+                ? null
+                : DateTime.fromMillisecondsSinceEpoch(epoch * 1000),
+            state: epoch == null
+                ? AlarmArmState.none
+                : app.alarmConfirmed
+                ? AlarmArmState.confirmed
+                : app.alarmPending
+                ? AlarmArmState.pending
+                : AlarmArmState.unknown,
+            connected: app.isConnected,
+            schedule: app.alarmSchedule,
+            onSave: app.saveAlarmDraft,
+            onTest: app.testAlarmBuzz,
+            onCancelAlarm: app.disableAlarm,
+            upgradePending:
+                app.wake.naturalEnabled && app.wake.upgradeExplanationPending,
+            naturalWakeSupported: app.wake.naturalEnabled,
+            onAcknowledgeUpgrade: (enable) =>
+                app.wake.acknowledgeUpgrade(enableNatural: enable),
+            hasExpectedSleep: sleep != null,
+            expectedSleepLabel: sleep == null
+                ? null
+                : '${_clock(sleep.onsetMinute)} to ${_clock(sleep.wakeMinute)}',
+            onSetSleepSchedule: () => editExpectedSleepSchedule(c, app),
+            timelineFor: (at, entry) => app.wake.timelineAt(at, entry: entry),
+            wakeTrace: trace.data ?? const [],
+            resent: app.alarmResentUnconfirmed,
+          ),
+        );
+      },
     );
   }
 
@@ -190,6 +201,10 @@ class AlarmScreenView extends StatefulWidget {
   /// The armed wake's decision trace, already in plain words.
   final List<String> wakeTrace;
 
+  /// The app sent the armed alarm a second time because the band had not
+  /// confirmed the first send, and it is still unconfirmed. The header says so.
+  final bool resent;
+
   const AlarmScreenView({
     super.key,
     this.armedAt,
@@ -208,6 +223,7 @@ class AlarmScreenView extends StatefulWidget {
     this.onSetSleepSchedule,
     this.timelineFor,
     this.wakeTrace = const [],
+    this.resent = false,
   });
 
   @override
@@ -747,7 +763,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         : _draft.dirty
         ? 'Unsaved changes. Nothing is saved or sent to the band '
               'until you save.'
-        : out?.headline ?? 'No unsaved changes';
+        : out?.headlineFor(resent: widget.resent) ?? 'No unsaved changes';
     final tone = _draft.sending
         ? p.ink2
         : failed

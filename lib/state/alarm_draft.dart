@@ -53,8 +53,16 @@ class AlarmSaveOutcome {
   bool get ok => status != AlarmSaveStatus.failed;
 
   /// One line for the header. Never claims more than is known.
-  String get headline => switch (status) {
+  String get headline => headlineFor();
+
+  /// [headline], told whether the app has since sent the same alarm a second
+  /// time because the band never confirmed the first send. That single retry
+  /// happens after Save has already returned, so the header must say so rather
+  /// than let one Save look like one write.
+  String headlineFor({bool resent = false}) => switch (status) {
     AlarmSaveStatus.sentToBand => 'Saved and sent to the band',
+    AlarmSaveStatus.sentUnconfirmed when resent =>
+      'Saved. Sent again: the band had not confirmed the first send',
     AlarmSaveStatus.sentUnconfirmed =>
       'Saved and sent. The band has not confirmed it yet',
     AlarmSaveStatus.bandAlreadyHasIt =>

@@ -2,12 +2,24 @@
 // REAL arm logic (armNextScheduledOccurrence + armReportOf) over a counting
 // fake band, so a regression that arms per row, or writes Natural/Gradual to
 // the band, shows up as a number.
+//
+// The first groups count at the engine seam over the pure Save function. The
+// last group runs the REAL AppState (single-flight arm, event-56 handling and
+// the grace retry) over a counting engine, so the budget covers the whole path:
+// ONE write per Save, plus at most ONE retry when the band never confirms.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_state.dart' show AlarmBandWriter;
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/alarm_draft.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'support/fake_alarm_engine.dart';
 
 class _CountingBand implements AlarmBandWriter {
   int sets = 0, disables = 0;
@@ -72,6 +84,7 @@ class _Rig {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   test(
     'editing all seven days (switch + time) then Save writes the band once',
     () async {
@@ -253,5 +266,91 @@ void main() {
     expect(out.status, AlarmSaveStatus.failed);
     expect(out.persisted, isFalse);
     expect(rig.band.sets, 0);
+  });
+
+  group('through the real AppState (counting engine)', () {
+    setUpAll(() async {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+      LocalDb.dbName = 'openstrap_alarm_band_writes_test.db';
+      final dir = await databaseFactory.getDatabasesPath();
+      await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
+    });
+    tearDownAll(() async {
+      await LocalDb.close();
+      final dir = await databaseFactory.getDatabasesPath();
+      await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
+    });
+
+    late FakeAlarmEngine band;
+    late AppState app;
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      band = FakeAlarmEngine();
+      app = AppState.forTesting(engine: band)..debugSetAlarmGraceMs(20);
+      await LocalDb.clearAlarmSchedule();
+    });
+    tearDown(() => app.dispose());
+
+    AlarmDraft draftOfWeek() {
+      final d = AlarmDraft(app.alarmSchedule);
+      final t = DateTime.now().add(const Duration(hours: 2));
+      for (var w = 0; w < 7; w++) {
+        d.setEnabled(w, true);
+        d.setTime(w, t.hour, t.minute); // 14 edits, none sent
+      }
+      return d;
+    }
+
+    test('seven days edited, band confirms: exactly one SET and no retry',
+        () async {
+      band.onSet = (_, _) async => app.debugHandleAlarmEvent(56);
+      final d = draftOfWeek();
+      expect(band.sets, isEmpty, reason: 'editing never writes');
+      final out = await d.save(app.saveAlarmDraft);
+      expect(out?.status, AlarmSaveStatus.sentToBand);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      expect(band.sets, hasLength(1));
+      expect(band.disables, 0);
+    });
+
+    test('band never confirms: one SET plus at most one retry, said so',
+        () async {
+      final d = draftOfWeek();
+      final out = await d.save(
+        (e) => app.saveAlarmDraft(e, confirmWait: const Duration(milliseconds: 600)),
+      );
+      expect(out?.status, AlarmSaveStatus.sentUnconfirmed);
+      await Future<void>.delayed(const Duration(milliseconds: 700));
+      expect(band.sets, hasLength(2), reason: 'the first write and one retry');
+      expect(band.setEpochs[1], band.setEpochs[0]);
+      expect(
+        out!.headlineFor(resent: app.alarmResentUnconfirmed),
+        contains('Sent again'),
+      );
+    });
+
+    test('Save again with nothing changed: zero further writes', () async {
+      band.onSet = (_, _) async => app.debugHandleAlarmEvent(56);
+      final d = draftOfWeek();
+      await d.save(app.saveAlarmDraft);
+      expect(band.sets, hasLength(1));
+      final again = await app.saveAlarmDraft(d.entries);
+      expect(again.status, AlarmSaveStatus.bandAlreadyHasIt);
+      expect(band.sets, hasLength(1));
+    });
+
+    test('Natural/Gradual edits alone never reach the band', () async {
+      band.onSet = (_, _) async => app.debugHandleAlarmEvent(56);
+      final d = draftOfWeek();
+      await d.save(app.saveAlarmDraft);
+      final before = band.sets.length;
+      d.setNaturalWindow(1, 60);
+      d.setGradualWindow(1, 30);
+      final out = await d.save(app.saveAlarmDraft);
+      expect(out?.status, AlarmSaveStatus.bandAlreadyHasIt);
+      expect(band.sets, hasLength(before));
+      expect(band.disables, 0);
+    });
   });
 }
