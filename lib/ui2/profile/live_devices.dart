@@ -97,7 +97,7 @@ class _LiveDevicesState extends State<LiveDevices> {
     // The buffer moves many times a second and is deliberately not a
     // listenable (a rebuild per sample would be the 1 Hz storm other screens
     // were fixed for); redraw once a second instead.
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+    _tick = Timer.periodic(Motion.tick, (_) {
       if (mounted) setState(() {});
     });
   }

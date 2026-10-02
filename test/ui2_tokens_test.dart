@@ -258,6 +258,14 @@ const _notComponents = {
   // band_gestures_test.dart, at a real phone width, in both the has-native and
   // the native-unreachable state.
   'BandGestures', 'BandGesturesView',
+  // Live devices and the Device lab (phase 8B/8I). The two routes read
+  // AppState; `LiveDevicesView` and `DeviceLabView` are their pure halves and
+  // test/phase8/live_devices_test.dart and device_lab_test.dart pump them in
+  // each state, with `LiveStreamChart` (one stream's graph, which needs a
+  // buffer of samples) and `EcgThresholdAdjusters` (the three touch-window
+  // steppers) inside them.
+  'LiveDevices', 'LiveDevicesView', 'LiveStreamChart', 'DeviceLab',
+  'DeviceLabView', 'EcgThresholdAdjusters',
   // FULL-BLEED, so it is a screen element rather than a component: it takes
   // the whole window width back off its parent's padding via OverflowBox. The
   // gallery lays every case out in a ~179 logical-px cell, which is narrower
