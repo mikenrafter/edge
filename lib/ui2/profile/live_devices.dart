@@ -81,6 +81,27 @@ List<double?> liveSeries(
   return [for (var i = 0; i < slots; i++) counts[i] == 0 ? null : sums[i] / counts[i]];
 }
 
+/// How many slots to split [window] into for [samples]: each slot is at least
+/// one and a half of the stream's usual intervals wide (the mean gap between
+/// arrivals; jitter moves single gaps, not the mean), so a stream arriving once a second never shows a missing slot
+/// between two readings; a fast stream keeps the 60-slot maximum. Too few
+/// samples to tell the rate fall back to that maximum.
+int liveSlotsFor(List<LiveSample> samples, Duration window, {int max = 60}) {
+  if (samples.length < 3) return max;
+  final mean = samples.last.at.difference(samples.first.at).inMicroseconds ~/
+      (samples.length - 1);
+  if (mean <= 0) return max;
+  return (window.inMicroseconds * 2 ~/ (mean * 3)).clamp(10, max);
+}
+
+/// The slot width as words for the key, e.g. "½ s" or "1.5 s".
+String liveSlotWidth(Duration window, int slots) {
+  final ms = window.inMilliseconds / slots;
+  if ((ms - 500).abs() < 1) return '½ s';
+  final s = ms / 1000;
+  return '${s == s.roundToDouble() ? s.toStringAsFixed(0) : s.toStringAsFixed(1)} s';
+}
+
 class LiveDevices extends StatefulWidget {
   const LiveDevices({super.key});
 
@@ -294,7 +315,8 @@ class LiveStreamChart extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final latest = samples.last.value;
-    final series = liveSeries(samples, now, window);
+    final slots = liveSlotsFor(samples, window);
+    final series = liveSeries(samples, now, window, slots: slots);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Expanded(child: Text(label, style: F.body.copyWith(color: p.ink))),
@@ -302,7 +324,7 @@ class LiveStreamChart extends StatelessWidget {
             style: F.cap.copyWith(color: p.ink3)),
       ]),
       const SizedBox(height: S.x1),
-      // Each slot is half a second of the window; the row under the trace names
+      // Each slot is as wide as liveSlotsFor picks; the row under the trace names
       // how long ago that slot was and its mean, never a neighbour's value. The
       // 72 pt is the trace alone: the key row sits beneath it.
       ChartScrub(
@@ -317,7 +339,8 @@ class LiveStreamChart extends StatelessWidget {
         },
         keys: [
           // The stream's name is the heading above; the key says what a slot is.
-          ChartKey.slots('Reading (½ s mean)', p.on(C.blue), series,
+          ChartKey.slots('Reading (${liveSlotWidth(window, slots)} mean)',
+              p.on(C.blue), series,
               (i, v) => v.toStringAsFixed(v.abs() >= 100 ? 0 : 1)),
         ],
         child: SizedBox(

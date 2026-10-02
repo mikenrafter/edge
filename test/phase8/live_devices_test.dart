@@ -16,6 +16,41 @@ final _t0 = DateTime(2026, 10, 2, 9, 0, 0);
 DateTime _at(int ms) => _t0.add(Duration(milliseconds: ms));
 
 void main() {
+  group('live chart slots follow the stream rate', () {
+    const window = Duration(seconds: 30);
+    final now = _at(30000);
+
+    test('a 1 Hz stream (with jitter) has no empty slot between readings', () {
+      final samples = [
+        for (var i = 0; i < 30; i++)
+          LiveSample(_at(i * 1000 + (i.isEven ? 120 : -90) + 500), 60.0 + i),
+      ];
+      final slots = liveSlotsFor(samples, window);
+      expect(slots, 20);
+      final series = liveSeries(samples, now, window, slots: slots);
+      expect(series.where((v) => v == null), isEmpty);
+      expect(liveSlotWidth(window, slots), '1.5 s');
+    });
+
+    test('a real silence is still a gap', () {
+      final samples = [
+        for (var i = 0; i < 30; i++)
+          if (i < 10 || i >= 20) LiveSample(_at(i * 1000 + 500), 60.0),
+      ];
+      final series =
+          liveSeries(samples, now, window, slots: liveSlotsFor(samples, window));
+      expect(series.where((v) => v == null), isNotEmpty);
+    });
+
+    test('a fast stream keeps 60 half-second slots', () {
+      final samples = [
+        for (var i = 0; i < 300; i++) LiveSample(_at(i * 100), 0.1),
+      ];
+      expect(liveSlotsFor(samples, window), 60);
+      expect(liveSlotWidth(window, 60), '½ s');
+    });
+  });
+
   group('LiveStreamBuffer', () {
     test('the window is 30 s by default', () {
       expect(LiveStreamBuffer().window, const Duration(seconds: 30));
