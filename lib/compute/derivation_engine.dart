@@ -45,6 +45,7 @@ import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show workoutSuggestionRoute;
 import '../telemetry/telemetry_service.dart';
 import 'crossday_pipeline.dart';
+import 'sleep_blank.dart';
 import 'derive_pacing.dart';
 import 'hr_max.dart'
     show estimatedMaxHr, kHrFloorBpm, smoothedMaxHr, smoothedMinHr;
@@ -1730,7 +1731,23 @@ import 'substrate.dart';
 // `sleep_onset_sec` are no longer published for such a night; and the
 // habitual-midsleep prior is fed only nights that have a total sleep time.
 // Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
-const int kAlgoVersion = 99;
+// v100 (a night the user blanked stays blank): "Not sleep", and a window of
+// the user's own that the band's samples cannot back, now REMOVE the night
+// instead of leaving the old one in place. Three stores kept it: the edge#305
+// "never write night-null over night-real" guard read the user's own blanking
+// as a pruned-raw regression and declined to write, so the old `day_result`
+// went on being served and scored; `metric_series` is REPLACE-per-key, so a
+// sleep key the derive no longer writes (`odi_per_hour`, `spo2`) kept its old
+// row forever; and the frozen morning-readiness pin kept the old score. A
+// blanked night now writes its blank in full, deletes every sleep-derived
+// `metric_series` row for the day in the same transaction as the write
+// (`kSleepDerivedMetricKeys`), drops that day's readiness pin, and — for a day
+// whose raw is already pruned — replaces just the night's blocks in the stored
+// bundle. The next nights are re-derived after the edit
+// (`rederiveAfterSleepEdit`) so their baselines no longer hold it. A window of
+// the user's own with data inside it still computes from that data only.
+// Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
+const int kAlgoVersion = 100;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -2784,7 +2801,10 @@ class DerivationEngine {
           // Keep the existing locked result instead.
           if (prepared != null &&
               prepared.daySub.isEmpty &&
-              overrideDays.contains(dayId)) {
+              overrideDays.contains(dayId) &&
+              // ...unless the user blanked it: then the stored night is the
+              // thing to remove, and `_derivePreparedDay` does that.
+              await _userBlankedNight(dayId, null) == null) {
             _log('derive day $dayId skipped: override day, raw pruned — kept');
           } else if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
@@ -3061,6 +3081,26 @@ class DerivationEngine {
         ..['duration_ms'] = finishedAt - startedAt;
       _running = false;
     }
+  }
+
+  /// Re-derive [day] after the user changed its sleep (reject, set times,
+  /// confirm, clear), then every LATER day that still has raw.
+  ///
+  /// Two passes, not one: a day's readiness is z-scored against the trailing
+  /// window of EARLIER days' `metric_series`, and a sweep reads one frozen
+  /// snapshot of it (`_BaselineHistoryCache`). Deriving them together would
+  /// score tomorrow against a window that still holds the night just edited.
+  /// Days past raw retention cannot be recomputed and keep what they have.
+  /// Returns the days derived; stops after the first pass if it failed.
+  Future<int> rederiveAfterSleepEdit(Profile profile, String day) async {
+    var done = await runDays(profile, {day}, force: true);
+    if (_diag['last_error'] != null) return done;
+    final later = {
+      for (final d in (await LocalDb.decodedRecTsMaxByDay()).keys)
+        if (d.compareTo(day) > 0) d,
+    };
+    if (later.isNotEmpty) done += await runDays(profile, later, force: true);
+    return done;
   }
 
   /// The explicit, Advanced "Rebuild history with this priority" action: force
@@ -4432,7 +4472,25 @@ class DerivationEngine {
     final producedNothing = daySub.isEmpty &&
         sleepSub.isEmpty &&
         (scMap == null || !scMap.values.any((v) => v != null));
-    if (producedNothing) {
+
+    // ── THE USER'S OWN BLANKING IS NOT A REGRESSION ──────────────────────────
+    // Both guards below protect a good night from a derive that merely SEES
+    // LESS (raw pruned out from under it). "Not sleep", and a window the band
+    // cannot back, are the opposite: the user's word that the night is not a
+    // night. Left to the guards they read as a regression, decline to write,
+    // and the old night keeps being served, scored and baselined — the reported
+    // "it keeps the data it had before". A blanked night is written, in full,
+    // and its sleep rows are removed from `metric_series`.
+    final blankSource = await _userBlankedNight(day.date, scMap);
+    if (blankSource != null) {
+      bundle['sleep_source'] = blankSource;
+      await _dropFrozenHeadline(day.date);
+      if (producedNothing) {
+        await _blankStoredNight(day, bundle, blankSource);
+        return;
+      }
+    }
+    if (producedNothing && blankSource == null) {
       final existing = await LocalDb.dayResult(day.date);
       if (_isRealDayResult(existing)) {
         _log('derive ${day.date}: no substrate (raw pruned) — kept the '
@@ -4469,6 +4527,7 @@ class DerivationEngine {
     // to `day_result` and would still shadow the better older row for
     // day-detail reads; declining is what actually protects it.
     if (!producedNothing &&
+        blankSource == null &&
         nightSubstrateRegressed(
           sleepSubEmpty: sleepSub.isEmpty,
           nightScalarsNull: scMap == null ||
@@ -4823,7 +4882,11 @@ class DerivationEngine {
       if (_isRealDayResult(existing)) {
         final prev = _decodeBundle(existing!['payload_json']);
         if (prev != null) {
-          final recovered = carryForwardDetail(prev, bundle);
+          final recovered = carryForwardDetail(
+            prev,
+            bundle,
+            skip: blankSource != null ? kNightOnlyBundleKeys : const {},
+          );
           final prevVersion = (existing['algo_version'] as num?)?.toInt();
           final outcome = recoveryOutcome(
             recovered: recovered,
@@ -4880,6 +4943,14 @@ class DerivationEngine {
       // Null only when no resolve ran at all (the import path).
       priorityHash:
           day.priority.isEmpty ? null : priorityKey(day.priority),
+      // State, not event: a day the user has an override on and that holds no
+      // night owns no sleep rows. Keyed on freshness instead, a later pass (no
+      // longer "fresh") would write the NULL rows back and flip the table.
+      blankKeys: (blankSource != null ||
+              (sc('tst_min') == null &&
+                  await LocalDb.getSleepOverride(day.date) != null))
+          ? kSleepDerivedMetricKeys
+          : const {},
       series: {
         'rhr': sc('rhr'),
         'rmssd': sc('rmssd'),
@@ -5037,6 +5108,73 @@ class DerivationEngine {
     required bool nightScalarsNull,
   }) => sleepSubEmpty && nightScalarsNull;
 
+  /// Whether the user has blanked [dayId]'s night: the override source when
+  /// this derive found no night to compute, else null.
+  ///
+  /// "Not sleep" always blanks. A window of the user's own blanks when the
+  /// samples inside it cannot make a night (a window with data computes from
+  /// that data, as before) AND the edit is newer than the stored result — an
+  /// older override over a night whose raw has since been pruned is the
+  /// edge#305 regression, not a blanking, and keeps the stored night.
+  Future<String?> _userBlankedNight(
+    String dayId,
+    Map<String, dynamic>? scalars,
+  ) async {
+    final ov = await LocalDb.getSleepOverride(dayId);
+    if (ov == null || scalars?['tst_min'] != null) return null;
+    final source = ov['source'] as String? ?? 'manual';
+    if (source == 'rejected') return source;
+    final existing = await LocalDb.dayResult(dayId);
+    final editedMs = ((ov['created_at'] as num?)?.toInt() ?? 0) * 1000;
+    final computedMs = (existing?['computed_at'] as num?)?.toInt() ?? 0;
+    // `created_at` is whole seconds: count the rest of that second as the edit.
+    return editedMs + 1000 > computedMs ? source : null;
+  }
+
+  /// Drop the pinned morning readiness when it belongs to [dayId]: the pin is a
+  /// copy of a score the night no longer supports.
+  Future<void> _dropFrozenHeadline(String dayId) async {
+    final pin = await LocalDb.frozenHeadline();
+    if (pin != null && pin.day == dayId) {
+      await LocalDb.deleteCursor(LocalDb.kFrozenHeadlineCursor);
+    }
+  }
+
+  /// Blank a day's stored night when there is no raw left to re-derive from.
+  /// Everything that is not the night (strain, steps, naps, curves) stays.
+  Future<void> _blankStoredNight(
+    PreparedDerivationDay day,
+    Map<String, dynamic> absent,
+    String source,
+  ) async {
+    final existing = await LocalDb.dayResult(day.date);
+    final prev = _isRealDayResult(existing)
+        ? _decodeBundle(existing!['payload_json'])
+        : null;
+    final payload =
+        prev == null ? absent : blankNightInBundle(prev, absent, source: source);
+    // Already blanked at this version: a repeat pass writes nothing.
+    final stored =
+        existing == null ? null : _decodeBundle(existing['payload_json']);
+    if (stored != null &&
+        (existing!['algo_version'] as num?)?.toInt() == kAlgoVersion &&
+        jsonEncode(stored) == jsonEncode(payload)) {
+      return;
+    }
+    final window = (absent['sleep'] as Map?)?['window'];
+    await LocalDb.putDayResult(
+      dayId: day.date,
+      algoVersion: kAlgoVersion,
+      payloadJson: jsonEncode(payload),
+      windowJson: jsonEncode(window ?? const {}),
+      finalized: (existing?['finalized'] as num?)?.toInt() == 1,
+      source: 'band',
+      blankKeys: kSleepDerivedMetricKeys,
+    );
+    _log('derive ${day.date}: night blanked by the user ($source), no raw '
+        'left — stored night replaced, rest of the day kept');
+  }
+
   /// Whether [row] is a REAL derived day result worth protecting — i.e. not a
   /// skip marker and not an all-absent shell.
   static bool _isRealDayResult(Map<String, dynamic>? row) {
@@ -5061,11 +5199,15 @@ class DerivationEngine {
   @visibleForTesting
   static bool carryForwardDetail(
     Map<String, dynamic> prev,
-    Map<String, dynamic> next,
-  ) {
+    Map<String, dynamic> next, {
+    // Blocks that must not be inherited (the night's own, for a blanked night).
+    Set<String> skip = const {},
+  }) {
     var carried = false;
     for (final e in prev.entries) {
-      if (e.key == 'scalars' || e.key == 'series') continue;
+      if (e.key == 'scalars' || e.key == 'series' || skip.contains(e.key)) {
+        continue;
+      }
       if (next.containsKey(e.key) || e.value == null) continue;
       next[e.key] = e.value;
       carried = true;

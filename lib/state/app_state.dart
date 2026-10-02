@@ -2566,7 +2566,8 @@ class AppState extends ChangeNotifier {
     reanalyzing = true;
     notifyListeners();
     try {
-      await _derive.runDays(_profile, {day}, force: true);
+      // The edited night, then the later nights scored against it.
+      await _derive.rederiveAfterSleepEdit(_profile, day);
       final error = _derive.snapshot()['last_error'];
       if (error != null) throw StateError('$error');
       await LocalDb.refreshComputeFreshness();

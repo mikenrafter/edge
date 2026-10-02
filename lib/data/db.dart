@@ -8091,6 +8091,12 @@ class LocalDb {
     // migrated in by M3); this stores the readable string under that name
     // rather than renaming a shipped column.
     String? priorityHash,
+    // `metric_series` keys this day does not own (a night the user blanked).
+    // Their rows are DELETED in the same transaction as the writes below, and a
+    // null in [series] for one of them is not written back as a NULL row. This
+    // is what REPLACE-per-key cannot do alone: a key the derive no longer
+    // produces keeps its OLD row forever.
+    Set<String> blankKeys = const {},
   }) async {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -8121,7 +8127,12 @@ class LocalDb {
       // baseline reads via metric_series. The next successful (non-partial)
       // pass writes the real value once it lands.
       if (!partial) {
+        for (final k in blankKeys) {
+          await txn.delete('metric_series',
+              where: 'date = ? AND key = ?', whereArgs: [dayId, k]);
+        }
         for (final e in series.entries) {
+          if (e.value == null && blankKeys.contains(e.key)) continue;
           await txn.insert('metric_series', {
             'date': dayId,
             'key': e.key,
