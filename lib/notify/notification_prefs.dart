@@ -6,6 +6,7 @@
 import 'dart:convert';
 
 import 'alert_rule.dart';
+import 'buzz_sequence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'notification_event.dart';
@@ -534,6 +535,39 @@ class NotificationPrefs {
 
   AlertRule alertRule(String id) =>
       effectiveAlertRules[id] ?? legacyRule(id, false, 0);
+
+  /// The rule registry's order. Default buzz sequences hang off these
+  /// positions, so it is frozen: append new rules, never reorder or remove.
+  static const List<String> alertRuleOrder = [
+    'health',
+    'recovery',
+    'reminders',
+    'device',
+    'water',
+    'autoDetect',
+    'movement',
+    'meds',
+    'checkIn',
+    'stepGoal',
+    'windDown',
+    'alarmLatchFailed',
+    'alarmNightCheck',
+    'alarm',
+    'nativeAlarm',
+    'zone',
+    'wake',
+    'breath',
+    'tasker',
+    'relay',
+    'gesture',
+  ];
+
+  /// The rule's own buzz rhythm, else the default for its registry position
+  /// (an unknown id takes the first one).
+  BuzzSequence buzzSequenceFor(String ruleId) =>
+      alertRule(ruleId).buzzSequence ??
+      BuzzSequence.defaultFor(
+          alertRuleOrder.indexOf(ruleId).clamp(0, alertRuleOrder.length));
 
   bool phoneDeliveryEnabled(String id) => alertRule(id).phoneSelected;
   bool bandDeliveryEnabled(String id) => alertRule(id).bandSelected;

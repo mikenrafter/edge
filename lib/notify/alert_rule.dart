@@ -1,3 +1,5 @@
+import 'buzz_sequence.dart';
+
 /// Delivery targets are independent of where a rule executes.
 enum AlertExecutionMode { bandNative, phoneLive, osScheduled, phoneDerived }
 
@@ -18,6 +20,10 @@ class AlertRule {
   final AlertHistoricalReplay historicalReplay;
   final String channelPolicyId;
 
+  /// The user's own buzz rhythm for this rule, or null for the registry
+  /// default ([NotificationPrefs.buzzSequenceFor]).
+  final BuzzSequence? buzzSequence;
+
   const AlertRule({
     required this.id,
     required this.kind,
@@ -28,6 +34,7 @@ class AlertRule {
     this.staleAfter = const Duration(seconds: 30),
     this.historicalReplay = AlertHistoricalReplay.liveOnly,
     required this.channelPolicyId,
+    this.buzzSequence,
   }) : assert(destinations >= 0 && destinations <= 3);
 
   bool get phoneSelected => enabled && destinations & phone != 0;
@@ -71,6 +78,9 @@ class AlertRule {
         AlertHistoricalReplay.liveOnly,
       ),
       channelPolicyId: json['channelPolicyId'] as String? ?? id,
+      buzzSequence: json['buzzSequence'] == null
+          ? null
+          : BuzzSequence.fromJson(json['buzzSequence']),
     );
   }
 
@@ -84,6 +94,7 @@ class AlertRule {
     'staleAfterSeconds': staleAfter.inSeconds,
     'historicalReplay': historicalReplay.name,
     'channelPolicyId': channelPolicyId,
+    if (buzzSequence != null) 'buzzSequence': buzzSequence!.toJson(),
   };
 
   AlertRule copyWith({
@@ -94,6 +105,7 @@ class AlertRule {
     Duration? staleAfter,
     AlertHistoricalReplay? historicalReplay,
     String? channelPolicyId,
+    BuzzSequence? buzzSequence,
   }) => AlertRule(
     id: id,
     kind: kind,
@@ -104,6 +116,7 @@ class AlertRule {
     staleAfter: staleAfter ?? this.staleAfter,
     historicalReplay: historicalReplay ?? this.historicalReplay,
     channelPolicyId: channelPolicyId ?? this.channelPolicyId,
+    buzzSequence: buzzSequence ?? this.buzzSequence,
   );
 }
 
@@ -130,6 +143,7 @@ class AlertCapabilityRegistry {
     'tasker',
     'relay',
     'gesture',
+    'buzzPreview',
   };
   static const derivedKinds = {
     'health',

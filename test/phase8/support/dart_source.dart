@@ -131,8 +131,14 @@ String bodyOf(String src, String signature) {
   final code = codeOnly(src);
   final start = src.indexOf(signature);
   if (start < 0) return '';
-  final brace = code.indexOf('{', start);
-  final arrow = code.indexOf('=>', start);
+  // Skip the parameter list: a named-parameter `{` is not the body's brace.
+  var from = start;
+  if (signature.endsWith('(')) {
+    final params = closingOf(code, start + signature.length - 1);
+    if (params > 0) from = params;
+  }
+  final brace = code.indexOf('{', from);
+  final arrow = code.indexOf('=>', from);
   if (brace < 0) return '';
   if (arrow >= 0 && arrow < brace) {
     final semi = code.indexOf(';', arrow);

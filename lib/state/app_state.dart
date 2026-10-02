@@ -85,6 +85,7 @@ import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
 import '../data/series_codec.dart';
 import '../notify/battery_forecast.dart';
+import '../notify/buzz_sequence.dart';
 import '../notify/med_buzzer.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -100,6 +101,7 @@ import '../import/whoop_import.dart';
 import '../gestures/gesture_dispatcher.dart';
 import '../gestures/moment_stamp.dart';
 import '../gestures/strap_event.dart';
+import '../gestures/tap_ack.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
 import '../live/live_activity.dart';
@@ -308,6 +310,39 @@ class AppState extends ChangeNotifier {
     ledger: MemoryAlertDeliveryLedger(),
   );
 
+  /// The engine's single buzz, the one step every band rhythm is made of.
+  /// Only ever called from inside an [alertDispatcher] delivery.
+  Future<bool> _bandBuzz() async {
+    await engine.buzz();
+    return true;
+  }
+
+  /// A rhythm the user just tapped out, played back for them. Still one
+  /// dispatcher delivery (own rule, unique event), so it can neither bypass the
+  /// band-support checks nor race a real alert's claim. No quiet hours: the
+  /// user asked for it.
+  Future<bool> previewBuzzSequence(BuzzSequence s) async {
+    final now = DateTime.now();
+    final r = await alertDispatcher.dispatch(
+      _buzzPreviewRule,
+      eventId: 'preview:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandTransport: () => playBuzzSequence(s,
+          buzz: _bandBuzz, isConnected: () => engine.isConnected),
+    );
+    return r.targets.contains('band');
+  }
+
+  static const _buzzPreviewRule = AlertRule(
+    id: 'buzz_preview',
+    kind: 'buzzPreview',
+    destinations: AlertRule.band,
+    executionMode: AlertExecutionMode.phoneLive,
+    staleAfter: Duration(seconds: 10),
+    channelPolicyId: 'buzz_preview',
+  );
+
   Future<void> _dispatchBandAlert(
     String ruleId, {
     int? pattern,
@@ -348,7 +383,10 @@ class AppState extends ChangeNotifier {
         } else if (pattern != null) {
           await engine.buzzPattern(pattern);
         } else {
-          await engine.buzz();
+          // The rule's own rhythm (or its registry default), played as one
+          // delivery: the dispatcher's claim covers every step.
+          return playBuzzSequence(prefs.buzzSequenceFor(ruleId),
+              buzz: _bandBuzz, isConnected: () => engine.isConnected);
         }
         return true;
       },
@@ -2562,8 +2600,11 @@ class AppState extends ChangeNotifier {
     // still log water.
     _handleAlarmEvent(e.eventId, e.tsEpoch);
     // handle() never throws; the outcomes are logged per action by the
-    // dispatcher, so nothing here needs them.
-    unawaited(_gestureDispatcher.handle(e));
+    // dispatcher. They also decide the acknowledgement buzz, which goes through
+    // alertDispatcher (live-only, short deadline) and never straight to the
+    // engine.
+    final handled = _gestureDispatcher.handle(e);
+    unawaited(handled.then((outcomes) => ackTap(alertDispatcher, e, outcomes)));
   }
 
   /// Why start-up failed, or null if it did not. Drives [AppRoute.failed].

@@ -17,6 +17,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'alert_dispatcher.dart';
 import 'alert_rule.dart';
+import 'buzz_sequence.dart';
 import 'notification_prefs.dart';
 import 'notification_center.dart';
 import 'notification_event.dart';
@@ -59,6 +60,8 @@ class ChannelConfig {
     this.includeVibrate = true,
     this.includeSilent = false,
     this.phoneFallback = false,
+    this.buzzSequence,
+    this.appSequences = const {},
   });
   /// Apps relay once the feature is on; alarms and calls are opt-in.
   factory ChannelConfig.forChannel(String name) =>
@@ -68,6 +71,20 @@ class ChannelConfig {
   final bool includeSilent, phoneFallback;
   final List<int> fallbackPattern;
   final int? quietStartMinute, quietEndMinute;
+
+  /// The channel's own buzz rhythm; null takes the relay rule's default.
+  final BuzzSequence? buzzSequence;
+
+  /// Per-app rhythms (package -> sequence). An app without one uses the
+  /// channel's. Only the apps channel reads this.
+  final Map<String, BuzzSequence> appSequences;
+
+  BuzzSequence get effectiveSequence =>
+      buzzSequence ??
+      BuzzSequence.defaultFor(NotificationPrefs.alertRuleOrder.indexOf('relay'));
+
+  BuzzSequence sequenceForApp(String pkg) =>
+      appSequences[pkg] ?? effectiveSequence;
 
   ChannelConfig copyWith({
     bool? enabled,
@@ -80,6 +97,8 @@ class ChannelConfig {
     bool? includeVibrate,
     bool? includeSilent,
     bool? phoneFallback,
+    BuzzSequence? buzzSequence,
+    Map<String, BuzzSequence>? appSequences,
   }) => ChannelConfig(
     enabled: enabled ?? this.enabled,
     matchHaptics: matchHaptics ?? this.matchHaptics,
@@ -92,6 +111,8 @@ class ChannelConfig {
     includeVibrate: includeVibrate ?? this.includeVibrate,
     includeSilent: includeSilent ?? this.includeSilent,
     phoneFallback: phoneFallback ?? this.phoneFallback,
+    buzzSequence: buzzSequence ?? this.buzzSequence,
+    appSequences: appSequences ?? this.appSequences,
   );
 
   /// The per-channel half of the decision policy. The environment half (DND,
@@ -114,6 +135,11 @@ class ChannelConfig {
     'includeVibrate': includeVibrate,
     'includeSilent': includeSilent,
     'phoneFallback': phoneFallback,
+    if (buzzSequence != null) 'buzzSequence': buzzSequence!.toJson(),
+    if (appSequences.isNotEmpty)
+      'appSequences': {
+        for (final e in appSequences.entries) e.key: e.value.toJson(),
+      },
   };
 
   factory ChannelConfig.fromJson(Map<String, Object?> j, ChannelConfig d) =>
@@ -128,7 +154,24 @@ class ChannelConfig {
         includeVibrate: j['includeVibrate'] as bool? ?? d.includeVibrate,
         includeSilent: j['includeSilent'] as bool? ?? d.includeSilent,
         phoneFallback: j['phoneFallback'] as bool? ?? d.phoneFallback,
+        buzzSequence: _sequenceOf(j['buzzSequence']) ?? d.buzzSequence,
+        appSequences: {
+          if (j['appSequences'] case final Map m)
+            for (final e in m.entries)
+              '${e.key}': ?_sequenceOf(e.value),
+        },
       );
+
+  /// A stored sequence that no longer validates is dropped, not fatal: it
+  /// falls back to the default instead of taking the whole relay config down.
+  static BuzzSequence? _sequenceOf(Object? raw) {
+    if (raw == null) return null;
+    try {
+      return BuzzSequence.fromJson(raw);
+    } on FormatException {
+      return null;
+    }
+  }
 }
 
 class RelayResult {
@@ -158,9 +201,14 @@ class RelayController {
     required this.policy,
     required this.nowMs,
     this.onChanged,
+    this.playSequence,
   });
   final AlertDispatcher dispatcher;
   final Future<bool> Function(List<int> pattern) buzz;
+
+  /// Plays a user-chosen rhythm as one band delivery. When set, it replaces the
+  /// fixed one-buzz pattern unless the channel mirrors the app's own haptics.
+  final Future<bool> Function(BuzzSequence)? playSequence;
   final Future<bool> Function() phone;
   final Map<String, Object?> Function(Map<String, Object?> metadata) policy;
   final int Function() nowMs;
@@ -272,6 +320,12 @@ class RelayController {
       final pattern = !cfg.matchHaptics
           ? const [0, 250]
           : readable ?? cfg.fallbackPattern;
+      final play = playSequence;
+      final sequence = play == null || cfg.matchHaptics
+          ? null
+          : channel == 'apps'
+              ? cfg.sequenceForApp('${m['package']}')
+              : cfg.effectiveSequence;
       final postMs = m['postTimeMs'] as int? ?? nowMs();
       final outcome = await dispatcher.dispatch(
         AlertRule(
@@ -295,7 +349,9 @@ class RelayController {
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
         phoneTransport: phone,
-        bandTransport: () => buzz(pattern),
+        bandTransport: sequence == null
+            ? () => buzz(pattern)
+            : () => play!(sequence),
       );
       return RelayResult(
         targets: outcome.targets,
@@ -452,6 +508,14 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   late final RelayController controller = RelayController(
     dispatcher: dispatcher,
     buzz: _playPattern,
+    playSequence: (s) => playBuzzSequence(
+      s,
+      buzz: () async {
+        await buzz();
+        return true;
+      },
+      isConnected: isConnected,
+    ),
     phone: _phoneFallback,
     policy: _policy,
     nowMs: () => DateTime.now().millisecondsSinceEpoch,
@@ -466,6 +530,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     required Future<bool> Function(List<int>) buzz,
     required Future<bool> Function() phone,
     required int Function() nowMs,
+    Future<bool> Function(BuzzSequence)? playSequence,
   }) {
     var connected = true;
     return RelayController(
@@ -485,6 +550,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         return policy;
       },
       nowMs: nowMs,
+      playSequence: playSequence,
     );
   }
 
