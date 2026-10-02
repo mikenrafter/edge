@@ -147,7 +147,7 @@ class BandGesturesView extends StatelessWidget {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.gesturesNavTitle ?? 'Double-tap'),
+            child: NavBar(l?.gesturesNavTitle ?? 'Gestures'),
           ),
           Expanded(
             child: ListView(

@@ -11005,7 +11005,7 @@
   "@activityLiveSkipRest": {
     "description": "Live strength screen: button that skips the remaining rest countdown."
   },
-  "gesturesNavTitle": "Double-tap",
+  "gesturesNavTitle": "Gestures",
   "@gesturesNavTitle": {
     "description": "Title of the double-tap gesture settings screen"
   },
