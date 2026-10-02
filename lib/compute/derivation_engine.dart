@@ -1747,6 +1747,13 @@ import 'substrate.dart';
 // bundle. The next nights are re-derived after the edit
 // (`rederiveAfterSleepEdit`) so their baselines no longer hold it. Only
 // 'confirmed' (agreeing with the app's own window) still stages a night.
+// Follow-ups, same version (outputs of un-overridden nights are unchanged): the
+// blank no longer needs any decoded row (`run`/`runDays` with an empty
+// `decoded_onehz`); `putDayResult` deletes the blanked `metric_series` keys
+// even for a partial row and `carryForwardDetail` no longer carries the old
+// night back into a blanked bundle; the blanked window is excluded from nap
+// detection; and the rolling `sleep_user_profile` is refolded without a
+// blanked night (observations are now stored in its payload, `folded_obs`).
 // Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
 const int kAlgoVersion = 100;
 /// The sibling SHAs this version was derived against, asserted against
@@ -2688,7 +2695,12 @@ class DerivationEngine {
         ..['scope_days'] = scope.targetDays.length
         ..['scope_reason'] = scope.reason;
       final dataNowSec = await LocalDb.lastDecodedRecTs() ?? 0;
-      if (dataNowSec <= 0) {
+      // No decoded row anywhere (everything pruned, only `day_result` left).
+      // The only thing left to do is the user's blanking, which is a write
+      // over stored results and needs no raw and no data edge.
+      final noData = dataNowSec <= 0;
+      final blankOnly = noData ? await _blankingOverrideDays() : <String>{};
+      if (noData && blankOnly.isEmpty) {
         _log('derive: no decoded data');
         onScope?.call(0);
         return 0;
@@ -2703,10 +2715,12 @@ class DerivationEngine {
         // A nap edit on a finalized day has to take effect too — same reason.
         ...await LocalDb.napEditDays(),
       };
-      var todoDays = [
-        for (final day in scope.targetDays)
-          if (!finalized.contains(day) || overrideDays.contains(day)) day,
-      ];
+      var todoDays = noData
+          ? (blankOnly.toList()..sort())
+          : [
+              for (final day in scope.targetDays)
+                if (!finalized.contains(day) || overrideDays.contains(day)) day,
+            ];
       // What each candidate day's input looks like right now. Taken BEFORE the
       // derive reads anything, so rows that land mid-derive make the recorded
       // fingerprint stale (=> re-derive next time), never falsely current.
@@ -2724,7 +2738,7 @@ class DerivationEngine {
             previous: fps[_adjacentDayIds(d).first],
           ),
       };
-      if (changedOnly && !force && todoDays.isNotEmpty) {
+      if (!noData && changedOnly && !force && todoDays.isNotEmpty) {
         final changed = selectChangedDays(
           todoDays: todoDays,
           current: dayFp,
@@ -2750,7 +2764,7 @@ class DerivationEngine {
             ? 'derive: nothing changed — nothing to do'
             : 'derive: all days finalized — nothing to do');
         onScope?.call(0);
-        await _pruneOldDecoded(scope.rawDays, dataNowSec);
+        if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
         return 0;
       }
       _diag['todo_days'] = todoDays.length;
@@ -2870,10 +2884,10 @@ class DerivationEngine {
       // ~12 MB/day without bound. `_pruneOldDecoded` is day-scoped and bounded,
       // so it is safe to run this often.
       _diag['stage'] = 'prune';
-      await _pruneOldDecoded(scope.rawDays, dataNowSec);
+      if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
       // The timezone hold is a FULL-RESTAGE concept — only a restage actually
       // re-derives every held day — so clearing it stays behind fullHistory.
-      if (scope.fullHistory) {
+      if (scope.fullHistory && !noData) {
         // Re-baseline the travel guard — but ONLY if every targeted day
         // actually got re-derived under the current timezone. processDay
         // swallows per-day errors and marks the day skipped, so a restage can
@@ -2992,15 +3006,22 @@ class DerivationEngine {
     try {
       final scope = _scopeForDays(days.toList(), reason: 'selected-days');
       final dataNowSec = await LocalDb.lastDecodedRecTs() ?? 0;
-      if (dataNowSec <= 0) {
+      // With no decoded row anywhere only the user's blanking can still be
+      // written (see run()); it needs no raw and no data edge.
+      final noData = dataNowSec <= 0;
+      final blankOnly =
+          noData ? await _blankingOverrideDays(scope.targetDays) : <String>{};
+      if (noData && blankOnly.isEmpty) {
         _log('derive selected: no decoded data');
         return 0;
       }
       final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
-      final todoDays = [
-        for (final day in scope.targetDays)
-          if (force || !finalized.contains(day)) day,
-      ];
+      final todoDays = noData
+          ? (blankOnly.toList()..sort())
+          : [
+              for (final day in scope.targetDays)
+                if (force || !finalized.contains(day)) day,
+            ];
       if (todoDays.isEmpty) {
         _log('derive selected: all days finalized — nothing to do');
         return 0;
@@ -3094,6 +3115,8 @@ class DerivationEngine {
   /// Days past raw retention cannot be recomputed and keep what they have.
   /// Returns the days derived; stops after the first pass if it failed.
   Future<int> rederiveAfterSleepEdit(Profile profile, String day) async {
+    // The profile first: the passes below stage with it.
+    await _forgetBlankedNightsInSleepProfile();
     var done = await runDays(profile, {day}, force: true);
     if (_diag['last_error'] != null) return done;
     final later = {
@@ -3503,20 +3526,7 @@ class DerivationEngine {
     } catch (_) {
       return;
     }
-    double? d(String k) => (o[k] as num?)?.toDouble();
-    final observed = ana.SleepNightObservation(
-      epochs: (o['epochs'] as num?)?.toInt() ?? 0,
-      hrFloorP5: d('hr_floor_p5'),
-      hrFloorP25: d('hr_floor_p25'),
-      hrSleepMedian: d('hr_sleep_median'),
-      hrArousal: d('hr_arousal'),
-      rmssdMed: d('rmssd_med'),
-      rmssdMad: d('rmssd_mad'),
-      enmoStillCut: d('enmo_still_cut'),
-      enmoMoveCut: d('enmo_move_cut'),
-      lfhfMed: d('lfhf_med'),
-      rkMed: d('rk_med'),
-    );
+    final observed = _observationFromJson(o);
     // The whole read-modify-write happens inside ONE exclusive DB transaction.
     // A Dart mutex cannot do this job: derivation can run from MORE THAN ONE
     // ISOLATE (Android headless sync wakes construct their own DerivationEngine
@@ -3544,8 +3554,73 @@ class DerivationEngine {
       } catch (_) {
         return null; // unreadable — leave it for the cold-start path
       }
-      return jsonEncode(SleepProfilePolicy.withFoldedDays(
-          base.fold(observed).toJson(), freshDays, dayId));
+      return jsonEncode({
+        ...SleepProfilePolicy.withFoldedDays(
+            base.fold(observed).toJson(), freshDays, dayId),
+        // The observation itself, so the night can be taken back out if the
+        // user later blanks it (see [_forgetBlankedNightsInSleepProfile]).
+        SleepProfilePolicy.foldedObsKey: SleepProfilePolicy.withObservation(
+            SleepProfilePolicy.foldedObservations(usable), dayId, o),
+      });
+    });
+  }
+
+  static ana.SleepNightObservation _observationFromJson(
+      Map<String, dynamic> o) {
+    double? d(String k) => (o[k] as num?)?.toDouble();
+    return ana.SleepNightObservation(
+      epochs: (o['epochs'] as num?)?.toInt() ?? 0,
+      hrFloorP5: d('hr_floor_p5'),
+      hrFloorP25: d('hr_floor_p25'),
+      hrSleepMedian: d('hr_sleep_median'),
+      hrArousal: d('hr_arousal'),
+      rmssdMed: d('rmssd_med'),
+      rmssdMad: d('rmssd_mad'),
+      enmoStillCut: d('enmo_still_cut'),
+      enmoMoveCut: d('enmo_move_cut'),
+      lfhfMed: d('lfhf_med'),
+      rkMed: d('rk_med'),
+    );
+  }
+
+  /// Take every night the user blanked back out of the rolling sleep profile.
+  ///
+  /// A night folded in while it was an automatic one keeps shaping the staging
+  /// thresholds after the user rejects it or sets the times themselves, which
+  /// is "in a baseline" by another name. An EWMA cannot be un-folded, so the
+  /// profile is REFOLDED, chronologically, from the observations stored beside
+  /// it, minus the blanked nights. Days in the profile with no stored
+  /// observation (written before they were kept) cannot be shown to exclude the
+  /// blanked night and are dropped from it too: the profile falls back toward a
+  /// cold start, and those nights fold again if they are ever re-staged.
+  ///
+  /// Idempotent: a profile that holds no blanked night is left untouched, and a
+  /// rebuilt one holds none. Needs no raw. Cheap (at most
+  /// [SleepProfilePolicy.maxStoredObservations] EWMA steps), so it stays on the
+  /// calling isolate under the same exclusive transaction as the fold itself.
+  Future<void> _forgetBlankedNightsInSleepProfile() async {
+    final blanked = await _blankingOverrideDays();
+    if (blanked.isEmpty) return;
+    await LocalDb.updateBaseline('sleep_user_profile', (current) {
+      final usable = SleepProfilePolicy.usableProfileJson(current);
+      if (usable == null) return null; // cold start / legacy: nothing in it
+      if (SleepProfilePolicy.foldedDays(usable).intersection(blanked).isEmpty) {
+        return null;
+      }
+      final kept = <String, Map<String, dynamic>>{
+        for (final e in SleepProfilePolicy.foldedObservations(usable).entries)
+          if (!blanked.contains(e.key)) e.key: e.value,
+      };
+      final days = kept.keys.toList()..sort();
+      var profile = const ana.SleepUserProfile();
+      for (final d in days) {
+        profile = profile.fold(_observationFromJson(kept[d]!));
+      }
+      return jsonEncode({
+        ...profile.toJson(),
+        SleepProfilePolicy.foldedDaysKey: days,
+        SleepProfilePolicy.foldedObsKey: kept,
+      });
     });
   }
 
@@ -4631,6 +4706,16 @@ class DerivationEngine {
           : [(start: spanLo, end: napHi, deviceId: LocalDb.kPrimaryDeviceId)];
       final wristOffSpans = <List<int>>[];
       final chargingSpans = <List<int>>[];
+      // The window the user rejected or set by hand. Its metrics are blank, and
+      // the same still, low-HR hours must not come back as a nap — shown as
+      // "Asleep" and credited to sleep need.
+      final blankedSpans = <List<int>>[];
+      if (blankSource != null) {
+        final ov = await LocalDb.getSleepOverride(day.date);
+        final lo = (ov?['onset_ts'] as num?)?.toInt();
+        final hi = (ov?['offset_ts'] as num?)?.toInt();
+        if (lo != null && hi != null && hi > lo) blankedSpans.add([lo, hi]);
+      }
       for (final s in oneHzOwnership) {
         final d = s.deviceId;
         if (d == null) continue; // nothing recording: nothing to mask
@@ -4707,6 +4792,7 @@ class DerivationEngine {
         savedSessions: savedSessions,
         wristOffSpans: wristOffSpans,
         chargingSpans: chargingSpans,
+        blankedSpans: blankedSpans,
         mainTstMin: (scMap?['tst_min'] as num?)?.round(),
         // The scalar is a PERCENT (onehz_pipeline.dart:914); the period
         // contract and the card both want 0..1, the same normalization
@@ -4886,7 +4972,7 @@ class DerivationEngine {
           final recovered = carryForwardDetail(
             prev,
             bundle,
-            skip: blankSource != null ? kNightOnlyBundleKeys : const {},
+            blankSource: blankSource,
           );
           final prevVersion = (existing['algo_version'] as num?)?.toInt();
           final outcome = recoveryOutcome(
@@ -5109,6 +5195,22 @@ class DerivationEngine {
     required bool nightScalarsNull,
   }) => sleepSubEmpty && nightScalarsNull;
 
+  /// Days whose night the user blanked ('Not sleep', or a window of their own),
+  /// optionally limited to [within]. Read from the override rows alone, so it
+  /// holds when there is no raw and no data edge at all.
+  Future<Set<String>> _blankingOverrideDays([Iterable<String>? within]) async {
+    final only = within?.toSet();
+    final out = <String>{};
+    for (final day in await LocalDb.sleepOverrideDays()) {
+      if (only != null && !only.contains(day)) continue;
+      final ov = await LocalDb.getSleepOverride(day);
+      if (ov != null && userBlanksNight(ov['source'] as String? ?? 'manual')) {
+        out.add(day);
+      }
+    }
+    return out;
+  }
+
   /// Whether the user has blanked [dayId]'s night: the override source when
   /// this derive found no night to compute, else null. "Not sleep" and a
   /// window of the user's own ('manual') both blank; only 'confirmed' stages.
@@ -5195,10 +5297,24 @@ class DerivationEngine {
     Map<String, dynamic> next, {
     // Blocks that must not be inherited (the night's own, for a blanked night).
     Set<String> skip = const {},
+    // The user blanked this night ('rejected' / 'manual'). The previous result
+    // still holds the night, and the scalar / series / sleep-period maps below
+    // merge per key, so without this a failed second half gave the old night
+    // back to a day that is supposed to have none.
+    String? blankSource,
   }) {
+    final blanked = blankSource != null;
+    // `next` as the first half wrote it: the engine's own blank envelopes, which
+    // [blankNightInBundle] puts back over whatever the merge carried in.
+    final absent = blanked
+        ? (jsonDecode(jsonEncode(next)) as Map).cast<String, dynamic>()
+        : null;
     var carried = false;
     for (final e in prev.entries) {
-      if (e.key == 'scalars' || e.key == 'series' || skip.contains(e.key)) {
+      if (e.key == 'scalars' ||
+          e.key == 'series' ||
+          skip.contains(e.key) ||
+          (blanked && kNightOnlyBundleKeys.contains(e.key))) {
         continue;
       }
       if (next.containsKey(e.key) || e.value == null) continue;
@@ -5221,6 +5337,12 @@ class DerivationEngine {
         n[e.key] = e.value;
         carried = true;
       }
+    }
+    if (blanked) {
+      final out = blankNightInBundle(next, absent!, source: blankSource);
+      next
+        ..clear()
+        ..addAll(out);
     }
     return carried;
   }
@@ -7963,6 +8085,7 @@ class DerivationEngine {
     // Read on the main isolate and carried in, like every other DB-sourced
     // input here — this runs inside the compute worker, which has no database.
     List<NapEdit> napEdits = const [],
+    List<List<int>> blanked = const [],
   }) {
     try {
       final n = s.length;
@@ -7995,7 +8118,7 @@ class DerivationEngine {
         hr,
         mainSleep: main,
         wristOff: wristOff,
-        exclude: charging,
+        exclude: [...charging, ...blanked],
       );
 
       if (!m.present) {
@@ -8327,6 +8450,7 @@ class DerivationEngine {
       attributionEndSec: inp.dayEndSec,
       wristOff: inp.wristOffSpans,
       charging: inp.chargingSpans,
+      blanked: inp.blankedSpans,
       napEdits: inp.napEdits,
     );
     bundlePatch['sleep_periods'] = _sleepPeriods(
@@ -8952,6 +9076,7 @@ class DerivationEngine {
     List<List<int>> wristOff = const [],
     List<List<int>> charging = const [],
     List<NapEdit> napEdits = const [],
+    List<List<int>> blanked = const [],
   }) =>
       _attachNaps(
         bundle,
@@ -8963,6 +9088,7 @@ class DerivationEngine {
         attributionEndSec: attributionEndSec,
         wristOff: wristOff,
         charging: charging,
+        blanked: blanked,
         napEdits: napEdits,
       );
 
@@ -9044,6 +9170,10 @@ class _DayBlocksInput {
   /// Strap-reported charging spans — off-wrist by definition, and motionless.
   final List<List<int>> chargingSpans;
 
+  /// The user's rejected / hand-set main-sleep window ([startSec, endSec]), or
+  /// empty. Nap detection must not re-detect it as a nap.
+  final List<List<int>> blankedSpans;
+
   /// Main-sleep TST (minutes) and efficiency (0..1) from ISOLATE 1.
   ///
   /// Carried explicitly because `_computeDayBlocks` builds its own fresh
@@ -9080,6 +9210,7 @@ class _DayBlocksInput {
     this.napEdits = const [],
     required this.wristOffSpans,
     required this.chargingSpans,
+    this.blankedSpans = const [],
     required this.mainTstMin,
     required this.mainEfficiency,
     required this.date,
