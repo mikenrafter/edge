@@ -20,6 +20,7 @@ import '../../state/locale_controller.dart';
 import '../ui2.dart';
 import '../screens/coach.dart' show CoachSetup, coachSubtitle;
 import 'devices.dart';
+import 'live_devices.dart' show LiveDevices;
 import 'settings.dart';
 
 // ══════════════════ shared list furniture ══════════════════
@@ -30,6 +31,11 @@ class SetRow extends StatelessWidget {
   final Color color;
   final String title, sub, value;
   final bool danger, chevron;
+
+  /// 8K: a row that does not apply right now stays in the list, dimmed and
+  /// inert, rather than appearing and disappearing with another setting. Say
+  /// why in [sub] when the reason is not obvious.
+  final bool enabled;
   final VoidCallback? onTap;
 
   /// A brand mark in place of [icon] — Lucide has no GitHub/Discord/Reddit
@@ -43,6 +49,7 @@ class SetRow extends StatelessWidget {
       this.value = '',
       this.danger = false,
       this.chevron = true,
+      this.enabled = true,
       this.onTap})
       : glyph = null;
 
@@ -52,6 +59,7 @@ class SetRow extends StatelessWidget {
       this.value = '',
       this.danger = false,
       this.chevron = true,
+      this.enabled = true,
       this.onTap})
       : icon = null;
 
@@ -59,8 +67,8 @@ class SetRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final accent = danger ? C.red : color;
-    return Pressable(
-      onTap: onTap,
+    final row = Pressable(
+      onTap: enabled ? onTap : null,
       semanticLabel: sub.isEmpty ? title : '$title. $sub',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -106,8 +114,12 @@ class SetRow extends StatelessWidget {
         ]),
       ),
     );
+    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
   }
 }
+
+/// How far a disabled settings row is dimmed (8K).
+const double kDisabledOpacity = .45;
 
 /// A titled card of [SetRow]s, hairline-separated.
 Widget settingsGroup(BuildContext c, String title, List<Widget> rows) {
@@ -126,14 +138,21 @@ Widget settingsGroup(BuildContext c, String title, List<Widget> rows) {
   );
 }
 
-/// A titled card whose rows open and close behind an explicit header tap. The
-/// header always stays in place, so a group never appears or moves because some
-/// setting elsewhere changed; only this header's own tap changes its height.
+/// A titled card whose rows open and close behind an explicit header tap. It
+/// starts expanded: every setting is visible until the person folds a section
+/// away. The header always stays in place, so a group never appears or moves
+/// because some setting elsewhere changed; only this header's own tap changes
+/// its height. Folded, [summary] stays under the title as one line, so a closed
+/// section still says what is inside it.
 class SettingsAccordion extends StatefulWidget {
   const SettingsAccordion(this.title,
-      {super.key, required this.children, this.initiallyExpanded = false});
+      {super.key,
+      required this.children,
+      this.summary,
+      this.initiallyExpanded = true});
   final String title;
   final List<Widget> children;
+  final String? summary;
   final bool initiallyExpanded;
 
   @override
@@ -146,6 +165,7 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final summary = widget.summary;
     return Padding(
       padding: const EdgeInsets.only(top: S.x3),
       child: Surface(
@@ -158,9 +178,19 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
               padding: const EdgeInsets.symmetric(vertical: S.x3),
               child: Row(children: [
                 Expanded(
-                    child: Text(widget.title,
-                        style: F.body.copyWith(
-                            color: p.ink, fontWeight: FontWeight.w600))),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.title,
+                            style: F.body.copyWith(
+                                color: p.ink, fontWeight: FontWeight.w600)),
+                        if (!_open && summary != null && summary.isNotEmpty)
+                          Text(summary,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: F.over.copyWith(color: p.ink3)),
+                      ]),
+                ),
                 Icon(_open ? LucideIcons.chevronUp : LucideIcons.chevronDown,
                     size: 17, color: p.ink3),
               ]),
@@ -181,15 +211,18 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
 /// "On"/"Off" word that a screen would then have to count.
 class SwitchRow extends StatelessWidget {
   const SwitchRow(this.title, this.value, this.onChanged,
-      {super.key, this.sub = ''});
+      {super.key, this.sub = '', this.enabled = true});
   final String title, sub;
   final bool value;
   final ValueChanged<bool>? onChanged;
 
+  /// 8K: false keeps the row in the list, dimmed, with its switch inert.
+  final bool enabled;
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x2),
       child: Row(children: [
         Expanded(
@@ -199,9 +232,10 @@ class SwitchRow extends StatelessWidget {
           ]),
         ),
         const SizedBox(width: S.x2),
-        Switch(value: value, onChanged: onChanged),
+        Switch(value: value, onChanged: enabled ? onChanged : null),
       ]),
     );
+    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
   }
 }
 
@@ -334,6 +368,7 @@ class _ProfileHomeState extends State<ProfileHome> {
           stats: snap.data,
           onDevices: () => _open(c, const MyDevices()),
           onSettings: () => _open(c, const MoreSettings()),
+          onLiveDevices: () => _open(c, const LiveDevices()),
           onEdit: () => _open(c, const EditProfile()),
           onCoach: () => _open(c, const CoachSetup()),
         ),
@@ -344,12 +379,13 @@ class ProfileHomeView extends StatelessWidget {
   /// Null while the counts are still being read — the numbers are absent, not
   /// zero, and a zero rendered during a load is a wrong number on screen.
   final ProfileStats? stats;
-  final VoidCallback? onDevices, onSettings, onEdit, onCoach;
+  final VoidCallback? onDevices, onSettings, onEdit, onCoach, onLiveDevices;
 
   const ProfileHomeView(
       {super.key,
       this.stats,
       this.onDevices,
+      this.onLiveDevices,
       this.onCoach,
       this.onSettings,
       this.onEdit,
@@ -381,6 +417,9 @@ class ProfileHomeView extends StatelessWidget {
                           : (l?.profileSourcesCount(s.sources) ??
                               '${s.sources} source${s.sources == 1 ? '' : 's'}'),
                       onTap: onDevices),
+                  SetRow(LucideIcons.activity, C.red, 'Live devices',
+                      sub: 'The last 30 seconds from each connected device',
+                      onTap: onLiveDevices),
                   SetRow(LucideIcons.userPen, C.purple,
                       l?.profileEditProfile ?? 'Edit profile',
                       sub: l?.profileEditProfileSub ??

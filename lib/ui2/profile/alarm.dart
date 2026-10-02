@@ -30,7 +30,11 @@ import '../../state/alarm_schedule.dart';
 import '../../state/app_state.dart';
 import '../screens/home_screen.dart' show weekdayShortName;
 import '../ui2.dart';
-import 'profile.dart' show SetRow, settingsGroup;
+import 'profile.dart' show SetRow, SettingsAccordion, kDisabledOpacity;
+
+/// Why the Haptics row is dimmed: the band alarm plays a waveform fixed on the
+/// band, so there is no pattern here to show or change.
+const String _kFixedWaveform = 'The band alarm uses the band\'s own buzz';
 
 /// What we actually know about the armed alarm.
 enum AlarmArmState {
@@ -151,9 +155,6 @@ class AlarmScreenView extends StatelessWidget {
                               style: F.n48.copyWith(color: p.ink)),
                           Text(_whichDay(c, at, now ?? DateTime.now()),
                               style: F.cap.copyWith(color: p.ink2)),
-                          const SizedBox(height: S.x3),
-                          Pill(_localizedStateLabel(c, state), _stateColor(state),
-                              icon: _stateIcon(state)),
                         ]),
                   ),
                   if (_stateDetail(c, state) case final detail?) ...[
@@ -163,6 +164,8 @@ class AlarmScreenView extends StatelessWidget {
                   ],
                   const SizedBox(height: S.x4),
                 ],
+                // The reason is said once, here. Every row below that needs a
+                // live band is present and dimmed rather than missing (8K).
                 if (!connected)
                   StatusCard(
                     l?.alarmNotConnectedTitle ?? 'The band is not connected',
@@ -172,53 +175,104 @@ class AlarmScreenView extends StatelessWidget {
                         'connection. An alarm that is already armed keeps '
                         'running on the band.',
                     icon: LucideIcons.bluetoothOff,
-                  )
-                else ...[
-                  settingsGroup(c, l?.alarmScheduleGroup ?? 'Weekly schedule', [
-                    for (final day in schedule) ...[
-                      SetRow(
-                          LucideIcons.calendarDays,
-                          C.orange,
-                          _weekdayLabel(c, day.weekday),
-                          value: day.enabled
-                              ? (l?.stateOn ?? 'On')
-                              : (l?.stateOff ?? 'Off'),
-                          chevron: false,
-                          onTap: () =>
-                              onToggleDay?.call(day.weekday, !day.enabled)),
-                      if (day.enabled) ...[
+                  ),
+                SettingsAccordion('Alarm',
+                    summary: schedule.any((d) => d.enabled)
+                        ? '${schedule.where((d) => d.enabled).length} of '
+                            '${schedule.length} days on'
+                        : 'No days on',
+                    children: [
+                      for (final day in schedule) ...[
+                        SetRow(
+                            LucideIcons.calendarDays,
+                            C.orange,
+                            _weekdayLabel(c, day.weekday),
+                            enabled: connected,
+                            value: day.enabled
+                                ? (l?.stateOn ?? 'On')
+                                : (l?.stateOff ?? 'Off'),
+                            chevron: false,
+                            onTap: () =>
+                                onToggleDay?.call(day.weekday, !day.enabled)),
                         SetRow(LucideIcons.clock, C.blue,
                             l?.alarmWakeTimeRowTitle ?? 'Wake time',
+                            enabled: connected && day.enabled,
                             value: _hhmmOf(day.hour, day.minute),
                             chevron: false,
                             onTap: () => _pickDayTime(c, day)),
                         SetRow(LucideIcons.moon, C.purple, 'Smart wake',
+                            enabled: connected && day.enabled,
                             value: day.smartWindowMinutes == 0
                                 ? (l?.stateOff ?? 'Off')
                                 : '${day.smartWindowMinutes} min early',
                             chevron: false,
                             onTap: () => _pickSmartWindow(c, day)),
                       ],
-                    ],
-                  ]),
-                  const SizedBox(height: S.x3),
-                  if (at != null) ...[
-                    BigButton(l?.alarmTestTheBuzz ?? 'Test the buzz',
-                        icon: LucideIcons.vibrate,
-                        color: C.blue,
-                        soft: true,
-                        onTap: () => _run(
-                            c, onTest, l?.alarmBuzzingTheBand ?? 'Buzzing the band')),
-                    const SizedBox(height: S.x3),
-                  ],
-                  if (at != null || anyDayEnabled)
-                    BigButton(l?.alarmCancelTheAlarm ?? 'Cancel the alarm',
-                        icon: LucideIcons.bellOff,
-                        color: C.red,
-                        soft: true,
-                        onTap: () => _run(
-                            c, onCancel, l?.alarmCancelled ?? 'Alarm cancelled')),
-                ],
+                    ]),
+                // Placeholders: phase 6B implements both. Nothing stores or
+                // sends anything for them yet, so they are present, dimmed and
+                // say why.
+                SettingsAccordion('Wake',
+                    summary: 'Natural Wake and Gradual Wake: not available yet',
+                    children: [
+                      SetRow(LucideIcons.sunrise, C.yellow, 'Natural Wake',
+                          enabled: false,
+                          sub: 'Not available yet. Arrives in a later update.',
+                          chevron: false),
+                      SetRow(LucideIcons.sunMedium, C.orange, 'Gradual Wake',
+                          enabled: false,
+                          sub: 'Not available yet. Arrives in a later update.',
+                          chevron: false),
+                    ]),
+                SettingsAccordion('Haptics',
+                    summary: _kFixedWaveform,
+                    children: [
+                      // The band's own alarm waveform is fixed on the band, so
+                      // there is no sequence to show and none is invented.
+                      SetRow(LucideIcons.waves, C.purple, 'Buzz pattern',
+                          enabled: false,
+                          sub: _kFixedWaveform,
+                          chevron: false),
+                    ]),
+                SettingsAccordion('Status',
+                    summary: _localizedStateLabel(c, state),
+                    children: [
+                      SetRow(_stateIcon(state), _stateColor(state),
+                          'Armed state',
+                          value: _localizedStateLabel(c, state),
+                          chevron: false),
+                      SetRow(LucideIcons.alarmClock, C.blue, 'Next alarm',
+                          value: at == null ? '\u2014' : _dayAndTime(c, at),
+                          chevron: false),
+                    ]),
+                const SizedBox(height: S.x4),
+                // Present always; inert and dimmed when there is nothing to
+                // test or cancel, or no band to tell.
+                Opacity(
+                  opacity: connected && at != null ? 1 : kDisabledOpacity,
+                  child: BigButton(l?.alarmTestTheBuzz ?? 'Test the buzz',
+                      icon: LucideIcons.vibrate,
+                      color: C.blue,
+                      soft: true,
+                      onTap: connected && at != null
+                          ? () => _run(c, onTest,
+                              l?.alarmBuzzingTheBand ?? 'Buzzing the band')
+                          : null),
+                ),
+                const SizedBox(height: S.x3),
+                Opacity(
+                  opacity: connected && (at != null || anyDayEnabled)
+                      ? 1
+                      : kDisabledOpacity,
+                  child: BigButton(l?.alarmCancelTheAlarm ?? 'Cancel the alarm',
+                      icon: LucideIcons.bellOff,
+                      color: C.red,
+                      soft: true,
+                      onTap: connected && (at != null || anyDayEnabled)
+                          ? () => _run(c, onCancel,
+                              l?.alarmCancelled ?? 'Alarm cancelled')
+                          : null),
+                ),
               ],
             ),
           ),

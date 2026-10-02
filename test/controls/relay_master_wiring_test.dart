@@ -101,8 +101,12 @@ void main() {
       ),
     ));
     await t.pumpAndSettle();
-    final row = find.widgetWithText(SwitchRow, 'Relay to the band');
-    expect(row, findsOneWidget);
-    expect(t.widget<SwitchRow>(row).value, isFalse);
+    // 8C: all three channel sections start open, so the switch is drawn once
+    // per channel, and every one of them reads Off while the relay is off.
+    final rows = find.widgetWithText(SwitchRow, 'Relay to the band');
+    expect(rows, findsNWidgets(3));
+    for (final r in rows.evaluate()) {
+      expect((r.widget as SwitchRow).value, isFalse);
+    }
   });
 }

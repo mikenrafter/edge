@@ -3,9 +3,9 @@
 // Pure view, headless, no goldens. What it must get right:
 //   * actions are switches you can have several of on at once (not a radio);
 //   * the empty set IS "off" — there is no "Do nothing" row, and the copy says so;
-//   * "Also run for taps replayed from history" sits under Mark moment, appears
-//     ONLY while Mark moment is selected, and never under an action that cannot
-//     be replayed safely;
+//   * "Also run for taps replayed from history" sits under Mark moment, is
+//     present but disabled (8K) while Mark moment is not selected, and never
+//     sits under an action that cannot be replayed safely;
 //   * only what this phone can do is offered;
 //   * it never names, mentions or offers a one-tap gesture. Two taps is the
 //     firmware's double tap; 3–5 taps are the draft ECG-touch counts of 8L
@@ -94,7 +94,8 @@ void main() {
       ]) {
         expect(_row(label), findsOneWidget, reason: label);
       }
-      expect(find.byType(SwitchRow), findsNWidgets(5));
+      // Five actions plus the replay row, which is always drawn (8K).
+      expect(find.byType(SwitchRow), findsNWidgets(6));
       expect(find.byType(Radio<DeviceAction>), findsNothing);
       expect(find.text('Do nothing'), findsNothing);
     });
@@ -154,7 +155,8 @@ void main() {
             DeviceAction.broadcastToTasker,
           }));
       expect(_faults(), isEmpty);
-      expect(find.byType(SwitchRow), findsNWidgets(11));
+      // Eleven actions plus the always-drawn replay row.
+      expect(find.byType(SwitchRow), findsNWidgets(12));
       expect(find.textContaining('could not ask the system'), findsNothing);
     });
 
@@ -193,14 +195,24 @@ void main() {
       expect(_on(t, _replayLabel), isFalse);
     });
 
-    testWidgets('is absent while Mark moment is not selected', (t) async {
-      await _pump(t, supported: iphone, replay: {DeviceAction.markMoment});
-      expect(find.text(_replayLabel), findsNothing);
-      await _pump(t, supported: iphone, chosen: {DeviceAction.logWater});
-      expect(find.text(_replayLabel), findsNothing);
+    testWidgets('is present and disabled while Mark moment is not selected',
+        (t) async {
+      for (final chosen in [
+        const <DeviceAction>{},
+        {DeviceAction.logWater},
+      ]) {
+        await _pump(t,
+            supported: iphone,
+            chosen: chosen,
+            replay: {DeviceAction.markMoment});
+        expect(find.text(_replayLabel), findsOneWidget);
+        final sw = t.widget<Switch>(
+            find.descendant(of: _row(_replayLabel), matching: find.byType(Switch)));
+        expect(sw.onChanged, isNull, reason: 'a disabled row is inert');
+      }
     });
 
-    testWidgets('never appears for an action that cannot be replayed safely',
+    testWidgets('never sits under an action that cannot be replayed safely',
         (t) async {
       await _pump(t,
           supported: iphone,
@@ -216,9 +228,11 @@ void main() {
             DeviceAction.torch,
             DeviceAction.ringPhone,
           });
-      expect(find.text(_replayLabel), findsNothing);
-      expect(find.byType(SwitchRow), findsNWidgets(5),
-          reason: 'one row per offered action, no extras');
+      // The replay row belongs to Mark moment alone: one per screen, however
+      // many other actions are on.
+      expect(find.text(_replayLabel), findsOneWidget);
+      expect(find.byType(SwitchRow), findsNWidgets(6),
+          reason: 'one row per offered action plus the one replay row');
     });
 
     testWidgets('exactly one replay row even with several actions on',

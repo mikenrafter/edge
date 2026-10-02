@@ -32,7 +32,7 @@ import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
-import 'profile.dart' show SetRow, SettingsAccordion, SwitchRow, settingsGroup;
+import 'profile.dart' show SetRow, SettingsAccordion, SwitchRow, kDisabledOpacity;
 import 'settings.dart' show NotificationSettingsView;
 
 /// One row's worth of the picker.
@@ -177,6 +177,8 @@ class BandNotificationsView extends StatelessWidget {
   final void Function(String pkg)? onAppBuzzPattern;
   final void Function(String channel)? onChannelBuzzPattern;
 
+  bool get _appsUsable => enabled && granted;
+
   /// How many apps are actually armed — the one number that says whether the
   /// feature will do anything at all.
   int get _armed => apps.where((a) => a.on).length;
@@ -191,10 +193,20 @@ class BandNotificationsView extends StatelessWidget {
         'Turn this off to buzz anyway.',
   };
 
+  /// The app list is always drawn. While the relay is off, or Android has not
+  /// granted notification access, it is dimmed and inert, and the first row
+  /// says which of the two it is waiting for (8K).
   List<Widget> _appRows(BuildContext c, AppLocalizations? l) => [
     SetRow(LucideIcons.listChecks, C.teal,
         l?.bandNotifAppsArmed ?? 'Apps that can buzz',
-        value: '$_armed', chevron: false),
+        enabled: _appsUsable,
+        sub: !enabled
+            ? 'Turn on the relay first'
+            : !granted
+                ? 'Grant notification access first'
+                : '',
+        value: '$_armed',
+        chevron: false),
     if (apps.isEmpty)
       Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -216,6 +228,7 @@ class BandNotificationsView extends StatelessWidget {
     else
       for (final a in apps)
         _AppRow(a,
+            enabled: _appsUsable,
             onChanged: onApp,
             sequence: (channels['apps'] ?? ChannelConfig.forChannel('apps'))
                 .sequenceForApp(a.package),
@@ -234,6 +247,7 @@ class BandNotificationsView extends StatelessWidget {
   List<Widget> _policyRows(BuildContext c, String name) {
     final cfg = channels[name] ?? ChannelConfig.forChannel(name);
     void put(ChannelConfig next) => onChannel?.call(name, next);
+    final quietOn = cfg.quietStartMinute != null && cfg.quietEndMinute != null;
     final rhythm = _rhythms.indexWhere(
         (r) => r.$2.join(',') == cfg.fallbackPattern.join(','));
     return [
@@ -246,8 +260,9 @@ class BandNotificationsView extends StatelessWidget {
             sub: "If Android's vibration pattern cannot be read, the band "
                  'uses the fallback rhythm below. It plays one buzz per '
                  'pulse, up to three.'),
-        if (cfg.matchHaptics)
-          SetRow(LucideIcons.waves, C.purple, 'Fallback rhythm',
+        SetRow(LucideIcons.waves, C.purple, 'Fallback rhythm',
+              enabled: cfg.matchHaptics,
+              sub: cfg.matchHaptics ? '' : "Turn on Match Android's vibration first",
               value: rhythm < 0 ? 'Custom' : _rhythms[rhythm].$1,
               chevron: false,
               onTap: () => put(cfg.copyWith(
@@ -283,22 +298,23 @@ class BandNotificationsView extends StatelessWidget {
           (v) => put(v
               ? cfg.copyWith(quietStartMinute: 22 * 60, quietEndMinute: 7 * 60)
               : cfg.copyWith(clearQuiet: true))),
-      if (cfg.quietStartMinute != null && cfg.quietEndMinute != null) ...[
-        SetRow(LucideIcons.sunset, C.blue, 'Starts',
-            value: NotificationSettingsView.hhmm(cfg.quietStartMinute!),
-            chevron: false, onTap: () async {
-          final v = await NotificationSettingsView.pickMinute(
-              c, cfg.quietStartMinute!);
-          if (v != null) put(cfg.copyWith(quietStartMinute: v));
-        }),
-        SetRow(LucideIcons.sunrise, C.yellow, 'Ends',
-            value: NotificationSettingsView.hhmm(cfg.quietEndMinute!),
-            chevron: false, onTap: () async {
-          final v = await NotificationSettingsView.pickMinute(
-              c, cfg.quietEndMinute!);
-          if (v != null) put(cfg.copyWith(quietEndMinute: v));
-        }),
-      ],
+      // Always drawn; dimmed while quiet hours are off (8K).
+      SetRow(LucideIcons.sunset, C.blue, 'Starts',
+          enabled: quietOn,
+          value: NotificationSettingsView.hhmm(cfg.quietStartMinute ?? 22 * 60),
+          chevron: false, onTap: () async {
+        final v = await NotificationSettingsView.pickMinute(
+            c, cfg.quietStartMinute ?? 22 * 60);
+        if (v != null) put(cfg.copyWith(quietStartMinute: v));
+      }),
+      SetRow(LucideIcons.sunrise, C.yellow, 'Ends',
+          enabled: quietOn,
+          value: NotificationSettingsView.hhmm(cfg.quietEndMinute ?? 7 * 60),
+          chevron: false, onTap: () async {
+        final v = await NotificationSettingsView.pickMinute(
+            c, cfg.quietEndMinute ?? 7 * 60);
+        if (v != null) put(cfg.copyWith(quietEndMinute: v));
+      }),
     ];
   }
 
@@ -329,7 +345,7 @@ class BandNotificationsView extends StatelessWidget {
                     icon: LucideIcons.smartphone,
                   )
                 else ...[
-                  settingsGroup(c, l?.bandNotifRelayGroup ?? 'Relay', [
+                  SettingsAccordion(l?.bandNotifRelayGroup ?? 'Relay', children: [
                     SetRow(LucideIcons.bellRing, C.purple,
                         l?.bandNotifBuzzOnAppNotifs ??
                             'Buzz on app notifications',
@@ -350,7 +366,7 @@ class BandNotificationsView extends StatelessWidget {
                         onTap: () => onEnabled?.call(!enabled)),
                   ]),
                   // One setting for the whole relay, not one per channel.
-                  settingsGroup(c, 'Wear', [
+                  SettingsAccordion('Wear', children: [
                     SwitchRow('Only buzz while worn', onlyWhileWorn,
                         onOnlyWhileWorn,
                         sub: _wearSub),
@@ -384,9 +400,8 @@ class BandNotificationsView extends StatelessWidget {
                   // Three channels, each with its own policy. Per-app choices
                   // exist only on App notifications.
                   SettingsAccordion('App notifications',
-                      initiallyExpanded: true,
                       children: [
-                        if (enabled && granted) ..._appRows(c, l),
+                        ..._appRows(c, l),
                         ..._policyRows(c, 'apps'),
                       ]),
                   SettingsAccordion('Alarms & timers',
@@ -407,8 +422,13 @@ class BandNotificationsView extends StatelessWidget {
 /// caption under it, derived from the package name because the app's real
 /// label is behind a permission this feature does not ask for.
 class _AppRow extends StatelessWidget {
-  const _AppRow(this.app, {this.onChanged, this.sequence, this.onBuzzPattern});
+  const _AppRow(this.app,
+      {this.enabled = true,
+      this.onChanged,
+      this.sequence,
+      this.onBuzzPattern});
   final RelayApp app;
+  final bool enabled;
   final void Function(String pkg, bool on)? onChanged;
   final BuzzSequence? sequence;
   final void Function(String pkg)? onBuzzPattern;
@@ -423,8 +443,8 @@ class _AppRow extends StatelessWidget {
     // need not be square, and constraining both dimensions would distort it.
     final px = (32 * MediaQuery.devicePixelRatioOf(c)).round();
     final l = AppLocalizations.of(c);
-    return Pressable(
-      onTap: () => onChanged?.call(app.package, !app.on),
+    final row = Pressable(
+      onTap: enabled ? () => onChanged?.call(app.package, !app.on) : null,
       semanticLabel: '${appLabel(app.package)}, ${app.on ? (l?.bandNotifBuzzesDescription ?? 'buzzes') : (l?.bandNotifDoesNotBuzzDescription ?? 'does not buzz')}',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -472,12 +492,12 @@ class _AppRow extends StatelessWidget {
           if (sequence != null)
             Pressable(
               key: ValueKey('buzz-pattern:app:${app.package}'),
-              onTap: app.on && onBuzzPattern != null
+              onTap: enabled && app.on && onBuzzPattern != null
                   ? () => onBuzzPattern!(app.package)
                   : null,
               semanticLabel: 'Buzz pattern, ${buzzSummary(sequence!)}',
               child: Opacity(
-                opacity: app.on && onBuzzPattern != null ? 1 : .4,
+                opacity: enabled && app.on && onBuzzPattern != null ? 1 : .4,
                 child: Padding(
                   padding: const EdgeInsets.only(left: S.x3),
                   child: Icon(LucideIcons.waves, size: 20, color: p.on(C.purple)),
@@ -487,5 +507,6 @@ class _AppRow extends StatelessWidget {
         ]),
       ),
     );
+    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
   }
 }

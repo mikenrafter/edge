@@ -99,18 +99,16 @@ class DeviceLabView extends StatelessWidget {
                   'ECG on double tap',
                   Surface(
                     pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: Opacity(
-                      opacity: ecgSupported ? 1 : .45,
-                      child: SwitchRow(
-                        'Toggle ECG recording on double tap',
-                        ecgOnDoubleTap && ecgSupported,
-                        ecgSupported ? onEcgOnDoubleTap : null,
-                        sub: ecgSupported
-                            ? 'A live double tap starts an ECG recording and the '
-                                'band buzzes twice. Normal double-tap actions are '
-                                'paused while this is on.'
-                            : 'This band has no ECG sensor',
-                      ),
+                    child: SwitchRow(
+                      'Toggle ECG recording on double tap',
+                      ecgOnDoubleTap && ecgSupported,
+                      onEcgOnDoubleTap,
+                      enabled: ecgSupported,
+                      sub: ecgSupported
+                          ? 'A live double tap starts an ECG recording and the '
+                              'band buzzes twice. Normal double-tap actions are '
+                              'paused while this is on.'
+                          : 'This band has no ECG sensor',
                     ),
                   ),
                 ),
@@ -260,7 +258,7 @@ class _Adjuster extends StatelessWidget {
     final canDown = set != null && value - step >= range.$1;
     final canUp = set != null && value + step <= range.$2;
     return Opacity(
-      opacity: set == null ? .45 : 1,
+      opacity: set == null ? kDisabledOpacity : 1,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x2),
         child: Row(children: [

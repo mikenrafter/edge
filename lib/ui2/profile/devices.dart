@@ -2581,9 +2581,7 @@ class DeviceDetailView extends StatelessWidget {
                 // NOTHING, for every sensor, and that has to be on the screen
                 // rather than inferred from a metric quietly still abstaining.
                 if (!s.isBand && s.deviceId != null) ...[
-                  Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: Column(children: [
+                  SettingsAccordion('Sensor', children: [
                       SetRow(LucideIcons.flaskConical, C.orange,
                           l?.devicesSupport ?? 'Support',
                           value: l?.devicesExperimental ?? 'Experimental',
@@ -2591,7 +2589,6 @@ class DeviceDetailView extends StatelessWidget {
                               'Decoded from the protocol. Nobody on the project owns one, '
                               'so it has not been tested on hardware.',
                           chevron: false),
-                      Divider(color: p.line, height: 1),
                       SetRow(LucideIcons.database, C.teal,
                           l?.devicesWhatItDoes ?? 'What it does',
                           sub: s.tier == null
@@ -2604,7 +2601,6 @@ class DeviceDetailView extends StatelessWidget {
                                   'with this device. No metric '
                                   'uses that data yet.'),
                           chevron: false),
-                      Divider(color: p.line, height: 1),
                       SetRow(LucideIcons.refreshCw, C.purple,
                           l?.devicesLastData ?? 'Last data',
                           value: last == null ? '' : formatDayTime(last, l),
@@ -2618,7 +2614,6 @@ class DeviceDetailView extends StatelessWidget {
                       // contending for the radio with the band's own link
                       // for no reason a user asked for.
                       if (onSync != null && syncPresentation == null) ...[
-                        Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.downloadCloud, C.blue,
                             l?.devicesSyncNow ?? 'Sync now',
                             // Only Oura genuinely fetches held history off a
@@ -2637,8 +2632,7 @@ class DeviceDetailView extends StatelessWidget {
                                     'Receive its live data'),
                             onTap: onSync),
                       ],
-                    ]),
-                  ),
+                  ]),
                   const SizedBox(height: S.x5),
                 ],
                 // Band rows only. The phone has no radio link and no battery
@@ -2646,10 +2640,8 @@ class DeviceDetailView extends StatelessWidget {
                 // connection" named a connection it does not have — on the
                 // exact screen someone lands on when phone steps are silently
                 // failing, where the answer is the permission, not a battery.
-                if (s.isBand)
-                  Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: Column(children: [
+                if (s.isBand) ...[
+                  SettingsAccordion('Band', children: [
                       // The name is the band's own advertising name, written
                       // to the strap — not a phone-side label. So it is only
                       // editable on a live link, and the row says so rather
@@ -2662,7 +2654,6 @@ class DeviceDetailView extends StatelessWidget {
                               : '',
                           chevron: onRename != null,
                           onTap: onRename),
-                      Divider(color: p.line, height: 1),
                       SetRow(LucideIcons.batteryMedium, C.green,
                           l?.devicesBattery ?? 'Battery',
                           value: battery == null ? '' : '${battery.round()}%',
@@ -2687,7 +2678,6 @@ class DeviceDetailView extends StatelessWidget {
                                   ?_chargeHistory(health),
                                 ].join(' · '),
                           chevron: false),
-                      Divider(color: p.line, height: 1),
                       // Live, not a stored reading: present only while the
                       // band is actually streaming, and gone the moment it
                       // stops.
@@ -2697,7 +2687,6 @@ class DeviceDetailView extends StatelessWidget {
                             value: '$liveHr bpm',
                             sub: l?.devicesRightNow ?? 'Right now',
                             chevron: false),
-                        Divider(color: p.line, height: 1),
                       ],
                       SetRow(LucideIcons.refreshCw, C.purple,
                           l?.devicesLastData ?? 'Last data',
@@ -2707,7 +2696,6 @@ class DeviceDetailView extends StatelessWidget {
                               : '',
                           chevron: false),
                       if (calibration != null) ...[
-                        Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.sliders, C.teal,
                             l?.devicesCalibration ?? 'Calibration',
                             value: calibration.$1,
@@ -2719,7 +2707,6 @@ class DeviceDetailView extends StatelessWidget {
                       // because "experimental" without the reason reads as a
                       // disclaimer instead of a fact about this band.
                       if (s.experimental) ...[
-                        Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.flaskConical, C.orange,
                             l?.devicesSupport ?? 'Support',
                             value: l?.devicesExperimental ?? 'Experimental',
@@ -2729,23 +2716,25 @@ class DeviceDetailView extends StatelessWidget {
                                 'been tested on hardware.',
                             chevron: false),
                       ],
-                      if (onFind != null) ...[
-                        Divider(color: p.line, height: 1),
-                        SetRow(LucideIcons.bellRing, C.orange,
-                            l?.devicesBuzzTheBand ?? 'Buzz the band',
-                            sub: l?.devicesFindItByFeel ?? 'Vibrate the band to locate it',
-                            chevron: false,
-                            onTap: onFind),
-                      ],
+                  ]),
+                  SettingsAccordion('Tools', children: [
+                      SetRow(LucideIcons.bellRing, C.orange,
+                          l?.devicesBuzzTheBand ?? 'Buzz the band',
+                          enabled: onFind != null,
+                          sub: onFind == null
+                              ? 'Connect to the band first'
+                              : l?.devicesFindItByFeel ??
+                                  'Vibrate the band to locate it',
+                          chevron: false,
+                          onTap: onFind),
                       if (onDeviceLab != null) ...[
-                        Divider(color: p.line, height: 1),
                         SetRow(LucideIcons.flaskConical, C.purple,
                             'Device lab',
                             sub: 'Try gestures the band does not report on its own',
                             onTap: onDeviceLab),
                       ],
-                    ]),
-                  ),
+                  ]),
+                ],
                 const SizedBox(height: S.x5),
                 if (onForget != null)
                   Surface(
