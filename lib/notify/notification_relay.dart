@@ -349,6 +349,7 @@ class RelayController {
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
         phoneTransport: phone,
+        bandTimeout: sequence?.transportTimeout,
         bandTransport: sequence == null
             ? () => buzz(pattern)
             : () => play!(sequence),
