@@ -135,6 +135,7 @@ class _AlarmScreenState extends State<AlarmScreen> {
         onSetSleepSchedule: () => editExpectedSleepSchedule(c, app),
         timelineFor: (at, entry) => app.wake.timelineAt(at, entry: entry),
         wakeTrace: trace.data ?? const [],
+        resent: app.alarmResentUnconfirmed,
       ),
     );
   }
@@ -190,6 +191,10 @@ class AlarmScreenView extends StatefulWidget {
   /// The armed wake's decision trace, already in plain words.
   final List<String> wakeTrace;
 
+  /// The app sent the armed alarm a second time because the band had not
+  /// confirmed the first send, and it is still unconfirmed. The header says so.
+  final bool resent;
+
   const AlarmScreenView({
     super.key,
     this.armedAt,
@@ -208,6 +213,7 @@ class AlarmScreenView extends StatefulWidget {
     this.onSetSleepSchedule,
     this.timelineFor,
     this.wakeTrace = const [],
+    this.resent = false,
   });
 
   @override
@@ -747,7 +753,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         : _draft.dirty
         ? 'Unsaved changes. Nothing is saved or sent to the band '
               'until you save.'
-        : out?.headline ?? 'No unsaved changes';
+        : out?.headlineFor(resent: widget.resent) ?? 'No unsaved changes';
     final tone = _draft.sending
         ? p.ink2
         : failed
