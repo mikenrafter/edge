@@ -132,31 +132,31 @@ void main() {
       ),
     ),
     'alerts_android': (
-      3400,
+      5100,
       const NotificationSettingsView(relaySupported: true),
     ),
     'alerts_other_platform': (
-      3400,
+      4950,
       const NotificationSettingsView(relaySupported: false),
     ),
     'relay_disabled': (
-      3000,
+      3700,
       const BandNotificationsView(enabled: false, granted: true),
     ),
     'relay_enabled': (
-      3000,
+      3700,
       const BandNotificationsView(enabled: true, granted: true),
     ),
     // What an iPhone offers: every in-app action plus ring and flashlight.
     'gestures_none_selected': (
-      2200,
+      1800,
       const BandGesturesView(
         chosen: {},
         supported: _gesturesSupported,
       ),
     ),
     'gestures_mark_moment_and_flashlight': (
-      2200,
+      1800,
       BandGesturesView(
         chosen: const {DeviceAction.markMoment, DeviceAction.torch},
         supported: _gesturesSupported,
@@ -172,6 +172,16 @@ void main() {
       ),
     ),
   };
+  // 8C expanded every section, so at 2x text the long settings lists need
+  // taller frames than at 1x to show the whole screen.
+  const tallAt2x = {
+    'alerts_android': 12400.0,
+    'alerts_other_platform': 11900.0,
+    'relay_disabled': 9900.0,
+    'relay_enabled': 9900.0,
+    'gestures_none_selected': 5500.0,
+    'gestures_mark_moment_and_flashlight': 5500.0,
+  };
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       for (final fixture in fixtures.entries) {
@@ -179,7 +189,8 @@ void main() {
         testWidgets(name, (tester) async {
           final boundary = GlobalKey();
           tester.view.devicePixelRatio = 1;
-          tester.view.physicalSize = Size(390, fixture.value.$1);
+          tester.view.physicalSize = Size(
+              390, scale > 1 ? tallAt2x[fixture.key] ?? fixture.value.$1 : fixture.value.$1);
           addTearDown(tester.view.reset);
           await tester.pumpWidget(
             MaterialApp(
