@@ -134,8 +134,13 @@ Map<String, dynamic> buildCrossDayBundle(
     final onset = (d['onset_sec'] as num?)?.toDouble();
     final wake = (d['wake_sec'] as num?)?.toDouble();
     final tstMin = (d['tst_min'] as num?)?.toDouble();
-    final dur = tstMin == null ? null : tstMin / 60.0;
-    if (dur != null) allDurH.add(dur);
+    // 8E — a night with a window but no total sleep time is NOT RECORDED (the
+    // user asserted the window; nothing covered it). Its bare window is not a
+    // mid-sleep: counting it paired a free-day mid-sleep with no duration
+    // (chronotype n 8 vs 7) and moved social jetlag. Skip it entirely.
+    if (tstMin == null) continue;
+    final dur = tstMin / 60.0;
+    allDurH.add(dur);
     if (onset == null || wake == null) continue;
     final midSec = (onset + wake) / 2.0;
     // LOCAL clock-hours [0,24). onset/wake are epoch SECONDS (UTC); `% 86400`
@@ -145,7 +150,7 @@ Map<String, dynamic> buildCrossDayBundle(
     final free = _isFreeDay(d['date'] as String?);
     if (free) {
       freeMidH.add(midH);
-      if (dur != null) freeDurH.add(dur);
+      freeDurH.add(dur);
     } else {
       workMidH.add(midH);
     }
@@ -374,7 +379,9 @@ Map<String, dynamic> buildCrossDayBundle(
       ? null
       : ((need.value!.needSec - needNoStrain.value!.needSec) / 60).round();
   // last night's TST (sec) for performance.
-  final lastTstMin = _lastNum(days, 'tst_min');
+  // LAST night only. `_lastNum` reached back past a blank night (8E) to an
+  // earlier night's sleep time and scored THAT against tonight's need.
+  final lastTstMin = days.isEmpty ? null : _numOrNull(days.last['tst_min']);
   final perf = (need.present && lastTstMin != null)
       ? ana.sleepPerformance(lastTstMin * 60.0, need.value!.needSec)
       : ana.Metric<ana.SleepPerformance>.absent(
@@ -389,7 +396,10 @@ Map<String, dynamic> buildCrossDayBundle(
   // typical wake clock-minute + efficiency from recent days (medians).
   final wakeMins = <double>[
     for (final d in days)
-      if (d['wake_sec'] != null) _localTodMin((d['wake_sec'] as num).toInt()),
+      // A blank night's wake is the user's asserted window, not a measured
+      // wake time (8E): it must not move the bedtime guidance.
+      if (d['wake_sec'] != null && d['tst_min'] != null)
+        _localTodMin((d['wake_sec'] as num).toInt()),
   ];
   final effs = <double>[for (final d in days) ?_numOrNull(d['efficiency'])];
   final typicalWakeMin = _median(wakeMins);
@@ -636,7 +646,7 @@ double? _median(List<double> xs) {
 /// The value of [key] on the MOST RECENT day only, or null if that day did not
 /// produce one.
 ///
-/// Unlike [_lastNum] this never reaches back to an earlier day. For a
+/// Unlike a walk-back to the last non-null (`_lastNum`, now removed) this never reaches back to an earlier day. For a
 /// TODAY-scoped quantity that is the difference between "we have no reading"
 /// and a fabricated one: `_lastNum(days, 'nap_min')` would credit YESTERDAY's
 /// naps against tonight's sleep need whenever today's nap detection abstained,
@@ -651,15 +661,6 @@ double? _todayNum(List<Map<String, dynamic>> days, String key) {
   final last = days.last;
   if (last['is_today'] != true) return null;
   return _numOrNull(last[key]);
-}
-
-/// The last non-null value of [key] across the (oldest-first) day records.
-double? _lastNum(List<Map<String, dynamic>> days, String key) {
-  for (var i = days.length - 1; i >= 0; i--) {
-    final v = _numOrNull(days[i][key]);
-    if (v != null) return v;
-  }
-  return null;
 }
 
 /// Sat/Sun => free day. We lack a real work/free calendar; the weekday split is

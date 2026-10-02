@@ -106,6 +106,29 @@ class _MoreSettingsState extends State<MoreSettings> {
     if (mounted) setState(() => _icon = now);
   }
 
+  /// Two time pickers, seeded from the saved schedule (or 23:00 / 07:00). Works
+  /// with no data at all: it writes the schedule, not a night.
+  Future<void> _editSleepSchedule(AppState app) async {
+    final cur = app.sleepOperations.schedule;
+    TimeOfDay at(int m) => TimeOfDay(hour: m ~/ 60, minute: m % 60);
+    final bed = await showTimePicker(
+      context: context,
+      initialTime: at(cur?.onsetMinute ?? 23 * 60),
+      helpText: 'WHEN YOU USUALLY GO TO BED',
+    );
+    if (bed == null || !mounted) return;
+    final up = await showTimePicker(
+      context: context,
+      initialTime: at(cur?.wakeMinute ?? 7 * 60),
+      helpText: 'WHEN YOU USUALLY GET UP',
+    );
+    if (up == null || !mounted) return;
+    await app.setExpectedSleepSchedule(ExpectedSleepSchedule(
+      onsetMinute: bed.hour * 60 + bed.minute,
+      wakeMinute: up.hour * 60 + up.minute,
+    ));
+  }
+
   Future<void> _readVersion() async {
     try {
       final i = await PackageInfo.fromPlatform();
@@ -180,6 +203,8 @@ class _MoreSettingsState extends State<MoreSettings> {
       updateChecks: app.updateChecksEnabled,
       updateAvailable: app.updateAvailable,
       updateMandatory: app.updateMandatory,
+      expectedSleepSchedule: app.sleepOperations.schedule,
+      onEditSleepSchedule: () => _editSleepSchedule(app),
       onEditProfile: () => goto(c, const EditProfile()),
       onAlarm: () => goto(c, const AlarmScreen()),
       onNotifications: () => goto(c, const NotificationSettings()),
@@ -209,6 +234,10 @@ class _MoreSettingsState extends State<MoreSettings> {
     );
   }
 }
+
+String _clock(int minute) =>
+    '${(minute ~/ 60).toString().padLeft(2, '0')}:'
+    '${(minute % 60).toString().padLeft(2, '0')}';
 
 /// Pick the home-screen icon, with both options drawn so the choice is made by
 /// looking rather than by reading a word.
@@ -523,6 +552,11 @@ class MoreSettingsView extends StatelessWidget {
 
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
+  /// The expected sleep schedule (local clock times), or null when never set.
+  /// The row is always drawn: it needs no data (8E).
+  final ExpectedSleepSchedule? expectedSleepSchedule;
+  final VoidCallback? onEditSleepSchedule;
+
   final VoidCallback? onEditProfile,
       onAlarm,
       onNotifications,
@@ -567,6 +601,8 @@ class MoreSettingsView extends StatelessWidget {
     this.onVersionTap,
     this.onToggleDev,
     this.onGallery,
+    this.expectedSleepSchedule,
+    this.onEditSleepSchedule,
     this.onEditProfile,
     this.onAlarm,
     this.onNotifications,
@@ -666,6 +702,13 @@ class MoreSettingsView extends StatelessWidget {
                   SetRow(LucideIcons.sun, C.yellow,
                       l?.settingsAppearanceRowTitle ?? 'Appearance',
                       value: appearance, onTap: onCycleAppearance),
+                  SetRow(LucideIcons.moon, C.indigo, 'Expected sleep schedule',
+                      sub: 'Your usual bed and wake times',
+                      value: expectedSleepSchedule == null
+                          ? 'Not set'
+                          : '${_clock(expectedSleepSchedule!.onsetMinute)} to '
+                              '${_clock(expectedSleepSchedule!.wakeMinute)}',
+                      onTap: onEditSleepSchedule),
                   if (appIcon != null)
                     _IconRow(chosen: appIcon!, onPick: onPickIcon),
                   // Opt-in, and it says what it does rather than what it is

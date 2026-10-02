@@ -2381,6 +2381,15 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Save the expected sleep schedule on its own — no night, no samples needed
+  /// (8E). The same pref `setOverride(useSchedule: true)` writes.
+  Future<void> setExpectedSleepSchedule(ExpectedSleepSchedule next) async {
+    await sleepOperations.saveSchedule(next.toJson());
+    sleepOperations.schedule = next;
+    await _refreshHighFreqWakeWindow();
+    notifyListeners();
+  }
+
   Future<Map<String, Object?>> _deriveSleepDay(String day) async {
     await _waitForDerivation();
     reanalyzing = true;

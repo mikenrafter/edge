@@ -1488,13 +1488,22 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       // Both are tz-corrected LOCAL clock positions in seconds, signed,
       // relative to 04:00 local — see [sleepClockOffsetSec] for why they are
       // not a plain second-of-day.
+      //
+      // 8E — only for a night that was RECORDED (`tstSec` known). A window the
+      // user asserted over a stretch with no samples is a night not recorded:
+      // publishing its bare window's mid-sleep would put an unmeasured point in
+      // the clock trend.
       'midsleep_sec': sleepClockOffsetSec(
-        d.sleepOffsetSec > d.sleepOnsetSec && d.sleepOnsetSec > 0
+        tstSec != null &&
+                d.sleepOffsetSec > d.sleepOnsetSec &&
+                d.sleepOnsetSec > 0
             ? d.sleepOnsetSec + (d.sleepOffsetSec - d.sleepOnsetSec) ~/ 2
             : 0,
       ),
       'sleep_onset_sec': sleepClockOffsetSec(
-        d.sleepOffsetSec > d.sleepOnsetSec ? d.sleepOnsetSec : 0,
+        tstSec != null && d.sleepOffsetSec > d.sleepOnsetSec
+            ? d.sleepOnsetSec
+            : 0,
       ),
     },
   };

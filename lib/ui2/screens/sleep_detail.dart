@@ -265,7 +265,11 @@ class SleepData {
     // costs three scalar queries and one window query rather than 28 payload
     // decodes.
     final cut = _noonOf(day);
-    final tst = _trailing(await repo.getChart('sleep'), cut);
+    final tstChart = await repo.getChart('sleep');
+    final tst = _trailing(tstChart, cut);
+    // Nights with a total sleep time. A window the user set over a stretch the
+    // band did not record is NOT RECORDED (8E): it is not a bedtime to compare to.
+    final recordedNoons = {for (final p in pointsOf(tstChart)) p.t};
     final deep = _trailing(await repo.getChart('deep'), cut);
     // Stored as whole percent; the night's own `efficiency` is 0…1.
     final eff = _trailing(await repo.getChart('efficiency'), cut);
@@ -279,7 +283,10 @@ class SleepData {
     final wins = await repo.sleepWindows(days: _window + 1);
     final onsets = <int>[
       for (final w in wins.reversed)
-        if (w['date'] != day && w['onset_ts'] is num) (w['onset_ts'] as num).round(),
+        if (w['date'] != day &&
+            w['onset_ts'] is num &&
+            recordedNoons.contains(_noonOf(w['date'] as String?)))
+          (w['onset_ts'] as num).round(),
     ];
 
     return SleepData(
@@ -802,7 +809,8 @@ class _SleepDetailState extends State<SleepDetail> {
           final onset = expected?.$1 ?? DateTime(wakeDate.year, wakeDate.month, wakeDate.day - 1, 23);
           final wake = expected?.$2 ?? DateTime(wakeDate.year, wakeDate.month, wakeDate.day, 7);
           _editWindow(day, onset.millisecondsSinceEpoch ~/ 1000, wake.millisecondsSinceEpoch ~/ 1000);
-        }, child: const Text('Set sleep times')),
+        }, child: Text(AppLocalizations.of(context)?.sleepDetailSetTimesMyself ??
+            'Set the times myself')),
       if (_overrideFailed case final error?)
         StatusCard('Sleep calculation', error, icon: LucideIcons.triangleAlert),
     ];
