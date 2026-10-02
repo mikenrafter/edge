@@ -368,6 +368,35 @@ class WakeOrchestrator {
 
   bool _ticking = false;
 
+  /// Wakes the user acknowledged during this process. [acknowledge] sets it
+  /// FIRST, so a tick already in flight (holding a snapshot loaded before the
+  /// acknowledgement) sees it right before any delivery and before it saves.
+  final Set<int> _ackedWakes = {};
+
+  /// Serialises every read-modify-write of the run state, so an
+  /// acknowledgement and a tick's save can never overwrite each other.
+  Future<void> _stateLock = Future<void>.value();
+
+  Future<T> _locked<T>(Future<T> Function() body) {
+    final done = Completer<T>();
+    final prev = _stateLock;
+    _stateLock = done.future.then((_) {}, onError: (_) {});
+    prev.then((_) async {
+      try {
+        done.complete(await body());
+      } catch (e, st) {
+        done.completeError(e, st);
+      }
+    });
+    return done.future;
+  }
+
+  /// Folds the in-process acknowledgement into [run] and returns it.
+  bool _acked(_Run run) {
+    if (_ackedWakes.contains(run.wakeEpoch)) run.acknowledged = true;
+    return run.acknowledged;
+  }
+
   /// The last run state this instance wrote (or tried to). When the store fails
   /// to save or to load, this keeps the "already fired" flag and the Gradual
   /// cursor alive for the life of the process, so a database error cannot turn
@@ -417,8 +446,12 @@ class WakeOrchestrator {
     WakePlanInput plan, {
     bool cancelNative = false,
   }) async {
-    final run = _Run.from(await _loadState(), plan.wakeSec)..acknowledged = true;
-    await _save(run);
+    _ackedWakes.add(plan.wakeSec); // before anything awaits: see [_ackedWakes]
+    await _locked(() async {
+      // Read-modify-write under the lock: whatever a tick saved first is kept.
+      final run = _Run.from(await _loadState(), plan.wakeSec)..acknowledged = true;
+      await _saveUnlocked(run);
+    });
     bool? cancelled;
     var armed = false;
     if (cancelNative) {
@@ -625,24 +658,45 @@ class WakeOrchestrator {
         await _trace(sec, 'error', {'where': 'samples', 'error': '$e'});
       }
       if (samples != null) {
+        // Decoded history lands in chunks, so a read can come back empty and
+        // the rows for that span arrive a moment later. The watermark is the
+        // newest SAMPLE received, never the wall clock: an empty read leaves
+        // it where it was, and the late rows are read on the next tick. Rows
+        // at or before it (the loader reads whole seconds, so the boundary
+        // second comes back again) were already fed and are dropped here.
+        final mark = run.lastFedMs;
+        List<List<double>> fresh(List<List<double>> rows) =>
+            mark == null ? rows : [for (final r in rows) if (r[0] > mark) r];
+        final hr = fresh(samples.hr);
+        final accel = fresh(samples.accel);
+        final rr = fresh(samples.rr);
+        double? newest;
+        for (final rows in [hr, accel, rr]) {
+          for (final r in rows) {
+            if (newest == null || r[0] > newest) newest = r[0];
+          }
+        }
         try {
           final result = await observer
               .observe(NaturalObserveRequest(
                 nowMs: toMs,
-                hr: samples.hr,
-                accel: samples.accel,
-                rr: samples.rr,
+                hr: hr,
+                accel: accel,
+                rr: rr,
                 priorState: run.stager,
               ))
               .timeout(opTimeout * 2);
           obs = result.observation;
           run.stager = result.nextState;
-          run.lastFedMs = toMs;
+          if (newest != null) run.lastFedMs = newest;
         } catch (e) {
           await _trace(sec, 'error', {'where': 'observer', 'error': '$e'});
         }
       }
     }
+
+    // "I'm up" may have landed while the samples and the observer were awaited.
+    if (_acked(run)) return (NaturalReason.acknowledged, false);
 
     final decision = samplesFailed
         ? const NaturalDecision(NaturalReason.samplesUnavailable)
@@ -665,6 +719,7 @@ class WakeOrchestrator {
     // Marked fired and persisted BEFORE the write: a crash, a timeout or a
     // throw must not turn into a second buzz, and T still covers a haptic
     // that never landed.
+    if (_acked(run)) return (NaturalReason.acknowledged, false);
     run.naturalFired = true;
     await _save(run);
     final eventId = 'wake:natural:$sec';
@@ -675,7 +730,7 @@ class WakeOrchestrator {
       'confidence': obs?.confidence,
       'runSec': obs?.runSec,
     });
-    await _haptic(
+    final attempted = await _haptic(
       sec,
       'natural_haptic',
       WakeHapticRequest(
@@ -685,7 +740,9 @@ class WakeOrchestrator {
         sourceTime: now,
       ),
     );
-    return (NaturalReason.fire, true);
+    return attempted
+        ? (NaturalReason.fire, true)
+        : (NaturalReason.acknowledged, false);
   }
 
   NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
@@ -703,7 +760,7 @@ class WakeOrchestrator {
       );
 
   Future<int?> _gradual(WakePlanInput plan, _Run run, DateTime now) async {
-    if (plan.gradualMinutes <= 0 || run.acknowledged) return null;
+    if (plan.gradualMinutes <= 0 || _acked(run)) return null;
     final sec = plan.wakeSec;
     final steps = GradualWakeSchedule.steps(
       wakeAt: plan.wakeAt,
@@ -727,8 +784,7 @@ class WakeOrchestrator {
       await _trace(sec, 'gradual', {'index': latest.index, 'result': 'skippedLate'});
       return null;
     }
-    run.gradualFired++;
-    await _haptic(
+    final attempted = await _haptic(
       sec,
       'gradual',
       WakeHapticRequest(
@@ -740,10 +796,19 @@ class WakeOrchestrator {
         sequence: latest.sequence,
       ),
     );
+    if (!attempted) return null;
+    run.gradualFired++;
     return latest.index;
   }
 
-  Future<void> _haptic(int sec, String kind, WakeHapticRequest req) async {
+  /// Sends one haptic. False (nothing sent) when the user acknowledged this
+  /// wake: the check and the send are one synchronous step, so no awaited
+  /// acknowledgement can slip between them.
+  Future<bool> _haptic(int sec, String kind, WakeHapticRequest req) async {
+    if (_ackedWakes.contains(sec)) {
+      await _trace(sec, 'skip', {'reason': 'acknowledged', 'eventId': req.eventId});
+      return false;
+    }
     WakeHapticResult res;
     try {
       res = await env.haptic(req).timeout(opTimeout);
@@ -759,6 +824,7 @@ class WakeOrchestrator {
       'suppression': res.suppressionReason,
       'error': res.error,
     });
+    return true;
   }
 
   // ── persistence helpers (a store failure never breaks a wake) ─────────────
@@ -778,7 +844,12 @@ class WakeOrchestrator {
     return stored;
   }
 
-  Future<void> _save(_Run run) async {
+  Future<void> _save(_Run run) => _locked(() => _saveUnlocked(run));
+
+  Future<void> _saveUnlocked(_Run run) async {
+    // A tick's snapshot may predate an acknowledgement: never write it back
+    // as "not acknowledged".
+    _acked(run);
     Map<String, Object?> json;
     try {
       // The same round trip a real store does.

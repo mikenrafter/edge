@@ -63,9 +63,13 @@ class ScriptedObserver implements NaturalStageObserver {
   Object? failWith;
   final List<NaturalObserveRequest> requests = [];
 
+  /// Runs inside [observe], so a test can hold a tick mid-flight.
+  Future<void> Function()? onObserve;
+
   @override
   Future<NaturalObserveResult> observe(NaturalObserveRequest r) async {
     requests.add(r);
+    await onObserve?.call();
     if (failWith != null) throw failWith!;
     return NaturalObserveResult(
       observation: next,
@@ -92,12 +96,35 @@ class FakeWakeEnv implements WakeEnv {
 
   WakeHapticResult hapticResult = const WakeHapticResult(delivered: ['band']);
   Object? hapticThrows;
-  WakeSamples samplesToReturn = const WakeSamples.empty();
+
+  /// What the database holds. [samples] answers from these and HONORS the
+  /// requested bounds exactly as `loadWakeSamples` does (seconds floor on
+  /// `from`, ceiling on `to`, half open), so a test can land data late.
+  final List<List<double>> storedHr = [], storedAccel = [], storedRr = [];
+
+  /// Add one second of 1 Hz data at [tsMs] (absolute epoch ms).
+  void store(double tsMs, {double hr = 55, bool accel = true, double? rr = 1000}) {
+    storedHr.add([tsMs, hr]);
+    if (accel) storedAccel.add([tsMs, 0, 0, 1]);
+    if (rr != null) storedRr.add([tsMs, rr]);
+  }
+
+  /// Run before [samples] answers; lets a test interleave another call.
+  Future<void> Function()? onSamples;
 
   @override
   Future<WakeSamples> samples(DateTime from, DateTime to) async {
     sampleRanges.add((from, to));
-    return samplesToReturn;
+    await onSamples?.call();
+    final lo = (from.millisecondsSinceEpoch ~/ 1000) * 1000;
+    final hi = ((to.millisecondsSinceEpoch + 999) ~/ 1000) * 1000;
+    List<List<double>> within(List<List<double>> rows) =>
+        [for (final r in rows) if (r[0] >= lo && r[0] < hi) r];
+    return WakeSamples(
+      hr: within(storedHr),
+      accel: within(storedAccel),
+      rr: within(storedRr),
+    );
   }
 
   FallbackStatus _status(DateTime wakeAt) => FallbackStatus(
@@ -105,9 +132,14 @@ class FakeWakeEnv implements WakeEnv {
         confirmed: confirmed,
       );
 
+  /// Runs inside [fallbackStatus], so a test can hold a tick mid-flight.
+  Future<void> Function()? onFallbackStatus;
+
   @override
-  Future<FallbackStatus> fallbackStatus(DateTime wakeAt) async =>
-      _status(wakeAt);
+  Future<FallbackStatus> fallbackStatus(DateTime wakeAt) async {
+    await onFallbackStatus?.call();
+    return _status(wakeAt);
+  }
 
   @override
   Future<FallbackStatus> ensureFallbackArmed(DateTime wakeAt) async {
