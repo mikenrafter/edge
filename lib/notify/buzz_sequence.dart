@@ -35,8 +35,9 @@ class BuzzSequence {
   Duration get playTime =>
       Duration(milliseconds: offsetsMs.last + durationsMs.last);
 
-  /// Every confirmed command can consume its own five-second reply window.
-  Duration get transportTimeout => playTime + Duration(seconds: 5 * length + 1);
+  /// Each step is one write (no reply is waited for), so a short allowance per
+  /// step on top of the time the rhythm itself takes.
+  Duration get transportTimeout => playTime + Duration(seconds: 2 * length + 1);
 
   void _validate() {
     if (offsetsMs.isEmpty ||
@@ -208,7 +209,9 @@ class BuzzRecorder {
 }
 
 /// Preserve the hold and release gap even when command acknowledgement is slow.
-/// Failed or disconnected deliveries stop the remaining steps.
+/// Failed or disconnected deliveries stop the remaining steps. Without a
+/// duration-aware [buzzForDuration], a held press plays as a short buzz (the
+/// rhythm is kept; it never fails the sequence).
 Future<bool> playBuzzSequence(
   BuzzSequence s, {
   required Future<bool> Function() buzz,
@@ -220,7 +223,6 @@ Future<bool> playBuzzSequence(
     for (var i = 0; i < s.length; i++) {
       if (!isConnected()) return false;
       final start = watch.elapsedMilliseconds;
-      if (buzzForDuration == null && s.durationsMs[i] >= 500) return false;
       final ok = buzzForDuration == null
           ? await buzz()
           : await buzzForDuration(s.durationsMs[i]);

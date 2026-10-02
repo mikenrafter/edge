@@ -7748,29 +7748,60 @@ class BleEngine {
   }
   Future<void> buzz() => buzzPattern(hapticShortPulse);
 
-  /// A gesture acknowledgement is complete only after its exact command has
-  /// made a successful round trip, rather than merely leaving the phone.
-  /// MG long holds repeat the supported waveform twice; this approximates a
-  /// long press, rather than setting an exact physical duration. Gen4 long
-  /// holds abstain until a duration-capable waveform is verified.
-  Future<bool> buzzConfirmed({int holdMs = 0}) async {
+  /// Where [buzzBand] reports what the band said back, for the Device lab's
+  /// trace. Diagnostic only: nothing waits on it and nothing is decided by it.
+  void Function(String line)? onBuzzDiagnostic;
+
+  /// How long a buzz's reply is waited for, to LOG it. Not a delivery limit.
+  static const Duration buzzReplyLogWindow = Duration(seconds: 3);
+
+  /// Buzz the band once. True when the haptic command was written to the band
+  /// (the GATT write-with-response succeeded), exactly as every other haptic and
+  /// toggle write here is judged. The band's own correlated reply is NOT waited
+  /// for and NEVER gates the result: it is logged afterwards ("Band replied
+  /// success in 40 ms" / "No reply from the band within 3000 ms") because the
+  /// band is not known to answer RUN_HAPTICS with a correlated SUCCESS, and a
+  /// version that required one reported every buzz as undelivered.
+  ///
+  /// [holdMs] approximates a held press. MG: a hold of 500 ms or more repeats the
+  /// supported waveform twice (overallLoop 2). Gen4 has no duration-capable
+  /// waveform verified, so a long hold plays as its one short pulse: it never
+  /// fails the sequence.
+  Future<bool> buzzBand({int holdMs = 0}) async {
     final owner = _session;
     if (owner?.connected != true) return false;
+    if (holdMs < 0) return false;
     final gen5 = owner!.band.isGen5;
-    if (holdMs < 0 || (!gen5 && holdMs >= 500)) return false;
+    final sent = DateTime.now();
     final out = await _sendAwaited(
       gen5 ? Cmd.runHapticPatternMaverick : Cmd.runHapticsPattern,
       gen5
           ? AlarmPayloads.gen5MaverickBuzz(overallLoop: holdMs >= 500 ? 2 : 1)
           : [hapticShortPulse, 0, 0, 0, 0],
+      timeout: buzzReplyLogWindow,
       owner: owner,
     );
     if (!out.written) return false;
-    final reply = await out.response;
-    return identical(owner, _session) &&
-        owner.connected &&
-        reply?.success == true;
+    unawaited(out.response.then((reply) {
+      final ms = DateTime.now().difference(sent).inMilliseconds;
+      final line = reply == null
+          ? 'No reply from the band within $ms ms'
+          : 'Band replied ${_cmdStatusName(reply.status)} in $ms ms';
+      _log('[buzz] $line');
+      try {
+        onBuzzDiagnostic?.call(line);
+      } catch (_) {}
+    }));
+    return true;
   }
+
+  static String _cmdStatusName(int status) => switch (status) {
+        CommandAwaiter.statusSuccess => 'success',
+        CommandAwaiter.statusFailure => 'failure',
+        CommandAwaiter.statusPending => 'pending',
+        CommandAwaiter.statusUnsupported => 'unsupported',
+        _ => 'status $status',
+      };
 
   /// Play a haptic buzz. gen5 ("Maverick") has a DIFFERENT buzz opcode and
   /// payload shape than gen4 (`Cmd.runHapticPatternMaverick`, 12-byte body —

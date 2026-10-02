@@ -85,6 +85,16 @@ class _Rig {
   final recorded = <EcgGestureRecord>[];
 
   Future<void> settle() => Future<void>.delayed(Duration.zero);
+
+  /// Two packets a second apart: the stream is steady, so the ack is asked
+  /// for and (the buzz succeeding at once) the first window opens.
+  Future<void> steady(int sec, {int sub = 0}) async {
+    now = _t0.add(const Duration(milliseconds: 500));
+    session.onFrame(_packet(sec, sub: sub));
+    now = _t0.add(const Duration(milliseconds: 1500));
+    session.onFrame(_packet(sec + 1, sub: sub));
+    await settle();
+  }
 }
 
 void main() {
@@ -92,9 +102,9 @@ void main() {
       () async {
     final r = _Rig(max: 3);
     await r.session.start(_tap());
-    await r.settle();
-    r.now = _t0.add(const Duration(seconds: 1));
-    r.session.onFrame(_packet(1000, sub: 16384, contactFrom: 10)); // 1000.5
+    await r.steady(1000, sub: 16384); // 1000.5 and 1001.5
+    r.now = _t0.add(const Duration(seconds: 2));
+    r.session.onFrame(_packet(1002, sub: 16384, contactFrom: 10)); // 1002.5
     await r.settle();
     expect(r.results, [(3, null)]);
     expect(r.recorded, hasLength(1));
@@ -102,7 +112,7 @@ void main() {
     expect(g.finalCount, 3);
     expect(g.reason, isNull);
     expect(g.strapStart, 1000, reason: 'floor of the first packet start');
-    expect(g.strapEnd, 1002, reason: 'ceil of 1000.5 + 100 * 10 ms');
+    expect(g.strapEnd, 1004, reason: 'ceil of 1002.5 + 100 * 10 ms');
   });
 
   // A long quiet window (1.1 s to start + 1 s to confirm) so a few packets
@@ -113,26 +123,22 @@ void main() {
       () async {
     final r = _Rig(max: 5, thresholds: slow);
     await r.session.start(_tap());
-    await r.settle();
-    r.now = _t0.add(const Duration(seconds: 1));
-    r.session.onFrame(_packet(2000));
+    await r.steady(2000);
     r.now = _t0.add(const Duration(seconds: 2));
-    r.session.onFrame(_packet(2001));
+    r.session.onFrame(_packet(2002));
     r.alive = false;
     r.session.poll(); // link lost
     await r.settle();
     final g = r.recorded.single;
     expect(g.strapStart, 2000);
-    expect(g.strapEnd, 2002);
+    expect(g.strapEnd, 2003);
   });
 
   test('abandoned (link lost): written with no count and the reason',
       () async {
     final r = _Rig(max: 4, thresholds: slow);
     await r.session.start(_tap());
-    await r.settle();
-    r.now = _t0.add(const Duration(seconds: 1));
-    r.session.onFrame(_packet(3000));
+    await r.steady(3000);
     r.alive = false;
     r.session.poll();
     await r.settle();
@@ -172,30 +178,30 @@ void main() {
       () async {
     final r = _Rig(max: 2);
     await r.session.start(_tap());
-    await r.settle();
+    await r.steady(1000);
     expect(r.recorded, hasLength(1));
     r.session.poll();
     r.session.poll();
     await r.settle();
     expect(r.recorded, hasLength(1));
     await r.session.start(_tap());
-    await r.settle();
+    await r.steady(9000);
     expect(r.recorded, hasLength(2));
-    expect(r.recorded.last.strapStart, isNull,
-        reason: 'no packet and no clock: nothing carried over from before');
+    expect(r.recorded.last.strapStart, 9000,
+        reason: 'nothing carried over from the session before');
   });
 
   test('a failing writer cannot wedge the latch or skip the stream stop',
       () async {
     final r = _Rig(max: 2, recorderThrows: true);
     await r.session.start(_tap());
-    await r.settle();
+    await r.steady(1000);
     expect(r.recorded, hasLength(1));
     expect(r.results, [(2, null)]);
     expect(r.ended, 1, reason: 'the stream is stopped even if the write threw');
     expect(r.session.active, isFalse);
     await r.session.start(_tap());
-    await r.settle();
+    await r.steady(1000);
     expect(r.results, hasLength(2));
   });
 }

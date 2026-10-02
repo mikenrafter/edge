@@ -434,3 +434,22 @@ light/dark × 1x/2x, goldens `test/proof/goldens/phase8_<case>_<b>_<s>x.png`:
 `collapsed_taps`, `gestures_draft_taps_no_ecg`, `chart_scrub_readout` (taps
 25 % across before capture). No baselines are committed; generate with
 `--update-goldens` after implementation, review, then commit.
+
+---
+
+## Buzz delivery, ECG readiness, double-tap counting, lab logs (Oct 2)
+
+- `BleEngine.buzzBand({holdMs})` is delivered when the GATT write lands. The band's
+  correlated reply is only logged ("Band replied success in N ms" / "No reply from
+  the band within N ms") through `log` and `onBuzzDiagnostic`; it never gates.
+  MG hold >= 500 ms uses overallLoop 2; gen4 plays a long hold as one short pulse.
+  Tests: `test/ecg_ble_engine_test.dart`, `buzz_delivery_test.dart`.
+- ECG sessions request the two-pulse ack only after `EcgStreamReadiness` (a second
+  packet within 1.5 s with a later strap time). `startTimeout` is 20 s (`no_stream`).
+  `ack_failed` only when the ack write itself failed.
+- `DoubleTapRepeatSession` (lib/gestures/double_tap_repeat.dart): the method that
+  needs no ECG. Slot n = n taps for both methods; labels differ per method.
+  `GestureSettings.tapMethodFor(ecgSupported:)`, `repeatTapWindowMs` (1000..5000 in
+  250 ms, default 2500), `repeatTapsLab`.
+- Device lab lines: `time | tap +N ms | last +N ms | text`; `labLogText` feeds the
+  pinned "Copy all logs" button.
