@@ -104,6 +104,7 @@ import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
 import '../gestures/double_tap_repeat.dart';
+import '../gestures/ecg_tap_begin.dart';
 import '../gestures/ecg_tap_session.dart';
 import '../gestures/gesture_dispatcher.dart';
 import '../gestures/lab_log.dart';
@@ -403,19 +404,28 @@ class AppState extends ChangeNotifier {
   /// Start the ECG stream for a tap through the existing controller. The wrist
   /// is the one remembered from a normal ECG reading; without it the lab says
   /// so instead of guessing which electrode the AFE should read.
-  Future<bool> _beginEcgForTap() async {
-    if (ecg.isCapturing) return false; // the ECG screen is mid-reading
-    final serial = ecg.transport.serial;
-    final wrist = serial == null ? null : await ecg.guard.wrist(serial);
-    if (wrist == null) {
-      deviceLab.addStep('No wrist remembered. Take one ECG reading first so '
-          'the lab knows which wrist the band is on.');
-      return false;
-    }
-    // persist: false: a long touch can reach a normal terminal, and a gesture
-    // must never leave an ECG reading behind (invariant 14).
-    await ecg.begin(wrist, persist: false);
-    return ecg.isCapturing;
+  ///
+  /// The gesture's generation is checked after every await (finding G): the
+  /// session abandons a slow start after its begin timeout, but Future.timeout
+  /// does not cancel this work, so a late start would otherwise switch the
+  /// band's ECG on for a gesture that is gone.
+  Future<bool> _beginEcgForTap() {
+    final gen = _ecgTapSession.generation; // set before this is called
+    return beginEcgForTap(
+      isCurrent: () =>
+          _ecgTapSession.active && _ecgTapSession.generation == gen,
+      isCapturing: () => ecg.isCapturing,
+      lookupWrist: () async {
+        final serial = ecg.transport.serial;
+        return serial == null ? null : await ecg.guard.wrist(serial);
+      },
+      // persist: false: a long touch can reach a normal terminal, and a gesture
+      // must never leave an ECG reading behind (invariant 14).
+      begin: (wrist) => ecg.begin(wrist, persist: false),
+      captureEpoch: () => ecg.captureEpoch,
+      cancel: () => ecg.cancel(),
+      note: deviceLab.addStep,
+    );
   }
 
   /// One touch-counter buzz: still a dispatcher delivery (live-only band

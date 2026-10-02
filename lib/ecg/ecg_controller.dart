@@ -183,6 +183,11 @@ class EcgController extends ChangeNotifier {
 
   bool get isCapturing => _lease != null;
 
+  /// Changes on every [begin] and every cancel, so a consumer that started a
+  /// capture can later tell it is still THAT capture (the tap-counting gesture
+  /// stops a late start it began, never an ECG the user began since).
+  int get captureEpoch => _epoch;
+
   @visibleForTesting
   EcgReducerState get reducerState => _reducer;
 

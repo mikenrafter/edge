@@ -136,9 +136,9 @@ class EcgTapSession {
   final void Function(StrapEvent tap, String settings)? onStarted;
 
   /// Write the finished gesture's interval (8N). Called once on EVERY exit
-  /// (counted, abandoned, link lost, start failed), after [onFinished] and
-  /// before the stream is stopped. May throw: the failure is swallowed, so a
-  /// storage error can never wedge the latch or keep the stream running.
+  /// (counted, abandoned, link lost, start failed), after [onFinished] and AFTER
+  /// the stream has been stopped, with an end that covers the stop. May throw:
+  /// the failure is swallowed, so a storage error can never wedge the latch.
   final Future<void> Function(EcgGestureRecord record)? recordSession;
 
   /// The strap clock now, in whole seconds, estimated from the phone-to-strap
@@ -171,8 +171,9 @@ class EcgTapSession {
   //  * [beginTimeout] — the stream-start command (a BLE write). On expiry the
   //    start fails and a late-starting stream is stopped.
   //  * [endTimeout] — stopping the stream.
-  //  * [recordTimeout] — writing the gesture interval. It runs BEFORE the stream
-  //    is stopped, so a stuck database must not keep the stream running.
+  //  * [recordTimeout] — writing the gesture interval. It runs AFTER the stream
+  //    is stopped (8N), so a stuck database can neither keep the stream running
+  //    nor leave the end of the recording outside the stored interval.
   //  * [buzzTimeout] — one band buzz. A buzz that never answers counts as not
   //    written; the acknowledgement then abandons the gesture, and the next
   //    session's buzzes are not queued behind it.
@@ -206,6 +207,15 @@ class EcgTapSession {
 
   bool get active => _active;
 
+  int _generation = 0;
+  Future<void>? _stopInFlight;
+
+  /// Which gesture this is: bumped by every [start] that actually begins one.
+  /// Whatever awaits on a gesture's behalf (the stream start, the wrist lookup)
+  /// compares it after each await and stands down when the gesture is gone, so
+  /// a slow start can never switch the stream on for a dead gesture.
+  int get generation => _generation;
+
   int _sinceTap() {
     final at = _tapAt;
     return at == null ? 0 : _now().difference(at).inMilliseconds;
@@ -216,8 +226,14 @@ class EcgTapSession {
   /// start, with every flag already reset, so the caller can give the tap's
   /// claim back. A second tap while one gesture runs is ignored.
   Future<void> start(StrapEvent tap) async {
+    // The previous gesture's stop may still be in flight (bounded by
+    // [endTimeout]). Starting a stream before it lands would let that stop
+    // switch the NEW stream off.
+    final prior = _stopInFlight;
+    if (prior != null) await prior;
     if (_active) return;
     _active = true;
+    final gen = ++_generation;
     _tap = tap;
     final now = _now();
     _tapAt = tap.receivedAt.isAfter(now) ? now : tap.receivedAt;
@@ -240,10 +256,10 @@ class EcgTapSession {
       if (!await beginStream().timeout(beginTimeout)) {
         throw StateError('the ECG stream did not start');
       }
-      if (!_active) {
+      if (!_active || gen != _generation) {
         // Finished while the start was still returning: do not leave the
-        // stream running.
-        await _endStreamSafely();
+        // stream running. (Only if no newer gesture owns the stream now.)
+        if (gen == _generation) await _endStreamSafely();
         return;
       }
       _streamUp = true;
@@ -257,10 +273,13 @@ class EcgTapSession {
       _maybeAskForAck();
     } catch (e) {
       step?.call('Could not start: $e');
-      await _finish(null, 'start_failed');
-      // A start that never answered may still land: make sure nothing is left
-      // streaming for a gesture that has already given up.
-      if (e is TimeoutException) await _endStreamSafely();
+      // A start that never answered may still land: stop the stream (before
+      // the interval is written) so nothing is left streaming for a gesture
+      // that has already given up. The caller's own start is generation-checked
+      // too (see beginEcgForTap).
+      if (gen == _generation) {
+        await _finish(null, 'start_failed', stopStream: e is TimeoutException);
+      }
       rethrow;
     }
   }
@@ -507,19 +526,17 @@ class EcgTapSession {
     );
   }
 
-  Future<void> _finish(int? count, String? reason) async {
+  /// End the gesture. Order matters (8N): the flags reset first (the next tap
+  /// is not swallowed), the listener is told, THEN the stream is stopped, and
+  /// only then is the tagging interval written, with an end that covers the time
+  /// the band kept recording until the stop. The reverse order let a slow
+  /// database leave seconds of gesture ECG outside the stored interval.
+  Future<void> _finish(int? count, String? reason,
+      {bool stopStream = false}) async {
     if (!_active) return;
     final up = _streamUp;
-    // The interval: the packets' own bounds when any arrived, else the strap
-    // clock estimate at begin and now (a start that failed). Taken before the
-    // flags reset below.
-    final record = EcgGestureRecord(
-      strapStart: _firstStrapSec ?? _strapAtBegin,
-      strapEnd:
-          _lastEndStrapSec ?? (_strapAtBegin == null ? null : _strapNowSafe()),
-      finalCount: count,
-      reason: reason,
-    );
+    final strapStart = _firstStrapSec ?? _strapAtBegin;
+    final packetEnd = _lastEndStrapSec;
     try {
       _timer?.cancel();
     } finally {
@@ -531,6 +548,8 @@ class EcgTapSession {
       _acked = false;
       _counter = null;
       _readiness = EcgStreamReadiness();
+      _clock = EcgSampleClock();
+      _prevEnd = null;
       _tap = null;
       _tapAt = null;
       _startedAt = null;
@@ -545,12 +564,31 @@ class EcgTapSession {
     try {
       onFinished(count, reason);
     } catch (_) {}
+    if (up || stopStream) {
+      final stopping = _stopInFlight = _endStreamSafely();
+      await stopping;
+      if (identical(_stopInFlight, stopping)) _stopInFlight = null;
+    }
+    // The recording ran until the stop returned. The strap clock now is only
+    // known to the whole second, so round it UP: over-covering by a second is
+    // harmless, leaving the tail of the recording outside the interval is not.
+    final afterStop = _strapNowSafe();
+    int? strapEnd = packetEnd;
+    if (strapStart != null && afterStop != null) {
+      final covered = afterStop + 1;
+      strapEnd = strapEnd == null || covered > strapEnd ? covered : strapEnd;
+    }
+    final record = EcgGestureRecord(
+      strapStart: strapStart,
+      strapEnd: strapEnd,
+      finalCount: count,
+      reason: reason,
+    );
     // 8N: the interval is written on every exit, and a failure here must not
-    // stop the stream from being stopped.
+    // leave anything unfinished.
     try {
       await recordSession?.call(record).timeout(recordTimeout);
     } catch (_) {}
-    if (up) await _endStreamSafely();
   }
 
   int? _strapNowSafe() {
