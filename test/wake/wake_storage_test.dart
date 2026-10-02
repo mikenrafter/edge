@@ -81,8 +81,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 56', () {
-    expect(LocalDb.schemaVersion, 56);
+  test('schemaVersion is at least 56 (the wake split rung)', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(56));
   });
 
   group('v56 migration', () {

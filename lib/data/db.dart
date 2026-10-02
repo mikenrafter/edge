@@ -192,6 +192,8 @@ class LocalDb {
     'ecg_reading',
     'ecg_reading_packet',
     'ecg_raw_packet',
+    // 8N: the gesture intervals that label the raw packets above.
+    'ecg_gesture_session',
     // Derived once, from raw that no longer exists.
     'day_result',
     'metric_series',
@@ -350,7 +352,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 56;
+  static const int schemaVersion = 57;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1097,6 +1099,15 @@ class LocalDb {
           // bump: nothing derived moves. _repairOpenSchema re-runs all of
           // this on every open, so a same-version merged build self-heals.
           await _ensureWakeSchema(db);
+        }
+        if (oldV < 57) {
+          // 8N: gesture ECG is never an ECG reading. One additive column
+          // (ecg_raw_packet.origin, NULL = unknown/normal) and one tiny
+          // interval table, both through _createEcgTables so there is exactly
+          // one definition. No backfill, no rewrite, nothing read: cheap under
+          // iOS's CPU watchdog (invariant 11). No kAlgoVersion bump: nothing
+          // derived moves. _repairOpenSchema re-runs it on every open.
+          await _createEcgTables(db);
         }
       },
       onOpen: (db) async {
@@ -2032,6 +2043,129 @@ class LocalDb {
       'CREATE INDEX IF NOT EXISTS idx_ecg_raw_packet_strap '
       'ON ecg_raw_packet(strap_seconds)',
     );
+    // v57 (8N). NULL = unknown/normal, 'gesture' = recorded while a tap
+    // gesture held the ECG stream open. Added by ALTER so a table created by
+    // an older build gains it; the CREATE above deliberately keeps the old
+    // shape so a fresh install and an upgrade run the same code.
+    await _addColumnIfMissing(db, 'ecg_raw_packet', 'origin', 'TEXT');
+    // One row per gesture session: the strap-clock interval and the outcome,
+    // NOTHING else (invariant 14: no samples). The key is the natural one so a
+    // restore (INSERT OR REPLACE) can never overwrite a different session.
+    // strap_start/strap_end are NULL when the session never learned the strap
+    // clock; such a row tags nothing.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS ecg_gesture_session (
+        device_id   TEXT NOT NULL,
+        created_at  INTEGER NOT NULL,
+        strap_start INTEGER,
+        strap_end   INTEGER,
+        final_count INTEGER,
+        outcome     TEXT NOT NULL,
+        reason      TEXT,
+        PRIMARY KEY (device_id, created_at)
+      )
+    ''');
+  }
+
+  /// How far either side of a gesture's strap interval a raw packet may sit
+  /// and still be called gesture contact. 2 s: the live R17 stream is 1 s
+  /// packets and the interval is the first packet's start floored / the last
+  /// packet's end ceiled to whole seconds, so the band's raw recorder can have
+  /// saved one packet before the first one we saw and one after the last (the
+  /// stop is sent after the session ends). A packet linked to a real reading
+  /// is never retagged, and a real reading cannot start while a gesture holds
+  /// the stream, so a wider band would only add risk for no gain.
+  static const int gestureTagToleranceSec = 2;
+
+  /// The gesture-session intervals for [deviceId] that know their strap
+  /// bounds, as (start, end) widened by [gestureTagToleranceSec].
+  static Future<List<(int, int)>> _gestureBands(
+    DatabaseExecutor db,
+    String deviceId,
+  ) async {
+    final rows = await db.rawQuery(
+      'SELECT strap_start, strap_end FROM ecg_gesture_session '
+      'WHERE device_id = ? AND strap_start IS NOT NULL '
+      'AND strap_end IS NOT NULL',
+      [deviceId],
+    );
+    return [
+      for (final r in rows)
+        (
+          (r['strap_start'] as num).toInt() - gestureTagToleranceSec,
+          (r['strap_end'] as num).toInt() + gestureTagToleranceSec,
+        ),
+    ];
+  }
+
+  /// Write one finished gesture session and tag any raw packets already stored
+  /// inside its interval (a sync that raced the session end). One transaction.
+  /// Re-writing the same session (same [deviceId] + [createdAtMs]) replaces
+  /// the row and tags nothing new. Returns how many packets were newly tagged.
+  ///
+  /// Only packets with no `reading_id` are tagged: a packet linked to a reading
+  /// is that reading's evidence, never gesture contact.
+  static Future<int> recordEcgGestureSession({
+    required String deviceId,
+    required int? strapStart,
+    required int? strapEnd,
+    required int? finalCount,
+    String? reason,
+    required int createdAtMs,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      await txn.insert('ecg_gesture_session', {
+        'device_id': deviceId,
+        'created_at': createdAtMs,
+        'strap_start': strapStart,
+        'strap_end': strapEnd,
+        'final_count': finalCount,
+        'outcome': finalCount == null ? 'abandoned' : 'counted',
+        'reason': reason,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      if (strapStart == null || strapEnd == null) return 0;
+      return txn.rawUpdate(
+        'UPDATE ecg_raw_packet SET origin = ? '
+        'WHERE device_id = ? AND reading_id IS NULL '
+        'AND strap_seconds BETWEEN ? AND ? '
+        "AND COALESCE(origin, '') != 'gesture'",
+        [
+          'gesture',
+          deviceId,
+          strapStart - gestureTagToleranceSec,
+          strapEnd + gestureTagToleranceSec,
+        ],
+      );
+    });
+  }
+
+  /// Re-run the tagging for every stored session. Used after a restore, whose
+  /// INSERT OR REPLACE of an older export's packets (no `origin` column)
+  /// would otherwise turn tagged rows back into untagged copies.
+  static Future<void> _retagAllGesturePackets(Database db) async {
+    final rows = await db.rawQuery(
+      'SELECT DISTINCT device_id FROM ecg_gesture_session '
+      'WHERE strap_start IS NOT NULL AND strap_end IS NOT NULL',
+    );
+    for (final r in rows) {
+      final dev = r['device_id'] as String;
+      for (final (lo, hi) in await _gestureBands(db, dev)) {
+        await db.rawUpdate(
+          'UPDATE ecg_raw_packet SET origin = ? '
+          'WHERE device_id = ? AND reading_id IS NULL '
+          'AND strap_seconds BETWEEN ? AND ? '
+          "AND COALESCE(origin, '') != 'gesture'",
+          ['gesture', dev, lo, hi],
+        );
+      }
+    }
+  }
+
+  /// Gesture sessions, newest first (diagnostics and tests).
+  static Future<List<Map<String, Object?>>> ecgGestureSessions() async {
+    final db = await instance;
+    return db.query('ecg_gesture_session', orderBy: 'created_at DESC');
   }
 
   /// Persist one accepted reading and its packets ATOMICALLY. Throws on any
@@ -2122,10 +2256,14 @@ class LocalDb {
     );
   }
 
-  /// How many raw R16 records history has recovered (diagnostics).
+  /// How many raw R16 records history has recovered (diagnostics). Gesture
+  /// contact is not ECG data and is not counted.
   static Future<int> ecgRawPacketCount() async {
     final db = await instance;
-    final r = await db.rawQuery('SELECT COUNT(*) AS n FROM ecg_raw_packet');
+    final r = await db.rawQuery(
+      'SELECT COUNT(*) AS n FROM ecg_raw_packet '
+      "WHERE COALESCE(origin, '') != 'gesture'",
+    );
     return (r.first['n'] as num?)?.toInt() ?? 0;
   }
 
@@ -3806,8 +3944,21 @@ class LocalDb {
         }
         // SAFE-TRIM INVARIANT, same rule: the raw ECG records land in this
         // transaction, before the ACK that lets the band trim them.
-        if (ecgRawPackets != null) {
+        if (ecgRawPackets != null && ecgRawPackets.isNotEmpty) {
+          // 8N: a packet inside a known gesture interval is stored as gesture
+          // contact, never linked to a reading. One tiny SELECT per device in
+          // this batch, inside the same transaction; it changes neither the
+          // rows nor the order the commit-before-ACK contract depends on.
+          final bands = <String, List<(int, int)>>{};
           for (final e in ecgRawPackets) {
+            if (!bands.containsKey(e.deviceId)) {
+              bands[e.deviceId] = await _gestureBands(txn, e.deviceId);
+            }
+          }
+          for (final e in ecgRawPackets) {
+            final gesture = bands[e.deviceId]!.any(
+              (b) => e.strapSeconds >= b.$1 && e.strapSeconds <= b.$2,
+            );
             batch.insert('ecg_raw_packet', {
               'hex': e.hex,
               'device_id': e.deviceId,
@@ -3815,6 +3966,7 @@ class LocalDb {
               'strap_seconds': e.strapSeconds,
               'strap_subsec': e.strapSubsec,
               'captured_at': e.capturedAt,
+              if (gesture) 'origin': 'gesture',
             }, conflictAlgorithm: ConflictAlgorithm.ignore);
             if (++ops >= chunkOps) await flushChunk();
           }
@@ -8988,6 +9140,9 @@ class LocalDb {
       'ecg_reading',
       'ecg_reading_packet',
       'ecg_raw_packet',
+      // 8N: gesture intervals (no samples). The retag pass after the merge
+      // re-applies them to the restored packets.
+      'ecg_gesture_session',
       'sync_cursor',
   ];
 
@@ -9284,6 +9439,13 @@ class LocalDb {
     // import. Rewind it.
     if ((counts['day_result'] ?? 0) > 0) {
       await putComputeFreshness(kReencodeCursorKey, jsonEncode({}));
+    }
+    // 8N: a restored ecg_raw_packet row from an older export has no `origin`
+    // and REPLACEs any tagged local copy; re-apply every known gesture
+    // interval so gesture contact is never demoted to an ECG packet.
+    if ((counts['ecg_raw_packet'] ?? 0) > 0 ||
+        (counts['ecg_gesture_session'] ?? 0) > 0) {
+      await _retagAllGesturePackets(db);
     }
     // Last, so it can never be mistaken for a table row count by anything that
     // walks this map in order.

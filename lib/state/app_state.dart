@@ -331,6 +331,24 @@ class AppState extends ChangeNotifier {
       if (waiting != null && !waiting.isCompleted) waiting.complete(count);
     },
     step: deviceLab.addStep,
+    // 8N: the stream makes the band save raw ECG that history sync delivers
+    // later; keep the interval (no samples) so it is labelled gesture contact.
+    recordSession: (r) async {
+      await LocalDb.recordEcgGestureSession(
+        deviceId: LocalDb.kPrimaryDeviceId,
+        strapStart: r.strapStart,
+        strapEnd: r.strapEnd,
+        finalCount: r.finalCount,
+        reason: r.reason,
+        createdAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    },
+    strapNow: () {
+      final ref = engine.clockRef;
+      if (ref == null) return null;
+      // strap = wall - (wall - device) at the correlation instant.
+      return DateTime.now().millisecondsSinceEpoch ~/ 1000 - ref.driftSec;
+    },
   );
 
   /// The gesture the dispatcher is waiting on (outside the lab), completed by

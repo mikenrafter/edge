@@ -104,6 +104,8 @@ class CoachDb {
     // keeps `device_id`/`notes` (never in the view) out of run_sql. The two
     // packet tables are unreachable at both layers.
     'ecg_reading', 'ecg_reading_packet', 'ecg_raw_packet',
+    // 8N: gesture intervals. Not ECG data and not for the coach.
+    'ecg_gesture_session',
     // sync / compute bookkeeping
     'sync_ledger', 'sync_quarantine', 'sync_cursor', 'sync_ledger_legacy',
     'sync_quarantine_legacy', 'sync_cursor_legacy', 'compute_jobs',
