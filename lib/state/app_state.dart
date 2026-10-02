@@ -1971,7 +1971,18 @@ class AppState extends ChangeNotifier {
   /// else the latest pending day); [heavy]=true is the foreground finalize
   /// sweep. Best-effort + non-blocking — never throws into the BLE path.
   /// Refreshes the UI when results land so screens re-read the fresh derived rows.
-  Future<void> _afterDrain({bool heavy = false}) async {
+  ///
+  /// A manual sync runs this with [changedOnly]: the derive covers only days
+  /// whose input changed since they were last derived ([onScope] hears how
+  /// many, [onDay] hears each one finish), and a pass that found nothing to do
+  /// returns before the post-derive work, none of which has anything new to act
+  /// on.
+  Future<void> _afterDrain({
+    bool heavy = false,
+    bool changedOnly = false,
+    void Function(int total)? onScope,
+    void Function(String day, int index, int total)? onDay,
+  }) async {
     final mode = heavy ? 'heavy' : 'light';
     try {
       // Context for whatever crash/ANR report comes next — the derivation
@@ -1983,16 +1994,27 @@ class AppState extends ChangeNotifier {
       TelemetryService.instance.breadcrumb('derive: $mode start');
       // Refresh the UI after EACH day so Today/trends fill in as the sweep runs,
       // not only at the end (a multi-day backfill can be many days of work).
+      var scopeTotal = -1;
       await TelemetryService.instance.traced('derive_$mode', () => _derive.run(
         _profile,
         heavy: heavy,
+        changedOnly: changedOnly,
+        onScope: (total) {
+          scopeTotal = total;
+          onScope?.call(total);
+        },
         onDayDone: (day, index, total) async {
+          onDay?.call(day, index, total);
           if (index == total || index == 1 || index % 3 == 0) {
             notifyListeners();
           }
         },
       ));
       TelemetryService.instance.breadcrumb('derive: $mode done');
+      if (changedOnly && scopeTotal == 0 && _derive.snapshot()['last_error'] == null) {
+        _log('[derive] $mode: nothing changed since the last derive');
+        return;
+      }
       // A drain can bank band coverage and a day can have rolled over since the
       // last read — both change which source owns today's steps.
       unawaited(_refreshPhoneStepsToday());
@@ -4636,6 +4658,10 @@ class AppState extends ChangeNotifier {
     return fut;
   }
 
+  /// True when the last burst moved the rec_ts frontier in any session — it
+  /// banked data even if it did not run to the band's "complete".
+  bool _lastBurstAdvanced = false;
+
   Future<SyncReport> _runSyncBurst({
     required bool kickFirst,
     // A band that hasn't synced for days can hold a HUGE flash backlog (observed:
@@ -4647,6 +4673,7 @@ class AppState extends ChangeNotifier {
     int maxSessions = 20,
   }) async {
     var last = SyncReport(0, 0, false);
+    _lastBurstAdvanced = false;
     for (var i = 0; i < maxSessions && engine.isConnected; i++) {
       // Terminal `Stuck`: a burst failed validation
       // 15 times and the abort went out, so this connection's history is over.
@@ -4696,6 +4723,7 @@ class AppState extends ChangeNotifier {
           frontierAfter != null &&
           (strapNewest - frontierAfter) > 300;
       last = report;
+      if (frontierAdvanced) _lastBurstAdvanced = true;
       await LocalDb.upsertSyncLedgerEntry(
         status: report.complete ? 'complete' : 'session_end',
         metaPatch: {
@@ -6012,35 +6040,81 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _manualSync(void Function(String) progress) async {
+    // The coordinator cancels this when it times the run out. Checked between
+    // steps, so a retired run stops instead of carrying on beside its retry.
+    final cancel = syncOperations.cancelToken;
     // A link that is already up never announces 'connecting': the panel then
     // shows "Already connected" instead of timing a step that did not happen.
     if (!engine.isConnected) {
       progress('connecting');
       if (paired == null) throw StateError('Pair a band before syncing');
       await openSession();
+      cancel.throwIfCancelled();
       if (!engine.isConnected) throw StateError('Could not connect to the band');
     }
     progress('downloading');
-    final report = await _kickSyncBurst(kickFirst: true);
-    if (!engine.isConnected) throw StateError('Band disconnected during sync');
-    if (!report.complete) throw StateError('Download stopped before completion. Retry sync.');
-    progress('deriving');
-    // Blocked behind another calculation? Say so, and clear the flag on every
-    // exit (the wait throws on its own 10-minute deadline).
-    final blocked = _derive.running || reanalyzing;
-    if (blocked) syncOperations.reportWaitingForCalculation(true);
+    // This sync is the one deriving what its download stores, so the debounced
+    // light derive those commits arm stands down for the duration. Handed back
+    // on EVERY exit; the queued light job is dropped only if this sync's own
+    // derive completed (see DeriveScheduler.endManualSync).
+    final hold = _deriveScheduler.beginManualSync();
+    var derived = false;
     try {
-      await _waitForDerivation();
+      final report = await _kickSyncBurst(kickFirst: true);
+      cancel.throwIfCancelled();
+      if (!engine.isConnected) throw StateError('Band disconnected during sync');
+      final verdict = classifyDownload(
+        connected: true,
+        complete: report.complete,
+        progressed: _lastBurstAdvanced ||
+            (syncOperations.presentation.download?.records ?? 0) > 0,
+        stuck: engine.historyStuckThisSession,
+      );
+      switch (verdict) {
+        case DownloadVerdict.failed:
+          throw StateError('Download stopped before completion. Retry sync.');
+        case DownloadVerdict.partial:
+          // Stopped at the time cap with data banked: not an error. What
+          // arrived is calculated below and the rest is the next sync's.
+          _log('[sync] download ended before the band finished — partial');
+          syncOperations.reportPartialDownload();
+        case DownloadVerdict.complete:
+          break;
+      }
+      progress('deriving');
+      // Blocked behind another calculation? Say so, and clear the flag on every
+      // exit (the wait throws on its own 10-minute deadline).
+      final blocked = _derive.running || reanalyzing;
+      if (blocked) syncOperations.reportWaitingForCalculation(true);
+      try {
+        await _waitForDerivation();
+      } finally {
+        if (blocked) syncOperations.reportWaitingForCalculation(false);
+      }
+      cancel.throwIfCancelled();
+      _deriveScheduler.markManualDeriveStarted(hold);
+      int? scoped;
+      await _afterDrain(
+        heavy: true,
+        changedOnly: true,
+        onScope: (total) {
+          scoped = total;
+          syncOperations.reportScope(total);
+        },
+        onDay: (day, index, total) =>
+            syncOperations.reportDay(day, index, total),
+      );
+      final error = _derive.snapshot()['last_error'];
+      if (error != null) throw StateError('$error');
+      // The engine refuses a pass while another holds its lock; saying "done"
+      // over a calculation that never ran would be false.
+      if (scoped == null) {
+        throw StateError('Another calculation was running. Retry sync.');
+      }
+      derived = true;
     } finally {
-      if (blocked) syncOperations.reportWaitingForCalculation(false);
+      await _deriveScheduler.endManualSync(hold, absorb: derived);
     }
-    await _derive.run(_profile, heavy: true,
-        onDayDone: (day, index, total) =>
-            syncOperations.reportDay(day, index, total));
-    final error = _derive.snapshot()['last_error'];
-    if (error != null) throw StateError('$error');
-    await LocalDb.refreshComputeFreshness();
-    bumpInsights();
   }
 
   @visibleForTesting
@@ -6049,8 +6123,9 @@ class AppState extends ChangeNotifier {
     required bool Function() isConnected,
     required Future<void> Function() reloadLocal,
     required Duration timeout,
+    Duration retireGrace = const Duration(seconds: 30),
   }) => SyncCoordinator(run: run, isConnected: isConnected,
-      reloadLocal: reloadLocal, timeout: timeout);
+      reloadLocal: reloadLocal, timeout: timeout, retireGrace: retireGrace);
 
   /// The ONE place the band's HIGH_FREQ_SYNC prompt is programmed. Two
   /// requesters, one decision (`BandPromptPolicy`): the smart-wake window

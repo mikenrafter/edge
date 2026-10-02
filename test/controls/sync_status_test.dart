@@ -19,6 +19,7 @@ void main() {
     bool connected = false,
     Duration timeout = const Duration(seconds: 30),
     Duration interval = const Duration(milliseconds: 250),
+    Duration retireGrace = const Duration(milliseconds: 20),
   }) => SyncCoordinator(
     run: run,
     isConnected: () => connected,
@@ -27,6 +28,7 @@ void main() {
     clock: () => t,
     log: logs.add,
     progressInterval: interval,
+    retireGrace: retireGrace,
   );
 
   List<SyncStepStatus> statuses(SyncCoordinator c) => [
