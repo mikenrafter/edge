@@ -629,6 +629,30 @@ engages nor releases; re-engage at 199 ms vs 201 ms vs 401 ms after release;
 link drop mid-gesture → no action; late (non-live) double tap never starts
 the counter; lab switch on suspends normal actions.
 
+### 8M — One sync control with real status
+
+Home shows two sync controls today: the new `HomeSyncControl` ("Sync now"
+plus a spinner) and the older status card's "Sync the band" button, which
+reads a different busy flag (`syncingNow`). Merge them into one control
+backed by `SyncCoordinator`, and replace the bare spinner with a status
+panel:
+
+- A step list: Connect → Download → Calculate → Done, each step showing
+  its state (waiting, running, done, failed, skipped) and how long it took.
+- Download: records received so far, chunks, and the "synced through"
+  timestamp advancing as the drain commits, plus the backlog estimate when
+  the band reports one. No made-up percentage when the total is unknown.
+- Calculate: "day i of n" from the derivation engine's `onDayDone`, the
+  day being worked on, and "waiting for another calculation to finish" when
+  `_waitForDerivation` is blocking.
+- Total elapsed time, the reason for a failure in plain words, and Retry.
+- Each sync logs per-step durations (`[sync-timing]`) so a slow phase can be
+  found in device logs.
+
+Tests: coordinator publishes each step with timings; download counts
+advance; derive progress maps onDayDone; waiting state shows; only one sync
+control on Home; failure shows reason and Retry; latches reset in finally.
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,
