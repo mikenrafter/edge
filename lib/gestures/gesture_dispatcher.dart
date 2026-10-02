@@ -33,7 +33,10 @@
 // Two ways to count the taps beyond the firmware's double tap, chosen per band
 // (GestureSettings.tapMethodFor): ECG sensor touches (above; WHOOP MG only) or
 // MORE DOUBLE TAPS, which any band can do. The second opens a window at the
-// first live double tap; each further live double tap inside it adds one,
+// first live double tap; every tap, opener or member, takes its own once-ever
+// claim before it is accepted, and the session groups taps by the band's clock
+// (a tap too long after the last one starts the next group). Each further live
+// double tap inside it adds one,
 // buzzes once and restarts the window; when it runs out the actions mapped to
 // the count run. The first [handle] call waits for that and returns the
 // outcomes; the later calls return nothing at once. A single double tap is only
@@ -282,24 +285,48 @@ class GestureDispatcher {
     return _runActions(e, settings.actionsForTaps(count), taps: count);
   }
 
+  /// A member of an open repeated-double-tap group takes its own once-ever claim
+  /// (`gesture:<identity>:rep`) BEFORE the session sees it, so a member that is
+  /// re-delivered after its group finished (history replay, reconnect) is
+  /// skipped instead of opening a new window or running an action twice. Null:
+  /// skip, already claimed (or the claim store failed: fail closed). An
+  /// implausible strap clock has no stable identity, so such a member takes no
+  /// claim here; the session's receipt debounce guards it.
+  Future<({String? claimKey, String debounceKey})?> _takeMember(
+      StrapEvent e) async {
+    final debounceKey = '${e.identity}:rep';
+    if (!e.plausible) return (claimKey: null, debounceKey: debounceKey);
+    final claimKey = 'gesture:$debounceKey';
+    try {
+      if (!await _claim(claimKey)) return null;
+    } catch (err) {
+      log?.call('[gesture] rep: claim failed: $err');
+      return null;
+    }
+    return (claimKey: claimKey, debounceKey: debounceKey);
+  }
+
   /// The repeated-double-tap method. A later tap inside an open window only
   /// adds to it and returns nothing; the tap that opened the window waits for
-  /// the final count and runs its actions (none in the lab). The opening tap
-  /// takes the same once-ever claim / receipt debounce as the ECG route, under
-  /// `...:rep`, so a re-send cannot open a second window.
+  /// the final count and runs its actions (none in the lab). EVERY tap, opener
+  /// or member, takes the same once-ever claim / receipt debounce as the ECG
+  /// route, under `...:rep`, before it is accepted, so a re-send cannot open a
+  /// second window or count twice. A member the session reports as starting the
+  /// NEXT group (too long after the last tap by the band clock) has already
+  /// finished the open group and opens its own window with the claim it holds.
   Future<List<GestureOutcome>> _repeatTap(
       StrapEvent e, DoubleTapRepeatSession session,
       {bool lab = false}) async {
-    if (session.open) {
-      session.add(e);
-      return const [];
-    }
-    final taken = await _takeEcgTap(e, 'rep');
+    final taken =
+        session.open ? await _takeMember(e) : await _takeEcgTap(e, 'rep');
     if (taken == null) return const [];
     if (session.open) {
-      // Another tap opened the window while this one took its claim.
-      session.add(e);
-      return const [];
+      // A member, or another tap opened the window while this one took its
+      // claim. Counted or ignored, the claim stays: a re-send is the same tap.
+      if (session.offer(e) != RepeatOffer.newGroup) return const [];
+    }
+    if (taken.claimKey == null) {
+      _lastAccepted[taken.debounceKey] = e.receivedAt;
     }
     log?.call('[gesture] double-tap → counting double taps');
     final int count;
