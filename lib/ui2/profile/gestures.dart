@@ -21,9 +21,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../gestures/device_action.dart';
+import '../../gestures/ecg_tap_counter.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
+import 'device_lab.dart';
 import 'profile.dart';
 
 class BandGestures extends StatelessWidget {
@@ -43,6 +45,16 @@ class BandGestures extends StatelessWidget {
         onToggle: g.toggleDoubleTapAction,
         replay: g.replayActions,
         onReplay: g.setReplayHistorical,
+        // The row for 2 taps is the switches above; 3–5 are the draft ECG-touch
+        // counts, only meaningful on a WHOOP MG.
+        ecgSupported: c.read<AppState>().pairedIsMaverick,
+        tapActions: {for (var n = 3; n <= 5; n++) n: g.actionsForTaps(n)},
+        onTapToggle: (n, a, on) {
+          final cur = g.actionsForTaps(n);
+          return g.setActionsForTaps(n, on ? {...cur, a} : cur.difference({a}));
+        },
+        thresholds: g.ecgTapThresholds,
+        onThresholds: g.setEcgTapThresholds,
       ),
     );
   }
@@ -64,6 +76,19 @@ class BandGesturesView extends StatelessWidget {
 
   final void Function(DeviceAction, bool)? onReplay;
 
+  /// A WHOOP MG: the only band whose ECG sensor can be touched to count taps.
+  final bool ecgSupported;
+
+  /// Actions mapped to 3, 4 and 5 taps (8L draft). 2 taps is [chosen].
+  final Map<int, Set<DeviceAction>> tapActions;
+
+  /// Flip one action for an n-tap count. Null leaves the rows read-only.
+  final Future<void> Function(int taps, DeviceAction, bool)? onTapToggle;
+
+  /// The touch windows; the adjusters show only when [onThresholds] is given.
+  final EcgTapThresholds? thresholds;
+  final ValueChanged<EcgTapThresholds>? onThresholds;
+
   const BandGesturesView({
     super.key,
     required this.chosen,
@@ -71,6 +96,11 @@ class BandGesturesView extends StatelessWidget {
     this.onToggle,
     this.replay = const {},
     this.onReplay,
+    this.ecgSupported = false,
+    this.tapActions = const {},
+    this.onTapToggle,
+    this.thresholds,
+    this.onThresholds,
   });
 
   @override
@@ -134,6 +164,44 @@ class BandGesturesView extends StatelessWidget {
                       ),
                   ],
                 ]),
+                // 2 taps is the switches above; there is no 1-tap row. 3–5 are
+                // a DRAFT: touches of the ECG sensor after the double tap.
+                settingsGroup(c, 'Tap counts', [
+                  _TapCountRow(
+                    taps: 2,
+                    summary: _summary(chosen),
+                    sub: 'The actions above',
+                  ),
+                  for (final n in const [3, 4, 5])
+                    _TapCountRow(
+                      taps: n,
+                      draft: true,
+                      enabled: ecgSupported,
+                      summary: _summary(tapActions[n] ?? const {}),
+                      sub: 'Touch the ECG sensor after the double tap',
+                      onTap: ecgSupported && onTapToggle != null
+                          ? () => _pickActions(
+                              c, n, offered, tapActions[n] ?? const {})
+                          : null,
+                    ),
+                ]),
+                Section(
+                  'What needs a WHOOP MG',
+                  Surface(
+                    child: Text(kExtendedGesturesNote,
+                        style: F.body.copyWith(color: p.ink2, height: 1.4)),
+                  ),
+                ),
+                if (onThresholds != null)
+                  Section(
+                    'Touch windows',
+                    Surface(
+                      child: EcgThresholdAdjusters(
+                        thresholds: thresholds ?? EcgTapThresholds(),
+                        onChanged: ecgSupported ? onThresholds : null,
+                      ),
+                    ),
+                  ),
                 if (noPhoneActions) ...[
                   const SizedBox(height: S.x5),
                   Section(
@@ -155,5 +223,104 @@ class BandGesturesView extends StatelessWidget {
         ]),
       ),
     );
+  }
+
+  static String _summary(Set<DeviceAction> a) =>
+      a.isEmpty ? 'Off' : '${a.length} on';
+
+  /// A sheet of the offered actions as check boxes for one tap count. Keeps its
+  /// own copy of the set so a tick shows at once; [onTapToggle] persists it.
+  Future<void> _pickActions(BuildContext c, int taps,
+      List<DeviceAction> offered, Set<DeviceAction> current) {
+    final p = P.of(c);
+    return showModalBottomSheet<void>(
+      context: c,
+      backgroundColor: p.card,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheet) {
+        var on = {...current};
+        return StatefulBuilder(
+          builder: (sheet, setSheet) => SafeArea(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(S.x5, 0, S.x5, S.x2),
+                  child: Text('$taps taps does',
+                      style: F.head.copyWith(color: p.ink)),
+                ),
+                for (final a in offered)
+                  CheckboxListTile(
+                    value: on.contains(a),
+                    title: Text(a.localizedLabel(sheet),
+                        style: F.body.copyWith(color: p.ink)),
+                    onChanged: (v) {
+                      final next = v ?? false;
+                      setSheet(() => on = next ? {...on, a} : on.difference({a}));
+                      onTapToggle!(taps, a, next);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// One row of the tap-count list. Deliberately not a [SwitchRow]: it opens a
+/// picker, and a disabled draft row stays visible and dimmed with its reason.
+class _TapCountRow extends StatelessWidget {
+  const _TapCountRow({
+    required this.taps,
+    required this.summary,
+    required this.sub,
+    this.draft = false,
+    this.enabled = true,
+    this.onTap,
+  });
+
+  final int taps;
+  final bool draft, enabled;
+  final String summary, sub;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final row = Pressable(
+      onTap: enabled ? onTap : null,
+      semanticLabel: '$taps taps. $sub',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: S.x3),
+        child: Row(children: [
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Flexible(
+                  child: Text('$taps taps', style: F.body.copyWith(color: p.ink)),
+                ),
+                if (draft) ...[
+                  const SizedBox(width: S.x2),
+                  Text('Draft',
+                      style: F.over.copyWith(
+                          color: p.on(C.orange), fontWeight: FontWeight.w600)),
+                ],
+              ]),
+              Text(sub, style: F.over.copyWith(color: p.ink3)),
+              if (!enabled)
+                Text('This band has no ECG sensor',
+                    style: F.over.copyWith(color: p.ink3)),
+            ]),
+          ),
+          const SizedBox(width: S.x2),
+          Text(summary, style: F.cap.copyWith(color: p.ink3)),
+        ]),
+      ),
+    );
+    return enabled ? row : Opacity(opacity: .45, child: row);
   }
 }

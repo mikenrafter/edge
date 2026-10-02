@@ -98,10 +98,13 @@ import '../health/health_export.dart';
 import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
+import '../gestures/ecg_tap_session.dart';
 import '../gestures/gesture_dispatcher.dart';
+import '../gestures/lab_log.dart';
 import '../gestures/moment_stamp.dart';
 import '../gestures/strap_event.dart';
 import '../gestures/tap_ack.dart';
+import 'live_stream_buffer.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
 import '../live/live_activity.dart';
@@ -211,7 +214,7 @@ class AppState extends ChangeNotifier {
       serialOf: () => paired?.serial ?? engine.state.serial,
       onRequestSync: () => engine.requestHistorySync(),
     );
-    return EcgController(
+    final c = EcgController(
       transport: t,
       guard: _ecgGuard,
       save: (r, p) => LocalDb.insertEcgReading(
@@ -227,6 +230,9 @@ class AppState extends ChangeNotifier {
       releaseScreen: ScreenWake.releaseOwner,
       log: _log,
     );
+    // The Device lab's touch counter reads the same live packets (RAM only).
+    c.onFrame = _ecgTapSession.onFrame;
+    return c;
   }
 
   /// READY-time recovery of a retained ECG guard — controller-free, before
@@ -279,6 +285,75 @@ class AppState extends ChangeNotifier {
   final GestureSettings gestureSettings = GestureSettings();
   late final GestureDispatcher _gestureDispatcher;
 
+  /// The last 30 s of every live stream, per device (8B). RAM only: live
+  /// high-rate streams are never persisted (invariant 14). Fed from the live
+  /// callbacks below; read by the Live devices screen.
+  final LiveStreamBuffer liveStreams = LiveStreamBuffer();
+
+  /// The Device lab's rolling log (8I/8L). RAM only.
+  final DeviceLabLog deviceLab = DeviceLabLog();
+
+  GestureDispatcher _newGestureDispatcher() => GestureDispatcher(
+        settings: gestureSettings,
+        log: _log,
+        onMarkMoment: _markMomentFromGesture,
+        onWorkoutToggle: _toggleWorkoutFromGesture,
+        onLogWater: _logWaterFromGesture,
+        ecgSupported: () => engine.isMaverick,
+        onEcgTap: _ecgTapSession.start,
+      );
+
+  /// 8L: counts ECG-sensor touches after a live double tap. Built lazily so
+  /// [AppState.forTesting] pays nothing for it.
+  late final EcgTapSession _ecgTapSession = EcgTapSession(
+    beginStream: _beginEcgForTap,
+    endStream: () async {
+      try {
+        await ecg.cancel();
+      } catch (_) {}
+    },
+    isStreamAlive: () => ecg.isCapturing,
+    buzz: _ecgTapBuzz,
+    maxTaps: () => gestureSettings.maxMappedTaps,
+    thresholds: () => gestureSettings.ecgTapThresholds,
+    onFinished: (count, reason) => deviceLab.addStep(count != null
+        ? 'Result: $count taps. This is a draft; no action was run.'
+        : 'Result: abandoned ($reason). No action was run.'),
+    step: deviceLab.addStep,
+  );
+
+  /// Start the ECG stream for a tap through the existing controller. The wrist
+  /// is the one remembered from a normal ECG reading; without it the lab says
+  /// so instead of guessing which electrode the AFE should read.
+  Future<bool> _beginEcgForTap() async {
+    if (ecg.isCapturing) return false; // the ECG screen is mid-reading
+    final serial = ecg.transport.serial;
+    final wrist = serial == null ? null : await ecg.guard.wrist(serial);
+    if (wrist == null) {
+      deviceLab.addStep('No wrist remembered. Take one ECG reading first so '
+          'the lab knows which wrist the band is on.');
+      return false;
+    }
+    await ecg.begin(wrist);
+    return ecg.isCapturing;
+  }
+
+  /// One touch-counter buzz: still a dispatcher delivery (live-only band
+  /// alert, own event id), never a straight engine write.
+  Future<bool> _ecgTapBuzz(int pulses, String eventId) async {
+    final now = DateTime.now();
+    final seq = BuzzSequence([for (var i = 0; i < pulses; i++) i * 300]);
+    final r = await alertDispatcher.dispatch(
+      kEcgTapRule,
+      eventId: eventId,
+      sourceTime: now,
+      historical: false,
+      bandTransport: () => playBuzzSequence(seq,
+          buzz: _bandBuzz, isConnected: () => engine.isConnected),
+    );
+    return r.targets.contains('band');
+  }
+
   late final AlertDispatcher alertDispatcher = AlertDispatcher(
     phone: () async => false,
     band: () async {
@@ -328,6 +403,7 @@ class AppState extends ChangeNotifier {
       eventId: 'preview:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
+      bandTimeout: s.transportTimeout,
       bandTransport: () => playBuzzSequence(s,
           buzz: _bandBuzz, isConnected: () => engine.isConnected),
     );
@@ -377,6 +453,10 @@ class AppState extends ChangeNotifier {
         sourceTime: time,
         phoneOnly: true,
       ),
+      // A recorded rhythm can outlast the dispatcher's flat 10 s.
+      bandTimeout: alarm || pattern != null
+          ? null
+          : prefs.buzzSequenceFor(ruleId).transportTimeout,
       bandTransport: () async {
         if (alarm) {
           await engine.runAlarm();
@@ -1496,13 +1576,7 @@ class AppState extends ChangeNotifier {
                        lifecycle == AppLifecycleState.hidden;
     _background = isHeadless;
 
-    _gestureDispatcher = GestureDispatcher(
-      settings: gestureSettings,
-      log: _log,
-      onMarkMoment: _markMomentFromGesture,
-      onWorkoutToggle: _toggleWorkoutFromGesture,
-      onLogWater: _logWaterFromGesture,
-    );
+    _gestureDispatcher = _newGestureDispatcher();
     engine = BleEngine(
       onRecord: _onRecord,
       onState: (s) => _onEngineState(LocalDb.kPrimaryDeviceId, s),
@@ -1636,13 +1710,7 @@ class AppState extends ChangeNotifier {
   AppState.forTesting({BleEngine? engine, EcgController? ecg}) {
     _background = false;
     _ecg = ecg;
-    _gestureDispatcher = GestureDispatcher(
-      settings: gestureSettings,
-      log: _log,
-      onMarkMoment: _markMomentFromGesture,
-      onWorkoutToggle: _toggleWorkoutFromGesture,
-      onLogWater: _logWaterFromGesture,
-    );
+    _gestureDispatcher = _newGestureDispatcher();
     this.engine = engine ??
         BleEngine(
           onRecord: _onRecord,
@@ -1806,6 +1874,16 @@ class AppState extends ChangeNotifier {
     _ingestLiveMagsAt(proto.ImuFrame(recTs ?? 0, 0, mags), atMs);
     _trackCoverage(recTs);
   }
+
+  /// Run one live frame through [_onLiveFrame] and one reading through the
+  /// live-HR trace. Tests only — the Live devices buffer is fed from both.
+  @visibleForTesting
+  void debugOnLiveFrame(int pt, String hex, int? recTs) =>
+      _onLiveFrame(pt, hex, recTs);
+
+  @visibleForTesting
+  bool debugAppendLiveHr(String deviceId, int? hr, int? atMs) =>
+      _appendLiveHr(deviceId, hr, atMs);
 
   /// End the live-pedometer session (persist the coverage window) without a
   /// BLE disconnect. Tests only.
@@ -2613,7 +2691,10 @@ class AppState extends ChangeNotifier {
     // alertDispatcher (live-only, short deadline) and never straight to the
     // engine.
     final handled = _gestureDispatcher.handle(e);
-    unawaited(handled.then((outcomes) => ackTap(alertDispatcher, e, outcomes)));
+    unawaited(handled.then((outcomes) async {
+      deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
+      await ackTap(alertDispatcher, e, outcomes);
+    }));
   }
 
   /// Why start-up failed, or null if it did not. Drives [AppRoute.failed].
@@ -3301,6 +3382,7 @@ class AppState extends ChangeNotifier {
     // (byte[1] != 10) — realtimeRr already yields no beats from it, but it
     // should not occupy the breathing R-R buffer at all (edge#286).
     final isRrBearing = pt == 0x28 || (pt == 0x2B && _isR10Record(hex));
+    if (isRrBearing) _bufferLiveRr(hex);
     if ((breathingActive || breathingWindowOpen) && isRrBearing) {
       if (_breathingFrames.length < 8000) _breathingFrames.add(hex);
     }
@@ -3313,6 +3395,7 @@ class AppState extends ChangeNotifier {
       _imuStreamSeen = true;
       final f = _safeFrameAccel(hex);
       if (f != null) {
+        _bufferLiveImu(f);
         _ingestLiveMags(f);
         _trackCoverage(recTs);
       }
@@ -3320,8 +3403,47 @@ class AppState extends ChangeNotifier {
       // Gen5 Maverick live IMU is 0x2B (100 Hz planar), not top-level 0x33.
       final f = _safeFrameAccel(hex);
       if (f != null) {
+        _bufferLiveImu(f);
         _ingestLiveMags(f);
         _trackCoverage(recTs);
+      }
+    }
+  }
+
+  /// Beat intervals of one live frame into the Live devices buffer (RAM only).
+  /// The newest beat is stamped now; earlier ones are placed back by the
+  /// intervals that followed them.
+  void _bufferLiveRr(String hex) {
+    final rr = proto.realtimeRr(hex)?.rrMs;
+    if (rr == null || rr.isEmpty) return;
+    var at = DateTime.now();
+    final stamped = <(DateTime, int)>[];
+    for (var i = rr.length - 1; i >= 0; i--) {
+      stamped.add((at, rr[i]));
+      at = at.subtract(Duration(milliseconds: rr[i]));
+    }
+    for (final (t, v) in stamped.reversed) {
+      liveStreams.add(LocalDb.kPrimaryDeviceId, 'rr', t, v.toDouble());
+    }
+  }
+
+  /// One live IMU frame's accel samples (100 Hz) into the Live devices buffer.
+  /// Per-axis when the decoder gave axes, otherwise the magnitude only.
+  void _bufferLiveImu(proto.ImuFrame f) {
+    final n = f.mags.length;
+    if (n == 0) return;
+    final end = DateTime.now();
+    DateTime at(int i) => end.subtract(Duration(milliseconds: (n - 1 - i) * 10));
+    final axes = {'accel_x': f.xs, 'accel_y': f.ys, 'accel_z': f.zs};
+    if (axes.values.every((a) => a != null && a.length == n)) {
+      for (final MapEntry(:key, :value) in axes.entries) {
+        for (var i = 0; i < n; i++) {
+          liveStreams.add(LocalDb.kPrimaryDeviceId, key, at(i), value![i]);
+        }
+      }
+    } else {
+      for (var i = 0; i < n; i++) {
+        liveStreams.add(LocalDb.kPrimaryDeviceId, 'accel_mag', at(i), f.mags[i]);
       }
     }
   }
@@ -4069,6 +4191,10 @@ class AppState extends ChangeNotifier {
     }
     _liveHrTraceAt[deviceId] = at;
     _liveHrTrace.add((at: at, hr: hr, deviceId: deviceId));
+    // The same reading for the Live devices graph: the band's and every paired
+    // sensor's beats arrive here, so this is the one tap for the 'hr' stream.
+    liveStreams.add(deviceId, 'hr',
+        DateTime.fromMillisecondsSinceEpoch(at), hr.toDouble());
     // The cap is PER DEVICE, so a second band cannot evict the first band's
     // trace by streaming faster.
     // ponytail: reverse scan is O(n) at n <= 90 * devices, once per

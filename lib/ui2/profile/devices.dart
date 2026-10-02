@@ -123,6 +123,7 @@ import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
 import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
 import '../sources/source_views.dart' show SourceViews;
+import 'device_lab.dart' show DeviceLab;
 import 'profile.dart';
 import 'settings.dart' show backToRoot;
 
@@ -1840,6 +1841,7 @@ class _DeviceDetailState extends State<DeviceDetail> {
       health: _health,
       forecast: _forecast,
       onFind: app?.buzzBand,
+      onDeviceLab: s.isBand ? () => goto(c, const DeviceLab()) : null,
       liveHr: s.isBand ? app?.liveHr : null,
       onRename: (app != null && app.isConnected)
           ? () => _renameBand(c, app, s.name)
@@ -2477,6 +2479,9 @@ class DeviceDetailView extends StatelessWidget {
   final VoidCallback? onFind, onForget, onSync;
   final SyncPresentationState? syncPresentation;
 
+  /// Open the Device lab (band rows only). Null hides the row.
+  final VoidCallback? onDeviceLab;
+
   /// The beat arriving right now, or null when nothing fresh is streaming.
   /// Passed IN rather than read from a provider here: this view is rendered in
   /// tests with no Provider above it, which is the point of it being a view.
@@ -2504,6 +2509,7 @@ class DeviceDetailView extends StatelessWidget {
       this.onFind,
       this.onForget,
       this.onSync,
+      this.onDeviceLab,
       this.syncPresentation,
       this.onRename,
       this.liveHr,
@@ -2730,6 +2736,13 @@ class DeviceDetailView extends StatelessWidget {
                             sub: l?.devicesFindItByFeel ?? 'Vibrate the band to locate it',
                             chevron: false,
                             onTap: onFind),
+                      ],
+                      if (onDeviceLab != null) ...[
+                        Divider(color: p.line, height: 1),
+                        SetRow(LucideIcons.flaskConical, C.purple,
+                            'Device lab',
+                            sub: 'Try gestures the band does not report on its own',
+                            onTap: onDeviceLab),
                       ],
                     ]),
                   ),
