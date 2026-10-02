@@ -1216,10 +1216,15 @@ class DeepDiveCard extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    return Surface(
-      onTap: onTap,
-      semanticLabel: '$label, $value $unit. $cta',
-      child: Column(
+    final semantic = '$label, $value $unit. $cta';
+    // A card with a preview chart holds a scrubber, and a scrubber owns the tap
+    // (8F). The card then opens through its header and its call to action
+    // instead of as a whole, so one tap never both scrubs and navigates.
+    final whole = preview == null;
+    Widget tappable(Widget child) => whole
+        ? child
+        : Pressable(onTap: onTap, semanticLabel: semantic, child: child);
+    final header = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Same restack as TrendCard, for the same reason: `7h 42m` beside a
@@ -1270,9 +1275,17 @@ class DeepDiveCard extends StatelessWidget {
                 Text(unit, style: F.cap.copyWith(color: p.ink3)),
               ],
             ),
+        ]);
+    return Surface(
+      onTap: whole ? onTap : null,
+      semanticLabel: whole ? semantic : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          tappable(header),
           if (preview != null) ...[const SizedBox(height: S.x3), preview!],
           const SizedBox(height: S.x3),
-          _Cta(cta, p.on(color)),
+          tappable(_Cta(cta, p.on(color))),
         ],
       ),
     );

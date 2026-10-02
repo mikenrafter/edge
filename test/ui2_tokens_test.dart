@@ -223,6 +223,10 @@ const _notComponents = {
   // permission on tap — a gallery case would either mock all of that or
   // trigger a real health-store prompt from a screenshot sweep.
   'PhoneImport', 'AutomationSettings',
+  // The pure halves of Data and Automation (8C), pumped headless by
+  // settings_sections_new_views_test.dart. Scaffold screens, like
+  // MoreSettingsView above.
+  'DataScreenView', 'AutomationSettingsView',
   // The second-sensor pairing route. A Scaffold that owns a BLE scan, reads
   // the `device` table and asks CoreBluetooth whether AccessorySetupKit has
   // provisioned anything — a gallery case would be a photograph of a fixture,
