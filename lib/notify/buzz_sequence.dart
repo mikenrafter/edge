@@ -1,9 +1,7 @@
 // buzz_sequence.dart — a notification's buzz rhythm, as the user taps it.
 //
-// The band takes one fixed single-buzz command; a "pattern" here is that
-// command repeated at chosen offsets, so a rhythm is just a list of
-// milliseconds-from-the-first-buzz. Everything else (the recorder that turns
-// taps into offsets, the player that writes them) lives here and is pure
+// A pattern preserves press starts and hold durations. The recorder and
+// player live here and are pure
 // timing: no BLE, no storage, no widgets.
 //
 // Playback runs inside ONE AlertDispatcher delivery (the sequence is the band
@@ -17,49 +15,70 @@ import 'package:flutter/foundation.dart' show VoidCallback, listEquals;
 
 class BuzzSequence {
   static const maxBuzzes = 8;
-  static const minGapMs = 150;
+  static const minGapMs = 1;
   static const maxGapMs = 2000;
 
-  /// 1–[maxBuzzes] entries, first 0, each gap in [[minGapMs], [maxGapMs]].
-  BuzzSequence(List<int> offsetsMs)
-      : offsetsMs = List.unmodifiable(_validated(offsetsMs));
+  /// Offsets describe press starts; durations preserve the time held down.
+  BuzzSequence(List<int> offsetsMs, {List<int>? durationsMs})
+    : offsetsMs = List.unmodifiable(offsetsMs),
+      durationsMs = List.unmodifiable(
+        durationsMs ?? List.filled(offsetsMs.length, 0),
+      ) {
+    _validate();
+  }
 
   final List<int> offsetsMs;
+  final List<int> durationsMs;
 
   int get length => offsetsMs.length;
 
-  /// From the first write to the last one's start.
-  Duration get playTime => Duration(milliseconds: offsetsMs.last);
+  Duration get playTime =>
+      Duration(milliseconds: offsetsMs.last + durationsMs.last);
 
-  /// How long a dispatcher should wait for the whole rhythm to be written:
-  /// its play time plus room for the last write to be acknowledged.
-  Duration get transportTimeout => playTime + const Duration(seconds: 5);
+  /// Every confirmed command can consume its own five-second reply window.
+  Duration get transportTimeout => playTime + Duration(seconds: 5 * length + 1);
 
-  static List<int> _validated(List<int> o) {
-    if (o.isEmpty || o.length > maxBuzzes) {
-      throw ArgumentError.value(o.length, 'offsetsMs', 'need 1–$maxBuzzes buzzes');
+  void _validate() {
+    if (offsetsMs.isEmpty ||
+        offsetsMs.length > maxBuzzes ||
+        durationsMs.length != offsetsMs.length) {
+      throw ArgumentError('Need 1–$maxBuzzes matching offsets and durations');
     }
-    if (o.first != 0) {
-      throw ArgumentError.value(o.first, 'offsetsMs', 'first buzz must be at 0');
+    if (offsetsMs.first != 0 || durationsMs.any((d) => d < 0)) {
+      throw ArgumentError(
+        'First offset must be zero and durations nonnegative',
+      );
     }
-    for (var i = 1; i < o.length; i++) {
-      final gap = o[i] - o[i - 1];
+    for (var i = 1; i < length; i++) {
+      final gap = offsetsMs[i] - offsetsMs[i - 1] - durationsMs[i - 1];
       if (gap < minGapMs || gap > maxGapMs) {
         throw ArgumentError.value(
-            gap, 'offsetsMs', 'gap must be $minGapMs–$maxGapMs ms');
+          gap,
+          'offsetsMs',
+          'release gap must be $minGapMs–$maxGapMs ms',
+        );
       }
     }
-    return o;
   }
 
-  List<int> toJson() => offsetsMs;
+  Object toJson() => durationsMs.every((d) => d == 0)
+      ? offsetsMs
+      : {'offsetsMs': offsetsMs, 'durationsMs': durationsMs};
 
   factory BuzzSequence.fromJson(Object? json) {
-    if (json is! List || json.any((v) => v is! int)) {
-      throw const FormatException('A buzz sequence is a list of whole ms');
+    final Object? offsets = json is Map ? json['offsetsMs'] : json;
+    final Object? durations = json is Map ? json['durationsMs'] : null;
+    if (offsets is! List ||
+        offsets.any((v) => v is! int) ||
+        (json is Map &&
+            (durations is! List || durations.any((v) => v is! int)))) {
+      throw const FormatException('A buzz sequence needs whole-ms lists');
     }
     try {
-      return BuzzSequence(json.cast<int>());
+      return BuzzSequence(
+        offsets.cast<int>(),
+        durationsMs: durations == null ? null : (durations as List).cast<int>(),
+      );
     } on ArgumentError catch (e) {
       throw FormatException('Invalid buzz sequence: ${e.message}');
     }
@@ -77,59 +96,100 @@ class BuzzSequence {
 
   @override
   bool operator ==(Object other) =>
-      other is BuzzSequence && listEquals(other.offsetsMs, offsetsMs);
+      other is BuzzSequence &&
+      listEquals(other.offsetsMs, offsetsMs) &&
+      listEquals(other.durationsMs, durationsMs);
 
   @override
-  int get hashCode => Object.hashAll(offsetsMs);
+  int get hashCode =>
+      Object.hash(Object.hashAll(offsetsMs), Object.hashAll(durationsMs));
 
   @override
-  String toString() => 'BuzzSequence($offsetsMs)';
+  String toString() => 'BuzzSequence($offsetsMs, durationsMs: $durationsMs)';
 }
 
 /// Turns taps into a [BuzzSequence]. The first tap starts the take (and tells
 /// the caller, so the phone can buzz as feedback); it ends 2 s after the last
-/// accepted tap or at the [BuzzSequence.maxBuzzes]th tap.
+/// release or at the [BuzzSequence.maxBuzzes]th completed press.
 class BuzzRecorder {
   BuzzRecorder({this.onStart, this.onDone});
 
   final VoidCallback? onStart;
   final void Function(BuzzSequence)? onDone;
-
   static const _idle = Duration(seconds: 2);
-
   final List<int> _offsets = [];
+  final List<int> _durations = [];
   DateTime? _first;
+  DateTime? _pressed;
+  DateTime? _lastRelease;
   Timer? _timer;
   BuzzSequence? _result;
 
-  bool get recording => _first != null && _result == null;
+  bool get recording => (_first != null || _pressed != null) && _result == null;
   BuzzSequence? get result => _result;
 
-  void tap() {
-    if (_result != null) return;
-    final now = clock.now();
-    final first = _first;
-    if (first == null) {
-      _first = now;
-      _offsets.add(0);
-      onStart?.call();
-    } else {
-      final at = now.difference(first).inMilliseconds;
-      if (at - _offsets.last < BuzzSequence.minGapMs) return;
-      _offsets.add(at);
+  /// Accessibility actions have no measured hold duration.
+  void tap({DateTime? at}) {
+    final now = at ?? clock.now();
+    pressStart(at: now);
+    pressEnd(at: now);
+  }
+
+  void pressStart({DateTime? at}) {
+    if (_result != null || _pressed != null) return;
+    final now = at ?? clock.now();
+    final release = _lastRelease;
+    if (release != null &&
+        now.difference(release).inMilliseconds > BuzzSequence.maxGapMs) {
+      _finish();
+      return;
+    }
+    if (_first != null &&
+        now.difference(_first!).inMilliseconds -
+                _offsets.last -
+                _durations.last <
+            BuzzSequence.minGapMs) {
+      return;
     }
     _timer?.cancel();
-    if (_offsets.length >= BuzzSequence.maxBuzzes) {
+    _pressed = now;
+    if (_first == null) onStart?.call();
+  }
+
+  void pressEnd({DateTime? at}) {
+    final start = _pressed;
+    if (start == null || _result != null) return;
+    _pressed = null;
+    final now = at ?? clock.now();
+    _first ??= start;
+    _offsets.add(start.difference(_first!).inMilliseconds);
+    _durations.add(now.difference(start).inMilliseconds.clamp(0, 1 << 31));
+    _lastRelease = now;
+    _scheduleFinish(now);
+  }
+
+  void pressCancel({DateTime? at}) {
+    if (_pressed == null) return;
+    _pressed = null;
+    if (_offsets.isNotEmpty) _scheduleFinish(at ?? clock.now());
+  }
+
+  void _scheduleFinish(DateTime now) {
+    _timer?.cancel();
+    // A cancelled contact does not extend the completed take's idle window.
+    final remaining = _lastRelease!.add(_idle).difference(now);
+    if (_offsets.length >= BuzzSequence.maxBuzzes || remaining <= Duration.zero) {
       _finish();
     } else {
-      _timer = Timer(_idle, _finish);
+      _timer = Timer(remaining, _finish);
     }
   }
 
   void _finish() {
     _timer?.cancel();
     _timer = null;
-    final r = _result = BuzzSequence(_offsets);
+    if (_offsets.isEmpty || _result != null) return;
+    final r = _result = BuzzSequence(_offsets, durationsMs: _durations);
     onDone?.call(r);
   }
 
@@ -137,28 +197,48 @@ class BuzzRecorder {
     _timer?.cancel();
     _timer = null;
     _first = null;
+    _pressed = null;
+    _lastRelease = null;
     _offsets.clear();
+    _durations.clear();
     _result = null;
   }
 
   void dispose() => _timer?.cancel();
 }
 
-/// Writes [s] as single buzzes, step i at `offsetsMs[i]` after the call (not
-/// after the previous write). A lost link, a refused write or a throw stops
-/// the rest and returns false; never throws. True only if every step landed.
+/// Preserve the hold and release gap even when command acknowledgement is slow.
+/// Failed or disconnected deliveries stop the remaining steps.
 Future<bool> playBuzzSequence(
   BuzzSequence s, {
   required Future<bool> Function() buzz,
+  Future<bool> Function(int holdMs)? buzzForDuration,
   required bool Function() isConnected,
 }) async {
   final watch = clock.stopwatch()..start();
   try {
     for (var i = 0; i < s.length; i++) {
-      final wait = s.offsetsMs[i] - watch.elapsedMilliseconds;
-      if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
       if (!isConnected()) return false;
-      if (!await buzz()) return false;
+      final start = watch.elapsedMilliseconds;
+      if (buzzForDuration == null && s.durationsMs[i] >= 500) return false;
+      final ok = buzzForDuration == null
+          ? await buzz()
+          : await buzzForDuration(s.durationsMs[i]);
+      if (!ok) return false;
+      final remainingHold =
+          start + s.durationsMs[i] - watch.elapsedMilliseconds;
+      if (remainingHold > 0) {
+        await Future<void>.delayed(Duration(milliseconds: remainingHold));
+      }
+      if (i + 1 < s.length) {
+        final gap = s.offsetsMs[i + 1] - s.offsetsMs[i] - s.durationsMs[i];
+        final nextStart = start + s.durationsMs[i] + gap;
+        // A late reply still gets the full release interval after completion.
+        final wait = watch.elapsedMilliseconds > nextStart
+            ? gap
+            : nextStart - watch.elapsedMilliseconds;
+        if (wait > 0) await Future<void>.delayed(Duration(milliseconds: wait));
+      }
     }
     return true;
   } catch (_) {

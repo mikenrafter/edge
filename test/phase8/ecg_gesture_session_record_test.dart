@@ -48,7 +48,6 @@ class _Rig {
   _Rig({
     this.max = 3,
     this.startOk = true,
-    this.alive = true,
     this.throwOnStart = false,
     this.recorderThrows = false,
     this.strapClock,
@@ -77,7 +76,7 @@ class _Rig {
 
   final int max;
   final bool startOk, throwOnStart, recorderThrows;
-  bool alive;
+  bool alive = true;
   int Function()? strapClock;
   DateTime now = _t0;
   late final EcgTapSession session;
@@ -94,6 +93,7 @@ void main() {
     final r = _Rig(max: 3);
     await r.session.start(_tap());
     await r.settle();
+    r.now = _t0.add(const Duration(seconds: 1));
     r.session.onFrame(_packet(1000, sub: 16384, contactFrom: 10)); // 1000.5
     await r.settle();
     expect(r.results, [(3, null)]);
@@ -114,7 +114,9 @@ void main() {
     final r = _Rig(max: 5, thresholds: slow);
     await r.session.start(_tap());
     await r.settle();
+    r.now = _t0.add(const Duration(seconds: 1));
     r.session.onFrame(_packet(2000));
+    r.now = _t0.add(const Duration(seconds: 2));
     r.session.onFrame(_packet(2001));
     r.alive = false;
     r.session.poll(); // link lost
@@ -129,6 +131,7 @@ void main() {
     final r = _Rig(max: 4, thresholds: slow);
     await r.session.start(_tap());
     await r.settle();
+    r.now = _t0.add(const Duration(seconds: 1));
     r.session.onFrame(_packet(3000));
     r.alive = false;
     r.session.poll();

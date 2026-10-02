@@ -357,6 +357,12 @@ void main() {
       expect(codeOnly(begin), contains('persist: false'));
     });
 
+    test('gesture haptics await the band command response', () {
+      final body = bodyOf(src, 'Future<bool> _ecgTapBuzz(');
+      expect(body, isNotEmpty);
+      expect(codeOnly(body), contains('buzzConfirmed('));
+    });
+
     test('the live event path still acks only through ackTap', () {
       expect(bodyOf(src, 'void _onLiveEvent('), contains('ackTap('));
     });

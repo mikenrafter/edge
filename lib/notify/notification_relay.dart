@@ -408,6 +408,7 @@ class RelayController {
 class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   NotificationRelay({
     required this.buzz,
+    this.buzzForDuration,
     required this.isConnected,
     AlertDispatcher? dispatcher,
     this.worn,
@@ -437,6 +438,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Fire the strap haptic. Wired by AppState to `engine.buzz()`. Best-effort.
   final Future<void> Function() buzz;
+  final Future<bool> Function(int holdMs)? buzzForDuration;
 
   /// Whether the band is currently connected (no point buzzing nothing).
   final bool Function() isConnected;
@@ -515,6 +517,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         await buzz();
         return true;
       },
+      buzzForDuration: buzzForDuration,
       isConnected: isConnected,
     ),
     phone: _phoneFallback,

@@ -7748,6 +7748,30 @@ class BleEngine {
   }
   Future<void> buzz() => buzzPattern(hapticShortPulse);
 
+  /// A gesture acknowledgement is complete only after its exact command has
+  /// made a successful round trip, rather than merely leaving the phone.
+  /// MG long holds repeat the supported waveform twice; this approximates a
+  /// long press, rather than setting an exact physical duration. Gen4 long
+  /// holds abstain until a duration-capable waveform is verified.
+  Future<bool> buzzConfirmed({int holdMs = 0}) async {
+    final owner = _session;
+    if (owner?.connected != true) return false;
+    final gen5 = owner!.band.isGen5;
+    if (holdMs < 0 || (!gen5 && holdMs >= 500)) return false;
+    final out = await _sendAwaited(
+      gen5 ? Cmd.runHapticPatternMaverick : Cmd.runHapticsPattern,
+      gen5
+          ? AlarmPayloads.gen5MaverickBuzz(overallLoop: holdMs >= 500 ? 2 : 1)
+          : [hapticShortPulse, 0, 0, 0, 0],
+      owner: owner,
+    );
+    if (!out.written) return false;
+    final reply = await out.response;
+    return identical(owner, _session) &&
+        owner.connected &&
+        reply?.success == true;
+  }
+
   /// Play a haptic buzz. gen5 ("Maverick") has a DIFFERENT buzz opcode and
   /// payload shape than gen4 (`Cmd.runHapticPatternMaverick`, 12-byte body —
   /// see `cmdBuzzGen5Maverick` in protocol/commands.dart) — [pattern] is

@@ -49,6 +49,11 @@ class Pressable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
 
+  /// Optional measured presses; onTap remains the accessibility action.
+  final VoidCallback? onPressStart;
+  final VoidCallback? onPressEnd;
+  final VoidCallback? onPressCancel;
+
   /// Screen-reader label. Required for anything whose child is not plain text
   /// (an icon-only control), optional otherwise.
   final String? semanticLabel;
@@ -65,6 +70,9 @@ class Pressable extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onPressStart,
+    this.onPressEnd,
+    this.onPressCancel,
     this.semanticLabel,
   });
 
@@ -74,6 +82,7 @@ class Pressable extends StatefulWidget {
 
 class _PressableState extends State<Pressable> {
   bool _down = false;
+  int? _pointer;
 
   @override
   Widget build(BuildContext c) {
@@ -90,6 +99,43 @@ class _PressableState extends State<Pressable> {
         child: widget.child,
       ),
     );
+    if (widget.onPressStart != null || widget.onPressEnd != null ||
+        widget.onPressCancel != null) {
+      // Raw contact timing belongs at the token boundary, so callers can
+      // record a hold without tap-recognition delays or duplicate onTap calls.
+      return Semantics(
+        button: true,
+        label: widget.semanticLabel,
+        onTap: widget.onTap,
+        excludeSemantics: true,
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            if (_pointer != null) return;
+            _pointer = event.pointer;
+            setState(() => _down = true);
+            widget.onPressStart?.call();
+          },
+          onPointerUp: (event) {
+            if (_pointer != event.pointer) return;
+            _pointer = null;
+            setState(() => _down = false);
+            widget.onPressEnd?.call();
+          },
+          onPointerCancel: (event) {
+            if (_pointer != event.pointer) return;
+            _pointer = null;
+            setState(() => _down = false);
+            widget.onPressCancel?.call();
+          },
+          child: AnimatedScale(
+            scale: _down ? .975 : 1,
+            duration: motion(c, Motion.fast),
+            child: out,
+          ),
+        ),
+      );
+    }
     if (widget.onTap == null) {
       return widget.semanticLabel == null
           ? out
@@ -2056,6 +2102,9 @@ class BigButton extends StatelessWidget {
   final Color color;
   final bool soft;
   final VoidCallback? onTap;
+  final VoidCallback? onPressStart;
+  final VoidCallback? onPressEnd;
+  final VoidCallback? onPressCancel;
 
   const BigButton(
     this.label, {
@@ -2064,6 +2113,9 @@ class BigButton extends StatelessWidget {
     this.color = C.green,
     this.soft = false,
     this.onTap,
+    this.onPressStart,
+    this.onPressEnd,
+    this.onPressCancel,
   });
 
   @override
@@ -2072,6 +2124,9 @@ class BigButton extends StatelessWidget {
     final ink = soft ? p.on(color) : p.inkOnFill;
     return Pressable(
       onTap: onTap,
+      onPressStart: onPressStart,
+      onPressEnd: onPressEnd,
+      onPressCancel: onPressCancel,
       semanticLabel: label,
       child: Container(
         // A minimum, never a fixed height — at accessibility text sizes the

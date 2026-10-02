@@ -32,7 +32,7 @@ void main() {
       ('negative start', [-10, 300]),
       ('not increasing', [0, 500, 500]),
       ('decreasing', [0, 800, 400]),
-      ('gap under 150 ms', [0, 149]),
+      ('gap below one millisecond', [0, 0]),
       ('gap over 2000 ms', [0, 2001]),
     ]) {
       test('rejects $name', () {
@@ -55,7 +55,7 @@ void main() {
 
     test('the limits are named constants', () {
       expect(BuzzSequence.maxBuzzes, 8);
-      expect(BuzzSequence.minGapMs, 150);
+      expect(BuzzSequence.minGapMs, 1);
       expect(BuzzSequence.maxGapMs, 2000);
     });
   });
@@ -74,7 +74,7 @@ void main() {
       ('a string', '0,500'),
       ('non-int entries', [0, 'x']),
       ('doubles', [0, 500.5]),
-      ('an invalid sequence', [0, 100]),
+      ('an invalid sequence', [0, 0]),
       ('empty', <int>[]),
     ]) {
       test('rejects $name with a FormatException', () {
@@ -182,16 +182,16 @@ void main() {
       });
     });
 
-    test('a tap under 150 ms after the previous one is ignored', () {
+    test('separate rapid taps are retained', () {
       fakeAsync((async) {
         final r = BuzzRecorder();
         r.tap();
         async.elapse(const Duration(milliseconds: 100));
-        r.tap(); // bounce
+        r.tap(); // a separate press
         async.elapse(const Duration(milliseconds: 200));
         r.tap(); // 300 ms after the first
         async.elapse(const Duration(seconds: 2));
-        expect(r.result, BuzzSequence(const [0, 300]));
+        expect(r.result!.offsetsMs, [0, 100, 300]);
         r.dispose();
       });
     });

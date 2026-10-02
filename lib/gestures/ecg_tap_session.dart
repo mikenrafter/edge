@@ -133,7 +133,7 @@ class EcgTapSession {
 
   bool _active = false;
   bool _streamUp = false;
-  bool _ackFinished = false;
+  DateTime? _ackFinishedAt;
   bool _acked = false;
   EcgTapCounter? _counter;
   StrapEvent? _tap;
@@ -142,6 +142,9 @@ class EcgTapSession {
   DateTime? _lastFrameWall;
   Duration? _lastEnd;
   int _buzzes = 0;
+  // Packet bursts can request several confirmations at once. Preserve their
+  // order across session cleanup, including the final touch's feedback.
+  Future<void> _buzzTail = Future<void>.value();
 
   // The strap-clock interval seen on the wire this session (8N).
   int? _firstStrapSec, _lastEndStrapSec, _strapAtBegin;
@@ -158,7 +161,10 @@ class EcgTapSession {
     _tap = tap;
     _strapAtBegin = _strapNowSafe();
     _counter = EcgTapCounter(
-        max: maxTaps(), thresholds: thresholds(), stallAfter: stallAfter);
+      max: maxTaps(),
+      thresholds: thresholds(),
+      stallAfter: stallAfter,
+    );
     try {
       step?.call('Double tap received. Starting the ECG stream.');
       if (!await beginStream()) {
@@ -167,8 +173,10 @@ class EcgTapSession {
       _streamUp = true;
       _startedAt = _now();
       final sinceTap = _now().difference(tap.receivedAt).inMilliseconds;
-      step?.call('ECG stream running, $sinceTap ms after the tap reached the '
-          'phone. Thresholds: ${_counter!.thresholds}.');
+      step?.call(
+        'ECG stream running, $sinceTap ms after the tap reached the '
+        'phone. Thresholds: ${_counter!.thresholds}.',
+      );
       _handle(_counter!.start(tap, at: Duration.zero));
       if (_active) {
         _timer = Timer.periodic(pollEvery, (_) => poll());
@@ -189,8 +197,7 @@ class EcgTapSession {
     // ceiled, in integers (no float drift at a second boundary).
     final startSec = r.strapSeconds;
     final subMs = (r.subseconds * 1000 + 32767) ~/ 32768;
-    final endSec =
-        startSec + (subMs + r.samples.length * 10 + 999) ~/ 1000;
+    final endSec = startSec + (subMs + r.samples.length * 10 + 999) ~/ 1000;
     _firstStrapSec = _firstStrapSec == null || startSec < _firstStrapSec!
         ? startSec
         : _firstStrapSec;
@@ -200,7 +207,13 @@ class EcgTapSession {
     final base = Duration(microseconds: (r.strapTime * 1000000).round());
     _lastFrameWall = _now();
     _lastEnd = base + _samplePeriod * r.samples.length;
-    if (_ackFinished && !_acked) _ackAt(base);
+    final ackAt = _ackFinishedAt;
+    if (ackAt != null && !_acked) {
+      // A packet may contain samples acquired before the haptic round trip.
+      // Estimate its END at receipt, then subtract elapsed wall time to
+      // locate the acknowledgement within the buffered sample timeline.
+      _ackAt(_lastEnd! - _lastFrameWall!.difference(ackAt));
+    }
     if (!_acked) return;
     for (var i = 0; i < r.samples.length && _active; i++) {
       final t = base + _samplePeriod * i;
@@ -239,16 +252,16 @@ class EcgTapSession {
 
   void _ackAt(Duration t) {
     _acked = true;
-    step?.call('Acknowledgement finished. First touch window opens at sample '
-        'time ${t.inMilliseconds} ms.');
+    step?.call(
+      'Acknowledgement finished. First touch window opens at sample '
+      'time ${t.inMilliseconds} ms.',
+    );
     _handle(_counter!.ackDone(t));
   }
 
   void _ackFinishedByBuzz() {
-    _ackFinished = true;
+    _ackFinishedAt = _now();
     if (!_active || _acked) return;
-    // A packet already seen fixes "now" on the sample clock; otherwise the
-    // window opens at the first packet that arrives.
     final now = _streamNow();
     if (now != null) _ackAt(now);
   }
@@ -257,11 +270,15 @@ class EcgTapSession {
     for (final o in outs) {
       switch (o) {
         case EcgTapBuzz(:final at, :final pulses):
-          step?.call('Buzz x$pulses requested at sample time '
-              '${at.inMilliseconds} ms.');
+          step?.call(
+            'Buzz x$pulses requested at sample time '
+            '${at.inMilliseconds} ms.',
+          );
           unawaited(_sendBuzz(pulses));
         case EcgTapDone(:final at, :final count):
-          step?.call('Final count $count at sample time ${at.inMilliseconds} ms.');
+          step?.call(
+            'Final count $count at sample time ${at.inMilliseconds} ms.',
+          );
           unawaited(_finish(count, null));
         case EcgTapAbandoned(:final reason):
           step?.call('Abandoned: $reason. No action.');
@@ -270,26 +287,47 @@ class EcgTapSession {
     }
   }
 
-  Future<void> _sendBuzz(int pulses) async {
+  Future<void> _sendBuzz(int pulses) {
     final tap = _tap;
-    if (tap == null) return;
+    final counter = _counter;
+    if (tap == null || counter == null) return Future<void>.value();
     final base = tap.plausible
         ? tap.identity
         : '${tap.identity}:${tap.receivedAt.microsecondsSinceEpoch}';
     final id = '$base:ecg:${_buzzes++}';
     final sent = _now();
+    _buzzTail = _buzzTail
+        .then((_) => _deliverBuzz(pulses, id, counter, sent))
+        .catchError((Object _) {});
+    return _buzzTail;
+  }
+
+  Future<void> _deliverBuzz(
+    int pulses,
+    String id,
+    EcgTapCounter counter,
+    DateTime sent,
+  ) async {
     var ok = false;
     try {
       ok = await buzz(pulses, id);
     } catch (_) {
       ok = false;
-    } finally {
-      // Whether or not the write landed there is nothing more to wait for; the
-      // window opens rather than the gesture hanging on a buzz.
-      if (pulses == 2) _ackFinishedByBuzz();
     }
-    step?.call('Buzz x$pulses ${ok ? 'written' : 'not delivered'} '
-        '${_now().difference(sent).inMilliseconds} ms after the request.');
+    // An earlier session's asynchronous haptic must never change the current
+    // session's acknowledgement or abandon it after a new gesture starts.
+    if (!_active || !identical(counter, _counter)) return;
+    if (pulses == 2) {
+      if (ok) {
+        _ackFinishedByBuzz();
+      } else {
+        await _finish(null, 'ack_failed');
+      }
+    }
+    step?.call(
+      'Buzz x$pulses ${ok ? 'confirmed' : 'not delivered'} '
+      '${_now().difference(sent).inMilliseconds} ms after the request.',
+    );
   }
 
   Future<void> _finish(int? count, String? reason) async {
@@ -300,7 +338,8 @@ class EcgTapSession {
     // flags reset below.
     final record = EcgGestureRecord(
       strapStart: _firstStrapSec ?? _strapAtBegin,
-      strapEnd: _lastEndStrapSec ?? (_strapAtBegin == null ? null : _strapNowSafe()),
+      strapEnd:
+          _lastEndStrapSec ?? (_strapAtBegin == null ? null : _strapNowSafe()),
       finalCount: count,
       reason: reason,
     );
@@ -310,7 +349,7 @@ class EcgTapSession {
       _timer = null;
       _active = false;
       _streamUp = false;
-      _ackFinished = false;
+      _ackFinishedAt = null;
       _acked = false;
       _counter = null;
       _tap = null;

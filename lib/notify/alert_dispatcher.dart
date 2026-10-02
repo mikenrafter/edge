@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../data/db.dart';
 import 'alert_rule.dart';
+import 'buzz_sequence.dart';
 
 /// Ownership is persisted before a transport runs. Failed targets release their
 /// own claim; a successful other target remains consumed across restarts.
@@ -40,6 +41,7 @@ class AlertDispatcher {
   AlertDispatcher({
     required this.phone,
     required this.band,
+    this.bandSequence,
     required this.isConnected,
     this.supportedTargets = const {'phone', 'band'},
     this.supportedTargetsAtDelivery,
@@ -52,6 +54,10 @@ class AlertDispatcher {
 
   final Future<bool> Function() phone;
   final Future<bool> Function() band;
+
+  /// Shared saved-pattern delivery covers notification emitters and reminder
+  /// timers that use the dispatcher without choosing a transport themselves.
+  final Future<bool> Function(BuzzSequence)? bandSequence;
   final bool Function() isConnected;
   final Set<String> supportedTargets;
   final Set<String> Function()? supportedTargetsAtDelivery;
@@ -133,16 +139,23 @@ class AlertDispatcher {
         }
         claimed = await ledger.claim(key);
         if (!claimed) continue;
+        final saved = typed.buzzSequence;
+        final sequencePlayer = bandSequence;
+        final implicitSequence = target == 'band' &&
+            bandTransport == null && saved != null && sequencePlayer != null;
         final transport = target == 'phone'
             ? phoneTransport ?? phone
-            : bandTransport ?? band;
+            : bandTransport ??
+                (implicitSequence ? () => sequencePlayer(saved) : band);
         // Do not release a timed-out ownership: the platform write may still
         // complete. A late success must never race a fresh retry into two buzzes.
-        final limit = target == 'band' &&
-                bandTimeout != null &&
-                bandTimeout > transportTimeout
-            ? bandTimeout
-            : transportTimeout;
+        var limit = transportTimeout;
+        if (target == 'band') {
+          if (bandTimeout != null && bandTimeout > limit) limit = bandTimeout;
+          if (implicitSequence && saved.transportTimeout > limit) {
+            limit = saved.transportTimeout;
+          }
+        }
         success = await transport().timeout(
           limit,
           onTimeout: () {

@@ -398,8 +398,11 @@ class AppState extends ChangeNotifier {
       eventId: eventId,
       sourceTime: now,
       historical: false,
+      // Two acknowledgement pulses can each wait five seconds for a reply.
+      bandTimeout: const Duration(seconds: 12),
       bandTransport: () => playBuzzSequence(seq,
-          buzz: _bandBuzz, isConnected: () => engine.isConnected),
+          buzz: () => engine.buzzConfirmed(),
+          isConnected: () => engine.isConnected),
     );
     return r.targets.contains('band');
   }
@@ -410,6 +413,12 @@ class AppState extends ChangeNotifier {
       await engine.buzz();
       return true;
     },
+    // The default sequence transport also serves NotificationCenter and the
+    // water/medication timers; every entry path honors the rule's saved rhythm.
+    bandSequence: (s) => playBuzzSequence(s,
+        buzz: _bandBuzz,
+        buzzForDuration: _bandBuzzForDuration,
+        isConnected: () => engine.isConnected),
     isConnected: () => engine.isConnected,
     supportedTargetsAtDelivery: () =>
         AlertCapabilityRegistry.targetsForBandFamily(device.generation),
@@ -437,10 +446,10 @@ class AppState extends ChangeNotifier {
 
   /// The engine's single buzz, the one step every band rhythm is made of.
   /// Only ever called from inside an [alertDispatcher] delivery.
-  Future<bool> _bandBuzz() async {
-    await engine.buzz();
-    return true;
-  }
+  Future<bool> _bandBuzz() => engine.buzzConfirmed();
+
+  Future<bool> _bandBuzzForDuration(int holdMs) =>
+      engine.buzzConfirmed(holdMs: holdMs);
 
   /// A rhythm the user just tapped out, played back for them. Still one
   /// dispatcher delivery (own rule, unique event), so it can neither bypass the
@@ -455,7 +464,9 @@ class AppState extends ChangeNotifier {
       historical: false,
       bandTimeout: s.transportTimeout,
       bandTransport: () => playBuzzSequence(s,
-          buzz: _bandBuzz, isConnected: () => engine.isConnected),
+          buzz: _bandBuzz,
+          buzzForDuration: _bandBuzzForDuration,
+          isConnected: () => engine.isConnected),
     );
     return r.targets.contains('band');
   }
@@ -517,7 +528,9 @@ class AppState extends ChangeNotifier {
           // The rule's own rhythm (or its registry default), played as one
           // delivery: the dispatcher's claim covers every step.
           return playBuzzSequence(sequence ?? prefs.buzzSequenceFor(ruleId),
-              buzz: _bandBuzz, isConnected: () => engine.isConnected);
+              buzz: _bandBuzz,
+              buzzForDuration: _bandBuzzForDuration,
+              isConnected: () => engine.isConnected);
         }
         return true;
       },
@@ -528,6 +541,7 @@ class AppState extends ChangeNotifier {
   /// Exposed for the settings UI; buzzes via the live BLE engine when connected.
   late final NotificationRelay notificationRelay = NotificationRelay(
     buzz: () => engine.buzz(),
+    buzzForDuration: _bandBuzzForDuration,
     dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
     worn: () => wearReportOf(engine.state.wristOn),

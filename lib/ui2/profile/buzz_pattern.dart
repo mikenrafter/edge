@@ -9,6 +9,7 @@
 // playback is a preview, not a condition.
 
 import 'package:flutter/material.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
@@ -36,11 +37,15 @@ class BuzzPatternRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext c) {
-    return SetRow(LucideIcons.waves, C.purple, 'Buzz pattern',
-        value: buzzSummary(sequence),
-        chevron: false,
-        enabled: enabled,
-        onTap: onTap);
+    return SetRow(
+      LucideIcons.waves,
+      C.purple,
+      'Buzz pattern',
+      value: buzzSummary(sequence),
+      chevron: false,
+      enabled: enabled,
+      onTap: onTap,
+    );
   }
 }
 
@@ -109,6 +114,12 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
 
   /// null = not played, true/false = the band's answer to the last playback.
   bool? _played;
+  late final Stopwatch _pressClock = clock.stopwatch();
+
+  DateTime _recordTime() {
+    _pressClock.start();
+    return DateTime.fromMillisecondsSinceEpoch(0).add(_pressClock.elapsed);
+  }
 
   @override
   void dispose() {
@@ -144,45 +155,69 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
           if (initial != null && result == null && !_rec.recording)
             Padding(
               padding: const EdgeInsets.only(bottom: S.x3),
-              child: Text('Now: ${buzzSummary(initial)}',
-                  style: F.body.copyWith(color: p.ink)),
+              child: Text(
+                'Now: ${buzzSummary(initial)}',
+                style: F.body.copyWith(color: p.ink),
+              ),
             ),
           Text(
-              'Tap the rhythm you want. It ends after 2 seconds of quiet, or '
-              'at ${BuzzSequence.maxBuzzes} taps.',
-              style: F.cap.copyWith(color: p.ink2)),
+            'Tap or hold the rhythm you want. It ends 2 seconds after release, or '
+            'at ${BuzzSequence.maxBuzzes} taps.',
+            style: F.cap.copyWith(color: p.ink2),
+          ),
           const SizedBox(height: S.x1),
           // The one claim worth making where the user is: playback is a live
           // write from the phone, not something the band stores.
           Text(
-              widget.bandConnected
-                  ? 'Plays back on the band when you stop. The phone must be '
+            widget.bandConnected
+                ? 'Plays back on the band when you stop. The phone must be '
                       'connected to the band for this rhythm to buzz.'
-                  : 'The band is not connected, so there is no playback. The '
+                : 'The band is not connected, so there is no playback. The '
                       'phone must be connected to the band for this rhythm to '
                       'buzz.',
-              style: F.over.copyWith(color: p.ink3)),
+            style: F.over.copyWith(color: p.ink3),
+          ),
+          Text(
+            'On MG, long holds use a repeated waveform, so buzz lengths '
+            'approximate your presses. Long holds are unsupported on 4.0.',
+            style: F.over.copyWith(color: p.ink3),
+          ),
           const SizedBox(height: S.x4),
           if (result == null)
-            BigButton('Tap your pattern',
-                icon: LucideIcons.hand,
-                color: _rec.recording ? C.orange : C.blue,
-                onTap: _rec.tap)
+            BigButton(
+              'Tap your pattern',
+              icon: LucideIcons.hand,
+              color: _rec.recording ? C.orange : C.blue,
+              onTap: () => _rec.tap(at: _recordTime()),
+              onPressStart: () => _rec.pressStart(at: _recordTime()),
+              onPressEnd: () => _rec.pressEnd(at: _recordTime()),
+              onPressCancel: () {
+                _rec.pressCancel(at: _recordTime());
+                if (mounted) setState(() {});
+              },
+            )
           else ...[
             Text(
-                '${buzzSummary(result)} recorded'
-                '${_played == null ? '' : _played! ? '. Played on the band.' : '. The band did not play it.'}',
-                style: F.body.copyWith(color: p.ink)),
+              '${buzzSummary(result)} recorded'
+              '${_played == null
+                  ? ''
+                  : _played!
+                  ? '. Played on the band.'
+                  : '. The band did not play it.'}',
+              style: F.body.copyWith(color: p.ink),
+            ),
             const SizedBox(height: S.x3),
             BigButton('Save', onTap: () => widget.onSave?.call(result)),
             const SizedBox(height: S.x2),
-            BigButton('Record again',
-                soft: true,
-                color: C.blue,
-                onTap: () => setState(() {
-                      _rec.reset();
-                      _played = null;
-                    })),
+            BigButton(
+              'Record again',
+              soft: true,
+              color: C.blue,
+              onTap: () => setState(() {
+                _rec.reset();
+                _played = null;
+              }),
+            ),
           ],
         ],
       ),

@@ -81,7 +81,7 @@ void main() {
       expect(
           () => AlertRule.fromJson({
                 ...base.toJson(),
-                'buzzSequence': [0, 50],
+                'buzzSequence': [0, 0],
               }),
           throwsFormatException);
     });
