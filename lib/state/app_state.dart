@@ -100,6 +100,7 @@ import '../import/whoop_import.dart';
 import '../gestures/gesture_dispatcher.dart';
 import '../gestures/moment_stamp.dart';
 import '../gestures/strap_event.dart';
+import '../gestures/tap_ack.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
 import '../live/live_activity.dart';
@@ -2562,8 +2563,12 @@ class AppState extends ChangeNotifier {
     // still log water.
     _handleAlarmEvent(e.eventId, e.tsEpoch);
     // handle() never throws; the outcomes are logged per action by the
-    // dispatcher, so nothing here needs them.
-    unawaited(_gestureDispatcher.handle(e));
+    // dispatcher. They also decide the acknowledgement buzz, which goes through
+    // alertDispatcher (live-only, short deadline) and never straight to the
+    // engine.
+    unawaited(_gestureDispatcher
+        .handle(e)
+        .then((outcomes) => ackTap(alertDispatcher, e, outcomes)));
   }
 
   /// Why start-up failed, or null if it did not. Drives [AppRoute.failed].
