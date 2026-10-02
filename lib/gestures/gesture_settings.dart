@@ -13,6 +13,26 @@ import '../platform/device_actions.dart';
 import 'device_action.dart';
 import 'ecg_tap_counter.dart';
 
+/// How taps beyond the firmware's double tap are counted. One mapping store
+/// (slot n = n taps, 2..5) serves both; only the way the count is made differs.
+enum TapCountMethod {
+  /// Touches of the ECG sensor after the double tap (WHOOP MG only).
+  ecg('ecg'),
+
+  /// More firmware double taps inside a short window (any band).
+  repeat('repeat');
+
+  const TapCountMethod(this.id);
+  final String id;
+
+  static TapCountMethod? fromId(String? id) {
+    for (final m in values) {
+      if (m.id == id) return m;
+    }
+    return null;
+  }
+}
+
 class GestureSettings extends ChangeNotifier {
   static const _kActions = 'gesture_double_tap_actions';
 
@@ -29,6 +49,20 @@ class GestureSettings extends ChangeNotifier {
   static const _kEcgStartMs = 'gesture_ecg_start_ms';
   static const _kEcgGapMs = 'gesture_ecg_gap_ms';
   static const _kEcgConfirmMs = 'gesture_ecg_confirm_ms';
+  static const _kTapMethod = 'gesture_tap_method';
+  static const _kRepeatWindowMs = 'gesture_repeat_window_ms';
+  static const _kRepeatLab = 'gesture_repeat_lab';
+
+  /// The pause allowed between repeated double taps: 1000..5000 ms in 250 ms
+  /// steps, 2500 ms until changed.
+  static const (int, int) repeatWindowRange = (1000, 5000);
+  static const int repeatWindowStepMs = 250;
+  static const int defaultRepeatWindowMs = 2500;
+
+  static bool isValidRepeatWindow(int v) =>
+      v >= repeatWindowRange.$1 &&
+      v <= repeatWindowRange.$2 &&
+      (v - repeatWindowRange.$1) % repeatWindowStepMs == 0;
 
   static int maskOf(Iterable<DeviceAction> actions) {
     var m = 0;
@@ -52,6 +86,9 @@ class GestureSettings extends ChangeNotifier {
 
   bool _ecgOnDoubleTap = false;
   EcgTapThresholds _ecgThresholds = EcgTapThresholds();
+  TapCountMethod? _tapMethod;
+  int _repeatWindowMs = defaultRepeatWindowMs;
+  bool _repeatLab = false;
 
   /// Explicit user choices only; absence means "follow the default".
   final Map<DeviceAction, bool> _replay = {};
@@ -85,6 +122,27 @@ class GestureSettings extends ChangeNotifier {
   /// 8I: a live double tap starts an ECG capture instead of its actions
   /// (WHOOP MG only; the Device lab owns the switch). Off by default.
   bool get ecgOnDoubleTap => _ecgOnDoubleTap;
+
+  /// The user's explicit choice of counting method; null follows the default.
+  TapCountMethod? get tapMethodChoice => _tapMethod;
+
+  /// The method in force for the connected band: ECG on a WHOOP MG unless the
+  /// user picked double taps; double taps on every band without ECG (whatever
+  /// was stored, since that band cannot count touches).
+  TapCountMethod tapMethodFor({required bool ecgSupported}) =>
+      ecgSupported ? (_tapMethod ?? TapCountMethod.ecg) : TapCountMethod.repeat;
+
+  /// The pause allowed between repeated double taps.
+  int get repeatTapWindowMs => _repeatWindowMs;
+  Duration get repeatTapWindow => Duration(milliseconds: _repeatWindowMs);
+
+  /// The Device lab is trying the repeated-double-tap method: live double taps
+  /// are counted (up to 5) and NO action runs. Exclusive with [ecgOnDoubleTap].
+  bool get repeatTapsLab => _repeatLab;
+
+  /// The most taps the repeated-double-tap window waits for: 5 in the lab,
+  /// otherwise the highest mapped count.
+  int get repeatTapMax => _repeatLab ? 5 : maxMappedTaps;
 
   /// 8L: the three adjustable ECG-touch windows.
   EcgTapThresholds get ecgTapThresholds => _ecgThresholds;
@@ -122,6 +180,13 @@ class GestureSettings extends ChangeNotifier {
       if (v != null) _replay[a] = v;
     }
     _ecgOnDoubleTap = prefs.getBool(_kEcgOnDoubleTap) ?? false;
+    _repeatLab = prefs.getBool(_kRepeatLab) ?? false;
+    if (_ecgOnDoubleTap && _repeatLab) _repeatLab = false; // exclusive
+    _tapMethod = TapCountMethod.fromId(prefs.getString(_kTapMethod));
+    final window = prefs.getInt(_kRepeatWindowMs);
+    _repeatWindowMs = window != null && isValidRepeatWindow(window)
+        ? window
+        : defaultRepeatWindowMs;
     // A stored value that is out of range or off the 50 ms grid falls back to
     // THAT field's default; the other fields keep what was stored.
     int field(String key, int dflt, (int, int) range) {
@@ -191,8 +256,46 @@ class GestureSettings extends ChangeNotifier {
   Future<void> setEcgOnDoubleTap(bool on) async {
     if (_ecgOnDoubleTap == on) return;
     _ecgOnDoubleTap = on;
+    final turnedOffLab = on && _repeatLab;
+    if (turnedOffLab) _repeatLab = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kEcgOnDoubleTap, on);
+    if (turnedOffLab) await prefs.setBool(_kRepeatLab, false);
+    notifyListeners();
+  }
+
+  Future<void> setRepeatTapsLab(bool on) async {
+    if (_repeatLab == on) return;
+    _repeatLab = on;
+    final turnedOffLab = on && _ecgOnDoubleTap;
+    if (turnedOffLab) _ecgOnDoubleTap = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kRepeatLab, on);
+    if (turnedOffLab) await prefs.setBool(_kEcgOnDoubleTap, false);
+    notifyListeners();
+  }
+
+  Future<void> setTapMethod(TapCountMethod m) async {
+    if (_tapMethod == m) return;
+    _tapMethod = m;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kTapMethod, m.id);
+    notifyListeners();
+  }
+
+  /// Rejects a value outside 1000..5000 ms or off the 250 ms grid (never clamps).
+  Future<void> setRepeatTapWindowMs(int ms) async {
+    if (!isValidRepeatWindow(ms)) {
+      throw ArgumentError.value(
+          ms,
+          'ms',
+          'must be ${repeatWindowRange.$1}–${repeatWindowRange.$2} ms in '
+              'steps of $repeatWindowStepMs; rejected, not clamped');
+    }
+    if (_repeatWindowMs == ms) return;
+    _repeatWindowMs = ms;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kRepeatWindowMs, ms);
     notifyListeners();
   }
 

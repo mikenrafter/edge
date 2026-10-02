@@ -248,8 +248,9 @@ void main() {
       expect(r.claims.single, 'gesture:${e.identity}:${DeviceAction.logWater.id}');
     });
 
-    test('a non-MG band: immediate, no session, even with a 4-tap mapping',
-        () async {
+    test('a non-MG band never starts the ECG counter, even with a 4-tap '
+        'mapping (it uses repeated double taps: see '
+        'test/gestures/double_tap_repeat_dispatch_test.dart)', () async {
       final r = _Rig(await _mapped(), mg: false);
       await r.dispatcher.handle(_tap());
       expect(r.counted, isEmpty);
@@ -357,10 +358,11 @@ void main() {
       expect(codeOnly(begin), contains('persist: false'));
     });
 
-    test('gesture haptics await the band command response', () {
+    test('gesture haptics are delivered when the write lands, never gated on '
+        'a reply', () {
       final body = bodyOf(src, 'Future<bool> _ecgTapBuzz(');
       expect(body, isNotEmpty);
-      expect(codeOnly(body), contains('buzzConfirmed('));
+      expect(codeOnly(body), contains('buzzBand('));
     });
 
     test('the live event path still acks only through ackTap', () {

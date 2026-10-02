@@ -178,8 +178,8 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
             style: F.over.copyWith(color: p.ink3),
           ),
           Text(
-            'On MG, long holds use a repeated waveform, so buzz lengths '
-            'approximate your presses. Long holds are unsupported on 4.0.',
+            'On MG, a long press plays the buzz twice, so lengths are close, not '
+            'exact. On 4.0 a long press plays as a short buzz.',
             style: F.over.copyWith(color: p.ink3),
           ),
           const SizedBox(height: S.x4),
@@ -203,7 +203,7 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
                   ? ''
                   : _played!
                   ? '. Played on the band.'
-                  : '. The band did not play it.'}',
+                  : '. The phone could not send it to the band.'}',
               style: F.body.copyWith(color: p.ink),
             ),
             const SizedBox(height: S.x3),

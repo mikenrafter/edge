@@ -3,6 +3,7 @@
 // See test/phase8/CONTRACTS.md §8I.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -12,6 +13,8 @@ import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+
+import 'support/sections.dart' show isDimmed;
 
 const _switchLabel = 'Toggle ECG recording on double tap';
 
@@ -186,6 +189,139 @@ void main() {
           find.textContaining(
               RegExp(r'3–5 tap rows are a draft', caseSensitive: false)),
           findsWidgets);
+    });
+  });
+
+  group('Copy all logs', () {
+    final copied = <String>[];
+
+    void mockClipboard(WidgetTester t) {
+      copied.clear();
+      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied.add((call.arguments as Map)['text'] as String);
+          }
+          return null;
+        },
+      );
+      addTearDown(() => t.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+    }
+
+    final lines = [
+      '09:15:04.460 | tap +1210 ms | last +1200 ms | ECG stream command written.',
+      '09:15:03.260 | tap +10 ms | last +10 ms | Double tap received.',
+    ];
+
+    testWidgets('the button is at the bottom, below every section', (t) async {
+      await _pump(
+          t,
+          DeviceLabView(
+              ecgSupported: true,
+              steps: lines,
+              entries: [DeviceLabEntry.fromEvent(_tap())]));
+      final button = find.byKey(const ValueKey('lab-copy-all'));
+      expect(button, findsOneWidget);
+      expect(find.text('Copy all logs'), findsOneWidget);
+      final y = t.getTopLeft(button).dy;
+      for (final heading in ['Band events', 'Step by step']) {
+        expect(y, greaterThan(t.getTopLeft(find.text(heading)).dy),
+            reason: 'below $heading');
+      }
+      final screen = t.getSize(find.byType(Scaffold)).height;
+      expect(y, greaterThan(screen * 0.8), reason: 'near the bottom edge');
+    });
+
+    testWidgets('it stays reachable when the log is long', (t) async {
+      t.view.physicalSize = const Size(1170, 2400);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: DeviceLabView(
+              ecgSupported: true,
+              steps: [for (var i = 0; i < 200; i++) 'line $i'])));
+      await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('lab-copy-all')).hitTestable(),
+          findsOneWidget);
+    });
+
+    testWidgets('pressing it puts the whole log on the clipboard as text',
+        (t) async {
+      mockClipboard(t);
+      await _pump(
+          t,
+          DeviceLabView(
+            ecgSupported: true,
+            steps: lines,
+            sessions: const [
+              'ECG sensor touches | start 300 ms, gap 200 ms, confirm 200 ms | '
+                  '3 taps | 6.4 s in total'
+            ],
+            entries: [DeviceLabEntry.fromEvent(_tap())],
+          ));
+      await t.tap(find.byKey(const ValueKey('lab-copy-all')));
+      await t.pump();
+      expect(copied, hasLength(1));
+      final text = copied.single;
+      expect(text, contains('OpenStrap Device lab log'));
+      expect(text, contains('3 taps | 6.4 s in total'));
+      expect(text, contains('Double tap received.'));
+      expect(text, contains('ECG stream command written.'));
+      expect(text, contains('Event 14 | Live'));
+      // Oldest first.
+      expect(text.indexOf('Double tap received.'),
+          lessThan(text.indexOf('ECG stream command written.')));
+    });
+
+    testWidgets('and says it copied', (t) async {
+      mockClipboard(t);
+      await _pump(t, const DeviceLabView(ecgSupported: false));
+      await t.tap(find.byKey(const ValueKey('lab-copy-all')));
+      await t.pump();
+      expect(find.text('Log copied'), findsOneWidget);
+      expect(copied.single, contains('No log lines yet'));
+    });
+  });
+
+  group('the double-tap method in the lab', () {
+    testWidgets('a "Try repeated double taps" switch works on any band',
+        (t) async {
+      final values = <bool>[];
+      await _pump(
+          t,
+          DeviceLabView(
+              ecgSupported: false, onRepeatLab: values.add, repeatLab: false));
+      expect(find.text('Try repeated double taps'), findsOneWidget);
+      expect(isDimmed(t, find.text('Try repeated double taps')), isFalse);
+      await t.tap(find.byType(Switch).last);
+      expect(values, [true]);
+    });
+
+    testWidgets('the pause between double taps adjusts in 250 ms steps',
+        (t) async {
+      final values = <int>[];
+      await _pump(
+          t,
+          DeviceLabView(
+              ecgSupported: false,
+              repeatWindowMs: 2500,
+              onRepeatWindowMs: values.add));
+      expect(find.text('2500 ms'), findsOneWidget);
+      await t.tap(find.byKey(const ValueKey('repeat-window:+')));
+      await t.tap(find.byKey(const ValueKey('repeat-window:-')));
+      expect(values, [2750, 2250]);
+    });
+
+    testWidgets('session summaries are shown', (t) async {
+      await _pump(
+          t,
+          const DeviceLabView(ecgSupported: true, sessions: [
+            'More double taps | window 2500 ms | 3 taps | 4.1 s in total'
+          ]));
+      expect(find.textContaining('window 2500 ms | 3 taps'), findsOneWidget);
     });
   });
 

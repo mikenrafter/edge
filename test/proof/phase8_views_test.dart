@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/state/live_stream_buffer.dart';
 import 'package:openstrap_edge/ui2/profile/buzz_pattern.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
@@ -111,7 +112,32 @@ void main() {
     ),
     'device_lab_mg': (
       2000,
-      DeviceLabView(ecgSupported: true, ecgOnDoubleTap: true, onEcgOnDoubleTap: (_) {}),
+      DeviceLabView(
+        ecgSupported: true,
+        ecgOnDoubleTap: true,
+        onEcgOnDoubleTap: (_) {},
+        repeatWindowMs: 2500,
+        onRepeatWindowMs: (_) {},
+        sessions: const [
+          'ECG sensor touches | start 300 ms, gap 200 ms, confirm 200 ms | '
+              '3 taps | 6.4 s in total',
+        ],
+        steps: const [
+          '09:15:09.650 | tap +6400 ms | last +40 ms | Session ended: ECG '
+              'sensor touches | start 300 ms, gap 200 ms, confirm 200 ms | 3 '
+              'taps | 6.4 s in total',
+          '09:15:09.610 | tap +6360 ms | last +900 ms | Final count 3 at sample '
+              'time 1002600 ms.',
+          '09:15:04.690 | tap +1440 ms | last +30 ms | Acknowledgement '
+              'written, 1440 ms after the tap (260 ms after the request).',
+          '09:15:04.660 | tap +1410 ms | last +10 ms | Stream is steady, 1180 '
+              'ms after the tap (two packets within 1500 ms of each other).',
+          '09:15:03.480 | tap +230 ms | last +30 ms | Packet 1: 100 samples, 0 '
+              'with contact, strap time 1787823784.000, first packet',
+          '09:15:03.250 | tap +0 ms | last +0 ms | Double tap received. '
+              'Starting the ECG stream.',
+        ],
+      ),
       null,
     ),
     'device_lab_no_ecg': (
@@ -133,6 +159,23 @@ void main() {
         chosen: {DeviceAction.markMoment},
         supported: {DeviceAction.none, DeviceAction.markMoment, DeviceAction.torch},
         ecgSupported: false,
+      ),
+      null,
+    ),
+    'gestures_tap_method_mg': (
+      3000,
+      BandGesturesView(
+        chosen: const {DeviceAction.markMoment},
+        supported: const {
+          DeviceAction.none,
+          DeviceAction.markMoment,
+          DeviceAction.torch,
+        },
+        ecgSupported: true,
+        tapMethod: TapCountMethod.repeat,
+        repeatWindowMs: 2500,
+        onRepeatWindowMs: (_) {},
+        onTapMethod: (_) {},
       ),
       null,
     ),

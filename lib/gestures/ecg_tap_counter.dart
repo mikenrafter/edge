@@ -69,6 +69,10 @@ class EcgTapThresholds {
         confirmMs: confirmMs ?? this.confirmMs,
       );
 
+  /// One plain line for the Device lab: "start 300 ms, gap 200 ms, confirm 200 ms".
+  String get summary =>
+      'start $startMs ms, gap $gapMs ms, confirm $confirmMs ms';
+
   @override
   bool operator ==(Object other) =>
       other is EcgTapThresholds &&

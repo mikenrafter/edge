@@ -103,6 +103,7 @@ import '../health/health_export.dart';
 import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
+import '../gestures/double_tap_repeat.dart';
 import '../gestures/ecg_tap_session.dart';
 import '../gestures/gesture_dispatcher.dart';
 import '../gestures/lab_log.dart';
@@ -307,7 +308,30 @@ class AppState extends ChangeNotifier {
         ecgSupported: () => engine.isMaverick,
         onEcgTap: _ecgTapSession.start,
         onCountTaps: _countTaps,
+        repeatSession: _repeatTapSession,
       );
+
+  void _labBuzzDiagnostic(String line) {
+    if (deviceLab.tracingAt(DateTime.now())) deviceLab.addStep(line);
+  }
+
+  /// The slower multi-tap method: more firmware double taps inside a window.
+  /// Needs no ECG, so any band can use it.
+  late final DoubleTapRepeatSession _repeatTapSession = DoubleTapRepeatSession(
+    maxTaps: () => gestureSettings.repeatTapMax,
+    window: () => gestureSettings.repeatTapWindow,
+    buzz: (id) => _ecgTapBuzz(1, id),
+    step: deviceLab.addStep,
+    onStarted: (tap, settings) => deviceLab.beginSession(
+        method: 'More double taps', settings: settings, tapAt: tap.receivedAt),
+    onFinished: (count) {
+      deviceLab.endSession(count: count);
+      if (gestureSettings.repeatTapsLab) {
+        deviceLab.addStep('Result: $count taps. This is a draft; no action '
+            'was run.');
+      }
+    },
+  );
 
   /// 8L: counts ECG-sensor touches after a live double tap. Built lazily so
   /// [AppState.forTesting] pays nothing for it.
@@ -322,11 +346,14 @@ class AppState extends ChangeNotifier {
     buzz: _ecgTapBuzz,
     maxTaps: () => gestureSettings.ecgTapMax,
     thresholds: () => gestureSettings.ecgTapThresholds,
+    onStarted: (tap, settings) => deviceLab.beginSession(
+        method: 'ECG sensor touches', settings: settings, tapAt: tap.receivedAt),
     onFinished: (count, reason) {
       final lab = gestureSettings.ecgOnDoubleTap;
       deviceLab.addStep(count != null
           ? 'Result: $count taps.${lab ? ' This is a draft; no action was run.' : ''}'
           : 'Result: abandoned ($reason). No action was run.');
+      deviceLab.endSession(count: count, reason: reason);
       final waiting = _tapCount;
       _tapCount = null;
       if (waiting != null && !waiting.isCompleted) waiting.complete(count);
@@ -399,10 +426,8 @@ class AppState extends ChangeNotifier {
       eventId: eventId,
       sourceTime: now,
       historical: false,
-      // Two acknowledgement pulses can each wait five seconds for a reply.
-      bandTimeout: const Duration(seconds: 12),
       bandTransport: () => playBuzzSequence(seq,
-          buzz: () => engine.buzzConfirmed(),
+          buzz: () => engine.buzzBand(),
           isConnected: () => engine.isConnected),
     );
     return r.targets.contains('band');
@@ -447,10 +472,10 @@ class AppState extends ChangeNotifier {
 
   /// The engine's single buzz, the one step every band rhythm is made of.
   /// Only ever called from inside an [alertDispatcher] delivery.
-  Future<bool> _bandBuzz() => engine.buzzConfirmed();
+  Future<bool> _bandBuzz() => engine.buzzBand();
 
   Future<bool> _bandBuzzForDuration(int holdMs) =>
-      engine.buzzConfirmed(holdMs: holdMs);
+      engine.buzzBand(holdMs: holdMs);
 
   /// A rhythm the user just tapped out, played back for them. Still one
   /// dispatcher delivery (own rule, unique event), so it can neither bypass the
@@ -1742,6 +1767,9 @@ class AppState extends ChangeNotifier {
     // connection interval would run at the fast one until the user next
     // foregrounded the app.
     engine.setBackground(_background);
+    // A band's reply to a buzz is only ever logged; the Device lab shows it
+    // while a counting session is (or just was) running.
+    engine.onBuzzDiagnostic = _labBuzzDiagnostic;
     // Same reasoning for the derive pacing budget: it defaults to foreground and
     // otherwise only flips on a transition, so a headless start paced its very
     // first sweep as if the app were on screen.

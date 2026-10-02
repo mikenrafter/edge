@@ -30,6 +30,17 @@
 // key). An abandoned count runs nothing; its outcomes carry `taps`, which keeps
 // the 8H tap-ack quiet (the counter's own buzzes are the acknowledgement).
 //
+// Two ways to count the taps beyond the firmware's double tap, chosen per band
+// (GestureSettings.tapMethodFor): ECG sensor touches (above; WHOOP MG only) or
+// MORE DOUBLE TAPS, which any band can do. The second opens a window at the
+// first live double tap; each further live double tap inside it adds one,
+// buzzes once and restarts the window; when it runs out the actions mapped to
+// the count run. The first [handle] call waits for that and returns the
+// outcomes; the later calls return nothing at once. A single double tap is only
+// delayed when some 3-5 slot is actually mapped (otherwise it runs at once, as
+// always). Late taps never count. In the Device lab (repeatTapsLab) the same
+// window runs with the max at 5 and NO action runs.
+//
 // One action failing never stops the next, and nothing escapes as an unhandled
 // async error: [handle] always completes with a list of outcomes.
 //
@@ -41,6 +52,7 @@
 // drops them after 90 days.
 
 import 'device_action.dart';
+import 'double_tap_repeat.dart';
 import 'gesture_settings.dart';
 import 'strap_event.dart';
 import '../data/db.dart';
@@ -96,6 +108,10 @@ class GestureDispatcher {
   /// given back and the double-tap actions run at once, as without counting.
   final Future<int?> Function(StrapEvent)? onCountTaps;
 
+  /// The repeated-double-tap window (the method that needs no ECG). Null: the
+  /// method is unavailable and a double tap always runs at once.
+  final DoubleTapRepeatSession? repeatSession;
+
   final Future<bool> Function(String actionId) _performNative;
   final Future<bool> Function(String key) _claim;
   final Future<void> Function(String key) _release;
@@ -109,6 +125,7 @@ class GestureDispatcher {
     this.ecgSupported,
     this.onEcgTap,
     this.onCountTaps,
+    this.repeatSession,
     Future<bool> Function(String actionId)? performNative,
     Future<bool> Function(String key)? claim,
     Future<void> Function(String key)? release,
@@ -133,15 +150,27 @@ class GestureDispatcher {
       if (e.isLive) await _ecgTap(e);
       return const [];
     }
-    // 8L: on a WHOOP MG with a 3-5 tap mapping, a live double tap is counted
-    // and its actions wait for the final count. A late tap is never counted
-    // (the touch would be for a tap from the past) and runs as before.
-    if (onCountTaps != null &&
-        e.isLive &&
-        ecgSupported?.call() == true &&
-        settings.maxMappedTaps > 2) {
-      return _countedTap(e);
+    // The Device lab's other bench: count repeated double taps, run nothing.
+    final repeat = repeatSession;
+    if (settings.repeatTapsLab && repeat != null) {
+      if (e.isLive) await _repeatTap(e, repeat, lab: true);
+      return const [];
     }
+    final mg = ecgSupported?.call() == true;
+    final method = settings.tapMethodFor(ecgSupported: mg);
+    // 8L: with a 3-5 tap mapping, a live double tap is counted and its actions
+    // wait for the final count. A late tap is never counted (the touch would be
+    // for a tap from the past) and runs as before.
+    if (e.isLive && settings.maxMappedTaps > 2) {
+      if (method == TapCountMethod.ecg && onCountTaps != null && mg) {
+        return _countedTap(e);
+      }
+      if (method == TapCountMethod.repeat && repeat != null) {
+        return _repeatTap(e, repeat);
+      }
+    }
+    // A late tap while a window is open is still not counted: it takes the
+    // ordinary path (stale rules) below.
     return _runActions(e, settings.doubleTapActions);
   }
 
@@ -157,8 +186,8 @@ class GestureDispatcher {
   /// Take the once-ever claim (or the receipt debounce) for the ECG session of
   /// this tap, under `...:ecg`. Null: skip, this tap already has one.
   Future<({String? claimKey, String debounceKey})?> _takeEcgTap(
-      StrapEvent e) async {
-    final debounceKey = '${e.identity}:ecg';
+      StrapEvent e, [String kind = 'ecg']) async {
+    final debounceKey = '${e.identity}:$kind';
     String? claimKey;
     if (e.plausible) {
       claimKey = 'gesture:$debounceKey';
@@ -230,6 +259,42 @@ class GestureDispatcher {
     }
     log?.call('[gesture] counted $count taps');
     return _runActions(e, settings.actionsForTaps(count), taps: count);
+  }
+
+  /// The repeated-double-tap method. A later tap inside an open window only
+  /// adds to it and returns nothing; the tap that opened the window waits for
+  /// the final count and runs its actions (none in the lab). The opening tap
+  /// takes the same once-ever claim / receipt debounce as the ECG route, under
+  /// `...:rep`, so a re-send cannot open a second window.
+  Future<List<GestureOutcome>> _repeatTap(
+      StrapEvent e, DoubleTapRepeatSession session,
+      {bool lab = false}) async {
+    if (session.open) {
+      session.add(e);
+      return const [];
+    }
+    final taken = await _takeEcgTap(e, 'rep');
+    if (taken == null) return const [];
+    if (session.open) {
+      // Another tap opened the window while this one took its claim.
+      session.add(e);
+      return const [];
+    }
+    log?.call('[gesture] double-tap → counting double taps');
+    final int count;
+    try {
+      count = await session.begin(e);
+    } catch (err) {
+      log?.call('[gesture] double-tap window did not open: $err');
+      await _giveBackEcgTap(taken);
+      return lab ? const [] : _runActions(e, settings.doubleTapActions);
+    }
+    log?.call('[gesture] counted $count double taps');
+    if (lab) return const [];
+    // A count of 2 is the plain double tap: unmarked, so the 8H ack still
+    // applies. 3+ already buzzed once per added tap.
+    return _runActions(e, settings.actionsForTaps(count),
+        taps: count > 2 ? count : null);
   }
 
   Future<GestureOutcome> _handleOne(StrapEvent e, DeviceAction a,

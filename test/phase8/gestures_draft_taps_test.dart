@@ -131,17 +131,17 @@ void main() {
       }
     });
 
-    testWidgets('not a WHOOP MG: 3–5 shown disabled with the reason',
-        (t) async {
+    testWidgets('not a WHOOP MG: the rows count double taps and are enabled; '
+        'only the ECG option is disabled, with the reason', (t) async {
       await pumpTall(
           t,
           const BandGesturesView(
               chosen: {}, supported: _supported, ecgSupported: false));
-      for (final n in [3, 4, 5]) {
-        expect(find.text('$n taps'), findsOneWidget);
-        expect(isDimmed(t, find.text('$n taps')), isTrue, reason: '$n taps');
+      for (final label in ['2 double taps', '3 double taps', '4 double taps']) {
+        expect(find.text(label), findsOneWidget);
+        expect(isDimmed(t, find.text(label)), isFalse, reason: label);
       }
-      expect(isDimmed(t, find.text('2 taps')), isFalse);
+      expect(isDimmed(t, find.text('ECG sensor touches')), isTrue);
       expect(find.text('This band has no ECG sensor'), findsWidgets);
     });
   });

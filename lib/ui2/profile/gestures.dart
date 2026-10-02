@@ -18,10 +18,12 @@
 // off IS the off state, and the copy says so.
 
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../gestures/device_action.dart';
 import '../../gestures/ecg_tap_counter.dart';
+import '../../gestures/gesture_settings.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
@@ -45,9 +47,15 @@ class BandGestures extends StatelessWidget {
         onToggle: g.toggleDoubleTapAction,
         replay: g.replayActions,
         onReplay: g.setReplayHistorical,
-        // The row for 2 taps is the switches above; 3–5 are the draft ECG-touch
-        // counts, only meaningful on a WHOOP MG.
+        // The row for 2 taps is the switches above; 3–5 are the draft extra-tap
+        // counts. How they are counted is the band's choice: ECG touches on a
+        // WHOOP MG, more double taps on any band.
         ecgSupported: c.read<AppState>().pairedIsMaverick,
+        tapMethod: g.tapMethodFor(
+            ecgSupported: c.read<AppState>().pairedIsMaverick),
+        onTapMethod: g.setTapMethod,
+        repeatWindowMs: g.repeatTapWindowMs,
+        onRepeatWindowMs: g.setRepeatTapWindowMs,
         tapActions: {for (var n = 3; n <= 5; n++) n: g.actionsForTaps(n)},
         onTapToggle: (n, a, on) {
           final cur = g.actionsForTaps(n);
@@ -79,6 +87,17 @@ class BandGesturesView extends StatelessWidget {
   /// A WHOOP MG: the only band whose ECG sensor can be touched to count taps.
   final bool ecgSupported;
 
+  /// How extra taps are counted for this band. Null follows the default (ECG on
+  /// a WHOOP MG, double taps elsewhere); a band without ECG always counts
+  /// double taps.
+  final TapCountMethod? tapMethod;
+  final ValueChanged<TapCountMethod>? onTapMethod;
+
+  /// The pause between repeated double taps; the adjuster shows only when
+  /// [onRepeatWindowMs] is given.
+  final int? repeatWindowMs;
+  final ValueChanged<int>? onRepeatWindowMs;
+
   /// Actions mapped to 3, 4 and 5 taps (8L draft). 2 taps is [chosen].
   final Map<int, Set<DeviceAction>> tapActions;
 
@@ -97,6 +116,10 @@ class BandGesturesView extends StatelessWidget {
     this.replay = const {},
     this.onReplay,
     this.ecgSupported = false,
+    this.tapMethod,
+    this.onTapMethod,
+    this.repeatWindowMs,
+    this.onRepeatWindowMs,
     this.tapActions = const {},
     this.onTapToggle,
     this.thresholds,
@@ -114,6 +137,9 @@ class BandGesturesView extends StatelessWidget {
       ...DeviceAction.values.where((a) => a.isNative && supported.contains(a)),
     ];
     final noPhoneActions = !offered.any((a) => a.isNative);
+    final method =
+        ecgSupported ? (tapMethod ?? TapCountMethod.ecg) : TapCountMethod.repeat;
+    final ecg = method == TapCountMethod.ecg;
 
     return Scaffold(
       backgroundColor: p.bg,
@@ -168,27 +194,65 @@ class BandGesturesView extends StatelessWidget {
                       ),
                   ],
                 ]),
-                // 2 taps is the switches above; there is no 1-tap row. 3–5 are
-                // a DRAFT: touches of the ECG sensor after the double tap.
+                // How taps beyond the double tap are counted. ECG is dimmed and
+                // inert (never hidden) on a band without the sensor.
+                SettingsAccordion('Count extra taps with', children: [
+                  _MethodRow(
+                    id: 'ecg',
+                    title: 'ECG sensor touches',
+                    sub: 'Touch the ECG sensor on the band after the double '
+                        'tap. WHOOP MG only.',
+                    selected: ecg,
+                    enabled: ecgSupported,
+                    onTap: () => onTapMethod?.call(TapCountMethod.ecg),
+                  ),
+                  _MethodRow(
+                    id: 'repeat',
+                    title: 'More double taps',
+                    sub: 'Double tap again before the pause ends. Works on '
+                        'every band.',
+                    selected: !ecg,
+                    enabled: true,
+                    onTap: () => onTapMethod?.call(TapCountMethod.repeat),
+                  ),
+                ]),
+                // 2 taps is the switches above; there is no 1-tap row. The
+                // rest are a DRAFT: touches of the ECG sensor after the double
+                // tap, or more double taps in a row. One mapping serves both:
+                // the slot for 3 taps is the slot for 2 double taps.
                 SettingsAccordion('Tap counts', children: [
                   _TapCountRow(
-                    taps: 2,
+                    title: ecg ? '2 taps' : 'Double tap',
                     summary: _summary(chosen),
                     sub: 'The actions above',
                   ),
                   for (final n in const [3, 4, 5])
                     _TapCountRow(
-                      taps: n,
+                      title: ecg ? '$n taps' : '${n - 1} double taps',
                       draft: true,
-                      enabled: ecgSupported,
+                      enabled: !ecg || ecgSupported,
                       summary: _summary(tapActions[n] ?? const {}),
-                      sub: 'Touch the ECG sensor after the double tap',
-                      onTap: ecgSupported && onTapToggle != null
+                      sub: ecg
+                          ? 'Touch the ECG sensor after the double tap'
+                          : 'Double tap again before the pause ends',
+                      onTap: (!ecg || ecgSupported) && onTapToggle != null
                           ? () => _pickActions(
-                              c, n, offered, tapActions[n] ?? const {})
+                              c,
+                              n,
+                              ecg ? '$n taps' : '${n - 1} double taps',
+                              offered,
+                              tapActions[n] ?? const {})
                           : null,
                     ),
                 ]),
+                if (onRepeatWindowMs != null)
+                  SettingsAccordion('Pause between double taps', children: [
+                    RepeatWindowAdjuster(
+                      windowMs: repeatWindowMs ??
+                          GestureSettings.defaultRepeatWindowMs,
+                      onChanged: onRepeatWindowMs,
+                    ),
+                  ]),
                 Section(
                   'What needs a WHOOP MG',
                   Surface(
@@ -231,7 +295,7 @@ class BandGesturesView extends StatelessWidget {
 
   /// A sheet of the offered actions as check boxes for one tap count. Keeps its
   /// own copy of the set so a tick shows at once; [onTapToggle] persists it.
-  Future<void> _pickActions(BuildContext c, int taps,
+  Future<void> _pickActions(BuildContext c, int taps, String label,
       List<DeviceAction> offered, Set<DeviceAction> current) {
     final p = P.of(c);
     return showModalBottomSheet<void>(
@@ -248,7 +312,7 @@ class BandGesturesView extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(S.x5, 0, S.x5, S.x2),
-                  child: Text('$taps taps does',
+                  child: Text('$label does',
                       style: F.head.copyWith(color: p.ink)),
                 ),
                 for (final a in offered)
@@ -271,11 +335,59 @@ class BandGesturesView extends StatelessWidget {
   }
 }
 
+/// One choice in "Count extra taps with". Deliberately not a [SwitchRow]: it is
+/// one of two, and a disabled choice stays visible and dimmed with its reason.
+class _MethodRow extends StatelessWidget {
+  const _MethodRow({
+    required this.id,
+    required this.title,
+    required this.sub,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final String id, title, sub;
+  final bool selected, enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final row = Pressable(
+      key: ValueKey('tap-method:$id'),
+      onTap: enabled ? onTap : null,
+      semanticLabel: '$title. $sub',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: S.x3),
+        child: Row(children: [
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: F.body.copyWith(color: p.ink)),
+              Text(sub, style: F.over.copyWith(color: p.ink3)),
+              if (!enabled)
+                Text('This band has no ECG sensor',
+                    style: F.over.copyWith(color: p.ink3)),
+            ]),
+          ),
+          const SizedBox(width: S.x2),
+          if (selected)
+            Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
+          else
+            const SizedBox(width: 18),
+        ]),
+      ),
+    );
+    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
+  }
+}
+
 /// One row of the tap-count list. Deliberately not a [SwitchRow]: it opens a
 /// picker, and a disabled draft row stays visible and dimmed with its reason.
 class _TapCountRow extends StatelessWidget {
   const _TapCountRow({
-    required this.taps,
+    required this.title,
     required this.summary,
     required this.sub,
     this.draft = false,
@@ -283,9 +395,8 @@ class _TapCountRow extends StatelessWidget {
     this.onTap,
   });
 
-  final int taps;
   final bool draft, enabled;
-  final String summary, sub;
+  final String title, summary, sub;
   final VoidCallback? onTap;
 
   @override
@@ -293,7 +404,7 @@ class _TapCountRow extends StatelessWidget {
     final p = P.of(c);
     final row = Pressable(
       onTap: enabled ? onTap : null,
-      semanticLabel: '$taps taps. $sub',
+      semanticLabel: '$title. $sub',
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: S.x3),
         child: Row(children: [
@@ -302,7 +413,7 @@ class _TapCountRow extends StatelessWidget {
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 Flexible(
-                  child: Text('$taps taps', style: F.body.copyWith(color: p.ink)),
+                  child: Text(title, style: F.body.copyWith(color: p.ink)),
                 ),
                 if (draft) ...[
                   const SizedBox(width: S.x2),
