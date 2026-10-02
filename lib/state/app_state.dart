@@ -85,6 +85,7 @@ import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
 import '../data/series_codec.dart';
 import '../notify/battery_forecast.dart';
+import '../notify/buzz_sequence.dart';
 import '../notify/med_buzzer.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -349,7 +350,16 @@ class AppState extends ChangeNotifier {
         } else if (pattern != null) {
           await engine.buzzPattern(pattern);
         } else {
-          await engine.buzz();
+          // The rule's own rhythm (or its registry default), played as one
+          // delivery: the dispatcher's claim covers every step.
+          return playBuzzSequence(
+            prefs.buzzSequenceFor(ruleId),
+            buzz: () async {
+              await engine.buzz();
+              return true;
+            },
+            isConnected: () => engine.isConnected,
+          );
         }
         return true;
       },
