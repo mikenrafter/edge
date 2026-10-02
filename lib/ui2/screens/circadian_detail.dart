@@ -150,7 +150,11 @@ class CircadianData {
           continue;
         }
         final n = await repo.getDaySleepV2(day);
-        cols.add(_column(n['onset_ts'] as num?, n['wake_ts'] as num?));
+        // A window with no total sleep time is a night NOT RECORDED (8E): the
+        // user's asserted times are not a measured asleep stretch to draw.
+        cols.add(n['duration_min'] == null
+            ? null
+            : _column(n['onset_ts'] as num?, n['wake_ts'] as num?));
         if (n['wake_ts'] is num) latestNight = n;
       }
     }

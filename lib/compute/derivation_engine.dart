@@ -1721,7 +1721,16 @@ import 'substrate.dart';
 // PR #75's merge SHA).
 // v98: Manual sleep candidate loading unions the asserted interval with the
 // automatic search range, retaining daytime and atypical cross-midnight input.
-const int kAlgoVersion = 98;
+// v99 (8E, sleep window without data): a window the user set over a stretch
+// the band did not record (`tst_min` null) is a night NOT RECORDED. The
+// cross-day rollup no longer counts it in social jetlag / chronotype (n and
+// free-day mid-sleep), sleep debt, or the bedtime/wake guidance; sleep
+// performance reads the LAST night only (it used to reach back to an earlier
+// night's sleep time via `_lastNum` and score that); `midsleep_sec` /
+// `sleep_onset_sec` are no longer published for such a night; and the
+// habitual-midsleep prior is fed only nights that have a total sleep time.
+// Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
+const int kAlgoVersion = 99;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -3424,9 +3433,18 @@ class DerivationEngine {
   _storedSleepHistory({int days = 60, String? excludeDay}) async {
     final out = <({int startSec, int endSec, String dayKey})>[];
     try {
+      // 8E — a window the user asserted over a stretch with no samples is a
+      // night NOT RECORDED: it has a window but no total sleep time. Keep only
+      // nights that have one, or the habitual-midsleep prior is fed a time
+      // nobody slept at. (`metric_series` stores a null as NULL and
+      // `metricSeries` filters those out.)
+      final recorded = {
+        for (final r in await LocalDb.metricSeries('tst_min')) r['date'],
+      };
       for (final r in await LocalDb.sleepWindowRows(days)) {
         final dayKey = r['day_id'] as String?;
         if (dayKey == null || dayKey.isEmpty || dayKey == excludeDay) continue;
+        if (!recorded.contains(dayKey)) continue;
         final raw = r['window_json'];
         if (raw is! String || raw.isEmpty) continue;
         final decoded = jsonDecode(raw);
