@@ -174,6 +174,7 @@ class EcgController extends ChangeNotifier {
   bool _restartInFlight = false;
   bool _cleanupDone = false;
   bool _screenHeld = false;
+  bool _persist = true;
   int _retriesUsed = 0;
   int? _windowStartMs;
   EcgReducerState _reducer = const EcgReducerState.initial();
@@ -195,9 +196,15 @@ class EcgController extends ChangeNotifier {
   /// Start a reading on [wrist]. Every precondition failure lands in a
   /// terminal phase with a reason; nothing is written to the band before
   /// the durable guard is acknowledged.
-  Future<void> begin(EcgWrist wrist) async {
+  ///
+  /// [persist] false is for a consumer that only reads the live stream (the
+  /// tap-counting gesture): whatever terminal the band reaches, nothing is
+  /// saved, no sync is requested and the capture ends `cancelled`/`gesture`.
+  /// It is set per begin, so it can never outlive the capture it was for.
+  Future<void> begin(EcgWrist wrist, {bool persist = true}) async {
     if (_lease != null) return; // single-flight
     final epoch = ++_epoch;
+    _persist = persist;
     live.clear();
     preview.markDirty();
     if (!transport.isReady) {
@@ -448,6 +455,10 @@ class EcgController extends ChangeNotifier {
   Future<void> _handleTerminal(int epoch, EcgTerminalOutcome outcome) async {
     _armed = false;
     _timer?.cancel();
+    if (!_persist) {
+      await _finish(epoch, EcgCapturePhase.cancelled, reason: 'gesture');
+      return;
+    }
     switch (outcome.kind) {
       case EcgTerminalKind.unreadable:
         await _finish(

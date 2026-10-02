@@ -27,9 +27,14 @@ const AlertRule kGestureAckRule = AlertRule(
 );
 
 /// True iff [e] is a live double tap and at least one of its actions ran.
+///
+/// Not for a COUNTED tap (8L, `GestureOutcome.taps` set): the touch counter has
+/// already buzzed twice to acknowledge the tap and once per count, so a further
+/// buzz when its actions run would double up.
 bool shouldAckTap(StrapEvent e, List<GestureOutcome> outcomes) =>
     e.eventId == 14 &&
     e.isLive &&
+    outcomes.every((o) => o.taps == null) &&
     outcomes.any((o) => o.status == GestureStatus.ran);
 
 /// Buzz the band once for this tap, through [d]'s default band transport.

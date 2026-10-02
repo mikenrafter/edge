@@ -604,6 +604,76 @@ void main() {
     });
   });
 
+  // 8L: a tap-counting gesture reads the live stream through the same
+  // controller, and a long touch can make it reach a normal terminal. It must
+  // never leave a reading behind (invariant 14).
+  group('persist: false (the tap-counting gesture)', () {
+    Future<void> terminalWith(Rig r, int result) async {
+      await r.c.begin(EcgWrist.right, persist: false);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(terminal(seq: 2, result: result));
+      await r.settle();
+      await r.settle();
+    }
+
+    for (final (name, result) in [('completed', 1), ('inconclusive', 6)]) {
+      test('a $name terminal saves nothing, cleans up once and asks for no '
+          'sync', () async {
+        final r = Rig();
+        await terminalWith(r, result);
+        expect(r.saved, isEmpty);
+        expect(r.c.state.phase, EcgCapturePhase.cancelled);
+        expect(r.c.state.reason, 'gesture');
+        expect(r.phases, isNot(contains(EcgCapturePhase.saving)));
+        expect(r.phases, isNot(contains(EcgCapturePhase.completed)));
+        expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+        expect(r.t.syncRequests, 0);
+        expect(r.c.isCapturing, isFalse);
+        expect(r.guard.active, isEmpty);
+        expect(r.screen, ['hold:ecg', 'release:ecg']);
+      });
+    }
+
+    test('an unreadable terminal leaves no retry offer to start a reading',
+        () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right, persist: false);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(terminal(seq: 2, result: 0, unreadable: 0x03));
+      await r.settle();
+      await r.settle();
+      expect(r.saved, isEmpty);
+      expect(r.c.state.phase, EcgCapturePhase.cancelled);
+      await r.c.retry();
+      expect(r.t.calls.where((c) => c == 'prepare:right'), hasLength(1));
+    });
+
+    test('the next ordinary begin persists again (no sticky flag)', () async {
+      final r = Rig();
+      await terminalWith(r, 1);
+      await r.c.begin(EcgWrist.right);
+      r.t.emitFrame(frame(seq: 3, progress: 3));
+      r.t.emitFrame(terminal(seq: 4));
+      await r.settle();
+      await r.settle();
+      expect(r.saved, hasLength(1));
+      expect(r.c.state.phase, EcgCapturePhase.completed);
+    });
+
+    test('a cancelled gesture does not leak the flag into the next begin',
+        () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right, persist: false);
+      await r.c.cancel();
+      await r.c.begin(EcgWrist.right);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(terminal(seq: 2));
+      await r.settle();
+      await r.settle();
+      expect(r.saved, hasLength(1));
+    });
+  });
+
   group('single flight', () {
     test('a second begin while capturing is ignored', () async {
       final r = Rig();
