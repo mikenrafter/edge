@@ -708,6 +708,53 @@ saved schedule restored; Natural/Gradual edits never call `setAlarm`;
 leaving with a dirty draft shows the dialog and each choice does what it
 says; offline save persists and reports the pending band update.
 
+### 8P — Buzzes count when written; ECG taps wait for a steady stream (2026-10-02)
+
+User report from a WHOOP MG: buzz previews said the band did not play them and
+ECG tap sessions never counted. Cause: a buzz counted only on a correlated
+SUCCESS reply that the band does not send for haptic writes.
+
+- A buzz is delivered when its GATT write lands. The band's reply, if any, is
+  logged, never required. Held presses: MG plays a hold of 500 ms or more as a
+  repeated waveform; WHOOP 4.0 plays it as one short pulse.
+- Delivery is complete / rejected / partial / unknown. Only "rejected" (nothing
+  could have reached the band) releases the dispatcher's claim, so a stalled
+  write can never turn into a second buzz.
+- ECG taps: the two-pulse acknowledgement waits until packets are contiguous on
+  the sample clock and advance with the wall clock (up to 20 s). The touch
+  window opens at the acknowledgement mapped through the least-delayed recent
+  packet. A sample gap never counts as contact or release.
+- A start that completes after its session gave up stops only the stream it
+  started. The stream stops before the gesture interval is written (8N).
+
+### 8Q — Repeated double taps (every band)
+
+A slower multi-tap that needs no ECG: each further live double tap inside the
+pause (default 2500 ms, 1000–5000 in 250 ms steps) adds one and buzzes once.
+Grouped by band time when the strap clock is believable. Every member tap is
+claimed once. "Count extra taps with": ECG sensor touches (WHOOP MG only;
+dimmed elsewhere) or More double taps. Both share one mapping store.
+
+### 8R — Device lab log
+
+Each line carries wall time (ms), time since the tap and since the previous
+line, plus a session summary. Every ECG packet is logged with its continuity
+and lag. "Copy all logs" sits at the bottom. RAM only.
+
+### 8S — A corrected night is blank
+
+"Not sleep" or a window the user sets leaves that night with no sleep numbers,
+and it is excluded from every score and baseline from then on (readiness,
+sleep need, trends, the sleep profile). The window itself stays shown. One
+"Recalculate this night" control, inside the window card. kAlgoVersion 100.
+
+### 8T — Chart values under the key
+
+Scrubbed values sit in a row under the chart, in the key's columns, instead of
+a tooltip. The heart-rate day chart's key: Movement (% of time moving), Heart
+rate (bpm), Not recorded. "Not recorded" appears only when the window has gaps.
+Live charts size their slots to each stream's rate.
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,
