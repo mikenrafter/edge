@@ -675,6 +675,39 @@ Tests: packets inside, at the edges of, and outside a gesture interval;
 out-of-order arrival; a real reading next to a gesture keeps its own
 packets; the migration is idempotent.
 
+### 8O — Alarm edits are a draft; one band write per save
+
+Today every row on the alarm screen calls `setScheduleDay`, which saves and
+re-arms the band at once, so editing seven days (switch + time) can write
+the band up to 14 times.
+
+- The alarm screen edits an in-memory **draft** of the whole schedule,
+  including Natural and Gradual settings. Nothing is saved or sent while
+  editing.
+- **Save** and **Cancel** sit at the top of the page. Cancel restores the
+  last saved schedule. Save writes the whole draft to the DB in one
+  transaction, then works out the next occurrence and writes the band **at
+  most once** (one `SET_ALARM`, skipped when the band already holds that
+  time; one `disable` when nothing is enabled), and waits for confirmation.
+  The header then shows "Saved and sent to the band", "Saved — the band
+  updates when it next connects", or the failure and a Retry.
+- **Leaving** with unsaved changes (back button, system back, tab switch)
+  opens a dialog: Save / Discard / Keep editing. Leaving while a save is
+  still being sent to the band asks whether to wait or leave (the band then
+  updates on the next connect).
+- **Natural Wake and Gradual Wake are never written to the band.** They are
+  phone-orchestrated: the phone sends a live haptic at the moment it decides
+  to. Only the fixed must-be-up-by alarm at T is stored on the band.
+- Outside the screen, band writes happen only when the stored occurrence
+  must roll forward (after it passes, or on connect when the band holds a
+  different time), deduped against the last confirmed arm.
+
+Tests: editing all seven days then Save → exactly one band arm write;
+Save with no effective change → zero writes; Cancel → zero writes and the
+saved schedule restored; Natural/Gradual edits never call `setAlarm`;
+leaving with a dirty draft shows the dialog and each choice does what it
+says; offline save persists and reports the pending band update.
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,
