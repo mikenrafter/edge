@@ -491,18 +491,28 @@ Widget _chart(BuildContext c, P p, DriverFacts f) {
     empty: axis == null ? const NoData() : null,
     child: axis == null
         ? const SizedBox.shrink()
-        : Stack(fit: StackFit.expand, children: [
-            if (band != null) _Band(band.$1, band.$2, axis, p.wash(f.spec.color)),
-            CustomPaint(
-              size: Size.infinite,
-              // No fill. A gradient under the line and a tinted band behind it
-              // are two washes of the same colour arguing about which one the
-              // eye should read as "normal".
-              painter: LineChart(win, ink,
-                  fill: false, dots: true, dotInk: p.card, t: animate(c, 1),
-                  axis: axis),
-            ),
-          ]),
+        : ChartScrub(
+            label: f.label,
+            // The window ends today, one slot per day.
+            readout: ChartScrub.slots(
+                win,
+                (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
+                    '${metricValue(f.spec.unit, v)}'
+                    '${unit.isEmpty ? '' : ' $unit'}'),
+            child: Stack(fit: StackFit.expand, children: [
+              if (band != null)
+                _Band(band.$1, band.$2, axis, p.wash(f.spec.color)),
+              CustomPaint(
+                size: Size.infinite,
+                // No fill. A gradient under the line and a tinted band behind
+                // it are two washes of the same colour arguing about which one
+                // the eye should read as "normal".
+                painter: LineChart(win, ink,
+                    fill: false, dots: true, dotInk: p.card, t: animate(c, 1),
+                    axis: axis),
+              ),
+            ]),
+          ),
   );
 }
 

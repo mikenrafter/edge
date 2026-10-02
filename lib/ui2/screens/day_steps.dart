@@ -362,27 +362,41 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
                 : const [],
             footnote: _honesty(c, d),
             empty: axis == null ? const NoData() : null,
-            child: Stack(
-              children: [
-                CustomPaint(
-                  size: Size.infinite,
-                  painter: Bars(
-                    band,
-                    p.on(C.green),
-                    axis: axis,
-                    t: animate(c, 1),
+            // 24 bars, one per local hour. When both sensors counted the hour
+            // the readout names each; it never adds them together.
+            child: ChartScrub(
+              label: l?.dayStepsChartTitle ?? 'When they were counted',
+              readout: ChartScrub.slots(totals, (h, v) {
+                final b = band[h], ph = phone[h];
+                final split = b != null && ph != null
+                    ? ' (${d.bandLabel} ${thousands(b)}, '
+                        '${l?.dayStepsYourPhone ?? 'Your phone'} ${thousands(ph)})'
+                    : '';
+                return '${ChartScrub.clock(h * 60)} · '
+                    '${thousands(v)} ${l?.dayStepsUnit ?? 'steps'}$split';
+              }, bars: true),
+              child: Stack(
+                children: [
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: Bars(
+                      band,
+                      p.on(C.green),
+                      axis: axis,
+                      t: animate(c, 1),
+                    ),
                   ),
-                ),
-                CustomPaint(
-                  size: Size.infinite,
-                  painter: Bars(
-                    phone,
-                    p.on(C.teal),
-                    axis: axis,
-                    t: animate(c, 1),
+                  CustomPaint(
+                    size: Size.infinite,
+                    painter: Bars(
+                      phone,
+                      p.on(C.teal),
+                      axis: axis,
+                      t: animate(c, 1),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(height: S.x4),

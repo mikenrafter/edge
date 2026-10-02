@@ -194,6 +194,193 @@ class Scrubber extends StatelessWidget {
   }
 }
 
+/// ── CHARTSCRUB ── every chart is scrubbable ──────────────────────────────
+///
+/// One wrapper over any chart painter: a tap or a drag places a cursor that
+/// follows the finger and a pill that says what the chart holds at that point.
+/// It is a [Scrubber] underneath, so the slider role and [Scrubber.describe]
+/// come with it — the pill text and the spoken value are the same string.
+///
+/// [readout] takes 0…1 across the chart and returns the value-and-time text, or
+/// null where the series has nothing. Null reads [noData]; a position between
+/// two samples with a gap between them is never interpolated across. Nothing is
+/// drawn until the first touch, so a chart at rest looks exactly as it did.
+///
+/// [ChartScrubMode.nearest] is for scatter and grid charts (Poincaré, heat map,
+/// month grid): the pill alone, no line through the picture.
+enum ChartScrubMode { line, nearest }
+
+class ChartScrub extends StatefulWidget {
+  final String label;
+  final String? Function(double at) readout;
+  final Widget child;
+  final ChartScrubMode mode;
+  final double step;
+
+  static const cursorKey = ValueKey('chart-scrub-cursor');
+  static const readoutKey = ValueKey('chart-scrub-readout');
+  static const noData = 'No data here';
+
+  /// A [readout] for a dense series (one entry per slot, `null` in the holes —
+  /// the same list the painter draws). Line charts read the slot nearest the
+  /// finger; with [bars] the finger reads the bar it is over. A hole or a
+  /// non-finite sample reads null, so a gap is "No data here" and never the
+  /// value of a neighbour.
+  static String? Function(double) slots(
+    List<double?> d,
+    String Function(int i, double v) say, {
+    bool bars = false,
+  }) =>
+      (at) {
+        if (d.isEmpty) return null;
+        final i = (bars ? (at * d.length).floor() : (at * (d.length - 1)).round())
+            .clamp(0, d.length - 1);
+        final v = d[i];
+        return v == null || !v.isFinite ? null : say(i, v);
+      };
+
+  /// A [readout] for a stacked bar ([ZoneBar]): the band under the finger, by
+  /// the same running total of [fracs] the painter lays out. Past the last
+  /// band, where nothing is drawn, it reads null. A band with no width cannot
+  /// be hit, and neither can a non-finite one.
+  static String? Function(double) bands(
+    List<double> fracs,
+    String Function(int i, double frac) say,
+  ) =>
+      (at) {
+        var lo = 0.0;
+        for (var i = 0; i < fracs.length; i++) {
+          final f = fracs[i];
+          if (!f.isFinite || f <= 0) continue;
+          if (at >= lo && at < lo + f) return say(i, f);
+          lo += f;
+        }
+        return null;
+      };
+
+  /// Local minutes past midnight as "7:05 AM" — the time half of a readout.
+  static String clock(int minuteOfDay) => formatMinuteOfDay(minuteOfDay);
+
+  /// The local calendar day [ago] days before today — "Today", "Yesterday",
+  /// then "Mon 5 Oct". Built from the calendar fields rather than by
+  /// subtracting 24 h, so a DST change cannot move it a day.
+  static String dayBack(int ago) {
+    if (ago <= 0) return 'Today';
+    if (ago == 1) return 'Yesterday';
+    final n = DateTime.now();
+    return day(DateTime(n.year, n.month, n.day - ago));
+  }
+
+  /// A calendar day as "Mon 5 Oct".
+  static String day(DateTime d) {
+    const wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const mo = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${wd[d.weekday - 1]} ${d.day} ${mo[d.month - 1]}';
+  }
+
+  /// [bands] over five zones of minutes, laid out the way callers feed
+  /// [ZoneBar] (each zone's share of the total). No minutes at all draws no
+  /// bar, so it reads null everywhere.
+  static String? Function(double) zoneMinutes(List<num> minutes) {
+    final total = minutes.fold<double>(0, (a, b) => a + b);
+    if (!(total > 0)) return (_) => null;
+    return bands(
+      [for (final m in minutes) m / total],
+      (i, f) => 'Zone ${i + 1} · ${minutes[i].round()} min · '
+          '${(f * 100).round()}%',
+    );
+  }
+
+  /// [bands] over fractions already handed to [ZoneBar].
+  static String? Function(double) zoneShares(List<double> fracs) => bands(
+      fracs, (i, f) => 'Zone ${i + 1} · ${(f * 100).round()}% of the time');
+
+  const ChartScrub({
+    super.key,
+    required this.label,
+    required this.readout,
+    required this.child,
+    this.mode = ChartScrubMode.line,
+    this.step = .05,
+  });
+
+  @override
+  State<ChartScrub> createState() => _ChartScrubState();
+}
+
+class _ChartScrubState extends State<ChartScrub> {
+  double? _at;
+
+  String _text(double v) => widget.readout(v) ?? ChartScrub.noData;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final v = _at;
+    return Scrubber(
+      value: v,
+      onChanged: (x) => setState(() => _at = x),
+      label: widget.label,
+      describe: _text,
+      step: widget.step,
+      // Passthrough: the chart keeps the size it always had; the cursor and pill
+      // are positioned overlays and add nothing to the layout.
+      child: Stack(fit: StackFit.passthrough, children: [
+        widget.child,
+        if (v != null && widget.mode == ChartScrubMode.line)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: LayoutBuilder(
+                builder: (_, box) => Stack(children: [
+                  Positioned(
+                    left: v * box.maxWidth - 1,
+                    top: 0,
+                    bottom: 0,
+                    width: 2,
+                    child: ColoredBox(
+                        key: ChartScrub.cursorKey, color: p.ink),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        if (v != null)
+          Positioned.fill(
+            // The slider already speaks this text as its value; a second
+            // semantics node would be merged into the label and read twice.
+            child: ExcludeSemantics(
+              child: IgnorePointer(
+                // Aligned by fraction, so the pill follows the finger and
+                // stays inside the chart at either edge without measuring it.
+                child: Align(
+                  alignment: Alignment(v * 2 - 1, -1),
+                  child: Container(
+                    key: ChartScrub.readoutKey,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: S.x2, vertical: S.x1),
+                    decoration: BoxDecoration(
+                      color: p.ink,
+                      borderRadius: R.rMd,
+                    ),
+                    child: Text(
+                      _text(v),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: F.cap.copyWith(color: p.bg),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ]),
+    );
+  }
+}
+
 /// The base card surface. Elevation, not outline.
 class Surface extends StatelessWidget {
   final Widget child;

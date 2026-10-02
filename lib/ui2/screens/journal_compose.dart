@@ -915,14 +915,23 @@ class _WeightTrendState extends State<_WeightTrend> {
               ? const SizedBox.shrink()
               // No fill: a filled area under an axis that starts at 68 kg is a
               // truncated axis with the truncation hidden.
-              : CustomPaint(
-                  size: Size.infinite,
-                  painter: LineChart(
-                    vals,
-                    p.on(C.blue),
-                    fill: false,
-                    t: animate(c, 1),
-                    axis: axis,
+              : ChartScrub(
+                  label: l?.journalComposeSevenDayTrend ?? 'Seven-day trend',
+                  // Slot i is calendar day i after the first entry; a day with
+                  // no trend value is a hole.
+                  readout: ChartScrub.slots(
+                      vals,
+                      (i, v) => '${dayLabelOf(DateTime(first.year, first.month, first.day + i))}'
+                          ' · ${axisFixed(v)} ${u?.isImperial == true ? 'lb' : 'kg'}'),
+                  child: CustomPaint(
+                    size: Size.infinite,
+                    painter: LineChart(
+                      vals,
+                      p.on(C.blue),
+                      fill: false,
+                      t: animate(c, 1),
+                      axis: axis,
+                    ),
                   ),
                 ),
         ),

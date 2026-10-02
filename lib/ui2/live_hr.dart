@@ -152,13 +152,26 @@ class LiveHrCard extends StatelessWidget {
           const SizedBox(height: S.x3),
           SizedBox(
             height: 56,
-            child: CustomPaint(
-              painter: LineChart(
+            child: ChartScrub(
+              label: 'Live heart rate',
+              // The stream carries no timestamps, so the position is "how many
+              // readings ago", counted from the newest.
+              readout: ChartScrub.slots(
                 [for (final v in trace) v.toDouble()],
-                C.red,
-                fill: false,
+                (i, v) {
+                  final ago = trace.length - 1 - i;
+                  return '${v.round()} bpm · '
+                      '${ago == 0 ? 'latest' : '$ago readings ago'}';
+                },
               ),
-              size: Size.infinite,
+              child: CustomPaint(
+                painter: LineChart(
+                  [for (final v in trace) v.toDouble()],
+                  C.red,
+                  fill: false,
+                ),
+                size: Size.infinite,
+              ),
             ),
           ),
           const SizedBox(height: S.x2),

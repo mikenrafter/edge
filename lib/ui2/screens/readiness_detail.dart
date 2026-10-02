@@ -301,10 +301,18 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
         l?.readinessDetailToday ?? 'Today',
       ],
       series: win,
-      child: CustomPaint(
-        size: Size.infinite,
-        painter: LineChart(win, p.on(C.green), dots: false, t: animate(c, 1),
-            axis: axis),
+      child: ChartScrub(
+        label: l?.readinessDetailTitle ?? 'Readiness',
+        // The last slot is today, as the x labels say.
+        readout: ChartScrub.slots(
+            win,
+            (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
+                '${v.round()}${l?.readinessDetailUnit ?? '/100'}'),
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: LineChart(win, p.on(C.green), dots: false, t: animate(c, 1),
+              axis: axis),
+        ),
       ),
     );
   }

@@ -1564,6 +1564,7 @@ class _SleepDetailState extends State<SleepDetail> {
     final legend = <(String, Color)>[];
     final axes = <AxisSpec?>[];
     final units = <String>[];
+    final names = <String>[];
 
     // Each lane keeps its own scale — they are different quantities — but the
     // scale is PINNED to the night's own range and its unit is named. Three
@@ -1578,6 +1579,7 @@ class _SleepDetailState extends State<SleepDetail> {
       series.add(g);
       colors.add(col);
       legend.add(('$label ($unit)', col));
+      names.add(label);
       axes.add(AxisSpec.of(present, ticks: 2, format: format));
       units.add(unit);
     }
@@ -1616,9 +1618,28 @@ class _SleepDetailState extends State<SleepDetail> {
           // No footnote. The legend already names each lane and its unit, and
           // the lanes are visibly separate — a paragraph explaining that they
           // are separate was describing the picture instead of letting it work.
-          child: CustomPaint(
-              size: Size.infinite,
-              painter: NightStack(series, colors, axes: axes)),
+          // One column reads every lane (they share the night's clock). A lane
+          // with nothing in that bucket is left out; a column where every lane
+          // is empty reads "No data here".
+          child: ChartScrub(
+            label: loc?.sleepDetailThroughTheNight ?? 'Through the night',
+            readout: (at) {
+              final cols = series.first.length;
+              if (cols < 2) return null;
+              final i = (at * (cols - 1)).round().clamp(0, cols - 1);
+              final parts = <String>[
+                for (var k = 0; k < series.length; k++)
+                  if (series[k][i] != null)
+                    '${names[k]} ${axisFixedOrInt(series[k][i]!)} ${units[k]}',
+              ];
+              if (parts.isEmpty) return null;
+              final t = t0 + ((t1 - t0) * i / (cols - 1)).round();
+              return '${clockOfTs(t)} · ${parts.join(', ')}';
+            },
+            child: CustomPaint(
+                size: Size.infinite,
+                painter: NightStack(series, colors, axes: axes)),
+          ),
         ),
       ]),
     );

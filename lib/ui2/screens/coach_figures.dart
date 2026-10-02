@@ -76,6 +76,18 @@ List<String> _xLabels(dynamic raw) {
   return [all.first, all[all.length ~/ 2], all.last];
 }
 
+/// The name for slot [i] of [n]: the coach's own label when it gave one per
+/// slot, otherwise just the position. Never a label from a neighbour.
+String _slotName(dynamic raw, int i, int n) {
+  final all = [for (final e in _list(raw)) _str(e)];
+  return all.length == n && all[i].isNotEmpty ? all[i] : 'Point ${i + 1} of $n';
+}
+
+/// The slot of an [n]-long dense series that the finger at [at] (0…1) is
+/// nearest — the same index mapping the line painters use.
+int _nearest(double at, int n) =>
+    (at * (n - 1)).round().clamp(0, n - 1);
+
 /// The axis every painter in one figure shares. Null when nothing is finite,
 /// which is the signal to render the frame's empty state.
 AxisSpec? _axisFor(Iterable<List<double?>> series) {
@@ -183,24 +195,46 @@ class CoachFigure extends StatelessWidget {
       c,
       title,
       unit,
-      Stack(
-        children: [
-          for (var i = 0; i < series.length; i++)
-            Positioned.fill(
-              child: CustomPaint(
-                size: Size.infinite,
-                painter: LineChart(
-                  series[i].values,
-                  inks[i % inks.length],
-                  // A filled area reads as a quantity from a baseline, so it is
-                  // only honest for ONE series against a stated axis.
-                  fill: series.length == 1 &&
-                      _str(spec['type']).toLowerCase() == 'area',
-                  axis: axis,
+      ChartScrub(
+        label: title.isEmpty ? (l?.coachFiguresFigure ?? 'Figure') : title,
+        // Every series that has a reading at this slot, by the coach's own
+        // names; a series with a hole there is left out, not filled in.
+        readout: (at) {
+          final parts = <String>[];
+          String? name;
+          for (var k = 0; k < series.length; k++) {
+            final v = series[k].values;
+            if (v.length < 2) continue;
+            final i = _nearest(at, v.length);
+            final x = v[i];
+            if (x == null || !x.isFinite) continue;
+            name ??= _slotName(
+                spec['x_labels'] ?? spec['labels'] ?? spec['x'], i, v.length);
+            final who = series[k].name;
+            parts.add(
+                '${who.isEmpty ? '' : '$who '}${axisFixedOrInt(x)}${unit.isEmpty ? '' : ' $unit'}');
+          }
+          return parts.isEmpty ? null : '$name · ${parts.join(', ')}';
+        },
+        child: Stack(
+          children: [
+            for (var i = 0; i < series.length; i++)
+              Positioned.fill(
+                child: CustomPaint(
+                  size: Size.infinite,
+                  painter: LineChart(
+                    series[i].values,
+                    inks[i % inks.length],
+                    // A filled area reads as a quantity from a baseline, so it
+                    // is only honest for ONE series against a stated axis.
+                    fill: series.length == 1 &&
+                        _str(spec['type']).toLowerCase() == 'area',
+                    axis: axis,
+                  ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
       yAxis: axis,
       xLabels: _xLabels(spec['x_labels'] ?? spec['labels'] ?? spec['x']),
@@ -239,9 +273,19 @@ class CoachFigure extends StatelessWidget {
       c,
       title,
       unit,
-      CustomPaint(
-        size: Size.infinite,
-        painter: Bars(d, p.on(C.blue), axis: axis),
+      ChartScrub(
+        label: title.isEmpty
+            ? (AppLocalizations.of(c)?.coachFiguresFigure ?? 'Figure')
+            : title,
+        readout: ChartScrub.slots(
+            d,
+            (i, v) => '${_slotName(spec['x_labels'] ?? spec['labels'] ?? spec['x'], i, d.length)}'
+                ' · ${axisFixedOrInt(v)}${unit.isEmpty ? '' : ' $unit'}',
+            bars: true),
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: Bars(d, p.on(C.blue), axis: axis),
+        ),
       ),
       yAxis: axis,
       xLabels: _xLabels(spec['x_labels'] ?? spec['labels'] ?? spec['x']),
@@ -288,17 +332,43 @@ class CoachFigure extends StatelessWidget {
       c,
       title,
       units.where((u) => u.isNotEmpty).join(' · '),
-      CustomPaint(
-        size: Size.infinite,
-        painter: NightStack(lanes, [
-          for (var i = 0; i < lanes.length; i++) inks[i % inks.length],
-        ], axes: [
-          for (final l in lanes)
-            AxisSpec.of([
-              for (final v in l)
-                if (v != null && v.isFinite) v,
-            ], ticks: 2),
-        ]),
+      ChartScrub(
+        label: title.isEmpty ? (loc?.coachFiguresFigure ?? 'Figure') : title,
+        // One time base, so one slot reads every lane; a lane with a hole at
+        // that slot is left out. Lanes of another length are not drawn by the
+        // painter, so they are not read either.
+        readout: (at) {
+          final span =
+              lanes.fold<int>(0, (n, l) => l.length > n ? l.length : n);
+          if (span < 2) return null;
+          final i = _nearest(at, span);
+          final parts = <String>[];
+          for (var k = 0; k < lanes.length && k < series.length; k++) {
+            if (lanes[k].length != span) continue;
+            final x = lanes[k][i];
+            if (x == null || !x.isFinite) continue;
+            final name = series[k].name.isEmpty
+                ? (loc?.coachFiguresLaneN(k + 1) ?? 'Lane ${k + 1}')
+                : series[k].name;
+            parts.add('$name ${axisFixedOrInt(x)}');
+          }
+          return parts.isEmpty
+              ? null
+              : '${_slotName(spec['x_labels'] ?? spec['labels'] ?? spec['x'], i, span)}'
+                  ' · ${parts.join(', ')}';
+        },
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: NightStack(lanes, [
+            for (var i = 0; i < lanes.length; i++) inks[i % inks.length],
+          ], axes: [
+            for (final l in lanes)
+              AxisSpec.of([
+                for (final v in l)
+                  if (v != null && v.isFinite) v,
+              ], ticks: 2),
+          ]),
+        ),
       ),
       height: 60.0 * lanes.length + 40,
       xLabels: _xLabels(spec['x_labels'] ?? spec['labels'] ?? spec['x']),
@@ -362,7 +432,26 @@ class CoachFigure extends StatelessWidget {
       c,
       title,
       'stage',
-      CustomPaint(size: Size.infinite, painter: Hypnogram(grid, p)),
+      ChartScrub(
+        label: title.isEmpty ? (l?.coachFiguresFigure ?? 'Figure') : title,
+        // Read off the coach's segments, not the painter's grid: the grid
+        // fills every uncovered minute with "awake", which is a drawing
+        // default and not something the coach said. A time inside no segment
+        // is "No data here".
+        readout: (at) {
+          final t = t0 + (t1 - t0) * at;
+          for (final s in segs) {
+            final a = _num(s['start']), b = _num(s['end']);
+            if (a == null || b == null || b <= a) continue;
+            if (t >= a && t < b) {
+              final stage = _str(s['stage']);
+              return '${hhmm(t)} · ${stage.isEmpty ? 'unnamed stage' : stage}';
+            }
+          }
+          return null;
+        },
+        child: CustomPaint(size: Size.infinite, painter: Hypnogram(grid, p)),
+      ),
       height: 130,
       xLabels: [hhmm(t0), hhmm(t1)],
       legend: Hypnogram.legend(p),
@@ -403,7 +492,12 @@ class CoachFigure extends StatelessWidget {
       c,
       title,
       'min',
-      CustomPaint(size: Size.infinite, painter: ZoneBar(fracs, p)),
+      ChartScrub(
+        label: title.isEmpty ? (l?.coachFiguresFigure ?? 'Figure') : title,
+        readout: ChartScrub.bands(fracs,
+            (i, f) => 'Zone ${i + 1} · ${z[i].round()} min · ${(f * 100).round()}%'),
+        child: CustomPaint(size: Size.infinite, painter: ZoneBar(fracs, p)),
+      ),
       height: 56,
       legend: ZoneBar.legend(p),
       footnote: l?.coachFiguresMinTotal(total.round()) ??
@@ -539,9 +633,28 @@ class CoachFigure extends StatelessWidget {
       c,
       title,
       unit,
-      CustomPaint(
-        size: Size.infinite,
-        painter: HeatMap(weeks, p.on(C.blue), p.track),
+      // A grid: the finger selects the column it is over, and the readout lists
+      // that column's cells. An unmeasured cell is shown as a dash and a column
+      // with nothing measured reads "No data here".
+      ChartScrub(
+        label: title.isEmpty
+            ? (AppLocalizations.of(c)?.coachFiguresFigure ?? 'Figure')
+            : title,
+        mode: ChartScrubMode.nearest,
+        readout: (at) {
+          final i = (at * weeks.length).floor().clamp(0, weeks.length - 1);
+          final col = weeks[i];
+          if (col.every((v) => v == null)) return null;
+          final cells = [
+            for (final v in col) v == null ? '–' : axisFixedOrInt(v),
+          ];
+          return '${_slotName(spec['x_labels'] ?? spec['labels'], i, weeks.length)}'
+              ' · ${cells.join(' ')}${unit.isEmpty ? '' : ' $unit'}';
+        },
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: HeatMap(weeks, p.on(C.blue), p.track),
+        ),
       ),
       height: 110,
       xLabels: _xLabels(spec['x_labels'] ?? spec['labels']),

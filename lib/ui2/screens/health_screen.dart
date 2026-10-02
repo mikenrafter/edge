@@ -1261,9 +1261,18 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               message: l?.healthOneNightNotTrend ?? 'A trend needs more than one night')
           : null,
       series: win,
-      child: CustomPaint(
-        size: Size.infinite,
-        painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis),
+      child: ChartScrub(
+        label: l?.healthHeartRateVariability ?? 'Heart rate variability',
+        // Thirty calendar nights ending last night; a night with no record is
+        // a hole.
+        readout: ChartScrub.slots(
+            win,
+            (i, v) => '${ChartScrub.dayBack(win.length - 1 - i)} · '
+                '${v.round()} ms'),
+        child: CustomPaint(
+          size: Size.infinite,
+          painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis),
+        ),
       ),
     );
   }

@@ -126,6 +126,42 @@ that did not exist.
 `Scrubber` is the only drag: it carries the slider role, so increase/decrease
 reach it without a pointer, and `describe` is what those steps say out loud.
 
+### ChartScrub — every chart is scrubbable
+
+```dart
+ChartScrub({required String label, required String? Function(double at) readout,
+            required Widget child, ChartScrubMode mode = ChartScrubMode.line,
+            double step = .05})
+```
+
+Wrap the chart painter (inside the `ChartFrame` child) and a tap or drag places
+a cursor line that follows the finger and a pill saying what the chart holds
+there. It is a `Scrubber` underneath, so the slider role and the spoken value
+come with it. Nothing is drawn until the first touch, so a chart at rest is
+unchanged, and it adds no size of its own.
+
+`readout` takes 0…1 across the chart and returns the value-and-time text, or
+**null where the data has nothing**, which reads `No data here`. Never read a
+neighbour's value or interpolate across a hole. Build it from the same series
+the painter draws:
+
+```dart
+ChartScrub(
+  label: 'Heart rate',
+  readout: ChartScrub.slots(hr, (i, v) => '${ChartScrub.clock(i)} · ${v.round()} bpm'),
+  child: CustomPaint(size: Size.infinite, painter: LineChart(hr, color, axis: axis)),
+)
+```
+
+Helpers: `ChartScrub.slots(series, say, {bars})` for a dense series (line: the
+nearest slot; `bars: true`: the bar under the finger), `ChartScrub.zoneMinutes`
+and `ChartScrub.bands` for a `ZoneBar`, `ChartScrub.dayBack(n)` / `day(date)` /
+`clock(minute)` for the time half. Scatter and grid charts (Poincaré, `HeatMap`,
+month grid) pass `mode: ChartScrubMode.nearest`: the pill only, no line, naming
+the nearest point or the column under the finger. `test/phase8/chart_scrub_guard_test.dart`
+fails any `painter: LineChart(…)` (or other chart painter) in `screens/`,
+`activity/` or `live_hr.dart` that is not inside a `ChartScrub` or `Scrubber`.
+
 ### Layout primitives
 
 ```dart

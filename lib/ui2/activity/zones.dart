@@ -561,9 +561,14 @@ class _ZonesDetailState extends State<ZonesDetail> {
                 ('Z${i + 1} · ${mins[i]}m', ZoneBar.cols(p)[i]),
             ],
             footnote: _shapeCopy(l, d),
-            child: CustomPaint(
-              size: Size.infinite,
-              painter: ZoneBar([for (final v in mins) v / total], p),
+            child: ChartScrub(
+              label: l?.activityZonesSessionMinutesChartTitle ??
+                  'Session minutes, last 28 days',
+              readout: ChartScrub.zoneMinutes(mins),
+              child: CustomPaint(
+                size: Size.infinite,
+                painter: ZoneBar([for (final v in mins) v / total], p),
+              ),
             ),
           ),
         ),
