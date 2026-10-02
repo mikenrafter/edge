@@ -22,6 +22,7 @@ import 'notification_prefs.dart';
 import 'notification_center.dart';
 import 'notification_event.dart';
 import '../data/day_label.dart';
+import '../state/feature_flags.dart';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
 
@@ -434,6 +435,11 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     'openstrap/notification_relay',
   );
   static const Duration _healEvery = Duration(seconds: 120);
+
+  /// Every platform call is bounded: a bridge that never answers (engine torn
+  /// down, service dying) must not leave a caller awaiting forever. The
+  /// settings-page launch returns at once natively, so it is bounded too.
+  static const Duration _nativeTimeout = Duration(seconds: 5);
   Timer? _healTimer;
 
   /// Fire the strap haptic. Wired by AppState to `engine.buzz()`. Best-effort.
@@ -454,9 +460,12 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   /// read.
   static const int maxSeen = 60;
 
-  /// Only Android can observe other apps' notifications. Everything below is a
-  /// no-op when this is false, and the UI hides the feature entirely.
-  bool get supported => debugSupported ?? Platform.isAndroid;
+  /// Only Android can observe other apps' notifications, and only while
+  /// FeatureFlag.nativeRelay is on. Everything below is a no-op when this is
+  /// false, and the UI hides the feature entirely.
+  bool get supported =>
+      (debugSupported ?? Platform.isAndroid) &&
+      FeatureFlags.isOn(FeatureFlag.nativeRelay);
 
   /// Tests only: pretend to be (or not be) Android.
   final bool? debugSupported;
@@ -627,7 +636,12 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   /// Load saved state, refresh permission, and start listening if active. Call
   /// once at startup. No-op on iOS.
   Future<void> bootstrap() async {
-    if (!supported) return;
+    if (!supported) {
+      // Switched off by FeatureFlag.nativeRelay on a phone that could relay:
+      // tell the platform to stop sending metadata that nothing will read.
+      if ((debugSupported ?? Platform.isAndroid)) await _disarmNative();
+      return;
+    }
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool(_kEnabled) ?? false;
     _onlyWhileWorn = prefs.getBool(_kOnlyWorn) ?? false;
@@ -661,6 +675,14 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     await refreshPermission();
     _resync();
     notifyListeners();
+  }
+
+  Future<void> _disarmNative() async {
+    try {
+      await _native.invokeMethod('setArmed', false).timeout(_nativeTimeout);
+    } catch (_) {
+      /* no bridge, or it did not answer: nothing to disarm */
+    }
   }
 
   // Native -> Dart. Errors never propagate back into the system callback.
@@ -711,7 +733,13 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     if (!supported) return false;
     final was = _granted;
     try {
-      _granted = await _native.invokeMethod<bool>('isPermissionGranted') ?? false;
+      _granted = await _native
+              .invokeMethod<bool>('isPermissionGranted')
+              .timeout(_nativeTimeout) ??
+          false;
+    } on TimeoutException {
+      // No answer is not a revocation: keep what was last known rather than
+      // clearing every latch over a slow bridge. The next resume asks again.
     } catch (_) {
       _granted = false;
     }
@@ -725,7 +753,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> requestPermission() async {
     if (!supported) return false;
     try {
-      await _native.invokeMethod('requestPermission');
+      await _native.invokeMethod('requestPermission').timeout(_nativeTimeout);
     } catch (_) {
       /* user may just back out */
     }
@@ -796,12 +824,18 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   // The heal timer only runs while armed.
   void _resync() {
     final shouldListen = active;
-    _native.invokeMethod('setArmed', shouldListen).then((_) async {
+    // Our own latches clear whether or not the bridge ever answers: a platform
+    // that times out must not leave a disarmed relay believing it is listening.
+    if (!shouldListen) unawaited(controller.stop('disarmed'));
+    _native
+        .invokeMethod('setArmed', shouldListen)
+        .timeout(_nativeTimeout)
+        .then((_) async {
       if (shouldListen) {
-        final list = await _native.invokeMethod<List<Object?>>('activeMetadata');
+        final list = await _native
+            .invokeMethod<List<Object?>>('activeMetadata')
+            .timeout(_nativeTimeout);
         await controller.listenerConnected(list ?? const []);
-      } else {
-        await controller.stop('disarmed');
       }
     }).catchError((_) {});
     if (shouldListen) {
@@ -817,8 +851,12 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _heal() async {
     if (!active) return;
     try {
-      if (!(await _native.invokeMethod<bool>('isConnected') ?? true)) {
-        await _native.invokeMethod('rebind');
+      final bound = await _native
+              .invokeMethod<bool>('isConnected')
+              .timeout(_nativeTimeout) ??
+          true;
+      if (!bound) {
+        await _native.invokeMethod('rebind').timeout(_nativeTimeout);
       }
     } catch (_) {
       /* handler absent — ignore */

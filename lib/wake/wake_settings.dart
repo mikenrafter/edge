@@ -10,6 +10,7 @@
 // or remove it.
 
 import '../notify/buzz_sequence.dart';
+import '../state/feature_flags.dart';
 
 // ── windows ──────────────────────────────────────────────────────────────────
 
@@ -78,6 +79,15 @@ WakeConfiguration wakeConfigurationOf({
 /// estimated-REM behaviour must NOT run yet (the old light-sleep heuristic
 /// keeps working until they acknowledge). [none]: nothing to explain.
 enum WakeUpgradeState { none, pending, acknowledged }
+
+/// FeatureFlag.naturalWake OFF behaves as an upgrade that is still pending for
+/// everything that RUNS: Natural stays inactive and the legacy Smart Wake
+/// heuristic and its collection window keep working. [enabled] defaults to the
+/// flag; tests pass it.
+WakeUpgradeState gateNaturalWake(WakeUpgradeState s, {bool? enabled}) =>
+    (enabled ?? FeatureFlags.isOn(FeatureFlag.naturalWake))
+        ? s
+        : WakeUpgradeState.pending;
 
 // ── collection lead ─────────────────────────────────────────────────────────
 

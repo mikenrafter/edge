@@ -54,6 +54,8 @@ import '../data/db.dart';
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_recovery.dart';
 import '../ecg/ecg_transport.dart';
+import '../state/feature_flags.dart';
+import '../wake/wake_settings.dart' show gateNaturalWake;
 import '../wake/wake_stores.dart' show loadWakeUpgradeState;
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -241,10 +243,11 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
           AlarmScheduleEntry.fromRow(r),
       ]);
       final preSyncPrefs = await SharedPreferences.getInstance();
+      await FeatureFlags.ensureLoaded(); // a headless run has no launch hook
       final armedWindow = armedCollectionWindow(
         epoch: preSyncPrefs.getInt('alarm_epoch'),
         schedule: preSyncSchedule,
-        upgrade: await loadWakeUpgradeState(),
+        upgrade: gateNaturalWake(await loadWakeUpgradeState()),
       );
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armedWindow?.windowEnd,

@@ -41,6 +41,11 @@
 // always). Late taps never count. In the Device lab (repeatTapsLab) the same
 // window runs with the max at 5 and NO action runs.
 //
+// Rollout switch (FeatureFlag.tapClassifiers, default on). OFF: a double tap is
+// only a double tap. The ECG lab, the repeated-double-tap lab and both 3-5 tap
+// counters are skipped, so the mapped 2-tap actions run at once, whatever the
+// 3-5 slots or the lab switches hold in storage.
+//
 // One action failing never stops the next, and nothing escapes as an unhandled
 // async error: [handle] always completes with a list of outcomes.
 //
@@ -57,6 +62,7 @@ import 'gesture_settings.dart';
 import 'strap_event.dart';
 import '../data/db.dart';
 import '../platform/device_actions.dart';
+import '../state/feature_flags.dart';
 
 enum GestureStatus { ran, skippedStale, skippedDuplicate, failed }
 
@@ -112,6 +118,9 @@ class GestureDispatcher {
   /// method is unavailable and a double tap always runs at once.
   final DoubleTapRepeatSession? repeatSession;
 
+  /// FeatureFlag.tapClassifiers, read on every tap so the switch bites at once.
+  final bool Function() _tapClassifiersOn;
+
   final Future<bool> Function(String actionId) _performNative;
   final Future<bool> Function(String key) _claim;
   final Future<void> Function(String key) _release;
@@ -126,10 +135,13 @@ class GestureDispatcher {
     this.onEcgTap,
     this.onCountTaps,
     this.repeatSession,
+    bool Function()? tapClassifiersOn,
     Future<bool> Function(String actionId)? performNative,
     Future<bool> Function(String key)? claim,
     Future<void> Function(String key)? release,
-  })  : _performNative = performNative ?? DeviceActions.perform,
+  })  : _tapClassifiersOn = tapClassifiersOn ??
+            (() => FeatureFlags.isOn(FeatureFlag.tapClassifiers)),
+        _performNative = performNative ?? DeviceActions.perform,
         _claim = claim ?? LocalDb.claimNotifFired,
         _release = release ?? LocalDb.releaseNotifFired;
 
@@ -143,6 +155,7 @@ class GestureDispatcher {
   /// Feed every live event here. Cheap for non-gesture events. Never throws.
   Future<List<GestureOutcome>> handle(StrapEvent e) async {
     if (e.eventId != _doubleTapEventId) return const [];
+    if (!_tapClassifiersOn()) return _runActions(e, settings.doubleTapActions);
     // Lab mode: suspended whether or not the capture below can start (a late
     // tap, a duplicate, a failed start) so a tap never runs half the lab and
     // half the normal actions.

@@ -5316,7 +5316,8 @@ class AppState extends ChangeNotifier {
     if (entry == null) return null;
     return WakePlanInput(
       wakeAt: wakeAt,
-      naturalMinutes: entry.naturalWindowMinutes,
+      // FeatureFlag.naturalWake OFF gives the orchestrator no Natural window.
+      naturalMinutes: wake.naturalEnabled ? entry.naturalWindowMinutes : 0,
       gradualMinutes: entry.gradualWindowMinutes,
       gradualPattern: entry.gradualPattern,
       gradualCadenceSec: entry.gradualCadenceSec,
@@ -5348,11 +5349,11 @@ class AppState extends ChangeNotifier {
       if (!isConnected) return;
       final plan = _currentWakePlan();
       if (plan == null) return;
-      if (wake.upgradeExplanationPending) await _checkLegacySmartWake(plan.wakeAt);
+      if (wake.legacySmartWakeActive) await _checkLegacySmartWake(plan.wakeAt);
       // With neither feature on there is nothing to orchestrate: the existing
       // arm engine already keeps the native alarm armed.
       if (plan.configuration == WakeConfiguration.neither &&
-          !wake.upgradeExplanationPending) {
+          !wake.legacySmartWakeActive) {
         return;
       }
       await _wakeOrchestrator.tick(plan);
@@ -6282,7 +6283,7 @@ class AppState extends ChangeNotifier {
       final armed = armedCollectionWindow(
         epoch: alarmEpoch,
         schedule: _schedule,
-        upgrade: wake.upgradeState,
+        upgrade: wake.runningUpgradeState,
       );
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armed?.windowEnd,

@@ -8,6 +8,7 @@ import 'ble/ios_ble_restore.dart';
 import 'notify/notification_service.dart';
 import 'coach/coach_config.dart';
 import 'state/app_state.dart';
+import 'state/feature_flags.dart';
 import 'state/prefs.dart';
 import 'state/locale_controller.dart';
 import 'state/units_controller.dart';
@@ -136,6 +137,8 @@ Future<void> main() async {
   // Cache SharedPreferences so UI screens can synchronously RESTORE saved
   // selections (tab, range toggles) in initState with no async flash.
   await _safeInit('Prefs', Prefs.ensureLoaded);
+  // Local rollout switches (all default ON); a failed read leaves the defaults.
+  await _safeInit('FeatureFlags', FeatureFlags.load);
 
   // Resolve appearance (persisted choice + OS brightness) BEFORE the first frame
   // so login/signup already paint in the right mode (Ember on Paper / Char).

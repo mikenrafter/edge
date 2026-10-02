@@ -123,7 +123,9 @@ class _AlarmScreenState extends State<AlarmScreen> {
         onSave: app.saveAlarmDraft,
         onTest: app.testAlarmBuzz,
         onCancelAlarm: app.disableAlarm,
-        upgradePending: app.wake.upgradeExplanationPending,
+        upgradePending:
+            app.wake.naturalEnabled && app.wake.upgradeExplanationPending,
+        naturalWake: app.wake.naturalEnabled,
         onAcknowledgeUpgrade: (enable) =>
             app.wake.acknowledgeUpgrade(enableNatural: enable),
         hasExpectedSleep: sleep != null,
@@ -170,6 +172,10 @@ class AlarmScreenView extends StatefulWidget {
   final bool upgradePending;
   final Future<void> Function(bool enableNatural)? onAcknowledgeUpgrade;
 
+  /// FeatureFlag.naturalWake. False hides the Natural Wake row and the upgrade
+  /// card, and the summary and timeline stop mentioning Natural.
+  final bool naturalWake;
+
   /// Natural Wake needs the expected sleep schedule to tell a main sleep from a
   /// nap. Without one its row is dimmed, with the reason.
   final bool hasExpectedSleep;
@@ -195,6 +201,7 @@ class AlarmScreenView extends StatefulWidget {
     this.onTest,
     this.onCancelAlarm,
     this.upgradePending = false,
+    this.naturalWake = true,
     this.onAcknowledgeUpgrade,
     this.hasExpectedSleep = true,
     this.expectedSleepLabel,
@@ -791,8 +798,15 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
   // ── Wake section ───────────────────────────────────────────────────────────
 
   String _wakeSummary(List<AlarmScheduleEntry> week) {
-    final n = week.where((d) => d.naturalWindowMinutes > 0).length;
+    final n = widget.naturalWake
+        ? week.where((d) => d.naturalWindowMinutes > 0).length
+        : 0;
     final g = week.where((d) => d.gradualWindowMinutes > 0).length;
+    if (!widget.naturalWake) {
+      return g == 0
+          ? 'Gradual Wake is off'
+          : 'Gradual Wake on $g ${g == 1 ? 'day' : 'days'}';
+    }
     if (n == 0 && g == 0) return 'Natural Wake and Gradual Wake are off';
     return 'Natural Wake on $n ${n == 1 ? 'day' : 'days'}, '
         'Gradual Wake on $g ${g == 1 ? 'day' : 'days'}';
@@ -832,7 +846,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     ], w.now ?? DateTime.now())!;
     // Without an expected sleep schedule Natural Wake cannot tell a main sleep
     // from a nap and stays quiet, so the preview does not promise it.
-    final shown = w.hasExpectedSleep
+    final shown = w.hasExpectedSleep && w.naturalWake
         ? day
         : day.copyWith(naturalWindowMinutes: 0);
     final timeline =
@@ -846,25 +860,27 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     return [
       if (w.upgradePending) _upgradeCard(p),
       _dayChips(c, p, week),
-      SetRow(
-        LucideIcons.sunrise,
-        C.yellow,
-        'Natural Wake',
-        enabled: naturalOk,
-        value: windowValue(day.naturalWindowMinutes),
-        sub: naturalSub,
-        chevron: false,
-        onTap: () => _pickNatural(day),
-      ),
-      SetRow(
-        LucideIcons.moon,
-        C.indigo,
-        'Expected sleep schedule',
-        value: w.expectedSleepLabel ?? 'Not set',
-        chevron: false,
-        enabled: w.onSetSleepSchedule != null,
-        onTap: () => w.onSetSleepSchedule?.call(),
-      ),
+      if (w.naturalWake) ...[
+        SetRow(
+          LucideIcons.sunrise,
+          C.yellow,
+          'Natural Wake',
+          enabled: naturalOk,
+          value: windowValue(day.naturalWindowMinutes),
+          sub: naturalSub,
+          chevron: false,
+          onTap: () => _pickNatural(day),
+        ),
+        SetRow(
+          LucideIcons.moon,
+          C.indigo,
+          'Expected sleep schedule',
+          value: w.expectedSleepLabel ?? 'Not set',
+          chevron: false,
+          enabled: w.onSetSleepSchedule != null,
+          onTap: () => w.onSetSleepSchedule?.call(),
+        ),
+      ],
       SetRow(
         LucideIcons.sunMedium,
         C.orange,

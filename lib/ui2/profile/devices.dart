@@ -121,6 +121,7 @@ import '../../state/app_state.dart';
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
+import '../../state/feature_flags.dart';
 import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
 import '../sources/source_views.dart' show SourceViews;
 import 'device_lab.dart' show DeviceLab;
@@ -1076,11 +1077,27 @@ class MyDevices extends StatelessWidget {
       onPair: () => goto(c, const RePair()),
       onAddSensor: () => addSensor(c),
       contendedSignals: contendedSignals(app),
-      onSignalPriority: () => goto(c, const SignalPriorityScreen()),
-      onSourceCatalog: () => goto(c, const SourceCatalogScreen()),
+      // FeatureFlag.sourceResolverUi OFF: no catalog or resolved-data entry,
+      // and the priority editor appears only when two devices contend, as
+      // before the resolver UI.
+      onSignalPriority: showSignalPriorityEntry(contended: contendedSignals(app).isNotEmpty)
+          ? () => goto(c, const SignalPriorityScreen())
+          : null,
+      onSourceCatalog: showSourceCatalogEntry()
+          ? () => goto(c, const SourceCatalogScreen())
+          : null,
     );
   }
 }
+
+/// FeatureFlag.sourceResolverUi: the Source catalog (and the resolved-data view
+/// behind it) has an entry row only while the flag is on.
+bool showSourceCatalogEntry() => FeatureFlags.isOn(FeatureFlag.sourceResolverUi);
+
+/// The priority editor's entry row: always offered with the resolver UI, else
+/// only when two paired devices declare the same signal (the pre-resolver rule).
+bool showSignalPriorityEntry({required bool contended}) =>
+    FeatureFlags.isOn(FeatureFlag.sourceResolverUi) || contended;
 
 /// Every sensor that can be paired from this screen — a second device
 /// alongside the band, never a replacement for it.
@@ -1841,7 +1858,11 @@ class _DeviceDetailState extends State<DeviceDetail> {
       health: _health,
       forecast: _forecast,
       onFind: app?.buzzBand,
-      onDeviceLab: s.isBand ? () => goto(c, const DeviceLab()) : null,
+      // The lab exists to try the ECG and repeated-double-tap counters, so it
+      // goes with FeatureFlag.tapClassifiers.
+      onDeviceLab: s.isBand && FeatureFlags.isOn(FeatureFlag.tapClassifiers)
+          ? () => goto(c, const DeviceLab())
+          : null,
       liveHr: s.isBand ? app?.liveHr : null,
       onRename: (app != null && app.isConnected)
           ? () => _renameBand(c, app, s.name)
