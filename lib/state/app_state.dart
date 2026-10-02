@@ -349,14 +349,16 @@ class AppState extends ChangeNotifier {
     onStarted: (tap, settings) => deviceLab.beginSession(
         method: 'ECG sensor touches', settings: settings, tapAt: tap.receivedAt),
     onFinished: (count, reason) {
+      // Release the dispatcher first: a throw from the lab log below must not
+      // leave the tap's action chain awaiting a count that never comes.
+      final waiting = _tapCount;
+      _tapCount = null;
+      if (waiting != null && !waiting.isCompleted) waiting.complete(count);
       final lab = gestureSettings.ecgOnDoubleTap;
       deviceLab.addStep(count != null
           ? 'Result: $count taps.${lab ? ' This is a draft; no action was run.' : ''}'
           : 'Result: abandoned ($reason). No action was run.');
       deviceLab.endSession(count: count, reason: reason);
-      final waiting = _tapCount;
-      _tapCount = null;
-      if (waiting != null && !waiting.isCompleted) waiting.complete(count);
     },
     step: deviceLab.addStep,
     // 8N: the stream makes the band save raw ECG that history sync delivers
@@ -5316,7 +5318,8 @@ class AppState extends ChangeNotifier {
     if (entry == null) return null;
     return WakePlanInput(
       wakeAt: wakeAt,
-      naturalMinutes: entry.naturalWindowMinutes,
+      // FeatureFlag.naturalWake OFF gives the orchestrator no Natural window.
+      naturalMinutes: wake.naturalEnabled ? entry.naturalWindowMinutes : 0,
       gradualMinutes: entry.gradualWindowMinutes,
       gradualPattern: entry.gradualPattern,
       gradualCadenceSec: entry.gradualCadenceSec,
@@ -5348,11 +5351,11 @@ class AppState extends ChangeNotifier {
       if (!isConnected) return;
       final plan = _currentWakePlan();
       if (plan == null) return;
-      if (wake.upgradeExplanationPending) await _checkLegacySmartWake(plan.wakeAt);
+      if (wake.legacySmartWakeActive) await _checkLegacySmartWake(plan.wakeAt);
       // With neither feature on there is nothing to orchestrate: the existing
       // arm engine already keeps the native alarm armed.
       if (plan.configuration == WakeConfiguration.neither &&
-          !wake.upgradeExplanationPending) {
+          !wake.legacySmartWakeActive) {
         return;
       }
       await _wakeOrchestrator.tick(plan);
@@ -5566,12 +5569,37 @@ class AppState extends ChangeNotifier {
   /// confirm the band actually fires before trusting the scheduled wake.
   Future<void> testAlarmBuzz() async {
     if (!isConnected) throw Exception('Connect your band first.');
-    await engine.runAlarm();
+    final ok = await _userBuzz(() async {
+      await engine.runAlarm();
+      return true;
+    });
+    if (!ok) throw Exception('The band did not take the buzz. Try again.');
   }
 
   Future<void> testBuzzPattern(int pattern) async {
     if (!isConnected) throw Exception('Connect your band first.');
-    await engine.buzzPattern(pattern);
+    final ok = await _userBuzz(() async {
+      await engine.buzzPattern(pattern);
+      return true;
+    });
+    if (!ok) throw Exception('The band did not take the buzz. Try again.');
+  }
+
+  /// One band buzz the user asked for with a button (test buzz, find my strap).
+  /// Still an [alertDispatcher] delivery (own rule, unique event), so it cannot
+  /// bypass the band-support checks or race a real alert's claim, and a write
+  /// that never answers gives up at the dispatcher's deadline. No quiet hours:
+  /// the user asked for it.
+  Future<bool> _userBuzz(Future<bool> Function() transport) async {
+    final now = DateTime.now();
+    final r = await alertDispatcher.dispatch(
+      _buzzPreviewRule,
+      eventId: 'user:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandTransport: transport,
+    );
+    return r.targets.contains('band');
   }
 
   /// Pulse the strap so it can be heard/felt during a find-my-strap hunt.
@@ -5580,7 +5608,10 @@ class AppState extends ChangeNotifier {
   Future<void> buzzBand() async {
     if (!isConnected) return;
     try {
-      await engine.buzz();
+      await _userBuzz(() async {
+        await engine.buzz();
+        return true;
+      });
     } catch (_) {
       // Best-effort by design: the next tick will try again.
     }
@@ -6282,7 +6313,7 @@ class AppState extends ChangeNotifier {
       final armed = armedCollectionWindow(
         epoch: alarmEpoch,
         schedule: _schedule,
-        upgrade: wake.upgradeState,
+        upgrade: wake.runningUpgradeState,
       );
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armed?.windowEnd,

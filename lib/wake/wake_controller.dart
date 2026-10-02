@@ -59,6 +59,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../state/alarm_schedule.dart';
+import '../state/feature_flags.dart';
 import 'wake_orchestrator.dart';
 import 'wake_settings.dart';
 
@@ -70,13 +71,17 @@ class WakeController extends ChangeNotifier {
     required Future<void> Function(WakeUpgradeState state) saveUpgradeState,
     required Future<WakeAckOutcome> Function(bool cancelNative) acknowledgeWake,
     required Future<List<WakeTraceEntry>> Function(DateTime wakeAt) traceFor,
-  })  : _schedule = schedule,
+    bool Function()? naturalEnabled,
+  })  : _naturalEnabled = naturalEnabled ??
+            (() => FeatureFlags.isOn(FeatureFlag.naturalWake)),
+        _schedule = schedule,
         _saveEntry = saveEntry,
         _loadUpgradeState = loadUpgradeState,
         _saveUpgradeState = saveUpgradeState,
         _acknowledgeWake = acknowledgeWake,
         _traceFor = traceFor;
 
+  final bool Function() _naturalEnabled;
   final List<AlarmScheduleEntry> Function() _schedule;
   final Future<void> Function(AlarmScheduleEntry) _saveEntry;
   final Future<WakeUpgradeState> Function() _loadUpgradeState;
@@ -97,6 +102,18 @@ class WakeController extends ChangeNotifier {
   WakeUpgradeState get upgradeState => _upgrade;
   bool get upgradeExplanationPending => _upgrade == WakeUpgradeState.pending;
 
+  /// FeatureFlag.naturalWake. Off: Natural is hidden and never runs.
+  bool get naturalEnabled => _naturalEnabled();
+
+  /// The legacy Smart Wake heuristic (and its collection window) runs instead
+  /// of Natural: the explanation is still pending, or Natural is switched off.
+  bool get legacySmartWakeActive =>
+      upgradeExplanationPending || !naturalEnabled;
+
+  /// [upgradeState] as the RUNNING code must see it (collection windows).
+  WakeUpgradeState get runningUpgradeState =>
+      gateNaturalWake(_upgrade, enabled: naturalEnabled);
+
   AlarmScheduleEntry _entry(int weekday) {
     _checkWeekday(weekday);
     return _schedule().firstWhere((e) => e.weekday == weekday);
@@ -104,7 +121,9 @@ class WakeController extends ChangeNotifier {
 
   int naturalWindowMinutes(int weekday) => _entry(weekday).naturalWindowMinutes;
   bool naturalActive(int weekday) =>
-      naturalWindowMinutes(weekday) > 0 && !upgradeExplanationPending;
+      naturalEnabled &&
+      naturalWindowMinutes(weekday) > 0 &&
+      !upgradeExplanationPending;
   int gradualWindowMinutes(int weekday) => _entry(weekday).gradualWindowMinutes;
   GradualPattern gradualPattern(int weekday) => _entry(weekday).gradualPattern;
   int gradualCadenceSeconds(int weekday) => _entry(weekday).gradualCadenceSec;
@@ -123,8 +142,9 @@ class WakeController extends ChangeNotifier {
     if (entry != null) {
       return WakeTimeline.compute(
         wakeAt: wakeAt,
-        naturalMinutes:
-            upgradeExplanationPending ? 0 : entry.naturalWindowMinutes,
+        naturalMinutes: upgradeExplanationPending || !naturalEnabled
+            ? 0
+            : entry.naturalWindowMinutes,
         gradualMinutes: entry.gradualWindowMinutes,
       );
     }

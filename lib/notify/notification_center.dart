@@ -38,6 +38,7 @@ import 'alert_dispatcher.dart';
 import 'notification_event.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
+import '../state/feature_flags.dart';
 import 'tap_router.dart';
 
 class NotificationCenter {
@@ -74,6 +75,20 @@ class NotificationCenter {
     final minuteOfDay = DateTime.now().hour * 60 + DateTime.now().minute;
     final explicitAction = ruleId != null &&
         const {'zone', 'breath', 'tasker', 'wake', 'relay'}.contains(ruleId);
+    // FeatureFlag.alertDispatcher OFF: the pre-dispatcher delivery. Phone only,
+    // through the same fire-once claim; a rule that does not select the phone
+    // (or is off) stays silent, so switching the flag off never adds a phone
+    // alert the user did not choose. Band haptics are not reachable from here.
+    await FeatureFlags.ensureLoaded();
+    if (!FeatureFlags.isOn(FeatureFlag.alertDispatcher)) {
+      final rule = prefs.alertRule(id);
+      if (!rule.enabled || !rule.phoneSelected) return false;
+      return _emitPhone(
+        e,
+        allowPermissionPrompt: allowPermissionPrompt,
+        explicitAction: explicitAction,
+      );
+    }
     final out = await dispatcher.dispatch(
       prefs.alertRule(id),
       eventId: e.dedupeKey,

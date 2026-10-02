@@ -93,6 +93,10 @@ class EcgTapSession {
     this.stallAfter = const Duration(seconds: 3),
     this.startTimeout = const Duration(seconds: 20),
     this.pollEvery = const Duration(milliseconds: 250),
+    this.beginTimeout = const Duration(seconds: 15),
+    this.endTimeout = const Duration(seconds: 5),
+    this.recordTimeout = const Duration(seconds: 5),
+    this.buzzTimeout = const Duration(seconds: 15),
   }) : _now = now ?? DateTime.now;
 
   /// Start the ECG stream; true when the command went out and the controller is
@@ -145,6 +149,19 @@ class EcgTapSession {
   /// (`no_stream`). Startup is slow; do not give up early.
   final Duration startTimeout;
   final Duration pollEvery;
+
+  // Every call out of this class is bounded, so a write or a database that
+  // never answers ends in a give-up state instead of a latch that swallows
+  // every later double tap:
+  //  * [beginTimeout] — the stream-start command (a BLE write). On expiry the
+  //    start fails and a late-starting stream is stopped.
+  //  * [endTimeout] — stopping the stream.
+  //  * [recordTimeout] — writing the gesture interval. It runs BEFORE the stream
+  //    is stopped, so a stuck database must not keep the stream running.
+  //  * [buzzTimeout] — one band buzz. A buzz that never answers counts as not
+  //    written; the acknowledgement then abandons the gesture, and the next
+  //    session's buzzes are not queued behind it.
+  final Duration beginTimeout, endTimeout, recordTimeout, buzzTimeout;
 
   static const Duration _samplePeriod = Duration(milliseconds: 10); // 100 Hz
 
@@ -200,15 +217,13 @@ class EcgTapSession {
     } catch (_) {}
     try {
       step?.call('Double tap received. Starting the ECG stream.');
-      if (!await beginStream()) {
+      if (!await beginStream().timeout(beginTimeout)) {
         throw StateError('the ECG stream did not start');
       }
       if (!_active) {
         // Finished while the start was still returning: do not leave the
         // stream running.
-        try {
-          await endStream();
-        } catch (_) {}
+        await _endStreamSafely();
         return;
       }
       _streamUp = true;
@@ -223,8 +238,17 @@ class EcgTapSession {
     } catch (e) {
       step?.call('Could not start: $e');
       await _finish(null, 'start_failed');
+      // A start that never answered may still land: make sure nothing is left
+      // streaming for a gesture that has already given up.
+      if (e is TimeoutException) await _endStreamSafely();
       rethrow;
     }
+  }
+
+  Future<void> _endStreamSafely() async {
+    try {
+      await endStream().timeout(endTimeout);
+    } catch (_) {}
   }
 
   /// One decoded ECG packet. Contact is a non-zero sample: the stream is zeros
@@ -394,7 +418,7 @@ class EcgTapSession {
   ) async {
     var ok = false;
     try {
-      ok = await buzz(pulses, id);
+      ok = await buzz(pulses, id).timeout(buzzTimeout);
     } catch (_) {
       ok = false;
     }
@@ -464,13 +488,9 @@ class EcgTapSession {
     // 8N: the interval is written on every exit, and a failure here must not
     // stop the stream from being stopped.
     try {
-      await recordSession?.call(record);
+      await recordSession?.call(record).timeout(recordTimeout);
     } catch (_) {}
-    if (up) {
-      try {
-        await endStream();
-      } catch (_) {}
-    }
+    if (up) await _endStreamSafely();
   }
 
   int? _strapNowSafe() {

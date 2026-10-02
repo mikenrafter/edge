@@ -368,6 +368,16 @@ class WakeOrchestrator {
 
   bool _ticking = false;
 
+  /// The last run state this instance wrote (or tried to). When the store fails
+  /// to save or to load, this keeps the "already fired" flag and the Gradual
+  /// cursor alive for the life of the process, so a database error cannot turn
+  /// into a second early haptic. A restart loses it; the dispatcher's durable
+  /// per-event ledger (stable event ids) is the guard across that boundary.
+  Map<String, Object?>? _mem;
+
+  /// The newest state exists only in [_mem] (the last save did not land).
+  bool _memAhead = false;
+
   /// Run one tick. Coalesces with a tick already in flight. Never throws.
   Future<WakeTickOutcome> tick(WakePlanInput plan, {DateTime? scheduledFor}) async {
     if (_ticking) return const WakeTickOutcome(coalesced: true);
@@ -754,17 +764,38 @@ class WakeOrchestrator {
   // ── persistence helpers (a store failure never breaks a wake) ─────────────
 
   Future<Map<String, Object?>?> _loadState() async {
+    Map<String, Object?>? stored;
+    var failed = false;
     try {
-      return await stateStore.load().timeout(opTimeout);
+      stored = await stateStore.load().timeout(opTimeout);
     } catch (_) {
-      return null;
+      failed = true;
     }
+    final mem = _mem;
+    if (mem != null && (failed || _memAhead)) {
+      return (jsonDecode(jsonEncode(mem)) as Map).cast<String, Object?>();
+    }
+    return stored;
   }
 
   Future<void> _save(_Run run) async {
+    Map<String, Object?> json;
     try {
-      await stateStore.save(run.toJson()).timeout(opTimeout);
-    } catch (_) {}
+      // The same round trip a real store does.
+      json = (jsonDecode(jsonEncode(run.toJson())) as Map).cast<String, Object?>();
+    } catch (_) {
+      // An unserialisable stager state (a corrupt observation) costs a warm-up,
+      // never the fired flag or the Gradual cursor.
+      run.stager = null;
+      json = (jsonDecode(jsonEncode(run.toJson())) as Map).cast<String, Object?>();
+    }
+    _mem = json;
+    try {
+      await stateStore.save(json).timeout(opTimeout);
+      _memAhead = false;
+    } catch (_) {
+      _memAhead = true;
+    }
   }
 
   Future<void> _trace(int sec, String kind, Map<String, Object?> data) async {

@@ -172,7 +172,14 @@ class AlertDispatcher {
       } catch (_) {
         reason ??= 'deliveryFailed';
       } finally {
-        if (claimed && !success) await ledger.release(key);
+        if (claimed && !success) {
+          // A storage failure here must not escape dispatch or skip the next
+          // target. The claim then stays consumed (fail closed): a lost alert,
+          // never a second buzz.
+          try {
+            await ledger.release(key);
+          } catch (_) {}
+        }
       }
     }
     return AlertDeliveryOutcome(delivered, reason);

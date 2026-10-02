@@ -50,10 +50,13 @@ import '../ble/xwatch_link.dart';
 import '../ble/zetime_link.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/profile.dart';
+import '../data/day_label.dart' show dayLabelOf;
 import '../data/db.dart';
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_recovery.dart';
 import '../ecg/ecg_transport.dart';
+import '../state/feature_flags.dart';
+import '../wake/wake_settings.dart' show gateNaturalWake;
 import '../wake/wake_stores.dart' show loadWakeUpgradeState;
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -241,10 +244,11 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
           AlarmScheduleEntry.fromRow(r),
       ]);
       final preSyncPrefs = await SharedPreferences.getInstance();
+      await FeatureFlags.ensureLoaded(); // a headless run has no launch hook
       final armedWindow = armedCollectionWindow(
         epoch: preSyncPrefs.getInt('alarm_epoch'),
         schedule: preSyncSchedule,
-        upgrade: await loadWakeUpgradeState(),
+        upgrade: gateNaturalWake(await loadWakeUpgradeState()),
       );
       final plan = await HighFreqWakeWindow.planNow(
         scheduledWindowEnd: armedWindow?.windowEnd,
@@ -617,7 +621,7 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
       NotificationEvent(
         // Date-bucketed so a legitimate re-fire after the cooldown isn't
         // blocked by putNotification's INSERT-OR-IGNORE dedupe.
-        dedupeKey: '${now.toIso8601String().substring(0, 10)}:sync_stale',
+        dedupeKey: '${dayLabelOf(now)}:sync_stale',
         category: NotifCategory.device,
         // Quiet hours DROP a normal-priority event; nothing queues it for the
         // morning. The 48-hour cooldown below is therefore only spent when the
@@ -626,7 +630,7 @@ Future<void> checkSyncStaleness({bool allowPermissionPrompt = false}) async {
         title: "Your band has not synced",
         body: 'No new data for about $hoursStale hours. Open OpenStrap to '
               'reconnect the band.',
-        date: now.toIso8601String().substring(0, 10),
+        date: dayLabelOf(now),
         route: '/today',
       ),
       allowPermissionPrompt: allowPermissionPrompt,

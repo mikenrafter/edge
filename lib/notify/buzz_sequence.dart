@@ -212,20 +212,27 @@ class BuzzRecorder {
 /// Failed or disconnected deliveries stop the remaining steps. Without a
 /// duration-aware [buzzForDuration], a held press plays as a short buzz (the
 /// rhythm is kept; it never fails the sequence).
+///
+/// A step whose write does not answer within [stepTimeout] fails the sequence
+/// and no later step is sent: the dispatcher gives up on a slow band at its own
+/// deadline, and a stuck write finishing late must not then play the rest of the
+/// rhythm after the caller has already moved on.
 Future<bool> playBuzzSequence(
   BuzzSequence s, {
   required Future<bool> Function() buzz,
   Future<bool> Function(int holdMs)? buzzForDuration,
   required bool Function() isConnected,
+  Duration stepTimeout = const Duration(seconds: 5),
 }) async {
   final watch = clock.stopwatch()..start();
   try {
     for (var i = 0; i < s.length; i++) {
       if (!isConnected()) return false;
       final start = watch.elapsedMilliseconds;
-      final ok = buzzForDuration == null
-          ? await buzz()
-          : await buzzForDuration(s.durationsMs[i]);
+      final ok = await (buzzForDuration == null
+              ? buzz()
+              : buzzForDuration(s.durationsMs[i]))
+          .timeout(stepTimeout);
       if (!ok) return false;
       final remainingHold =
           start + s.durationsMs[i] - watch.elapsedMilliseconds;

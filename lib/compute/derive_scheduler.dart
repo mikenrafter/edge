@@ -250,7 +250,15 @@ class DeriveScheduler {
     required String type,
     required String reason,
   }) async {
-    await LocalDb.enqueueDeriveJob(type: type, reason: reason);
+    // Called unawaited: a database error here is logged, never an uncaught
+    // async error. The intent is lost only if the write itself failed, and the
+    // next stored-data tick enqueues again.
+    try {
+      await LocalDb.enqueueDeriveJob(type: type, reason: reason);
+    } catch (e) {
+      log('[derive-scheduler] could not queue $type: $e');
+      return;
+    }
     await _refreshSnapshot();
     _arm();
   }
@@ -276,7 +284,13 @@ class DeriveScheduler {
     }
     _timer?.cancel();
     _timer = null;
-    final job = await LocalDb.takeNextComputeJob();
+    final Map<String, dynamic>? job;
+    try {
+      job = await LocalDb.takeNextComputeJob();
+    } catch (e) {
+      log('[derive-scheduler] could not take the next job: $e');
+      return;
+    }
     if (job == null) {
       await _refreshSnapshot();
       return;
@@ -304,10 +318,14 @@ class DeriveScheduler {
         await LocalDb.completeComputeJob(id);
       }
     } catch (e) {
+      // _drain runs unawaited from a timer: a failed pass is recorded on its
+      // job and logged, not rethrown into the zone.
+      log('[derive-scheduler] ${kind.name} pass failed: $e');
       if (id != null && id.isNotEmpty) {
-        await LocalDb.failComputeJob(id, '$e');
+        try {
+          await LocalDb.failComputeJob(id, '$e');
+        } catch (_) {}
       }
-      rethrow;
     } finally {
       _running = false;
       await _refreshSnapshot();
@@ -339,6 +357,9 @@ class DeriveScheduler {
         (job) =>
             job['type']?.toString() == 'derive_heavy',
       );
+    } catch (e) {
+      // Keep the last known pending flags; a failed read is not "nothing queued".
+      log('[derive-scheduler] could not read the job queue: $e');
     } finally {
       _refreshing = false;
       onChanged();

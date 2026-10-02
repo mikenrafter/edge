@@ -26,6 +26,7 @@ import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
+import '../../state/feature_flags.dart';
 import '../ui2.dart';
 import 'device_lab.dart';
 import 'profile.dart';
@@ -63,6 +64,7 @@ class BandGestures extends StatelessWidget {
         },
         thresholds: g.ecgTapThresholds,
         onThresholds: g.setEcgTapThresholds,
+        extraTaps: FeatureFlags.isOn(FeatureFlag.tapClassifiers),
       ),
     );
   }
@@ -108,6 +110,11 @@ class BandGesturesView extends StatelessWidget {
   final EcgTapThresholds? thresholds;
   final ValueChanged<EcgTapThresholds>? onThresholds;
 
+  /// FeatureFlag.tapClassifiers. False hides every extra-tap control (method,
+  /// tap counts, pause, touch windows and the MG note): the screen is then the
+  /// plain double-tap action list.
+  final bool extraTaps;
+
   const BandGesturesView({
     super.key,
     required this.chosen,
@@ -124,6 +131,7 @@ class BandGesturesView extends StatelessWidget {
     this.onTapToggle,
     this.thresholds,
     this.onThresholds,
+    this.extraTaps = true,
   });
 
   @override
@@ -196,6 +204,7 @@ class BandGesturesView extends StatelessWidget {
                 ]),
                 // How taps beyond the double tap are counted. ECG is dimmed and
                 // inert (never hidden) on a band without the sensor.
+                if (extraTaps)
                 SettingsAccordion('Count extra taps with', children: [
                   _MethodRow(
                     id: 'ecg',
@@ -220,6 +229,7 @@ class BandGesturesView extends StatelessWidget {
                 // rest are a DRAFT: touches of the ECG sensor after the double
                 // tap, or more double taps in a row. One mapping serves both:
                 // the slot for 3 taps is the slot for 2 double taps.
+                if (extraTaps)
                 SettingsAccordion('Tap counts', children: [
                   _TapCountRow(
                     title: ecg ? '2 taps' : 'Double tap',
@@ -245,7 +255,7 @@ class BandGesturesView extends StatelessWidget {
                           : null,
                     ),
                 ]),
-                if (onRepeatWindowMs != null)
+                if (extraTaps && onRepeatWindowMs != null)
                   SettingsAccordion('Pause between double taps', children: [
                     RepeatWindowAdjuster(
                       windowMs: repeatWindowMs ??
@@ -253,6 +263,7 @@ class BandGesturesView extends StatelessWidget {
                       onChanged: onRepeatWindowMs,
                     ),
                   ]),
+                if (extraTaps)
                 Section(
                   'What needs a WHOOP MG',
                   Surface(
@@ -260,7 +271,7 @@ class BandGesturesView extends StatelessWidget {
                         style: F.body.copyWith(color: p.ink2, height: 1.4)),
                   ),
                 ),
-                if (onThresholds != null)
+                if (extraTaps && onThresholds != null)
                   SettingsAccordion('Touch windows', children: [
                     EcgThresholdAdjusters(
                       thresholds: thresholds ?? EcgTapThresholds(),
