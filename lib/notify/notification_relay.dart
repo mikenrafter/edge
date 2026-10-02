@@ -223,7 +223,7 @@ class RelayController {
   // so updates never re-buzz and a reposted notification does.
   final Set<String> _live = {};
   final Set<String> _inFlight = {};
-  int _seq = 0;
+  final Map<String, int> _removals = {};
   bool _listening = true;
 
   bool get listening => _listening;
@@ -266,7 +266,12 @@ class RelayController {
     if (!_listening) return const RelayResult(suppression: 'notListening');
     final key = '${m['keyHash']}';
     if (m['kind'] == 'remove') {
-      _live.remove(key);
+      if (_live.remove(key)) {
+        // A repost of this key is a new occurrence even if the system reuses
+        // the post time; the count is part of its delivery id.
+        if (_removals.length >= 1000) _removals.clear();
+        _removals[key] = (_removals[key] ?? 0) + 1;
+      }
       return const RelayResult(suppression: 'removed');
     }
     final channel = relayChannelOf(m['category']);
@@ -342,11 +347,10 @@ class RelayController {
           ),
           channelPolicyId: 'relay',
         ),
-        // The sequence keeps a reposted key (same hash, same post time after a
-        // removal) from colliding with its own earlier delivery claim.
-        // ponytail: a restart can re-deliver an entry still posted within the
-        // stale window; widen with a persisted high-water mark if that bites.
-        eventId: '$channel:$key:$postMs:${_seq++}',
+        // Stable for one post (channel, key, post time, removals seen), so the
+        // dispatcher's durable ledger refuses a second buzz for it after a
+        // process restart empties the live-key set.
+        eventId: '$channel:$key:$postMs:${_removals[key] ?? 0}',
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
         phoneTransport: phone,
@@ -414,6 +418,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     AlertDispatcher? dispatcher,
     this.worn,
     @visibleForTesting this.debugSupported,
+    @visibleForTesting this.nativeTimeout = const Duration(seconds: 5),
   }) : dispatcher =
            dispatcher ??
            AlertDispatcher(
@@ -436,10 +441,13 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   );
   static const Duration _healEvery = Duration(seconds: 120);
 
+  /// How long any one platform call may take.
+  final Duration nativeTimeout;
+
   /// Every platform call is bounded: a bridge that never answers (engine torn
   /// down, service dying) must not leave a caller awaiting forever. The
   /// settings-page launch returns at once natively, so it is bounded too.
-  static const Duration _nativeTimeout = Duration(seconds: 5);
+  Duration get _nativeTimeout => nativeTimeout;
   Timer? _healTimer;
 
   /// Fire the strap haptic. Wired by AppState to `engine.buzz()`. Best-effort.
@@ -822,8 +830,11 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   // Tell the platform whether metadata should flow at all, and when arming pull
   // what is currently posted so the controller restores state without replay.
   // The heal timer only runs while armed.
+  int _resyncGen = 0;
+
   void _resync() {
     final shouldListen = active;
+    final gen = ++_resyncGen;
     // Our own latches clear whether or not the bridge ever answers: a platform
     // that times out must not leave a disarmed relay believing it is listening.
     if (!shouldListen) unawaited(controller.stop('disarmed'));
@@ -835,6 +846,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         final list = await _native
             .invokeMethod<List<Object?>>('activeMetadata')
             .timeout(_nativeTimeout);
+        // A newer resync, a revocation or a switch-off while the bridge was
+        // answering supersedes this one: do not re-open a closed listener.
+        if (gen != _resyncGen || !active) return;
         await controller.listenerConnected(list ?? const []);
       }
     }).catchError((_) {});

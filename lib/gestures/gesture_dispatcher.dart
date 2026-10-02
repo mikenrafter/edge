@@ -56,6 +56,8 @@
 // notif_fired. LocalDb.pruneNotifFired (run whenever a notification fires)
 // drops them after 90 days.
 
+import 'dart:async' show TimeoutException;
+
 import 'device_action.dart';
 import 'double_tap_repeat.dart';
 import 'gesture_settings.dart';
@@ -118,6 +120,11 @@ class GestureDispatcher {
   /// method is unavailable and a double tap always runs at once.
   final DoubleTapRepeatSession? repeatSession;
 
+  /// How long one action may take. A native or in-app action that never answers
+  /// is a failed outcome and the next action still runs. Its claim is KEPT: the
+  /// action may yet have run, and a re-sent tap must not run it a second time.
+  final Duration actionTimeout;
+
   /// FeatureFlag.tapClassifiers, read on every tap so the switch bites at once.
   final bool Function() _tapClassifiersOn;
 
@@ -136,6 +143,7 @@ class GestureDispatcher {
     this.onCountTaps,
     this.repeatSession,
     bool Function()? tapClassifiersOn,
+    this.actionTimeout = const Duration(seconds: 10),
     Future<bool> Function(String actionId)? performNative,
     Future<bool> Function(String key)? claim,
     Future<void> Function(String key)? release,
@@ -358,8 +366,11 @@ class GestureDispatcher {
     // d. Run.
     try {
       log?.call('[gesture] double-tap → ${a.id}');
-      await _run(a, e);
+      await _run(a, e).timeout(actionTimeout);
       return outcome(GestureStatus.ran);
+    } on TimeoutException catch (err) {
+      log?.call('[gesture] ${a.id} did not answer in $actionTimeout');
+      return outcome(GestureStatus.failed, err);
     } catch (err) {
       log?.call('[gesture] ${a.id} failed: $err');
       // e. Give the occurrence back so a retry can run it.

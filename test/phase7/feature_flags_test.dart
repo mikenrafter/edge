@@ -468,7 +468,7 @@ void main() {
             connected: true,
             schedule: saved,
             now: DateTime(2026, 10, 5, 22),
-            naturalWake: natural,
+            naturalWakeSupported: natural,
             upgradePending: natural,
             onSave: (_) async => throw UnimplementedError(),
           );

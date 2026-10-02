@@ -114,6 +114,15 @@ AlarmArmReport armReportOf(AlarmArmResult r) {
 /// How long Save waits for the band's ALARM_SET (event 56) after a write.
 const Duration kAlarmConfirmWait = Duration(seconds: 5);
 
+/// Bounds on each step of Save, so a stuck database or a band that never
+/// answers ends in a failure the header can show (and Retry can answer) rather
+/// than a Save button that stays busy until the app is killed.
+const Duration kAlarmPersistTimeout = Duration(seconds: 10);
+const Duration kAlarmArmTimeout = Duration(seconds: 20);
+
+/// The ceiling on a whole send, enclosing the three steps above.
+const Duration kAlarmSendTimeout = Duration(seconds: 45);
+
 /// The one Save path. [entries] is the whole week.
 ///   1. [persist] — one transaction. A failure here stops everything.
 ///   2. Offline: stop; the band updates when it next connects.
@@ -126,9 +135,17 @@ Future<AlarmSaveOutcome> saveAlarmSchedule({
   required Future<AlarmArmReport> Function() arm,
   required Future<bool> Function(Duration timeout) awaitConfirmed,
   Duration confirmWait = kAlarmConfirmWait,
+  Duration persistTimeout = kAlarmPersistTimeout,
+  Duration armTimeout = kAlarmArmTimeout,
 }) async {
   try {
-    await persist(entries);
+    await persist(entries).timeout(persistTimeout);
+  } on TimeoutException {
+    return const AlarmSaveOutcome(
+      AlarmSaveStatus.failed,
+      persisted: false,
+      error: 'the phone took too long to store it. Try again',
+    );
   } catch (e) {
     return AlarmSaveOutcome(AlarmSaveStatus.failed, persisted: false, error: e);
   }
@@ -137,7 +154,12 @@ Future<AlarmSaveOutcome> saveAlarmSchedule({
   }
   final AlarmArmReport report;
   try {
-    report = await arm();
+    report = await arm().timeout(armTimeout);
+  } on TimeoutException {
+    return const AlarmSaveOutcome(
+      AlarmSaveStatus.failed,
+      error: 'the band did not answer. Try again',
+    );
   } catch (e) {
     return AlarmSaveOutcome(AlarmSaveStatus.failed, error: e);
   }
@@ -150,7 +172,14 @@ Future<AlarmSaveOutcome> saveAlarmSchedule({
   if (!report.awaitsConfirmation) {
     return const AlarmSaveOutcome(AlarmSaveStatus.sentToBand); // a disable
   }
-  final confirmed = await awaitConfirmed(confirmWait);
+  // A confirmation that never reports back is "not confirmed yet", not a hang.
+  var confirmed = false;
+  try {
+    confirmed = await awaitConfirmed(confirmWait).timeout(
+      confirmWait + const Duration(seconds: 2),
+      onTimeout: () => false,
+    );
+  } catch (_) {}
   return AlarmSaveOutcome(
     confirmed ? AlarmSaveStatus.sentToBand : AlarmSaveStatus.sentUnconfirmed,
   );
@@ -262,8 +291,9 @@ class AlarmDraft extends ChangeNotifier {
   /// when a save is already running. A throw from [send] is a failure that
   /// persisted nothing, never an unhandled error.
   Future<AlarmSaveOutcome?> save(
-    Future<AlarmSaveOutcome> Function(List<AlarmScheduleEntry> entries) send,
-  ) {
+    Future<AlarmSaveOutcome> Function(List<AlarmScheduleEntry> entries) send, {
+    Duration sendTimeout = kAlarmSendTimeout,
+  }) {
     if (_sending) return Future.value(null);
     final snapshot = List<AlarmScheduleEntry>.of(_entries);
     _sending = true;
@@ -274,7 +304,13 @@ class AlarmDraft extends ChangeNotifier {
     return () async {
       AlarmSaveOutcome out;
       try {
-        out = await send(snapshot);
+        out = await send(snapshot).timeout(sendTimeout);
+      } on TimeoutException {
+        out = const AlarmSaveOutcome(
+          AlarmSaveStatus.failed,
+          persisted: false,
+          error: 'this took too long. Try again',
+        );
       } catch (e) {
         out = AlarmSaveOutcome(
           AlarmSaveStatus.failed,

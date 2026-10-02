@@ -5567,12 +5567,37 @@ class AppState extends ChangeNotifier {
   /// confirm the band actually fires before trusting the scheduled wake.
   Future<void> testAlarmBuzz() async {
     if (!isConnected) throw Exception('Connect your band first.');
-    await engine.runAlarm();
+    final ok = await _userBuzz(() async {
+      await engine.runAlarm();
+      return true;
+    });
+    if (!ok) throw Exception('The band did not take the buzz. Try again.');
   }
 
   Future<void> testBuzzPattern(int pattern) async {
     if (!isConnected) throw Exception('Connect your band first.');
-    await engine.buzzPattern(pattern);
+    final ok = await _userBuzz(() async {
+      await engine.buzzPattern(pattern);
+      return true;
+    });
+    if (!ok) throw Exception('The band did not take the buzz. Try again.');
+  }
+
+  /// One band buzz the user asked for with a button (test buzz, find my strap).
+  /// Still an [alertDispatcher] delivery (own rule, unique event), so it cannot
+  /// bypass the band-support checks or race a real alert's claim, and a write
+  /// that never answers gives up at the dispatcher's deadline. No quiet hours:
+  /// the user asked for it.
+  Future<bool> _userBuzz(Future<bool> Function() transport) async {
+    final now = DateTime.now();
+    final r = await alertDispatcher.dispatch(
+      _buzzPreviewRule,
+      eventId: 'user:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandTransport: transport,
+    );
+    return r.targets.contains('band');
   }
 
   /// Pulse the strap so it can be heard/felt during a find-my-strap hunt.
@@ -5581,7 +5606,10 @@ class AppState extends ChangeNotifier {
   Future<void> buzzBand() async {
     if (!isConnected) return;
     try {
-      await engine.buzz();
+      await _userBuzz(() async {
+        await engine.buzz();
+        return true;
+      });
     } catch (_) {
       // Best-effort by design: the next tick will try again.
     }
