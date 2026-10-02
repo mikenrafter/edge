@@ -591,7 +591,11 @@ class SyncCoordinator extends ChangeNotifier {
           _active = null;
           _heldBack?.cancel();
           _heldBack = null;
-          _logTiming(failed);
+          // A log sink that throws must not strand the caller awaiting the
+          // result: the latches above are already clear.
+          try {
+            _logTiming(failed);
+          } catch (_) {}
         }
       }
       completer.complete(result);

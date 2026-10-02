@@ -82,6 +82,13 @@ void main() {
       expect(FeatureFlags.isOn(FeatureFlag.nativeRelay), isTrue);
     });
 
+    test('a wrong-typed stored override (a foreign writer) reads as the default',
+        () async {
+      SharedPreferences.setMockInitialValues({'ff.natural_wake': 'off'});
+      await FeatureFlags.load();
+      expect(FeatureFlags.isOn(FeatureFlag.naturalWake), isTrue);
+    });
+
     test('nothing in the mechanism touches the network', () {
       final src = File('lib/state/feature_flags.dart').readAsStringSync();
       for (final banned in ['http', 'dart:io', 'firebase', 'remote_config']) {
@@ -309,7 +316,7 @@ void main() {
       final session = DoubleTapRepeatSession(
         maxTaps: () => 5,
         window: () => const Duration(seconds: 3),
-        onStarted: (_, __) => windows++,
+        onStarted: (_, _) => windows++,
       );
       final d = GestureDispatcher(
         settings: s,

@@ -182,6 +182,29 @@ void main() {
     });
   });
 
+  group('latch wiring in AppState', () {
+    test('the ECG tap session releases the dispatcher\'s count wait before it '
+        'writes the lab log', () {
+      final src = File('lib/state/app_state.dart').readAsStringSync();
+      final from = src.indexOf('late final EcgTapSession _ecgTapSession =');
+      final body = src.substring(from, src.indexOf('Completer<int?>? _tapCount;'));
+      final release = body.indexOf('waiting.complete(count)');
+      final log = body.indexOf('deviceLab.addStep');
+      expect(release, greaterThan(0));
+      expect(log, greaterThan(release));
+    });
+
+    test('a manual sync hold is always handed back in a finally', () {
+      final src = File('lib/state/app_state.dart').readAsStringSync();
+      expect(src, contains('beginManualSync('));
+      expect(src, contains('endManualSync('));
+      final begin = src.indexOf('beginManualSync(');
+      final tail = src.substring(begin);
+      expect(tail.indexOf('finally'), greaterThan(0));
+      expect(tail.indexOf('finally'), lessThan(tail.indexOf('endManualSync(')));
+    });
+  });
+
   group('heavy compute stays off the UI isolate', () {
     test('the wake orchestrator reaches the stager only through its observer '
         'seam, whose default runs in Isolate.run', () {

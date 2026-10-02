@@ -349,14 +349,16 @@ class AppState extends ChangeNotifier {
     onStarted: (tap, settings) => deviceLab.beginSession(
         method: 'ECG sensor touches', settings: settings, tapAt: tap.receivedAt),
     onFinished: (count, reason) {
+      // Release the dispatcher first: a throw from the lab log below must not
+      // leave the tap's action chain awaiting a count that never comes.
+      final waiting = _tapCount;
+      _tapCount = null;
+      if (waiting != null && !waiting.isCompleted) waiting.complete(count);
       final lab = gestureSettings.ecgOnDoubleTap;
       deviceLab.addStep(count != null
           ? 'Result: $count taps.${lab ? ' This is a draft; no action was run.' : ''}'
           : 'Result: abandoned ($reason). No action was run.');
       deviceLab.endSession(count: count, reason: reason);
-      final waiting = _tapCount;
-      _tapCount = null;
-      if (waiting != null && !waiting.isCompleted) waiting.complete(count);
     },
     step: deviceLab.addStep,
     // 8N: the stream makes the band save raw ECG that history sync delivers

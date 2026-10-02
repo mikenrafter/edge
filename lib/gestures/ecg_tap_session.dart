@@ -488,7 +488,7 @@ class EcgTapSession {
     // 8N: the interval is written on every exit, and a failure here must not
     // stop the stream from being stopped.
     try {
-      await recordSession?.call(record)?.timeout(recordTimeout);
+      await recordSession?.call(record).timeout(recordTimeout);
     } catch (_) {}
     if (up) await _endStreamSafely();
   }

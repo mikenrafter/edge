@@ -56,7 +56,6 @@ class _Rig {
     this.sequenceImpl,
     this.connected = true,
     this.fallback = 'none',
-    this.phoneOk = true,
   }) : ledger = ledger ?? MemoryAlertDeliveryLedger() {
     controller = RelayController(
       dispatcher: AlertDispatcher(
@@ -85,7 +84,7 @@ class _Rig {
   final Future<bool> Function(BuzzSequence)? sequenceImpl;
   bool connected;
   String fallback;
-  bool phoneOk;
+  bool phoneOk = true;
   int buzzes = 0, phones = 0;
   late final RelayController controller;
 }
@@ -169,8 +168,11 @@ void main() {
         'notification and does not buzz it again', () async {
       final shared = MemoryAlertDeliveryLedger(); // stands in for SQLite
       final before = _Rig(ledger: shared);
+      // Another post first, so a per-process counter would differ after the
+      // restart (the old delivery id carried one).
+      await before.controller.handleMetadata(_post(key: 'other'));
       await before.controller.handleMetadata(_post());
-      expect(before.buzzes, 1);
+      expect(before.buzzes, 2);
       final after = _Rig(ledger: shared); // new process: empty live-key set
       await after.controller.listenerConnected([_post()]);
       expect(after.buzzes, 0);
