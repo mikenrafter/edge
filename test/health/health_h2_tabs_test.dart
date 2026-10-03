@@ -70,12 +70,12 @@ List<ChartPoint> _series(double start, double step) {
   ];
 }
 
-HealthData _data({String illness = 'amber'}) => HealthData(
+HealthData _data({String illness = 'amber', bool heldOver = true}) => HealthData(
       today: {
         'status': {
           'today_day': _today,
           'overnight_day': _night,
-          'showing_prior_overnight': true,
+          'showing_prior_overnight': heldOver,
           'overnight_state': 'ready',
         },
         'daily': {
@@ -519,8 +519,10 @@ void main() {
     testWidgets('a MetricDetail opened from Last night starts on Today',
         (t) async {
       // Only Trends asks for 30 days. A tile that says "last night" opens on
-      // last night.
-      await _pump(t, _screen());
+      // last night. When that night IS today's there is no day to carry and the
+      // screen opens on Today; a held-over night opens on its own day (see
+      // health_h2_held_over_detail_test.dart).
+      await _pump(t, _screen(data: _data(heldOver: false)));
       await t.tap(find.text('HRV'));
       await _settle(t);
       final ranges = find.descendant(

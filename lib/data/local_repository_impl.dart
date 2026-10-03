@@ -295,7 +295,10 @@ class LocalRepositoryImpl extends LocalRepository {
     final showOvernight = overnightState == 'ready' || showingPriorOvernight;
     final sleepBundle = showOvernight ? overnightBundle : null;
     final activityBundle = activityState == 'ready' ? todayBundle : null;
-    final wakeFeatures = activityState == 'ready'
+    // The interim features answer whenever today has no derived row of its
+    // own. Gating on `activityState` instead left today's wake-only day (state
+    // `ready` because the wake row exists) with neither source.
+    final wakeFeatures = activityBundle != null
         ? null
         : await _wakeFeatures(todayDay);
     final b = sleepBundle ?? activityBundle;
@@ -412,6 +415,16 @@ class LocalRepositoryImpl extends LocalRepository {
         'HIGH',
         unit: 'min',
         note: activityNote('wear_min'),
+      ),
+      // Movement minutes: written to the day's scalars and to the interim wake
+      // features alike, absent (with the gate's reason) when nothing measured it.
+      'active_min': _scalarMetric(
+        activityBundle == null
+            ? (wakeFeatures?['active_min'] as num?)?.toDouble()
+            : _scalar(activityBundle, 'active_min'),
+        'ESTIMATE',
+        unit: 'min',
+        note: activityNote('active_min'),
       ),
       // Active calories (Keytel HR→kcal over the wake span) + total daily energy
       // (TDEE: Mifflin BMR floor + active surplus).

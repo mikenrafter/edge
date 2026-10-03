@@ -630,7 +630,15 @@ class MetricDetail extends StatefulWidget {
   /// A window this install does not have enough days for falls back to the
   /// widest one it does, the same clamp every other range choice goes through.
   final int? initialRange;
-  const MetricDetail(this.metricKey, {super.key, this.data, this.initialRange});
+
+  /// A past day to open on, as a `YYYY-MM-DD` label, or null for Today. Health's
+  /// Last night passes the night a held-over row describes: the screen opens on
+  /// the narrowest window that holds that day with the day selected, so it shows
+  /// that night's value and date rather than today's empty slot. Applied once,
+  /// after the first load; [initialRange] is ignored for it.
+  final String? initialDay;
+  const MetricDetail(this.metricKey,
+      {super.key, this.data, this.initialRange, this.initialDay});
 
   @override
   State<MetricDetail> createState() => _MetricDetailState();
@@ -667,6 +675,10 @@ class _MetricDetailState extends State<MetricDetail> {
   late int _range = _windows.indexOf(widget.initialRange ?? 1).clamp(0, 4);
   MetricData? _d;
   bool _loading = true;
+
+  /// True once [MetricDetail.initialDay] has been turned into a window and a
+  /// selected slot, so a reload (a changed preference) never moves the user.
+  bool _dayApplied = false;
 
   /// The slot the user has put a finger on, as an index into the DENSE window.
   /// Null until they touch the chart. A window change clears it: slot 12 of a
@@ -813,11 +825,32 @@ class _MetricDetailState extends State<MetricDetail> {
         winners = resolved;
       }
       if (mounted) {
-        setState(() => (_d = d, _winners = winners, _loading = false));
+        setState(() {
+          _d = d;
+          _winners = winners;
+          _loading = false;
+          _openOnDay(d);
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Moves to the narrowest offered window holding [MetricDetail.initialDay]
+  /// and selects its slot. A day today, or one no offered window reaches, leaves
+  /// the screen where it was. Called inside setState, once.
+  void _openOnDay(MetricData d) {
+    if (_dayApplied) return;
+    _dayApplied = true;
+    final behind = _dayBehind(widget.initialDay);
+    if (behind == null || behind <= 0) return;
+    var i = _windows.indexWhere((w) => w > behind);
+    if (i < 0) i = _windows.length - 1;
+    i = i.clamp(0, _offered(d) - 1);
+    if (behind >= _windows[i]) return;
+    _range = i;
+    _pick = _windows[i] - 1 - behind;
   }
 
   @override

@@ -20,6 +20,7 @@
 //   - the relay hears the change stream (quiet hours, channels) without any
 //     screen telling it.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -52,6 +53,39 @@ class _RefusingStore extends InMemorySharedPreferencesStore {
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
     if (key == 'flutter.$refuse') return false;
+    return super.setValue(valueType, key, value);
+  }
+}
+
+/// A store whose writes can be held (a slow disk) and, once [failing], refuses
+/// the channels key, refuses to put the pattern store back (the restore of an
+/// earlier write), and either answers false or throws for that restore.
+class _FlakyStore extends InMemorySharedPreferencesStore {
+  _FlakyStore() : super.empty();
+
+  /// Held until completed, for writes of the pattern store key.
+  Completer<void>? hold;
+  bool failing = false;
+  bool restoreThrows = false;
+  bool refuseJournal = false;
+  final Set<String> _seen = {};
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (hold != null && key == 'flutter.haptic_patterns_v1') {
+      await hold!.future;
+    }
+    if (failing) {
+      if (key == 'flutter.notif_relay_channels') return false;
+      if (key == 'flutter.haptic_patterns_v1' && !_seen.add(key)) {
+        // The first write of the update lands; putting it back does not.
+        if (restoreThrows) throw StateError('disk gone');
+        return false;
+      }
+      if (refuseJournal && key == 'flutter.settings_recovery_journal_v1') {
+        return false;
+      }
+    }
     return super.setValue(valueType, key, value);
   }
 }
@@ -328,6 +362,135 @@ void main() {
       expect(await _raw(), before);
     });
 
+    for (final throws in [false, true]) {
+      test('a refused restore (${throws ? 'throws' : 'answers false'}) leaves a '
+          'journal that the next load replays', () async {
+        final store = _FlakyStore();
+        SharedPreferences.setMockInitialValues({});
+        SharedPreferencesStorePlatform.instance = store;
+        await repo.update((d) {
+          d.alerts = _alerts();
+          d.channels = _channels();
+          d.patterns = _store();
+        });
+        final before = await _raw();
+        final events = <SettingsChange>[];
+        final sub = repo.changes.listen(events.add);
+        addTearDown(sub.cancel);
+
+        // The pattern store is written first and lands; the channels write is
+        // refused; putting the pattern store back is refused too.
+        store.failing = true;
+        store.restoreThrows = throws;
+        await expectLater(
+          repo.update((d) {
+            d.patterns.add('Other', _tapsB);
+            d.channels = {
+              ...d.channels,
+              'calls': const ChannelConfig(enabled: true),
+            };
+          }),
+          throwsA(isA<StateError>()),
+        );
+        await _settle();
+        expect(events, isEmpty, reason: 'a failed update announces nothing');
+
+        // Disk is half-updated and says so.
+        final mid = await _raw();
+        expect(mid['haptic_patterns_v1'], isNot(before['haptic_patterns_v1']));
+        expect(mid.containsKey('settings_recovery_journal_v1'), isTrue);
+
+        // A restart: the next load puts everything back.
+        store.failing = false;
+        SharedPreferences.resetStatic();
+        final s = await repo.read();
+        expect(s.patterns.map((p) => p.name), ['Calm']);
+        expect(s.channels['calls']!.enabled, isFalse);
+        expect(await _raw(), before);
+      });
+    }
+
+    test('a journal that cannot be saved still throws, and no change is '
+        'announced', () async {
+      final store = _FlakyStore();
+      SharedPreferences.setMockInitialValues({});
+      SharedPreferencesStorePlatform.instance = store;
+      await repo.update((d) {
+        d.channels = _channels();
+        d.patterns = _store();
+      });
+      final events = <SettingsChange>[];
+      final sub = repo.changes.listen(events.add);
+      addTearDown(sub.cancel);
+      store.failing = true;
+      store.refuseJournal = true;
+      await expectLater(
+        repo.update((d) {
+          d.patterns.add('Other', _tapsB);
+          d.channels = {...d.channels, 'calls': const ChannelConfig(enabled: true)};
+        }),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('rollback'), contains('journal')),
+          ),
+        ),
+      );
+      await _settle();
+      expect(events, isEmpty);
+    });
+
+    test('an update that finds a journal it cannot replay writes nothing',
+        () async {
+      final store = _FlakyStore();
+      SharedPreferences.setMockInitialValues({});
+      SharedPreferencesStorePlatform.instance = store;
+      await repo.update((d) {
+        d.channels = _channels();
+        d.patterns = _store();
+      });
+      store.failing = true;
+      await expectLater(
+        repo.update((d) {
+          d.patterns.add('Other', _tapsB);
+          d.channels = {...d.channels, 'calls': const ChannelConfig(enabled: true)};
+        }),
+        throwsA(isA<StateError>()),
+      );
+      final stuck = await _raw();
+      // The disk still refuses the restore, so the journal cannot be replayed:
+      // a new update must not write on top of it.
+      store.failing = true;
+      await expectLater(
+        repo.update((d) => d.setBool('haptics_allow_long_sequences', true),
+            sections: {}),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('recovery journal'),
+          ),
+        ),
+      );
+      expect((await _raw()), stuck);
+    });
+
+    test('a refused write whose rollback works leaves no journal', () async {
+      SharedPreferences.setMockInitialValues({});
+      SharedPreferencesStorePlatform.instance = _RefusingStore(
+        'notif_relay_channels',
+      );
+      await expectLater(
+        repo.update((d) {
+          d.patterns = _store();
+          d.channels = _channels();
+        }),
+        throwsA(isA<StateError>()),
+      );
+      expect((await _raw()).containsKey('settings_recovery_journal_v1'), isFalse);
+    });
+
     test('a failed update does not wedge the queue', () async {
       await expectLater(
         repo.update((d) => d.channels = {'apps': const _BoomChannel()}),
@@ -518,6 +681,94 @@ void main() {
       await _settle();
       expect(r.controller.channels['calls']!.enabled, isTrue);
       expect(r.controller.channels['alarms']!.enabled, isTrue);
+    });
+
+    // A pattern update is mid-write when the user edits a channel that update
+    // is rewriting. The edit is queued behind it; the update's change event
+    // then replaces that channel in the live controller. The queued save used
+    // to read the replaced controller and write the user's edit away.
+    test('an edit to the channel a propagation is rewriting survives both',
+        () async {
+      final store = _FlakyStore();
+      SharedPreferences.setMockInitialValues({});
+      SharedPreferencesStorePlatform.instance = store;
+      await repo.update((d) {
+        d.alerts = _alerts();
+        d.channels = _channels();
+        d.patterns = _store();
+      });
+      final r = _relay();
+      addTearDown(r.dispose);
+      r.controller.channels.addAll(await repo.channels());
+
+      store.hold = Completer<void>();
+      final propagation = repo.update((d) {
+        d.patterns.replace('p1', _tapsB);
+        d.propagatePattern('p1', replacement: d.patterns.byId('p1')!.sequence);
+      });
+      await _settle(); // the update is now stuck writing the pattern store
+
+      // The user switches on "include silent" for the same channel.
+      unawaited(
+        r.setChannel(
+          'apps',
+          r.controller.channels['apps']!.copyWith(includeSilent: true),
+        ),
+      );
+      store.hold!.complete();
+      await propagation;
+      await _settle();
+      await _settle();
+
+      final want = _tapsB.copyWith(patternId: 'p1').toJson();
+      final stored = (await repo.read()).channels['apps']!;
+      expect(stored.includeSilent, isTrue, reason: 'the edit reached disk');
+      expect(stored.buzzSequence!.toJson(), want, reason: 'so did the rewrite');
+      expect(stored.appSequences['com.x']!.toJson(), want);
+      final live = r.controller.channels['apps']!;
+      expect(live.includeSilent, isTrue, reason: 'and the live controller');
+      expect(live.buzzSequence!.toJson(), want);
+    });
+
+    test('an edit to one field survives another writer changing another field '
+        'of the same channel', () async {
+      final store = _FlakyStore();
+      SharedPreferences.setMockInitialValues({});
+      SharedPreferencesStorePlatform.instance = store;
+      await repo.update((d) {
+        d.channels = _channels();
+        d.patterns = _store();
+      });
+      final r = _relay();
+      addTearDown(r.dispose);
+      r.controller.channels.addAll(await repo.channels());
+
+      store.hold = Completer<void>();
+      final other = repo.update((d) {
+        d.patterns.add('Other', _tapsB);
+        d.channels = {
+          ...d.channels,
+          'alarms': d.channels['alarms']!.copyWith(allowDuringDnd: true),
+        };
+      });
+      await _settle();
+      unawaited(
+        r.setChannel(
+          'alarms',
+          r.controller.channels['alarms']!.copyWith(includeSilent: true),
+        ),
+      );
+      store.hold!.complete();
+      await other;
+      await _settle();
+      await _settle();
+
+      final stored = (await repo.read()).channels['alarms']!;
+      expect(stored.allowDuringDnd, isTrue);
+      expect(stored.includeSilent, isTrue);
+      final live = r.controller.channels['alarms']!;
+      expect(live.allowDuringDnd, isTrue);
+      expect(live.includeSilent, isTrue);
     });
 
     test('the relay persists its own channel change through the repository',

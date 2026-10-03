@@ -18,12 +18,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-const _day = '2026-08-16';
+// Today's real label: the Today tab shows a heart rate range only for today.
+final _day = todayLabel();
 
 /// The Today sub-tab's read, with a hand on its clock.
 ///
@@ -39,12 +41,12 @@ class _Repo extends LocalRepository {
   Completer<void>? hold;
 
   @override
-  Future<Map<String, dynamic>> getToday() async => const {
+  Future<Map<String, dynamic>> getToday() async => {
         'status': {'today_day': _day}
       };
 
   @override
-  Future<List<String>> availableDays() async => const [_day];
+  Future<List<String>> availableDays() async => [_day];
 
   @override
   Future<Map<String, dynamic>> getDayTimeline(String date) async {

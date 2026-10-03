@@ -11,7 +11,9 @@
 // every other read and write here, hands the edit a [SettingsDraft] over the
 // sections it declared, encodes everything the edit changed BEFORE writing a
 // byte (so an encode that throws persists nothing), writes the keys together
-// (a refused write puts back what was already written), then announces a
+// (a refused write puts back what was already written, and if putting it back
+// fails too, the old values are kept in a recovery journal that the next read or
+// write replays before it does anything else), then announces a
 // [SettingsChange] on [SettingsRepository.changes]. Readers get immutable
 // [SettingsSnapshot]s; NotificationPrefs.load/save and HapticPatternStore
 // .load/save remain as thin wrappers over this queue (AGENTS.md 4.7: one path,
@@ -20,6 +22,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../haptics/pattern_store.dart';
@@ -166,6 +169,11 @@ class SettingsRepository {
 
   static const String channelsKey = 'notif_relay_channels';
 
+  /// The one key that is new with the journal: a JSON map of key to the value
+  /// it held before a failed update, written only when putting those values
+  /// back failed. The next read or write puts them back and removes it.
+  static const String journalKey = 'settings_recovery_journal_v1';
+
   static Future<void> _tail = Future.value();
 
   static Future<T> _serialize<T>(Future<T> Function() action) {
@@ -181,30 +189,25 @@ class SettingsRepository {
   Stream<SettingsChange> get changes => _changes.stream;
 
   /// The alert prefs alone (what NotificationPrefs.load returns).
-  Future<NotificationPrefs> alerts() => _serialize(
-    () async => NotificationPrefs.readFrom(await SharedPreferences.getInstance()),
-  );
+  Future<NotificationPrefs> alerts() =>
+      _serialize(() async => NotificationPrefs.readFrom(await _prefs()));
 
   /// The stored patterns as a store to edit (what HapticPatternStore.load
   /// returns). Saving it again goes through [update].
   Future<HapticPatternStore> patterns() => _serialize(
     () async => HapticPatternStore.decode(
-      (await SharedPreferences.getInstance()).getString(
-        HapticPatternStore.prefsKey,
-      ),
+      (await _prefs()).getString(HapticPatternStore.prefsKey),
     ),
   );
 
   /// The relay channels alone (see [decodeChannels]).
   Future<Map<String, ChannelConfig>> channels() => _serialize(
-    () async => decodeChannels(
-      (await SharedPreferences.getInstance()).getString(channelsKey),
-    ),
+    () async => decodeChannels((await _prefs()).getString(channelsKey)),
   );
 
   /// Every section, as one consistent snapshot.
   Future<SettingsSnapshot> read() => _serialize(() async {
-    final sp = await SharedPreferences.getInstance();
+    final sp = await _prefs();
     return SettingsSnapshot(
       alerts: await NotificationPrefs.readFrom(sp),
       channels: decodeChannels(sp.getString(channelsKey)),
@@ -259,7 +262,9 @@ class SettingsRepository {
     },
     Object? origin,
   }) => _serialize(() async {
-    final sp = await SharedPreferences.getInstance();
+    // A journal that cannot be replayed stops the update: writing on top of
+    // half-restored settings would let a later replay undo it.
+    final sp = await _prefs(mustReplay: true);
     final baseAlerts = sections.contains(SettingsSection.alerts)
         ? await NotificationPrefs.readFrom(sp)
         : null;
@@ -325,7 +330,104 @@ class SettingsRepository {
     return change;
   });
 
+  /// The preferences, after any pending recovery journal has been replayed.
+  /// Runs inside the queue, so a replay never overlaps another read or write.
+  static Future<SharedPreferences> _prefs({bool mustReplay = false}) async {
+    final sp = await SharedPreferences.getInstance();
+    final raw = sp.getString(journalKey);
+    if (raw != null) await _replayJournal(sp, raw, mustReplay: mustReplay);
+    return sp;
+  }
+
+  static Future<void> _replayJournal(
+    SharedPreferences sp,
+    String raw, {
+    required bool mustReplay,
+  }) async {
+    Map<String, Object?> entries;
+    try {
+      final d = jsonDecode(raw);
+      entries = d is Map ? Map<String, Object?>.from(d) : const {};
+    } on FormatException {
+      entries = const {};
+    }
+    final failed = <String, Object?>{};
+    for (final e in entries.entries) {
+      if (!await _restore(sp, e.key, _decodeBefore(e.value))) {
+        failed[e.key] = e.value;
+      }
+    }
+    if (failed.isEmpty) {
+      // Nothing left to put back (or nothing readable): the journal is done.
+      if (await _removeKey(sp, journalKey)) return;
+      failed.addAll(entries);
+    } else {
+      try {
+        await sp.setString(journalKey, jsonEncode(failed));
+      } catch (_) {
+        // The full journal is still stored; replaying it again is harmless.
+      }
+    }
+    debugPrint(
+      'SettingsRepository: recovery journal not fully replayed '
+      '(${failed.keys.join(', ')})',
+    );
+    if (mustReplay) {
+      throw StateError(
+        'Unable to restore settings from the recovery journal '
+        '(${failed.keys.join(', ')})',
+      );
+    }
+  }
+
+  static Future<bool> _removeKey(SharedPreferences sp, String key) async {
+    try {
+      return await sp.remove(key);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // A stored value as a journal entry: [type, value], or [n] for "was absent".
+  static List<Object>? _encodeBefore(Object? v) => switch (v) {
+    null => const ['n'],
+    final String v => ['s', v],
+    final bool v => ['b', v],
+    final int v => ['i', v],
+    _ => null,
+  };
+
+  static Object? _decodeBefore(Object? entry) {
+    if (entry is! List || entry.isEmpty) return null;
+    return switch (entry[0]) {
+      's' || 'b' || 'i' => entry.length > 1 ? entry[1] : null,
+      _ => null,
+    };
+  }
+
+  /// Puts [key] back to [value] (null: removed). False if the store refused or
+  /// threw.
+  static Future<bool> _restore(
+    SharedPreferences sp,
+    String key,
+    Object? value,
+  ) async {
+    try {
+      return switch (value) {
+        null => await sp.remove(key),
+        final String v => await sp.setString(key, v),
+        final bool v => await sp.setBool(key, v),
+        final int v => await sp.setInt(key, v),
+        _ => true,
+      };
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Writes every entry, or puts every key back as it was if one is refused.
+  /// If putting a key back fails too, the values it should hold go into the
+  /// recovery journal and the error says so.
   static Future<void> _write(
     SharedPreferences sp,
     Map<String, Object> writes,
@@ -343,26 +445,25 @@ class SettingsRepository {
         };
         if (!ok) throw StateError('Unable to save settings (${e.key})');
       }
-    } catch (_) {
+    } catch (error) {
+      final stuck = <String>[];
       for (final k in touched.reversed) {
-        try {
-          switch (before[k]) {
-            case null:
-              await sp.remove(k);
-            case final String v:
-              await sp.setString(k, v);
-            case final bool v:
-              await sp.setBool(k, v);
-            case final int v:
-              await sp.setInt(k, v);
-            default:
-              break;
-          }
-        } catch (_) {
-          // Best effort: the original error is the one to report.
-        }
+        if (!await _restore(sp, k, before[k])) stuck.add(k);
       }
-      rethrow;
+      if (stuck.isEmpty) rethrow;
+      final journal = {for (final k in stuck) k: ?_encodeBefore(before[k])};
+      var journaled = false;
+      try {
+        journaled = await sp.setString(journalKey, jsonEncode(journal));
+      } catch (_) {
+        // Reported below.
+      }
+      final msg =
+          'Settings update failed ($error) and the rollback of '
+          '${stuck.join(', ')} failed too; recovery journal '
+          '${journaled ? 'saved, it is replayed on the next load' : 'could not be saved'}';
+      debugPrint('SettingsRepository: $msg');
+      throw StateError(msg);
     }
   }
 }

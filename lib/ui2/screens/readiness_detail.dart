@@ -42,6 +42,11 @@ class ReadinessData {
   /// absence.
   final String? heldOverNight;
 
+  /// The night the headline describes when the screen was opened FOR a held-over
+  /// night (Health → Last night names it and passes it in). Null when it was
+  /// opened for today, where the headline is today's or absent.
+  final String? day;
+
   /// DENSE — one slot per calendar day, `null` where no score was stored. The
   /// chart under it is dated, and `seriesOf` (values only) cannot date
   /// anything: a five-point series from five scattered weeks used to be drawn
@@ -53,6 +58,7 @@ class ReadinessData {
     this.breakdown = const [],
     this.inputsUsed = 0,
     this.heldOverNight,
+    this.day,
     this.series = const [],
     this.absentDiag,
   });
@@ -71,7 +77,10 @@ class ReadinessData {
     return diag is Map ? diag.cast<String, dynamic>() : null;
   }
 
-  static Future<ReadinessData> load(LocalRepository repo) async {
+  /// [day] is a night the caller already knows is the held-over one; it is read
+  /// as that night's own readiness instead of being refused as not today's. Any
+  /// other value of [day] changes nothing.
+  static Future<ReadinessData> load(LocalRepository repo, {String? day}) async {
     final today = await repo.getToday();
     final cd = await repo.getInsights();
     final chart = await repo.getChart('recovery');
@@ -81,7 +90,9 @@ class ReadinessData {
     final v = envValue(gb) ?? const <String, dynamic>{};
     final bd = v['breakdown'];
 
-    final readiness = overnightMetric(today, daily is Map ? daily['readiness'] : null);
+    final raw = daily is Map ? daily['readiness'] : null;
+    final ownNight = day != null && day == heldOverNightOf(today);
+    final readiness = ownNight ? metricOf(raw) : overnightMetric(today, raw);
 
     return ReadinessData(
       readiness: readiness,
@@ -98,6 +109,7 @@ class ReadinessData {
       ],
       inputsUsed: (v['inputs_used'] as num?)?.toInt() ?? 0,
       heldOverNight: heldOverNightOf(today),
+      day: ownNight ? day : null,
       series: denseDays(pointsOf(chart), 90),
       // Only read when there is nothing to explain away — a scored day has no
       // diag in its bundle anyway, and this is one more day_result decode.
@@ -117,7 +129,10 @@ class ReadinessData {
 
 class ReadinessDetail extends StatefulWidget {
   final ReadinessData? data;
-  const ReadinessDetail({super.key, this.data});
+
+  /// The held-over night to open on, or null for today. See [ReadinessData.load].
+  final String? day;
+  const ReadinessDetail({super.key, this.data, this.day});
 
   @override
   State<ReadinessDetail> createState() => _ReadinessDetailState();
@@ -145,7 +160,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
       return;
     }
     try {
-      final d = await ReadinessData.load(repo);
+      final d = await ReadinessData.load(repo, day: widget.day);
       if (mounted) setState(() => (_d = d, _loading = false));
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -168,6 +183,13 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
         const SizedBox(height: S.x8),
         const Center(child: CircularProgressIndicator()),
       ] else ...[
+        if (d.day != null) ...[
+          Text(
+              l?.healthNightOf(prettyDay(d.day, l)) ??
+                  'Night of ${prettyDay(d.day, l)}',
+              style: F.cap.copyWith(color: p.ink2)),
+          const SizedBox(height: S.x3),
+        ],
         if (v == null) ...[
           // No `why:`. The pipeline records why readiness abstained on every
           // day it does, and the "What was missing" section directly below is

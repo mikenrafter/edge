@@ -129,6 +129,51 @@ class ChannelConfig {
     appSequences: appSequences ?? this.appSequences,
   );
 
+  /// This config with the edit that turned [before] into [after] applied to it:
+  /// every field that differs between those two is set to [after]'s value, and
+  /// every other field stays as it is here. Inside a map field (appSequences)
+  /// the same holds per entry. It is how a change made on a screen is laid over
+  /// a config another writer has changed in the meantime, without either
+  /// writer's fields being put back to what the other saw.
+  ChannelConfig carryingEdit(ChannelConfig before, ChannelConfig after) =>
+      ChannelConfig.fromJson(
+        _carry(toJson(), before.toJson(), after.toJson()),
+        const ChannelConfig(),
+      );
+
+  static Map<String, Object?> _carry(
+    Map<String, Object?> base,
+    Map<String, Object?> before,
+    Map<String, Object?> after,
+  ) {
+    final out = {...base};
+    for (final k in {...before.keys, ...after.keys}) {
+      final b = before[k], a = after[k];
+      if (jsonEncode(b) == jsonEncode(a)) continue;
+      final inner = out[k];
+      if ((b == null || b is Map) &&
+          (a == null || a is Map) &&
+          (b is Map || a is Map) &&
+          (inner == null || inner is Map)) {
+        final merged = _carry(
+          {...?(inner as Map?)?.cast<String, Object?>()},
+          {...?(b as Map?)?.cast<String, Object?>()},
+          {...?(a as Map?)?.cast<String, Object?>()},
+        );
+        if (merged.isEmpty) {
+          out.remove(k);
+        } else {
+          out[k] = merged;
+        }
+      } else if (after.containsKey(k)) {
+        out[k] = a;
+      } else {
+        out.remove(k);
+      }
+    }
+    return out;
+  }
+
   /// The per-channel half of the decision policy. The environment half (DND,
   /// ringer, connectivity, wear) comes from the policy source and wins on overlap.
   Map<String, Object?> get policy => {
@@ -243,7 +288,10 @@ class RelayController {
   final Future<bool> Function() phone;
   final Map<String, Object?> Function(Map<String, Object?> metadata) policy;
   final int Function() nowMs;
-  final VoidCallback? onChanged;
+
+  /// Told after every channel change with the channel as it was and as it is.
+  final void Function(String name, ChannelConfig before, ChannelConfig after)?
+  onChanged;
 
   final Map<String, ChannelConfig> channels = {
     for (final c in relayChannels) c: ChannelConfig.forChannel(c),
@@ -290,8 +338,9 @@ class RelayController {
   );
 
   void putChannel(String name, ChannelConfig cfg) {
+    final before = channels[name] ?? ChannelConfig.forChannel(name);
     channels[name] = cfg;
-    onChanged?.call();
+    onChanged?.call(name, before, cfg);
   }
 
   Future<RelayResult> handleMetadata(Map<String, Object?> m) async {
@@ -626,7 +675,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     phone: _phoneFallback,
     policy: _policy,
     nowMs: () => DateTime.now().millisecondsSinceEpoch,
-    onChanged: _channelsChanged,
+    onChanged: _channelEdited,
   );
 
   /// Tests only: the same production controller with injected sinks and a
@@ -702,20 +751,24 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   // Every successful settings update, from any screen or scheduler. The alert
   // prefs refresh the quiet-hours cache. Channels another writer changed are
   // taken into the live controller; the relay's own writes (origin: this) are
-  // skipped, and only the channels the update changed are touched, so a change
-  // of ours that is not stored yet is never reverted.
+  // skipped, and only the channels the update changed are touched, with our
+  // edits that are not stored yet laid over them, so such an edit is never
+  // reverted.
   void _onSettingsChanged(SettingsChange c) {
     if (c.alerts case final a?) _globalQuiet = a;
     final changed = c.channels;
     if (changed == null || identical(c.origin, this)) return;
     var any = false;
     for (final e in changed.entries) {
+      var next = e.value;
+      for (final u in _unsaved) {
+        if (u.name == e.key) next = next.carryingEdit(u.before, u.after);
+      }
       final cur = controller.channels[e.key];
-      if (cur != null &&
-          jsonEncode(cur.toJson()) == jsonEncode(e.value.toJson())) {
+      if (cur != null && jsonEncode(cur.toJson()) == jsonEncode(next.toJson())) {
         continue;
       }
-      controller.channels[e.key] = e.value;
+      controller.channels[e.key] = next;
       any = true;
     }
     if (any) notifyListeners();
@@ -773,17 +826,33 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         BuzzDelivery.complete;
   }
 
-  // The controller's channels are the live state; storing them is one
-  // repository update, fire and forget as it always was. The update reads the
-  // controller when it runs, so queued changes collapse into the latest.
-  void _channelsChanged() {
+  // Channel edits made here that the repository has not stored yet, oldest
+  // first. The controller's channels are the live state, but storing one is an
+  // edit laid over whatever the repository holds when the update runs, never
+  // the controller's whole copy: another writer (a pattern update rewriting the
+  // same channel) may have changed it in between, and its fields must survive
+  // along with ours. The same list is laid over such a change when it arrives
+  // (see [_onSettingsChanged]), so the live controller keeps the edit too.
+  final List<({String name, ChannelConfig before, ChannelConfig after})>
+  _unsaved = [];
+
+  void _channelEdited(String name, ChannelConfig before, ChannelConfig after) {
+    final edit = (name: name, before: before, after: after);
+    _unsaved.add(edit);
     SettingsRepository.instance
         .update(
-          (d) => d.channels = Map.of(controller.channels),
+          (d) {
+            final base = d.channels[name] ?? ChannelConfig.forChannel(name);
+            d.channels = {
+              ...d.channels,
+              name: base.carryingEdit(before, after),
+            };
+          },
           sections: {SettingsSection.channels},
           origin: this,
         )
-        .then<void>((_) {}, onError: (Object _) {});
+        .then<void>((_) {}, onError: (Object _) {})
+        .whenComplete(() => _unsaved.remove(edit));
     notifyListeners();
   }
 

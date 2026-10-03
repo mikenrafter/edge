@@ -750,7 +750,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     row(ready, LucideIcons.batteryCharging, C.green,
         l?.healthRowReadiness ?? 'Readiness', '',
         ready.value == null ? '' : '${ready.value!.round()}', '/100',
-        () => go(c, const ReadinessDetail()),
+        () => go(c, ReadinessDetail(day: night)),
         whyAbsent: noNight);
 
     row(sleepMin, LucideIcons.moon, C.blue,
@@ -766,7 +766,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     row(hrvMetric, LucideIcons.activity, C.green, l?.healthRowHrv ?? MetricLabels.hrv,
         l?.healthSubRmssdAsleep ?? 'RMSSD, asleep',
         hrvMetric.value == null ? '' : '${hrvMetric.value!.round()}', 'ms',
-        () => go(c, const MetricDetail('hrv')),
+        () => go(c, MetricDetail('hrv', initialDay: night)),
         // Blaming signal quality unconditionally told a day-one user their
         // sensor produced dirty data on a night that never happened.
         whyAbsent: noNight);
@@ -776,7 +776,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         l?.healthRowRestingHr ?? MetricLabels.restingHr,
         l?.healthSubOvernight ?? 'Overnight',
         rhr.value == null ? '' : '${rhr.value!.round()}', 'bpm',
-        () => go(c, const MetricDetail('resting_hr')),
+        () => go(c, MetricDetail('resting_hr', initialDay: night)),
         // Sleep duration and nocturnal RHR are gated separately, so "no night
         // was scored" is often the wrong reason. Only the branch this screen can
         // SEE is stated.
@@ -790,7 +790,8 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         l?.healthRowRespRate ?? MetricLabels.respRate,
         l?.healthSubAsleep ?? 'Asleep',
         respMetric.value == null ? '' : respMetric.value!.toStringAsFixed(1),
-        'br/min', () => go(c, const MetricDetail('resp_rate')),
+        'br/min',
+        () => go(c, MetricDetail('resp_rate', initialDay: night)),
         // THE ESTIMATOR'S OWN REASON when it left one, not a guess written
         // here. `respiration.rsa` records which gate it failed, and the
         // repository carries that note through.
@@ -815,7 +816,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         // 0–100, and the scale has to be on the row. Wellness has always shown
         // it for the same number.
         '/100',
-        () => go(c, const MetricDetail('stress')),
+        () => go(c, MetricDetail('stress', initialDay: night)),
         // Was 'No resting stretch long enough last night.' — one of several
         // gates stress abstains on, asserted for all of them.
         whyAbsent: sleepMin.isEmpty
@@ -834,7 +835,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             ? ''
             : '${skinTemp.value! >= 0 ? '+' : '−'}'
                 '${skinTemp.value!.abs().toStringAsFixed(2)}',
-        'SD', () => go(c, const MetricDetail('skin_temp')));
+        'SD', () => go(c, MetricDetail('skin_temp', initialDay: night)));
 
     final illness = d.today['illness'];
     final illnessDay = illness is Map ? illness['date']?.toString() : null;
@@ -1048,29 +1049,26 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         calories.value == null ? '' : '${calories.value!.round()}', 'kcal',
         () => go(c, const MetricDetail('calories')));
 
-    // The heart rate range and wear time come from the day's own timeline and
-    // wear block. WHICH DAY: the loader falls back to the newest derived day
-    // when today has none, which after a sync gap is days ago, so these two say
-    // so rather than calling it Today.
+    // The vitals describe today only when they are for today: the loader falls
+    // back to the newest derived day when today has none. That day's heart
+    // rate range is a different day's number, so it is an absence here and not
+    // a range under another day's caption.
+    final vitalsToday = v != null && (_behind(v.day) ?? 1) <= 0;
+    final coverage = vitalsToday ? v.wear['coverage_pct'] as num? : null;
+
     if (v != null) {
-      final behind = _behind(v.day);
-      final isToday = behind == null || behind <= 0;
-      final dayWord = isToday ? (l?.healthToday ?? 'Today') : prettyDay(v.day, l);
-      final highs = v.timeline['highs'];
+      final highs = vitalsToday ? v.timeline['highs'] : null;
       num? high(String k) {
         final e = highs is Map ? highs[k] : null;
         return e is Map ? e['v'] as num? : null;
       }
 
       final lo = high('low_hr'), hi = high('peak_hr');
-      final worn = v.wear['worn_min'] as num?;
-      final coverage = v.wear['coverage_pct'] as num?;
-
       if (lo != null && hi != null) {
         anyValue = true;
         rows.add(MetricRow(LucideIcons.heart, C.red,
             l?.healthRowHeartRate ?? 'Heart rate', '${lo.round()} – ${hi.round()}',
-            sub: dayWord,
+            sub: l?.healthToday ?? 'Today',
             unit: 'bpm',
             // The day's own heart rate, for the day this row describes. It used
             // to open the RESTING heart rate screen, which is the night's
@@ -1084,27 +1082,20 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           icon: LucideIcons.heart,
         ));
       }
-      if (worn != null) {
-        anyValue = true;
-        rows.add(MetricRow(LucideIcons.watch, C.green,
-            l?.healthRowWearTime ?? 'Wear time', hm(worn),
-            // `83.33333333333333% of the day` shipped. It is a percentage.
-            sub: coverage == null
-                ? dayWord
-                : (l?.healthCoverageOf(coverage.round(),
-                        isToday ? (l.healthTheDay) : dayWord) ??
-                    '${coverage.round()}% of '
-                        '${isToday ? 'the day' : dayWord}'),
-            onTap: () => go(c, const MetricDetail('wear'))));
-      } else {
-        gaps.add(StatusCard(
-          l?.healthNoMetric((l.healthRowWearTime).toLowerCase()) ??
-              'No wear time',
-          l?.healthWhyNotMeasuredToday ?? 'Not measured yet today.',
-          icon: LucideIcons.watch,
-        ));
-      }
     }
+
+    // WEAR TIME is today's own envelope, read with the rest of the day's totals.
+    // The loader's wear block describes whichever derived day it fell back to,
+    // which after a sync gap is days ago, so it is not the source of this row.
+    final wear = d.daily('wear_min');
+    row(wear, LucideIcons.watch, C.green,
+        l?.healthRowWearTime ?? 'Wear time',
+        // `83.33333333333333% of the day` shipped. It is a percentage.
+        coverage == null
+            ? ''
+            : (l?.healthCoverageOf(coverage.round(), l.healthTheDay) ??
+                '${coverage.round()}% of the day'),
+        hm(wear.value), '', () => go(c, const MetricDetail('wear')));
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (rows.isNotEmpty)
