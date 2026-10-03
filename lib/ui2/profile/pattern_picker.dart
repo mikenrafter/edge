@@ -16,6 +16,7 @@ import '../../haptics/haptic_player.dart' show bakedRuntimeMsFor;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/pattern_store.dart';
 import '../../notify/buzz_sequence.dart';
+import '../../settings/settings_repository.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
@@ -24,9 +25,11 @@ import 'haptic_pattern_editor.dart';
 /// Stores a new pattern and returns it (with its id). Throws ArgumentError for
 /// a bad or taken name.
 Future<SavedHapticPattern> saveNewPattern(String name, BuzzSequence s) async {
-  final store = await HapticPatternStore.load();
-  final p = store.add(name, s);
-  await store.save();
+  late final SavedHapticPattern p;
+  await SettingsRepository.instance.update(
+    (d) => p = d.patterns.add(name, s),
+    sections: {SettingsSection.patterns},
+  );
   return p;
 }
 

@@ -5,14 +5,13 @@
 // queue are doing), Test (buzz the band) and, in developer mode only,
 // Calibration (the Device lab).
 //
-// [HapticsSettings] owns the one pattern store, the alert rules and the relay
-// channels: editing or deleting a stored pattern rewrites every snapshot of it
-// in all three places (propagatePattern) and persists both. [HapticsSettingsView]
+// [HapticsSettings] reads one settings snapshot (patterns, alert rules, relay
+// channels): editing or deleting a stored pattern rewrites every snapshot of it
+// in all three places (propagatePattern) in ONE settings update. [HapticsSettingsView]
 // is the same screen as a pure function of its inputs, which is what the tests
 // pump.
 
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -22,7 +21,7 @@ import '../../haptics/band_queue.dart' show BandCommandLedger;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/pattern_store.dart';
 import '../../notify/buzz_sequence.dart';
-import '../../notify/notification_prefs.dart';
+import '../../settings/settings_repository.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
@@ -44,8 +43,7 @@ class HapticsSettings extends StatefulWidget {
 }
 
 class _HapticsSettingsState extends State<HapticsSettings> {
-  HapticPatternStore? _store;
-  NotificationPrefs _prefs = const NotificationPrefs();
+  SettingsSnapshot? _snap;
   bool _allowLong = Prefs.allowLongHaptics;
 
   @override
@@ -55,54 +53,33 @@ class _HapticsSettingsState extends State<HapticsSettings> {
   }
 
   Future<void> _load() async {
-    final store = await HapticPatternStore.load();
-    final prefs = await NotificationPrefs.load();
+    final snap = await SettingsRepository.instance.read();
     if (!mounted) return;
-    setState(() {
-      _store = store;
-      _prefs = prefs;
-    });
+    setState(() => _snap = snap);
   }
 
-  AppState get _app => context.read<AppState>();
-
-  /// Saves the store, then rewrites every snapshot of [id] in the alert rules
-  /// and the relay channels: with [replacement] they follow it; without one
-  /// (the pattern was deleted) they keep their rhythm and lose the id.
+  /// One settings update: [edit] changes the store, then every snapshot of
+  /// [id] in the alert rules and the relay channels follows it (with the
+  /// pattern's sequence, or, when [deleted], keeping its rhythm and losing the
+  /// id). The store, the rules and the channels are written together or not at
+  /// all, and the relay hears the change on the repository's stream.
   Future<void> _commit(
-    HapticPatternStore store,
-    String id, {
-    BuzzSequence? replacement,
+    String id,
+    void Function(HapticPatternStore store) edit, {
+    bool deleted = false,
   }) async {
-    final app = _app;
-    final relay = app.notificationRelay;
-    await store.save();
-    // Read the rules fresh: another screen may have saved since this opened.
-    final fresh = await NotificationPrefs.load();
-    final before = relay.controller.channels;
-    final out = propagatePattern(
-      id,
-      prefs: fresh,
-      channels: before,
-      replacement: replacement,
-    );
-    var next = fresh;
-    if (patternUsageCount(id, prefs: fresh, channels: before) > 0) {
-      await out.prefs.save();
-      next = out.prefs;
-      for (final e in out.channels.entries) {
-        final old = before[e.key];
-        if (old == null ||
-            jsonEncode(old.toJson()) != jsonEncode(e.value.toJson())) {
-          await relay.setChannel(e.key, e.value);
-        }
-      }
-    }
-    if (!mounted) return;
-    setState(() {
-      _store = store;
-      _prefs = next;
+    final repo = SettingsRepository.instance;
+    await repo.update((d) {
+      edit(d.patterns);
+      d.propagatePattern(
+        id,
+        replacement: deleted ? null : d.patterns.byId(id)!.sequence,
+      );
     });
+    // Read fresh: another screen may have saved since this opened.
+    final fresh = await repo.read();
+    if (!mounted) return;
+    setState(() => _snap = fresh);
   }
 
   Future<void> _run(Future<void> Function() change) async {
@@ -119,35 +96,29 @@ class _HapticsSettingsState extends State<HapticsSettings> {
   // Add and replace let a failure through: the screen that asked (the editor,
   // the name dialog) is still open and says so, so the take is not lost.
   Future<void> _add(String name, BuzzSequence s) async {
-    final store = _store ?? await HapticPatternStore.load();
-    store.add(name, s);
-    await store.save();
+    final repo = SettingsRepository.instance;
+    await repo.update(
+      (d) => d.patterns.add(name, s),
+      sections: {SettingsSection.patterns},
+    );
+    final fresh = await repo.read();
     if (!mounted) return;
-    setState(() => _store = store);
+    setState(() => _snap = fresh);
   }
 
-  Future<void> _replace(String id, BuzzSequence s) async {
-    final store = _store ?? await HapticPatternStore.load();
-    store.replace(id, s);
-    await _commit(store, id, replacement: store.byId(id)!.sequence);
-  }
+  Future<void> _replace(String id, BuzzSequence s) =>
+      _commit(id, (store) => store.replace(id, s));
 
-  Future<void> _rename(String id, String name) => _run(() async {
-    final store = _store ?? await HapticPatternStore.load();
-    store.rename(id, name);
-    await _commit(store, id, replacement: store.byId(id)!.sequence);
-  });
+  Future<void> _rename(String id, String name) =>
+      _run(() => _commit(id, (store) => store.rename(id, name)));
 
-  Future<void> _delete(String id) => _run(() async {
-    final store = _store ?? await HapticPatternStore.load();
-    store.delete(id);
-    await _commit(store, id);
-  });
+  Future<void> _delete(String id) =>
+      _run(() => _commit(id, (store) => store.delete(id), deleted: true));
 
   @override
   Widget build(BuildContext c) {
-    final store = _store;
-    if (store == null) {
+    final snap = _snap;
+    if (snap == null) {
       return Scaffold(
         backgroundColor: P.of(c).bg,
         body: const SafeArea(
@@ -164,11 +135,9 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     // Watched, so the ledger read-out and the queue follow AppState's updates
     // (the ledger and the queue are not notifiers themselves).
     final app = c.watch<AppState>();
-    final channels = app.notificationRelay.controller.channels;
     return HapticsSettingsView(
-      patterns: store.list,
-      usageOf: (id) =>
-          patternUsageCount(id, prefs: _prefs, channels: channels),
+      patterns: snap.patterns,
+      usageOf: snap.patternUsage,
       profile: HapticDeviceProfile.forGeneration(app.device.generation),
       allowLong: _allowLong,
       devMode: Prefs.getBool(Prefs.devMode, false),
@@ -179,8 +148,14 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       // The device page's Tools row: one dispatcher delivery in the band queue.
       onBuzz: app.buzzBand,
       onAllowLong: (v) {
-        Prefs.setBool(Prefs.hapticsAllowLong, v);
         setState(() => _allowLong = v);
+        // Through the repository, with the other settings writes.
+        SettingsRepository.instance
+            .update(
+              (d) => d.setBool(Prefs.hapticsAllowLong, v),
+              sections: const {},
+            )
+            .then<void>((_) {}, onError: (Object _) {});
       },
       onAdd: _add,
       onReplace: _replace,

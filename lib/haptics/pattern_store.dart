@@ -6,17 +6,17 @@
 // through [propagatePattern], which rewrites the snapshots in every place a
 // sequence is stored: the alert rules of NotificationPrefs, and the relay's
 // ChannelConfig.buzzSequence and ChannelConfig.appSequences. A new field
-// holding a BuzzSequence must be added there (AGENTS.md 4.7).
+// holding a BuzzSequence must be added there (AGENTS.md 4.7). The edit and the
+// propagation are ONE SettingsRepository.update (SettingsDraft.propagatePattern).
 
 import 'dart:convert';
 import 'dart:math';
-
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../notify/alert_rule.dart';
 import '../notify/buzz_sequence.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/notification_relay.dart';
+import '../settings/settings_repository.dart';
 
 const int kPatternNameMax = 40;
 
@@ -81,20 +81,15 @@ class HapticPatternStore {
 
   final Map<String, SavedHapticPattern> _patterns;
 
-  static Future<void> _tail = Future.value();
-
-  // Loads and saves run one at a time, as NotificationPrefs does.
-  static Future<T> _serialize<T>(Future<T> Function() action) {
-    final next = _tail.then((_) => action());
-    _tail = next.then<void>((_) {}, onError: (Object _, StackTrace s) {});
-    return next;
-  }
-
   /// The stored patterns. Unreadable data never throws: it gives an empty
   /// store, or drops the entries that do not read.
-  static Future<HapticPatternStore> load() => _serialize(() async {
-    final sp = await SharedPreferences.getInstance();
-    final raw = sp.getString(prefsKey);
+  /// A thin wrapper over the settings repository.
+  static Future<HapticPatternStore> load() =>
+      SettingsRepository.instance.patterns();
+
+  /// The store a stored string reads as ([raw] is the value under [prefsKey],
+  /// or null). Never throws; entries that do not read are dropped.
+  factory HapticPatternStore.decode(String? raw) {
     final good = <SavedHapticPattern>[];
     if (raw != null) {
       try {
@@ -116,17 +111,20 @@ class HapticPatternStore {
       }
     }
     return HapticPatternStore._(good);
-  });
+  }
 
-  /// Writes the store.
-  Future<void> save() => _serialize(() async {
-    final sp = await SharedPreferences.getInstance();
-    final ok = await sp.setString(
-      prefsKey,
-      jsonEncode([for (final p in list) p.toJson()]),
-    );
-    if (!ok) throw StateError('Unable to save haptic patterns');
-  });
+  /// The string stored under [prefsKey].
+  String encode() => jsonEncode([for (final p in list) p.toJson()]);
+
+  /// An independent copy: editing one does not change the other.
+  HapticPatternStore copy() => HapticPatternStore._(_patterns.values);
+
+  /// Writes the store. A thin wrapper over the settings repository: an edit
+  /// that also rewrites the alert rules or relay channels (propagatePattern)
+  /// belongs in one [SettingsRepository.update], not here.
+  Future<void> save() => SettingsRepository.instance
+      .update((d) => d.patterns = this, sections: {SettingsSection.patterns})
+      .then<void>((_) {});
 
   /// Ordered by name, ignoring case (ties by name as written).
   List<SavedHapticPattern> get list =>

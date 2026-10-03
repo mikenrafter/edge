@@ -30,7 +30,7 @@ import '../../notify/alert_rule.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_prefs.dart';
 import '../../notify/notification_service.dart';
-import '../../haptics/pattern_store.dart' show HapticPatternStore;
+import '../../settings/settings_repository.dart';
 import '../../platform/app_icon.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
@@ -1021,7 +1021,10 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 
   Future<void> _apply(NotificationPrefs next) async {
     setState(() => _prefs = next);
-    await next.save();
+    await SettingsRepository.instance.update(
+      (d) => d.alerts = next,
+      sections: {SettingsSection.alerts},
+    );
     // Re-run the scheduler so a switch that was just turned off actually
     // cancels what it was standing for, rather than taking effect at some
     // later resume.
@@ -1068,7 +1071,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     final p = _prefs;
     if (p == null) return;
     final app = context.read<AppState>();
-    HapticPatternStore.load().then((store) {
+    SettingsRepository.instance.patterns().then((store) {
       if (!mounted) return;
       showPatternPicker(
         context,

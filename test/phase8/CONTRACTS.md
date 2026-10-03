@@ -1055,8 +1055,9 @@ Builds on 8AD. Tests: `test/phase8/settings_regroup_test.dart`,
   The relay decision reads the global window from the policy map keys `quietEnabled`,
   `quietStartMin`, `quietEndMin`; a policy without them means no global quiet hours.
   `NotificationRelay._policy` supplies them from a cache of `NotificationPrefs`, loaded in
-  `bootstrap` and refreshed from `NotificationPrefs.onSaved`, which fires after every
-  successful `save()`, so no screen that saves can leave it stale.
+  `bootstrap` and refreshed from `SettingsRepository.changes` (8AE.5; it replaced
+  `NotificationPrefs.onSaved`), which fires after every successful settings update, so no
+  screen that saves can leave it stale.
 - **UI.** `channel-quiet-override-<channel>` ("Override quiet hours", sub "Follows your quiet
   hours in Alerts" while off). Turning it on seeds 22:00 to 07:00 when the channel has no
   times. Starts and Ends are not drawn while it is off: the one deliberate exception to

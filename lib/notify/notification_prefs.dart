@@ -10,6 +10,7 @@ import 'alert_rule.dart';
 import 'buzz_sequence.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../settings/settings_repository.dart';
 import 'notification_event.dart';
 import 'tap_router.dart';
 
@@ -187,18 +188,14 @@ class NotificationPrefs {
   static const _kAlarmLatchFailed = 'notif_alarm_latch_failed';
   static const _kAlarmNightCheck = 'notif_alarm_night_check';
 
-  static Future<void> _storeTail = Future.value();
+  /// The stored alert prefs. A thin wrapper over the settings repository, so
+  /// a load is queued behind any update in flight.
+  static Future<NotificationPrefs> load() => SettingsRepository.instance.alerts();
 
-  static Future<T> _serialize<T>(Future<T> Function() action) {
-    final next = _storeTail.then((_) => action());
-    _storeTail = next.then<void>((_) {}, onError: (Object _, StackTrace trace) {});
-    return next;
-  }
-
-  static Future<NotificationPrefs> load() => _serialize(_load);
-
-  static Future<NotificationPrefs> _load() async {
-    final p = await SharedPreferences.getInstance();
+  /// Reads the alert prefs out of [p], running the once-only migration from
+  /// the legacy keys when no blob exists yet. Callers go through
+  /// SettingsRepository, which owns the queue this must run in.
+  static Future<NotificationPrefs> readFrom(SharedPreferences p) async {
     final stored = p.getString(storageKey);
     if (stored != null) {
       // Once written, the blob owns rule policies. Legacy flags cannot
@@ -271,49 +268,41 @@ class NotificationPrefs {
     return migrated;
   }
 
-  Future<void> save() => _serialize(_save);
+  /// Writes these prefs, whole. A thin wrapper over the settings repository:
+  /// code that changes more than the alerts, or that reads before it writes,
+  /// should use [SettingsRepository.update] itself.
+  Future<void> save() => SettingsRepository.instance
+      .update((d) => d.alerts = this, sections: {SettingsSection.alerts})
+      .then<void>((_) {});
 
-  static final StreamController<NotificationPrefs> _saved =
-      StreamController<NotificationPrefs>.broadcast();
-
-  /// Every successful [save], with what was written. The one place a consumer
-  /// that caches a pref (the relay's global quiet hours) can hear a change
-  /// from any screen or scheduler that saves.
-  static Stream<NotificationPrefs> get onSaved => _saved.stream;
-
-  Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    // One write commits every destination and policy together. The old keys
-    // remain mirrors for headless consumers still using the legacy seam.
-    if (!await p.setString(storageKey, jsonEncode(toJson()))) {
-      throw StateError('Unable to save alert preferences');
-    }
-    await p.setBool(_kHealth, healthEnabled);
-    await p.setBool(_kRecovery, recoveryEnabled);
-    await p.setBool(_kReminders, remindersEnabled);
-    await p.setBool(_kDevice, deviceEnabled);
-    await p.setBool(_kQuietEnabled, quietEnabled);
-    await p.setInt(_kQuietStart, quietStartMin);
-    await p.setInt(_kQuietEnd, quietEndMin);
-    await p.setBool(_kCriticalOverride, criticalOverridesQuiet);
-    await p.setBool(_kWater, waterEnabled);
-    await p.setInt(_kWaterInterval, waterIntervalMin);
-    await p.setBool(_kAutoDetect, autoDetectEnabled);
-    await p.setBool(_kMovement, movementEnabled);
-    await p.setBool(_kMeds, medsEnabled);
-    await p.setBool(_kCheckIn, checkInEnabled);
-    await p.setInt(
-      _kBatteryPct,
-      batteryAlertPct.clamp(batteryPctMin, batteryPctMax).toInt(),
-    );
-    await p.setBool(_kStepGoal, stepGoalEnabled);
-    await p.setBool(_kWindDown, windDownEnabled);
-    await p.setBool(_kAlarmLatchFailed, alarmLatchFailedEnabled);
-    await p.setBool(_kAlarmNightCheck, alarmNightCheckEnabled);
-    await p.setBool('workout.zone_alert_enabled', alertRule('zone').enabled);
-    await p.setBool('notif_relay_enabled', alertRule('relay').enabled);
-    _saved.add(this);
-  }
+  /// Everything a save writes, in write order: the versioned blob first (it
+  /// owns destinations and rule policies), then the legacy keys, which remain
+  /// mirrors for headless consumers still using the legacy seam. Values are
+  /// String, bool or int. Encoding happens here, before anything is written.
+  Map<String, Object> storageEntries() => {
+    storageKey: jsonEncode(toJson()),
+    _kHealth: healthEnabled,
+    _kRecovery: recoveryEnabled,
+    _kReminders: remindersEnabled,
+    _kDevice: deviceEnabled,
+    _kQuietEnabled: quietEnabled,
+    _kQuietStart: quietStartMin,
+    _kQuietEnd: quietEndMin,
+    _kCriticalOverride: criticalOverridesQuiet,
+    _kWater: waterEnabled,
+    _kWaterInterval: waterIntervalMin,
+    _kAutoDetect: autoDetectEnabled,
+    _kMovement: movementEnabled,
+    _kMeds: medsEnabled,
+    _kCheckIn: checkInEnabled,
+    _kBatteryPct: batteryAlertPct.clamp(batteryPctMin, batteryPctMax).toInt(),
+    _kStepGoal: stepGoalEnabled,
+    _kWindDown: windDownEnabled,
+    _kAlarmLatchFailed: alarmLatchFailedEnabled,
+    _kAlarmNightCheck: alarmNightCheckEnabled,
+    'workout.zone_alert_enabled': alertRule('zone').enabled,
+    'notif_relay_enabled': alertRule('relay').enabled,
+  };
 
   NotificationPrefs copyWith({
     Map<String, AlertRule>? alertRules,

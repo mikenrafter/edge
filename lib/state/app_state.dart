@@ -129,6 +129,7 @@ import '../notify/device_alerts.dart';
 import '../notify/notification_relay.dart';
 import '../notify/notification_service.dart';
 import '../notify/tap_router.dart';
+import '../settings/settings_repository.dart';
 import '../notify/water_buzzer.dart';
 import '../sync/background_sync.dart' show checkSyncStaleness;
 import '../sync/edge_tracking.dart';
@@ -1761,22 +1762,20 @@ class AppState extends ChangeNotifier {
 
   Future<void> setZoneAlertEnabled(bool on) async {
     Prefs.setBool(Prefs.zoneAlertEnabled, on);
-    final prefs = await NotificationPrefs.load();
-    await prefs
-        .withAlertRule(
-          prefs
-              .alertRule('zone')
-              .copyWith(
-                enabled: on,
-                destinations: on
-                    ? (prefs.alertRule('zone').destinations == 0
-                          ? 2
-                          : prefs.alertRule('zone').destinations)
-                    : 0,
-              )
-              .toJson(),
-        )
-        .save();
+    // One update: the zone rule is read and written inside the queue.
+    await SettingsRepository.instance.update((d) {
+      final rule = d.alerts.alertRule('zone');
+      d.alerts = d.alerts.withAlertRule(
+        rule
+            .copyWith(
+              enabled: on,
+              destinations: on
+                  ? (rule.destinations == 0 ? 2 : rule.destinations)
+                  : 0,
+            )
+            .toJson(),
+      );
+    }, sections: {SettingsSection.alerts});
     notifyListeners();
   }
 

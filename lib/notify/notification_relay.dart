@@ -23,6 +23,7 @@ import 'notification_center.dart';
 import 'notification_event.dart';
 import '../data/day_label.dart';
 import '../haptics/band_queue.dart' show BandJobToken;
+import '../settings/settings_repository.dart';
 import '../state/feature_flags.dart';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
@@ -478,7 +479,12 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
                return true;
              },
              isConnected: isConnected,
-           );
+           ) {
+    // Heard from construction, whether or not this phone can relay: a pattern
+    // edit made in the haptics hub reaches the live channels either way, and
+    // the global quiet hours cache follows every save from every screen.
+    _settingsSub = SettingsRepository.instance.changes.listen(_onSettingsChanged);
+  }
   final AlertDispatcher dispatcher;
 
   /// "worn" / "notWorn" / "unknown". Null means no wear source: unknown, so an
@@ -526,7 +532,6 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   static const _kOnlyWorn = 'notif_relay_only_worn';
   static const _kPackages = 'notif_relay_packages';
   static const _kSeen = 'notif_relay_seen';
-  static const _kChannels = 'notif_relay_channels';
 
   /// How many apps the "seen" list remembers. A phone posts from a long tail
   /// of packages over a week; past this the list stops being a list you can
@@ -684,14 +689,36 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   // Alerts' quiet hours as last loaded or saved. Null until bootstrap has read
   // them, which reads as "no global quiet hours".
   NotificationPrefs? _globalQuiet;
-  StreamSubscription<NotificationPrefs>? _prefsSub;
+  StreamSubscription<SettingsChange>? _settingsSub;
 
   Future<void> _loadGlobalQuiet() async {
     try {
-      _globalQuiet = await NotificationPrefs.load();
+      _globalQuiet = await SettingsRepository.instance.alerts();
     } catch (_) {
       /* unreadable prefs: keep what we had */
     }
+  }
+
+  // Every successful settings update, from any screen or scheduler. The alert
+  // prefs refresh the quiet-hours cache. Channels another writer changed are
+  // taken into the live controller; the relay's own writes (origin: this) are
+  // skipped, and only the channels the update changed are touched, so a change
+  // of ours that is not stored yet is never reverted.
+  void _onSettingsChanged(SettingsChange c) {
+    if (c.alerts case final a?) _globalQuiet = a;
+    final changed = c.channels;
+    if (changed == null || identical(c.origin, this)) return;
+    var any = false;
+    for (final e in changed.entries) {
+      final cur = controller.channels[e.key];
+      if (cur != null &&
+          jsonEncode(cur.toJson()) == jsonEncode(e.value.toJson())) {
+        continue;
+      }
+      controller.channels[e.key] = e.value;
+      any = true;
+    }
+    if (any) notifyListeners();
   }
 
   /// A phone alert that names neither the app nor the content.
@@ -746,18 +773,17 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
         BuzzDelivery.complete;
   }
 
+  // The controller's channels are the live state; storing them is one
+  // repository update, fire and forget as it always was. The update reads the
+  // controller when it runs, so queued changes collapse into the latest.
   void _channelsChanged() {
-    SharedPreferences.getInstance()
-        .then(
-          (p) => p.setString(
-            _kChannels,
-            jsonEncode({
-              for (final e in controller.channels.entries)
-                e.key: e.value.toJson(),
-            }),
-          ),
+    SettingsRepository.instance
+        .update(
+          (d) => d.channels = Map.of(controller.channels),
+          sections: {SettingsSection.channels},
+          origin: this,
         )
-        .catchError((_) => false);
+        .then<void>((_) {}, onError: (Object _) {});
     notifyListeners();
   }
 
@@ -770,8 +796,6 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       if ((debugSupported ?? Platform.isAndroid)) await _disarmNative();
       return;
     }
-    // Every save of the alert prefs, from any screen, refreshes the cache.
-    _prefsSub ??= NotificationPrefs.onSaved.listen((p) => _globalQuiet = p);
     await _loadGlobalQuiet();
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool(_kEnabled) ?? false;
@@ -782,19 +806,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     _seen
       ..clear()
       ..addAll(prefs.getStringList(_kSeen) ?? const []);
-    final stored = prefs.getString(_kChannels);
-    if (stored != null) {
-      final saved = Map<String, Object?>.from(jsonDecode(stored) as Map);
-      for (final c in relayChannels) {
-        final j = saved[c];
-        if (j is Map) {
-          controller.channels[c] = ChannelConfig.fromJson(
-            Map<String, Object?>.from(j),
-            controller.channels[c]!,
-          );
-        }
-      }
-    }
+    controller.channels.addAll(await SettingsRepository.instance.channels());
     // An app already on the allow-list belongs in the picker whether or not it
     // has posted since launch — otherwise turning the feature on and reopening
     // the screen shows an empty list with your choices invisibly still active.
@@ -918,22 +930,21 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       );
     }
     _enabled = on;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kEnabled, on);
-    final alerts = await NotificationPrefs.load();
-    final rule = alerts.alertRule('relay');
-    await alerts
-        .withAlertRule(
-          rule
-              .copyWith(
-                enabled: on,
-                destinations: on
-                    ? (rule.destinations == 0 ? 2 : rule.destinations)
-                    : 0,
-              )
-              .toJson(),
-        )
-        .save();
+    // One update: the relay rule (whose mirror key notif_relay_enabled is what
+    // _kEnabled has always been) read and written inside the queue.
+    await SettingsRepository.instance.update((d) {
+      final rule = d.alerts.alertRule('relay');
+      d.alerts = d.alerts.withAlertRule(
+        rule
+            .copyWith(
+              enabled: on,
+              destinations: on
+                  ? (rule.destinations == 0 ? 2 : rule.destinations)
+                  : 0,
+            )
+            .toJson(),
+      );
+    }, sections: {SettingsSection.alerts});
     _resync();
     notifyListeners();
   }
@@ -1037,7 +1048,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _prefsSub?.cancel();
+    _settingsSub?.cancel();
     _healTimer?.cancel();
     controller.dispose();
     super.dispose();

@@ -28,7 +28,7 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../haptics/haptic_profile.dart';
-import '../../haptics/pattern_store.dart' show HapticPatternStore;
+import '../../settings/settings_repository.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
@@ -129,7 +129,7 @@ class _BandNotificationsState extends State<BandNotifications>
     String? pkg,
   }) {
     final app = context.read<AppState>();
-    HapticPatternStore.load().then((store) {
+    SettingsRepository.instance.patterns().then((store) {
       if (!mounted) return;
       showPatternPicker(
         context,
