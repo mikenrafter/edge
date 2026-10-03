@@ -118,9 +118,8 @@ import '../gestures/moment_stamp.dart';
 import '../gestures/strap_event.dart';
 import '../gestures/tap_ack.dart';
 import '../haptics/band_queue.dart';
-import '../haptics/haptic_compiler.dart' show maxRuntimeFor;
-import '../haptics/haptic_player.dart';
-import '../haptics/haptic_profile.dart';
+import '../haptics/ble_haptics_port.dart';
+import '../haptics/haptics_service.dart';
 import 'live_stream_buffer.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
@@ -330,12 +329,12 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     },
     isEcgAlive: () => ecg.isCapturing,
-    ledger: bandLedger,
+    ledger: haptics.ledger,
     // The lab's probes play alone on the band, ahead of waiting alerts, and
     // while the lab screen is open real alerts are held (8AF).
-    runLab: (body) => bandQueue.runLab(body),
-    beginLab: () => bandQueue.beginLab(),
-    endLab: () => bandQueue.endLab(),
+    runLab: haptics.runLab,
+    beginLab: haptics.beginLab,
+    endLab: haptics.endLab,
   );
 
   /// One ordinary buzz for the buzz probe: still a dispatcher delivery (its
@@ -541,12 +540,12 @@ class AppState extends ChangeNotifier {
   Future<bool> _ecgTapBuzz(int pulses, String eventId) async {
     final now = DateTime.now();
     final seq = BuzzSequence([for (var i = 0; i < pulses; i++) i * 300]);
-    final r = await _asLabWork(() => alertDispatcher.dispatch(
+    final r = await haptics.asLabWork(() => alertDispatcher.dispatch(
       kEcgTapRule,
       eventId: eventId,
       sourceTime: now,
       historical: false,
-      bandDelivery: () => _runBandJob(
+      bandDelivery: () => haptics.runJob(
         pulses,
         (job) => deliverBuzzSequence(seq,
             buzz: () => job.write(() => engine.buzzBand()),
@@ -557,23 +556,17 @@ class AppState extends ChangeNotifier {
     return r.targets.contains('band');
   }
 
-  /// With the Device lab open, the touch counter's and the gestures' buzzes are
-  /// what the lab exercises: they are lab jobs in the band queue, not held
-  /// like a real alert.
-  Future<T> _asLabWork<T>(Future<T> Function() work) =>
-      bandQueue.labOpen ? bandQueue.asLab(work) : work();
-
   /// 8X: the one long buzz for a failed ECG (holdMs >= 500 is one command
   /// looped twice, distinct from the single-command count buzzes). Still a
   /// dispatcher delivery.
   Future<bool> _ecgTapFailBuzz(String eventId) async {
     final now = DateTime.now();
-    final r = await _asLabWork(() => alertDispatcher.dispatch(
+    final r = await haptics.asLabWork(() => alertDispatcher.dispatch(
       kEcgTapRule,
       eventId: eventId,
       sourceTime: now,
       historical: false,
-      bandDelivery: () => _runBandJob(
+      bandDelivery: () => haptics.runJob(
         1,
         (job) async => await job.write(() => engine.buzzBand(holdMs: 600))
             ? BuzzDelivery.complete
@@ -588,7 +581,7 @@ class AppState extends ChangeNotifier {
     // The default band transport (tap ack, a water or medication buzz with no
     // saved rhythm): one short buzz, in the band queue like everything else.
     band: () async =>
-        await _runBandJob(1, (job) async {
+        await haptics.runJob(1, (job) async {
           return await job.write(() async {
             await engine.buzz();
             return true;
@@ -600,16 +593,12 @@ class AppState extends ChangeNotifier {
     // The default sequence transport also serves NotificationCenter and the
     // water/medication timers; every entry path honors the rule's saved rhythm.
     bandSequence: (s) async =>
-        await _deliverBandSequence(s) == BuzzDelivery.complete,
-    bandSequenceDelivery: (s) => _deliverBandSequence(s),
+        await haptics.deliver(s) == BuzzDelivery.complete,
+    bandSequenceDelivery: haptics.deliver,
     // A queued job may wait before it starts; a compiled plan outlasts the
     // taps' own estimate.
     bandQueueWait: kBandQueueWait,
-    sequenceTimeout: (s) => bandSequenceTimeout(
-      s,
-      _bandProfile,
-      maxRuntime: _hapticMaxRuntime,
-    ),
+    sequenceTimeout: haptics.sequenceTimeout,
     isConnected: () => engine.isConnected,
     supportedTargetsAtDelivery: () =>
         AlertCapabilityRegistry.targetsForBandFamily(device.generation),
@@ -635,78 +624,14 @@ class AppState extends ChangeNotifier {
     ledger: MemoryAlertDeliveryLedger(),
   );
 
-  /// The engine's single buzz, the one step every band rhythm is made of.
-  /// Only ever called from inside an [alertDispatcher] delivery.
-  Future<bool> _bandBuzz() => engine.buzzBand();
-
-  Future<bool> _bandBuzzForDuration(int holdMs) =>
-      engine.buzzBand(holdMs: holdMs);
-
-  /// One compiled Maverick command (8AC, WHOOP MG), the write a profiled
-  /// rhythm is made of. Only ever called from inside a queued delivery.
-  Future<bool> _bandBuzzPattern(List<int> effects, int loop) =>
-      engine.buzzMaverickPattern(effects: effects, loop: loop);
-
-  /// The haptic vocabulary of the connected band (null: none measured, today's
-  /// per-tap buzz).
-  HapticDeviceProfile? get _bandProfile =>
-      HapticDeviceProfile.forGeneration(device.generation);
-
-  /// The band's rolling command limit (30 in 2 minutes), one for every band
-  /// haptic job and the pattern probe (8AC).
-  late final BandCommandLedger bandLedger = BandCommandLedger();
-
-  /// The band's live "ended" event (100), fed from [_onLiveEvent].
-  final BandEndedSignal _bandEnded = BandEndedSignal();
-
-  /// Every band haptic job runs here, one at a time (8AC). Only entered from
-  /// inside an [alertDispatcher] delivery.
-  late final BandHapticQueue bandQueue = BandHapticQueue(
-    ledger: bandLedger,
-    waitEnded: _bandEnded.wait,
-    onWrite: _bandEnded.reset,
+  /// The band's haptics: the queue, its ledger, the ended signal and the
+  /// delivery of every rhythm (8AE.5). Only entered from inside an
+  /// [alertDispatcher] delivery.
+  late final HapticsService haptics = HapticsService(
+    port: BleEngineHapticsPort(engine),
+    allowLong: () => Prefs.allowLongHaptics,
     log: _log,
   );
-
-  /// The one door to [bandQueue]: a job of [commands] band commands that must
-  /// answer within [timeout] once it starts. Every command is written through
-  /// the job's token, which counts it when it happens and refuses it once the
-  /// job has timed out. The band is held for [settle] after the last command
-  /// (its ended event or that long; one buzz's playback by default).
-  Future<BuzzDelivery> _runBandJob(
-    int commands,
-    Future<BuzzDelivery> Function(BandJobToken job) job, {
-    Duration? timeout,
-    Duration settle = kBandBuzzPlayback,
-  }) =>
-      bandQueue.run(
-        job,
-        commands: commands,
-        timeout: timeout ?? Duration(seconds: 5 + 2 * commands),
-        settle: settle,
-      );
-
-  /// The one delivery of a rule's rhythm to the band, for every call site (the
-  /// dispatcher's two sequence transports, a preview, a rule alert and the
-  /// notification relay): in the band queue, as compiled commands on a band
-  /// with a haptic profile, else as per-tap buzzes.
-  Future<BuzzDelivery> _deliverBandSequence(BuzzSequence s) =>
-      deliverBandSequenceQueued(
-        bandQueue,
-        s,
-        profile: _bandProfile,
-        buzz: _bandBuzz,
-        buzzForDuration: _bandBuzzForDuration,
-        writePattern: _bandBuzzPattern,
-        waitEnded: _bandEnded.wait,
-        isConnected: () => engine.isConnected,
-        maxRuntime: maxRuntimeFor(allowLong: Prefs.allowLongHaptics),
-      );
-
-  /// The runtime cap for compiled band haptics: 10 s unless the user allowed
-  /// long sequences (Prefs.allowLongHaptics).
-  Duration? get _hapticMaxRuntime =>
-      maxRuntimeFor(allowLong: Prefs.allowLongHaptics);
 
   /// A rhythm the user just tapped out, played back for them. Still one
   /// dispatcher delivery (own rule, unique event), so it can neither bypass the
@@ -719,12 +644,8 @@ class AppState extends ChangeNotifier {
       eventId: 'preview:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
-      bandTimeout: bandSequenceTimeout(
-        s,
-        _bandProfile,
-        maxRuntime: _hapticMaxRuntime,
-      ),
-      bandDelivery: () => _deliverBandSequence(s),
+      bandTimeout: haptics.sequenceTimeout(s),
+      bandDelivery: () => haptics.deliver(s),
     );
     return r.targets.contains('band');
   }
@@ -776,14 +697,10 @@ class AppState extends ChangeNotifier {
       // A recorded rhythm can outlast the dispatcher's flat 10 s.
       bandTimeout: alarm || pattern != null
           ? null
-          : bandSequenceTimeout(
-              sequence ?? prefs.buzzSequenceFor(ruleId),
-              _bandProfile,
-              maxRuntime: _hapticMaxRuntime,
-            ),
+          : haptics.sequenceTimeout(sequence ?? prefs.buzzSequenceFor(ruleId)),
       bandTransport: alarm || pattern != null
           ? () async =>
-              await _runBandJob(1, (job) async {
+              await haptics.runJob(1, (job) async {
                 return await job.write(() async {
                   if (alarm) {
                     await engine.runAlarm();
@@ -802,7 +719,7 @@ class AppState extends ChangeNotifier {
       // partial or unanswered delivery.
       bandDelivery: alarm || pattern != null
           ? null
-          : () => _deliverBandSequence(sequence ?? prefs.buzzSequenceFor(ruleId)),
+          : () => haptics.deliver(sequence ?? prefs.buzzSequenceFor(ruleId)),
     );
   }
 
@@ -810,15 +727,11 @@ class AppState extends ChangeNotifier {
   /// Exposed for the settings UI; buzzes via the live BLE engine when connected.
   late final NotificationRelay notificationRelay = NotificationRelay(
     buzz: () => engine.buzz(),
-    buzzForDuration: _bandBuzzForDuration,
+    buzzForDuration: haptics.buzzForDuration,
     // Every rhythm and matched-haptics pulse goes through the band queue.
-    deliverSequence: _deliverBandSequence,
-    sequenceTimeout: (s) => bandSequenceTimeout(
-      s,
-      _bandProfile,
-      maxRuntime: _hapticMaxRuntime,
-    ),
-    runBand: _runBandJob,
+    deliverSequence: haptics.deliver,
+    sequenceTimeout: haptics.sequenceTimeout,
+    runBand: haptics.runJob,
     dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
     worn: () => wearReportOf(engine.state.wristOn),
@@ -3069,10 +2982,10 @@ class AppState extends ChangeNotifier {
     // The band's "ended" event releases the next compiled command and the
     // next queued job; a late one (the band delivers old events in bursts)
     // must not.
-    if (e.eventId == 100 && e.isLive) _bandEnded.signal();
+    haptics.onBandEvent(e);
     unawaited(handled.then((outcomes) async {
       deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
-      await _asLabWork(() => ackTap(alertDispatcher, e, outcomes));
+      await haptics.asLabWork(() => ackTap(alertDispatcher, e, outcomes));
     }));
   }
 
@@ -6000,7 +5913,7 @@ class AppState extends ChangeNotifier {
       sourceTime: now,
       historical: false,
       bandTransport: () async =>
-          await _runBandJob(1, (job) async {
+          await haptics.runJob(1, (job) async {
             return await job.write(transport)
                 ? BuzzDelivery.complete
                 : BuzzDelivery.rejected;

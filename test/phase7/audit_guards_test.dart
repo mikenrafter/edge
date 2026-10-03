@@ -167,7 +167,11 @@ void main() {
     test('no other file in lib/ calls an engine buzz', () {
       final offenders = <String>[];
       for (final f in dartFilesIn('lib')) {
+        // lib/haptics/ble_haptics_port.dart is the thin adapter that hands the
+        // engine to HapticsService (8AE.5); the service reaches it only through
+        // the BandHapticsPort, from inside a queued delivery.
         if (f.path.endsWith('lib/ble/ble_engine.dart') ||
+            f.path.endsWith('lib/haptics/ble_haptics_port.dart') ||
             f.path.endsWith('lib/state/app_state.dart')) {
           continue;
         }

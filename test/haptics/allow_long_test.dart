@@ -2,7 +2,7 @@
 //
 // Off (the default) the 10 s runtime cap of 8AC holds; on, it is lifted
 // everywhere it applies: the tap editor, the notes editor, and the compile at
-// delivery (app_state _deliverBandSequence). What still holds either way: the
+// delivery (HapticsService.deliver). What still holds either way: the
 // 8-command plan cap, the band queue and the 30-per-2-min ledger.
 //
 // API chosen for this phase:
@@ -297,43 +297,44 @@ void main() {
     final src = File('lib/state/app_state.dart').readAsStringSync();
     final code = codeOnly(src);
 
-    test('_deliverBandSequence consults the setting', () {
-      final helper = bodyOf(src, 'Future<BuzzDelivery> _deliverBandSequence(');
-      expect(helper, isNotEmpty);
-      expect(codeOnly(helper), contains('allowLongHaptics'));
-      expect(codeOnly(helper), contains('maxRuntime:'));
+    // 8AE.5: the delivery moved into HapticsService. That a delivery and its
+    // timeout follow the setting is pinned by behaviour in
+    // haptics_service_test.dart ('allow-long is read when a delivery
+    // happens'); what stays here is where the setting comes from and that no
+    // second path computes a plan's runtime.
+    test('AppState hands the service the Prefs setting', () {
+      final start = code.indexOf('late final HapticsService haptics');
+      final ctor = code.substring(start, code.indexOf(');', start));
+      expect(ctor, contains('allowLong: () => Prefs.allowLongHaptics'));
     });
 
-    // The queued helper computes the plan's command count, timeout and settle
-    // from the same maxRuntime it is handed.
+    test('the service reads the setting through maxRuntimeFor, at every '
+        'delivery', () {
+      final svc = codeOnly(
+          File('lib/haptics/haptics_service.dart').readAsStringSync());
+      expect(svc, contains('maxRuntimeFor(allowLong: _allowLong())'));
+    });
+
     for (final fn in [
       'deliverBandSequenceQueued',
       'bandSequenceTimeout',
     ]) {
-      test('every call of $fn in app_state passes maxRuntime', () {
-        final calls = RegExp('(?<![A-Za-z_])$fn\\(').allMatches(code).toList();
-        expect(calls, isNotEmpty, reason: '$fn is called');
-        for (final m in calls) {
-          final open = m.end - 1;
-          final close = closingOf(code, open);
-          expect(close, greaterThan(open));
-          final args = code.substring(open, close + 1);
-          // The call's strings are blanked, so the name test is on code.
-          expect(
-            args,
-            contains('maxRuntime'),
-            reason:
-                '$fn( at offset ${m.start} must pass maxRuntime '
-                '(every call site, AGENTS.md 4.7)',
-          );
+      test('$fn is called from the service only (one source, AGENTS.md 4.7)',
+          () {
+        final offenders = <String>[];
+        for (final f in dartFilesIn('lib')) {
+          if (f.path.endsWith('lib/haptics/haptic_player.dart') ||
+              f.path.endsWith('lib/haptics/haptics_service.dart')) {
+            continue;
+          }
+          final c = codeOnly(f.readAsStringSync());
+          for (final m in RegExp('(?<![A-Za-z_])$fn\\(').allMatches(c)) {
+            offenders.add('${f.path}:${lineOf(c, m.start)}');
+          }
         }
+        expect(offenders, isEmpty, reason: offenders.join('\n'));
       });
     }
-
-    test('the setting is read through maxRuntimeFor', () {
-      expect(code, contains('maxRuntimeFor('));
-      expect(code, contains('allowLongHaptics'));
-    });
 
     test('the tap editor does not hard-code the cap in planForTaps', () {
       final ed = File('lib/ui2/profile/buzz_pattern.dart').readAsStringSync();

@@ -173,16 +173,15 @@ void main() {
       'Future<bool> previewBuzzSequence(',
       'Future<AlertDeliveryOutcome> _dispatchBandAlert(',
     ]) {
-      // 8AC: both reach the one delivery helper, which forwards the hold.
+      // 8AC: both reach the one delivery helper (now HapticsService.deliver).
       expect(
         codeOnly(bodyOf(app, signature)),
-        contains('_deliverBandSequence('),
+        contains('haptics.deliver('),
       );
     }
-    expect(
-      codeOnly(bodyOf(app, 'Future<BuzzDelivery> _deliverBandSequence(')),
-      contains('buzzForDuration:'),
-    );
+    // That the service forwards each tap's hold to the band: the per-tap
+    // delivery tests in test/haptics/haptics_service_test.dart (holds [500,
+    // 500] on gen4, buzzForDuration through the port).
     final relay = codeOnly(
       File('lib/notify/notification_relay.dart').readAsStringSync(),
     );

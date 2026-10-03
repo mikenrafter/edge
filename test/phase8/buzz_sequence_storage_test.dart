@@ -581,7 +581,7 @@ void main() {
       expect(
           codeOnly(body),
           anyOf(contains('deliverBuzzSequence('),
-              contains('_deliverBandSequence(')),
+              contains('haptics.deliver(')),
           reason: '8AC: on a MG band the same tri-state delivery is the '
               'compiled-plan helper');
       expect(codeOnly(body), contains('buzzSequenceFor('));

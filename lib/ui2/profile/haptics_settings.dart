@@ -14,7 +14,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -173,8 +172,8 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       profile: HapticDeviceProfile.forGeneration(app.device.generation),
       allowLong: _allowLong,
       devMode: Prefs.getBool(Prefs.devMode, false),
-      commandsLeft: app.bandLedger.commandsLeft(clock.now()),
-      queued: app.bandQueue.pending,
+      commandsLeft: app.haptics.commandsLeft,
+      queued: app.haptics.pending,
       bandConnected: app.engine.isConnected,
       onPlay: app.previewBuzzSequence,
       // The device page's Tools row: one dispatcher delivery in the band queue.
