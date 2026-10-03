@@ -214,5 +214,10 @@ confirmation dialog to it."
 4b. H3 (separate branch, later, only when the user asks) — trial alchemist
    on the painter goldens (labelled scenario grids; real-font platform goldens
    locally + Ahem CI goldens), then decide on a wider move.
+   Also in H3: generate the README screenshots (screenshots/*.png, hand-made and
+   stale since 2026-07-12) from the proof capture (`make proof` /
+   EDGE_PROOF_DIR) with real fonts at fixed device sizes, via one script/make
+   target, so they track the current UI (Health tabs, Settings, Haptics hub);
+   update the README table to the current screens.
 5. 8AG — Gesture practice tour (could go before 8AF; it lands in Settings ›
    Band › Gestures from 8AE).
