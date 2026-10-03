@@ -94,6 +94,7 @@ class _Rig {
         return recordHangs ? Completer<void>().future : Future.value();
       },
       now: () => now,
+      wait: (_) async {}, // the band's quiet gap is not what these test
       pollEvery: const Duration(hours: 1),
       beginTimeout: t,
       endTimeout: t,
@@ -115,12 +116,21 @@ class _Rig {
   Future<void> settle([int ms = 120]) =>
       Future<void>.delayed(Duration(milliseconds: ms));
 
-  /// Two packets one second apart: the stream is steady, the ack is requested.
+  /// Two packets one second apart: the stream is steady and the first window
+  /// opens (nothing buzzes yet).
   Future<void> steady({int sec = 1000}) async {
     now = _t0.add(const Duration(milliseconds: 500));
     session.onFrame(_packet(sec));
     now = _t0.add(const Duration(milliseconds: 1500));
     session.onFrame(_packet(sec + 1));
+    await Future<void>.delayed(Duration.zero);
+  }
+
+  /// A no-contact second after [steady]: the first window runs out, so the
+  /// gesture ends at 2 with the two-pulse buzz.
+  Future<void> noTouch({int sec = 1000}) async {
+    now = _t0.add(const Duration(seconds: 2));
+    session.onFrame(_packet(sec + 2));
     await Future<void>.delayed(Duration.zero);
   }
 }
@@ -180,31 +190,31 @@ void main() {
       expect(r.session.active, isTrue);
     });
 
-    test('an acknowledgement buzz that never answers abandons the gesture '
-        '(ack_failed) instead of waiting forever', () async {
+    test('a count buzz that never answers cannot hold the gesture: the count '
+        'stands and the latch is free', () async {
       final r = _Rig(buzzHangsOnCall: 1);
       await r.session.start(_tap());
       await r.steady();
-      expect(r.buzzes.single.$1, 2, reason: 'the two-pulse acknowledgement');
+      await r.noTouch();
+      expect(r.buzzes.single.$1, 2, reason: 'the two-pulse count buzz');
       await r.settle(200);
       expect(r.session.active, isFalse);
-      expect(r.results.single, (null, 'ack_failed'));
+      expect(r.results.single, (2, null));
     });
 
     test('a stuck buzz of one gesture does not queue the next gesture\'s '
-        'acknowledgement behind it', () async {
+        'buzz behind it', () async {
       final r = _Rig(buzzHangsOnCall: 1);
       await r.session.start(_tap());
       await r.steady();
-      r.alive = false;
-      r.session.poll(); // first gesture ends while its ack buzz is stuck
+      await r.noTouch(); // ends at 2; its buzz is stuck
       await r.settle(10);
-      r.alive = true;
       await r.session.start(_tap(sec: 40));
       await r.steady(sec: 2000);
+      await r.noTouch(sec: 2000);
       await r.settle(200);
-      expect(r.buzzes.length, greaterThanOrEqualTo(2),
-          reason: 'the second ack was sent, not stuck behind the first');
+      expect(r.buzzes.length, 2,
+          reason: 'the second buzz was sent once the first timed out');
     });
 
     test('BLE disconnect mid-gesture: abandoned, recorded once, stream stopped, '
@@ -248,8 +258,11 @@ void main() {
       final b = _Rig(); // new process, new object
       await b.session.start(_tap(sec: 100));
       await b.steady(sec: 5000);
-      expect(b.buzzes.single.$1, 2);
+      expect(b.buzzes, isEmpty);
       expect(b.session.active, isTrue);
+      await b.noTouch(sec: 5000);
+      expect(b.buzzes.single.$1, 2);
+      expect(b.results, [(2, null)]);
     });
   });
 

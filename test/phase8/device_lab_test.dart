@@ -165,6 +165,31 @@ void main() {
       expect(changes.last, EcgTapThresholds(startMs: 1050));
     });
 
+    testWidgets('extra sensitive subsequent tap detection: a switch with its '
+        'caveats, off by default', (t) async {
+      final changes = <EcgTapThresholds>[];
+      await _pump(
+          t,
+          DeviceLabView(
+            ecgSupported: true,
+            thresholds: EcgTapThresholds(gapMs: 250),
+            onThresholds: changes.add,
+          ));
+      expect(find.text('Extra sensitive subsequent tap detection'),
+          findsOneWidget);
+      // The caveat: what each setting merges or misses.
+      expect(find.textContaining('same second counts as one tap'),
+          findsOneWidget);
+      expect(find.textContaining('missed, counted late, or split in two'),
+          findsOneWidget);
+      final key = find.byKey(const ValueKey('ecg-threshold:extra-sensitive'));
+      await t.ensureVisible(key);
+      await t.tap(find.descendant(of: key, matching: find.byType(Switch)));
+      expect(changes.last,
+          EcgTapThresholds(gapMs: 250, extraSensitive: true),
+          reason: 'the other thresholds are kept');
+    });
+
     testWidgets('not a WHOOP MG: the adjusters are shown but inert',
         (t) async {
       final changes = <EcgTapThresholds>[];

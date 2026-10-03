@@ -1,15 +1,14 @@
-// EcgTapSession and the ECG sample clock (review findings E and F).
+// EcgTapSession and the ECG sample clock (review findings E and F, and the
+// one-clock rule from the 2026-10-02 lab log).
 //
 // Receipt time is not sample time: BLE can hold packets back by a second or
 // more. The session therefore (1) only calls the stream steady when the sample
 // clock is continuous AND advancing in step with the wall clock, and (2) opens
-// the first touch window at the acknowledgement time mapped through the
-// least-delayed recent packet (EcgSampleClock), not through "the end of the last
-// packet plus the wall time since it arrived", which anchors the window behind
-// the true sample clock by however late that packet was. It also logs, for the
-// Device lab, how far each packet sits behind the freshest one.
+// the first touch window on the SAMPLE clock alone ([EcgTapSession.sensorSettle]
+// after the stream's first sample), so when packets arrive cannot move it. A
+// packet's strap time is its NEWEST sample. It also logs, for the Device lab,
+// how far each packet sits behind the freshest one.
 
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -28,8 +27,8 @@ StrapEvent _tap() => StrapEvent(
       deviceId: 'band',
     );
 
-/// A packet starting at strap second [sec] + [subMs]; contact is the sample
-/// range [contactFrom, contactTo).
+/// A packet whose newest sample is at strap second [sec] + [subMs]; contact is
+/// the sample range [contactFrom, contactTo).
 LabradorR17 _packet(
   int sec, {
   int subMs = 0,
@@ -68,21 +67,21 @@ class _Rig {
       beginStream: () async => true,
       endStream: () async => ended++,
       isStreamAlive: () => true,
-      buzz: (pulses, id) {
+      buzz: (pulses, id) async {
         buzzes.add((pulses, id));
-        return pulses == 2 ? ack.future : Future.value(true);
+        return true;
       },
       maxTaps: () => max,
       thresholds: EcgTapThresholds.new,
       onFinished: (count, reason) => results.add((count, reason)),
       step: steps.add,
       now: () => now,
+      wait: (_) async {},
       pollEvery: const Duration(hours: 1),
     );
   }
 
   final int max = 3;
-  final Completer<bool> ack = Completer<bool>();
   DateTime now = _t0;
   late final EcgTapSession session;
   int ended = 0;
@@ -98,11 +97,8 @@ class _Rig {
     session.onFrame(p);
   }
 
-  Future<void> ackAt(int ms) async {
-    now = _t0.add(Duration(milliseconds: ms));
-    ack.complete(true);
-    await settle();
-  }
+  String get windowLine =>
+      steps.where((s) => s.startsWith('Touch window open')).single;
 }
 
 void main() {
@@ -115,46 +111,60 @@ void main() {
       r.deliver(_packet(1001), 310);
       r.deliver(_packet(1002), 320);
       await r.settle();
-      expect(r.buzzes, isEmpty, reason: 'back-to-back packets are not flow');
+      expect(r.steps, isNot(contains(startsWith('Stream is steady'))),
+          reason: 'back-to-back packets are not flow');
       // The first genuinely live packet: 1 s of samples after 1 s of wall time.
       r.deliver(_packet(1003), 1320);
       await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2]);
+      expect(r.steps, contains(startsWith('Stream is steady')));
+      // First sample 999.0 + 2.5 s settle is already past: open at the newest
+      // packet's end.
+      expect(r.windowLine, startsWith('Touch window open at sample time '
+          '1003000 ms'));
     });
 
-    test('a touch right after the buzz counts: the window is anchored to the '
-        'least-delayed packet, not to the stale burst', () async {
+    test('a touch in the next packet counts', () async {
       final r = _Rig();
       await r.session.start(_tap());
       r.deliver(_packet(1000), 300);
       r.deliver(_packet(1001), 310);
       r.deliver(_packet(1002), 320);
       r.deliver(_packet(1003), 1320);
-      await r.ackAt(1500); // boundary = 1500 ms mapped = sample time 1004.18
-      r.deliver(_packet(1004, contactFrom: 30, contactTo: 60), 2320);
+      r.deliver(_packet(1004, contactFrom: 10, contactTo: 60), 2320);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2, 1]);
+      expect(r.buzzes.map((b) => b.$1), [3]);
     });
   });
 
-  group('a late packet before the acknowledgement', () {
-    test('does not drag the window back (old: receipt + elapsed, 1 s behind)',
+  group('one clock: when a packet arrives cannot move the window', () {
+    test('the same packets received at different times open the same window',
+        () async {
+      Future<String> run(List<int> receivedMs) async {
+        final r = _Rig();
+        await r.session.start(_tap());
+        r.deliver(_packet(1000), receivedMs[0]);
+        r.deliver(_packet(1001), receivedMs[1]);
+        await r.settle();
+        return r.windowLine;
+      }
+
+      final onTime = await run([1000, 2000]);
+      expect(onTime, startsWith('Touch window open at sample time 1001500 ms'));
+      expect(await run([1400, 2350]), onTime);
+    });
+
+    test('a packet held back a second is decided on its own sample times',
         () async {
       final r = _Rig();
       await r.session.start(_tap());
-      r.deliver(_packet(1000), 1000); // on time: delay -1000
-      r.deliver(_packet(1001), 2000);
+      r.deliver(_packet(1000), 1000);
+      r.deliver(_packet(1001), 2000); // window [1001.5, 1001.8)
+      // A BLE hiccup: this packet arrives a second late. Its touch starts at
+      // sample time 1001.6, inside the window, whatever the phone clock says.
+      r.deliver(_packet(1002, contactFrom: 60), 4000);
       await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2]);
-      r.deliver(_packet(1002), 4000); // BLE hiccup: this one is 1 s late
-      await r.ackAt(4005); // boundary should be 1004.005, not 1003.005
-      r.deliver(_packet(1003), 4010); // backlog, nothing in it after boundary
-      // The wearer touches 100 ms after the buzz.
-      r.deliver(_packet(1004, contactFrom: 10, contactTo: 50), 5000);
-      await r.settle();
-      expect(r.results, [(3, null)],
-          reason: 'the touch starts 95 ms into a 300 ms window');
+      expect(r.results, [(3, null)]);
     });
   });
 
@@ -184,57 +194,36 @@ void main() {
       expect(lines[1], contains('continuous with the last packet'));
       expect(lines[2], contains('gap of 600 ms before this packet'));
     });
-
-    test('the window line names the mapping and how far it moved the boundary',
-        () async {
-      final r = _Rig();
-      await r.session.start(_tap());
-      r.deliver(_packet(1000), 1000);
-      r.deliver(_packet(1001), 2000);
-      r.deliver(_packet(1002), 4000);
-      await r.ackAt(4005);
-      final all = r.steps.join('\n');
-      expect(all, contains('Touch window open at sample time 1004005 ms'));
-      expect(
-        all,
-        matches(RegExp(r'Sample clock: .*3 packets.*1000 ms later than the '
-            r'receipt-time estimate')),
-      );
-    });
   });
 
   group('missing samples (finding E)', () {
-    test('contact already present at the ack counts after 200 ms of OBSERVED '
-        'contact', () async {
+    test('contact already there when the window opens counts after 200 ms of '
+        'OBSERVED contact', () async {
       final r = _Rig();
       await r.session.start(_tap());
       r.deliver(_packet(1000), 500);
-      r.deliver(_packet(1001), 1500);
-      await r.settle();
-      await r.ackAt(1800); // window opens at 1002.3
-      // 1002.3..1002.4 contact (90 ms), the packet ends; the next one is
-      // contiguous (1002.4) and continues the contact.
-      r.deliver(_packet(1002, contactFrom: 0, n: 40), 2200);
+      r.deliver(_packet(1001), 1500); // window [1001.5, 1001.8)
+      // [1001.0, 1001.6): contact from the start, 100 ms of it in the window.
+      r.deliver(_packet(1001, subMs: 600, n: 60, contactFrom: 0), 2100);
       expect(r.results, isEmpty);
-      r.deliver(_packet(1002, subMs: 400, contactFrom: 0, n: 60), 3000);
+      // Contiguous [1001.6, 1002.0) continues it: engaged at 1001.7.
+      r.deliver(_packet(1002, n: 40, contactFrom: 0), 2500);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2, 1]);
+      expect(r.buzzes.map((b) => b.$1), [3]);
     });
 
-    test('the same contact across a 600 ms unobserved gap abandons instead of '
+    test('the same contact across a 400 ms unobserved gap abandons instead of '
         'counting', () async {
       final r = _Rig();
       await r.session.start(_tap());
       r.deliver(_packet(1000), 500);
-      r.deliver(_packet(1001), 1500);
-      await r.settle();
-      await r.ackAt(1800); // window opens at 1002.3, deadline 1002.6
-      r.deliver(_packet(1002, contactFrom: 0, n: 40), 2200); // to 1002.4
-      r.deliver(_packet(1003, contactFrom: 0), 3000); // next starts 1003.0
+      r.deliver(_packet(1001), 1500); // window [1001.5, 1001.8)
+      r.deliver(_packet(1001, subMs: 600, n: 60, contactFrom: 0), 2100);
+      r.deliver(_packet(1003, contactFrom: 0), 3000); // starts at 1002.0
       await r.settle();
       expect(r.results, [(null, 'sample_gap')]);
-      expect(r.buzzes.map((b) => b.$1), [2], reason: 'no count buzz');
+      expect(r.buzzes, isEmpty, reason: 'no count buzz');
       expect(r.ended, 1);
       expect(r.session.active, isFalse);
     });
@@ -244,9 +233,7 @@ void main() {
       final r = _Rig();
       await r.session.start(_tap());
       r.deliver(_packet(1000), 500);
-      r.deliver(_packet(1001), 1500);
-      await r.settle();
-      await r.ackAt(1800); // window [1002.3, 1002.6)
+      r.deliver(_packet(1001), 1500); // window [1001.5, 1001.8)
       r.deliver(_packet(1003), 3000); // packet 1002 never arrived
       await r.settle();
       expect(r.results, [(null, 'sample_gap')]);

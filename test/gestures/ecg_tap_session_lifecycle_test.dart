@@ -215,12 +215,14 @@ void main() {
       final r = _Rig(strapClock: () => strap);
       r.stopTakesStrapSec = () => strap += 9;
       await r.session.start(_tap());
-      await r.steady(1000); // packets cover 1000.0 .. 1002.0
+      // Strap time is a packet's NEWEST sample: packets 1000 and 1001 cover
+      // 999.0 .. 1001.0.
+      await r.steady(1000);
       r.alive = false;
       r.session.poll();
       await r.settle();
       final g = r.records.single;
-      expect(g.strapStart, 1000);
+      expect(g.strapStart, 999);
       // Strap now after the stop is 1011 (floor); the recording may have run
       // until 1011.999..., so the end is rounded UP: 1012.
       expect(g.strapEnd, 1012);
@@ -233,7 +235,7 @@ void main() {
       r.alive = false;
       r.session.poll();
       await r.settle();
-      expect(r.records.single.strapEnd, 1002);
+      expect(r.records.single.strapEnd, 1001);
     });
 
     test('a packet-less abandon (stream never delivered) is still bounded by '

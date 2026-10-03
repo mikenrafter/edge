@@ -102,6 +102,20 @@ void main() {
           EcgTapThresholds(startMs: 500, gapMs: 250, confirmMs: 400));
     });
 
+    test('extra sensitive detection: off until changed, persisted, restored',
+        () async {
+      final s = await _boot({});
+      expect(s.ecgTapThresholds.extraSensitive, isFalse);
+      await s.setEcgTapThresholds(
+          EcgTapThresholds(startMs: 500, extraSensitive: true));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('gesture_ecg_extra_sensitive'), isTrue);
+      final again = GestureSettings();
+      await again.bootstrap();
+      expect(again.ecgTapThresholds,
+          EcgTapThresholds(startMs: 500, extraSensitive: true));
+    });
+
     test('an invalid stored value falls back to that field\'s default',
         () async {
       final s = await _boot({

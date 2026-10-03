@@ -533,3 +533,36 @@ Tests: `test/gestures/ecg_tap_counter_gap_test.dart`, `ecg_stream_readiness_test
   (`gesture:<identity>:rep`, plausible clocks) before the session accepts it. A claim
   that fails or is already held skips the tap; counted/ignored members keep their
   claim; a `newGroup` member opens its window with the claim it already holds.
+
+## ECG taps: one clock, count buzz first (Oct 2 lab log; supersedes the ack above)
+
+Tests: `test/phase8/ecg_tap_counter_test.dart`, `test/gestures/ecg_tap_session_test.dart`,
+`ecg_tap_session_clock_test.dart`, `ecg_stream_readiness_test.dart`,
+`ecg_tap_session_lifecycle_test.dart`, `ecg_gesture_session_record_test.dart`,
+`test/phase7/gesture_failure_test.dart`, `device_lab_test.dart`,
+`gestures_draft_taps_test.dart`.
+
+- **Packet time.** An R17 packet's strap time is its NEWEST sample; its `n` samples
+  cover `[strapTime - n*10 ms, strapTime)`. `EcgStreamReadiness.offer(strapTime:)`
+  takes the same meaning (a 49-sample packet then a full one is continuous). The 8N
+  interval floors the first packet's first sample and ceils the last packet's time.
+  Packet trace lines read `N with contact (samples a–b), strap time X (newest sample)`.
+- **No acknowledgement.** `EcgTapCounter.ackDone` is now `open(at)`. `start` emits
+  nothing (max 2: `[EcgTapBuzz(pulses: 2), EcgTapDone(2)]`). In the first window an
+  engage is tap 3 with `EcgTapBuzz(pulses: 3)`; later engages buzz once. A deadline at
+  count 2 → `[EcgTapBuzz(pulses: 2), EcgTapDone(2)]`; at count ≥ 3 → one confirm buzz
+  + done. Reaching max: the count buzz only. `ack_failed` no longer exists.
+- **One clock.** `EcgTapSession` opens the window once the stream command returned and
+  packets are steady, at `max(firstSample + sensorSettle, newest packet end)` on the
+  sample clock (`sensorSettle` default 2500 ms). Contact already present at the
+  boundary counts. `EcgSampleClock` only feeds the per-packet "behind" figure.
+- **Contact within a packet.** `EcgTapThresholds.extraSensitive` (default false; part
+  of `==`, `copyWith`, and `summary` as `, extra sensitive`). Off: samples between a
+  packet's first and last non-zero sample are contact. On: each sample on its own.
+  Persisted as bool `gesture_ecg_extra_sensitive`. `EcgThresholdAdjusters` shows a
+  `SwitchRow` `Extra sensitive subsequent tap detection` keyed
+  `ValueKey('ecg-threshold:extra-sensitive')`, inert on a non-MG band.
+- **Buzz pacing.** Buzzes run in order on one tail. Before each, the session waits
+  until `buzzQuietGap` (default 1200 ms) after the previous buzz finished writing
+  (kept across gestures; `wait` is injectable). A buzz that cannot be written is
+  logged (`Buzz xN could not be written`) and the count stands.

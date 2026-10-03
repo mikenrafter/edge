@@ -6,8 +6,11 @@
 //
 // Timeline vocabulary used below (ms on the sample clock), default thresholds
 // (start 300, gap 200, confirm 200):
-//   start(tap) at 0 -> two-pulse ack requested; ackDone(500) -> first window
-//   [500, 500+start). Engage = `gap` ms continuous contact. Release = `gap` ms
+//   start(tap) at 0 -> nothing buzzes yet; open(500) -> first window
+//   [500, 500+start). A touch that engages there is tap 3 and buzzes three
+//   times; no touch by the deadline buzzes twice and ends at 2. Later taps buzz
+//   once, and a window running out after tap 3 confirms with one more buzz.
+//   Engage = `gap` ms continuous contact. Release = `gap` ms
 //   continuous no-contact. After contact ends at E, a next touch must START in
 //   [E+gap, E+gap+confirm); at E+gap+confirm with no new touch it confirms.
 
@@ -38,7 +41,7 @@ class _Run {
   final List<EcgTapOutput> out = [];
 
   void start() => out.addAll(c.start(_tap(), at: Duration.zero));
-  void ack(int at) => out.addAll(c.ackDone(_ms(at)));
+  void open(int at) => out.addAll(c.open(_ms(at)));
   void at(int t, bool contact) => out.addAll(c.sample(_ms(t), contact: contact));
 
   /// Samples every 10 ms in [from, to), all with the same contact state.
@@ -53,11 +56,11 @@ class _Run {
   bool get abandoned => out.any((o) => o is EcgTapAbandoned);
 }
 
-/// start + ack done at 500.
+/// start + window open at 500.
 _Run _begin(int max, {EcgTapThresholds? th}) {
   final r = _Run(max, th: th)..start();
-  expect(r.buzzes.single.pulses, 2, reason: 'two-buzz acknowledgement');
-  r.ack(500);
+  expect(r.buzzes, isEmpty, reason: 'nothing buzzes until the first window');
+  r.open(500);
   return r;
 }
 
@@ -89,13 +92,12 @@ void main() {
       expect(c.stallAfter, _ms(500));
     });
 
-    test('a live double tap starts at count 2 with a two-pulse buzz', () {
+    test('a live double tap starts at count 2 and buzzes nothing yet', () {
       final c = EcgTapCounter(max: 5);
       final out = c.start(_tap(), at: Duration.zero);
       expect(c.started, isTrue);
       expect(c.count, 2);
-      expect(out, hasLength(1));
-      expect((out.single as EcgTapBuzz).pulses, 2);
+      expect(out, isEmpty);
     });
 
     test('a late (non-live) double tap never starts the counter', () {
@@ -103,15 +105,15 @@ void main() {
       expect(c.start(_tap(late: const Duration(hours: 2)), at: Duration.zero),
           isEmpty);
       expect(c.started, isFalse);
-      expect(c.ackDone(_ms(500)), isEmpty);
+      expect(c.open(_ms(500)), isEmpty);
       expect(c.sample(_ms(600), contact: true), isEmpty);
       expect(c.sample(_ms(900), contact: true), isEmpty);
     });
 
-    test('samples before the acknowledgement finishes are ignored', () {
+    test('samples before the window opens are ignored', () {
       final r = _Run(5)..start();
       r.span(0, 400, true); // finger still on the band from the tap
-      r.ack(500);
+      r.open(500);
       r.span(500, 800, false);
       r.at(800, false);
       expect(r.done?.count, 2);
@@ -119,27 +121,42 @@ void main() {
   });
 
   group('the examples (max = 5)', () {
-    test('2: taptap · buzz buzz · 300 ms · buzz', () {
+    test('2: taptap · no touch for 300 ms · buzz buzz, ends', () {
       final r = _begin(5);
       r.span(500, 800, false);
       expect(r.done, isNull, reason: 'window still open at 790');
+      expect(r.buzzes, isEmpty);
       r.at(800, false);
       expect(r.done!.count, 2);
       expect(r.done!.at, _ms(800));
-      expect(r.buzzes.map((b) => b.pulses), [2, 1]);
+      expect(r.buzzes.map((b) => b.pulses), [2],
+          reason: 'the count buzz is the confirmation: no extra buzz');
       expect(r.buzzes.last.at, _ms(800));
     });
 
-    test('3: touch < 300 ms · buzz · release · > 400 ms · buzz', () {
+    test('3: touch < 300 ms · buzz buzz buzz · release · > 400 ms · buzz',
+        () {
       final r = _toThree(5);
-      expect(r.buzzes.map((b) => b.pulses), [2, 1]);
-      expect(r.buzzes[1].at, _ms(800), reason: 'engage = start + 200 ms');
+      expect(r.buzzes.map((b) => b.pulses), [3]);
+      expect(r.buzzes[0].at, _ms(800), reason: 'engage = start + 200 ms');
       expect(r.c.count, 3);
       r.span(1200, 1600, false);
       expect(r.done, isNull);
       r.at(1600, false);
       expect(r.done!.count, 3);
-      expect(r.buzzes.map((b) => b.pulses), [2, 1, 1]);
+      expect(r.buzzes.map((b) => b.pulses), [3, 1]);
+    });
+
+    test('3: a finger already on the sensor when the window opens', () {
+      final r = _Run(5)..start();
+      r.span(0, 500, true); // resting on the sensor before it was ready
+      r.open(500);
+      r.span(500, 700, true);
+      r.at(700, true);
+      expect(r.c.count, 3);
+      expect(r.buzzes.single.pulses, 3);
+      expect(r.buzzes.single.at, _ms(700),
+          reason: 'held from the window opening: open + gap');
     });
 
     test('4: … release · touch 200–400 ms · buzz · release · > 400 ms · buzz',
@@ -152,7 +169,7 @@ void main() {
       r.span(2000, 2400, false);
       r.at(2400, false);
       expect(r.done!.count, 4);
-      expect(r.buzzes.map((b) => b.pulses), [2, 1, 1, 1]);
+      expect(r.buzzes.map((b) => b.pulses), [3, 1, 1]);
     });
 
     test('5: … touch 200–400 ms · buzz (max, runs at once)', () {
@@ -164,7 +181,7 @@ void main() {
       r.at(2500, true); // engage at 2500 -> count 5 = max
       expect(r.done!.count, 5);
       expect(r.done!.at, _ms(2500));
-      expect(r.buzzes.map((b) => b.pulses), [2, 1, 1, 1],
+      expect(r.buzzes.map((b) => b.pulses), [3, 1, 1],
           reason: 'the max buzz is the last one; no confirm buzz after it');
       r.span(2510, 4000, false);
       expect(r.out.whereType<EcgTapDone>(), hasLength(1));
@@ -177,7 +194,7 @@ void main() {
       final out = c.start(_tap(), at: Duration.zero);
       expect(out.whereType<EcgTapDone>().single.count, 2);
       expect(c.finished, isTrue);
-      expect(c.ackDone(_ms(500)), isEmpty);
+      expect(c.open(_ms(500)), isEmpty);
     });
 
     test('max = 3: the third touch runs at once', () {
@@ -187,6 +204,8 @@ void main() {
       r.at(800, true);
       expect(r.done!.count, 3);
       expect(r.done!.at, _ms(800));
+      expect(r.buzzes.map((b) => b.pulses), [3],
+          reason: 'the three-pulse count buzz is the confirmation');
     });
 
     test('max = 4: the fourth touch runs at once', () {
@@ -226,7 +245,7 @@ void main() {
       r.span(1200, 1600, false);
       r.at(1600, false);
       expect(r.done!.count, 3, reason: 'the gap was not a second touch');
-      expect(r.buzzes.map((b) => b.pulses), [2, 1, 1]);
+      expect(r.buzzes.map((b) => b.pulses), [3, 1]);
     });
 
     test('a touch that starts at the end of the first window is too late', () {
@@ -343,10 +362,22 @@ void main() {
       expect(() => EcgTapThresholds().copyWith(confirmMs: 5),
           throwsArgumentError);
     });
+
+    test('extra sensitive: off by default, part of the value, in the summary',
+        () {
+      expect(EcgTapThresholds().extraSensitive, isFalse);
+      final on = EcgTapThresholds().copyWith(extraSensitive: true);
+      expect(on.extraSensitive, isTrue);
+      expect(on, isNot(EcgTapThresholds()));
+      expect(on.copyWith(gapMs: 300).extraSensitive, isTrue);
+      expect(EcgTapThresholds().summary, isNot(contains('extra sensitive')));
+      expect(on.summary, endsWith(', extra sensitive'));
+    });
   });
 
   group('a changed threshold moves its boundary', () {
-    test('start 500: a touch 450 ms after the ack counts (default rejects it)',
+    test('start 500: a touch 450 ms after the window opens counts (default '
+        'rejects it)',
         () {
       final moved = _begin(5, th: EcgTapThresholds(startMs: 500));
       moved.span(500, 950, false);
@@ -360,7 +391,7 @@ void main() {
       expect(dflt.done!.count, 2, reason: 'default window closed at 800');
     });
 
-    test('start 500: with no touch, confirms at ack + 500', () {
+    test('start 500: with no touch, confirms at open + 500', () {
       final r = _begin(5, th: EcgTapThresholds(startMs: 500));
       r.span(500, 1000, false);
       expect(r.done, isNull);
@@ -404,7 +435,7 @@ void main() {
       final r = _toThree(5); // contact ended at 1200 (default gap 200)
       // ...but with confirm 400 the window is [1400, 1800).
       final moved = _Run(5, th: EcgTapThresholds(confirmMs: 400))..start();
-      moved.ack(500);
+      moved.open(500);
       moved.span(500, 600, false);
       moved.span(600, 1200, true);
       moved.span(1200, 1700, false);

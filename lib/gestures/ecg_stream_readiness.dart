@@ -1,8 +1,14 @@
 // ecg_stream_readiness.dart — "is the ECG stream really up?" for the tap
 // counter, and "where is now on the ECG sample clock?". Starting the stream only
 // means a command was written; the band can take many seconds to begin sending,
-// and an acknowledgement buzz sent before that tells the wearer to touch a
-// sensor that is not listening yet.
+// and a touch window opened before that asks the wearer to touch a sensor that
+// is not listening yet.
+//
+// PACKET TIME. An R17 packet's strap time is when its NEWEST sample was taken:
+// its samples run back from there, 10 ms apart. (Read as the first sample, every
+// packet in the 2026-10-02 lab log reached the phone ~0.8 s before its last
+// sample existed, on a strap clock that matched the phone's to ~20 ms, and the
+// short 49-sample packet at stream start looked like a 510 ms hole.)
 //
 // READINESS (review finding F). Receipt time alone proves nothing: BLE can hold
 // packets back and deliver a stale burst, and a burst looks exactly like a
@@ -48,16 +54,17 @@ class EcgStreamReadiness {
   bool get ready => _ready;
 
   /// Offer a packet: [at] is when the phone received it, [strapTime] the
-  /// packet's own start on the strap clock, in seconds, [sampleCount] how many
-  /// 100 Hz samples it carries. True once steady (and on every later call).
+  /// packet's own time on the strap clock, in seconds (its newest sample; see
+  /// PACKET TIME above), [sampleCount] how many 100 Hz samples it carries. True
+  /// once steady (and on every later call).
   bool offer({
     required DateTime at,
     required double strapTime,
     int sampleCount = 100,
   }) {
     if (_ready) return true;
-    final startUs = (strapTime * 1000000).round();
-    final endUs = startUs + sampleCount * _samplePeriodUs;
+    final endUs = (strapTime * 1000000).round();
+    final startUs = endUs - sampleCount * _samplePeriodUs;
     final prevAt = _lastAt, prevEndUs = _lastEndUs;
     if (prevAt != null && prevEndUs != null) {
       final wallUs = at.difference(prevAt).inMicroseconds;

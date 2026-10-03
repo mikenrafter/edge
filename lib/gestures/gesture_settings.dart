@@ -49,6 +49,7 @@ class GestureSettings extends ChangeNotifier {
   static const _kEcgStartMs = 'gesture_ecg_start_ms';
   static const _kEcgGapMs = 'gesture_ecg_gap_ms';
   static const _kEcgConfirmMs = 'gesture_ecg_confirm_ms';
+  static const _kEcgExtraSensitive = 'gesture_ecg_extra_sensitive';
   static const _kTapMethod = 'gesture_tap_method';
   static const _kRepeatWindowMs = 'gesture_repeat_window_ms';
   static const _kRepeatLab = 'gesture_repeat_lab';
@@ -200,6 +201,7 @@ class GestureSettings extends ChangeNotifier {
       gapMs: field(_kEcgGapMs, d.gapMs, EcgTapThresholds.gapRange),
       confirmMs:
           field(_kEcgConfirmMs, d.confirmMs, EcgTapThresholds.confirmRange),
+      extraSensitive: prefs.getBool(_kEcgExtraSensitive) ?? d.extraSensitive,
     );
 
     final caps = await DeviceActions.capabilities();
@@ -306,6 +308,7 @@ class GestureSettings extends ChangeNotifier {
     await prefs.setInt(_kEcgStartMs, t.startMs);
     await prefs.setInt(_kEcgGapMs, t.gapMs);
     await prefs.setInt(_kEcgConfirmMs, t.confirmMs);
+    await prefs.setBool(_kEcgExtraSensitive, t.extraSensitive);
     notifyListeners();
   }
 

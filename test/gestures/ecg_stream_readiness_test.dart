@@ -154,6 +154,23 @@ void main() {
     );
   });
 
+  // PACKET TIME: a packet's strap time is its NEWEST sample. The band opens a
+  // stream with a short packet (49 samples, 1661.780 in the lab log) and then
+  // full ones a second apart (1662.780, ...). Read as start times that pair has
+  // a 510 ms hole; read as end times it is continuous.
+  test('strap time is the newest sample: a short first packet is continuous '
+      'with the full one after it', () {
+    final r = EcgStreamReadiness();
+    r.offer(at: _t0, strapTime: 1661.780, sampleCount: 49);
+    expect(
+      r.offer(
+          at: _t0.add(const Duration(milliseconds: 1018)),
+          strapTime: 1662.780,
+          sampleCount: 100),
+      isTrue,
+    );
+  });
+
   test('reset forgets the packets', () {
     final r = EcgStreamReadiness();
     r.offer(at: _t0, strapTime: 100);

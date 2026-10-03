@@ -110,7 +110,7 @@ void main() {
       expect(l.opcodes, hasLength(2));
     });
 
-    test('the ECG two-pulse acknowledgement is delivered', () async {
+    test('the ECG two-pulse count buzz is delivered', () async {
       final l = _SilentLink();
       final r = await l.dispatcher().dispatch(
         kEcgTapRule,

@@ -86,8 +86,9 @@ class _Rig {
 
   Future<void> settle() => Future<void>.delayed(Duration.zero);
 
-  /// Two packets a second apart: the stream is steady, so the ack is asked
-  /// for and (the buzz succeeding at once) the first window opens.
+  /// Two packets a second apart: the stream is steady and the first window
+  /// opens 2.5 s after the first sample. A packet's strap time is its NEWEST
+  /// sample, so packets [sec] and [sec] + 1 cover [sec] - 1 .. [sec] + 1.
   Future<void> steady(int sec, {int sub = 0}) async {
     now = _t0.add(const Duration(milliseconds: 500));
     session.onFrame(_packet(sec, sub: sub));
@@ -102,17 +103,19 @@ void main() {
       () async {
     final r = _Rig(max: 3);
     await r.session.start(_tap());
-    await r.steady(1000, sub: 16384); // 1000.5 and 1001.5
+    // Packets end at 1000.5 and 1001.5: first sample 999.5, window at 1002.0.
+    await r.steady(1000, sub: 16384);
     r.now = _t0.add(const Duration(seconds: 2));
-    r.session.onFrame(_packet(1002, sub: 16384, contactFrom: 10)); // 1002.5
+    // [1001.5, 1002.5), contact from 1001.6: held through the window.
+    r.session.onFrame(_packet(1002, sub: 16384, contactFrom: 10));
     await r.settle();
     expect(r.results, [(3, null)]);
     expect(r.recorded, hasLength(1));
     final g = r.recorded.single;
     expect(g.finalCount, 3);
     expect(g.reason, isNull);
-    expect(g.strapStart, 1000, reason: 'floor of the first packet start');
-    expect(g.strapEnd, 1004, reason: 'ceil of 1002.5 + 100 * 10 ms');
+    expect(g.strapStart, 999, reason: 'floor of 1000.5 - 100 * 10 ms');
+    expect(g.strapEnd, 1003, reason: 'ceil of the last packet end, 1002.5');
   });
 
   // A long quiet window (1.1 s to start + 1 s to confirm) so a few packets
@@ -130,8 +133,8 @@ void main() {
     r.session.poll(); // link lost
     await r.settle();
     final g = r.recorded.single;
-    expect(g.strapStart, 2000);
-    expect(g.strapEnd, 2003);
+    expect(g.strapStart, 1999);
+    expect(g.strapEnd, 2002);
   });
 
   test('abandoned (link lost): written with no count and the reason',
@@ -146,7 +149,7 @@ void main() {
     final g = r.recorded.single;
     expect(g.finalCount, isNull);
     expect(g.reason, isNotNull);
-    expect(g.strapStart, 3000);
+    expect(g.strapStart, 2999);
     expect(r.ended, 1);
   });
 
@@ -187,7 +190,7 @@ void main() {
     await r.session.start(_tap());
     await r.steady(9000);
     expect(r.recorded, hasLength(2));
-    expect(r.recorded.last.strapStart, 9000,
+    expect(r.recorded.last.strapStart, 8999,
         reason: 'nothing carried over from the session before');
   });
 

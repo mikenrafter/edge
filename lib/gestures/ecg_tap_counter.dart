@@ -7,6 +7,15 @@
 // clock), never phone receipt time, because samples reach the phone in bursts
 // and receipt time would turn a 200 ms window into noise.
 //
+// FIRST BUZZ = THE COUNT SO FAR. Nothing buzzes when the gesture starts. The
+// first window decides the first buzz: a touch that engages in it (a finger
+// already on the sensor counts) is tap 3 and buzzes three times; no touch by
+// the deadline ends the gesture at 2 with two buzzes. Every later tap buzzes
+// once, and a count that a window running out makes final gets one more
+// confirming buzz. A count that is final the moment it is buzzed (2 at the
+// first deadline, or [max] reached) gets no extra buzz: that buzz is the
+// confirmation.
+//
 //  * A DEADLINE is only ever decided by a sample reaching it. [tick] exists to
 //    notice a stalled stream and nothing else: it can abandon, never confirm.
 //  * Contact must hold for the gap threshold to ENGAGE, and no-contact must hold
@@ -18,7 +27,7 @@
 //  * After an engaged touch whose contact ended at E, the next window is
 //    [E + gap, E + gap + confirm).
 //  * Every output is a request. The caller routes buzzes through
-//    AlertDispatcher; this class sends nothing.
+//    AlertDispatcher and paces them; this class sends nothing.
 //
 // DISCONTINUITY POLICY (review finding E). Contact and no-contact only count
 // when they are OBSERVED. Two consecutive samples further apart than
@@ -37,8 +46,12 @@
 import 'strap_event.dart';
 
 class EcgTapThresholds {
-  EcgTapThresholds({int startMs = 300, int gapMs = 200, int confirmMs = 200})
-      : startMs = _check('start', startMs, startRange),
+  EcgTapThresholds({
+    int startMs = 300,
+    int gapMs = 200,
+    int confirmMs = 200,
+    this.extraSensitive = false,
+  })  : startMs = _check('start', startMs, startRange),
         gapMs = _check('gap', gapMs, gapRange),
         confirmMs = _check('confirm', confirmMs, confirmRange);
 
@@ -63,7 +76,8 @@ class EcgTapThresholds {
     return v;
   }
 
-  /// Window after the acknowledgement for the first touch to start.
+  /// Window after the sensor is ready for the first touch to start (or to be
+  /// there already).
   final int startMs;
 
   /// Contact / no-contact must hold this long to engage / release.
@@ -72,34 +86,51 @@ class EcgTapThresholds {
   /// Extra window after a release for the next touch to start.
   final int confirmMs;
 
+  /// "Extra sensitive subsequent tap detection". Off (the default): within one
+  /// packet, everything from the first to the last reading with signal is
+  /// contact, so an ECG trace crossing zero cannot break a touch, but a lift
+  /// and re-touch inside the same packet (about a second) is one tap. On: every
+  /// reading counts on its own. Applied by the session, which sees packets;
+  /// the counter only ever sees samples.
+  final bool extraSensitive;
+
   Duration get start => Duration(milliseconds: startMs);
   Duration get gap => Duration(milliseconds: gapMs);
   Duration get confirm => Duration(milliseconds: confirmMs);
 
-  EcgTapThresholds copyWith({int? startMs, int? gapMs, int? confirmMs}) =>
+  EcgTapThresholds copyWith({
+    int? startMs,
+    int? gapMs,
+    int? confirmMs,
+    bool? extraSensitive,
+  }) =>
       EcgTapThresholds(
         startMs: startMs ?? this.startMs,
         gapMs: gapMs ?? this.gapMs,
         confirmMs: confirmMs ?? this.confirmMs,
+        extraSensitive: extraSensitive ?? this.extraSensitive,
       );
 
-  /// One plain line for the Device lab: "start 300 ms, gap 200 ms, confirm 200 ms".
+  /// One plain line for the Device lab: "start 300 ms, gap 200 ms, confirm 200 ms"
+  /// (plus ", extra sensitive" when that is on).
   String get summary =>
-      'start $startMs ms, gap $gapMs ms, confirm $confirmMs ms';
+      'start $startMs ms, gap $gapMs ms, confirm $confirmMs ms'
+      '${extraSensitive ? ', extra sensitive' : ''}';
 
   @override
   bool operator ==(Object other) =>
       other is EcgTapThresholds &&
       other.startMs == startMs &&
       other.gapMs == gapMs &&
-      other.confirmMs == confirmMs;
+      other.confirmMs == confirmMs &&
+      other.extraSensitive == extraSensitive;
 
   @override
-  int get hashCode => Object.hash(startMs, gapMs, confirmMs);
+  int get hashCode => Object.hash(startMs, gapMs, confirmMs, extraSensitive);
 
   @override
-  String toString() =>
-      'EcgTapThresholds(start $startMs, gap $gapMs, confirm $confirmMs)';
+  String toString() => 'EcgTapThresholds(start $startMs, gap $gapMs, '
+      'confirm $confirmMs${extraSensitive ? ', extra sensitive' : ''})';
 }
 
 sealed class EcgTapOutput {
@@ -127,7 +158,7 @@ final class EcgTapAbandoned extends EcgTapOutput {
   final String reason;
 }
 
-enum _Phase { awaitingAck, idle, candidate, touching, releasing }
+enum _Phase { awaitingOpen, idle, candidate, touching, releasing }
 
 class EcgTapCounter {
   EcgTapCounter({
@@ -158,7 +189,7 @@ class EcgTapCounter {
   int _count = 0;
   bool _started = false;
   bool _finished = false;
-  _Phase _phase = _Phase.awaitingAck;
+  _Phase _phase = _Phase.awaitingOpen;
   Duration _deadline = Duration.zero;
   Duration _contactStart = Duration.zero;
   Duration _noContactStart = Duration.zero;
@@ -168,8 +199,10 @@ class EcgTapCounter {
   bool get started => _started;
   bool get finished => _finished;
 
-  /// A live double tap begins the gesture at count 2 and asks for the
-  /// two-pulse acknowledgement. A late tap never starts it.
+  /// A live double tap begins the gesture at count 2. Nothing buzzes yet: the
+  /// first window decides whether the first buzz says 2 or 3. With [max] 2
+  /// there is nothing to wait for, so it buzzes twice and ends. A late tap
+  /// never starts it.
   List<EcgTapOutput> start(StrapEvent tap, {required Duration at}) {
     if (_started || _finished || !tap.isLive) return const [];
     _started = true;
@@ -178,12 +211,14 @@ class EcgTapCounter {
       _finished = true;
       return [EcgTapBuzz(at, pulses: 2), EcgTapDone(at, 2)];
     }
-    return [EcgTapBuzz(at, pulses: 2)];
+    return const [];
   }
 
-  /// The acknowledgement has finished: opens the first window.
-  List<EcgTapOutput> ackDone(Duration at) {
-    if (!_started || _finished || _phase != _Phase.awaitingAck) return const [];
+  /// The sensor is ready: opens the first window `[at, at + start)`. Samples
+  /// before [at] are ignored; contact already there at [at] is a touch that
+  /// started in time.
+  List<EcgTapOutput> open(Duration at) {
+    if (!_started || _finished || _phase != _Phase.awaitingOpen) return const [];
     _phase = _Phase.idle;
     _deadline = at + thresholds.start;
     _lastSampleAt = at;
@@ -191,7 +226,7 @@ class EcgTapCounter {
   }
 
   List<EcgTapOutput> sample(Duration at, {required bool contact}) {
-    if (!_started || _finished || _phase == _Phase.awaitingAck) return const [];
+    if (!_started || _finished || _phase == _Phase.awaitingOpen) return const [];
     final last = _lastSampleAt;
     if (last != null && at < last) return const []; // out of order
     _lastSampleAt = at;
@@ -231,7 +266,8 @@ class EcgTapCounter {
           if (at >= _deadline) return _confirm(at, out);
         } else if (at - _contactStart >= thresholds.gap) {
           _count++;
-          out.add(EcgTapBuzz(at));
+          // Tap 3 is the first buzz of the gesture: it says the whole count.
+          out.add(EcgTapBuzz(at, pulses: _count == 3 ? 3 : 1));
           if (_count >= max) {
             _finished = true;
             out.add(EcgTapDone(at, _count));
@@ -244,7 +280,7 @@ class EcgTapCounter {
           _phase = _Phase.releasing;
           _noContactStart = at;
         }
-      case _Phase.awaitingAck:
+      case _Phase.awaitingOpen:
       case _Phase.releasing:
         break;
     }
@@ -263,7 +299,7 @@ class EcgTapCounter {
       case _Phase.releasing:
         _noContactStart = at; // unseen time is not no-contact
       case _Phase.touching:
-      case _Phase.awaitingAck:
+      case _Phase.awaitingOpen:
         break;
     }
     return null;
@@ -271,7 +307,7 @@ class EcgTapCounter {
 
   /// Stall detection only. [now] is on the same clock as [sample].
   List<EcgTapOutput> tick(Duration now) {
-    if (!_started || _finished || _phase == _Phase.awaitingAck) return const [];
+    if (!_started || _finished || _phase == _Phase.awaitingOpen) return const [];
     final last = _lastSampleAt;
     if (last == null || now - last < stallAfter) return const [];
     return _abandon(now, 'stalled');
@@ -282,9 +318,13 @@ class EcgTapCounter {
     return _abandon(at, 'link_lost');
   }
 
+  /// A window ran out. At count 2 nothing has buzzed yet, so the two-pulse
+  /// count buzz is also the confirmation; later counts were already buzzed
+  /// and get one confirming buzz.
   List<EcgTapOutput> _confirm(Duration at, List<EcgTapOutput> out) {
     _finished = true;
-    return [...out, EcgTapBuzz(at), EcgTapDone(at, _count)];
+    final pulses = _count == 2 ? 2 : 1;
+    return [...out, EcgTapBuzz(at, pulses: pulses), EcgTapDone(at, _count)];
   }
 
   List<EcgTapOutput> _abandon(Duration at, String reason) {

@@ -755,6 +755,34 @@ a tooltip. The heart-rate day chart's key: Movement (% of time moving), Heart
 rate (bpm), Not recorded. "Not recorded" appears only when the window has gaps.
 Live charts size their slots to each stream's rate.
 
+### 8U — ECG taps: one clock, the count as the first buzz
+
+From the 2026-10-02 lab log (WHOOP MG, start 500 / gap 200 / confirm 1000):
+3 taps came only with a finger already on the sensor, and 4 almost never.
+
+- A packet's strap time is its NEWEST sample. Read as the first, packets
+  arrived ~0.8 s before their last sample existed and the short first packet
+  looked like a 510 ms hole. Samples now run back from the packet time.
+- One clock. The first window opens on the sample clock 2.5 s after the
+  stream's first sample (the sensor reads 0 until then, even with a finger on
+  it), not at a phone write time mapped across. Phone time only detects a
+  stalled stream and paces buzzes.
+- No acknowledgement buzz. The first window decides the first buzz: a finger
+  there (already on counts) buzzes three times for 3; nothing by the deadline
+  buzzes twice and ends at 2. Later taps buzz once; a count made final by a
+  window running out gets one confirming buzz. A count final the moment it is
+  buzzed (2, or the max) gets none extra.
+- Buzzes are paced: none is asked for within 1.2 s of the last one finishing
+  its write. In the log, a tap-3 buzz asked for 0.2–0.65 s after the
+  acknowledgement never played; one asked for 1.06 s after did. Pulses inside
+  one buzz stay 300 ms apart (the wearer feels both).
+- "Extra sensitive subsequent tap detection" (Touch windows, off by default).
+  Off: within one packet, first to last reading with signal is one touch (a
+  zero crossing cannot break it; a lift inside one second is not a tap). On:
+  every reading counts on its own.
+- Deferred: opening the window on the band's own haptic-done event, and timing
+  the next tap's window from the buzz instead of the release.
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

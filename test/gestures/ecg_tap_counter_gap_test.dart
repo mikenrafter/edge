@@ -34,9 +34,9 @@ class _Run {
   final EcgTapCounter c;
   final List<EcgTapOutput> out = [];
 
-  void begin(int ack) {
+  void begin(int open) {
     out.addAll(c.start(_tap(), at: Duration.zero));
-    out.addAll(c.ackDone(_ms(ack)));
+    out.addAll(c.open(_ms(open)));
   }
 
   void at(int t, bool contact) => out.addAll(c.sample(_ms(t), contact: contact));
@@ -63,7 +63,7 @@ void main() {
       r.span(1000, 1100, true); // 100 ms seen
       r.span(2000, 2100, true); // 900 ms unseen, then 100 ms more
       expect(r.done, isNull);
-      expect(r.buzzes, hasLength(1), reason: 'only the 2-pulse ack');
+      expect(r.buzzes, isEmpty, reason: 'nothing counted, nothing decided');
       expect(r.c.count, 2);
     });
 
@@ -146,7 +146,7 @@ void main() {
       r.at(1900, false); // 800 ms hole carrying us past the deadline
       expect(r.abandoned?.reason, 'sample_gap');
       expect(r.done, isNull);
-      expect(r.buzzes, hasLength(1), reason: 'no confirmation buzz');
+      expect(r.buzzes, isEmpty, reason: 'no count buzz, no confirmation');
       expect(r.c.finished, isTrue);
     });
 
@@ -167,7 +167,7 @@ void main() {
       expect(r.abandoned, isNull);
     });
 
-    test('the first sample after the ack boundary is checked like any other',
+    test('the first sample after the window opens is checked like any other',
         () {
       final r = _Run(5)..begin(1000); // boundary 1000, deadline 1300
       r.at(2000, true); // nothing observed between 1000 and 2000
@@ -179,7 +179,7 @@ void main() {
     test('a wider maxSampleGap bridges what the default would not', () {
       final c = EcgTapCounter(max: 3, maxSampleGap: _ms(300));
       c.start(_tap(), at: Duration.zero);
-      c.ackDone(_ms(1000));
+      c.open(_ms(1000));
       final out = <EcgTapOutput>[];
       for (var t = 1000; t <= 1250; t += 125) {
         out.addAll(c.sample(_ms(t), contact: true));

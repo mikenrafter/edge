@@ -146,10 +146,11 @@ class DeviceLabView extends StatelessWidget {
                       onEcgOnDoubleTap,
                       enabled: ecgSupported,
                       sub: ecgSupported
-                          ? 'A live double tap starts an ECG recording and the '
-                              'band buzzes twice once the sensor is ready. '
-                              'Normal double-tap actions are paused while this '
-                              'is on.'
+                          ? 'A live double tap starts an ECG recording. Once '
+                              'the sensor is ready the band buzzes three times '
+                              'if a finger is on it, or twice to stop at two '
+                              'taps. Normal double-tap actions are paused '
+                              'while this is on.'
                           : 'This band has no ECG sensor',
                     ),
                   ),
@@ -317,7 +318,8 @@ class EcgThresholdAdjusters extends StatelessWidget {
       _Adjuster(
         keyBase: 'ecg-threshold:start',
         label: 'Start threshold',
-        caption: 'How long after the buzzes the first touch can begin.',
+        caption: 'How long the first touch can take to begin once the sensor '
+            'is ready. A finger already on the sensor counts.',
         value: thresholds.startMs,
         range: EcgTapThresholds.startRange,
         step: EcgTapThresholds.stepMs,
@@ -348,6 +350,23 @@ class EcgThresholdAdjusters extends StatelessWidget {
         onSet: onChanged == null
             ? null
             : (v) => onChanged!(thresholds.copyWith(confirmMs: v)),
+      ),
+      SwitchRow(
+        key: const ValueKey('ecg-threshold:extra-sensitive'),
+        'Extra sensitive subsequent tap detection',
+        thresholds.extraSensitive,
+        onChanged == null
+            ? null
+            : (v) => onChanged!(thresholds.copyWith(extraSensitive: v)),
+        enabled: onChanged != null,
+        sub: 'Off: the band sends its sensor readings about once a second, '
+            'and within each batch everything from the first to the last '
+            'reading with contact counts as one touch. A lift and re-touch '
+            'inside the same second counts as one tap. '
+            'On: every reading counts on its own, so quicker taps can be '
+            'told apart. But the heart signal crosses zero now and then, and '
+            'a single zero reading while a touch is starting restarts its '
+            'hold time, so taps can be missed, counted late, or split in two.',
       ),
     ]);
   }
