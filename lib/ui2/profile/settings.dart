@@ -21,6 +21,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/auto_backup.dart';
 import '../../data/off_lookup.dart';
 import '../../health/health_export.dart' show HealthLinkState;
+import '../../haptics/haptic_profile.dart';
 import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
@@ -978,6 +979,8 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       initial: p.buzzSequenceFor(id),
       bandConnected: app.engine.isConnected,
       onPlay: app.previewBuzzSequence,
+      // The band's measured vocabulary (an MG), none on a 4.0.
+      profile: HapticDeviceProfile.forGeneration(app.device.generation),
       onSave: (s) => _apply(
           p.withAlertRule({...p.alertRule(id).toJson(), 'buzzSequence': s.toJson()})),
     );

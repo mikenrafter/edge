@@ -770,6 +770,7 @@ class _Header extends StatelessWidget {
     final i = session.testIndex;
     final last = session.tests.length - 1;
     final playing = runner.patternPlaying;
+    final unstable = session.unstable(i);
     final fitted = session.dynamicTempo && session.fittedUnitMs() != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -788,6 +789,13 @@ class _Header extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: F.head.copyWith(color: p.ink),
               ),
+            ),
+            // The band's timing for this test varies: A and B are then its
+            // shortest and longest renditions.
+            _UnstableToggle(
+              key: const ValueKey('pattern-unstable'),
+              selected: unstable,
+              onTap: runner.patternToggleUnstable,
             ),
             _StepButton(
               key: const ValueKey('pattern-next'),
@@ -823,21 +831,19 @@ class _Header extends StatelessWidget {
             ),
             const SizedBox(width: S.x2),
             Expanded(
-              child: BigButton(
-                'A',
+              child: _RenditionChip(
+                unstable ? 'A · shortest' : 'A',
                 key: const ValueKey('pattern-rendition-a'),
                 soft: session.activeRendition != 0,
-                color: C.blue,
                 onTap: () => runner.patternRendition(0),
               ),
             ),
             const SizedBox(width: S.x2),
             Expanded(
-              child: BigButton(
-                'B',
+              child: _RenditionChip(
+                unstable ? 'B · longest' : 'B',
                 key: const ValueKey('pattern-rendition-b'),
                 soft: session.activeRendition != 1,
-                color: C.blue,
                 onTap: () => runner.patternRendition(1),
               ),
             ),
@@ -950,6 +956,89 @@ class _StepButton extends StatelessWidget {
         width: S.tap,
         height: S.tap,
         child: Icon(icon, size: 24, color: onTap == null ? p.ink3 : p.ink),
+      ),
+    );
+  }
+}
+
+/// The Unstable toggle: selected while the open test is flagged.
+class _UnstableToggle extends StatelessWidget {
+  const _UnstableToggle({
+    super.key,
+    required this.selected,
+    required this.onTap,
+  });
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Semantics(
+      selected: selected,
+      child: Pressable(
+        onTap: onTap,
+        semanticLabel: 'Unstable',
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: S.x3,
+            vertical: S.x2,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? p.wash(C.blue) : p.card,
+            borderRadius: R.rMd,
+            border: Border.all(
+              color: selected ? C.blue : p.ink3,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Text(
+            'Unstable',
+            style: F.cap.copyWith(color: p.ink, fontWeight: FontWeight.w600),
+            maxLines: 1,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A rendition chip like a soft or filled [BigButton], with tight side
+/// padding so the longer unstable labels ("A · shortest") fit one third of a
+/// 360 px row and wrap to two lines instead of overflowing.
+class _RenditionChip extends StatelessWidget {
+  const _RenditionChip(
+    this.label, {
+    super.key,
+    required this.soft,
+    required this.onTap,
+  });
+  final String label;
+  final bool soft;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Pressable(
+      onTap: onTap,
+      semanticLabel: label,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 52),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: S.x1),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: soft ? p.wash(C.blue) : p.fill(C.blue),
+          borderRadius: R.rMd,
+          boxShadow: soft ? null : p.el(2),
+        ),
+        child: Text(
+          label,
+          style: F.head.copyWith(color: soft ? p.on(C.blue) : p.inkOnFill),
+          textAlign: TextAlign.center,
+          maxLines: 2,
+        ),
       ),
     );
   }

@@ -211,6 +211,134 @@ refused on a band that is not an MG. The ECG stream is capped and always
 stopped, also on errors. No sample leaves RAM unless you copy the log
 (invariant 14). Dangerous opcodes (invariant 15) are not involved.
 
+## Vocabulary (L6)
+
+The L6 run is the pattern probe at a fixed tempo (one sixteenth = 125 ms), all 40
+tests transcribed. The log is `docs/hardware/logs/2026-10-03-pattern-probe-L6.txt`;
+its `Pattern probe heard N/40 ...` lines are the OUTPUT set, read by
+`parseHeardLines` (`lib/haptics/heard_log.dart`). The 40 tests are the stable
+INPUT set `whoop-mg-pattern-v1` (`kWhoopMgPatternProbeSet`): their numbers are
+indices + 1 and never move, a test pins their descriptions, and the probe writes
+`Pattern probe set: whoop-mg-pattern-v1` once when it opens. The measured
+vocabulary is the profile `whoop-5.0-mg` (`HapticDeviceProfile.whoopMg`, version 1,
+`lib/haptics/haptic_profile.dart`); a test reads the log and checks the table
+against it.
+
+**Dynamics.** The probe has six, loudest to softest: ff, f, mf, mp, p, pp (codes
+`N4f`, `N2p`). The wearer's reading of the loudest effects: 14 is f, while 47 is ff;
+there are grades between for p and pp. A limited 4/4 system of notes, rests and
+these dynamics expresses most of what the band plays.
+
+**Phrases.** One phrase is one band command and how it is felt, as the shortest
+and longest rendition heard (equal when only one was). Codes are `N<length><dynamic>`
+and `R<length>` in sixteenths. Multi-command tests were split at the rest between
+commands.
+
+| Phrase | Effects | Loop | Shortest | Longest | Tests |
+|---|---|---|---|---|---|
+| `buzz47` | 47 | 1 | N4ff | N4ff | 2, 6, 18, 22, 34, 36, 38, 40 |
+| `buzz14` | 14 | 1 | N3f | N4f | 3, 7, 19, 23, 33, 35, 37, 39 |
+| `click1` | 1 | 1 | N1mp N1mp | N1mp N1mp | 4, 8, 20 |
+| `pair` | 47, 152 | 1 | N2mf R2 N2mf | N3mf R1 N3mf | 1, 5, 17, 21 |
+| `buzz47x2` | 47 | 2 | N6ff | N6ff | 10 |
+| `buzz47x3` | 47 | 3 | N8ff | N8ff | 26 |
+| `buzz14x2` | 14 | 2 | N6ff | N6ff | 11 |
+| `buzz14x3` | 14 | 3 | N8ff | N8ff | 27 |
+| `click1x2` | 1 | 2 | N1mf N1mf N1mf | same | 12 |
+| `click1x3` | 1 | 3 | N1mf N1mf N1mf | same | 28 |
+| `pairx2` | 47, 152 | 2 | N2mf R2 N2mf R2 N2mf | same | 9 |
+| `pairx3` | 47, 152 | 3 | N3mf R1 N3mf R1 N3mf R1 N3mf | same | 25 |
+| `pair2` | 47, 152, 47, 152 | 1 | N3ff R1 N3ff R1 N3ff R1 N3ff | same | 13 |
+| `pair3` | 47, 152 x3 | 1 | N2mf R2, six notes | same | 29 |
+| `arc47` | 47, 152, 47 | 1 | N2ff R1 N4ff R3 N3mf | same | 14 |
+| `arc14` | 14, 152, 14 | 1 | N2mf R1 N4ff R1 N3mf | same | 15 |
+| `arc1` | 1, 152, 1 | 1 | N1mp R1 N1pp N1pp R2 N2mp | same | 16 |
+| `arc47x3` | 47, 152, 47, 152, 47 | 1 | N2mf R2 N2mf R2 N4ff R2 N2mf R2 N2mf | same | 30 |
+| `arc14x3` | 14, 152, 14, 152, 14 | 1 | N2mf R1 N2mf R2 N4ff R2 N2mf R1 N2mf | same | 31 |
+| `arc1x3` | 1, 152, 1, 152, 1 | 1 | N2mf R1 N1mp R1 N1mp N1mp R1 N2mp R1 N2mf | same | 32 |
+| `click1soft` | 1 | 1 | N1pp N1pp | N1pp N1pp | 24 (unstable) |
+
+**Arcs.** In the three-command-slot tests (the `arc` rows) a middle slot is a 152
+between two copies of the effect. The wearer heard the nearby commands spike the
+amplitude: the notes rise from mf to ff in the middle slot and fall back to mf
+(`N2mf R1 N4ff R1 N3mf`). They are kept as measured, so the compiler can use
+them as a loud accent.
+
+**Gaps.** Writing the next command after the band's live event 100 gives a rest
+whose felt length depends on the write delay. Gap tests 33 to 40 and the second
+command of the pair tests give:
+
+| Write delay after 100 | Felt rest (sixteenths) | Tests | Stable |
+|---|---|---|---|
+| 0 ms | 3 to 4 | 33, 34 | yes |
+| 100 ms | 3 to 4 | 6, 7A, 8, 22, 23 | yes |
+| 100 ms | 1 to 6 | 5, 7B, 21, 24 | no (the pair and the unstable test spread wide) |
+| 300 ms | 4 to 6 | 35, 36 | yes |
+| 700 ms | 6 to 8 | 37, 38 | yes |
+| 1200 ms | 12 to 14 | 39, 40 | yes |
+
+A rest longer than 14 sixteenths is written as 1200 ms + (units - 13) x 125 ms
+("extrapolated"): waiting longer only lengthens the silence, so it is allowed in
+both modes and counts as stable.
+
+**Unstable probe rounds.** The band does not always play a test the same way, and
+some tests were very variable. A test is unstable when the wearer marked it so
+(the page's Unstable toggle: rendition A is the shortest, B the longest, order does
+not matter to the data) or, in a legacy log, when a rendition ends with `R1 R2 R4`
+(a sixteenth, an eighth and a quarter rest) as a flag; those three rests are
+stripped before use. Unstable rows (`click1soft`, the 100 ms gap with the 1 to 6
+spread) are left out of the compiler's rules by default and used only with the
+"Extended haptics opset, timings may vary unexpectedly" toggle (off by default),
+which a rule stores as `extended`. The log line reads `Pattern probe heard 24/40,
+..., unstable (A and B are the shortest and longest): A = ...; B = ...; played N×.`
+The probe is meant to grow to other devices; the WHOOP 5.0 MG is the only one
+measured.
+
+## From taps to band commands
+
+A rhythm the wearer taps, or notes they write, reaches the band as measured
+commands, never as a guessed timing.
+
+1. **Taps to notes.** `notesFromTaps` turns each press into a note of the allowed
+   length nearest its hold (a quick tap is a sixteenth) at mf, and each release
+   gap into rests (largest allowed length first). Notes are the intermediate
+   representation: a saved rule stores them (`notes`, as a transcript code such as
+   `N4mf R2 N1mf`) with the `profileId` and `profileVersion` it was made for, and
+   keeps the taps.
+2. **The compiler.** `compile` picks band commands (phrases) and write delays
+   (gaps) from the profile so what is felt lands nearest the notes. A dynamic
+   program over sixteenths; a placement costs 4 per cell that disagrees about note
+   versus rest, plus the dynamic weight times the loudness distance (index
+   distance in ff, f, mf, mp, p, pp) where both are notes; taps carry no loudness,
+   so their weight is 0. A **penalty** of 2 per command beyond the first prefers
+   one command when it is nearly as good. Ties go to fewer commands, then stable
+   parts only, then lower delay. `exact` means no cell or dynamic mismatch,
+   whatever the penalty. Without the extended opset only stable phrases and gaps
+   are used.
+3. **The 10 s cap.** A plan whose longest felt length is over `kMaxHapticRuntime`
+   (10 s) is not produced; the editor says "Too long for the band: keep it under 10
+   seconds." and disables Save. (8AD adds an override.)
+4. **Pre-bake.** On Save the editor stores the compiled plan with the rule
+   (`bakedSteps`: effects, loop, delay, JSON key `plan`), from the same plan it
+   showed. Delivery plays the baked commands when the profile id matches, so a
+   later vocabulary update never changes a saved rule. Without a baked plan it
+   compiles the notes, then the taps; with no profile (a 4.0) or when nothing
+   compiles it plays today's per-tap buzz.
+5. **Delivery.** For each command after the first, the player waits for the previous
+   command's live event 100 (up to its longest span + 1.5 s; a timeout carries on),
+   then the step's delay, then writes. A band event counts only when it is live.
+6. **The global band queue.** Every band haptic job (a rule's rhythm, a single buzz,
+   a tap ack, a preview, the ECG count buzzes, the notification relay) goes through
+   one queue (`BandHapticQueue`), first in first out, one at a time. A job starts
+   when the previous one has finished (its last command's event 100, or a timeout)
+   and the shared ledger allows its commands: at most 30 commands in any 2 minutes
+   (`BandCommandLedger`), the same ledger the pattern probe counts its writes in,
+   so the lab and real alerts cannot go over it together. A job that cannot start
+   within 15 s of being queued is dropped as rejected with nothing written and its
+   alert claim given back; once started, its transport timeout counts from the
+   start. The log says `Band queue: waiting for the band (N ahead)` and `Band
+   queue: resting, ready in N s`.
+
 ## Replaying off the band
 
 The lab keeps the last ~6 minutes of ECG packets (raw samples and status

@@ -22,6 +22,10 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 typedef _Sent = ({List<int> effects, int loop});
 
+/// Whether test [i] is flagged unstable (8AC); read dynamically so the rest
+/// of this file compiles before the session has the flag.
+bool _unstable(PatternEntrySession s, int i) => (s as dynamic).unstable(i) as bool;
+
 /// Flip [up] to false to drop the link after the probe is open.
 class _Link {
   bool up = true;
@@ -403,6 +407,78 @@ void main() {
       final closed = _runner(DeviceLabLog());
       closed.patternDynamic(PatternDynamic.pp);
       expect(closed.pattern, isNull);
+    });
+
+    testWidgets('patternToggleUnstable passes through, notifies and flags '
+        'the open test only (8AC)', (t) async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      final s = r.pattern!;
+      var heard = 0;
+      r.addListener(() => heard++);
+      expect(_unstable(s, 0), isFalse);
+      var before = heard;
+      (r as dynamic).patternToggleUnstable();
+      expect(heard, greaterThan(before), reason: 'the toggle notifies');
+      expect(_unstable(s, 0), isTrue);
+      expect(_unstable(s, 1), isFalse);
+      r.patternTest(1);
+      expect(_unstable(s, 1), isFalse);
+      before = heard;
+      (r as dynamic).patternToggleUnstable();
+      expect(heard, greaterThan(before));
+      expect(_unstable(s, 1), isTrue);
+      expect(_unstable(s, 0), isTrue, reason: 'test 1 left test 0 alone');
+      (r as dynamic).patternToggleUnstable();
+      expect(_unstable(s, 1), isFalse);
+
+      // With nothing open it does nothing.
+      r.closePattern();
+      final closed = _runner(DeviceLabLog());
+      (closed as dynamic).patternToggleUnstable();
+      expect(closed.pattern, isNull);
+    });
+
+    testWidgets('an unstable test reaches the lab log with the unstable '
+        'wording (8AC)', (t) async {
+      final lab = DeviceLabLog();
+      final r = _runner(lab);
+      await r.openPattern();
+      r.patternTap(4);
+      r.patternRendition(1);
+      r.patternTap(8);
+      (r as dynamic).patternToggleUnstable();
+      r.closePattern();
+      expect(
+        lab.steps.join('\n'),
+        contains('unstable (A and B are the shortest and longest): '
+            'A = quarter note mf (N4mf); B = half note mf (N8mf); '
+            'played 0×.'),
+      );
+    });
+
+    testWidgets('opening a session writes the probe set id once (8AC)', (
+      t,
+    ) async {
+      final lab = DeviceLabLog();
+      final r = _runner(lab);
+      await r.openPattern();
+      const line = 'Pattern probe set: whoop-mg-pattern-v1';
+      expect(
+        lab.steps.where((l) => l.contains(line)),
+        hasLength(1),
+        reason: 'written once when the session opens',
+      );
+      r.patternTap(2);
+      r.patternDynamic(PatternDynamic.values.byName('f'));
+      r.patternTest(1);
+      expect(lab.steps.where((l) => l.contains(line)), hasLength(1));
+      r.closePattern();
+      expect(lab.steps.where((l) => l.contains(line)), hasLength(1));
+      // A second session writes it again, once.
+      await r.openPattern();
+      expect(lab.steps.where((l) => l.contains(line)), hasLength(2));
+      r.closePattern();
     });
 
     testWidgets('patternPlays counts the plays that start, for the '

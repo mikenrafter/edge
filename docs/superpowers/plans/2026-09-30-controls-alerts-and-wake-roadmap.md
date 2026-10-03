@@ -920,6 +920,28 @@ the log copy, and to know why buzzes stopped coming around test 22 (the probe's 
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (probes section);
   `test/phase8/CONTRACTS.md` (8AB).
 
+### 8AC — device vocabulary, notes to commands, global band queue
+
+The wearer wanted f and p dynamics, unstable probe rounds, the L6 results as a device
+haptic profile, tapped rhythms turned into notes and then into real band commands, an
+"extended haptics opset" toggle, and one queue so alerts and the lab cannot overlap or
+overdrive the band.
+
+- Dynamics ff, f, mf, mp, p, pp (codes `N4f`, `N2p`); an Unstable toggle that makes
+  renditions A and B the shortest and longest; a trailing `R1 R2 R4` in an old log also
+  means unstable.
+- `lib/haptics/`: a profile of the WHOOP 5.0 MG (phrases and gaps from L6), a reader for the
+  heard lines, the notes-to-commands compiler (cost, command penalty, 10 s cap), taps to
+  notes, and the player. A saved rule stores its notes, the profile id and version and the
+  baked plan; delivery plays the baked commands.
+- The buzz editor shows what the band will play ("Plays as written." or what it plays
+  instead) and has the "Extended haptics opset" switch, off by default.
+- One band queue: FIFO, one job at a time, a start only when the ledger allows (30 commands
+  per 2 minutes, shared with the pattern probe), a job that cannot start in time is
+  rejected. Every band haptic path goes through it.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (vocabulary, taps to commands);
+  `test/phase8/CONTRACTS.md` (8AC).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

@@ -204,6 +204,7 @@ class RelayController {
     this.onChanged,
     this.playSequence,
     this.deliverSequence,
+    this.sequenceTimeout,
   });
   final AlertDispatcher dispatcher;
   final Future<bool> Function(List<int> pattern) buzz;
@@ -215,6 +216,10 @@ class RelayController {
   /// [playSequence] that can say what it did to the band, preferred when set:
   /// the dispatcher then keeps its claim after a partial or unanswered delivery.
   final Future<BuzzDelivery> Function(BuzzSequence)? deliverSequence;
+
+  /// How long [sequence] needs to play on the connected band (8AC: a compiled
+  /// plan outlasts the taps' estimate). Null: its own transport timeout.
+  final Duration Function(BuzzSequence)? sequenceTimeout;
   final Future<bool> Function() phone;
   final Map<String, Object?> Function(Map<String, Object?> metadata) policy;
   final int Function() nowMs;
@@ -359,7 +364,9 @@ class RelayController {
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
         phoneTransport: phone,
-        bandTimeout: sequence?.transportTimeout,
+        bandTimeout: sequence == null
+            ? null
+            : sequenceTimeout?.call(sequence) ?? sequence.transportTimeout,
         bandTransport: sequence == null
             ? () => buzz(pattern)
             : () => play!(sequence),
@@ -425,6 +432,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     required this.isConnected,
     AlertDispatcher? dispatcher,
     this.worn,
+    this.deliverSequence,
+    this.sequenceTimeout,
+    this.runBand,
     @visibleForTesting this.debugSupported,
     @visibleForTesting this.nativeTimeout = const Duration(seconds: 5),
   }) : dispatcher =
@@ -461,6 +471,21 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   /// Fire the strap haptic. Wired by AppState to `engine.buzz()`. Best-effort.
   final Future<void> Function() buzz;
   final Future<bool> Function(int holdMs)? buzzForDuration;
+
+  /// The app's one band delivery for a rhythm (8AC): the global band queue and
+  /// the compiled commands of a WHOOP MG. When set, every rhythm of the relay
+  /// goes through it instead of [buzz] and [buzzForDuration].
+  final Future<BuzzDelivery> Function(BuzzSequence)? deliverSequence;
+
+  /// How long [deliverSequence] needs for a rhythm on the connected band.
+  final Duration Function(BuzzSequence)? sequenceTimeout;
+
+  /// Runs a job of [commands] band commands in the global band queue. When
+  /// set, the matched-haptics pulses go through it.
+  final Future<BuzzDelivery> Function(
+    int commands,
+    Future<BuzzDelivery> Function() job,
+  )? runBand;
 
   /// Whether the band is currently connected (no point buzzing nothing).
   final bool Function() isConnected;
@@ -536,24 +561,31 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   late final RelayController controller = RelayController(
     dispatcher: dispatcher,
     buzz: _playPattern,
-    playSequence: (s) => playBuzzSequence(
-      s,
-      buzz: () async {
-        await buzz();
-        return true;
-      },
-      buzzForDuration: buzzForDuration,
-      isConnected: isConnected,
-    ),
-    deliverSequence: (s) => deliverBuzzSequence(
-      s,
-      buzz: () async {
-        await buzz();
-        return true;
-      },
-      buzzForDuration: buzzForDuration,
-      isConnected: isConnected,
-    ),
+    playSequence: (s) async {
+      final deliver = deliverSequence;
+      if (deliver != null) return await deliver(s) == BuzzDelivery.complete;
+      return playBuzzSequence(
+        s,
+        buzz: () async {
+          await buzz();
+          return true;
+        },
+        buzzForDuration: buzzForDuration,
+        isConnected: isConnected,
+      );
+    },
+    deliverSequence: (s) =>
+        deliverSequence?.call(s) ??
+        deliverBuzzSequence(
+          s,
+          buzz: () async {
+            await buzz();
+            return true;
+          },
+          buzzForDuration: buzzForDuration,
+          isConnected: isConnected,
+        ),
+    sequenceTimeout: sequenceTimeout,
     phone: _phoneFallback,
     policy: _policy,
     nowMs: () => DateTime.now().millisecondsSinceEpoch,
@@ -636,11 +668,23 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       for (var i = 1; i < pattern.length; i += 2)
         if (pattern[i] > 0) i,
     ].length.clamp(1, 3);
-    for (var i = 0; i < pulses; i++) {
-      if (i > 0) await Future<void>.delayed(const Duration(milliseconds: 350));
-      await buzz();
+    Future<bool> play() async {
+      for (var i = 0; i < pulses; i++) {
+        if (i > 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+        }
+        await buzz();
+      }
+      return true;
     }
-    return true;
+
+    final queued = runBand;
+    if (queued == null) return play();
+    return await queued(
+          pulses,
+          () async => await play() ? BuzzDelivery.complete : BuzzDelivery.rejected,
+        ) ==
+        BuzzDelivery.complete;
   }
 
   void _channelsChanged() {

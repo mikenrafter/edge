@@ -28,6 +28,28 @@ NotificationPrefs _withBand(String id) {
   });
 }
 
+/// A sequence with the extended opset on. Through Function.apply so this file
+/// still compiles before BuzzSequence has the field.
+BuzzSequence _ext(List<int> offsets) =>
+    Function.apply(BuzzSequence.new, [offsets], {#extended: true})
+        as BuzzSequence;
+
+bool _extendedOf(BuzzSequence s) => (s as dynamic).extended as bool;
+
+const _extKey = ValueKey('buzz-extended');
+
+bool _switchOn(WidgetTester t) => t.widget<Switch>(find.byKey(_extKey)).value;
+
+/// Two quick taps 400 ms apart, then past the 2 s idle that ends the take.
+Future<void> _takeTwoTaps(WidgetTester t) async {
+  final button = find.text('Tap your pattern');
+  await t.tap(button);
+  await t.pump(const Duration(milliseconds: 400));
+  await t.tap(button);
+  await t.pump(const Duration(milliseconds: 2100));
+  await t.pumpAndSettle();
+}
+
 void main() {
   group('Notifications: a Buzz pattern control per notification type', () {
     testWidgets('a band-delivered rule has one; tapping it names the rule',
@@ -197,6 +219,132 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Save'));
       expect(saved, [BuzzSequence(const [0, 500])]);
+    });
+  });
+
+  // 8AC: the extended haptics opset rule toggle.
+  group('BuzzPatternSheet: extended haptics opset switch', () {
+    testWidgets('a switch, off by default, with its label and caption',
+        (t) async {
+      await _pump(t, Scaffold(body: BuzzPatternSheet(bandConnected: false)));
+      expect(find.byKey(_extKey), findsOneWidget);
+      expect(_switchOn(t), isFalse);
+      expect(find.text('Extended haptics opset'), findsOneWidget);
+      expect(find.text('Timings may vary unexpectedly.'), findsOneWidget);
+    });
+
+    testWidgets('starts from the rule\'s own setting', (t) async {
+      await _pump(
+          t,
+          Scaffold(
+            body: BuzzPatternSheet(
+                initial: _ext(const [0, 300]), bandConnected: false),
+          ));
+      expect(_switchOn(t), isTrue);
+    });
+
+    testWidgets('a rule without it starts off', (t) async {
+      await _pump(
+          t,
+          Scaffold(
+            body: BuzzPatternSheet(
+                initial: BuzzSequence(const [0, 300]), bandConnected: false),
+          ));
+      expect(_switchOn(t), isFalse);
+    });
+
+    testWidgets('on before the take: the saved and the played sequence '
+        'carry it', (t) async {
+      final saved = <BuzzSequence>[];
+      final played = <BuzzSequence>[];
+      await _pump(
+          t,
+          Scaffold(
+            body: BuzzPatternSheet(
+              bandConnected: true,
+              onPlay: (s) async {
+                played.add(s);
+                return true;
+              },
+              onSave: saved.add,
+            ),
+          ));
+      await t.tap(find.byKey(_extKey));
+      await t.pumpAndSettle();
+      expect(_switchOn(t), isTrue);
+      await _takeTwoTaps(t);
+      expect(played, hasLength(1));
+      expect(_extendedOf(played.single), isTrue);
+      expect(played.single.offsetsMs, [0, 400]);
+      await t.tap(find.text('Save'));
+      expect(saved, hasLength(1));
+      expect(_extendedOf(saved.single), isTrue);
+      expect(saved.single.offsetsMs, [0, 400]);
+    });
+
+    testWidgets('off: the saved sequence is not extended', (t) async {
+      final saved = <BuzzSequence>[];
+      await _pump(
+          t,
+          Scaffold(body: BuzzPatternSheet(bandConnected: false, onSave: saved.add)));
+      await _takeTwoTaps(t);
+      await t.tap(find.text('Save'));
+      expect(_extendedOf(saved.single), isFalse);
+    });
+
+    testWidgets('switched after the take: Save carries it, nothing is '
+        'recorded or played again', (t) async {
+      final saved = <BuzzSequence>[];
+      final played = <BuzzSequence>[];
+      await _pump(
+          t,
+          Scaffold(
+            body: BuzzPatternSheet(
+              bandConnected: true,
+              onPlay: (s) async {
+                played.add(s);
+                return true;
+              },
+              onSave: saved.add,
+            ),
+          ));
+      await _takeTwoTaps(t);
+      expect(played, hasLength(1));
+      await t.tap(find.byKey(_extKey));
+      await t.pumpAndSettle();
+      expect(find.text('Save'), findsOneWidget,
+          reason: 'the take is kept, no re-record');
+      expect(find.text('Tap your pattern'), findsNothing);
+      expect(played, hasLength(1), reason: 'no second playback');
+      await t.tap(find.text('Save'));
+      expect(saved.single.offsetsMs, [0, 400]);
+      expect(_extendedOf(saved.single), isTrue);
+    });
+
+    testWidgets('Record again keeps the switch where it was', (t) async {
+      await _pump(
+          t, Scaffold(body: BuzzPatternSheet(bandConnected: false)));
+      await t.tap(find.byKey(_extKey));
+      await t.pumpAndSettle();
+      await _takeTwoTaps(t);
+      await t.tap(find.text('Record again'));
+      await t.pumpAndSettle();
+      expect(_switchOn(t), isTrue);
+    });
+
+    testWidgets('no profile: today\'s text only, no notes, no plan',
+        (t) async {
+      await _pump(
+          t, Scaffold(body: BuzzPatternSheet(bandConnected: true, onPlay: (_) async => true)));
+      expect(
+          find.text('On MG, a long press plays the buzz twice, so lengths are '
+              'close, not exact. On 4.0 a long press plays as a short buzz.'),
+          findsOneWidget);
+      await _takeTwoTaps(t);
+      expect(find.textContaining(RegExp(r'N\d+(ff|f|mf|mp|p|pp)\b')),
+          findsNothing);
+      expect(find.textContaining(RegExp(r'\d+ commands?')), findsNothing);
+      expect(find.textContaining('2 buzzes recorded'), findsOneWidget);
     });
   });
 }

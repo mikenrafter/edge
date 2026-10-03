@@ -51,6 +51,8 @@ class AlertDispatcher {
     DateTime Function()? now,
     this.ledger = const DurableAlertDeliveryLedger(),
     this.transportTimeout = const Duration(seconds: 10),
+    this.bandQueueWait = Duration.zero,
+    this.sequenceTimeout,
   }) : now = now ?? DateTime.now;
 
   final Future<bool> Function() phone;
@@ -73,6 +75,16 @@ class AlertDispatcher {
   final DateTime Function() now;
   final AlertDeliveryLedger ledger;
   final Duration transportTimeout;
+
+  /// How long a band delivery may wait in the band queue before it starts
+  /// (8AC). Added to every band deadline, so the transport still has its own
+  /// time once the job gets its turn.
+  final Duration bandQueueWait;
+
+  /// How long a rule's saved rhythm needs to play on the connected band (a
+  /// compiled plan outlasts the taps' own estimate). Null: the sequence's own
+  /// [BuzzSequence.transportTimeout].
+  final Duration Function(BuzzSequence)? sequenceTimeout;
 
   Future<AlertDeliveryOutcome> dispatch(
     Object rule, {
@@ -162,9 +174,12 @@ class AlertDispatcher {
         var limit = transportTimeout;
         if (target == 'band') {
           if (bandTimeout != null && bandTimeout > limit) limit = bandTimeout;
-          if (implicitSequence && saved.transportTimeout > limit) {
-            limit = saved.transportTimeout;
+          if (implicitSequence) {
+            final need =
+                sequenceTimeout?.call(saved) ?? saved.transportTimeout;
+            if (need > limit) limit = need;
           }
+          limit += bandQueueWait;
         }
         final Future<BuzzDelivery> Function()? delivery = target != 'band'
             ? null

@@ -13,22 +13,122 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart' show VoidCallback, listEquals;
 
+import '../gestures/pattern_transcript.dart';
+
+/// One band command of a plan compiled when a rule was saved: the waveform
+/// slots, how often the band loops them, and the wait after the previous
+/// command's "ended" event before writing it (0 for the first).
+class BakedStep {
+  BakedStep({
+    required List<int> effects,
+    required this.loop,
+    required this.delayMs,
+  }) : effects = List.unmodifiable(effects);
+
+  final List<int> effects;
+  final int loop;
+  final int delayMs;
+
+  Map<String, Object> toJson() => {
+    'effects': effects,
+    'loop': loop,
+    'delayMs': delayMs,
+  };
+
+  factory BakedStep.fromJson(Object? json) {
+    if (json is! Map) {
+      throw const FormatException('A baked step is a map');
+    }
+    final effects = json['effects'];
+    final loop = json['loop'];
+    final delay = json['delayMs'];
+    if (effects is! List ||
+        effects.isEmpty ||
+        effects.any((v) => v is! int) ||
+        loop is! int ||
+        loop < 1 ||
+        delay is! int ||
+        delay < 0) {
+      throw const FormatException(
+        'A baked step needs effects, a loop of at least 1 and a delay',
+      );
+    }
+    return BakedStep(effects: effects.cast<int>(), loop: loop, delayMs: delay);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is BakedStep &&
+      listEquals(other.effects, effects) &&
+      other.loop == loop &&
+      other.delayMs == delayMs;
+
+  @override
+  int get hashCode => Object.hash(Object.hashAll(effects), loop, delayMs);
+
+  @override
+  String toString() => 'BakedStep($effects x$loop, +${delayMs}ms)';
+}
+
 class BuzzSequence {
   static const maxBuzzes = 8;
   static const minGapMs = 1;
   static const maxGapMs = 2000;
 
   /// Offsets describe press starts; durations preserve the time held down.
-  BuzzSequence(List<int> offsetsMs, {List<int>? durationsMs})
-    : offsetsMs = List.unmodifiable(offsetsMs),
+  BuzzSequence(
+    List<int> offsetsMs, {
+    List<int>? durationsMs,
+    this.extended = false,
+    this.notes,
+    this.profileId,
+    this.profileVersion,
+    List<BakedStep>? bakedSteps,
+  }) : offsetsMs = List.unmodifiable(offsetsMs),
       durationsMs = List.unmodifiable(
         durationsMs ?? List.filled(offsetsMs.length, 0),
-      ) {
+      ),
+      bakedSteps = bakedSteps == null ? null : List.unmodifiable(bakedSteps) {
     _validate();
   }
 
   final List<int> offsetsMs;
   final List<int> durationsMs;
+
+  /// 8AC: allow the band commands whose timing varies unexpectedly when this
+  /// rhythm is compiled for a band with a measured haptic profile. Off by
+  /// default; the same taps with it on or off are different rules.
+  final bool extended;
+
+  /// 8AC: the rhythm as notes (a PatternTranscript code such as
+  /// "N4mf R2 N1mf"), the device profile they were made for, and the plan
+  /// compiled from them when the rule was saved. All absent for a rule saved
+  /// before this existed, or on a band with no measured profile.
+  final String? notes;
+  final String? profileId;
+  final int? profileVersion;
+
+  /// The commands compiled at save time. Delivery plays these as stored when
+  /// [profileId] matches the band, so a later vocabulary update never changes
+  /// a saved rule.
+  final List<BakedStep>? bakedSteps;
+
+  /// The same rhythm with the given values replaced; the others are kept.
+  BuzzSequence copyWith({
+    bool? extended,
+    String? notes,
+    String? profileId,
+    int? profileVersion,
+    List<BakedStep>? bakedSteps,
+  }) => BuzzSequence(
+    offsetsMs,
+    durationsMs: durationsMs,
+    extended: extended ?? this.extended,
+    notes: notes ?? this.notes,
+    profileId: profileId ?? this.profileId,
+    profileVersion: profileVersion ?? this.profileVersion,
+    bakedSteps: bakedSteps ?? this.bakedSteps,
+  );
 
   int get length => offsetsMs.length;
 
@@ -62,13 +162,63 @@ class BuzzSequence {
     }
   }
 
-  Object toJson() => durationsMs.every((d) => d == 0)
-      ? offsetsMs
-      : {'offsetsMs': offsetsMs, 'durationsMs': durationsMs};
+  /// The old list or map form is written unchanged; 'extended', the notes and
+  /// profile, and the baked 'plan' appear only when they are set.
+  Object toJson() {
+    final withNotes = notes != null;
+    final plan = bakedSteps;
+    if (!extended && !withNotes && plan == null) {
+      return durationsMs.every((d) => d == 0)
+          ? offsetsMs
+          : {'offsetsMs': offsetsMs, 'durationsMs': durationsMs};
+    }
+    return {
+      'offsetsMs': offsetsMs,
+      'durationsMs': durationsMs,
+      if (extended) 'extended': true,
+      if (withNotes) 'notes': notes,
+      if (profileId != null) 'profileId': profileId,
+      if (profileVersion != null) 'profileVersion': profileVersion,
+      if (plan != null) 'plan': [for (final b in plan) b.toJson()],
+    };
+  }
 
   factory BuzzSequence.fromJson(Object? json) {
     final Object? offsets = json is Map ? json['offsetsMs'] : json;
     final Object? durations = json is Map ? json['durationsMs'] : null;
+    final Object? extended = json is Map ? json['extended'] : null;
+    if (extended != null && extended is! bool) {
+      throw const FormatException('A buzz sequence extended flag is a bool');
+    }
+    final Object? notes = json is Map ? json['notes'] : null;
+    final Object? profileId = json is Map ? json['profileId'] : null;
+    final Object? profileVersion = json is Map ? json['profileVersion'] : null;
+    final Object? plan = json is Map ? json['plan'] : null;
+    if (notes != null && notes is! String) {
+      throw const FormatException('A buzz sequence notes value is a string');
+    }
+    if (notes is String) {
+      try {
+        PatternTranscript.parseCode(notes);
+      } on FormatException {
+        throw const FormatException('A buzz sequence notes value must parse');
+      } on ArgumentError {
+        throw const FormatException('A buzz sequence notes value must parse');
+      }
+    }
+    if (profileId != null && profileId is! String) {
+      throw const FormatException('A buzz sequence profile id is a string');
+    }
+    if (profileVersion != null && profileVersion is! int) {
+      throw const FormatException('A buzz sequence profile version is an int');
+    }
+    List<BakedStep>? baked;
+    if (plan != null) {
+      if (plan is! List || plan.isEmpty) {
+        throw const FormatException('A buzz sequence plan is a list of steps');
+      }
+      baked = [for (final b in plan) BakedStep.fromJson(b)];
+    }
     if (offsets is! List ||
         offsets.any((v) => v is! int) ||
         (json is Map &&
@@ -79,6 +229,11 @@ class BuzzSequence {
       return BuzzSequence(
         offsets.cast<int>(),
         durationsMs: durations == null ? null : (durations as List).cast<int>(),
+        extended: extended == true,
+        notes: notes as String?,
+        profileId: profileId as String?,
+        profileVersion: profileVersion as int?,
+        bakedSteps: baked,
       );
     } on ArgumentError catch (e) {
       throw FormatException('Invalid buzz sequence: ${e.message}');
@@ -99,14 +254,32 @@ class BuzzSequence {
   bool operator ==(Object other) =>
       other is BuzzSequence &&
       listEquals(other.offsetsMs, offsetsMs) &&
-      listEquals(other.durationsMs, durationsMs);
+      listEquals(other.durationsMs, durationsMs) &&
+      other.extended == extended &&
+      other.notes == notes &&
+      other.profileId == profileId &&
+      other.profileVersion == profileVersion &&
+      _sameSteps(other.bakedSteps, bakedSteps);
+
+  static bool _sameSteps(List<BakedStep>? a, List<BakedStep>? b) =>
+      a == null || b == null ? a == b : listEquals(a, b);
 
   @override
-  int get hashCode =>
-      Object.hash(Object.hashAll(offsetsMs), Object.hashAll(durationsMs));
+  int get hashCode => Object.hash(
+    Object.hashAll(offsetsMs),
+    Object.hashAll(durationsMs),
+    extended,
+    notes,
+    profileId,
+    profileVersion,
+    bakedSteps == null ? null : Object.hashAll(bakedSteps!),
+  );
 
   @override
-  String toString() => 'BuzzSequence($offsetsMs, durationsMs: $durationsMs)';
+  String toString() =>
+      'BuzzSequence($offsetsMs, durationsMs: $durationsMs'
+      '${extended ? ', extended: true' : ''}'
+      '${notes == null ? '' : ', notes: $notes'})';
 }
 
 /// Turns taps into a [BuzzSequence]. The first tap starts the take (and tells

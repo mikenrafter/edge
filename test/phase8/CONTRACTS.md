@@ -903,3 +903,57 @@ Builds on 8AA. Tests: `test/gestures/pattern_transcript_test.dart`,
   (`ImageFiltered`, sigma 5; semantics "limit display, blurred"); a tap toggles
   ("limit display"). The refusal line is never blurred.
 
+## 8AC: dynamics f and p, unstable rounds, device vocabulary, notes to commands, global band queue
+
+Builds on 8AB. Tests: `test/haptics/*` (profile, heard log, compiler, tap notes, player,
+`mg_delivery_test.dart`, `band_queue_test.dart`, `buzz_pattern_notes_ui_test.dart`,
+`docs_8ac_test.dart`), `test/gestures/pattern_transcript_test.dart`,
+`test/hardware/pattern_probe_*`, `test/phase8/buzz_*`.
+
+- **Dynamics.** `PatternDynamic { ff, f, mf, mp, p, pp }` (order is loudness distance);
+  codes `N4f`, `N2p`; `PatternEntry.parse` / `PatternTranscript.parseCode` read a code
+  back. Unstable probe rounds: `toggleUnstable()` / `patternToggleUnstable()`, page key
+  `pattern-unstable`, log line "unstable (A and B are the shortest and longest)".
+- **Vocabulary.** `lib/haptics/haptic_profile.dart`: `HapticPhrase`, `HapticGap`,
+  `HapticDeviceProfile.whoopMg` (id `whoop-5.0-mg`, version 1, `unitMs` 125),
+  `forGeneration('gen5')`, `phrasesFor` / `gapsFor(extended:)`. The stable input set is
+  `kWhoopMgPatternProbeSet` (`whoop-mg-pattern-v1`, 40 tests, never reordered).
+  `lib/haptics/heard_log.dart` (`parseHeardLines`) reads the output set; a test checks
+  the table against the L6 log.
+- **Compiler.** `compile(target, profile, extended:, dynamicWeight:, maxCommands:,
+  maxRuntimeMs:)` returns a `HapticPlan` (steps with write delays, felt shortest and
+  longest, cost, `exact`, `usesUnstable`, `runtimeMs`, summary). Cost: 4 per note/rest
+  mismatch, dynamic weight times index distance, `commandPenalty` 2 per command beyond
+  the first. Plans over `kMaxHapticRuntime` (10 s) are not produced.
+- **Rules.** `BuzzSequence` gains `extended`, `notes`, `profileId`, `profileVersion` and
+  `bakedSteps` (`BakedStep`, JSON key `plan`); each is written only when set, so old JSON
+  round-trips unchanged. The editor takes an optional `profile:`, shows the notes and what
+  the band will play, and on Save stores notes, profile and the baked plan.
+  `settings.dart` (`_pickPattern`) and `band_notifications.dart` (`_pick`) pass
+  `HapticDeviceProfile.forGeneration(app.device.generation)`; null on a 4.0.
+- **Delivery.** `deliverBandSequence` plays baked steps (profile id matches), else the
+  notes compiled, else the taps compiled, else today's per-tap buzz; `bandSequenceTimeout`,
+  `bandSequenceCommands`, `bandSequenceSettle` size it. AppState has ONE helper,
+  `_deliverBandSequence`, for `alertDispatcher.bandSequence`, `.bandSequenceDelivery`,
+  `previewBuzzSequence`, `_dispatchBandAlert` and the notification relay. The pattern
+  write is `_bandBuzzPattern` (a `Future<bool> _bandBuzz...` line, so the phase 7 audit
+  guard is unchanged). The band's live event 100 (`isLive` only) feeds the wait through
+  `BandEndedSignal`.
+- **Global band queue.** `lib/haptics/band_queue.dart`: `BandCommandLedger` (30 commands
+  per 2 minutes: `record`, `commandsLeft`, `nextFreeIn`, `waitFor`, `writeLog`),
+  `BandEndedSignal`, `BandHapticQueue.run(job, commands:, timeout:, startBy:, settle:)`
+  (FIFO, one at a time; starts when the previous finished and the ledger allows;
+  cannot start by the deadline, 15 s (`kBandQueueWait`) from queueing, gives `rejected`
+  with nothing written; the timeout counts from the start; `pending`, `nextFreeIn`; log
+  lines "Band queue: waiting for the band (N ahead)", "Band queue: resting, ready in N s").
+  AppState owns one queue and one ledger (`bandQueue`, `bandLedger`); every band path
+  runs through `_runBandJob`: the dispatcher's default band transport (tap ack, water and
+  medication buzzes), the two sequence transports, preview, `_dispatchBandAlert` (rhythm,
+  alarm, fixed pattern), `_ecgTapBuzz`, `_ecgTapFailBuzz`, `_userBuzz` (test buzz, pattern
+  test, find my strap) and the relay (`deliverSequence`, `runBand`, `sequenceTimeout`).
+  `AlertDispatcher.bandQueueWait` adds the wait to a band deadline and `sequenceTimeout`
+  sizes a saved rhythm's. The pattern probe runner takes the same ledger (`ledger:`) and
+  keeps its own pacing; the buzz probe records one command per buzz. A source test lists
+  every `engine.buzz*` site and requires it inside a queue job.
+- **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` ("Vocabulary (L6)", "From taps to
+  band commands"); the roadmap entry 8AC.

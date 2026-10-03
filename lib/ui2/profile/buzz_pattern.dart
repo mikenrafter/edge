@@ -13,6 +13,9 @@ import 'package:clock/clock.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../haptics/haptic_compiler.dart';
+import '../../haptics/haptic_profile.dart';
+import '../../haptics/tap_notes.dart';
 import '../../notify/buzz_sequence.dart';
 import '../ui2.dart';
 import 'profile.dart' show SetRow;
@@ -55,6 +58,7 @@ Future<void> showBuzzPatternSheet(
   BuzzSequence? initial,
   bool bandConnected = false,
   Future<bool> Function(BuzzSequence)? onPlay,
+  HapticDeviceProfile? profile,
   required ValueChanged<BuzzSequence> onSave,
 }) {
   final p = P.of(c);
@@ -68,6 +72,7 @@ Future<void> showBuzzPatternSheet(
         initial: initial,
         bandConnected: bandConnected,
         onPlay: onPlay,
+        profile: profile,
         onPhoneBuzz: HapticFeedback.heavyImpact,
         onSave: (s) {
           onSave(s);
@@ -86,6 +91,7 @@ class BuzzPatternSheet extends StatefulWidget {
     this.onPlay,
     this.onSave,
     this.onPhoneBuzz,
+    this.profile,
   });
 
   /// The rhythm in use now, shown above the button. Null shows nothing.
@@ -98,6 +104,11 @@ class BuzzPatternSheet extends StatefulWidget {
 
   /// One phone buzz when the take starts.
   final VoidCallback? onPhoneBuzz;
+
+  /// The connected band's measured haptic vocabulary (a WHOOP MG). When given,
+  /// a take also shows the notes it heard and the commands planned for them;
+  /// null keeps the text-only sheet.
+  final HapticDeviceProfile? profile;
 
   @override
   State<BuzzPatternSheet> createState() => _BuzzPatternSheetState();
@@ -114,6 +125,10 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
 
   /// null = not played, true/false = the band's answer to the last playback.
   bool? _played;
+
+  /// The rule's extended haptics opset setting; carried by what is played and
+  /// saved, and kept across "Record again".
+  late bool _extended = widget.initial?.extended ?? false;
   late final Stopwatch _pressClock = clock.stopwatch();
 
   DateTime _recordTime() {
@@ -134,11 +149,100 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
     if (!widget.bandConnected || play == null) return;
     bool ok;
     try {
-      ok = await play(seq);
+      ok = await play(seq.copyWith(extended: _extended));
     } catch (_) {
       ok = false;
     }
     if (mounted) setState(() => _played = ok);
+  }
+
+  /// The plan for a take on a band with a profile, with the opset switch as
+  /// it is now. Null without a profile, or when the take runs over the cap.
+  HapticPlan? _planFor(BuzzSequence result) {
+    final profile = widget.profile;
+    if (profile == null) return null;
+    return planForTaps(result.copyWith(extended: _extended), profile);
+  }
+
+  /// "May not play exactly as written. The band plays: N4mf R1 N4mf to ...".
+  String _notExactLine(HapticPlan plan) {
+    final lo = plan.feltMin.join(' ');
+    final hi = plan.feltMax.join(' ');
+    return 'May not play exactly as written. The band plays: '
+        '${lo == hi ? lo : '$lo to $hi'}.';
+  }
+
+  /// What was saved: the take with the switch, and on a band with a profile
+  /// also the notes it was heard as, the profile and the plan compiled for
+  /// them, so the rule plays the same later whatever the vocabulary becomes.
+  BuzzSequence _toSave(BuzzSequence result, HapticPlan? plan) {
+    final s = result.copyWith(extended: _extended);
+    final profile = widget.profile;
+    if (profile == null || plan == null) return s;
+    return s.copyWith(
+      notes: notesFromTaps(s, unitMs: profile.unitMs).join(' '),
+      profileId: profile.id,
+      profileVersion: profile.version,
+      bakedSteps: [
+        for (final st in plan.steps)
+          BakedStep(
+            effects: st.phrase.effects,
+            loop: st.phrase.loop,
+            delayMs: st.delayMs,
+          ),
+      ],
+    );
+  }
+
+  /// On a band with a profile: the notes the take was heard as and one calm
+  /// line about what the band will play, recompiled whenever the switch
+  /// changes.
+  List<Widget> _heard(P p, BuzzSequence result, HapticPlan? plan) {
+    final profile = widget.profile;
+    if (profile == null) return const [];
+    final s = result.copyWith(extended: _extended);
+    return [
+      const SizedBox(height: S.x2),
+      Text(
+        notesFromTaps(s, unitMs: profile.unitMs).join(' '),
+        style: F.cap.copyWith(color: p.ink2),
+      ),
+      if (plan == null)
+        Text(
+          'Too long for the band: keep it under '
+          '${kMaxHapticRuntime.inSeconds} seconds.',
+          style: F.cap.copyWith(color: p.ink2),
+        )
+      else ...[
+        Text(plan.summary, style: F.cap.copyWith(color: p.ink2)),
+        if (plan.exact)
+          Text('Plays as written.', style: F.cap.copyWith(color: p.ink2))
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(LucideIcons.info, size: 14, color: p.ink3),
+              const SizedBox(width: S.x1),
+              Expanded(
+                child: Text(
+                  _notExactLine(plan),
+                  style: F.cap.copyWith(color: p.ink3),
+                ),
+              ),
+            ],
+          ),
+        if (plan.usesUnstable)
+          Text(
+            'Extended haptics: timings may vary unexpectedly.',
+            style: F.cap.copyWith(color: p.ink3),
+          ),
+        if (plan.steps.length > 1)
+          Text(
+            'Pauses between buzzes can vary a little.',
+            style: F.cap.copyWith(color: p.ink3),
+          ),
+      ],
+    ];
   }
 
   @override
@@ -146,6 +250,9 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
     final p = P.of(c);
     final result = _rec.result;
     final initial = widget.initial;
+    final plan = result == null ? null : _planFor(result);
+    // With a profile a take the band cannot play within the cap is not saved.
+    final canSave = widget.profile == null || plan != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
       child: Column(
@@ -177,12 +284,38 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
                       'buzz.',
             style: F.over.copyWith(color: p.ink3),
           ),
-          Text(
-            'On MG, a long press plays the buzz twice, so lengths are close, not '
-            'exact. On 4.0 a long press plays as a short buzz.',
-            style: F.over.copyWith(color: p.ink3),
+          if (widget.profile == null)
+            Text(
+              'On MG, a long press plays the buzz twice, so lengths are close, not '
+              'exact. On 4.0 a long press plays as a short buzz.',
+              style: F.over.copyWith(color: p.ink3),
+            ),
+          const SizedBox(height: S.x3),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Extended haptics opset',
+                      style: F.body.copyWith(color: p.ink),
+                    ),
+                    Text(
+                      'Timings may vary unexpectedly.',
+                      style: F.over.copyWith(color: p.ink3),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                key: const ValueKey('buzz-extended'),
+                value: _extended,
+                onChanged: (v) => setState(() => _extended = v),
+              ),
+            ],
           ),
-          const SizedBox(height: S.x4),
+          const SizedBox(height: S.x3),
           if (result == null)
             BigButton(
               'Tap your pattern',
@@ -206,8 +339,14 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
                   : '. The phone could not send it to the band.'}',
               style: F.body.copyWith(color: p.ink),
             ),
+            ..._heard(p, result, plan),
             const SizedBox(height: S.x3),
-            BigButton('Save', onTap: () => widget.onSave?.call(result)),
+            BigButton(
+              'Save',
+              onTap: canSave
+                  ? () => widget.onSave?.call(_toSave(result, plan))
+                  : null,
+            ),
             const SizedBox(height: S.x2),
             BigButton(
               'Record again',

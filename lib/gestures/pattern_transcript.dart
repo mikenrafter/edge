@@ -1,7 +1,7 @@
-// 8Y/8Z/8AA/8AB: the pattern probe's transcriber. The wearer taps buttons of
+// 8Y/8Z/8AA/8AB/8AC: the pattern probe's transcriber. The wearer taps buttons of
 // length 1, 2, 4 or 8 sixteenths, and a one-shot Dot makes the next tap 3/2 as
-// long (3, 6 or 12); every note also carries a dynamic (ff, mf,
-// mp, pp) from a sticky selector; every entry is typed explicitly as a note or a rest (two notes or two
+// long (3, 6 or 12); every note also carries a dynamic (ff, f, mf,
+// mp, p, pp) from a sticky selector; every entry is typed explicitly as a note or a rest (two notes or two
 // rests may sit next to each other). A Note/Rest toggle flips after every tap
 // and can be overridden. Pure Dart: [PatternTranscript] is one immutable list of
 // [PatternEntry]s, [PatternEntrySession] holds which test is open, two
@@ -14,8 +14,9 @@ import 'hardware_probes.dart';
 /// quarter, dotted quarter, half, dotted half.
 const List<int> kPatternLengths = [1, 2, 3, 4, 6, 8, 12];
 
-/// How hard a note is felt, loudest to softest.
-enum PatternDynamic { ff, mf, mp, pp }
+/// How hard a note is felt, loudest to softest. The order matters: the index
+/// distance between two dynamics is how far apart they are felt.
+enum PatternDynamic { ff, f, mf, mp, p, pp }
 
 const Map<int, String> _lengthNames = {
   1: '16th',
@@ -53,6 +54,32 @@ class PatternEntry {
   /// "N4mf" or "R2".
   @override
   String toString() => '${note ? 'N' : 'R'}$length${dynamic?.name ?? ''}';
+
+  static final RegExp _code = RegExp(r'^(?:N(\d+)(ff|f|mf|mp|pp|p)|R(\d+))$');
+
+  /// The inverse of [toString]: "N4ff", "N1p", "R3". Anything else, or a
+  /// length outside [kPatternLengths], is a [FormatException] or an
+  /// [ArgumentError].
+  factory PatternEntry.parse(String code) {
+    final m = _code.firstMatch(code);
+    if (m == null) {
+      throw FormatException('not a pattern entry', code);
+    }
+    final note = m[1] != null;
+    final length = int.parse((note ? m[1] : m[3])!);
+    if (!kPatternLengths.contains(length)) {
+      throw ArgumentError.value(
+        length,
+        'length',
+        'a length is one of $kPatternLengths',
+      );
+    }
+    return PatternEntry(
+      note: note,
+      length: length,
+      dynamic: note ? PatternDynamic.values.byName(m[2]!) : null,
+    );
+  }
 
   /// "quarter note mf" or "eighth rest".
   String get prose => '${_lengthNames[length]} ${note ? 'note' : 'rest'}'
@@ -108,6 +135,13 @@ class PatternTranscript {
   /// "N2mf R1 N4pp"; empty when nothing is entered.
   String get code => _entries.join(' ');
 
+  /// The inverse of [code]: whitespace separated entries, empty for blank
+  /// text. Junk throws as [PatternEntry.parse] does.
+  factory PatternTranscript.parseCode(String code) => PatternTranscript([
+        for (final part in code.trim().split(RegExp(r'\s+')))
+          if (part.isNotEmpty) PatternEntry.parse(part),
+      ]);
+
   /// "quarter note mf, eighth rest, 16th note ff".
   String get prose => [for (final e in _entries) e.prose].join(', ');
 }
@@ -121,7 +155,8 @@ class PatternEntrySession {
           for (var _ in tests)
             [PatternTranscript(const []), PatternTranscript(const [])],
         ],
-        _plays = List.filled(tests.length, 0);
+        _plays = List.filled(tests.length, 0),
+        _unstable = List.filled(tests.length, false);
 
   /// One unit is a sixteenth: a 4/4 bar of 16 steps is 2 s. Measured on the
   /// band (as eighths, 250 ms): effect 1 plays about 0.22-0.6 s, 14 about 2-3,
@@ -135,6 +170,7 @@ class PatternEntrySession {
   final List<PatternTest> tests;
   final List<List<PatternTranscript>> _renditions;
   final List<int> _plays;
+  final List<bool> _unstable;
   final Map<int, int> _spans = {};
   final List<int> _leads = [];
 
@@ -161,6 +197,13 @@ class PatternEntrySession {
   PatternTranscript rendition(int test, int r) => _renditions[test][r];
 
   int plays(int test) => _plays[test];
+
+  /// Whether [test] is flagged unstable: its A and B are the shortest and
+  /// longest renditions heard, because the band's timing varies.
+  bool unstable(int test) => _unstable[test];
+
+  /// Flip the open test's unstable flag.
+  void toggleUnstable() => _unstable[testIndex] = !_unstable[testIndex];
 
   /// Plays over all tests.
   int get totalPlays => _plays.fold(0, (a, b) => a + b);
@@ -339,9 +382,13 @@ class PatternEntrySession {
         t.length == 0 ? '—' : '${t.prose} (${t.code})';
     final lines = [
       for (var i = 0; i < tests.length; i++)
-        if (_plays[i] > 0 || _renditions[i].any((t) => t.length > 0))
+        if (_plays[i] > 0 ||
+            _unstable[i] ||
+            _renditions[i].any((t) => t.length > 0))
           'Pattern probe heard ${i + 1}/${tests.length}, '
-              '${tests[i].description}: A = ${one(_renditions[i][0])}; '
+              '${tests[i].description}'
+              '${_unstable[i] ? ', unstable (A and B are the shortest and longest)' : ''}'
+              ': A = ${one(_renditions[i][0])}; '
               'B = ${one(_renditions[i][1])}; played ${_plays[i]}×.',
     ];
     if (lines.isEmpty) return lines;

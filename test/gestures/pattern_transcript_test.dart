@@ -21,8 +21,10 @@ List<PatternEntry> _entries(String code) => [
         if (p[0] == 'N')
           PatternEntry(
             note: true,
-            length: int.parse(p.substring(1, p.length - 2)),
-            dynamic: PatternDynamic.values.byName(p.substring(p.length - 2)),
+            length: int.parse(RegExp(r'^N(\d+)').firstMatch(p)![1]!),
+            dynamic: PatternDynamic.values.byName(
+              RegExp(r'[a-z]+$').firstMatch(p)![0]!,
+            ),
           )
         else
           PatternEntry(note: false, length: int.parse(p.substring(1))),
@@ -60,19 +62,38 @@ void main() {
       expect(kPatternLengths, [1, 2, 3, 4, 6, 8, 12]);
     });
 
-    test('the dynamics run from loudest to softest: ff, mf, mp, pp', () {
+    test('the dynamics run from loudest to softest: ff, f, mf, mp, p, pp '
+        '(8AC)', () {
       expect(PatternDynamic.values, [
         PatternDynamic.ff,
+        PatternDynamic.f,
         PatternDynamic.mf,
         PatternDynamic.mp,
+        PatternDynamic.p,
         PatternDynamic.pp,
       ]);
       expect([for (final d in PatternDynamic.values) d.name], [
         'ff',
+        'f',
         'mf',
         'mp',
+        'p',
         'pp',
       ]);
+    });
+
+    test('the index distance is the loudness distance: f is one step from ff '
+        'and from mf, p one from mp and from pp', () {
+      int at(PatternDynamic d) => PatternDynamic.values.indexOf(d);
+      expect(at(PatternDynamic.f) - at(PatternDynamic.ff), 1);
+      expect(at(PatternDynamic.mf) - at(PatternDynamic.f), 1);
+      expect(at(PatternDynamic.p) - at(PatternDynamic.mp), 1);
+      expect(at(PatternDynamic.pp) - at(PatternDynamic.p), 1);
+      expect(at(PatternDynamic.pp) - at(PatternDynamic.ff), 5);
+    });
+
+    test('a new session still writes mf until told otherwise', () {
+      expect(_session().nextDynamic, PatternDynamic.mf);
     });
   });
 
@@ -131,7 +152,150 @@ void main() {
         for (final d in PatternDynamic.values)
           PatternEntry(note: true, length: 2, dynamic: d).hashCode,
       };
-      expect(hashes, hasLength(4));
+      expect(hashes, hasLength(6));
+    });
+  });
+
+  group('f and p (8AC)', () {
+    const f = PatternEntry(note: true, length: 4, dynamic: PatternDynamic.f);
+    const p = PatternEntry(note: true, length: 2, dynamic: PatternDynamic.p);
+
+    test('f and p are written in the code: N4f, N2p', () {
+      expect(f.toString(), 'N4f');
+      expect(p.toString(), 'N2p');
+      expect(PatternTranscript(const [f, p]).code, 'N4f N2p');
+    });
+
+    test('f and p are written in the prose: "quarter note f"', () {
+      expect(f.prose, 'quarter note f');
+      expect(p.prose, 'eighth note p');
+      expect(
+        PatternTranscript(const [f, p]).prose,
+        'quarter note f, eighth note p',
+      );
+    });
+
+    test('f is not ff and p is not pp: each is its own value', () {
+      const ff = PatternEntry(
+        note: true,
+        length: 4,
+        dynamic: PatternDynamic.ff,
+      );
+      expect(f, isNot(ff));
+      expect(f.hashCode, isNot(ff.hashCode));
+      expect(PatternDynamic.f, isNot(PatternDynamic.ff));
+      expect(PatternDynamic.p, isNot(PatternDynamic.pp));
+    });
+
+    test('every dynamic round-trips through code and parse', () {
+      for (final d in PatternDynamic.values) {
+        final e = PatternEntry(note: true, length: 3, dynamic: d);
+        expect(e.toString(), 'N3${d.name}');
+        expect(PatternEntry.parse(e.toString()), e, reason: d.name);
+      }
+    });
+  });
+
+  group('parsing a code (8AC)', () {
+    bool isJunk(Object? e) => e is ArgumentError || e is FormatException;
+    Matcher junk() => throwsA(predicate(isJunk, 'an ArgumentError or a '
+        'FormatException'));
+
+    test('PatternEntry.parse reads one note or one rest', () {
+      expect(
+        PatternEntry.parse('N4ff'),
+        const PatternEntry(note: true, length: 4, dynamic: PatternDynamic.ff),
+      );
+      expect(
+        PatternEntry.parse('N1p'),
+        const PatternEntry(note: true, length: 1, dynamic: PatternDynamic.p),
+      );
+      expect(
+        PatternEntry.parse('N12mf'),
+        const PatternEntry(note: true, length: 12, dynamic: PatternDynamic.mf),
+      );
+      expect(
+        PatternEntry.parse('R3'),
+        const PatternEntry(note: false, length: 3),
+      );
+    });
+
+    test('the dynamic letters are the longest match of ff|f|mf|mp|p|pp', () {
+      expect(PatternEntry.parse('N2f').dynamic, PatternDynamic.f);
+      expect(PatternEntry.parse('N2ff').dynamic, PatternDynamic.ff);
+      expect(PatternEntry.parse('N2p').dynamic, PatternDynamic.p);
+      expect(PatternEntry.parse('N2pp').dynamic, PatternDynamic.pp);
+      expect(PatternEntry.parse('N2mf').dynamic, PatternDynamic.mf);
+      expect(PatternEntry.parse('N2mp').dynamic, PatternDynamic.mp);
+    });
+
+    test('PatternTranscript.parseCode reads whitespace separated entries', () {
+      final t = PatternTranscript.parseCode('N4ff R2 N1p');
+      expect(t.entries, [
+        const PatternEntry(note: true, length: 4, dynamic: PatternDynamic.ff),
+        const PatternEntry(note: false, length: 2),
+        const PatternEntry(note: true, length: 1, dynamic: PatternDynamic.p),
+      ]);
+      expect(
+        PatternTranscript.parseCode('  N2mf \t R1\n N4f  ').code,
+        'N2mf R1 N4f',
+        reason: 'any whitespace, any amount',
+      );
+    });
+
+    test('an empty code is an empty transcript', () {
+      expect(PatternTranscript.parseCode('').entries, isEmpty);
+      expect(PatternTranscript.parseCode('   ').entries, isEmpty);
+    });
+
+    test('parseCode is the inverse of code', () {
+      for (final code in [
+        '',
+        'N1ff',
+        'R12',
+        'N4ff R2 N1p',
+        'N1mp N1mp R12 R2 N1mp N1mp',
+        'N1pp N1pp R6 N1pp N1pp R6 N1pp N1pp R1 R2 R4',
+        'N2mf R1 N4f R3 N3p N12mp R8',
+      ]) {
+        expect(PatternTranscript.parseCode(code).code, code, reason: code);
+      }
+      final t = _of('N3ff R1 N2f N2mf N1mp N6p N8pp R4');
+      expect(PatternTranscript.parseCode(t.code).entries, t.entries);
+    });
+
+    test('junk is an ArgumentError or a FormatException', () {
+      for (final bad in [
+        '',
+        'X4mf',
+        'N',
+        'N4',
+        'N4x',
+        'N4fff',
+        'N4mfx',
+        'N4 mf',
+        'Nmf',
+        'N0mf',
+        'N5mf',
+        'N16mf',
+        'R5',
+        'R2mf',
+        'R0',
+        'n4mf',
+        'N4MF',
+        '4mf',
+        'N-4mf',
+        'N4.5mf',
+      ]) {
+        expect(() => PatternEntry.parse(bad), junk(), reason: '"$bad"');
+      }
+      for (final bad in ['N4ff X2', 'N4ff R', 'N4q', 'N4ff, R2', 'N5mf R1']) {
+        expect(
+          () => PatternTranscript.parseCode(bad),
+          junk(),
+          reason: '"$bad"',
+        );
+      }
     });
   });
 
@@ -736,6 +900,160 @@ void main() {
       expect(s.nextDynamic, PatternDynamic.ff);
       s.tap(2);
       expect(s.rendition(1, 0).code, 'N2ff');
+    });
+  });
+
+  group('PatternEntrySession: f and p (8AC)', () {
+    test('a tap writes a note with the sticky f or p', () {
+      final s = _session();
+      s.setDynamic(PatternDynamic.f);
+      s.tap(4);
+      s.tap(2);
+      s.tap(2);
+      s.setDynamic(PatternDynamic.p);
+      s.tap(1);
+      s.tap(1);
+      expect(s.rendition(0, 0).code, 'N4f R2 N2f R1 N1p');
+      expect(s.nextDynamic, PatternDynamic.p);
+    });
+
+    test('setDynamic with the cursor on a note changes that note to f', () {
+      final s = _session();
+      _enter(s, 'N2mf R1 N4mf');
+      s.moveCursor(-1);
+      s.setDynamic(PatternDynamic.f);
+      expect(s.rendition(0, 0).code, 'N2mf R1 N4f');
+      s.moveCursor(-2);
+      s.setDynamic(PatternDynamic.p);
+      expect(s.rendition(0, 0).code, 'N2p R1 N4f');
+    });
+
+    test('the entry helper writes f and p too', () {
+      final s = _session();
+      _enter(s, 'N1ff N2f N4mf N6mp N8p N1pp');
+      expect(s.rendition(0, 0).code, 'N1ff N2f N4mf N6mp N8p N1pp');
+    });
+
+    test('the log line writes f and p in code and prose', () {
+      final s = _session();
+      _enter(s, 'N4f R1 N2p');
+      expect(
+        s.logLines().first,
+        contains('A = quarter note f, 16th rest, eighth note p '
+            '(N4f R1 N2p)'),
+      );
+    });
+  });
+
+  group('PatternEntrySession: unstable tests (8AC)', () {
+    test('a test starts stable', () {
+      final s = _session();
+      for (var i = 0; i < 3; i++) {
+        expect(s.unstable(i), isFalse, reason: 'test $i');
+      }
+    });
+
+    test('toggleUnstable flips the open test and back', () {
+      final s = _session();
+      s.toggleUnstable();
+      expect(s.unstable(0), isTrue);
+      s.toggleUnstable();
+      expect(s.unstable(0), isFalse);
+    });
+
+    test('it is per test: flagging one leaves the others alone and the flag '
+        'stays when the wearer moves away and back', () {
+      final s = _session();
+      s.toggleUnstable();
+      s.nextTest();
+      expect(s.unstable(1), isFalse);
+      expect(s.unstable(0), isTrue);
+      s.toggleUnstable();
+      s.goToTest(2);
+      expect(s.unstable(2), isFalse);
+      s.goToTest(0);
+      expect(s.unstable(0), isTrue);
+      expect(s.unstable(1), isTrue);
+      s.goToTest(1);
+      s.toggleUnstable();
+      expect(s.unstable(1), isFalse);
+      expect(s.unstable(0), isTrue, reason: 'test 1 clearing leaves test 0');
+    });
+
+    test('it applies to the test, not to a rendition: both A and B', () {
+      final s = _session();
+      s.toggleUnstable();
+      s.selectRendition(1);
+      expect(s.unstable(0), isTrue);
+      s.selectRendition(0);
+      expect(s.unstable(0), isTrue);
+    });
+
+    test('toggling does not touch the renditions, the cursor or the plays',
+        () {
+      final s = _session();
+      _enter(s, 'N2mf R1 N4mf');
+      s.notePlayed();
+      final cursor = s.cursor;
+      s.toggleUnstable();
+      expect(s.rendition(0, 0).code, 'N2mf R1 N4mf');
+      expect(s.cursor, cursor);
+      expect(s.plays(0), 1);
+      expect(s.testsTranscribed, 1);
+    });
+
+    test('an unstable test with nothing entered still gets a line', () {
+      final s = _session();
+      s.toggleUnstable();
+      expect(s.logLines(), hasLength(2));
+      expect(s.logLines().first, contains('unstable'));
+    });
+
+    test('a stable test line is unchanged: no mention of unstable', () {
+      final tests = PatternProbe.defaultTests;
+      final s = PatternEntrySession(tests);
+      s.goToTest(4);
+      s.tap(2);
+      s.notePlayed();
+      expect(
+        s.logLines().first,
+        'Pattern probe heard 5/40, ${tests[4].description}: '
+        'A = eighth note mf (N2mf); B = —; played 1×.',
+      );
+    });
+
+    test('an unstable test line says A and B are the shortest and longest',
+        () {
+      final tests = PatternProbe.defaultTests;
+      final s = PatternEntrySession(tests);
+      s.goToTest(23);
+      _enter(s, 'N1pp N1pp R6 N1pp N1pp');
+      s.selectRendition(1);
+      _enter(s, 'N1pp N1pp R1 N1pp N1pp');
+      s.toggleUnstable();
+      s.notePlayed();
+      s.notePlayed();
+      expect(
+        s.logLines().first,
+        'Pattern probe heard 24/40, ${tests[23].description}, unstable '
+        '(A and B are the shortest and longest): '
+        'A = 16th note pp, 16th note pp, dotted quarter rest, 16th note pp, '
+        '16th note pp (N1pp N1pp R6 N1pp N1pp); '
+        'B = 16th note pp, 16th note pp, 16th rest, 16th note pp, '
+        '16th note pp (N1pp N1pp R1 N1pp N1pp); played 2×.',
+      );
+    });
+
+    test('only the flagged test line says unstable', () {
+      final s = _session();
+      s.tap(2);
+      s.goToTest(1);
+      s.tap(2);
+      s.toggleUnstable();
+      final lines = s.logLines();
+      expect(lines[0], isNot(contains('unstable')));
+      expect(lines[1], contains('unstable (A and B are the shortest and '
+          'longest): A = '));
     });
   });
 

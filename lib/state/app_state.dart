@@ -117,6 +117,9 @@ import '../gestures/lab_log.dart';
 import '../gestures/moment_stamp.dart';
 import '../gestures/strap_event.dart';
 import '../gestures/tap_ack.dart';
+import '../haptics/band_queue.dart';
+import '../haptics/haptic_player.dart';
+import '../haptics/haptic_profile.dart';
 import 'live_stream_buffer.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
@@ -326,6 +329,7 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     },
     isEcgAlive: () => ecg.isCapturing,
+    ledger: bandLedger,
   );
 
   /// One ordinary buzz for the buzz probe: still a dispatcher delivery (its
@@ -342,7 +346,11 @@ class AppState extends ChangeNotifier {
           isConnected: () => engine.isConnected),
     );
     final sent = r.targets.contains('band');
-    if (!sent) {
+    if (sent) {
+      // The buzz probe keeps its own pacing; its commands still count in the
+      // limit the alert queue shares.
+      bandLedger.record(1, now);
+    } else {
       deviceLab.addStep('Probe buzz not sent: '
           '${r.suppressionReason ?? 'no reason given'}.');
     }
@@ -534,9 +542,13 @@ class AppState extends ChangeNotifier {
       eventId: eventId,
       sourceTime: now,
       historical: false,
-      bandDelivery: () => deliverBuzzSequence(seq,
-          buzz: () => engine.buzzBand(),
-          isConnected: () => engine.isConnected),
+      bandDelivery: () => _runBandJob(
+        pulses,
+        () => deliverBuzzSequence(seq,
+            buzz: () => engine.buzzBand(),
+            isConnected: () => engine.isConnected),
+        timeout: seq.transportTimeout,
+      ),
     );
     return r.targets.contains('band');
   }
@@ -551,29 +563,35 @@ class AppState extends ChangeNotifier {
       eventId: eventId,
       sourceTime: now,
       historical: false,
-      bandDelivery: () async => await engine.buzzBand(holdMs: 600)
-          ? BuzzDelivery.complete
-          : BuzzDelivery.rejected,
+      bandDelivery: () => _runBandJob(
+        1,
+        () async => await engine.buzzBand(holdMs: 600)
+            ? BuzzDelivery.complete
+            : BuzzDelivery.rejected,
+      ),
     );
     return r.targets.contains('band');
   }
 
   late final AlertDispatcher alertDispatcher = AlertDispatcher(
     phone: () async => false,
-    band: () async {
-      await engine.buzz();
-      return true;
-    },
+    // The default band transport (tap ack, a water or medication buzz with no
+    // saved rhythm): one short buzz, in the band queue like everything else.
+    band: () async =>
+        await _runBandJob(1, () async {
+          await engine.buzz();
+          return BuzzDelivery.complete;
+        }) ==
+        BuzzDelivery.complete,
     // The default sequence transport also serves NotificationCenter and the
     // water/medication timers; every entry path honors the rule's saved rhythm.
-    bandSequence: (s) => playBuzzSequence(s,
-        buzz: _bandBuzz,
-        buzzForDuration: _bandBuzzForDuration,
-        isConnected: () => engine.isConnected),
-    bandSequenceDelivery: (s) => deliverBuzzSequence(s,
-        buzz: _bandBuzz,
-        buzzForDuration: _bandBuzzForDuration,
-        isConnected: () => engine.isConnected),
+    bandSequence: (s) async =>
+        await _deliverBandSequence(s) == BuzzDelivery.complete,
+    bandSequenceDelivery: (s) => _deliverBandSequence(s),
+    // A queued job may wait before it starts; a compiled plan outlasts the
+    // taps' own estimate.
+    bandQueueWait: kBandQueueWait,
+    sequenceTimeout: (s) => bandSequenceTimeout(s, _bandProfile),
     isConnected: () => engine.isConnected,
     supportedTargetsAtDelivery: () =>
         AlertCapabilityRegistry.targetsForBandFamily(device.generation),
@@ -606,6 +624,72 @@ class AppState extends ChangeNotifier {
   Future<bool> _bandBuzzForDuration(int holdMs) =>
       engine.buzzBand(holdMs: holdMs);
 
+  /// One compiled Maverick command (8AC, WHOOP MG), the write a profiled
+  /// rhythm is made of. Only ever called from inside a queued delivery.
+  Future<bool> _bandBuzzPattern(List<int> effects, int loop) =>
+      engine.buzzMaverickPattern(effects: effects, loop: loop);
+
+  /// The haptic vocabulary of the connected band (null: none measured, today's
+  /// per-tap buzz).
+  HapticDeviceProfile? get _bandProfile =>
+      HapticDeviceProfile.forGeneration(device.generation);
+
+  /// The band's rolling command limit (30 in 2 minutes), one for every band
+  /// haptic job and the pattern probe (8AC).
+  late final BandCommandLedger bandLedger = BandCommandLedger();
+
+  /// The band's live "ended" event (100), fed from [_onLiveEvent].
+  final BandEndedSignal _bandEnded = BandEndedSignal();
+
+  /// Every band haptic job runs here, one at a time (8AC). Only entered from
+  /// inside an [alertDispatcher] delivery.
+  late final BandHapticQueue bandQueue = BandHapticQueue(
+    ledger: bandLedger,
+    waitEnded: _bandEnded.wait,
+    log: _log,
+  );
+
+  /// The one door to [bandQueue]: a job of [commands] band commands that must
+  /// answer within [timeout] once it starts, and holds the band for [settle]
+  /// after its last command (the band's ended event or that long).
+  Future<BuzzDelivery> _runBandJob(
+    int commands,
+    Future<BuzzDelivery> Function() job, {
+    Duration? timeout,
+    Duration settle = Duration.zero,
+  }) =>
+      bandQueue.run(
+        job,
+        commands: commands,
+        timeout: timeout ?? Duration(seconds: 5 + 2 * commands),
+        settle: settle,
+      );
+
+  /// The one delivery of a rule's rhythm to the band, for every call site (the
+  /// dispatcher's two sequence transports, a preview, a rule alert and the
+  /// notification relay): in the band queue, as compiled commands on a band
+  /// with a haptic profile, else as per-tap buzzes.
+  Future<BuzzDelivery> _deliverBandSequence(BuzzSequence s) {
+    final profile = _bandProfile;
+    return _runBandJob(
+      bandSequenceCommands(s, profile),
+      () => deliverBandSequence(
+        s,
+        profile: profile,
+        buzz: _bandBuzz,
+        buzzForDuration: _bandBuzzForDuration,
+        writePattern: (effects, loop) {
+          _bandEnded.reset();
+          return _bandBuzzPattern(effects, loop);
+        },
+        waitEnded: _bandEnded.wait,
+        isConnected: () => engine.isConnected,
+      ),
+      timeout: bandSequenceTimeout(s, profile),
+      settle: bandSequenceSettle(s, profile),
+    );
+  }
+
   /// A rhythm the user just tapped out, played back for them. Still one
   /// dispatcher delivery (own rule, unique event), so it can neither bypass the
   /// band-support checks nor race a real alert's claim. No quiet hours: the
@@ -617,11 +701,8 @@ class AppState extends ChangeNotifier {
       eventId: 'preview:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
-      bandTimeout: s.transportTimeout,
-      bandDelivery: () => deliverBuzzSequence(s,
-          buzz: _bandBuzz,
-          buzzForDuration: _bandBuzzForDuration,
-          isConnected: () => engine.isConnected),
+      bandTimeout: bandSequenceTimeout(s, _bandProfile),
+      bandDelivery: () => _deliverBandSequence(s),
     );
     return r.targets.contains('band');
   }
@@ -673,26 +754,26 @@ class AppState extends ChangeNotifier {
       // A recorded rhythm can outlast the dispatcher's flat 10 s.
       bandTimeout: alarm || pattern != null
           ? null
-          : (sequence ?? prefs.buzzSequenceFor(ruleId)).transportTimeout,
+          : bandSequenceTimeout(
+              sequence ?? prefs.buzzSequenceFor(ruleId), _bandProfile),
       bandTransport: alarm || pattern != null
-          ? () async {
-              if (alarm) {
-                await engine.runAlarm();
-              } else {
-                await engine.buzzPattern(pattern!);
-              }
-              return true;
-            }
+          ? () async =>
+              await _runBandJob(1, () async {
+                if (alarm) {
+                  await engine.runAlarm();
+                } else {
+                  await engine.buzzPattern(pattern!);
+                }
+                return BuzzDelivery.complete;
+              }) ==
+              BuzzDelivery.complete
           : null,
       // The rule's own rhythm (or its registry default), played as one
       // delivery: the dispatcher's claim covers every step, and survives a
       // partial or unanswered delivery.
       bandDelivery: alarm || pattern != null
           ? null
-          : () => deliverBuzzSequence(sequence ?? prefs.buzzSequenceFor(ruleId),
-              buzz: _bandBuzz,
-              buzzForDuration: _bandBuzzForDuration,
-              isConnected: () => engine.isConnected),
+          : () => _deliverBandSequence(sequence ?? prefs.buzzSequenceFor(ruleId)),
     );
   }
 
@@ -701,6 +782,10 @@ class AppState extends ChangeNotifier {
   late final NotificationRelay notificationRelay = NotificationRelay(
     buzz: () => engine.buzz(),
     buzzForDuration: _bandBuzzForDuration,
+    // Every rhythm and matched-haptics pulse goes through the band queue.
+    deliverSequence: _deliverBandSequence,
+    sequenceTimeout: (s) => bandSequenceTimeout(s, _bandProfile),
+    runBand: _runBandJob,
     dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
     worn: () => wearReportOf(engine.state.wristOn),
@@ -2948,6 +3033,10 @@ class AppState extends ChangeNotifier {
     // engine.
     final handled = _gestureDispatcher.handle(e);
     hardwareProbes.onBandEvent(e);
+    // The band's "ended" event releases the next compiled command and the
+    // next queued job; a late one (the band delivers old events in bursts)
+    // must not.
+    if (e.eventId == 100 && e.isLive) _bandEnded.signal();
     unawaited(handled.then((outcomes) async {
       deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
       await ackTap(alertDispatcher, e, outcomes);
@@ -5877,7 +5966,13 @@ class AppState extends ChangeNotifier {
       eventId: 'user:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
-      bandTransport: transport,
+      bandTransport: () async =>
+          await _runBandJob(1, () async {
+            return await transport()
+                ? BuzzDelivery.complete
+                : BuzzDelivery.rejected;
+          }) ==
+          BuzzDelivery.complete,
     );
     return r.targets.contains('band');
   }

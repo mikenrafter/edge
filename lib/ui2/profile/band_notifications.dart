@@ -27,6 +27,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../haptics/haptic_profile.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
@@ -130,6 +131,8 @@ class _BandNotificationsState extends State<BandNotifications>
       initial: pkg == null ? cfg.effectiveSequence : cfg.sequenceForApp(pkg),
       bandConnected: app.engine.isConnected,
       onPlay: app.previewBuzzSequence,
+      // The band's measured vocabulary (an MG), none on a 4.0.
+      profile: HapticDeviceProfile.forGeneration(app.device.generation),
       onSave: (s) => put(pkg == null
           ? cfg.copyWith(buzzSequence: s)
           : cfg.copyWith(appSequences: {...cfg.appSequences, pkg: s})),

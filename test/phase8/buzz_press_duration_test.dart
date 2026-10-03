@@ -173,8 +173,16 @@ void main() {
       'Future<bool> previewBuzzSequence(',
       'Future<AlertDeliveryOutcome> _dispatchBandAlert(',
     ]) {
-      expect(codeOnly(bodyOf(app, signature)), contains('buzzForDuration:'));
+      // 8AC: both reach the one delivery helper, which forwards the hold.
+      expect(
+        codeOnly(bodyOf(app, signature)),
+        contains('_deliverBandSequence('),
+      );
     }
+    expect(
+      codeOnly(bodyOf(app, 'Future<BuzzDelivery> _deliverBandSequence(')),
+      contains('buzzForDuration:'),
+    );
     final relay = codeOnly(
       File('lib/notify/notification_relay.dart').readAsStringSync(),
     );

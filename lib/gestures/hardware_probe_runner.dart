@@ -14,6 +14,7 @@ import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
+import '../haptics/band_queue.dart';
 import '../notify/alert_rule.dart';
 import 'hardware_probes.dart';
 import 'lab_log.dart';
@@ -47,9 +48,16 @@ class HardwareProbeRunner extends ChangeNotifier {
     required this.beginEcg,
     required this.endEcg,
     required this.isEcgAlive,
-  });
+    BandCommandLedger? ledger,
+  }) : ledger = ledger ?? BandCommandLedger();
 
   final DeviceLabLog lab;
+
+  /// The band's rolling command limit (30 in 2 minutes), shared with the alert
+  /// queue (8AC): the probe's writes count in it and alert commands count
+  /// against the probe's limit. Kept here so closing and reopening the screen
+  /// does not reset it.
+  final BandCommandLedger ledger;
   final Future<bool> Function(void Function(String? status, int ms) onReply)
       sendBuzz;
 
@@ -73,9 +81,6 @@ class HardwareProbeRunner extends ChangeNotifier {
   HapticProbe? _haptic;
   PatternProbe? _probe;
   PatternEntrySession? _session;
-  // The pattern probe's write times: kept here so closing and reopening the
-  // screen does not reset the band's rest limit.
-  final List<DateTime> _patternWrites = [];
   bool _patternPlaying = false;
   int _patternPlays = 0;
   DateTime? _patternPlayWrittenAt;
@@ -103,27 +108,12 @@ class HardwareProbeRunner extends ChangeNotifier {
   /// resting or ready.
   Duration? get patternRestRemaining => _probe?.restRemaining(clock.now());
 
-  /// Writes still inside the rolling window, oldest first.
-  List<DateTime> get _inWindow {
-    final now = clock.now();
-    return [
-      for (final w in _patternWrites)
-        if (w.add(PatternProbe.commandWindow).isAfter(now)) w,
-    ];
-  }
-
   /// Commands the band may still be sent now (30 minus those in the rolling
   /// window, never below 0). Holds while the screen is closed.
-  int get patternCommandsLeft =>
-      (PatternProbe.maxCommandsPerWindow - _inWindow.length)
-          .clamp(0, PatternProbe.maxCommandsPerWindow);
+  int get patternCommandsLeft => ledger.commandsLeft(clock.now());
 
   /// Time until the oldest command leaves the window; null when it is empty.
-  Duration? get patternNextFreeIn {
-    final w = _inWindow;
-    if (w.isEmpty) return null;
-    return w.first.add(PatternProbe.commandWindow).difference(clock.now());
-  }
+  Duration? get patternNextFreeIn => ledger.nextFreeIn(clock.now());
 
   /// Plays started so far; the page restarts its metronome when it grows.
   int get patternPlays => _patternPlays;
@@ -203,7 +193,7 @@ class HardwareProbeRunner extends ChangeNotifier {
       isConnected: isConnected,
       step: lab.addStep,
       now: clock.now,
-      writeLog: _patternWrites,
+      writeLog: ledger.writeLog,
     );
     _session = PatternEntrySession(probe.tests);
     _patternPlaying = false;
@@ -216,6 +206,7 @@ class HardwareProbeRunner extends ChangeNotifier {
           'ways of sending × 2 counts, plus $gaps gap tests',
       tapAt: DateTime.now(),
     );
+    lab.addStep('Pattern probe set: $kWhoopMgPatternProbeSetId');
     notifyListeners();
   }
 
@@ -256,6 +247,7 @@ class HardwareProbeRunner extends ChangeNotifier {
   void patternToggleKind() => _edit((s) => s.toggleKind());
   void patternDynamicTempo(bool on) => _edit((s) => s.dynamicTempo = on);
   void patternDynamic(PatternDynamic d) => _edit((s) => s.setDynamic(d));
+  void patternToggleUnstable() => _edit((s) => s.toggleUnstable());
   void patternDelete() => _edit((s) => s.delete());
   void patternMove(int delta) => _edit((s) => s.moveCursor(delta));
   void patternRendition(int r) => _edit((s) => s.selectRendition(r));

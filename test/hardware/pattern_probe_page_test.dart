@@ -13,7 +13,8 @@
 //    12 sixteenths (dotted eighth, quarter, half), their symbols read "dotted
 //    eighth note" and so on with 3, 6 and 12 dashes, and the 16th button does
 //    nothing (it is disabled). One tap on a length button clears the dot. The
-//    dynamics buttons are `pattern-dyn-ff`, `-mf`, `-mp`, `-pp`. A dynamics button shows its name in a Text (bold, italic); the
+//    dynamics buttons (8AC: six) are `pattern-dyn-ff`, `-f`, `-mf`, `-mp`,
+//    `-p`, `-pp`, loudest to softest. A dynamics button shows its name in a Text (bold, italic); the
 //    selected one has the semantics "selected" flag. Only that flag and the
 //    text style are tested, not how a disabled-looking button is drawn.
 //  - a note row in the wheel shows its dynamic as a Text with the same name,
@@ -151,11 +152,16 @@ HardwareProbeRunner _runner(
 
 const _tall = Size(390, 844);
 
+/// Whether test [i] is flagged unstable (8AC); read dynamically so the rest
+/// of this file compiles before the session has the flag.
+bool _unstable(HardwareProbeRunner r, int i) =>
+    (r.pattern as dynamic).unstable(i) as bool;
+
 /// The four length buttons by their 16th count, and what each is called. The
 /// Dot toggle `pattern-dot` makes them 3, 6, 12 (and the 16th is disabled).
 const _lens = [1, 2, 4, 8];
 const _lenNames = ['16th', 'eighth', 'quarter', 'half'];
-const _dyns = ['ff', 'mf', 'mp', 'pp'];
+const _dyns = ['ff', 'f', 'mf', 'mp', 'p', 'pp'];
 
 void _view(WidgetTester t, Size size) {
   t.view.physicalSize = size * 3;
@@ -631,6 +637,255 @@ void main() {
     expect(r.pattern!.active.length, 0);
     r.closePattern();
     h.dispose();
+  });
+
+  // ---- 8AC: f and p, and the unstable toggle ---------------------------------
+
+  testWidgets('the dynamics row has six buttons in a row, ff, f, mf, mp, p, '
+      'pp, and they fit at 360 px (8AC)', (t) async {
+    final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
+    expect(_dyns, ['ff', 'f', 'mf', 'mp', 'p', 'pp']);
+    final rects = [
+      for (final d in _dyns) t.getRect(find.byKey(ValueKey('pattern-dyn-$d'))),
+    ];
+    for (var i = 1; i < rects.length; i++) {
+      expect(
+        rects[i].left,
+        greaterThanOrEqualTo(rects[i - 1].right),
+        reason: '${_dyns[i]} sits right of ${_dyns[i - 1]}, no overlap',
+      );
+      expect((rects[i].top - rects[0].top).abs(), lessThan(1), reason: 'one row');
+    }
+    for (final (i, rect) in rects.indexed) {
+      expect(rect.left, greaterThanOrEqualTo(0), reason: _dyns[i]);
+      expect(rect.right, lessThanOrEqualTo(360), reason: _dyns[i]);
+      expect(rect.width, greaterThanOrEqualTo(40), reason: '${_dyns[i]} can be hit');
+      expect(
+        find.byKey(ValueKey('pattern-dyn-${_dyns[i]}')).hitTestable(),
+        findsOneWidget,
+      );
+    }
+    expect(t.takeException(), isNull);
+    r.closePattern();
+  });
+
+  testWidgets('the footer is fully visible at 360x640 with six dynamics '
+      '(8AC)', (t) async {
+    final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
+    final screen = Offset.zero & const Size(360, 640);
+    for (final k in [
+      for (final n in _lens) 'pattern-len-$n',
+      'pattern-dot',
+      for (final d in _dyns) 'pattern-dyn-$d',
+      'pattern-kind',
+      'pattern-delete',
+    ]) {
+      final rect = t.getRect(find.byKey(ValueKey(k)));
+      expect(
+        screen.contains(rect.topLeft) && screen.contains(rect.bottomRight),
+        isTrue,
+        reason: '$k is fully on screen: $rect',
+      );
+    }
+    expect(t.takeException(), isNull);
+    r.closePattern();
+  });
+
+  testWidgets('f and p buttons are bold italic, select, and write notes '
+      '(8AC)', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    for (final d in ['f', 'p']) {
+      final text = dynTextIn(find.byKey(ValueKey('pattern-dyn-$d')), d);
+      expect(text, findsOneWidget, reason: 'button $d shows "$d"');
+      final style = t.widget<Text>(text).style;
+      expect(style?.fontStyle, FontStyle.italic, reason: '$d italic');
+      expect(
+        style?.fontWeight?.value ?? 0,
+        greaterThanOrEqualTo(FontWeight.w700.value),
+        reason: '$d bold',
+      );
+    }
+    await _tapKey(t, 'pattern-dyn-f');
+    for (final d in _dyns) {
+      expect(dynSelected(t, d), d == 'f', reason: 'only f is selected');
+    }
+    await _tapKey(t, 'pattern-len-4');
+    await _tapKey(t, 'pattern-len-2'); // a rest
+    await _tapKey(t, 'pattern-dyn-p');
+    for (final d in _dyns) {
+      expect(dynSelected(t, d), d == 'p', reason: 'only p is selected');
+    }
+    await _tapKey(t, 'pattern-len-2');
+    expect(r.pattern!.active.code, 'N4f R2 N2p');
+    expect(r.pattern!.nextDynamic.name, 'p');
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('a note row shows f and p as its dynamic, bold and italic '
+      '(8AC)', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-dyn-f');
+    await _tapKey(t, 'pattern-len-4');
+    await _tapKey(t, 'pattern-len-1'); // a rest
+    await _tapKey(t, 'pattern-dyn-p');
+    await _tapKey(t, 'pattern-len-2');
+    final wheel = find.byKey(const ValueKey('pattern-wheel'));
+    for (final d in ['f', 'p']) {
+      final text = find.descendant(of: wheel, matching: find.text(d));
+      expect(text, findsOneWidget, reason: 'one note row shows "$d"');
+      final style = t.widget<Text>(text).style;
+      expect(style?.fontStyle, FontStyle.italic, reason: d);
+      expect(
+        style?.fontWeight?.value ?? 0,
+        greaterThanOrEqualTo(FontWeight.w700.value),
+        reason: d,
+      );
+    }
+    r.closePattern();
+  });
+
+  testWidgets('changing the note under the cursor to f or p works from the '
+      'button (8AC)', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-len-4');
+    await _tapKey(t, 'pattern-len-2');
+    await _tapKey(t, 'pattern-len-1');
+    r.patternMove(-3);
+    await t.pump(const Duration(milliseconds: 400));
+    await _tapKey(t, 'pattern-dyn-f');
+    r.patternMove(2);
+    await t.pump(const Duration(milliseconds: 400));
+    await _tapKey(t, 'pattern-dyn-p');
+    expect(r.pattern!.active.code, 'N4f R2 N1p');
+    r.closePattern();
+  });
+
+  bool unstableSelected(WidgetTester t) => t
+      .getSemantics(find.byKey(const ValueKey('pattern-unstable')))
+      .flagsCollection
+      .isSelected ==
+      Tristate.isTrue;
+
+  Finder chipText(String key, String text) => find.descendant(
+        of: find.byKey(ValueKey(key)),
+        matching: find.text(text),
+      );
+
+  testWidgets('the Unstable toggle starts off and the chips read A and B '
+      '(8AC)', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    final toggle = find.byKey(const ValueKey('pattern-unstable'));
+    expect(toggle, findsOneWidget);
+    expect(
+      find.descendant(of: toggle, matching: find.text('Unstable')),
+      findsOneWidget,
+    );
+    expect(unstableSelected(t), isFalse);
+    expect(_unstable(r, 0), isFalse);
+    expect(chipText('pattern-rendition-a', 'A'), findsOneWidget);
+    expect(chipText('pattern-rendition-b', 'B'), findsOneWidget);
+    expect(find.text('A · shortest'), findsNothing);
+    expect(find.text('B · longest'), findsNothing);
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('tapping Unstable flags the test, selects the toggle and '
+      'relabels the chips "A · shortest" and "B · longest"; tapping again '
+      'undoes it (8AC)', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-unstable');
+    expect(_unstable(r, 0), isTrue);
+    expect(unstableSelected(t), isTrue);
+    expect(chipText('pattern-rendition-a', 'A · shortest'), findsOneWidget);
+    expect(chipText('pattern-rendition-b', 'B · longest'), findsOneWidget);
+    expect(chipText('pattern-rendition-a', 'A'), findsNothing);
+    await _tapKey(t, 'pattern-unstable');
+    expect(_unstable(r, 0), isFalse);
+    expect(unstableSelected(t), isFalse);
+    expect(chipText('pattern-rendition-a', 'A'), findsOneWidget);
+    expect(chipText('pattern-rendition-b', 'B'), findsOneWidget);
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('Unstable is per test: the next test shows plain A and B, and '
+      'the flag is still there when the wearer comes back (8AC)', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-unstable');
+    await _tapKey(t, 'pattern-next');
+    expect(r.pattern!.testIndex, 1);
+    expect(unstableSelected(t), isFalse);
+    expect(chipText('pattern-rendition-a', 'A'), findsOneWidget);
+    expect(find.text('A · shortest'), findsNothing);
+    await _tapKey(t, 'pattern-prev');
+    expect(unstableSelected(t), isTrue);
+    expect(chipText('pattern-rendition-a', 'A · shortest'), findsOneWidget);
+    expect(chipText('pattern-rendition-b', 'B · longest'), findsOneWidget);
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('the A and B chips still switch the rendition while Unstable '
+      'is on, and the data does not depend on which holds the shortest '
+      '(8AC)', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-unstable');
+    await _tapKey(t, 'pattern-len-4');
+    await _tapKey(t, 'pattern-rendition-b');
+    expect(r.pattern!.activeRendition, 1);
+    await _tapKey(t, 'pattern-len-1');
+    expect(r.pattern!.rendition(0, 0).code, 'N4mf');
+    expect(r.pattern!.rendition(0, 1).code, 'N1mf');
+    expect(_unstable(r, 0), isTrue);
+    await _tapKey(t, 'pattern-rendition-a');
+    expect(r.pattern!.activeRendition, 0);
+    r.closePattern();
+  });
+
+  testWidgets('Unstable sits in the same header as the renditions and the '
+      'longer chip labels still fit at 360 px (8AC)', (t) async {
+    final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
+    await _tapKey(t, 'pattern-unstable');
+    final screen = Offset.zero & const Size(360, 640);
+    final keys = [
+      'pattern-play',
+      'pattern-rendition-a',
+      'pattern-rendition-b',
+      'pattern-unstable',
+    ];
+    final rects = {
+      for (final k in keys) k: t.getRect(find.byKey(ValueKey(k))),
+    };
+    for (final k in keys) {
+      final rect = rects[k]!;
+      expect(
+        screen.contains(rect.topLeft) && screen.contains(rect.bottomRight),
+        isTrue,
+        reason: '$k is on screen: $rect',
+      );
+      expect(find.byKey(ValueKey(k)).hitTestable(), findsOneWidget, reason: k);
+    }
+    for (final a in keys) {
+      for (final b in keys) {
+        if (a.compareTo(b) >= 0) continue;
+        expect(
+          rects[a]!.overlaps(rects[b]!),
+          isFalse,
+          reason: '$a and $b do not overlap: ${rects[a]} ${rects[b]}',
+        );
+      }
+    }
+    expect(t.takeException(), isNull, reason: 'no overflow with the long labels');
+    // The footer is still fully on screen.
+    final kind = t.getRect(find.byKey(const ValueKey('pattern-kind')));
+    expect(kind.bottom, lessThanOrEqualTo(640));
+    r.closePattern();
   });
 
   testWidgets('a dynamic is sticky: notes are written with it, rests have '

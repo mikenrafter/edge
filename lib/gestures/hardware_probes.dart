@@ -46,6 +46,7 @@ import 'dart:async';
 import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
 import '../ble/ble_state.dart' show AlarmPayloads;
+import '../haptics/band_queue.dart' show BandCommandLedger;
 
 import 'ecg_stream_readiness.dart';
 
@@ -412,6 +413,32 @@ class PatternTestResult {
 /// Plays one pattern test at a time, on demand (8Y): the wearer presses Play
 /// for the test on screen, as often as they like, and transcribes what they
 /// felt elsewhere. The probe only sends, waits for the band and logs.
+/// The id of [kWhoopMgPatternProbeSet], written to the lab log when a pattern
+/// session opens so a transcribed log says which input set it answers.
+const String kWhoopMgPatternProbeSetId = 'whoop-mg-pattern-v1';
+
+/// The stable probe input set (8AC): 4 waveforms × 4 ways of sending × counts
+/// 2 and 3, cycling so an early stop still has seen every waveform and every
+/// way; then 8 gap tests: two delayed commands, effect 14 then 47
+/// alternating, a delay of 0, 300, 700, 1200 ms for each. Test number N is
+/// index N - 1; the order must never change, because every transcribed log and
+/// the device profile cite tests by number.
+final List<PatternTest> kWhoopMgPatternProbeSet = List.unmodifiable([
+  for (var i = 0; i < 32; i++)
+    PatternTest(
+      waveform: BuzzWaveform.all[i % 4],
+      style: BuzzStyle.values[(i ~/ 4) % 4],
+      count: i < 16 ? 2 : 3,
+    ),
+  for (var j = 0; j < 8; j++)
+    PatternTest(
+      waveform: BuzzWaveform.all[j.isEven ? 2 : 1],
+      style: BuzzStyle.delayed,
+      count: 2,
+      delayMs: const [0, 300, 700, 1200][j ~/ 2],
+    ),
+]);
+
 /// Why [PatternProbe.play] refused a play (8AB).
 enum PatternRefusal { busy, notConnected, resting }
 
@@ -430,8 +457,8 @@ class PatternProbe {
         _writes = writeLog ?? <DateTime>[];
 
   /// Hardware health: at most this many commands in any [commandWindow].
-  static const int maxCommandsPerWindow = 30;
-  static const Duration commandWindow = Duration(minutes: 2);
+  static const int maxCommandsPerWindow = BandCommandLedger.maxCommands;
+  static const Duration commandWindow = BandCommandLedger.window;
 
   /// Gap between paced commands, and the wait for a band "ended" event.
   static const Duration pacedGap = Duration(milliseconds: 1800);
@@ -448,25 +475,9 @@ class PatternProbe {
   static const Duration _liveBefore = Duration(milliseconds: 500);
   static const Duration _liveWithin = Duration(seconds: 2);
 
-  /// 4 waveforms × 4 ways of sending × counts 2 and 3, cycling so an early
-  /// stop still has seen every waveform and every way; then 8 gap tests: two
-  /// delayed commands, effect 14 then 47 alternating, a delay of 0, 300, 700,
-  /// 1200 ms for each.
-  static final List<PatternTest> defaultTests = List.unmodifiable([
-    for (var i = 0; i < 32; i++)
-      PatternTest(
-        waveform: BuzzWaveform.all[i % 4],
-        style: BuzzStyle.values[(i ~/ 4) % 4],
-        count: i < 16 ? 2 : 3,
-      ),
-    for (var j = 0; j < 8; j++)
-      PatternTest(
-        waveform: BuzzWaveform.all[j.isEven ? 2 : 1],
-        style: BuzzStyle.delayed,
-        count: 2,
-        delayMs: const [0, 300, 700, 1200][j ~/ 2],
-      ),
-  ]);
+  /// The stable probe input set (8AC), [kWhoopMgPatternProbeSet]: 4 waveforms
+  /// × 4 ways of sending × counts 2 and 3, then 8 gap tests.
+  static final List<PatternTest> defaultTests = kWhoopMgPatternProbeSet;
 
   /// One custom pattern command. True when the write landed; [onReply] hears
   /// the band's reply status (null: none) and its latency.
