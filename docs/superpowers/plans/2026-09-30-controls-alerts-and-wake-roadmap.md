@@ -783,6 +783,27 @@ From the 2026-10-02 lab log (WHOOP MG, start 500 / gap 200 / confirm 1000):
 - Deferred: opening the window on the band's own haptic-done event, and timing
   the next tap's window from the buzz instead of the release.
 
+### 8V — Measure the band, then decide
+
+The 18:17 lab run: four taps still failed in both contact modes. The log shows
+why, and how much is the band's own behaviour:
+
+- A returning finger shows on the ECG 1.96–2.16 s after the lift, at a fixed
+  point of the packet cycle. The window after a lift now adds 1.5 s
+  (`sensorReacquire`); replayed, the 18:19:10 session counts its fourth tap.
+- Every three-pulse buzz lost its third pulse (no reply): the band takes two
+  commands in a row and drops the rest while busy. Buzzes go out as pairs, the
+  rest after 1.8 s.
+- The ECG reading's own rules (give up after three lifts; RESTART when the S2
+  state drops) no longer apply to a gesture.
+- Device lab: every packet line shows the band's presence bit and S2 state; 3 s
+  of stream after the count; each start stage timed; raw packets kept and
+  copied for replay. Hardware probes: buzz spacing (asks what you felt) and a
+  cued ECG touch script, both bounded and stoppable.
+- Off the band: `replayTrace` over copied logs, and a virtual MG fitted to the
+  logs. `docs/hardware/whoop-mg-haptics-and-ecg.md` keeps the evidence and the
+  open questions.
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

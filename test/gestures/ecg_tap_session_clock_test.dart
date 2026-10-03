@@ -78,6 +78,7 @@ class _Rig {
       now: () => now,
       wait: (_) async {},
       pollEvery: const Duration(hours: 1),
+      sensorReacquire: Duration.zero,
     );
   }
 
@@ -89,7 +90,11 @@ class _Rig {
   final results = <(int?, String?)>[];
   final steps = <String>[];
 
-  Future<void> settle() => Future<void>.delayed(Duration.zero);
+  Future<void> settle() async {
+    for (var i = 0; i < 6; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+  }
 
   /// Deliver [p] at [ms] after t0.
   void deliver(LabradorR17 p, int ms) {
@@ -133,7 +138,7 @@ void main() {
       r.deliver(_packet(1004, contactFrom: 10, contactTo: 60), 2320);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [3]);
+      expect(r.buzzes.map((b) => b.$1), [2, 1]);
     });
   });
 
@@ -210,7 +215,7 @@ void main() {
       r.deliver(_packet(1002, n: 40, contactFrom: 0), 2500);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [3]);
+      expect(r.buzzes.map((b) => b.$1), [2, 1]);
     });
 
     test('the same contact across a 400 ms unobserved gap abandons instead of '

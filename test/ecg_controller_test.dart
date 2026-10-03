@@ -660,6 +660,81 @@ void main() {
       expect(r.c.state.phase, EcgCapturePhase.completed);
     });
 
+    // 8V: lifting a finger is the gesture. The reading's own rules (give up
+    // after three contact losses; send RESTART when the S2 state drops with
+    // contact on) would end the stream or blind it mid-gesture.
+    test('a dropped S2 state sends no RESTART and every packet is forwarded',
+        () async {
+      final r = Rig();
+      final forwarded = <int>[];
+      final trace = <String>[];
+      r.c.onFrame = (f) => forwarded.add(f.sequence);
+      await r.c.begin(EcgWrist.right, persist: false, trace: trace.add);
+      r.t.emitFrame(frame(seq: 1, progress: 3));
+      r.t.emitFrame(frame(seq: 2, progress: 6, s2One: false));
+      r.t.emitFrame(frame(seq: 3, progress: 6, s2One: false));
+      await r.settle();
+      expect(r.t.calls, isNot(contains('restart')));
+      expect(r.c.state.phase, isNot(EcgCapturePhase.restarting));
+      expect(forwarded, [1, 2, 3]);
+      expect(trace.where((l) => l.contains('would send RESTART here')),
+          hasLength(1),
+          reason: 'once per capture, not once per packet');
+      expect(r.c.isCapturing, isTrue);
+    });
+
+    test('contact lost again and again does not end the capture', () async {
+      final r = Rig();
+      final trace = <String>[];
+      await r.c.begin(EcgWrist.right, persist: false, trace: trace.add);
+      var seq = 0;
+      for (var i = 0; i < 4; i++) {
+        r.t.emitFrame(frame(seq: ++seq, progress: 3)); // touch
+        r.t.emitFrame(frame(seq: ++seq, progress: 3, presence: false)); // lift
+        r.t.emitFrame(frame(seq: ++seq, progress: 0, presence: false));
+      }
+      await r.settle();
+      await r.settle();
+      expect(r.c.isCapturing, isTrue);
+      expect(r.c.state.phase, isNot(EcgCapturePhase.failed));
+      expect(r.t.calls.where((c) => c == 'cleanup'), isEmpty);
+      expect(trace, contains(contains('the gesture keeps streaming')));
+    });
+
+    test('an ordinary reading still gives up after three contact losses',
+        () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      var seq = 0;
+      for (var i = 0; i < 4; i++) {
+        r.t.emitFrame(frame(seq: ++seq, progress: 3));
+        r.t.emitFrame(frame(seq: ++seq, progress: 3, presence: false));
+        r.t.emitFrame(frame(seq: ++seq, progress: 0, presence: false));
+      }
+      await r.settle();
+      await r.settle();
+      expect(r.c.state.phase, EcgCapturePhase.failed);
+      expect(r.c.state.reason, 'interruptions');
+    });
+
+    test('the start trace names every stage with its time', () async {
+      final r = Rig();
+      final trace = <String>[];
+      await r.c.begin(EcgWrist.right, persist: false, trace: trace.add);
+      for (final stage in [
+        'wrist saved',
+        'guard checked',
+        'history sync paused',
+        'guard set',
+        'prepare answered (accepted)',
+        'start answered (accepted)',
+      ]) {
+        expect(trace, contains(matches(RegExp(
+            'ECG start: ${RegExp.escape(stage)} \\(\\+\\d+ ms, \\d+ ms in\\)\\.'))),
+            reason: stage);
+      }
+    });
+
     test('a cancelled gesture does not leak the flag into the next begin',
         () async {
       final r = Rig();

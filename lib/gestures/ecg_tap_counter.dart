@@ -25,7 +25,9 @@
 //    (exclusive) and then engages. A candidate that started in time is waited
 //    for even if the deadline passes while it is pending.
 //  * After an engaged touch whose contact ended at E, the next window is
-//    [E + gap, E + gap + confirm).
+//    [E + gap, E + gap + reacquire + confirm). [EcgTapCounter.reacquire] is
+//    the sensor's own blind time after a lift (zero by default; the session
+//    sets the measured value), [EcgTapThresholds.confirm] the wearer's.
 //  * Every output is a request. The caller routes buzzes through
 //    AlertDispatcher and paces them; this class sends nothing.
 //
@@ -166,6 +168,7 @@ class EcgTapCounter {
     EcgTapThresholds? thresholds,
     this.stallAfter = const Duration(milliseconds: 500),
     this.maxSampleGap = const Duration(milliseconds: 50),
+    this.reacquire = Duration.zero,
   })  : max = _checkMax(max),
         thresholds = thresholds ?? EcgTapThresholds();
 
@@ -185,6 +188,10 @@ class EcgTapCounter {
   /// the policy above). 100 Hz samples are 10 ms apart; the rest is tolerance
   /// for packet-boundary timestamp jitter, well under the 200 ms touch debounce.
   final Duration maxSampleGap;
+
+  /// Added to every window after a lift: how long the sensor itself takes to
+  /// show a finger that came back (see [EcgTapSession.sensorReacquire]).
+  final Duration reacquire;
 
   int _count = 0;
   bool _started = false;
@@ -241,7 +248,10 @@ class EcgTapCounter {
     // for this same sample.
     if (_phase == _Phase.releasing) {
       if (at - _noContactStart >= thresholds.gap) {
-        _deadline = _noContactStart + thresholds.gap + thresholds.confirm;
+        _deadline = _noContactStart +
+            thresholds.gap +
+            reacquire +
+            thresholds.confirm;
         _phase = _Phase.idle;
       } else if (contact) {
         _phase = _Phase.touching;

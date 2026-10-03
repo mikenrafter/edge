@@ -30,7 +30,9 @@ Future<bool> beginEcgForTap({
   void Function(String line)? note,
 }) async {
   if (isCapturing()) return false; // the ECG screen is mid-reading
+  final looking = Stopwatch()..start();
   final wrist = await lookupWrist();
+  note?.call('ECG start: wrist looked up (${looking.elapsedMilliseconds} ms).');
   if (!isCurrent()) {
     note?.call('The gesture ended while the wrist was being looked up. '
         'No ECG stream was started.');

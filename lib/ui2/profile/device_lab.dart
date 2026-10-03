@@ -11,7 +11,11 @@
 // ECG needs a WHOOP MG. On any other band the switch is shown, disabled, with
 // the reason. While a lab switch is on, normal double-tap actions are suspended
 // and this screen's counter takes over (GestureDispatcher). "Copy all logs" at
-// the bottom copies everything on this screen as plain text.
+// the bottom copies everything on this screen as plain text, plus the kept ECG
+// packets (raw, for replay off the band).
+//
+// Hardware probes (8V): a buzz-spacing probe and a cued ECG touch probe, each
+// started only here, bounded and stoppable ([HardwareProbePanel]).
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +24,8 @@ import 'package:provider/provider.dart';
 
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
+import '../../gestures/hardware_probe_runner.dart';
+import '../../gestures/hardware_probes.dart';
 import '../../gestures/lab_log.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
@@ -57,8 +63,10 @@ class DeviceLab extends StatelessWidget {
         entries: app.deviceLab.entries,
         steps: app.deviceLab.steps,
         sessions: app.deviceLab.sessionSummaries,
+        packets: app.deviceLab.packets,
         thresholds: g.ecgTapThresholds,
         onThresholds: g.setEcgTapThresholds,
+        probes: HardwareProbePanel(runner: app.hardwareProbes),
       ),
     );
   }
@@ -79,6 +87,8 @@ class DeviceLabView extends StatelessWidget {
     this.sessions = const [],
     this.thresholds,
     this.onThresholds,
+    this.packets = const [],
+    this.probes,
   });
 
   final bool ecgSupported;
@@ -107,9 +117,19 @@ class DeviceLabView extends StatelessWidget {
   final EcgTapThresholds? thresholds;
   final ValueChanged<EcgTapThresholds>? onThresholds;
 
+  /// Kept ECG packets, oldest first; copied with the log.
+  final List<LabPacket> packets;
+
+  /// The hardware probes section, when the screen has a runner for it.
+  final Widget? probes;
+
   Future<void> _copy(BuildContext c) async {
     await Clipboard.setData(ClipboardData(
-      text: labLogText(entries: entries, steps: steps, sessions: sessions),
+      text: labLogText(
+          entries: entries,
+          steps: steps,
+          sessions: sessions,
+          packets: packets),
     ));
     if (!c.mounted) return;
     ScaffoldMessenger.of(c).showSnackBar(
@@ -186,6 +206,7 @@ class DeviceLabView extends StatelessWidget {
                     ]),
                   ),
                 ),
+                if (probes != null) Section('Hardware probes', probes!),
                 if (sessions.isNotEmpty)
                   Section(
                     'Sessions',
@@ -421,6 +442,160 @@ class _Adjuster extends StatelessWidget {
             onPressed: canUp ? () => set(value + step) : null,
           ),
         ]),
+      ),
+    );
+  }
+}
+
+
+/// The Device lab's hardware probes (8V). Reads [HardwareProbeRunner]; the
+/// phone vibrates on every ECG cue so the wearer can watch the band, not the
+/// screen. Leaving the screen stops a running probe.
+class HardwareProbePanel extends StatefulWidget {
+  const HardwareProbePanel({super.key, required this.runner});
+  final HardwareProbeRunner runner;
+
+  @override
+  State<HardwareProbePanel> createState() => _HardwareProbePanelState();
+}
+
+class _HardwareProbePanelState extends State<HardwareProbePanel> {
+  EcgCue? _lastCue;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.runner.addListener(_changed);
+  }
+
+  @override
+  void dispose() {
+    widget.runner.removeListener(_changed);
+    widget.runner.stop();
+    super.dispose();
+  }
+
+  void _changed() {
+    final cue = widget.runner.cue;
+    if (cue != null && !identical(cue, _lastCue)) {
+      if (cue.kind == EcgCueKind.touch) {
+        HapticFeedback.heavyImpact();
+      } else if (cue.kind != EcgCueKind.rest) {
+        HapticFeedback.selectionClick();
+      }
+    }
+    _lastCue = cue;
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final r = widget.runner;
+    final running = r.running;
+    final cue = r.cue;
+    final q = r.question;
+    final note = r.note;
+    return Surface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Measure what the band can do. The buzz probe sends up to '
+            '${HapticProbe.maxCommands} short buzzes in groups of three, '
+            'with a rest after each group, and asks how many you felt. The '
+            'ECG probe streams for at most '
+            '${EcgTouchProbe.maxStream.inSeconds} s and tells you when to '
+            'touch and lift the sensor (the phone vibrates on each cue). '
+            'Stop ends either at once. Results go into the log below.',
+            style: F.cap.copyWith(color: p.ink2, height: 1.4),
+          ),
+          const SizedBox(height: S.x3),
+          if (running == null) ...[
+            BigButton(
+              'Run buzz probe',
+              key: const ValueKey('probe-buzz'),
+              icon: LucideIcons.vibrate,
+              soft: true,
+              color: C.blue,
+              onTap: r.canRunBuzz ? r.runBuzz : null,
+            ),
+            const SizedBox(height: S.x2),
+            BigButton(
+              'Run ECG touch probe',
+              key: const ValueKey('probe-ecg'),
+              icon: LucideIcons.heartPulse,
+              soft: true,
+              color: C.blue,
+              onTap: r.canRunEcg ? r.runEcg : null,
+            ),
+          ] else ...[
+            if (running == ProbeKind.ecg)
+              Container(
+                key: const ValueKey('probe-cue'),
+                padding: const EdgeInsets.symmetric(vertical: S.x5),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: p.wash(cue?.kind == EcgCueKind.touch ? C.green : C.blue),
+                  borderRadius: R.rLg,
+                ),
+                child: Text(
+                  cue?.text ?? 'Starting the ECG stream…',
+                  textAlign: TextAlign.center,
+                  style: F.t1.copyWith(color: p.ink),
+                ),
+              ),
+            if (running == ProbeKind.buzz && q == null)
+              Text('Buzzing… keep the band on and count the buzzes.',
+                  style: F.body.copyWith(color: p.ink)),
+            if (q != null) ...[
+              Text(
+                'Group ${r.questionIndex + 1} of ${r.trialCount}: '
+                '${q.commands} buzzes sent ${q.spacingMs} ms apart. '
+                'How many did you feel?',
+                style: F.body.copyWith(color: p.ink),
+              ),
+              const SizedBox(height: S.x2),
+              Row(children: [
+                for (var n = 0; n <= q.commands; n++) ...[
+                  Expanded(
+                    child: BigButton(
+                      '$n',
+                      key: ValueKey('probe-felt-$n'),
+                      soft: true,
+                      color: C.blue,
+                      onTap: () => r.answer(n),
+                    ),
+                  ),
+                  const SizedBox(width: S.x2),
+                ],
+                Expanded(
+                  flex: 2,
+                  child: BigButton(
+                    'Not sure',
+                    key: const ValueKey('probe-felt-skip'),
+                    soft: true,
+                    color: C.blue,
+                    onTap: () => r.answer(null),
+                  ),
+                ),
+              ]),
+            ],
+            const SizedBox(height: S.x3),
+            BigButton(
+              'Stop',
+              key: const ValueKey('probe-stop'),
+              icon: LucideIcons.square,
+              soft: true,
+              color: C.red,
+              onTap: r.stop,
+            ),
+          ],
+          if (note != null) ...[
+            const SizedBox(height: S.x2),
+            Text(note, style: F.cap.copyWith(color: p.ink2)),
+          ],
+        ],
       ),
     );
   }

@@ -566,3 +566,51 @@ Tests: `test/phase8/ecg_tap_counter_test.dart`, `test/gestures/ecg_tap_session_t
   until `buzzQuietGap` (default 1200 ms) after the previous buzz finished writing
   (kept across gestures; `wait` is injectable). A buzz that cannot be written is
   logged (`Buzz xN could not be written`) and the count stands.
+
+## 8V: the band's own timing, measured and replayable (Oct 2, 18:17 lab log)
+
+Evidence and the fitted model: `docs/hardware/whoop-mg-haptics-and-ecg.md`. Tests:
+`test/hardware/*`, `test/gestures/ecg_tap_session_test.dart`,
+`ecg_tap_session_clock_test.dart`, `test/ecg_controller_test.dart`.
+
+- **Gesture mode in the ECG controller.** `EcgController.begin(wrist, persist: false,
+  trace:)`: an `EcgSendRestart` is NOT sent and an `EcgFail('interruptions')` does
+  NOT end the capture (both go to `trace`); every frame is still forwarded. Other
+  fails (progress 255) and terminals end it as before. An ordinary reading is
+  unchanged. `trace` also gets `ECG start: <stage> (+N ms, M ms in).` for wrist
+  saved, guard checked, history sync paused, guard set, prepare answered, start
+  answered; `beginEcgForTap` adds `ECG start: wrist looked up (N ms).`
+- **Reacquire.** `EcgTapCounter(reacquire:)` (default zero) is added to every window
+  after a lift: `[E+gap, E+gap+reacquire+confirm)`. `EcgTapSession.sensorReacquire`
+  defaults to 1500 ms.
+- **Bursts.** `EcgTapSession.maxPulsesPerBurst` (2): a count buzz of N pulses is
+  `buzz(2)`, then `buzz(1)` …, each a separate call with event id `<id>` then
+  `<id>:b<k>`, each after `buzzQuietGap` (now 1800 ms) from the previous write. Log
+  lines: `Buzz x3, pulses 1–2 written…`, `Buzz x3, pulse 3 waits N ms…`. A burst that
+  could not be written ends that buzz.
+- **Packet lines** end with `; band: presence on|off, S2 n, flags 0x.., progress n,
+  quality n[, unreadable a+b]`.
+- **Post-roll (lab only).** `EcgTapSession(postRoll:)` (AppState: 3 s while
+  `ecgOnDoubleTap`): after a COUNTED end the result is reported at once; the stream
+  stop waits `postRoll`, logging `After the count, packet N: …` lines (never counted);
+  the 8N interval covers them. No post-roll after an abandon.
+- **Packets for replay.** `EcgTapSession(onPacket:)` → `DeviceLabLog.addPacket(r, at,
+  {tag})` (RAM, max 360, cleared by `clear`). `labLogText(packets:)` ends with
+  `ECG packets, oldest first`, a `format:` line and one `labPacketLine` per packet
+  (`r17v1 tag=<tag> | recv= sec= sub= flags= s2= progress= quality= unreadable= n=
+  b64=`; `b64=0` for all-zero). `DeviceLabView(packets:)` copies them.
+  `DeviceLabLog.endSession(result:)` overrides the summary's outcome.
+- **Probes.** `lib/gestures/hardware_probes.dart`: `HapticProbe` (trials of single
+  buzzes at spacings 200–1600 ms, ≤ `maxCommands` 30, rest 2 s, `askFelt` after each,
+  `onBandEvent`, per-command reply via `BleEngine.buzzBand(onReply:)`) and
+  `EcgTouchProbe` (stream ≤ `maxStream` 60 s, always stopped in `finally`; cue script;
+  `analyzeTouchProbe`, `contactRuns`). `HardwareProbeRunner` (one probe at a time;
+  refuses with a `note`; logs a lab session) is `AppState.hardwareProbes`; its buzz is
+  a dispatcher delivery (`hardware_probe` rule). `DeviceLabView(probes:)` shows a
+  `Hardware probes` section; `HardwareProbePanel` stops a running probe on dispose and
+  vibrates the phone on each ECG cue.
+- **Replay and the virtual band** (`test/support/ecg_trace.dart`, `virtual_mg.dart`):
+  `Trace.parse` reads `r17v1`/`session` lines (a whole copied log parses);
+  `replayTrace` runs a real session over them. The 18:17 fixture replays to the band's
+  counts with no reacquire, and session 18:19:10 counts tap 4 with it.
+

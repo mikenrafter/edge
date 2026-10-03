@@ -102,6 +102,7 @@ class EcgTapSession {
     required this.onFinished,
     this.onStarted,
     this.recordSession,
+    this.onPacket,
     this.strapNow,
     this.step,
     DateTime Function()? now,
@@ -114,10 +115,14 @@ class EcgTapSession {
     this.recordTimeout = const Duration(seconds: 5),
     this.buzzTimeout = const Duration(seconds: 15),
     this.sensorSettle = const Duration(milliseconds: 2500),
-    this.buzzQuietGap = const Duration(milliseconds: 1200),
+    this.sensorReacquire = const Duration(milliseconds: 1500),
+    this.buzzQuietGap = const Duration(milliseconds: 1800),
+    this.maxPulsesPerBurst = 2,
+    Duration Function()? postRoll,
     Future<void> Function(Duration)? wait,
   })  : _now = now ?? DateTime.now,
-        _wait = wait ?? ((d) => Future<void>.delayed(d));
+        _wait = wait ?? ((d) => Future<void>.delayed(d)),
+        _postRoll = postRoll ?? (() => Duration.zero);
 
   /// Start the ECG stream; true when the command went out and the controller is
   /// running. It does NOT mean packets are flowing: see [EcgStreamReadiness].
@@ -159,6 +164,11 @@ class EcgTapSession {
   /// A line for the Device lab's trace.
   final void Function(String line)? step;
 
+  /// Every packet this gesture saw (and, during a post-roll, saw after it
+  /// ended), with when the phone got it: the Device lab keeps them in RAM for
+  /// "Copy all logs" so a session can be replayed off the band. Never stored.
+  final void Function(LabradorR17 r, DateTime receivedAt)? onPacket;
+
   final DateTime Function() _now;
 
   /// Packets arrive roughly once a second, so the counter's sample-clock stall
@@ -196,11 +206,37 @@ class EcgTapSession {
   /// so its deadline is [sensorSettle] + start after the first sample.
   final Duration sensorSettle;
 
-  /// The quiet time after one buzz finishes writing before the next may be
-  /// asked for. Measured, not specified: in the 2026-10-02 lab log a buzz asked
-  /// for 0.2–0.65 s after the previous one finished writing never played (no
-  /// reply, no haptic); one asked for 1.06 s after did. Pulses INSIDE one buzz
-  /// are 300 ms apart and play.
+  /// How long the sensor itself takes to show a finger that came back after a
+  /// lift, added to every window after a lift ([EcgTapCounter.reacquire]).
+  /// Measured, not specified: in the 2026-10-02 18:17 lab log the only two
+  /// re-touches that showed up did so 1.96 s and 2.16 s after the lift, both
+  /// at sample 76 of a packet (the band reports contact again at a fixed phase
+  /// of its packet cycle), while a lift showed as zeros within ~0.2 s of the
+  /// wearer feeling the buzz. With gap 200 and confirm 1000 that window closed
+  /// 1.2 s after the lift, before either re-touch could appear.
+  final Duration sensorReacquire;
+
+  /// The most pulses sent back to back in one burst. Measured, not specified:
+  /// in the 18:17 lab log every three-pulse buzz (pulses 300 ms apart) got a
+  /// band reply for pulses 1 and 2 and none for pulse 3, and the band logged
+  /// one haptic start/stop pair; two pulses 300 ms apart are felt as two. More
+  /// pulses go out in further bursts, each after [buzzQuietGap].
+  final int maxPulsesPerBurst;
+
+  /// Lab only: how long to keep the stream on after the gesture ended, so the
+  /// trace shows what the sensor did next (a re-touch that came too late, for
+  /// one). The result is reported at once; only the stop waits. Zero outside
+  /// the lab.
+  final Duration Function() _postRoll;
+
+  /// The quiet time after one burst finishes writing before the next may be
+  /// asked for. Measured, not specified: in the 2026-10-02 lab logs the band
+  /// is busy for a while after it takes a command (it accepts ONE more inside
+  /// that time, the second pulse of a pair 300 ms later, and drops the rest
+  /// with no reply). A command written ~1.25 s after the first of a pair was
+  /// dropped; one written ~2.0 s after played. 1.8 s after the pair's second
+  /// write puts the next burst ~2.15 s after its first: past both.
+  /// docs/hardware/whoop-mg-haptics-and-ecg.md keeps the evidence.
   final Duration buzzQuietGap;
 
   final Future<void> Function(Duration) _wait;
@@ -231,6 +267,10 @@ class EcgTapSession {
   /// finished writing). Kept across gestures: the band does not care which
   /// gesture a buzz belongs to.
   DateTime? _quietUntil;
+
+  bool _postRolling = false;
+  int _postPackets = 0;
+  int? _postEndStrapSec;
 
   // The strap-clock interval seen on the wire this session (8N).
   int? _firstStrapSec, _lastEndStrapSec, _strapAtBegin;
@@ -274,6 +314,7 @@ class EcgTapSession {
       thresholds: t,
       stallAfter: stallAfter,
       maxSampleGap: maxSampleGap,
+      reacquire: sensorReacquire,
     );
     _readiness = EcgStreamReadiness();
     _clock = EcgSampleClock();
@@ -327,18 +368,16 @@ class EcgTapSession {
   /// zero).
   void onFrame(LabradorR17 r) {
     final c = _counter;
-    if (!_active || c == null) return;
+    if (!_active || c == null) {
+      if (_postRolling) _afterCount(r);
+      return;
+    }
     final wall = _now();
+    _notePacket(r, wall);
     _packets++;
     final prevWall = _lastFrameWall;
     final n = r.samples.length;
-    var raw = 0, first = -1, last = -1;
-    for (var i = 0; i < n; i++) {
-      if (r.samples[i] == 0) continue;
-      raw++;
-      if (first < 0) first = i;
-      last = i;
-    }
+    final (raw, first, last) = _contactOf(r);
     final fill = !c.thresholds.extraSensitive;
     bool contactAt(int i) =>
         fill ? first >= 0 && i >= first && i <= last : r.samples[i] != 0;
@@ -368,7 +407,7 @@ class EcgTapSession {
       '${raw > 0 ? ' (samples $first–$last)' : ''}, '
       'strap time ${r.strapTime.toStringAsFixed(3)} (newest sample), $gap, '
       '$continuity, received ${(behind.inMicroseconds / 1000).round()} ms '
-      'behind the freshest packet so far',
+      'behind the freshest packet so far; ${_bandStatus(r)}',
     );
     if (_packets == 1) {
       step?.call('First packet arrived ${_sinceTap()} ms after the tap.');
@@ -407,6 +446,55 @@ class EcgTapSession {
     for (var i = 0; i < n && _active; i++) {
       _handle(c.sample(base + _samplePeriod * i, contact: contactAt(i)));
     }
+  }
+
+  /// How many samples are non-zero, and the first and last of them (-1 when
+  /// none).
+  static (int, int, int) _contactOf(LabradorR17 r) {
+    var raw = 0, first = -1, last = -1;
+    for (var i = 0; i < r.samples.length; i++) {
+      if (r.samples[i] == 0) continue;
+      raw++;
+      if (first < 0) first = i;
+      last = i;
+    }
+    return (raw, first, last);
+  }
+
+  /// The band's own view of the packet: its debounced electrode presence,
+  /// HeartKey S2 state and flags, progress and signal quality. Logged, not
+  /// used to decide anything (yet): the lab needs to see whether presence
+  /// tracks a finger faster than the samples do.
+  static String _bandStatus(LabradorR17 r) {
+    final unreadable = r.unreadable.reasons;
+    return 'band: presence ${r.presence ? 'on' : 'off'}, S2 ${r.s2State}, '
+        'flags 0x${r.flags.raw.toRadixString(16).padLeft(2, '0')}, '
+        'progress ${r.progress}, quality ${r.quality}'
+        '${unreadable.isEmpty ? '' : ', unreadable ${unreadable.join('+')}'}';
+  }
+
+  void _notePacket(LabradorR17 r, DateTime wall) {
+    try {
+      onPacket?.call(r, wall);
+    } catch (_) {}
+  }
+
+  /// A packet that arrived after the gesture ended, during a lab post-roll:
+  /// logged (and kept for replay), never counted.
+  void _afterCount(LabradorR17 r) {
+    final wall = _now();
+    _notePacket(r, wall);
+    _postPackets++;
+    final (raw, first, last) = _contactOf(r);
+    final endSec = r.strapSeconds +
+        ((r.subseconds * 1000 + 32767) ~/ 32768 + 999) ~/ 1000;
+    final e = _postEndStrapSec;
+    _postEndStrapSec = e == null || endSec > e ? endSec : e;
+    step?.call(
+      'After the count, packet $_postPackets: ${r.samples.length} samples, '
+      '$raw with contact${raw > 0 ? ' (samples $first–$last)' : ''}, strap '
+      'time ${r.strapTime.toStringAsFixed(3)}; ${_bandStatus(r)}',
+    );
   }
 
   /// Start the counter and open its first window, once, when the stream
@@ -505,30 +593,43 @@ class EcgTapSession {
     return _buzzTail;
   }
 
-  /// One buzz, in order, after the band's quiet gap. A buzz that could not be
-  /// written is logged, never retried: the count it reports already stands,
-  /// and the gesture still ends (or carries on) on its own clock.
+  /// One count buzz, in order: bursts of at most [maxPulsesPerBurst] pulses,
+  /// each after the band's quiet gap. A burst that could not be written is
+  /// logged and ends the buzz (the count it reports already stands), and the
+  /// gesture still ends (or carries on) on its own clock.
   Future<void> _deliverBuzz(int pulses, String id, DateTime requested) async {
-    final quiet = _quietUntil;
-    final now = _now();
-    if (quiet != null && quiet.isAfter(now)) {
-      final w = quiet.difference(now);
-      step?.call('Buzz x$pulses waits ${w.inMilliseconds} ms: the band is '
-          'still busy with the last buzz.');
-      await _wait(w);
+    final bursts = (pulses + maxPulsesPerBurst - 1) ~/ maxPulsesPerBurst;
+    var sent = 0;
+    for (var k = 0; k < bursts; k++) {
+      final n = pulses - sent < maxPulsesPerBurst
+          ? pulses - sent
+          : maxPulsesPerBurst;
+      final what = bursts == 1
+          ? 'Buzz x$pulses'
+          : 'Buzz x$pulses, ${n == 1 ? 'pulse ${sent + 1}' : 'pulses ${sent + 1}–${sent + n}'}';
+      final quiet = _quietUntil;
+      final now = _now();
+      if (quiet != null && quiet.isAfter(now)) {
+        final w = quiet.difference(now);
+        step?.call('$what waits ${w.inMilliseconds} ms: the band is still '
+            'busy with the last buzz.');
+        await _wait(w);
+      }
+      var ok = false;
+      try {
+        ok = await buzz(n, k == 0 ? id : '$id:b$k').timeout(buzzTimeout);
+      } catch (_) {
+        ok = false;
+      }
+      final done = _now();
+      _quietUntil = done.add(buzzQuietGap);
+      step?.call(
+        '$what ${ok ? 'written' : 'could not be written'}, '
+        '${done.difference(requested).inMilliseconds} ms after the request.',
+      );
+      if (!ok) return;
+      sent += n;
     }
-    var ok = false;
-    try {
-      ok = await buzz(pulses, id).timeout(buzzTimeout);
-    } catch (_) {
-      ok = false;
-    }
-    final done = _now();
-    _quietUntil = done.add(buzzQuietGap);
-    step?.call(
-      'Buzz x$pulses ${ok ? 'written' : 'could not be written'}, '
-      '${done.difference(requested).inMilliseconds} ms after the request.',
-    );
   }
 
   /// End the gesture. Order matters (8N): the flags reset first (the next tap
@@ -569,15 +670,33 @@ class EcgTapSession {
       onFinished(count, reason);
     } catch (_) {}
     if (up || stopStream) {
-      final stopping = _stopInFlight = _endStreamSafely();
+      final post = up && reason == null ? _postRollSafe() : Duration.zero;
+      final stopping = _stopInFlight = () async {
+        if (post > Duration.zero) {
+          _postRolling = true;
+          _postPackets = 0;
+          step?.call('Keeping the stream on for ${post.inMilliseconds} ms to '
+              'see what the sensor does next (Device lab only).');
+          try {
+            await _wait(post);
+          } catch (_) {}
+          _postRolling = false;
+        }
+        await _endStreamSafely();
+      }();
       await stopping;
       if (identical(_stopInFlight, stopping)) _stopInFlight = null;
     }
+    final postEnd = _postEndStrapSec;
+    _postEndStrapSec = null;
     // The recording ran until the stop returned. The strap clock now is only
     // known to the whole second, so round it UP: over-covering by a second is
     // harmless, leaving the tail of the recording outside the interval is not.
     final afterStop = _strapNowSafe();
     int? strapEnd = packetEnd;
+    if (postEnd != null && (strapEnd == null || postEnd > strapEnd)) {
+      strapEnd = postEnd;
+    }
     if (strapStart != null && afterStop != null) {
       final covered = afterStop + 1;
       strapEnd = strapEnd == null || covered > strapEnd ? covered : strapEnd;
@@ -593,6 +712,14 @@ class EcgTapSession {
     try {
       await recordSession?.call(record).timeout(recordTimeout);
     } catch (_) {}
+  }
+
+  Duration _postRollSafe() {
+    try {
+      return _postRoll();
+    } catch (_) {
+      return Duration.zero;
+    }
   }
 
   int? _strapNowSafe() {

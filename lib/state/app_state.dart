@@ -111,6 +111,7 @@ import '../import/whoop_import.dart';
 import '../gestures/double_tap_repeat.dart';
 import '../gestures/ecg_tap_begin.dart';
 import '../gestures/ecg_tap_session.dart';
+import '../gestures/hardware_probe_runner.dart';
 import '../gestures/gesture_dispatcher.dart';
 import '../gestures/lab_log.dart';
 import '../gestures/moment_stamp.dart';
@@ -242,8 +243,12 @@ class AppState extends ChangeNotifier {
       releaseScreen: ScreenWake.releaseOwner,
       log: _log,
     );
-    // The Device lab's touch counter reads the same live packets (RAM only).
-    c.onFrame = _ecgTapSession.onFrame;
+    // The Device lab's touch counter and ECG touch probe read the same live
+    // packets (RAM only). At most one of them holds the stream.
+    c.onFrame = (r) {
+      _ecgTapSession.onFrame(r);
+      hardwareProbes.onFrame(r);
+    };
     return c;
   }
 
@@ -304,6 +309,64 @@ class AppState extends ChangeNotifier {
 
   /// The Device lab's rolling log (8I/8L). RAM only.
   final DeviceLabLog deviceLab = DeviceLabLog();
+
+  /// The Device lab's hardware probes (8V): buzz spacing and ECG touch timing,
+  /// one at a time, started only from the lab.
+  late final HardwareProbeRunner hardwareProbes = HardwareProbeRunner(
+    lab: deviceLab,
+    sendBuzz: _probeBuzz,
+    isConnected: () => engine.isConnected,
+    ecgSupported: () => engine.isMaverick,
+    ecgBusy: () => _ecgTapSession.active || ecg.isCapturing,
+    beginEcg: _beginEcgForProbe,
+    endEcg: () async {
+      try {
+        await ecg.cancel();
+      } catch (_) {}
+    },
+    isEcgAlive: () => ecg.isCapturing,
+  );
+
+  /// One ordinary buzz for the buzz probe: still a dispatcher delivery (its
+  /// own rule and event id), with the band's reply reported back.
+  Future<bool> _probeBuzz(void Function(String? status, int ms) onReply) async {
+    final now = DateTime.now();
+    final r = await alertDispatcher.dispatch(
+      _hardwareProbeRule,
+      eventId: 'probe:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandDelivery: () => deliverBuzzSequence(BuzzSequence(const [0]),
+          buzz: () => engine.buzzBand(onReply: onReply),
+          isConnected: () => engine.isConnected),
+    );
+    return r.targets.contains('band');
+  }
+
+  static const _hardwareProbeRule = AlertRule(
+    id: 'hardware_probe',
+    kind: 'hardwareProbe',
+    destinations: AlertRule.band,
+    executionMode: AlertExecutionMode.phoneLive,
+    staleAfter: Duration(seconds: 10),
+    channelPolicyId: 'hardware_probe',
+  );
+
+  /// The ECG touch probe's stream: the gesture's start path (wrist, guard,
+  /// generation checks), persist off, with its own "still wanted" test.
+  Future<bool> _beginEcgForProbe() => beginEcgForTap(
+        isCurrent: () => hardwareProbes.running == ProbeKind.ecg,
+        isCapturing: () => ecg.isCapturing,
+        lookupWrist: () async {
+          final serial = ecg.transport.serial;
+          return serial == null ? null : await ecg.guard.wrist(serial);
+        },
+        begin: (wrist) =>
+            ecg.begin(wrist, persist: false, trace: deviceLab.addStep),
+        captureEpoch: () => ecg.captureEpoch,
+        cancel: () => ecg.cancel(),
+        note: deviceLab.addStep,
+      );
 
   GestureDispatcher _newGestureDispatcher() => GestureDispatcher(
         settings: gestureSettings,
@@ -367,6 +430,12 @@ class AppState extends ChangeNotifier {
       deviceLab.endSession(count: count, reason: reason);
     },
     step: deviceLab.addStep,
+    // 8V: every packet, raw, for the lab's replay export (RAM only).
+    onPacket: deviceLab.addPacket,
+    // 8V: in the lab, watch the sensor for 3 s after the count is decided.
+    postRoll: () => gestureSettings.ecgOnDoubleTap
+        ? const Duration(seconds: 3)
+        : Duration.zero,
     // 8N: the stream makes the band save raw ECG that history sync delivers
     // later; keep the interval (no samples) so it is labelled gesture contact.
     recordSession: (r) async {
@@ -426,7 +495,8 @@ class AppState extends ChangeNotifier {
       },
       // persist: false: a long touch can reach a normal terminal, and a gesture
       // must never leave an ECG reading behind (invariant 14).
-      begin: (wrist) => ecg.begin(wrist, persist: false),
+      begin: (wrist) =>
+          ecg.begin(wrist, persist: false, trace: deviceLab.addStep),
       captureEpoch: () => ecg.captureEpoch,
       cancel: () => ecg.cancel(),
       note: deviceLab.addStep,
@@ -2839,6 +2909,7 @@ class AppState extends ChangeNotifier {
     // alertDispatcher (live-only, short deadline) and never straight to the
     // engine.
     final handled = _gestureDispatcher.handle(e);
+    hardwareProbes.onBandEvent(e);
     unawaited(handled.then((outcomes) async {
       deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
       await ackTap(alertDispatcher, e, outcomes);

@@ -175,6 +175,8 @@ class EcgController extends ChangeNotifier {
   bool _cleanupDone = false;
   bool _screenHeld = false;
   bool _persist = true;
+  void Function(String line)? _trace;
+  bool _restartNoted = false;
   int _retriesUsed = 0;
   int? _windowStartMs;
   EcgReducerState _reducer = const EcgReducerState.initial();
@@ -198,6 +200,12 @@ class EcgController extends ChangeNotifier {
 
   bool _stale(int epoch) => _epoch != epoch || _lease == null;
 
+  void _note(String line) {
+    try {
+      _trace?.call(line);
+    } catch (_) {}
+  }
+
   /// Start a reading on [wrist]. Every precondition failure lands in a
   /// terminal phase with a reason; nothing is written to the band before
   /// the durable guard is acknowledged.
@@ -205,11 +213,32 @@ class EcgController extends ChangeNotifier {
   /// [persist] false is for a consumer that only reads the live stream (the
   /// tap-counting gesture): whatever terminal the band reaches, nothing is
   /// saved, no sync is requested and the capture ends `cancelled`/`gesture`.
+  /// The reading's own rules also stand down, because lifting a finger is the
+  /// gesture, not a fault: contact lost three times does not end the capture,
+  /// and the explicit RESTART a reading sends when the band's S2 state drops
+  /// is not sent (a restart stops forwarding packets while it runs, and makes
+  /// the band start its signal over). Both are reported through [trace].
   /// It is set per begin, so it can never outlive the capture it was for.
-  Future<void> begin(EcgWrist wrist, {bool persist = true}) async {
+  ///
+  /// [trace] gets one line per start stage with the time it took (Device lab).
+  Future<void> begin(
+    EcgWrist wrist, {
+    bool persist = true,
+    void Function(String line)? trace,
+  }) async {
     if (_lease != null) return; // single-flight
     final epoch = ++_epoch;
     _persist = persist;
+    _trace = trace;
+    _restartNoted = false;
+    final clock = Stopwatch()..start();
+    var lastMs = 0;
+    void stage(String what) {
+      final now = clock.elapsedMilliseconds;
+      _note('ECG start: $what (+${now - lastMs} ms, $now ms in).');
+      lastMs = now;
+    }
+
     live.clear();
     preview.markDirty();
     if (!transport.isReady) {
@@ -267,6 +296,7 @@ class EcgController extends ChangeNotifier {
     _set(EcgCaptureState(phase: EcgCapturePhase.preparing, wrist: wrist));
     try {
       await guard.setWrist(serial, wrist);
+      stage('wrist saved');
       if (await guard.isActive(serial)) {
         _set(_state.copyWith(phase: EcgCapturePhase.recovering));
         final r = await ecgRecoverRetainedGuard(
@@ -282,8 +312,10 @@ class EcgController extends ChangeNotifier {
         }
         _set(_state.copyWith(phase: EcgCapturePhase.preparing));
       }
+      stage('guard checked');
       await transport.cancelHistory(lease);
       if (_stale(epoch)) return;
+      stage('history sync paused');
       // The durable guard goes down BEFORE the first ON write and is
       // acknowledged; a write that did not land does not get a band enabled.
       if (!await guard.setActive(serial)) {
@@ -291,11 +323,13 @@ class EcgController extends ChangeNotifier {
         return;
       }
       if (_stale(epoch)) return;
+      stage('guard set');
       // Subscribe BEFORE any generation write: the first post-START packet
       // can arrive at the write/response boundary.
       _sub ??= transport.events.listen(_onEvent);
       final prep = await transport.prepare(lease, wrist);
       if (_stale(epoch)) return;
+      stage('prepare answered (${prep.allSucceeded ? 'accepted' : 'refused'})');
       if (!prep.allSucceeded) {
         log('[ECG] PREPARE not accepted: $prep');
         await _finish(epoch, EcgCapturePhase.failed, reason: 'prepare');
@@ -307,6 +341,7 @@ class EcgController extends ChangeNotifier {
       await holdScreen(screenOwner);
       final st = await transport.start(lease);
       if (_stale(epoch)) return;
+      stage('start answered (${st.allSucceeded ? 'accepted' : 'refused'})');
       if (!st.allSucceeded) {
         log('[ECG] START not accepted: $st');
         _armed = false;
@@ -432,9 +467,21 @@ class EcgController extends ChangeNotifier {
         case EcgClear():
           break;
         case EcgSendRestart():
-          unawaited(_restart(epoch));
+          if (_persist) {
+            unawaited(_restart(epoch));
+          } else if (!_restartNoted) {
+            // Once per capture: the packet lines show the S2 state each time.
+            _restartNoted = true;
+            _note('ECG: the band\'s S2 state dropped with contact on; a '
+                'reading would send RESTART here, the gesture does not.');
+          }
         case EcgFail(:final reason):
-          unawaited(_finish(epoch, EcgCapturePhase.failed, reason: reason));
+          if (!_persist && reason == 'interruptions') {
+            _note('ECG: contact lost ${_reducer.interruptions} times; a '
+                'reading would give up here, the gesture keeps streaming.');
+          } else {
+            unawaited(_finish(epoch, EcgCapturePhase.failed, reason: reason));
+          }
         case EcgTerminal(:final outcome):
           unawaited(_handleTerminal(epoch, outcome));
       }

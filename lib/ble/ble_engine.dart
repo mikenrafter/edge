@@ -7794,9 +7794,15 @@ class BleEngine implements AlarmBandWriter {
   /// (false) instead of playing late, after the sequence player has already
   /// given up on it and a retry may have been made. Defaults to
   /// [buzzQueueDeadline], the sequence player's per-step timeout.
+  ///
+  /// [onReply] hears this buzz's own reply (its status name, or null when none
+  /// came within [buzzReplyLogWindow]) and the ms since the call: the Device
+  /// lab's buzz probe uses it to see which commands the band took (8V). Like
+  /// the log line, it never gates delivery.
   Future<bool> buzzBand({
     int holdMs = 0,
     Duration maxQueueWait = buzzQueueDeadline,
+    void Function(String? status, int ms)? onReply,
   }) async {
     final owner = _session;
     if (owner?.connected != true) return false;
@@ -7821,6 +7827,10 @@ class BleEngine implements AlarmBandWriter {
       _log('[buzz] $line');
       try {
         onBuzzDiagnostic?.call(line);
+      } catch (_) {}
+      try {
+        onReply?.call(
+            reply == null ? null : _cmdStatusName(reply.status), ms);
       } catch (_) {}
     }));
     return true;

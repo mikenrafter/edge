@@ -268,6 +268,11 @@ const _notComponents = {
   // steppers) inside them.
   'LiveDevices', 'LiveDevicesView', 'LiveStreamChart', 'DeviceLab',
   'DeviceLabView', 'EcgThresholdAdjusters',
+  // The Device lab's hardware probes (8V): it drives a live probe runner (a
+  // band buzz or an ECG stream) and stops it when it leaves the screen, so a
+  // gallery case would start hardware. hardware_probe_panel_test.dart pumps it
+  // over a runner with fake effects.
+  'HardwareProbePanel',
   // FULL-BLEED, so it is a screen element rather than a component: it takes
   // the whole window width back off its parent's padding via OverflowBox. The
   // gallery lays every case out in a ~179 logical-px cell, which is narrower
