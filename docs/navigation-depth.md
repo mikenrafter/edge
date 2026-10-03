@@ -13,6 +13,7 @@ Row names are the labels on screen. "Before" is the app as of 8F, "After" is 8A.
 | Notifications | Profile → Settings → Notifications | Profile → Settings → Notifications |
 | Band notifications | Profile → Settings → Notifications → Band notifications | Profile → Settings → Band notifications |
 | Gestures | Profile → Settings → Gestures | Profile → Settings → Gestures |
+| Haptics | Profile → (no entry point) → Haptics | Profile → Settings → Haptics |
 | Alarm | Profile → Settings → Alarm | Profile → Settings → Alarm |
 | Automation | Profile → Settings → Automation | Profile → Settings → Automation |
 | Data | Profile → Settings → Data | Profile → Settings → Data |
@@ -27,6 +28,9 @@ Row names are the labels on screen. "Before" is the app as of 8F, "After" is 8A.
   relay can run) and Gestures are direct rows. Gestures moved there from the
   Automation group, where it was labelled Double-tap. Notifications keeps its
   own Android Relay row as a second way in to Band notifications.
+- Settings, "The band" group, 8AD: a Haptics row after Gestures. It holds the
+  named buzz patterns and the band safety limits; the Device lab link inside it
+  shows only in developer mode.
 - Profile home, Quick access: a Live devices row. The screen had no way in
   before.
 - Every settings screen lists its settings as sections that start expanded

@@ -140,8 +140,13 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
 // Notes that are all mf came from taps, which carry no loudness, so they are
 // compiled with the same weight planForTaps uses (what the editor showed is
 // what plays); notes with any other dynamic are weighed for loudness. Null
-// when nothing compiles (no stored plan, and over the runtime cap or empty).
-_Resolved? _resolve(BuzzSequence s, HapticDeviceProfile profile) {
+// when nothing compiles (no stored plan, and over [maxRuntime] or empty; a null
+// [maxRuntime] lifts the cap).
+_Resolved? _resolve(
+  BuzzSequence s,
+  HapticDeviceProfile profile,
+  Duration? maxRuntime,
+) {
   final baked = _fromBaked(s, profile);
   if (baked != null) return baked;
   final notes = s.notes;
@@ -154,7 +159,7 @@ _Resolved? _resolve(BuzzSequence s, HapticDeviceProfile profile) {
         profile,
         extended: s.extended,
         dynamicWeight: loud ? 1 : 0,
-        maxRuntimeMs: kMaxHapticRuntime.inMilliseconds,
+        maxRuntimeMs: maxRuntime?.inMilliseconds,
       );
       if (plan != null) return _fromPlan(plan, profile);
     } on FormatException {
@@ -163,7 +168,7 @@ _Resolved? _resolve(BuzzSequence s, HapticDeviceProfile profile) {
       // Same.
     }
   }
-  final plan = planForTaps(s, profile);
+  final plan = planForTaps(s, profile, maxRuntime: maxRuntime);
   return plan == null ? null : _fromPlan(plan, profile);
 }
 
@@ -171,6 +176,7 @@ _Resolved? _resolve(BuzzSequence s, HapticDeviceProfile profile) {
 /// else its notes compiled, else its taps compiled, as Maverick commands
 /// through [writePattern], waiting on [waitEnded] between them. Without a
 /// profile, or when nothing compiles, it plays today's per-tap buzz.
+/// [maxRuntime] is the longest a compiled rhythm may run (null lifts it).
 Future<BuzzDelivery> deliverBandSequence(
   BuzzSequence s, {
   required HapticDeviceProfile? profile,
@@ -179,8 +185,9 @@ Future<BuzzDelivery> deliverBandSequence(
   required Future<bool> Function(List<int> effects, int loop) writePattern,
   required Future<bool> Function(Duration timeout) waitEnded,
   required bool Function() isConnected,
+  Duration? maxRuntime = kMaxHapticRuntime,
 }) {
-  final resolved = profile == null ? null : _resolve(s, profile);
+  final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
   if (resolved == null) {
     return deliverBuzzSequence(
       s,
@@ -200,8 +207,12 @@ Future<BuzzDelivery> deliverBandSequence(
 /// How long a delivery of [s] may take: the sequence's own transport timeout,
 /// or on a profiled band the longer of that and the plan's felt length plus
 /// 2 s per command and 1 s.
-Duration bandSequenceTimeout(BuzzSequence s, HapticDeviceProfile? profile) {
-  final resolved = profile == null ? null : _resolve(s, profile);
+Duration bandSequenceTimeout(
+  BuzzSequence s,
+  HapticDeviceProfile? profile, {
+  Duration? maxRuntime = kMaxHapticRuntime,
+}) {
+  final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
   if (resolved == null) return s.transportTimeout;
   final planned = Duration(
     milliseconds: resolved.feltMs + 2000 * resolved.cmds.length + 1000,
@@ -212,8 +223,12 @@ Duration bandSequenceTimeout(BuzzSequence s, HapticDeviceProfile? profile) {
 /// How many band commands a delivery of [s] writes: the plan's commands on a
 /// profiled band, else one per tap. What the band queue counts against the
 /// rolling limit.
-int bandSequenceCommands(BuzzSequence s, HapticDeviceProfile? profile) {
-  final resolved = profile == null ? null : _resolve(s, profile);
+int bandSequenceCommands(
+  BuzzSequence s,
+  HapticDeviceProfile? profile, {
+  Duration? maxRuntime = kMaxHapticRuntime,
+}) {
+  final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
   return resolved == null ? s.length : resolved.cmds.length;
 }
 
@@ -221,8 +236,12 @@ int bandSequenceCommands(BuzzSequence s, HapticDeviceProfile? profile) {
 /// write of a compiled plan; zero for the per-tap path. The queue holds its
 /// slot this long (or until the ended event) so the next job does not write
 /// while the band still plays.
-Duration bandSequenceSettle(BuzzSequence s, HapticDeviceProfile? profile) {
-  final resolved = profile == null ? null : _resolve(s, profile);
+Duration bandSequenceSettle(
+  BuzzSequence s,
+  HapticDeviceProfile? profile, {
+  Duration? maxRuntime = kMaxHapticRuntime,
+}) {
+  final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
   if (resolved == null || resolved.cmds.isEmpty) return Duration.zero;
   return Duration(milliseconds: resolved.cmds.last.waitMs);
 }

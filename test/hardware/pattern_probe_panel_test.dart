@@ -1077,4 +1077,98 @@ void main() {
       expect(r.running, isNull);
     });
   });
+
+  // 8AD, spec E (runner half): patternSetRendition(List<PatternEntry>) puts a
+  // transcription made from taps into the ACTIVE rendition of the open test.
+  // Read through `dynamic` so this file compiles before the method exists.
+  group('8AD patternSetRendition', () {
+    List<PatternEntry> notes(String code) =>
+        PatternTranscript.parseCode(code).entries;
+    void set(HardwareProbeRunner r, List<PatternEntry> e) =>
+        (r as dynamic).patternSetRendition(e);
+
+    test('fills the active rendition A, moves the cursor to the end and '
+        'notifies', () async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      var heard = 0;
+      r.addListener(() => heard++);
+      set(r, notes('N4mf R1 N4mf'));
+      final s = r.pattern!;
+      expect(s.rendition(0, 0).code, 'N4mf R1 N4mf');
+      expect(s.rendition(0, 1).code, '');
+      expect(s.cursor, 3);
+      expect(s.nextIsNote, isFalse);
+      expect(heard, 1);
+      r.closePattern();
+    });
+
+    test('fills B when B is active, and replaces what was there', () async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      r.patternTap(2);
+      r.patternRendition(1);
+      r.patternTap(8);
+      r.patternTap(8);
+      set(r, notes('N1mf R2 N4ff'));
+      final s = r.pattern!;
+      expect(s.rendition(0, 1).code, 'N1mf R2 N4ff');
+      expect(s.rendition(0, 0).code, 'N2mf');
+      expect(s.cursor, 3);
+      r.closePattern();
+    });
+
+    test('fills the open test, not the first', () async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      r.patternTest(4);
+      set(r, notes('N8mf'));
+      expect(r.pattern!.rendition(4, 0).code, 'N8mf');
+      expect(r.pattern!.rendition(0, 0).code, '');
+      r.closePattern();
+    });
+
+    test('logs which test and rendition came from taps', () async {
+      final lab = DeviceLabLog();
+      final r = _runner(lab);
+      await r.openPattern();
+      set(r, notes('N4mf R1 N4mf'));
+      r.patternTest(1);
+      r.patternRendition(1);
+      set(r, notes('N2mf'));
+      r.closePattern();
+      final log = lab.steps.join('\n');
+      expect(
+        log,
+        contains(
+            'Pattern probe: test 1 rendition A from taps: N4mf R1 N4mf'),
+      );
+      expect(log, contains('Pattern probe: test 2 rendition B from taps: N2mf'));
+    });
+
+    test('with no probe open it does nothing', () async {
+      final lab = DeviceLabLog();
+      final r = _runner(lab);
+      var heard = 0;
+      r.addListener(() => heard++);
+      set(r, notes('N4mf'));
+      expect(r.pattern, isNull);
+      expect(heard, 0);
+      expect(lab.steps.where((l) => l.contains('from taps')), isEmpty);
+    });
+
+    test('the filled notes are in the heard line when the probe closes',
+        () async {
+      final lab = DeviceLabLog();
+      final r = _runner(lab);
+      await r.openPattern();
+      set(r, notes('N4mf R1 N4mf'));
+      r.closePattern();
+      expect(
+        lab.steps.join('\n'),
+        contains('A = quarter note mf, 16th rest, quarter note mf '
+            '(N4mf R1 N4mf)'),
+      );
+    });
+  });
 }

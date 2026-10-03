@@ -636,13 +636,15 @@ void main() {
       expect(live, contains('_bandEnded.signal()'));
     });
 
+    // 8AD: both rows open the pattern picker, which hands the profile on to
+    // the tap sheet and the notes editor.
     test('both pattern editors are given the band\'s profile', () {
       for (final f in [
         'lib/ui2/profile/settings.dart',
         'lib/ui2/profile/band_notifications.dart',
       ]) {
         final text = File(f).readAsStringSync();
-        final at = text.indexOf('showBuzzPatternSheet(');
+        final at = text.indexOf('showPatternPicker(');
         expect(at, greaterThanOrEqualTo(0), reason: f);
         final call = text.substring(at, text.indexOf(');', at));
         expect(call, contains('profile:'), reason: f);

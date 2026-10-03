@@ -957,3 +957,65 @@ Builds on 8AB. Tests: `test/haptics/*` (profile, heard log, compiler, tap notes,
   every `engine.buzz*` site and requires it inside a queue job.
 - **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` ("Vocabulary (L6)", "From taps to
   band commands"); the roadmap entry 8AC.
+
+## 8AD: Haptics hub, named pattern store, notes editor, allow long sequences, tap-a-baseline, multi-log vocabulary
+
+Builds on 8AC. Tests: `test/haptics/pattern_store_test.dart`, `allow_long_test.dart`,
+`haptic_pattern_editor_test.dart`, `haptics_settings_test.dart`, `vocab_builder_test.dart`,
+`test/hardware/pattern_probe_*`.
+
+- **Pattern store.** `lib/haptics/pattern_store.dart`: `SavedHapticPattern {id, name,
+  sequence}` (name 1 to 40 characters trimmed, unique without regard to case; ArgumentError
+  otherwise) and `HapticPatternStore` (SharedPreferences key `haptic_patterns_v1`, a JSON
+  list; `load`, `save` serialized like `NotificationPrefs`; `add`, `rename`,
+  `replace(id, sequence)`, `delete`, `list` ordered by name). `BuzzSequence.patternId`
+  (JSON only when set; `copyWith(clearPatternId:)`). A rule that picked a stored pattern
+  holds a SNAPSHOT of it with `patternId` set; delivery never reads the store.
+- **Propagation (one function).** `propagatePattern(id, prefs:, channels:, replacement:)`
+  rewrites every snapshot in the three places a sequence is stored: the alert rules
+  (`AlertRule.buzzSequence`), `ChannelConfig.buzzSequence` and `ChannelConfig.appSequences`.
+  With a replacement they follow it; without one (deleted) they keep their rhythm and lose
+  the id. `patternUsageCount` counts the same three places. A new field that holds a
+  `BuzzSequence` must be added to both.
+- **Allow long sequences.** Pref `haptics_allow_long_sequences` (`Prefs.hapticsAllowLong`,
+  `Prefs.allowLongHaptics`, default false). `maxRuntimeFor(allowLong:)` is the 10 s cap, or
+  null when allowed; the tap sheet, the notes editor, `planForTaps`/`compile` and
+  `_deliverBandSequence` (with `bandSequenceTimeout`, `bandSequenceCommands`,
+  `bandSequenceSettle`) all read it. The 8-command plan cap, the band queue and the 30 per 2
+  minutes ledger still apply.
+- **Notes editor.** `lib/ui2/profile/haptic_pattern_editor.dart`:
+  `HapticPatternEditorPage(initial, name, profile, onPlay, onSave, allowLong,
+  existingNames)`, with the probe's entry model (the shared widgets now live in
+  `pattern_notation.dart`), the 8AC "what the band plays" lines (`haptic_plan_text.dart`),
+  `pattern-editor-play`, `pattern-editor-save` (asks a name when `name` is null) and
+  `pattern-editor-from-taps` (`tap_take_pad.dart`). `PatternNameDialog` is the one name
+  dialog (also the hub's Rename).
+- **Haptics hub.** Settings > The band > Haptics (`settings-haptics`, after Gestures) opens
+  `HapticsSettings` (loads the store, the alert rules and the relay channels; replace and
+  rename call `propagatePattern`, delete calls it without a replacement; the store, the
+  rules and `NotificationRelay.setChannel` all persist). `HapticsSettingsView` is the pure
+  screen: groups Patterns, Safety, Test and (developer mode only) Calibration. Pattern row
+  `haptic-pattern:<id>` shows the name, the notes and "N commands · ~X s", or "Taps"; its
+  sheet has Preview, Edit notes (MG only), Re-record, Rename, Delete (names "Used by N
+  alerts"). Rows `haptics-new-taps`, `haptics-new-notes` (MG only). Safety: checkbox
+  `haptics-allow-long` (confirms only when turned on) and the read-out "N of 30 band
+  commands left in the last 2 minutes" and "Queue: N waiting" / "Queue: empty" from
+  `bandLedger` / `bandQueue.pending`. Test: `haptics-buzz` is `AppState.buzzBand`, the
+  device page's Tools row (a dispatcher delivery in the band queue). Calibration:
+  `haptics-device-lab` opens the Device lab.
+- **Pickers.** `showPatternPicker` (`pattern_picker.dart`, sheet key `pattern-picker`): Default
+  (clears to the registry default), the stored patterns (selected = current `patternId`),
+  Record new... (the tap sheet; only there it offers `buzz-save-to-patterns` with a name
+  field, off by default) and Write notes... (the editor; MG only; stores and selects).
+  Choosing a stored pattern saves its snapshot with `patternId`. Both Notifications
+  (`_pickPattern`) and Band notifications (`_pick`, channel and per app) use it, never the
+  bare tap sheet. `showBuzzPatternSheet` closes the sheet before it calls `onSave`.
+  `ChannelConfig.copyWith(clearBuzzSequence:)` is how Default clears a channel.
+- **Probe.** `pattern-tap-baseline` ("Tap what you felt") fills the active rendition from
+  a tapped take (`notesFromTaps`, mf); runner `patternSetRendition`; log line "Pattern probe:
+  test N rendition A from taps: <code>".
+- **Vocabulary from many logs.** `buildProfileFromLogs`, `describeProfileDiff`
+  (`lib/haptics/vocab_builder.dart`) and `tool/build_haptic_vocab.dart`; the L6 log alone
+  rebuilds `whoopMg`.
+- **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` ("Patterns and safety");
+  `docs/navigation-depth.md` (Haptics row); the roadmap entry 8AD.

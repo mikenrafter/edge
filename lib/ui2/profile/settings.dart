@@ -30,6 +30,7 @@ import '../../notify/alert_rule.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_prefs.dart';
 import '../../notify/notification_service.dart';
+import '../../haptics/pattern_store.dart' show HapticPatternStore;
 import '../../platform/app_icon.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
@@ -43,6 +44,8 @@ import 'buzz_pattern.dart';
 import 'data.dart';
 import 'gallery.dart';
 import 'gestures.dart';
+import 'haptics_settings.dart';
+import 'pattern_picker.dart';
 import 'profile.dart';
 
 /// Unwind the profile stack back to the gate.
@@ -191,6 +194,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onAlarm: () => goto(c, const AlarmScreen()),
       onBandNotifications: () => goto(c, const BandNotifications()),
       onGestures: () => goto(c, const BandGestures()),
+      onHaptics: () => goto(c, const HapticsSettings()),
       onNotifications: () => goto(c, const NotificationSettings()),
       onData: () => goto(c, const DataScreen()),
       onAutomation: () => goto(c, const AutomationSettings()),
@@ -573,6 +577,7 @@ class MoreSettingsView extends StatelessWidget {
       onAlarm,
       onBandNotifications,
       onGestures,
+      onHaptics,
       onNotifications,
       onData,
       onAutomation,
@@ -622,6 +627,7 @@ class MoreSettingsView extends StatelessWidget {
     this.onAlarm,
     this.onBandNotifications,
     this.onGestures,
+    this.onHaptics,
     this.onNotifications,
     this.onData,
     this.onAutomation,
@@ -677,6 +683,11 @@ class MoreSettingsView extends StatelessWidget {
                       sub: l?.settingsDoubleTapRowSub ??
                           'What a double-tap on the band does',
                       onTap: onGestures),
+                  // The named buzz patterns and the band's safety limits (8AD).
+                  SetRow(LucideIcons.vibrate, C.purple, 'Haptics',
+                      key: const ValueKey('settings-haptics'),
+                      sub: 'Your buzz patterns and band safety',
+                      onTap: onHaptics),
                   // Off by default — an existing user did not ask their band
                   // to start buzzing mid-workout. The target-zone row below
                   // is always drawn and dimmed while this is off (8K).
@@ -970,20 +981,38 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     );
   }
 
+  /// The picker first (8AD): Default, the stored patterns, a new tap take, or
+  /// notes. A stored pattern is saved into the rule as a snapshot of itself.
   void _pickPattern(String id) {
     final p = _prefs;
     if (p == null) return;
     final app = context.read<AppState>();
-    showBuzzPatternSheet(
-      context,
-      initial: p.buzzSequenceFor(id),
-      bandConnected: app.engine.isConnected,
-      onPlay: app.previewBuzzSequence,
-      // The band's measured vocabulary (an MG), none on a 4.0.
-      profile: HapticDeviceProfile.forGeneration(app.device.generation),
-      onSave: (s) => _apply(
-          p.withAlertRule({...p.alertRule(id).toJson(), 'buzzSequence': s.toJson()})),
-    );
+    HapticPatternStore.load().then((store) {
+      if (!mounted) return;
+      showPatternPicker(
+        context,
+        patterns: store.list,
+        current: p.buzzSequenceFor(id),
+        bandConnected: app.engine.isConnected,
+        onPlay: app.previewBuzzSequence,
+        // The band's measured vocabulary (an MG), none on a 4.0.
+        profile: HapticDeviceProfile.forGeneration(app.device.generation),
+        onSaveNew: saveNewPattern,
+        // Default: no sequence in the rule, so it takes the registry default.
+        onDefault: () {
+          final cur = _prefs;
+          if (!mounted || cur == null) return;
+          _apply(cur.withAlertRule(
+              {...cur.alertRule(id).toJson()}..remove('buzzSequence')));
+        },
+        onChoose: (s) {
+          final cur = _prefs;
+          if (!mounted || cur == null) return;
+          _apply(cur.withAlertRule(
+              {...cur.alertRule(id).toJson(), 'buzzSequence': s.toJson()}));
+        },
+      );
+    });
   }
 }
 

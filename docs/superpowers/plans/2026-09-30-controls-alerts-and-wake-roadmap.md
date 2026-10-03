@@ -942,6 +942,27 @@ overdrive the band.
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (vocabulary, taps to commands);
   `test/phase8/CONTRACTS.md` (8AC).
 
+### 8AD — Haptics hub, named patterns, notes editor, allow long sequences
+
+The wearer wanted to name and reuse buzz patterns, write them as notes on the phone, lift
+the 10 s cap on purpose, tap a baseline in the lab, and fold more logs into the vocabulary.
+
+- A named pattern store (`haptic_patterns_v1`). Alerts and relay channels hold a snapshot
+  of the pattern they picked, with its `patternId`; editing or deleting a pattern rewrites
+  every snapshot in the alert rules and in the relay's channel and per-app sequences.
+- Settings > The band > Haptics: Patterns (preview, edit notes, re-record, rename, delete),
+  Safety (allow long sequences, the 30 per 2 minutes read-out, the queue), Test (buzz the
+  band) and, in developer mode, Calibration (Device lab).
+- The Buzz pattern rows in Notifications and Band notifications open a picker first:
+  Default, the stored patterns, Record new (which can also save to the store) and Write
+  notes (MG only).
+- An advanced notes editor (the probe's entry model, one rendition, plays what is on the
+  page). "Allow long sequences" lifts the 10 s cap everywhere, behind a confirmation.
+- The probe can take a tapped baseline; a profile builder merges many heard logs and prints
+  the diff against the table in code.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` ("Patterns and safety");
+  `docs/navigation-depth.md`; `test/phase8/CONTRACTS.md` (8AD).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

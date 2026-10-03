@@ -118,6 +118,7 @@ import '../gestures/moment_stamp.dart';
 import '../gestures/strap_event.dart';
 import '../gestures/tap_ack.dart';
 import '../haptics/band_queue.dart';
+import '../haptics/haptic_compiler.dart' show maxRuntimeFor;
 import '../haptics/haptic_player.dart';
 import '../haptics/haptic_profile.dart';
 import 'live_stream_buffer.dart';
@@ -591,7 +592,11 @@ class AppState extends ChangeNotifier {
     // A queued job may wait before it starts; a compiled plan outlasts the
     // taps' own estimate.
     bandQueueWait: kBandQueueWait,
-    sequenceTimeout: (s) => bandSequenceTimeout(s, _bandProfile),
+    sequenceTimeout: (s) => bandSequenceTimeout(
+      s,
+      _bandProfile,
+      maxRuntime: _hapticMaxRuntime,
+    ),
     isConnected: () => engine.isConnected,
     supportedTargetsAtDelivery: () =>
         AlertCapabilityRegistry.targetsForBandFamily(device.generation),
@@ -671,8 +676,9 @@ class AppState extends ChangeNotifier {
   /// with a haptic profile, else as per-tap buzzes.
   Future<BuzzDelivery> _deliverBandSequence(BuzzSequence s) {
     final profile = _bandProfile;
+    final maxRuntime = maxRuntimeFor(allowLong: Prefs.allowLongHaptics);
     return _runBandJob(
-      bandSequenceCommands(s, profile),
+      bandSequenceCommands(s, profile, maxRuntime: maxRuntime),
       () => deliverBandSequence(
         s,
         profile: profile,
@@ -684,11 +690,17 @@ class AppState extends ChangeNotifier {
         },
         waitEnded: _bandEnded.wait,
         isConnected: () => engine.isConnected,
+        maxRuntime: maxRuntime,
       ),
-      timeout: bandSequenceTimeout(s, profile),
-      settle: bandSequenceSettle(s, profile),
+      timeout: bandSequenceTimeout(s, profile, maxRuntime: maxRuntime),
+      settle: bandSequenceSettle(s, profile, maxRuntime: maxRuntime),
     );
   }
+
+  /// The runtime cap for compiled band haptics: 10 s unless the user allowed
+  /// long sequences (Prefs.allowLongHaptics).
+  Duration? get _hapticMaxRuntime =>
+      maxRuntimeFor(allowLong: Prefs.allowLongHaptics);
 
   /// A rhythm the user just tapped out, played back for them. Still one
   /// dispatcher delivery (own rule, unique event), so it can neither bypass the
@@ -701,7 +713,11 @@ class AppState extends ChangeNotifier {
       eventId: 'preview:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
-      bandTimeout: bandSequenceTimeout(s, _bandProfile),
+      bandTimeout: bandSequenceTimeout(
+        s,
+        _bandProfile,
+        maxRuntime: _hapticMaxRuntime,
+      ),
       bandDelivery: () => _deliverBandSequence(s),
     );
     return r.targets.contains('band');
@@ -755,7 +771,10 @@ class AppState extends ChangeNotifier {
       bandTimeout: alarm || pattern != null
           ? null
           : bandSequenceTimeout(
-              sequence ?? prefs.buzzSequenceFor(ruleId), _bandProfile),
+              sequence ?? prefs.buzzSequenceFor(ruleId),
+              _bandProfile,
+              maxRuntime: _hapticMaxRuntime,
+            ),
       bandTransport: alarm || pattern != null
           ? () async =>
               await _runBandJob(1, () async {
@@ -784,7 +803,11 @@ class AppState extends ChangeNotifier {
     buzzForDuration: _bandBuzzForDuration,
     // Every rhythm and matched-haptics pulse goes through the band queue.
     deliverSequence: _deliverBandSequence,
-    sequenceTimeout: (s) => bandSequenceTimeout(s, _bandProfile),
+    sequenceTimeout: (s) => bandSequenceTimeout(
+      s,
+      _bandProfile,
+      maxRuntime: _hapticMaxRuntime,
+    ),
     runBand: _runBandJob,
     dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,

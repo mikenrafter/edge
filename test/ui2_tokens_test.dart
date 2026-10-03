@@ -323,4 +323,17 @@ const _notComponents = {
   // time picker on tap. Covered by `log_workout_test.dart`, which pumps each
   // at a real phone width against injected rows.
   'WorkoutSuggestionScreen', 'LogWorkout',
+  // 8AD: the haptic pattern editor is a Scaffold route over a live band
+  // player. The five widgets are the notation parts the pattern probe and the
+  // editor share (extracted from the probe page unchanged); they fill the
+  // width of the wheel or footer row they sit in and are pumped inside those
+  // rows by haptic_pattern_editor_test.dart and pattern_probe_page_test.dart.
+  'HapticPatternEditorPage',
+  'PatternNotation', 'PatternEntryRow', 'PatternLengthButton',
+  'PatternDotButton', 'PatternDynamicButton',
+  // 8AD: the Haptics screen is a Scaffold route over the pattern store, the
+  // alert rules and the live relay; `HapticsSettingsView` is its pure half and
+  // is what haptics_settings_test.dart pumps. The name dialog is an
+  // AlertDialog opened over a route.
+  'HapticsSettings', 'HapticsSettingsView', 'PatternNameDialog',
 };

@@ -40,6 +40,12 @@ List<PatternEntry> restEntries(int units) {
 /// The longest a compiled sequence may run by default, felt at its longest.
 const Duration kMaxHapticRuntime = Duration(seconds: 10);
 
+/// The runtime cap to compile and deliver with: [kMaxHapticRuntime], or null
+/// (no cap) when the user allowed long sequences. The 8-command plan cap and
+/// the band's rolling command limit apply either way.
+Duration? maxRuntimeFor({required bool allowLong}) =>
+    allowLong ? null : kMaxHapticRuntime;
+
 /// One band command in a plan.
 class HapticStep {
   const HapticStep({

@@ -2407,4 +2407,155 @@ void main() {
     await _finish(t, r);
   });
 
+  // 8AD, spec E: "Tap what you felt" fills the active rendition from taps.
+  // Contracts: the button is keyed `pattern-tap-baseline` and is part of the
+  // footer area (it must not push any footer control off a 360x640 screen); its
+  // semantics label contains "Tap what you felt". With entries in the active
+  // rendition an AlertDialog (Replace / Cancel) asks first; then a pad keyed
+  // `pattern-tap-pad` (text "Tap your pattern"; press, hold, release) takes the
+  // rhythm, closes 2 s after the last release and the active rendition becomes
+  // notesFromTaps(take) at mf, with the cursor on the empty slot after it.
+  // The runner logs "Pattern probe: test N rendition A from taps: <code>".
+  group('8AD tap a baseline', () {
+    const baseline = ValueKey('pattern-tap-baseline');
+    const pad = ValueKey('pattern-tap-pad');
+
+    // Two half-second holds with a 125 ms release gap: N4mf R1 N4mf.
+    Future<void> takeHolds(WidgetTester t) async {
+      final at = t.getCenter(find.byKey(pad));
+      final a = await t.startGesture(at, pointer: 1);
+      await t.pump(const Duration(milliseconds: 500));
+      await a.up();
+      await t.pump(const Duration(milliseconds: 125));
+      final b = await t.startGesture(at, pointer: 2);
+      await t.pump(const Duration(milliseconds: 500));
+      await b.up();
+      await t.pump(const Duration(milliseconds: 2100));
+      await t.pumpAndSettle();
+    }
+
+    Finder inDialog(String text) => find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.text(text),
+    );
+
+    testWidgets('the button is there and says what it does', (t) async {
+      final r = await _open(t, DeviceLabLog());
+      expect(find.byKey(baseline), findsOneWidget);
+      expect(t.getSemantics(find.byKey(baseline)).label,
+          contains('Tap what you felt'));
+      expect(find.byKey(pad), findsNothing);
+      r.closePattern();
+    });
+
+    testWidgets('the footer stays fully on screen at 360x640 with the '
+        'button in', (t) async {
+      final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
+      for (var i = 0; i < 32; i++) {
+        r.patternTap(_lens[i % 4]);
+      }
+      await t.pump(const Duration(milliseconds: 600));
+      final screen = Offset.zero & const Size(360, 640);
+      for (final k in [
+        'pattern-tap-baseline',
+        for (final n in _lens) 'pattern-len-$n',
+        'pattern-dot',
+        for (final d in _dyns) 'pattern-dyn-$d',
+        'pattern-kind',
+        'pattern-delete',
+      ]) {
+        final f = find.byKey(ValueKey(k));
+        expect(f.hitTestable(), findsOneWidget, reason: '$k can be tapped');
+        final rect = t.getRect(f);
+        expect(
+          screen.contains(rect.topLeft) && screen.contains(rect.bottomRight),
+          isTrue,
+          reason: '$k is fully on screen: $rect',
+        );
+      }
+      expect(find.byKey(const ValueKey('pattern-wheel')), findsOneWidget);
+      r.closePattern();
+    });
+
+    testWidgets('on an empty rendition: no question, a pad, then the notes',
+        (t) async {
+      final r = await _open(t, DeviceLabLog());
+      await _tapKey(t, 'pattern-tap-baseline');
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(pad), findsOneWidget);
+      expect(find.text('Tap your pattern'), findsOneWidget);
+      await takeHolds(t);
+      expect(find.byKey(pad), findsNothing, reason: 'the pad closed');
+      final s = r.pattern!;
+      expect(s.rendition(0, 0).code, 'N4mf R1 N4mf');
+      expect(s.rendition(0, 1).code, '', reason: 'B is untouched');
+      expect(s.cursor, 3, reason: 'on the empty slot after the take');
+      expect(s.nextIsNote, isFalse, reason: 'the toggle follows the last note');
+      // The wheel shows them.
+      await _tapKey(t, 'pattern-len-2');
+      expect(s.rendition(0, 0).code, 'N4mf R1 N4mf R2');
+      r.closePattern();
+    });
+
+    testWidgets('it fills the ACTIVE rendition, B, and leaves A', (t) async {
+      final r = await _open(t, DeviceLabLog());
+      await _tapKey(t, 'pattern-len-1');
+      await _tapKey(t, 'pattern-rendition-b');
+      await _tapKey(t, 'pattern-tap-baseline');
+      await takeHolds(t);
+      final s = r.pattern!;
+      expect(s.rendition(0, 1).code, 'N4mf R1 N4mf');
+      expect(s.rendition(0, 0).code, 'N1mf');
+      expect(s.activeRendition, 1);
+      r.closePattern();
+    });
+
+    testWidgets('with entries it asks first; Cancel changes nothing and '
+        'opens no pad', (t) async {
+      final r = await _open(t, DeviceLabLog());
+      await _tapKey(t, 'pattern-len-2');
+      await _tapKey(t, 'pattern-tap-baseline');
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.byKey(pad), findsNothing);
+      await t.tap(inDialog('Cancel'));
+      await t.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsNothing);
+      expect(find.byKey(pad), findsNothing);
+      expect(r.pattern!.rendition(0, 0).code, 'N2mf');
+      r.closePattern();
+    });
+
+    testWidgets('with entries, Replace opens the pad and the take replaces '
+        'them', (t) async {
+      final r = await _open(t, DeviceLabLog());
+      await _tapKey(t, 'pattern-len-2');
+      await _tapKey(t, 'pattern-tap-baseline');
+      await t.tap(inDialog('Replace'));
+      await t.pumpAndSettle();
+      expect(find.byKey(pad), findsOneWidget);
+      expect(r.pattern!.rendition(0, 0).code, 'N2mf',
+          reason: 'not replaced before there is a take');
+      await takeHolds(t);
+      expect(r.pattern!.rendition(0, 0).code, 'N4mf R1 N4mf');
+      r.closePattern();
+    });
+
+    testWidgets('the lab log says which test and rendition came from taps',
+        (t) async {
+      final lab = DeviceLabLog();
+      final r = await _open(t, lab);
+      r.patternTest(2);
+      await t.pump(const Duration(milliseconds: 400));
+      await _tapKey(t, 'pattern-rendition-b');
+      await _tapKey(t, 'pattern-tap-baseline');
+      await takeHolds(t);
+      r.closePattern();
+      expect(
+        lab.steps.where((l) => l.contains(
+            'Pattern probe: test 3 rendition B from taps: N4mf R1 N4mf')),
+        hasLength(1),
+      );
+      expect(lab.steps.join('\n'), contains('Pattern probe heard 3/40'));
+    });
+  });
 }

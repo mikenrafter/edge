@@ -99,6 +99,7 @@ class ChannelConfig {
     bool? includeSilent,
     bool? phoneFallback,
     BuzzSequence? buzzSequence,
+    bool clearBuzzSequence = false,
     Map<String, BuzzSequence>? appSequences,
   }) => ChannelConfig(
     enabled: enabled ?? this.enabled,
@@ -112,7 +113,9 @@ class ChannelConfig {
     includeVibrate: includeVibrate ?? this.includeVibrate,
     includeSilent: includeSilent ?? this.includeSilent,
     phoneFallback: phoneFallback ?? this.phoneFallback,
-    buzzSequence: buzzSequence ?? this.buzzSequence,
+    buzzSequence: clearBuzzSequence
+        ? null
+        : buzzSequence ?? this.buzzSequence,
     appSequences: appSequences ?? this.appSequences,
   );
 

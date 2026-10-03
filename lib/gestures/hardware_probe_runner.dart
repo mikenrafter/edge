@@ -254,6 +254,14 @@ class HardwareProbeRunner extends ChangeNotifier {
   void patternTest(int delta) =>
       _edit((s) => s.goToTest(s.testIndex + delta));
 
+  /// Put a transcription made from taps (8AD) into the active rendition of
+  /// the open test, and say so in the log.
+  void patternSetRendition(List<PatternEntry> entries) => _edit((s) {
+        s.setActive(entries);
+        lab.addStep('Pattern probe: test ${s.testIndex + 1} rendition '
+            '${s.activeRendition == 0 ? 'A' : 'B'} from taps: ${s.active.code}');
+      });
+
   void _edit(void Function(PatternEntrySession s) change) {
     final s = _session;
     if (s == null) return;

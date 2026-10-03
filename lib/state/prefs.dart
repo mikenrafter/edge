@@ -88,6 +88,11 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
+  /// 8AD: lift the 10 s cap on compiled band haptics. Off by default; the
+  /// 8-command plan cap and the band's rolling command limit still apply.
+  static const String hapticsAllowLong = 'haptics_allow_long_sequences';
+  static bool get allowLongHaptics => getBool(hapticsAllowLong, false);
+
   /// Per-metric range toggle on the shared MetricScreen (Today/Week/Month/3M).
   /// Keyed by the metric id so Sleep / Heart / Body each remember independently.
   static String metricTab(String metric) => 'ui.metric_tab.$metric';

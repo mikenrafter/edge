@@ -11,9 +11,14 @@
 import 'dart:async';
 
 import 'package:clock/clock.dart';
-import 'package:flutter/foundation.dart' show VoidCallback, listEquals;
+import 'package:collection/collection.dart' show ListEquality;
 
 import '../gestures/pattern_transcript.dart';
+
+// Not package:flutter/foundation.dart: this file and what imports it are
+// plain Dart, so tool/build_haptic_vocab.dart runs under `dart run`.
+bool _listEquals<T>(List<T>? a, List<T>? b) =>
+    const ListEquality<Object?>().equals(a, b);
 
 /// One band command of a plan compiled when a rule was saved: the waveform
 /// slots, how often the band loops them, and the wait after the previous
@@ -59,7 +64,7 @@ class BakedStep {
   @override
   bool operator ==(Object other) =>
       other is BakedStep &&
-      listEquals(other.effects, effects) &&
+      _listEquals(other.effects, effects) &&
       other.loop == loop &&
       other.delayMs == delayMs;
 
@@ -84,6 +89,7 @@ class BuzzSequence {
     this.profileId,
     this.profileVersion,
     List<BakedStep>? bakedSteps,
+    this.patternId,
   }) : offsetsMs = List.unmodifiable(offsetsMs),
       durationsMs = List.unmodifiable(
         durationsMs ?? List.filled(offsetsMs.length, 0),
@@ -113,13 +119,21 @@ class BuzzSequence {
   /// a saved rule.
   final List<BakedStep>? bakedSteps;
 
+  /// 8AD: the stored pattern (HapticPatternStore) this rhythm is a snapshot of,
+  /// or null when it was made by hand. Delivery never reads it; editing or
+  /// deleting the stored pattern rewrites the snapshots that carry it.
+  final String? patternId;
+
   /// The same rhythm with the given values replaced; the others are kept.
+  /// [clearPatternId] drops the pattern id (the rhythm stays).
   BuzzSequence copyWith({
     bool? extended,
     String? notes,
     String? profileId,
     int? profileVersion,
     List<BakedStep>? bakedSteps,
+    String? patternId,
+    bool clearPatternId = false,
   }) => BuzzSequence(
     offsetsMs,
     durationsMs: durationsMs,
@@ -128,6 +142,7 @@ class BuzzSequence {
     profileId: profileId ?? this.profileId,
     profileVersion: profileVersion ?? this.profileVersion,
     bakedSteps: bakedSteps ?? this.bakedSteps,
+    patternId: clearPatternId ? null : patternId ?? this.patternId,
   );
 
   int get length => offsetsMs.length;
@@ -167,7 +182,7 @@ class BuzzSequence {
   Object toJson() {
     final withNotes = notes != null;
     final plan = bakedSteps;
-    if (!extended && !withNotes && plan == null) {
+    if (!extended && !withNotes && plan == null && patternId == null) {
       return durationsMs.every((d) => d == 0)
           ? offsetsMs
           : {'offsetsMs': offsetsMs, 'durationsMs': durationsMs};
@@ -180,6 +195,7 @@ class BuzzSequence {
       if (profileId != null) 'profileId': profileId,
       if (profileVersion != null) 'profileVersion': profileVersion,
       if (plan != null) 'plan': [for (final b in plan) b.toJson()],
+      if (patternId != null) 'patternId': patternId,
     };
   }
 
@@ -194,6 +210,10 @@ class BuzzSequence {
     final Object? profileId = json is Map ? json['profileId'] : null;
     final Object? profileVersion = json is Map ? json['profileVersion'] : null;
     final Object? plan = json is Map ? json['plan'] : null;
+    final Object? patternId = json is Map ? json['patternId'] : null;
+    if (patternId != null && patternId is! String) {
+      throw const FormatException('A buzz sequence pattern id is a string');
+    }
     if (notes != null && notes is! String) {
       throw const FormatException('A buzz sequence notes value is a string');
     }
@@ -234,6 +254,7 @@ class BuzzSequence {
         profileId: profileId as String?,
         profileVersion: profileVersion as int?,
         bakedSteps: baked,
+        patternId: patternId as String?,
       );
     } on ArgumentError catch (e) {
       throw FormatException('Invalid buzz sequence: ${e.message}');
@@ -253,16 +274,17 @@ class BuzzSequence {
   @override
   bool operator ==(Object other) =>
       other is BuzzSequence &&
-      listEquals(other.offsetsMs, offsetsMs) &&
-      listEquals(other.durationsMs, durationsMs) &&
+      _listEquals(other.offsetsMs, offsetsMs) &&
+      _listEquals(other.durationsMs, durationsMs) &&
       other.extended == extended &&
       other.notes == notes &&
       other.profileId == profileId &&
       other.profileVersion == profileVersion &&
+      other.patternId == patternId &&
       _sameSteps(other.bakedSteps, bakedSteps);
 
   static bool _sameSteps(List<BakedStep>? a, List<BakedStep>? b) =>
-      a == null || b == null ? a == b : listEquals(a, b);
+      a == null || b == null ? a == b : _listEquals(a, b);
 
   @override
   int get hashCode => Object.hash(
@@ -273,6 +295,7 @@ class BuzzSequence {
     profileId,
     profileVersion,
     bakedSteps == null ? null : Object.hashAll(bakedSteps!),
+    patternId,
   );
 
   @override
@@ -288,7 +311,7 @@ class BuzzSequence {
 class BuzzRecorder {
   BuzzRecorder({this.onStart, this.onDone});
 
-  final VoidCallback? onStart;
+  final void Function()? onStart;
   final void Function(BuzzSequence)? onDone;
   static const _idle = Duration(seconds: 2);
   final List<int> _offsets = [];

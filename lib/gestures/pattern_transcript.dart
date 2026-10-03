@@ -299,6 +299,18 @@ class PatternEntrySession {
     _followCursor();
   }
 
+  /// Replace the active rendition with [entries] (from taps, 8AD), cut to
+  /// [PatternTranscript.maxEntries]. The cursor goes to the empty slot after
+  /// them and the toggle follows the last entry; the dot clears.
+  void setActive(List<PatternEntry> entries) {
+    _renditions[testIndex][activeRendition] = PatternTranscript(
+      entries.take(PatternTranscript.maxEntries).toList(),
+    );
+    dotNext = false;
+    cursor = active.length;
+    _followCursor();
+  }
+
   /// A play counted for [test] (default: the open test; a play can finish
   /// after the wearer moved on).
   void notePlayed([int? test]) => _plays[test ?? testIndex]++;

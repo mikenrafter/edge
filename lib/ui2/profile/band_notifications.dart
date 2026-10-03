@@ -28,11 +28,13 @@ import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../haptics/haptic_profile.dart';
+import '../../haptics/pattern_store.dart' show HapticPatternStore;
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
+import 'pattern_picker.dart';
 import 'profile.dart' show SetRow, SettingsAccordion, SwitchRow, kDisabledOpacity;
 import 'settings.dart' show NotificationSettingsView;
 
@@ -118,25 +120,42 @@ class _BandNotificationsState extends State<BandNotifications>
     );
   }
 
-  /// Opens the sheet for a channel's own rhythm, or for [pkg]'s when given, and
-  /// writes the take back into [cfg].
+  /// Opens the picker for a channel's own rhythm, or for [pkg]'s when given,
+  /// and writes the choice back into [cfg]. A stored pattern is saved as a
+  /// snapshot of itself, with its patternId (8AD).
   void _pick(
     ChannelConfig cfg,
     void Function(ChannelConfig next) put, {
     String? pkg,
   }) {
     final app = context.read<AppState>();
-    showBuzzPatternSheet(
-      context,
-      initial: pkg == null ? cfg.effectiveSequence : cfg.sequenceForApp(pkg),
-      bandConnected: app.engine.isConnected,
-      onPlay: app.previewBuzzSequence,
-      // The band's measured vocabulary (an MG), none on a 4.0.
-      profile: HapticDeviceProfile.forGeneration(app.device.generation),
-      onSave: (s) => put(pkg == null
-          ? cfg.copyWith(buzzSequence: s)
-          : cfg.copyWith(appSequences: {...cfg.appSequences, pkg: s})),
-    );
+    HapticPatternStore.load().then((store) {
+      if (!mounted) return;
+      showPatternPicker(
+        context,
+        patterns: store.list,
+        current: pkg == null ? cfg.effectiveSequence : cfg.sequenceForApp(pkg),
+        bandConnected: app.engine.isConnected,
+        onPlay: app.previewBuzzSequence,
+        // The band's measured vocabulary (an MG), none on a 4.0.
+        profile: HapticDeviceProfile.forGeneration(app.device.generation),
+        onSaveNew: saveNewPattern,
+        // Default: the channel (or the app) takes the relay rule's default.
+        onDefault: () {
+          if (!mounted) return;
+          put(pkg == null
+              ? cfg.copyWith(clearBuzzSequence: true)
+              : cfg.copyWith(
+                  appSequences: {...cfg.appSequences}..remove(pkg)));
+        },
+        onChoose: (s) {
+          if (!mounted) return;
+          put(pkg == null
+              ? cfg.copyWith(buzzSequence: s)
+              : cfg.copyWith(appSequences: {...cfg.appSequences, pkg: s}));
+        },
+      );
+    });
   }
 }
 

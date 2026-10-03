@@ -339,6 +339,35 @@ commands, never as a guessed timing.
    start. The log says `Band queue: waiting for the band (N ahead)` and `Band
    queue: resting, ready in N s`.
 
+## Patterns and safety
+
+Settings > The band > Haptics (8AD) is where buzz patterns are kept and where the band's
+limits are shown.
+
+- **Named patterns.** A pattern is a saved rhythm with a name (1 to 40 characters, unique
+  without regard to case) and a stable id, stored under `haptic_patterns_v1`. An alert or a
+  relay channel that picks one keeps a copy of it with the pattern's id, so playing never
+  looks the store up. Replacing, renaming or deleting a pattern goes through
+  `propagatePattern`, which rewrites the copies in the alert rules, the relay channels and
+  the per-app sequences; a deleted pattern's copies keep their rhythm and lose the id.
+- **Writing notes.** On an MG the notes editor writes a pattern as notes and rests (16th,
+  eighth, quarter, half, a dot, six dynamics), shows what the band will play for them, and
+  plays exactly what is on the page. A 4.0 has no measured vocabulary: it has tap patterns
+  only.
+- **Allow long sequences.** Off by default. The 10 s runtime cap (see "From taps to band
+  commands") is lifted for the tap sheet, the editor and delivery when the wearer turns it
+  on, after a confirmation: "May cause harm to your device. Use at your own risk." Turning
+  it off needs none. The 8-command plan cap, the one band queue and the 30 commands per 2
+  minutes still apply, and the Haptics screen reads out how many commands are left and how
+  many jobs are waiting.
+- **Test and Calibration.** "Buzz the band" is the same delivery as the device page's Tools
+  row. The Device lab link appears in developer mode only.
+- **More logs.** `buildProfileFromLogs` merges every heard log in `docs/hardware/logs` into
+  the vocabulary (shortest and longest felt length per phrase; unstable if any log says so;
+  the version goes up when anything changed), and `tool/build_haptic_vocab.dart` prints the
+  diff against the table in code. The probe's "Tap what you felt" button fills a rendition
+  from a tapped rhythm.
+
 ## Replaying off the band
 
 The lab keeps the last ~6 minutes of ECG packets (raw samples and status
