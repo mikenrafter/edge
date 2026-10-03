@@ -153,6 +153,21 @@ everything into the lab log ("Copy all logs").
     each effect is felt, and the data to build an encoder from a tapped rhythm
     to a band command (felt buzz and gap units against real envelopes and
     delays).
+  - **Notes, rests and tempo (8Z).** Entries are now typed: a note (the band
+    buzzed) or a rest, each 1–4 units, with a Note/Rest toggle that flips after
+    every tap (override it for two notes or two rests in a row). One unit is an
+    eighth, so lengths 1–4 are an eighth, quarter, dotted quarter and half, and a
+    4/4 bar is 8 units. The page starts at 250 ms per unit (effect 1 is felt for
+    about 0.22–0.6 s, 1–2 units; effect 14 about 2–3 units, effect 47 about 3–4,
+    each half of the 47 + 152 pair about 2). With "Dynamic tempo" on, ms per unit is fitted from
+    the plays: for each test, the span from the first live event 60 to the last
+    live event 100 divided by the units of your transcription up to its last note,
+    then the median over tests (100–800 ms, needs 2 tests). The fit goes in
+    the log: `Pattern probe tempo: 1 unit ≈ N ms`. The Bluetooth lead (first write
+    to the first live 60, median over plays, 300 ms until measured) delays the
+    march's start. A replay marches a playhead through your entries at that tempo from the first
+    write plus the lead, so a mismatch between what you wrote and what the band
+    plays shows up as the playhead drifting from what you feel.
 
 Safety and hardware health: the buzz and pattern probes send only the band's
 own buzz command (RUN_HAPTIC_PATTERN_MAVERICK), through the alert dispatcher

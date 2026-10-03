@@ -1,8 +1,8 @@
 // hardware_probe_runner.dart — runs one hardware probe at a time for the
 // Device lab and holds what the screen shows: which probe runs, the current
 // ECG cue, the buzz probe's "how many did you feel?" question (8V) and the
-// pattern probe's transcriber (8Y: the wearer plays a test, taps what they felt
-// as buzz and gap lengths 1-4, may play it again).
+// pattern probe's transcriber (8Y/8Z: the wearer plays a test, taps what they
+// felt as note and rest lengths 1-4, may play it again).
 //
 // Everything a probe learns goes into the lab log as a session (so "Copy all
 // logs" carries it), and the ECG probe's packets go into the lab's packet
@@ -10,6 +10,7 @@
 
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
@@ -70,6 +71,8 @@ class HardwareProbeRunner extends ChangeNotifier {
   PatternProbe? _probe;
   PatternEntrySession? _session;
   bool _patternPlaying = false;
+  int _patternPlays = 0;
+  DateTime? _patternPlayWrittenAt;
   EcgTouchProbe? _touch;
   String? _note;
 
@@ -86,6 +89,13 @@ class HardwareProbeRunner extends ChangeNotifier {
   /// The open pattern transcriber (null when the pattern probe is closed).
   PatternEntrySession? get pattern => _session;
   bool get patternPlaying => _patternPlaying;
+
+  /// Plays started so far; the page restarts its metronome when it grows.
+  int get patternPlays => _patternPlays;
+
+  /// When the current (or latest) play's first write landed, phone clock; null
+  /// until it lands, cleared when the next play starts and on close.
+  DateTime? get patternPlayWrittenAt => _patternPlayWrittenAt;
   int get patternTestCount => PatternProbe.defaultTests.length;
 
   /// One line about why a probe could not start (or how it ended).
@@ -147,12 +157,21 @@ class HardwareProbeRunner extends ChangeNotifier {
     _running = ProbeKind.pattern;
     _note = null;
     final probe = _probe = PatternProbe(
-      sendPattern: sendPattern,
+      sendPattern: (effects, loop, onReply) async {
+        final ok = await sendPattern(effects, loop, onReply);
+        if (ok && _patternPlaying && _patternPlayWrittenAt == null) {
+          _patternPlayWrittenAt = DateTime.now();
+          notifyListeners();
+        }
+        return ok;
+      },
       isConnected: isConnected,
       step: lab.addStep,
+      now: clock.now,
     );
     _session = PatternEntrySession(probe.tests);
     _patternPlaying = false;
+    _patternPlayWrittenAt = null;
     final gaps =
         probe.tests.where((t) => t.style == BuzzStyle.delayed).length;
     lab.beginSession(
@@ -171,10 +190,17 @@ class HardwareProbeRunner extends ChangeNotifier {
     if (s == null || probe == null || _patternPlaying) return;
     final at = s.testIndex;
     _patternPlaying = true;
+    _patternPlays++;
+    _patternPlayWrittenAt = null;
     notifyListeners();
     try {
       final r = await probe.play(s.tests[at]);
-      if (r != null && identical(_session, s)) s.notePlayed(at);
+      if (r != null && identical(_session, s)) {
+        s.notePlayed(at);
+        final span = r.spanMs, lead = r.leadMs;
+        if (span != null) s.noteMeasured(at, span);
+        if (lead != null) s.noteLead(lead);
+      }
     } catch (e) {
       lab.addStep('Pattern probe play failed: $e');
     } finally {
@@ -186,6 +212,8 @@ class HardwareProbeRunner extends ChangeNotifier {
   }
 
   void patternTap(int len) => _edit((s) => s.tap(len));
+  void patternToggleKind() => _edit((s) => s.toggleKind());
+  void patternDynamicTempo(bool on) => _edit((s) => s.dynamicTempo = on);
   void patternDelete() => _edit((s) => s.delete());
   void patternMove(int delta) => _edit((s) => s.moveCursor(delta));
   void patternRendition(int r) => _edit((s) => s.selectRendition(r));
@@ -208,6 +236,7 @@ class HardwareProbeRunner extends ChangeNotifier {
     _probe = null;
     _session = null;
     _patternPlaying = false;
+    _patternPlayWrittenAt = null;
     var heard = 0, plays = 0;
     for (var i = 0; i < s.tests.length; i++) {
       if (s.rendition(i, 0).length > 0 || s.rendition(i, 1).length > 0) heard++;
@@ -279,7 +308,14 @@ class HardwareProbeRunner extends ChangeNotifier {
 
   void onBandEvent(StrapEvent e) {
     _haptic?.onBandEvent(e.eventId, e.receivedAt, e.effectiveTime);
-    _probe?.onBandEvent(e.eventId, e.receivedAt, e.effectiveTime);
+    // The pattern probe measures spans and leads on [clock] (the same as
+    // DateTime.now outside tests); move the event's times onto it.
+    final skew = clock.now().difference(DateTime.now());
+    _probe?.onBandEvent(
+      e.eventId,
+      e.receivedAt.add(skew),
+      e.effectiveTime.add(skew),
+    );
   }
 
   Future<int?> _ask(HapticTrial trial, int index) {

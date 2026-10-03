@@ -1,58 +1,73 @@
-// 8Y: the pattern probe's transcriber. The wearer taps buttons of length 1-4;
-// entries alternate buzz, gap, buzz, gap... (the first is a buzz). Pure Dart:
-// [PatternTranscript] is one immutable list of lengths, [PatternEntrySession]
-// holds which test is open, two renditions per test, the cursor in the list and
-// how often each test was played.
+// 8Y/8Z: the pattern probe's transcriber. The wearer taps buttons of length
+// 1-4; every entry is typed explicitly as a note or a rest (two notes or two
+// rests may sit next to each other). A Note/Rest toggle flips after every tap
+// and can be overridden. Pure Dart: [PatternTranscript] is one immutable list of
+// [PatternEntry]s, [PatternEntrySession] holds which test is open, two
+// renditions per test, the cursor in the list, the toggle, how often each test
+// was played, the tempo and Bluetooth lead fitted from measured plays.
 
 import 'hardware_probes.dart';
 
-/// One transcription: entry i is a buzz when i is even, a gap when it is odd.
-class PatternTranscript {
-  PatternTranscript(List<int> lengths)
-      : _lengths = List.unmodifiable(lengths);
+/// One transcribed entry: a note or a rest, 1 to 4 units long.
+class PatternEntry {
+  const PatternEntry({required this.note, required this.length});
 
-  final List<int> _lengths;
+  /// True for a note (the band buzzed), false for a rest.
+  final bool note;
+  final int length;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PatternEntry && other.note == note && other.length == length;
+
+  @override
+  int get hashCode => Object.hash(note, length);
+
+  @override
+  String toString() => '${note ? 'N' : 'R'}$length';
+}
+
+/// One transcription: an immutable list of typed entries.
+class PatternTranscript {
+  PatternTranscript(List<PatternEntry> entries)
+      : _entries = List.unmodifiable(entries);
+
+  final List<PatternEntry> _entries;
 
   /// Most entries one transcription holds.
-  static const int maxEntries = 24;
+  static const int maxEntries = 32;
 
   /// A read-only view; callers cannot change the transcript through it.
-  List<int> get lengths => List.unmodifiable(_lengths);
+  List<PatternEntry> get entries => _entries;
 
-  int get length => _lengths.length;
+  int get length => _entries.length;
 
-  bool isBuzz(int i) => i.isEven;
-
-  static void _check(int len) {
-    if (len < 1 || len > 4) {
-      throw ArgumentError.value(len, 'len', 'a length is 1 to 4');
+  static void _check(PatternEntry e) {
+    if (e.length < 1 || e.length > 4) {
+      throw ArgumentError.value(e.length, 'length', 'a length is 1 to 4');
     }
   }
 
-  PatternTranscript append(int len) {
-    _check(len);
-    if (_lengths.length >= maxEntries) return this;
-    return PatternTranscript([..._lengths, len]);
+  PatternTranscript append(PatternEntry e) {
+    _check(e);
+    if (_entries.length >= maxEntries) return this;
+    return PatternTranscript([..._entries, e]);
   }
 
-  PatternTranscript replaceAt(int i, int len) {
-    _check(len);
-    return PatternTranscript([..._lengths]..[i] = len);
+  PatternTranscript replaceAt(int i, PatternEntry e) {
+    _check(e);
+    return PatternTranscript([..._entries]..[i] = e);
   }
 
   PatternTranscript removeAt(int i) =>
-      PatternTranscript([..._lengths]..removeAt(i));
+      PatternTranscript([..._entries]..removeAt(i));
 
-  /// "B2 G1 B4"; empty when nothing is entered.
-  String get code => [
-        for (var i = 0; i < _lengths.length; i++)
-          '${isBuzz(i) ? 'B' : 'G'}${_lengths[i]}',
-      ].join(' ');
+  /// "N2 R1 N4"; empty when nothing is entered.
+  String get code => _entries.join(' ');
 
-  /// "buzz 2, gap 1, buzz 4".
+  /// "note 2, rest 1, note 4".
   String get prose => [
-        for (var i = 0; i < _lengths.length; i++)
-          '${isBuzz(i) ? 'buzz' : 'gap'} ${_lengths[i]}',
+        for (final e in _entries) '${e.note ? 'note' : 'rest'} ${e.length}',
       ].join(', ');
 }
 
@@ -67,9 +82,20 @@ class PatternEntrySession {
         ],
         _plays = List.filled(tests.length, 0);
 
+  /// One unit is an eighth: a 4/4 bar of 8 steps is 2 s. Measured on the band:
+  /// effect 1 plays about 0.22-0.6 s (1-2 units), 14 about 2-3, 47 about 3-4,
+  /// and each half of the 47 + 152 pair about 2.
+  static const int defaultUnitMs = 250;
+
+  /// The Bluetooth delay from a play's first write landing to the band
+  /// starting, until a play has been measured.
+  static const int defaultLeadMs = 300;
+
   final List<PatternTest> tests;
   final List<List<PatternTranscript>> _renditions;
   final List<int> _plays;
+  final Map<int, int> _spans = {};
+  final List<int> _leads = [];
 
   int testIndex = 0;
   int activeRendition = 0;
@@ -77,6 +103,12 @@ class PatternEntrySession {
   /// 0 to the active transcript's length; the length itself is the empty
   /// "next entry" slot.
   int cursor = 0;
+
+  /// The Note/Rest toggle: what the next tap writes.
+  bool nextIsNote = true;
+
+  /// Whether the tempo follows the fit over the measured plays.
+  bool dynamicTempo = true;
 
   PatternTranscript rendition(int test, int r) => _renditions[test][r];
 
@@ -92,27 +124,41 @@ class PatternEntrySession {
     testIndex = i.clamp(0, tests.length - 1);
     activeRendition = 0;
     cursor = active.length;
+    _followCursor();
   }
 
   void selectRendition(int r) {
     activeRendition = r;
     cursor = active.length;
+    _followCursor();
   }
 
   void moveCursor(int delta) {
     cursor = (cursor + delta).clamp(0, active.length);
+    _followCursor();
   }
 
+  /// The toggle goes to the opposite of the entry before the cursor; Note
+  /// when there is none.
+  void _followCursor() {
+    nextIsNote = cursor == 0 ? true : !active.entries[cursor - 1].note;
+  }
+
+  /// Override the toggle for the next entry.
+  void toggleKind() => nextIsNote = !nextIsNote;
+
   void tap(int len) {
+    final e = PatternEntry(note: nextIsNote, length: len);
     final t = active;
     if (cursor >= t.length) {
-      final next = t.append(len);
+      final next = t.append(e);
       if (next.length == t.length) return;
       _renditions[testIndex][activeRendition] = next;
     } else {
-      _renditions[testIndex][activeRendition] = t.replaceAt(cursor, len);
+      _renditions[testIndex][activeRendition] = t.replaceAt(cursor, e);
     }
     cursor = cursor + 1;
+    nextIsNote = !nextIsNote;
   }
 
   void delete() {
@@ -122,23 +168,106 @@ class PatternEntrySession {
     final next = t.removeAt(at);
     _renditions[testIndex][activeRendition] = next;
     cursor = cursor >= t.length ? next.length : cursor.clamp(0, next.length);
+    _followCursor();
   }
 
   /// A play counted for [test] (default: the open test; a play can finish
   /// after the wearer moved on).
   void notePlayed([int? test]) => _plays[test ?? testIndex]++;
 
-  /// One line per test with a transcript or a play, in test order.
+  /// The measured span of [test]'s latest play: first live event 60 to last
+  /// live event 100, phone receive times.
+  void noteMeasured(int test, int ms) => _spans[test] = ms;
+
+  /// One measured Bluetooth lead (a play's first write landing to its first
+  /// live event 60).
+  void noteLead(int ms) => _leads.add(ms);
+
+  static double _median(List<double> v) {
+    final s = [...v]..sort();
+    final m = s.length ~/ 2;
+    return s.length.isOdd ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  /// The lead the march allows for: the median measured one, 0 to 1500 ms.
+  int get leadMs => _leads.isEmpty
+      ? defaultLeadMs
+      : _median([for (final l in _leads) l.toDouble()])
+          .round()
+          .clamp(0, 1500);
+
+  /// Units from the start up to and including the last note; trailing rests
+  /// are not counted. 0 when there is no note.
+  static int _units(PatternTranscript t) {
+    var sum = 0, upToLastNote = 0;
+    for (final e in t.entries) {
+      sum += e.length;
+      if (e.note) upToLastNote = sum;
+    }
+    return upToLastNote;
+  }
+
+  /// (ms per unit, tests it came from), or null with fewer than 2 usable
+  /// tests. Per test: span over the units of rendition A and B (averaged when
+  /// both have a note), the median over the tests, clamped to 100-800.
+  (int, int)? _fit() {
+    final perTest = <double>[];
+    for (final MapEntry(key: test, value: ms) in _spans.entries) {
+      final units = [
+        for (final r in _renditions[test])
+          if (_units(r) > 0) _units(r),
+      ];
+      if (units.isEmpty) continue;
+      perTest.add(ms * units.length / units.reduce((a, b) => a + b));
+    }
+    if (perTest.length < 2) return null;
+    return (_median(perTest).round().clamp(100, 800), perTest.length);
+  }
+
+  int? fittedUnitMs() => _fit()?.$1;
+
+  /// The tempo to play and march at.
+  int get unitMs => (dynamicTempo ? fittedUnitMs() : null) ?? defaultUnitMs;
+
+  /// The schedule of a replay: entry i starts [leadMs] + [unitMs] × the units
+  /// before it and lasts its length in units.
+  static List<({int index, int startMs, int endMs})> march(
+    PatternTranscript t,
+    int unitMs,
+    int leadMs,
+  ) {
+    var at = leadMs;
+    return [
+      for (var i = 0; i < t.length; i++)
+        (
+          index: i,
+          startMs: at,
+          endMs: at += t.entries[i].length * unitMs,
+        ),
+    ];
+  }
+
+  /// One line per test with a transcript or a play, in test order, then the
+  /// tempo line (only when there is at least one test line).
   List<String> logLines() {
     String one(PatternTranscript t) =>
         t.length == 0 ? '—' : '${t.prose} (${t.code})';
-    return [
+    final lines = [
       for (var i = 0; i < tests.length; i++)
-        if (_plays[i] > 0 ||
-            _renditions[i].any((t) => t.length > 0))
+        if (_plays[i] > 0 || _renditions[i].any((t) => t.length > 0))
           'Pattern probe heard ${i + 1}/${tests.length}, '
               '${tests[i].description}: A = ${one(_renditions[i][0])}; '
               'B = ${one(_renditions[i][1])}; played ${_plays[i]}×.',
     ];
+    if (lines.isEmpty) return lines;
+    final fit = dynamicTempo ? _fit() : null;
+    lines.add('Pattern probe tempo: 1 unit ≈ $unitMs ms '
+        '${fit == null ? '(fixed)' : '(fitted from ${fit.$2} tests)'}.');
+    return lines;
   }
 }
+
+/// [ms] milliseconds as a [Duration], for the page's metronome and march
+/// timers. They are timing signals, not motion, so they do not go through the
+/// reduced-motion gate that UI animation durations do.
+Duration patternMs(int ms) => Duration(milliseconds: ms);

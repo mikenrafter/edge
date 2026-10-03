@@ -14,7 +14,7 @@
 // cool-down before the next play, that only LIVE band events count (the 22:29
 // log delivered dozens of old 60/100 events late, and the 22:36 burst released
 // event-paced commands early), the budget of 160 commands per session, the
-// refusals, and the per-play log line.
+// refusals, the per-play log line and (8Z) the measured span of a play.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probes.dart';
@@ -941,6 +941,112 @@ void main() {
       g.clock.schedule(100, 500, happenedMs: -25000);
       await g.probe.play(t);
       expect(g.playLines.single, contains('band events none'));
+    });
+  });
+
+  group('the measured span (8Z)', () {
+    // The tempo fit needs how long a test took to play: the phone's receive
+    // time of the first live 60 to that of the last live 100, in ms.
+    test('one command: the first 60 to the 100', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      final r = await g.probe.play(t);
+      expect(r!.spanMs, 1485, reason: '60 at +15, 100 at +1500');
+    });
+
+    test('several commands: the first 60 to the LAST 100', () async {
+      final t = PatternTest(waveform: _alone, style: BuzzStyle.paced, count: 3);
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      final r = await g.probe.play(t);
+      // Writes land at 0, 1800 and 3600: 60 at +15, the last 100 at +5100.
+      expect(r!.spanMs, 5085);
+    });
+
+    test('it uses the times the phone received the events, not the band\'s '
+        'own', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t]);
+      g.clock.schedule(60, 96, happenedMs: 95);
+      g.clock.schedule(100, 1490, happenedMs: 1500);
+      final r = await g.probe.play(t);
+      expect(r!.spanMs, 1394);
+    });
+
+    test('null when there is no 100', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: (_) => const [(60, 15)]);
+      final r = await g.probe.play(t);
+      expect(r!.spanMs, isNull);
+    });
+
+    test('null when there is no 60', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: (_) => const [(100, 1500)]);
+      final r = await g.probe.play(t);
+      expect(r!.spanMs, isNull);
+    });
+
+    test('null when there are no events', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t]);
+      final r = await g.probe.play(t);
+      expect(r!.spanMs, isNull);
+    });
+
+    test('null when the only 100 came before the first 60', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t]);
+      g.clock.schedule(100, 200);
+      g.clock.schedule(60, 300);
+      final r = await g.probe.play(t);
+      expect(r!.spanMs, isNull);
+    });
+
+    test('old events do not count', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t]);
+      g.clock.schedule(60, 100, happenedMs: -25000);
+      g.clock.schedule(100, 1500, happenedMs: -25000);
+      final r = await g.probe.play(t);
+      expect(r!.spanMs, isNull);
+    });
+  });
+
+  group('the lead (8Z)', () {
+    // The Bluetooth delay: the first live 60 (phone receive time) minus the
+    // moment the first write landed, in ms.
+    test('the first live 60 minus the first write landing', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      final r = await g.probe.play(t);
+      expect(r!.leadMs, 15, reason: 'the write lands at 0, the 60 at +15');
+    });
+
+    test('a write that takes time: the lead runs from when it landed', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], latencyMs: 80);
+      g.clock.schedule(60, 96, happenedMs: 95);
+      g.clock.schedule(100, 1490, happenedMs: 1500);
+      final r = await g.probe.play(t);
+      expect(r!.leadMs, 16, reason: 'landed at +80, the 60 got +96');
+    });
+
+    test('with several commands it is measured from the first one', () async {
+      final t = PatternTest(waveform: _alone, style: BuzzStyle.paced, count: 3);
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      final r = await g.probe.play(t);
+      expect(r!.leadMs, 15);
+    });
+
+    test('null without a live 60', () async {
+      final t = _repeat();
+      final none = _Rig(tests: [t]);
+      expect((await none.probe.play(t))!.leadMs, isNull);
+      final only100 = _Rig(tests: [t], afterWrite: (_) => const [(100, 1500)]);
+      expect((await only100.probe.play(t))!.leadMs, isNull);
+      final old = _Rig(tests: [t]);
+      old.clock.schedule(60, 100, happenedMs: -25000);
+      expect((await old.probe.play(t))!.leadMs, isNull);
     });
   });
 }

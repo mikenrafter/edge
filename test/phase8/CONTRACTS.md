@@ -761,3 +761,60 @@ Evidence: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L4). Tests:
   `dispose` for any other removal, because closing notifies the lab log).
 - **Panel.** `probe-pattern` is enabled when `canRunPattern`; its caption says it opens
   a screen and that leaving it ends the probe. No golden covers the panel or page.
+
+## 8Z: notes and rests, tempo, a metronome and a replay march
+
+Builds on 8Y. Tests: `test/gestures/pattern_transcript_test.dart`,
+`test/hardware/pattern_probe_test.dart`, `pattern_probe_panel_test.dart`,
+`pattern_probe_page_test.dart`; `test/ui2_tokens_test.dart`.
+
+- **Entries are typed.** `PatternEntry({note, length})` (length 1-4, `ArgumentError`
+  otherwise): a note (the band buzzed) or a rest. `PatternTranscript.entries` is
+  `List<PatternEntry>`; `maxEntries` 32; two notes or two rests may sit together.
+  `code` is "N2 R1 N4 R4 R4", `prose` "note 2, rest 1, note 4, rest 4, rest 4".
+  The 8Y alternation (even entry buzz, odd gap) is gone.
+- **The toggle.** `PatternEntrySession.nextIsNote` starts true. `tap(len)` writes an
+  entry of that kind (append at the end slot, else replace; cursor + 1) and then
+  flips the toggle. `toggleKind()` flips it by hand for the next entry. Moving the
+  cursor, switching rendition or test sets it to the opposite of the entry before
+  the cursor (note when there is none). There is no pattern prediction and no
+  suggested length.
+- **Units and tempo.** One unit is an eighth: length 1 eighth, 2 quarter, 3 dotted
+  quarter, 4 half; a 4/4 bar is 8 units. `defaultUnitMs` 250. `noteMeasured(test, ms)`
+  stores a test's latest span (first live event 60 to last live event 100, received
+  times; `PatternTestResult.spanMs`). `fittedUnitMs()`: per test with a span, span
+  over the units of the active-or-A rendition up to and including its last note
+  (trailing rests not counted; A and B averaged when both have a note), the median
+  over tests, clamped 100-800, null with fewer than 2 tests. `dynamicTempo` defaults
+  true; `unitMs` is the fit when dynamic and fitted, else 250. `logLines()` ends
+  with `Pattern probe tempo: 1 unit ≈ N ms (fitted from k tests).` or `(fixed).`
+- **Lead and march.** `defaultLeadMs` 300; `noteLead(ms)` records the measured lead
+  (first live 60 received minus the first command written,
+  `PatternTestResult.leadMs`); `leadMs` is the median of all, clamped 0-1500.
+  `PatternEntrySession.march(transcript, unitMs, leadMs)` returns, per entry,
+  `(index, startMs, endMs)`: entry i starts at leadMs + unitMs × the units before it
+  and lasts length × unitMs; empty gives `[]`.
+- **Runner.** `patternToggleKind()`, `patternDynamicTempo(bool)` (notify);
+  `patternPlays` (bumped when a play starts); `patternPlayWrittenAt` (phone clock,
+  when the play's first write landed; null until then, cleared at the next play and on
+  close). `playPattern` calls `noteMeasured` and `noteLead` when the play produced
+  them.
+- **Page.** The footer has the four length buttons (`pattern-len-1` … `4`, "Note n"
+  or "Rest n"), then `pattern-kind` (reads "Note" or "Rest") left of `pattern-delete`.
+  Each button and wheel row has the music symbol (one widget keyed `pattern-symbol`,
+  drawn with a `CustomPaint`, label "eighth|quarter|dotted quarter|half note|rest")
+  above one dash per unit (`dash-1` … `dash-n`). The dash colours are the first n of
+  `kPatternUnitColours` (blue, green, orange, purple); rests use the same colours at
+  a third of the saturation. The metronome dot (`pattern-metronome`, 14 px, label
+  "metronome step N of 8") sits left of Play, steps every `unitMs`, shows the four
+  colours on steps 1, 3, 5, 7 and an outline between, and restarts at step 1 when a
+  play starts. Below the Play row: "1 = N ms" (+ " · fitted") and the Dynamic tempo
+  switch (`pattern-dynamic-tempo`).
+- **March.** Play on a test whose active rendition has entries starts a playhead
+  (`pattern-playhead` on the row; row label "playing entry N, …") from
+  `patternPlayWrittenAt` plus the lead, on the `march` plan with the session's
+  `unitMs` and `leadMs` at that moment; the wheel follows, the metronome restarts at
+  the same instant, and at the end the wheel returns to the cursor. The march never
+  changes the cursor or the entries. A tap, toggle, delete, rendition or test switch,
+  or a scroll cancels it. An empty active rendition does not march. All timers are
+  cancelled on dispose and when the session closes.

@@ -1,4 +1,4 @@
-// 8Y: the pattern probe as a transcriber, runner half and entry point. The
+// 8Y/8Z: the pattern probe as a transcriber, runner half and entry point. The
 // runner opens a session (refusals, the session line), plays the current test
 // on demand, passes edits through to the entry session, and writes what was
 // transcribed into the lab log when it closes (or when Stop is pressed). The
@@ -279,23 +279,23 @@ void main() {
       expectNotified('tap', () => r.patternTap(2));
       expectNotified('tap', () => r.patternTap(1));
       expectNotified('tap', () => r.patternTap(4));
-      expect(s.rendition(0, 0).lengths, [2, 1, 4]);
+      expect(s.rendition(0, 0).code, 'N2 R1 N4');
       expect(s.cursor, 3);
 
       expectNotified('move', () => r.patternMove(-2));
       expect(s.cursor, 1);
       r.patternTap(3);
-      expect(s.rendition(0, 0).lengths, [2, 3, 4], reason: 'replaced in place');
+      expect(s.rendition(0, 0).code, 'N2 R3 N4', reason: 'replaced in place');
       expect(s.cursor, 2);
 
       expectNotified('delete', r.patternDelete);
-      expect(s.rendition(0, 0).lengths, [2, 3]);
+      expect(s.rendition(0, 0).code, 'N2 R3');
 
       expectNotified('rendition', () => r.patternRendition(1));
       expect(s.activeRendition, 1);
       r.patternTap(4);
-      expect(s.rendition(0, 1).lengths, [4]);
-      expect(s.rendition(0, 0).lengths, [2, 3]);
+      expect(s.rendition(0, 1).code, 'N4');
+      expect(s.rendition(0, 0).code, 'N2 R3');
 
       expectNotified('next test', () => r.patternTest(1));
       expect(s.testIndex, 1);
@@ -304,6 +304,213 @@ void main() {
       expect(s.testIndex, 0);
       r.patternTest(-1);
       expect(s.testIndex, 0, reason: 'clamped at the first test');
+      r.closePattern();
+    });
+
+    testWidgets('the toggle and the tempo switch pass through and notify', (
+      t,
+    ) async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      final s = r.pattern!;
+      var heard = 0;
+      r.addListener(() => heard++);
+      expect(s.nextIsNote, isTrue);
+      expect(s.dynamicTempo, isTrue);
+
+      var before = heard;
+      r.patternToggleKind();
+      expect(heard, greaterThan(before), reason: 'the toggle notifies');
+      expect(s.nextIsNote, isFalse);
+      r.patternTap(2);
+      expect(s.rendition(0, 0).code, 'R2', reason: 'the override is used');
+      expect(s.nextIsNote, isTrue, reason: 'and it flips after the tap');
+
+      before = heard;
+      r.patternDynamicTempo(false);
+      expect(heard, greaterThan(before), reason: 'the switch notifies');
+      expect(s.dynamicTempo, isFalse);
+      expect(s.unitMs, 250);
+      before = heard;
+      r.patternDynamicTempo(true);
+      expect(heard, greaterThan(before));
+      expect(s.dynamicTempo, isTrue);
+
+      // With nothing open both do nothing.
+      r.closePattern();
+      final closed = _runner(DeviceLabLog());
+      closed.patternToggleKind();
+      closed.patternDynamicTempo(false);
+      expect(closed.pattern, isNull);
+    });
+
+    testWidgets('patternPlays counts the plays that start, for the '
+        'metronome', (t) async {
+      final hold = Completer<void>();
+      final r = _runner(DeviceLabLog(), holdPattern: hold);
+      expect(r.patternPlays, 0);
+      await r.playPattern();
+      expect(r.patternPlays, 0, reason: 'nothing open, no play');
+      await r.openPattern();
+      expect(r.patternPlays, 0);
+      var heard = 0;
+      r.addListener(() => heard++);
+      unawaited(r.playPattern());
+      await t.pump(const Duration(milliseconds: 200));
+      expect(r.patternPlays, 1, reason: 'bumped as the play starts');
+      expect(heard, greaterThan(0));
+      unawaited(r.playPattern());
+      await t.pump(const Duration(milliseconds: 200));
+      expect(r.patternPlays, 1, reason: 'a refused second Play is no start');
+      hold.complete();
+      await t.pump(const Duration(seconds: 20));
+      expect(r.patternPlaying, isFalse);
+      expect(r.patternPlays, 1);
+      unawaited(r.playPattern());
+      await t.pump(const Duration(seconds: 10));
+      expect(r.patternPlays, 2);
+      r.closePattern();
+    });
+
+    testWidgets('a measured play (first live 60 to last live 100) feeds the '
+        'tempo fit', (t) async {
+      final r = _runner(
+        DeviceLabLog(),
+        // The band starts at the write and ends 1200 ms later.
+        onSend: (r) {
+          r.onBandEvent(_event(60));
+          Future<void>.delayed(
+            const Duration(milliseconds: 1200),
+            () => r.onBandEvent(_event(100)),
+          );
+        },
+      );
+      await r.openPattern();
+      final s = r.pattern!;
+      // Tests 9 and 10 each send one command (the "one command, looped" way).
+      for (final test in [8, 9]) {
+        r.patternTest(test - s.testIndex);
+        expect(s.testIndex, test);
+        r.patternTap(4);
+        unawaited(r.playPattern());
+        await t.pump(const Duration(seconds: 10));
+        expect(r.patternPlaying, isFalse);
+        expect(s.plays(test), 1);
+      }
+      // 1200 ms over 4 units: 300 ms a unit.
+      expect(s.fittedUnitMs(), inInclusiveRange(295, 305));
+      expect(s.unitMs, inInclusiveRange(295, 305));
+      r.patternDynamicTempo(false);
+      expect(s.unitMs, 250);
+      r.closePattern();
+    });
+
+    testWidgets('a play measures the Bluetooth lead (first live 60 minus the '
+        'first write landing) and the session keeps it', (t) async {
+      final r = _runner(
+        DeviceLabLog(),
+        // The write lands at once; the band starts 500 ms later.
+        onSend: (r) => Future<void>.delayed(
+          const Duration(milliseconds: 500),
+          () => r.onBandEvent(_event(60)),
+        ),
+      );
+      await r.openPattern();
+      final s = r.pattern!;
+      expect(s.leadMs, 300, reason: 'the default until a play is measured');
+      r.patternTest(8);
+      unawaited(r.playPattern());
+      await t.pump(const Duration(seconds: 10));
+      expect(s.plays(8), 1);
+      expect(s.leadMs, inInclusiveRange(495, 505));
+      r.closePattern();
+    });
+
+    testWidgets('a play without a live 60 leaves the lead alone', (t) async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      final s = r.pattern!;
+      r.patternTest(8);
+      unawaited(r.playPattern());
+      await t.pump(const Duration(seconds: 10));
+      expect(s.plays(8), 1);
+      expect(s.leadMs, 300);
+      r.closePattern();
+    });
+
+    testWidgets('patternPlayWrittenAt is the moment the play\'s first write '
+        'landed', (t) async {
+      final hold = Completer<void>();
+      final r = _runner(DeviceLabLog(), holdPattern: hold);
+      expect(r.patternPlayWrittenAt, isNull);
+      await r.openPattern();
+      expect(r.patternPlayWrittenAt, isNull);
+      unawaited(r.playPattern());
+      await t.pump(const Duration(milliseconds: 200));
+      expect(r.patternPlaying, isTrue);
+      expect(
+        r.patternPlayWrittenAt,
+        isNull,
+        reason: 'the write has not landed yet',
+      );
+
+      var heard = 0;
+      r.addListener(() => heard++);
+      await t.pump(const Duration(milliseconds: 300));
+      final landed = DateTime.now();
+      hold.complete();
+      await t.pump();
+      final at = r.patternPlayWrittenAt;
+      expect(at, isNotNull);
+      expect(
+        at!.difference(landed).inMilliseconds.abs(),
+        lessThan(100),
+        reason: 'the moment of the write, phone clock',
+      );
+      expect(heard, greaterThan(0), reason: 'the page hears the write land');
+
+      // The test is the band pair: a second command goes out 1.8 s later; the
+      // moment stays the first write's.
+      await t.pump(const Duration(seconds: 20));
+      expect(r.patternPlaying, isFalse);
+      expect(r.patternPlayWrittenAt, at, reason: 'kept after the play');
+      r.closePattern();
+      expect(r.patternPlayWrittenAt, isNull, reason: 'cleared on close');
+    });
+
+    testWidgets('a new play clears the moment until its own write lands', (
+      t,
+    ) async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      unawaited(r.playPattern());
+      await t.pump(const Duration(seconds: 10));
+      final first = r.patternPlayWrittenAt;
+      expect(first, isNotNull);
+      unawaited(r.playPattern());
+      await t.pump(const Duration(seconds: 10));
+      final second = r.patternPlayWrittenAt;
+      expect(second, isNotNull);
+      expect(second!.isAfter(first!), isTrue, reason: 'the second play\'s own');
+      r.closePattern();
+    });
+
+    testWidgets('a play with a 60 but no 100 measures nothing', (t) async {
+      final r = _runner(
+        DeviceLabLog(),
+        onSend: (r) => r.onBandEvent(_event(60)),
+      );
+      await r.openPattern();
+      final s = r.pattern!;
+      for (final test in [8, 9]) {
+        r.patternTest(test - s.testIndex);
+        r.patternTap(4);
+        unawaited(r.playPattern());
+        await t.pump(const Duration(seconds: 10));
+        expect(s.plays(test), 1);
+      }
+      expect(s.fittedUnitMs(), isNull);
+      expect(s.unitMs, 250);
       r.closePattern();
     });
 
@@ -335,8 +542,14 @@ void main() {
       final log = lab.steps.join('\n');
       expect(log, contains('Pattern probe heard 1/40'));
       expect(log, contains('Pattern probe heard 2/40'));
-      expect(log, contains('A = buzz 2, gap 1, buzz 4 (B2 G1 B4)'));
-      expect(log, contains('A = buzz 3 (B3)'));
+      expect(log, contains('A = note 2, rest 1, note 4 (N2 R1 N4)'));
+      expect(log, contains('A = note 3 (N3)'));
+      expect(log, contains('Pattern probe tempo: '));
+      expect(
+        log,
+        contains('1 unit ≈ 250 ms (fixed)'),
+        reason: 'no play measured a span',
+      );
       expect(
         lab.sessionSummaries.single,
         contains('2 of 40 tests transcribed, 2 plays'),

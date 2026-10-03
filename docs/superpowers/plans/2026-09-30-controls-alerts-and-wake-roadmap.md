@@ -866,6 +866,23 @@ what the band plays. The wearer now writes the rhythm down like morse.
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L4 findings, the transcriber,
   open questions); `test/phase8/CONTRACTS.md` (8Y).
 
+### 8Z — Notes and rests, tempo, metronome, replay march
+
+The wearer wanted to write repeats and longer silences, and to hear the tempo.
+
+- Entries are notes or rests of length 1-4, typed by a Note/Rest toggle that flips
+  after every tap and can be overridden (two notes or two rests in a row are allowed).
+  One unit is an eighth. Buttons and rows show the music symbol above one coloured
+  dash per unit; rests are the same colours at a third of the saturation.
+- A metronome dot next to Play steps once per unit through four colours with an
+  outline between (8 steps to a 4/4 bar). "Dynamic tempo" (on by default) fits ms per
+  unit from the measured plays; otherwise 250 ms.
+- Replays march a playhead through the recorded entries at that pace, starting at the
+  first write plus the measured Bluetooth lead; the wheel follows and returns to the
+  cursor. A tap or scroll cancels it; the first listen (empty rendition) does not march.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (units and tempo fit);
+  `test/phase8/CONTRACTS.md` (8Z).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

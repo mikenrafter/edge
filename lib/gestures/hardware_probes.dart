@@ -374,6 +374,38 @@ class PatternTestResult {
   final PatternTest test;
   final List<PatternCommandResult> commands = [];
   final List<HapticBandEvent> events = [];
+
+  /// 8Z: phone receive time (ms) of the first live 60.
+  int? get _firstStartMs {
+    for (final e in events) {
+      if (e.eventId == 60) return e.receivedMs;
+    }
+    return null;
+  }
+
+  /// 8Z: how long the play took, the first live 60 to the last live 100 after
+  /// it (phone receive times, ms); null when either is missing.
+  int? get spanMs {
+    final first = _firstStartMs;
+    if (first == null) return null;
+    int? last;
+    for (final e in events) {
+      if (e.eventId == 100 && e.receivedMs >= first) last = e.receivedMs;
+    }
+    return last == null ? null : last - first;
+  }
+
+  /// 8Z: the Bluetooth delay, the first live 60 minus the moment the first
+  /// command's write landed (ms); null without a live 60 or a landed write.
+  int? get leadMs {
+    final first = _firstStartMs;
+    if (first == null) return null;
+    for (final c in commands) {
+      if (c.written && c.writtenMs != null) return first - c.writtenMs!;
+      break;
+    }
+    return null;
+  }
 }
 
 /// Plays one pattern test at a time, on demand (8Y): the wearer presses Play
