@@ -8,7 +8,9 @@
 
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
@@ -70,6 +72,25 @@ StrapEvent _event(int id) {
     tsEpoch: ms ~/ 1000,
     tsSubsec: ((ms % 1000) * 32768) ~/ 1000,
     receivedAt: DateTime.now(),
+    hex: '',
+    deviceId: 'band',
+  );
+}
+
+/// A live 100 stamped with the (fake) clock, for plays that must end at the
+/// write: the probe's clock is `clock.now`, which only moves when a test pumps.
+StrapEvent _clockEvent(int id) {
+  // The runner moves event times onto `clock` by the (small, growing) gap
+  // between `clock` and the wall clock, so a stamp equal to now could land a
+  // few microseconds before the write and not count as after it; stamp a
+  // little ahead.
+  final now = clock.now().add(const Duration(seconds: 10));
+  final ms = now.millisecondsSinceEpoch;
+  return StrapEvent(
+    eventId: id,
+    tsEpoch: ms ~/ 1000,
+    tsSubsec: ((ms % 1000) * 32768) ~/ 1000,
+    receivedAt: now,
     hex: '',
     deviceId: 'band',
   );
@@ -636,11 +657,242 @@ void main() {
       expect(r.running, isNull);
       expect(lab.sessionSummaries, hasLength(1));
     });
+
+    testWidgets('patternToggleDot flips the one-shot dot, notifies, and the '
+        'next tap writes the dotted length', (t) async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      final s = r.pattern!;
+      var heard = 0;
+      r.addListener(() => heard++);
+      expect(s.dotNext, isFalse);
+      final before = heard;
+      r.patternToggleDot();
+      expect(heard, greaterThan(before), reason: 'toggleDot notifies');
+      expect(s.dotNext, isTrue);
+      r.patternTap(2);
+      expect(s.rendition(0, 0).code, 'N3mf');
+      expect(s.dotNext, isFalse, reason: 'one-shot');
+      r.patternToggleDot();
+      r.patternToggleDot();
+      expect(s.dotNext, isFalse);
+      r.patternToggleDot();
+      r.patternTap(8);
+      expect(s.rendition(0, 0).code, 'N3mf R12');
+      r.closePattern();
+      // With nothing open it does nothing.
+      _runner(DeviceLabLog()).patternToggleDot();
+    });
+
+    group('the rolling command limit (8AB)', () {
+      // Every play's band 100 arrives inside its write, so a play takes no
+      // fake time and 30 plays write 30 commands at the same instant; the
+      // window of 2 minutes then moves only when the test pumps. Test 8 is the
+      // first with one command (the 1.8 s waits of the paced tests before it
+      // would need pumping).
+      const oneCommandTest = 8;
+      HardwareProbeRunner quick(DeviceLabLog lab, {_Link? link}) => _runner(
+            lab,
+            link: link,
+            onSend: (r) => r.onBandEvent(_clockEvent(100)),
+          );
+
+      testWidgets('no refusal until a play is refused', (t) async {
+        final r = quick(DeviceLabLog());
+        expect(r.patternRefusal, isNull);
+        expect(r.patternRestRemaining, isNull);
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        expect(r.patternRefusal, isNull);
+        expect(r.patternRestRemaining, isNull);
+        await r.playPattern();
+        expect(r.patternRefusal, isNull);
+        expect(r.patternRestRemaining, isNull);
+        r.closePattern();
+      });
+
+      testWidgets('after 30 commands the next play is refused: the reason is '
+          'resting, the rest counts down, the log says so', (t) async {
+        final lab = DeviceLabLog();
+        final sent = <_Sent>[];
+        final link = _Link();
+        final r = _runner(
+          lab,
+          link: link,
+          sent: sent,
+          onSend: (r) => r.onBandEvent(_clockEvent(100)),
+        );
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        for (var i = 0; i < 30; i++) {
+          await r.playPattern();
+          expect(r.patternRefusal, isNull, reason: 'play ${i + 1}');
+        }
+        expect(sent, hasLength(30));
+        expect(r.pattern!.plays(oneCommandTest), 30);
+
+        var heard = 0;
+        r.addListener(() => heard++);
+        await r.playPattern();
+        expect(sent, hasLength(30), reason: 'nothing written');
+        expect(r.patternPlaying, isFalse);
+        expect(heard, greaterThan(0), reason: 'the refusal notifies');
+        expect(r.patternRefusal, PatternRefusal.resting);
+        expect(r.patternRestRemaining, const Duration(minutes: 2));
+        expect(r.pattern!.plays(oneCommandTest), 30, reason: 'a refused play is no play');
+        expect(
+          lab.steps.first,
+          endsWith('Pattern probe: resting the band; ready in 120 s '
+              '(30 commands per 2 minutes).'),
+          reason: 'the lab prefixes the clock times',
+        );
+
+        await t.pump(const Duration(seconds: 30));
+        expect(r.patternRestRemaining, const Duration(seconds: 90));
+        await t.pump(const Duration(seconds: 89));
+        expect(r.patternRestRemaining, const Duration(seconds: 1));
+        r.closePattern();
+      });
+
+      testWidgets('once the window has slid a play is allowed and clears the '
+          'refusal', (t) async {
+        final r = quick(DeviceLabLog());
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        for (var i = 0; i < 31; i++) {
+          await r.playPattern();
+        }
+        expect(r.patternRefusal, PatternRefusal.resting);
+        await t.pump(const Duration(minutes: 2));
+        expect(r.patternRestRemaining, isNull, reason: 'ready');
+        await r.playPattern();
+        expect(r.patternRefusal, isNull);
+        expect(r.patternRestRemaining, isNull);
+        expect(r.pattern!.plays(oneCommandTest), 31);
+        r.closePattern();
+      });
+
+      testWidgets('not connected: the reason is notConnected, there is no '
+          'rest, and the next play after reconnecting clears it', (t) async {
+        final link = _Link();
+        final sent = <_Sent>[];
+        final r = _runner(DeviceLabLog(), link: link, sent: sent);
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        link.up = false;
+        var heard = 0;
+        r.addListener(() => heard++);
+        await r.playPattern();
+        expect(sent, isEmpty);
+        expect(heard, greaterThan(0));
+        expect(r.patternRefusal, PatternRefusal.notConnected);
+        expect(r.patternRestRemaining, isNull);
+        link.up = true;
+        unawaited(r.playPattern());
+        await t.pump(const Duration(seconds: 10));
+        expect(sent, hasLength(1));
+        expect(r.patternRefusal, isNull);
+        r.closePattern();
+      });
+
+      testWidgets('closing and reopening the pattern probe does not reset the '
+          'limit: the writes of the first screen still count', (t) async {
+        final sent = <_Sent>[];
+        final r = _runner(
+          DeviceLabLog(),
+          sent: sent,
+          onSend: (r) => r.onBandEvent(_clockEvent(100)),
+        );
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        for (var i = 0; i < 30; i++) {
+          await r.playPattern();
+        }
+        expect(sent, hasLength(30));
+        r.closePattern();
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        await r.playPattern();
+        expect(sent, hasLength(30), reason: 'refused, nothing written');
+        expect(r.patternRefusal, PatternRefusal.resting);
+        expect(r.patternRestRemaining, const Duration(minutes: 2));
+        expect(r.pattern!.plays(oneCommandTest), 0);
+        await t.pump(const Duration(minutes: 2));
+        await r.playPattern();
+        expect(sent, hasLength(31), reason: 'the window slid');
+        expect(r.patternRefusal, isNull);
+        r.closePattern();
+      });
+
+      testWidgets('patternCommandsLeft and patternNextFreeIn follow the '
+          'rolling window and survive reopening', (t) async {
+        final r = quick(DeviceLabLog());
+        expect(r.patternCommandsLeft, 30, reason: 'closed, nothing written');
+        expect(r.patternNextFreeIn, isNull);
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        expect(r.patternCommandsLeft, 30);
+        expect(r.patternNextFreeIn, isNull, reason: 'empty window');
+        await r.playPattern();
+        expect(r.patternCommandsLeft, 29);
+        expect(r.patternNextFreeIn, const Duration(minutes: 2));
+        await t.pump(const Duration(seconds: 50));
+        for (var i = 0; i < 4; i++) {
+          await r.playPattern();
+        }
+        expect(r.patternCommandsLeft, 25);
+        expect(r.patternNextFreeIn, const Duration(seconds: 70),
+            reason: 'the oldest write leaves first');
+        r.closePattern();
+        expect(r.patternCommandsLeft, 25, reason: 'the window outlives it');
+        expect(r.patternNextFreeIn, const Duration(seconds: 70));
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        expect(r.patternCommandsLeft, 25);
+        await t.pump(const Duration(seconds: 70));
+        expect(r.patternCommandsLeft, 26, reason: 'one has left');
+        expect(r.patternNextFreeIn, const Duration(seconds: 50));
+        await t.pump(const Duration(seconds: 50));
+        expect(r.patternCommandsLeft, 30);
+        expect(r.patternNextFreeIn, isNull);
+        r.closePattern();
+      });
+
+      testWidgets('patternCommandsLeft stops at 0 when the limit is reached',
+          (t) async {
+        final r = quick(DeviceLabLog());
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        for (var i = 0; i < 31; i++) {
+          await r.playPattern();
+        }
+        expect(r.patternCommandsLeft, 0);
+        expect(r.patternNextFreeIn, const Duration(minutes: 2));
+        r.closePattern();
+      });
+
+      testWidgets('closing the pattern probe clears the refusal', (t) async {
+        final r = quick(DeviceLabLog());
+        await r.openPattern();
+        r.patternTest(oneCommandTest);
+        for (var i = 0; i < 31; i++) {
+          await r.playPattern();
+        }
+        expect(r.patternRefusal, PatternRefusal.resting);
+        r.closePattern();
+        expect(r.patternRefusal, isNull);
+        expect(r.patternRestRemaining, isNull);
+      });
+    });
   });
 
   group('HardwareProbePanel pattern probe', () {
     testWidgets('is offered', (t) async {
-      await _pump(t, HardwareProbePanel(runner: _runner(DeviceLabLog())));
+      await _pump(t, HardwareProbePanel(
+          runner: _runner(DeviceLabLog()),
+          logText: () => '',
+        ),
+      );
       expect(find.byKey(const ValueKey('probe-pattern')), findsOneWidget);
       expect(find.text('Run pattern probe'), findsOneWidget);
     });
@@ -648,13 +900,13 @@ void main() {
     testWidgets('without the band, or on a band that is not an MG, it does '
         'not open', (t) async {
       final off = _runner(DeviceLabLog(), connected: false);
-      await _pump(t, HardwareProbePanel(runner: off));
+      await _pump(t, HardwareProbePanel(runner: off, logText: () => ''));
       await t.tap(find.byKey(const ValueKey('probe-pattern')));
       await t.pump(const Duration(milliseconds: 500));
       expect(off.running, isNull);
       expect(find.byType(PatternProbePage), findsNothing);
       final notMg = _runner(DeviceLabLog(), mg: false);
-      await _pump(t, HardwareProbePanel(runner: notMg));
+      await _pump(t, HardwareProbePanel(runner: notMg, logText: () => ''));
       await t.tap(find.byKey(const ValueKey('probe-pattern')));
       await t.pump(const Duration(milliseconds: 500));
       expect(notMg.running, isNull);
@@ -665,7 +917,7 @@ void main() {
         'closes the session', (t) async {
       final lab = DeviceLabLog();
       final r = _runner(lab);
-      await _pump(t, HardwareProbePanel(runner: r));
+      await _pump(t, HardwareProbePanel(runner: r, logText: () => ''));
       await t.tap(find.byKey(const ValueKey('probe-pattern')));
       await t.pump();
       await t.pump(const Duration(milliseconds: 500));
@@ -682,6 +934,71 @@ void main() {
       expect(r.pattern, isNull);
       expect(lab.steps.join('\n'), contains('Pattern probe heard 1/40'));
       expect(find.text('Run pattern probe'), findsOneWidget);
+    });
+
+    // 8AB C2: the Device lab gives the panel a closure that builds the same
+    // text as its "Copy all logs"; the panel hands it to the page, whose end
+    // screen copies it after the session has closed.
+    testWidgets('the end screen copies the lab\'s log text, read after the '
+        'session closed; Done returns to the panel', (t) async {
+      final copied = <String>[];
+      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied.add((call.arguments as Map)['text'] as String);
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      final lab = DeviceLabLog();
+      final r = _runner(lab);
+      var calls = 0;
+      await _pump(
+        t,
+        HardwareProbePanel(
+          runner: r,
+          logText: () {
+            calls++;
+            return 'LAB LOG\n${lab.steps.reversed.join('\n')}';
+          },
+        ),
+      );
+      await t.tap(find.byKey(const ValueKey('probe-pattern')));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 500));
+      expect(find.byType(PatternProbePage), findsOneWidget);
+      expect(calls, 0, reason: 'built on demand, not when the page opens');
+
+      r.patternTap(2);
+      await t.pump(const Duration(milliseconds: 400));
+      await t.tap(find.byKey(const ValueKey('pattern-finish')));
+      await t.pump(const Duration(milliseconds: 500));
+      expect(r.pattern, isNull, reason: 'closed before the end screen');
+      expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
+      expect(calls, 0, reason: 'Finish alone copies nothing');
+
+      await t.tap(find.byKey(const ValueKey('pattern-copy')));
+      await t.pump(const Duration(milliseconds: 400));
+      expect(calls, 1);
+      expect(copied, hasLength(1));
+      expect(copied.single, startsWith('LAB LOG'));
+      expect(copied.single, contains('Pattern probe heard 1/40'));
+      expect(find.text('Copied'), findsWidgets);
+
+      await t.tap(find.byKey(const ValueKey('pattern-done')));
+      await t.pump(const Duration(milliseconds: 500));
+      // The exit animation starts on the first frame after the pop.
+      await t.pump(const Duration(milliseconds: 500));
+      expect(find.byType(PatternProbePage), findsNothing);
+      expect(find.text('Run pattern probe'), findsOneWidget);
+      expect(r.running, isNull);
     });
   });
 }

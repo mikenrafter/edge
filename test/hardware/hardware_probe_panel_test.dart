@@ -42,7 +42,10 @@ HardwareProbeRunner _runner(DeviceLabLog lab,
 void main() {
   testWidgets('both probes are offered, with the safety limits spelled out',
       (t) async {
-    await _pump(t, HardwareProbePanel(runner: _runner(DeviceLabLog())));
+    await _pump(t, HardwareProbePanel(
+        runner: _runner(DeviceLabLog()),
+        logText: () => '',
+      ));
     expect(find.text('Run buzz probe'), findsOneWidget);
     expect(find.text('Run ECG touch probe'), findsOneWidget);
     expect(find.textContaining('up to 30 short buzzes'), findsOneWidget);
@@ -55,7 +58,7 @@ void main() {
     final lab = DeviceLabLog();
     final sent = <int>[];
     final r = _runner(lab, sent: sent);
-    await _pump(t, HardwareProbePanel(runner: r));
+    await _pump(t, HardwareProbePanel(runner: r, logText: () => ''));
     await t.tap(find.byKey(const ValueKey('probe-buzz')));
     await t.pump();
     expect(find.text('Stop'), findsOneWidget);
@@ -79,7 +82,7 @@ void main() {
 
   testWidgets('without a band the probes cannot start', (t) async {
     final r = _runner(DeviceLabLog(), connected: false);
-    await _pump(t, HardwareProbePanel(runner: r));
+    await _pump(t, HardwareProbePanel(runner: r, logText: () => ''));
     await t.tap(find.byKey(const ValueKey('probe-buzz')));
     await t.pump();
     expect(r.running, isNull);
@@ -87,7 +90,7 @@ void main() {
 
   testWidgets('leaving the screen stops a running probe', (t) async {
     final r = _runner(DeviceLabLog());
-    await _pump(t, HardwareProbePanel(runner: r));
+    await _pump(t, HardwareProbePanel(runner: r, logText: () => ''));
     await t.tap(find.byKey(const ValueKey('probe-buzz')));
     await t.pump();
     expect(r.running, ProbeKind.buzz);
@@ -105,7 +108,10 @@ void main() {
       theme: buildTheme(Brightness.light),
       home: DeviceLabView(
         ecgSupported: true,
-        probes: HardwareProbePanel(runner: _runner(DeviceLabLog())),
+        probes: HardwareProbePanel(
+        runner: _runner(DeviceLabLog()),
+        logText: () => '',
+      ),
       ),
     ));
     expect(find.text('Hardware probes'), findsOneWidget);

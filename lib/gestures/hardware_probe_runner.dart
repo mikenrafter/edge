@@ -2,7 +2,7 @@
 // Device lab and holds what the screen shows: which probe runs, the current
 // ECG cue, the buzz probe's "how many did you feel?" question (8V) and the
 // pattern probe's transcriber (8Y/8Z: the wearer plays a test, taps what they
-// felt as note and rest lengths 1-4, may play it again).
+// felt as note and rest lengths, may play it again).
 //
 // Everything a probe learns goes into the lab log as a session (so "Copy all
 // logs" carries it), and the ECG probe's packets go into the lab's packet
@@ -19,6 +19,9 @@ import 'hardware_probes.dart';
 import 'lab_log.dart';
 import 'pattern_transcript.dart';
 import 'strap_event.dart';
+
+// The reason type of [HardwareProbeRunner.patternRefusal].
+export 'hardware_probes.dart' show PatternRefusal;
 
 enum ProbeKind { buzz, ecg, pattern }
 
@@ -70,6 +73,9 @@ class HardwareProbeRunner extends ChangeNotifier {
   HapticProbe? _haptic;
   PatternProbe? _probe;
   PatternEntrySession? _session;
+  // The pattern probe's write times: kept here so closing and reopening the
+  // screen does not reset the band's rest limit.
+  final List<DateTime> _patternWrites = [];
   bool _patternPlaying = false;
   int _patternPlays = 0;
   DateTime? _patternPlayWrittenAt;
@@ -89,6 +95,35 @@ class HardwareProbeRunner extends ChangeNotifier {
   /// The open pattern transcriber (null when the pattern probe is closed).
   PatternEntrySession? get pattern => _session;
   bool get patternPlaying => _patternPlaying;
+
+  /// Why the latest play was refused (null: none, or the probe is closed).
+  PatternRefusal? get patternRefusal => _probe?.lastRefusal;
+
+  /// How long the band still rests after a "resting" refusal; null when not
+  /// resting or ready.
+  Duration? get patternRestRemaining => _probe?.restRemaining(clock.now());
+
+  /// Writes still inside the rolling window, oldest first.
+  List<DateTime> get _inWindow {
+    final now = clock.now();
+    return [
+      for (final w in _patternWrites)
+        if (w.add(PatternProbe.commandWindow).isAfter(now)) w,
+    ];
+  }
+
+  /// Commands the band may still be sent now (30 minus those in the rolling
+  /// window, never below 0). Holds while the screen is closed.
+  int get patternCommandsLeft =>
+      (PatternProbe.maxCommandsPerWindow - _inWindow.length)
+          .clamp(0, PatternProbe.maxCommandsPerWindow);
+
+  /// Time until the oldest command leaves the window; null when it is empty.
+  Duration? get patternNextFreeIn {
+    final w = _inWindow;
+    if (w.isEmpty) return null;
+    return w.first.add(PatternProbe.commandWindow).difference(clock.now());
+  }
 
   /// Plays started so far; the page restarts its metronome when it grows.
   int get patternPlays => _patternPlays;
@@ -168,6 +203,7 @@ class HardwareProbeRunner extends ChangeNotifier {
       isConnected: isConnected,
       step: lab.addStep,
       now: clock.now,
+      writeLog: _patternWrites,
     );
     _session = PatternEntrySession(probe.tests);
     _patternPlaying = false;
@@ -190,11 +226,15 @@ class HardwareProbeRunner extends ChangeNotifier {
     if (s == null || probe == null || _patternPlaying) return;
     final at = s.testIndex;
     _patternPlaying = true;
-    _patternPlays++;
     _patternPlayWrittenAt = null;
-    notifyListeners();
     try {
-      final r = await probe.play(s.tests[at]);
+      // The probe decides a refusal before its first await: a refused play
+      // is no play, so the count (the page's metronome cue) moves only on an
+      // accepted one.
+      final pending = probe.play(s.tests[at]);
+      if (probe.lastRefusal == null) _patternPlays++;
+      notifyListeners();
+      final r = await pending;
       if (r != null && identical(_session, s)) {
         s.notePlayed(at);
         final span = r.spanMs, lead = r.leadMs;
@@ -212,6 +252,7 @@ class HardwareProbeRunner extends ChangeNotifier {
   }
 
   void patternTap(int len) => _edit((s) => s.tap(len));
+  void patternToggleDot() => _edit((s) => s.toggleDot());
   void patternToggleKind() => _edit((s) => s.toggleKind());
   void patternDynamicTempo(bool on) => _edit((s) => s.dynamicTempo = on);
   void patternDynamic(PatternDynamic d) => _edit((s) => s.setDynamic(d));
@@ -238,14 +279,10 @@ class HardwareProbeRunner extends ChangeNotifier {
     _session = null;
     _patternPlaying = false;
     _patternPlayWrittenAt = null;
-    var heard = 0, plays = 0;
-    for (var i = 0; i < s.tests.length; i++) {
-      if (s.rendition(i, 0).length > 0 || s.rendition(i, 1).length > 0) heard++;
-      plays += s.plays(i);
-    }
     s.logLines().forEach(lab.addStep);
     lab.endSession(
-        result: '$heard of ${s.tests.length} tests transcribed, $plays plays');
+        result: '${s.testsTranscribed} of ${s.tests.length} tests '
+            'transcribed, ${s.totalPlays} plays');
     _running = null;
     notifyListeners();
   }

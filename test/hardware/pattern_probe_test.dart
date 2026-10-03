@@ -13,8 +13,12 @@
 // long a silence is felt as), how a play ends (the band's 100 or 4 s), the
 // cool-down before the next play, that only LIVE band events count (the 22:29
 // log delivered dozens of old 60/100 events late, and the 22:36 burst released
-// event-paced commands early), the budget of 160 commands per session, the
-// refusals, the per-play log line and (8Z) the measured span of a play.
+// event-paced commands early), the rolling limit (8AB: at most 30 commands in
+// any 2 minutes, replacing the 8Y cap of 160 per session, which refused every
+// play from test 20 on with nothing on screen saying so), the refusals, the
+// per-play log line and (8Z) the measured span of a play.
+
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probes.dart';
@@ -289,13 +293,14 @@ void main() {
     });
 
     test('one pass over the 40 tests is 72 commands (56 + 8 gap tests of 2); '
-        'the session budget is 160, so two passes', () {
+        'the limit is 30 commands in any 2 minutes', () {
       final total = PatternProbe.defaultTests.fold<int>(
         0,
         (n, t) => n + t.commands,
       );
       expect(total, 72);
-      expect(PatternProbe.maxCommands, 160);
+      expect(PatternProbe.maxCommandsPerWindow, 30);
+      expect(PatternProbe.commandWindow, const Duration(minutes: 2));
     });
   });
 
@@ -713,47 +718,271 @@ void main() {
     });
   });
 
-  group('the budget: 160 commands per session', () {
+  group('the rolling limit: 30 commands in any 2 minutes (8AB)', () {
+    // One command per play, the band's 100 1.5 s after the write: a play takes
+    // 1.5 s on the virtual clock, so 30 plays write at 0, 1.5, ... 43.5 s and
+    // end at 45 s. The oldest write leaves the window at 120 s.
     PatternTest paced3() =>
         PatternTest(waveform: _alone, style: BuzzStyle.paced, count: 3);
 
-    test('plays are counted together; one that would go over is refused '
-        'before it writes anything', () async {
-      final t3 = paced3();
-      final one = _repeat();
-      final g = _Rig(tests: [t3, one], afterWrite: _bandPlays);
-      for (var i = 0; i < 53; i++) {
-        expect(await g.probe.play(t3), isNotNull, reason: 'play ${i + 1}');
+    Future<_Rig> thirtyPlays() async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      for (var i = 0; i < 30; i++) {
+        expect(await g.probe.play(t), isNotNull, reason: 'play ${i + 1}');
       }
-      expect(g.sends, hasLength(159));
+      expect(g.sends, hasLength(30));
+      expect(g.clock.ms, 45000);
+      return g;
+    }
+
+    test('30 commands go through, the 31st is refused before it writes '
+        'anything and says the band is resting', () async {
+      final g = await thirtyPlays();
       final steps = g.steps.length;
-      expect(await g.probe.play(t3), isNull, reason: '162 > 160');
-      expect(g.sends, hasLength(159), reason: 'nothing written');
+      expect(await g.probe.play(g.probe.tests.single), isNull);
+      expect(g.sends, hasLength(30), reason: 'nothing written');
       expect(g.steps.length, greaterThan(steps), reason: 'it says why');
-      expect(g.steps.last, startsWith('Pattern probe'));
-      expect(await g.probe.play(one), isNotNull, reason: 'exactly 160');
-      expect(g.sends, hasLength(160));
-      expect(await g.probe.play(one), isNull);
-      expect(g.sends, hasLength(160));
+      expect(
+        g.steps.last,
+        'Pattern probe: resting the band; ready in 75 s '
+        '(30 commands per 2 minutes).',
+      );
       expect(g.probe.running, isFalse);
+      expect(g.clock.ms, 45000, reason: 'a refusal waits for nothing');
     });
 
-    test('a full pass over the 40 default tests uses 72 of the 160', () async {
+    test('commands are counted, not plays: a 3-command play that would go '
+        'over is refused, a 1-command play that fits is not', () async {
+      final t1 = _repeat();
+      final t3 = paced3();
+      final g = _Rig(tests: [t1, t3], afterWrite: _bandPlays);
+      for (var i = 0; i < 28; i++) {
+        expect(await g.probe.play(t1), isNotNull);
+      }
+      final now = g.clock.now;
+      expect(await g.probe.play(t3), isNull, reason: '28 + 3 > 30');
+      expect(g.sends, hasLength(28));
+      expect(
+        g.probe.restRemaining(now),
+        const Duration(seconds: 78),
+        reason: 'one write has to leave the window: 120 s minus 42 s',
+      );
+      expect(await g.probe.play(t1), isNotNull, reason: '29');
+      expect(await g.probe.play(t1), isNotNull, reason: '30');
+      expect(await g.probe.play(t1), isNull, reason: '31');
+      expect(g.sends, hasLength(30));
+    });
+
+    test('a 3-command play needs three writes to leave the window', () async {
+      final g = await thirtyPlays();
+      final t3 = paced3();
+      final probe = g.probe;
+      // The 3 oldest writes are at 0, 1.5 and 3 s: the third leaves at 123 s.
+      g.clock.now = _t0.add(const Duration(seconds: 100));
+      expect(await probe.play(t3), isNull);
+      expect(
+        probe.restRemaining(g.clock.now),
+        const Duration(seconds: 23),
+      );
+    });
+
+    test('refused plays do not count', () async {
+      final g = await thirtyPlays();
+      final t = g.probe.tests.single;
+      for (var i = 0; i < 100; i++) {
+        expect(await g.probe.play(t), isNull);
+      }
+      expect(g.sends, hasLength(30));
+      // The refusals added nothing: the oldest write still leaves at 120 s,
+      // and from then on commands are allowed one by one as the old ones go.
+      g.clock.now = _t0.add(const Duration(seconds: 120));
+      expect(await g.probe.play(t), isNotNull);
+      expect(g.sends, hasLength(31));
+    });
+
+    test('a refusal for another reason does not count either', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], connected: false, afterWrite: _bandPlays);
+      for (var i = 0; i < 200; i++) {
+        await g.probe.play(t);
+      }
+      g.connected = true;
+      for (var i = 0; i < 30; i++) {
+        expect(await g.probe.play(t), isNotNull, reason: 'play ${i + 1}');
+      }
+      expect(await g.probe.play(t), isNull);
+    });
+
+    test('a command leaves the window exactly 2 minutes after its write',
+        () async {
+      final g = await thirtyPlays();
+      final t = g.probe.tests.single;
+      g.clock.now = _t0.add(const Duration(milliseconds: 119999));
+      expect(await g.probe.play(t), isNull);
+      expect(
+        g.probe.restRemaining(g.clock.now),
+        const Duration(milliseconds: 1),
+      );
+      expect(
+        g.steps.last,
+        'Pattern probe: resting the band; ready in 1 s '
+        '(30 commands per 2 minutes).',
+        reason: 'seconds are rounded up',
+      );
+      g.clock.now = _t0.add(const Duration(minutes: 2));
+      expect(await g.probe.play(t), isNotNull);
+      expect(g.sends, hasLength(31));
+      expect(g.sends.last.startMs, 120000);
+    });
+
+    test('after the window slides, plays are allowed again: 30 more, then '
+        'the limit again', () async {
+      final g = await thirtyPlays();
+      final t = g.probe.tests.single;
+      expect(await g.probe.play(t), isNull);
+      g.clock.now = g.clock.now.add(const Duration(minutes: 2));
+      for (var i = 0; i < 30; i++) {
+        expect(await g.probe.play(t), isNotNull, reason: 'play ${31 + i}');
+      }
+      expect(g.sends, hasLength(60));
+      expect(await g.probe.play(t), isNull);
+      expect(g.sends, hasLength(60));
+    });
+
+    test('the window rolls: commands spread over time are never refused',
+        () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      // One play every 5 s is 24 commands in 2 minutes: always allowed.
+      for (var i = 0; i < 100; i++) {
+        expect(await g.probe.play(t), isNotNull, reason: 'play ${i + 1}');
+        g.clock.now = g.clock.now.add(const Duration(milliseconds: 3500));
+      }
+      expect(g.sends, hasLength(100));
+    });
+
+    test('10 plays of 3 commands use up the 30; the 11th is refused',
+        () async {
+      final t3 = paced3();
+      final g = _Rig(tests: [t3], afterWrite: _bandPlays);
+      for (var i = 0; i < 10; i++) {
+        expect(await g.probe.play(t3), isNotNull, reason: 'play ${i + 1}');
+      }
+      expect(g.sends, hasLength(30));
+      expect(await g.probe.play(t3), isNull);
+      expect(g.probe.restRemaining(g.clock.now), isNotNull);
+    });
+
+    test('a full pass over the 40 default tests (72 commands) is cut at 30 '
+        'in the first 2 minutes', () async {
       final g = _Rig(afterWrite: _bandPlays);
-      for (final t in PatternProbe.defaultTests) {
-        expect(await g.probe.play(t), isNotNull);
-      }
-      expect(g.sends, hasLength(72));
-      for (final t in PatternProbe.defaultTests) {
-        expect(await g.probe.play(t), isNotNull);
-      }
-      expect(g.sends, hasLength(144));
       var refused = 0;
       for (final t in PatternProbe.defaultTests) {
         if (await g.probe.play(t) == null) refused++;
       }
-      expect(g.sends.length, lessThanOrEqualTo(PatternProbe.maxCommands));
+      expect(g.clock.ms, lessThan(120000), reason: 'the whole pass fits');
+      expect(g.sends.length, inInclusiveRange(28, 30));
       expect(refused, greaterThan(0));
+    });
+  });
+
+  group('the refusal reason and the rest time (8AB)', () {
+    test('a fresh probe has no refusal and no rest', () {
+      final g = _Rig(tests: [_repeat()]);
+      expect(g.probe.lastRefusal, isNull);
+      expect(g.probe.restUntil, isNull);
+      expect(g.probe.restRemaining(g.clock.now), isNull);
+    });
+
+    test('resting: lastRefusal, restUntil and restRemaining count down to '
+        'the moment the oldest write leaves the window', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      for (var i = 0; i < 30; i++) {
+        await g.probe.play(t);
+      }
+      expect(await g.probe.play(t), isNull);
+      expect(g.probe.lastRefusal, PatternRefusal.resting);
+      expect(g.probe.restUntil, _t0.add(const Duration(minutes: 2)));
+      expect(g.probe.restRemaining(g.clock.now), const Duration(seconds: 75));
+      expect(
+        g.probe.restRemaining(_t0.add(const Duration(seconds: 100))),
+        const Duration(seconds: 20),
+      );
+      expect(
+        g.probe.restRemaining(_t0.add(const Duration(minutes: 2))),
+        isNull,
+        reason: 'ready: nothing left to wait',
+      );
+      expect(
+        g.probe.restRemaining(_t0.add(const Duration(minutes: 3))),
+        isNull,
+      );
+    });
+
+    test('the next accepted play clears the refusal and the rest', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      for (var i = 0; i < 30; i++) {
+        await g.probe.play(t);
+      }
+      expect(await g.probe.play(t), isNull);
+      g.clock.now = _t0.add(const Duration(minutes: 2));
+      expect(await g.probe.play(t), isNotNull);
+      expect(g.probe.lastRefusal, isNull);
+      expect(g.probe.restUntil, isNull);
+      expect(g.probe.restRemaining(g.clock.now), isNull);
+    });
+
+    test('not connected: the reason is notConnected and there is no rest',
+        () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], connected: false);
+      expect(await g.probe.play(t), isNull);
+      expect(g.probe.lastRefusal, PatternRefusal.notConnected);
+      expect(g.probe.restRemaining(g.clock.now), isNull);
+      g.connected = true;
+      expect(await g.probe.play(t), isNotNull);
+      expect(g.probe.lastRefusal, isNull);
+    });
+
+    test('a refusal for another reason replaces a resting one', () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], afterWrite: _bandPlays);
+      for (var i = 0; i < 30; i++) {
+        await g.probe.play(t);
+      }
+      expect(await g.probe.play(t), isNull);
+      expect(g.probe.lastRefusal, PatternRefusal.resting);
+      g.connected = false;
+      expect(await g.probe.play(t), isNull);
+      expect(g.probe.lastRefusal, PatternRefusal.notConnected);
+      expect(g.probe.restRemaining(g.clock.now), isNull);
+    });
+
+    test('a play while one is going: the reason is busy', () async {
+      final t = _repeat();
+      late final _Rig g;
+      PatternRefusal? during;
+      g = _Rig(
+        tests: [t],
+        onSend: (p, i) {
+          unawaited(p.play(t));
+          during = p.lastRefusal;
+        },
+      );
+      expect(await g.probe.play(t), isNotNull);
+      expect(during, PatternRefusal.busy);
+      expect(g.sends, hasLength(1));
+    });
+
+    test('a play that is stopped, or writes nothing, is not a refusal',
+        () async {
+      final t = _repeat();
+      final g = _Rig(tests: [t], writes: false);
+      expect(await g.probe.play(t), isNull);
+      expect(g.probe.lastRefusal, isNull);
     });
   });
 
@@ -822,7 +1051,7 @@ void main() {
       expect(probe.running, isFalse);
     });
 
-    test('a refused play does not use up the budget', () async {
+    test('a refused play does not use up the limit', () async {
       final t = _repeat();
       final g = _Rig(tests: [t], connected: false);
       for (var i = 0; i < 200; i++) {

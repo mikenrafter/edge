@@ -899,6 +899,27 @@ The wearer wanted 16th notes and the dynamics ff, mf, mp and pp.
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (the 16th unit and the codes);
   `test/phase8/CONTRACTS.md` (8AA).
 
+### 8AB — dotted notes, count-in, end screen, rolling limit
+
+The wearer wanted dotted notes, a metronome that leads into Play, an end screen with
+the log copy, and to know why buzzes stopped coming around test 22 (the probe's own
+160-commands-per-session cap refused every play from test 20 on, silently).
+
+- A Dot button next to the 16th, eighth, quarter and half buttons makes the next entry
+  3/2 as long (3, 6 or 12 sixteenths: dotted eighth, quarter, half). The 16th is
+  disabled while the dot is on.
+- The metronome is off until Play, then counts in one measure, the band is asked one
+  lead before the downbeat, the march starts on the downbeat, and the metronome stops
+  one padding measure (to the bar line) after the play and march are done.
+- Finish or back opens an end screen after the session closes: counts, tempo, lead,
+  "Copy all logs" (same text as the Device lab) and Done.
+- The per-session cap becomes 30 commands in any 2 minutes, kept across reopen. A
+  refused play says why under Play ("Band resting, ready in N s", "Not connected",
+  "Still playing"). A display of commands left and time to the next free one is blurred
+  until tapped, and red under 5 left.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (probes section);
+  `test/phase8/CONTRACTS.md` (8AB).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

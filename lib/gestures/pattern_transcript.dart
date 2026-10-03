@@ -1,5 +1,6 @@
-// 8Y/8Z/8AA: the pattern probe's transcriber. The wearer taps buttons of
-// length 1, 2, 4, 6 or 8 sixteenths; every note also carries a dynamic (ff, mf,
+// 8Y/8Z/8AA/8AB: the pattern probe's transcriber. The wearer taps buttons of
+// length 1, 2, 4 or 8 sixteenths, and a one-shot Dot makes the next tap 3/2 as
+// long (3, 6 or 12); every note also carries a dynamic (ff, mf,
 // mp, pp) from a sticky selector; every entry is typed explicitly as a note or a rest (two notes or two
 // rests may sit next to each other). A Note/Rest toggle flips after every tap
 // and can be overridden. Pure Dart: [PatternTranscript] is one immutable list of
@@ -9,9 +10,9 @@
 
 import 'hardware_probes.dart';
 
-/// The lengths a button can write, in sixteenths: 16th, eighth, quarter,
-/// dotted quarter, half.
-const List<int> kPatternLengths = [1, 2, 4, 6, 8];
+/// The lengths an entry can have, in sixteenths: 16th, eighth, dotted eighth,
+/// quarter, dotted quarter, half, dotted half.
+const List<int> kPatternLengths = [1, 2, 3, 4, 6, 8, 12];
 
 /// How hard a note is felt, loudest to softest.
 enum PatternDynamic { ff, mf, mp, pp }
@@ -19,9 +20,11 @@ enum PatternDynamic { ff, mf, mp, pp }
 const Map<int, String> _lengthNames = {
   1: '16th',
   2: 'eighth',
+  3: 'dotted eighth',
   4: 'quarter',
   6: 'dotted quarter',
   8: 'half',
+  12: 'dotted half',
 };
 
 /// One transcribed entry: a note (with a dynamic) or a rest (without one).
@@ -149,12 +152,27 @@ class PatternEntrySession {
   /// rendition changes leave it alone.
   PatternDynamic nextDynamic = PatternDynamic.mf;
 
+  /// The Dot toggle: the next tap writes 3/2 of its length, then it clears.
+  bool dotNext = false;
+
   /// Whether the tempo follows the fit over the measured plays.
   bool dynamicTempo = true;
 
   PatternTranscript rendition(int test, int r) => _renditions[test][r];
 
   int plays(int test) => _plays[test];
+
+  /// Plays over all tests.
+  int get totalPlays => _plays.fold(0, (a, b) => a + b);
+
+  /// Tests with something written in either rendition.
+  int get testsTranscribed => [
+        for (var i = 0; i < tests.length; i++)
+          if (_renditions[i].any((t) => t.length > 0)) i,
+      ].length;
+
+  /// Whether any lead was measured (else [leadMs] is the default).
+  bool get leadMeasured => _leads.isNotEmpty;
 
   PatternTranscript get active => _renditions[testIndex][activeRendition];
 
@@ -200,10 +218,19 @@ class PatternEntrySession {
         t.replaceAt(cursor, PatternEntry(note: true, length: e.length, dynamic: d));
   }
 
+  void toggleDot() => dotNext = !dotNext;
+
+  /// Write an entry of [len] sixteenths at the cursor. With the dot on, [len]
+  /// must be 2, 4 or 8 and the entry is 3/2 as long (3, 6, 12), and the dot
+  /// clears once it is written; any other [len] is an [ArgumentError] and
+  /// changes nothing.
   void tap(int len) {
+    if (dotNext && len != 2 && len != 4 && len != 8) {
+      throw ArgumentError.value(len, 'len', 'only 2, 4 or 8 can be dotted');
+    }
     final e = PatternEntry(
       note: nextIsNote,
-      length: len,
+      length: dotNext ? len * 3 ~/ 2 : len,
       dynamic: nextIsNote ? nextDynamic : null,
     );
     final t = active;
@@ -214,6 +241,7 @@ class PatternEntrySession {
     } else {
       _renditions[testIndex][activeRendition] = t.replaceAt(cursor, e);
     }
+    dotNext = false;
     cursor = cursor + 1;
     nextIsNote = !nextIsNote;
   }

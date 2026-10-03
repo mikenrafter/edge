@@ -178,12 +178,33 @@ everything into the lab log ("Copy all logs").
     different places. Notes in the log read `N<length><dynamic>` and rests
     `R<length>`: `N4mf R2 N1ff` is a quarter note at mf, an eighth rest, then a 16th
     note at ff.
+  - **Dotted lengths, count-in, end screen, rolling limit (8AB).** A Dot button
+    beside the 16th, eighth, quarter and half buttons makes the next entry 3/2 as
+    long (one shot; a 16th cannot be dotted), so the lengths are now 1, 2, 3, 4, 6,
+    8 and 12 units and the log reads `N3mf`, `R6`, `N12ff` (dotted eighth, dotted
+    quarter, dotted half). The metronome is off until Play; Play gives a one-measure
+    count-in (16 steps), asks the band one measured Bluetooth lead before the next
+    downbeat so the buzz starts on it, and marches the playhead from that downbeat.
+    The metronome keeps going until the play has finished and the march has ended,
+    plus one padding measure to the bar line, then goes idle. Finish (or going back)
+    closes the probe, which writes the heard lines and the tempo line, and shows an
+    end screen with tests transcribed, plays, the tempo, the measured lead, "Copy all
+    logs" (the same text as the Device lab's button, taken after the close so the
+    heard lines are in it) and Done. The probe no longer stops at 160 commands a
+    session. The band now gets at most 30 commands in any 2 minutes, counted over all
+    plays and kept when the screen is closed and reopened; a play that would go over
+    is refused with `Pattern probe: resting the band; ready in N s (30 commands per
+    2 minutes).` and the page says "Band resting, ready in N s" under Play. (In 8Y-8AA
+    the old cap refused every play from test 20 on, with nothing on screen to say
+    so.) A small display shows "N of 30 left" and "next in m:ss", red under 5 left;
+    it is blurred until tapped so its countdown does not compete with the metronome.
 
 Safety and hardware health: the buzz and pattern probes send only the band's
 own buzz command (RUN_HAPTIC_PATTERN_MAVERICK), through the alert dispatcher
-like every other buzz. Hard bounds: the pattern probe writes at most 160
-commands per session (`PatternProbe.maxCommands`, counted over all plays; a play
-that would go over is refused), each pattern has 1-8 effects with ids 1-255, the
+like every other buzz. Hard bounds: the pattern probe writes at most 30
+commands in any 2 minutes (`PatternProbe.maxCommandsPerWindow` and
+`commandWindow`, counted over all plays; a play that would go over is refused
+until enough of the window has passed), each pattern has 1-8 effects with ids 1-255, the
 loop is capped at 3, every play waits for the band to finish the last one, and a
 play where nothing could be written is not counted. The pattern probe is
 refused on a band that is not an MG. The ECG stream is capped and always

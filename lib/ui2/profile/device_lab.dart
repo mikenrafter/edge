@@ -51,6 +51,14 @@ class DeviceLab extends StatelessWidget {
   Widget build(BuildContext c) {
     final app = c.read<AppState>();
     final g = app.gestureSettings;
+    // The text "Copy all logs" copies, read when asked: the lab's own button
+    // and the pattern probe's end screen share it.
+    String logText() => labLogText(
+      entries: app.deviceLab.entries,
+      steps: app.deviceLab.steps,
+      sessions: app.deviceLab.sessionSummaries,
+      packets: app.deviceLab.packets,
+    );
     return ListenableBuilder(
       listenable: Listenable.merge([g, app.deviceLab]),
       builder: (c, _) => DeviceLabView(
@@ -67,7 +75,8 @@ class DeviceLab extends StatelessWidget {
         packets: app.deviceLab.packets,
         thresholds: g.ecgTapThresholds,
         onThresholds: g.setEcgTapThresholds,
-        probes: HardwareProbePanel(runner: app.hardwareProbes),
+        logText: logText,
+        probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
       ),
     );
   }
@@ -90,6 +99,7 @@ class DeviceLabView extends StatelessWidget {
     this.onThresholds,
     this.packets = const [],
     this.probes,
+    this.logText,
   });
 
   final bool ecgSupported;
@@ -124,13 +134,17 @@ class DeviceLabView extends StatelessWidget {
   /// The hardware probes section, when the screen has a runner for it.
   final Widget? probes;
 
+  /// What "Copy all logs" copies; built from the fields above when not given.
+  final String Function()? logText;
+
   Future<void> _copy(BuildContext c) async {
     await Clipboard.setData(ClipboardData(
-      text: labLogText(
-          entries: entries,
-          steps: steps,
-          sessions: sessions,
-          packets: packets),
+      text: logText?.call() ??
+          labLogText(
+              entries: entries,
+              steps: steps,
+              sessions: sessions,
+              packets: packets),
     ));
     if (!c.mounted) return;
     ScaffoldMessenger.of(c).showSnackBar(
@@ -479,8 +493,16 @@ class _Adjuster extends StatelessWidget {
 /// phone vibrates on every ECG cue so the wearer can watch the band, not the
 /// screen. Leaving the screen stops a running probe.
 class HardwareProbePanel extends StatefulWidget {
-  const HardwareProbePanel({super.key, required this.runner});
+  const HardwareProbePanel({
+    super.key,
+    required this.runner,
+    required this.logText,
+  });
   final HardwareProbeRunner runner;
+
+  /// The text of the lab's "Copy all logs", for the pattern probe's end
+  /// screen.
+  final String Function() logText;
 
   @override
   State<HardwareProbePanel> createState() => _HardwareProbePanelState();
@@ -520,7 +542,10 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
     final r = widget.runner;
     await r.openPattern();
     if (!mounted || r.pattern == null) return;
-    await goto(context, PatternProbePage(runner: r));
+    await goto(
+      context,
+      PatternProbePage(runner: r, logText: widget.logText),
+    );
   }
 
   @override
@@ -576,9 +601,9 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
             const SizedBox(height: S.x1),
             Text(
               'MG only. Opens a screen where you play custom buzz patterns and '
-              'tap out what you felt as buzz and gap lengths, up to '
-              '${PatternProbe.maxCommands} short commands in all. Leaving the '
-              'screen ends it.',
+              'tap out what you felt as buzz and gap lengths, at most '
+              '${PatternProbe.maxCommandsPerWindow} commands in any 2 '
+              'minutes. Leaving the screen ends it.',
               style: F.cap.copyWith(color: p.ink2, height: 1.4),
             ),
           ] else ...[

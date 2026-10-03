@@ -27,8 +27,9 @@
 // SAFETY AND HARDWARE HEALTH. All probes start only from an explicit button,
 // stop at once on Stop or a lost link, and are bounded: the buzz probe sends at
 // most [HapticProbe.maxCommands] short buzzes per run and the pattern probe at
-// most [PatternProbe.maxCommands] short commands per session (each play waits
-// for the band to finish the last one);
+// most [PatternProbe.maxCommandsPerWindow] short commands in any
+// [PatternProbe.commandWindow] (each play waits for the band to finish the
+// last one);
 // the ECG probe streams for at most [EcgTouchProbe.maxStream] and always stops
 // the stream (in `finally`). The buzz and ECG probes send nothing the app does
 // not already send. The pattern probe DOES send new waveform bytes (the same
@@ -411,6 +412,9 @@ class PatternTestResult {
 /// Plays one pattern test at a time, on demand (8Y): the wearer presses Play
 /// for the test on screen, as often as they like, and transcribes what they
 /// felt elsewhere. The probe only sends, waits for the band and logs.
+/// Why [PatternProbe.play] refused a play (8AB).
+enum PatternRefusal { busy, notConnected, resting }
+
 class PatternProbe {
   PatternProbe({
     required this.sendPattern,
@@ -419,12 +423,15 @@ class PatternProbe {
     DateTime Function()? now,
     Future<void> Function(Duration)? wait,
     List<PatternTest>? tests,
+    List<DateTime>? writeLog,
   })  : _now = now ?? DateTime.now,
         _wait = wait ?? ((d) => Future<void>.delayed(d)),
-        tests = tests ?? defaultTests;
+        tests = tests ?? defaultTests,
+        _writes = writeLog ?? <DateTime>[];
 
-  /// Hardware health: no session writes more than this many commands.
-  static const int maxCommands = 160;
+  /// Hardware health: at most this many commands in any [commandWindow].
+  static const int maxCommandsPerWindow = 30;
+  static const Duration commandWindow = Duration(minutes: 2);
 
   /// Gap between paced commands, and the wait for a band "ended" event.
   static const Duration pacedGap = Duration(milliseconds: 1800);
@@ -472,9 +479,14 @@ class PatternProbe {
   final Future<void> Function(Duration) _wait;
   final List<PatternTest> tests;
 
+  /// When each command was written, oldest first. Pass the same list to the
+  /// next probe so closing and reopening the screen does not reset the limit.
+  final List<DateTime> _writes;
+  PatternRefusal? _refusal;
+  DateTime? _restUntil;
+
   bool _running = false;
   bool _stop = false;
-  int _used = 0;
   DateTime? _playStart;
   DateTime? _testStart;
   DateTime? _writeStart;
@@ -484,8 +496,25 @@ class PatternProbe {
 
   bool get running => _running;
 
-  /// Commands written so far this session.
-  int get commandsUsed => _used;
+  /// Why the latest play was refused; null when it was accepted (or none yet).
+  PatternRefusal? get lastRefusal => _refusal;
+
+  /// When the band has rested enough, after a "resting" refusal; null
+  /// otherwise (and after the next accepted play).
+  DateTime? get restUntil => _restUntil;
+
+  /// Time left until [restUntil] at [now]; null when not resting or ready.
+  Duration? restRemaining(DateTime now) {
+    final u = _restUntil;
+    if (u == null || !now.isBefore(u)) return null;
+    return u.difference(now);
+  }
+
+  void _refuse(PatternRefusal why, String line, {DateTime? until}) {
+    _refusal = why;
+    _restUntil = until;
+    step?.call(line);
+  }
 
   /// Abort the waits and the commands still to come.
   void stop() => _stop = true;
@@ -510,22 +539,39 @@ class PatternProbe {
   }
 
   /// Play [t] once. Null (with the reason logged) when a play is going, the
-  /// band is not connected, the session budget would be exceeded, the play
-  /// was stopped before writing, or nothing was written.
+  /// band is not connected, the band must rest first (the rolling limit), the
+  /// play was stopped before writing, or nothing was written. The refusals
+  /// are decided before the first await, so a caller can read [lastRefusal]
+  /// right after calling.
   Future<PatternTestResult?> play(PatternTest t) async {
     if (_running) {
-      step?.call('Pattern probe: a play is already going.');
+      _refuse(PatternRefusal.busy, 'Pattern probe: a play is already going.');
       return null;
     }
     if (!isConnected()) {
-      step?.call('Pattern probe: the band is not connected.');
+      _refuse(PatternRefusal.notConnected,
+          'Pattern probe: the band is not connected.');
       return null;
     }
-    if (_used + t.commands > maxCommands) {
-      step?.call('Pattern probe: this play would go over the session limit '
-          'of $maxCommands commands ($_used used).');
+    final now = _now();
+    _writes.removeWhere((w) => !w.add(commandWindow).isAfter(now));
+    final over = _writes.length + t.commands - maxCommandsPerWindow;
+    if (over > 0 && _writes.isNotEmpty) {
+      // Enough of the oldest writes must leave the window.
+      final until = _writes[(over - 1).clamp(0, _writes.length - 1)]
+          .add(commandWindow);
+      final secs = (until.difference(now).inMilliseconds / 1000).ceil();
+      _refuse(
+        PatternRefusal.resting,
+        'Pattern probe: resting the band; ready in $secs s '
+        '($maxCommandsPerWindow commands per ${commandWindow.inMinutes} '
+        'minutes).',
+        until: until,
+      );
       return null;
     }
+    _refusal = null;
+    _restUntil = null;
     _running = true;
     _stop = false;
     _playStart = _now();
@@ -535,7 +581,6 @@ class PatternProbe {
         return null;
       }
       final r = await _runTest(t);
-      _used += r.commands.length;
       step?.call(_summary(r));
       if (r.commands.isEmpty || r.commands.every((c) => !c.written)) {
         step?.call('Pattern probe: the app sent no buzz in this play (see '
@@ -574,6 +619,7 @@ class PatternProbe {
     Future<bool> write(List<int> effects, int loop) async {
       final c = PatternCommandResult(effects, loop, ms());
       r.commands.add(c);
+      _writes.add(_now());
       _ended = false;
       _writeStart = _now();
       try {

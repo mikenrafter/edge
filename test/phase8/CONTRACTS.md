@@ -852,3 +852,54 @@ Builds on 8Z. Tests: `test/gestures/pattern_transcript_test.dart`,
   saturation, the even steps an outline; label "metronome step N of 16". The tempo
   label reads "1 sixteenth = N ms" (+ " · fitted"). At 360 x 640 the footer is still
   fully visible with 32 entries (header and footer gaps were tightened to fit).
+
+## 8AB: dotted notes, count-in, end screen, rolling limit
+
+Builds on 8AA. Tests: `test/gestures/pattern_transcript_test.dart`,
+`test/hardware/pattern_probe_test.dart`, `pattern_probe_page_test.dart`,
+`pattern_probe_panel_test.dart`; `test/ui2_tokens_test.dart`.
+
+- **Dotted lengths.** `kPatternLengths = [1, 2, 3, 4, 6, 8, 12]` (16th, eighth, dotted
+  eighth, quarter, dotted quarter, half, dotted half). `PatternEntrySession.dotNext` is a
+  one-shot: `toggleDot()` flips it; `tap(len)` with it on writes `len * 3 / 2` and
+  clears it; only 2, 4 and 8 can be dotted (`tap(1)` or any other with the dot on is an
+  `ArgumentError` and changes nothing). Runner: `patternToggleDot()` (notifies). Page:
+  four length buttons `pattern-len-1|2|4|8` (16th, eighth, quarter, half) and the Dot
+  toggle `pattern-dot` (semantics `selected` while on) in one row of equal width; with
+  the dot on the buttons draw and say 3, 6, 12 ("dotted eighth note", 3 dashes and so
+  on) and the 16th is disabled. The symbol painter draws the dot after notes and rests
+  of length 3, 6 and 12; dashes are thinner for 12.
+- **Metronome.** Off until Play: label "metronome idle", an outline. Play starts a
+  one-measure count-in (16 steps of `unitMs` fixed at the press, step 1 at once) and
+  calls `runner.playPattern()` at the count-in's end minus `leadMs` (at once if past).
+  The march starts at the downbeat (count-in end), not at the first write plus the
+  lead. The metronome runs until the play has finished and the march has ended (or was
+  cancelled), then stops at the first bar line a full measure on (so `now + 1 bar` to
+  `now + 2 bars`, on the bar grid from the press). The Play button is disabled while
+  counting in and playing ("Count-in…", "Playing…"). A refused play stops everything
+  at once. Leaving cancels every timer; the band is not asked after leaving.
+- **Refusals (D).** `PatternRefusal { busy, notConnected, resting }`;
+  `runner.patternRefusal`, `patternRestRemaining`. `PatternProbe` limits writes to
+  `maxCommandsPerWindow = 30` in any `commandWindow = 2 min` and refuses with
+  `restUntil`; log line `Pattern probe: resting the band; ready in N s (30 commands per
+  2 minutes).` The window lives in the runner (`writeLog`) so it survives closing and
+  reopening the screen. `patternPlays` and the play count move only on an accepted
+  play. Page: `pattern-refused` under Play ("Band resting, ready in N s" counting down,
+  "Band rested, ready to play", "Not connected", "Still playing"), hidden while a new
+  count-in runs and gone after the next accepted play. Caption: "Each play waits for
+  the band to finish the last one; at most 30 commands in any 2 minutes; leaving this
+  screen stops it."
+- **End screen (C, C2).** `pattern-finish` (header) and back from the transcriber
+  close the session (`closePattern` writes the heard lines and tempo line) and show
+  `pattern-end`: "k of 40" tests transcribed, plays, "1 sixteenth ≈ N ms (fitted|fixed)",
+  "N ms" Bluetooth lead ("(default)" when unmeasured). `pattern-copy` ("Copy all
+  logs") puts `logText()` on the clipboard (called after the close; the page takes
+  `logText:`, which `DeviceLab` builds with `labLogText` and also uses for its own
+  button) and shows "Copied". `pattern-done` or back from the end screen leaves.
+- **Limit display (E).** `runner.patternCommandsLeft` (30 minus the commands in the
+  window, never below 0) and `patternNextFreeIn` (null when the window is empty).
+  `pattern-limit`, a small pill floating over the wheel's bottom-right corner (it costs no height; 360 x 640 has none to spare), shows "N of 30 left" and "next in m:ss", counting
+  down each second; the count is `C.red` under 5. Blurred by default
+  (`ImageFiltered`, sigma 5; semantics "limit display, blurred"); a tap toggles
+  ("limit display"). The refusal line is never blurred.
+

@@ -1,6 +1,7 @@
 // 8Y/8Z/8AA: the pattern probe's transcriber. The wearer taps buttons of
 // length 1, 2, 4, 6 or 8 sixteenths (16th, eighth, quarter, dotted quarter,
-// half). 8Z types every entry explicitly as a note or a rest (two notes or two
+// half); 8AB adds the dotted eighth (3) and dotted half (12), written with a
+// one-shot Dot toggle. 8Z types every entry explicitly as a note or a rest (two notes or two
 // rests may sit next to each other) and adds a Note/Rest toggle that flips
 // after every tap and can be overridden. 8AA makes the unit a sixteenth and
 // gives every note a dynamic (ff, mf, mp, pp; rests have none). This file pins
@@ -54,8 +55,9 @@ void _measured(PatternEntrySession s, int test, String code, int ms) {
 
 void main() {
   group('the lengths and dynamics', () {
-    test('a length is 1, 2, 4, 6 or 8 sixteenths', () {
-      expect(kPatternLengths, [1, 2, 4, 6, 8]);
+    test('a length is 1, 2, 3, 4, 6, 8 or 12 sixteenths (8AB adds the dotted '
+        'eighth and the dotted half)', () {
+      expect(kPatternLengths, [1, 2, 3, 4, 6, 8, 12]);
     });
 
     test('the dynamics run from loudest to softest: ff, mf, mp, pp', () {
@@ -162,6 +164,12 @@ void main() {
       expect(_of('R6').prose, 'dotted quarter rest');
       expect(_of('R8').prose, 'half rest');
       expect(_of('R1').prose, '16th rest');
+      expect(_of('N3mf').prose, 'dotted eighth note mf');
+      expect(_of('R3').prose, 'dotted eighth rest');
+      expect(_of('N12pp').prose, 'dotted half note pp');
+      expect(_of('R12').prose, 'dotted half rest');
+      expect(_of('N12pp').code, 'N12pp');
+      expect(_of('R3').code, 'R3');
       expect(_of('N2ff').prose, 'eighth note ff');
       expect(_of('R4').prose, 'quarter rest');
     });
@@ -296,9 +304,9 @@ void main() {
       expect(full.entries, t.entries);
     });
 
-    test('a length that is not 1, 2, 4, 6 or 8 is an ArgumentError', () {
+    test('a length that is not 1, 2, 3, 4, 6, 8 or 12 is an ArgumentError', () {
       final t = _of('N2mf R1');
-      for (final bad in [0, 3, 5, 7, 9, -1, 99]) {
+      for (final bad in [0, 5, 7, 9, 10, 11, 13, 16, -1, 99]) {
         expect(
           () => t.append(
             PatternEntry(
@@ -466,13 +474,13 @@ void main() {
       expect(s.rendition(0, 0).code, 'N2mf R1 N4mf');
     });
 
-    test('every length button writes: 16th, eighth, quarter, dotted quarter, '
-        'half', () {
+    test('every length writes: 16th, eighth, dotted eighth, quarter, dotted '
+        'quarter, half, dotted half', () {
       final s = _session();
       for (final len in kPatternLengths) {
         s.tap(len);
       }
-      expect(s.rendition(0, 0).code, 'N1mf R2 N4mf R6 N8mf');
+      expect(s.rendition(0, 0).code, 'N1mf R2 N3mf R4 N6mf R8 N12mf');
     });
 
     test('the cursor moves by delta and stays between 0 and the end slot', () {
@@ -569,9 +577,10 @@ void main() {
       expect(s.nextIsNote, toggle);
     });
 
-    test('a length that is not 1, 2, 4, 6 or 8 is an ArgumentError', () {
+    test('a length that is not 1, 2, 3, 4, 6, 8 or 12 is an ArgumentError',
+        () {
       final s = _session();
-      for (final bad in [0, 3, 5, 7, 9]) {
+      for (final bad in [0, 5, 7, 9, 10, 13]) {
         expect(() => s.tap(bad), throwsArgumentError, reason: 'tap $bad');
       }
       expect(s.rendition(0, 0).entries, isEmpty);
@@ -901,6 +910,127 @@ void main() {
       expect(s.rendition(0, 1).code, 'N4mf');
       expect(s.rendition(1, 0).code, 'N1mf');
       expect(s.rendition(1, 1).entries, isEmpty);
+    });
+  });
+
+  group('PatternEntrySession: the dot (8AB)', () {
+    test('the dot starts off', () {
+      expect(_session().dotNext, isFalse);
+    });
+
+    test('toggleDot flips it on and off', () {
+      final s = _session();
+      s.toggleDot();
+      expect(s.dotNext, isTrue);
+      s.toggleDot();
+      expect(s.dotNext, isFalse);
+    });
+
+    test('with the dot on, a tap writes 3/2 of its length and clears the dot: '
+        '1 eighth to 3 sixteenths, 1 quarter to 3 eighths, a half to a '
+        'dotted half', () {
+      final s = _session();
+      s.toggleDot();
+      s.tap(2);
+      expect(s.dotNext, isFalse, reason: 'one-shot');
+      s.toggleDot();
+      s.tap(4);
+      s.toggleDot();
+      s.tap(8);
+      expect(s.rendition(0, 0).code, 'N3mf R6 N12mf');
+      expect(s.rendition(0, 0).prose,
+          'dotted eighth note mf, dotted quarter rest, dotted half note mf');
+    });
+
+    test('the tap after a dotted one is not dotted', () {
+      final s = _session();
+      s.toggleDot();
+      s.tap(2);
+      s.tap(2);
+      expect(s.rendition(0, 0).code, 'N3mf R2');
+    });
+
+    test('a dotted tap moves the cursor and the Note/Rest toggle like any '
+        'other', () {
+      final s = _session();
+      s.toggleDot();
+      s.tap(4);
+      expect(s.cursor, 1);
+      expect(s.nextIsNote, isFalse);
+      s.tap(2);
+      expect(s.rendition(0, 0).code, 'N6mf R2');
+    });
+
+    test('a dotted tap on an existing entry replaces it', () {
+      final s = _session();
+      s.tap(2);
+      s.tap(1);
+      s.moveCursor(-2);
+      s.toggleDot();
+      s.tap(2);
+      expect(s.rendition(0, 0).code, 'N3mf R1');
+      expect(s.cursor, 1);
+    });
+
+    test('a dotted note takes the sticky dynamic, a dotted rest has none', () {
+      final s = _session();
+      s.nextDynamic = PatternDynamic.pp;
+      s.toggleDot();
+      s.tap(4);
+      s.toggleDot();
+      s.tap(4);
+      expect(s.rendition(0, 0).code, 'N6pp R6');
+    });
+
+    test('a 16th cannot be dotted: tap(1) with the dot on is an '
+        'ArgumentError and writes nothing', () {
+      final s = _session();
+      s.tap(2);
+      s.toggleDot();
+      expect(() => s.tap(1), throwsArgumentError);
+      expect(s.rendition(0, 0).code, 'N2mf');
+      expect(s.cursor, 1);
+      expect(s.nextIsNote, isFalse, reason: 'the toggle did not flip');
+      expect(s.dotNext, isTrue, reason: 'nothing happened, so the dot stays');
+    });
+
+    test('a length that has no dotted form (3, 6, 12) is an ArgumentError '
+        'with the dot on', () {
+      for (final len in [3, 6, 12]) {
+        final s = _session();
+        s.toggleDot();
+        expect(() => s.tap(len), throwsArgumentError, reason: 'tap($len)');
+        expect(s.rendition(0, 0).length, 0);
+      }
+    });
+
+    test('tap(3), tap(6) and tap(12) without the dot write those lengths', () {
+      final s = _session();
+      s.tap(3);
+      s.tap(6);
+      s.tap(12);
+      expect(s.rendition(0, 0).code, 'N3mf R6 N12mf');
+    });
+
+    test('a dotted tap at 32 entries writes nothing and keeps the cursor', () {
+      final s = _session();
+      for (var i = 0; i < 32; i++) {
+        s.tap(1);
+      }
+      s.toggleDot();
+      s.tap(2);
+      expect(s.rendition(0, 0).length, 32);
+      expect(s.rendition(0, 0).entries.last.length, 1);
+    });
+
+    test('the dotted lengths march in sixteenths: a dotted quarter is 6 '
+        'units', () {
+      final s = _session();
+      s.toggleDot();
+      s.tap(4);
+      s.tap(2);
+      final m = PatternEntrySession.march(s.rendition(0, 0), 100, 300);
+      expect(m.map((e) => (e.startMs, e.endMs)), [(300, 900), (900, 1100)]);
     });
   });
 

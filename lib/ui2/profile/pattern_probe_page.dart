@@ -1,32 +1,46 @@
-// Pattern probe page (8Y/8Z) — the transcriber the wearer taps.
+// Pattern probe page (8Y/8Z/8AA/8AB) — the transcriber the wearer taps.
 //
 // The band plays one test on demand. The wearer writes down what they felt in
 // music terms: notes and rests. One unit is a sixteenth, so a length of 1, 2,
-// 4, 6, 8 is a 16th, eighth, quarter, dotted quarter, half, drawn as the
-// matching note or rest symbol above one coloured dash per sixteenth (the
-// colour is the beat the sixteenth falls in). Every note also has a dynamic,
-// ff, mf, mp or pp, picked on a row above the length buttons and sticky until
-// changed; with the cursor on a note, picking one changes that note. A
-// Note/Rest toggle flips after every tap and can be overridden, so two notes or
-// two rests can sit next to each other. The entries sit on a wheel; the centred
-// one is the cursor, so scrolling goes back and forward through them and a
-// length button replaces the entry in the middle. Up to two renditions (A and
-// B) per test, because the band may not play a pattern the same way twice. The
-// footer stays on screen whatever the list does.
+// 3, 4, 6, 8, 12 is a 16th, eighth, dotted eighth, quarter, dotted quarter,
+// half, dotted half, drawn as the matching note or rest symbol above one
+// coloured dash per sixteenth (the colour is the beat the sixteenth falls in).
+// The four length buttons are 16th, eighth, quarter and half; a Dot toggle next
+// to them makes the next tap 3/2 as long (one shot; a 16th cannot be dotted).
+// Every note also has a dynamic, ff, mf, mp or pp, picked on a row above the
+// length buttons and sticky until changed; with the cursor on a note, picking
+// one changes that note. A Note/Rest toggle flips after every tap and can be
+// overridden, so two notes or two rests can sit next to each other. The entries
+// sit on a wheel; the centred one is the cursor, so scrolling goes back and
+// forward through them and a length button replaces the entry in the middle. Up
+// to two renditions (A and B) per test, because the band may not play a pattern
+// the same way twice. The footer stays on screen whatever the list does.
 //
-// A metronome dot steps once per unit (4/4: sixteen steps to a bar, the beat's
-// colour on each quarter, the same colour faint on each "and", dark between). When Play is pressed on a rendition
-// that already has entries, a playhead marches through them on the same
-// schedule, from the moment the first write landed plus the measured Bluetooth
-// lead, and the dot restarts at that instant. The march never moves the cursor;
-// a tap or a scroll cancels it.
+// The metronome dot is off until Play. Play starts a one-measure count-in
+// (4/4: sixteen steps to a bar, the beat's colour on each quarter, the same
+// colour faint on each "and", dark between) and asks the band so that it starts
+// on the next downbeat, one measured Bluetooth lead early. A rendition with
+// entries marches a playhead through them from that downbeat. The metronome
+// runs on until the play has finished and the march has ended, plus one padding
+// measure to the bar line, then goes idle. A refused play stops it at once and
+// says why under Play. The march never moves the cursor; a tap or a scroll
+// cancels it.
 //
-// Leaving the page closes the probe: its transcripts go into the lab log.
+// A small display shows how many of the band's 30 commands in 2 minutes are
+// left and when the next one frees up. It is blurred until tapped, so its
+// countdown does not pull the eye off the metronome.
+//
+// Finish (or going back) closes the probe, its transcripts go into the lab log,
+// and an end screen shows the totals with a button that copies the whole lab
+// log. Done (or going back again) leaves.
 
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../gestures/hardware_probe_runner.dart';
@@ -41,12 +55,38 @@ const List<Color> kPatternUnitColours = [C.blue, C.green, C.orange, C.purple];
 /// Steps in one 4/4 bar.
 const int _barSteps = 16;
 
+/// The lengths with a button of their own; the Dot makes 2, 4, 8 into 3, 6, 12.
+const List<int> _buttonLengths = [1, 2, 4, 8];
+
 class PatternProbePage extends StatefulWidget {
-  const PatternProbePage({super.key, required this.runner});
+  const PatternProbePage({
+    super.key,
+    required this.runner,
+    required this.logText,
+  });
   final HardwareProbeRunner runner;
+
+  /// The text of the Device lab's "Copy all logs", read when the end screen's
+  /// copy button is tapped (after the session closed, so the heard lines are
+  /// in it).
+  final String Function() logText;
 
   @override
   State<PatternProbePage> createState() => _PatternProbePageState();
+}
+
+/// What the end screen shows, taken before the session closes.
+class _EndSummary {
+  _EndSummary(PatternEntrySession s)
+    : transcribed = s.testsTranscribed,
+      tests = s.tests.length,
+      plays = s.totalPlays,
+      unitMs = s.unitMs,
+      fitted = s.dynamicTempo && s.fittedUnitMs() != null,
+      leadMs = s.leadMs,
+      leadMeasured = s.leadMeasured;
+  final int transcribed, tests, plays, unitMs, leadMs;
+  final bool fitted, leadMeasured;
 }
 
 class _PatternProbePageState extends State<PatternProbePage> {
@@ -56,55 +96,101 @@ class _PatternProbePageState extends State<PatternProbePage> {
   // length must not.
   bool _userScrolling = false;
 
-  // The metronome: a step 0 to 15, ticking every unit.
+  // The metronome: off until Play, then a step 0 to 15 every unit.
   Timer? _tick;
-  int _tickMs = 0;
+  bool _metroOn = false;
   int _step = 0;
+  // The unit of the run in progress and when Play was pressed: the count-in,
+  // the march and the padding measure all sit on this one grid of bars.
+  int _runUnitMs = PatternEntrySession.defaultUnitMs;
+  DateTime _pressedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
-  // The march: set when Play starts on a rendition with entries, started when
-  // the first write has landed, ended by the last timer, a tap or a scroll.
+  // A play, from the press: [_counting] until the band is asked, [_awaitPlay]
+  // until it has finished, [_awaitMarch] until the march's last entry ends.
+  // When none is left the metronome stops at a bar line, a measure on.
+  Timer? _ask;
+  Timer? _stopTimer;
+  bool _counting = false;
+  bool _awaitPlay = false;
+  bool _awaitMarch = false;
+
+  // The march: timers from the press, ended by the last one, a tap or a scroll.
   final List<Timer> _march = [];
-  bool _pendingMarch = false;
   bool _marching = false;
   int? _head;
-  int _seenPlays = 0;
   // What a tap, a toggle, a rendition or test switch would change; a change in
   // it cancels the march.
   String _editSig = '';
+
+  // A redraw each second: the countdowns (rest line, limit display).
+  Timer? _second;
+  bool _limitBlurred = true;
+
+  // The end screen.
+  bool _ended = false;
+  _EndSummary? _summary;
+  bool _copied = false;
 
   @override
   void initState() {
     super.initState();
     final r = widget.runner;
     _wheel = FixedExtentScrollController(initialItem: r.pattern?.cursor ?? 0);
-    _seenPlays = r.patternPlays;
     _editSig = _sig(r.pattern);
-    _startTick(reset: true);
+    _second = Timer.periodic(patternMs(1000), (_) {
+      if (mounted) setState(() {});
+    });
     r.addListener(_changed);
   }
 
   @override
   void dispose() {
     widget.runner.removeListener(_changed);
-    _tick?.cancel();
-    _stopMarch();
+    _stopAll();
+    _second?.cancel();
     _wheel.dispose();
-    // The usual exit closes the probe in [_popped]. A page removed any other
-    // way closes it here, a microtask later: closing writes to the lab log and
-    // notifies its listeners, which is not allowed while the tree is torn down.
+    // The usual exit closes the probe in [_finish] or [_popped]. A page removed
+    // any other way closes it here, a microtask later: closing writes to the
+    // lab log and notifies its listeners, which is not allowed while the tree
+    // is torn down.
     scheduleMicrotask(widget.runner.closePattern);
     super.dispose();
   }
 
-  /// Going back closes the probe at once, before the exit animation, and this
+  /// Going back from the transcriber is a Finish: the page stays, as the end
+  /// screen. A pop that did happen (the end screen's Done or back, or the route
+  /// removed) closes the probe at once, before the exit animation, and this
   /// page stops listening so it does not redraw as an empty screen on the way
   /// out.
   void _popped(bool didPop, Object? _) {
-    if (!didPop) return;
+    if (!didPop) {
+      _finish();
+      return;
+    }
     widget.runner.removeListener(_changed);
-    _tick?.cancel();
-    _stopMarch();
+    _stopAll();
+    _second?.cancel();
     widget.runner.closePattern();
+  }
+
+  /// Close the session, then show the end screen.
+  void _finish() {
+    if (_ended) return;
+    final r = widget.runner;
+    final s = r.pattern;
+    _stopAll();
+    _second?.cancel();
+    r.removeListener(_changed);
+    setState(() {
+      _ended = true;
+      if (s != null) _summary = _EndSummary(s);
+    });
+    r.closePattern();
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.logText()));
+    if (mounted) setState(() => _copied = true);
   }
 
   static String _sig(PatternEntrySession? s) => s == null
@@ -117,66 +203,105 @@ class _PatternProbePageState extends State<PatternProbePage> {
     final r = widget.runner;
     final s = r.pattern;
     if (s == null) {
-      _tick?.cancel();
-      _stopMarch();
+      _stopAll();
     } else {
-      if (r.patternPlays != _seenPlays) {
-        // A play started: the dot goes back to step 1, and a rendition with
-        // entries will march once the band's first write has landed.
-        _seenPlays = r.patternPlays;
-        _stopMarch();
-        _pendingMarch = s.active.length > 0;
-        _startTick(reset: true);
-        _editSig = _sig(s);
-      } else if (_sig(s) != _editSig) {
+      if (_sig(s) != _editSig) {
         _editSig = _sig(s);
         _stopMarch();
+        _checkDone();
       }
-      final written = r.patternPlayWrittenAt;
-      if (_pendingMarch && written != null) {
-        _startMarch(s, written);
-      } else if (_pendingMarch && !r.patternPlaying) {
-        _pendingMarch = false;
+      if (_awaitPlay && !_counting && !r.patternPlaying) {
+        _awaitPlay = false;
+        _checkDone();
       }
-      if (s.unitMs != _tickMs) _startTick();
     }
     setState(() {});
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncWheel());
   }
 
-  /// (Re)start the metronome at the session's tempo; [reset] goes back to step
-  /// 1, otherwise the step carries on at the new pace.
-  void _startTick({bool reset = false}) {
+  /// Play: a one-measure count-in on the metronome, the band asked so that it
+  /// starts on the downbeat, a rendition with entries marched from there.
+  void _play() {
+    final r = widget.runner;
+    final s = r.pattern;
+    if (s == null || _counting || r.patternPlaying) return;
+    _stopAll();
+    final bar = (_runUnitMs = s.unitMs) * _barSteps;
+    _pressedAt = clock.now();
+    _counting = true;
+    _startTick();
+    _ask = Timer(patternMs(math.max(0, bar - s.leadMs)), _askBand);
+    if (s.active.length > 0) _startMarch(s, bar);
+    setState(() {});
+  }
+
+  /// The count-in's end less the lead: ask the band. The probe decides a
+  /// refusal at once, so it shows here; a refused play stops everything.
+  void _askBand() {
+    _ask = null;
+    if (!mounted) return;
+    final r = widget.runner;
+    _counting = false;
+    _awaitPlay = true;
+    unawaited(r.playPattern());
+    if (r.patternRefusal != null || !r.patternPlaying) _stopAll();
+    setState(() {});
+  }
+
+  void _startTick() {
     _tick?.cancel();
-    _tickMs = widget.runner.pattern?.unitMs ??
-        PatternEntrySession.defaultUnitMs;
-    if (reset) _step = 0;
-    _tick = Timer.periodic(patternMs(_tickMs), (_) {
+    _step = 0;
+    _metroOn = true;
+    _tick = Timer.periodic(patternMs(_runUnitMs), (_) {
       if (mounted) setState(() => _step = (_step + 1) % _barSteps);
     });
   }
 
-  /// Schedule the playhead: entry i at [written] + its start on the march
-  /// plan, which already includes the lead. Delays are measured from now, so a
-  /// late start catches up instead of drifting.
-  void _startMarch(PatternEntrySession s, DateTime written) {
-    _pendingMarch = false;
-    final plan = PatternEntrySession.march(s.active, s.unitMs, s.leadMs);
+  /// Everything off: metronome, count-in, march, the pending stop.
+  void _stopAll() {
+    _tick?.cancel();
+    _tick = null;
+    _ask?.cancel();
+    _ask = null;
+    _stopTimer?.cancel();
+    _stopTimer = null;
+    _metroOn = false;
+    _counting = false;
+    _awaitPlay = false;
+    _stopMarch();
+  }
+
+  /// Once the play has finished and the march has ended (or was cancelled),
+  /// stop the metronome at the first bar line a full measure on.
+  void _checkDone() {
+    if (!_metroOn || _counting || _awaitPlay || _awaitMarch) return;
+    if (_stopTimer != null) return;
+    final bar = _runUnitMs * _barSteps;
+    final now = clock.now().difference(_pressedAt).inMilliseconds;
+    final at = (now + 2 * bar - 1) ~/ bar * bar;
+    _stopTimer = Timer(patternMs(at - now), () {
+      _stopTimer = null;
+      if (!mounted) return;
+      setState(() {
+        _tick?.cancel();
+        _tick = null;
+        _metroOn = false;
+      });
+    });
+  }
+
+  /// Schedule the playhead: entry i at the downbeat, [bar] ms after the press,
+  /// plus its start on the march plan. All offsets are from the press, so a
+  /// late timer does not push the next one back.
+  void _startMarch(PatternEntrySession s, int bar) {
+    final plan = PatternEntrySession.march(s.active, _runUnitMs, 0);
     if (plan.isEmpty) return;
     _marching = true;
-    final now = DateTime.now();
-    Duration at(int ms) => patternMs(
-      math.max(0, written.add(patternMs(ms)).difference(now).inMilliseconds),
-    );
-    _march.add(
-      Timer(at(plan.first.startMs), () {
-        if (mounted) setState(() => _startTick(reset: true));
-      }),
-    );
+    _awaitMarch = true;
     for (final e in plan) {
-      _march.add(Timer(at(e.startMs), () => _playhead(e.index)));
+      _march.add(Timer(patternMs(bar + e.startMs), () => _playhead(e.index)));
     }
-    _march.add(Timer(at(plan.last.endMs), _marchEnded));
+    _march.add(Timer(patternMs(bar + plan.last.endMs), _marchEnded));
   }
 
   void _playhead(int i) {
@@ -188,9 +313,11 @@ class _PatternProbePageState extends State<PatternProbePage> {
   void _marchEnded() {
     if (!mounted || !_marching) return;
     _marching = false;
+    _awaitMarch = false;
     setState(() => _head = null);
     final s = widget.runner.pattern;
     if (s != null) _glideTo(s.cursor);
+    _checkDone();
   }
 
   void _glideTo(int item) {
@@ -210,8 +337,8 @@ class _PatternProbePageState extends State<PatternProbePage> {
       t.cancel();
     }
     _march.clear();
-    _pendingMarch = false;
     _marching = false;
+    _awaitMarch = false;
     _head = null;
   }
 
@@ -231,30 +358,71 @@ class _PatternProbePageState extends State<PatternProbePage> {
     widget.runner.patternMove(item - s.cursor);
   }
 
+  /// The line under Play for a refused play; null when there is none. A new
+  /// press hides it until the band has been asked again.
+  String? _refusalText() {
+    if (_counting) return null;
+    final r = widget.runner;
+    switch (r.patternRefusal) {
+      case null:
+        return null;
+      case PatternRefusal.resting:
+        final left = r.patternRestRemaining;
+        return left == null
+            ? 'Band rested, ready to play'
+            : 'Band resting, ready in ${math.max(1, left.inSeconds)} s';
+      case PatternRefusal.notConnected:
+        return 'Not connected';
+      case PatternRefusal.busy:
+        return 'Still playing';
+    }
+  }
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final r = widget.runner;
     final s = r.pattern;
+    if (_ended) return _buildEnd(c, p);
     if (s == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.of(context).maybePop();
       });
-      return Scaffold(backgroundColor: p.bg, body: const SizedBox.shrink());
+      return PopScope<Object?>(
+        onPopInvokedWithResult: _popped,
+        child: Scaffold(backgroundColor: p.bg, body: const SizedBox.shrink()),
+      );
     }
     final test = s.tests[s.testIndex];
     final active = s.active;
     final noteNext = s.nextIsNote;
+    final dot = s.dotNext;
     return PopScope<Object?>(
+      canPop: false,
       onPopInvokedWithResult: _popped,
       child: Scaffold(
         backgroundColor: p.bg,
         body: SafeArea(
           child: Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: S.x4),
-                child: NavBar('Pattern probe'),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: S.x4),
+                child: NavBar(
+                  'Pattern probe',
+                  trailingWidth: 72,
+                  trailing: Pressable(
+                    key: const ValueKey('pattern-finish'),
+                    onTap: _finish,
+                    semanticLabel: 'Finish',
+                    child: Text(
+                      'Finish',
+                      style: F.body.copyWith(
+                        color: p.on(C.blue),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: S.x4),
@@ -262,7 +430,10 @@ class _PatternProbePageState extends State<PatternProbePage> {
                   runner: r,
                   session: s,
                   test: test,
-                  step: _step,
+                  step: _metroOn ? _step : null,
+                  counting: _counting,
+                  onPlay: _play,
+                  refusal: _refusalText(),
                 ),
               ),
               const SizedBox(height: S.x1),
@@ -275,43 +446,68 @@ class _PatternProbePageState extends State<PatternProbePage> {
                 ),
               ),
               Expanded(
-                child: NotificationListener<ScrollNotification>(
-                  onNotification: (n) {
-                    if (n is ScrollStartNotification) {
-                      _userScrolling = n.dragDetails != null;
-                      if (_userScrolling && (_marching || _pendingMarch)) {
-                        setState(_stopMarch);
-                      }
-                    } else if (n is ScrollEndNotification) {
-                      _userScrolling = false;
-                    }
-                    return false;
-                  },
-                  child: ListWheelScrollView(
-                    key: const ValueKey('pattern-wheel'),
-                    controller: _wheel,
-                    itemExtent: _rowExtent,
-                    diameterRatio: 3,
-                    physics: const FixedExtentScrollPhysics(),
-                    onSelectedItemChanged: _scrolled,
-                    children: [
-                      for (var i = 0; i <= active.length; i++)
-                        _EntryRow(
-                          index: i,
-                          note: i < active.length
-                              ? active.entries[i].note
-                              : noteNext,
-                          length: i < active.length
-                              ? active.entries[i].length
-                              : null,
-                          dynamic: i < active.length
-                              ? active.entries[i].dynamic
-                              : null,
-                          selected: i == s.cursor,
-                          playing: i == _head,
+                // The limit display floats over the wheel's bottom corner, the
+                // empty half while the list grows: it costs the screen no
+                // height and sits as far from the metronome as the page
+                // allows.
+                child: Stack(
+                  children: [
+                    Positioned.fill(
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: (n) {
+                          if (n is ScrollStartNotification) {
+                            _userScrolling = n.dragDetails != null;
+                            if (_userScrolling && _marching) {
+                              setState(() {
+                                _stopMarch();
+                                _checkDone();
+                              });
+                            }
+                          } else if (n is ScrollEndNotification) {
+                            _userScrolling = false;
+                          }
+                          return false;
+                        },
+                        child: ListWheelScrollView(
+                          key: const ValueKey('pattern-wheel'),
+                          controller: _wheel,
+                          itemExtent: _rowExtent,
+                          diameterRatio: 3,
+                          physics: const FixedExtentScrollPhysics(),
+                          onSelectedItemChanged: _scrolled,
+                          children: [
+                            for (var i = 0; i <= active.length; i++)
+                              _EntryRow(
+                                index: i,
+                                note: i < active.length
+                                    ? active.entries[i].note
+                                    : noteNext,
+                                length: i < active.length
+                                    ? active.entries[i].length
+                                    : null,
+                                dynamic: i < active.length
+                                    ? active.entries[i].dynamic
+                                    : null,
+                                selected: i == s.cursor,
+                                playing: i == _head,
+                              ),
+                          ],
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: S.x1,
+                      right: S.x4,
+                      child: _LimitDisplay(
+                        key: const ValueKey('pattern-limit'),
+                        left: r.patternCommandsLeft,
+                        nextIn: r.patternNextFreeIn,
+                        blurred: _limitBlurred,
+                        onTap: () =>
+                            setState(() => _limitBlurred = !_limitBlurred),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Container(
@@ -323,8 +519,8 @@ class _PatternProbePageState extends State<PatternProbePage> {
                   children: [
                     Text(
                       'Each play waits for the band to finish the last one; at '
-                      'most ${PatternProbe.maxCommands} commands per session; '
-                      'leaving this screen stops it.',
+                      'most ${PatternProbe.maxCommandsPerWindow} commands in '
+                      'any 2 minutes; leaving this screen stops it.',
                       style: F.cap.copyWith(color: p.ink2, height: 1.3),
                     ),
                     const SizedBox(height: S.x1),
@@ -346,21 +542,33 @@ class _PatternProbePageState extends State<PatternProbePage> {
                       ],
                     ),
                     const SizedBox(height: S.x1),
-                    Row(
-                      children: [
-                        for (final n in kPatternLengths) ...[
-                          if (n != kPatternLengths.first)
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final n in _buttonLengths) ...[
+                            Expanded(
+                              child: _LengthButton(
+                                key: ValueKey('pattern-len-$n'),
+                                length: dot ? n * 3 ~/ 2 : n,
+                                note: noteNext,
+                                // A 16th has no dotted form.
+                                onTap: dot && n == 1
+                                    ? null
+                                    : () => r.patternTap(n),
+                              ),
+                            ),
                             const SizedBox(width: S.x1),
+                          ],
                           Expanded(
-                            child: _LengthButton(
-                              key: ValueKey('pattern-len-$n'),
-                              length: n,
-                              note: noteNext,
-                              onTap: () => r.patternTap(n),
+                            child: _DotButton(
+                              key: const ValueKey('pattern-dot'),
+                              selected: dot,
+                              onTap: r.patternToggleDot,
                             ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
                     const SizedBox(height: S.x1),
                     Row(
@@ -399,7 +607,135 @@ class _PatternProbePageState extends State<PatternProbePage> {
       ),
     );
   }
+
+  /// The end screen: the session is already closed.
+  Widget _buildEnd(BuildContext c, P p) {
+    final e = _summary;
+    Widget row(String label, String value) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: S.x1),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: F.body.copyWith(color: p.ink2)),
+          const SizedBox(width: S.x3),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: F.body.copyWith(
+                color: p.ink,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    return PopScope<Object?>(
+      // Back from here is Done.
+      onPopInvokedWithResult: _popped,
+      child: Scaffold(
+        backgroundColor: p.bg,
+        body: SafeArea(
+          child: Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: S.x4),
+                child: NavBar('Pattern probe'),
+              ),
+              Expanded(
+                child: ListView(
+                  key: const ValueKey('pattern-end'),
+                  padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
+                  children: [
+                    Text(
+                      'Session finished',
+                      style: F.head.copyWith(color: p.ink),
+                    ),
+                    const SizedBox(height: S.x1),
+                    Text(
+                      'What you wrote is in the lab log. Copy the whole log to '
+                      'send it.',
+                      style: F.cap.copyWith(color: p.ink2, height: 1.3),
+                    ),
+                    const SizedBox(height: S.x3),
+                    if (e != null)
+                      Surface(
+                        child: Column(
+                          children: [
+                            row(
+                              'Tests transcribed',
+                              '${e.transcribed} of ${e.tests}',
+                            ),
+                            row('Plays', '${e.plays}'),
+                            row(
+                              'Tempo',
+                              '1 sixteenth ≈ ${e.unitMs} ms '
+                                  '(${e.fitted ? 'fitted' : 'fixed'})',
+                            ),
+                            row(
+                              'Bluetooth lead',
+                              '${e.leadMs} ms'
+                              '${e.leadMeasured ? '' : ' (default)'}',
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_copied)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: S.x2),
+                        child: Semantics(
+                          liveRegion: true,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(LucideIcons.check, size: 16, color: p.ink2),
+                              const SizedBox(width: S.x1),
+                              Text(
+                                'Copied',
+                                style: F.cap.copyWith(color: p.ink2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    BigButton(
+                      'Copy all logs',
+                      key: const ValueKey('pattern-copy'),
+                      icon: LucideIcons.copy,
+                      soft: true,
+                      color: C.blue,
+                      onTap: _copy,
+                    ),
+                    const SizedBox(height: S.x2),
+                    BigButton(
+                      'Done',
+                      key: const ValueKey('pattern-done'),
+                      color: C.blue,
+                      onTap: () => Navigator.of(c).pop(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
+
+/// Whole seconds in [d], rounded up, never below 0.
+int _wholeSeconds(Duration d) => math.max(0, (d.inMilliseconds / 1000).ceil());
 
 const double _rowExtent = 52;
 
@@ -410,11 +746,23 @@ class _Header extends StatelessWidget {
     required this.session,
     required this.test,
     required this.step,
+    required this.counting,
+    required this.onPlay,
+    required this.refusal,
   });
   final HardwareProbeRunner runner;
   final PatternEntrySession session;
   final PatternTest test;
-  final int step;
+
+  /// The metronome step 0 to 15; null while it is off.
+  final int? step;
+
+  /// The count-in before the band is asked is running.
+  final bool counting;
+  final VoidCallback onPlay;
+
+  /// Why the latest play was refused; null for no line.
+  final String? refusal;
 
   @override
   Widget build(BuildContext c) {
@@ -462,11 +810,15 @@ class _Header extends StatelessWidget {
             Expanded(
               flex: 2,
               child: BigButton(
-                playing ? 'Playing…' : 'Play',
+                playing
+                    ? 'Playing…'
+                    : counting
+                    ? 'Count-in…'
+                    : 'Play',
                 key: const ValueKey('pattern-play'),
                 icon: LucideIcons.vibrate,
                 color: C.blue,
-                onTap: playing ? null : runner.playPattern,
+                onTap: playing || counting ? null : onPlay,
               ),
             ),
             const SizedBox(width: S.x2),
@@ -491,6 +843,22 @@ class _Header extends StatelessWidget {
             ),
           ],
         ),
+        if (refusal != null)
+          Padding(
+            key: const ValueKey('pattern-refused'),
+            padding: const EdgeInsets.only(top: S.x1),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                refusal!,
+                textAlign: TextAlign.center,
+                style: F.cap.copyWith(
+                  color: p.on(C.red),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
         Row(
           children: [
             Expanded(
@@ -527,10 +895,11 @@ class _Header extends StatelessWidget {
 
 /// The metronome: one dot. Steps 1, 5, 9, 13 are the beat colours (A, C, D, E)
 /// at full strength, steps 3, 7, 11, 15 the same colour at a third of the
-/// saturation, and the even steps an outline. It does not animate.
+/// saturation, and the even steps an outline. It does not animate. [step] null
+/// is off: an outline, "metronome idle".
 class _MetronomeDot extends StatelessWidget {
   const _MetronomeDot({required this.step});
-  final int step;
+  final int? step;
 
   @override
   Widget build(BuildContext c) {
@@ -538,15 +907,17 @@ class _MetronomeDot extends StatelessWidget {
     return Semantics(
       key: const ValueKey('pattern-metronome'),
       container: true,
-      label: 'metronome step ${step + 1} of $_barSteps',
+      label: step == null
+          ? 'metronome idle'
+          : 'metronome step ${step! + 1} of $_barSteps',
       child: SizedBox(
         width: 14,
         height: 14,
         child: DecoratedBox(
-          decoration: step.isEven
+          decoration: step != null && step!.isEven
               ? BoxDecoration(
                   shape: BoxShape.circle,
-                  color: _beatColour(step ~/ 4, note: step % 4 == 0),
+                  color: _beatColour(step! ~/ 4, note: step! % 4 == 0),
                 )
               : BoxDecoration(
                   shape: BoxShape.circle,
@@ -587,13 +958,23 @@ class _StepButton extends StatelessWidget {
 const _lengthNames = {
   1: '16th',
   2: 'eighth',
+  3: 'dotted eighth',
   4: 'quarter',
   6: 'dotted quarter',
   8: 'half',
+  12: 'dotted half',
 };
 
 /// What a length button shows; the long name goes in its semantics.
-const _lengthShort = {1: '16th', 2: '8th', 4: '4th', 6: '4th.', 8: 'Half'};
+const _lengthShort = {
+  1: '16th',
+  2: '8th',
+  3: '8th.',
+  4: '4th',
+  6: '4th.',
+  8: 'Half',
+  12: 'Half.',
+};
 
 /// Beat [b]'s colour, at a third of the saturation unless [note].
 Color _beatColour(int b, {required bool note}) {
@@ -633,10 +1014,11 @@ class _Notation extends StatelessWidget {
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // A dotted half is twelve dashes: thinner so they fit a button.
             for (var k = 1; k <= length; k++) ...[
-              if (k > 1) const SizedBox(width: 2),
+              if (k > 1) SizedBox(width: length > 8 ? 1 : 2),
               SizedBox(
-                width: 4,
+                width: length > 8 ? 3 : 4,
                 height: S.x1,
                 child: DecoratedBox(
                   key: ValueKey('dash-$k'),
@@ -654,8 +1036,8 @@ class _Notation extends StatelessWidget {
   }
 }
 
-/// Draws a 16th, eighth, quarter, dotted quarter or half note, or the matching
-/// rest, in a 24 x 28 box. Painted, not a font glyph: Android fonts may not
+/// Draws a 16th, eighth, quarter or half note, or the matching rest, with a dot
+/// after it for the dotted lengths 3, 6 and 12, in a 24 x 28 box. Painted, not a font glyph: Android fonts may not
 /// have the music block.
 class _SymbolPainter extends CustomPainter {
   const _SymbolPainter({
@@ -666,6 +1048,10 @@ class _SymbolPainter extends CustomPainter {
   final int length;
   final bool note;
   final Color color;
+
+  /// 3, 6 and 12 are the dotted 2, 4 and 8.
+  bool get _dotted => length == 3 || length == 6 || length == 12;
+  int get _base => _dotted ? length * 2 ~/ 3 : length;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -691,17 +1077,17 @@ class _SymbolPainter extends CustomPainter {
       ..translate(cx, cy)
       ..rotate(-0.35);
     // A half note's head is hollow; the others are filled.
-    canvas.drawOval(head, length == 8 ? line : fill);
+    canvas.drawOval(head, _base == 8 ? line : fill);
     canvas.restore();
     const stemX = cx + 4.4;
     canvas.drawLine(const Offset(stemX, cy - 1), const Offset(stemX, 2), line);
     // An eighth has one flag, a 16th two.
-    if (length == 2) _flag(canvas, line, stemX, 2.5, 1);
-    if (length == 1) {
+    if (_base == 2) _flag(canvas, line, stemX, 2.5, 1);
+    if (_base == 1) {
       _flag(canvas, line, stemX, 2.5, .6);
       _flag(canvas, line, stemX, 9, .6);
     }
-    if (length == 6) canvas.drawCircle(const Offset(cx + 11, cy - 1), 1.7, fill);
+    if (_dotted) canvas.drawCircle(const Offset(cx + 11, cy - 1), 1.7, fill);
   }
 
   void _flag(Canvas canvas, Paint line, double x, double y, double k) {
@@ -714,7 +1100,7 @@ class _SymbolPainter extends CustomPainter {
   }
 
   void _paintRest(Canvas canvas, Paint fill, Paint line) {
-    switch (length) {
+    switch (_base) {
       case 1:
         // A 16th rest: two dots with hooks on a slanted stem.
         canvas.drawCircle(const Offset(8, 9), 2.3, fill);
@@ -738,12 +1124,14 @@ class _SymbolPainter extends CustomPainter {
             ..lineTo(9, 25),
           line,
         );
+        if (_dotted) canvas.drawCircle(const Offset(19, 17), 1.7, fill);
       case 8:
         // A half rest: a block sitting on the line.
         canvas.drawLine(const Offset(3, 15), const Offset(21, 15), line);
         canvas.drawRect(const Rect.fromLTRB(7, 9.5, 17, 14.5), fill);
+        if (_dotted) canvas.drawCircle(const Offset(20.5, 12), 1.7, fill);
       default:
-        // A quarter rest (dotted for 6): the zigzag.
+        // A quarter rest: the zigzag.
         canvas.drawPath(
           Path()
             ..moveTo(8, 3)
@@ -753,7 +1141,7 @@ class _SymbolPainter extends CustomPainter {
             ..cubicTo(8, 20, 7, 27, 12.5, 26),
           line,
         );
-        if (length == 6) canvas.drawCircle(const Offset(19, 11), 1.7, fill);
+        if (_dotted) canvas.drawCircle(const Offset(19, 11), 1.7, fill);
     }
   }
 
@@ -772,34 +1160,159 @@ class _LengthButton extends StatelessWidget {
   });
   final int length;
   final bool note;
+
+  /// Null: the button is disabled (a 16th while the Dot is on).
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    // The symbol names the button ("eighth rest"); the short text is for eyes.
+    return Pressable(
+      onTap: onTap,
+      child: Opacity(
+        opacity: onTap == null ? .4 : 1,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: S.x1, horizontal: 2),
+          decoration: BoxDecoration(
+            color: p.wash(note ? C.blue : C.n400),
+            borderRadius: R.rMd,
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _Notation(length: length, note: note),
+              const SizedBox(height: S.x1),
+              ExcludeSemantics(
+                child: Text(
+                  _lengthShort[length]!,
+                  style: F.cap.copyWith(
+                    color: p.ink,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The Dot toggle beside the length buttons: the next length is 3/2 as long.
+/// Outlined and washed while on; it fills the row's height like its neighbours.
+class _DotButton extends StatelessWidget {
+  const _DotButton({super.key, required this.selected, required this.onTap});
+  final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final label = '${_lengthNames[length]} ${note ? 'note' : 'rest'}';
+    return Semantics(
+      selected: selected,
+      child: Pressable(
+        onTap: onTap,
+        semanticLabel: 'Dot',
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? p.wash(C.blue) : p.card,
+            borderRadius: R.rMd,
+            border: Border.all(
+              color: selected ? C.blue : p.ink3,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(shape: BoxShape.circle, color: p.ink),
+              ),
+              const SizedBox(height: S.x1),
+              Text(
+                'Dot',
+                style: F.cap.copyWith(
+                  color: p.ink,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 1,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// How many of the band's commands are left in the rolling window, and when the
+/// next one frees up. Blurred until tapped: it is there to look at between
+/// plays, not to pull the eye off the metronome. Under 5 left the count is red.
+/// It scales down to fit whatever width the footer row gives it.
+class _LimitDisplay extends StatelessWidget {
+  const _LimitDisplay({
+    super.key,
+    required this.left,
+    required this.nextIn,
+    required this.blurred,
+    required this.onTap,
+  });
+  final int left;
+  final Duration? nextIn;
+  final bool blurred;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final secs = nextIn == null ? null : _wholeSeconds(nextIn!);
+    Widget body = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$left of ${PatternProbe.maxCommandsPerWindow} left',
+          maxLines: 1,
+          style: F.cap.copyWith(
+            color: left < 5 ? C.red : p.ink2,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        if (secs != null)
+          Text(
+            'next in ${secs ~/ 60}:${(secs % 60).toString().padLeft(2, '0')}',
+            maxLines: 1,
+            style: F.cap.copyWith(color: p.ink2),
+          ),
+      ],
+    );
+    if (blurred) {
+      body = ExcludeSemantics(
+        child: ImageFiltered(
+          imageFilter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: body,
+        ),
+      );
+    }
     return Pressable(
       onTap: onTap,
-      semanticLabel: label,
+      semanticLabel: blurred ? 'limit display, blurred' : 'limit display',
       child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: S.x1, horizontal: 2),
+        padding: const EdgeInsets.symmetric(horizontal: S.x2, vertical: S.x1),
         decoration: BoxDecoration(
-          color: p.wash(note ? C.blue : C.n400),
+          color: p.card,
           borderRadius: R.rMd,
+          border: Border.all(color: p.ink3.withValues(alpha: .5)),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _Notation(length: length, note: note),
-            const SizedBox(height: S.x1),
-            Text(
-              _lengthShort[length]!,
-              style: F.cap.copyWith(color: p.ink, fontWeight: FontWeight.w600),
-              maxLines: 1,
-            ),
-          ],
-        ),
+        child: FittedBox(fit: BoxFit.scaleDown, child: body),
       ),
     );
   }

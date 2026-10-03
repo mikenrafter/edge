@@ -1,19 +1,33 @@
-// 8Y/8Z/8AA: the pattern probe page, the transcriber the wearer taps. A header
-// with the test, Play, a metronome dot and the A / B renditions, a wheel of note
-// and rest entries with the cursor in the middle, and a footer (dynamics row,
-// five length buttons, Note/Rest toggle, Delete) that stays on screen. The unit
-// is a sixteenth (125 ms). Fake async time: the probe's real waits are pumped,
-// not slept.
+// 8Y/8Z/8AA/8AB: the pattern probe page, the transcriber the wearer taps. A
+// header with the test, Play, a metronome dot, a Finish button and the A / B
+// renditions, a wheel of note and rest entries with the cursor in the middle,
+// and a footer (dynamics row, four length buttons plus a Dot toggle, Note/Rest
+// toggle, Delete) that stays on screen. The unit is a sixteenth (125 ms). Fake
+// async time: the probe's real waits are pumped, not slept.
 //
 // Contracts these tests rely on that the spec leaves open:
-//  - the length buttons are keyed `pattern-len-1`, `-2`, `-4`, `-6`, `-8` by
-//    their 16th count; the dynamics buttons `pattern-dyn-ff`, `-mf`, `-mp`,
-//    `-pp`. A dynamics button shows its name in a Text (bold, italic); the
+//  - the length buttons are keyed `pattern-len-1`, `-2`, `-4`, `-8` by their
+//    16th count (16th, eighth, quarter, half); next to them in the same row is
+//    the Dot toggle `pattern-dot` (8AB, A), whose Semantics carry the
+//    "selected" flag while it is on. While it is on the buttons write 3, 6 and
+//    12 sixteenths (dotted eighth, quarter, half), their symbols read "dotted
+//    eighth note" and so on with 3, 6 and 12 dashes, and the 16th button does
+//    nothing (it is disabled). One tap on a length button clears the dot. The
+//    dynamics buttons are `pattern-dyn-ff`, `-mf`, `-mp`, `-pp`. A dynamics button shows its name in a Text (bold, italic); the
 //    selected one has the semantics "selected" flag. Only that flag and the
 //    text style are tested, not how a disabled-looking button is drawn.
 //  - a note row in the wheel shows its dynamic as a Text with the same name,
 //    bold and italic; rest rows and the empty next slot show none.
-//  - `pattern-metronome` is on the Semantics node labelled "metronome step N of
+//  - `pattern-metronome` (8AB, B) is idle until Play: its Semantics label is
+//    "metronome idle" and the dot is an outline. Play starts a one-measure
+//    count-in (step 1 at the press, 16 steps of one unit) and calls
+//    runner.playPattern() at the count-in's end minus the measured lead (at
+//    once if that is already past). The march starts at the count-in's end
+//    (the downbeat), not at the first write plus the lead. The metronome runs
+//    on and goes idle at the end of one padding measure after the later of
+//    "the play finished" and "the march's last entry ended", aligned to the
+//    bar. A refused play (runner.patternRefusal non-null after the play)
+//    stops it at once. While running the node is labelled "metronome step N of
 //    16" (N 1..16, one per sixteenth); the dot is a DecoratedBox below it whose
 //    BoxDecoration.color is the beat colour at full strength on steps 1, 5, 9,
 //    13, the same colour at a third of the saturation on steps 3, 7, 11, 15
@@ -29,71 +43,172 @@
 //  - `pattern-kind` shows the text "Note" or "Rest".
 //  - the march (8Z, G): the playhead is the widget keyed `pattern-playhead` on
 //    the playing wheel row; the row's Semantics label says "playing entry N".
-//    The march runs on timers from the first write's real landing time
-//    (DateTime.now) plus the lead, so these tests sample the middle of each
-//    entry's window rather than its edges.
+//    These tests sample the middle of each entry's window rather than its
+//    edges. Times are measured from the Play press on the fake clock.
+//  - the end screen (8AB, C): `pattern-finish` in the header, or the back arrow
+//    or system back, closes the session (heard lines and tempo line in the lab
+//    log) and then shows `pattern-end` with the tests transcribed ("k of 40"),
+//    the plays, the tempo line ("1 sixteenth ≈ N ms", "fitted"/"fixed") and the
+//    measured lead ("N ms"); `pattern-copy` puts logText() (called after the
+//    close) on the clipboard and shows "Copied"; `pattern-done` or system back
+//    leaves the page. The page takes `logText:`.
+//  - refusals (8AB, D): a refused play shows a `pattern-refused` line under
+//    Play: "Band resting, ready in N s" counting down (runner.patternRestRemaining
+//    is a Duration?), or the probe's reason ("Not connected"). The line clears
+//    on the next successful play. The page never edits while a count-in or
+//    play it started runs, in these tests.
 
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' show Tristate;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
+import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/ui2/profile/pattern_probe_page.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+
+/// Flip [up] to false to drop the link after the probe is open.
+class _Link {
+  bool up = true;
+}
+
+/// A live band event on the phone clock, as the panel test builds them.
+StrapEvent _event(int id) {
+  final ms = DateTime.now().millisecondsSinceEpoch;
+  return StrapEvent(
+    eventId: id,
+    tsEpoch: ms ~/ 1000,
+    tsSubsec: ((ms % 1000) * 32768) ~/ 1000,
+    receivedAt: DateTime.now(),
+    hex: '',
+    deviceId: 'band',
+  );
+}
+
+/// A live 100 stamped a little ahead of the (fake) clock, so a play ends at its
+/// own write and takes no fake time (see the panel test's copy of this).
+StrapEvent _clockEvent(int id) {
+  final now = clock.now().add(const Duration(seconds: 10));
+  final ms = now.millisecondsSinceEpoch;
+  return StrapEvent(
+    eventId: id,
+    tsEpoch: ms ~/ 1000,
+    tsSubsec: ((ms % 1000) * 32768) ~/ 1000,
+    receivedAt: now,
+    hex: '',
+    deviceId: 'band',
+  );
+}
+
+/// When (fake clock) each play reached the band, filled by [_runner].
+typedef _SentAt = List<DateTime>;
 
 HardwareProbeRunner _runner(
   DeviceLabLog lab, {
   List<List<int>>? sent,
+  _SentAt? sentAt,
   Completer<void>? holdPattern,
-}) => HardwareProbeRunner(
-  lab: lab,
-  sendBuzz: (onReply) async {
-    onReply('pending', 40);
-    return true;
-  },
-  sendPattern: (effects, loop, onReply) async {
-    sent?.add(List.of(effects));
-    await holdPattern?.future;
-    onReply('pending', 40);
-    return true;
-  },
-  isConnected: () => true,
-  ecgSupported: () => true,
-  ecgBusy: () => false,
-  beginEcg: () async => false,
-  endEcg: () async {},
-  isEcgAlive: () => false,
-);
+  _Link? link,
+  bool bandEvents = false,
+  bool quickEnd = false,
+}) {
+  late final HardwareProbeRunner r;
+  r = HardwareProbeRunner(
+    lab: lab,
+    sendBuzz: (onReply) async {
+      onReply('pending', 40);
+      return true;
+    },
+    sendPattern: (effects, loop, onReply) async {
+      sent?.add(List.of(effects));
+      sentAt?.add(clock.now());
+      await holdPattern?.future;
+      // The band answers each write with its live start and end events, so a
+      // play does not wait out the probe's timeouts.
+      if (bandEvents) {
+        r.onBandEvent(_event(60));
+        r.onBandEvent(_event(100));
+      }
+      if (quickEnd) r.onBandEvent(_clockEvent(100));
+      onReply('pending', 40);
+      return true;
+    },
+    isConnected: () => link?.up ?? true,
+    ecgSupported: () => true,
+    ecgBusy: () => false,
+    beginEcg: () async => false,
+    endEcg: () async {},
+    isEcgAlive: () => false,
+  );
+  return r;
+}
 
 const _tall = Size(390, 844);
 
-/// The five length buttons by their 16th count, and what each is called.
-const _lens = [1, 2, 4, 6, 8];
-const _lenNames = ['16th', 'eighth', 'quarter', 'dotted quarter', 'half'];
+/// The four length buttons by their 16th count, and what each is called. The
+/// Dot toggle `pattern-dot` makes them 3, 6, 12 (and the 16th is disabled).
+const _lens = [1, 2, 4, 8];
+const _lenNames = ['16th', 'eighth', 'quarter', 'half'];
 const _dyns = ['ff', 'mf', 'mp', 'pp'];
+
+void _view(WidgetTester t, Size size) {
+  t.view.physicalSize = size * 3;
+  t.view.devicePixelRatio = 3;
+  addTearDown(t.view.reset);
+}
+
+/// Opens the page on [r], which must already be open.
+Future<void> _show(
+  WidgetTester t,
+  HardwareProbeRunner r, {
+  String Function()? logText,
+}) async {
+  await t.pumpWidget(
+    MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: PatternProbePage(runner: r, logText: logText ?? () => 'log'),
+    ),
+  );
+  await t.pump(const Duration(milliseconds: 300));
+}
 
 Future<HardwareProbeRunner> _open(
   WidgetTester t,
   DeviceLabLog lab, {
   Size size = _tall,
   List<List<int>>? sent,
+  _SentAt? sentAt,
   Completer<void>? holdPattern,
+  _Link? link,
+  bool bandEvents = false,
+  String Function()? logText,
 }) async {
-  t.view.physicalSize = size * 3;
-  t.view.devicePixelRatio = 3;
-  addTearDown(t.view.reset);
-  final r = _runner(lab, sent: sent, holdPattern: holdPattern);
-  await r.openPattern();
-  await t.pumpWidget(
-    MaterialApp(
-      theme: buildTheme(Brightness.light),
-      home: PatternProbePage(runner: r),
-    ),
+  _view(t, size);
+  final r = _runner(
+    lab,
+    sent: sent,
+    sentAt: sentAt,
+    holdPattern: holdPattern,
+    link: link,
+    bandEvents: bandEvents,
   );
-  await t.pump(const Duration(milliseconds: 300));
+  await r.openPattern();
+  await _show(t, r, logText: logText);
   return r;
+}
+
+/// Closes the session and lets everything pending run out: the page's
+/// timers, the probe's waits.
+Future<void> _finish(WidgetTester t, HardwareProbeRunner r) async {
+  r.closePattern();
+  await t.pumpWidget(const SizedBox());
+  await t.pump(const Duration(seconds: 30));
 }
 
 Future<void> _tapKey(WidgetTester t, String key) async {
@@ -120,13 +235,21 @@ void main() {
       'pattern-rendition-b',
       'pattern-wheel',
       for (final n in _lens) 'pattern-len-$n',
+      'pattern-dot',
       for (final d in _dyns) 'pattern-dyn-$d',
       'pattern-kind',
       'pattern-delete',
       'pattern-metronome',
       'pattern-dynamic-tempo',
+      'pattern-finish',
     ]) {
       expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
+    }
+    for (final k in ['pattern-len-3', 'pattern-len-6', 'pattern-len-12']) {
+      expect(find.byKey(ValueKey(k)), findsNothing, reason: '$k: dot, not a key');
+    }
+    for (final k in ['pattern-refused', 'pattern-end']) {
+      expect(find.byKey(ValueKey(k)), findsNothing, reason: k);
     }
     expect(find.textContaining('Pick Note or Rest, then a length.'), findsOneWidget);
     expect(
@@ -135,8 +258,8 @@ void main() {
     );
     expect(
       find.text(
-        'Each play waits for the band to finish the last one; at most 160 '
-        'commands per session; leaving this screen stops it.',
+        'Each play waits for the band to finish the last one; at most 30 '
+        'commands in any 2 minutes; leaving this screen stops it.',
       ),
       findsOneWidget,
     );
@@ -153,6 +276,7 @@ void main() {
     expect(find.text('1 sixteenth = 125 ms'), findsOneWidget);
     expect(find.text('1 = 250 ms'), findsNothing);
     expect(find.text('Dynamic tempo'), findsOneWidget);
+    expect(find.textContaining('160'), findsNothing, reason: 'no session cap');
     r.closePattern();
   });
 
@@ -180,13 +304,14 @@ void main() {
   testWidgets('the footer stays on screen when the list is long', (t) async {
     final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
     for (var i = 0; i < 32; i++) {
-      r.patternTap(_lens[i % 5]);
+      r.patternTap(_lens[i % 4]);
     }
     await t.pump(const Duration(milliseconds: 600));
     expect(r.pattern!.rendition(0, 0).code.split(' '), hasLength(32));
     final screen = Offset.zero & const Size(360, 640);
     for (final k in [
       for (final n in _lens) 'pattern-len-$n',
+      'pattern-dot',
       for (final d in _dyns) 'pattern-dyn-$d',
       'pattern-kind',
       'pattern-delete',
@@ -227,10 +352,10 @@ void main() {
       reason: 'dragging down goes back to earlier entries',
     );
 
-    await _tapKey(t, 'pattern-len-6');
+    await _tapKey(t, 'pattern-len-8');
     final entries = s.rendition(0, 0).code.split(' ');
     expect(entries, hasLength(3), reason: 'replaced, not appended');
-    expect(entries[c].substring(1), startsWith('6'));
+    expect(entries[c].substring(1), startsWith('8'));
     expect(
       [
         for (var i = 0; i < 3; i++)
@@ -378,10 +503,13 @@ void main() {
     r.closePattern();
   });
 
-  testWidgets('five length buttons sit in one row of equal width', (t) async {
+  testWidgets('four length buttons and the Dot sit in one row of equal width', (
+    t,
+  ) async {
     final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
     final rects = [
       for (final n in _lens) t.getRect(find.byKey(ValueKey('pattern-len-$n'))),
+      t.getRect(find.byKey(const ValueKey('pattern-dot'))),
     ];
     for (var i = 1; i < rects.length; i++) {
       expect(rects[i].left, greaterThanOrEqualTo(rects[i - 1].right));
@@ -521,7 +649,8 @@ void main() {
     expect(dynSelected(t, 'mf'), isFalse);
     await _tapKey(t, 'pattern-dyn-ff');
     await _tapKey(t, 'pattern-len-8'); // a rest now (after N1)
-    await _tapKey(t, 'pattern-len-6'); // N6ff
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-4'); // N6ff, a dotted quarter
     expect(r.pattern!.active.code, 'N4pp R2 N1pp R8 N6ff');
     r.closePattern();
     h.dispose();
@@ -622,19 +751,26 @@ void main() {
       .color;
 
   /// The metronome's four beat colours A, C, D, E, read off the dot at steps
-  /// 1, 5, 9 and 13; the dashes must use these same colours.
+  /// 1, 5, 9 and 13 of a count-in; the dashes must use these same colours. Presses
+  /// Play and lets the whole play and its metronome run out, so the caller
+  /// starts from an idle page again. Needs semantics on.
   Future<List<Color>> metronomeColours(WidgetTester t) async {
     final key = find.byKey(const ValueKey('pattern-metronome'));
     final byBeat = <int, Color>{};
-    for (var i = 0; i < 40 && byBeat.length < 4; i++) {
-      final m = RegExp(r'metronome step (\d+) of 16')
-          .firstMatch(t.getSemantics(key).label);
+    await t.tap(find.byKey(const ValueKey('pattern-play')));
+    await t.pump(const Duration(milliseconds: 20));
+    for (var i = 0; i < 14 && byBeat.length < 4; i++) {
+      final m = RegExp(
+        r'metronome step (\d+) of 16',
+      ).firstMatch(t.getSemantics(key).label);
       final step = int.parse(m!.group(1)!);
       final c = colourOf(t, key);
       if (step % 4 == 1 && c != null && c.a > 0) byBeat[(step - 1) ~/ 4] = c;
       await t.pump(const Duration(milliseconds: 125));
     }
     expect(byBeat.keys.toSet(), {0, 1, 2, 3});
+    await t.pump(const Duration(seconds: 40));
+    expect(t.getSemantics(key).label, 'metronome idle');
     return [for (var b = 0; b < 4; b++) byBeat[b]!];
   }
 
@@ -675,6 +811,7 @@ void main() {
 
   testWidgets('dashes: one per 16th, coloured by the beat they fall in; rests '
       'are the same colours at one third of the saturation', (t) async {
+    final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     final c = await metronomeColours(t);
     expect(c.toSet(), hasLength(4));
@@ -711,7 +848,8 @@ void main() {
     check(true);
     await _tapKey(t, 'pattern-len-2'); // N2; the buttons now write rests
     check(false);
-    r.closePattern();
+    await _finish(t, r);
+    h.dispose();
   });
 
   testWidgets('a half note is 8 dashes and they fit the button and the row at '
@@ -745,10 +883,12 @@ void main() {
   });
 
   testWidgets('wheel rows carry the same symbols and dash colours', (t) async {
+    final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     final c = await metronomeColours(t);
     await _tapKey(t, 'pattern-len-2'); // N2
-    await _tapKey(t, 'pattern-len-6'); // R6
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-4'); // R6, a dotted quarter rest
     expect(r.pattern!.active.code, 'N2mf R6');
     final wheel = find.byKey(const ValueKey('pattern-wheel'));
     expect(
@@ -789,36 +929,81 @@ void main() {
       expect(third(dashes(k).single, c[1]), isTrue, reason: 'rest dash $k');
       expect(third(dashes(k).single, c[0]), isFalse, reason: 'beat 2, not 1');
     }
-    r.closePattern();
+    await _finish(t, r);
+    h.dispose();
   });
 
-  testWidgets('the metronome steps every 125 ms through 16 steps: beats full, '
-      'the ands at a third of the saturation, the rest off', (t) async {
+  // ---- 8AB B: the metronome is a count-in for Play ---------------------------
+
+  final metro = find.byKey(const ValueKey('pattern-metronome'));
+
+  /// The metronome's label, e.g. 'metronome step 3 of 16' or 'metronome idle'.
+  String metroLabel(WidgetTester t) => t.getSemantics(metro).label;
+
+  /// The step 1..16, or null when idle.
+  int? metroStep(WidgetTester t) {
+    final m = RegExp(r'metronome step (\d+) of 16').firstMatch(metroLabel(t));
+    return m == null ? null : int.parse(m.group(1)!);
+  }
+
+  /// The dot's fill, null when it is an outline.
+  Color? dotFill(WidgetTester t) {
+    final box = t.widget<DecoratedBox>(
+      find.descendant(of: metro, matching: find.byType(DecoratedBox)).first,
+    );
+    final c = (box.decoration as BoxDecoration).color;
+    return c == null || c.a == 0 ? null : c;
+  }
+
+  /// Presses Play and returns the fake-clock instant of the press. The step 1
+  /// of the count-in shows at once.
+  Future<DateTime> pressPlay(WidgetTester t) async {
+    final t0 = clock.now();
+    await t.tap(find.byKey(const ValueKey('pattern-play')));
+    await t.pump(const Duration(milliseconds: 20));
+    return t0;
+  }
+
+  /// Fake time in 25 ms steps until [ms] after [t0] (no more than 25 ms past
+  /// it).
+  Future<void> until(WidgetTester t, DateTime t0, int ms) async {
+    while (clock.now().difference(t0).inMilliseconds < ms) {
+      await t.pump(const Duration(milliseconds: 25));
+    }
+  }
+
+  testWidgets('the metronome is idle until Play: an outline, no steps', (
+    t,
+  ) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
-    final key = find.byKey(const ValueKey('pattern-metronome'));
-    ({int step, Color? color}) dot() {
-      final label = t.getSemantics(key).label;
-      final m = RegExp(r'metronome step (\d+) of 16').firstMatch(label);
-      expect(m, isNotNull, reason: 'label: $label');
-      final box = t.widget<DecoratedBox>(
-        find.descendant(of: key, matching: find.byType(DecoratedBox)).first,
-      );
-      final c = (box.decoration as BoxDecoration).color;
-      return (
-        step: int.parse(m!.group(1)!),
-        color: c == null || c.a == 0 ? null : c,
-      );
+    for (var i = 0; i < 20; i++) {
+      expect(metroLabel(t), 'metronome idle', reason: 'at ${i * 125} ms');
+      expect(dotFill(t), isNull, reason: 'an outline while idle');
+      await t.pump(const Duration(milliseconds: 125));
     }
+    expect(find.textContaining('metronome step'), findsNothing);
+    await _finish(t, r);
+    h.dispose();
+  });
 
-    await t.pump(const Duration(milliseconds: 10));
-    var prev = dot().step;
+  testWidgets('Play starts the metronome at step 1 and it steps every 125 ms: '
+      'beats full, the ands at a third of the saturation, the rest off', (
+    t,
+  ) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    expect(metroLabel(t), 'metronome idle');
+    await pressPlay(t);
+    expect(metroLabel(t), 'metronome step 1 of 16');
+    var prev = 1;
     final beats = <int, Color>{}; // beat 0..3 -> full colour
     final ands = <int, Color>{}; // beat 0..3 -> the third-saturation colour
     for (var i = 0; i < 33; i++) {
       await t.pump(const Duration(milliseconds: 125));
-      final d = dot();
-      expect(d.step, prev % 16 + 1, reason: 'one step per 125 ms, in a loop');
+      final step = metroStep(t);
+      expect(step, prev % 16 + 1, reason: 'one step per 125 ms, in a loop');
+      final d = (step: step!, color: dotFill(t));
       final beat = (d.step - 1) ~/ 4;
       if (d.step % 4 == 1) {
         expect(d.color, isNotNull, reason: 'step ${d.step} is a beat');
@@ -845,34 +1030,192 @@ void main() {
       expect(and.hue, closeTo(base.hue, 2), reason: 'same colour, beat $b');
       expect(and.lightness, closeTo(base.lightness, 0.03));
     }
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 1));
+    await _finish(t, r);
     h.dispose();
   });
 
-  testWidgets('Play restarts the metronome at step 1', (t) async {
+  testWidgets('the count-in is one measure: the band is asked at its end '
+      'minus the default lead of 300 ms, and the dot is on step 1 again at '
+      'the downbeat', (t) async {
     final h = t.ensureSemantics();
-    final hold = Completer<void>();
-    final r = await _open(t, DeviceLabLog(), holdPattern: hold);
-    final key = find.byKey(const ValueKey('pattern-metronome'));
-    String label() => t.getSemantics(key).label;
-    await t.pump(const Duration(milliseconds: 900));
-    expect(label(), isNot('metronome step 1 of 16'), reason: 'mid-bar');
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    await t.pump(const Duration(milliseconds: 10));
-    await t.pump(const Duration(milliseconds: 10));
+    final sentAt = <DateTime>[];
+    final r = await _open(t, DeviceLabLog(), sentAt: sentAt);
+    final t0 = await pressPlay(t);
+    await until(t, t0, 1500);
+    expect(sentAt, isEmpty, reason: 'nothing is sent during the count-in');
+    expect(r.patternPlaying, isFalse);
+    await until(t, t0, 1800);
+    expect(sentAt, hasLength(1));
+    final lead = sentAt.single.difference(t0).inMilliseconds;
+    expect(lead, closeTo(2000 - 300, 60), reason: 'count-in 2000 ms - lead');
     expect(r.patternPlaying, isTrue);
-    expect(label(), 'metronome step 1 of 16');
-    await t.pump(const Duration(milliseconds: 125));
-    expect(label(), 'metronome step 2 of 16');
-    await t.pump(const Duration(milliseconds: 125));
-    expect(label(), 'metronome step 3 of 16');
-    hold.complete();
-    await t.pump(const Duration(seconds: 20));
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 1));
+    // The dot keeps stepping through the downbeat: step 16 then 1 again.
+    await until(t, t0, 1900);
+    expect(metroStep(t), 16, reason: '1875-2000 ms is the last sixteenth');
+    await until(t, t0, 2060);
+    expect(metroStep(t), 1, reason: 'the downbeat after the count-in');
+    await until(t, t0, 2190);
+    expect(metroStep(t), 2);
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  testWidgets('the band is asked a measured lead before the downbeat', (
+    t,
+  ) async {
+    final h = t.ensureSemantics();
+    final sentAt = <DateTime>[];
+    final r = await _open(t, DeviceLabLog(), sentAt: sentAt);
+    r.pattern!.noteLead(1000);
+    final t0 = await pressPlay(t);
+    await until(t, t0, 900);
+    expect(sentAt, isEmpty);
+    await until(t, t0, 1200);
+    expect(sentAt, hasLength(1));
+    expect(
+      sentAt.single.difference(t0).inMilliseconds,
+      closeTo(2000 - 1000, 60),
+    );
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  testWidgets('a lead longer than the count-in asks the band at once', (
+    t,
+  ) async {
+    final h = t.ensureSemantics();
+    final sentAt = <DateTime>[];
+    final r = await _open(t, DeviceLabLog(), sentAt: sentAt);
+    // Two tests of one sixteenth each, measured at 50 ms: the fitted tempo is
+    // 50 ms, so the count-in is 800 ms; the lead is 1500 ms.
+    await _tapKey(t, 'pattern-len-1');
+    r.patternTest(1);
+    await t.pump(const Duration(milliseconds: 400));
+    await _tapKey(t, 'pattern-len-1');
+    r.pattern!.noteMeasured(0, 50);
+    r.pattern!.noteMeasured(1, 50);
+    r.pattern!.noteLead(1500);
+    r.patternDynamicTempo(true);
+    r.patternTest(-1);
+    await t.pump(const Duration(milliseconds: 400));
+    expect(r.pattern!.unitMs, 50);
+    expect(r.pattern!.leadMs, 1500);
+    final t0 = await pressPlay(t);
+    await until(t, t0, 200);
+    expect(sentAt, hasLength(1), reason: 'the moment is already past');
+    expect(sentAt.single.difference(t0).inMilliseconds, lessThan(150));
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  /// Runs fake time from [t0] until the metronome goes idle or [limitMs]
+  /// pass. Returns (ms of the first idle, ms the play finished or null).
+  Future<({int? idleAt, int? playDoneAt, bool sawRunning})> runOut(
+    WidgetTester t,
+    HardwareProbeRunner r,
+    DateTime t0,
+    int limitMs,
+  ) async {
+    int? idleAt, playDoneAt;
+    var sawPlaying = false, sawRunning = false;
+    while (clock.now().difference(t0).inMilliseconds < limitMs) {
+      await t.pump(const Duration(milliseconds: 25));
+      final now = clock.now().difference(t0).inMilliseconds;
+      if (r.patternPlaying) sawPlaying = true;
+      if (sawPlaying && !r.patternPlaying) playDoneAt ??= now;
+      if (metroStep(t) != null) {
+        sawRunning = true;
+      } else if (sawRunning) {
+        idleAt = now;
+        break;
+      }
+    }
+    return (idleAt: idleAt, playDoneAt: playDoneAt, sawRunning: sawRunning);
+  }
+
+  testWidgets('with nothing to march the metronome stops one padding measure '
+      'after the play finished, on a bar line', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    final t0 = await pressPlay(t);
+    final run = await runOut(t, r, t0, 40000);
+    expect(run.playDoneAt, isNotNull, reason: 'the play finishes');
+    expect(run.idleAt, isNotNull, reason: 'the metronome goes idle');
+    final idle = run.idleAt!, done = run.playDoneAt!;
+    expect(idle, greaterThanOrEqualTo(done + 2000 - 50), reason: 'a measure');
+    expect(idle, lessThanOrEqualTo(done + 4000 + 50), reason: 'only one');
+    // Bars start at the downbeat, 2000 ms after the press.
+    final off = (idle - 2000) % 2000;
+    expect(
+      off < 60 || off > 2000 - 60,
+      isTrue,
+      reason: 'stops on a bar line, idle at $idle ms (offset $off)',
+    );
+    expect(metroLabel(t), 'metronome idle');
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  testWidgets('a march that outlasts the play keeps the metronome going until '
+      'it ends, plus one padding measure', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    for (var i = 0; i < 8; i++) {
+      await _tapKey(t, 'pattern-len-8'); // 8 x 8 sixteenths = 8000 ms
+    }
+    expect(r.pattern!.active.length, 8);
+    final t0 = await pressPlay(t);
+    final run = await runOut(t, r, t0, 60000);
+    // The march runs 2000 ms (count-in) to 10000 ms.
+    expect(run.playDoneAt, isNotNull);
+    expect(run.idleAt, isNotNull);
+    final idle = run.idleAt!;
+    expect(
+      idle,
+      greaterThanOrEqualTo(10000 + 2000 - 50),
+      reason: 'a measure after the march ended',
+    );
+    expect(
+      idle,
+      lessThanOrEqualTo(math.max(10000, run.playDoneAt!) + 4000 + 50),
+      reason: 'one padding measure, not more',
+    );
+    expect(
+      idle,
+      greaterThanOrEqualTo(run.playDoneAt! + 2000 - 50),
+      reason: 'and after the play finished',
+    );
+    final off = (idle - 2000) % 2000;
+    expect(off < 60 || off > 2000 - 60, isTrue, reason: 'idle at $idle ms');
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  testWidgets('a play that is refused stops the metronome at once and says '
+      'why', (t) async {
+    final h = t.ensureSemantics();
+    final link = _Link();
+    final sent = <List<int>>[];
+    final r = await _open(t, DeviceLabLog(), link: link, sent: sent);
+    expect(find.byKey(const ValueKey('pattern-refused')), findsNothing);
+    link.up = false;
+    final t0 = await pressPlay(t);
+    expect(metroStep(t), 1, reason: 'the count-in starts');
+    await until(t, t0, 1500);
+    expect(metroStep(t), isNotNull, reason: 'it runs until the band is asked');
+    await until(t, t0, 1900);
+    expect(sent, isEmpty);
+    expect(r.patternRefusal, isNotNull);
+    expect(metroLabel(t), 'metronome idle', reason: 'stopped on the refusal');
+    final line = find.byKey(const ValueKey('pattern-refused'));
+    expect(line, findsOneWidget);
+    expect(
+      find.descendant(of: line, matching: find.textContaining('Not connected')),
+      findsOneWidget,
+    );
+    await until(t, t0, 8000);
+    expect(metroLabel(t), 'metronome idle', reason: 'and stays stopped');
+    await _finish(t, r);
     h.dispose();
   });
 
@@ -934,28 +1277,30 @@ void main() {
     // testWidgets fails the test if a timer or ticker is still pending.
   });
 
-  testWidgets('Play buzzes the band, is disabled while playing, and counts', (
-    t,
-  ) async {
+  testWidgets('Play buzzes the band after the count-in, is disabled while '
+      'playing, and counts', (t) async {
     final hold = Completer<void>();
     final sent = <List<int>>[];
     final r = await _open(t, DeviceLabLog(), sent: sent, holdPattern: hold);
+    final t0 = clock.now();
     await t.tap(find.byKey(const ValueKey('pattern-play')));
     await t.pump(const Duration(milliseconds: 300));
+    expect(sent, isEmpty, reason: 'the count-in comes first');
+    await t.tap(find.byKey(const ValueKey('pattern-play')));
+    await until(t, t0, 1900);
     expect(r.patternPlaying, isTrue);
-    expect(sent, hasLength(1));
+    expect(sent, hasLength(1), reason: 'a second tap did not start a second');
     expect(find.text('Playing…'), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('pattern-play')));
     await t.pump(const Duration(milliseconds: 300));
-    expect(sent, hasLength(1), reason: 'a second tap does nothing');
+    expect(sent, hasLength(1), reason: 'a tap while playing does nothing');
 
     hold.complete();
     await t.pump(const Duration(seconds: 20));
     expect(r.patternPlaying, isFalse);
     expect(find.text('Playing…'), findsNothing);
     expect(find.text('Played 1×'), findsOneWidget);
-    r.closePattern();
-    await t.pump();
+    await _finish(t, r);
   });
 
   // ---- 8Z G: a replay marches through the recorded sequence ----------------
@@ -991,8 +1336,8 @@ void main() {
     );
   }
 
-  testWidgets('Play on a transcribed rendition marches a playhead through the '
-      'entries at the default tempo, then the wheel returns to the cursor', (
+  testWidgets('Play on a transcribed rendition marches a playhead from the '
+      'downbeat at the default tempo, then the wheel returns to the cursor', (
     t,
   ) async {
     final h = t.ensureSemantics();
@@ -1000,22 +1345,23 @@ void main() {
     await typeSequence(t, r);
     final s = r.pattern!;
     expect(head, findsNothing, reason: 'no march before Play');
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    await advance(t, 100);
-    expect(r.patternPlaying, isTrue);
-    expect(head, findsNothing, reason: 'the 300 ms lead has not passed');
-    // Default: lead 300 ms, 125 ms per sixteenth: N2 300-550, R4 550-1050, N2
-    // 1050-1300.
-    await advance(t, 400); // 500
+    final t0 = await pressPlay(t);
+    await until(t, t0, 1500);
+    expect(head, findsNothing, reason: 'the count-in is a measure of 2000 ms');
+    await until(t, t0, 1950);
+    expect(head, findsNothing, reason: 'not at the first write plus the lead');
+    // 125 ms per sixteenth from the downbeat at 2000: N2 2000-2250, R4
+    // 2250-2750, N2 2750-3000.
+    await until(t, t0, 2200);
     expectPlaying(t, 1);
     expect(s.cursor, 3, reason: 'the march never moves the cursor');
-    await advance(t, 300); // 800
+    await until(t, t0, 2500);
     expectPlaying(t, 2);
     expect(s.cursor, 3);
-    await advance(t, 450); // 1250
+    await until(t, t0, 2900);
     expectPlaying(t, 3);
     expect(s.cursor, 3);
-    await advance(t, 400); // 1650
+    await until(t, t0, 3300);
     expect(head, findsNothing, reason: 'the march is over');
     expect(s.cursor, 3);
     expect(s.active.code, 'N2mf R4 N2mf', reason: 'the march edits nothing');
@@ -1026,37 +1372,28 @@ void main() {
       lessThan(15),
       reason: 'the wheel is back on the cursor',
     );
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
+    await _finish(t, r);
     h.dispose();
   });
 
-  testWidgets('the march waits the measured lead and the metronome restarts '
-      'at the same instant', (t) async {
+  testWidgets('the march starts at the downbeat whatever the lead, and the '
+      'dot is on step 1 there', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     await typeSequence(t, r);
     r.pattern!.noteLead(1000);
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    await advance(t, 900);
-    expect(head, findsNothing, reason: 'the lead is 1000 ms');
-    final key = find.byKey(const ValueKey('pattern-metronome'));
-    var waited = 0;
-    while (head.evaluate().isEmpty && waited < 400) {
-      await advance(t, 25);
-      waited += 25;
-    }
-    expect(head, findsOneWidget, reason: 'the playhead starts at the lead');
-    expect(waited, lessThanOrEqualTo(300), reason: 'about 1000 ms after Play');
-    expect(
-      t.getSemantics(key).label,
-      'metronome step 1 of 16',
-      reason: 'the dot restarts when the march starts',
-    );
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
+    final t0 = await pressPlay(t);
+    await until(t, t0, 1500);
+    expect(head, findsNothing, reason: 'the band starts at 1000 ms, not the '
+        'playhead');
+    await until(t, t0, 1950);
+    expect(head, findsNothing);
+    await until(t, t0, 2060);
+    expect(head, findsOneWidget, reason: 'the playhead is on entry 1');
+    expect(metroStep(t), 1, reason: 'the dot is on the downbeat');
+    await until(t, t0, 2220);
+    expectPlaying(t, 1);
+    await _finish(t, r);
     h.dispose();
   });
 
@@ -1073,29 +1410,29 @@ void main() {
     await t.pump(const Duration(milliseconds: 400));
     expect(r.pattern!.unitMs, 250);
     expect(r.pattern!.active.code, 'N2mf R4 N2mf');
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    // Lead 300 ms: N2 300-800, R4 800-1800, N2 1800-2300.
-    await advance(t, 1300);
-    expectPlaying(t, 2, when: 'at 1300 ms with 250 ms sixteenths');
-    await advance(t, 800); // 2100
+    final t0 = await pressPlay(t);
+    // The count-in is 16 x 250 = 4000 ms. N2 4000-4500, R4 4500-5500, N2
+    // 5500-6000.
+    await until(t, t0, 3500);
+    expect(head, findsNothing);
+    await until(t, t0, 5000);
+    expectPlaying(t, 2, when: 'at 5000 ms with 250 ms sixteenths');
+    await until(t, t0, 5750);
     expectPlaying(t, 3);
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
+    await _finish(t, r);
     h.dispose();
   });
 
   testWidgets('there is no march for an empty active rendition', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    for (var i = 0; i < 60; i++) {
+    final t0 = await pressPlay(t);
+    for (var i = 0; i < 160; i++) {
       await advance(t, 50);
       expect(head, findsNothing, reason: 'first listen, nothing to march');
     }
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
+    expect(clock.now().difference(t0).inMilliseconds, greaterThan(8000));
+    await _finish(t, r);
     h.dispose();
   });
 
@@ -1108,13 +1445,11 @@ void main() {
     await _tapKey(t, 'pattern-rendition-b');
     expect(r.pattern!.active.length, 0);
     await t.tap(find.byKey(const ValueKey('pattern-play')));
-    for (var i = 0; i < 40; i++) {
+    for (var i = 0; i < 100; i++) {
       await advance(t, 50);
       expect(head, findsNothing);
     }
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
+    await _finish(t, r);
     h.dispose();
   });
 
@@ -1123,8 +1458,8 @@ void main() {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     await typeSequence(t, r);
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    await advance(t, 800);
+    final t0 = await pressPlay(t);
+    await until(t, t0, 2500);
     expectPlaying(t, 2);
     await t.tap(find.byKey(const ValueKey('pattern-len-1')));
     await advance(t, 100);
@@ -1140,9 +1475,7 @@ void main() {
       lessThan(15),
       reason: 'the wheel follows the cursor after the edit',
     );
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
+    await _finish(t, r);
     h.dispose();
   });
 
@@ -1150,8 +1483,8 @@ void main() {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     await typeSequence(t, r);
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    await advance(t, 800);
+    final t0 = await pressPlay(t);
+    await until(t, t0, 2500);
     expectPlaying(t, 2);
     await t.drag(wheelFinder, const Offset(0, 60));
     await advance(t, 300);
@@ -1159,22 +1492,33 @@ void main() {
     await advance(t, 1500);
     expect(head, findsNothing, reason: 'it does not start again');
     expect(r.pattern!.active.code, 'N2mf R4 N2mf');
-    r.closePattern();
-    await t.pumpWidget(const SizedBox());
-    await t.pump(const Duration(seconds: 30));
+    await _finish(t, r);
     h.dispose();
   });
 
   testWidgets('leaving the page mid-march leaves no timer behind', (t) async {
     final r = await _open(t, DeviceLabLog());
     await typeSequence(t, r);
-    await t.tap(find.byKey(const ValueKey('pattern-play')));
-    await advance(t, 700);
+    final t0 = await pressPlay(t);
+    await until(t, t0, 2125);
     expect(head, findsOneWidget);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 30));
     expect(r.pattern, isNull);
     // testWidgets fails the test if a timer is still pending.
+  });
+
+  testWidgets('leaving the page during the count-in leaves no timer behind', (
+    t,
+  ) async {
+    final sent = <List<int>>[];
+    final r = await _open(t, DeviceLabLog(), sent: sent);
+    await pressPlay(t);
+    await t.pump(const Duration(milliseconds: 500));
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 30));
+    expect(r.pattern, isNull);
+    expect(sent, isEmpty, reason: 'the band is not asked after leaving');
   });
 
   testWidgets('leaving the page closes the session and logs what was heard', (
@@ -1196,4 +1540,616 @@ void main() {
       contains('1 of 40 tests transcribed, 0 plays'),
     );
   });
+
+  // ---- 8AB A: dotted notes ---------------------------------------------------
+
+  /// Whether the widget at [key] is announced as selected. Needs semantics.
+  bool selectedOf(WidgetTester t, String key) =>
+      t.getSemantics(find.byKey(ValueKey(key))).flagsCollection.isSelected ==
+      Tristate.isTrue;
+
+  /// The symbol label of length button [n], e.g. 'dotted eighth note'.
+  String symbolLabel(WidgetTester t, int n) => t
+      .getSemantics(
+        find.descendant(
+          of: find.byKey(ValueKey('pattern-len-$n')),
+          matching: find.byKey(const ValueKey('pattern-symbol')),
+        ),
+      )
+      .label;
+
+  testWidgets('the Dot button is a toggle: selected while on, off again on a '
+      'second tap, and the runner passes it through', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    expect(r.pattern!.dotNext, isFalse);
+    expect(selectedOf(t, 'pattern-dot'), isFalse);
+    await _tapKey(t, 'pattern-dot');
+    expect(r.pattern!.dotNext, isTrue);
+    expect(selectedOf(t, 'pattern-dot'), isTrue);
+    await _tapKey(t, 'pattern-dot');
+    expect(r.pattern!.dotNext, isFalse);
+    expect(selectedOf(t, 'pattern-dot'), isFalse);
+    r.patternToggleDot();
+    await t.pump(const Duration(milliseconds: 400));
+    expect(r.pattern!.dotNext, isTrue, reason: 'the runner flips it');
+    expect(selectedOf(t, 'pattern-dot'), isTrue, reason: 'the page follows');
+    expect(r.pattern!.active.length, 0, reason: 'the dot writes nothing');
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('with the dot on the buttons are dotted: names, dashes, and the '
+      '16th is disabled', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-dot');
+    const dotted = {2: 'dotted eighth', 4: 'dotted quarter', 8: 'dotted half'};
+    const dashes = {2: 3, 4: 6, 8: 12};
+    Future<void> check(String kind) async {
+      for (final n in dotted.keys) {
+        expect(
+          symbolLabel(t, n),
+          contains('${dotted[n]} $kind'),
+          reason: 'button $n',
+        );
+        Finder dash(int k) => find.descendant(
+          of: find.byKey(ValueKey('pattern-len-$n')),
+          matching: find.byKey(ValueKey('dash-$k')),
+        );
+        expect(dash(dashes[n]!), findsOneWidget, reason: 'button $n dashes');
+        expect(dash(dashes[n]! + 1), findsNothing, reason: 'button $n dashes');
+      }
+    }
+
+    await check('note');
+    await _tapKey(t, 'pattern-kind');
+    await check('rest');
+    await _tapKey(t, 'pattern-kind');
+    expect(r.pattern!.dotNext, isTrue, reason: 'the toggle keeps the dot');
+    // A 16th cannot be dotted: the button does nothing and the dot stays.
+    await _tapKey(t, 'pattern-len-1');
+    expect(r.pattern!.active.length, 0, reason: 'nothing was written');
+    expect(r.pattern!.dotNext, isTrue);
+    expect(selectedOf(t, 'pattern-dot'), isTrue);
+    // Off again: plain names and dashes.
+    await _tapKey(t, 'pattern-dot');
+    for (final n in dotted.keys) {
+      expect(symbolLabel(t, n), isNot(contains('dotted')), reason: 'plain $n');
+    }
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('a length with the dot on writes 3, 6 or 12 sixteenths and '
+      'clears the dot', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-2'); // N3
+    expect(r.pattern!.dotNext, isFalse, reason: 'one-shot');
+    expect(selectedOf(t, 'pattern-dot'), isFalse);
+    expect(symbolLabel(t, 2), 'eighth rest', reason: 'plain again');
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-4'); // R6
+    await _tapKey(t, 'pattern-len-8'); // N8, no dot
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-8'); // R12
+    expect(r.pattern!.active.code, 'N3mf R6 N8mf R12');
+    // A 16th still works once the dot is off.
+    await _tapKey(t, 'pattern-len-1');
+    expect(r.pattern!.active.code, 'N3mf R6 N8mf R12 N1mf');
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('a dotted length replaces the entry under the cursor', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-len-2');
+    await _tapKey(t, 'pattern-len-4');
+    expect(r.pattern!.active.code, 'N2mf R4');
+    r.patternMove(-2); // onto the first entry
+    await t.pump(const Duration(milliseconds: 400));
+    expect(r.pattern!.cursor, 0);
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-4');
+    expect(r.pattern!.active.code, 'N6mf R4');
+    expect(r.pattern!.dotNext, isFalse);
+    r.closePattern();
+  });
+
+  testWidgets('wheel rows say dotted lengths and show their dashes', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-2'); // N3
+    await _tapKey(t, 'pattern-dot');
+    await _tapKey(t, 'pattern-len-8'); // R12
+    expect(r.pattern!.active.code, 'N3mf R12');
+    expect(
+      find.bySemanticsLabel(RegExp('dotted eighth note mf, entry 1')),
+      findsOneWidget,
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('dotted half rest, entry 2')),
+      findsOneWidget,
+    );
+    final wheel = find.byKey(const ValueKey('pattern-wheel'));
+    for (final k in [3, 12]) {
+      expect(
+        find.descendant(of: wheel, matching: find.byKey(ValueKey('dash-$k'))),
+        findsWidgets,
+        reason: 'a row shows dash $k',
+      );
+    }
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('a dotted half is 12 dashes and they fit its button and its row '
+      'at 360 px', (t) async {
+    final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
+    await _tapKey(t, 'pattern-dot');
+    final btn = t.getRect(find.byKey(const ValueKey('pattern-len-8')));
+    for (var k = 1; k <= 12; k++) {
+      final d = t.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('pattern-len-8')),
+          matching: find.byKey(ValueKey('dash-$k')),
+        ),
+      );
+      expect(d.left, greaterThanOrEqualTo(btn.left), reason: 'dash $k left');
+      expect(d.right, lessThanOrEqualTo(btn.right), reason: 'dash $k right');
+      expect(d.width, greaterThan(0));
+    }
+    await _tapKey(t, 'pattern-len-8');
+    expect(r.pattern!.active.code, 'N12mf');
+    final wheel = t.getRect(find.byKey(const ValueKey('pattern-wheel')));
+    final row = find.descendant(
+      of: find.byKey(const ValueKey('pattern-wheel')),
+      matching: find.byKey(const ValueKey('dash-12')),
+    );
+    expect(row, findsOneWidget, reason: 'the row shows all 12 dashes');
+    expect(t.getRect(row).right, lessThanOrEqualTo(wheel.right));
+    expect(t.getRect(row).left, greaterThanOrEqualTo(wheel.left));
+    expect(t.takeException(), isNull, reason: 'no overflow');
+    r.closePattern();
+  });
+
+  // ---- 8AB C: the end screen -------------------------------------------------
+
+  /// The page behind a launcher button, so Done and back can pop to it.
+  Future<HardwareProbeRunner> openNav(
+    WidgetTester t,
+    DeviceLabLog lab, {
+    String Function()? logText,
+  }) async {
+    _view(t, _tall);
+    final r = _runner(lab);
+    await r.openPattern();
+    await t.pumpWidget(
+      MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Scaffold(
+          body: Builder(
+            builder: (c) => TextButton(
+              key: const ValueKey('launch'),
+              onPressed: () => Navigator.of(c).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      PatternProbePage(runner: r, logText: logText ?? () => 'log'),
+                ),
+              ),
+              child: const Text('Device lab'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await t.tap(find.byKey(const ValueKey('launch')));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.byType(PatternProbePage), findsOneWidget);
+    return r;
+  }
+
+  /// Every Text on the end screen, one per line.
+  String endText(WidgetTester t) => t
+      .widgetList<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('pattern-end')),
+          matching: find.byType(Text),
+        ),
+      )
+      .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '')
+      .join('\n');
+
+  /// Mocks the clipboard; the list fills with what is copied.
+  List<String> mockClipboard(WidgetTester t) {
+    final copied = <String>[];
+    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied.add((call.arguments as Map)['text'] as String);
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    return copied;
+  }
+
+  testWidgets('Finish closes the session first, then shows the end screen with '
+      'the counts, the tempo and the lead', (t) async {
+    final lab = DeviceLabLog();
+    final r = await _open(t, lab);
+    await _tapKey(t, 'pattern-len-2'); // test 1 transcribed
+    r.pattern!.notePlayed(0);
+    r.pattern!.notePlayed(0);
+    r.pattern!.noteLead(450);
+    expect(find.byKey(const ValueKey('pattern-end')), findsNothing);
+    await _tapKey(t, 'pattern-finish');
+    expect(r.pattern, isNull, reason: 'the session is closed');
+    expect(r.running, isNull);
+    expect(lab.steps.join('\n'), contains('Pattern probe heard 1/40'));
+    expect(lab.steps.join('\n'), contains('Pattern probe tempo'));
+    expect(
+      lab.sessionSummaries.single,
+      contains('1 of 40 tests transcribed, 2 plays'),
+    );
+    expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pattern-wheel')), findsNothing);
+    expect(find.byKey(const ValueKey('pattern-play')), findsNothing);
+    expect(find.byKey(const ValueKey('pattern-copy')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pattern-done')), findsOneWidget);
+    final text = endText(t);
+    expect(text, contains('1 of 40'));
+    expect(
+      text,
+      matches(RegExp(r'(plays?\W+2\b|\b2\s+plays?)', caseSensitive: false)),
+    );
+    expect(text, contains('1 sixteenth ≈ 125 ms'));
+    expect(text, contains('fixed'));
+    expect(text, contains('450 ms'), reason: 'the measured Bluetooth lead');
+    expect(find.text('Copied'), findsNothing, reason: 'not before the copy');
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('the end screen says when the tempo was fitted', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-len-1');
+    r.patternTest(1);
+    await t.pump(const Duration(milliseconds: 400));
+    await _tapKey(t, 'pattern-len-1');
+    r.pattern!.noteMeasured(0, 250);
+    r.pattern!.noteMeasured(1, 250);
+    r.patternDynamicTempo(true);
+    await t.pump(const Duration(milliseconds: 400));
+    await _tapKey(t, 'pattern-finish');
+    final text = endText(t);
+    expect(text, contains('1 sixteenth ≈ 250 ms'));
+    expect(text, contains('fitted'));
+    expect(text, isNot(contains('fixed')));
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('Copy all logs on the end screen copies logText(), called after '
+      'the session closed, and says Copied', (t) async {
+    final copied = mockClipboard(t);
+    final lab = DeviceLabLog();
+    final calls = <bool>[];
+    late final HardwareProbeRunner r;
+    r = await _open(
+      t,
+      lab,
+      logText: () {
+        calls.add(r.pattern != null);
+        return 'LAB LOG\n${lab.steps.reversed.join('\n')}';
+      },
+    );
+    await _tapKey(t, 'pattern-len-2');
+    await _tapKey(t, 'pattern-finish');
+    expect(copied, isEmpty, reason: 'Finish copies nothing by itself');
+    await _tapKey(t, 'pattern-copy');
+    expect(copied, hasLength(1));
+    expect(calls, [false], reason: 'built after closePattern');
+    expect(copied.single, startsWith('LAB LOG'));
+    expect(
+      copied.single,
+      contains('Pattern probe heard 1/40'),
+      reason: 'the heard lines are in the copy',
+    );
+    expect(copied.single, contains('Pattern probe tempo'));
+    expect(find.text('Copied'), findsWidgets);
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('the back arrow also leads to the end screen, after closing the '
+      'session; Done returns to the lab', (t) async {
+    final lab = DeviceLabLog();
+    final r = await openNav(t, lab);
+    await _tapKey(t, 'pattern-len-2');
+    await t.tap(
+      find.descendant(
+        of: find.byType(NavBar),
+        matching: find.byIcon(LucideIcons.chevronLeft),
+      ),
+    );
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.byType(PatternProbePage), findsOneWidget, reason: 'still here');
+    expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
+    expect(r.pattern, isNull);
+    expect(lab.steps.join('\n'), contains('Pattern probe heard 1/40'));
+    await _tapKey(t, 'pattern-done');
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.byType(PatternProbePage), findsNothing);
+    expect(find.byKey(const ValueKey('launch')), findsOneWidget);
+    expect(lab.sessionSummaries, hasLength(1), reason: 'closed once');
+    expect(
+      'Pattern probe heard 1/40'.allMatches(lab.steps.join('\n')),
+      hasLength(1),
+      reason: 'logged once',
+    );
+  });
+
+  testWidgets('Finish then Done returns to the lab', (t) async {
+    final lab = DeviceLabLog();
+    await openNav(t, lab);
+    await _tapKey(t, 'pattern-finish');
+    expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
+    await _tapKey(t, 'pattern-done');
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.byType(PatternProbePage), findsNothing);
+    expect(find.byKey(const ValueKey('launch')), findsOneWidget);
+  });
+
+  testWidgets('system back: from the transcriber it goes to the end screen, '
+      'from the end screen it is Done', (t) async {
+    final lab = DeviceLabLog();
+    final r = await openNav(t, lab);
+    await _tapKey(t, 'pattern-len-4');
+    await t.binding.handlePopRoute();
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
+    expect(r.pattern, isNull);
+    expect(lab.steps.join('\n'), contains('Pattern probe heard 1/40'));
+    await t.binding.handlePopRoute();
+    await t.pump(const Duration(milliseconds: 500));
+    // The exit animation starts on the first frame after the pop.
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.byType(PatternProbePage), findsNothing);
+    expect(find.byKey(const ValueKey('launch')), findsOneWidget);
+  });
+
+  testWidgets('Finish during a count-in stops it and shows the end screen', (
+    t,
+  ) async {
+    final sent = <List<int>>[];
+    final r = await _open(t, DeviceLabLog(), sent: sent);
+    await pressPlay(t);
+    await t.pump(const Duration(milliseconds: 500));
+    await t.tap(find.byKey(const ValueKey('pattern-finish')));
+    await t.pump(const Duration(milliseconds: 500));
+    expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
+    expect(r.pattern, isNull);
+    await t.pump(const Duration(seconds: 10));
+    expect(sent, isEmpty, reason: 'the band is not asked after Finish');
+    await t.pumpWidget(const SizedBox());
+    await t.pump(const Duration(seconds: 1));
+  });
+
+  // ---- 8AB D: refusals are visible --------------------------------------------
+
+  testWidgets('after 30 commands in two minutes the next play is refused: the '
+      'page says the band is resting and counts down, then a play clears it', (
+    t,
+  ) async {
+    final h = t.ensureSemantics();
+    _view(t, _tall);
+    final sent = <List<int>>[];
+    final r = _runner(DeviceLabLog(), sent: sent, bandEvents: true);
+    await r.openPattern();
+    // Plays of test 1 until 30 commands are written (two per play).
+    for (var i = 0; i < 40 && sent.length < 30; i++) {
+      unawaited(r.playPattern());
+      await t.pump();
+      while (r.patternPlaying) {
+        await t.pump(const Duration(milliseconds: 100));
+      }
+    }
+    expect(sent, hasLength(30));
+    expect(r.patternRefusal, isNull, reason: 'thirty is allowed');
+    await _show(t, r);
+    expect(find.byKey(const ValueKey('pattern-refused')), findsNothing);
+
+    final t0 = await pressPlay(t);
+    await until(t, t0, 2500);
+    expect(sent, hasLength(30), reason: 'the 31st command was not sent');
+    expect(r.patternRefusal, isNotNull);
+    final rest = r.patternRestRemaining;
+    expect(rest, isNotNull);
+    expect(rest!, greaterThan(const Duration(seconds: 5)));
+    expect(metroLabel(t), 'metronome idle', reason: 'stopped on the refusal');
+    final line = find.byKey(const ValueKey('pattern-refused'));
+    expect(line, findsOneWidget);
+    int secondsShown() {
+      final text = t.widget<Text>(
+        find.descendant(of: line, matching: find.byType(Text)).first,
+      );
+      final m = RegExp(
+        r'^Band resting, ready in (\d+) s',
+      ).firstMatch(text.data ?? text.textSpan?.toPlainText() ?? '');
+      expect(m, isNotNull, reason: 'the line reads "Band resting, ready in N s"');
+      return int.parse(m!.group(1)!);
+    }
+
+    final n1 = secondsShown();
+    expect(
+      (n1 - r.patternRestRemaining!.inSeconds).abs(),
+      lessThanOrEqualTo(1),
+      reason: 'it shows the remaining rest',
+    );
+    await until(t, t0, 5500);
+    final n2 = secondsShown();
+    expect(n2, lessThanOrEqualTo(n1 - 2), reason: 'it counts down: $n1 -> $n2');
+    expect(n2, greaterThanOrEqualTo(n1 - 4));
+
+    // Wait the rest out, then a play goes through and the line goes.
+    while (r.patternRestRemaining != null &&
+        r.patternRestRemaining! > Duration.zero) {
+      await t.pump(const Duration(milliseconds: 250));
+    }
+    await t.pump(const Duration(seconds: 1));
+    final t1 = await pressPlay(t);
+    await until(t, t1, 2500);
+    expect(sent.length, greaterThan(30), reason: 'the band was asked again');
+    for (var i = 0; i < 400 && r.patternPlaying; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    expect(r.patternRefusal, isNull);
+    expect(find.byKey(const ValueKey('pattern-refused')), findsNothing);
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  // ---- 8AB E: the limit display, blurred until tapped -------------------------
+
+  final limit = find.byKey(const ValueKey('pattern-limit'));
+
+  /// One play of the one-command test 8, run out in fake time.
+  Future<void> playOnce(WidgetTester t, HardwareProbeRunner r) async {
+    unawaited(r.playPattern());
+    await t.pump();
+    for (var i = 0; i < 100 && r.patternPlaying; i++) {
+      await t.pump(const Duration(milliseconds: 100));
+    }
+    expect(r.patternPlaying, isFalse);
+  }
+
+  /// The runner of a page on the one-command test with [plays] plays behind it.
+  Future<HardwareProbeRunner> openWithPlays(WidgetTester t, int plays) async {
+    _view(t, _tall);
+    final r = _runner(DeviceLabLog(), quickEnd: true);
+    await r.openPattern();
+    r.patternTest(8);
+    for (var i = 0; i < plays; i++) {
+      await playOnce(t, r);
+    }
+    await _show(t, r);
+    return r;
+  }
+
+  /// The blur's sigma on the limit display, null when it is not blurred.
+  double? limitBlur(WidgetTester t) {
+    final f = find.descendant(of: limit, matching: find.byType(ImageFiltered));
+    if (f.evaluate().isEmpty) return null;
+    final m = RegExp(r'blur\(([\d.]+)')
+        .firstMatch(t.widget<ImageFiltered>(f.first).imageFilter.toString());
+    expect(m, isNotNull, reason: 'a blur filter');
+    return double.parse(m!.group(1)!);
+  }
+
+  /// The colour of the Text [data] on the page.
+  Color? textColour(WidgetTester t, String data) =>
+      t.widget<Text>(find.text(data)).style?.color;
+
+  testWidgets('the limit display says 30 of 30 left with nothing in the '
+      'window, and no countdown', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    expect(limit, findsOneWidget);
+    expect(find.text('30 of 30 left'), findsOneWidget);
+    expect(find.textContaining('next in'), findsNothing);
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  testWidgets('it is blurred by default, with a blur too strong to read, and '
+      'says so', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    expect(limitBlur(t), isNotNull, reason: 'blurred');
+    expect(limitBlur(t)!, greaterThanOrEqualTo(4));
+    expect(t.getSemantics(limit).label, 'limit display, blurred');
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  testWidgets('a tap toggles the blur and the semantics label', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await t.tap(limit);
+    await t.pump(const Duration(milliseconds: 400));
+    expect(limitBlur(t), isNull, reason: 'unblurred after a tap');
+    final open = t.getSemantics(limit).label;
+    expect(open, contains('limit display'));
+    expect(open, isNot(contains('blurred')));
+    expect(find.text('30 of 30 left'), findsOneWidget);
+    await t.tap(limit);
+    await t.pump(const Duration(milliseconds: 400));
+    expect(limitBlur(t), greaterThanOrEqualTo(4), reason: 'blurred again');
+    expect(t.getSemantics(limit).label, 'limit display, blurred');
+    await _finish(t, r);
+    h.dispose();
+  });
+
+  testWidgets('after a play it shows the commands left and a next-free '
+      'countdown that runs down once a second', (t) async {
+    final r = await openWithPlays(t, 1);
+    expect(find.text('29 of 30 left'), findsOneWidget);
+    int secondsLeft() {
+      final m = RegExp(r'^next in (\d+):(\d\d)$').firstMatch(
+        t.widgetList<Text>(find.textContaining('next in')).single.data ?? '',
+      );
+      expect(m, isNotNull, reason: 'next in m:ss');
+      return int.parse(m!.group(1)!) * 60 + int.parse(m.group(2)!);
+    }
+
+    final n1 = secondsLeft();
+    expect(n1, inInclusiveRange(115, 120), reason: 'the 2 minute window');
+    await t.pump(const Duration(seconds: 10));
+    final n2 = secondsLeft();
+    expect(n2, inInclusiveRange(n1 - 11, n1 - 9), reason: 'counts down: $n1 $n2');
+    await _finish(t, r);
+  });
+
+  testWidgets('the count turns red under 5 left, not at 5', (t) async {
+    final r = await openWithPlays(t, 25);
+    expect(find.text('5 of 30 left'), findsOneWidget);
+    final calm = textColour(t, '5 of 30 left');
+    expect(calm, isNot(C.red), reason: 'five is not low yet');
+    await playOnce(t, r);
+    await t.pump(const Duration(milliseconds: 300));
+    expect(find.text('4 of 30 left'), findsOneWidget);
+    expect(textColour(t, '4 of 30 left'), C.red);
+    await _finish(t, r);
+  });
+
+  testWidgets('with none left it says 0 of 30 in red, and the refusal line '
+      'under Play is not blurred', (t) async {
+    final r = await openWithPlays(t, 30);
+    expect(find.text('0 of 30 left'), findsOneWidget);
+    expect(textColour(t, '0 of 30 left'), C.red);
+    final t0 = await pressPlay(t);
+    await until(t, t0, 2500);
+    final line = find.byKey(const ValueKey('pattern-refused'));
+    expect(line, findsOneWidget);
+    expect(
+      find.ancestor(of: line, matching: find.byType(ImageFiltered)),
+      findsNothing,
+      reason: 'the refusal stays readable',
+    );
+    expect(limitBlur(t), isNotNull, reason: 'the limit display is still blurred');
+    await _finish(t, r);
+  });
+
 }
