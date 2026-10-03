@@ -47,9 +47,9 @@ import '../ui2.dart';
 import 'profile.dart' show SetRow, SettingsAccordion, kDisabledOpacity;
 import 'settings.dart' show editExpectedSleepSchedule;
 
-/// Why the Haptics row is dimmed: the band alarm plays a waveform fixed on the
-/// band, so there is no pattern here to show or change.
-const String _kFixedWaveform = 'The band alarm uses the band\'s own buzz';
+/// The alarm waveform is fixed on the band, so there is no pattern to show or
+/// change; Wake says so once instead of a disabled row (8AE).
+const String _kFixedWaveform = 'The alarm uses the band\'s own buzz.';
 
 /// What we actually know about the armed alarm.
 enum AlarmArmState {
@@ -643,23 +643,6 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                           children: _wakeChildren(c, p, week),
                         ),
                         SettingsAccordion(
-                          'Haptics',
-                          summary: _kFixedWaveform,
-                          children: [
-                            // The band's own alarm waveform is fixed on the
-                            // band, so there is no sequence to show and none is
-                            // invented.
-                            SetRow(
-                              LucideIcons.waves,
-                              C.purple,
-                              'Buzz pattern',
-                              enabled: false,
-                              sub: _kFixedWaveform,
-                              chevron: false,
-                            ),
-                          ],
-                        ),
-                        SettingsAccordion(
                           'Status',
                           summary: AlarmScreenView._localizedStateLabel(
                             c,
@@ -959,6 +942,10 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
               : 'phone must be connected',
           chevron: false,
         ),
+      Padding(
+        padding: const EdgeInsets.only(top: S.x3),
+        child: Text(_kFixedWaveform, style: F.over.copyWith(color: p.ink3)),
+      ),
     ];
   }
 

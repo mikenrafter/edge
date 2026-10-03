@@ -28,6 +28,7 @@ import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
 import '../../gestures/lab_log.dart';
 import '../../state/app_state.dart';
+import '../../state/feature_flags.dart';
 import '../ui2.dart';
 import 'pattern_probe_page.dart';
 import 'profile.dart';
@@ -41,8 +42,8 @@ const String kExtendedGesturesNote =
     'ECG on double tap and counting touches on the ECG sensor need a WHOOP MG. '
     'WHOOP 4.0 has no ECG sensor, so it counts extra double taps instead. '
     'The 3–5 tap rows are a draft, and so are the 2–4 double taps rows. '
-    'Try them first in the Device lab, under your band in Devices: it logs '
-    'every step with its timing.';
+    'Try them first in the Device lab, in Settings under Developer mode: it '
+    'logs every step with its timing.';
 
 class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});
@@ -76,6 +77,9 @@ class DeviceLab extends StatelessWidget {
         thresholds: g.ecgTapThresholds,
         onThresholds: g.setEcgTapThresholds,
         logText: logText,
+        // The lab is now reached from Settings > Developer, so the entry no
+        // longer carries the flag: the tap tools inside do (8AE).
+        tapTools: FeatureFlags.isOn(FeatureFlag.tapClassifiers),
         probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
       ),
     );
@@ -100,6 +104,7 @@ class DeviceLabView extends StatelessWidget {
     this.packets = const [],
     this.probes,
     this.logText,
+    this.tapTools = true,
   });
 
   final bool ecgSupported;
@@ -137,6 +142,11 @@ class DeviceLabView extends StatelessWidget {
   /// What "Copy all logs" copies; built from the fields above when not given.
   final String Function()? logText;
 
+  /// FeatureFlag.tapClassifiers. False hides the ECG, touch-window and
+  /// repeated-double-tap tools, which the dispatcher ignores while the flag is
+  /// off; the probes and the logs stay.
+  final bool tapTools;
+
   Future<void> _copy(BuildContext c) async {
     await Clipboard.setData(ClipboardData(
       text: logText?.call() ??
@@ -171,6 +181,7 @@ class DeviceLabView extends StatelessWidget {
                   child: Text(kExtendedGesturesNote,
                       style: F.body.copyWith(color: p.ink2, height: 1.4)),
                 ),
+                if (tapTools)
                 Section(
                   'ECG on double tap',
                   Surface(
@@ -190,6 +201,7 @@ class DeviceLabView extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (tapTools)
                 Section(
                   'Touch windows',
                   Surface(
@@ -199,6 +211,7 @@ class DeviceLabView extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (tapTools)
                 Section(
                   'Repeated double taps',
                   Surface(

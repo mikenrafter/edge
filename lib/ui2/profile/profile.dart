@@ -18,9 +18,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/locale_controller.dart';
 import '../ui2.dart';
-import '../screens/coach.dart' show CoachSetup, coachSubtitle;
 import 'devices.dart';
-import 'live_devices.dart' show LiveDevices;
 import 'settings.dart';
 
 // ══════════════════ shared list furniture ══════════════════
@@ -262,11 +260,11 @@ const Map<String, String> _kLanguageNames = {
   'hi': 'हिन्दी',
 };
 
-String _languageLabel(BuildContext c, String? code) => code == null
+String languageLabel(BuildContext c, String? code) => code == null
     ? (AppLocalizations.of(c)?.languageSystemDefault ?? 'System default')
     : (_kLanguageNames[code] ?? code);
 
-Future<void> _pickLanguage(BuildContext c) async {
+Future<void> pickLanguage(BuildContext c) async {
   final p = P.of(c);
   final ctrl = c.read<LocaleController>();
   final options = <String?>[null, ...AppLocalizations.supportedLocales.map((l) => l.languageCode)];
@@ -280,7 +278,7 @@ Future<void> _pickLanguage(BuildContext c) async {
         children: [
           for (final code in options)
             ListTile(
-              title: Text(_languageLabel(sheet, code), style: F.body.copyWith(color: p.ink)),
+              title: Text(languageLabel(sheet, code), style: F.body.copyWith(color: p.ink)),
               trailing: ctrl.code == code
                   ? Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
                   : null,
@@ -342,18 +340,11 @@ class _ProfileHomeState extends State<ProfileHome> {
 
   Future<ProfileStats> _load() async {
     final app = context.read<AppState>();
-    final repo = app.repo;
-    final sources = liveSources(app).length;
-    if (repo == null) {
-      return ProfileStats(
-          name: app.user?['name'] as String?, sources: sources);
-    }
-    final bytes = await app.dataFileBytes();
+    // Storage moved into Settings (8AE), which reads the size itself; the
+    // profile screen no longer pays for a file stat it does not draw.
     return ProfileStats(
-      name: app.user?['name'] as String?,
-      sources: sources,
-      storageBytes: bytes,
-    );
+        name: app.user?['name'] as String?,
+        sources: liveSources(app).length);
   }
 
   Future<void> _open(BuildContext c, Widget w) async {
@@ -368,9 +359,6 @@ class _ProfileHomeState extends State<ProfileHome> {
           stats: snap.data,
           onDevices: () => _open(c, const MyDevices()),
           onSettings: () => _open(c, const MoreSettings()),
-          onLiveDevices: () => _open(c, const LiveDevices()),
-          onEdit: () => _open(c, const EditProfile()),
-          onCoach: () => _open(c, const CoachSetup()),
         ),
       );
 }
@@ -379,17 +367,10 @@ class ProfileHomeView extends StatelessWidget {
   /// Null while the counts are still being read — the numbers are absent, not
   /// zero, and a zero rendered during a load is a wrong number on screen.
   final ProfileStats? stats;
-  final VoidCallback? onDevices, onSettings, onEdit, onCoach, onLiveDevices;
+  final VoidCallback? onDevices, onSettings;
 
   const ProfileHomeView(
-      {super.key,
-      this.stats,
-      this.onDevices,
-      this.onLiveDevices,
-      this.onCoach,
-      this.onSettings,
-      this.onEdit,
-      });
+      {super.key, this.stats, this.onDevices, this.onSettings});
 
   @override
   Widget build(BuildContext c) {
@@ -417,52 +398,11 @@ class ProfileHomeView extends StatelessWidget {
                           : (l?.profileSourcesCount(s.sources) ??
                               '${s.sources} source${s.sources == 1 ? '' : 's'}'),
                       onTap: onDevices),
-                  SetRow(LucideIcons.activity, C.red, 'Live devices',
-                      sub: 'The last 30 seconds from each connected device',
-                      onTap: onLiveDevices),
-                  SetRow(LucideIcons.userPen, C.purple,
-                      l?.profileEditProfile ?? 'Edit profile',
-                      sub: l?.profileEditProfileSub ??
-                          'Sex, age, height, weight',
-                      onTap: onEdit),
-                  // THE ONLY DOOR TO THE COACH'S SETUP, and it has to be —
-                  // Home's sparkles button is now gated on `coachReady`, so on
-                  // a fresh install there is no icon to find it behind. It
-                  // belongs here anyway: a model, a base URL and a key are
-                  // settings, and the coach's own overflow menu offering the
-                  // same form was two doors onto one state.
-                  //
-                  // `watch` rather than `read` so the sub-line stops saying
-                  // "Not set up" the moment it is.
-                  Builder(builder: (c) => SetRow(
-                      LucideIcons.sparkles, C.purple,
-                      AppLocalizations.of(c)?.profileAiCoach ?? 'AI coach',
-                      sub: coachSubtitle(c) ??
-                          (AppLocalizations.of(c)?.profileNotSetUp ??
-                              'Not set up'),
-                      onTap: onCoach)),
-                  Builder(builder: (c) => SetRow(
-                      LucideIcons.languages, C.blue,
-                      AppLocalizations.of(c)?.profileLanguage ?? 'Language',
-                      sub: _languageLabel(c, c.watch<LocaleController>().code),
-                      onTap: () => _pickLanguage(c))),
-                ]),
-                settingsGroup(c, l?.profileYourDataGroup ?? 'Your data', [
-                  SetRow(LucideIcons.database, C.green,
-                      l?.profileStorage ?? 'Storage',
-                      value: s?.storageBytes == null
-                          ? ''
-                          : formatBytes(s!.storageBytes!),
-                      chevron: false),
+                  // The one door to everything else (8AE): profile, language,
+                  // storage, the coach and the developer tools all moved into
+                  // Settings, grouped by task.
                   SetRow(LucideIcons.settings, C.n500,
-                      l?.profileMoreSettings ?? 'More settings',
-                      // `From $storeName` used to sit on Quick access too. It
-                      // came off: height, weight and workouts already moved to
-                      // the screens they fill, and what is left — a resting
-                      // heart rate the app does not use yet, plus readings from
-                      // instruments this band does not have — is not quick and
-                      // is not accessed often. It keeps its one door here, and
-                      // this line names it so the door is findable.
+                      l?.settingsNavTitle ?? 'Settings',
                       sub: l?.profileMoreSettingsSub(storeName) ??
                           'Import from $storeName, export, backup, units, '
                               'privacy, reset',

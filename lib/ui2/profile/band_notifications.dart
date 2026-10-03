@@ -269,7 +269,6 @@ class BandNotificationsView extends StatelessWidget {
   List<Widget> _policyRows(BuildContext c, String name) {
     final cfg = channels[name] ?? ChannelConfig.forChannel(name);
     void put(ChannelConfig next) => onChannel?.call(name, next);
-    final quietOn = cfg.quietStartMinute != null && cfg.quietEndMinute != null;
     final rhythm = _rhythms.indexWhere(
         (r) => r.$2.join(',') == cfg.fallbackPattern.join(','));
     return [
@@ -314,29 +313,39 @@ class BandNotificationsView extends StatelessWidget {
           (v) => put(cfg.copyWith(phoneFallback: v)),
           sub: 'A generic notice on this phone when the band is not '
               'connected. It follows the Do Not Disturb choice above.'),
+      // 8AE: a channel follows the global quiet hours in Alerts unless it
+      // overrides them; its own Starts and Ends only exist while it does.
       SwitchRow(
-          'Quiet hours',
-          cfg.quietStartMinute != null && cfg.quietEndMinute != null,
+          'Override quiet hours',
+          cfg.overrideQuietHours,
+          key: ValueKey('channel-quiet-override-$name'),
+          sub: cfg.overrideQuietHours
+              ? ''
+              : 'Follows your quiet hours in Alerts',
           (v) => put(v
-              ? cfg.copyWith(quietStartMinute: 22 * 60, quietEndMinute: 7 * 60)
-              : cfg.copyWith(clearQuiet: true))),
-      // Always drawn; dimmed while quiet hours are off (8K).
-      SetRow(LucideIcons.sunset, C.blue, 'Starts',
-          enabled: quietOn,
-          value: NotificationSettingsView.hhmm(cfg.quietStartMinute ?? 22 * 60),
-          chevron: false, onTap: () async {
-        final v = await NotificationSettingsView.pickMinute(
-            c, cfg.quietStartMinute ?? 22 * 60);
-        if (v != null) put(cfg.copyWith(quietStartMinute: v));
-      }),
-      SetRow(LucideIcons.sunrise, C.yellow, 'Ends',
-          enabled: quietOn,
-          value: NotificationSettingsView.hhmm(cfg.quietEndMinute ?? 7 * 60),
-          chevron: false, onTap: () async {
-        final v = await NotificationSettingsView.pickMinute(
-            c, cfg.quietEndMinute ?? 7 * 60);
-        if (v != null) put(cfg.copyWith(quietEndMinute: v));
-      }),
+              ? cfg.copyWith(
+                  overrideQuietHours: true,
+                  // Seed the usual night window so Starts and Ends never show
+                  // a time the relay is not using.
+                  quietStartMinute: cfg.quietStartMinute ?? 22 * 60,
+                  quietEndMinute: cfg.quietEndMinute ?? 7 * 60)
+              : cfg.copyWith(overrideQuietHours: false))),
+      if (cfg.overrideQuietHours) ...[
+        SetRow(LucideIcons.sunset, C.blue, 'Starts',
+            value: NotificationSettingsView.hhmm(cfg.quietStartMinute ?? 22 * 60),
+            chevron: false, onTap: () async {
+          final v = await NotificationSettingsView.pickMinute(
+              c, cfg.quietStartMinute ?? 22 * 60);
+          if (v != null) put(cfg.copyWith(quietStartMinute: v));
+        }),
+        SetRow(LucideIcons.sunrise, C.yellow, 'Ends',
+            value: NotificationSettingsView.hhmm(cfg.quietEndMinute ?? 7 * 60),
+            chevron: false, onTap: () async {
+          final v = await NotificationSettingsView.pickMinute(
+              c, cfg.quietEndMinute ?? 7 * 60);
+          if (v != null) put(cfg.copyWith(quietEndMinute: v));
+        }),
+      ],
     ];
   }
 
@@ -350,7 +359,7 @@ class BandNotificationsView extends StatelessWidget {
         child: Column(children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.bandNotifNavTitle ?? 'Band notifications',
+            child: NavBar(l?.bandNotifNavTitle ?? 'App notifications on the band',
                 sub: l?.bandNotifNavSub ?? 'WHAT MAKES THE BAND BUZZ'),
           ),
           Expanded(
@@ -367,7 +376,8 @@ class BandNotificationsView extends StatelessWidget {
                     icon: LucideIcons.smartphone,
                   )
                 else ...[
-                  SettingsAccordion(l?.bandNotifRelayGroup ?? 'Relay', children: [
+                  SettingsAccordion(l?.bandNotifRelayGroup ??
+                      'App notifications on the band', children: [
                     SetRow(LucideIcons.bellRing, C.purple,
                         l?.bandNotifBuzzOnAppNotifs ??
                             'Buzz on app notifications',

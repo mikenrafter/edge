@@ -56,7 +56,6 @@ void main() {
       'Activity',
       'Reminders',
       'Device',
-      'Android Relay',
     ]) {
       expect(find.text(label), findsOneWidget);
     }

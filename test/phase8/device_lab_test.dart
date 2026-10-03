@@ -12,6 +12,7 @@ import 'package:openstrap_edge/gestures/gesture_dispatcher.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
+import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/sections.dart' show isDimmed;
@@ -487,7 +488,8 @@ void main() {
     });
   });
 
-  group('Device detail links to the lab', () {
+  group('Settings > Developer links to the lab (8AE: out of Device detail)',
+      () {
     final band = HealthSource(
       name: 'Synthetic band',
       kind: 'WHOOP 4',
@@ -498,11 +500,19 @@ void main() {
       family: 'gen4',
     );
 
-    testWidgets('a "Device lab" row on the band opens it', (t) async {
+    testWidgets('a "Device lab" row in Developer opens it, dev mode only',
+        (t) async {
       var opened = 0;
-      await _pump(t, DeviceDetailView(band, onDeviceLab: () => opened++));
+      await _pump(t, MoreSettingsView(devMode: true, onDeviceLab: () => opened++));
       await t.tap(find.text('Device lab'));
       expect(opened, 1);
+      await _pump(t, MoreSettingsView(onDeviceLab: () => opened++));
+      expect(find.text('Device lab'), findsNothing);
+    });
+
+    testWidgets('the band page has no Device lab row any more', (t) async {
+      await _pump(t, DeviceDetailView(band));
+      expect(find.text('Device lab'), findsNothing);
     });
   });
 }

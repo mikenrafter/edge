@@ -357,7 +357,7 @@
   "@alarmDetailUnknown": {
     "description": "Detail card body: unknown."
   },
-  "bandNotifNavTitle": "Band notifications",
+  "bandNotifNavTitle": "App notifications on the band",
   "@bandNotifNavTitle": {
     "description": "Screen title."
   },
@@ -373,7 +373,7 @@
   "@bandNotifUnsupportedBody": {
     "description": "Status card body: unsupported platform."
   },
-  "bandNotifRelayGroup": "Relay",
+  "bandNotifRelayGroup": "App notifications on the band",
   "@bandNotifRelayGroup": {
     "description": "Settings group header."
   },
@@ -11225,7 +11225,7 @@
   "@settingsGroupNotifications": {
     "description": "Settings group heading for the notifications row"
   },
-  "settingsManageNotificationsRowTitle": "Manage notifications",
+  "settingsManageNotificationsRowTitle": "Alerts and notifications",
   "@settingsManageNotificationsRowTitle": {
     "description": "Settings row title opening the notification settings screen"
   },
@@ -11397,7 +11397,7 @@
   "@settingsHealthExceptionsRowSub": {
     "description": "Notification row subtitle for the health-exception alert toggle"
   },
-  "settingsBandAlertsRowTitle": "Band alerts",
+  "settingsBandAlertsRowTitle": "Band battery",
   "@settingsBandAlertsRowTitle": {
     "description": "Notification row title for band device alerts"
   },

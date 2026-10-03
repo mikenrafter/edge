@@ -26,6 +26,7 @@ import 'package:openstrap_edge/notify/notification_relay.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
 import 'package:openstrap_edge/state/feature_flags.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
+import 'package:openstrap_edge/ui2/profile/device_lab.dart' show DeviceLabView;
 import 'package:openstrap_edge/ui2/profile/devices.dart'
     show showSignalPriorityEntry, showSourceCatalogEntry;
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
@@ -368,11 +369,14 @@ void main() {
       for (final title in const [
         'Count extra taps with',
         'Tap counts',
-        'Pause between double taps',
-        'Touch windows',
         'What needs a WHOOP MG',
       ]) {
         expect(find.text(title), findsWidgets, reason: 'ON: $title');
+      }
+      // The pause and touch-window tuning moved to the Device lab (8AE), so
+      // they are not on this screen with the flag on or off.
+      for (final title in const ['Pause between double taps', 'Touch windows']) {
+        expect(find.text(title), findsNothing, reason: 'ON: $title');
       }
       await pumpTall(t, view(false));
       for (final title in const [
@@ -387,12 +391,40 @@ void main() {
       expect(find.text('It does'), findsOneWidget);
     });
 
-    test('OFF removes the Device lab entry', () {
-      final src = File('lib/ui2/profile/devices.dart').readAsStringSync();
-      expect(
-        src,
-        contains('onDeviceLab: s.isBand && FeatureFlags.isOn(FeatureFlag.tapClassifiers)'),
-      );
+    testWidgets('OFF hides the lab\'s tap tools; the logs and probes stay',
+        (t) async {
+      Widget lab(bool tools) => DeviceLabView(
+            ecgSupported: true,
+            onRepeatWindowMs: (_) {},
+            onThresholds: (_) {},
+            tapTools: tools,
+          );
+      const tools = [
+        'ECG on double tap',
+        'Touch windows',
+        'Repeated double taps',
+      ];
+      await pumpTall(t, lab(true));
+      for (final title in tools) {
+        expect(find.text(title), findsWidgets, reason: 'ON: $title');
+      }
+      await pumpTall(t, lab(false));
+      for (final title in tools) {
+        expect(find.text(title), findsNothing, reason: 'OFF: $title');
+      }
+      expect(find.text('Band events'), findsOneWidget);
+      expect(find.text('Copy all logs'), findsOneWidget);
+    });
+
+    test('the lab gates its tap tools on the flag; the entry needs dev mode',
+        () {
+      final lab = File('lib/ui2/profile/device_lab.dart').readAsStringSync();
+      expect(lab,
+          contains('tapTools: FeatureFlags.isOn(FeatureFlag.tapClassifiers)'));
+      final devices = File('lib/ui2/profile/devices.dart').readAsStringSync();
+      expect(devices, isNot(contains('onDeviceLab')));
+      final settings = File('lib/ui2/profile/settings.dart').readAsStringSync();
+      expect(settings, contains('onDeviceLab: () => goto(c, const DeviceLab())'));
     });
   });
 

@@ -963,6 +963,23 @@ the 10 s cap on purpose, tap a baseline in the lab, and fold more logs into the 
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` ("Patterns and safety");
   `docs/navigation-depth.md`; `test/phase8/CONTRACTS.md` (8AD).
 
+### 8AE — Settings by task, Developer area, quiet-hours override
+
+The wearer found Settings long and its doors scattered: some rows were on Profile, the lab was
+on the band page, and one feature had three names.
+
+- Settings is grouped by task: Band, Alerts, You & preferences, Data & privacy, Connections,
+  About, and Developer (dev mode). Profile keeps My devices and Settings; Live devices, Edit
+  profile, AI coach, Language and Storage moved into Settings. Each has one door.
+- Device lab moved out of the band's Tools to Settings > Developer (dev mode). Gestures lost
+  the two tuning controls the lab already has.
+- "Band notifications" is "App notifications on the band", with one entrance. "Band alerts" is
+  "Band battery". The Alarm screen's Haptics group is gone; Wake says the alarm uses the
+  band's own buzz.
+- Each relay channel follows the quiet hours set in Alerts unless "Override quiet hours" is
+  on, then its own Starts and Ends apply. Existing windows migrate to override on.
+- Docs: `docs/navigation-depth.md`; `test/phase8/CONTRACTS.md` (8AE).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

@@ -1,6 +1,8 @@
-// 8A — flatter navigation: from Profile home, Band notifications, Gestures,
-// Alarm and every other settings screen are at most two pushes away; Live
-// devices is one. Walks the pure views by tapping rows and counts pushes.
+// 8A — flatter navigation: from Profile home, App notifications on the band,
+// Gestures, Alarm and every other settings screen are at most two pushes away.
+// 8AE moved Live devices (now Developer), Edit profile, AI coach and the rest
+// of Profile's old rows into Settings, so they are two pushes too. Walks the
+// pure views by tapping rows and counts pushes.
 // The stateful wrappers' wiring is pinned in nav_depth_guard_test.dart.
 // See test/phase8/CONTRACTS.md §8A.
 
@@ -40,8 +42,16 @@ void main() {
 
   Widget settings() => MoreSettingsView(
         relaySupported: true,
+        devMode: true,
         onAlarm: () => push(const _Dest('Alarm')),
-        onBandNotifications: () => push(const _Dest('Band notifications')),
+        onBandNotifications: () =>
+            push(const _Dest('App notifications on the band')),
+        onDevices: () => push(const _Dest('My devices')),
+        onHaptics: () => push(const _Dest('Haptics')),
+        onEditProfile: () => push(const _Dest('Edit profile')),
+        onCoach: () => push(const _Dest('AI coach')),
+        onLiveDevices: () => push(const _Dest('Live devices')),
+        onDeviceLab: () => push(const _Dest('Device lab')),
         onGestures: () => push(const _Dest('Gestures')),
         onNotifications: () => push(const _Dest('Notifications')),
         onData: () => push(const _Dest('Data')),
@@ -63,9 +73,7 @@ void main() {
         theme: buildTheme(Brightness.light),
         home: ProfileHomeView(
           onSettings: () => push(settings()),
-          onLiveDevices: () => push(const _Dest('Live devices')),
           onDevices: () => push(const _Dest('My devices')),
-          onEdit: () => push(const _Dest('Edit profile')),
         ),
       ),
     ));
@@ -82,44 +90,58 @@ void main() {
     expect(find.text('DEST:$dest'), findsOneWidget);
   }
 
-  testWidgets('Live devices is one push from Profile (Quick access)', (t) async {
+  testWidgets('My devices is one push from Profile (Quick access)', (t) async {
     await pumpHome(t);
-    await walk(t, ['Live devices'], 'Live devices');
+    await walk(t, ['My devices'], 'My devices');
     expect(pushes.depth, 1);
   });
 
-  for (final dest in ['Band notifications', 'Gestures', 'Alarm']) {
-    testWidgets('$dest is two pushes away, via "The band"', (t) async {
+  for (final dest in [
+    'App notifications on the band',
+    'Gestures',
+    'Alarm',
+    'Haptics',
+  ]) {
+    testWidgets('$dest is two pushes away, via "Band" or "Alerts"', (t) async {
       await pumpHome(t);
-      await walk(t, ['More settings', dest], dest);
+      await walk(t, ['Settings', dest], dest);
       expect(pushes.depth, 2);
     });
   }
 
   for (final (row, dest) in [
-    ('Manage notifications', 'Notifications'),
+    ('Alerts and notifications', 'Notifications'),
     ('Export, backup, import', 'Data'),
     ('Tasker and Shortcuts', 'Automation'),
     ('Expected sleep schedule', 'Expected sleep schedule'),
+    ('Edit profile', 'Edit profile'),
+    ('AI coach', 'AI coach'),
+    ('Live devices', 'Live devices'),
+    ('Device lab', 'Device lab'),
   ]) {
     testWidgets('$dest is at most two pushes away', (t) async {
       await pumpHome(t);
-      await walk(t, ['More settings', row], dest);
+      await walk(t, ['Settings', row], dest);
       expect(pushes.depth, lessThanOrEqualTo(2));
     });
   }
 
-  testWidgets('Band notifications row is omitted where the relay cannot run',
+  testWidgets(
+      'App notifications on the band row is omitted where the relay cannot run',
       (t) async {
     t.view.physicalSize = const Size(1170, 24000);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
-    await t.pumpWidget(MaterialApp(
-      theme: buildTheme(Brightness.light),
-      home: MoreSettingsView(onGestures: () {}, onAlarm: () {}),
+    // The Language row (moved in from Profile, 8AE) reads the locale.
+    await t.pumpWidget(ChangeNotifierProvider<LocaleController>.value(
+      value: LocaleController.seed(null),
+      child: MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: MoreSettingsView(onGestures: () {}, onAlarm: () {}),
+      ),
     ));
     await t.pumpAndSettle();
-    expect(find.text('Band notifications'), findsNothing);
+    expect(find.text('App notifications on the band'), findsNothing);
     expect(find.text('Gestures'), findsOneWidget);
   });
 }

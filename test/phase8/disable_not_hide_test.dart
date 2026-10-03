@@ -103,7 +103,10 @@ void main() {
       expect(taps, isEmpty);
     });
 
-    testWidgets('quiet hours off: Starts/Ends are present and dimmed',
+    // 8AE: Starts/Ends belong to a channel's own override and are not drawn
+    // while it follows the global quiet hours (the one deliberate exception to
+    // disable-not-hide: a time with no setting behind it would mislead).
+    testWidgets('override off: Starts/Ends are hidden, the switch is present',
         (t) async {
       await pumpTall(
           t,
@@ -112,10 +115,9 @@ void main() {
             granted: true,
             channels: {'apps': ChannelConfig(enabled: true)},
           ));
-      final starts = find.text('Starts');
-      expect(starts, findsWidgets);
-      expect(isDimmed(t, starts.first), isTrue);
-      expect(isDimmed(t, find.text('Ends').first), isTrue);
+      expect(find.text('Starts'), findsNothing);
+      expect(find.text('Ends'), findsNothing);
+      expect(find.text('Override quiet hours'), findsWidgets);
     });
 
     testWidgets('alarm haptic matching off: Fallback rhythm present, dimmed',
@@ -177,6 +179,8 @@ void main() {
     //     version.isNotEmpty
     //   load state: loaded
     //   structural identity: name == ... (which channel this row list is for)
+    //   8AE: cfg.overrideQuietHours (a channel's own Starts/Ends exist only
+    //     while it overrides the global quiet hours)
     // Permission/status CARDS are StatusCard, not rows, so they never match.
     const files = [
       'lib/ui2/profile/settings.dart',
@@ -198,6 +202,7 @@ void main() {
       RegExp(r'^(showHealthShare|showUpdateChecks|devMode|loaded)$'),
       RegExp(r'^version\.isNotEmpty$'),
       RegExp(r'^name == '),
+      RegExp(r'^cfg\.overrideQuietHours$'),
     ];
 
     bool termAllowed(String term) {

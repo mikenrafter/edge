@@ -57,6 +57,7 @@ class ChannelConfig {
     this.fallbackPattern = const [0, 400, 100, 400],
     this.quietStartMinute,
     this.quietEndMinute,
+    this.overrideQuietHours = false,
     this.allowDuringDnd = false,
     this.includeVibrate = true,
     this.includeSilent = false,
@@ -72,6 +73,11 @@ class ChannelConfig {
   final bool includeSilent, phoneFallback;
   final List<int> fallbackPattern;
   final int? quietStartMinute, quietEndMinute;
+
+  /// True: this channel's own Starts and Ends decide its quiet hours (both
+  /// null means none). False: it follows the global quiet hours from Alerts,
+  /// and any stored times are kept but not used.
+  final bool overrideQuietHours;
 
   /// The channel's own buzz rhythm; null takes the relay rule's default.
   final BuzzSequence? buzzSequence;
@@ -94,6 +100,7 @@ class ChannelConfig {
     int? quietStartMinute,
     int? quietEndMinute,
     bool clearQuiet = false,
+    bool? overrideQuietHours,
     bool? allowDuringDnd,
     bool? includeVibrate,
     bool? includeSilent,
@@ -109,6 +116,7 @@ class ChannelConfig {
         ? null
         : quietStartMinute ?? this.quietStartMinute,
     quietEndMinute: clearQuiet ? null : quietEndMinute ?? this.quietEndMinute,
+    overrideQuietHours: overrideQuietHours ?? this.overrideQuietHours,
     allowDuringDnd: allowDuringDnd ?? this.allowDuringDnd,
     includeVibrate: includeVibrate ?? this.includeVibrate,
     includeSilent: includeSilent ?? this.includeSilent,
@@ -135,6 +143,7 @@ class ChannelConfig {
     'fallbackPattern': fallbackPattern,
     'quietStartMinute': quietStartMinute,
     'quietEndMinute': quietEndMinute,
+    'overrideQuietHours': overrideQuietHours,
     'allowDuringDnd': allowDuringDnd,
     'includeVibrate': includeVibrate,
     'includeSilent': includeSilent,
@@ -154,6 +163,11 @@ class ChannelConfig {
             (j['fallbackPattern'] as List?)?.cast<int>() ?? d.fallbackPattern,
         quietStartMinute: j['quietStartMinute'] as int?,
         quietEndMinute: j['quietEndMinute'] as int?,
+        // Configs saved before the override existed: a channel that had its own
+        // window keeps it (override on); one without follows the global hours.
+        overrideQuietHours:
+            j['overrideQuietHours'] as bool? ??
+            (j['quietStartMinute'] is int && j['quietEndMinute'] is int),
         allowDuringDnd: j['allowDuringDnd'] as bool? ?? d.allowDuringDnd,
         includeVibrate: j['includeVibrate'] as bool? ?? d.includeVibrate,
         includeSilent: j['includeSilent'] as bool? ?? d.includeSilent,
@@ -196,7 +210,8 @@ class RelayResult {
 /// enabled, dnd, respectDnd, allowDuringDnd, ringer (normal|vibrate|silent),
 /// includeVibrate, includeSilent, connected, fallback, worn (worn|notWorn|
 /// unknown), onlyWhileWorn (one setting for the relay), packages,
-/// staleAfterMs, minuteOfDay.
+/// staleAfterMs, minuteOfDay, and the global quiet hours quietEnabled,
+/// quietStartMin, quietEndMin (absent: no global quiet hours).
 class RelayController {
   RelayController({
     required this.dispatcher,
@@ -250,6 +265,7 @@ class RelayController {
     int? quietStartMinute,
     int? quietEndMinute,
     bool clearQuiet = false,
+    bool? overrideQuietHours,
     bool? allowDuringDnd,
     bool? includeVibrate,
     bool? includeSilent,
@@ -263,6 +279,7 @@ class RelayController {
       quietStartMinute: quietStartMinute,
       quietEndMinute: quietEndMinute,
       clearQuiet: clearQuiet,
+      overrideQuietHours: overrideQuietHours,
       allowDuringDnd: allowDuringDnd,
       includeVibrate: includeVibrate,
       includeSilent: includeSilent,
@@ -322,8 +339,19 @@ class RelayController {
       if (env['onlyWhileWorn'] == true && env['worn'] != 'worn') {
         return const RelayResult(suppression: 'notWorn');
       }
-      final start = cfg.quietStartMinute, end = cfg.quietEndMinute;
-      if (start != null && end != null) {
+      // The channel's own window when it overrides, else the global one.
+      final bool quiet;
+      final int? start, end;
+      if (cfg.overrideQuietHours) {
+        start = cfg.quietStartMinute;
+        end = cfg.quietEndMinute;
+        quiet = true;
+      } else {
+        start = env['quietStartMin'] as int?;
+        end = env['quietEndMin'] as int?;
+        quiet = env['quietEnabled'] == true;
+      }
+      if (quiet && start != null && end != null) {
         final now = DateTime.fromMillisecondsSinceEpoch(nowMs());
         final minute = env['minuteOfDay'] as int? ?? now.hour * 60 + now.minute;
         if (NotificationPrefs(
@@ -644,7 +672,26 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     'onlyWhileWorn': _onlyWhileWorn,
     'worn': wearReport,
     'packages': _packages.toList(),
+    // The global quiet hours, from the cache the policy can read synchronously.
+    if (_globalQuiet case final q?) ...{
+      'quietEnabled': q.quietEnabled,
+      'quietStartMin': q.quietStartMin,
+      'quietEndMin': q.quietEndMin,
+    },
   };
+
+  // Alerts' quiet hours as last loaded or saved. Null until bootstrap has read
+  // them, which reads as "no global quiet hours".
+  NotificationPrefs? _globalQuiet;
+  StreamSubscription<NotificationPrefs>? _prefsSub;
+
+  Future<void> _loadGlobalQuiet() async {
+    try {
+      _globalQuiet = await NotificationPrefs.load();
+    } catch (_) {
+      /* unreadable prefs: keep what we had */
+    }
+  }
 
   /// A phone alert that names neither the app nor the content.
   Future<bool> _phoneFallback() {
@@ -714,6 +761,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       if ((debugSupported ?? Platform.isAndroid)) await _disarmNative();
       return;
     }
+    // Every save of the alert prefs, from any screen, refreshes the cache.
+    _prefsSub ??= NotificationPrefs.onSaved.listen((p) => _globalQuiet = p);
+    await _loadGlobalQuiet();
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool(_kEnabled) ?? false;
     _onlyWhileWorn = prefs.getBool(_kOnlyWorn) ?? false;
@@ -978,6 +1028,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _prefsSub?.cancel();
     _healTimer?.cancel();
     controller.dispose();
     super.dispose();

@@ -55,15 +55,11 @@ class BandGestures extends StatelessWidget {
         tapMethod: g.tapMethodFor(
             ecgSupported: c.read<AppState>().pairedIsMaverick),
         onTapMethod: g.setTapMethod,
-        repeatWindowMs: g.repeatTapWindowMs,
-        onRepeatWindowMs: g.setRepeatTapWindowMs,
         tapActions: {for (var n = 3; n <= 5; n++) n: g.actionsForTaps(n)},
         onTapToggle: (n, a, on) {
           final cur = g.actionsForTaps(n);
           return g.setActionsForTaps(n, on ? {...cur, a} : cur.difference({a}));
         },
-        thresholds: g.ecgTapThresholds,
-        onThresholds: g.setEcgTapThresholds,
         extraTaps: FeatureFlags.isOn(FeatureFlag.tapClassifiers),
       ),
     );
@@ -95,8 +91,9 @@ class BandGesturesView extends StatelessWidget {
   final TapCountMethod? tapMethod;
   final ValueChanged<TapCountMethod>? onTapMethod;
 
-  /// The pause between repeated double taps; the adjuster shows only when
-  /// [onRepeatWindowMs] is given.
+  /// The pause and touch-window tuning controls moved to the Device lab (8AE),
+  /// where they were already shared widgets; this screen draws neither. The
+  /// four fields stay so existing construction sites keep compiling.
   final int? repeatWindowMs;
   final ValueChanged<int>? onRepeatWindowMs;
 
@@ -106,12 +103,11 @@ class BandGesturesView extends StatelessWidget {
   /// Flip one action for an n-tap count. Null leaves the rows read-only.
   final Future<void> Function(int taps, DeviceAction, bool)? onTapToggle;
 
-  /// The touch windows; the adjusters show only when [onThresholds] is given.
   final EcgTapThresholds? thresholds;
   final ValueChanged<EcgTapThresholds>? onThresholds;
 
   /// FeatureFlag.tapClassifiers. False hides every extra-tap control (method,
-  /// tap counts, pause, touch windows and the MG note): the screen is then the
+  /// tap counts and the MG note): the screen is then the
   /// plain double-tap action list.
   final bool extraTaps;
 
@@ -255,14 +251,6 @@ class BandGesturesView extends StatelessWidget {
                           : null,
                     ),
                 ]),
-                if (extraTaps && onRepeatWindowMs != null)
-                  SettingsAccordion('Pause between double taps', children: [
-                    RepeatWindowAdjuster(
-                      windowMs: repeatWindowMs ??
-                          GestureSettings.defaultRepeatWindowMs,
-                      onChanged: onRepeatWindowMs,
-                    ),
-                  ]),
                 if (extraTaps)
                 Section(
                   'What needs a WHOOP MG',
@@ -271,13 +259,6 @@ class BandGesturesView extends StatelessWidget {
                         style: F.body.copyWith(color: p.ink2, height: 1.4)),
                   ),
                 ),
-                if (extraTaps && onThresholds != null)
-                  SettingsAccordion('Touch windows', children: [
-                    EcgThresholdAdjusters(
-                      thresholds: thresholds ?? EcgTapThresholds(),
-                      onChanged: ecgSupported ? onThresholds : null,
-                    ),
-                  ]),
                 if (noPhoneActions) ...[
                   const SizedBox(height: S.x5),
                   Section(

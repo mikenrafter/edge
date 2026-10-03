@@ -1,4 +1,5 @@
-// 8J — the Alarm screen as four sections: Alarm, Wake, Haptics, Status.
+// 8J — the Alarm screen as sections: Alarm, Wake, Status (8AE dropped the
+// Haptics group; the alarm buzz is the band's own).
 // All expanded by default; a collapsed section still shows a one-line summary
 // under its header; disconnected means disabled rows, not missing ones (8K).
 // Compile-safe on purpose: reads SettingsAccordion only through its existing
@@ -25,10 +26,10 @@ AlarmScreenView _view({bool connected = true}) => AlarmScreenView(
       now: DateTime(2026, 8, 21, 22, 40),
     );
 
-const _sections = ['Alarm', 'Wake', 'Haptics', 'Status'];
+const _sections = ['Alarm', 'Wake', 'Status'];
 
 void main() {
-  testWidgets('four sections, in order, all expanded', (t) async {
+  testWidgets('three sections, in order, all expanded', (t) async {
     await pumpTall(t, _view());
     expect(sectionTitles(t), _sections);
     await expectAllSectionsExpanded(t, 'Alarm screen');
@@ -44,13 +45,8 @@ void main() {
     }
   });
 
-  testWidgets('Haptics holds the buzz pattern; Status holds the armed state',
-      (t) async {
+  testWidgets('Status holds the armed state', (t) async {
     await pumpTall(t, _view());
-    expect(
-        find.descendant(
-            of: section('Haptics'), matching: find.text('Buzz pattern')),
-        findsOneWidget);
     expect(
         find.descendant(of: section('Status'), matching: find.text('Confirmed')),
         findsWidgets);

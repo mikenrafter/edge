@@ -32,7 +32,7 @@ final _band = HealthSource(
 final Map<String, Widget> views = {
   'Settings': const MoreSettingsView(),
   'Notifications': const NotificationSettingsView(relaySupported: true),
-  'Band notifications':
+  'App notifications on the band':
       const BandNotificationsView(enabled: true, granted: true),
   'Alarm': AlarmScreenView(connected: true, schedule: _schedule),
   'Gestures': const BandGesturesView(
@@ -52,12 +52,12 @@ void main() {
     });
   }
 
-  testWidgets('Settings: "The band" is a section', (t) async {
+  testWidgets('Settings: "Band" is a section', (t) async {
     await pumpTall(t, const MoreSettingsView());
-    expect(sectionTitles(t), contains('The band'));
+    expect(sectionTitles(t), contains('Band'));
   });
 
-  testWidgets('Band notifications: all three channel sections start open',
+  testWidgets('App notifications on the band: all three channel sections start open',
       (t) async {
     await pumpTall(t, const BandNotificationsView(enabled: true, granted: true));
     for (final title in ['App notifications', 'Alarms & timers', 'Incoming calls']) {

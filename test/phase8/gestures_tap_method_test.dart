@@ -1,5 +1,6 @@
 // "Count extra taps with": the per-band choice between ECG sensor touches and
-// more double taps, the row labels that follow it, and the pause adjuster.
+// more double taps, the row labels that follow it, and the pause adjuster
+// (which 8AE moved from Gestures into the Device lab).
 // One mapping store serves both: the 3-tap slot is "3 taps" for ECG and
 // "2 double taps" for repeats. ECG is disabled and dimmed (never hidden) on a
 // band without the sensor (8K).
@@ -150,15 +151,13 @@ void main() {
     });
   });
 
-  group('the pause between double taps', () {
+  group('the pause between double taps (lives in the Device lab)', () {
     testWidgets('adjusts in 250 ms steps and stays inside 1000..5000',
         (t) async {
       final values = <int>[];
       await pumpTall(
           t,
-          BandGesturesView(
-            chosen: const {},
-            supported: _supported,
+          DeviceLabView(
             ecgSupported: false,
             repeatWindowMs: 1000,
             onRepeatWindowMs: values.add,
@@ -175,9 +174,7 @@ void main() {
       final values = <int>[];
       await pumpTall(
           t,
-          BandGesturesView(
-            chosen: const {},
-            supported: _supported,
+          DeviceLabView(
             ecgSupported: false,
             repeatWindowMs: 5000,
             onRepeatWindowMs: values.add,
@@ -185,6 +182,20 @@ void main() {
       await t.tap(find.byKey(const ValueKey('repeat-window:+')),
           warnIfMissed: false);
       expect(values, isEmpty);
+    });
+
+    testWidgets('Gestures no longer draws the adjuster', (t) async {
+      await pumpTall(
+          t,
+          BandGesturesView(
+            chosen: const {},
+            supported: _supported,
+            ecgSupported: false,
+            repeatWindowMs: 2500,
+            onRepeatWindowMs: (_) {},
+          ));
+      expect(find.byKey(const ValueKey('repeat-window:+')), findsNothing);
+      expect(find.text('Pause between double taps'), findsNothing);
     });
   });
 

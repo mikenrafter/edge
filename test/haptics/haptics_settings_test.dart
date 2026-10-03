@@ -1,4 +1,4 @@
-// 8AD, spec D: the Haptics hub (Settings > The band > Haptics) and the pattern
+// 8AD, spec D: the Haptics hub (Settings > Band > Haptics) and the pattern
 // pickers that Notifications and Band notifications open before the tap sheet.
 // Pumped headless as the pure views, like the other settings tests.
 //
@@ -163,7 +163,7 @@ Widget _hub(
     );
 
 void main() {
-  group('Settings > The band > Haptics', () {
+  group('Settings > Band > Haptics', () {
     testWidgets('the row sits after Gestures and opens the hub', (t) async {
       var opened = 0;
       await pumpTall(
@@ -176,6 +176,9 @@ void main() {
       final row = find.byKey(const ValueKey('settings-haptics'));
       expect(row, findsOneWidget);
       expect(find.text('Haptics'), findsOneWidget);
+      expect(
+          find.descendant(of: section('Band'), matching: find.text('Haptics')),
+          findsOneWidget);
       expect(find.text('Your buzz patterns and band safety'), findsOneWidget);
       final gestures = t.getTopLeft(find.text('Gestures')).dy;
       final haptics = t.getTopLeft(find.text('Haptics')).dy;

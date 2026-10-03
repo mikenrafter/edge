@@ -236,12 +236,12 @@ optional, no Provider needed; same section rule. `DataScreen` /
 
 ## 8J — Alarm sections (`alarm_sections_test.dart`, *compile-safe*)
 
-`AlarmScreenView` sections, in order: `Alarm`, `Wake`, `Haptics`, `Status`,
-all expanded. `Wake` contains `Natural Wake` and `Gradual Wake` (disabled with
-a reason until phase 6 is fine). `Haptics` contains `Buzz pattern`. `Status`
-contains the arm-state label (e.g. `Confirmed`). Each section, once collapsed
+`AlarmScreenView` sections, in order: `Alarm`, `Wake`, `Status` (8AE removed the
+`Haptics` group; its disabled `Buzz pattern` row is gone and `Wake` carries the caption
+`The alarm uses the band's own buzz.`), all expanded. `Wake` contains `Natural Wake` and
+`Gradual Wake` (disabled with a reason until phase 6 is fine). `Status` contains the arm-state label (e.g. `Confirmed`). Each section, once collapsed
 by a header tap, still shows ≥ 1 non-empty line besides its title (the
-`summary`). Disconnected: still four sections, the reason
+`summary`). Disconnected: still three sections, the reason
 `The band is not connected` once, one `Wake time` row per day (7), all dimmed.
 Connected: a day that is off keeps its `Wake time` row, dimmed.
 
@@ -264,7 +264,9 @@ a collection-`if` whose body is a row (`SetRow`, `SetRow.brand`, `SwitchRow`,
 `Platform.isX`, `defaultTargetPlatform…`, `android|ios|isAndroid|isIOS`,
 `…supported`/`…Supported`, `x.supportsY`, `appIcon != null`,
 `showHealthShare|showUpdateChecks|devMode|loaded`, `version.isNotEmpty`,
-`name == …`. Status/permission cards are `StatusCard`, never matched. 8 sites
+`name == …`, and (8AE) `cfg.overrideQuietHours`: a channel's own Starts and Ends exist
+only while it overrides the global quiet hours. Status/permission cards are `StatusCard`,
+never matched. 8 sites
 fail today: settings.dart (zone alert, water, device), band_notifications.dart
 (matchHaptics, quiet hours, `enabled && granted`), alarm.dart (`day.enabled`),
 gestures.dart (`chosen.contains(a)`).
@@ -1019,3 +1021,44 @@ Builds on 8AC. Tests: `test/haptics/pattern_store_test.dart`, `allow_long_test.d
   rebuilds `whoopMg`.
 - **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` ("Patterns and safety");
   `docs/navigation-depth.md` (Haptics row); the roadmap entry 8AD.
+
+## 8AE: Settings by task, Developer area, Device lab behind dev mode, quiet-hours override
+
+Builds on 8AD. Tests: `test/phase8/settings_regroup_test.dart`,
+`settings_device_lab_entry_test.dart`, `settings_naming_test.dart`, `quiet_override_test.dart`,
+`nav_depth_test.dart`, `nav_depth_guard_test.dart`.
+
+- **Settings groups** (`MoreSettingsView`), in order: Band (My devices, Alarm, Gestures,
+  Haptics, HR zone alert, Target zone), Alerts (Alerts and notifications, App notifications on
+  the band on Android), You & preferences (Edit profile, Language, Units, Appearance,
+  Expected sleep schedule, Icon, Cycle tracking, Steps), Data & privacy (Storage, Export,
+  backup, import, Write to the health store, Contribute my health data, Crash reports,
+  Look barcodes up online), Connections (AI coach, Tasker and Shortcuts, Check for
+  updates), About, and Developer (dev mode only: Component gallery, Live devices, Device
+  lab, Developer mode). Reset all data stays last. Profile Quick access keeps My devices
+  and Settings; every other moved row has one door. My devices (Profile and Settings >
+  Band) and Expected sleep schedule (Settings and Alarm > Wake, the alarm's input in
+  context) are the two deliberate pairs.
+- **Device lab** leaves the band's Tools. Its doors are Settings > Developer
+  (`MoreSettingsView.onDeviceLab`, dev mode) and Haptics > Calibration (dev mode). The
+  `tapClassifiers` flag still gates the tap tools inside. Gestures drops "Pause between double
+  taps" and "Touch windows"; the Device lab keeps them.
+- **Rename.** The relay's screen title, group header and Settings row are "App notifications
+  on the band" (ARB `bandNotifNavTitle`, `bandNotifRelayGroup`); Alerts no longer has an
+  Android Relay group, so Settings is the one door. "Band alerts" is "Band battery"
+  (`settingsBandAlertsRowTitle`; the sub reads "Turn on Band battery first"). The Alarm
+  screen's Haptics group is removed; Wake carries `The alarm uses the band's own buzz.`
+- **Quiet-hours override.** `ChannelConfig.overrideQuietHours` (JSON `overrideQuietHours`;
+  absent means true when the stored config has both quiet times, so existing windows keep
+  working). Off: the channel follows the global quiet hours; its stored times are kept but
+  not used. On: its own Starts and Ends decide, and none or only one time means never quiet.
+  The relay decision reads the global window from the policy map keys `quietEnabled`,
+  `quietStartMin`, `quietEndMin`; a policy without them means no global quiet hours.
+  `NotificationRelay._policy` supplies them from a cache of `NotificationPrefs`, loaded in
+  `bootstrap` and refreshed from `NotificationPrefs.onSaved`, which fires after every
+  successful `save()`, so no screen that saves can leave it stale.
+- **UI.** `channel-quiet-override-<channel>` ("Override quiet hours", sub "Follows your quiet
+  hours in Alerts" while off). Turning it on seeds 22:00 to 07:00 when the channel has no
+  times. Starts and Ends are not drawn while it is off: the one deliberate exception to
+  disable-not-hide, because a time with no setting behind it would mislead.
+- **Docs.** `docs/navigation-depth.md` (8AD to 8AE table); the roadmap entry 8AE.

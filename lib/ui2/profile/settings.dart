@@ -34,17 +34,22 @@ import '../../haptics/pattern_store.dart' show HapticPatternStore;
 import '../../platform/app_icon.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
+import '../../state/locale_controller.dart';
 import '../../state/units_controller.dart';
 import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
+import '../screens/coach.dart' show CoachSetup, coachSubtitle;
 import '../ui2.dart';
 import 'alarm.dart';
 import 'band_notifications.dart';
 import 'buzz_pattern.dart';
 import 'data.dart';
+import 'device_lab.dart' show DeviceLab;
+import 'devices.dart' show MyDevices;
 import 'gallery.dart';
 import 'gestures.dart';
 import 'haptics_settings.dart';
+import 'live_devices.dart' show LiveDevices;
 import 'pattern_picker.dart';
 import 'profile.dart';
 
@@ -87,11 +92,29 @@ class _MoreSettingsState extends State<MoreSettings> {
   /// not drawn at all where the OS cannot change it.
   AppIconChoice? _icon;
 
+  /// The database file size for the Storage row. Null until read.
+  int? _storageBytes;
+
   @override
   void initState() {
     super.initState();
     _readVersion();
     _readIcon();
+    _readStorage();
+  }
+
+  Future<void> _readStorage() async {
+    try {
+      final bytes = await context.read<AppState>().dataFileBytes();
+      if (mounted) setState(() => _storageBytes = bytes);
+    } catch (_) {/* no size, no number — the row prints nothing */}
+  }
+
+  /// An import or a restore changes the file, so the size is read again once
+  /// the data screen is left.
+  Future<void> _openData() async {
+    await goto(context, const DataScreen());
+    if (mounted) await _readStorage();
   }
 
   Future<void> _readIcon() async {
@@ -189,14 +212,19 @@ class _MoreSettingsState extends State<MoreSettings> {
       updateMandatory: app.updateMandatory,
       expectedSleepSchedule: app.sleepOperations.schedule,
       onEditSleepSchedule: () => _editSleepSchedule(app),
+      storageBytes: _storageBytes,
       onEditProfile: () => goto(c, const EditProfile()),
+      onDevices: () => goto(c, const MyDevices()),
+      onLiveDevices: () => goto(c, const LiveDevices()),
+      onDeviceLab: () => goto(c, const DeviceLab()),
+      onCoach: () => goto(c, const CoachSetup()),
       relaySupported: defaultTargetPlatform == TargetPlatform.android,
       onAlarm: () => goto(c, const AlarmScreen()),
       onBandNotifications: () => goto(c, const BandNotifications()),
       onGestures: () => goto(c, const BandGestures()),
       onHaptics: () => goto(c, const HapticsSettings()),
       onNotifications: () => goto(c, const NotificationSettings()),
-      onData: () => goto(c, const DataScreen()),
+      onData: _openData,
       onAutomation: () => goto(c, const AutomationSettings()),
       onCycleUnits: () => units.setSystem(units.isImperial
           ? UnitSystem.metric
@@ -220,6 +248,17 @@ class _MoreSettingsState extends State<MoreSettings> {
           app.zoneAlertTargetZone >= 5 ? 1 : app.zoneAlertTargetZone + 1),
       onReset: () => _confirmReset(c, app),
     );
+  }
+}
+
+/// The language row's sub-line. Without a [LocaleController] above (a view
+/// pumped on its own) it reads as the system default, like coachSubtitle does
+/// for the coach.
+String _languageSub(BuildContext c) {
+  try {
+    return languageLabel(c, c.watch<LocaleController>().code);
+  } catch (_) {
+    return languageLabel(c, null);
   }
 }
 
@@ -569,11 +608,20 @@ class MoreSettingsView extends StatelessWidget {
   final ExpectedSleepSchedule? expectedSleepSchedule;
   final VoidCallback? onEditSleepSchedule;
 
-  /// Android only, like the relay itself: where it cannot run, the Band
-  /// notifications row is omitted rather than shown against nothing.
+  /// Android only, like the relay itself: where it cannot run, the App
+  /// notifications on the band row is omitted rather than shown against
+  /// nothing.
   final bool relaySupported;
 
+  /// The size of the database file, or null while it is still being read: the
+  /// Storage row prints nothing rather than a zero it does not know.
+  final int? storageBytes;
+
   final VoidCallback? onEditProfile,
+      onDevices,
+      onLiveDevices,
+      onDeviceLab,
+      onCoach,
       onAlarm,
       onBandNotifications,
       onGestures,
@@ -623,7 +671,12 @@ class MoreSettingsView extends StatelessWidget {
     this.expectedSleepSchedule,
     this.onEditSleepSchedule,
     this.relaySupported = false,
+    this.storageBytes,
     this.onEditProfile,
+    this.onDevices,
+    this.onLiveDevices,
+    this.onDeviceLab,
+    this.onCoach,
     this.onAlarm,
     this.onBandNotifications,
     this.onGestures,
@@ -663,22 +716,19 @@ class MoreSettingsView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                // No "Edit profile" here. It lives in one place — Quick access
-                // on the Profile screen — because two doors to one form is how
-                // a user ends up unsure which one is the real setting.
-                SettingsAccordion(l?.settingsGroupTheBand ?? 'The band', children: [
+                // Grouped by task (8AE). Every row that used to live on the
+                // Profile tab has exactly one door here; "My devices" is the
+                // one deliberate pair, kept in Profile's Quick access too.
+                SettingsAccordion('Band', children: [
+                  SetRow(LucideIcons.watch, C.blue,
+                      l?.profileMyDevices ?? 'My devices',
+                      sub: 'Pair, rename and manage your band',
+                      onTap: onDevices),
                   SetRow(LucideIcons.alarmClock, C.orange,
                       l?.settingsAlarmRowTitle ?? 'Alarm',
                       sub: l?.settingsAlarmRowSub ??
                           'Buzzes on your wrist and runs on the band\'s clock',
                       onTap: onAlarm),
-                  // The relay and the gestures live one push from here, not
-                  // behind Notifications and Automation (8A). The relay row
-                  // is Android-only and omitted elsewhere.
-                  if (relaySupported)
-                    SetRow(LucideIcons.bellRing, C.purple, 'Band notifications',
-                        sub: 'Which apps, alarms and calls make the band buzz',
-                        onTap: onBandNotifications),
                   SetRow(LucideIcons.hand, C.orange, 'Gestures',
                       sub: l?.settingsDoubleTapRowSub ??
                           'What a double-tap on the band does',
@@ -711,37 +761,41 @@ class MoreSettingsView extends StatelessWidget {
                       chevron: false,
                       onTap: onCycleZoneAlertZone),
                 ]),
-                // NOT in Preferences. Units and Appearance change how numbers
-                // are drawn; this one asks the OS for a sensor and decides
-                // where a measurement comes from. Its own group, next to the
-                // band, because the two together are the step ladder — the
-                // band covers the workout, the phone covers the rest — and
-                // "This phone" is what the sources screen already calls it.
-                SettingsAccordion(l?.settingsGroupThisPhone ?? 'This phone', children: [
-                  SetRow(LucideIcons.footprints, C.teal,
-                      l?.settingsStepsRowTitle ?? 'Steps',
-                      sub: l?.settingsStepsRowSub ??
-                          'Counts steps with this phone\'s own sensor for the hours the '
-                          'band doesn\'t cover. Nothing leaves the device',
-                      value: phoneSteps ? on : off,
-                      onTap: onTogglePhoneSteps),
-                ]),
-                SettingsAccordion(l?.settingsGroupNotifications ?? 'Notifications', children: [
+                SettingsAccordion('Alerts', children: [
                   SetRow(LucideIcons.bell, C.blue,
                       l?.settingsManageNotificationsRowTitle ??
-                          'Manage notifications',
+                          'Alerts and notifications',
                       sub: l?.settingsManageNotificationsRowSub ??
                           'Turn alerts on or off and set '
                           'quiet hours',
                       onTap: onNotifications),
+                  // The one door to the relay screen (8AE). Android-only and
+                  // omitted elsewhere rather than shown against nothing.
+                  if (relaySupported)
+                    SetRow(LucideIcons.bellRing, C.purple,
+                        'App notifications on the band',
+                        sub: 'Which apps, alarms and calls make the band buzz',
+                        onTap: onBandNotifications),
                 ]),
-                SettingsAccordion(l?.settingsGroupPreferences ?? 'Preferences', children: [
+                SettingsAccordion('You & preferences', children: [
+                  SetRow(LucideIcons.userPen, C.purple,
+                      l?.profileEditProfile ?? 'Edit profile',
+                      sub: l?.profileEditProfileSub ??
+                          'Sex, age, height, weight',
+                      onTap: onEditProfile),
+                  Builder(builder: (c) => SetRow(
+                      LucideIcons.languages, C.blue,
+                      AppLocalizations.of(c)?.profileLanguage ?? 'Language',
+                      sub: _languageSub(c),
+                      onTap: () => pickLanguage(c))),
                   SetRow(LucideIcons.ruler, C.blue,
                       l?.settingsUnitsRowTitle ?? 'Units',
                       value: units, onTap: onCycleUnits),
                   SetRow(LucideIcons.sun, C.yellow,
                       l?.settingsAppearanceRowTitle ?? 'Appearance',
                       value: appearance, onTap: onCycleAppearance),
+                  // Intentionally also in Alarm > Wake, where it is the alarm's
+                  // input in context. Both rows edit the same preference.
                   SetRow(LucideIcons.moon, C.indigo, 'Expected sleep schedule',
                       sub: 'Your usual bed and wake times',
                       value: expectedSleepSchedule == null
@@ -761,8 +815,24 @@ class MoreSettingsView extends StatelessWidget {
                               'keeps everything already logged',
                       value: cycleTracking ? on : off,
                       onTap: onToggleCycleTracking),
+                  // Asks the OS for a sensor and decides where a measurement
+                  // comes from, so it reads as a setting about this phone, not
+                  // about how numbers are drawn.
+                  SetRow(LucideIcons.footprints, C.teal,
+                      l?.settingsStepsRowTitle ?? 'Steps',
+                      sub: l?.settingsStepsRowSub ??
+                          'Counts steps with this phone\'s own sensor for the hours the '
+                          'band doesn\'t cover. Nothing leaves the device',
+                      value: phoneSteps ? on : off,
+                      onTap: onTogglePhoneSteps),
                 ]),
-                SettingsAccordion(l?.settingsGroupYourData ?? 'Your data', children: [
+                SettingsAccordion('Data & privacy', children: [
+                  SetRow(LucideIcons.database, C.green,
+                      l?.profileStorage ?? 'Storage',
+                      value: storageBytes == null
+                          ? ''
+                          : formatBytes(storageBytes!),
+                      chevron: false),
                   SetRow(LucideIcons.download, C.green,
                       l?.settingsExportBackupImportRowTitle ??
                           'Export, backup, import',
@@ -780,20 +850,15 @@ class MoreSettingsView extends StatelessWidget {
                       sub: healthSyncSub(c, healthSync, healthState, healthStore),
                       value: healthSync ? on : off,
                       onTap: onToggleHealthSync),
-                ]),
-                SettingsAccordion(l?.settingsGroupAutomation ?? 'Automation', children: [
-                  SetRow(LucideIcons.workflow, C.indigo,
-                      l?.settingsTaskerShortcutsRowTitle ??
-                          'Tasker and Shortcuts',
-                      // The row states the asymmetry rather than leaving it to
-                      // the screen: someone on an iPhone should learn what they
-                      // are not getting before they tap into it.
-                      sub: l?.settingsTaskerShortcutsRowSub ??
-                          'Android can send events out. iOS can buzz the band '
-                          'but cannot receive events from it',
-                      onTap: onAutomation),
-                ]),
-                SettingsAccordion(l?.settingsGroupPrivacy ?? 'Privacy', children: [
+                  if (showHealthShare)
+                    SetRow(LucideIcons.cloudUpload, C.red,
+                        l?.settingsContributeHealthDataRowTitle ??
+                            'Contribute my health data',
+                        sub: l?.settingsContributeHealthDataRowSub ??
+                            'Uploads your whole database once a day, on '
+                                'Wi-Fi and charging, to improve the algorithms',
+                        value: healthShare ? on : off,
+                        onTap: onToggleHealthShare),
                   SetRow(LucideIcons.bug, C.orange,
                       l?.settingsCrashReportsRowTitle ?? 'Crash reports',
                       sub: l?.settingsCrashReportsRowSub ??
@@ -811,15 +876,29 @@ class MoreSettingsView extends StatelessWidget {
                           'It sees the barcode and your IP address, nothing else about you',
                       value: barcodeLookup ? on : off,
                       onTap: onToggleBarcodeLookup),
-                  if (showHealthShare)
-                    SetRow(LucideIcons.cloudUpload, C.red,
-                        l?.settingsContributeHealthDataRowTitle ??
-                            'Contribute my health data',
-                        sub: l?.settingsContributeHealthDataRowSub ??
-                            'Uploads your whole database once a day, on '
-                                'Wi-Fi and charging, to improve the algorithms',
-                        value: healthShare ? on : off,
-                        onTap: onToggleHealthShare),
+                ]),
+                SettingsAccordion('Connections', children: [
+                  // THE ONLY DOOR TO THE COACH'S SETUP: Home's sparkles button
+                  // is gated on `coachReady`, so on a fresh install there is
+                  // no icon to find it behind. `watch` rather than `read` so
+                  // the sub-line stops saying "Not set up" the moment it is.
+                  Builder(builder: (c) => SetRow(
+                      LucideIcons.sparkles, C.purple,
+                      AppLocalizations.of(c)?.profileAiCoach ?? 'AI coach',
+                      sub: coachSubtitle(c) ??
+                          (AppLocalizations.of(c)?.profileNotSetUp ??
+                              'Not set up'),
+                      onTap: onCoach)),
+                  SetRow(LucideIcons.workflow, C.indigo,
+                      l?.settingsTaskerShortcutsRowTitle ??
+                          'Tasker and Shortcuts',
+                      // The row states the asymmetry rather than leaving it to
+                      // the screen: someone on an iPhone should learn what they
+                      // are not getting before they tap into it.
+                      sub: l?.settingsTaskerShortcutsRowSub ??
+                          'Android can send events out. iOS can buzz the band '
+                          'but cannot receive events from it',
+                      onTap: onAutomation),
                   if (showUpdateChecks)
                     SetRow(LucideIcons.refreshCw, C.blue,
                         l?.settingsCheckForUpdatesRowTitle ??
@@ -864,6 +943,15 @@ class MoreSettingsView extends StatelessWidget {
                             'Every component, at any text scale, in either '
                                 'theme',
                         onTap: onGallery),
+                    SetRow(LucideIcons.activity, C.red, 'Live devices',
+                        sub: 'The last 30 seconds from each connected device',
+                        onTap: onLiveDevices),
+                    // The lab's tap tools are still behind
+                    // FeatureFlag.tapClassifiers inside it; the entry itself
+                    // needs dev mode, which this group already is.
+                    SetRow(LucideIcons.flaskConical, C.purple, 'Device lab',
+                        sub: 'Try gestures the band does not report on its own',
+                        onTap: onDeviceLab),
                     SetRow(LucideIcons.code, C.n500,
                         l?.settingsDeveloperModeRowTitle ?? 'Developer mode',
                         value: on, chevron: false, onTap: onToggleDev),
@@ -931,12 +1019,6 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     });
   }
 
-  /// Whether the strap-buzz relay exists on this platform. Android only —
-  /// iOS gives no app access to another app's notifications — and the row is
-  /// absent rather than disabled there, so there is nothing to explain.
-  bool get _relaySupported =>
-      defaultTargetPlatform == TargetPlatform.android;
-
   Future<void> _apply(NotificationPrefs next) async {
     setState(() => _prefs = next);
     await next.save();
@@ -974,7 +1056,6 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       prefs: p ?? const NotificationPrefs(),
       loaded: p != null,
       granted: _granted,
-      relaySupported: _relaySupported,
       onChanged: _apply,
       onRequestPermission: _requestPermission,
       onBuzzPattern: _pickPattern,
@@ -1112,8 +1193,9 @@ class NotificationSettingsView extends StatelessWidget {
   final NotificationPrefs prefs;
   final bool loaded, granted;
 
-  /// Android only. False hides the strap-buzz relay row entirely rather than
-  /// showing a control that cannot work.
+  /// No longer drawn: the relay's one entrance is Settings > Alerts > App
+  /// notifications on the band (8AE). Kept so existing construction sites
+  /// compile.
   final bool relaySupported;
 
   final Future<void> Function(NotificationPrefs next)? onChanged;
@@ -1292,14 +1374,14 @@ class NotificationSettingsView extends StatelessWidget {
                       ]),
                   SettingsAccordion('Device', children: [
                     row('device', LucideIcons.watch, C.orange,
-                        l?.settingsBandAlertsRowTitle ?? 'Band alerts',
+                        l?.settingsBandAlertsRowTitle ?? 'Band battery',
                         l?.settingsBandAlertsRowSub ??
                             'Low battery, charging status, and a band that stops reporting'),
                     SetRow(LucideIcons.batteryLow, C.orange,
                           l?.settingsAlertMeAtRowTitle ?? 'Alert me at',
                           enabled: prefs.deviceEnabled,
                           sub: !prefs.deviceEnabled
-                              ? 'Turn on band alerts first'
+                              ? 'Turn on Band battery first'
                               : l?.settingsAlertMeAtRowSub ??
                                   'Warns when the band\'s charge falls below this '
                                   'level',
@@ -1309,21 +1391,6 @@ class NotificationSettingsView extends StatelessWidget {
                               batteryAlertPct:
                                   _nextBatteryPct(prefs.batteryAlertPct)))),
                   ]),
-                  // Android only; omitted elsewhere rather than disabled.
-                  if (relaySupported)
-                    SettingsAccordion(
-                        'Android Relay',
-                        children: [
-                          SetRow(LucideIcons.bellRing, C.purple,
-                              l?.settingsBuzzOnAppNotificationsRowTitle ??
-                                  'Buzz on app notifications',
-                              sub: prefs.alertRule('relay').enabled
-                                  ? AlertCapabilityRegistry.summary(
-                                      prefs.alertRule('relay'))
-                                  : 'Choose which apps, alarms and calls make '
-                                      'the band buzz',
-                              onTap: () => goto(c, const BandNotifications())),
-                        ]),
                   SettingsAccordion(l?.settingsGroupQuietHours ?? 'Quiet hours', children: [
                     SetRow(LucideIcons.moon, C.indigo,
                         l?.settingsQuietHoursRowTitle ?? 'Quiet hours',

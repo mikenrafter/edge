@@ -188,6 +188,21 @@ confirmation dialog to it."
    allow-long-sequences + tap-a-baseline in probes + multi-log vocabulary.
 3. 8AE — Settings Option B (dev area; Device lab behind dev mode; quiet-hours
    override toggle).
+3b. 8AE.5 — Structural cleanup before H2 (user: "just before H2 is a good
+   time"):
+   - Extract a `HapticsService` from AppState (band queue, ledger, profile,
+     `_runBandJob`/`_deliverBandSequence`, ended-event signal, pattern store);
+     AppState composes it. Replace the source-reading guards that exist only
+     because AppState can't be built in tests with behaviour tests against fakes.
+   - One typed settings repository (sections for alert prefs, relay channels,
+     patterns, app prefs) with a single save path, so pattern propagation is one
+     write instead of three.
+   - (If agreed) a single Capabilities lookup for visibility/availability.
+   - Goldens: keep pixel goldens for painters and a few showcase screens; move
+     ordinary settings/list screens to structural tests (finders, semantics,
+     no-overflow at 360×640 and 390×844); light+dark at 1x for screens, 2x only
+     for painters; CI uploads failure diffs; regeneration commits list fixtures +
+     why. Trial alchemist on the painter goldens before any wider move.
 4. 8AF — Health H2.
    External review: GPT 6.1 Sol (`codex exec review -m gpt-6.1-sol --base main`)
    after 8AE (end of the 8-series work) and again after 8AF; take its pointers.

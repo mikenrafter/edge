@@ -3,6 +3,7 @@
 // keys are migrated once and remain mirrors for existing headless consumers.
 // The in-app feed is always written, regardless of outbound delivery settings.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'alert_rule.dart';
@@ -272,6 +273,14 @@ class NotificationPrefs {
 
   Future<void> save() => _serialize(_save);
 
+  static final StreamController<NotificationPrefs> _saved =
+      StreamController<NotificationPrefs>.broadcast();
+
+  /// Every successful [save], with what was written. The one place a consumer
+  /// that caches a pref (the relay's global quiet hours) can hear a change
+  /// from any screen or scheduler that saves.
+  static Stream<NotificationPrefs> get onSaved => _saved.stream;
+
   Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
     // One write commits every destination and policy together. The old keys
@@ -303,6 +312,7 @@ class NotificationPrefs {
     await p.setBool(_kAlarmNightCheck, alarmNightCheckEnabled);
     await p.setBool('workout.zone_alert_enabled', alertRule('zone').enabled);
     await p.setBool('notif_relay_enabled', alertRule('relay').enabled);
+    _saved.add(this);
   }
 
   NotificationPrefs copyWith({

@@ -14,16 +14,31 @@ import 'support/dart_source.dart';
 
 const _required = [
   'Settings',
-  'Notifications',
-  'Band notifications',
+  'Alerts and notifications',
+  'App notifications on the band',
   'Gestures',
+  'Haptics',
   'Alarm',
   'Automation',
   'Data',
   'Device detail',
+  'Device lab',
   'Edit profile',
   'Live devices',
+  'AI coach',
+  'Language',
+  'Storage',
 ];
+
+// 8AE moved these rows from Profile into Settings, one push deeper on purpose
+// (still within the two-push limit). Every other row must not get deeper.
+const _movedDeeper = {
+  'Edit profile',
+  'Live devices',
+  'AI coach',
+  'Language',
+  'Storage',
+};
 
 List<List<String>> _rows(String md) {
   final lines = md.split('\n').where((l) => l.trim().startsWith('|')).toList();
@@ -60,16 +75,17 @@ void main() {
       for (final r in body) {
         expect(r[after], startsWith('Profile'), reason: r[screen]);
         expect(_depth(r[after]), lessThanOrEqualTo(2),
-            reason: '${r[screen]} after 8A: ${r[after]}');
-        expect(_depth(r[before]), greaterThanOrEqualTo(_depth(r[after])),
-            reason: '${r[screen]} never gets deeper');
+            reason: '${r[screen]} after 8AE: ${r[after]}');
+        if (!_movedDeeper.contains(r[screen])) {
+          expect(_depth(r[before]), greaterThanOrEqualTo(_depth(r[after])),
+              reason: '${r[screen]} never gets deeper');
+        }
       }
     });
   });
 
   group('stateful wrappers wire the new rows to the real screens', () {
-    test('MoreSettings: Band notifications, Gestures, Expected sleep schedule',
-        () {
+    test('MoreSettings: every row moved in from Profile has its push', () {
       final src = File('lib/ui2/profile/settings.dart').readAsStringSync();
       final build = codeOnly(bodyOf(src, 'class _MoreSettingsState'));
       expect(build, contains('onBandNotifications:'));
@@ -79,20 +95,35 @@ void main() {
       expect(build, contains('relaySupported:'));
       expect(build, contains('onEditSleepSchedule:'));
       expect(build, contains('expectedSleepSchedule:'));
+      expect(build, contains('onDevices:'));
+      expect(build, contains('MyDevices()'));
+      expect(build, contains('onEditProfile:'));
+      expect(build, contains('EditProfile()'));
+      expect(build, contains('onCoach:'));
+      expect(build, contains('CoachSetup()'));
+      expect(build, contains('onLiveDevices:'));
+      expect(build, contains('LiveDevices()'));
+      expect(build, contains('onDeviceLab:'));
+      expect(build, contains('DeviceLab()'));
     });
 
-    test('ProfileHome: Live devices', () {
+    test('ProfileHome: My devices and Settings only', () {
       final src = File('lib/ui2/profile/profile.dart').readAsStringSync();
       final home = codeOnly(bodyOf(src, 'class _ProfileHomeState'));
-      expect(home, contains('onLiveDevices:'));
-      expect(home, contains('LiveDevices()'));
+      expect(home, contains('onDevices:'));
+      expect(home, contains('MyDevices()'));
+      expect(home, contains('onSettings:'));
+      expect(home, contains('MoreSettings()'));
+      expect(home, isNot(contains('LiveDevices()')));
+      expect(home, isNot(contains('EditProfile()')));
+      expect(home, isNot(contains('CoachSetup()')));
     });
 
-    test('DeviceDetail: Device lab', () {
+    test('DeviceDetail: no Device lab entry any more', () {
       final src = File('lib/ui2/profile/devices.dart').readAsStringSync();
       final detail = codeOnly(bodyOf(src, 'class _DeviceDetailState'));
-      expect(detail, contains('onDeviceLab:'));
-      expect(detail, contains('DeviceLab('));
+      expect(detail, isNot(contains('onDeviceLab:')));
+      expect(detail, isNot(contains('DeviceLab(')));
     });
   });
 }
