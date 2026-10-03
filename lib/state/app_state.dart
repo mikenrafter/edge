@@ -75,6 +75,9 @@ import '../wake/wake_controller.dart';
 import '../wake/wake_orchestrator.dart';
 import '../wake/wake_settings.dart';
 import '../wake/wake_stores.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'capabilities.dart';
+import 'feature_flags.dart';
 import 'prefs.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../sources/source_catalog.dart' show SourceService;
@@ -601,8 +604,7 @@ class AppState extends ChangeNotifier {
     bandQueueWait: kBandQueueWait,
     sequenceTimeout: haptics.sequenceTimeout,
     isConnected: () => engine.isConnected,
-    supportedTargetsAtDelivery: () =>
-        AlertCapabilityRegistry.targetsForBandFamily(device.generation),
+    supportedTargetsAtDelivery: () => capabilities.bandAlertTargets,
     supportedBandModes: const {
       AlertExecutionMode.phoneLive, AlertExecutionMode.bandNative,
     },
@@ -5128,6 +5130,35 @@ class AppState extends ChangeNotifier {
 
   // ── alarm + strap name (require a live connection) ──────────────────────────
   bool get isConnected => device.connection == 'connected';
+
+  // ── capabilities (8AE.5 P3) ─────────────────────────────────────────────────
+  /// What the screens may show, hide or disable right now: the one place the
+  /// band, platform, flags and dev mode are read for that purpose. main.dart
+  /// provides it to the tree; a new value is built on every call and compares
+  /// equal when no input moved, so a provider can skip the rebuild.
+  Capabilities get capabilities => Capabilities(CapabilityInputs(
+        platform: defaultTargetPlatform,
+        generation: device.generation,
+        ecgPaired: pairedIsMaverick,
+        ecgLive: engine.isMaverick,
+        connected: isConnected,
+        devMode: devMode,
+        flagsOff: {
+          for (final f in FeatureFlag.values)
+            if (!FeatureFlags.isOn(f)) f,
+        },
+        updateChecksBuild: updateChecksAvailable,
+        healthShareBuild: kHealthDataContributionEnabled,
+        healthShareConsent: healthShareConsent,
+      ));
+
+  /// Developer mode. Held in Prefs; set here so the capabilities move with it.
+  bool get devMode => Prefs.getBool(Prefs.devMode, false);
+
+  void setDevMode(bool on) {
+    Prefs.setBool(Prefs.devMode, on);
+    notifyListeners();
+  }
 
   /// How old a live HR reading may be and still be a reading of NOW.
   ///

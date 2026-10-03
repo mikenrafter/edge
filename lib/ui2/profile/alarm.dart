@@ -40,6 +40,8 @@ import '../../l10n/app_localizations.dart';
 import '../../state/alarm_draft.dart';
 import '../../state/alarm_schedule.dart';
 import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../../wake/wake_settings.dart';
 import '../../wake/wake_trace_text.dart';
 import '../screens/home_screen.dart' show weekdayShortName;
@@ -103,6 +105,7 @@ class _AlarmScreenState extends State<AlarmScreen> {
   @override
   Widget build(BuildContext c) {
     final app = c.watch<AppState>();
+    final caps = c.caps;
     final epoch = app.alarmEpoch;
     final sleep = app.sleepOperations.schedule;
     return ValueListenableBuilder<int>(
@@ -126,14 +129,14 @@ class _AlarmScreenState extends State<AlarmScreen> {
                 : app.alarmPending
                 ? AlarmArmState.pending
                 : AlarmArmState.unknown,
-            connected: app.isConnected,
+            connected: caps.has(Feature.alarmBandControls),
             schedule: app.alarmSchedule,
             onSave: app.saveAlarmDraft,
             onTest: app.testAlarmBuzz,
             onCancelAlarm: app.disableAlarm,
             upgradePending:
                 app.wake.naturalEnabled && app.wake.upgradeExplanationPending,
-            naturalWakeSupported: app.wake.naturalEnabled,
+            naturalWakeSupported: caps.has(Feature.naturalWake),
             onAcknowledgeUpgrade: (enable) =>
                 app.wake.acknowledgeUpgrade(enableNatural: enable),
             hasExpectedSleep: sleep != null,

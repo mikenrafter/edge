@@ -28,7 +28,8 @@ import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
 import '../../gestures/lab_log.dart';
 import '../../state/app_state.dart';
-import '../../state/feature_flags.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../ui2.dart';
 import 'pattern_probe_page.dart';
 import 'profile.dart';
@@ -54,6 +55,7 @@ class DeviceLab extends StatelessWidget {
 
   Widget _labBody(BuildContext c) {
     final app = c.read<AppState>();
+    final caps = c.caps;
     final g = app.gestureSettings;
     // The text "Copy all logs" copies, read when asked: the lab's own button
     // and the pattern probe's end screen share it.
@@ -66,7 +68,7 @@ class DeviceLab extends StatelessWidget {
     return ListenableBuilder(
       listenable: Listenable.merge([g, app.deviceLab]),
       builder: (c, _) => DeviceLabView(
-        ecgSupported: app.pairedIsMaverick,
+        ecgSupported: caps.has(Feature.ecgTouchTaps),
         ecgOnDoubleTap: g.ecgOnDoubleTap,
         onEcgOnDoubleTap: g.setEcgOnDoubleTap,
         repeatLab: g.repeatTapsLab,
@@ -82,7 +84,7 @@ class DeviceLab extends StatelessWidget {
         logText: logText,
         // The lab is now reached from Settings > Developer, so the entry no
         // longer carries the flag: the tap tools inside do (8AE).
-        tapTools: FeatureFlags.isOn(FeatureFlag.tapClassifiers),
+        tapTools: caps.has(Feature.deviceLabTapTools),
         probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
       ),
     );

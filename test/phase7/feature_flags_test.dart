@@ -24,6 +24,7 @@ import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/notify/notification_relay.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
+import 'package:openstrap_edge/state/capabilities.dart';
 import 'package:openstrap_edge/state/feature_flags.dart';
 import 'package:openstrap_edge/ui2/profile/alarm.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart' show DeviceLabView;
@@ -35,6 +36,9 @@ import 'package:openstrap_edge/wake/wake_orchestrator.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 
 import '../phase8/support/sections.dart';
+
+/// What a screen is handed: process-wide flags as they are now, no band.
+Capabilities _caps() => Capabilities(CapabilityInputs.detached());
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -257,21 +261,21 @@ void main() {
 
   group('sourceResolverUi', () {
     test('ON: catalog entry offered, priority editor always offered', () {
-      expect(showSourceCatalogEntry(), isTrue);
-      expect(showSignalPriorityEntry(contended: false), isTrue);
-      expect(showSignalPriorityEntry(contended: true), isTrue);
+      expect(showSourceCatalogEntry(_caps()), isTrue);
+      expect(showSignalPriorityEntry(_caps(), contended: false), isTrue);
+      expect(showSignalPriorityEntry(_caps(), contended: true), isTrue);
     });
 
     test('OFF: no catalog entry; priority editor only under real contention', () {
       FeatureFlags.debugSet(FeatureFlag.sourceResolverUi, false);
-      expect(showSourceCatalogEntry(), isFalse);
-      expect(showSignalPriorityEntry(contended: false), isFalse);
-      expect(showSignalPriorityEntry(contended: true), isTrue);
+      expect(showSourceCatalogEntry(_caps()), isFalse);
+      expect(showSignalPriorityEntry(_caps(), contended: false), isFalse);
+      expect(showSignalPriorityEntry(_caps(), contended: true), isTrue);
     });
 
     test('the screen builds its entry callbacks from those two helpers', () {
       final src = File('lib/ui2/profile/devices.dart').readAsStringSync();
-      expect(src, contains('showSourceCatalogEntry()'));
+      expect(src, contains('showSourceCatalogEntry(c.caps)'));
       expect(src, contains('showSignalPriorityEntry('));
     });
   });
@@ -419,8 +423,7 @@ void main() {
     test('the lab gates its tap tools on the flag; the entry needs dev mode',
         () {
       final lab = File('lib/ui2/profile/device_lab.dart').readAsStringSync();
-      expect(lab,
-          contains('tapTools: FeatureFlags.isOn(FeatureFlag.tapClassifiers)'));
+      expect(lab, contains('tapTools: caps.has(Feature.deviceLabTapTools)'));
       final devices = File('lib/ui2/profile/devices.dart').readAsStringSync();
       expect(devices, isNot(contains('onDeviceLab')));
       final settings = File('lib/ui2/profile/settings.dart').readAsStringSync();

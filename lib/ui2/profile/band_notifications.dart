@@ -27,11 +27,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../l10n/app_localizations.dart';
-import '../../haptics/haptic_profile.dart';
 import '../../settings/settings_repository.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_relay.dart';
 import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
 import 'pattern_picker.dart';
@@ -129,16 +130,17 @@ class _BandNotificationsState extends State<BandNotifications>
     String? pkg,
   }) {
     final app = context.read<AppState>();
+    final caps = context.capsRead;
     SettingsRepository.instance.patterns().then((store) {
       if (!mounted) return;
       showPatternPicker(
         context,
         patterns: store.list,
         current: pkg == null ? cfg.effectiveSequence : cfg.sequenceForApp(pkg),
-        bandConnected: app.engine.isConnected,
+        bandConnected: caps.has(Feature.bandBuzz),
         onPlay: app.previewBuzzSequence,
         // The band's measured vocabulary (an MG), none on a 4.0.
-        profile: HapticDeviceProfile.forGeneration(app.device.generation),
+        profile: caps.hapticProfile,
         onSaveNew: saveNewPattern,
         // Default: the channel (or the app) takes the relay rule's default.
         onDefault: () {

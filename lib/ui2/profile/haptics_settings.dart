@@ -23,6 +23,8 @@ import '../../haptics/pattern_store.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../settings/settings_repository.dart';
 import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
@@ -135,15 +137,16 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     // Watched, so the ledger read-out and the queue follow AppState's updates
     // (the ledger and the queue are not notifiers themselves).
     final app = c.watch<AppState>();
+    final caps = c.caps;
     return HapticsSettingsView(
       patterns: snap.patterns,
       usageOf: snap.patternUsage,
-      profile: HapticDeviceProfile.forGeneration(app.device.generation),
+      profile: caps.hapticProfile,
       allowLong: _allowLong,
-      devMode: Prefs.getBool(Prefs.devMode, false),
+      devMode: caps.has(Feature.developerMode),
       commandsLeft: app.haptics.commandsLeft,
       queued: app.haptics.pending,
-      bandConnected: app.engine.isConnected,
+      bandConnected: caps.has(Feature.bandBuzz),
       onPlay: app.previewBuzzSequence,
       // The device page's Tools row: one dispatcher delivery in the band queue.
       onBuzz: app.buzzBand,

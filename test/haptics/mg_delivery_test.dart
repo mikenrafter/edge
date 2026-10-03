@@ -608,8 +608,9 @@ void main() {
         expect(at, greaterThanOrEqualTo(0), reason: f);
         final call = text.substring(at, text.indexOf(');', at));
         expect(call, contains('profile:'), reason: f);
-        expect(call, contains('HapticDeviceProfile.forGeneration('),
-            reason: f);
+        // The generation-to-profile mapping lives in Capabilities (8AE.5 P3);
+        // its behaviour is pinned in test/state/capabilities_test.dart.
+        expect(call, contains('caps.hapticProfile'), reason: f);
       }
     });
   });

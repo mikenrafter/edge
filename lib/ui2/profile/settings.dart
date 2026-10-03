@@ -10,7 +10,6 @@
 //     form. None of them feed a metric, and a field that changes nothing is a
 //     field that implies an account.
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -21,7 +20,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../data/auto_backup.dart';
 import '../../data/off_lookup.dart';
 import '../../health/health_export.dart' show HealthLinkState;
-import '../../haptics/haptic_profile.dart';
 import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
@@ -33,7 +31,8 @@ import '../../notify/notification_service.dart';
 import '../../settings/settings_repository.dart';
 import '../../platform/app_icon.dart';
 import '../../state/app_state.dart';
-import '../../state/prefs.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../../state/locale_controller.dart';
 import '../../state/units_controller.dart';
 import '../../telemetry/health_uploader.dart';
@@ -79,8 +78,6 @@ class MoreSettings extends StatefulWidget {
 }
 
 class _MoreSettingsState extends State<MoreSettings> {
-  bool _dev = Prefs.getBool(Prefs.devMode, false);
-
   /// Whether a food barcode may be looked up online. Not on AppState: it is a
   /// screen-local preference like the map basemap's, read straight off Prefs.
   bool _barcode = offLookupAllowed;
@@ -144,7 +141,9 @@ class _MoreSettingsState extends State<MoreSettings> {
   }
 
   void _tapVersion() {
-    if (_dev || ++_taps < kDevTaps) return;
+    if (context.capsRead.has(Feature.developerMode) || ++_taps < kDevTaps) {
+      return;
+    }
     _setDev(true);
   }
 
@@ -169,11 +168,8 @@ class _MoreSettingsState extends State<MoreSettings> {
   }
 
   void _setDev(bool on) {
-    Prefs.setBool(Prefs.devMode, on);
-    setState(() {
-      _dev = on;
-      _taps = 0;
-    });
+    context.read<AppState>().setDevMode(on);
+    setState(() => _taps = 0);
   }
 
   @override
@@ -181,9 +177,10 @@ class _MoreSettingsState extends State<MoreSettings> {
     final app = c.watch<AppState>();
     final units = c.watch<UnitsController>();
     final theme = c.watch<ThemeController>();
+    final caps = c.caps;
     return MoreSettingsView(
       version: _version,
-      devMode: _dev,
+      devMode: caps.has(Feature.developerMode),
       onVersionTap: _tapVersion,
       onToggleDev: () => _setDev(false),
       onGallery: () => goto(c, const GalleryScreen()),
@@ -201,12 +198,12 @@ class _MoreSettingsState extends State<MoreSettings> {
       // consented under an older build. A consent that cannot be withdrawn is
       // not consent, and the old `lib/ui` toggle died with that package while
       // the pref — and the daily whole-database upload it authorises — did not.
-      showHealthShare: kHealthDataContributionEnabled || app.healthShareConsent,
+      showHealthShare: caps.has(Feature.healthShare),
       healthShare: app.healthShareConsent,
       healthStore: app.healthStoreName,
       healthSync: app.healthSyncEnabled,
       healthState: app.healthState,
-      showUpdateChecks: app.updateChecksAvailable,
+      showUpdateChecks: caps.has(Feature.updateChecks),
       updateChecks: app.updateChecksEnabled,
       updateAvailable: app.updateAvailable,
       updateMandatory: app.updateMandatory,
@@ -218,7 +215,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onLiveDevices: () => goto(c, const LiveDevices()),
       onDeviceLab: () => goto(c, const DeviceLab()),
       onCoach: () => goto(c, const CoachSetup()),
-      relaySupported: defaultTargetPlatform == TargetPlatform.android,
+      relaySupported: caps.has(Feature.relayEntry),
       onAlarm: () => goto(c, const AlarmScreen()),
       onBandNotifications: () => goto(c, const BandNotifications()),
       onGestures: () => goto(c, const BandGestures()),
@@ -1071,16 +1068,17 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     final p = _prefs;
     if (p == null) return;
     final app = context.read<AppState>();
+    final caps = context.capsRead;
     SettingsRepository.instance.patterns().then((store) {
       if (!mounted) return;
       showPatternPicker(
         context,
         patterns: store.list,
         current: p.buzzSequenceFor(id),
-        bandConnected: app.engine.isConnected,
+        bandConnected: caps.has(Feature.bandBuzz),
         onPlay: app.previewBuzzSequence,
         // The band's measured vocabulary (an MG), none on a 4.0.
-        profile: HapticDeviceProfile.forGeneration(app.device.generation),
+        profile: caps.hapticProfile,
         onSaveNew: saveNewPattern,
         // Default: no sequence in the rule, so it takes the registry default.
         onDefault: () {
@@ -1960,7 +1958,7 @@ class AutomationSettingsView extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final android = defaultTargetPlatform == TargetPlatform.android;
+    final android = c.caps.has(Feature.androidAutomation);
     final token = this.token;
     return Scaffold(
       backgroundColor: p.bg,

@@ -8,6 +8,7 @@ import 'ble/ios_ble_restore.dart';
 import 'notify/notification_service.dart';
 import 'coach/coach_config.dart';
 import 'state/app_state.dart';
+import 'state/capabilities.dart';
 import 'state/feature_flags.dart';
 import 'state/prefs.dart';
 import 'state/locale_controller.dart';
@@ -190,6 +191,12 @@ Future<void> main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppState(), lazy: false),
+        // What screens may show, hide or disable, recomputed from AppState's
+        // inputs on every change and announced only when one actually moved.
+        ProxyProvider<AppState, Capabilities>(
+          update: (_, app, _) => app.capabilities,
+          updateShouldNotify: (a, b) => a != b,
+        ),
         ChangeNotifierProvider<ThemeController>.value(value: theme),
         ChangeNotifierProvider<UnitsController>.value(value: units),
         ChangeNotifierProvider<LocaleController>.value(value: locale),

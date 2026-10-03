@@ -22,6 +22,8 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../../stress/breath_phases.dart';
 import '../../stress/session_effect.dart';
 import '../ui2.dart';
@@ -646,6 +648,7 @@ class _Setup extends StatelessWidget {
     final p = P.of(c);
     final app = c.watch<AppState>();
     final yours = agreedPace(app.user?[kPaceWinsKey]);
+    final beatTiming = c.caps.has(Feature.breathingBeatTiming);
     return ListView(
       children: [
         const SizedBox(height: S.x4),
@@ -742,7 +745,7 @@ class _Setup extends StatelessWidget {
               const SizedBox(height: S.x3),
               // MIND-06 — inside "How long" because that is what it changes:
               // four more minutes of sitting. One row, not a fifth section.
-              _windowRow(c, p, app.isConnected),
+              _windowRow(c, p, beatTiming),
             ],
           ),
         ),
@@ -751,7 +754,7 @@ class _Setup extends StatelessWidget {
         // to breathe came for; it lives one tap away rather than as a fourth
         // thing to read before beginning.
         Section(l?.calmBreathingYourOwnPace ?? 'Your own pace',
-            _sweepDoor(c, p, app.isConnected, yours)),
+            _sweepDoor(c, p, beatTiming, yours)),
       ],
     );
   }

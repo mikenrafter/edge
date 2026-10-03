@@ -26,7 +26,8 @@ import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
-import '../../state/feature_flags.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../ui2.dart';
 import 'device_lab.dart';
 import 'profile.dart';
@@ -40,6 +41,7 @@ class BandGestures extends StatelessWidget {
     // screen listens to the same object rather than keeping its own copy —
     // flipping a switch has to move the thing the band is about to consult.
     final g = c.read<AppState>().gestureSettings;
+    final caps = c.caps;
     return ListenableBuilder(
       listenable: g,
       builder: (c, _) => BandGesturesView(
@@ -51,16 +53,15 @@ class BandGestures extends StatelessWidget {
         // The row for 2 taps is the switches above; 3–5 are the draft extra-tap
         // counts. How they are counted is the band's choice: ECG touches on a
         // WHOOP MG, more double taps on any band.
-        ecgSupported: c.read<AppState>().pairedIsMaverick,
-        tapMethod: g.tapMethodFor(
-            ecgSupported: c.read<AppState>().pairedIsMaverick),
+        ecgSupported: caps.has(Feature.ecgTouchTaps),
+        tapMethod: g.tapMethodFor(ecgSupported: caps.has(Feature.ecgTouchTaps)),
         onTapMethod: g.setTapMethod,
         tapActions: {for (var n = 3; n <= 5; n++) n: g.actionsForTaps(n)},
         onTapToggle: (n, a, on) {
           final cur = g.actionsForTaps(n);
           return g.setActionsForTaps(n, on ? {...cur, a} : cur.difference({a}));
         },
-        extraTaps: FeatureFlags.isOn(FeatureFlag.tapClassifiers),
+        extraTaps: caps.has(Feature.extraTapCounting),
       ),
     );
   }

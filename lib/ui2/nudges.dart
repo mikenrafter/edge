@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../l10n/app_localizations.dart';
+import '../state/capabilities.dart';
+import '../state/capabilities_scope.dart';
 import '../state/prefs.dart';
 import 'ui2.dart';
 
@@ -30,11 +32,11 @@ class _CommunityNudgeState extends State<CommunityNudge> {
   static String _dismissedKey(_Ask a) => 'nudge.${a.name}.dismissed';
   static String _lastShownKey(_Ask a) => 'nudge.${a.name}.last_shown_ms';
 
-  static bool _eligible(_Ask a) {
+  static bool _eligible(_Ask a, {required bool devMode}) {
     // Developer mode is someone deliberately testing the app, not a real
     // reader being nagged — silencing or a cooldown here would just make
     // this unreachable on every build after the first tap.
-    if (Prefs.getBool(Prefs.devMode, false)) return true;
+    if (devMode) return true;
     if (Prefs.getBool(_dismissedKey(a), false)) return false;
     final last = Prefs.getInt(_lastShownKey(a), 0);
     return DateTime.now().millisecondsSinceEpoch - last > _cooldownMs;
@@ -47,7 +49,8 @@ class _CommunityNudgeState extends State<CommunityNudge> {
   @override
   void initState() {
     super.initState();
-    _asks = [for (final a in _Ask.values) if (_eligible(a)) a];
+    final devMode = context.capsRead.has(Feature.developerMode);
+    _asks = [for (final a in _Ask.values) if (_eligible(a, devMode: devMode)) a];
     // Mark each shown ask as seen NOW, not only on snooze/silence — otherwise
     // the cooldown never actually starts and leaving Home without tapping
     // anything shows the same ask again on the very next rebuild.
@@ -73,7 +76,7 @@ class _CommunityNudgeState extends State<CommunityNudge> {
     if (!mounted) return;
     // Dev mode ignores its own dismissal/cooldown (see _eligible) — writing
     // it above is harmless, but re-adding it here is what testing it needs.
-    final devMode = Prefs.getBool(Prefs.devMode, false);
+    final devMode = context.capsRead.has(Feature.developerMode);
     setState(() => devMode ? null : _asks.remove(a));
   }
 

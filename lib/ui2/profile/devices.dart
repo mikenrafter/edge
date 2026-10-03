@@ -118,10 +118,11 @@ import '../../notify/battery_forecast.dart';
 import '../../state/prefs.dart' show Prefs;
 import '../../sync/paired_device.dart' show cleanDeviceLabel;
 import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../pairing/device_picker.dart' show DevicePickerScreen;
 import '../onboarding/profile_setup.dart' show formatDay;
 import '../ui2.dart';
-import '../../state/feature_flags.dart';
 import '../sources/source_catalog_screen.dart' show SourceCatalogScreen;
 import '../sources/source_views.dart' show SourceViews;
 import 'profile.dart';
@@ -1079,10 +1080,11 @@ class MyDevices extends StatelessWidget {
       // FeatureFlag.sourceResolverUi OFF: no catalog or resolved-data entry,
       // and the priority editor appears only when two devices contend, as
       // before the resolver UI.
-      onSignalPriority: showSignalPriorityEntry(contended: contendedSignals(app).isNotEmpty)
+      onSignalPriority: showSignalPriorityEntry(c.caps,
+              contended: contendedSignals(app).isNotEmpty)
           ? () => goto(c, const SignalPriorityScreen())
           : null,
-      onSourceCatalog: showSourceCatalogEntry()
+      onSourceCatalog: showSourceCatalogEntry(c.caps)
           ? () => goto(c, const SourceCatalogScreen())
           : null,
     );
@@ -1091,12 +1093,13 @@ class MyDevices extends StatelessWidget {
 
 /// FeatureFlag.sourceResolverUi: the Source catalog (and the resolved-data view
 /// behind it) has an entry row only while the flag is on.
-bool showSourceCatalogEntry() => FeatureFlags.isOn(FeatureFlag.sourceResolverUi);
+bool showSourceCatalogEntry(Capabilities caps) =>
+    caps.has(Feature.sourceCatalog);
 
 /// The priority editor's entry row: always offered with the resolver UI, else
 /// only when two paired devices declare the same signal (the pre-resolver rule).
-bool showSignalPriorityEntry({required bool contended}) =>
-    FeatureFlags.isOn(FeatureFlag.sourceResolverUi) || contended;
+bool showSignalPriorityEntry(Capabilities caps, {required bool contended}) =>
+    caps.has(Feature.signalPriority) || contended;
 
 /// Every sensor that can be paired from this screen — a second device
 /// alongside the band, never a replacement for it.
@@ -1858,7 +1861,7 @@ class _DeviceDetailState extends State<DeviceDetail> {
       forecast: _forecast,
       onFind: app?.buzzBand,
       liveHr: s.isBand ? app?.liveHr : null,
-      onRename: (app != null && app.isConnected)
+      onRename: (app != null && c.caps.has(Feature.bandRename))
           ? () => _renameBand(c, app, s.name)
           : null,
       // A sensor is forgotten through its own path: `unpair()` tears down the

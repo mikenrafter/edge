@@ -17,9 +17,11 @@ import '../../data/lab_catalogue.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../ui2.dart';
 import 'circadian_detail.dart';
-import 'ecg.dart' show EcgEntryCard, pairedIsMaverickOf;
+import 'ecg.dart' show EcgEntryCard;
 import 'findings_log.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
@@ -821,7 +823,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       // WHOOP MG only: the ECG door appears once the paired band has
       // positively identified itself as an MG, and stays while it is away.
-      if (pairedIsMaverickOf(c)) ...[
+      if (c.caps.has(Feature.ecgEntry)) ...[
         const EcgEntryCard(),
         const SizedBox(height: S.x3),
       ],

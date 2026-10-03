@@ -20,20 +20,12 @@ import '../../ecg/ecg_models.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
+import '../../state/capabilities.dart';
+import '../../state/capabilities_scope.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../ui2.dart';
 import 'coach.dart';
 import 'home_screen.dart' show go, pad;
-
-/// Whether the paired band is a remembered WHOOP MG — false outside an
-/// AppState (goldens), like every other provider read in this folder.
-bool pairedIsMaverickOf(BuildContext c) {
-  try {
-    return c.watch<AppState>().pairedIsMaverick;
-  } catch (_) {
-    return false;
-  }
-}
 
 String ecgCategoryLabel(AppLocalizations? l, EcgCategory c) => switch (c) {
   EcgCategory.sinusRhythm => l?.ecgCategorySinus ?? 'Sinus rhythm',
@@ -159,7 +151,8 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final app = c.watch<AppState>();
-    final canTake = app.engine.isConnected && app.engine.isMaverick;
+    final take = c.caps.of(Feature.ecgTake);
+    final canTake = take.isAvailable;
     return Scaffold(
       backgroundColor: p.bg,
       appBar: AppBar(
@@ -173,7 +166,7 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
             l?.ecgTakeEcg ?? 'Take ECG',
             canTake
                 ? (l?.ecgEntryMeta ?? 'WHOOP MG · band-reported')
-                : (l?.ecgNeedsMg ?? 'Take ECG needs a connected WHOOP MG.'),
+                : (l?.ecgNeedsMg ?? take.reason ?? ''),
             l?.ecgTakeEcg ?? 'Take ECG',
             LucideIcons.heartPulse,
             C.domHealth,
