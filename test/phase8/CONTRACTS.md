@@ -1063,3 +1063,46 @@ Builds on 8AD. Tests: `test/phase8/settings_regroup_test.dart`,
   times. Starts and Ends are not drawn while it is off: the one deliberate exception to
   disable-not-hide, because a time with no setting behind it would mislead.
 - **Docs.** `docs/navigation-depth.md` (8AD to 8AE table); the roadmap entry 8AE.
+
+## 8AF: Health by question (Last night, Today, Trends, Labs)
+
+Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the
+phase-two files in the same folder). Health's sub-tabs are, in order, 0 Last night, 1 Today,
+2 Trends, 3 Labs; `HealthScreen(tab:)` takes that order.
+
+- **Tabs.** `_tabsOf` has four chips (`healthTabLastNight`, `healthTabToday`,
+  `healthTabTrends`, `healthTabLabs`). All four fit at 360 pt and 390 pt with no scrolling.
+  Production opens on 0, which is where deep links and the `/recap` notification land.
+  `HealthScreen.tabFromLegacy(int)` maps an index from the five-tab order: 0 to 0, 1 to 2,
+  2 to 2, 3 to 1, 4 to 3, anything else to 0. Nothing is persisted today, so no caller uses it
+  yet.
+- **Last night** (`_lastNight`). Rows in order Readiness (ReadinessDetail), Sleep
+  (`SleepDetail(day: <the night>)`, no scrubbing), HRV, Resting heart rate, Respiratory rate,
+  Overnight stress, Skin temperature (each `MetricDetail`, opened on Today). Skin temperature's
+  sub-label is "vs your usual" and a caption under the rows explains that SD is a standard
+  deviation. No `MetricRow.series`, no `TrendCard`, no `ChartFrame`. A "Night of <date>" line
+  names the night when `getToday` held an earlier one over. An absent row is a `StatusCard`
+  carrying the measured wear gap when there is one. Observations (illness card from
+  `illness_observation.dart`, or the newest finding) come next, then the Daytime sleep row
+  (NapsScreen), then `EcgEntryCard` when `Capabilities` has `Feature.ecgEntry`.
+- **Today** (`_today`). Strain (DayStrainDetail), Steps (DayStepsDetail), Active minutes,
+  Calories, Heart rate (low to high), Wear time. Strain, steps, active minutes and calories
+  come from `today['daily']`; the heart rate range and wear come from `VitalsData`, so they
+  are labelled with the day's date when that day is not today. There is no day stepper.
+  The heart rate row opens `MetricDetail('resting_hr')`, which has the live reading and
+  opens on Today.
+- **Trends** (`_trends`). Body clock and Consistency first (the Body clock card has no
+  "Explore" action). Then a `TrendCard` for resting heart rate, HRV and sleep when a series is
+  stored for it, then the catalogue by family, led by a Recovery family (Readiness, Stress).
+  A measure is a card or a row or part of its family's folded card, never two of those. A
+  family with no history folds into one `StatusCard`; Breathing carries one line saying why
+  there is no SpO2. Every card and row opens `MetricDetail(key, initialRange: 30)`.
+- **MetricDetail.** `initialRange` is in days (1, 7, 30, 182, 365); null opens on Today.
+  A window the install has too few days for falls back to the widest it has. The suppressed
+  skin temperature spec says "No trend yet" and no longer points at Vitals.
+- **Illness card.** `illnessObservation()` in `lib/ui2/screens/illness_observation.dart`
+  builds it for both Home and Health from the `healthIllness*` strings; Home adds its tap to
+  the resting heart rate chart. The `homeIllness*` strings are no longer read.
+- **Removed.** The Explore and Vitals tabs, the HRV deep-dive card and its preview chart on
+  Vitals, the "N of M measures" card, and the stale comments named in the test.
+- **Docs.** `docs/navigation-depth.md` (Health); the roadmap entry 8AF.

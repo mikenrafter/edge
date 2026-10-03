@@ -276,7 +276,7 @@ void main() {
       addTearDown(t.view.reset);
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
-        // Trends. Explore was inserted at index 1, so Trends moved to 2.
+        // Trends is index 2: Last night, Today, Trends, Labs.
         home: Scaffold(body: HealthScreen(data: d, tab: 2)),
       ));
       await t.pumpAndSettle();
@@ -304,14 +304,19 @@ void main() {
       expect(find.text('vs your 7h 42m need'), findsOneWidget);
     });
 
-    testWidgets('the window says how many days it actually holds', (t) async {
-      // "vs your 28-day average" printed from the SECOND stored value.
+    testWidgets('one prior day is not a baseline: no "1-day average", no delta',
+        (t) async {
+      // "vs your 28-day average" used to print from the SECOND stored value,
+      // and the first fix made it say "1-day average" and still drew the delta.
+      // 8AF: an average needs 7 prior days; below that the card says how far
+      // along it is (health_h2_honesty_test covers the whole 1..7 range).
       await pump(
           t,
           HealthData(charts: {
             'sleep': [(t: _noon(1), v: 400.0), (t: _noon(0), v: 420.0)],
           }));
-      expect(find.text('vs your 1-day average'), findsOneWidget);
+      expect(find.text('vs your 1-day average'), findsNothing);
+      expect(find.text('Building your baseline (1 of 7 days)'), findsOneWidget);
     });
   });
 
@@ -448,7 +453,9 @@ void main() {
       // nights back under. Printing "1.3 deviations" without a direction read
       // as "above your baseline, 1.3 below it".
       await t.pumpWidget(frame(base.copyOrIllness('red', '2026-05-20', -1.3)));
-      expect(find.textContaining('1.3 standard deviations below it'),
+      // Home draws the card Health draws (illness_observation.dart), so the
+      // sentence is the shared one: "... below your baseline".
+      expect(find.textContaining('1.3 standard deviations below your baseline'),
           findsOneWidget);
     });
 

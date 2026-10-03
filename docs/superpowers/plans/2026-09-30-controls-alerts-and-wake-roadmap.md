@@ -980,6 +980,30 @@ on the band page, and one feature had three names.
   on, then its own Starts and Ends apply. Existing windows migrate to override on.
 - Docs: `docs/navigation-depth.md`; `test/phase8/CONTRACTS.md` (8AE).
 
+### 8AF — Health by question: Last night, Today, Trends, Labs
+
+Health had five sub-tabs (Overview, Explore, Trends, Vitals, Labs) that mixed time scopes: one
+night, the day so far and a month on the same page, and the fifth chip was clipped on a
+phone. It is four sub-tabs now, one time scope each.
+
+- **Last night**: one night, named by its date when it is not last night. Rows: Readiness,
+  Sleep (opens that night), HRV, Resting heart rate, Respiratory rate, Overnight stress and
+  Skin temperature ("vs your usual", with the SD unit explained). No sparklines or trend
+  arrows. Then Observations, Daytime sleep, and the Heart Screener card (WHOOP MG only,
+  through `Capabilities`) at the bottom. The illness card is one widget used by Home and Health.
+- **Today**: Strain, Steps, Active minutes, Calories, Heart rate range and Wear time. Every
+  row opens its detail.
+- **Trends**: Body clock and Consistency, the three measures that compare against your own
+  average (resting heart rate, HRV, sleep), then every other measure with a history in a list
+  by family. Readiness and Stress are in the list now. A family with no history folds into one
+  card, Breathing says why there is no SpO2, and each row opens its detail on 30 days
+  (`MetricDetail.initialRange`).
+- **Labs** is unchanged and no longer clipped.
+- A sub-tab index remembered from the old order maps through `HealthScreen.tabFromLegacy`.
+  Deep links and notifications land on Last night.
+- Docs: `docs/navigation-depth.md` (Health); `test/phase8/CONTRACTS.md` (8AF). Tests:
+  `test/health/`.
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

@@ -1,11 +1,11 @@
-// HEALTH — observation-oriented. "What is happening, what is changing, is
-// anything unusual?"
+// HEALTH — organised by the question being asked, one time scope per tab.
+// "How was last night? How is today going? How have things been trending?"
 //
 // Rows, not a wall of cards. A card is a claim that something deserves your
-// attention; forty of them side by side is a claim about nothing. Overview is
-// a list you scan, Trends is where change lives, Vitals is what the sensor
-// measured, and Labs is what a laboratory measured — the only numbers in this
-// app that are absolute.
+// attention; forty of them side by side is a claim about nothing. Last night is
+// one night and nothing else, Today is the day so far, Trends is where change
+// lives and is a list of every measure that has a history, and Labs is what a
+// laboratory measured — the only numbers in this app that are absolute.
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -19,14 +19,19 @@ import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
+import '../activity/day_strain.dart' show DayStrainDetail;
 import '../ui2.dart';
 import 'circadian_detail.dart';
+import 'day_timeline.dart' show DayTimelineScreen;
+import 'day_steps.dart' show DayStepsDetail;
 import 'ecg.dart' show EcgEntryCard;
 import 'findings_log.dart';
 import 'home_screen.dart';
-import 'investigate.dart';
+import 'illness_observation.dart';
 import 'metric_detail.dart';
 import 'naps.dart';
+import 'readiness_detail.dart';
+import 'sleep_detail.dart';
 
 /// A read this screen can live without. The wear block and the nap block are
 /// ADDITIONS to the repository interface, so an implementation written before
@@ -111,7 +116,7 @@ class HealthData {
   }
 
   /// Every one of these is a real envelope from the pipeline, read in one
-  /// place so Overview cannot disagree with itself. Trends is a different
+  /// place so Last night cannot disagree with itself. Trends is a different
   /// question — it plots what is STORED, and dates its hero when the newest
   /// stored point is not today's.
   Metric get hrv {
@@ -224,6 +229,7 @@ class HealthData {
   }
 }
 
+/// What the Today sub-tab reads for its heart rate range and wear time.
 class VitalsData {
   /// The day these four blocks describe. When today has no derived record the
   /// loader falls back to the newest one there is, which is routinely days ago
@@ -305,16 +311,16 @@ class LabsData {
 
 // ═══════════════════ the catalogue ═══════════════════
 //
-// EXPLORE. The app persists 39 daily series and carries 25 written metric
-// specs — title, unit, colour, icon, method, citation — and until this tab
+// TRENDS LIST. The app persists 39 daily series and carries 25 written metric
+// specs — title, unit, colour, icon, method, citation — and until this list
 // existed `MetricDetail` was constructed with SEVEN keys anywhere in the tree.
 // Sixteen finished screens had no navigation edge at all. That is a routing
 // gap, not a content gap, and this is the routing.
 //
 // It is an index, not a dashboard: nothing here computes, nothing here is a
 // number about you. It says what this app can tell you, groups it the way a
-// person would look for it, and says for each one how many days it actually
-// has — which is the only honest answer to "is there anything in there".
+// person would look for it, and says for each one whether it has any history —
+// which is the only honest answer to "is there anything in there".
 
 /// One catalogue entry: the [MetricSpec] key (which is what [MetricDetail]
 /// takes), the `metric_series` key its history is stored under, and the single
@@ -337,9 +343,9 @@ class _Cat {
 ///
 /// What is deliberately NOT here:
 /// - SpO2, ODI and anything apnea-shaped. Refused outright — a capability this
-///   app does not produce has no entry, no card and no key, and an index that
-///   listed them to explain their absence would be the exact thing the
-///   absent-forever rule forbids.
+///   app does not produce has no entry, no card and no key. The one exception
+///   is a single line under Breathing (see `_family`) saying why there is no
+///   SpO2, because people look for it there; it is a sentence, not a row.
 /// - Cycle. It is a Wellness tab with its own door and its own on/off switch;
 ///   a second entrance from Health would be a duplicate route, not a feature.
 /// - `rmssd_whole`, `stress_si`, `brv_slope`. Real numbers, but single-night
@@ -349,6 +355,14 @@ class _Cat {
 /// - Body clock, zones, Nerd stats. Each already has a door at the same depth
 ///   as this one; adding a second is navigation debt.
 const _catalogue = <_Cat>[
+  // Readiness and stress both have stored histories and were missing from this
+  // list, so the one place that lists every measure with a history left out the
+  // two most looked-at ones. Each is a composite, not a sensor reading, so they
+  // sit in a family of their own.
+  _Cat('Recovery', [
+    _CatRow('readiness', 'readiness', 'How ready your body looks for strain, against your own usual'),
+    _CatRow('stress', 'stress', 'Beat-interval clustering over your most restful stretch'),
+  ]),
   _Cat('Heart & rhythm', [
     _CatRow('resting_hr', 'rhr', 'The lowest sustained rate of the night'),
     _CatRow('hrv', 'rmssd', 'RMSSD (beat-to-beat variation) over the cleanest stretch of sleep'),
@@ -386,6 +400,7 @@ const _catalogue = <_Cat>[
 /// lookup happens here, at render time, keyed off the same literal English
 /// text/row key the const list already carries as its fallback.
 String _catTitle(AppLocalizations? l, String title) => switch (title) {
+      'Recovery' => l?.healthCatRecovery ?? title,
       'Heart & rhythm' => l?.healthCatHeartRhythm ?? title,
       'Sleep' => l?.healthRowSleep ?? title,
       'Breathing' => l?.healthCatBreathing ?? title,
@@ -396,6 +411,8 @@ String _catTitle(AppLocalizations? l, String title) => switch (title) {
 
 String _rowBlurb(AppLocalizations? l, String key, String blurb) =>
     switch (key) {
+      'readiness' => l?.healthBlurbReadiness ?? blurb,
+      'stress' => l?.healthBlurbStress ?? blurb,
       'resting_hr' => l?.healthBlurbRestingHr ?? blurb,
       'hrv' => l?.healthBlurbHrv ?? blurb,
       'hrv_cv' => l?.healthBlurbHrvCv ?? blurb,
@@ -425,9 +442,7 @@ class ExploreData {
   /// The number itself is never rendered per row (see `_family`): as a value
   /// beside a metric it reads as a score, and it collapses "rare", "new key"
   /// and "substrate pruned" into one figure. What it is good for is the split —
-  /// which rows have history, which are named in the empty card, and the
-  /// "N of M measures" header, where the aggregate is honest because it is
-  /// about the DEVICE and not about any one metric.
+  /// which rows have history and which are named in the folded card.
   final Map<String, int> counts;
   const ExploreData({this.counts = const {}});
 
@@ -439,13 +454,18 @@ class ExploreData {
       );
 }
 
+/// Prior days a trend average needs before a delta is drawn against it.
+const _minBaselineDays = 7;
+
 class HealthScreen extends StatefulWidget {
   final HealthData? data;
   final VitalsData? vitals;
   final LabsData? labs;
   final ExploreData? explore;
 
-  /// Which sub-tab to open on. Goldens use it; production always starts at 0.
+  /// Which sub-tab to open on, in the four-tab order: 0 Last night, 1 Today,
+  /// 2 Trends, 3 Labs. Goldens use it; production starts at 0, which is also
+  /// where a deep link or a notification lands.
   final int tab;
 
   const HealthScreen(
@@ -456,21 +476,46 @@ class HealthScreen extends StatefulWidget {
       this.explore,
       this.tab = 0});
 
+  /// A sub-tab index remembered from the five-tab Health (Overview, Explore,
+  /// Trends, Vitals, Labs) → the same place in the four-tab one. Overview was
+  /// the night, Explore the catalogue that Trends now lists, Vitals the day so
+  /// far. Anything that was never a valid index lands on Last night.
+  static int tabFromLegacy(int old) => switch (old) {
+        0 => 0,
+        1 || 2 => 2,
+        3 => 1,
+        4 => 3,
+        _ => 0,
+      };
+
+  /// A deep link asking for one of the sub-tabs — -1 for the ordinary case.
+  /// Wellness > Recovery writes 0 (Last night) here and asks the shell to
+  /// switch to Health.
+  ///
+  /// NOT A CONSTRUCTOR ARGUMENT, for the reason `WellnessScreen.tabRequest`
+  /// gives: the shell keeps this screen alive in its IndexedStack, so a tap
+  /// that lands on a Health already on screen builds nothing. The request
+  /// reaches a live state through its listener and a fresh one (the shell
+  /// re-keyed to switch domain) through `initState`. The shell clears it a
+  /// frame later rather than the screen consuming it on read.
+  static final ValueNotifier<int> tabRequest = ValueNotifier<int>(-1);
+
+  /// A tab index `domainForTab` sends to the Health domain, for callers that
+  /// ask the shell to switch to Health through `AppState.navRequest`.
+  static const int shellTab = 1;
+
   @override
   State<HealthScreen> createState() => _HealthScreenState();
 }
 
 class _HealthScreenState extends State<HealthScreen> with RevisionReload {
-  // EXPLORE SITS SECOND, not last. Five chips do not fit a 390 pt frame at 1×:
-  // the fifth is clipped by the edge, and a half-visible chip is exactly the
-  // discoverability failure this tab exists to fix. Labs takes the clip instead
-  // — it is the manual-entry tab, the one a user goes looking for on purpose,
-  // and the only one here that holds numbers this app did not measure.
+  // Four chips fit a 360 pt frame at 1× with nothing clipped by the edge. The
+  // order is the order of the questions: the night just gone, the day so far,
+  // how things have been going, and what a laboratory measured.
   List<String> _tabsOf(AppLocalizations? l) => [
-        l?.healthTabOverview ?? 'Overview',
-        l?.healthTabExplore ?? 'Explore',
+        l?.healthTabLastNight ?? 'Last night',
+        l?.healthTabToday ?? 'Today',
         l?.healthTabTrends ?? 'Trends',
-        l?.healthTabVitals ?? 'Vitals',
         l?.healthTabLabs ?? 'Labs',
       ];
   late int _tab = widget.tab;
@@ -484,15 +529,35 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   @override
   void initState() {
     super.initState();
+    final asked = HealthScreen.tabRequest.value;
+    if (asked >= 0 && asked < _tabsOf(null).length) _tab = asked;
+    HealthScreen.tabRequest.addListener(_onTabRequest);
     _d = widget.data;
     _v = widget.vitals;
     _l = widget.labs;
     _e = widget.explore;
     if (widget.data != null) {
       _loading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _enter(_tab));
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      _enter(_tab);
+    });
+  }
+
+  /// Health was already on screen when another screen asked for a sub-tab.
+  void _onTabRequest() {
+    final t = HealthScreen.tabRequest.value;
+    if (t < 0 || t >= _tabsOf(null).length || t == _tab || !mounted) return;
+    _select(t);
+  }
+
+  @override
+  void dispose() {
+    HealthScreen.tabRequest.removeListener(_onTabRequest);
+    super.dispose();
   }
 
   /// Handed its data (golden, gallery) — nothing behind it to re-read.
@@ -523,6 +588,15 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     }
   }
 
+  /// Starts the read the sub-tab at [i] needs, if it has not been read yet.
+  /// Last night has none of its own: it is drawn from the main read.
+  void _enter(int i) {
+    if (!mounted) return;
+    if (i == 1) _loadVitals();
+    if (i == 2) _loadExplore();
+    if (i == 3) _loadLabs();
+  }
+
   Future<void> _load() async {
     final repo = repoOf(context);
     if (repo == null) {
@@ -544,27 +618,17 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   /// all, whatever the old comment here said.
   bool _vFailed = false, _lFailed = false, _eFailed = false;
 
-  /// The day the Vitals tab is showing, once the user has steered off the
-  /// default. Null means "whatever the loader resolves", which is today.
-  String? _vDay;
-
   Future<void> _loadVitals({bool force = false}) async {
     final repo = repoOf(context);
     if (repo == null || (_v != null && !force)) return;
-    // Keyed per sub-tab: steering to another day starts a read that must beat
-    // the one already in flight, and neither may cancel Labs or Explore.
+    // Keyed per sub-tab, so a re-read of one never cancels another's.
     final t = beginRead(#vitals);
     try {
-      final v = await VitalsData.load(repo, want: _vDay);
+      final v = await VitalsData.load(repo);
       if (stillNewest(#vitals, t)) setState(() => (_v = v, _vFailed = false));
     } catch (_) {
       if (stillNewest(#vitals, t)) setState(() => _vFailed = true);
     }
-  }
-
-  void _goVitalsDay(String day) {
-    setState(() => _vDay = day);
-    _loadVitals(force: true);
   }
 
   Future<void> _loadLabs() async {
@@ -605,9 +669,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
 
   void _select(int i) {
     setState(() => _tab = i);
-    if (i == 1) _loadExplore();
-    if (i == 3) _loadVitals();
-    if (i == 4) _loadLabs();
+    _enter(i);
   }
 
   @override
@@ -625,143 +687,113 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         )
       else
         switch (_tab) {
-          0 => _overview(c, d),
-          1 => _explore(c),
+          0 => _lastNight(c, d),
+          1 => _today(c, d),
           2 => _trends(c, d),
-          3 => _vitals(c, d),
           _ => _labs(c),
         },
     ]);
   }
 
-  // ─────────────── OVERVIEW ───────────────
-  Widget _overview(BuildContext c, HealthData d) {
+  // ─────────────── LAST NIGHT ───────────────
+  //
+  // One night, and nothing else: no sparklines and no trend arrows, because a
+  // direction is a history and this tab has none. Every row is a number from
+  // the night the day's derivation used, and when that night is not last night
+  // the tab says which one it is.
+  Widget _lastNight(BuildContext c, HealthData d) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final rows = <Widget>[];
     final gaps = <Widget>[];
 
-    // ALL FIVE ROWS ARE READ FROM THE NIGHT, so all five take the same
-    // measured gap. `overnight: false` is for a row that is not — a hole at
-    // 2 AM says nothing about a daytime number, and offering it as the reason
-    // would be the invented cause the whole absence layer refuses.
-    // `rising` is the ONE value judgement a row makes, and it is per metric:
-    // resting heart rate falling is good news, HRV rising is. A metric this
-    // project makes no directional claim about takes [Rising.neither] and
-    // draws its arrow in ink — the direction is stated, the verdict is not
-    // invented.
+    // Every row here is read from the night, so every absent one takes the same
+    // measured gap. A row that is not (none on this tab) would pass
+    // `overnight: false`: a hole at 2 AM says nothing about a daytime number.
+    //
+    // No judgement and no arrow on any row. Whether a number is good news is a
+    // question about change, and change lives on Trends.
     void row(Metric m, IconData icon, Color col, String name, String sub,
-        String value, String unit, List<double?> series, String metricKey,
-        {String? whyAbsent,
-        bool overnight = true,
-        Rising rising = Rising.neither}) {
+        String value, String unit, VoidCallback onTap,
+        {String? whyAbsent}) {
       if (m.isEmpty) {
+        // EVERY ABSENCE CARD STATES A REASON. A row with no specific one (stress
+        // on a night that had sleep) got the card's own "no record of why"
+        // fallback, which says the app does not know instead of naming the gap.
+        // The pipeline's own note and a measured wear gap still outrank this.
         final s = StatusCard.forMetric(
-            l?.healthNoMetric(name.toLowerCase()) ??
-                'No ${name.toLowerCase()}',
+            l?.healthNoMetric(name.toLowerCase()) ?? 'No ${name.toLowerCase()}',
             m,
-            why: whyAbsent ?? '', gap: overnight ? d.nightGap : null);
+            why: (whyAbsent == null || whyAbsent.isEmpty)
+                ? (l?.healthWhyNotEnoughOvernight ??
+                    'Not enough overnight data for this one')
+                : whyAbsent,
+            gap: d.nightGap);
         if (s != null) gaps.add(s);
         return;
       }
       rows.add(MetricRow(icon, col, name, value,
-          sub: sub,
-          unit: unit,
-          series: series,
-          rising: rising,
-          onTap: () => go(c, MetricDetail(metricKey))));
+          sub: sub, unit: unit, onTap: onTap));
     }
 
-    // Five of these rows come off the overnight block, and `getToday` holds
-    // that block over until today's settles. "Last night" / "Overnight" were
-    // fixed literals, so a days-old night was stated as last night's — while
-    // the Trends tab one tap away correctly said "as of 4 days ago" about the
-    // same numbers.
+    // Most of these rows come off the overnight block, and `getToday` holds that
+    // block over until today's settles. A days-old night used to be stated as
+    // last night's, so the tab names the night whenever it is not last night.
     final night = heldOverNightOf(d.today);
-    String ofNight(String s) => night == null ? s : '$s · ${prettyDay(night)}';
-
     final sleepMin = d.sleepMin;
+    final noNight = sleepMin.isEmpty
+        ? (l?.healthWhyReadOnlyFromSleep ??
+            'Comes from sleep only. No night has been scored.')
+        : '';
+
+    final ready = d.daily('readiness');
+    row(ready, LucideIcons.batteryCharging, C.green,
+        l?.healthRowReadiness ?? 'Readiness', '',
+        ready.value == null ? '' : '${ready.value!.round()}', '/100',
+        () => go(c, const ReadinessDetail()),
+        whyAbsent: noNight);
+
+    row(sleepMin, LucideIcons.moon, C.blue,
+        l?.healthRowSleep ?? MetricLabels.sleep,
+        l?.healthTimeAsleep ?? MetricLabels.timeAsleep, hm(sleepMin.value), '',
+        // The night the day used, opened directly: no scrubbing back from today
+        // to find it.
+        () => go(c, SleepDetail(day: night)),
+        whyAbsent: l?.healthWhySleepNotLongEnough ??
+            'No sleep period long enough to score was recorded.');
+
+    final hrvMetric = d.hrv;
+    row(hrvMetric, LucideIcons.activity, C.green, l?.healthRowHrv ?? MetricLabels.hrv,
+        l?.healthSubRmssdAsleep ?? 'RMSSD, asleep',
+        hrvMetric.value == null ? '' : '${hrvMetric.value!.round()}', 'ms',
+        () => go(c, const MetricDetail('hrv')),
+        // Blaming signal quality unconditionally told a day-one user their
+        // sensor produced dirty data on a night that never happened.
+        whyAbsent: noNight);
 
     final rhr = d.daily('resting_hr');
-    row(rhr, LucideIcons.heart, C.red, l?.healthRowRestingHr ?? 'Resting heart rate',
-        ofNight(l?.healthSubOvernight ?? 'Overnight'),
+    row(rhr, LucideIcons.heart, C.red,
+        l?.healthRowRestingHr ?? MetricLabels.restingHr,
+        l?.healthSubOvernight ?? 'Overnight',
         rhr.value == null ? '' : '${rhr.value!.round()}', 'bpm',
-        d.spark('resting_hr', 24), 'resting_hr',
+        () => go(c, const MetricDetail('resting_hr')),
         // Sleep duration and nocturnal RHR are gated separately, so "no night
-        // was scored" is often the wrong reason and contradicts the Sleep row
-        // sitting two lines down. Only the branch this screen can SEE is
-        // stated — the other named a beat-quality gate it never read.
-        // Nocturnal resting heart rate: lower is the direction every part of
-        // this app already treats as better — it is what the illness CUSUM
-        // watches for a RISE, and what readiness scores as `lowerIsBetter`.
-        rising: Rising.bad,
+        // was scored" is often the wrong reason. Only the branch this screen can
+        // SEE is stated.
         whyAbsent: sleepMin.isEmpty
             ? (l?.healthWhyReadFromSleep ??
                 'Comes from sleep only. No night has been scored.')
             : '');
 
-    final hrvMetric = d.hrv;
-    row(hrvMetric, LucideIcons.activity, C.green, l?.healthRowHrv ?? 'HRV',
-        ofNight(l?.healthSubRmssdAsleep ?? 'RMSSD, asleep'),
-        hrvMetric.value == null ? '' : '${hrvMetric.value!.round()}', 'ms',
-        d.spark('hrv', 24), 'hrv',
-        rising: Rising.good,
-        // Blaming signal quality unconditionally told a day-one user their
-        // sensor produced dirty data on a night that never happened.
-        whyAbsent: sleepMin.isEmpty
-            ? (l?.healthWhyReadOnlyFromSleep ??
-                'Comes from sleep only. No night has been scored.')
-            : '');
-
-    row(sleepMin, LucideIcons.moon, C.blue, l?.healthRowSleep ?? 'Sleep',
-        night == null ? (l?.healthSubLastNight ?? 'Last night') : prettyDay(night),
-        hm(sleepMin.value), '', d.spark('sleep', 24), 'sleep',
-        // More sleep is the direction this app coaches towards — `sleepNeed`
-        // exists to say you are short of it, never over it.
-        rising: Rising.good,
-        whyAbsent: l?.healthWhySleepNotLongEnough ??
-            'No sleep period long enough to score was recorded.');
-
-    final stressBlock = d.today['stress'];
-    final stressScore =
-        stressBlock is Map ? (stressBlock['score'] as num?) : null;
-    row(
-        d.stress,
-        LucideIcons.brain,
-        C.purple,
-        l?.healthRowStress ?? 'Stress',
-        ofNight((stressBlock is Map ? stressBlock['level']?.toString() : null) ??
-            (l?.healthRowStress ?? 'Stress')),
-        stressScore == null ? '' : '${stressScore.round()}',
-        // 0–100, and the scale has to be on the row. Wellness has always shown
-        // it for the same number.
-        '/100',
-        d.spark('stress', 24),
-        'stress',
-        rising: Rising.bad,
-        // Was 'No resting stretch long enough last night.' — one of several
-        // gates stress abstains on, asserted for all of them.
-        whyAbsent: sleepMin.isEmpty
-            ? (l?.healthWhyReadFromNight ??
-                'Comes from sleep only. No night has been scored.')
-            : '');
-
     final respMetric = d.resp;
-    row(respMetric, LucideIcons.wind, C.teal, l?.healthRowRespRate ?? 'Respiratory rate',
-        ofNight(l?.healthSubAsleep ?? 'Asleep'),
+    row(respMetric, LucideIcons.wind, C.teal,
+        l?.healthRowRespRate ?? MetricLabels.respRate,
+        l?.healthSubAsleep ?? 'Asleep',
         respMetric.value == null ? '' : respMetric.value!.toStringAsFixed(1),
-        'br/min',
-        d.spark('resp_rate', 24), 'resp_rate',
-        // DELIBERATELY UNJUDGED. Readiness scores a rise as a cost, but that
-        // is a deviation from your own baseline, not a claim that breathing
-        // slower is better health — nobody here would tell you a falling
-        // respiratory rate is good news. Direction, no verdict.
+        'br/min', () => go(c, const MetricDetail('resp_rate')),
         // THE ESTIMATOR'S OWN REASON when it left one, not a guess written
-        // here. `respiration.rsa` records which gate it failed — too few beats,
-        // artifact fraction over the gate, no stable HF peak, or a peak that
-        // moved across spectral resolutions — and the repository now carries
-        // that note through. This screen guessed "too noisy" for all four,
-        // which was right about a quarter of the time.
+        // here. `respiration.rsa` records which gate it failed, and the
+        // repository carries that note through.
         whyAbsent: respMetric.note?.isNotEmpty == true
             ? respMetric.note!
             : (sleepMin.isEmpty
@@ -770,61 +802,59 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                 : (l?.healthWhyNoReadingLastNight ??
                     'No reading from last night.')));
 
+    final stressBlock = d.today['stress'];
+    final stressScore =
+        stressBlock is Map ? (stressBlock['score'] as num?) : null;
+    row(
+        d.stress,
+        LucideIcons.brain,
+        C.purple,
+        l?.healthRowOvernightStress ?? MetricLabels.overnightStress,
+        (stressBlock is Map ? stressBlock['level']?.toString() : null) ?? '',
+        stressScore == null ? '' : '${stressScore.round()}',
+        // 0–100, and the scale has to be on the row. Wellness has always shown
+        // it for the same number.
+        '/100',
+        () => go(c, const MetricDetail('stress')),
+        // Was 'No resting stretch long enough last night.' — one of several
+        // gates stress abstains on, asserted for all of them.
+        whyAbsent: sleepMin.isEmpty
+            ? (l?.healthWhyReadFromNight ??
+                'Comes from sleep only. No night has been scored.')
+            : '');
+
+    // NAME THE QUANTITY. This is `skin_temp_z`: standard deviations from the
+    // user's own usual level. It printed signed and unitless beside a heart rate
+    // in bpm, so it read as degrees; the caption under the rows says what SD is.
+    final skinTemp = metricOf(d.today['skin_temp']);
+    row(skinTemp, LucideIcons.thermometer, C.orange,
+        l?.healthRowSkinTemp ?? MetricLabels.skinTemp,
+        l?.healthVsYourUsual ?? 'vs your usual',
+        skinTemp.value == null
+            ? ''
+            : '${skinTemp.value! >= 0 ? '+' : '−'}'
+                '${skinTemp.value!.abs().toStringAsFixed(2)}',
+        'SD', () => go(c, const MetricDetail('skin_temp')));
+
     final illness = d.today['illness'];
-    final state = illness is Map ? illness['state']?.toString() : null;
-    // The CUSUM watch runs on NOCTURNAL RESTING HEART RATE ALONE. The copy here
-    // used to name skin temperature as a second firing signal; the detector has
-    // never been given a temperature series. `z` is its own standardised
-    // deviation, so the sentence can say how far out the night sat.
-    final illnessZ = illness is Map ? (illness['z'] as num?) : null;
-    // The payload carries the night it is about. It is one entry per DERIVED
-    // day, so after a gap "Last night" named a night the user did not wear the
-    // band for.
     final illnessDay = illness is Map ? illness['date']?.toString() : null;
     final illnessBehind = _behind(illnessDay);
-
-    // Hoisted out of the tree so the section that now wraps it does not push
-    // its copy two levels deeper. The card itself is untouched.
-    final illnessCard = state == null || state == 'green'
-        ? null
-        : Observation(
-            state == 'red'
-                ? (l?.healthIllnessRedTitle ??
-                    'Several nights in a row were outside your normal range')
-                : (illnessBehind == null || illnessBehind <= 0
-                    ? (l?.healthIllnessLastNightTitle ??
-                        'Last night was outside your normal range')
-                    : (l?.healthIllnessDayTitle(prettyDay(illnessDay)) ??
-                        '${prettyDay(illnessDay)} was outside your normal range')),
-            // The RUN is what is above baseline — the accumulator only clears
-            // after two nights back under. The stored z is the LATEST night's
-            // own deviation and can be negative while the run is still up,
-            // which read as "tracking above your own baseline, 1.3 deviations
-            // below it".
-            illnessZ == null
-                ? (l?.healthIllnessBodyNoZ ??
-                    'Your overnight resting heart rate has been above '
-                    'your own baseline. This tracks that one signal '
-                    'and cannot tell you the cause.')
-                : (l?.healthIllnessBodyWithZ(
-                        illnessZ.abs().toStringAsFixed(1),
-                        illnessZ >= 0
-                            ? (l.healthDirectionAbove)
-                            : (l.healthDirectionBelow)) ??
-                    'Your overnight resting heart rate has been running above '
-                    'your own baseline. That night it was '
-                    '${illnessZ.abs().toStringAsFixed(1)} standard deviations '
-                    '${illnessZ >= 0 ? 'above' : 'below'} it. This tracks one signal '
-                    'and cannot tell you the cause.'),
-            advice: l?.healthIllnessAdvice ??
-                'If it lasts more than a couple of days, take note.',
-          );
+    // The CUSUM watch runs on NOCTURNAL RESTING HEART RATE ALONE, and the card
+    // is the one Home draws (illness_observation.dart). The payload carries the
+    // night it is about: it is one entry per DERIVED day, so after a gap "Last
+    // night" named a night the user did not wear the band for.
+    final illnessCard = illnessObservation(
+      c,
+      state: illness is Map ? illness['state']?.toString() : null,
+      sameNight: illnessBehind == null || illnessBehind <= 0,
+      day: illnessDay,
+      z: illness is Map ? (illness['z'] as num?) : null,
+    );
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // WHOOP MG only: the ECG door appears once the paired band has
-      // positively identified itself as an MG, and stays while it is away.
-      if (c.caps.has(Feature.ecgEntry)) ...[
-        const EcgEntryCard(),
+      if (night != null) ...[
+        Text(l?.healthNightOf(prettyDay(night, l)) ?? 'Night of ${prettyDay(night, l)}',
+            style: F.cap.copyWith(color: p.ink2)),
         const SizedBox(height: S.x3),
       ],
       if (rows.isNotEmpty)
@@ -837,17 +867,25 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             ],
           ]),
         ),
+      if (skinTemp.value != null) ...[
+        const SizedBox(height: S.x2),
+        Text(
+            l?.healthSkinTempSdNote ??
+                'Skin temperature is a deviation from your own usual level, in '
+                    'standard deviations (SD). It is not a temperature in '
+                    'degrees.',
+            style: F.over.copyWith(color: p.ink3, height: 1.6)),
+      ],
       for (final g in gaps) ...[const SizedBox(height: S.x3), g],
 
       // OBSERVATIONS — the illness watch, wrapped, plus a door to the other
       // three detectors.
       //
-      // The illness card is unchanged and stays first: it is the one finding
-      // with copy specific enough to be worth a card of its own. What it gains
-      // is a title over it and a way through to the anomaly, skin temperature
-      // and resting-HR findings, which fired for months and reached no screen
-      // at all. NOT a feed — see findings_log.dart. Nothing here is unread,
-      // badged or dismissible, and it does not appear on Home.
+      // The illness card is the one finding with copy specific enough to be
+      // worth a card of its own. What this section adds is a title over it and a
+      // way through to the anomaly, skin temperature and resting-HR findings,
+      // which fired for months and reached no screen at all. NOT a feed — see
+      // findings_log.dart. Nothing here is unread, badged or dismissible.
       if (illnessCard != null || d.findings.isNotEmpty) ...[
         const SizedBox(height: S.x4),
         Section(
@@ -865,7 +903,6 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               d.findings.isEmpty ? null : () => go(c, FindingsLog(d.findings)),
         ),
       ],
-
       // NAPS — the display and the correction, which are one feature. The
       // section is here on a day with no naps too, because the door to logging
       // one has to exist on exactly the day the detector found nothing.
@@ -892,7 +929,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                 child: MetricRow(
                   LucideIcons.sun,
                   C.indigo,
-                  l?.healthDaytimeSleep ?? 'Daytime sleep',
+                  l?.healthDaytimeSleep ?? MetricLabels.daytimeSleep,
                   // A MEASURED zero, not a dash: the day was judged and held
                   // no nap. The two are different answers and read as two.
                   d.napCount == 0 ? (l?.healthValueNone ?? 'None') : hm(d.napMin),
@@ -908,6 +945,14 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
         action: l?.healthAddOrCorrect ?? 'Add or correct',
         onAction: () => go(c, NapsScreen(day: d.napDay)),
       ),
+
+      // WHOOP MG only: the Heart Screener door appears once the paired band has
+      // positively identified itself as an MG, and stays while it is away. It is
+      // the last thing on the tab, below everything this night produced.
+      if (c.caps.has(Feature.ecgEntry)) ...[
+        const SizedBox(height: S.x3),
+        const EcgEntryCard(),
+      ],
 
       // THERE IS NO "BODY COMPOSITION" SECTION, AND THE NEXT PERSON SHOULD NOT
       // BUILD ONE. It used to print the onboarding weight scalar, and the ask
@@ -949,7 +994,162 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     ]);
   }
 
+  // ─────────────── TODAY ───────────────
+  //
+  // Today so far. The six rows are totals and ranges for the day, none of them
+  // is an overnight number, and every one opens its own detail.
+  Widget _today(BuildContext c, HealthData d) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final v = _v;
+
+    // Rows and the cards for rows with no value, in the order the tab shows
+    // them. A row with no value is never a dash in a list: it is a card that
+    // says so and says why.
+    final rows = <Widget>[];
+    final gaps = <Widget>[];
+    var anyValue = false;
+
+    void row(Metric m, IconData icon, Color col, String name, String sub,
+        String value, String unit, VoidCallback onTap) {
+      if (m.isEmpty) {
+        final s = StatusCard.forMetric(
+            l?.healthNoMetric(name.toLowerCase()) ?? 'No ${name.toLowerCase()}',
+            m,
+            why: l?.healthWhyNotMeasuredToday ?? 'Not measured yet today.');
+        if (s != null) gaps.add(s);
+        return;
+      }
+      anyValue = true;
+      rows.add(MetricRow(icon, col, name, value,
+          sub: sub, unit: unit, onTap: onTap));
+    }
+
+    final strain = d.daily('strain');
+    row(strain, LucideIcons.zap, C.purple,
+        l?.healthRowStrain ?? MetricLabels.strain, '',
+        strain.value == null ? '' : strain.value!.toStringAsFixed(1), '/21',
+        () => go(c, const DayStrainDetail()));
+
+    final steps = d.daily('steps');
+    row(steps, LucideIcons.footprints, C.green,
+        l?.healthRowSteps ?? MetricLabels.steps, '', thousands(steps.value), '',
+        () => go(c, const DayStepsDetail()));
+
+    final active = d.daily('active_min');
+    row(active, LucideIcons.activity, C.green,
+        l?.healthRowActiveMinutes ?? 'Active minutes', '',
+        active.value == null ? '' : '${active.value!.round()}', 'min',
+        () => go(c, const MetricDetail('active_min')));
+
+    final calories = d.daily('calories');
+    row(calories, LucideIcons.flame, C.orange,
+        l?.healthRowCalories ?? 'Calories', '',
+        calories.value == null ? '' : '${calories.value!.round()}', 'kcal',
+        () => go(c, const MetricDetail('calories')));
+
+    // The heart rate range and wear time come from the day's own timeline and
+    // wear block. WHICH DAY: the loader falls back to the newest derived day
+    // when today has none, which after a sync gap is days ago, so these two say
+    // so rather than calling it Today.
+    if (v != null) {
+      final behind = _behind(v.day);
+      final isToday = behind == null || behind <= 0;
+      final dayWord = isToday ? (l?.healthToday ?? 'Today') : prettyDay(v.day, l);
+      final highs = v.timeline['highs'];
+      num? high(String k) {
+        final e = highs is Map ? highs[k] : null;
+        return e is Map ? e['v'] as num? : null;
+      }
+
+      final lo = high('low_hr'), hi = high('peak_hr');
+      final worn = v.wear['worn_min'] as num?;
+      final coverage = v.wear['coverage_pct'] as num?;
+
+      if (lo != null && hi != null) {
+        anyValue = true;
+        rows.add(MetricRow(LucideIcons.heart, C.red,
+            l?.healthRowHeartRate ?? 'Heart rate', '${lo.round()} – ${hi.round()}',
+            sub: dayWord,
+            unit: 'bpm',
+            // The day's own heart rate, for the day this row describes. It used
+            // to open the RESTING heart rate screen, which is the night's
+            // lowest sustained rate and says nothing about this range.
+            onTap: () => go(c, DayTimelineScreen(day: v.day))));
+      } else {
+        gaps.add(StatusCard(
+          l?.healthNoMetric((l.healthRowHeartRate).toLowerCase()) ??
+              'No heart rate range',
+          l?.healthWhyNotMeasuredToday ?? 'Not measured yet today.',
+          icon: LucideIcons.heart,
+        ));
+      }
+      if (worn != null) {
+        anyValue = true;
+        rows.add(MetricRow(LucideIcons.watch, C.green,
+            l?.healthRowWearTime ?? 'Wear time', hm(worn),
+            // `83.33333333333333% of the day` shipped. It is a percentage.
+            sub: coverage == null
+                ? dayWord
+                : (l?.healthCoverageOf(coverage.round(),
+                        isToday ? (l.healthTheDay) : dayWord) ??
+                    '${coverage.round()}% of '
+                        '${isToday ? 'the day' : dayWord}'),
+            onTap: () => go(c, const MetricDetail('wear'))));
+      } else {
+        gaps.add(StatusCard(
+          l?.healthNoMetric((l.healthRowWearTime).toLowerCase()) ??
+              'No wear time',
+          l?.healthWhyNotMeasuredToday ?? 'Not measured yet today.',
+          icon: LucideIcons.watch,
+        ));
+      }
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (rows.isNotEmpty)
+        Surface(
+          pad: const EdgeInsets.symmetric(horizontal: S.x4),
+          child: Column(children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) Divider(color: p.line, height: 1),
+              rows[i],
+            ],
+          ]),
+        ),
+      if (v != null && !anyValue)
+        // Nothing at all for the day: one card, with the one thing that changes
+        // it, rather than six cards that each say the same.
+        StatusCard(
+          l?.healthNothingMeasuredDay ?? 'Nothing measured for this day',
+          l?.healthNoBandRecordings ?? 'No band recordings reached this day.',
+          fix: syncOf(c) == null ? '' : (l?.healthSyncTheBand ?? 'Sync the band'),
+          icon: LucideIcons.watch,
+          onFix: syncOf(c),
+        )
+      else
+        for (final g in gaps) ...[const SizedBox(height: S.x3), g],
+      if (v == null)
+        // The two rows that need the day's timeline are still on their way, or
+        // their read threw. A thrown read is not an empty day.
+        _vFailed
+            ? _readFailed(l?.healthWhatVitals ?? 'vitals', () {
+                setState(() => _vFailed = false);
+                _loadVitals();
+              })
+            : const Padding(
+                padding: EdgeInsets.only(top: S.x4),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+    ]);
+  }
+
   // ─────────────── TRENDS ───────────────
+  //
+  // How things have been going: the two cards about your rhythm, the three
+  // measures that say how they sit against your own average, then every other
+  // measure that has a history, grouped by what it is about. Each one opens the
+  // measure's own screen on 30 days.
   Widget _trends(BuildContext c, HealthData d) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
@@ -960,6 +1160,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final sjlH = sjl['abs_hours'] as num?;
     final sri = reg['sri'] as num?;
     final stale = staleInsightsCard(d.insightsStale, syncOf(c));
+    final e = _e;
 
     /// [against] is the number the card compares the latest reading TO. Pass it
     /// and the delta is measured against that; leave it null and the delta is
@@ -969,36 +1170,46 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     /// need" while still subtracting the 28-day AVERAGE — so the arrow and the
     /// figure under it read as sleep debt and were not. One of the two had to
     /// become true; the debt is the more useful of the pair.
+    ///
+    /// Null when nothing is stored for [key]: the family list below says so for
+    /// that measure, in its folded card, instead of a card of its own.
     // No `Metric` argument: this card is drawn entirely from the stored
     // series, so taking the envelope only implied a cross-check that was
     // never made.
-    Widget trend(String key, String label, String unit, Color col,
-        {bool higherBetter = true, double? against, String? againstLabel}) {
+    Widget? trend(String key, String label, String unit, Color col,
+        {bool higherBetter = true,
+        double? against,
+        String? againstLabel,
+        String subLabel = ''}) {
       final pts = d.points(key);
       // Statistics off the STORED values; the painter gets the dense window.
       final s = valuesOf(pts);
-      if (s.isEmpty) {
-        return StatusCard(
-          l?.healthNoTrendYet(label) ?? 'No $label trend yet',
-          l?.healthZeroDaysStored ?? '0 days stored.',
-          icon: LucideIcons.chartLine,
-        );
-      }
+      if (s.isEmpty) return null;
       final prior = s.length > 1
           ? s.sublist(s.length - 1 - (s.length - 1).clamp(0, 28), s.length - 1)
           : const <double>[];
-      // "vs your 28-day average" printed from the SECOND stored value, over a
-      // mean of one. The window has to say how many days it actually holds.
-      final mean =
-          prior.isEmpty ? null : prior.reduce((a, b) => a + b) / prior.length;
+      // "vs your 1-day average" was printed from the SECOND stored value, over
+      // a mean of one, with an arrow and a hue on top. An average of fewer than
+      // [_minBaselineDays] prior days is a coin flip, not a baseline, so below
+      // that the card shows the value alone and says how far along it is. A
+      // computed need is a different comparison (not an average of prior days),
+      // so the rule is about averages only.
+      final mean = prior.length < _minBaselineDays
+          ? null
+          : prior.reduce((a, b) => a + b) / prior.length;
       final base = against ?? mean;
       final window = against != null
           ? (againstLabel ?? '')
-          : (l?.healthVsDayAverage(prior.length) ??
-              'vs your ${prior.length}-day average');
+          : prior.length >= _minBaselineDays
+              ? (l?.healthVsDayAverage(prior.length) ??
+                  'vs your ${prior.length}-day average')
+              : prior.isEmpty
+                  ? (l?.healthFirstReadings ?? 'first readings')
+                  : (l?.healthBuildingBaseline(prior.length) ??
+                      'Building your baseline (${prior.length} of '
+                          '$_minBaselineDays days)');
       final delta = base == null ? 0.0 : s.last - base;
       final win = denseDays(pts, 30);
-      final metricKey = key == 'sleep' ? 'sleep' : key;
       // The hero number is the newest STORED point, which after a sync gap is
       // not today's. Say when it is from rather than let the card imply now.
       final behind = daysBehind(pts.last.t) ?? 0;
@@ -1008,37 +1219,54 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       return TrendCard(
         label,
         key == 'sleep' ? hm(s.last) : metricValue(unit, s.last),
-        key == 'sleep' ? '' : unit,
+        // Sleep has no unit; its slot carries "Time asleep" so the card can be
+        // named "Sleep" like everywhere else and still say what the figure is.
+        key == 'sleep' ? subLabel : unit,
         base == null
             ? (l?.healthNoBaseline ?? 'no baseline')
             : (key == 'sleep' ? hm(delta.abs()) : metricValue(unit, delta.abs())),
-        '${base == null ? (l?.healthFirstReadings ?? 'first readings') : window}$asOf',
+        '$window$asOf',
         win,
         col,
         up: delta >= 0,
         // Null with no baseline: an arrow and a good/bad hue about a
         // comparison the card has just said it cannot make.
         good: base == null ? null : (delta >= 0) == higherBetter,
-        onTap: () => go(c, MetricDetail(metricKey)),
+        onTap: () => go(c, MetricDetail(key, initialRange: 30)),
       );
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      trend('resting_hr', l?.healthRowRestingHr ?? 'Resting heart rate', 'bpm',
-          C.red, higherBetter: false),
-      const SizedBox(height: S.x3),
-      trend('hrv', l?.healthRowHrv ?? 'HRV', 'ms', C.green),
-      const SizedBox(height: S.x3),
-      if (d.need.value == null)
-        trend('sleep', l?.healthTimeAsleep ?? 'Time asleep', '', C.blue)
-      else
-        // `need` here is `crossday.sleep_coach.need` — the COMPUTED need. It is
-        // never `sleep.need_min`, which is a hardcoded 480.
-        trend('sleep', l?.healthTimeAsleep ?? 'Time asleep', '', C.blue,
-            against: d.need.value!.toDouble(),
-            againstLabel: l?.healthVsNeed(hm(d.need.value)) ??
-                'vs your ${hm(d.need.value)} need'),
+    // The three measures whose card says how the latest reading sits against
+    // your own average (or, for sleep, against your need). Each is drawn here
+    // OR in its family below, never both: a measure with a stored series gets
+    // the card, one without gets its row or its place in the folded card.
+    final cards = <String, Widget>{
+      for (final (key, card) in <(String, Widget?)>[
+        ('resting_hr',
+            trend('resting_hr', l?.healthRowRestingHr ?? MetricLabels.restingHr, 'bpm',
+                C.red, higherBetter: false)),
+        ('hrv', trend('hrv', l?.healthRowHrv ?? MetricLabels.hrv, 'ms', C.green)),
+        (
+          'sleep',
+          // `need` here is `crossday.sleep_coach.need` — the COMPUTED need. It
+          // is never `sleep.need_min`, which is a hardcoded 480.
+          //
+          // Named "Sleep" like everywhere else; "Time asleep" is what the
+          // figure is, so it rides as the sub-label.
+          d.need.value == null
+              ? trend('sleep', l?.healthRowSleep ?? MetricLabels.sleep, '', C.blue,
+                  subLabel: l?.healthTimeAsleep ?? MetricLabels.timeAsleep)
+              : trend('sleep', l?.healthRowSleep ?? MetricLabels.sleep, '', C.blue,
+                  subLabel: l?.healthTimeAsleep ?? MetricLabels.timeAsleep,
+                  against: d.need.value!.toDouble(),
+                  againstLabel: l?.healthVsNeed(hm(d.need.value)) ??
+                      'vs your ${hm(d.need.value)} need')
+        ),
+      ])
+        key: ?card,
+    };
 
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       // Chronotype, jetlag and regularity ALL come out of the cross-day
       // rollup. When it is withheld, the section says why rather than showing
       // the cold-start "it takes a few weeks" line, which would be a lie.
@@ -1075,8 +1303,6 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               ],
             ]),
           ),
-          action: l?.healthTabExplore ?? 'Explore',
-          onAction: () => go(c, const CircadianDetail()),
         ),
 
       Section(
@@ -1093,6 +1319,33 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
           ),
         ),
       ),
+
+      for (final card in cards.values) ...[
+        const SizedBox(height: S.x3),
+        card,
+      ],
+
+      if (e == null)
+        _eFailed
+            ? _readFailed(l?.healthMeasuresUnit ?? 'measures', () {
+                setState(() => _eFailed = false);
+                _loadExplore();
+              })
+            : const Padding(
+                padding: EdgeInsets.only(top: S.x8),
+                child: Center(child: CircularProgressIndicator()),
+              )
+      else ...[
+        // Not a promise of insight — a statement of what a tap gets you. Every
+        // row below opens the same drill-down: the chart, your own range, the
+        // method in full, and the paper it came from.
+        const SizedBox(height: S.x2),
+        Text(
+            l?.healthEachOneOpens ??
+                'Each one opens its chart, your range and how it is calculated.',
+            style: F.over.copyWith(color: p.ink3, height: 1.6)),
+        for (final f in _catalogue) _family(c, p, f, e.counts, cards.keys.toSet()),
+      ],
     ]);
   }
 
@@ -1101,242 +1354,21 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     return m < 60 ? '${m}m' : '${m ~/ 60}h ${(m % 60).toString().padLeft(2, '0')}m';
   }
 
-  // ─────────────── VITALS ───────────────
-  Widget _vitals(BuildContext c, HealthData d) {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    final v = _v;
-    if (v == null) {
-      return _vFailed
-          ? _readFailed(l?.healthWhatVitals ?? 'vitals', () {
-              setState(() => _vFailed = false);
-              _loadVitals();
-            })
-          : const Padding(
-              padding: EdgeInsets.only(top: S.x8),
-              child: Center(child: CircularProgressIndicator()),
-            );
-    }
 
-    // WHICH DAY this tab is showing. Every row here used to say "Today" for a
-    // day the loader had fallen back to, which after a sync gap is days ago.
-    final behind = _behind(v.day);
-    final isToday = behind == null || behind <= 0;
-    final dayWord = isToday ? (l?.healthToday ?? 'Today') : prettyDay(v.day);
-    // Skin temperature comes off the latest OVERNIGHT bundle, not the day the
-    // other three rows describe, so it gets its own night when they differ.
-    final tempNight = heldOverNightOf(d.today);
-
-    final highs = v.timeline['highs'];
-    num? high(String k) {
-      final e = highs is Map ? highs[k] : null;
-      return e is Map ? e['v'] as num? : null;
-    }
-
-    final lo = high('low_hr'), hi = high('peak_hr');
-    final respBlock = v.lungs['resp'];
-    final resp = respBlock is Map ? respBlock['value'] as num? : null;
-    final worn = v.wear['worn_min'] as num?;
-    final coverage = v.wear['coverage_pct'] as num?;
-    final skinTemp = metricOf(d.today['skin_temp']);
-    final rmssd = v.hrv['rmssd'] as num?;
-    // MetricRow, not a private copy of it. The one this screen used to grow
-    // stacked the value over its qualifier in a shrink-wrapped column, so
-    // 'bpm today' and 'SD from your own nights' set each row's width and no
-    // two values landed on the same x. The qualifier is not a unit and does
-    // not belong beside the number: it goes under the name, where every other
-    // list in the app already puts it.
-    final rows = <Widget>[
-      if (lo != null && hi != null)
-        MetricRow(LucideIcons.heart, C.red, l?.healthRowHeartRate ?? 'Heart rate',
-            '${lo.round()} – ${hi.round()}',
-            sub: dayWord, unit: 'bpm'),
-      if (resp != null)
-        MetricRow(LucideIcons.wind, C.teal, l?.healthRowRespRate ?? 'Respiratory rate',
-            resp.toStringAsFixed(1),
-            sub: l?.healthSubAsleep ?? 'Asleep', unit: 'br/min'),
-      if (skinTemp.value != null)
-        // NAME THE QUANTITY. This is `skin_temp_z` — standard deviations from
-        // the user's own baseline. It printed signed and unitless beside a
-        // heart rate in bpm, so it read as °C; and the sleep scrub's
-        // "temperature" is a THIRD quantity again (raw ADC minus that day's
-        // median), which is why neither may go unlabelled.
-        MetricRow(LucideIcons.thermometer, C.orange,
-            l?.healthRowSkinTemp ?? 'Skin temperature',
-            '${skinTemp.value! >= 0 ? '+' : '−'}'
-                '${skinTemp.value!.abs().toStringAsFixed(2)}',
-            sub: tempNight == null
-                ? (l?.healthVsOwnNights ?? 'vs your own nights')
-                : (l?.healthVsOwnNightsOn(prettyDay(tempNight)) ??
-                    'vs your own nights · ${prettyDay(tempNight)}'),
-            unit: 'SD',
-            // Both this row and the wear row below it carry a FULL, written,
-            // cited spec in `metric_detail.dart` that no tap in the app opened.
-            // The number was on screen and its method was unreachable.
-            onTap: () => go(c, const MetricDetail('skin_temp'))),
-      if (worn != null)
-        MetricRow(LucideIcons.watch, C.green, l?.healthRowWearTime ?? 'Wear time',
-            hm(worn),
-            // `83.33333333333333% of the day` shipped. It is a percentage.
-            sub: coverage == null
-                ? dayWord
-                : (l?.healthCoverageOf(coverage.round(),
-                        isToday ? (l.healthTheDay) : dayWord) ??
-                    '${coverage.round()}% of '
-                        '${isToday ? 'the day' : dayWord}'),
-            onTap: () => go(c, const MetricDetail('wear'))),
-    ];
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      ...dayNavRow(_vDay ?? v.day, v.days, _goVitalsDay),
-      if (rows.isEmpty)
-        StatusCard(
-          l?.healthNothingMeasuredDay ?? 'Nothing measured for this day',
-          l?.healthNoBandRecordings ?? 'No band recordings reached this day.',
-          fix: syncOf(c) == null ? '' : (l?.healthSyncTheBand ?? 'Sync the band'),
-          icon: LucideIcons.watch,
-          onFix: syncOf(c),
-        )
-      else
-        Surface(
-          pad: const EdgeInsets.symmetric(horizontal: S.x4),
-          child: Column(children: [
-            for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0) Divider(color: p.line, height: 1),
-              rows[i],
-            ],
-          ]),
-        ),
-
-      // No skin-temperature caveat card here. The row's own unit already says
-      // the reading is relative, and `metric_detail` carries the method for
-      // anyone who taps through — a whole card restating it on the way past is
-      // the kind of explanation this screen was asked to stop giving.
-
-      // No "Sleep architecture" deep dive either: Sleep is a tab of its own,
-      // and a second door into it from Vitals is a duplicate entry point, not
-      // a feature.
-      if (rmssd != null)
-        Section(
-          l?.healthDeepDivesTitle ?? 'Deep dives',
-          DeepDiveCard(
-              l?.healthHeartRateVariability ?? 'Heart rate variability',
-              '${rmssd.round()}',
-              'ms',
-              l?.healthTimeFrequencyNonLinear ?? 'Time-domain, frequency-domain and non-linear measures',
-              C.green,
-              preview: _hrvPreview(c, d),
-              onTap: () => go(c, const Investigate('hrv'))),
-        ),
-    ]);
-  }
-
-  /// The HRV preview inside the deep-dive card. Framed like every other chart:
-  /// what it is, what it is measured in, what the heights mean, and how far
-  /// back it reaches — all read off the series actually drawn.
-  Widget _hrvPreview(BuildContext c, HealthData d) {
-    const days = 30;
-    final pts = d.points('hrv');
-    // The window is thirty CALENDAR nights, dense, ending last night. The list
-    // used to be the newest thirty STORED nights, which after a sync gap could
-    // span two months while both axis labels — counted off the array — claimed
-    // it spanned thirty. Nights with no record are holes, not joined across.
-    final win = denseDays(pts, days);
-    final have = [for (final v in win) ?v];
-    final axis = AxisSpec.of(have, ticks: 2);
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    return ChartFrame(
-      title: l?.healthRmssdOfLastNights(have.length, days) ??
-          'RMSSD, ${have.length} of the last $days nights',
-      unit: 'ms',
-      height: 48,
-      yAxis: axis,
-      xLabels: have.length < 2
-          ? const []
-          : [
-              l?.healthNightsAgo(days - 1) ?? '${days - 1} nights ago',
-              l?.healthSubLastNight ?? 'Last night',
-            ],
-      empty: have.length < 2
-          ? NoData(
-              message: l?.healthOneNightNotTrend ?? 'A trend needs more than one night')
-          : null,
-      series: win,
-      child: ChartScrub(
-        label: l?.healthHeartRateVariability ?? 'Heart rate variability',
-        // Thirty calendar nights ending last night; a night with no record is
-        // a hole.
-        gaps: hasChartGaps([win], trailing: true),
-        time: (at) =>
-            ChartScrub.dayBack(win.length - 1 - ChartScrub.slotAt(win.length, at)),
-        keys: [
-          ChartKey.slots('RMSSD (ms)', p.on(C.green), win,
-              (i, v) => '${v.round()} ms'),
-        ],
-        child: CustomPaint(
-          size: Size.infinite,
-          painter: LineChart(win, p.on(C.green), t: animate(c, 1), axis: axis),
-        ),
-      ),
-    );
-  }
-
-  // ─────────────── EXPLORE ───────────────
-  Widget _explore(BuildContext c) {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    final e = _e;
-    if (e == null) {
-      return _eFailed
-          ? _readFailed(l?.healthMeasuresUnit ?? 'measures', () {
-              setState(() => _eFailed = false);
-              _loadExplore();
-            })
-          : const Padding(
-              padding: EdgeInsets.only(top: S.x8),
-              child: Center(child: CircularProgressIndicator()),
-            );
-    }
-
-    var have = 0, total = 0;
-    for (final f in _catalogue) {
-      for (final r in f.rows) {
-        total++;
-        if ((e.counts[r.series] ?? 0) > 0) have++;
-      }
-    }
-
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Surface(
-        child: Consistency(have, total,
-            l?.healthMeasuresWithHistory ??
-                'Measures with stored history on this device',
-            C.domHealth,
-            unit: l?.healthMeasuresUnit ?? 'measures'),
-      ),
-      const SizedBox(height: S.x3),
-      // Not a promise of insight — a statement of what a tap gets you. Every
-      // row below opens the same drill-down: the chart, your own range, the
-      // method in full, and the paper it came from.
-      Text(
-          l?.healthEachOneOpens ??
-              'Each one opens its chart, your range and how it is calculated.',
-          style: F.over.copyWith(color: p.ink3, height: 1.6)),
-      for (final f in _catalogue) _family(c, p, f, e.counts),
-    ]);
-  }
-
-  Widget _family(BuildContext c, P p, _Cat f, Map<String, int> counts) {
+  /// [covered] is the keys already drawn as a card above the list. They are
+  /// left out here entirely, so a measure shows once on the tab.
+  Widget _family(BuildContext c, P p, _Cat f, Map<String, int> counts,
+      Set<String> covered) {
     final l = AppLocalizations.of(c);
     final have = [
       for (final r in f.rows)
-        if ((counts[r.series] ?? 0) > 0) r,
+        if (!covered.contains(r.key) && (counts[r.series] ?? 0) > 0) r,
     ];
     final none = [
       for (final r in f.rows)
-        if ((counts[r.series] ?? 0) == 0) r,
+        if (!covered.contains(r.key) && (counts[r.series] ?? 0) == 0) r,
     ];
+    if (have.isEmpty && none.isEmpty) return const SizedBox.shrink();
 
     return Section(
       _catTitle(l, f.title),
@@ -1366,9 +1398,11 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                   // without, and the empty ones are named in the StatusCard
                   // below. Has / hasn't is the only thing an index owes you,
                   // and the layout already says it.
+                  // 30 days, not Today: this is a list of histories, and a
+                  // history is what the row was picked for.
                   return MetricRow(s.icon, s.color, s.title, '',
                       sub: _rowBlurb(l, r.key, r.blurb),
-                      onTap: () => go(c, MetricDetail(r.key)));
+                      onTap: () => go(c, MetricDetail(r.key, initialRange: 30)));
                 }),
               ],
             ]),
@@ -1388,6 +1422,13 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                     'produced one yet.'}',
             icon: LucideIcons.chartLine,
           ),
+        ],
+        if (f.title == 'Breathing') ...[
+          const SizedBox(height: S.x2),
+          Text(
+              l?.healthWhyNoSpo2 ??
+                  'No SpO2 here: this app does not estimate blood oxygen.',
+              style: F.over.copyWith(color: p.ink3, height: 1.6)),
         ],
       ]),
     );

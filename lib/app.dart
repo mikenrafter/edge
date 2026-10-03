@@ -341,6 +341,11 @@ class _InitFailed extends StatelessWidget {
 /// and Body all folded into Health, so three of the five collapse onto one
 /// destination. Payloads from older builds keep working, which is the whole
 /// point — a notification is scheduled days before it is tapped.
+///
+/// Health opens on its first sub-tab, Last night, and nothing here names a
+/// sub-tab: the old five-tab order never travelled in a payload, so there is no
+/// stored index to migrate (`HealthScreen.tabFromLegacy` covers any that
+/// turns up).
 ShellDomain domainForTab(int tab) => switch (tab) {
       1 || 2 || 3 => ShellDomain.health,
       4 => ShellDomain.workout,
@@ -384,7 +389,8 @@ ShellDomain domainForRoute(String route) => switch (routePath(route)) {
       // No recap screen exists. Health is where a week of sleep, strain and
       // recovery actually lives, so it is the nearest true destination — but
       // the notification promises a REPORT, and until one is built the honest
-      // fix is upstream, in what that notification claims.
+      // fix is upstream, in what that notification claims. It lands on Last
+      // night, the first Health sub-tab.
       kRouteRecap => ShellDomain.health,
       _ => ShellDomain.home,
     };
@@ -534,7 +540,17 @@ class _ShellState extends State<_Shell> {
       }
       return;
     }
-    if (tab >= 0) _go(domainForTab(tab));
+    if (tab >= 0) {
+      _go(domainForTab(tab));
+      // A sub-tab asked for alongside the switch (Wellness > Recovery asks for
+      // Health's Last night). Cleared a frame later so the Health that ends up
+      // on screen, live or freshly keyed, has seen it — see
+      // `HealthScreen.tabRequest`.
+      if (HealthScreen.tabRequest.value >= 0) {
+        WidgetsBinding.instance.addPostFrameCallback(
+            (_) => HealthScreen.tabRequest.value = -1);
+      }
+    }
   }
 
   void _go(ShellDomain d) {

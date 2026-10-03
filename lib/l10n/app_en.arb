@@ -6288,6 +6288,75 @@
   "@healthTabLabs": {
     "description": "Health screen sub-tab label: Labs"
   },
+  "healthTabLastNight": "Last night",
+  "@healthTabLastNight": {
+    "description": "Health screen sub-tab label: one night (readiness, sleep, overnight vitals)"
+  },
+  "healthTabToday": "Today",
+  "@healthTabToday": {
+    "description": "Health screen sub-tab label: today so far (strain, steps, heart rate range, wear)"
+  },
+  "healthNightOf": "Night of {day}",
+  "@healthNightOf": {
+    "description": "Header over the Last night rows, naming the night they describe when it is not last night",
+    "placeholders": {
+      "day": {
+        "type": "String"
+      }
+    }
+  },
+  "healthRowReadiness": "Readiness",
+  "@healthRowReadiness": {
+    "description": "Last night row label: readiness"
+  },
+  "healthRowOvernightStress": "Overnight stress",
+  "@healthRowOvernightStress": {
+    "description": "Last night row label: stress measured overnight"
+  },
+  "healthVsYourUsual": "vs your usual",
+  "@healthVsYourUsual": {
+    "description": "Skin temperature row sub-label: the reading is a deviation from the person's own usual level"
+  },
+  "healthSkinTempSdNote": "Skin temperature is a deviation from your own usual level, in standard deviations (SD). It is not a temperature in degrees.",
+  "@healthSkinTempSdNote": {
+    "description": "Caption under the Last night rows explaining the SD unit on the skin temperature row"
+  },
+  "healthRowStrain": "Strain",
+  "@healthRowStrain": {
+    "description": "Today row label: strain"
+  },
+  "healthRowSteps": "Steps",
+  "@healthRowSteps": {
+    "description": "Today row label: steps"
+  },
+  "healthRowActiveMinutes": "Active minutes",
+  "@healthRowActiveMinutes": {
+    "description": "Today row label: active minutes"
+  },
+  "healthRowCalories": "Calories",
+  "@healthRowCalories": {
+    "description": "Today row label: calories"
+  },
+  "healthWhyNotMeasuredToday": "Not measured yet today.",
+  "@healthWhyNotMeasuredToday": {
+    "description": "Reason on a Today gap card when the day has no value yet"
+  },
+  "healthCatRecovery": "Recovery",
+  "@healthCatRecovery": {
+    "description": "Trends catalogue category title: Recovery (readiness and stress)"
+  },
+  "healthBlurbReadiness": "How ready your body looks for strain, against your own usual",
+  "@healthBlurbReadiness": {
+    "description": "Trends catalogue one-line description for readiness"
+  },
+  "healthBlurbStress": "Beat-interval clustering over your most restful stretch",
+  "@healthBlurbStress": {
+    "description": "Trends catalogue one-line description for stress"
+  },
+  "healthWhyNoSpo2": "No SpO2 here: this app does not estimate blood oxygen.",
+  "@healthWhyNoSpo2": {
+    "description": "One-line note in the Breathing family on Trends saying why there is no SpO2 row"
+  },
   "healthTitle": "Health",
   "@healthTitle": {
     "description": "Health screen page title"
@@ -6381,6 +6450,19 @@
   "healthWhyReadFromNight": "Read from the night, and no night was scored.",
   "@healthWhyReadFromNight": {
     "description": "Why-absent reason: stress read from the night and no night was scored"
+  },
+  "healthWhyNotEnoughOvernight": "Not enough overnight data for this one",
+  "@healthWhyNotEnoughOvernight": {
+    "description": "Generic reason on an absent Last night card when no specific reason is known"
+  },
+  "healthBuildingBaseline": "Building your baseline ({days} of 7 days)",
+  "@healthBuildingBaseline": {
+    "description": "Trend card window label while fewer than 7 prior days exist to compare against",
+    "placeholders": {
+      "days": {
+        "type": "int"
+      }
+    }
   },
   "healthWhyNoReadingLastNight": "No reading from last night.",
   "@healthWhyNoReadingLastNight": {
@@ -7495,14 +7577,6 @@
   "@homeIllnessAdvice": {
     "description": "Illness watch advice line."
   },
-  "homeHeartRate": "Heart rate",
-  "@homeHeartRate": {
-    "description": "Signal card title: Heart rate."
-  },
-  "homeRestingSub": "Resting",
-  "@homeRestingSub": {
-    "description": "Signal card subtitle: Resting, under the heart rate reading."
-  },
   "homeNoRestingHr": "No resting heart rate",
   "@homeNoRestingHr": {
     "description": "Title of the empty-state card when there is no resting heart rate."
@@ -7705,6 +7779,14 @@
   "@wellnessWriteTheDayDown": {
     "description": "Action card title opening the journal compose screen"
   },
+  "wellnessLastNightInHealth": "Last night in Health",
+  "@wellnessLastNightInHealth": {
+    "description": "Recovery tab link row title: opens Health on its Last night sub-tab"
+  },
+  "wellnessLastNightInHealthMeta": "Readiness, sleep and the rest of the night",
+  "@wellnessLastNightInHealthMeta": {
+    "description": "Recovery tab link row subtitle: what Last night in Health holds"
+  },
   "wellnessOpen": "Open",
   "@wellnessOpen": {
     "description": "Generic 'Open' button/CTA label on action cards"
@@ -7765,79 +7847,6 @@
         "type": "int"
       }
     }
-  },
-  "wellnessTurnInBy": "Turn in by {time}",
-  "@wellnessTurnInBy": {
-    "description": "Sleep recommendation headline naming a target bedtime",
-    "placeholders": {
-      "time": {
-        "type": "String"
-      }
-    }
-  },
-  "wellnessDebtBody": "You owe {debt} of sleep, and tonight's need is {need}.",
-  "@wellnessDebtBody": {
-    "description": "Sleep recommendation body stating sleep debt and tonight's need",
-    "placeholders": {
-      "debt": {
-        "type": "String"
-      },
-      "need": {
-        "type": "String"
-      }
-    }
-  },
-  "wellnessSeeWhatLastNightCost": "See last night's impact",
-  "@wellnessSeeWhatLastNightCost": {
-    "description": "Sleep recommendation call-to-action text"
-  },
-  "wellnessWhatChargedAndDrained": "What raised and lowered your readiness",
-  "@wellnessWhatChargedAndDrained": {
-    "description": "Section title for readiness drivers"
-  },
-  "wellnessNoDriversTitle": "No readiness drivers yet",
-  "@wellnessNoDriversTitle": {
-    "description": "Status card title when no readiness drivers are available yet"
-  },
-  "wellnessNoDriversBody": "Drivers need more nights of data to establish your baseline.",
-  "@wellnessNoDriversBody": {
-    "description": "Status card body explaining readiness drivers need more nights of data"
-  },
-  "wellnessSleepNeedTonight": "Sleep need tonight",
-  "@wellnessSleepNeedTonight": {
-    "description": "Section title for tonight's sleep need"
-  },
-  "wellnessNoSleepNeedTitle": "No sleep need yet",
-  "@wellnessNoSleepNeedTitle": {
-    "description": "Status card title when no sleep need estimate exists"
-  },
-  "wellnessNoSleepNeedBody": "No sleep need was calculated for tonight, and no reason was recorded.",
-  "@wellnessNoSleepNeedBody": {
-    "description": "Status card fallback body when there is no reason recorded for missing sleep need"
-  },
-  "wellnessTonightsNeed": "Tonight's need",
-  "@wellnessTonightsNeed": {
-    "description": "Metric row label for tonight's sleep need duration"
-  },
-  "wellnessSleepDebt": "Sleep debt",
-  "@wellnessSleepDebt": {
-    "description": "Metric row label for accumulated sleep debt"
-  },
-  "wellnessAddedForStrain": "Added for strain",
-  "@wellnessAddedForStrain": {
-    "description": "Metric row label for minutes added to sleep need for strain"
-  },
-  "wellnessCreditedFromNaps": "Credited from naps",
-  "@wellnessCreditedFromNaps": {
-    "description": "Metric row label for minutes credited from naps"
-  },
-  "wellnessTargetBedtime": "Target bedtime",
-  "@wellnessTargetBedtime": {
-    "description": "Metric row label for the recommended bedtime"
-  },
-  "wellnessTargetWake": "Target wake",
-  "@wellnessTargetWake": {
-    "description": "Metric row label for the recommended wake time"
   },
   "wellnessRemoveHabitSemantic": "Remove {label}",
   "@wellnessRemoveHabitSemantic": {

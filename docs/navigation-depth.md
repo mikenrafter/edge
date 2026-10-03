@@ -69,3 +69,50 @@ Row names are the labels on screen. "Before" is the app as of 8AD, "After" is
 - Pickers and sheets (buzz pattern, tap actions, time of day) open on top of the
   screen that owns them and are not counted. Language is listed because it is a
   settings row that moved, though it opens as a sheet.
+
+## Health
+
+Health has four sub-tabs, one time scope each: Last night, Today, Trends and
+Labs. Paths start at the Health tab. A sub-tab is a chip, not a push, so the
+first push is the first arrow. Deep links and notifications that land on Health
+open on Last night.
+
+Paths, as bullets (the table above is the settings table the guard test reads,
+so this section does not use one):
+
+- Last night, Readiness: Health → Last night → Readiness
+- Last night, Sleep: Health → Last night → Sleep (opens that night)
+- Last night, HRV, Resting heart rate, Respiratory rate, Overnight stress and
+  Skin temperature: Health → Last night → the measure's detail
+- Last night, HRV investigation: Health → Last night → HRV → Investigate
+- Last night, Observations: Health → Last night → Observations (findings log)
+- Last night, Daytime sleep: Health → Last night → Daytime sleep (Naps)
+- Last night, Heart Screener (WHOOP MG only): Health → Last night → Heart
+  Screener
+- Today, Strain: Health → Today → Strain
+- Today, Steps: Health → Today → Steps
+- Today, Active minutes, Calories, Wear time and Heart rate: Health → Today →
+  the measure's detail
+- Trends, Body clock: Health → Trends → Body clock
+- Trends, any measure with a history: Health → Trends → the measure's detail,
+  opened on 30 days
+- Trends, Investigate: Health → Trends → the measure's detail → Investigate
+- Labs, Add a result: a sheet on Labs, not counted
+
+The only second push listed here is Investigate, from a measure's own detail.
+
+### What changed in 8AF
+
+- The five sub-tabs (Overview, Explore, Trends, Vitals, Labs) became four. A
+  sub-tab index remembered from the old order maps through
+  `HealthScreen.tabFromLegacy`: Overview to Last night, Explore and Trends to
+  Trends, Vitals to Today, Labs to Labs.
+- Explore is gone as a tab. Trends lists every measure that has a history,
+  grouped by family, and now includes Readiness and Stress. A family with no
+  history folds into one card. Each row opens its detail on 30 days; every
+  other way into a detail still opens on Today.
+- Last night shows one night and no sparklines, and names the night by its date
+  when it is not last night. Vitals is split: the heart rate range and wear time
+  moved to Today, skin temperature and respiratory rate to Last night.
+- The HRV deep-dive card on Vitals is gone. HRV has one detail, and
+  Investigate is one tap further from its day card.

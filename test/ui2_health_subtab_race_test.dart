@@ -25,17 +25,17 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 const _day = '2026-08-16';
 
-/// The Vitals read, with a hand on its clock.
+/// The Today sub-tab's read, with a hand on its clock.
 ///
-/// Only the four calls `VitalsData.load` makes are answered; the Overview
-/// load's own queries throw their `re-layer` default, which that loader
-/// catches, and nothing in this test looks at Overview.
+/// Only the calls `VitalsData.load` makes are answered; the Last night load's
+/// own queries throw their `re-layer` default, which that loader catches, and
+/// nothing in this test looks at Last night.
 class _Repo extends LocalRepository {
-  /// The respiratory rate the database holds. Changing it is "an import
+  /// The day's peak heart rate the database holds. Changing it is "an import
   /// landed".
-  double resp = 11;
+  int peak = 151;
 
-  /// Parks the NEXT lungs read until completed. One-shot.
+  /// Parks the NEXT timeline read until completed. One-shot.
   Completer<void>? hold;
 
   @override
@@ -47,23 +47,26 @@ class _Repo extends LocalRepository {
   Future<List<String>> availableDays() async => const [_day];
 
   @override
-  Future<Map<String, dynamic>> getDayTimeline(String date) async =>
-      {'date': date};
-
-  @override
-  Future<Map<String, dynamic>> getDayLungs(String date) async {
+  Future<Map<String, dynamic>> getDayTimeline(String date) async {
     // Read the value BEFORE parking: a read that started before the import
     // saw the pre-import database, whenever it happens to be resumed.
-    final v = resp;
+    final v = peak;
     final h = hold;
     if (h != null) {
       hold = null;
       await h.future;
     }
     return {
-      'resp': {'value': v}
+      'date': date,
+      'highs': {
+        'low_hr': {'v': 48},
+        'peak_hr': {'v': v},
+      },
     };
   }
+
+  @override
+  Future<Map<String, dynamic>> getDayLungs(String date) async => const {};
 
   @override
   Future<Map<String, dynamic>> getDayWear(String date) async => const {};
@@ -81,7 +84,7 @@ Future<void> _settle(WidgetTester t) async {
 void main() {
   testWidgets('a read in flight when the revision lands does not win',
       (t) async {
-    // Wide enough that all five sub-tab chips are on screen to be tapped.
+    // Wide enough that all four sub-tab chips are on screen to be tapped.
     t.view.physicalSize = const Size(800 * 3, 2400 * 3);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
@@ -100,10 +103,10 @@ void main() {
     ));
     await _settle(t);
 
-    // The user opens Vitals for the first time. Its read parks mid-flight.
+    // The user opens Today for the first time. Its read parks mid-flight.
     final parked = Completer<void>();
     repo.hold = parked;
-    await t.tap(find.text('Vitals'));
+    await t.tap(find.text('Today'));
     await _settle(t);
     expect(find.byType(CircularProgressIndicator), findsOneWidget,
         reason: 'the sub-tab should still be loading — nothing to race yet');
@@ -111,7 +114,7 @@ void main() {
     final before = t.state(find.byType(HealthScreen));
 
     // An import lands while that read is parked. Its cache is still null.
-    repo.resp = 17;
+    repo.peak = 163;
     app.bumpInsights();
     await _settle(t);
 
@@ -119,9 +122,9 @@ void main() {
     parked.complete();
     await _settle(t);
 
-    expect(find.text('17.0'), findsOneWidget,
+    expect(find.text('48 – 163'), findsOneWidget,
         reason: 'the post-revision read must be what is on screen');
-    expect(find.text('11.0'), findsNothing,
+    expect(find.text('48 – 151'), findsNothing,
         reason: 'a read that started before the revision committed after it');
     expect(identical(t.state(find.byType(HealthScreen)), before), isTrue,
         reason: 'the screen was remounted — that is the workaround, not the fix');

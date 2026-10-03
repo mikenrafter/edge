@@ -232,9 +232,12 @@ void main() {
       testWidgets('recovery paints its cards — $where', (t) async {
         await _openRecovery(t, dark: dark, scale: scale, repo: _Repo());
 
-        expect(find.text('What raised and lowered your readiness'), findsOneWidget);
-        expect(find.text('Sleep need tonight'), findsOneWidget);
-        expect(find.byType(DriverBreakdown), findsOneWidget);
+        // 8AF: Recovery is one link into Health > Last night. The readiness
+        // drivers and the sleep need it used to rebuild live in Health now.
+        expect(find.text('Last night in Health'), findsOneWidget);
+        expect(find.text('What raised and lowered your readiness'), findsNothing);
+        expect(find.text('Sleep need tonight'), findsNothing);
+        expect(find.byType(DriverBreakdown), findsNothing);
         _expectCardPainted(t);
       }, timeout: const Timeout(Duration(seconds: 60)));
 
@@ -251,7 +254,7 @@ void main() {
       // (`sanitizeForJson`); this is the same rule on the read side, and this
       // is the test that says so. Both themes, because a screen that has
       // stopped painting looks different in each.
-      testWidgets('a leaf of the wrong type costs its row, not the page — '
+      testWidgets('a leaf of the wrong type costs nothing on Recovery — '
           '$where', (t) async {
         await _openRecovery(
           t,
@@ -283,11 +286,11 @@ void main() {
           ),
         );
 
-        // Every one of those is now ABSENT, which is a state this screen
-        // already renders honestly — so the section is still here and still
-        // says why, rather than the page being gone.
-        expect(find.text('Sleep need tonight'), findsOneWidget);
-        expect(find.text('No sleep need yet'), findsOneWidget);
+        // Recovery reads none of those leaves any more (8AF moved the drivers
+        // and the sleep need to Health), so hostile ones cannot cost it
+        // anything: the link is still here and the page still paints.
+        expect(find.text('Last night in Health'), findsOneWidget);
+        expect(find.text('No sleep need yet'), findsNothing);
         _expectCardPainted(t);
       }, timeout: const Timeout(Duration(seconds: 60)));
     }

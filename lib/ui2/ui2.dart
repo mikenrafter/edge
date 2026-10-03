@@ -10,6 +10,7 @@ export 'charts.dart';
 export 'community_links.dart';
 export 'grammar.dart';
 export 'live_hr.dart';
+export 'metric_labels.dart';
 export 'ecg_widgets.dart';
 export 'nudges.dart';
 export 'paint_activity.dart';

@@ -1,11 +1,12 @@
 // The row that goes off the edge, and the thing that says so.
 //
 // Two halves. The first is the measurement that justifies the affordance at
-// all — the Wellness and Health tab sets against the width they actually get
-// on the three phone sizes we ship to, at the four text scales the design
-// system claims to survive. Those numbers are the reason `ScrollHint` exists
-// and the reason the alternative (make it fit) was refused, so they are
-// asserted rather than written in a comment nobody re-runs.
+// all — the Wellness tab set against the width it actually gets on the three
+// phone sizes we ship to, at the four text scales the design system claims to
+// survive. Those numbers are the reason `ScrollHint` exists and the reason the
+// alternative (make it fit) was refused, so they are asserted rather than
+// written in a comment nobody re-runs. Health had five tabs and was measured
+// here too; since 8AF it has four and the same measurement says it fits.
 //
 // The second is the honesty contract: absent when the content fits, present
 // when it does not, gone at the end of the scroll.
@@ -62,7 +63,7 @@ double _row(List<String> labels, double scale, {double pad = S.x4}) {
 }
 
 const _wellness = ['Mind', 'Recovery', 'Habits', 'Medication', 'Cycle'];
-const _health = ['Overview', 'Explore', 'Trends', 'Vitals', 'Labs'];
+const _health = ['Last night', 'Today', 'Trends', 'Labs'];
 
 /// Screen width minus the S.x4 gutter each side that every screen holding a
 /// `SubTabs` puts around it.
@@ -101,7 +102,7 @@ void _phone(WidgetTester t, [double width = 390]) {
 void main() {
   setUpAll(_loadType);
 
-  group('the five-tab rows do not fit, at any width we ship to', () {
+  group('the five-tab Wellness row does not fit, at any width we ship to', () {
     // 360 is the Android floor we design against, 390 is the iPhone the app is
     // developed on, 430 is the largest phone. If the row fitted on any of
     // them the honest fix would be to stop it scrolling, not to decorate it.
@@ -110,8 +111,6 @@ void main() {
         final vp = _viewport(screen);
         expect(_row(_wellness, 1.0), greaterThan(vp),
             reason: 'Wellness fits — drop ScrollHint rather than ship it');
-        expect(_row(_health, 1.0), greaterThan(vp),
-            reason: 'Health fits — drop ScrollHint rather than ship it');
       });
     }
 
@@ -123,18 +122,27 @@ void main() {
 
     test('at accessibility text sizes it is not close', () {
       for (final scale in const [1.5, 2.0, 3.1]) {
-        for (final labels in const [_wellness, _health]) {
-          expect(_row(labels, scale), greaterThan(_viewport(430)),
-              reason: 'even the widest phone at ${scale}x');
-        }
+        expect(_row(_wellness, scale), greaterThan(_viewport(430)),
+            reason: 'even the widest phone at ${scale}x');
       }
     });
+  });
+
+  group('the four-tab Health row fits', () {
+    // Health went from five tabs to four in 8AF so that nothing is clipped. If
+    // a label or a tab is added and this fails, the row is back to needing an
+    // affordance, and health_h2_tabs_test pins the same fit on the real screen.
+    for (final screen in const [360.0, 390.0, 430.0]) {
+      test('${screen.toInt()} pt, 1.0x text', () {
+        expect(_row(_health, 1.0), lessThanOrEqualTo(_viewport(screen)));
+      });
+    }
   });
 
   group('the last tab is invisible without help', () {
     // What the owner actually saw. At 360 the fifth chip is off the edge
     // entirely, so the row reads as ending at the fourth.
-    for (final labels in const [_wellness, _health]) {
+    for (final labels in const [_wellness]) {
       test('${labels.last} shows nothing at 360 pt', () {
         final hidden = _row(labels, 1.0) - _viewport(360);
         expect(hidden, greaterThan(_chip(labels.last, 1.0, active: false)),
@@ -145,7 +153,7 @@ void main() {
     test('and only a sliver at 390 pt', () {
       // Under 20 pt of a 60–66 pt chip, and what shows is its left padding
       // rather than any letters — which is why a fade alone was not enough.
-      for (final labels in const [_wellness, _health]) {
+      for (final labels in const [_wellness]) {
         final shown =
             _chip(labels.last, 1.0, active: false) - (_row(labels, 1.0) - _viewport(390));
         expect(shown, greaterThan(0));

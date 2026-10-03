@@ -49,6 +49,7 @@ import '../ui2.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
 import 'day_timeline.dart' show DayTimelineScreen;
+import 'illness_observation.dart';
 import 'metric_detail.dart';
 import 'readiness_detail.dart';
 import 'sleep_detail.dart';
@@ -924,9 +925,9 @@ _RingState _ringOf(HomeRingKind k, HomeData d, AppLocalizations? l) {
       final v = d.strain.value;
       // 0–21 is the scale's own ceiling, not a target invented here.
       return v == null
-          ? _gap(k, l?.homeRingStrain ?? 'Strain', LucideIcons.zap, C.purple,
+          ? _gap(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               d.strain, l?.homeRingNoStrain ?? 'No strain', l, unit: 'days')
-          : _RingState(k, l?.homeRingStrain ?? 'Strain', LucideIcons.zap, C.purple,
+          : _RingState(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21', frac: v / 21);
     case HomeRingKind.sleep:
       final v = d.sleepMin.value;
@@ -1748,49 +1749,24 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// explaining that nothing is wrong: "you are not getting sick" is not an
   /// observation worth a slot, and a watch that renders daily stops being read.
   ///
-  /// The tap goes to the resting-heart-rate chart rather than Health's copy of
-  /// this card, because the chart is the EVIDENCE — the watch reads that one
-  /// series, so the honest answer to "why are you telling me this" is to show
-  /// it. Health keeps its own fuller card; this is not a duplicate route to the
-  /// same words, it is a shorter road to the number underneath them.
+  /// The tap goes to the resting-heart-rate chart, because the chart is the
+  /// EVIDENCE — the watch reads that one series, so the honest answer to "why
+  /// are you telling me this" is to show it. Health draws the same card with the
+  /// same words (one widget, illness_observation.dart) and no tap.
   static List<Widget>? _bodyWatch(BuildContext c, HomeData d) {
-    final state = d.illnessState;
-    if (state == null || state == 'green') return null;
-    final l = AppLocalizations.of(c);
-
+    // The card and its words are shared with Health (illness_observation.dart);
+    // only the tap is Home's own.
     final sameNight = d.illnessDay == null || d.illnessDay == d.dayId;
-    final z = d.illnessZ;
-    final zAbs = z == null ? '' : z.abs().toStringAsFixed(1);
-
-    return [
-      Observation(
-        state == 'red'
-            ? (l?.homeIllnessRedTitle ?? 'Several nights in a row were outside your normal range')
-            : sameNight
-                ? (l?.homeIllnessAmberSameNight ?? 'Last night was outside your normal range')
-                : (l?.homeIllnessAmberOtherNight(prettyDay(d.illnessDay, l)) ??
-                    '${prettyDay(d.illnessDay, l)} was outside your normal range'),
-        z == null
-            ? (l?.homeIllnessBodyNoZ ??
-                'Your resting heart rate during sleep has been above your own '
-                'baseline. This uses one signal and cannot tell '
-                'you the cause.')
-            : (z >= 0
-                ? (l?.homeIllnessBodyAbove(zAbs) ??
-                    'Your resting heart rate during sleep has been above your own '
-                    'baseline. That night was $zAbs standard deviations above it. '
-                    'This uses one signal and cannot tell '
-                    'you the cause.')
-                : (l?.homeIllnessBodyBelow(zAbs) ??
-                    'Your resting heart rate during sleep has moved away from your own '
-                    'baseline. That night was $zAbs standard deviations below it. '
-                    'This uses one signal and cannot tell '
-                    'you the cause.')),
-        advice: l?.homeIllnessAdvice ?? 'Watch it if it lasts more than two days.',
-        onTap: () => go(c, const MetricDetail('resting_hr')),
-      ),
-      const SizedBox(height: S.x3),
-    ];
+    final card = illnessObservation(
+      c,
+      state: d.illnessState,
+      sameNight: sameNight,
+      day: d.illnessDay,
+      z: d.illnessZ,
+      onTap: () => go(c, const MetricDetail('resting_hr')),
+    );
+    if (card == null) return null;
+    return [card, const SizedBox(height: S.x3)];
   }
 
   /// Pull to reload. The screen also reloads itself on `insightsRevision`, but
@@ -1829,10 +1805,10 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     // duration was measured against.
     add(
       d.rhr,
-      () => SignalCard(LucideIcons.heart, C.red, l?.homeHeartRate ?? 'Heart rate',
+      () => SignalCard(LucideIcons.heart, C.red,
+          l?.healthRowRestingHr ?? MetricLabels.restingHr,
           '${d.rhr.value!.round()}',
           unit: 'bpm',
-          sub: l?.homeRestingSub ?? 'Resting',
           onTap: () => go(c, const MetricDetail('resting_hr'))),
       // "no sleep was recorded" was stated as fact, unconditionally — and it
       // was rendered directly beside a Sleep card showing that night's
@@ -1858,7 +1834,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     cards.add(SignalCard(
       LucideIcons.footprints,
       C.green,
-      l?.homeSteps ?? 'Steps',
+      l?.homeSteps ?? MetricLabels.steps,
       d.steps.value == null ? (l?.homeStepsNone ?? 'None') : thousands(d.steps.value),
       // The sensor rides the line that is already there rather than adding a
       // row: the day is resolved per window now, so "8,412" can be the strap's

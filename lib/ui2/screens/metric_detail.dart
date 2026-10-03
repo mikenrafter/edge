@@ -92,7 +92,7 @@ class MetricSpec {
 const _specs = <String, MetricSpec>{
   'resting_hr': MetricSpec(
     chartKey: 'resting_hr',
-    title: 'Resting heart rate',
+    title: MetricLabels.restingHr,
     unit: 'bpm',
     color: C.red,
     icon: LucideIcons.heart,
@@ -104,7 +104,7 @@ const _specs = <String, MetricSpec>{
   ),
   'hrv': MetricSpec(
     chartKey: 'hrv',
-    title: 'HRV',
+    title: MetricLabels.hrv,
     unit: 'ms',
     color: C.green,
     icon: LucideIcons.activity,
@@ -137,7 +137,7 @@ const _specs = <String, MetricSpec>{
   ),
   'resp_rate': MetricSpec(
     chartKey: 'resp_rate',
-    title: 'Respiratory rate',
+    title: MetricLabels.respRate,
     unit: 'br/min',
     color: C.teal,
     icon: LucideIcons.wind,
@@ -150,7 +150,7 @@ const _specs = <String, MetricSpec>{
   ),
   'sleep': MetricSpec(
     chartKey: 'sleep',
-    title: 'Time asleep',
+    title: MetricLabels.sleep,
     unit: 'min',
     color: C.blue,
     icon: LucideIcons.moon,
@@ -193,7 +193,7 @@ const _specs = <String, MetricSpec>{
   ),
   'steps': MetricSpec(
     chartKey: 'steps',
-    title: 'Steps',
+    title: MetricLabels.steps,
     unit: 'steps',
     color: C.green,
     icon: LucideIcons.footprints,
@@ -223,7 +223,7 @@ const _specs = <String, MetricSpec>{
   ),
   'strain': MetricSpec(
     chartKey: 'strain',
-    title: 'Strain',
+    title: MetricLabels.strain,
     color: C.purple,
     icon: LucideIcons.zap,
     method: 'Cardiovascular load for the day, scaled logarithmically to 0–21.',
@@ -242,7 +242,7 @@ const _specs = <String, MetricSpec>{
   ),
   'stress': MetricSpec(
     chartKey: 'stress',
-    title: 'Stress',
+    title: MetricLabels.stress,
     color: C.purple,
     icon: LucideIcons.brain,
     higherBetter: false,
@@ -311,7 +311,7 @@ const _specs = <String, MetricSpec>{
   // generic entry titled "nap min". They are 17/17 on real data.
   'nap_min': MetricSpec(
     chartKey: 'nap_min',
-    title: 'Daytime sleep',
+    title: MetricLabels.daytimeSleep,
     unit: 'min',
     color: C.indigo,
     icon: LucideIcons.moon,
@@ -349,13 +349,13 @@ const _specs = <String, MetricSpec>{
   // ── charted nowhere, on purpose ──
   'skin_temp': MetricSpec(
     chartKey: 'skin_temp',
-    title: 'Skin temperature',
+    title: MetricLabels.skinTemp,
     color: C.orange,
     icon: LucideIcons.thermometer,
     higherBetter: false,
-    suppress: 'Shown as a deviation from your usual level. Imported nights use '
-              'different units and are left out of the chart.',
-    suppressFix: 'Shown tonight on Vitals',
+    suppress: 'No trend yet. Skin temperature is shown as a deviation from your '
+              'usual level, one night at a time, on Last night in Health. '
+              'Imported nights use different units and are left out of any chart.',
     method: 'The night\'s mean raw sensor reading, shown as its distance from '
             'your recent nights. The app does not convert it to degrees.',
     citation: 'Relative only, uncalibrated sensor reading',
@@ -622,7 +622,15 @@ bool _labelSources(MetricData d) {
 class MetricDetail extends StatefulWidget {
   final String metricKey;
   final MetricData? data;
-  const MetricDetail(this.metricKey, {super.key, this.data});
+
+  /// The window to open on, in days (1, 7, 30, 182 or 365). Null opens on
+  /// Today, which is right for a screen that is about this morning's number.
+  /// Health's Trends list passes 30: someone choosing a metric from a list of
+  /// histories is asking how it has been going, not what it is right now.
+  /// A window this install does not have enough days for falls back to the
+  /// widest one it does, the same clamp every other range choice goes through.
+  final int? initialRange;
+  const MetricDetail(this.metricKey, {super.key, this.data, this.initialRange});
 
   @override
   State<MetricDetail> createState() => _MetricDetailState();
@@ -654,8 +662,9 @@ class _MetricDetailState extends State<MetricDetail> {
   /// days and three months on 30, so the default moved as the install aged and
   /// was never today. The range switcher is still here and still remembers
   /// nothing between visits — a default is where a screen starts, not a
-  /// preference.
-  int _range = 0;
+  /// preference. A caller that wants another window says so with
+  /// [MetricDetail.initialRange]; nothing else changes the default.
+  late int _range = _windows.indexOf(widget.initialRange ?? 1).clamp(0, 4);
   MetricData? _d;
   bool _loading = true;
 
