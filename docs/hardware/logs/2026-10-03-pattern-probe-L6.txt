@@ -1,0 +1,597 @@
+OpenStrap Device lab log
+Copied 2026-10-03T03:34:46.976141
+
+Sessions
+  ECG sensor touches | start 200 ms, gap 150 ms, confirm 750 ms, extra sensitive | 2 taps | 4.8 s in total
+
+Log, oldest first
+  03:01:17.835 | tap +2167961 ms | last +17987 ms | Band replied pending in 62 ms
+  03:01:19.887 | tap +2170013 ms | last +2052 ms | Pattern probe play: 9/40, band pair 47+152, one command looped 2×: 1 command [01 2f 98 00 00 00 00 00 00 00 00 02], written at +96 ms, replies pending; band events 60 at +-240 (got +108), 100 at +1709 (got +2066); buzzes: 1958.
+  03:01:24.248 | tap +2174374 ms | last +4360 ms | Band replied pending in 60 ms
+  03:01:25.821 | tap +2175947 ms | last +1572 ms | Pattern probe play: 9/40, band pair 47+152, one command looped 2×: 1 command [01 2f 98 00 00 00 00 00 00 00 00 02], written at +104 ms, replies pending; band events 60 at +-231 (got +237), 100 at +1308 (got +1676); buzzes: 1439.
+  03:01:33.524 | tap +2183650 ms | last +7703 ms | Band replied pending in 62 ms
+  03:01:34.892 | tap +2185018 ms | last +1368 ms | Pattern probe play: 10/40, effect 47 alone, one command looped 2×: 1 command [01 2f 00 00 00 00 00 00 00 00 00 02], written at +103 ms, replies pending; band events 60 at +-236 (got +236), 100 at +1043 (got +1398); buzzes: 1162.
+  03:01:44.862 | tap +2194989 ms | last +9970 ms | Band replied pending in 53 ms
+  03:01:45.901 | tap +2196027 ms | last +1038 ms | Pattern probe play: 11/40, effect 14, one command looped 2×: 1 command [01 0e 00 00 00 00 00 00 00 00 00 02], written at +98 ms, replies pending; band events 60 at +-241 (got +213), 100 at +718 (got +1075); buzzes: 862.
+  03:01:50.123 | tap +2200249 ms | last +4222 ms | Band replied pending in 57 ms
+  03:01:51.363 | tap +2201489 ms | last +1240 ms | Pattern probe play: 10/40, effect 47 alone, one command looped 2×: 1 command [01 2f 00 00 00 00 00 00 00 00 00 02], written at +93 ms, replies pending; band events 60 at +-248 (got +188), 100 at +951 (got +1315); buzzes: 1127.
+  03:01:55.015 | tap +2205141 ms | last +3651 ms | Band replied pending in 51 ms
+  03:01:55.846 | tap +2205973 ms | last +831 ms | Pattern probe play: 11/40, effect 14, one command looped 2×: 1 command [01 0e 00 00 00 00 00 00 00 00 00 02], written at +82 ms, replies pending; band events 60 at +-260 (got +196), 100 at +559 (got +906); buzzes: 710.
+  03:02:04.538 | tap +2214664 ms | last +8691 ms | Band replied pending in 49 ms
+  03:02:04.951 | tap +2215077 ms | last +413 ms | Pattern probe play: 12/40, effect 1, one command looped 2×: 1 command [01 01 00 00 00 00 00 00 00 00 00 02], written at +89 ms, replies pending; band events 60 at +-246 (got +200), 100 at +43 (got +424); buzzes: 224.
+  03:02:08.306 | tap +2218432 ms | last +3354 ms | Band replied pending in 53 ms
+  03:02:08.928 | tap +2219054 ms | last +622 ms | Pattern probe play: 12/40, effect 1, one command looped 2×: 1 command [01 01 00 00 00 00 00 00 00 00 00 02], written at +85 ms, replies pending; band events 60 at +-258 (got +199), 100 at +281 (got +645); buzzes: 446.
+  03:02:16.651 | tap +2226778 ms | last +7723 ms | Band replied pending in 65 ms
+  03:02:18.954 | tap +2229080 ms | last +2302 ms | Pattern probe play: 13/40, band pair 47+152, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 98 00 00 00 00 00 00 01], written at +86 ms, replies pending; band events 60 at +-249 (got +113), 100 at +1970 (got +2326); buzzes: 2213.
+  03:02:30.010 | tap +2240137 ms | last +11056 ms | Band replied pending in 51 ms
+  03:02:32.479 | tap +2242605 ms | last +2468 ms | Pattern probe play: 13/40, band pair 47+152, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 98 00 00 00 00 00 00 01], written at +85 ms, replies pending; band events 60 at +-252 (got +204), 100 at +2107 (got +2464); buzzes: 2260.
+  03:02:36.881 | tap +2247007 ms | last +4401 ms | Band replied pending in 63 ms
+  03:02:38.976 | tap +2249102 ms | last +2094 ms | Pattern probe play: 13/40, band pair 47+152, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 98 00 00 00 00 00 00 01], written at +104 ms, replies pending; band events 60 at +-234 (got +228), 100 at +1755 (got +2123); buzzes: 1895.
+  03:02:57.540 | tap +2267666 ms | last +18564 ms | Band replied pending in 62 ms
+  03:02:59.943 | tap +2270069 ms | last +2402 ms | Pattern probe play: 13/40, band pair 47+152, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 98 00 00 00 00 00 00 01], written at +105 ms, replies pending; band events 60 at +-243 (got +223), 100 at +2126 (got +2478); buzzes: 2255.
+  03:03:10.327 | tap +2280453 ms | last +10384 ms | Band replied pending in 62 ms
+  03:03:12.003 | tap +2282129 ms | last +1676 ms | Pattern probe play: 14/40, effect 47 alone, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 00 00 00 00 00 00 00 01], written at +95 ms, replies pending; band events 60 at +-257 (got +103), 100 at +1342 (got +1694); buzzes: 1591.
+  03:03:17.775 | tap +2287902 ms | last +5772 ms | Band replied pending in 69 ms
+  03:03:19.464 | tap +2289590 ms | last +1688 ms | Pattern probe play: 14/40, effect 47 alone, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 00 00 00 00 00 00 00 01], written at +94 ms, replies pending; band events 60 at +-252 (got +113), 100 at +1417 (got +1781); buzzes: 1668.
+  03:03:26.955 | tap +2297081 ms | last +7491 ms | Band replied pending in 54 ms
+  03:03:29.047 | tap +2299173 ms | last +2091 ms | Pattern probe play: 14/40, effect 47 alone, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 00 00 00 00 00 00 00 01], written at +89 ms, replies pending; band events 60 at +-253 (got +100), 100 at +1726 (got +2088); buzzes: 1988.
+  03:03:35.340 | tap +2305466 ms | last +6293 ms | Band replied pending in 82 ms
+  03:03:36.996 | tap +2307122 ms | last +1655 ms | Pattern probe play: 14/40, effect 47 alone, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 00 00 00 00 00 00 00 01], written at +97 ms, replies pending; band events 60 at +-255 (got +127), 100 at +1384 (got +1746); buzzes: 1619.
+  03:03:46.799 | tap +2316925 ms | last +9803 ms | Band replied pending in 55 ms
+  03:03:48.502 | tap +2318629 ms | last +1703 ms | Pattern probe play: 14/40, effect 47 alone, one command listing it 2× with a pause slot between: 1 command [01 2f 98 2f 00 00 00 00 00 00 00 01], written at +79 ms, replies pending; band events 60 at +-262 (got +95), 100 at +1397 (got +1755); buzzes: 1660.
+  03:03:54.823 | tap +2324950 ms | last +6321 ms | Band replied pending in 52 ms
+  03:03:56.490 | tap +2326616 ms | last +1666 ms | Pattern probe play: 15/40, effect 14, one command listing it 2× with a pause slot between: 1 command [01 0e 98 0e 00 00 00 00 00 00 00 01], written at +91 ms, replies pending; band events 60 at +-251 (got +209), 100 at +1388 (got +1745); buzzes: 1536.
+  03:04:09.121 | tap +2339247 ms | last +12630 ms | Band replied pending in 63 ms
+  03:04:10.589 | tap +2340715 ms | last +1467 ms | Pattern probe play: 15/40, effect 14, one command listing it 2× with a pause slot between: 1 command [01 0e 98 0e 00 00 00 00 00 00 00 01], written at +99 ms, replies pending; band events 60 at +-249 (got +207), 100 at +1110 (got +1473); buzzes: 1266.
+  03:04:17.896 | tap +2348022 ms | last +7307 ms | Band replied pending in 56 ms
+  03:04:19.566 | tap +2349692 ms | last +1669 ms | Pattern probe play: 15/40, effect 14, one command listing it 2× with a pause slot between: 1 command [01 0e 98 0e 00 00 00 00 00 00 00 01], written at +104 ms, replies pending; band events 60 at +-237 (got +221), 100 at +1362 (got +1712); buzzes: 1491.
+  03:04:27.978 | tap +2358104 ms | last +8412 ms | Band replied pending in 66 ms
+  03:04:29.561 | tap +2359687 ms | last +1582 ms | Pattern probe play: 15/40, effect 14, one command listing it 2× with a pause slot between: 1 command [01 0e 98 0e 00 00 00 00 00 00 00 01], written at +120 ms, replies pending; band events 60 at +-225 (got +126), 100 at +1304 (got +1686); buzzes: 1560.
+  03:04:35.053 | tap +2365180 ms | last +5492 ms | Band replied pending in 59 ms
+  03:04:36.117 | tap +2366243 ms | last +1063 ms | Pattern probe play: 16/40, effect 1, one command listing it 2× with a pause slot between: 1 command [01 01 98 01 00 00 00 00 00 00 00 01], written at +95 ms, replies pending; band events 60 at +-246 (got +221), 100 at +713 (got +1080); buzzes: 859.
+  03:04:39.119 | tap +2369245 ms | last +3001 ms | Band replied pending in 54 ms
+  03:04:40.070 | tap +2370196 ms | last +950 ms | Pattern probe play: 16/40, effect 1, one command listing it 2× with a pause slot between: 1 command [01 01 98 01 00 00 00 00 00 00 00 01], written at +95 ms, replies pending; band events 60 at +-252 (got +227), 100 at +647 (got +1012); buzzes: 785.
+  03:04:49.518 | tap +2379644 ms | last +9448 ms | Band replied pending in 57 ms
+  03:04:51.423 | tap +2381549 ms | last +1904 ms | Band replied pending in 61 ms
+  03:04:53.328 | tap +2383454 ms | last +1905 ms | Band replied pending in 68 ms
+  03:04:54.582 | tap +2384708 ms | last +1254 ms | Pattern probe play: 17/40, band pair 47+152, 3 commands 1.8 s apart: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +95, +1997, +3902 ms, replies pending, pending, pending; band events 60 at +-251 (got +105), 100 at +1268 (got +1627), 60 at +1648 (got +2010), 100 at +2758 (got +3127), 60 at +3558 (got +4037), 100 at +4758 (got +5122); silences: 383, 910; buzzes: 1522, 1117, 1085.
+  03:05:08.474 | tap +2398600 ms | last +13891 ms | Band replied pending in 53 ms
+  03:05:10.345 | tap +2400471 ms | last +1871 ms | Band replied pending in 46 ms
+  03:05:12.222 | tap +2402348 ms | last +1876 ms | Band replied pending in 53 ms
+  03:05:13.675 | tap +2403801 ms | last +1453 ms | Pattern probe play: 17/40, band pair 47+152, 3 commands 1.8 s apart: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +97, +1969, +3846 ms, replies pending, pending, pending; band events 60 at +-244 (got +112), 100 at +825 (got +1188), 60 at +1625 (got +2096), 100 at +2825 (got +3226), 60 at +3505 (got +3957), 100 at +4835 (got +5201); silences: 908, 731; buzzes: 1076, 1130, 1244.
+  03:05:19.129 | tap +2409255 ms | last +5453 ms | Band replied pending in 60 ms
+  03:05:21.005 | tap +2411132 ms | last +1876 ms | Band replied pending in 53 ms
+  03:05:22.874 | tap +2413000 ms | last +1868 ms | Band replied pending in 49 ms
+  03:05:24.118 | tap +2414244 ms | last +1243 ms | Pattern probe play: 17/40, band pair 47+152, 3 commands 1.8 s apart: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +100, +1970, +3846 ms, replies pending, pending, pending; band events 60 at +-246 (got +110), 100 at +1183 (got +1553), 60 at +1623 (got +1985), 100 at +2683 (got +3057), 60 at +3503 (got +3970), 100 at +4693 (got +5051); silences: 432, 913; buzzes: 1443, 1072, 1081.
+  03:05:38.331 | tap +2428457 ms | last +14212 ms | Band replied pending in 62 ms
+  03:05:40.218 | tap +2430344 ms | last +1887 ms | Band replied pending in 58 ms
+  03:05:42.115 | tap +2432241 ms | last +1896 ms | Band replied pending in 55 ms
+  03:05:43.677 | tap +2433804 ms | last +1562 ms | Pattern probe play: 17/40, band pair 47+152, 3 commands 1.8 s apart: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +98, +1995, +3882 ms, replies pending, pending, pending; band events 60 at +-242 (got +230), 100 at +1027 (got +1402), 60 at +1647 (got +2113), 100 at +3027 (got +3383), 60 at +3537 (got +3894), 100 at +5027 (got +5397); silences: 711, 511; buzzes: 1172, 1270, 1503.
+  03:05:54.320 | tap +2444446 ms | last +10642 ms | Band replied pending in 67 ms
+  03:05:56.205 | tap +2446332 ms | last +1885 ms | Band replied pending in 54 ms
+  03:05:58.078 | tap +2448205 ms | last +1873 ms | Band replied pending in 54 ms
+  03:05:59.147 | tap +2449273 ms | last +1068 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +106, +1991, +3864 ms, replies pending, pending, pending; band events 60 at +-251 (got +229), 100 at +538 (got +906), 60 at +1648 (got +2003), 100 at +2538 (got +2914), 60 at +3518 (got +3992), 100 at +4548 (got +4906); silences: 1097, 1078; buzzes: 677, 911, 914.
+  03:06:14.342 | tap +2464468 ms | last +15195 ms | Band replied pending in 62 ms
+  03:06:16.233 | tap +2466359 ms | last +1890 ms | Band replied pending in 55 ms
+  03:06:18.107 | tap +2468233 ms | last +1874 ms | Band replied pending in 58 ms
+  03:06:19.248 | tap +2469374 ms | last +1140 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +101, +1991, +3867 ms, replies pending, pending, pending; band events 60 at +-247 (got +216), 100 at +532 (got +902), 60 at +1642 (got +2003), 100 at +2542 (got +2913), 60 at +3512 (got +3876), 100 at +4542 (got +4909); silences: 1101, 963; buzzes: 686, 910, 1033.
+  03:06:23.554 | tap +2473680 ms | last +4306 ms | Band replied pending in 52 ms
+  03:06:25.440 | tap +2475567 ms | last +1886 ms | Band replied pending in 58 ms
+  03:06:27.336 | tap +2477462 ms | last +1895 ms | Band replied pending in 56 ms
+  03:06:28.184 | tap +2478311 ms | last +848 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +94, +1980, +3874 ms, replies pending, pending, pending; band events 60 at +-257 (got +106), 100 at +322 (got +696), 60 at +1632 (got +2110), 100 at +2332 (got +2704), 60 at +3522 (got +3886), 100 at +4332 (got +4696); silences: 1414, 1182; buzzes: 590, 594, 810.
+  03:06:41.353 | tap +2491479 ms | last +13168 ms | Band replied pending in 65 ms
+  03:06:43.205 | tap +2493332 ms | last +1852 ms | Band replied pending in 52 ms
+  03:06:45.112 | tap +2495239 ms | last +1907 ms | Band replied pending in 68 ms
+  03:06:45.741 | tap +2495867 ms | last +628 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +97, +1958, +3864 ms, replies pending, pending, pending; band events 60 at +-255 (got +224), 3 at +454 (got +819), 100 at +554 (got +924), 60 at +1604 (got +2078), 100 at +2564 (got +2932), 60 at +3504 (got +3871), 100 at +4064 (got +4435); silences: 1154, 939; buzzes: 700, 854, 564.
+  03:07:01.546 | tap +2511672 ms | last +15804 ms | Band replied pending in 64 ms
+  03:07:03.427 | tap +2513553 ms | last +1881 ms | Band replied pending in 53 ms
+  03:07:05.311 | tap +2515437 ms | last +1884 ms | Band replied pending in 58 ms
+  03:07:06.258 | tap +2516385 ms | last +947 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +92, +1974, +3859 ms, replies pending, pending, pending; band events 60 at +-259 (got +214), 100 at +380 (got +748), 60 at +1620 (got +2093), 100 at +2380 (got +2757), 60 at +3510 (got +3992), 100 at +4390 (got +4754); silences: 1345, 1235; buzzes: 534, 664, 762.
+  03:07:09.709 | tap +2519835 ms | last +3450 ms | Band replied pending in 65 ms
+  03:07:11.568 | tap +2521694 ms | last +1858 ms | Band replied pending in 37 ms
+  03:07:13.461 | tap +2523587 ms | last +1893 ms | Band replied pending in 53 ms
+  03:07:14.217 | tap +2524343 ms | last +756 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +108, +1965, +3857 ms, replies pending, pending, pending; band events 60 at +-249 (got +265), 100 at +740 (got +1099), 60 at +1610 (got +1976), 100 at +2240 (got +2611), 60 at +3500 (got +3976), 100 at +4240 (got +4614); silences: 877, 1365; buzzes: 834, 635, 638.
+  03:07:26.280 | tap +2536406 ms | last +12063 ms | Band replied pending in 56 ms
+  03:07:28.193 | tap +2538319 ms | last +1912 ms | Band replied pending in 64 ms
+  03:07:30.065 | tap +2540191 ms | last +1872 ms | Band replied pending in 55 ms
+  03:07:30.787 | tap +2540913 ms | last +721 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +85, +1998, +3871 ms, replies pending, pending, pending; band events 60 at +-262 (got +207), 100 at +657 (got +1048), 60 at +1637 (got +2007), 100 at +2667 (got +3060), 60 at +3517 (got +3984), 100 at +4167 (got +4541); silences: 959, 924; buzzes: 841, 1053, 557.
+  03:07:47.584 | tap +2557710 ms | last +16796 ms | Band replied pending in 50 ms
+  03:07:49.476 | tap +2559602 ms | last +1892 ms | Band replied pending in 53 ms
+  03:07:51.367 | tap +2561493 ms | last +1891 ms | Band replied pending in 55 ms
+  03:07:52.325 | tap +2562451 ms | last +957 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +89, +1981, +3872 ms, replies pending, pending, pending; band events 60 at +-261 (got +230), 100 at +388 (got +756), 60 at +1628 (got +1991), 100 at +2388 (got +2757), 60 at +3518 (got +3885), 100 at +4388 (got +4754); silences: 1235, 1128; buzzes: 526, 766, 869.
+  03:07:59.804 | tap +2569930 ms | last +7478 ms | Band replied pending in 66 ms
+  03:08:01.680 | tap +2571806 ms | last +1876 ms | Band replied pending in 31 ms
+  03:08:03.579 | tap +2573705 ms | last +1898 ms | Band replied pending in 54 ms
+  03:08:04.347 | tap +2574473 ms | last +767 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +97, +1973, +3866 ms, replies pending, pending, pending; band events 60 at +-265 (got +201), 100 at +684 (got +1062), 60 at +1624 (got +2087), 100 at +2184 (got +2565), 60 at +3514 (got +3880), 100 at +4184 (got +4572); silences: 1025, 1315; buzzes: 861, 478, 692.
+  03:08:12.713 | tap +2582839 ms | last +8366 ms | Band replied pending in 63 ms
+  03:08:14.627 | tap +2584754 ms | last +1914 ms | Band replied pending in 70 ms
+  03:08:16.508 | tap +2586635 ms | last +1880 ms | Band replied pending in 66 ms
+  03:08:17.362 | tap +2587488 ms | last +853 ms | Pattern probe play: 19/40, effect 14, 3 commands 1.8 s apart: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +103, +2019, +3897 ms, replies pending, pending, pending; band events 60 at +-255 (got +115), 100 at +294 (got +684), 60 at +1664 (got +2025), 100 at +2304 (got +2687), 60 at +3544 (got +3912), 100 at +4304 (got +4687); silences: 1341, 1225; buzzes: 569, 662, 775.
+  03:08:28.447 | tap +2598574 ms | last +11085 ms | Band replied pending in 58 ms
+  03:08:30.337 | tap +2600463 ms | last +1889 ms | Band replied pending in 62 ms
+  03:08:32.213 | tap +2602340 ms | last +1876 ms | Band replied pending in 51 ms
+  03:08:32.855 | tap +2602981 ms | last +641 ms | Pattern probe play: 19/40, effect 14, 3 commands 1.8 s apart: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +103, +1991, +3867 ms, replies pending, pending, pending; band events 60 at +-253 (got +210), 100 at +576 (got +957), 60 at +1636 (got +2003), 100 at +2076 (got +2455), 60 at +3506 (got +3876), 100 at +4086 (got +4446); silences: 1046, 1421; buzzes: 747, 452, 570.
+  03:08:42.079 | tap +2612205 ms | last +9223 ms | Band replied pending in 54 ms
+  03:08:43.973 | tap +2614099 ms | last +1894 ms | Band replied pending in 59 ms
+  03:08:45.862 | tap +2615988 ms | last +1888 ms | Band replied pending in 62 ms
+  03:08:46.921 | tap +2617047 ms | last +1059 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +99, +1993, +3882 ms, replies pending, pending, pending; band events 60 at +-257 (got +218), 100 at +462 (got +844), 60 at +1632 (got +2003), 100 at +2462 (got +2837), 60 at +3522 (got +4004), 100 at +4462 (got +4843); silences: 1159, 1167; buzzes: 626, 834, 839.
+  03:09:07.451 | tap +2637577 ms | last +20529 ms | Band replied pending in 70 ms
+  03:09:09.352 | tap +2639479 ms | last +1901 ms | Band replied pending in 56 ms
+  03:09:11.229 | tap +2641355 ms | last +1876 ms | Band replied pending in 58 ms
+  03:09:11.882 | tap +2642008 ms | last +653 ms | Pattern probe play: 19/40, effect 14, 3 commands 1.8 s apart: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +105, +2007, +3883 ms, replies pending, pending, pending; band events 60 at +-252 (got +118), 100 at +627 (got +1009), 60 at +1647 (got +2020), 100 at +2127 (got +2511), 60 at +3527 (got +3895), 100 at +4127 (got +4503); silences: 1011, 1384; buzzes: 891, 491, 608.
+  03:09:23.779 | tap +2653905 ms | last +11897 ms | Band replied pending in 65 ms
+  03:09:25.667 | tap +2655793 ms | last +1887 ms | Band replied pending in 40 ms
+  03:09:27.561 | tap +2657687 ms | last +1893 ms | Band replied pending in 57 ms
+  03:09:28.406 | tap +2658532 ms | last +845 ms | Pattern probe play: 19/40, effect 14, 3 commands 1.8 s apart: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +95, +1983, +3879 ms, replies pending, pending, pending; band events 60 at +-261 (got +221), 100 at +298 (got +672), 60 at +1628 (got +2100), 100 at +2308 (got +2679), 60 at +3518 (got +3996), 100 at +4308 (got +4675); silences: 1428, 1317; buzzes: 451, 579, 679.
+  03:09:37.369 | tap +2667496 ms | last +8963 ms | Band replied pending in 46 ms
+  03:09:39.269 | tap +2669395 ms | last +1899 ms | Band replied pending in 58 ms
+  03:09:41.168 | tap +2671294 ms | last +1898 ms | Band replied pending in 52 ms
+  03:09:41.918 | tap +2672044 ms | last +750 ms | Pattern probe play: 18/40, effect 47 alone, 3 commands 1.8 s apart: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +95, +1989, +3892 ms, replies pending, pending, pending; band events 60 at +-261 (got +222), 100 at +728 (got +1107), 60 at +1628 (got +2004), 100 at +2228 (got +2608), 60 at +3538 (got +3904), 100 at +4228 (got +4605); silences: 897, 1296; buzzes: 885, 604, 701.
+  03:09:47.153 | tap +2677279 ms | last +5235 ms | Band replied pending in 62 ms
+  03:09:49.045 | tap +2679171 ms | last +1891 ms | Band replied pending in 62 ms
+  03:09:50.929 | tap +2681055 ms | last +1884 ms | Band replied pending in 51 ms
+  03:09:51.447 | tap +2681573 ms | last +517 ms | Pattern probe play: 20/40, effect 1, 3 commands 1.8 s apart: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +95, +1990, +3872 ms, replies pending, pending, pending; band events 60 at +-264 (got +108), 100 at +-44 (got +333), 60 at +1625 (got +2000), 100 at +1955 (got +2331), 60 at +3515 (got +3981), 100 at +3965 (got +4342); silences: 1667, 1650; buzzes: 225, 331, 361.
+  03:10:05.274 | tap +2695400 ms | last +13826 ms | Band replied pending in 56 ms
+  03:10:07.165 | tap +2697291 ms | last +1890 ms | Band replied pending in 53 ms
+  03:10:09.043 | tap +2699169 ms | last +1877 ms | Band replied pending in 60 ms
+  03:10:09.473 | tap +2699599 ms | last +430 ms | Pattern probe play: 20/40, effect 1, 3 commands 1.8 s apart: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +104, +1994, +3872 ms, replies pending, pending, pending; band events 60 at +-257 (got +249), 100 at +362 (got +734), 60 at +1632 (got +2114), 100 at +1862 (got +2234), 60 at +3512 (got +3882), 100 at +3862 (got +4248); silences: 1380, 1648; buzzes: 485, 120, 366.
+  03:10:19.658 | tap +2709784 ms | last +10184 ms | Band replied pending in 61 ms
+  03:10:21.551 | tap +2711677 ms | last +1893 ms | Band replied pending in 77 ms
+  03:10:23.455 | tap +2713581 ms | last +1903 ms | Band replied pending in 60 ms
+  03:10:23.998 | tap +2714124 ms | last +542 ms | Pattern probe play: 20/40, effect 1, 3 commands 1.8 s apart: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +93, +1984, +3890 ms, replies pending, pending, pending; band events 60 at +-262 (got +215), 100 at +-12 (got +359), 60 at +1627 (got +1997), 100 at +1987 (got +2356), 60 at +3527 (got +4017), 100 at +3987 (got +4371); silences: 1638, 1661; buzzes: 144, 359, 354.
+  03:10:34.844 | tap +2724971 ms | last +10846 ms | Band replied pending in 61 ms
+  03:10:36.732 | tap +2726858 ms | last +1887 ms | Band replied pending in 48 ms
+  03:10:38.627 | tap +2728753 ms | last +1895 ms | Band replied pending in 48 ms
+  03:10:38.968 | tap +2729094 ms | last +340 ms | Pattern probe play: 20/40, effect 1, 3 commands 1.8 s apart: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +94, +1984, +3877 ms, replies pending, pending, pending; band events 60 at +-265 (got +105), 100 at +314 (got +696), 60 at +1624 (got +1993), 100 at +1824 (got +2189), 60 at +3524 (got +4020), 100 at +3824 (got +4199); silences: 1297, 1831; buzzes: 591, 196, 179.
+  03:10:59.485 | tap +2749611 ms | last +20517 ms | Band replied pending in 62 ms
+  03:11:01.379 | tap +2751505 ms | last +1894 ms | Band replied pending in 66 ms
+  03:11:03.263 | tap +2753389 ms | last +1883 ms | Band replied pending in 52 ms
+  03:11:03.479 | tap +2753606 ms | last +216 ms | Pattern probe play: 20/40, effect 1, 3 commands 1.8 s apart: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +98, +1993, +3878 ms, replies pending, pending, pending; band events 60 at +-264 (got +218), 100 at +205 (got +594), 60 at +1625 (got +2000), 100 at +2205 (got +2591), 60 at +3515 (got +3987), 100 at +3715 (got +4094); silences: 1406, 1396; buzzes: 376, 591, 107.
+  03:11:13.543 | tap +2763669 ms | last +10063 ms | Band replied pending in 55 ms
+  03:11:15.190 | tap +2765317 ms | last +1647 ms | Band replied pending in 52 ms
+  03:11:16.748 | tap +2766874 ms | last +1557 ms | Band replied pending in 68 ms
+  03:11:18.025 | tap +2768152 ms | last +1277 ms | Pattern probe play: 21/40, band pair 47+152, 3 commands, each after the band says the last one ended: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +100, +1748, +3308 ms, replies pending, pending, pending; band events 60 at +-259 (got +115), 100 at +1170 (got +1561), 60 at +1390 (got +1872), 100 at +2680 (got +3058), 60 at +2930 (got +3309), 100 at +4170 (got +4558); silences: 311, 251; buzzes: 1446, 1186, 1249.
+  03:11:42.537 | tap +2792663 ms | last +24511 ms | Band replied pending in 49 ms
+  03:11:44.323 | tap +2794450 ms | last +1786 ms | Band replied pending in 67 ms
+  03:11:45.759 | tap +2795885 ms | last +1435 ms | Band replied pending in 63 ms
+  03:11:47.086 | tap +2797212 ms | last +1326 ms | Pattern probe play: 21/40, band pair 47+152, 3 commands, each after the band says the last one ended: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +103, +1887, +3325 ms, replies pending, pending, pending; band events 60 at +-262 (got +227), 100 at +1207 (got +1587), 60 at +1517 (got +2013), 100 at +2707 (got +3088), 60 at +2967 (got +3436), 100 at +4207 (got +4589); silences: 426, 348; buzzes: 1360, 1075, 1153.
+  03:11:55.763 | tap +2805889 ms | last +8677 ms | Band replied pending in 49 ms
+  03:11:57.306 | tap +2807433 ms | last +1543 ms | Band replied pending in 53 ms
+  03:11:58.752 | tap +2808878 ms | last +1445 ms | Band replied pending in 53 ms
+  03:12:00.129 | tap +2810255 ms | last +1376 ms | Pattern probe play: 21/40, band pair 47+152, 3 commands, each after the band says the last one ended: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +75, +1619, +3065 ms, replies pending, pending, pending; band events 60 at +-285 (got +194), 100 at +974 (got +1358), 60 at +1264 (got +1748), 100 at +2474 (got +2856), 60 at +2694 (got +3077), 100 at +3974 (got +4354); silences: 390, 221; buzzes: 1164, 1108, 1277.
+  03:12:18.191 | tap +2828318 ms | last +18062 ms | Band replied pending in 74 ms
+  03:12:19.857 | tap +2829984 ms | last +1666 ms | Band replied pending in 56 ms
+  03:12:21.297 | tap +2831423 ms | last +1439 ms | Band replied pending in 59 ms
+  03:12:22.668 | tap +2832794 ms | last +1371 ms | Pattern probe play: 21/40, band pair 47+152, 3 commands, each after the band says the last one ended: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +93, +1772, +3212 ms, replies pending, pending, pending; band events 60 at +-272 (got +111), 100 at +1097 (got +1474), 60 at +1407 (got +1884), 100 at +2597 (got +2976), 60 at +2847 (got +3223), 100 at +4097 (got +4491); silences: 410, 247; buzzes: 1363, 1092, 1268.
+  03:12:28.721 | tap +2838847 ms | last +6052 ms | Band replied pending in 46 ms
+  03:12:30.282 | tap +2840408 ms | last +1561 ms | Band replied pending in 68 ms
+  03:12:31.861 | tap +2841987 ms | last +1578 ms | Band replied pending in 49 ms
+  03:12:33.120 | tap +2843246 ms | last +1258 ms | Pattern probe play: 21/40, band pair 47+152, 3 commands, each after the band says the last one ended: 3 commands [01 2f 98 00 00 00 00 00 00 00 00 01], written at +91, +1652, +3229 ms, replies pending, pending, pending; band events 60 at +-277 (got +225), 100 at +1062 (got +1445), 60 at +1282 (got +1664), 100 at +2572 (got +2958), 60 at +2862 (got +3354), 100 at +4072 (got +4443); silences: 219, 396; buzzes: 1220, 1294, 1089.
+  03:12:42.497 | tap +2852624 ms | last +9377 ms | Band replied pending in 75 ms
+  03:12:43.333 | tap +2853459 ms | last +835 ms | Band replied pending in 59 ms
+  03:12:44.354 | tap +2854480 ms | last +1021 ms | Band replied pending in 60 ms
+  03:12:45.201 | tap +2855327 ms | last +847 ms | Pattern probe play: 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +108, +943, +1964 ms, replies pending, pending, pending; band events 60 at +-267 (got +115), 100 at +322 (got +709), 60 at +572 (got +957), 100 at +1322 (got +1710), 60 at +1592 (got +1974), 100 at +2322 (got +2706); silences: 248, 264; buzzes: 594, 753, 732.
+  03:12:59.637 | tap +2869763 ms | last +14436 ms | Band replied pending in 49 ms
+  03:13:00.853 | tap +2870979 ms | last +1216 ms | Band replied pending in 65 ms
+  03:13:01.888 | tap +2872014 ms | last +1034 ms | Band replied pending in 43 ms
+  03:13:02.718 | tap +2872845 ms | last +830 ms | Pattern probe play: 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +85, +1310, +2347 ms, replies pending, pending, pending; band events 60 at +-277 (got +199), 100 at +702 (got +1087), 60 at +942 (got +1435), 100 at +1712 (got +2091), 60 at +1982 (got +2464), 100 at +2702 (got +3087); silences: 348, 373; buzzes: 888, 656, 623.
+  03:13:10.033 | tap +2880160 ms | last +7314 ms | Band replied pending in 67 ms
+  03:13:10.858 | tap +2880984 ms | last +824 ms | Band replied pending in 62 ms
+  03:13:11.874 | tap +2882000 ms | last +1016 ms | Band replied pending in 38 ms
+  03:13:12.695 | tap +2882822 ms | last +821 ms | Pattern probe play: 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +101, +926, +1942 ms, replies pending, pending, pending; band events 60 at +-271 (got +111), 100 at +318 (got +701), 60 at +558 (got +1039), 100 at +1318 (got +1706), 60 at +1578 (got +2045), 100 at +2308 (got +2698); silences: 338, 339; buzzes: 590, 667, 653.
+  03:13:21.765 | tap +2891891 ms | last +9069 ms | Band replied pending in 44 ms
+  03:13:22.874 | tap +2893000 ms | last +1108 ms | Band replied pending in 55 ms
+  03:13:23.890 | tap +2894016 ms | last +1016 ms | Band replied pending in 61 ms
+  03:13:24.651 | tap +2894777 ms | last +760 ms | Pattern probe play: 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +84, +1192, +2208 ms, replies pending, pending, pending; band events 60 at +-290 (got +190), 100 at +569 (got +947), 60 at +819 (got +1309), 100 at +1569 (got +1961), 60 at +1839 (got +2331), 100 at +2569 (got +2946); silences: 362, 370; buzzes: 757, 652, 615.
+  03:13:34.449 | tap +2904575 ms | last +9798 ms | Band replied pending in 66 ms
+  03:13:35.343 | tap +2905469 ms | last +893 ms | Band replied pending in 58 ms
+  03:13:36.345 | tap +2906472 ms | last +1002 ms | Band replied pending in 56 ms
+  03:13:37.207 | tap +2907333 ms | last +861 ms | Pattern probe play: 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +106, +1006, +2013 ms, replies pending, pending, pending; band events 60 at +-259 (got +121), 100 at +430 (got +814), 60 at +640 (got +1018), 100 at +1440 (got +1816), 60 at +1640 (got +2147), 100 at +2440 (got +2819); silences: 204, 331; buzzes: 693, 798, 672.
+  03:13:50.400 | tap +2920526 ms | last +13193 ms | Band replied pending in 63 ms
+  03:13:51.435 | tap +2921562 ms | last +1035 ms | Band replied pending in 61 ms
+  03:13:52.366 | tap +2922493 ms | last +931 ms | Band replied pending in 81 ms
+  03:13:53.210 | tap +2923336 ms | last +843 ms | Pattern probe play: 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +89, +1126, +2058 ms, replies pending, pending, pending; band events 60 at +-275 (got +213), 100 at +474 (got +863), 60 at +754 (got +1140), 100 at +1474 (got +1859), 60 at +1674 (got +2063), 100 at +2474 (got +2874); silences: 277, 204; buzzes: 650, 719, 811.
+  03:14:02.310 | tap +2932436 ms | last +9100 ms | Band replied pending in 69 ms
+  03:14:03.465 | tap +2933592 ms | last +1155 ms | Band replied pending in 65 ms
+  03:14:04.393 | tap +2934519 ms | last +927 ms | Band replied pending in 60 ms
+  03:14:05.236 | tap +2935362 ms | last +842 ms | Pattern probe play: 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: 3 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +116, +1272, +2200 ms, replies pending, pending, pending; band events 60 at +-250 (got +233), 100 at +599 (got +988), 60 at +899 (got +1287), 100 at +1609 (got +1996), 60 at +1829 (got +2211), 100 at +2609 (got +3001); silences: 299, 215; buzzes: 755, 709, 790.
+  03:14:37.658 | tap +2967784 ms | last +32421 ms | Band replied pending in 46 ms
+  03:14:38.698 | tap +2968824 ms | last +1040 ms | Band replied pending in 47 ms
+  03:14:39.550 | tap +2969676 ms | last +851 ms | Band replied pending in 49 ms
+  03:14:40.265 | tap +2970391 ms | last +715 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +503, +1543, +2394 ms, replies pending, pending, pending; band events 60 at +135 (got +640), 100 at +675 (got +1061), 60 at +1175 (got +1668), 100 at +1685 (got +2077), 60 at +2025 (got +2504), 100 at +2685 (got +3069); silences: 607, 427; buzzes: 421, 409, 565.
+  03:14:57.222 | tap +2987348 ms | last +16956 ms | Band replied pending in 47 ms
+  03:14:58.219 | tap +2988345 ms | last +997 ms | Band replied pending in 61 ms
+  03:14:59.279 | tap +2989406 ms | last +1060 ms | Band replied pending in 58 ms
+  03:14:59.752 | tap +2989879 ms | last +473 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +149, +1141, +2205 ms, replies pending, pending, pending; band events 60 at +-221 (got +294), 100 at +288 (got +674), 60 at +768 (got +1153), 100 at +1288 (got +1671), 60 at +1838 (got +2220), 100 at +2288 (got +2675); silences: 479, 549; buzzes: 380, 518, 455.
+  03:15:02.639 | tap +2992765 ms | last +2886 ms | Band replied pending in 42 ms
+  03:15:03.864 | tap +2993990 ms | last +1225 ms | Band replied pending in 43 ms
+  03:15:05.489 | tap +2995615 ms | last +1625 ms | Band replied pending in 48 ms
+  03:15:06.295 | tap +2996421 ms | last +805 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +159, +1384, +3007 ms, replies pending, pending, pending; band events 60 at +-208 (got +376), 100 at +381 (got +778), 60 at +1001 (got +1540), 100 at +1891 (got +2280), 60 at +2641 (got +3021), 100 at +3391 (got +3776); silences: 762, 741; buzzes: 402, 740, 755.
+  03:15:20.635 | tap +3010761 ms | last +14340 ms | Band replied pending in 88 ms
+  03:15:21.640 | tap +3011766 ms | last +1004 ms | Band replied pending in 73 ms
+  03:15:22.876 | tap +3013002 ms | last +1236 ms | Band replied pending in 63 ms
+  03:15:23.840 | tap +3013966 ms | last +963 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +262, +1278, +2512 ms, replies pending, pending, pending; band events 60 at +-101 (got +474), 100 at +518 (got +909), 60 at +898 (got +1503), 100 at +1518 (got +1924), 60 at +2138 (got +2522), 100 at +3028 (got +3413); silences: 594, 598; buzzes: 435, 421, 891.
+  03:15:26.491 | tap +3016617 ms | last +2650 ms | Band replied pending in 67 ms
+  03:15:27.604 | tap +3017730 ms | last +1113 ms | Band replied pending in 78 ms
+  03:15:28.887 | tap +3019013 ms | last +1282 ms | Band replied pending in 70 ms
+  03:15:29.778 | tap +3019905 ms | last +891 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +177, +1292, +2574 ms, replies pending, pending, pending; band events 60 at +-190 (got +345), 100 at +578 (got +974), 60 at +939 (got +1460), 100 at +1578 (got +1979), 60 at +2189 (got +2578), 100 at +3078 (got +3467); silences: 486, 599; buzzes: 629, 519, 889.
+  03:15:34.067 | tap +3024193 ms | last +4288 ms | Band replied pending in 59 ms
+  03:15:35.173 | tap +3025299 ms | last +1106 ms | Band replied pending in 35 ms
+  03:15:36.645 | tap +3026771 ms | last +1472 ms | Band replied pending in 57 ms
+  03:15:37.343 | tap +3027469 ms | last +697 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +396, +1503, +2975 ms, replies pending, pending, pending; band events 60 at +22 (got +411), 100 at +732 (got +1153), 60 at +1132 (got +1784), 100 at +1732 (got +2119), 60 at +2602 (got +3265), 100 at +3232 (got +3624); silences: 631, 1146; buzzes: 742, 335, 359.
+  03:16:52.865 | tap +3102991 ms | last +75522 ms | Band replied pending in 64 ms
+  03:16:53.653 | tap +3103779 ms | last +788 ms | Band replied pending in 70 ms
+  03:16:54.646 | tap +3104773 ms | last +993 ms | Band replied pending in 65 ms
+  03:16:55.420 | tap +3105546 ms | last +773 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +92, +864, +1878 ms, replies pending, pending, pending; band events 60 at +-288 (got +266), 100 at +221 (got +618), 60 at +491 (got +886), 100 at +1221 (got +1608), 60 at +1491 (got +1879), 100 at +2221 (got +2615); silences: 268, 271; buzzes: 352, 722, 736.
+  03:17:02.781 | tap +3112907 ms | last +7361 ms | Band replied pending in 57 ms
+  03:17:03.652 | tap +3113778 ms | last +870 ms | Band replied pending in 87 ms
+  03:17:04.686 | tap +3114813 ms | last +1034 ms | Band replied pending in 52 ms
+  03:17:05.448 | tap +3115574 ms | last +761 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +91, +949, +1994 ms, replies pending, pending, pending; band events 60 at +-288 (got +238), 100 at +311 (got +714), 60 at +581 (got +1095), 100 at +1311 (got +1715), 60 at +1611 (got +2147), 100 at +2311 (got +2714); silences: 381, 432; buzzes: 476, 620, 567.
+  03:17:11.886 | tap +3122012 ms | last +6438 ms | Band replied pending in 46 ms
+  03:17:12.682 | tap +3122809 ms | last +796 ms | Band replied pending in 59 ms
+  03:17:13.684 | tap +3123810 ms | last +1001 ms | Band replied pending in 66 ms
+  03:17:14.436 | tap +3124562 ms | last +751 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +80, +876, +1878 ms, replies pending, pending, pending; band events 60 at +-303 (got +230), 100 at +206 (got +604), 60 at +496 (got +885), 100 at +1206 (got +1596), 60 at +1496 (got +2019), 100 at +2206 (got +2602); silences: 281, 423; buzzes: 374, 711, 583.
+  03:17:17.434 | tap +3127560 ms | last +2997 ms | Band replied pending in 58 ms
+  03:17:18.218 | tap +3128344 ms | last +784 ms | Band replied pending in 59 ms
+  03:17:19.187 | tap +3129313 ms | last +968 ms | Band replied pending in 61 ms
+  03:17:19.923 | tap +3130050 ms | last +736 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +95, +877, +1848 ms, replies pending, pending, pending; band events 60 at +-287 (got +106), 100 at +182 (got +583), 60 at +492 (got +886), 100 at +1182 (got +1587), 60 at +1472 (got +1976), 100 at +2182 (got +2572); silences: 303, 389; buzzes: 477, 701, 596.
+  03:17:22.921 | tap +3133048 ms | last +2998 ms | Band replied pending in 66 ms
+  03:17:23.632 | tap +3133758 ms | last +710 ms | Band replied pending in 60 ms
+  03:17:24.712 | tap +3134839 ms | last +1080 ms | Band replied pending in 59 ms
+  03:17:25.499 | tap +3135626 ms | last +786 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +102, +813, +1891 ms, replies pending, pending, pending; band events 60 at +-288 (got +229), 100 at +201 (got +606), 60 at +441 (got +947), 100 at +1211 (got +1602), 60 at +1511 (got +1902), 100 at +2211 (got +2596); silences: 341, 300; buzzes: 377, 655, 694.
+  03:17:28.444 | tap +3138570 ms | last +2944 ms | Band replied pending in 62 ms
+  03:17:29.166 | tap +3139292 ms | last +721 ms | Band replied pending in 66 ms
+  03:17:30.181 | tap +3140307 ms | last +1015 ms | Band replied pending in 58 ms
+  03:17:30.996 | tap +3141122 ms | last +814 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +95, +813, +1833 ms, replies pending, pending, pending; band events 60 at +-285 (got +221), 100 at +184 (got +576), 60 at +434 (got +954), 100 at +1184 (got +1577), 60 at +1454 (got +2037), 100 at +2184 (got +2568); silences: 378, 460; buzzes: 355, 623, 531.
+  03:17:33.784 | tap +3143911 ms | last +2788 ms | Band replied pending in 65 ms
+  03:17:34.709 | tap +3144836 ms | last +924 ms | Band replied pending in 49 ms
+  03:17:35.647 | tap +3145773 ms | last +937 ms | Band replied pending in 54 ms
+  03:17:36.481 | tap +3146607 ms | last +834 ms | Pattern probe play: 23/40, effect 14, 3 commands, each after the band says the last one ended: 3 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +104, +1030, +1947 ms, replies pending, pending, pending; band events 60 at +-277 (got +227), 100 at +361 (got +757), 60 at +652 (got +1175), 100 at +1361 (got +1762), 60 at +1581 (got +2091), 100 at +2361 (got +2766); silences: 418, 329; buzzes: 530, 587, 675.
+  03:17:51.847 | tap +3161973 ms | last +15366 ms | Band replied pending in 52 ms
+  03:17:52.664 | tap +3162790 ms | last +817 ms | Band replied pending in 60 ms
+  03:17:53.150 | tap +3163276 ms | last +486 ms | Band replied pending in 45 ms
+  03:17:53.475 | tap +3163601 ms | last +324 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +91, +911, +1395 ms, replies pending, pending, pending; band events 60 at +-291 (got +104), 100 at +308 (got +699), 60 at +538 (got +1034), 100 at +808 (got +1204), 60 at +1018 (got +1521), 100 at +1308 (got +1693); silences: 335, 317; buzzes: 595, 170, 172.
+  03:18:15.112 | tap +3185238 ms | last +21637 ms | Band replied pending in 55 ms
+  03:18:15.708 | tap +3185835 ms | last +596 ms | Band replied pending in 44 ms
+  03:18:16.213 | tap +3186339 ms | last +504 ms | Band replied pending in 55 ms
+  03:18:16.522 | tap +3186648 ms | last +308 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +92, +690, +1194 ms, replies pending, pending, pending; band events 60 at +-287 (got +100), 100 at +62 (got +463), 60 at +312 (got +703), 100 at +562 (got +959), 60 at +802 (got +1199), 100 at +1062 (got +1459); silences: 240, 240; buzzes: 363, 256, 260.
+  03:19:12.932 | tap +48 ms | last +0 ms | Double tap received. Starting the ECG stream.
+  03:19:12.933 | tap +48 ms | last +0 ms | ECG start: wrist looked up (0 ms).
+  03:19:12.937 | tap +52 ms | last +3 ms | ECG start: wrist saved (+3 ms, 3 ms in).
+  03:19:12.937 | tap +52 ms | last +0 ms | ECG start: guard checked (+0 ms, 3 ms in).
+  03:19:12.937 | tap +52 ms | last +0 ms | ECG start: history sync paused (+0 ms, 3 ms in).
+  03:19:13.158 | tap +273 ms | last +220 ms | ECG start: guard set (+221 ms, 224 ms in).
+  03:19:13.387 | tap +503 ms | last +229 ms | ECG start: prepare answered (accepted) (+230 ms, 454 ms in).
+  03:19:13.594 | tap +709 ms | last +206 ms | ECG start: start answered (accepted) (+206 ms, 660 ms in).
+  03:19:13.594 | tap +709 ms | last +0 ms | ECG stream command written, 709 ms after the tap. Waiting for packets (up to 20 s).
+  03:19:13.716 | tap +832 ms | last +122 ms | Packet 1: 0 samples, 0 with contact, strap time 1791019153.210 (newest sample), first packet, no earlier packet to compare, received 0 ms behind the freshest packet so far; band: presence off, S2 1, flags 0x02, progress 0, quality 0
+  03:19:13.716 | tap +832 ms | last +0 ms | First packet arrived 832 ms after the tap.
+  03:19:14.671 | tap +1786 ms | last +954 ms | Packet 2: 49 samples, 0 with contact, strap time 1791019154.220 (newest sample), 954 ms since the last packet, gap of 520 ms before this packet, received 0 ms behind the freshest packet so far; band: presence off, S2 1, flags 0x02, progress 0, quality 0
+  03:19:15.679 | tap +2794 ms | last +1008 ms | Packet 3: 100 samples, 0 with contact, strap time 1791019155.220 (newest sample), 1008 ms since the last packet, continuous with the last packet, received 8 ms behind the freshest packet so far; band: presence off, S2 1, flags 0x02, progress 0, quality 0
+  03:19:15.679 | tap +2794 ms | last +0 ms | Stream is steady, 2794 ms after the tap (two packets continuous on the sample clock, advancing in step with the wall clock, within 1500 ms of each other).
+  03:19:15.679 | tap +2794 ms | last +0 ms | Touch window open at sample time 1791019156229 ms, 2500 ms after the first sample (200 ms for the first touch to begin; a finger already on the sensor counts).
+  03:19:16.682 | tap +3797 ms | last +1002 ms | Packet 4: 100 samples, 0 with contact, strap time 1791019156.220 (newest sample), 1002 ms since the last packet, continuous with the last packet, received 11 ms behind the freshest packet so far; band: presence off, S2 1, flags 0x02, progress 0, quality 0
+  03:19:17.687 | tap +4802 ms | last +1004 ms | Packet 5: 100 samples, 0 with contact, strap time 1791019157.220 (newest sample), 1004 ms since the last packet, continuous with the last packet, received 16 ms behind the freshest packet so far; band: presence off, S2 1, flags 0x02, progress 0, quality 0
+  03:19:17.687 | tap +4803 ms | last +0 ms | Buzz x2 requested at sample time 1791019156429 ms.
+  03:19:17.687 | tap +4803 ms | last +0 ms | Final count 2 at sample time 1791019156429 ms.
+  03:19:17.688 | tap +4803 ms | last +0 ms | Result: 2 taps.
+  03:19:17.688 | tap +4803 ms | last +0 ms | Session ended: ECG sensor touches | start 200 ms, gap 150 ms, confirm 750 ms, extra sensitive | 2 taps | 4.8 s in total
+  03:19:17.931 | tap +5046 ms | last +243 ms | Buzz x2, pulse 1 written, 243 ms after the request.
+  03:19:17.931 | tap +5046 ms | last +0 ms | Buzz x2, pulse 2 waits 1799 ms: the band is still busy with the last buzz.
+  03:19:17.932 | tap +5047 ms | last +0 ms | Band replied pending in 90 ms
+  03:19:19.823 | tap +6938 ms | last +1890 ms | Buzz x2, pulse 2 written, 2135 ms after the request.
+  03:19:19.828 | tap +6943 ms | last +5 ms | Band replied pending in 63 ms
+  03:19:44.645 | tap +31760 ms | last +24816 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +490, +1203, +2326 ms, replies pending, pending, pending; band events 60 at +111 (got +506), 100 at +471 (got +867), 60 at +811 (got +1211), 100 at +1471 (got +1875), 60 at +1941 (got +2334), 100 at +2471 (got +2876); silences: 344, 459; buzzes: 361, 664, 542.
+  03:20:03.706 | tap +50822 ms | last +19061 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +391, +1245, +2012 ms, replies pending, pending, pending; band events 60 at +-3 (got +395), 100 at +236 (got +633), 60 at +866 (got +1260), 100 at +1236 (got +1644), 60 at +1626 (got +2024), 100 at +2236 (got +2653); silences: 627, 380; buzzes: 238, 384, 629.
+  03:20:09.692 | tap +56808 ms | last +5986 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +118, +971, +1888 ms, replies pending, pending, pending; band events 60 at +-264 (got +137), 100 at +-74 (got +329), 60 at +585 (got +987), 100 at +925 (got +1314), 60 at +1505 (got +1908), 100 at +1925 (got +2318); silences: 658, 594; buzzes: 192, 327, 410.
+  03:20:24.199 | tap +71314 ms | last +14506 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +242, +1084, +1818 ms, replies pending, pending, pending; band events 60 at +-143 (got +252), 100 at +396 (got +824), 60 at +696 (got +1091), 100 at +896 (got +1286), 60 at +1446 (got +1837), 100 at +1896 (got +2303); silences: 267, 551; buzzes: 572, 195, 466.
+  03:20:30.128 | tap +77243 ms | last +5929 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +119, +1018, +2030 ms, replies pending, pending, pending; band events 60 at +-271 (got +138), 100 at +238 (got +646), 60 at +628 (got +1028), 100 at +1238 (got +1647), 60 at +1648 (got +2054), 100 at +2238 (got +2635); silences: 382, 407; buzzes: 508, 619, 581.
+  03:20:41.736 | tap +88852 ms | last +11608 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +216, +898, +1622 ms, replies pending, pending, pending; band events 60 at +-169 (got +242), 100 at +240 (got +647), 60 at +520 (got +919), 100 at +750 (got +1141), 60 at +1240 (got +1637), 100 at +1750 (got +2148); silences: 272, 496; buzzes: 405, 222, 511.
+  03:21:00.200 | tap +107316 ms | last +18463 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +73, +659, +1123 ms, replies pending, pending, pending; band events 60 at +-315 (got +96), 100 at +4 (got +409), 60 at +274 (got +681), 100 at +504 (got +896), 60 at +734 (got +1147), 100 at +1004 (got +1408); silences: 272, 251; buzzes: 313, 215, 261.
+  03:21:07.222 | tap +114338 ms | last +7021 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +95, +685, +1174 ms, replies pending, pending, pending; band events 60 at +-301 (got +109), 100 at +28 (got +432), 60 at +298 (got +700), 100 at +528 (got +942), 60 at +778 (got +1177), 100 at +1038 (got +1437); silences: 268, 235; buzzes: 323, 242, 260.
+  03:21:15.286 | tap +122402 ms | last +8064 ms | Pattern probe play: 24/40, effect 1, 3 commands, each after the band says the last one ended: 3 commands [01 01 00 00 00 00 00 00 00 00 00 01], written at +92, +1020, +1412 ms, replies pending, pending, pending; band events 60 at +-295 (got +98), 100 at +314 (got +740), 60 at +634 (got +1033), 100 at +814 (got +1221), 60 at +1024 (got +1418), 100 at +1314 (got +1725); silences: 293, 197; buzzes: 642, 188, 307.
+  03:21:49.800 | tap +156915 ms | last +34513 ms | Pattern probe play: 25/40, band pair 47+152, one command looped 3×: 1 command [01 2f 98 00 00 00 00 00 00 00 00 03], written at +83 ms, replies pending; band events 60 at +-304 (got +130), 100 at +1785 (got +2199); buzzes: 2069.
+  03:22:02.316 | tap +169432 ms | last +12516 ms | Pattern probe play: 25/40, band pair 47+152, one command looped 3×: 1 command [01 2f 98 00 00 00 00 00 00 00 00 03], written at +82 ms, replies pending; band events 60 at +-303 (got +93), 100 at +1866 (got +2269); buzzes: 2176.
+  03:22:25.861 | tap +192976 ms | last +23544 ms | Pattern probe play: 25/40, band pair 47+152, one command looped 3×: 1 command [01 2f 98 00 00 00 00 00 00 00 00 03], written at +91 ms, replies pending; band events 60 at +-301 (got +99), 100 at +1768 (got +2179); buzzes: 2080.
+  03:22:31.859 | tap +198974 ms | last +5997 ms | Pattern probe play: 26/40, effect 47 alone, one command looped 3×: 1 command [01 2f 00 00 00 00 00 00 00 00 00 03], written at +101 ms, replies pending; band events 60 at +-290 (got +119), 100 at +1249 (got +1656); buzzes: 1537.
+  03:22:40.858 | tap +207973 ms | last +8998 ms | Pattern probe play: 26/40, effect 47 alone, one command looped 3×: 1 command [01 2f 00 00 00 00 00 00 00 00 00 03], written at +84 ms, replies pending; band events 60 at +-300 (got +111), 100 at +749 (got +1155); buzzes: 1044.
+  03:22:47.399 | tap +214514 ms | last +6541 ms | Pattern probe play: 26/40, effect 47 alone, one command looped 3×: 1 command [01 2f 00 00 00 00 00 00 00 00 00 03], written at +94 ms, replies pending; band events 60 at +-292 (got +114), 100 at +1147 (got +1557); buzzes: 1443.
+  03:22:54.353 | tap +221468 ms | last +6954 ms | Pattern probe play: 27/40, effect 14, one command looped 3×: 1 command [01 0e 00 00 00 00 00 00 00 00 00 03], written at +106 ms, replies pending; band events 60 at +-287 (got +127), 100 at +792 (got +1207); buzzes: 1080.
+  03:23:05.914 | tap +233029 ms | last +11560 ms | Pattern probe play: 26/40, effect 47 alone, one command looped 3×: 1 command [01 2f 00 00 00 00 00 00 00 00 00 03], written at +110 ms, replies pending; band events 60 at +-286 (got +118), 100 at +1063 (got +1470); buzzes: 1352.
+  03:23:09.880 | tap +236995 ms | last +3965 ms | Pattern probe play: 27/40, effect 14, one command looped 3×: 1 command [01 0e 00 00 00 00 00 00 00 00 00 03], written at +100 ms, replies pending; band events 60 at +-290 (got +109), 100 at +569 (got +988); buzzes: 879.
+  03:23:15.437 | tap +242552 ms | last +5556 ms | Pattern probe play: 28/40, effect 1, one command looped 3×: 1 command [01 01 00 00 00 00 00 00 00 00 00 03], written at +96 ms, replies pending; band events 60 at +-297 (got +107), 100 at +512 (got +929); buzzes: 822.
+  03:23:23.894 | tap +251009 ms | last +8456 ms | Pattern probe play: 28/40, effect 1, one command looped 3×: 1 command [01 01 00 00 00 00 00 00 00 00 00 03], written at +85 ms, replies pending; band events 60 at +-309 (got +96), 100 at +340 (got +753); buzzes: 657.
+  03:23:33.394 | tap +260509 ms | last +9500 ms | Pattern probe play: 28/40, effect 1, one command looped 3×: 1 command [01 01 00 00 00 00 00 00 00 00 00 03], written at +93 ms, replies pending; band events 60 at +-299 (got +111), 100 at +470 (got +881); buzzes: 770.
+  03:23:44.381 | tap +271496 ms | last +10986 ms | Pattern probe play: 28/40, effect 1, one command looped 3×: 1 command [01 01 00 00 00 00 00 00 00 00 00 03], written at +75 ms, replies pending; band events 60 at +-321 (got +89), 100 at +258 (got +675); buzzes: 586.
+  03:23:53.468 | tap +280583 ms | last +9087 ms | Pattern probe play: 29/40, band pair 47+152, one command listing it 3× with a pause slot between: 1 command [01 2f 98 2f 98 2f 98 00 00 00 00 01], written at +91 ms, replies pending; band events 60 at +-299 (got +104), 100 at +2830 (got +3249); buzzes: 3145.
+  03:24:18.431 | tap +305546 ms | last +24962 ms | Pattern probe play: 29/40, band pair 47+152, one command listing it 3× with a pause slot between: 1 command [01 2f 98 2f 98 2f 98 00 00 00 00 01], written at +90 ms, replies pending; band events 60 at +-307 (got +109), 100 at +2962 (got +3367); buzzes: 3258.
+  03:24:26.010 | tap +313125 ms | last +7579 ms | Pattern probe play: 30/40, effect 47 alone, one command listing it 3× with a pause slot between: 1 command [01 2f 98 2f 98 2f 00 00 00 00 00 01], written at +113 ms, replies pending; band events 60 at +-288 (got +125), 100 at +2481 (got +2891); buzzes: 2766.
+  03:24:49.986 | tap +337101 ms | last +23975 ms | Pattern probe play: 30/40, effect 47 alone, one command listing it 3× with a pause slot between: 1 command [01 2f 98 2f 98 2f 00 00 00 00 00 01], written at +99 ms, replies pending; band events 60 at +-297 (got +118), 100 at +2262 (got +2681); buzzes: 2563.
+  03:25:04.473 | tap +351589 ms | last +14487 ms | Pattern probe play: 30/40, effect 47 alone, one command listing it 3× with a pause slot between: 1 command [01 2f 98 2f 98 2f 00 00 00 00 00 01], written at +67 ms, replies pending; band events 60 at +-327 (got +82), 100 at +2512 (got +2943); buzzes: 2861.
+  03:25:12.554 | tap +359670 ms | last +8080 ms | Pattern probe play: 30/40, effect 47 alone, one command listing it 3× with a pause slot between: 1 command [01 2f 98 2f 98 2f 00 00 00 00 00 01], written at +93 ms, replies pending; band events 60 at +-322 (got +95), 100 at +2577 (got +3005); buzzes: 2910.
+  03:25:22.543 | tap +369658 ms | last +9988 ms | Pattern probe play: 31/40, effect 14, one command listing it 3× with a pause slot between: 1 command [01 0e 98 0e 98 0e 00 00 00 00 00 01], written at +96 ms, replies pending; band events 60 at +-299 (got +119), 100 at +2330 (got +2738); buzzes: 2619.
+  03:25:54.562 | tap +401677 ms | last +32018 ms | Pattern probe play: 31/40, effect 14, one command listing it 3× with a pause slot between: 1 command [01 0e 98 0e 98 0e 00 00 00 00 00 01], written at +93 ms, replies pending; band events 60 at +-307 (got +109), 100 at +1992 (got +2418); buzzes: 2309.
+  03:26:02.048 | tap +409163 ms | last +7485 ms | Pattern probe play: 31/40, effect 14, one command listing it 3× with a pause slot between: 1 command [01 0e 98 0e 98 0e 00 00 00 00 00 01], written at +113 ms, replies pending; band events 60 at +-278 (got +143), 100 at +2061 (got +2469); buzzes: 2326.
+  03:26:14.072 | tap +421187 ms | last +12023 ms | Pattern probe play: 31/40, effect 14, one command listing it 3× with a pause slot between: 1 command [01 0e 98 0e 98 0e 00 00 00 00 00 01], written at +88 ms, replies pending; band events 60 at +-305 (got +110), 100 at +2264 (got +2685); buzzes: 2575.
+  03:26:25.672 | tap +432787 ms | last +11600 ms | Pattern probe play: 32/40, effect 1, one command listing it 3× with a pause slot between: 1 command [01 01 98 01 98 01 00 00 00 00 00 01], written at +101 ms, replies pending; band events 60 at +-309 (got +106), 100 at +1130 (got +1564); buzzes: 1458.
+  03:26:52.613 | tap +459728 ms | last +26941 ms | Pattern probe play: 32/40, effect 1, one command listing it 3× with a pause slot between: 1 command [01 01 98 01 98 01 00 00 00 00 00 01], written at +92 ms, replies pending; band events 60 at +-310 (got +105), 100 at +1109 (got +1526); buzzes: 1421.
+  03:26:58.643 | tap +465758 ms | last +6029 ms | Pattern probe play: 32/40, effect 1, one command listing it 3× with a pause slot between: 1 command [01 01 98 01 98 01 00 00 00 00 00 01], written at +105 ms, replies pending; band events 60 at +-302 (got +115), 100 at +1177 (got +1592); buzzes: 1477.
+  03:27:09.670 | tap +476785 ms | last +11027 ms | Pattern probe play: 32/40, effect 1, one command listing it 3× with a pause slot between: 1 command [01 01 98 01 98 01 00 00 00 00 00 01], written at +76 ms, replies pending; band events 60 at +-322 (got +91), 100 at +1257 (got +1670); buzzes: 1579.
+  03:27:29.697 | tap +496812 ms | last +20026 ms | Pattern probe play: 33/40, effect 14, 2 commands, the second 0 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +89, +1141 ms, replies pending, pending; band events 60 at +-311 (got +99), 100 at +578 (got +1011), 60 at +738 (got +1164), 100 at +1578 (got +1993); silences: 153; buzzes: 912, 829.
+  03:27:48.167 | tap +515282 ms | last +18469 ms | Pattern probe play: 33/40, effect 14, 2 commands, the second 0 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +72, +655 ms, replies pending, pending; band events 60 at +-313 (got +98), 100 at +136 (got +551), 60 at +256 (got +673), 100 at +1136 (got +1555); silences: 122; buzzes: 453, 882.
+  03:27:55.677 | tap +522792 ms | last +7510 ms | Pattern probe play: 33/40, effect 14, 2 commands, the second 0 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +99, +801 ms, replies pending, pending; band events 60 at +-303 (got +109), 100 at +286 (got +711), 60 at +396 (got +815), 100 at +1286 (got +1700); silences: 104; buzzes: 602, 885.
+  03:28:04.741 | tap +531856 ms | last +9063 ms | Pattern probe play: 33/40, effect 14, 2 commands, the second 0 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +116, +1009 ms, replies pending, pending; band events 60 at +-291 (got +130), 100 at +448 (got +881), 60 at +608 (got +1024), 100 at +1448 (got +1866); silences: 143; buzzes: 751, 842.
+  03:28:11.724 | tap +538839 ms | last +6983 ms | Pattern probe play: 33/40, effect 14, 2 commands, the second 0 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +102, +990 ms, replies pending, pending; band events 60 at +-296 (got +124), 100 at +433 (got +849), 60 at +583 (got +1001), 100 at +1433 (got +1849); silences: 152; buzzes: 725, 848.
+  03:28:16.698 | tap +543814 ms | last +4974 ms | Pattern probe play: 33/40, effect 14, 2 commands, the second 0 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +91, +1109 ms, replies pending, pending; band events 60 at +-316 (got +111), 100 at +483 (got +917), 60 at +703 (got +1123), 100 at +1483 (got +1904); silences: 206; buzzes: 806, 781.
+  03:28:21.803 | tap +548918 ms | last +5104 ms | Pattern probe play: 33/40, effect 14, 2 commands, the second 0 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +89, +882 ms, replies pending, pending; band events 60 at +-322 (got +93), 100 at +387 (got +803), 60 at +477 (got +893), 100 at +1387 (got +1817); silences: 90; buzzes: 710, 924.
+  03:28:30.780 | tap +557895 ms | last +8976 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +93, +1095 ms, replies pending, pending; band events 60 at +-316 (got +105), 100 at +523 (got +951), 60 at +693 (got +1109), 100 at +1523 (got +1949); silences: 158; buzzes: 846, 840.
+  03:28:41.244 | tap +568360 ms | last +10464 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +115, +1108 ms, replies pending, pending; band events 60 at +-288 (got +131), 100 at +561 (got +990), 60 at +701 (got +1122), 100 at +1561 (got +1976); silences: 132; buzzes: 859, 854.
+  03:28:46.225 | tap +573340 ms | last +4980 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +107, +1140 ms, replies pending, pending; band events 60 at +-299 (got +115), 100 at +619 (got +1049), 60 at +730 (got +1161), 100 at +1619 (got +2033); silences: 112; buzzes: 934, 872.
+  03:28:53.255 | tap +580370 ms | last +7030 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +93, +807 ms, replies pending, pending; band events 60 at +-317 (got +102), 100 at +272 (got +686), 60 at +392 (got +811), 100 at +1272 (got +1694); silences: 125; buzzes: 584, 883.
+  03:28:58.315 | tap +585431 ms | last +5060 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +97, +905 ms, replies pending, pending; band events 60 at +-313 (got +106), 100 at +336 (got +762), 60 at +496 (got +923), 100 at +1336 (got +1766); silences: 161; buzzes: 656, 843.
+  03:29:10.280 | tap +597395 ms | last +11964 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +103, +1026 ms, replies pending, pending; band events 60 at +-302 (got +120), 100 at +477 (got +900), 60 at +617 (got +1044), 100 at +1477 (got +1922); silences: 144; buzzes: 780, 878.
+  03:29:18.333 | tap +605449 ms | last +8053 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +101, +1006 ms, replies pending, pending; band events 60 at +-300 (got +114), 100 at +429 (got +860), 60 at +599 (got +1015), 100 at +1429 (got +1866); silences: 155; buzzes: 746, 851.
+  03:29:39.283 | tap +626398 ms | last +20949 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +111, +1002 ms, replies pending, pending; band events 60 at +-307 (got +118), 100 at +412 (got +839), 60 at +592 (got +1019), 100 at +1412 (got +1825); silences: 180; buzzes: 721, 806.
+  03:29:55.333 | tap +642449 ms | last +16050 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +87, +900 ms, replies pending, pending; band events 60 at +-315 (got +103), 100 at +354 (got +792), 60 at +494 (got +930), 100 at +1354 (got +1773); silences: 138; buzzes: 689, 843.
+  03:30:00.323 | tap +647439 ms | last +4990 ms | Pattern probe play: 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +102, +1133 ms, replies pending, pending; band events 60 at +-305 (got +108), 100 at +504 (got +930), 60 at +724 (got +1158), 100 at +1504 (got +1938); silences: 228; buzzes: 822, 780.
+  03:30:05.865 | tap +652980 ms | last +5541 ms | Pattern probe play: 35/40, effect 14, 2 commands, the second 300 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +93, +1187 ms, replies pending, pending; band events 60 at +-310 (got +105), 100 at +309 (got +729), 60 at +779 (got +1202), 100 at +1309 (got +1729); silences: 473; buzzes: 624, 527.
+  03:30:20.388 | tap +667503 ms | last +14523 ms | Pattern probe play: 35/40, effect 14, 2 commands, the second 300 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +84, +1064 ms, replies pending, pending; band events 60 at +-317 (got +103), 100 at +202 (got +633), 60 at +652 (got +1072), 100 at +1202 (got +1639); silences: 439; buzzes: 530, 567.
+  03:30:27.384 | tap +674500 ms | last +6996 ms | Pattern probe play: 35/40, effect 14, 2 commands, the second 300 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +71, +1064 ms, replies pending, pending; band events 60 at +-337 (got +86), 100 at +192 (got +615), 60 at +652 (got +1080), 100 at +1192 (got +1617); silences: 465; buzzes: 529, 537.
+  03:30:33.907 | tap +681023 ms | last +6522 ms | Pattern probe play: 36/40, effect 47 alone, 2 commands, the second 300 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +98, +1240 ms, replies pending, pending; band events 60 at +-321 (got +106), 100 at +378 (got +801), 60 at +828 (got +1247), 100 at +1378 (got +1804); silences: 446; buzzes: 695, 557.
+  03:30:40.376 | tap +687491 ms | last +6468 ms | Pattern probe play: 36/40, effect 47 alone, 2 commands, the second 300 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +108, +1312 ms, replies pending, pending; band events 60 at +-313 (got +115), 100 at +476 (got +905), 60 at +906 (got +1329), 100 at +1476 (got +1916); silences: 424; buzzes: 790, 587.
+  03:30:46.957 | tap +694072 ms | last +6580 ms | Pattern probe play: 36/40, effect 47 alone, 2 commands, the second 300 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +87, +1490 ms, replies pending, pending; band events 60 at +-315 (got +101), 100 at +664 (got +1100), 60 at +1074 (got +1498), 100 at +1664 (got +2106); silences: 398; buzzes: 999, 608.
+  03:30:53.434 | tap +700549 ms | last +6477 ms | Pattern probe play: 36/40, effect 47 alone, 2 commands, the second 300 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +105, +1485 ms, replies pending, pending; band events 60 at +-301 (got +118), 100 at +618 (got +1052), 60 at +1068 (got +1497), 100 at +1618 (got +2055); silences: 445; buzzes: 934, 558.
+  03:30:59.875 | tap +706990 ms | last +6441 ms | Pattern probe play: 37/40, effect 14, 2 commands, the second 700 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +101, +1632 ms, replies pending, pending; band events 60 at +-314 (got +125), 100 at +325 (got +753), 60 at +1225 (got +1648), 100 at +1825 (got +2254); silences: 895; buzzes: 628, 606.
+  03:31:08.390 | tap +715505 ms | last +8514 ms | Pattern probe play: 37/40, effect 14, 2 commands, the second 700 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +100, +1805 ms, replies pending, pending; band events 60 at +-315 (got +116), 100 at +594 (got +1022), 60 at +1404 (got +1838), 100 at +2094 (got +2524); silences: 816; buzzes: 906, 686.
+  03:31:13.973 | tap +721089 ms | last +5583 ms | Pattern probe play: 37/40, effect 14, 2 commands, the second 700 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +139, +1846 ms, replies pending, pending; band events 60 at +-274 (got +150), 100 at +555 (got +981), 29 at +855 (got +1274), 60 at +1435 (got +1860), 100 at +2055 (got +2491); silences: 879; buzzes: 831, 631.
+  03:31:19.427 | tap +726542 ms | last +5453 ms | Pattern probe play: 37/40, effect 14, 2 commands, the second 700 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +94, +1409 ms, replies pending, pending; band events 60 at +-317 (got +107), 100 at +172 (got +620), 60 at +992 (got +1416), 100 at +1672 (got +2111); silences: 796; buzzes: 513, 695.
+  03:31:41.472 | tap +748587 ms | last +22044 ms | Pattern probe play: 37/40, effect 14, 2 commands, the second 700 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +93, +1695 ms, replies pending, pending; band events 60 at +-328 (got +101), 100 at +421 (got +856), 60 at +1281 (got +1706), 100 at +1931 (got +2361); silences: 850; buzzes: 755, 655.
+  03:31:49.944 | tap +757059 ms | last +8471 ms | Pattern probe play: 37/40, effect 14, 2 commands, the second 700 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +87, +1610 ms, replies pending, pending; band events 60 at +-321 (got +103), 100 at +368 (got +799), 60 at +1188 (got +1617), 100 at +1878 (got +2309); silences: 818; buzzes: 696, 692.
+  03:32:07.044 | tap +774159 ms | last +17100 ms | Pattern probe play: 38/40, effect 47 alone, 2 commands, the second 700 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +99, +1716 ms, replies pending, pending; band events 60 at +-321 (got +111), 100 at +398 (got +834), 60 at +1298 (got +1730), 100 at +1898 (got +2334); silences: 896; buzzes: 723, 604.
+  03:32:29.050 | tap +796166 ms | last +22006 ms | Pattern probe play: 38/40, effect 47 alone, 2 commands, the second 700 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +87, +1624 ms, replies pending, pending; band events 60 at +-321 (got +111), 100 at +328 (got +764), 60 at +1208 (got +1634), 100 at +1828 (got +2259); silences: 870; buzzes: 653, 625.
+  03:32:34.511 | tap +801626 ms | last +5460 ms | Pattern probe play: 38/40, effect 47 alone, 2 commands, the second 700 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +103, +1811 ms, replies pending, pending; band events 60 at +-308 (got +128), 100 at +571 (got +1025), 60 at +1401 (got +1828), 100 at +2061 (got +2502); silences: 803; buzzes: 897, 674.
+  03:32:40.011 | tap +807126 ms | last +5499 ms | Pattern probe play: 38/40, effect 47 alone, 2 commands, the second 700 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +106, +1751 ms, replies pending, pending; band events 60 at +-315 (got +142), 100 at +514 (got +941), 60 at +1334 (got +1763), 100 at +2014 (got +2442); silences: 822; buzzes: 799, 679.
+  03:32:44.996 | tap +812111 ms | last +4985 ms | Pattern probe play: 38/40, effect 47 alone, 2 commands, the second 700 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +103, +1914 ms, replies pending, pending; band events 60 at +-315 (got +123), 100 at +694 (got +1126), 60 at +1494 (got +1925), 100 at +2194 (got +2627); silences: 799; buzzes: 1003, 702.
+  03:32:53.524 | tap +820639 ms | last +8527 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +73, +1903 ms, replies pending, pending; band events 60 at +-343 (got +81), 100 at +146 (got +580), 60 at +1486 (got +1915), 100 at +2156 (got +2600); silences: 1335; buzzes: 499, 685.
+  03:33:04.570 | tap +831685 ms | last +11045 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +88, +2309 ms, replies pending, pending; band events 60 at +-325 (got +129), 100 at +534 (got +959), 60 at +1894 (got +2318), 100 at +2534 (got +2975); silences: 1359; buzzes: 830, 657.
+  03:33:11.069 | tap +838184 ms | last +6498 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +92, +2000 ms, replies pending, pending; band events 60 at +-316 (got +109), 100 at +233 (got +669), 60 at +1583 (got +2015), 100 at +2243 (got +2680); silences: 1346; buzzes: 560, 665.
+  03:33:17.094 | tap +844210 ms | last +6025 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +101, +2126 ms, replies pending, pending; band events 60 at +-314 (got +116), 100 at +365 (got +805), 60 at +1705 (got +2141), 100 at +2365 (got +2804); silences: 1336; buzzes: 689, 663.
+  03:33:22.637 | tap +849753 ms | last +5542 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +84, +2379 ms, replies pending, pending; band events 60 at +-334 (got +103), 100 at +565 (got +1003), 60 at +1945 (got +2380), 100 at +2565 (got +3003); silences: 1377; buzzes: 900, 623.
+  03:33:38.611 | tap +865726 ms | last +15973 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +84, +2369 ms, replies pending, pending; band events 60 at +-326 (got +97), 100 at +613 (got +1039), 60 at +1953 (got +2412), 100 at +2613 (got +3049); silences: 1373; buzzes: 942, 637.
+  03:33:47.668 | tap +874784 ms | last +9057 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +89, +2120 ms, replies pending, pending; band events 60 at +-322 (got +103), 100 at +287 (got +727), 60 at +1697 (got +2136), 100 at +2297 (got +2744); silences: 1409; buzzes: 624, 608.
+  03:33:53.574 | tap +880689 ms | last +5905 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +85, +2021 ms, replies pending, pending; band events 60 at +-332 (got +102), 100 at +187 (got +629), 60 at +1607 (got +2036), 100 at +2187 (got +2628); silences: 1407; buzzes: 527, 592.
+  03:34:00.077 | tap +887192 ms | last +6502 ms | Pattern probe play: 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: 2 commands [01 0e 00 00 00 00 00 00 00 00 00 01], written at +108, +2235 ms, replies pending, pending; band events 60 at +-313 (got +114), 100 at +426 (got +874), 60 at +1816 (got +2250), 100 at +2426 (got +2862); silences: 1376; buzzes: 760, 612.
+  03:34:09.119 | tap +896235 ms | last +9042 ms | Pattern probe play: 40/40, effect 47 alone, 2 commands, the second 1200 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +96, +2178 ms, replies pending, pending; band events 60 at +-321 (got +106), 100 at +428 (got +865), 60 at +1758 (got +2190), 100 at +2428 (got +2875); silences: 1325; buzzes: 759, 685.
+  03:34:37.173 | tap +924289 ms | last +28054 ms | Pattern probe play: 40/40, effect 47 alone, 2 commands, the second 1200 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +103, +2007 ms, replies pending, pending; band events 60 at +-313 (got +118), 100 at +236 (got +679), 60 at +1586 (got +2020), 100 at +2236 (got +2675); silences: 1341; buzzes: 561, 655.
+  03:34:43.143 | tap +930258 ms | last +5969 ms | Pattern probe play: 40/40, effect 47 alone, 2 commands, the second 1200 ms after the first ends: 2 commands [01 2f 00 00 00 00 00 00 00 00 00 01], written at +91, +2323 ms, replies pending, pending; band events 60 at +-322 (got +108), 100 at +597 (got +1028), 60 at +1907 (got +2340), 100 at +2597 (got +3048); silences: 1312; buzzes: 920, 708.
+  03:34:45.545 | tap +932660 ms | last +2402 ms | Pattern probe heard 1/40, band pair 47+152, 2 commands 1.8 s apart: A = eighth note mf, eighth rest, eighth note mf, half rest, eighth note mf, eighth rest, eighth note mf (N2mf R2 N2mf R8 N2mf R2 N2mf); B = —; played 9×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 2/40, effect 47 alone, 2 commands 1.8 s apart: A = quarter note mf, half rest, dotted eighth rest, quarter note mf (N4mf R8 R3 N4mf); B = —; played 9×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 3/40, effect 14, 2 commands 1.8 s apart: A = dotted eighth note mf, half rest, dotted eighth rest, quarter note mf (N3mf R8 R3 N4mf); B = —; played 12×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 4/40, effect 1, 2 commands 1.8 s apart: A = 16th note mp, 16th note mp, dotted half rest, eighth rest, 16th note mp, 16th note mp (N1mp N1mp R12 R2 N1mp N1mp); B = 16th note mp, 16th note mp, dotted half rest, 16th rest, 16th note mp, 16th note mp (N1mp N1mp R12 R1 N1mp N1mp); played 18×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 5/40, band pair 47+152, 2 commands, each after the band says the last one ended: A = dotted eighth note mf, 16th rest, dotted eighth note mf, quarter rest, dotted eighth note mf, 16th rest, dotted eighth note mf (N3mf R1 N3mf R4 N3mf R1 N3mf); B = —; played 8×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 6/40, effect 47 alone, 2 commands, each after the band says the last one ended: A = quarter note ff, dotted eighth rest, quarter note ff (N4ff R3 N4ff); B = —; played 7×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 7/40, effect 14, 2 commands, each after the band says the last one ended: A = quarter note mf, dotted eighth rest, quarter note mf (N4mf R3 N4mf); B = quarter note mf, 16th rest, quarter note mf (N4mf R1 N4mf); played 14×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 8/40, effect 1, 2 commands, each after the band says the last one ended: A = 16th note mp, 16th note mp, dotted eighth rest, 16th note mp, 16th note mp (N1mp N1mp R3 N1mp N1mp); B = —; played 8×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 9/40, band pair 47+152, one command looped 2×: A = eighth note mf, eighth rest, eighth note mf, eighth rest, eighth note mf (N2mf R2 N2mf R2 N2mf); B = —; played 8×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 10/40, effect 47 alone, one command looped 2×: A = dotted quarter note ff (N6ff); B = —; played 13×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 11/40, effect 14, one command looped 2×: A = dotted quarter note ff (N6ff); B = —; played 5×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 12/40, effect 1, one command looped 2×: A = 16th note mf, 16th note mf, 16th note mf (N1mf N1mf N1mf); B = —; played 5×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 13/40, band pair 47+152, one command listing it 2× with a pause slot between: A = dotted eighth note ff, 16th rest, dotted eighth note ff, 16th rest, dotted eighth note ff, 16th rest, dotted eighth note ff (N3ff R1 N3ff R1 N3ff R1 N3ff); B = —; played 8×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 14/40, effect 47 alone, one command listing it 2× with a pause slot between: A = eighth note ff, 16th rest, quarter note ff, dotted eighth rest, dotted eighth note mf (N2ff R1 N4ff R3 N3mf); B = —; played 10×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 15/40, effect 14, one command listing it 2× with a pause slot between: A = eighth note mf, 16th rest, quarter note ff, 16th rest, dotted eighth note mf (N2mf R1 N4ff R1 N3mf); B = —; played 14×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 16/40, effect 1, one command listing it 2× with a pause slot between: A = 16th note mp, 16th rest, 16th note pp, 16th note pp, eighth rest, eighth note mp (N1mp R1 N1pp N1pp R2 N2mp); B = —; played 12×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 17/40, band pair 47+152, 3 commands 1.8 s apart: A = quarter note mf, 16th rest, eighth note mf, half rest, quarter note mf, 16th rest, eighth note mf, half rest, quarter note mf, 16th rest, eighth note mf (N4mf R1 N2mf R8 N4mf R1 N2mf R8 N4mf R1 N2mf); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 18/40, effect 47 alone, 3 commands 1.8 s apart: A = quarter note ff, half rest, dotted eighth rest, quarter note ff, half rest, dotted eighth rest, quarter note ff (N4ff R8 R3 N4ff R8 R3 N4ff); B = —; played 11×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 19/40, effect 14, 3 commands 1.8 s apart: A = quarter note mf, half rest, dotted eighth rest, quarter note mf, half rest, dotted eighth rest, quarter note mf (N4mf R8 R3 N4mf R8 R3 N4mf); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 20/40, effect 1, 3 commands 1.8 s apart: A = 16th note mf, 16th note mf, dotted half rest, 16th rest, 16th note mf, 16th note mf, dotted half rest, 16th rest, 16th note mf, 16th note mf (N1mf N1mf R12 R1 N1mf N1mf R12 R1 N1mf N1mf); B = —; played 5×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 21/40, band pair 47+152, 3 commands, each after the band says the last one ended: A = dotted eighth note mf, 16th rest, dotted eighth note mf, dotted quarter rest, dotted eighth note mf, 16th rest, dotted eighth note mf, quarter rest, dotted eighth note mf, 16th rest, dotted eighth note mf (N3mf R1 N3mf R6 N3mf R1 N3mf R4 N3mf R1 N3mf); B = —; played 5×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 22/40, effect 47 alone, 3 commands, each after the band says the last one ended: A = quarter note ff, quarter rest, quarter note ff, quarter rest, quarter note ff (N4ff R4 N4ff R4 N4ff); B = —; played 7×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 23/40, effect 14, 3 commands, each after the band says the last one ended: A = quarter note ff, dotted eighth rest, quarter note ff, dotted eighth rest, quarter note ff (N4ff R3 N4ff R3 N4ff); B = —; played 13×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 24/40, effect 1, 3 commands, each after the band says the last one ended: A = 16th note pp, 16th note pp, dotted quarter rest, 16th note pp, 16th note pp, dotted quarter rest, 16th note pp, 16th note pp, 16th rest, eighth rest, quarter rest (N1pp N1pp R6 N1pp N1pp R6 N1pp N1pp R1 R2 R4); B = quarter rest, 16th note pp, 16th note pp, eighth rest, 16th note pp, 16th note pp, eighth rest, 16th note pp, 16th note pp, 16th rest, eighth rest, quarter rest (R4 N1pp N1pp R2 N1pp N1pp R2 N1pp N1pp R1 R2 R4); played 11×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 25/40, band pair 47+152, one command looped 3×: A = dotted eighth note mf, 16th rest, dotted eighth note mf, 16th rest, dotted eighth note mf, 16th rest, dotted eighth note mf (N3mf R1 N3mf R1 N3mf R1 N3mf); B = —; played 3×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 26/40, effect 47 alone, one command looped 3×: A = half note ff (N8ff); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 27/40, effect 14, one command looped 3×: A = half note ff (N8ff); B = —; played 2×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 28/40, effect 1, one command looped 3×: A = 16th note mf, 16th note mf, 16th note mf (N1mf N1mf N1mf); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 29/40, band pair 47+152, one command listing it 3× with a pause slot between: A = eighth note mf, eighth rest, eighth note mf, eighth rest, eighth note mf, eighth rest, eighth note mf, eighth rest, eighth note mf, eighth rest, eighth note mf (N2mf R2 N2mf R2 N2mf R2 N2mf R2 N2mf R2 N2mf); B = —; played 2×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 30/40, effect 47 alone, one command listing it 3× with a pause slot between: A = eighth note mf, eighth rest, eighth note mf, eighth rest, quarter note ff, eighth rest, eighth note mf, eighth rest, eighth note mf (N2mf R2 N2mf R2 N4ff R2 N2mf R2 N2mf); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 31/40, effect 14, one command listing it 3× with a pause slot between: A = eighth note mf, 16th rest, eighth note mf, eighth rest, quarter note ff, eighth rest, eighth note mf, 16th rest, eighth note mf (N2mf R1 N2mf R2 N4ff R2 N2mf R1 N2mf); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 32/40, effect 1, one command listing it 3× with a pause slot between: A = eighth note mf, 16th rest, 16th note mp, 16th rest, 16th note mp, 16th note mp, 16th rest, eighth note mp, 16th rest, eighth note mf (N2mf R1 N1mp R1 N1mp N1mp R1 N2mp R1 N2mf); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 33/40, effect 14, 2 commands, the second 0 ms after the first ends: A = dotted eighth note mf, quarter rest, dotted eighth note mf (N3mf R4 N3mf); B = —; played 7×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 34/40, effect 47 alone, 2 commands, the second 0 ms after the first ends: A = quarter note ff, dotted eighth rest, quarter note ff (N4ff R3 N4ff); B = quarter note ff, quarter rest, quarter note ff (N4ff R4 N4ff); played 10×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 35/40, effect 14, 2 commands, the second 300 ms after the first ends: A = quarter note ff, quarter rest, quarter note ff (N4ff R4 N4ff); B = —; played 3×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 36/40, effect 47 alone, 2 commands, the second 300 ms after the first ends: A = quarter note ff, dotted quarter rest, quarter note ff (N4ff R6 N4ff); B = —; played 4×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 37/40, effect 14, 2 commands, the second 700 ms after the first ends: A = quarter note ff, half rest, quarter note ff (N4ff R8 N4ff); B = quarter note ff, dotted quarter rest, quarter note ff (N4ff R6 N4ff); played 6×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 38/40, effect 47 alone, 2 commands, the second 700 ms after the first ends: A = quarter note ff, half rest, quarter note ff (N4ff R8 N4ff); B = —; played 5×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 39/40, effect 14, 2 commands, the second 1200 ms after the first ends: A = quarter note ff, dotted half rest, quarter note ff (N4ff R12 N4ff); B = quarter note ff, half rest, dotted quarter rest, quarter note ff (N4ff R8 R6 N4ff); played 9×.
+  03:34:45.545 | tap +932661 ms | last +0 ms | Pattern probe heard 40/40, effect 47 alone, 2 commands, the second 1200 ms after the first ends: A = quarter note ff, dotted half rest, quarter note ff (N4ff R12 N4ff); B = quarter note ff, half rest, dotted quarter rest, quarter note ff (N4ff R8 R6 N4ff); played 3×.
+  03:34:45.546 | tap +932661 ms | last +0 ms | Pattern probe tempo: 1 sixteenth ≈ 125 ms (fixed).
+
+Band events, oldest first
+  Event 100 | Live | 0.5 s after it happened
+    Happened 03:32:32.549
+    Received 03:32:33.003
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:32:33.379
+    Received 03:32:33.807
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:32:34.039
+    Received 03:32:34.481
+  Event 60 | Live | 0.5 s after it happened
+    Happened 03:32:37.219
+    Received 03:32:37.678
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:32:38.049
+    Received 03:32:38.477
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:32:38.869
+    Received 03:32:39.299
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:32:39.549
+    Received 03:32:39.978
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:32:42.049
+    Received 03:32:42.488
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:32:43.059
+    Received 03:32:43.491
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:32:43.859
+    Received 03:32:44.291
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:32:44.559
+    Received 03:32:44.992
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:32:50.569
+    Received 03:32:50.994
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:32:51.059
+    Received 03:32:51.494
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:32:52.399
+    Received 03:32:52.828
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:32:53.069
+    Received 03:32:53.513
+  Event 60 | Live | 0.5 s after it happened
+    Happened 03:33:01.219
+    Received 03:33:01.675
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:02.079
+    Received 03:33:02.505
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:03.439
+    Received 03:33:03.864
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:04.079
+    Received 03:33:04.520
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:08.029
+    Received 03:33:08.455
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:08.579
+    Received 03:33:09.015
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:09.929
+    Received 03:33:10.361
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:10.589
+    Received 03:33:11.026
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:13.909
+    Received 03:33:14.341
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:14.589
+    Received 03:33:15.029
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:15.929
+    Received 03:33:16.366
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:16.589
+    Received 03:33:17.029
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:19.199
+    Received 03:33:19.638
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:20.099
+    Received 03:33:20.538
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:21.479
+    Received 03:33:21.915
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:22.099
+    Received 03:33:22.538
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:35.179
+    Received 03:33:35.604
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:36.119
+    Received 03:33:36.545
+  Event 60 | Live | 0.5 s after it happened
+    Happened 03:33:37.459
+    Received 03:33:37.919
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:38.119
+    Received 03:33:38.556
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:44.509
+    Received 03:33:44.935
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:45.119
+    Received 03:33:45.559
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:46.529
+    Received 03:33:46.968
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:47.129
+    Received 03:33:47.576
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:50.609
+    Received 03:33:51.044
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:51.129
+    Received 03:33:51.571
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:52.549
+    Received 03:33:52.978
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:53.129
+    Received 03:33:53.570
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:56.899
+    Received 03:33:57.327
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:57.639
+    Received 03:33:58.088
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:33:59.029
+    Received 03:33:59.463
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:33:59.639
+    Received 03:34:00.075
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:34:05.899
+    Received 03:34:06.327
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:34:06.649
+    Received 03:34:07.086
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:34:07.979
+    Received 03:34:08.412
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:34:08.649
+    Received 03:34:09.096
+  Event 3 | Live | 0.4 s after it happened
+    Happened 03:34:13.559
+    Received 03:34:13.998
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:34:34.129
+    Received 03:34:34.561
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:34:34.679
+    Received 03:34:35.122
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:34:36.029
+    Received 03:34:36.463
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:34:36.679
+    Received 03:34:37.118
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:34:39.769
+    Received 03:34:40.201
+  Event 100 | Live | 0.4 s after it happened
+    Happened 03:34:40.689
+    Received 03:34:41.121
+  Event 60 | Live | 0.4 s after it happened
+    Happened 03:34:42.000
+    Received 03:34:42.433
+  Event 100 | Live | 0.5 s after it happened
+    Happened 03:34:42.689
+    Received 03:34:43.141
+
+ECG packets, oldest first
+  format: r17v1 tag=<session> | recv=<phone ms since epoch> sec=<strap seconds> sub=<1/32768 s> flags=<hex> s2=<n> progress=<n> quality=<n> unreadable=<hex> n=<samples> b64=<int16 LE samples, base64; 0 = all zero>
+  r17v1 tag=tap 03:19:12.884 | recv=1791019153716 sec=1791019153 sub=6881 flags=02 s2=1 progress=0 quality=0 unreadable=00 n=0 b64=0
+  r17v1 tag=tap 03:19:12.884 | recv=1791019154670 sec=1791019154 sub=7208 flags=02 s2=1 progress=0 quality=0 unreadable=00 n=49 b64=0
+  r17v1 tag=tap 03:19:12.884 | recv=1791019155679 sec=1791019155 sub=7208 flags=02 s2=1 progress=0 quality=0 unreadable=00 n=100 b64=0
+  r17v1 tag=tap 03:19:12.884 | recv=1791019156681 sec=1791019156 sub=7208 flags=02 s2=1 progress=0 quality=0 unreadable=00 n=100 b64=0
+  r17v1 tag=tap 03:19:12.884 | recv=1791019157686 sec=1791019157 sub=7208 flags=02 s2=1 progress=0 quality=0 unreadable=00 n=100 b64=0
