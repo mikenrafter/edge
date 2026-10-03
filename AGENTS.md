@@ -210,7 +210,7 @@ rode analytics v42 into 0.9.13; a PR bumped `kAlgoVersion` while the lock still
 pinned the pre-fix analytics commit, requiring a manual merge-order gate; and
 `0.9.17+1` shipped versionCode 1 → `INSTALL_FAILED_VERSION_DOWNGRADE`, making
 the release uninstallable.
-`pubspec_overrides.yaml` redirects siblings to `../analytics` / `../protocol` and
+`pubspec_overrides.yaml` redirects siblings to `../openstrap-analytics` / `../protocol` and
 is gitignored — committing a path override fails CI `flutter pub get` (exit 66).
 Note the tracked `pubspec.lock` currently records `source: path` for both
 siblings, so it provides **no** pin guarantee; `pubspec.yaml` is the source of
