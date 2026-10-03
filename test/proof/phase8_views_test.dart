@@ -1,6 +1,8 @@
 // Phase 8 proof views. Synthetic fixtures; no device or personal data.
-// Same capture rules as affected_views_test.dart: light/dark, 1x/2x text,
-// bundled fonts, committed baselines under goldens/phase8_*.png.
+// Same capture rules as affected_views_test.dart: bundled fonts, committed
+// baselines under goldens/phase8_*.png. Pictures are kept for the PAINTER
+// fixtures (1x and 2x text) and one showcase screen (1x); the other screens
+// have structural tests at the bottom of this file.
 //
 // The baselines do not exist yet: they are generated after implementation
 // (`flutter test --update-goldens test/proof/phase8_views_test.dart`) and
@@ -23,6 +25,7 @@ import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'affected_views_test.dart' show loadFonts;
+import 'structure_harness.dart';
 
 final _t0 = DateTime(2026, 10, 2, 9, 0, 0);
 DateTime _at(int ms) => _t0.add(Duration(milliseconds: ms));
@@ -189,9 +192,20 @@ void main() {
       },
     ),
   };
+  // PAINTER fixtures are pictures at 1x and 2x text: their point is pixels.
+  // Showcase screens are pictures at 1x only. Every other screen is covered by
+  // the structural tests below. See docs/proof-workflow.md.
+  const painters = {'live_devices', 'chart_scrub_readout'};
+  const showcase = {'buzz_pattern'};
+  final proofDir = Platform.environment['EDGE_PROOF_DIR'];
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       for (final fixture in fixtures.entries) {
+        final isPainter = painters.contains(fixture.key);
+        final pictured = isPainter || showcase.contains(fixture.key);
+        if (scale > 1 && !isPainter) continue;
+        // A non-pictured screen is only drawn here to feed the proof capture.
+        if (!pictured && proofDir == null) continue;
         final name =
             'phase8_${fixture.key}_${brightness.name}_${scale.toInt()}x';
         testWidgets(name, (tester) async {
@@ -218,11 +232,13 @@ void main() {
             await tester.pump(const Duration(milliseconds: 100));
           }
           expect(tester.takeException(), isNull);
-          await expectLater(
-            find.byKey(boundary),
-            matchesGoldenFile('goldens/$name.png'),
-          );
-          final directory = Platform.environment['EDGE_PROOF_DIR'];
+          if (pictured) {
+            await expectLater(
+              find.byKey(boundary),
+              matchesGoldenFile('goldens/$name.png'),
+            );
+          }
+          final directory = proofDir;
           if (directory != null) {
             await tester.runAsync(() async {
               final render = boundary.currentContext!.findRenderObject()!
@@ -240,4 +256,49 @@ void main() {
       }
     }
   }
+
+  // Structural cover for the SCREEN fixtures that have no picture.
+  screenStructure('device_lab_mg', fixtures['device_lab_mg']!.$2, () {
+    expect(find.text('Device lab'), findsOneWidget);
+    expect(find.text('ECG on double tap'), findsOneWidget);
+    expect(find.text('Touch windows'), findsOneWidget);
+    expect(find.text('Start threshold'), findsOneWidget);
+    expect(find.text('Gap threshold'), findsOneWidget);
+    expect(find.text('Confirmation threshold'), findsOneWidget);
+    // The ECG row is usable on an MG band.
+    expect(find.text('This band has no ECG sensor'), findsNothing);
+  });
+  screenStructure('device_lab_no_ecg', fixtures['device_lab_no_ecg']!.$2, () {
+    expect(find.text('Device lab'), findsOneWidget);
+    expect(find.text('ECG on double tap'), findsOneWidget);
+    expect(find.text('This band has no ECG sensor'), findsOneWidget);
+    expect(find.text('Touch windows'), findsOneWidget);
+  });
+  screenStructure('collapsed_taps', fixtures['collapsed_taps']!.$2, () {
+    expect(find.text('What happened'), findsOneWidget);
+    // Five double taps in a row collapse to one row with a count.
+    expect(find.text('You double-tapped the band · 5 times'), findsOneWidget);
+    expect(find.text('You double-tapped the band'), findsOneWidget);
+    expect(find.text('On the charger'), findsOneWidget);
+  });
+  screenStructure(
+      'gestures_draft_taps_no_ecg', fixtures['gestures_draft_taps_no_ecg']!.$2,
+      () {
+    expect(find.text('Gestures'), findsOneWidget);
+    expect(find.text('Count extra taps with'), findsOneWidget);
+    expect(find.text('ECG sensor touches'), findsOneWidget);
+    expect(find.text('This band has no ECG sensor'), findsOneWidget);
+    expect(find.text('More double taps'), findsOneWidget);
+    expect(find.text('Tap counts'), findsOneWidget);
+    expect(find.text('What needs a WHOOP MG'), findsOneWidget);
+  });
+  screenStructure(
+      'gestures_tap_method_mg', fixtures['gestures_tap_method_mg']!.$2, () {
+    expect(find.text('Gestures'), findsOneWidget);
+    expect(find.text('Count extra taps with'), findsOneWidget);
+    expect(find.text('ECG sensor touches'), findsOneWidget);
+    expect(find.text('This band has no ECG sensor'), findsNothing);
+    expect(find.text('Tap counts'), findsOneWidget);
+    expect(find.text('What needs a WHOOP MG'), findsOneWidget);
+  });
 }

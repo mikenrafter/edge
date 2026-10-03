@@ -233,7 +233,9 @@ void main() {
     await _loadType();
   });
 
-  for (final scale in const [1.0, 2.0]) {
+  // Pages are SCREEN fixtures: light and dark at 1x text only. Large-text
+  // overflow is checked by structural tests, not by a second set of pictures.
+  for (final scale in const [1.0]) {
     final tag = scale == 1.0 ? '1x' : '2x';
     for (final brightness in Brightness.values) {
       final theme = brightness.name;

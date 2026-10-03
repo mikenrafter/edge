@@ -81,3 +81,14 @@ jobs:
           name: headless-proof-${{ github.sha }}
           path: build/proof/ci
           if-no-files-found: error
+
+      # A golden mismatch writes its masters, test images and diffs under
+      # test/**/failures/. Without this they die with the runner and the only
+      # evidence is "pixels differ", which invites a blind --update-goldens.
+      - name: Upload golden failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures
+          path: test/**/failures/**
+          if-no-files-found: ignore

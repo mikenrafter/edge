@@ -1,15 +1,15 @@
-// Phase 4 headless proof: Source catalog and Resolved data pure views in
-// light/dark at 1x/2x text scale. Synthetic fixtures only.
+// Phase 4 headless proof: Source catalog and Resolved data pure views.
+// Synthetic fixtures only. Not in test/proof/ by design.
 //
-// Red phase: the views do not exist, so every case fails on the missing
-// factory before any golden is compared. Goldens are generated in the green
-// phase under test/sources/goldens/. Not in test/proof/ by design.
+// Both views are screens without a painter, so they have structural tests
+// (content plus no overflow at phone sizes) instead of golden pictures.
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
+import '../proof/structure_harness.dart';
 import 'support/fonts.dart';
 import 'support/sources_support.dart';
 
@@ -119,9 +119,14 @@ void main() {
     'source_catalog': (2600, catalog),
     'resolved_data': (1800, resolved),
   };
+  // Both views are SCREEN fixtures with no painter, so they are covered by
+  // structural tests rather than pictures (see docs/proof-workflow.md). They
+  // are still drawn at 1x when the proof capture asks for images.
+  final proofDir = Platform.environment['EDGE_PROOF_DIR'];
   for (final brightness in Brightness.values) {
-    for (final scale in [1.0, 2.0]) {
+    for (final scale in [1.0]) {
       for (final fixture in fixtures.entries) {
+        if (proofDir == null) continue;
         final name = '${fixture.key}_${brightness.name}_${scale.toInt()}x';
         testWidgets(name, (tester) async {
           final boundary = GlobalKey();
@@ -147,24 +152,56 @@ void main() {
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 100));
           expect(tester.takeException(), isNull);
-          await expectLater(
-            find.byKey(boundary),
-            matchesGoldenFile('goldens/$name.png'),
-          );
-          final directory = Platform.environment['EDGE_PROOF_DIR'];
-          if (directory != null) {
-            await tester.runAsync(() async {
-              final render = boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-              final image = await render.toImage(pixelRatio: 1);
-              final data = await image.toByteData(format: ui.ImageByteFormat.png);
-              final output = File('$directory/$name.png');
-              await output.parent.create(recursive: true);
-              await output.writeAsBytes(data!.buffer.asUint8List());
-              image.dispose();
-            });
-          }
+          await tester.runAsync(() async {
+            final render = boundary.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+            final image = await render.toImage(pixelRatio: 1);
+            final data = await image.toByteData(format: ui.ImageByteFormat.png);
+            final output = File('$proofDir/$name.png');
+            await output.parent.create(recursive: true);
+            await output.writeAsBytes(data!.buffer.asUint8List());
+            image.dispose();
+          });
         });
       }
     }
   }
+
+  screenStructure(
+    'source_catalog',
+    catalog(openViews()),
+    () {
+      // One card per source, each with its label rows.
+      for (final title in const [
+        'Polar H10 · 2c3d',
+        'Polar H10 · 7d6c',
+        'WHOOP',
+        'This phone',
+      ]) {
+        expect(find.text(title), findsOneWidget, reason: '$title card missing');
+      }
+      for (final label in const ['COLLECTS', 'SIGNALS', 'USED FOR', 'RECORDED']) {
+        expect(find.text(label), findsNWidgets(4), reason: '$label rows');
+      }
+      expect(find.text('Continuous heart rate: Only the band declares heart rate.'),
+          findsOneWidget);
+      // A source with no recorded use or coverage says so, not a blank.
+      expect(find.text('—'), findsWidgets);
+    },
+    scrolls: true,
+  );
+  screenStructure(
+    'resolved_data',
+    resolved(openViews()),
+    () {
+      expect(find.text('Beat-to-beat intervals'), findsOneWidget);
+      expect(find.text('Continuous heart rate'), findsOneWidget);
+      expect(find.text('Single source'), findsWidgets);
+      expect(find.text('Sources disagree'), findsOneWidget);
+      // A gap is shown as nothing recording, with no winner.
+      expect(find.text('Nothing was recording.'), findsOneWidget);
+      expect(find.text('No comparison'), findsOneWidget);
+      expect(find.text('Only the band was recording.'), findsOneWidget);
+    },
+    scrolls: true,
+  );
 }

@@ -1856,11 +1856,17 @@ void main() {
       'setup_run': ActivitySetup(activityByName('running')!, weightKg: 72.4),
     };
 
+    // The summaries and the share card are PAINTER fixtures (route, trace,
+    // laps): light and dark at 1x and 2x. The picker and setup page are SCREEN
+    // fixtures: 1x only.
     for (final scale in const [1.0, 2.0]) {
       final tag = scale == 1.0 ? '1x' : '2x';
       for (final brightness in Brightness.values) {
         final theme = brightness.name;
         cases.forEach((name, widget) {
+          if (scale > 1 && !name.startsWith('summary_') && !name.startsWith('share_')) {
+            return;
+          }
           testWidgets('$name · $theme · $tag', (tester) async {
             tester.view.physicalSize = const Size(390 * 3, 1200 * 3);
             tester.view.devicePixelRatio = 3;
