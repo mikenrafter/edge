@@ -55,7 +55,10 @@ LabradorR17 _packet(
       sampleCount: n,
       samples: Int16List.fromList([
         for (var i = 0; i < n; i++)
-          i >= contactFrom && (contactTo == null || i < contactTo) ? 120 : 0,
+          // A moving trace: 8X contact is movement, not a non-zero level.
+          i >= contactFrom && (contactTo == null || i < contactTo)
+              ? (i.isEven ? 120 : -120)
+              : 0,
       ]),
       tail: Uint8List(0),
       inner: Uint8List(0),
@@ -218,8 +221,8 @@ void main() {
       expect(r.buzzes.map((b) => b.$1), [1, 1, 1]);
     });
 
-    test('the same contact across a 400 ms unobserved gap abandons instead of '
-        'counting', () async {
+    test('the same contact across a 400 ms unobserved gap does not count: the '
+        'gesture ends (count 2 by the default fallback, not 3)', () async {
       final r = _Rig();
       await r.session.start(_tap());
       r.deliver(_packet(1000), 500);
@@ -227,21 +230,22 @@ void main() {
       r.deliver(_packet(1001, subMs: 600, n: 60, contactFrom: 0), 2100);
       r.deliver(_packet(1003, contactFrom: 0), 3000); // starts at 1002.0
       await r.settle();
-      expect(r.results, [(null, 'sample_gap')]);
+      expect(r.results, [(2, 'fallback: sample_gap')]);
       expect(r.buzzes, isEmpty, reason: 'no count buzz');
       expect(r.ended, 1);
       expect(r.session.active, isFalse);
     });
 
-    test('a lost packet inside a long no-contact window abandons, not '
-        'confirm-2', () async {
+    test('a lost packet inside a long no-contact window ends the gesture as a '
+        'failure, not as a confirmed 2', () async {
       final r = _Rig();
       await r.session.start(_tap());
       r.deliver(_packet(1000), 500);
       r.deliver(_packet(1001), 1500); // window [1001.5, 1001.8)
       r.deliver(_packet(1003), 3000); // packet 1002 never arrived
       await r.settle();
-      expect(r.results, [(null, 'sample_gap')]);
+      expect(r.results, [(2, 'fallback: sample_gap')],
+          reason: 'a failure (fallback on), not a normal (2, null)');
     });
   });
 }

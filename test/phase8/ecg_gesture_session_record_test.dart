@@ -38,8 +38,11 @@ LabradorR17 _packet(int sec, {int sub = 0, int contactFrom = 100, int n = 100}) 
       variabilityRaw: null,
       reserved: 0,
       sampleCount: n,
-      samples: Int16List.fromList(
-          [for (var i = 0; i < n; i++) i >= contactFrom ? 120 : 0]),
+      // A moving trace: 8X contact is movement, not a non-zero level.
+      samples: Int16List.fromList([
+        for (var i = 0; i < n; i++)
+          i >= contactFrom ? (i.isEven ? 120 : -120) : 0,
+      ]),
       tail: Uint8List(0),
       inner: Uint8List(0),
     );
@@ -120,7 +123,8 @@ void main() {
 
   // A long quiet window (1.1 s to start + 1 s to confirm) so a few packets
   // arrive before the counter decides on its own.
-  final slow = EcgTapThresholds(startMs: 1100, confirmMs: 1000);
+  final slow = EcgTapThresholds(
+      startMs: 1100, confirmMs: 1000, fallbackToDoubleTap: false);
 
   test('several packets widen the interval to the first start and last end',
       () async {
@@ -156,7 +160,10 @@ void main() {
   test('start failed (stream refused): written, bounds from the strap clock',
       () async {
     var now = 5000;
-    final r = _Rig(startOk: false, strapClock: () => now++);
+    final r = _Rig(
+        startOk: false,
+        strapClock: () => now++,
+        thresholds: EcgTapThresholds(fallbackToDoubleTap: false));
     await expectLater(r.session.start(_tap()), throwsStateError);
     final g = r.recorded.single;
     expect(g.finalCount, isNull);
@@ -168,7 +175,9 @@ void main() {
 
   test('start failed (throws): still written, bounds null with no clock',
       () async {
-    final r = _Rig(throwOnStart: true);
+    final r = _Rig(
+        throwOnStart: true,
+        thresholds: EcgTapThresholds(fallbackToDoubleTap: false));
     await expectLater(r.session.start(_tap()), throwsStateError);
     final g = r.recorded.single;
     expect(g.reason, 'start_failed');

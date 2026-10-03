@@ -50,6 +50,8 @@ class GestureSettings extends ChangeNotifier {
   static const _kEcgGapMs = 'gesture_ecg_gap_ms';
   static const _kEcgConfirmMs = 'gesture_ecg_confirm_ms';
   static const _kEcgExtraSensitive = 'gesture_ecg_extra_sensitive';
+  static const _kEcgTolerant = 'gesture_ecg_tolerant_startup';
+  static const _kEcgFallback = 'gesture_ecg_fallback';
   static const _kTapMethod = 'gesture_tap_method';
   static const _kRepeatWindowMs = 'gesture_repeat_window_ms';
   static const _kRepeatLab = 'gesture_repeat_lab';
@@ -202,6 +204,8 @@ class GestureSettings extends ChangeNotifier {
       confirmMs:
           field(_kEcgConfirmMs, d.confirmMs, EcgTapThresholds.confirmRange),
       extraSensitive: prefs.getBool(_kEcgExtraSensitive) ?? d.extraSensitive,
+      tolerantStartup: prefs.getBool(_kEcgTolerant) ?? d.tolerantStartup,
+      fallbackToDoubleTap: prefs.getBool(_kEcgFallback) ?? d.fallbackToDoubleTap,
     );
 
     final caps = await DeviceActions.capabilities();
@@ -309,6 +313,8 @@ class GestureSettings extends ChangeNotifier {
     await prefs.setInt(_kEcgGapMs, t.gapMs);
     await prefs.setInt(_kEcgConfirmMs, t.confirmMs);
     await prefs.setBool(_kEcgExtraSensitive, t.extraSensitive);
+    await prefs.setBool(_kEcgTolerant, t.tolerantStartup);
+    await prefs.setBool(_kEcgFallback, t.fallbackToDoubleTap);
     notifyListeners();
   }
 

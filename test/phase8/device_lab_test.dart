@@ -190,6 +190,143 @@ void main() {
           reason: 'the other thresholds are kept');
     });
 
+    testWidgets('8X: tolerant startup and the double-tap fallback: two '
+        'switches next to the extra sensitive one, on by default',
+        (t) async {
+      final changes = <EcgTapThresholds>[];
+      await _pump(
+          t,
+          DeviceLabView(
+            ecgSupported: true,
+            thresholds: EcgTapThresholds(gapMs: 250),
+            onThresholds: changes.add,
+          ));
+      expect(find.text('Tolerant startup'), findsOneWidget);
+      expect(
+          find.text('On: waits for the sensor to settle (about 2.5 s), so a '
+              'finger placed during startup still counts. Off: decides a '
+              'plain double tap from the first ECG packet, about 2 s sooner, '
+              'but a finger placed after that packet is missed.'),
+          findsOneWidget);
+      expect(find.text('Fall back to the double-tap action'), findsOneWidget);
+      expect(
+          find.text('On: if the ECG cannot start or stops before any touch is '
+              'counted, the double-tap action runs. Off: the ECG is tried '
+              'once more instead. Either way the band gives one long buzz '
+              'when the ECG fails.'),
+          findsOneWidget);
+
+      final tolerant =
+          find.byKey(const ValueKey('ecg-threshold:tolerant-startup'));
+      final fallback = find.byKey(const ValueKey('ecg-threshold:fallback'));
+      final extra = find.byKey(const ValueKey('ecg-threshold:extra-sensitive'));
+      for (final k in [tolerant, fallback, extra]) {
+        await t.ensureVisible(k);
+        expect(k, findsOneWidget);
+      }
+      expect(
+          t
+              .widget<Switch>(
+                  find.descendant(of: tolerant, matching: find.byType(Switch)))
+              .value,
+          isTrue);
+      expect(
+          t
+              .widget<Switch>(
+                  find.descendant(of: fallback, matching: find.byType(Switch)))
+              .value,
+          isTrue);
+      // Next to the extra sensitive switch: the same column, in the same block.
+      expect(t.getTopLeft(tolerant).dx, t.getTopLeft(extra).dx);
+      expect(t.getTopLeft(fallback).dx, t.getTopLeft(extra).dx);
+    });
+
+    testWidgets('8X: toggling each switch saves it and keeps the other '
+        'settings', (t) async {
+      final changes = <EcgTapThresholds>[];
+      await _pump(
+          t,
+          DeviceLabView(
+            ecgSupported: true,
+            thresholds: EcgTapThresholds(gapMs: 250, extraSensitive: true),
+            onThresholds: changes.add,
+          ));
+      final tolerant =
+          find.byKey(const ValueKey('ecg-threshold:tolerant-startup'));
+      await t.ensureVisible(tolerant);
+      await t.tap(find.descendant(of: tolerant, matching: find.byType(Switch)));
+      expect(
+          changes.last,
+          EcgTapThresholds(
+              gapMs: 250, extraSensitive: true, tolerantStartup: false));
+      final fallback = find.byKey(const ValueKey('ecg-threshold:fallback'));
+      await t.ensureVisible(fallback);
+      await t.tap(find.descendant(of: fallback, matching: find.byType(Switch)));
+      expect(
+          changes.last,
+          EcgTapThresholds(
+              gapMs: 250, extraSensitive: true, fallbackToDoubleTap: false));
+    });
+
+    testWidgets('8X: the switches show the stored state and turn back on',
+        (t) async {
+      final changes = <EcgTapThresholds>[];
+      await _pump(
+          t,
+          DeviceLabView(
+            ecgSupported: true,
+            thresholds: EcgTapThresholds(
+                tolerantStartup: false, fallbackToDoubleTap: false),
+            onThresholds: changes.add,
+          ));
+      final tolerant =
+          find.byKey(const ValueKey('ecg-threshold:tolerant-startup'));
+      final fallback = find.byKey(const ValueKey('ecg-threshold:fallback'));
+      await t.ensureVisible(tolerant);
+      await t.ensureVisible(fallback);
+      expect(
+          t
+              .widget<Switch>(
+                  find.descendant(of: tolerant, matching: find.byType(Switch)))
+              .value,
+          isFalse);
+      expect(
+          t
+              .widget<Switch>(
+                  find.descendant(of: fallback, matching: find.byType(Switch)))
+              .value,
+          isFalse);
+      await t.tap(find.descendant(of: tolerant, matching: find.byType(Switch)));
+      expect(changes.last,
+          EcgTapThresholds(tolerantStartup: true, fallbackToDoubleTap: false));
+      await t.tap(find.descendant(of: fallback, matching: find.byType(Switch)));
+      expect(changes.last,
+          EcgTapThresholds(tolerantStartup: false, fallbackToDoubleTap: true));
+    });
+
+    testWidgets('8X: not a WHOOP MG: the new switches are inert too',
+        (t) async {
+      final changes = <EcgTapThresholds>[];
+      await _pump(
+          t,
+          DeviceLabView(
+            ecgSupported: false,
+            thresholds: EcgTapThresholds(),
+            onThresholds: changes.add,
+          ));
+      for (final k in const [
+        'ecg-threshold:tolerant-startup',
+        'ecg-threshold:fallback',
+      ]) {
+        final key = find.byKey(ValueKey(k));
+        await t.ensureVisible(key);
+        final sw = t.widget<Switch>(
+            find.descendant(of: key, matching: find.byType(Switch)));
+        expect(sw.onChanged, isNull, reason: k);
+      }
+      expect(changes, isEmpty);
+    });
+
     testWidgets('not a WHOOP MG: the adjusters are shown but inert',
         (t) async {
       final changes = <EcgTapThresholds>[];

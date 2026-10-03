@@ -141,11 +141,13 @@ void main() {
     test('a stream-start write that never answers fails the start, clears the '
         'latch, stops a late stream, and the next tap works', () async {
       final r = _Rig(beginHangs: true);
-      await expectLater(r.session.start(_tap()), throwsA(isA<TimeoutException>()));
+      // 8X: the fallback is on by default, so a failed start does not throw: it
+      // ends the gesture with count 2 (the double-tap action).
+      await r.session.start(_tap());
       expect(r.session.active, isFalse);
-      expect(r.results, [(null, 'start_failed')]);
+      expect(r.results, [(2, 'fallback: start_failed')]);
       expect(r.ended, 1, reason: 'a start that answers late must not stream on');
-      expect(r.records.single.reason, 'start_failed');
+      expect(r.records.single.reason, contains('start_failed'));
       // The latch is clear: another tap begins a new gesture.
       final again = _Rig();
       await again.session.start(_tap());
@@ -161,7 +163,7 @@ void main() {
       r.session.poll(); // link lost
       await r.settle(300);
       expect(r.session.active, isFalse);
-      expect(r.results.single, (null, 'link_lost'));
+      expect(r.results.single, (2, 'fallback: link_lost'));
       expect(r.ended, 1);
     });
 
@@ -220,8 +222,8 @@ void main() {
               'second gesture sent both of its commands');
     });
 
-    test('BLE disconnect mid-gesture: abandoned, recorded once, stream stopped, '
-        'no action count', () async {
+    test('BLE disconnect mid-gesture: ended once (count 2 by the default '
+        'fallback), recorded once, stream stopped', () async {
       final r = _Rig();
       await r.session.start(_tap());
       await r.steady();
@@ -229,7 +231,7 @@ void main() {
       r.session.poll();
       r.session.poll(); // a second poll must not double-finish
       await r.settle();
-      expect(r.results, [(null, 'link_lost')]);
+      expect(r.results, [(2, 'fallback: link_lost')]);
       expect((r.records.length, r.ended), (1, 1));
     });
 

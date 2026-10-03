@@ -76,11 +76,34 @@ class Trace {
   List<TracePacket> of(String tag) =>
       packets.where((p) => p.tag == tag).toList();
 
-  static Trace load(String path) => parse(File(path).readAsStringSync());
+  /// Read a fixture file. A RECONSTRUCTED fixture (the 18:17 one: its log gave
+  /// only where each packet had signal, so its samples are a constant 120
+  /// there and 0 elsewhere) must be loaded with [reconstructed]: since 8X
+  /// contact is a signal that MOVES, a constant plateau is no contact, so each
+  /// run of signal samples becomes a +120/-120 alternation (the same samples
+  /// are non-zero, the packets keep their shape). A real Device lab export
+  /// needs nothing.
+  static Trace load(String path, {bool reconstructed = false}) =>
+      parse(File(path).readAsStringSync(), reconstructed: reconstructed);
+
+  /// Each run of non-zero samples alternates +120, -120, ... from its start.
+  static List<int> _moving(List<int> samples) {
+    final out = List<int>.of(samples);
+    var runStart = -1;
+    for (var i = 0; i < out.length; i++) {
+      if (samples[i] == 0) {
+        runStart = -1;
+        continue;
+      }
+      if (runStart < 0) runStart = i;
+      out[i] = (i - runStart).isEven ? 120 : -120;
+    }
+    return out;
+  }
 
   /// Parse `r17v1` and `session` lines; anything else is ignored, so a whole
   /// copied Device lab log parses too.
-  static Trace parse(String text) {
+  static Trace parse(String text, {bool reconstructed = false}) {
     final packets = <TracePacket>[];
     final sessions = <TraceSession>[];
     for (var line in const LineSplitter().convert(text)) {
@@ -103,13 +126,14 @@ class Trace {
       };
       final n = int.parse(kv['n']!);
       final b64 = kv['b64']!;
-      final List<int> samples;
+      List<int> samples;
       if (b64 == '0') {
         samples = List.filled(n, 0);
       } else {
         final bytes = base64.decode(b64);
         samples = Int16List.view(Uint8List.fromList(bytes).buffer, 0, n);
       }
+      if (reconstructed) samples = _moving(samples);
       packets.add(TracePacket(
         tag,
         DateTime.fromMillisecondsSinceEpoch(int.parse(kv['recv']!)),

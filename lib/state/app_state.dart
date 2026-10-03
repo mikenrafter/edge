@@ -433,6 +433,7 @@ class AppState extends ChangeNotifier {
     },
     isStreamAlive: () => ecg.isCapturing,
     buzz: _ecgTapBuzz,
+    failBuzz: _ecgTapFailBuzz,
     maxTaps: () => gestureSettings.ecgTapMax,
     thresholds: () => gestureSettings.ecgTapThresholds,
     onStarted: (tap, settings) => deviceLab.beginSession(
@@ -536,6 +537,23 @@ class AppState extends ChangeNotifier {
       bandDelivery: () => deliverBuzzSequence(seq,
           buzz: () => engine.buzzBand(),
           isConnected: () => engine.isConnected),
+    );
+    return r.targets.contains('band');
+  }
+
+  /// 8X: the one long buzz for a failed ECG (holdMs >= 500 is one command
+  /// looped twice, distinct from the single-command count buzzes). Still a
+  /// dispatcher delivery.
+  Future<bool> _ecgTapFailBuzz(String eventId) async {
+    final now = DateTime.now();
+    final r = await alertDispatcher.dispatch(
+      kEcgTapRule,
+      eventId: eventId,
+      sourceTime: now,
+      historical: false,
+      bandDelivery: () async => await engine.buzzBand(holdMs: 600)
+          ? BuzzDelivery.complete
+          : BuzzDelivery.rejected,
     );
     return r.targets.contains('band');
   }

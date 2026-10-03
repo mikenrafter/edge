@@ -828,6 +828,21 @@ The 20:40 lab log, with the band's events and the wearer's counts, corrects 8V:
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L3, superseded findings,
   open questions); `test/phase8/CONTRACTS.md` (8W).
 
+### 8X — Block contact, quick start, ECG failure
+
+- Contact is a moving signal in 50 ms blocks (a run of at least 100 ms, edges of a
+  packet excepted), not "sample is not zero": a flat constant is no contact.
+  Docs note a saturated trace would read as no contact.
+- Two new Device lab switches, both on by default. Tolerant startup off decides a
+  plain double tap from the first 49-sample packet when it shows no finger (about
+  2 s sooner). Fall back to the double-tap action off retries the ECG once
+  (before the touch window opened) instead of running the double-tap action.
+- Whenever the ECG fails the band gives one long buzz, in every mode. With the
+  fallback on and no touch counted, a failed ECG (a failed start included) ends
+  as a plain double tap; a failure after tap 3 is abandoned.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (Contact rule);
+  `test/phase8/CONTRACTS.md` (8X).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

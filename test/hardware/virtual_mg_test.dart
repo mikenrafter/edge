@@ -21,6 +21,34 @@ import '../support/virtual_mg.dart';
 }
 
 void main() {
+  group('8X: a DC offset on the electrode', () {
+    test('the default is none: an untouched stream is all zeros', () {
+      final p = VirtualMgEcg(touches: const []).packets(4);
+      expect(p.expand((x) => x.r.samples), everyElement(0));
+    });
+
+    test('with an offset, every untouched sample reads that level (not zero), '
+        'in every packet, and the packets keep their shape', () {
+      final plain = VirtualMgEcg(touches: const []).packets(4);
+      final p = VirtualMgEcg(touches: const [], dcOffset: 300).packets(4);
+      expect(p.map((x) => x.r.samples.length),
+          plain.map((x) => x.r.samples.length));
+      expect(p.expand((x) => x.r.samples), everyElement(300));
+      expect(p.expand((x) => x.r.samples), isNotEmpty);
+    });
+
+    test('a touch moves around the offset', () {
+      final p = VirtualMgEcg(touches: [(0, 10000)], zeroRate: 0, dcOffset: 300)
+          .packets(6);
+      final touched = p[4].r.samples; // a full packet well after the settle
+      expect(touched.toSet().length, greaterThan(10));
+      expect(touched, everyElement(allOf(greaterThan(300 - 360),
+          lessThan(300 + 440))));
+      expect(p[2].r.samples, everyElement(300),
+          reason: 'the blank second packet sits at the offset');
+    });
+  });
+
   group('the model shows what the lab logs showed', () {
     test('a finger on from the start: blip, a blank packet, then contact '
         'from sample 86 of the third sampled packet', () {
@@ -145,8 +173,11 @@ void main() {
   // waits move time, its buzzes go into the virtual haptic queue.
   Future<({List<(int?, String?)> results, VirtualMgHaptics haptics, List<String> steps})>
       gesture(List<(int, int)> touches,
-          {Duration? reacquire, EcgTapThresholds? th, int seconds = 16}) async {
-    final ecg = VirtualMgEcg(touches: touches);
+          {Duration? reacquire,
+          EcgTapThresholds? th,
+          int seconds = 16,
+          int dcOffset = 0}) async {
+    final ecg = VirtualMgEcg(touches: touches, dcOffset: dcOffset);
     final packets = ecg.packets(seconds);
     final haptics = VirtualMgHaptics();
     final results = <(int?, String?)>[];
@@ -219,6 +250,40 @@ void main() {
         () async {
       final g = await gesture([(0, 4000), (4500, 4800)]);
       expect(g.results, [(3, null)]);
+    });
+
+    test('8X: a flat DC level is no contact: with no finger the count is 2, '
+        'not a finger that never lets go', () async {
+      final g = await gesture(const [], dcOffset: 300);
+      expect(g.results, [(2, null)]);
+    });
+
+    test('8X: a DC level under a real touch does not hide the lifts', () async {
+      final g = await gesture(fourTaps, dcOffset: 300);
+      expect(g.results, [(4, null)]);
+    });
+
+    test('8X: quick start with no finger: the count is 2 from the first '
+        'sampled packet', () async {
+      final g = await gesture(const [],
+          th: EcgTapThresholds(
+              startMs: 500, confirmMs: 1000, tolerantStartup: false));
+      expect(g.results, [(2, null)]);
+      expect(
+          g.steps,
+          contains('Quick start: no finger in the first sampled packet; the '
+              'count is 2.'));
+      expect(g.steps.where((s) => s.startsWith('Touch window open')), isEmpty,
+          reason: 'decided before the window opened');
+    });
+
+    test('8X: quick start with the finger already on carries on like '
+        'tolerant startup', () async {
+      final g = await gesture(fourTaps,
+          th: EcgTapThresholds(
+              startMs: 500, confirmMs: 1000, tolerantStartup: false));
+      expect(g.results, [(4, null)]);
+      expect(g.steps.where((s) => s.startsWith('Quick start')), isEmpty);
     });
   });
 }

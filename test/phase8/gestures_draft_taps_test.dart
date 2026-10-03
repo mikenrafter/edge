@@ -116,6 +116,60 @@ void main() {
           EcgTapThresholds(startMs: 500, extraSensitive: true));
     });
 
+    test('8X: tolerant startup and the double-tap fallback: on until changed, '
+        'persisted under their own keys, restored', () async {
+      final s = await _boot({});
+      expect(s.ecgTapThresholds.tolerantStartup, isTrue);
+      expect(s.ecgTapThresholds.fallbackToDoubleTap, isTrue);
+      var notified = 0;
+      s.addListener(() => notified++);
+      await s.setEcgTapThresholds(EcgTapThresholds(
+          tolerantStartup: false, fallbackToDoubleTap: false));
+      expect(notified, 1);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('gesture_ecg_tolerant_startup'), isFalse);
+      expect(prefs.getBool('gesture_ecg_fallback'), isFalse);
+      final again = GestureSettings();
+      await again.bootstrap();
+      expect(again.ecgTapThresholds.tolerantStartup, isFalse);
+      expect(again.ecgTapThresholds.fallbackToDoubleTap, isFalse);
+      expect(again.ecgTapThresholds,
+          EcgTapThresholds(tolerantStartup: false, fallbackToDoubleTap: false));
+    });
+
+    test('8X: the two switches are stored independently', () async {
+      final s = await _boot({});
+      await s.setEcgTapThresholds(EcgTapThresholds(tolerantStartup: false));
+      var prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('gesture_ecg_tolerant_startup'), isFalse);
+      expect(prefs.getBool('gesture_ecg_fallback'), isTrue);
+      await s.setEcgTapThresholds(EcgTapThresholds(fallbackToDoubleTap: false));
+      prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('gesture_ecg_tolerant_startup'), isTrue);
+      expect(prefs.getBool('gesture_ecg_fallback'), isFalse);
+    });
+
+    test('8X: a user from before 8X (the keys are missing) gets both on, '
+        'whatever else was stored', () async {
+      final s = await _boot({
+        'gesture_ecg_start_ms': 500,
+        'gesture_ecg_extra_sensitive': true,
+      });
+      expect(s.ecgTapThresholds.tolerantStartup, isTrue);
+      expect(s.ecgTapThresholds.fallbackToDoubleTap, isTrue);
+      expect(s.ecgTapThresholds,
+          EcgTapThresholds(startMs: 500, extraSensitive: true));
+    });
+
+    test('8X: a stored false for one key does not touch the other', () async {
+      final a = await _boot({'gesture_ecg_tolerant_startup': false});
+      expect(a.ecgTapThresholds.tolerantStartup, isFalse);
+      expect(a.ecgTapThresholds.fallbackToDoubleTap, isTrue);
+      final b = await _boot({'gesture_ecg_fallback': false});
+      expect(b.ecgTapThresholds.tolerantStartup, isTrue);
+      expect(b.ecgTapThresholds.fallbackToDoubleTap, isFalse);
+    });
+
     test('an invalid stored value falls back to that field\'s default',
         () async {
       final s = await _boot({

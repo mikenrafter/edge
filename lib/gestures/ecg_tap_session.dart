@@ -48,6 +48,7 @@ import 'dart:async';
 import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
 import '../notify/alert_rule.dart';
+import 'ecg_contact.dart';
 import 'ecg_stream_readiness.dart';
 import 'ecg_tap_counter.dart';
 import 'strap_event.dart';
@@ -100,6 +101,7 @@ class EcgTapSession {
     required this.maxTaps,
     required this.thresholds,
     required this.onFinished,
+    this.failBuzz,
     this.onStarted,
     this.recordSession,
     this.onPacket,
@@ -144,6 +146,11 @@ class EcgTapSession {
 
   /// The gesture ended: [count] taps, or null when abandoned (with [reason]).
   final void Function(int? count, String? reason) onFinished;
+
+  /// One long buzz for a failed ECG (8X), through AlertDispatcher: called once
+  /// per failed gesture with the event id `<gesture id>:failed`, queued behind
+  /// any count buzz. True when it was written to the band.
+  final Future<bool> Function(String eventId)? failBuzz;
 
   /// A gesture began: the tap and a one-line description of the thresholds in
   /// force, for the Device lab's session summary.
@@ -251,6 +258,10 @@ class EcgTapSession {
   static const Duration _samplePeriod = Duration(milliseconds: 10); // 100 Hz
 
   bool _active = false;
+  // 8X: whether the one retry (fallback off) was used, and the thresholds this
+  // gesture runs on. Both reset when the gesture ends.
+  bool _retried = false;
+  EcgTapThresholds? _th;
   bool _streamUp = false;
   bool _opened = false; // the counter has started and its first window is open
   Duration? _firstSampleAt; // the stream's first sample, on the sample clock
@@ -301,7 +312,9 @@ class EcgTapSession {
   /// Begin the gesture for a live double tap. Returns once the stream command
   /// has gone out (the rest happens as packets arrive). Throws if it could not
   /// start, with every flag already reset, so the caller can give the tap's
-  /// claim back. A second tap while one gesture runs is ignored.
+  /// claim back. With the double-tap fallback on (8X) a failed start does not
+  /// throw: the gesture ends with count 2. With it off the start is tried once
+  /// more first. A second tap while one gesture runs is ignored.
   Future<void> start(StrapEvent tap) async {
     // The previous gesture's stop may still be in flight (bounded by
     // [endTimeout]). Starting a stream before it lands would let that stop
@@ -310,15 +323,26 @@ class EcgTapSession {
     if (prior != null) await prior;
     if (_active) return;
     _active = true;
+    _retried = false;
     final gen = ++_generation;
     _tap = tap;
     final now = _now();
     _tapAt = tap.receivedAt.isAfter(now) ? now : tap.receivedAt;
     _strapAtBegin = _strapNowSafe();
-    final t = thresholds();
+    final t = _th = thresholds();
+    _newAttempt();
+    try {
+      onStarted?.call(tap, t.summary);
+    } catch (_) {}
+    step?.call('Double tap received. Starting the ECG stream.');
+    await _startStream(gen);
+  }
+
+  /// A fresh counter, readiness and clock: the first try's, or the retry's.
+  void _newAttempt() {
     _counter = EcgTapCounter(
       max: maxTaps(),
-      thresholds: t,
+      thresholds: _th!,
       stallAfter: stallAfter,
       maxSampleGap: maxSampleGap,
       reacquire: sensorReacquire,
@@ -326,11 +350,10 @@ class EcgTapSession {
     _readiness = EcgStreamReadiness();
     _clock = EcgSampleClock();
     _prevEnd = null;
+  }
+
+  Future<void> _startStream(int gen) async {
     try {
-      onStarted?.call(tap, t.summary);
-    } catch (_) {}
-    try {
-      step?.call('Double tap received. Starting the ECG stream.');
       if (!await beginStream().timeout(beginTimeout)) {
         throw StateError('the ECG stream did not start');
       }
@@ -355,11 +378,50 @@ class EcgTapSession {
       // the interval is written) so nothing is left streaming for a gesture
       // that has already given up. The caller's own start is generation-checked
       // too (see beginEcgForTap).
-      if (gen == _generation) {
-        await _finish(null, 'start_failed', stopStream: e is TimeoutException);
+      if (gen != _generation) rethrow;
+      final stop = e is TimeoutException;
+      if (_active && _canRetry()) {
+        await _retry('start_failed', gen, stopStream: stop);
+        return;
       }
-      rethrow;
+      // With the fallback on the gesture ends as a double tap and start()
+      // does not throw; otherwise the caller gives the tap's claim back.
+      final fellBack = await _finish(null, 'start_failed', stopStream: stop);
+      if (!fellBack) rethrow;
     }
+  }
+
+  /// Whether a failure now may be answered by starting the stream once more:
+  /// fallback off, the retry unused, the touch window not yet open and no touch
+  /// counted.
+  bool _canRetry() {
+    final t = _th;
+    if (t == null || t.fallbackToDoubleTap || _retried || _opened) return false;
+    return (_counter?.count ?? 0) < 3;
+  }
+
+  /// Stop the stream and start it once more inside the same gesture (same tap,
+  /// same generation, same lab session). [active] stays true throughout.
+  Future<void> _retry(String reason, int gen, {bool stopStream = false}) async {
+    _retried = true;
+    step?.call('ECG failed ($reason); trying the ECG once more.');
+    final up = _streamUp;
+    try {
+      _timer?.cancel();
+    } finally {
+      _timer = null;
+      _streamUp = false;
+      _opened = false;
+      _firstSampleAt = null;
+      _startedAt = null;
+      _lastFrameWall = null;
+      _lastEnd = null;
+      _packets = 0;
+      _newAttempt();
+    }
+    if (up || stopStream) await _endStreamSafely();
+    if (!_active || gen != _generation) return;
+    await _startStream(gen);
   }
 
   Future<void> _endStreamSafely() async {
@@ -368,11 +430,11 @@ class EcgTapSession {
     } catch (_) {}
   }
 
-  /// One decoded ECG packet. Contact is a non-zero sample: the stream is zeros
-  /// until the finger is on the electrode. Unless
-  /// [EcgTapThresholds.extraSensitive] is on, the zeros between a packet's
-  /// first and last non-zero sample are contact too (an ECG trace crosses
-  /// zero).
+  /// One decoded ECG packet. Contact comes from [ecgContactMask]: a 50 ms
+  /// block with a moving signal, a run of at least two such blocks (a flat
+  /// block, zeros or any constant, is no contact). Unless
+  /// [EcgTapThresholds.extraSensitive] is on, everything between a packet's
+  /// first and last contact sample is contact too (an ECG trace crosses zero).
   void onFrame(LabradorR17 r) {
     final c = _counter;
     if (!_active || c == null) {
@@ -384,10 +446,11 @@ class EcgTapSession {
     _packets++;
     final prevWall = _lastFrameWall;
     final n = r.samples.length;
-    final (raw, first, last) = _contactOf(r);
+    final mask = ecgContactMask(r.samples);
+    final (raw, first, last) = _contactOf(mask);
     final fill = !c.thresholds.extraSensitive;
     bool contactAt(int i) =>
-        fill ? first >= 0 && i >= first && i <= last : r.samples[i] != 0;
+        fill ? first >= 0 && i >= first && i <= last : mask[i];
     // PACKET TIME: the strap time is the newest sample; the packet covers
     // [end - n samples, end).
     final end = Duration(microseconds: (r.strapTime * 1000000).round());
@@ -435,6 +498,7 @@ class EcgTapSession {
     _lastFrameWall = wall;
     _lastEnd = end;
     _prevEnd = end;
+    final firstSampled = n > 0 && _firstSampleAt == null;
     if (n > 0) _firstSampleAt ??= base;
 
     if (!_readiness.ready &&
@@ -446,6 +510,21 @@ class EcgTapSession {
         '${EcgStreamReadiness.pairWindow.inMilliseconds} ms of each other).',
       );
     }
+    // Quick start: the first sampled packet shows no finger, so a plain double
+    // tap is decided now instead of waiting for the sensor to settle.
+    if (firstSampled && !c.thresholds.tolerantStartup && _streamUp && !_opened) {
+      if (raw == 0) {
+        step?.call('Quick start: no finger in the first sampled packet; the '
+            'count is 2.');
+        _opened = true;
+        final tap = _tap;
+        if (tap != null) {
+          _handle(c.start(tap, at: end));
+          if (_active) _handle(c.noFinger(end));
+        }
+        return;
+      }
+    }
     _maybeOpen();
 
     if (!_opened) return;
@@ -455,12 +534,12 @@ class EcgTapSession {
     }
   }
 
-  /// How many samples are non-zero, and the first and last of them (-1 when
-  /// none).
-  static (int, int, int) _contactOf(LabradorR17 r) {
+  /// How many samples of [mask] are contact, and the first and last of them
+  /// (-1 when none).
+  static (int, int, int) _contactOf(List<bool> mask) {
     var raw = 0, first = -1, last = -1;
-    for (var i = 0; i < r.samples.length; i++) {
-      if (r.samples[i] == 0) continue;
+    for (var i = 0; i < mask.length; i++) {
+      if (!mask[i]) continue;
       raw++;
       if (first < 0) first = i;
       last = i;
@@ -492,7 +571,7 @@ class EcgTapSession {
     final wall = _now();
     _notePacket(r, wall);
     _postPackets++;
-    final (raw, first, last) = _contactOf(r);
+    final (raw, first, last) = _contactOf(ecgContactMask(r.samples));
     final endSec = r.strapSeconds +
         ((r.subseconds * 1000 + 32767) ~/ 32768 + 999) ~/ 1000;
     final e = _postEndStrapSec;
@@ -550,7 +629,11 @@ class EcgTapSession {
   }
 
   void _abandon(String reason) {
-    step?.call('Abandoned: $reason. No action.');
+    final gen = _generation;
+    if (_canRetry()) {
+      unawaited(_retry(reason, gen).catchError((Object _) {}));
+      return;
+    }
     unawaited(_finish(null, reason));
   }
 
@@ -580,8 +663,7 @@ class EcgTapSession {
           );
           unawaited(_finish(count, null));
         case EcgTapAbandoned(:final reason):
-          step?.call('Abandoned: $reason. No action.');
-          unawaited(_finish(null, reason));
+          _abandon(reason);
       }
     }
   }
@@ -645,9 +727,25 @@ class EcgTapSession {
   /// only then is the tagging interval written, with an end that covers the time
   /// the band kept recording until the stop. The reverse order let a slow
   /// database leave seconds of gesture ECG outside the stored interval.
-  Future<void> _finish(int? count, String? reason,
+  ///
+  /// 8X: a failed ECG (abandoned with a reason) buzzes the failure once. With
+  /// the fallback on and no touch counted yet it ends with count 2 instead of
+  /// null, so the double-tap action runs; returns true then.
+  Future<bool> _finish(int? count, String? reason,
       {bool stopStream = false}) async {
-    if (!_active) return;
+    if (!_active) return false;
+    final failed = count == null && reason != null;
+    final fallback = failed &&
+        (_th?.fallbackToDoubleTap ?? true) &&
+        (_counter?.count ?? 0) < 3;
+    if (failed) {
+      step?.call('ECG failed ($reason): one long buzz.');
+      step?.call(fallback
+          ? 'ECG failed ($reason). Fallback: the count is 2 (double-tap '
+              'action).'
+          : 'Abandoned: $reason. No action.');
+      _sendFailBuzz();
+    }
     final up = _streamUp;
     final strapStart = _firstStrapSec ?? _strapAtBegin;
     final packetEnd = _lastEndStrapSec;
@@ -671,11 +769,17 @@ class EcgTapSession {
       _packets = 0;
       _buzzes = 0;
       _firstStrapSec = _lastEndStrapSec = _strapAtBegin = null;
+      _retried = false;
+      _th = null;
     }
     // Both are best effort and must not leak an error out of an unawaited
     // call; the stream is stopped even if the listener throws.
     try {
-      onFinished(count, reason);
+      if (fallback) {
+        onFinished(2, 'fallback: $reason');
+      } else {
+        onFinished(count, reason);
+      }
     } catch (_) {}
     if (up || stopStream) {
       final post = up && reason == null ? _postRollSafe() : Duration.zero;
@@ -720,6 +824,36 @@ class EcgTapSession {
     try {
       await recordSession?.call(record).timeout(recordTimeout);
     } catch (_) {}
+    return fallback;
+  }
+
+  /// The failure buzz, queued behind any count buzz and after the band's quiet
+  /// gap. A throw, a refusal or a hang is logged and ends there.
+  void _sendFailBuzz() {
+    final tap = _tap, fb = failBuzz;
+    if (tap == null || fb == null) return;
+    final base = tap.plausible
+        ? tap.identity
+        : '${tap.identity}:${tap.receivedAt.microsecondsSinceEpoch}';
+    final id = '$base:failed';
+    _buzzTail = _buzzTail.then((_) async {
+      final quiet = _quietUntil;
+      final now = _now();
+      if (quiet != null && quiet.isAfter(now)) {
+        final w = quiet.difference(now);
+        step?.call('The failure buzz waits ${w.inMilliseconds} ms: the band is '
+            'still busy with the last buzz.');
+        await _wait(w);
+      }
+      var ok = false;
+      try {
+        ok = await fb(id).timeout(buzzTimeout);
+      } catch (_) {
+        ok = false;
+      }
+      _quietUntil = _now().add(buzzQuietGap);
+      step?.call('The failure buzz ${ok ? 'written' : 'could not be written'}.');
+    }).catchError((Object _) {});
   }
 
   Duration _postRollSafe() {

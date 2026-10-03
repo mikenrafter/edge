@@ -34,7 +34,10 @@ LabradorR17 _packet(int sec, {int contactFrom = 100, int? contactTo}) =>
       sampleCount: 100,
       samples: Int16List.fromList([
         for (var i = 0; i < 100; i++)
-          i >= contactFrom && (contactTo == null || i < contactTo) ? 120 : 0,
+          // A moving trace: 8X contact is movement, not a non-zero level.
+          i >= contactFrom && (contactTo == null || i < contactTo)
+              ? (i.isEven ? 120 : -120)
+              : 0,
       ]),
       tail: Uint8List(0),
       inner: Uint8List(0),

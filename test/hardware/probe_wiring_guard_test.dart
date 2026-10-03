@@ -85,4 +85,35 @@ void main() {
       contains('sendPattern: _probePattern'),
     );
   });
+
+  // 8X: the ECG failure buzz. One long band buzz (holdMs >= 500 is one command
+  // looped twice), still a dispatcher delivery like every other band buzz.
+  test('the ECG failure buzz is one long command inside a dispatcher '
+      'delivery', () {
+    final body = bodyOf(src, 'Future<bool> _ecgTapFailBuzz(');
+    expect(body, isNotEmpty);
+    final c = codeOnly(body);
+    expect(c, contains('kEcgTapRule'));
+    final buzz = RegExp(r'engine\.buzzBand\(\s*holdMs:\s*600\s*\)')
+        .firstMatch(c);
+    expect(buzz, isNotNull, reason: 'a 600 ms hold: one long buzz');
+    expect(
+      enclosedByCall(c, buzz!.start, RegExp(r'alertDispatcher\.dispatch\(')),
+      isTrue,
+      reason: 'engine.buzzBand sits inside alertDispatcher.dispatch(',
+    );
+    expect(c, contains('bandDelivery:'));
+    expect(c, contains('BuzzDelivery.complete'));
+    expect(c, contains('BuzzDelivery.rejected'));
+  });
+
+  test('the ECG tap session is built with the failure buzz', () {
+    final at = code.indexOf('late final EcgTapSession _ecgTapSession =');
+    expect(at, isNonNegative);
+    final open = code.indexOf('EcgTapSession(', at);
+    expect(
+      code.substring(open, closingOf(code, open + 'EcgTapSession('.length - 1)),
+      contains('failBuzz: _ecgTapFailBuzz'),
+    );
+  });
 }

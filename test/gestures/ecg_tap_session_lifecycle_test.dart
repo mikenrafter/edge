@@ -144,7 +144,8 @@ void main() {
       final gate = Completer<void>();
       final r = _Rig(beginGate: gate);
       final gen = r.session.generation;
-      await expectLater(r.session.start(_tap()), throwsA(isA<TimeoutException>()));
+      // 8X: fallback on (the default): a failed start does not throw.
+      await r.session.start(_tap());
       expect(r.session.active, isFalse);
       expect(r.session.generation, gen + 1);
       expect(r.ended, 1, reason: 'the late stream is stopped');
@@ -255,9 +256,9 @@ void main() {
     test('a start that times out stops the stream before recording', () async {
       final gate = Completer<void>();
       final r = _Rig(beginGate: gate);
-      await expectLater(r.session.start(_tap()), throwsA(isA<TimeoutException>()));
+      await r.session.start(_tap()); // fallback on: ends with count 2, no throw
       expect(r.log, ['begin', 'finished', 'end', 'record']);
-      expect(r.records.single.reason, 'start_failed');
+      expect(r.records.single.reason, contains('start_failed'));
       gate.complete();
     });
 
@@ -276,7 +277,7 @@ void main() {
         recordSession: (rec) async => r.records.add(rec),
         now: () => _t0,
       );
-      await expectLater(s2.start(_tap()), throwsStateError);
+      await s2.start(_tap()); // fallback on: no throw, the gesture just ends
       expect(r.ended, 0);
       expect(r.records, hasLength(1));
     });

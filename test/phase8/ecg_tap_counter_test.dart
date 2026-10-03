@@ -373,6 +373,150 @@ void main() {
       expect(EcgTapThresholds().summary, isNot(contains('extra sensitive')));
       expect(on.summary, endsWith(', extra sensitive'));
     });
+
+    test('8X: tolerant startup and the double-tap fallback are on by default',
+        () {
+      final d = EcgTapThresholds();
+      expect(d.tolerantStartup, isTrue);
+      expect(d.fallbackToDoubleTap, isTrue);
+      final off = EcgTapThresholds(
+          tolerantStartup: false, fallbackToDoubleTap: false);
+      expect(off.tolerantStartup, isFalse);
+      expect(off.fallbackToDoubleTap, isFalse);
+    });
+
+    test('8X: both are part of the value (== and hashCode) and copyWith keeps '
+        'the rest', () {
+      final d = EcgTapThresholds();
+      final quick = EcgTapThresholds(tolerantStartup: false);
+      final noFallback = EcgTapThresholds(fallbackToDoubleTap: false);
+      expect(quick, isNot(d));
+      expect(noFallback, isNot(d));
+      expect(quick, isNot(noFallback));
+      expect(quick, EcgTapThresholds(tolerantStartup: false));
+      expect(quick.hashCode, EcgTapThresholds(tolerantStartup: false).hashCode);
+      expect(noFallback.hashCode,
+          EcgTapThresholds(fallbackToDoubleTap: false).hashCode);
+      expect(quick.hashCode, isNot(d.hashCode));
+      expect(noFallback.hashCode, isNot(d.hashCode));
+
+      final c = EcgTapThresholds(gapMs: 250, extraSensitive: true)
+          .copyWith(tolerantStartup: false);
+      expect(c.tolerantStartup, isFalse);
+      expect(c.fallbackToDoubleTap, isTrue);
+      expect(c.gapMs, 250);
+      expect(c.extraSensitive, isTrue);
+      final back = c.copyWith(tolerantStartup: true, fallbackToDoubleTap: false);
+      expect(back.tolerantStartup, isTrue);
+      expect(back.fallbackToDoubleTap, isFalse);
+      expect(back.copyWith(gapMs: 300).fallbackToDoubleTap, isFalse);
+      expect(back.copyWith(gapMs: 300).tolerantStartup, isTrue);
+      expect(EcgTapThresholds().copyWith(), EcgTapThresholds());
+    });
+
+    test('8X: the summary adds ", quick start" and ", no fallback" only when '
+        'those are off', () {
+      expect(EcgTapThresholds().summary,
+          'start 300 ms, gap 200 ms, confirm 200 ms',
+          reason: 'the defaults add nothing');
+      expect(EcgTapThresholds(tolerantStartup: false).summary,
+          'start 300 ms, gap 200 ms, confirm 200 ms, quick start');
+      expect(EcgTapThresholds(fallbackToDoubleTap: false).summary,
+          'start 300 ms, gap 200 ms, confirm 200 ms, no fallback');
+      expect(
+          EcgTapThresholds(extraSensitive: true).summary,
+          'start 300 ms, gap 200 ms, confirm 200 ms, extra sensitive',
+          reason: 'unchanged');
+      expect(
+          EcgTapThresholds(
+                  extraSensitive: true,
+                  tolerantStartup: false,
+                  fallbackToDoubleTap: false)
+              .summary,
+          'start 300 ms, gap 200 ms, confirm 200 ms, extra sensitive, '
+          'quick start, no fallback',
+          reason: 'appended after the existing suffix, in that order');
+    });
+  });
+
+  group('8X: noFinger (the quick start: no contact in the first sampled '
+      'packet)', () {
+    test('after start and before the window opens, the count is 2 right '
+        'away: two buzzes and a final 2', () {
+      final r = _Run(5)..start();
+      final out = r.c.noFinger(_ms(1000));
+      expect(out, hasLength(2));
+      expect(out[0], isA<EcgTapBuzz>());
+      expect((out[0] as EcgTapBuzz).pulses, 2);
+      expect(out[0].at, _ms(1000));
+      expect(out[1], isA<EcgTapDone>());
+      expect((out[1] as EcgTapDone).count, 2);
+      expect(out[1].at, _ms(1000));
+      expect(r.c.count, 2);
+      expect(r.c.finished, isTrue);
+    });
+
+    test('it works for every max (2 is already finished by start)', () {
+      for (final max in [3, 4, 5]) {
+        final r = _Run(max)..start();
+        final out = r.c.noFinger(_ms(0));
+        expect(out.whereType<EcgTapBuzz>().single.pulses, 2, reason: '$max');
+        expect(out.whereType<EcgTapDone>().single.count, 2, reason: '$max');
+      }
+      final r = _Run(2);
+      final fromStart = r.c.start(_tap(), at: Duration.zero);
+      expect(fromStart.whereType<EcgTapDone>(), hasLength(1));
+      expect(r.c.noFinger(_ms(10)), isEmpty,
+          reason: 'max 2 is already finished: nothing more');
+    });
+
+    test('before start() it does nothing', () {
+      final c = EcgTapCounter(max: 5);
+      expect(c.noFinger(_ms(0)), isEmpty);
+      expect(c.started, isFalse);
+      expect(c.finished, isFalse);
+      expect(c.count, 0);
+    });
+
+    test('once the window has opened it does nothing: the window decides', () {
+      final r = _begin(5);
+      expect(r.c.noFinger(_ms(600)), isEmpty);
+      expect(r.c.finished, isFalse);
+      // The window still runs: no touch by its deadline confirms 2.
+      r.span(500, 800, false);
+      r.at(800, false);
+      expect(r.done!.count, 2);
+    });
+
+    test('it decides once: a second call after it, or after a normal finish, '
+        'does nothing', () {
+      final r = _Run(5)..start();
+      expect(r.c.noFinger(_ms(100)), isNotEmpty);
+      expect(r.c.noFinger(_ms(200)), isEmpty);
+      expect(r.c.count, 2);
+
+      final done = _begin(5);
+      done.span(500, 800, false);
+      done.at(800, false);
+      expect(done.done!.count, 2);
+      expect(done.c.noFinger(_ms(900)), isEmpty);
+    });
+
+    test('after it, the counter ignores samples, open and ticks', () {
+      final r = _Run(5)..start();
+      r.c.noFinger(_ms(100));
+      expect(r.c.open(_ms(500)), isEmpty);
+      expect(r.c.sample(_ms(600), contact: true), isEmpty);
+      expect(r.c.tick(_ms(5000)), isEmpty);
+      expect(r.c.linkLost(_ms(6000)), isEmpty);
+      expect(r.c.count, 2);
+    });
+
+    test('after an abandon it does nothing', () {
+      final r = _Run(5)..start();
+      expect(r.c.linkLost(_ms(100)).single, isA<EcgTapAbandoned>());
+      expect(r.c.noFinger(_ms(200)), isEmpty);
+    });
   });
 
   group('a changed threshold moves its boundary', () {

@@ -142,6 +142,22 @@ final r = await replayTrace(trace.of('tap 18:19:10.695'),
     thresholds: thresholdsOf('start 500 ms, gap 200 ms, confirm 1000 ms'));
 ```
 
+### Contact rule (8X)
+
+A gesture no longer reads "contact" as "sample is not zero". The session asks
+`ecgContactMask` (`lib/gestures/ecg_contact.dart`): it cuts each packet into 50 ms
+blocks (5 samples) and a block is contact when the signal moves inside it (any
+sample differs from the one before). A flat block, zeros or any constant, is no
+contact. A run of contact blocks shorter than 100 ms is dropped as a glitch,
+except a run at the start or end of a packet, which may continue across the
+packet boundary. The extra-sensitive switch works on this mask. The ECG touch
+probe still measures the raw non-zero rule (it measures the sensor).
+
+Watch for: a saturated or flat-at-max trace (a sensor pinned at its limit, or a
+constant offset) has no movement, so this rule reads it as no contact, where the
+old non-zero rule read it as contact. No logged session shows one; if a lab
+run does, the rule needs another test.
+
 `test/hardware/lab_trace_replay_test.dart` replays L2 both ways. To try an
 idea without any recording, script a wearer on the virtual band
 (`test/hardware/virtual_mg_test.dart`): finger-on intervals in, packets with

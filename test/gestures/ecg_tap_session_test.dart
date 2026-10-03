@@ -59,7 +59,10 @@ LabradorR17 _packet(
   sampleCount: n,
   samples: Int16List.fromList([
     for (var i = 0; i < n; i++)
-      i >= contactFrom && (contactTo == null || i < contactTo) ? 120 : 0,
+      // A moving trace: 8X contact is movement, not a non-zero level.
+      i >= contactFrom && (contactTo == null || i < contactTo)
+          ? (i.isEven ? 120 : -120)
+          : 0,
   ]),
   tail: Uint8List(0),
   inner: Uint8List(0),
@@ -283,7 +286,9 @@ void main() {
       r.session.onFrame(_packet(1002, contactFrom: 40, contactTo: 70));
       expect(
         r.steps.where((s) => s.startsWith('Packet 3:')).single,
-        contains('30 with contact (samples 40–69)'),
+        contains('35 with contact (samples 40–74)'),
+        reason: 'the drop to zero at 70 is a movement, so the 50 ms block it '
+            'falls in (70–74) is contact too',
       );
     });
 
@@ -324,7 +329,8 @@ void main() {
       r.now = _t0.add(const Duration(seconds: 21));
       r.session.poll();
       await r.settle();
-      expect(r.results, [(null, 'no_stream')]);
+      expect(r.results, [(2, 'fallback: no_stream')],
+          reason: 'fallback on (the default): the double-tap action runs');
       expect(r.ended, 1);
       expect(r.buzzes, isEmpty, reason: 'never buzzed for a stream that was not up');
       expect(r.session.active, isFalse);
@@ -338,7 +344,7 @@ void main() {
       r.now = _t0.add(const Duration(seconds: 21));
       r.session.poll();
       await r.settle();
-      expect(r.results, [(null, 'no_stream')]);
+      expect(r.results, [(2, 'fallback: no_stream')]);
       expect(r.buzzes, isEmpty);
     });
 
@@ -358,14 +364,14 @@ void main() {
       expect(r.windowOpen, isTrue);
     });
 
-    test('a link that is gone before any packet is abandoned, not awaited',
-        () async {
+    test('a link that is gone before any packet ends the gesture, not '
+        'awaited (fallback on: count 2)', () async {
       final r = _Rig();
       await r.session.start(_tap());
       r.alive = false;
       r.session.poll();
       await r.settle();
-      expect(r.results, [(null, 'link_lost')]);
+      expect(r.results, [(2, 'fallback: link_lost')]);
       expect(r.ended, 1);
       expect(r.session.active, isFalse);
     });
@@ -437,7 +443,7 @@ void main() {
       // 1002.1–1002.4, then nothing: counts 3, 4, then confirms.
       final p = _packet(1003, n: 200, contactFrom: 50, contactTo: 80);
       for (var i = 110; i < 140; i++) {
-        p.samples[i] = 120;
+        p.samples[i] = i.isEven ? 120 : -120;
       }
       r.session.onFrame(p);
       await r.settle();
@@ -447,9 +453,9 @@ void main() {
       expect(r.buzzes.map((b) => b.$2).toSet(), hasLength(5));
     });
 
-    test('a stream that goes away abandons with no action, and resets',
-        () async {
-      final r = _Rig(max: 5);
+    test('a stream that goes away abandons with no action, and resets '
+        '(fallback off, window open: no retry)', () async {
+      final r = _Rig(max: 5, th: EcgTapThresholds(fallbackToDoubleTap: false));
       await r.session.start(_tap());
       await r.steady();
       r.alive = false;
@@ -465,8 +471,9 @@ void main() {
       expect(r.session.active, isTrue);
     });
 
-    test('a stalled stream (no packets for a while) abandons', () async {
-      final r = _Rig(max: 5);
+    test('a stalled stream (no packets for a while) abandons (fallback off)',
+        () async {
+      final r = _Rig(max: 5, th: EcgTapThresholds(fallbackToDoubleTap: false));
       await r.session.start(_tap());
       await r.steady(); // window open; no packet after it
       r.now = r.now.add(const Duration(seconds: 4));
@@ -477,11 +484,13 @@ void main() {
       expect(r.session.active, isFalse);
     });
 
-    test('a stream that will not start throws, resets and ends nothing',
-        () async {
-      final r = _Rig(startOk: false);
+    test('a stream that will not start throws, resets and ends nothing '
+        '(fallback off: one retry, then the throw)', () async {
+      final r = _Rig(
+          startOk: false, th: EcgTapThresholds(fallbackToDoubleTap: false));
       await expectLater(r.session.start(_tap()), throwsStateError);
       expect(r.session.active, isFalse);
+      expect(r.began, 2, reason: 'fallback off: tried once more');
       expect(r.ended, 0);
       expect(r.buzzes, isEmpty);
       expect(r.results, [(null, 'start_failed')]);
@@ -527,24 +536,38 @@ void main() {
       expect(r.buzzes.map((b) => b.$1), [1, 1, 1, 1, 1]);
     });
 
-    test('off: a single zero reading cannot restart the hold time', () async {
-      Future<List<String>> run(EcgTapThresholds th) async {
+    test('off: a flat stretch inside a touch cannot restart the hold time; '
+        'on: the 8X mask sees it (a zero crossing does not count)', () async {
+      Future<List<String>> run(EcgTapThresholds th,
+          {required bool flatBlock}) async {
         final r = _Rig(max: 3, th: th);
         await r.session.start(_tap());
         await r.steady();
         r.now = _t0.add(const Duration(seconds: 2));
         final p = _packet(1002, contactFrom: 0);
-        p.samples[69] = 0; // the trace crossing zero at 1001.69
+        if (flatBlock) {
+          // The trace stops moving for one 50 ms block (70..74) at 1001.70.
+          for (var i = 70; i < 75; i++) {
+            p.samples[i] = p.samples[69];
+          }
+        } else {
+          p.samples[69] = 0; // the trace crossing zero at 1001.69
+        }
         r.session.onFrame(p);
         await r.settle();
         return r.steps.where((s) => s.startsWith('Buzz x3 requested')).toList();
       }
 
-      expect(await run(EcgTapThresholds()),
-          ['Buzz x3 requested at sample time 1001700 ms.']);
-      expect(await run(EcgTapThresholds(extraSensitive: true)),
-          ['Buzz x3 requested at sample time 1001900 ms.'],
-          reason: 'extra sensitive: the zero restarts the 200 ms hold');
+      const held = ['Buzz x3 requested at sample time 1001700 ms.'];
+      expect(await run(EcgTapThresholds(), flatBlock: true), held,
+          reason: 'filled: the flat block is inside the touch');
+      expect(await run(EcgTapThresholds(extraSensitive: true), flatBlock: false),
+          held,
+          reason: 'a zero between moving samples is still movement');
+      expect(await run(EcgTapThresholds(extraSensitive: true), flatBlock: true),
+          ['Buzz x3 requested at sample time 1001950 ms.'],
+          reason: 'extra sensitive: the flat block restarts the 200 ms hold '
+              '(contact again from 1001.75)');
     });
   });
 
@@ -603,7 +626,7 @@ void main() {
       // One buffered packet with both touches: counts 3 then 4 (= max).
       final p = _packet(1003, n: 200, contactFrom: 50, contactTo: 80);
       for (var i = 110; i < 140; i++) {
-        p.samples[i] = 120;
+        p.samples[i] = i.isEven ? 120 : -120;
       }
       r.now = _t0.add(const Duration(seconds: 3));
       r.session.onFrame(p);
@@ -741,7 +764,7 @@ void main() {
         wait: (d) async {
           waits.add(d);
           // A packet arrives while the stream is kept on.
-          s.onFrame(_packet(1003, contactFrom: 76));
+          s.onFrame(_packet(1003, contactFrom: 75));
         },
         pollEvery: const Duration(hours: 1),
         postRoll: () => const Duration(seconds: 3),
@@ -759,7 +782,7 @@ void main() {
       expect(results, [(2, null)], reason: 'reported at once');
       expect(waits, contains(const Duration(seconds: 3)));
       expect(steps, contains(startsWith('After the count, packet 1: 100 '
-          'samples, 24 with contact (samples 76–99)')));
+          'samples, 25 with contact (samples 75–99)')));
       expect(seen, hasLength(4), reason: 'the post-roll packet is kept too');
       expect(ended, [1], reason: 'the stream stops after the post-roll');
     });

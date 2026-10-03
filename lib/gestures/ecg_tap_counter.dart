@@ -53,6 +53,8 @@ class EcgTapThresholds {
     int gapMs = 200,
     int confirmMs = 200,
     this.extraSensitive = false,
+    this.tolerantStartup = true,
+    this.fallbackToDoubleTap = true,
   })  : startMs = _check('start', startMs, startRange),
         gapMs = _check('gap', gapMs, gapRange),
         confirmMs = _check('confirm', confirmMs, confirmRange);
@@ -96,6 +98,16 @@ class EcgTapThresholds {
   /// the counter only ever sees samples.
   final bool extraSensitive;
 
+  /// On (the default): the gesture waits for the steady stream and the sensor
+  /// to settle, so a finger placed during startup still counts. Off: a plain
+  /// double tap is decided from the first sampled packet (see
+  /// [EcgTapCounter.noFinger]).
+  final bool tolerantStartup;
+
+  /// On (the default): an ECG that fails before any touch is counted runs the
+  /// double-tap action. Off: the ECG is tried once more instead.
+  final bool fallbackToDoubleTap;
+
   Duration get start => Duration(milliseconds: startMs);
   Duration get gap => Duration(milliseconds: gapMs);
   Duration get confirm => Duration(milliseconds: confirmMs);
@@ -105,19 +117,26 @@ class EcgTapThresholds {
     int? gapMs,
     int? confirmMs,
     bool? extraSensitive,
+    bool? tolerantStartup,
+    bool? fallbackToDoubleTap,
   }) =>
       EcgTapThresholds(
         startMs: startMs ?? this.startMs,
         gapMs: gapMs ?? this.gapMs,
         confirmMs: confirmMs ?? this.confirmMs,
         extraSensitive: extraSensitive ?? this.extraSensitive,
+        tolerantStartup: tolerantStartup ?? this.tolerantStartup,
+        fallbackToDoubleTap: fallbackToDoubleTap ?? this.fallbackToDoubleTap,
       );
 
   /// One plain line for the Device lab: "start 300 ms, gap 200 ms, confirm 200 ms"
-  /// (plus ", extra sensitive" when that is on).
+  /// (plus ", extra sensitive" when that is on, ", quick start" when the
+  /// tolerant startup is off, ", no fallback" when the fallback is off).
   String get summary =>
       'start $startMs ms, gap $gapMs ms, confirm $confirmMs ms'
-      '${extraSensitive ? ', extra sensitive' : ''}';
+      '${extraSensitive ? ', extra sensitive' : ''}'
+      '${tolerantStartup ? '' : ', quick start'}'
+      '${fallbackToDoubleTap ? '' : ', no fallback'}';
 
   @override
   bool operator ==(Object other) =>
@@ -125,10 +144,13 @@ class EcgTapThresholds {
       other.startMs == startMs &&
       other.gapMs == gapMs &&
       other.confirmMs == confirmMs &&
-      other.extraSensitive == extraSensitive;
+      other.extraSensitive == extraSensitive &&
+      other.tolerantStartup == tolerantStartup &&
+      other.fallbackToDoubleTap == fallbackToDoubleTap;
 
   @override
-  int get hashCode => Object.hash(startMs, gapMs, confirmMs, extraSensitive);
+  int get hashCode => Object.hash(
+      startMs, gapMs, confirmMs, extraSensitive, tolerantStartup, fallbackToDoubleTap);
 
   @override
   String toString() => 'EcgTapThresholds(start $startMs, gap $gapMs, '
@@ -219,6 +241,15 @@ class EcgTapCounter {
       return [EcgTapBuzz(at, pulses: 2), EcgTapDone(at, 2)];
     }
     return const [];
+  }
+
+  /// The quick start (tolerant startup off): the first sampled packet showed no
+  /// finger, so the count is 2 right away. Valid only after [start], while the
+  /// first window has not opened.
+  List<EcgTapOutput> noFinger(Duration at) {
+    if (!_started || _finished || _phase != _Phase.awaitingOpen) return const [];
+    _finished = true;
+    return [EcgTapBuzz(at, pulses: 2), EcgTapDone(at, 2)];
   }
 
   /// The sensor is ready: opens the first window `[at, at + start)`. Samples

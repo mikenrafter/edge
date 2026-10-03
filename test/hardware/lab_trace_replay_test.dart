@@ -13,7 +13,10 @@ import '../support/ecg_trace.dart';
 const _fixture = 'test/fixtures/ecg_traces/2026-10-02_1817_lab.txt';
 
 void main() {
-  final trace = Trace.load(_fixture);
+  // The fixture's samples are reconstructed (a constant 120 where the log said
+  // there was signal); 8X contact is movement, so they are loaded as a moving
+  // trace over the same samples (see Trace.load).
+  final trace = Trace.load(_fixture, reconstructed: true);
 
   test('the fixture has the five sessions and their packets', () {
     expect(trace.sessions, hasLength(5));

@@ -389,6 +389,32 @@ class EcgThresholdAdjusters extends StatelessWidget {
             'a single zero reading while a touch is starting restarts its '
             'hold time, so taps can be missed, counted late, or split in two.',
       ),
+      SwitchRow(
+        key: const ValueKey('ecg-threshold:tolerant-startup'),
+        'Tolerant startup',
+        thresholds.tolerantStartup,
+        onChanged == null
+            ? null
+            : (v) => onChanged!(thresholds.copyWith(tolerantStartup: v)),
+        enabled: onChanged != null,
+        sub: 'On: waits for the sensor to settle (about 2.5 s), so a finger '
+            'placed during startup still counts. Off: decides a plain double '
+            'tap from the first ECG packet, about 2 s sooner, but a finger '
+            'placed after that packet is missed.',
+      ),
+      SwitchRow(
+        key: const ValueKey('ecg-threshold:fallback'),
+        'Fall back to the double-tap action',
+        thresholds.fallbackToDoubleTap,
+        onChanged == null
+            ? null
+            : (v) => onChanged!(thresholds.copyWith(fallbackToDoubleTap: v)),
+        enabled: onChanged != null,
+        sub: 'On: if the ECG cannot start or stops before any touch is '
+            'counted, the double-tap action runs. Off: the ECG is tried once '
+            'more instead. Either way the band gives one long buzz when the '
+            'ECG fails.',
+      ),
     ]);
   }
 }

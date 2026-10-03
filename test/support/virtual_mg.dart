@@ -25,6 +25,7 @@ class VirtualMgEcg {
     this.touchLatencyMs = 1900,
     this.zeroRate = 0.02,
     this.seed = 7,
+    this.dcOffset = 0,
   });
 
   final List<(int, int)> touches;
@@ -57,6 +58,11 @@ class VirtualMgEcg {
   /// crosses zero).
   final double zeroRate;
   final int seed;
+
+  /// 8X: added to EVERY sample, touching or not. A band with a DC level on its
+  /// electrode reads a constant non-zero value with no finger on it, which is
+  /// no contact once contact means "the signal moves" (ecgContactMask).
+  final int dcOffset;
 
   /// Packet k's newest-sample time, ms after the first packet. Packet 0 has
   /// no samples, packet 1 has 49, then 100 each, 1 s apart (MEASURED).
@@ -103,13 +109,14 @@ class VirtualMgEcg {
     for (var k = 0; _endMs(k) <= seconds * 1000; k++) {
       final n = _count(k);
       final end = _endMs(k);
-      final samples = List<int>.filled(n, 0);
+      final samples = List<int>.filled(n, dcOffset);
       for (var i = 0; i < n; i++) {
         final t = end - (n - i) * 10;
         final blip = k == 1 && i >= 36 && _touchingInBlip(t);
         final on = blip || vis.any((v) => v.$1 <= t && t < v.$2);
         if (on && rnd.nextDouble() >= zeroRate) {
-          samples[i] = 40 + rnd.nextInt(400) * (rnd.nextBool() ? 1 : -1);
+          samples[i] =
+              dcOffset + 40 + rnd.nextInt(400) * (rnd.nextBool() ? 1 : -1);
         }
       }
       final strapMs = strapStart * 1000 + end;

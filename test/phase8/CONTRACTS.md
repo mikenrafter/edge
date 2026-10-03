@@ -657,3 +657,50 @@ Evidence: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L3). Tests:
   `VirtualMgEcg(touchLatencyMs: 1900)` shows a touch from the first 100 ms grid
   point at or after landing + latency, and not at all if that is past its end.
   The "reacquire hold" parameters are gone.
+
+## 8X: block contact, quick start, ECG failure (Oct 2)
+
+Tests: `test/gestures/ecg_contact_test.dart`, `ecg_tap_session_contact_test.dart`,
+`ecg_tap_session_failure_test.dart`, `ecg_tap_session_test.dart`,
+`ecg_tap_session_lifecycle_test.dart`, `ecg_tap_session_clock_test.dart`;
+`test/phase8/ecg_tap_counter_test.dart`, `gestures_draft_taps_test.dart`,
+`device_lab_test.dart`, `ecg_gesture_session_record_test.dart`;
+`test/hardware/virtual_mg_test.dart`, `lab_trace_replay_test.dart`,
+`probe_wiring_guard_test.dart`; `test/phase7/gesture_failure_test.dart`,
+`audit_guards_test.dart`.
+
+- **Contact.** `ecgContactMask(samples, {blockSamples = 5, minRunBlocks = 2})`
+  (pure): a 50 ms block is contact when any sample in it differs from the one
+  before it (the packet's first sample has no predecessor); flat blocks are no
+  contact; a run of fewer than `minRunBlocks` contact blocks is dropped unless it
+  touches the packet's first or last block. `EcgTapSession.onFrame` and the
+  packet log line use it; extra-sensitive off fills from the first to the last
+  mask-contact sample. The touch probe's `contactRuns` keeps the raw non-zero
+  rule. `VirtualMgEcg(dcOffset)` adds a constant to every sample.
+- **Settings.** `EcgTapThresholds.tolerantStartup` and `fallbackToDoubleTap`, both
+  default true, in `==`, `hashCode`, `copyWith`; `summary` appends ", quick start"
+  when tolerant startup is off and ", no fallback" when the fallback is off.
+  Persisted as `gesture_ecg_tolerant_startup` and `gesture_ecg_fallback` (missing
+  is true). Device lab switches `ecg-threshold:tolerant-startup` and
+  `ecg-threshold:fallback`.
+- **Quick start** (tolerant startup off). If the first packet with samples has no
+  contact (mask, before the fill), the count is 2 at once: `EcgTapBuzz(pulses: 2)`
+  and `EcgTapDone(2)` from `EcgTapCounter.noFinger(at)` (only while started, not
+  finished and awaiting the window). With contact it carries on as with tolerant
+  startup.
+- **ECG failed** means the gesture would end abandoned: `start_failed`,
+  `no_stream`, `stalled`, `link_lost`, `sample_gap`.
+  - Failure buzz, every time, any mode: `EcgTapSession.failBuzz(eventId)`, called
+    once per failed gesture with `<gesture id>:failed`, queued on the same tail as
+    the count buzzes (waits `buzzQuietGap`). `AppState._ecgTapFailBuzz` dispatches
+    `kEcgTapRule` with `engine.buzzBand(holdMs: 600)` (one command looped twice,
+    a long buzz).
+  - Fallback on and no touch counted (count 2): the gesture ends `onFinished(2,
+    'fallback: <reason>')`; a failed stream start does not throw. No retry.
+  - Fallback off: a failure before the touch window opened stops the stream and
+    starts it once more in the same gesture (`active` stays true, one lab session,
+    same generation). A second failure, or any failure after the window opened,
+    ends abandoned (count null) with the failure buzz. A start that fails twice
+    throws as before.
+  - A failure after a touch was counted (count 3 or more) is abandoned whatever
+    the toggle. The retry counter and the failed-buzz state reset per gesture.
