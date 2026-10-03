@@ -1,8 +1,8 @@
 // A virtual WHOOP MG (8V): just enough of the band's ECG stream and haptic
 // queue to try a gesture idea in a test before trying it on a wrist.
 //
-// It is a MODEL fitted to the Device lab logs of 2026-10-02 (16:53 and 18:17,
-// one band, firmware as of that day), not a description from WHOOP. Each
+// It is a MODEL fitted to the Device lab logs of 2026-10-02 (16:53, 18:17 and
+// 20:40, one band, firmware as of that day), not a description from WHOOP. Each
 // parameter says what it rests on; docs/hardware/whoop-mg-haptics-and-ecg.md
 // has the evidence. When a lab run disagrees with the model, fix the model
 // first (and say which log showed it), then the code.
@@ -22,8 +22,7 @@ class VirtualMgEcg {
     this.strapAheadOfPhoneMs = 820,
     this.latencyMs = 150,
     this.settleMs = 2350,
-    this.reacquireHoldMs = 1500,
-    this.checkIndex = 76,
+    this.touchLatencyMs = 1900,
     this.zeroRate = 0.02,
     this.seed = 7,
   });
@@ -46,15 +45,13 @@ class VirtualMgEcg {
   /// fully zero second packet.
   final int settleMs;
 
-  /// FITTED (two re-touches): after a lift at L, a finger that came back at T
-  /// shows at the first lead-on check at or after max(T, L + hold). The lab
-  /// bounds hold to (1.16, 1.96] s; the wearers' real re-touch times were not
-  /// logged.
-  final int reacquireHoldMs;
-
-  /// MEASURED (two re-touches): a returning finger shows at sample 76 of its
-  /// packet, i.e. the band checks once per packet, 240 ms before its end.
-  final int checkIndex;
+  /// MEASURED (20:40, replacing the earlier "re-acquire hold after a lift"
+  /// fit, which the longer-lift touches contradicted): a touch becomes visible
+  /// ~1.9 s after the finger lands (2.2–2.4 s after the cue, reaction
+  /// included), REGARDLESS of how long the lift before it was (0.4–2.5 s).
+  /// Lifts show within ~0.3 s. A touch that lifts before the check lands never
+  /// shows (300 ms taps never did).
+  final int touchLatencyMs;
 
   /// MEASURED: 96–100 of 100 samples are non-zero while touching (the trace
   /// crosses zero).
@@ -69,29 +66,30 @@ class VirtualMgEcg {
   int get _firstSampleMs => _endMs(1) - 490;
 
   /// When each touch becomes visible, or null when it never does.
+  ///
+  /// The band checks for a finger on a 100 ms grid (MEASURED, five contact
+  /// starts: samples 6, 16, 46, 56, 66 of their packets, i.e. every sample
+  /// ≡ 6 mod 10, which is every time ≡ 70 mod 100 here). A touch [a, b) shows
+  /// from the first grid point at or after a + [touchLatencyMs], and not at
+  /// all when that is at or after b. The first touch, when the finger is
+  /// already on as the stream starts, shows at the settle time instead.
   List<(int, int)> get visible {
     final out = <(int, int)>[];
     final settled = _firstSampleMs + settleMs;
     for (var i = 0; i < touches.length; i++) {
       final (a, b) = touches[i];
-      int start;
-      if (i == 0) {
-        start = a <= settled ? settled : _nextCheck(a);
-      } else {
-        final lift = touches[i - 1].$2;
-        start = _nextCheck(max(a, lift + reacquireHoldMs));
-      }
+      final start =
+          (i == 0 && a <= settled) ? settled : _nextCheck(a + touchLatencyMs);
       if (start < b) out.add((start, b));
     }
     return out;
   }
 
-  /// The first lead-on check at or after [t]: sample [checkIndex] of a packet.
+  /// The first check at or after [t]: sample 6 of a packet, every 100 ms (time
+  /// ≡ 70 mod 100 from the second 100-sample packet on).
   int _nextCheck(int t) {
-    for (var k = 2;; k++) {
-      final c = _endMs(k) - (100 - checkIndex) * 10;
-      if (c >= t) return c;
-    }
+    final c = t - (t - 70) % 100 + ((t - 70) % 100 == 0 ? 0 : 100);
+    return max(c, 1070);
   }
 
   bool _touchingInBlip(int t) =>
@@ -131,38 +129,49 @@ class VirtualMgEcg {
   }
 }
 
-/// The band's haptic command queue. FITTED to the 2026-10-02 logs: the band
-/// takes a command when idle and starts a busy window of [busyMs]; inside it,
-/// it takes [queueDepth] - 1 more (played after the first: two pulses 300 ms
-/// apart are felt as two) and drops the rest without a reply. A command
-/// written ~1.25 s after the first of a pair was dropped, one written ~2.0 s
-/// after played: busyMs lies between those.
+/// The band's haptic command handling. FITTED to the 2026-10-02 logs (16:53,
+/// 18:17, and 20:40, which replaced the earlier "queue of two" reading):
+///  * a command written while the band is IDLE plays (event 60 ~15 ms later)
+///    and the band is busy for [busyMs] (its event 100 comes 1.08–1.50 s
+///    after the 60). One command is felt as ONE "bzz-bzz".
+///  * a command written while it plays (before the 100) is answered "pending"
+///    and NOT played (no 60) — it is swallowed — and the band then ignores the
+///    next command entirely (no reply, not played) for [deafMs]: 0.95 s later
+///    ignored, 1.27 s later played.
+///  * a command written after the 100 plays, even 0.4 s after it.
+/// 20:40 timings it must reproduce: writes at 0, 1236, 2505 play the first and
+/// third; 0, 1875, 3400 play all three.
 class VirtualMgHaptics {
-  VirtualMgHaptics({this.busyMs = 1500, this.queueDepth = 2});
+  VirtualMgHaptics({this.busyMs = 1500, this.deafMs = 1100});
+
+  /// How long a played command keeps the band busy (the 60 to 100 gap).
   final int busyMs;
-  final int queueDepth;
 
-  int? _busySince;
-  int _taken = 0;
+  /// How long the band ignores everything after it swallowed a command.
+  final int deafMs;
 
-  /// Every command: when it arrived (ms) and whether the band took it.
-  final List<(int, bool)> log = [];
+  int _busyUntil = 0;
+  int _deafUntil = 0;
 
-  bool command(int atMs) {
-    final since = _busySince;
-    bool ok;
-    if (since == null || atMs - since >= busyMs) {
-      _busySince = atMs;
-      _taken = 1;
-      ok = true;
-    } else if (_taken < queueDepth) {
-      _taken++;
-      ok = true;
-    } else {
-      ok = false;
+  /// Every command: when it arrived (ms), whether the band played it, and what
+  /// it answered.
+  final List<(int, bool, String?)> log = [];
+
+  /// The band's reply: 'pending' (it answered; played or swallowed) or null
+  /// (it said nothing: it was deaf). Whether it PLAYED is in [log]/[played].
+  String? command(int atMs) {
+    String? reply;
+    var played = false;
+    if (atMs >= _busyUntil && atMs >= _deafUntil) {
+      played = true;
+      reply = 'pending';
+      _busyUntil = atMs + busyMs;
+    } else if (atMs >= _deafUntil) {
+      reply = 'pending';
+      _deafUntil = atMs + deafMs;
     }
-    log.add((atMs, ok));
-    return ok;
+    log.add((atMs, played, reply));
+    return reply;
   }
 
   int get played => log.where((c) => c.$2).length;

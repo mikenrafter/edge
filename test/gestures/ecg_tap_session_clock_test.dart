@@ -138,7 +138,7 @@ void main() {
       r.deliver(_packet(1004, contactFrom: 10, contactTo: 60), 2320);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2, 1]);
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1]);
     });
   });
 
@@ -215,7 +215,7 @@ void main() {
       r.deliver(_packet(1002, n: 40, contactFrom: 0), 2500);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2, 1]);
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1]);
     });
 
     test('the same contact across a 400 ms unobserved gap abandons instead of '

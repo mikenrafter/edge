@@ -29,7 +29,8 @@ void main() {
         final r = await replayTrace(trace.of(s.tag),
             thresholds: thresholdsOf(s.settings), reacquire: Duration.zero);
         expect(r.count, s.count);
-        expect(r.buzzes.first, 2, reason: 'the three-pulse buzz, as a pair…');
+        expect(r.buzzes.take(3), [1, 1, 1],
+            reason: 'the three-pulse buzz is three one-pulse commands');
       });
     }
 

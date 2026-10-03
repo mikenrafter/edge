@@ -117,7 +117,7 @@ class EcgTapSession {
     this.sensorSettle = const Duration(milliseconds: 2500),
     this.sensorReacquire = const Duration(milliseconds: 1500),
     this.buzzQuietGap = const Duration(milliseconds: 1800),
-    this.maxPulsesPerBurst = 2,
+    this.maxPulsesPerBurst = 1,
     Duration Function()? postRoll,
     Future<void> Function(Duration)? wait,
   })  : _now = now ?? DateTime.now,
@@ -213,14 +213,21 @@ class EcgTapSession {
   /// at sample 76 of a packet (the band reports contact again at a fixed phase
   /// of its packet cycle), while a lift showed as zeros within ~0.2 s of the
   /// wearer feeling the buzz. With gap 200 and confirm 1000 that window closed
-  /// 1.2 s after the lift, before either re-touch could appear.
+  /// 1.2 s after the lift, before either re-touch could appear. The 20:40 log
+  /// explains it: a touch shows ~1.9 s after the finger lands whatever the
+  /// lift before it lasted, so this is the sensor's touch latency, not a hold
+  /// that depends on the lift.
   final Duration sensorReacquire;
 
   /// The most pulses sent back to back in one burst. Measured, not specified:
-  /// in the 18:17 lab log every three-pulse buzz (pulses 300 ms apart) got a
-  /// band reply for pulses 1 and 2 and none for pulse 3, and the band logged
-  /// one haptic start/stop pair; two pulses 300 ms apart are felt as two. More
-  /// pulses go out in further bursts, each after [buzzQuietGap].
+  /// one command is felt as ONE "bzz-bzz" (the band logs one haptic start/stop
+  /// pair for it, 1.1-1.5 s apart), and a second command written while the
+  /// band still plays is answered "pending" and not played. So a count of two
+  /// or three is two or three commands, one pulse per burst, each after
+  /// [buzzQuietGap]. Earlier logs (2026-10-02 18:17) suggested two pulses
+  /// 300 ms apart were felt as two; the 20:40 log showed the second was
+  /// swallowed. More pulses per burst only make sense if a later measurement
+  /// finds a command that plays several.
   final int maxPulsesPerBurst;
 
   /// Lab only: how long to keep the stream on after the gesture ended, so the
@@ -231,11 +238,11 @@ class EcgTapSession {
 
   /// The quiet time after one burst finishes writing before the next may be
   /// asked for. Measured, not specified: in the 2026-10-02 lab logs the band
-  /// is busy for a while after it takes a command (it accepts ONE more inside
-  /// that time, the second pulse of a pair 300 ms later, and drops the rest
-  /// with no reply). A command written ~1.25 s after the first of a pair was
-  /// dropped; one written ~2.0 s after played. 1.8 s after the pair's second
-  /// write puts the next burst ~2.15 s after its first: past both.
+  /// plays one command for 1.1-1.5 s (event 60 to event 100). A command
+  /// written inside that time is swallowed (reply "pending", not played), and
+  /// the band then ignores the next command, with no reply, for about 1.0-1.3
+  /// s. A command written after the 100 always plays. 1.8 s after the last
+  /// write puts the next command past both the play and the ignore window.
   /// docs/hardware/whoop-mg-haptics-and-ecg.md keeps the evidence.
   final Duration buzzQuietGap;
 
@@ -593,7 +600,8 @@ class EcgTapSession {
     return _buzzTail;
   }
 
-  /// One count buzz, in order: bursts of at most [maxPulsesPerBurst] pulses,
+  /// One count buzz, in order: bursts of at most [maxPulsesPerBurst] pulses
+  /// (one command each by default),
   /// each after the band's quiet gap. A burst that could not be written is
   /// logged and ends the buzz (the count it reports already stands), and the
   /// gesture still ends (or carries on) on its own clock.

@@ -804,6 +804,30 @@ why, and how much is the band's own behaviour:
   logs. `docs/hardware/whoop-mg-haptics-and-ecg.md` keeps the evidence and the
   open questions.
 
+### 8W — One command is one bzz-bzz; probe the patterns
+
+The 20:40 lab log, with the band's events and the wearer's counts, corrects 8V:
+
+- A buzz command plays as one "bzz-bzz". A command written while the band plays
+  (until its event 100, 1.1-1.5 s) is answered "pending" and not played, and the
+  band ignores the next one for about 1 s. 8V's bursts of two pulses were one
+  played command and one swallowed one. A count of 2 or 3 is now 2 or 3 commands,
+  each 1.8 s after the previous write (`maxPulsesPerBurst` 1).
+- A touch shows on the ECG ~1.9 s after the finger lands, whatever the lift
+  before it lasted, on a 100 ms grid; 300 ms taps never show; the presence bit is
+  useless. This replaces 8V's "hold after a lift" fit. The window code is not
+  re-tuned here (open question in the hardware doc).
+- New in the Device lab (MG only): a pattern probe of 32 tests (4 waveforms x 4
+  ways of sending x counts 2 and 3: separate commands paced or event-paced, one
+  command with a loop count, one command listing the waveform several times).
+  Bounded: at most 56 commands, 3 s rest after each test, Stop at once. It asks
+  how many buzzes and how many groups you felt. It is meant to find out what the
+  loop bytes and effect 152 do, and whether one command can count.
+- The virtual band now swallows and ignores commands as the log shows, and shows
+  touches after the ~1.9 s latency.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L3, superseded findings,
+  open questions); `test/phase8/CONTRACTS.md` (8W).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

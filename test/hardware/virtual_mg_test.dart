@@ -32,37 +32,112 @@ void main() {
       expect(_contact(p[4]).$1, 100);
     });
 
-    test('a finger back 0.5 s after a lift shows ~2 s after the lift, at '
-        'sample 76', () {
+    test('a finger back 0.5 s after a lift shows ~1.9 s after it landed, on '
+        'the band\'s 100 ms grid', () {
       // Lift at 5.0 s, back at 5.5 s.
       final m = VirtualMgEcg(touches: [(0, 5000), (5500, 9000)], zeroRate: 0);
       final again = m.visible[1];
-      expect(again.$1 - 5000, inInclusiveRange(1500, 2500));
-      final p = m.packets(9);
-      // The first packet whose contact starts mid-packet after the lift.
-      final first = p.indexWhere((x) =>
-          x.r.strapTime * 1000 - m.strapStart * 1000 > 6000 &&
-          _contact(x).$2 > 0);
-      expect(_contact(p[first]).$2, 76);
+      expect(again.$1 - 5500, inInclusiveRange(1900, 1999));
+      expect(again.$1 % 100, 70, reason: 'sample 6 of a packet, every 100 ms');
     });
 
-    test('three pulses 300 ms apart: the band plays two', () {
-      final h = VirtualMgHaptics();
-      for (final t in [0, 300, 600]) {
-        h.command(t);
+    test('how long the lift was does not matter: after 0.4 s and after 2.5 s '
+        'a touch shows ~1.9 s after it landed', () {
+      final m = VirtualMgEcg(
+          touches: [(0, 4000), (4400, 8000), (10500, 14000)], zeroRate: 0);
+      final vis = m.visible;
+      expect(vis, hasLength(3));
+      expect(vis[1].$1 - 4400, inInclusiveRange(1900, 1999));
+      expect(vis[2].$1 - 10500, inInclusiveRange(1900, 1999));
+    });
+
+    test('a touch shows only if the finger is still there when the check '
+        'lands: 300 ms taps never show', () {
+      expect(VirtualMgEcg(touches: [(0, 4000), (4500, 4800)]).visible,
+          hasLength(1));
+      // Landing at 4.5 s: the first check at or after 6.4 s is at 6.47 s.
+      expect(VirtualMgEcg(touches: [(0, 4000), (4500, 6460)]).visible,
+          hasLength(1));
+      expect(VirtualMgEcg(touches: [(0, 4000), (4500, 6480)]).visible,
+          hasLength(2));
+    });
+
+    test('the latency is a parameter', () {
+      final m = VirtualMgEcg(
+          touches: [(0, 4000), (4500, 8000)], touchLatencyMs: 1000);
+      expect(m.visible[1].$1 - 4500, inInclusiveRange(1000, 1099));
+    });
+
+    test('contact starts at sample ≡ 6 (mod 10) of its packet: 6, 16, 46, '
+        '56, 66', () {
+      final m = VirtualMgEcg(
+          touches: [(0, 5000), (5500, 9000), (11300, 14000)], zeroRate: 0);
+      final p = m.packets(16);
+      final starts = <int>[];
+      var zeros = 99; // the trace crossing zero is a lone zero, not a lift
+      for (var k = 1; k < p.length; k++) {
+        final smp = p[k].r.samples;
+        for (var i = 0; i < smp.length; i++) {
+          if (smp[i] != 0 && zeros >= 5 && !(k == 1 && i == 36)) starts.add(i);
+          zeros = smp[i] == 0 ? zeros + 1 : 0;
+        }
       }
-      expect(h.played, 2);
+      expect(starts, hasLength(3), reason: 'settle, then two re-touches');
+      expect(starts.map((i) => i % 10), everyElement(6), reason: '$starts');
     });
 
-    test('a buzz 1.25 s after a pair is dropped; 2.0 s after, it plays', () {
-      final a = VirtualMgHaptics()
-        ..command(0)
-        ..command(300);
-      expect(a.command(1250), isFalse);
-      final b = VirtualMgHaptics()
-        ..command(0)
-        ..command(300);
-      expect(b.command(2000), isTrue);
+    test('a finger on from the start still settles at the first sample + '
+        '2.35 s', () {
+      final m = VirtualMgEcg(touches: [(0, 10000)]);
+      expect(m.visible.single.$1, 520 + 2350);
+    });
+
+    test('one command plays; one 300 ms later is swallowed ("pending", not '
+        'played) and the next is ignored (no reply)', () {
+      final h = VirtualMgHaptics();
+      expect([for (final t in [0, 300, 600]) h.command(t)],
+          ['pending', 'pending', null]);
+      expect(h.played, 1);
+      expect(h.log, hasLength(3));
+    });
+
+    test('a command after the band\'s 100 plays, even 0.4 s after it', () {
+      // The 100 comes ~1.5 s after the 60.
+      final h = VirtualMgHaptics();
+      expect([for (final t in [0, 1900, 3400]) h.command(t)],
+          ['pending', 'pending', 'pending']);
+      expect(h.played, 3);
+    });
+
+    test('20:40 timings: 0, 1236, 2505 plays the first and third; 0, 1875, '
+        '3400 plays all three', () {
+      final a = VirtualMgHaptics();
+      expect([for (final t in [0, 1236, 2505]) a.command(t)],
+          ['pending', 'pending', 'pending']);
+      expect(a.played, 2);
+      final b = VirtualMgHaptics();
+      for (final t in [0, 1875, 3400]) {
+        b.command(t);
+      }
+      expect(b.played, 3);
+    });
+
+    test('after a swallowed command the band ignores the next for ~1.1 s: '
+        '0.95 s later nothing, 1.27 s later it plays', () {
+      final h = VirtualMgHaptics()..command(0);
+      expect(h.command(1200), 'pending', reason: 'swallowed while playing');
+      expect(h.command(1200 + 950), isNull);
+      expect(h.command(1200 + 1270), 'pending');
+      expect(h.played, 2);
+      expect(h.log, hasLength(4));
+    });
+
+    test('busy and deaf windows are parameters', () {
+      final h = VirtualMgHaptics(busyMs: 1000, deafMs: 500)..command(0);
+      expect(h.command(800), 'pending'); // swallowed, deaf until 1300
+      expect(h.command(1000), isNull, reason: 'idle again, but still deaf');
+      expect(h.command(1300), 'pending');
+      expect(h.played, 2);
     });
   });
 
@@ -84,10 +159,10 @@ void main() {
       endStream: () async {},
       isStreamAlive: () => true,
       buzz: (pulses, _) async {
-        for (var i = 0; i < pulses; i++) {
-          haptics.command(ms() + i * 300 + 100); // ~100 ms to write
-        }
-        now = now.add(Duration(milliseconds: (pulses - 1) * 300 + 150));
+        // One call is one band command, whatever it asks for (a command is
+        // felt as one bzz-bzz); ~100 ms to write it.
+        haptics.command(ms() + 100);
+        now = now.add(const Duration(milliseconds: 150));
         return true;
       },
       maxTaps: () => 5,
@@ -132,18 +207,18 @@ void main() {
       expect(g.results, [(3, null)]);
     });
 
-    test('every pulse the gesture asks for is played (pair, quiet gap, '
-        'single)', () async {
+    test('every command the gesture sends is played: one per pulse, each '
+        'after the band\'s quiet', () async {
       final g = await gesture(fourTaps);
-      // x3 for tap 3, x1 for tap 4, x1 confirmation.
+      // x3 for tap 3 (three commands), x1 for tap 4, x1 confirmation.
       expect(g.haptics.log, hasLength(5));
       expect(g.haptics.played, 5, reason: g.haptics.log.toString());
     });
 
-    test('a 300 ms tap after a lift never shows: the sensor is still blind',
-        () {
-      final m = VirtualMgEcg(touches: [(0, 4000), (4500, 4800)]);
-      expect(m.visible, hasLength(1));
+    test('a 300 ms tap after a lift is never seen, so it is not counted',
+        () async {
+      final g = await gesture([(0, 4000), (4500, 4800)]);
+      expect(g.results, [(3, null)]);
     });
   });
 }

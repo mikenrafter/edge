@@ -13,6 +13,11 @@ Logs referred to:
 - **L2**: 2026-10-02 18:17–18:20, 5 ECG-touch sessions on the new flow (count
   buzz first, one clock). Reconstructed as
   `test/fixtures/ecg_traces/2026-10-02_1817_lab.txt`.
+- **L3**: 2026-10-02 20:40, the 8V hardware probes (buzz probe and ECG touch
+  probe) plus count-buzz gestures, with the band's replies and events, the
+  wearer's counts of what they felt, and the cue-to-contact latencies. It
+  replaces two L1/L2 readings below (marked "superseded"). Not stored as a
+  fixture; the numbers below are read from it.
 
 ## Clocks
 
@@ -30,23 +35,38 @@ Logs referred to:
 | Packets: one with 0 samples (sometimes two, when the start was slow), then one with 49 samples, then 100 samples each, one per second. | High | L1, L2, every session. |
 | A finger already on the sensor shows as 13 samples (36–48) of the 49-sample packet, then a fully zero packet, then contact from **sample 86** of the next, ~2.35 s after the first sample. With no finger, all zeros. | High | Identical in every touching session of L1 and L2. |
 | So "zero" does not mean "no finger" for the first ~2.4 s. The first window opens 2.5 s after the first sample (`sensorSettle`). | Rule | |
-| A lift shows as zeros almost at once (≤ ~0.2 s after the wearer felt the buzz, reaction time included). | Medium | L2 18:17:57: buzz started at phone 18:18:04.33 (event 60), zeros from 04.55. |
-| A finger that comes back after a lift shows **late**: 1.96 s and 2.16 s after the lift, both at **sample 76** of a packet. | Medium (2 cases) | L2 18:19:10 and 18:19:41. The real re-touch times were not logged. |
-| Model: the band checks for a returning finger once per packet (240 ms before its end). A finger back at T after a lift at L shows at the first check at or after max(T, L + hold), with hold between 1.16 s and 1.96 s (1.5 s in the model). | Fitted | Both L2 re-touches; the checks one packet earlier did not show them. |
-| Consequence: after a lift the next window gets `sensorReacquire` (1.5 s) on top of gap + confirm. A tap shorter than the sensor's blind time is invisible. | Rule | Replay of L2 18:19:10 counts tap 4 with it and 3 without it. |
+| A lift shows as zeros almost at once (≤ ~0.3 s after the cue, reaction time included). | High | L2 18:17:57: buzz started at phone 18:18:04.33 (event 60), zeros from 04.55. L3: every lift in the probe showed within ~0.3 s. |
+| A touch becomes visible **~1.9 s after the finger lands** (2.2–2.4 s after the cue, reaction included), **whatever the lift before it lasted** (0.4 to 2.5 s in L3). | High | L3 touch probe, every cue that showed. Also fits L2's two re-touches (1.96 s and 2.16 s after the lift, with the finger back almost at once). |
+| A touch starts on a 100 ms grid: its first non-zero sample has index 6 mod 10 within its packet (6, 16, 46, 56, 66 seen). So the band checks for contact every 100 ms, and reports it once a finger has been there ~1.9 s. | Medium | L3 contact-run start positions. |
+| 300 ms taps never showed; a touch that lifts before the ~1.9 s check is invisible. | High | L3 probe, last three cues, every time. |
+| The band's presence bit is **useless for taps**: on before any touch and never off. | High | L3: every packet line. |
+| **Superseded (L2 reading):** "the band checks once per packet and holds a returning finger back for `hold` after a lift, 1.16–1.96 s (1.5 s in the model)." L3 lifts of 0.4 s and 2.5 s showed with the same ~1.9 s delay from landing, so there is no hold that depends on the lift. The L2 cases were a touch latency seen right after a short lift. | Superseded | L3 vs L2 18:19:10, 18:19:41. |
+| Code today: `sensorReacquire` (1.5 s) is still added to the window after a lift. It stays as a lower bound; with the touch latency it is the wearer's landing time, not the lift, that the sensor needs ~1.9 s after. Not re-tuned in 8W (see open questions). | Rule | `ecg_tap_session.dart`; replay of L2 18:19:10 counts tap 4 with it, 3 without. |
 | While touching, 96–100 of 100 samples are non-zero (the trace crosses zero). | High | L1, L2. |
 | Each packet also carries the band's own electrode **presence** bit (flags bit 3, debounced by the band), the HeartKey S2 state, progress, quality and an unreadable mask. These were not logged before 8V; every packet line now shows them. | Protocol | `openstrap_protocol` `labrador.dart` |
 | The ECG **reading** state machine ends a capture after 3 contact losses, and sends an explicit RESTART when the S2 state drops with presence on (and drops packets while the restart runs). A gesture lifts its finger by design, so with `persist: false` neither happens; both are logged instead. | Rule | `ecg_controller.dart`, `ecg_policy.dart` |
 
 ## Haptics
 
+Every buzz command the app sends is `RUN_HAPTIC_PATTERN_MAVERICK` (0x13) with
+the body `01 2f 98 00 00 00 00 00 00 00 00 01` (`AlarmPayloads.gen5MaverickBuzz`):
+revision 0x01, eight waveform-effect slots (0 = idle; here effect 47 then 152),
+a u16 little-endian loop control per effect, and an overall loop byte. That
+layout is the protocol notes' reading; what the loop bytes mean is not confirmed
+(see open questions).
+
 | Finding | Confidence | Evidence |
 |---|---|---|
-| Each pulse of a multi-pulse buzz is its own band command (300 ms apart). Two such pulses are felt as two. | High | The wearer, L1. |
-| The band takes a command when idle and then stays busy. Within that time it takes **one** more (played after the first) and drops the rest **with no reply**. | Medium | L2: every three-pulse buzz got "pending" replies for pulses 1–2 and "No reply" for pulse 3. L1: the tap-3 buzz, sent ~1 s into the two-pulse acknowledgement, got no reply and no band event, 6 of 7 times. |
-| The busy time, from the first command's write: a command written ~1.25 s after the first of a pair was dropped; one written ~2.0 s after played. | Medium | L1 16:57:43 (dropped) and 16:59:52 (played); first-pulse write times from their reply latencies. |
-| Band events 60 and 100 bracket a buzz: 60 ~0.3 s after the first command, 100 ~1.05–1.5 s after 60, for one pulse or two. 114 follows the stream stop. 113 is the stream start (its time equals the first packet's strap time). | Medium | L1, L2. What 60/100 mean exactly is unknown. |
-| Consequence: a buzz goes out in bursts of at most two pulses (`maxPulsesPerBurst`), and no burst is asked for within 1.8 s of the previous burst's last write (`buzzQuietGap`, ~2.15 s after the first pulse). A three-pulse count buzz is felt as "buzz buzz … buzz". | Rule | The virtual band plays every pulse a four-tap gesture asks for. |
+| **One command is felt as one "bzz-bzz"**, not as one buzz and not as a count. | High | L3, wearer's counts for every played command. |
+| Band events 60 (HAPTICS_FIRED) arrive ~15 ms after a command that plays; 100 (HAPTICS_TERMINATED) 1.08–1.50 s after the 60. | High | L3 events against command writes. |
+| A command written **while the band plays** (before its 100) is answered "pending" and **not played** (no 60). | High | L3. |
+| After such a swallowed command the band **ignores the next command entirely** (no reply, not played) for about 1.0–1.27 s: 0.95 s later it was ignored, 1.27 s later it played. | Medium (few cases near the edge) | L3. |
+| A command written after the 100 always plays, even 0.4 s after it. | High | L3. |
+| The busy window is therefore the play time itself (60 to 100, 1.1–1.5 s), not a fixed time after the command. | High | L3. |
+| **Superseded (L1/L2):** "each pulse of a multi-pulse buzz is its own command, two pulses 300 ms apart are felt as two." L1 and L2 took the replies and the wearer's counts as two pulses played; L3, with the 60 and 100 events beside each command, shows that a second command inside the play was swallowed. | Superseded | L3 shows the second command's reply is "pending" with no event 60. |
+| **Superseded (L1/L2):** "the band takes one more command while busy and drops the rest; busy time ~1.25-2.0 s from the first write." Replaced by the play window plus ignore window above; the missing reply of the 3rd command in L2 fits the ignore window after a swallowed 2nd. | Superseded | L3. |
+| 113 is the stream start (time equal to the first packet's strap time); 114 follows the stream stop. | Medium | L1, L2. |
+| Consequence: a count of N is **N commands, one per pulse** (`maxPulsesPerBurst` = 1), each at least `buzzQuietGap` (1.8 s) after the previous write, which is past the longest play (1.5 s) and the ignore window. Pacing on event 100 instead is not used in gestures; the pattern probe's "event-paced" style tries it. | Rule | `ecg_tap_session.dart`; the virtual band swallows and ignores as above. |
 
 ## Start-up cost
 
@@ -63,16 +83,15 @@ count of 2 (no finger): about 5–7 s. Where it goes:
 
 ## Measuring more: the Device lab probes
 
-Under Devices → your band → Device lab → Hardware probes. Both start only from
-their button, stop at once on Stop or when you leave the screen, and write
+Under Devices → your band → Device lab → Hardware probes. All three start only
+from their button, stop at once on Stop or when you leave the screen, and write
 everything into the lab log ("Copy all logs").
 
 - **Buzz probe.** Eight groups of three single buzzes, 200 ms to 1600 ms apart
   (at most 30 buzzes per run, a 2 s rest after each group). After each group
-  it asks how many you felt. The log line per group has, for each command, when
-  it was asked for and written, the band's reply (or `none`), and the band
-  events seen, in ms from the group's start. This pins down the busy window and
-  whether queued pulses play.
+  it asks how many bzz-bzz you felt (one command plays as one). The log line per
+  group has, for each command, when it was asked for and written, the band's
+  reply (or `none`), and the band events seen, in ms from the group's start.
 - **ECG touch probe.** Streams for at most 60 s. After the sensor settles the
   screen (and the phone's own vibration) cues: keep off, then touch-and-hold /
   lift with lifts of 0.4, 0.8, 1.5, 2.5 and 2 s, then three quick taps. The
@@ -81,11 +100,35 @@ everything into the lab log ("Copy all logs").
   sensor showed the change. Cue times are mapped onto the strap clock through
   the least-delayed packet, so each latency includes your reaction time and the
   best packet's own latency (~0.15 s).
+- **Pattern probe** (8W, MG only). 32 tests: 4 waveforms x 4 ways of sending x
+  2 counts (2 and 3), cycling so that a Stop part-way has still tried every
+  waveform and every way.
+  - Waveforms (effect ids in the command's slots): the band's pair 47 + 152,
+    effect 47 alone, effect 14, effect 1.
+  - Ways of sending: *paced* (separate commands, each 1.8 s after the previous
+    write), *event-paced* (separate commands, each 100 ms after the band's event
+    100, or 2.5 s after the previous write if none came), *repeat* (one command,
+    overall loop = the count), *listed* (one command listing the waveform
+    count times, with a 152 slot between copies of a single effect).
+  - After each test it waits for the band's event 100 (at most 3.5 s), then asks
+    "How many buzzes?" (0-6) and "How many groups?" (0-4), each with "Not sure",
+    and Next. Then a 3 s rest.
+  - The log line per test gives each command's payload in hex, write time,
+    reply, the band events with their times, and what you felt.
+  - What it answers: whether the loop byte or listing more slots makes the band
+    play more than one bzz-bzz per command, whether 152 acts as a pause, and
+    whether effects 47 / 14 / 1 differ.
 
-Safety and hardware health: the probes send nothing the app does not already
-send (one ordinary buzz; the gesture's ECG start and stop). The buzz count per
-run is capped and rested. The ECG stream is capped and always stopped, also on
-errors. No sample leaves RAM unless you copy the log (invariant 14).
+Safety and hardware health: the buzz and pattern probes send only the band's
+own buzz command (RUN_HAPTIC_PATTERN_MAVERICK), through the alert dispatcher
+like every other buzz. Hard bounds: the pattern probe writes at most 56
+commands per run (`PatternProbe.maxCommands`; the default plan needs 48, and
+the constructor refuses a plan that needs more), each pattern has 1-8 effects
+with ids 1-255, the loop is capped at 3, each test is followed by a 3 s rest,
+and a test where nothing could be written ends the run. The pattern probe is
+refused on a band that is not an MG. The ECG stream is capped and always
+stopped, also on errors. No sample leaves RAM unless you copy the log
+(invariant 14). Dangerous opcodes (invariant 15) are not involved.
 
 ## Replaying off the band
 
@@ -102,19 +145,30 @@ final r = await replayTrace(trace.of('tap 18:19:10.695'),
 `test/hardware/lab_trace_replay_test.dart` replays L2 both ways. To try an
 idea without any recording, script a wearer on the virtual band
 (`test/hardware/virtual_mg_test.dart`): finger-on intervals in, packets with
-receipt times out, and a haptic queue that drops what the real one dropped.
+receipt times out, and a haptic model that plays, swallows and ignores commands
+as L3 shows.
 
 ## Open questions (what the next lab run should answer)
 
-1. Does the presence bit go off and on faster than the samples? If it does,
-   contact can come from it and the reacquire wait shrinks. (ECG probe; every
-   packet line now shows it.)
-2. The reacquire hold: 1.16–1.96 s from two cases. (ECG probe: lifts of 0.4,
-   0.8, 1.5 and 2.5 s.)
-3. Do short taps (300 ms) after a lift ever show? (ECG probe, last three cues.)
-4. The haptic busy window, and whether a third command is always dropped or
-   only sometimes. (Buzz probe.)
-5. Does the band keep streaming without the reading's RESTART? (Every gesture
-   now; the trace says "a reading would send RESTART here" when it would have.)
-6. Why the ECG start sometimes takes 2.6–3.3 s. (Start-stage timing in the
+1. What the loop bytes mean: does the overall loop (last body byte) repeat the
+   whole pattern, and what are the two per-effect loop bytes? (Pattern probe:
+   *repeat* tests.) Do 3 plays of one command come as three bzz-bzz or one
+   longer one, and does the band's busy window grow with it?
+2. Is effect 152 a pause (a silent slot between effects)? (Pattern probe:
+   *listed* tests of single effects with a 152 between copies, against the
+   pair 47 + 152.)
+3. Which effect ids exist and feel different: only 47, 152, 14 and 1 are tried.
+   Where does one effect end and the next begin in the band's own pair?
+4. Can one command play two or three bzz-bzz? If *listed* or *repeat* does it,
+   `maxPulsesPerBurst` can go up and a count is felt sooner. (Pattern probe.)
+5. Does pacing on event 100 (100 ms after it) always play? (Pattern probe:
+   *event-paced*; gestures still use the fixed 1.8 s gap.)
+6. The touch window after a lift: the sensor needs ~1.9 s after the finger
+   lands, and the code still adds a fixed 1.5 s after the lift. Should the
+   window open on the lift and close ~1.9 s + confirm after the *earliest
+   possible* landing, and what does that do to fast taps? Taps shorter than
+   ~1.9 s cannot be seen at all, so a "tap" gesture over ECG has a floor.
+7. Why the ECG start sometimes takes 2.6-3.3 s. (Start-stage timing in the
    trace.)
+8. Does the band keep streaming without the reading's RESTART? (Every gesture;
+   the trace says "a reading would send RESTART here" when it would have.)

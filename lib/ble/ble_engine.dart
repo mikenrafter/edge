@@ -7836,6 +7836,52 @@ class BleEngine implements AlarmBandWriter {
     return true;
   }
 
+  /// Write one custom Maverick haptic pattern (8W, the Device lab's pattern
+  /// probe): [effects] (1..8, each 1..255) played [loop] (1..3) times. Like
+  /// [buzzBand]: true when the write landed, the reply is only logged and
+  /// handed to [onReply], never gating delivery. False (nothing written) when
+  /// not connected, when the band is not gen5 (only the Maverick opcode takes
+  /// a pattern), or when the payload is invalid.
+  Future<bool> buzzMaverickPattern({
+    required List<int> effects,
+    int loop = 1,
+    Duration maxQueueWait = buzzQueueDeadline,
+    void Function(String? status, int ms)? onReply,
+  }) async {
+    final owner = _session;
+    if (owner?.connected != true || !owner!.band.isGen5) return false;
+    final List<int> body;
+    try {
+      body = AlarmPayloads.gen5MaverickPattern(effects, loop: loop);
+    } on ArgumentError {
+      return false;
+    }
+    final sent = DateTime.now();
+    final out = await _sendAwaited(
+      Cmd.runHapticPatternMaverick,
+      body,
+      timeout: buzzReplyLogWindow,
+      owner: owner,
+      maxQueueWait: maxQueueWait,
+    );
+    if (!out.written) return false;
+    unawaited(out.response.then((reply) {
+      final ms = DateTime.now().difference(sent).inMilliseconds;
+      final line = reply == null
+          ? 'No reply from the band within $ms ms'
+          : 'Band replied ${_cmdStatusName(reply.status)} in $ms ms';
+      _log('[buzz] pattern: $line');
+      try {
+        onBuzzDiagnostic?.call(line);
+      } catch (_) {}
+      try {
+        onReply?.call(
+            reply == null ? null : _cmdStatusName(reply.status), ms);
+      } catch (_) {}
+    }));
+    return true;
+  }
+
   static String _cmdStatusName(int status) => switch (status) {
         CommandAwaiter.statusSuccess => 'success',
         CommandAwaiter.statusFailure => 'failure',

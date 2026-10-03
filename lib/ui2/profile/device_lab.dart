@@ -462,6 +462,12 @@ class HardwareProbePanel extends StatefulWidget {
 class _HardwareProbePanelState extends State<HardwareProbePanel> {
   EcgCue? _lastCue;
 
+  // The pattern probe's two answers for the open question: null until chosen,
+  // [_skip] for "Not sure".
+  static const int _skip = -1;
+  int? _buzzes, _groups;
+  PatternTest? _askedTest;
+
   @override
   void initState() {
     super.initState();
@@ -485,7 +491,67 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
       }
     }
     _lastCue = cue;
+    // A new question starts with nothing chosen.
+    if (!identical(widget.runner.patternQuestion, _askedTest)) {
+      _askedTest = widget.runner.patternQuestion;
+      _buzzes = _groups = null;
+    }
     if (mounted) setState(() {});
+  }
+
+  /// A row of numbered chips plus "Not sure"; the chosen one is solid.
+  Widget _chips(String keyBase, int max, int? chosen, void Function(int) pick) {
+    Widget chip(String label, String key, int value, double width) => SizedBox(
+          width: width,
+          child: BigButton(
+            label,
+            key: ValueKey('$keyBase-$key'),
+            soft: chosen != value,
+            color: C.blue,
+            onTap: () => setState(() => pick(value)),
+          ),
+        );
+    return Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+      for (var n = 0; n <= max; n++) chip('$n', '$n', n, 56),
+      chip('Not sure', 'skip', _skip, 112),
+    ]);
+  }
+
+  Widget _patternQuestion(P p, HardwareProbeRunner r, PatternTest test) {
+    final ready = _buzzes != null && _groups != null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Test ${r.patternQuestionIndex + 1} of ${r.patternTestCount}: '
+          '${test.description}.',
+          style: F.body.copyWith(color: p.ink),
+        ),
+        const SizedBox(height: S.x3),
+        Text('How many buzzes?', style: F.head.copyWith(color: p.ink)),
+        const SizedBox(height: S.x2),
+        _chips('probe-buzzes', 6, _buzzes, (v) => _buzzes = v),
+        const SizedBox(height: S.x3),
+        Text('How many groups?', style: F.head.copyWith(color: p.ink)),
+        const SizedBox(height: S.x1),
+        Text('A group is buzzes you felt as one run, with a gap before the next.',
+            style: F.cap.copyWith(color: p.ink2)),
+        const SizedBox(height: S.x2),
+        _chips('probe-groups', 4, _groups, (v) => _groups = v),
+        const SizedBox(height: S.x3),
+        BigButton(
+          'Next',
+          key: const ValueKey('probe-pattern-next'),
+          color: C.blue,
+          onTap: !ready
+              ? null
+              : () => r.answerPattern(
+                    _buzzes == _skip ? null : _buzzes,
+                    _groups == _skip ? null : _groups,
+                  ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -495,6 +561,7 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
     final running = r.running;
     final cue = r.cue;
     final q = r.question;
+    final pq = r.patternQuestion;
     final note = r.note;
     return Surface(
       child: Column(
@@ -529,6 +596,22 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
               color: C.blue,
               onTap: r.canRunEcg ? r.runEcg : null,
             ),
+            const SizedBox(height: S.x2),
+            BigButton(
+              'Run pattern probe',
+              key: const ValueKey('probe-pattern'),
+              icon: LucideIcons.audioWaveform,
+              soft: true,
+              color: C.blue,
+              onTap: r.canRunPattern ? r.runPattern : null,
+            ),
+            const SizedBox(height: S.x1),
+            Text(
+              'MG only. Tries custom buzz patterns, up to '
+              '${PatternProbe.maxCommands} short commands, 3 s rest after each '
+              'test; Stop ends it at once.',
+              style: F.cap.copyWith(color: p.ink2, height: 1.4),
+            ),
           ] else ...[
             if (running == ProbeKind.ecg)
               Container(
@@ -545,6 +628,10 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
                   style: F.t1.copyWith(color: p.ink),
                 ),
               ),
+            if (running == ProbeKind.pattern && pq == null)
+              Text('Buzzing… keep the band on and count what you feel.',
+                  style: F.body.copyWith(color: p.ink)),
+            if (pq != null) _patternQuestion(p, r, pq),
             if (running == ProbeKind.buzz && q == null)
               Text('Buzzing… keep the band on and count the buzzes.',
                   style: F.body.copyWith(color: p.ink)),
@@ -552,7 +639,8 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
               Text(
                 'Group ${r.questionIndex + 1} of ${r.trialCount}: '
                 '${q.commands} buzzes sent ${q.spacingMs} ms apart. '
-                'How many did you feel?',
+                'How many bzz-bzz did you feel? (One buzz command is one '
+                'bzz-bzz.)',
                 style: F.body.copyWith(color: p.ink),
               ),
               const SizedBox(height: S.x2),

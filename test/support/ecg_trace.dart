@@ -146,7 +146,7 @@ class ReplayResult {
   ReplayResult(this.steps, this.buzzes, this.results);
   final List<String> steps;
 
-  /// Pulses of every buzz call, in order (bursts of at most two).
+  /// Pulses of every buzz call, in order (one command per pulse by default).
   final List<int> buzzes;
   final List<(int?, String?)> results;
 

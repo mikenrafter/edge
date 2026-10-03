@@ -27,6 +27,10 @@ HardwareProbeRunner _runner(DeviceLabLog lab,
         onReply('pending', 40);
         return true;
       },
+      sendPattern: (effects, loop, onReply) async {
+        onReply('pending', 40);
+        return true;
+      },
       isConnected: () => connected,
       ecgSupported: () => true,
       ecgBusy: () => false,
@@ -59,6 +63,8 @@ void main() {
     await t.pump(const Duration(seconds: 5));
     expect(find.textContaining('Group 1 of 8: 3 buzzes sent 200 ms apart'),
         findsOneWidget);
+    expect(find.textContaining('bzz-bzz'), findsWidgets,
+        reason: 'one command is one bzz-bzz: that is what the wearer counts');
     expect(sent, hasLength(3));
     await t.tap(find.byKey(const ValueKey('probe-felt-2')));
     await t.pump();

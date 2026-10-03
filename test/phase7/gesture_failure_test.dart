@@ -127,7 +127,7 @@ class _Rig {
   }
 
   /// A no-contact second after [steady]: the first window runs out, so the
-  /// gesture ends at 2 with the two-pulse buzz.
+  /// gesture ends at 2 with the two-command buzz.
   Future<void> noTouch({int sec = 1000}) async {
     now = _t0.add(const Duration(seconds: 2));
     session.onFrame(_packet(sec + 2));
@@ -196,7 +196,9 @@ void main() {
       await r.session.start(_tap());
       await r.steady();
       await r.noTouch();
-      expect(r.buzzes.single.$1, 2, reason: 'the two-pulse count buzz');
+      expect(r.buzzes.single.$1, 1,
+          reason: 'the first command of the two-command count buzz; it timed '
+              'out, so the second is not sent');
       await r.settle(200);
       expect(r.session.active, isFalse);
       expect(r.results.single, (2, null));
@@ -213,8 +215,9 @@ void main() {
       await r.steady(sec: 2000);
       await r.noTouch(sec: 2000);
       await r.settle(200);
-      expect(r.buzzes.length, 2,
-          reason: 'the second buzz was sent once the first timed out');
+      expect(r.buzzes.length, 3,
+          reason: 'the first gesture sent one command and timed out; the '
+              'second gesture sent both of its commands');
     });
 
     test('BLE disconnect mid-gesture: abandoned, recorded once, stream stopped, '
@@ -261,7 +264,7 @@ void main() {
       expect(b.buzzes, isEmpty);
       expect(b.session.active, isTrue);
       await b.noTouch(sec: 5000);
-      expect(b.buzzes.single.$1, 2);
+      expect(b.buzzes.map((x) => x.$1), [1, 1]);
       expect(b.results, [(2, null)]);
     });
   });

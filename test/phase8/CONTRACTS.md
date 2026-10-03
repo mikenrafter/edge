@@ -583,7 +583,7 @@ Evidence and the fitted model: `docs/hardware/whoop-mg-haptics-and-ecg.md`. Test
 - **Reacquire.** `EcgTapCounter(reacquire:)` (default zero) is added to every window
   after a lift: `[E+gap, E+gap+reacquire+confirm)`. `EcgTapSession.sensorReacquire`
   defaults to 1500 ms.
-- **Bursts.** `EcgTapSession.maxPulsesPerBurst` (2): a count buzz of N pulses is
+- **Bursts.** (Superseded by 8W: the default is now 1.) `EcgTapSession.maxPulsesPerBurst` (2): a count buzz of N pulses is
   `buzz(2)`, then `buzz(1)` …, each a separate call with event id `<id>` then
   `<id>:b<k>`, each after `buzzQuietGap` (now 1800 ms) from the previous write. Log
   lines: `Buzz x3, pulses 1–2 written…`, `Buzz x3, pulse 3 waits N ms…`. A burst that
@@ -614,3 +614,46 @@ Evidence and the fitted model: `docs/hardware/whoop-mg-haptics-and-ecg.md`. Test
   `replayTrace` runs a real session over them. The 18:17 fixture replays to the band's
   counts with no reacquire, and session 18:19:10 counts tap 4 with it.
 
+
+## 8W: one command is one bzz-bzz; the pattern probe (Oct 2, 20:40 lab log)
+
+Evidence: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L3). Tests:
+`test/hardware/buzz_pattern_test.dart`, `pattern_probe_test.dart`,
+`pattern_probe_panel_test.dart`, `virtual_mg_test.dart`, `hardware_probes_test.dart`,
+`hardware_probe_panel_test.dart`, `probe_wiring_guard_test.dart`;
+`test/gestures/ecg_tap_session_one_command_test.dart` and the other gesture tests;
+`test/phase7/audit_guards_test.dart`, `gesture_failure_test.dart`.
+
+- **Count buzzes.** One band command plays as one "bzz-bzz"; a command written while
+  the band plays is answered "pending" and not played, and the band then ignores the
+  next command for ~1 s. `EcgTapSession.maxPulsesPerBurst` defaults to 1: a count of
+  2 or 3 is 2 or 3 commands, each at least `buzzQuietGap` (1800 ms) after the
+  previous write. A burst that cannot be written still ends that buzz.
+- **Payload.** `AlarmPayloads.gen5MaverickPattern(effects, {loop = 1})` is
+  `[0x01, ...effects padded to 8, 0, 0, loop]` (12 bytes); `ArgumentError` unless
+  1-8 effects, each 1-255, and loop 1-3. `gen5MaverickBuzz(overallLoop: 1)` equals
+  `gen5MaverickPattern([47, 152])`.
+- **Engine.** `BleEngine.buzzMaverickPattern({effects, loop, maxQueueWait, onReply})`
+  is `buzzBand` for a custom pattern; false and nothing written when not connected,
+  not gen5, or the payload is invalid. Probe buzzes still go through
+  `AlertDispatcher.dispatch` (`AppState._probePattern`, rule `hardware_probe`).
+- **`PatternProbe`** (`lib/gestures/hardware_probes.dart`): 32 `defaultTests` (4
+  `BuzzWaveform`s x 4 `BuzzStyle`s x counts 2 and 3, cycling), at most
+  `maxCommands` (56) commands per run (the default needs 48; the constructor throws
+  above the limit), 3 s rest after each test, settle on the band's event 100 or 3.5 s,
+  then `askFelt` -> `PatternAnswer(buzzes, sequences)`. A test where nothing was
+  written ends the run; Stop and a lost link end it; flags reset in `finally`.
+- **Runner and panel.** `HardwareProbeRunner.runPattern()` (`ProbeKind.pattern`;
+  refuses: not connected, another probe running, band not an MG), `patternQuestion`,
+  `patternQuestionIndex`, `patternTestCount`, `answerPattern(buzzes, sequences)`;
+  lab session `Pattern probe`, settings `32 tests: 4 waveforms × 4 ways of sending ×
+  2 counts`. The buzz probe's question asks how many "bzz-bzz" were felt.
+  `HardwareProbePanel`: `probe-pattern` button with the safety caption,
+  `probe-buzzes-0..6` / `probe-buzzes-skip`, `probe-groups-0..4` /
+  `probe-groups-skip`, `probe-pattern-next` (enabled once both rows have a choice),
+  `probe-stop`. No golden covers the panel.
+- **Virtual band.** `VirtualMgHaptics.command(atMs)` plays when idle, swallows
+  ("pending") while playing and goes deaf (no reply) for 1100 ms after a swallow.
+  `VirtualMgEcg(touchLatencyMs: 1900)` shows a touch from the first 100 ms grid
+  point at or after landing + latency, and not at all if that is past its end.
+  The "reacquire hold" parameters are gone.

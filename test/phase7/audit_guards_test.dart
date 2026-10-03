@@ -125,7 +125,7 @@ void main() {
     test('each engine buzz call in AppState sits inside a dispatcher delivery '
         'or a constructor that hands it to one', () {
       final calls =
-          RegExp(r'engine\.(buzz|buzzBand|runAlarm|buzzPattern)\(').allMatches(code);
+          RegExp(r'engine\.(buzz|buzzBand|buzzMaverickPattern|runAlarm|buzzPattern)\(').allMatches(code);
       expect(calls, isNotEmpty);
       final openers = [
         RegExp(r'\bdispatch\('),
@@ -173,7 +173,7 @@ void main() {
         }
         final c = _code(f.path);
         for (final m in RegExp(r'\b(engine|_engine|bleEngine)\s*\.\s*'
-                r'(buzz|buzzBand|runAlarm|buzzPattern)\(')
+                r'(buzz|buzzBand|buzzMaverickPattern|runAlarm|buzzPattern)\(')
             .allMatches(c)) {
           offenders.add('${f.path}:${lineOf(c, m.start)}');
         }

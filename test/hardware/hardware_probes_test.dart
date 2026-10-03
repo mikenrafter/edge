@@ -30,17 +30,21 @@ void main() {
       final band = VirtualMgHaptics();
       final steps = <String>[];
       late final HapticProbe probe;
+      var playedBefore = 0;
       probe = HapticProbe(
         sendOne: (onReply) async {
           final at = clock.ms + 100; // ~100 ms to write
-          final ok = band.command(at);
-          onReply(ok ? 'pending' : null, ok ? 60 : 3000);
+          final reply = band.command(at);
+          onReply(reply, reply != null ? 60 : 3000);
           return true;
         },
-        // The wearer feels what the band played in this trial.
-        askFelt: (t, i) async => probe.results.last.commands
-            .where((c) => c.reply == 'pending')
-            .length,
+        // The wearer feels what the band PLAYED in this trial (a swallowed
+        // command is answered "pending" too, but is not played).
+        askFelt: (t, i) async {
+          final felt = band.played - playedBefore;
+          playedBefore = band.played;
+          return felt;
+        },
         isConnected: connected ?? () => true,
         step: steps.add,
         now: () => clock.now,
@@ -68,10 +72,20 @@ void main() {
       expect(results, hasLength(HapticProbe.defaultTrials.length));
       final at300 = results.firstWhere((r) => r.trial.spacingMs == 300);
       expect(at300.commands.map((c) => c.reply), ['pending', 'pending', 'none'],
-          reason: 'the virtual band drops a third pulse 300 ms after a pair');
-      expect(at300.felt, 2);
+          reason: 'the second command is swallowed (answered pending, not '
+              'played), the third is ignored (no answer)');
+      expect(at300.felt, 1);
       final at1600 = results.firstWhere((r) => r.trial.spacingMs == 1600);
       expect(at1600.felt, 3);
+      final at1000 = results.firstWhere((r) => r.trial.spacingMs == 1000);
+      expect(at1000.commands.map((c) => c.reply), ['pending', 'pending', 'none'],
+          reason: 'writes at 100, 1100, 2100: the 2nd is swallowed (the band '
+              'plays until 1600), the 3rd lands in the 1.1 s it then ignores');
+      expect(at1000.felt, 1);
+      final at1300 = results.firstWhere((r) => r.trial.spacingMs == 1300);
+      expect(at1300.felt, 2,
+          reason: 'writes at 100, 1400, 2700: the 2nd is swallowed, the 3rd '
+              'comes after the deaf window and plays');
       expect(g.steps.where((s) => s.startsWith('Buzz probe, ')),
           hasLength(results.length));
       expect(g.steps.last, 'Buzz probe finished.');
@@ -263,6 +277,10 @@ void main() {
         HardwareProbeRunner(
           lab: lab,
           sendBuzz: (onReply) async {
+            onReply('pending', 50);
+            return true;
+          },
+          sendPattern: (effects, loop, onReply) async {
             onReply('pending', 50);
             return true;
           },

@@ -220,7 +220,8 @@ void main() {
       await r.session.start(_tap());
       await r.steady();
       expect(r.began, 1);
-      expect(r.buzzes.map((b) => b.$1), [2]);
+      expect(r.buzzes.map((b) => b.$1), [1, 1],
+          reason: 'two commands, one pulse each');
       expect(r.results, [(2, null)]);
       expect(r.ended, 1);
       expect(r.session.active, isFalse);
@@ -379,8 +380,8 @@ void main() {
       r.now = _t0.add(const Duration(seconds: 2));
       r.session.onFrame(_packet(1002, contactFrom: 0));
       await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2, 1],
-          reason: 'three pulses go out as a pair and then one');
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1],
+          reason: 'three pulses go out as three separate commands');
       expect(r.steps, contains('Buzz x3 requested at sample time 1001700 ms.'),
           reason: 'held from the window opening (1001.5) for the gap');
       expect(r.results, [(3, null)]);
@@ -396,8 +397,8 @@ void main() {
       r.now = _t0.add(const Duration(seconds: 2));
       r.session.onFrame(_packet(1002, contactFrom: 60)); // from 1001.6
       await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2, 1],
-          reason: 'three pulses go out as a pair and then one');
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1],
+          reason: 'three pulses go out as three separate commands');
       expect(r.results, [(3, null)]);
     });
 
@@ -410,7 +411,7 @@ void main() {
       r.session.onFrame(_packet(1002, contactFrom: 0, contactTo: 40));
       await r.settle();
       expect(r.results, [(2, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2]);
+      expect(r.buzzes.map((b) => b.$1), [1, 1]);
     });
 
     test('no touch: two buzzes and it ends at 2, from sample time', () async {
@@ -421,8 +422,8 @@ void main() {
       r.session.onFrame(_packet(1002)); // 100 no-contact samples
       await r.settle();
       expect(r.results, [(2, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2],
-          reason: 'the two-pulse buzz is the confirmation');
+      expect(r.buzzes.map((b) => b.$1), [1, 1],
+          reason: 'the two-command buzz is the confirmation');
       expect(r.steps, contains('Final count 2 at sample time 1001800 ms.'));
     });
 
@@ -441,8 +442,9 @@ void main() {
       r.session.onFrame(p);
       await r.settle();
       expect(r.results, [(4, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2, 1, 1, 1]);
-      expect(r.buzzes.map((b) => b.$2).toSet(), hasLength(4));
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1, 1, 1],
+          reason: 'x3 is three commands, then x1, then the x1 confirmation');
+      expect(r.buzzes.map((b) => b.$2).toSet(), hasLength(5));
     });
 
     test('a stream that goes away abandons with no action, and resets',
@@ -515,14 +517,14 @@ void main() {
         'inside one packet is not a new tap', () async {
       final r = await liftInsideAPacket(EcgTapThresholds());
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2, 1, 1]);
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1, 1]);
     });
 
     test('on: every reading counts, so the same lift is a fourth tap',
         () async {
       final r = await liftInsideAPacket(EcgTapThresholds(extraSensitive: true));
       expect(r.results, [(4, null)]);
-      expect(r.buzzes.map((b) => b.$1), [2, 1, 1, 1]);
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1, 1, 1]);
     });
 
     test('off: a single zero reading cannot restart the hold time', () async {
@@ -547,7 +549,7 @@ void main() {
   });
 
   group('buzz pacing', () {
-    test('three pulses go out as a pair, then one after the quiet gap',
+    test('three pulses go out as three commands, each after the quiet gap',
         () async {
       final r = _Rig(max: 5);
       await r.session.start(_tap());
@@ -555,13 +557,18 @@ void main() {
       r.now = _t0.add(const Duration(seconds: 2));
       r.session.onFrame(_packet(1002, contactFrom: 50, contactTo: 80));
       await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2, 1]);
-      expect(r.waits, [const Duration(milliseconds: 1800)],
-          reason: 'the band drops a third pulse 300 ms after a pair');
-      expect(r.steps, contains('Buzz x3, pulses 1–2 written, 0 ms after the request.'));
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1]);
+      expect(r.waits, [
+        const Duration(milliseconds: 1800),
+        const Duration(milliseconds: 1800),
+      ], reason: 'the band plays one command as one bzz-bzz and ignores the '
+          'next while it plays');
+      expect(r.steps, contains('Buzz x3, pulse 1 written, 0 ms after the request.'));
+      expect(r.steps, contains(startsWith('Buzz x3, pulse 2 waits 1800 ms')));
       expect(r.steps, contains(startsWith('Buzz x3, pulse 3 waits 1800 ms')));
       expect(r.buzzes[1].$2, '${r.buzzes[0].$2}:b1',
-          reason: 'each burst has its own event id');
+          reason: 'each command has its own event id');
+      expect(r.buzzes[2].$2, '${r.buzzes[0].$2}:b2');
     });
 
     test('a buzz asked for inside the quiet gap waits for the band', () async {
@@ -578,13 +585,13 @@ void main() {
       r.now = _t0.add(const Duration(milliseconds: 2500));
       r.session.onFrame(_packet(1002, subMs: 500, n: 50, contactFrom: 5));
       await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2, 1, 1]);
+      expect(r.buzzes.map((b) => b.$1), [1, 1, 1, 1]);
       expect(r.waits.last, const Duration(milliseconds: 1300));
       expect(r.steps, contains(startsWith('Buzz x1 waits 1300 ms')));
     });
 
     test('buzzes stay in order and survive the end of the gesture', () async {
-      final feedback = [for (var i = 0; i < 3; i++) Completer<bool>()];
+      final feedback = [for (var i = 0; i < 4; i++) Completer<bool>()];
       var delivered = 0;
       final r = _Rig(
         max: 4,
@@ -604,15 +611,16 @@ void main() {
       expect(r.results, [(4, null)]);
       expect(r.session.active, isFalse);
       expect(r.ended, 1);
-      expect(r.buzzes.map((b) => b.$1), [2], reason: 'one burst at a time');
-      feedback[0].complete(true);
-      await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2, 1]);
-      feedback[1].complete(true);
-      await r.settle();
-      expect(r.buzzes.map((b) => b.$1), [2, 1, 1],
-          reason: 'queued feedback survives the final count');
-      feedback[2].complete(true);
+      expect(r.buzzes.map((b) => b.$1), [1], reason: 'one command at a time');
+      for (var i = 0; i < 3; i++) {
+        feedback[i].complete(true);
+        await r.settle();
+        expect(r.buzzes.map((b) => b.$1), List.filled(i + 2, 1),
+            reason: i == 2
+                ? 'queued feedback survives the final count'
+                : 'the next command goes out once the last one landed');
+      }
+      feedback[3].complete(true);
       await r.settle();
       expect(r.results, [(4, null)],
           reason: 'feedback does not finish the gesture twice');
@@ -635,9 +643,9 @@ void main() {
         await r.settle();
         expect(r.results, [(3, null)]);
         expect(r.steps,
-            contains(startsWith('Buzz x3, pulses 1–2 could not be written')));
-        expect(r.buzzes.map((b) => b.$1), [2],
-            reason: 'pulse 3 is not sent after a failed pair');
+            contains(startsWith('Buzz x3, pulse 1 could not be written')));
+        expect(r.buzzes.map((b) => b.$1), [1],
+            reason: 'pulses 2 and 3 are not sent after a failed first');
         await r.session.start(_tap(sec: 5));
         expect(r.began, 2, reason: 'the next gesture is not blocked');
       });
@@ -694,7 +702,8 @@ void main() {
         onFinished: (_, _) {},
       );
       expect(s.sensorReacquire, const Duration(milliseconds: 1500));
-      expect(s.maxPulsesPerBurst, 2);
+      expect(s.maxPulsesPerBurst, 1,
+          reason: 'one command is one bzz-bzz; a count is separate commands');
     });
   });
 

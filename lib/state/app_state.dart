@@ -315,6 +315,7 @@ class AppState extends ChangeNotifier {
   late final HardwareProbeRunner hardwareProbes = HardwareProbeRunner(
     lab: deviceLab,
     sendBuzz: _probeBuzz,
+    sendPattern: _probePattern,
     isConnected: () => engine.isConnected,
     ecgSupported: () => engine.isMaverick,
     ecgBusy: () => _ecgTapSession.active || ecg.isCapturing,
@@ -339,6 +340,29 @@ class AppState extends ChangeNotifier {
       bandDelivery: () => deliverBuzzSequence(BuzzSequence(const [0]),
           buzz: () => engine.buzzBand(onReply: onReply),
           isConnected: () => engine.isConnected),
+    );
+    final sent = r.targets.contains('band');
+    if (!sent) {
+      deviceLab.addStep('Probe buzz not sent: '
+          '${r.suppressionReason ?? 'no reason given'}.');
+    }
+    return sent;
+  }
+
+  /// One custom pattern for the pattern probe (8W): the same dispatcher
+  /// delivery as [_probeBuzz], one command.
+  Future<bool> _probePattern(List<int> effects, int loop,
+      void Function(String? status, int ms) onReply) async {
+    final now = DateTime.now();
+    final r = await alertDispatcher.dispatch(
+      hardwareProbeRule,
+      eventId: 'probe:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandDelivery: () async => await engine.buzzMaverickPattern(
+              effects: effects, loop: loop, onReply: onReply)
+          ? BuzzDelivery.complete
+          : BuzzDelivery.rejected,
     );
     final sent = r.targets.contains('band');
     if (!sent) {

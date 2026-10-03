@@ -43,6 +43,25 @@ void main() {
     );
   });
 
+  test('the probe pattern is a dispatcher delivery that hears the band reply',
+      () {
+    final body = bodyOf(src, 'Future<bool> _probePattern(');
+    expect(body, isNotEmpty);
+    final c = codeOnly(body);
+    expect(c, contains('hardwareProbeRule'));
+    final buzz = RegExp(
+      r'engine\.buzzMaverickPattern\(\s*effects:\s*effects,\s*loop:\s*loop,'
+      r'\s*onReply:\s*onReply,?\s*\)',
+    ).firstMatch(c);
+    expect(buzz, isNotNull,
+        reason: 'the effects, the loop and the reply are passed through');
+    expect(
+      enclosedByCall(c, buzz!.start, RegExp(r'alertDispatcher\.dispatch\(')),
+      isTrue,
+      reason: 'engine.buzzMaverickPattern sits inside alertDispatcher.dispatch(',
+    );
+  });
+
   test('the runner is built with the probe buzz', () {
     final at = code.indexOf('HardwareProbeRunner(');
     expect(at, isNonNegative);
@@ -52,6 +71,18 @@ void main() {
         closingOf(code, at + 'HardwareProbeRunner('.length - 1),
       ),
       contains('sendBuzz: _probeBuzz'),
+    );
+  });
+
+  test('...and with the probe pattern', () {
+    final at = code.indexOf('HardwareProbeRunner(');
+    expect(at, isNonNegative);
+    expect(
+      code.substring(
+        at,
+        closingOf(code, at + 'HardwareProbeRunner('.length - 1),
+      ),
+      contains('sendPattern: _probePattern'),
     );
   });
 }

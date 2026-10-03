@@ -1256,6 +1256,33 @@ class AlarmPayloads {
     return <int>[0x01, 47, 152, 0, 0, 0, 0, 0, 0, 0, 0, loop];
   }
 
+  /// Gen5 Maverick custom pattern (RUN_HAPTIC_PATTERN_MAVERICK = 0x13), for the
+  /// Device lab's pattern probe (8W): `[0x01, 8 waveform-effect slots (0 =
+  /// idle), u16 per-effect loop control (left 0), u8 overall loop]`. Bounded
+  /// for the band's health: 1..8 effects, each 1..255, overall [loop] 1..3.
+  /// Anything else is an [ArgumentError], never a clamped guess.
+  static List<int> gen5MaverickPattern(List<int> effects, {int loop = 1}) {
+    if (effects.isEmpty || effects.length > 8) {
+      throw ArgumentError.value(effects, 'effects', 'need 1..8 effects');
+    }
+    for (final e in effects) {
+      if (e < 1 || e > 255) {
+        throw ArgumentError.value(effects, 'effects', 'each effect is 1..255');
+      }
+    }
+    if (loop < 1 || loop > 3) {
+      throw ArgumentError.value(loop, 'loop', 'the loop is 1..3');
+    }
+    return <int>[
+      0x01,
+      ...effects,
+      for (var i = effects.length; i < 8; i++) 0,
+      0,
+      0,
+      loop,
+    ];
+  }
+
   /// RUN_ALARM (0x44) body — fire the haptics immediately ("test buzz").
   static const List<int> runNow = <int>[0x01];
 
