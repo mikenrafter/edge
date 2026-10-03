@@ -284,7 +284,12 @@ class HardwareProbeRunner extends ChangeNotifier {
   void patternToggleDot() => _edit((s) => s.toggleDot());
   void patternToggleKind() => _edit((s) => s.toggleKind());
   void patternDynamicTempo(bool on) => _edit((s) => s.dynamicTempo = on);
-  void patternDynamic(PatternDynamic d) => _edit((s) => s.setDynamic(d));
+  // The probe writes what was felt, never "any": the page offers the six and
+  // this ignores a seventh.
+  void patternDynamic(PatternDynamic d) {
+    if (d == PatternDynamic.any) return;
+    _edit((s) => s.setDynamic(d));
+  }
   void patternToggleUnstable() => _edit((s) => s.toggleUnstable());
   void patternDelete() => _edit((s) => s.delete());
   void patternMove(int delta) => _edit((s) => s.moveCursor(delta));

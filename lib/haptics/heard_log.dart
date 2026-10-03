@@ -41,7 +41,12 @@ final RegExp _trailingCode = RegExp(r'\(([^()]*)\)\s*$');
 List<PatternEntry> _rendition(String text) {
   final m = _trailingCode.firstMatch(text);
   if (m == null) return const [];
-  return PatternTranscript.parseCode(m[1]!).entries;
+  final entries = PatternTranscript.parseCode(m[1]!).entries;
+  // The probe records what was felt, never "any loudness".
+  if (entries.any((e) => e.dynamic == PatternDynamic.any)) {
+    throw FormatException('a heard rendition has no any-loudness note', m[1]);
+  }
+  return entries;
 }
 
 /// The legacy unstable flag: a rendition that ends with a 16th, an eighth and

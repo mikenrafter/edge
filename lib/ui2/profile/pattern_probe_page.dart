@@ -554,8 +554,8 @@ class _PatternProbePageState extends State<PatternProbePage> {
                     const SizedBox(height: S.x1),
                     Row(
                       children: [
-                        for (final d in PatternDynamic.values) ...[
-                          if (d != PatternDynamic.values.first)
+                        for (final d in PatternDynamic.scale) ...[
+                          if (d != PatternDynamic.scale.first)
                             const SizedBox(width: S.x2),
                           Expanded(
                             child: PatternDynamicButton(

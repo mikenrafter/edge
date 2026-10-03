@@ -354,6 +354,26 @@ limits are shown.
   eighth, quarter, half, a dot, six dynamics), shows what the band will play for them, and
   plays exactly what is on the page. A 4.0 has no measured vocabulary: it has tap patterns
   only.
+- **Any loudness (`*`).** The notes editor has a seventh dynamics button, `*`, written
+  `N2*` ("eighth note, any loudness"): the wearer does not mind how loud the band plays that
+  note, so the compiler picks whatever loudness serves the length best. It costs nothing
+  against any phrase and counts as written for any loudness. It is not a position on the
+  ff to pp scale. The probe does not offer it and the heard-log reader refuses it: a probe
+  line records what was felt, never "any".
+- **Prioritize rhythm / dynamics.** When the band cannot play a pattern exactly, the editor's
+  toggle says what gives. Rhythm (the default) keeps the timing and settles for a nearby
+  loudness: a cell that disagrees about note versus rest costs 4, a loudness step 1.
+  Dynamics keeps the loudness and settles for timing a sixteenth or so off: a disagreeing
+  cell costs 1, a loudness step 4. The choice is stored with the pattern (`priority`,
+  written to JSON only when it is dynamics), the saved plan is compiled with it, and delivery
+  compiles from the notes with it when it has to. Under the plan the editor says which notes
+  change, for example "Plays N4ff where you wrote N4mf".
+- **Following the playback.** On a band with a measured vocabulary the notes editor marches a
+  playhead through the entries while the band plays, like the probe. The service reports
+  when each command started: the band's live event 60 if it arrives within a second of the
+  write, otherwise the write time plus 300 ms. Each report re-anchors the playhead at the
+  sixteenth where that command's phrase starts (`HapticStep.startUnit`). A preview the band
+  has not started shows no playhead; a tap or a scroll cancels it; the cursor never moves.
 - **Allow long sequences.** Off by default. The 10 s runtime cap (see "From taps to band
   commands") is lifted for the tap sheet, the editor and delivery when the wearer turns it
   on, after a confirmation: "May cause harm to your device. Use at your own risk." Turning

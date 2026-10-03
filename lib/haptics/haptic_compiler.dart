@@ -7,14 +7,21 @@
 // The search is a dynamic program over 16th positions. A placement costs 4 for
 // every cell where the felt side and the target disagree about note versus
 // rest, plus dynamicWeight times the loudness distance on cells where both
-// are notes. Every command beyond the first adds a small penalty, so one
-// command is preferred when it is nearly as good. Plans are ordered by cost,
+// are notes (a target cell written as "any loudness" costs nothing there).
+// With HapticPriority.dynamics the two weights swap sides: a cell that
+// disagrees costs 1 and a loudness step costs 4, so a plan one sixteenth off
+// in timing beats one at the wrong loudness. Every command beyond the first
+// adds a small penalty, so one command is preferred when it is nearly as good.
+// Plans are ordered by cost,
 // then fewer commands, then fewer unstable parts, then less total write
 // delay; ties inside that are settled by the fixed order of the profile's
 // rows.
 
 import '../gestures/pattern_transcript.dart';
+import 'haptic_priority.dart';
 import 'haptic_profile.dart';
+
+export 'haptic_priority.dart' show HapticPriority;
 
 /// One cell per sixteenth: a note cell carries its dynamic, a rest cell is
 /// null. Adjacent notes are not distinguished from one long note.
@@ -54,6 +61,7 @@ class HapticStep {
     this.restMinUnits = 0,
     this.restMaxUnits = 0,
     this.gapStable = true,
+    this.startUnit = 0,
   });
 
   final HapticPhrase phrase;
@@ -69,6 +77,11 @@ class HapticStep {
 
   /// False when the gap row behind [delayMs] is an unstable one.
   final bool gapStable;
+
+  /// The sixteenth of the target (counting from its first entry, leading
+  /// rests included) where this step's phrase starts: what the editor follows
+  /// the playback by.
+  final int startUnit;
 }
 
 /// What to write and how it should feel.
@@ -112,8 +125,12 @@ class HapticPlan {
   final String summary;
 }
 
-/// Cost of one cell that disagrees about note versus rest.
+/// Cost of one cell that disagrees about note versus rest, and of one loudness
+/// step, for [HapticPriority.rhythm]. [HapticPriority.dynamics] uses 1 and 4:
+/// a loudness step then outweighs a one-cell shift (two disagreeing cells).
 const int _kMismatch = 4;
+const int _kDynamicsMismatch = 1;
+const int _kDynamicsLoudness = 4;
 
 // A cost that orders plans by cost, then unstable parts, then total delay.
 // (The command count is the outer loop of the search; the final pick orders
@@ -170,16 +187,24 @@ class _Node {
 /// plan is not exact. Each command beyond the first adds [commandPenalty] to
 /// the cost. With [maxRuntimeMs] a plan that runs longer is skipped, and a
 /// target that itself runs longer gives null (it would otherwise be cut short
-/// without saying so).
+/// without saying so). [priority] picks what is given up first when the
+/// pattern cannot be played as written.
 HapticPlan? compile(
   List<PatternEntry> target,
   HapticDeviceProfile p, {
   required bool extended,
   int dynamicWeight = 1,
+  HapticPriority priority = HapticPriority.rhythm,
   int maxCommands = 8,
   int commandPenalty = 2,
   int? maxRuntimeMs,
 }) {
+  final mismatch = priority == HapticPriority.dynamics
+      ? _kDynamicsMismatch
+      : _kMismatch;
+  final loudness = priority == HapticPriority.dynamics
+      ? dynamicWeight * _kDynamicsLoudness
+      : dynamicWeight;
   var cells = timeline(target);
   final first = cells.indexWhere((c) => c != null);
   if (first < 0 || maxCommands < 1) return null;
@@ -221,9 +246,9 @@ HapticPlan? compile(
       final want = at + i < n ? cells[at + i] : null;
       final got = r.cells[i];
       if ((want != null) != (got != null)) {
-        c += _kMismatch;
+        c += mismatch;
       } else if (want != null) {
-        c += dynamicWeight * (want.index - got!.index).abs();
+        c += loudness * want.distanceTo(got!);
       }
     }
     return c;
@@ -272,7 +297,7 @@ HapticPlan? compile(
       for (var start = e + 1; start < n; start++) {
         final waits = waitsFor(start - e);
         if (waits.isEmpty) continue;
-        final gapCost = _kMismatch * notesIn(e, start);
+        final gapCost = mismatch * notesIn(e, start);
         for (final w in waits) {
           for (final r in renders) {
             final end = start + r.cells.length;
@@ -305,7 +330,7 @@ HapticPlan? compile(
         k: k,
         e: e,
         total: node.score +
-            _Score(_kMismatch * notesIn(e, n) + commandPenalty * (k - 1), 0, 0),
+            _Score(mismatch * notesIn(e, n) + commandPenalty * (k - 1), 0, 0),
       ));
     }
   }
@@ -331,6 +356,8 @@ HapticPlan? compile(
     }
     final ordered = chain.reversed.toList();
 
+    // A step starts where the one before it ends (its node's prev) plus the
+    // rest the wait covers; the first starts at the first note.
     final steps = <HapticStep>[
       for (final node in ordered)
         HapticStep(
@@ -339,6 +366,7 @@ HapticPlan? compile(
           restMinUnits: node.wait?.minUnits ?? 0,
           restMaxUnits: node.wait?.maxUnits ?? 0,
           gapStable: node.wait?.stable ?? true,
+          startUnit: first + (node.wait == null ? 0 : node.prev + node.wait!.units),
         ),
     ];
     final feltMin = _felt(steps, useMax: false);
@@ -375,7 +403,8 @@ bool _sameCells(List<PatternDynamic?> a, List<PatternDynamic?> b) {
 }
 
 // Whether two timelines are the same length with notes and rests in the same
-// cells, and with [dynamics] the same loudness too.
+// cells, and with [dynamics] the same loudness too. A cell written as any
+// loudness in [b] (the target) accepts every loudness in [a] (the felt side).
 bool _sameTiming(
   List<PatternDynamic?> a,
   List<PatternDynamic?> b, {
@@ -383,9 +412,8 @@ bool _sameTiming(
 }) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
-    if (dynamics ? a[i] != b[i] : (a[i] != null) != (b[i] != null)) {
-      return false;
-    }
+    if ((a[i] != null) != (b[i] != null)) return false;
+    if (dynamics && b[i] != PatternDynamic.any && a[i] != b[i]) return false;
   }
   return true;
 }

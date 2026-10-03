@@ -1004,6 +1004,22 @@ phone. It is four sub-tabs now, one time scope each.
 - Docs: `docs/navigation-depth.md` (Health); `test/phase8/CONTRACTS.md` (8AF). Tests:
   `test/health/`.
 
+### 8AF.5 — Any-loudness notes, rhythm or dynamics, and an editor that follows the band
+
+Three additions to the advanced notes editor, found while testing 8AE.5 and 8AF on the band.
+
+- **`*`**: a seventh dynamics button. A note written `N2*` can play at any loudness; the
+  compiler picks whatever serves the length best. The probe still offers six, and a probe log
+  never records "any".
+- **Prioritize rhythm / Prioritize dynamics**: when the band cannot play a pattern exactly,
+  rhythm (the default) keeps the timing and dynamics keeps the loudness. It is saved with the
+  pattern and used when delivery has to compile. Under the plan the editor names the notes that
+  change ("Plays N4ff where you wrote N4mf").
+- **Follow the playback**: the editor marches a playhead through the notes while the band plays,
+  re-anchored on each command's start (the band's event 60, else the write time plus 300 ms). A
+  preview the band has not started shows no playhead.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md`; `test/phase8/CONTRACTS.md` (8AF.5).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

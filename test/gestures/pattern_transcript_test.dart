@@ -64,7 +64,7 @@ void main() {
 
     test('the dynamics run from loudest to softest: ff, f, mf, mp, p, pp '
         '(8AC)', () {
-      expect(PatternDynamic.values, [
+      expect(PatternDynamic.scale, [
         PatternDynamic.ff,
         PatternDynamic.f,
         PatternDynamic.mf,
@@ -72,7 +72,7 @@ void main() {
         PatternDynamic.p,
         PatternDynamic.pp,
       ]);
-      expect([for (final d in PatternDynamic.values) d.name], [
+      expect([for (final d in PatternDynamic.scale) d.name], [
         'ff',
         'f',
         'mf',
@@ -149,7 +149,7 @@ void main() {
 
     test('the dynamic is part of the hash: two dynamics differ', () {
       final hashes = {
-        for (final d in PatternDynamic.values)
+        for (final d in PatternDynamic.scale)
           PatternEntry(note: true, length: 2, dynamic: d).hashCode,
       };
       expect(hashes, hasLength(6));
@@ -188,7 +188,7 @@ void main() {
     });
 
     test('every dynamic round-trips through code and parse', () {
-      for (final d in PatternDynamic.values) {
+      for (final d in PatternDynamic.scale) {
         final e = PatternEntry(note: true, length: 3, dynamic: d);
         expect(e.toString(), 'N3${d.name}');
         expect(PatternEntry.parse(e.toString()), e, reason: d.name);

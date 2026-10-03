@@ -14,6 +14,7 @@ import 'package:clock/clock.dart';
 import 'package:collection/collection.dart' show ListEquality;
 
 import '../gestures/pattern_transcript.dart';
+import '../haptics/haptic_priority.dart';
 
 // Not package:flutter/foundation.dart: this file and what imports it are
 // plain Dart, so tool/build_haptic_vocab.dart runs under `dart run`.
@@ -95,6 +96,7 @@ class BuzzSequence {
     List<BakedStep>? bakedSteps,
     this.bakedRuntimeMs,
     this.patternId,
+    this.priority = HapticPriority.rhythm,
   }) : offsetsMs = List.unmodifiable(offsetsMs),
       durationsMs = List.unmodifiable(
         durationsMs ?? List.filled(offsetsMs.length, 0),
@@ -135,6 +137,10 @@ class BuzzSequence {
   /// deleting the stored pattern rewrites the snapshots that carry it.
   final String? patternId;
 
+  /// 8AF.5: what the compiler gives up first when the notes cannot be played as
+  /// written. Rhythm is the default and is not written to JSON.
+  final HapticPriority priority;
+
   /// The same rhythm with the given values replaced; the others are kept.
   /// [clearPatternId] drops the pattern id (the rhythm stays). A new
   /// [bakedSteps] without a [bakedRuntimeMs] drops the old runtime: it
@@ -148,6 +154,7 @@ class BuzzSequence {
     int? bakedRuntimeMs,
     String? patternId,
     bool clearPatternId = false,
+    HapticPriority? priority,
   }) => BuzzSequence(
     offsetsMs,
     durationsMs: durationsMs,
@@ -160,6 +167,7 @@ class BuzzSequence {
         ? bakedRuntimeMs
         : bakedRuntimeMs ?? this.bakedRuntimeMs,
     patternId: clearPatternId ? null : patternId ?? this.patternId,
+    priority: priority ?? this.priority,
   );
 
   int get length => offsetsMs.length;
@@ -215,7 +223,11 @@ class BuzzSequence {
   Object toJson() {
     final withNotes = notes != null;
     final plan = bakedSteps;
-    if (!extended && !withNotes && plan == null && patternId == null) {
+    if (!extended &&
+        !withNotes &&
+        plan == null &&
+        patternId == null &&
+        priority == HapticPriority.rhythm) {
       return durationsMs.every((d) => d == 0)
           ? offsetsMs
           : {'offsetsMs': offsetsMs, 'durationsMs': durationsMs};
@@ -230,6 +242,7 @@ class BuzzSequence {
       if (plan != null) 'plan': [for (final b in plan) b.toJson()],
       if (bakedRuntimeMs != null) 'bakedRuntimeMs': bakedRuntimeMs,
       if (patternId != null) 'patternId': patternId,
+      if (priority != HapticPriority.rhythm) 'priority': priority.name,
     };
   }
 
@@ -246,6 +259,12 @@ class BuzzSequence {
     final Object? plan = json is Map ? json['plan'] : null;
     final Object? runtime = json is Map ? json['bakedRuntimeMs'] : null;
     final Object? patternId = json is Map ? json['patternId'] : null;
+    final Object? priority = json is Map ? json['priority'] : null;
+    if (priority != null &&
+        (priority is! String ||
+            !HapticPriority.values.any((p) => p.name == priority))) {
+      throw const FormatException('A buzz sequence priority is rhythm or dynamics');
+    }
     if (patternId != null && patternId is! String) {
       throw const FormatException('A buzz sequence pattern id is a string');
     }
@@ -301,6 +320,9 @@ class BuzzSequence {
         bakedSteps: baked,
         bakedRuntimeMs: runtime as int?,
         patternId: patternId as String?,
+        priority: priority == null
+            ? HapticPriority.rhythm
+            : HapticPriority.values.byName(priority as String),
       );
     } on ArgumentError catch (e) {
       throw FormatException('Invalid buzz sequence: ${e.message}');
@@ -328,6 +350,7 @@ class BuzzSequence {
       other.profileVersion == profileVersion &&
       other.bakedRuntimeMs == bakedRuntimeMs &&
       other.patternId == patternId &&
+      other.priority == priority &&
       _sameSteps(other.bakedSteps, bakedSteps);
 
   static bool _sameSteps(List<BakedStep>? a, List<BakedStep>? b) =>
@@ -344,12 +367,14 @@ class BuzzSequence {
     bakedSteps == null ? null : Object.hashAll(bakedSteps!),
     bakedRuntimeMs,
     patternId,
+    priority,
   );
 
   @override
   String toString() =>
       'BuzzSequence($offsetsMs, durationsMs: $durationsMs'
       '${extended ? ', extended: true' : ''}'
+      '${priority == HapticPriority.rhythm ? '' : ', priority: ${priority.name}'}'
       '${notes == null ? '' : ', notes: $notes'})';
 }
 

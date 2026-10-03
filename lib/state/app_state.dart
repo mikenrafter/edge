@@ -123,6 +123,7 @@ import '../gestures/tap_ack.dart';
 import '../haptics/band_queue.dart';
 import '../haptics/ble_haptics_port.dart';
 import '../haptics/haptics_service.dart';
+import '../haptics/haptic_player.dart' show HapticPlayStart;
 import 'live_stream_buffer.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
@@ -640,7 +641,13 @@ class AppState extends ChangeNotifier {
   /// dispatcher delivery (own rule, unique event), so it can neither bypass the
   /// band-support checks nor race a real alert's claim. No quiet hours: the
   /// user asked for it.
-  Future<bool> previewBuzzSequence(BuzzSequence s) async {
+  ///
+  /// [onStart] hears when each compiled command starts playing on the band, so
+  /// the editor can follow along (see [HapticsService.deliver]).
+  Future<bool> previewBuzzSequence(
+    BuzzSequence s, {
+    void Function(HapticPlayStart)? onStart,
+  }) async {
     final now = DateTime.now();
     final r = await alertDispatcher.dispatch(
       _buzzPreviewRule,
@@ -648,7 +655,7 @@ class AppState extends ChangeNotifier {
       sourceTime: now,
       historical: false,
       bandTimeout: haptics.sequenceTimeout(s),
-      bandDelivery: () => haptics.deliver(s),
+      bandDelivery: () => haptics.deliver(s, onStart: onStart),
     );
     return r.targets.contains('band');
   }

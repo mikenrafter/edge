@@ -336,7 +336,9 @@ class PatternDynamicButton extends StatelessWidget {
       selected: selected,
       child: Pressable(
         onTap: onTap,
-        semanticLabel: 'Dynamic ${dynamic.name}',
+        semanticLabel: dynamic == PatternDynamic.any
+            ? 'Dynamic any loudness'
+            : 'Dynamic ${dynamic.name}',
         child: Opacity(
           opacity: dim ? .45 : 1,
           child: Container(
@@ -352,7 +354,7 @@ class PatternDynamicButton extends StatelessWidget {
               ),
             ),
             child: Text(
-              dynamic.name,
+              dynamic.code,
               style: F.body.copyWith(
                 color: p.ink,
                 fontWeight: FontWeight.w700,
@@ -393,7 +395,7 @@ class PatternEntryRow extends StatelessWidget {
     final said = length == null
         ? label
         : '${_lengthNames[length]} ${note ? 'note' : 'rest'}'
-              '${dynamic == null ? '' : ' ${dynamic!.name}'}, entry ${index + 1}';
+              '${dynamic == null ? '' : dynamic == PatternDynamic.any ? ', any loudness' : ' ${dynamic!.name}'}, entry ${index + 1}';
     return Semantics(
       selected: selected,
       label: playing ? 'playing entry ${index + 1}, $said' : said,
@@ -434,7 +436,7 @@ class PatternEntryRow extends StatelessWidget {
             ),
             if (dynamic != null) ...[
               Text(
-                dynamic!.name,
+                dynamic!.code,
                 style: F.body.copyWith(
                   color: p.ink,
                   fontWeight: FontWeight.w700,

@@ -1064,6 +1064,38 @@ Builds on 8AD. Tests: `test/phase8/settings_regroup_test.dart`,
   disable-not-hide, because a time with no setting behind it would mislead.
 - **Docs.** `docs/navigation-depth.md` (8AD to 8AE table); the roadmap entry 8AE.
 
+## 8AF.5: any-loudness notes, rhythm / dynamics priority, editor follows playback
+
+Tests: `test/haptics/any_dynamic_priority_test.dart` (model, heard log, stored JSON),
+`haptic_priority_compile_test.dart` (compiler, `startUnit`, delivery fallback),
+`haptic_play_start_test.dart` (start signals), `haptic_pattern_editor_test.dart` (the
+8AF.5 groups), plus one guard in `test/hardware/pattern_probe_page_test.dart`.
+
+- **`*`.** `PatternDynamic.any`, code `*`, prose ", any loudness". `PatternDynamic.scale`
+  is the six that run ff to pp; use it where the six are meant (the probe's row). `any` has
+  no index distance (`distanceTo` is 0), compiles at no loudness cost and counts as written
+  for any loudness. `PatternEntry.parse` accepts `N2*`; a rest never takes it. The probe
+  page and `HardwareProbeRunner.patternDynamic` do not offer or accept it; `parseHeardLines`
+  throws a `FormatException` on one. The editor shows `pattern-dyn-any` ("*", semantics
+  "Dynamic any loudness") beside the six.
+- **Priority.** `HapticPriority { rhythm, dynamics }` (`haptic_priority.dart`, re-exported by
+  `haptic_compiler.dart`), `compile(priority:)` default rhythm: cells 4 / loudness 1 against
+  cells 1 / loudness 4. `BuzzSequence.priority` is written (`'priority': 'dynamics'`) only
+  when not rhythm; old JSON is byte-identical; an unknown value is a `FormatException`. The
+  player's notes fallback compiles with it (and weighs loudness for mf-only notes when it is
+  dynamics, as the editor did). The editor's toggle is `pattern-editor-priority` with
+  `-rhythm` and `-dynamics` options; Play and Save carry it. `hapticChangesLine` names at
+  most two changed notes, key `pattern-editor-changes`.
+- **Following.** `HapticsService.deliver(s, onStart:)` reports a `HapticPlayStart` per
+  compiled command (not per-tap buzzes); `AppState.previewBuzzSequence(s, onStart:)` passes
+  it on, still inside one dispatcher delivery. The editor's `onPlay` may be a
+  `FollowingPreview` (checked at run time, so plain callbacks still work). A start signal
+  anchors the march at that step's `startUnit`; entries up to the next command's start run,
+  then the playhead holds (given up after 2 s). `BakedStep` does not carry `startUnit`: the
+  editor reads it from the plan it baked.
+- **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` (Patterns and safety); the roadmap
+  entry 8AF.5.
+
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 
 Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the

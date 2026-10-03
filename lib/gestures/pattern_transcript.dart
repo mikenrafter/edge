@@ -14,9 +14,32 @@ import 'hardware_probes.dart';
 /// quarter, dotted quarter, half, dotted half.
 const List<int> kPatternLengths = [1, 2, 3, 4, 6, 8, 12];
 
-/// How hard a note is felt, loudest to softest. The order matters: the index
-/// distance between two dynamics is how far apart they are felt.
-enum PatternDynamic { ff, f, mf, mp, p, pp }
+/// How hard a note is felt, loudest to softest, then [any]. The order of the
+/// first six matters: the index distance between two of them is how far apart
+/// they are felt. [any] (code "*", advanced editor only) says the wearer does
+/// not mind how loud; it is not a position on that scale and has no distance
+/// to anything, so use [scale] where the six are meant.
+enum PatternDynamic {
+  ff,
+  f,
+  mf,
+  mp,
+  p,
+  pp,
+  any;
+
+  /// The six that run from loudest to softest; what the probe offers and what
+  /// a band can be heard to play.
+  static const List<PatternDynamic> scale = [ff, f, mf, mp, p, pp];
+
+  /// "ff", "mf" ... and "*" for [any]: how a code writes it.
+  String get code => this == any ? '*' : name;
+
+  /// How far apart two dynamics on the scale are, in steps; 0 when either is
+  /// [any], which has no position.
+  int distanceTo(PatternDynamic other) =>
+      this == any || other == any ? 0 : (index - other.index).abs();
+}
 
 const Map<int, String> _lengthNames = {
   1: '16th',
@@ -51,11 +74,12 @@ class PatternEntry {
   @override
   int get hashCode => Object.hash(note, length, dynamic);
 
-  /// "N4mf" or "R2".
+  /// "N4mf", "N2*" or "R2".
   @override
-  String toString() => '${note ? 'N' : 'R'}$length${dynamic?.name ?? ''}';
+  String toString() => '${note ? 'N' : 'R'}$length${dynamic?.code ?? ''}';
 
-  static final RegExp _code = RegExp(r'^(?:N(\d+)(ff|f|mf|mp|pp|p)|R(\d+))$');
+  static final RegExp _code =
+      RegExp(r'^(?:N(\d+)(ff|f|mf|mp|pp|p|\*)|R(\d+))$');
 
   /// The inverse of [toString]: "N4ff", "N1p", "R3". Anything else, or a
   /// length outside [kPatternLengths], is a [FormatException] or an
@@ -77,13 +101,23 @@ class PatternEntry {
     return PatternEntry(
       note: note,
       length: length,
-      dynamic: note ? PatternDynamic.values.byName(m[2]!) : null,
+      dynamic: !note
+          ? null
+          : m[2] == '*'
+              ? PatternDynamic.any
+              : PatternDynamic.values.byName(m[2]!),
     );
   }
 
-  /// "quarter note mf" or "eighth rest".
+  /// "quarter note mf", "eighth note, any loudness" or "eighth rest".
   String get prose => '${_lengthNames[length]} ${note ? 'note' : 'rest'}'
-      '${dynamic == null ? '' : ' ${dynamic!.name}'}';
+      '${_dynamicProse(dynamic)}';
+
+  static String _dynamicProse(PatternDynamic? d) => d == null
+      ? ''
+      : d == PatternDynamic.any
+          ? ', any loudness'
+          : ' ${d.name}';
 }
 
 /// One transcription: an immutable list of typed entries.

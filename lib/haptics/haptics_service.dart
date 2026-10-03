@@ -15,8 +15,11 @@
 // No Flutter, no BLE: the engine reaches it through the port, and time comes
 // from package:clock.
 
+import 'dart:async';
+
 import 'package:clock/clock.dart';
 
+import '../gestures/pattern_transcript.dart' show PatternEntrySession;
 import '../gestures/strap_event.dart';
 import '../notify/buzz_sequence.dart';
 import 'band_queue.dart';
@@ -105,11 +108,40 @@ class HapticsService {
         settle: settle,
       );
 
+  // Commands written and waiting to learn when they started: oldest first.
+  final List<_StartWatch> _watching = [];
+
+  /// How long after a write the band's own event 60 still counts as that
+  /// command's start.
+  static const Duration startWindow = Duration(seconds: 1);
+
+  void _watchStart(int command, void Function(HapticPlayStart) onStart) {
+    final wrote = _now();
+    final w = _StartWatch(command, onStart);
+    w.timer = Timer(startWindow, () {
+      _watching.remove(w);
+      onStart(HapticPlayStart(
+        command,
+        wrote.add(
+          Duration(milliseconds: PatternEntrySession.defaultLeadMs),
+        ),
+        measured: false,
+      ));
+    });
+    _watching.add(w);
+  }
+
   /// The one delivery of a rule's rhythm to the band, for every call site (the
   /// dispatcher's two sequence transports, a preview, a rule alert and the
   /// notification relay): in the band queue, as compiled commands on a band
-  /// with a haptic profile, else as per-tap buzzes.
-  Future<BuzzDelivery> deliver(BuzzSequence s) => deliverBandSequenceQueued(
+  /// with a haptic profile, else as per-tap buzzes. With [onStart] each
+  /// compiled command also reports when it started playing: the band's live
+  /// event 60 if it arrives within [startWindow] of the write, else the write
+  /// time plus the default Bluetooth lead (per-tap buzzes report nothing).
+  Future<BuzzDelivery> deliver(
+    BuzzSequence s, {
+    void Function(HapticPlayStart)? onStart,
+  }) => deliverBandSequenceQueued(
         _queue,
         s,
         profile: profile,
@@ -119,6 +151,7 @@ class HapticsService {
         waitEnded: _ended.wait,
         isConnected: () => port.isConnected,
         maxRuntime: maxRuntime,
+        onWritten: onStart == null ? null : (i) => _watchStart(i, onStart),
       );
 
   /// How long a delivery of [s] may take on the connected band.
@@ -134,6 +167,11 @@ class HapticsService {
   /// old events in bursts) must not.
   void onBandEvent(StrapEvent e) {
     if (e.eventId == 100 && e.isLive) _ended.signal();
+    if (e.eventId == 60 && e.isLive && _watching.isNotEmpty) {
+      final w = _watching.removeAt(0);
+      w.timer?.cancel();
+      w.onStart(HapticPlayStart(w.command, e.receivedAt, measured: true));
+    }
   }
 
   // Lab mode (8AF): the Device lab's probes play alone, ahead of waiting
@@ -152,4 +190,12 @@ class HapticsService {
   /// like a real alert.
   Future<T> asLabWork<T>(Future<T> Function() work) =>
       _queue.labOpen ? _queue.asLab(work) : work();
+}
+
+// One written command waiting for its event 60 (or the window's end).
+class _StartWatch {
+  _StartWatch(this.command, this.onStart);
+  final int command;
+  final void Function(HapticPlayStart) onStart;
+  Timer? timer;
 }

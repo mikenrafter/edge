@@ -15,13 +15,16 @@
 // the page open with the pattern kept.
 
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../gestures/hardware_probes.dart';
 import '../../gestures/pattern_transcript.dart';
 import '../../haptics/haptic_compiler.dart';
+import '../../haptics/haptic_player.dart' show HapticPlayStart;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/pattern_store.dart' show kPatternNameMax;
 import '../../haptics/tap_notes.dart';
@@ -33,6 +36,15 @@ import 'tap_take_pad.dart';
 
 /// The lengths with a button of their own; the Dot makes 2, 4, 8 into 3, 6, 12.
 const List<int> _buttonLengths = [1, 2, 4, 8];
+
+/// A preview that also says when each command starts playing on the band
+/// (AppState.previewBuzzSequence). The editor's [HapticPatternEditorPage.onPlay]
+/// may be one: when it is, the wheel follows the playback; a plain
+/// `Future<bool> Function(BuzzSequence)` plays without following.
+typedef FollowingPreview = Future<bool> Function(
+  BuzzSequence s, {
+  void Function(HapticPlayStart)? onStart,
+});
 
 class HapticPatternEditorPage extends StatefulWidget {
   const HapticPatternEditorPage({
@@ -54,7 +66,9 @@ class HapticPatternEditorPage extends StatefulWidget {
   final String? name;
   final HapticDeviceProfile profile;
 
-  /// Plays a sequence on the band; true when it was sent.
+  /// Plays a sequence on the band; true when it was sent. A [FollowingPreview]
+  /// also reports when each command starts, and the editor then marches a
+  /// playhead through the entries.
   final Future<bool> Function(BuzzSequence) onPlay;
 
   /// Called with the name and the sequence to store. The page stays open
@@ -85,6 +99,8 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
   bool _userScrolling = false;
 
   late bool _extended = widget.initial?.extended ?? false;
+  late HapticPriority _priority =
+      widget.initial?.priority ?? HapticPriority.rhythm;
   HapticPlan? _plan;
   bool _tooLong = false;
   bool _playing = false;
@@ -95,6 +111,19 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
 
   // The name last asked for, offered again after a failed save.
   String? _lastName;
+
+  // Following a play: the playhead marches through the entries from each
+  // command's start, as the probe's does. Timers run from the band's start
+  // signal, so a held preview shows nothing. A tap or a scroll cancels, and
+  // the cursor is never moved.
+  final List<Timer> _march = [];
+  bool _marching = false;
+  int? _head;
+  // Which play's start signals count; a new play or a cancel moves it on.
+  int _run = 0;
+  List<HapticStep> _runSteps = const [];
+  PatternTranscript _runEntries = PatternTranscript(const []);
+  int _runUnitMs = PatternEntrySession.defaultUnitMs;
 
   List<PatternEntry> get _entries => _s.active.entries;
 
@@ -117,8 +146,98 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
 
   @override
   void dispose() {
+    _clearMarch();
     _wheel.dispose();
     super.dispose();
+  }
+
+  void _clearMarch() {
+    for (final t in _march) {
+      t.cancel();
+    }
+    _march.clear();
+  }
+
+  /// Stop following (and ignore the rest of the play's start signals). The
+  /// caller redraws.
+  void _stopMarch() {
+    _clearMarch();
+    _marching = false;
+    _head = null;
+    _run++;
+  }
+
+  /// A command of the play [run] started at [st].at: put the playhead where
+  /// that command starts, allowing for time already gone, and schedule the
+  /// entries up to the next command's start (or to the end after the last).
+  /// Every start signal re-anchors, so gaps that vary on the band do not
+  /// accumulate.
+  void _onStart(int run, HapticPlayStart st) {
+    if (!mounted || run != _run) return;
+    if (st.command < 0 || st.command >= _runSteps.length) return;
+    final unit = _runUnitMs;
+    final base = _runSteps[st.command].startUnit * unit;
+    final last = st.command == _runSteps.length - 1;
+    final until = last ? null : _runSteps[st.command + 1].startUnit * unit;
+    final gone = clock.now().difference(st.at).inMilliseconds;
+    _clearMarch();
+    _marching = true;
+    int? now;
+    for (final e in PatternEntrySession.march(_runEntries, unit, 0)) {
+      if (e.endMs <= base) continue;
+      if (until != null && e.startMs >= until) break;
+      final rel = e.startMs - base - gone;
+      if (rel <= 0) {
+        if (e.endMs - base - gone > 0) now = e.index;
+      } else {
+        _march.add(Timer(patternMs(rel), () => _playhead(e.index)));
+      }
+    }
+    if (until == null) {
+      final end = PatternEntrySession.march(_runEntries, unit, 0).last.endMs;
+      _march.add(Timer(patternMs(math.max(0, end - base - gone)), _marchEnded));
+    } else {
+      // The next command never started (the band swallowed it, or the play
+      // died): do not hold the playhead for ever.
+      _march.add(Timer(
+        patternMs(math.max(0, until - base - gone) + 2000),
+        () {
+          if (!mounted) return;
+          setState(() {
+            _stopMarch();
+          });
+          _syncWheel();
+        },
+      ));
+    }
+    setState(() => _head = now);
+    if (now != null) _glideTo(now);
+  }
+
+  void _playhead(int i) {
+    if (!mounted || !_marching) return;
+    setState(() => _head = i);
+    _glideTo(i);
+  }
+
+  void _marchEnded() {
+    if (!mounted || !_marching) return;
+    setState(() {
+      _marching = false;
+      _head = null;
+    });
+    _glideTo(_s.cursor);
+  }
+
+  void _glideTo(int item) {
+    if (!_wheel.hasClients) return;
+    unawaited(
+      _wheel.animateToItem(
+        item,
+        duration: motion(context, Motion.fast),
+        curve: Curves.easeOut,
+      ),
+    );
   }
 
   /// The plan for the entries as they are now, and whether it is missing only
@@ -128,16 +247,23 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
     final p = widget.profile;
     final cap = _cap?.inMilliseconds;
     _plan = entries.any((e) => e.note)
-        ? compile(entries, p, extended: _extended, maxRuntimeMs: cap)
+        ? compile(
+            entries,
+            p,
+            extended: _extended,
+            priority: _priority,
+            maxRuntimeMs: cap,
+          )
         : null;
     _tooLong = _plan == null &&
         cap != null &&
         entries.any((e) => e.note) &&
-        compile(entries, p, extended: _extended) != null;
+        compile(entries, p, extended: _extended, priority: _priority) != null;
   }
 
   void _edit(void Function() change) {
     setState(() {
+      _stopMarch();
       change();
       _played = null;
       _saved = false;
@@ -148,7 +274,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
   }
 
   void _syncWheel() {
-    if (!mounted || !_wheel.hasClients) return;
+    if (!mounted || !_wheel.hasClients || _marching) return;
     if (_wheel.selectedItem == _s.cursor) return;
     _wheel.jumpToItem(_s.cursor);
   }
@@ -167,6 +293,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
     final p = widget.profile;
     return tapsFromNotes(_entries, unitMs: p.unitMs).copyWith(
       extended: _extended,
+      priority: _priority,
       notes: _s.active.code,
       profileId: p.id,
       profileVersion: p.version,
@@ -186,17 +313,26 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
     final seq = _sequence();
     if (seq == null || _playing) return;
     setState(() {
+      _stopMarch();
       _playing = true;
       _played = null;
     });
+    final run = _run;
+    _runSteps = _plan!.steps;
+    _runEntries = _s.active;
+    _runUnitMs = widget.profile.unitMs;
     var ok = false;
     try {
-      ok = await widget.onPlay(seq);
+      final play = widget.onPlay;
+      ok = await (play is FollowingPreview
+          ? play(seq, onStart: (st) => _onStart(run, st))
+          : play(seq));
     } catch (_) {
       ok = false;
     } finally {
       if (mounted) {
         setState(() {
+          if (!ok && run == _run) _stopMarch();
           _playing = false;
           _played = ok;
         });
@@ -325,6 +461,10 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                 onNotification: (n) {
                   if (n is ScrollStartNotification) {
                     _userScrolling = n.dragDetails != null;
+                    // The wearer takes the wheel: stop following.
+                    if (_userScrolling && (_marching || _head != null)) {
+                      setState(_stopMarch);
+                    }
                   } else if (n is ScrollEndNotification) {
                     _userScrolling = false;
                   }
@@ -350,7 +490,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                             ? active.entries[i].dynamic
                             : null,
                         selected: i == _s.cursor,
-                        playing: false,
+                        playing: i == _head,
                       ),
                   ],
                 ),
@@ -403,6 +543,25 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                         onChanged: (v) => _edit(() => _extended = v),
                       ),
+                    ],
+                  ),
+                  Row(
+                    key: const ValueKey('pattern-editor-priority'),
+                    children: [
+                      for (final o in HapticPriority.values) ...[
+                        if (o != HapticPriority.values.first)
+                          const SizedBox(width: S.x2),
+                        Expanded(
+                          child: _PriorityOption(
+                            key: ValueKey('pattern-editor-priority-${o.name}'),
+                            label: o == HapticPriority.rhythm
+                                ? 'Prioritize rhythm'
+                                : 'Prioritize dynamics',
+                            selected: _priority == o,
+                            onTap: () => _edit(() => _priority = o),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   Row(
@@ -507,7 +666,55 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
         ),
       ];
     }
-    return hapticPlanLines(p, _plan, tooLong: _tooLong);
+    return hapticPlanLines(p, _plan, tooLong: _tooLong, written: _entries);
+  }
+}
+
+/// One side of the rhythm / dynamics toggle. The chosen one is outlined and
+/// washed, like the dynamics buttons.
+class _PriorityOption extends StatelessWidget {
+  const _PriorityOption({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Semantics(
+      selected: selected,
+      child: Pressable(
+        onTap: onTap,
+        semanticLabel: label,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: S.x1),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? p.wash(C.blue) : p.card,
+            borderRadius: R.rMd,
+            border: Border.all(
+              color: selected ? C.blue : p.ink3,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: F.cap.copyWith(
+              color: p.ink,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

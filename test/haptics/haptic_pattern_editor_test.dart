@@ -30,16 +30,21 @@
 //    "Give it a name." and a duplicate (case-insensitive) says "A pattern
 //    with that name already exists."; the dialog stays open on either.
 
+import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show Tristate;
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/haptics/haptic_compiler.dart';
+import 'package:openstrap_edge/haptics/haptic_player.dart' show HapticPlayStart;
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/tap_notes.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/ui2/profile/haptic_pattern_editor.dart';
+import 'package:openstrap_edge/ui2/profile/haptic_plan_text.dart';
 import 'package:openstrap_edge/ui2/profile/pattern_notation.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -820,6 +825,500 @@ void main() {
           File('lib/ui2/profile/haptic_pattern_editor.dart').readAsStringSync();
       expect(src, contains("import 'pattern_notation.dart'"));
       expect(src, isNot(contains('class _SymbolPainter')));
+    });
+  });
+
+  group('8AF.5: any loudness and the rhythm / dynamics priority', () {
+    const prioKey = ValueKey('pattern-editor-priority');
+    const rhythmKey = ValueKey('pattern-editor-priority-rhythm');
+    const dynamicsKey = ValueKey('pattern-editor-priority-dynamics');
+    const changesKey = ValueKey('pattern-editor-changes');
+
+    bool selected(WidgetTester t, Key k) =>
+        t.getSemantics(find.byKey(k)).flagsCollection.isSelected ==
+        Tristate.isTrue;
+
+    BuzzSequence stored(String notes, {String? priority}) =>
+        BuzzSequence.fromJson({
+          'offsetsMs': [0],
+          'durationsMs': [500],
+          'notes': notes,
+          'priority': ?priority,
+        });
+
+    testWidgets('a seventh dynamics button "*" says any loudness and is '
+        'there beside the six', (t) async {
+      final h = t.ensureSemantics();
+      await _show(t);
+      final any = find.byKey(const ValueKey('pattern-dyn-any'));
+      expect(any, findsOneWidget);
+      expect(find.descendant(of: any, matching: find.text('*')), findsOneWidget);
+      expect(
+        t.getSemantics(any).label,
+        contains('any loudness'),
+      );
+      for (final d in _dyns) {
+        expect(find.byKey(ValueKey('pattern-dyn-$d')), findsOneWidget);
+      }
+      h.dispose();
+    });
+
+    testWidgets('* is sticky like the others and writes N4*', (t) async {
+      await _show(t);
+      await _tap(t, 'pattern-dyn-any');
+      await _tap(t, 'pattern-len-4');
+      expect(_code(t), 'N4*');
+      await _tap(t, 'pattern-len-1');
+      await _tap(t, 'pattern-len-2');
+      expect(_code(t), 'N4* R1 N2*', reason: 'it stays until changed');
+      await _tap(t, 'pattern-dyn-ff');
+      await _tap(t, 'pattern-len-1');
+      await _tap(t, 'pattern-len-1');
+      expect(_code(t), 'N4* R1 N2* R1 N1ff');
+    });
+
+    testWidgets('a note under the cursor takes * when it is picked', (t) async {
+      await _show(t, initial: _withNotes('N4mf R1 N2mf'));
+      await _tap(t, 'pattern-dyn-any');
+      // The cursor sits on the empty slot after the list: nothing changes.
+      expect(_code(t), 'N4mf R1 N2mf');
+    });
+
+    testWidgets('an initial pattern with * shows its code and plays as '
+        'written when the band can match the timing', (t) async {
+      await _show(t, initial: _withNotes('N4*'));
+      expect(_code(t), 'N4*');
+      expect(find.text('Plays as written.'), findsOneWidget);
+      expect(find.byKey(changesKey), findsNothing);
+    });
+
+    testWidgets('the priority toggle has two options, rhythm first and '
+        'selected', (t) async {
+      final h = t.ensureSemantics();
+      await _show(t);
+      expect(find.byKey(prioKey), findsOneWidget);
+      expect(find.text('Prioritize rhythm'), findsOneWidget);
+      expect(find.text('Prioritize dynamics'), findsOneWidget);
+      expect(selected(t, rhythmKey), isTrue);
+      expect(selected(t, dynamicsKey), isFalse);
+      await _tapKey(t, dynamicsKey);
+      expect(selected(t, rhythmKey), isFalse);
+      expect(selected(t, dynamicsKey), isTrue);
+      await _tapKey(t, rhythmKey);
+      expect(selected(t, rhythmKey), isTrue);
+      h.dispose();
+    });
+
+    testWidgets('a stored priority is where the toggle starts', (t) async {
+      final h = t.ensureSemantics();
+      await _show(t, initial: stored('N3mp', priority: 'dynamics'));
+      expect(selected(t, dynamicsKey), isTrue);
+      expect(selected(t, rhythmKey), isFalse);
+      h.dispose();
+    });
+
+    testWidgets('changing the toggle recompiles the preview with no edit: '
+        'rhythm keeps three cells, dynamics the soft click', (t) async {
+      await _show(t, initial: stored('N3mp'));
+      // Rhythm: exactly what the 8AC compile gave before.
+      expect(find.textContaining(_plan('N3mp')!.summary), findsOneWidget);
+      expect(find.text('1 command: effect 1'), findsNothing);
+      await _tapKey(t, dynamicsKey);
+      // Dynamics: effect 1 once (two 16ths at mp), one 16th short.
+      expect(find.text('1 command: effect 1'), findsOneWidget);
+      expect(_code(t), 'N3mp', reason: 'the notes are not touched');
+      await _tapKey(t, rhythmKey);
+      expect(find.textContaining(_plan('N3mp')!.summary), findsOneWidget);
+      expect(find.text('1 command: effect 1'), findsNothing);
+    });
+
+    testWidgets('the feedback names what changed: "Plays ... where you wrote '
+        'N3mp"', (t) async {
+      await _show(t, initial: stored('N3mp'));
+      final line = find.byKey(changesKey);
+      expect(line, findsOneWidget);
+      final text = t.widget<Text>(line).data!;
+      expect(text, startsWith('Plays '));
+      expect(text, contains(' where you wrote N3mp'));
+      await _tapKey(t, dynamicsKey);
+      expect(
+        t.widget<Text>(find.byKey(changesKey)).data,
+        'Plays N2mp R1 where you wrote N3mp',
+      );
+    });
+
+    testWidgets('no changes line when the band plays it as written, or for '
+        'rests only', (t) async {
+      await _show(t, initial: _withNotes('N4ff'));
+      expect(find.text('Plays as written.'), findsOneWidget);
+      expect(find.byKey(changesKey), findsNothing);
+    });
+
+    testWidgets('Play carries the priority and bakes the plan with it',
+        (t) async {
+      final played = <BuzzSequence>[];
+      await _show(
+        t,
+        initial: stored('N3mp'),
+        onPlay: (s) async {
+          played.add(s);
+          return true;
+        },
+      );
+      await _tapKey(t, _playKey);
+      expect((played.last.toJson() as Map).containsKey('priority'), isFalse,
+          reason: 'rhythm is the default and is not written');
+      await _tapKey(t, dynamicsKey);
+      await _tapKey(t, _playKey);
+      expect((played.last.toJson() as Map)['priority'], 'dynamics');
+      expect(played.last.notes, 'N3mp');
+      final steps = played.last.bakedSteps!;
+      expect(steps, hasLength(1));
+      expect(steps.single.effects, [1]);
+      expect(steps.single.loop, 1);
+    });
+
+    testWidgets('Save hands the priority over too, and back to rhythm drops '
+        'the key', (t) async {
+      final saved = <BuzzSequence>[];
+      await _show(
+        t,
+        name: 'Soft',
+        initial: stored('N3mp'),
+        onSave: (n, s) => saved.add(s),
+      );
+      await _tapKey(t, dynamicsKey);
+      await _tapKey(t, _saveKey);
+      expect((saved.single.toJson() as Map)['priority'], 'dynamics');
+      await _tapKey(t, rhythmKey);
+      await _tapKey(t, _saveKey);
+      expect((saved.last.toJson() as Map).containsKey('priority'), isFalse);
+    });
+
+    testWidgets('the footer, the * button, both toggle options, Play and Save '
+        'stay on screen at 360x640 with a full list', (t) async {
+      final full = _withNotes(List.filled(16, 'N1mf R1').join(' '));
+      await _show(t, initial: full, size: const Size(360, 640));
+      final screen = Offset.zero & const Size(360, 640);
+      for (final k in [
+        'pattern-dyn-any',
+        'pattern-dyn-pp',
+        'pattern-editor-priority-rhythm',
+        'pattern-editor-priority-dynamics',
+        'pattern-len-1',
+        'pattern-kind',
+        'pattern-delete',
+        'pattern-editor-play',
+        'pattern-editor-save',
+      ]) {
+        final f = find.byKey(ValueKey(k));
+        expect(f.hitTestable(), findsOneWidget, reason: '$k can be tapped');
+        final rect = t.getRect(f);
+        expect(
+          screen.contains(rect.topLeft) && screen.contains(rect.bottomRight),
+          isTrue,
+          reason: '$k is fully on screen: $rect',
+        );
+      }
+    });
+
+    group('hapticChangesLine', () {
+      HapticPlan plan(String felt, {bool exact = false}) {
+        final es = PatternTranscript.parseCode(felt).entries;
+        return HapticPlan(
+          steps: const [],
+          feltMin: es,
+          feltMax: es,
+          cost: exact ? 0 : 4,
+          exact: exact,
+          asWritten: exact,
+          usesUnstable: false,
+          summary: 'x',
+        );
+      }
+
+      List<PatternEntry> w(String code) =>
+          PatternTranscript.parseCode(code).entries;
+
+      test('one changed loudness: "Plays N4ff where you wrote N4mf"', () {
+        expect(
+          hapticChangesLine(w('N4mf'), plan('N4ff')),
+          'Plays N4ff where you wrote N4mf',
+        );
+      });
+
+      test('nothing when it matches, or the plan is exact', () {
+        expect(hapticChangesLine(w('N4mf'), plan('N4mf', exact: true)), isNull);
+        expect(hapticChangesLine(w('N4mf R2 N2p'), plan('N4mf R2 N2p')), isNull);
+      });
+
+      test('an any note accepts every loudness, so it is never named', () {
+        expect(hapticChangesLine(w('N4*'), plan('N4ff')), isNull);
+        expect(hapticChangesLine(w('N4* R4 N4mf'), plan('N4ff R4 N4ff')),
+            'Plays N4ff where you wrote N4mf');
+      });
+
+      test('only the notes that changed are named, not the rests or the '
+          'unchanged ones', () {
+        expect(
+          hapticChangesLine(w('N4ff R4 N4mf'), plan('N4ff R4 N4ff')),
+          'Plays N4ff where you wrote N4mf',
+        );
+      });
+
+      test('leading rests are not part of the comparison', () {
+        expect(
+          hapticChangesLine(w('R2 N4mf'), plan('N4ff')),
+          'Plays N4ff where you wrote N4mf',
+        );
+      });
+
+      test('a timing change shows the felt cells', () {
+        expect(
+          hapticChangesLine(w('N3mp'), plan('N2mp')),
+          'Plays N2mp R1 where you wrote N3mp',
+        );
+      });
+
+      test('at most the first two differences, then an ellipsis', () {
+        expect(
+          hapticChangesLine(
+            w('N4mf R4 N4mf R4 N4mf'),
+            plan('N4ff R4 N4ff R4 N4ff'),
+          ),
+          'Plays N4ff where you wrote N4mf; N4ff where you wrote N4mf …',
+        );
+        expect(
+          hapticChangesLine(w('N4mf R4 N4mf'), plan('N4ff R4 N4ff')),
+          'Plays N4ff where you wrote N4mf; N4ff where you wrote N4mf',
+        );
+      });
+    });
+  });
+
+  group('8AF.5 E: the editor follows the playback', () {
+    const code = 'N4ff R3 N3mf';
+    final head = find.byKey(const ValueKey('pattern-playhead'));
+    final wheel = find.byKey(const ValueKey('pattern-wheel'));
+
+    // A fake preview that hands its start callback to the test.
+    late void Function(HapticPlayStart) signal;
+    late Completer<bool> done;
+    var plays = 0;
+
+    Future<void> open(WidgetTester t, {String notes = code}) async {
+      done = Completer<bool>();
+      plays = 0;
+      await _show(
+        t,
+        initial: _withNotes(notes),
+        onPlay: (BuzzSequence s, {void Function(HapticPlayStart)? onStart}) {
+          plays++;
+          signal = onStart!;
+          return done.future;
+        },
+      );
+    }
+
+    HapticPlayStart start(int command, {int agoMs = 0}) => HapticPlayStart(
+          command,
+          clock.now().subtract(Duration(milliseconds: agoMs)),
+          measured: true,
+        );
+
+    void expectPlaying(WidgetTester t, int entry, {String? when}) {
+      expect(head, findsOneWidget, reason: 'a playhead on entry $entry $when');
+      expect(t.getSemantics(head).label, contains('playing entry $entry,'),
+          reason: when);
+    }
+
+    int wheelAt(WidgetTester t) =>
+        (t.widget<ListWheelScrollView>(wheel).controller!
+            as FixedExtentScrollController)
+        .selectedItem;
+
+    Future<void> press(WidgetTester t) async {
+      await t.tap(find.byKey(_playKey));
+      await t.pump();
+    }
+
+    testWidgets('the code compiles to two commands, the second at the 7th '
+        'sixteenth', (t) async {
+      expect(_plan(code)!.steps, hasLength(2));
+    });
+
+    testWidgets('no playhead until the band says a command started, however '
+        'long the preview is held', (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      await press(t);
+      expect(plays, 1);
+      await t.pump(const Duration(seconds: 5));
+      expect(head, findsNothing);
+      done.complete(true);
+      await t.pumpAndSettle();
+      h.dispose();
+    });
+
+    testWidgets('a start signal puts the playhead on the first entry, then '
+        'walks it at the profile tempo and holds before the next command',
+        (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      await press(t);
+      signal(start(0));
+      await t.pump();
+      expectPlaying(t, 1, when: 'at the start');
+      await t.pump(const Duration(milliseconds: 250));
+      expectPlaying(t, 1, when: 'mid first note (0 to 500 ms)');
+      await t.pump(const Duration(milliseconds: 350));
+      expectPlaying(t, 2, when: 'in the rest (500 to 875 ms)');
+      // The second command has not started: the playhead waits on the rest.
+      await t.pump(const Duration(milliseconds: 1500));
+      expectPlaying(t, 2, when: 'held until the next command starts');
+      done.complete(true);
+      await t.pump(const Duration(seconds: 4));
+      h.dispose();
+    });
+
+    testWidgets('the second command re-anchors the playhead at its own '
+        'place, however late it starts, and the march then ends',
+        (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      await press(t);
+      signal(start(0));
+      await t.pump(const Duration(milliseconds: 1800));
+      expectPlaying(t, 2, when: 'still waiting');
+      signal(start(1));
+      await t.pump();
+      expectPlaying(t, 3, when: 'the second command started');
+      await t.pump(const Duration(milliseconds: 200));
+      expectPlaying(t, 3, when: 'inside the last note (375 ms)');
+      await t.pump(const Duration(milliseconds: 250));
+      expect(head, findsNothing, reason: 'the last note has ended');
+      done.complete(true);
+      await t.pumpAndSettle();
+      h.dispose();
+    });
+
+    testWidgets('a start time in the past is made up for: the playhead is '
+        'already that far along', (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      await press(t);
+      signal(start(0, agoMs: 600));
+      await t.pump();
+      expectPlaying(t, 2, when: '600 ms in, inside the rest');
+      done.complete(true);
+      await t.pump(const Duration(seconds: 4));
+      h.dispose();
+    });
+
+    testWidgets('the wheel follows the playhead and returns to the cursor; '
+        'the cursor never moves', (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      expect(wheelAt(t), 3, reason: 'the cursor is on the empty slot');
+      await press(t);
+      signal(start(0));
+      await t.pump(const Duration(milliseconds: 650));
+      await t.pump(const Duration(milliseconds: 300));
+      expect(wheelAt(t), 1, reason: 'following the rest, entry 2');
+      signal(start(1));
+      await t.pump(const Duration(milliseconds: 100));
+      await t.pump(const Duration(milliseconds: 600));
+      expect(head, findsNothing);
+      await t.pumpAndSettle();
+      expect(wheelAt(t), 3, reason: 'back on the cursor');
+      done.complete(true);
+      await t.pumpAndSettle();
+      await _tap(t, 'pattern-len-1');
+      expect(_code(t), '$code R1', reason: 'the cursor was never moved');
+      h.dispose();
+    });
+
+    testWidgets('a tap cancels the playhead for good, and a later start '
+        'signal of that play is ignored', (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      await press(t);
+      signal(start(0));
+      await t.pump(const Duration(milliseconds: 100));
+      expectPlaying(t, 1);
+      await t.tap(find.byKey(const ValueKey('pattern-kind')));
+      await t.pump();
+      expect(head, findsNothing);
+      signal(start(1));
+      await t.pump(const Duration(seconds: 2));
+      expect(head, findsNothing);
+      done.complete(true);
+      await t.pumpAndSettle();
+      h.dispose();
+    });
+
+    testWidgets('scrolling the wheel by hand cancels it too', (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      await press(t);
+      signal(start(0));
+      await t.pump(const Duration(milliseconds: 100));
+      expectPlaying(t, 1);
+      await t.drag(wheel, const Offset(0, 40));
+      await t.pump(const Duration(milliseconds: 50));
+      expect(head, findsNothing);
+      done.complete(true);
+      await t.pumpAndSettle();
+      h.dispose();
+    });
+
+    testWidgets('a play the band refused stops the playhead', (t) async {
+      final h = t.ensureSemantics();
+      await open(t);
+      await press(t);
+      signal(start(0));
+      await t.pump(const Duration(milliseconds: 100));
+      expectPlaying(t, 1);
+      done.complete(false);
+      await t.pump();
+      await t.pump();
+      expect(head, findsNothing);
+      expect(find.text('The phone could not send it to the band.'),
+          findsOneWidget);
+      h.dispose();
+    });
+
+    testWidgets('a one-command pattern marches to its end', (t) async {
+      final h = t.ensureSemantics();
+      await open(t, notes: 'N4ff');
+      await press(t);
+      signal(start(0));
+      await t.pump();
+      expectPlaying(t, 1);
+      await t.pump(const Duration(milliseconds: 600));
+      expect(head, findsNothing);
+      done.complete(true);
+      await t.pumpAndSettle();
+      h.dispose();
+    });
+
+    testWidgets('closing the page mid-march leaves no timer behind',
+        (t) async {
+      await open(t);
+      await press(t);
+      signal(start(0));
+      await t.pump(const Duration(milliseconds: 100));
+      await t.pumpWidget(const SizedBox());
+      await t.pump(const Duration(seconds: 5));
+    });
+
+    testWidgets('a preview with no start signal (the old onPlay) plays '
+        'without a playhead and without error', (t) async {
+      await _show(t, initial: _withNotes(code));
+      await _tapKey(t, _playKey);
+      expect(head, findsNothing);
+      expect(find.text('The phone could not send it to the band.'),
+          findsNothing);
     });
   });
 }

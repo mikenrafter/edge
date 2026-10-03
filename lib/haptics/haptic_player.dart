@@ -19,6 +19,21 @@ import 'haptic_compiler.dart';
 import 'haptic_profile.dart';
 import 'tap_notes.dart';
 
+/// When one command of a compiled delivery started playing on the band: its
+/// index in the plan (0 based) and the time the wearer feels it start. When
+/// [measured] the time is the band's own live "fired" event (60); otherwise it
+/// is the write time plus the usual Bluetooth lead (the band said nothing
+/// within a second of the write).
+class HapticPlayStart {
+  const HapticPlayStart(this.command, this.at, {required this.measured});
+  final int command;
+  final DateTime at;
+  final bool measured;
+
+  @override
+  String toString() => 'HapticPlayStart($command, $at, measured: $measured)';
+}
+
 /// How long past a phrase's longest span the band may take to report it ended.
 const int _kEndedGraceMs = 1500;
 
@@ -54,6 +69,7 @@ Future<BuzzDelivery> _play(
   required Future<bool> Function(List<int> effects, int loop) write,
   required Future<bool> Function(Duration timeout) waitEnded,
   required bool Function() isConnected,
+  void Function(int command)? onWritten,
 }) async {
   var written = 0;
   BuzzDelivery failed() =>
@@ -75,6 +91,7 @@ Future<BuzzDelivery> _play(
       final ok = await write(cmds[i].effects, cmds[i].loop);
       if (!ok) return failed();
       written++;
+      onWritten?.call(i);
     }
     return BuzzDelivery.complete;
   } catch (_) {
@@ -200,7 +217,10 @@ _Resolved? _resolve(
         entries,
         profile,
         extended: s.extended,
-        dynamicWeight: loud ? 1 : 0,
+        // A rule that asks for dynamics priority weighs loudness even when
+        // every note is mf, as the editor did when it compiled the preview.
+        dynamicWeight: loud || s.priority == HapticPriority.dynamics ? 1 : 0,
+        priority: s.priority,
         maxRuntimeMs: maxRuntime?.inMilliseconds,
       );
       if (plan != null) return _fromPlan(plan, profile);
@@ -228,6 +248,7 @@ Future<BuzzDelivery> deliverBandSequence(
   required Future<bool> Function(Duration timeout) waitEnded,
   required bool Function() isConnected,
   Duration? maxRuntime = kMaxHapticRuntime,
+  void Function(int command)? onWritten,
 }) {
   final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
   if (resolved == null) {
@@ -243,6 +264,7 @@ Future<BuzzDelivery> deliverBandSequence(
     write: writePattern,
     waitEnded: waitEnded,
     isConnected: isConnected,
+    onWritten: onWritten,
   );
 }
 
@@ -304,6 +326,7 @@ Future<BuzzDelivery> deliverBandSequenceQueued(
   required Future<bool> Function(Duration timeout) waitEnded,
   required bool Function() isConnected,
   Duration? maxRuntime = kMaxHapticRuntime,
+  void Function(int command)? onWritten,
 }) =>
     queue.run(
       (token) => deliverBandSequence(
@@ -318,6 +341,7 @@ Future<BuzzDelivery> deliverBandSequenceQueued(
         waitEnded: waitEnded,
         isConnected: () => !token.cancelled && isConnected(),
         maxRuntime: maxRuntime,
+        onWritten: onWritten,
       ),
       commands: bandSequenceCommands(s, profile, maxRuntime: maxRuntime),
       timeout: bandSequenceTimeout(s, profile, maxRuntime: maxRuntime),

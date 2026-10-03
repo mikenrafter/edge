@@ -2558,4 +2558,16 @@ void main() {
       expect(lab.steps.join('\n'), contains('Pattern probe heard 3/40'));
     });
   });
+
+  // ---- 8AF.5: the probe records what is felt, never "any" ---------------------
+
+  testWidgets('the probe offers six dynamics and no * button', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    for (final d in _dyns) {
+      expect(find.byKey(ValueKey('pattern-dyn-$d')), findsOneWidget, reason: d);
+    }
+    expect(find.byKey(const ValueKey('pattern-dyn-any')), findsNothing);
+    expect(find.text('*'), findsNothing);
+    await _finish(t, r);
+  });
 }
