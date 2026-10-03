@@ -183,10 +183,10 @@ confirmation dialog to it."
 - Reuse: the ECG touch probe in the dev area uses the same drill model.
 
 ## Sequencing
-1. 8AC (haptics compiler, pre-bake, global queue) — in progress.
-2. 8AD — Haptics hub (Settings Option A) + pattern store + advanced editor +
+1. 8AC (haptics compiler, pre-bake, global queue) — done (7adc86e5).
+2. 8AD — done (260feba0). Haptics hub (Settings Option A) + pattern store + advanced editor +
    allow-long-sequences + tap-a-baseline in probes + multi-log vocabulary.
-3. 8AE — Settings Option B (dev area; Device lab behind dev mode; quiet-hours
+3. 8AE — done (4c5ab83e). Settings Option B (dev area; Device lab behind dev mode; quiet-hours
    override toggle).
 3b. 8AE.5 — Structural cleanup before H2 (user: "just before H2 is a good
    time"):
@@ -197,14 +197,22 @@ confirmation dialog to it."
    - One typed settings repository (sections for alert prefs, relay channels,
      patterns, app prefs) with a single save path, so pattern propagation is one
      write instead of three.
-   - (If agreed) a single Capabilities lookup for visibility/availability.
+   - A single Capabilities lookup for visibility/availability (agreed): one
+     object computed from platform, band generation/firmware, hardware, flags,
+     dev mode, permissions and connection; `caps.of(Feature.x)` → available /
+     hidden / disabled(reason); screens stop re-deriving gates.
    - Goldens: keep pixel goldens for painters and a few showcase screens; move
      ordinary settings/list screens to structural tests (finders, semantics,
      no-overflow at 360×640 and 390×844); light+dark at 1x for screens, 2x only
      for painters; CI uploads failure diffs; regeneration commits list fixtures +
-     why. Trial alchemist on the painter goldens before any wider move.
+     why. (Alchemist moved to H3.)
 4. 8AF — Health H2.
    External review: GPT 6.1 Sol (`codex exec review -m gpt-6.1-sol --base main`)
    after 8AE (end of the 8-series work) and again after 8AF; take its pointers.
+   STOP after 8AF (incl. its codex review): defer for manual on-device
+   testing. Do not start H3 or 8AG until the user says.
+4b. H3 (separate branch, later, only when the user asks) — trial alchemist
+   on the painter goldens (labelled scenario grids; real-font platform goldens
+   locally + Ahem CI goldens), then decide on a wider move.
 5. 8AG — Gesture practice tour (could go before 8AF; it lands in Settings ›
    Band › Gestures from 8AE).
