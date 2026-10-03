@@ -206,7 +206,8 @@ const _specs = <String, MetricSpec>{
         'the rest of it. There is no 1 Hz estimate — walking cadence sits above what '
         'one sample a second can resolve, so a day with no counter behind it '
         'reports no steps rather than a guess.',
-    citation: 'AN-2554 pedometer · phone pedometer (HealthKit / Health Connect)',
+    citation: 'AN-2554 pedometer · phone pedometer (HealthKit / Health Connect)'
+        ' · Straczkiewicz 2023 · O\'Connell 2017',
     // Deliberately EMPTY — see final-plan §4.6. Steps are resolved by
     // `live_coverage_policy.dart`, which ranks by SPAN not device and credits
     // by overlap subtraction; a device-ownership filter on this screen would

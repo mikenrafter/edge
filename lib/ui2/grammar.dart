@@ -53,6 +53,9 @@ class Pressable extends StatefulWidget {
   /// (an icon-only control), optional otherwise.
   final String? semanticLabel;
 
+  /// Announce as a link rather than a button — for text that opens a web page.
+  final bool link;
+
   // There is no `expand: false`. It used to exist, documented as "the hit area
   // is still expanded via the parent's slop" — no such mechanism was ever in
   // this codebase, so what it actually did was drop the 44 pt minimum at seven
@@ -66,6 +69,7 @@ class Pressable extends StatefulWidget {
     required this.child,
     this.onTap,
     this.semanticLabel,
+    this.link = false,
   });
 
   @override
@@ -96,7 +100,8 @@ class _PressableState extends State<Pressable> {
           : Semantics(label: widget.semanticLabel, child: out);
     }
     return Semantics(
-      button: true,
+      button: !widget.link,
+      link: widget.link,
       label: widget.semanticLabel,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,

@@ -13,6 +13,7 @@ export 'live_hr.dart';
 export 'ecg_widgets.dart';
 export 'nudges.dart';
 export 'paint_activity.dart';
+export 'research_refs.dart';
 export 'revision.dart';
 export 'scroll_hint.dart';
 export 'theme.dart';
