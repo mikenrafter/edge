@@ -188,7 +188,7 @@ confirmation dialog to it."
    allow-long-sequences + tap-a-baseline in probes + multi-log vocabulary.
 3. 8AE — done (4c5ab83e). Settings Option B (dev area; Device lab behind dev mode; quiet-hours
    override toggle).
-3b. 8AE.5 — Structural cleanup before H2 (user: "just before H2 is a good
+3b. 8AE.5 — done (680990ae, 6b88ee65, 4ee13ef1, 0506e84f). Structural cleanup before H2 (user: "just before H2 is a good
    time"):
    - Extract a `HapticsService` from AppState (band queue, ledger, profile,
      `_runBandJob`/`_deliverBandSequence`, ended-event signal, pattern store);
@@ -206,7 +206,7 @@ confirmation dialog to it."
      no-overflow at 360×640 and 390×844); light+dark at 1x for screens, 2x only
      for painters; CI uploads failure diffs; regeneration commits list fixtures +
      why. (Alchemist moved to H3.)
-4. 8AF — Health H2.
+4. 8AF — done (ab9bad7e; review fixes 0049cfb4 after 8AE, 302f9293 after H2). Health H2.
    External review: GPT 6.1 Sol (`codex exec review -m gpt-6.1-sol --base main`)
    after 8AE (end of the 8-series work) and again after 8AF; take its pointers.
    STOP after 8AF (incl. its codex review): defer for manual on-device
