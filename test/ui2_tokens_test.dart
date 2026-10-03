@@ -271,8 +271,9 @@ const _notComponents = {
   // The Device lab's hardware probes (8V): it drives a live probe runner (a
   // band buzz or an ECG stream) and stops it when it leaves the screen, so a
   // gallery case would start hardware. hardware_probe_panel_test.dart pumps it
-  // over a runner with fake effects.
-  'HardwareProbePanel',
+  // over a runner with fake effects. The pattern probe's page (8Y) is a
+  // pushed route over the same runner, pumped by pattern_probe_page_test.dart.
+  'HardwareProbePanel', 'PatternProbePage',
   // FULL-BLEED, so it is a screen element rather than a component: it takes
   // the whole window width back off its parent's padding via OverflowBox. The
   // gallery lays every case out in a ~179 logical-px cell, which is narrower

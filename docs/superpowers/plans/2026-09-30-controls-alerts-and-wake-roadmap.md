@@ -843,6 +843,29 @@ The 20:40 lab log, with the band's events and the wearer's counts, corrects 8V:
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (Contact rule);
   `test/phase8/CONTRACTS.md` (8X).
 
+### 8Y — The pattern probe becomes a transcriber
+
+The 22:27 lab log (L4) showed the coarse "how many buzzes" answers cannot tell
+what the band plays. The wearer now writes the rhythm down like morse.
+
+- The Pattern probe button opens a screen. Play sends the test on screen, as often
+  as wanted. The wearer taps buttons of length 1-4; entries alternate buzz, gap,
+  buzz, gap (the first is a buzz) and the buttons read "Buzz 1-4" (solid bars) or
+  "Gap 1-4" (hollow bars) for the entry they write. The entries are a wheel to scroll
+  back and forward and edit; up to two renditions (A, B) per test; previous / next
+  test; the 1-4 footer stays on screen. Leaving writes every transcription into the
+  lab log.
+- Plays are bounded and polite: at most 160 commands per session, each play waits
+  for the band to finish the last one (live event 100 or 4 s). Only live band events
+  count; the log showed old 60/100 events delivered late in bursts and event-paced
+  commands released on them.
+- 8 new gap tests (two separate commands, the second 0 / 300 / 700 / 1200 ms after the
+  first one's event 100) and a measured `silences:` / `buzzes:` per play, so felt gap
+  lengths can be fitted to real milliseconds. Goal: an encoder from a tapped rhythm
+  to a band command.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L4 findings, the transcriber,
+  open questions); `test/phase8/CONTRACTS.md` (8Y).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

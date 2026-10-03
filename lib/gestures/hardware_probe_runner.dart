@@ -1,7 +1,8 @@
 // hardware_probe_runner.dart — runs one hardware probe at a time for the
 // Device lab and holds what the screen shows: which probe runs, the current
-// ECG cue, and the buzz probe's "how many did you feel?" question (8V) and the
-// pattern probe's two-part question (8W).
+// ECG cue, the buzz probe's "how many did you feel?" question (8V) and the
+// pattern probe's transcriber (8Y: the wearer plays a test, taps what they felt
+// as buzz and gap lengths 1-4, may play it again).
 //
 // Everything a probe learns goes into the lab log as a session (so "Copy all
 // logs" carries it), and the ECG probe's packets go into the lab's packet
@@ -15,6 +16,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 import '../notify/alert_rule.dart';
 import 'hardware_probes.dart';
 import 'lab_log.dart';
+import 'pattern_transcript.dart';
 import 'strap_event.dart';
 
 enum ProbeKind { buzz, ecg, pattern }
@@ -65,10 +67,9 @@ class HardwareProbeRunner extends ChangeNotifier {
   int _questionIndex = 0;
   Completer<int?>? _answer;
   HapticProbe? _haptic;
-  PatternTest? _patternQuestion;
-  int _patternIndex = 0;
-  Completer<PatternAnswer?>? _patternAnswer;
-  PatternProbe? _pattern;
+  PatternProbe? _probe;
+  PatternEntrySession? _session;
+  bool _patternPlaying = false;
   EcgTouchProbe? _touch;
   String? _note;
 
@@ -82,9 +83,9 @@ class HardwareProbeRunner extends ChangeNotifier {
   int get questionIndex => _questionIndex;
   int get trialCount => HapticProbe.defaultTrials.length;
 
-  /// The pattern probe's open question, and which test it is about.
-  PatternTest? get patternQuestion => _patternQuestion;
-  int get patternQuestionIndex => _patternIndex;
+  /// The open pattern transcriber (null when the pattern probe is closed).
+  PatternEntrySession? get pattern => _session;
+  bool get patternPlaying => _patternPlaying;
   int get patternTestCount => PatternProbe.defaultTests.length;
 
   /// One line about why a probe could not start (or how it ended).
@@ -131,9 +132,10 @@ class HardwareProbeRunner extends ChangeNotifier {
     }
   }
 
-  /// The pattern probe: custom Maverick patterns, four ways of asking for a
-  /// count. MG only (the other bands have no Maverick buzz).
-  Future<void> runPattern() async {
+  /// Open the pattern transcriber: custom Maverick patterns the wearer plays
+  /// on demand and writes down. MG only (the other bands have no Maverick
+  /// buzz). Nothing is sent until [playPattern].
+  Future<void> openPattern() async {
     if (!canRunPattern) {
       _say(_running != null
           ? 'A probe is already running.'
@@ -144,31 +146,78 @@ class HardwareProbeRunner extends ChangeNotifier {
     }
     _running = ProbeKind.pattern;
     _note = null;
-    final probe = _pattern = PatternProbe(
+    final probe = _probe = PatternProbe(
       sendPattern: sendPattern,
-      askFelt: _askPattern,
       isConnected: isConnected,
       step: lab.addStep,
     );
+    _session = PatternEntrySession(probe.tests);
+    _patternPlaying = false;
+    final gaps =
+        probe.tests.where((t) => t.style == BuzzStyle.delayed).length;
     lab.beginSession(
       method: 'Pattern probe',
-      settings: '${probe.tests.length} tests: 4 waveforms × 4 ways of '
-          'sending × 2 counts',
+      settings: '${probe.tests.length} tests, transcribed: 4 waveforms × 4 '
+          'ways of sending × 2 counts, plus $gaps gap tests',
       tapAt: DateTime.now(),
     );
     notifyListeners();
+  }
+
+  /// Play the test on screen. The band gets nothing while a play runs; a play
+  /// that wrote nothing is not counted.
+  Future<void> playPattern() async {
+    final s = _session, probe = _probe;
+    if (s == null || probe == null || _patternPlaying) return;
+    final at = s.testIndex;
+    _patternPlaying = true;
+    notifyListeners();
     try {
-      final results = await probe.run();
-      lab.endSession(result: '${results.length} tests');
+      final r = await probe.play(s.tests[at]);
+      if (r != null && identical(_session, s)) s.notePlayed(at);
     } catch (e) {
-      lab.addStep('Pattern probe failed: $e');
-      lab.endSession(result: 'failed');
+      lab.addStep('Pattern probe play failed: $e');
     } finally {
-      _pattern = null;
-      _running = null;
-      _closePatternQuestion(null);
-      notifyListeners();
+      if (identical(_session, s)) {
+        _patternPlaying = false;
+        notifyListeners();
+      }
     }
+  }
+
+  void patternTap(int len) => _edit((s) => s.tap(len));
+  void patternDelete() => _edit((s) => s.delete());
+  void patternMove(int delta) => _edit((s) => s.moveCursor(delta));
+  void patternRendition(int r) => _edit((s) => s.selectRendition(r));
+  void patternTest(int delta) =>
+      _edit((s) => s.goToTest(s.testIndex + delta));
+
+  void _edit(void Function(PatternEntrySession s) change) {
+    final s = _session;
+    if (s == null) return;
+    change(s);
+    notifyListeners();
+  }
+
+  /// Stop the pattern probe, write what was transcribed into the lab log and
+  /// end its session. Does nothing when it is not open.
+  void closePattern() {
+    final s = _session;
+    if (s == null) return;
+    _probe?.stop();
+    _probe = null;
+    _session = null;
+    _patternPlaying = false;
+    var heard = 0, plays = 0;
+    for (var i = 0; i < s.tests.length; i++) {
+      if (s.rendition(i, 0).length > 0 || s.rendition(i, 1).length > 0) heard++;
+      plays += s.plays(i);
+    }
+    s.logLines().forEach(lab.addStep);
+    lab.endSession(
+        result: '$heard of ${s.tests.length} tests transcribed, $plays plays');
+    _running = null;
+    notifyListeners();
   }
 
   Future<void> runEcg() async {
@@ -218,15 +267,10 @@ class HardwareProbeRunner extends ChangeNotifier {
   /// The wearer's answer to the open question (null: not sure / skip).
   void answer(int? felt) => _closeQuestion(felt);
 
-  /// The wearer's answer to the open pattern question (null: not sure).
-  void answerPattern(int? buzzes, int? sequences) =>
-      _closePatternQuestion(PatternAnswer(buzzes, sequences));
-
   /// Stop whichever probe runs. The ECG stream is stopped by the probe itself.
   void stop() {
     _haptic?.stop();
-    _pattern?.stop();
-    _closePatternQuestion(null);
+    closePattern();
     _touch?.stop();
     _closeQuestion(null);
   }
@@ -235,23 +279,7 @@ class HardwareProbeRunner extends ChangeNotifier {
 
   void onBandEvent(StrapEvent e) {
     _haptic?.onBandEvent(e.eventId, e.receivedAt, e.effectiveTime);
-    _pattern?.onBandEvent(e.eventId, e.receivedAt, e.effectiveTime);
-  }
-
-  Future<PatternAnswer?> _askPattern(PatternTest test, int index) {
-    final c = _patternAnswer = Completer<PatternAnswer?>();
-    _patternQuestion = test;
-    _patternIndex = index;
-    notifyListeners();
-    return c.future;
-  }
-
-  void _closePatternQuestion(PatternAnswer? a) {
-    final c = _patternAnswer;
-    _patternAnswer = null;
-    _patternQuestion = null;
-    if (c != null && !c.isCompleted) c.complete(a);
-    notifyListeners();
+    _probe?.onBandEvent(e.eventId, e.receivedAt, e.effectiveTime);
   }
 
   Future<int?> _ask(HapticTrial trial, int index) {

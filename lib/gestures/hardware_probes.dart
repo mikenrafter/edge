@@ -15,8 +15,10 @@
 //  * [PatternProbe] (8W) — ways of getting a COUNT of buzzes out of the band:
 //    four waveforms × four ways of sending (separate commands paced by time or
 //    by the band's "ended" event, one command with its loop raised, one command
-//    listing the waveform several times). Per test: the payloads, write times,
-//    replies, band events, and how many buzzes and groups the wearer felt.
+//    listing the waveform several times; 8Y adds a "delayed" way for gap
+//    tests). Played on demand, one test at a time: per play, the payloads,
+//    write times, replies, live band events and the measured silences and
+//    buzzes. What the wearer felt is transcribed elsewhere.
 //  * [EcgTouchProbe] — a cued touch / lift script on a live ECG stream: the
 //    phone shows (and the phone itself vibrates) TOUCH / LIFT on a schedule;
 //    afterwards [analyzeTouchProbe] lines each cue up with the contact runs and
@@ -25,7 +27,8 @@
 // SAFETY AND HARDWARE HEALTH. All probes start only from an explicit button,
 // stop at once on Stop or a lost link, and are bounded: the buzz probe sends at
 // most [HapticProbe.maxCommands] short buzzes per run and the pattern probe at
-// most [PatternProbe.maxCommands] short commands (3 s rest after every test);
+// most [PatternProbe.maxCommands] short commands per session (each play waits
+// for the band to finish the last one);
 // the ECG probe streams for at most [EcgTouchProbe.maxStream] and always stops
 // the stream (in `finally`). The buzz and ECG probes send nothing the app does
 // not already send. The pattern probe DOES send new waveform bytes (the same
@@ -291,7 +294,7 @@ class BuzzWaveform {
   ];
 }
 
-/// Four ways of asking for a count of buzzes.
+/// Ways of getting a count of buzzes out of the band.
 enum BuzzStyle {
   /// Separate commands, each a fixed 1.8 s after the previous write.
   paced,
@@ -304,6 +307,10 @@ enum BuzzStyle {
 
   /// One command listing the waveform several times.
   listed,
+
+  /// Separate commands, each [PatternTest.delayMs] after the band says the
+  /// last one ended (8Y: how long a silence is felt as).
+  delayed,
 }
 
 class PatternTest {
@@ -311,14 +318,21 @@ class PatternTest {
     required this.waveform,
     required this.style,
     required this.count,
+    this.delayMs = 0,
   });
   final BuzzWaveform waveform;
   final BuzzStyle style;
   final int count;
 
+  /// Wait after the band's "ended" before the next command; delayed only.
+  final int delayMs;
+
   /// Band commands this test writes.
-  int get commands =>
-      (style == BuzzStyle.paced || style == BuzzStyle.eventPaced) ? count : 1;
+  int get commands => (style == BuzzStyle.paced ||
+          style == BuzzStyle.eventPaced ||
+          style == BuzzStyle.delayed)
+      ? count
+      : 1;
 
   /// The waveform written [count] times into one command's slots; a lone effect
   /// gets a 152 slot between copies (the pair already ends in one).
@@ -339,14 +353,9 @@ class PatternTest {
         BuzzStyle.repeat => '${waveform.name}, one command looped $count×',
         BuzzStyle.listed => '${waveform.name}, one command listing it '
             '$count× with a pause slot between',
+        BuzzStyle.delayed => '${waveform.name}, $count commands, the second '
+            '$delayMs ms after the first ends',
       };
-}
-
-/// What the wearer felt after a pattern test; null fields are "not sure".
-class PatternAnswer {
-  const PatternAnswer(this.buzzes, this.sequences);
-  final int? buzzes;
-  final int? sequences;
 }
 
 /// One command of a pattern test. Times are ms since the test started.
@@ -365,47 +374,58 @@ class PatternTestResult {
   final PatternTest test;
   final List<PatternCommandResult> commands = [];
   final List<HapticBandEvent> events = [];
-  PatternAnswer? answer;
 }
 
+/// Plays one pattern test at a time, on demand (8Y): the wearer presses Play
+/// for the test on screen, as often as they like, and transcribes what they
+/// felt elsewhere. The probe only sends, waits for the band and logs.
 class PatternProbe {
   PatternProbe({
     required this.sendPattern,
-    required this.askFelt,
     required this.isConnected,
     this.step,
     DateTime Function()? now,
     Future<void> Function(Duration)? wait,
     List<PatternTest>? tests,
-    this.rest = const Duration(seconds: 3),
-    this.settle = const Duration(milliseconds: 3500),
   })  : _now = now ?? DateTime.now,
         _wait = wait ?? ((d) => Future<void>.delayed(d)),
-        tests = tests ?? defaultTests {
-    final total = this.tests.fold<int>(0, (n, t) => n + t.commands);
-    if (total > maxCommands) {
-      throw ArgumentError.value(
-          total, 'tests', 'at most $maxCommands commands per run');
-    }
-  }
+        tests = tests ?? defaultTests;
 
-  /// Hardware health: no run writes more than this many commands.
-  static const int maxCommands = 56;
+  /// Hardware health: no session writes more than this many commands.
+  static const int maxCommands = 160;
 
   /// Gap between paced commands, and the wait for a band "ended" event.
   static const Duration pacedGap = Duration(milliseconds: 1800);
   static const Duration eventTimeout = Duration(milliseconds: 2500);
   static const Duration afterEnded = Duration(milliseconds: 100);
+
+  /// Longest wait for the band's "ended" after a write, in a play's last wait
+  /// and in the cool-down before the next play.
+  static const Duration settle = Duration(seconds: 4);
   static const Duration _poll = Duration(milliseconds: 100);
 
+  /// A band event counts only when it happened no earlier than this before
+  /// the play started, and reached the phone within [_liveWithin].
+  static const Duration _liveBefore = Duration(milliseconds: 500);
+  static const Duration _liveWithin = Duration(seconds: 2);
+
   /// 4 waveforms × 4 ways of sending × counts 2 and 3, cycling so an early
-  /// Stop still has seen every waveform and every way.
+  /// stop still has seen every waveform and every way; then 8 gap tests: two
+  /// delayed commands, effect 14 then 47 alternating, a delay of 0, 300, 700,
+  /// 1200 ms for each.
   static final List<PatternTest> defaultTests = List.unmodifiable([
     for (var i = 0; i < 32; i++)
       PatternTest(
         waveform: BuzzWaveform.all[i % 4],
         style: BuzzStyle.values[(i ~/ 4) % 4],
         count: i < 16 ? 2 : 3,
+      ),
+    for (var j = 0; j < 8; j++)
+      PatternTest(
+        waveform: BuzzWaveform.all[j.isEven ? 2 : 1],
+        style: BuzzStyle.delayed,
+        count: 2,
+        delayMs: const [0, 300, 700, 1200][j ~/ 2],
       ),
   ]);
 
@@ -414,89 +434,102 @@ class PatternProbe {
   final Future<bool> Function(List<int> effects, int loop,
       void Function(String? status, int ms) onReply) sendPattern;
 
-  /// Ask the wearer what they felt in [test] ([index] of all). Null: skipped.
-  /// Must complete even when the probe is stopped.
-  final Future<PatternAnswer?> Function(PatternTest test, int index) askFelt;
-
   final bool Function() isConnected;
   final void Function(String line)? step;
   final DateTime Function() _now;
   final Future<void> Function(Duration) _wait;
   final List<PatternTest> tests;
 
-  /// Rest after every test: the motor cools, and tests do not overlap.
-  final Duration rest;
-
-  /// Longest wait for the band's "ended" event after a test's last write.
-  final Duration settle;
-
   bool _running = false;
   bool _stop = false;
+  int _used = 0;
+  DateTime? _playStart;
   DateTime? _testStart;
   DateTime? _writeStart;
+  DateTime? _lastLanded;
   bool _ended = false;
   PatternTestResult? _current;
-  final List<PatternTestResult> results = [];
 
   bool get running => _running;
 
-  /// Stop after the current command; a pending question is the caller's to
-  /// cancel.
+  /// Commands written so far this session.
+  int get commandsUsed => _used;
+
+  /// Abort the waits and the commands still to come.
   void stop() => _stop = true;
 
-  /// A band event (any id) arrived. Recorded into the running test; a 100
-  /// (haptics terminated) after the latest write marks that write as ended.
+  /// A band event (any id) arrived. Only LIVE events count: the band delivers
+  /// old 60/100 events late, in bursts, and they must not release commands.
+  /// A live 100 after the latest write marks that write as ended.
   void onBandEvent(int eventId, DateTime receivedAt, DateTime happenedAt) {
+    if (receivedAt.difference(happenedAt) >= _liveWithin) return;
+    final p = _playStart;
+    if (p != null && happenedAt.isBefore(p.subtract(_liveBefore))) return;
     final cur = _current, t0 = _testStart;
-    if (cur == null || t0 == null) return;
-    cur.events.add(HapticBandEvent(
-      eventId,
-      receivedAt.difference(t0).inMilliseconds,
-      happenedAt.difference(t0).inMilliseconds,
-    ));
+    if (cur != null && t0 != null) {
+      cur.events.add(HapticBandEvent(
+        eventId,
+        receivedAt.difference(t0).inMilliseconds,
+        happenedAt.difference(t0).inMilliseconds,
+      ));
+    }
     final w = _writeStart;
     if (eventId == 100 && w != null && !receivedAt.isBefore(w)) _ended = true;
   }
 
-  /// Run every test once. Returns the results (also kept in [results]).
-  Future<List<PatternTestResult>> run() async {
-    if (_running) return results;
+  /// Play [t] once. Null (with the reason logged) when a play is going, the
+  /// band is not connected, the session budget would be exceeded, the play
+  /// was stopped before writing, or nothing was written.
+  Future<PatternTestResult?> play(PatternTest t) async {
+    if (_running) {
+      step?.call('Pattern probe: a play is already going.');
+      return null;
+    }
+    if (!isConnected()) {
+      step?.call('Pattern probe: the band is not connected.');
+      return null;
+    }
+    if (_used + t.commands > maxCommands) {
+      step?.call('Pattern probe: this play would go over the session limit '
+          'of $maxCommands commands ($_used used).');
+      return null;
+    }
     _running = true;
     _stop = false;
-    results.clear();
+    _playStart = _now();
     try {
-      step?.call('Pattern probe: ${tests.length} tests, '
-          '${tests.fold<int>(0, (n, t) => n + t.commands)} short commands at '
-          'most, ${rest.inSeconds} s rest after each.');
-      for (var i = 0; i < tests.length; i++) {
-        if (_stop || !isConnected()) break;
-        final r = await _runTest(tests[i]);
-        results.add(r);
-        if (_stop) break;
-        // Nothing reached the band: there is nothing to feel, and buzzing on
-        // would only repeat the refusal.
-        if (r.commands.isEmpty || r.commands.every((c) => !c.written)) {
-          step?.call(_summary(r, i));
-          step?.call('Pattern probe ended: the app sent no buzz in this test '
-              '(see the reason above).');
-          return results;
-        }
-        r.answer = await askFelt(tests[i], i);
-        step?.call(_summary(r, i));
-        if (i < tests.length - 1 && !_stop) await _wait(rest);
+      if (!await _coolDown()) {
+        step?.call('Pattern probe: stopped before the play.');
+        return null;
       }
-      step?.call(_stop
-          ? 'Pattern probe stopped after ${results.length} tests.'
-          : !isConnected()
-              ? 'Pattern probe ended: the band is not connected.'
-              : 'Pattern probe finished.');
-      return results;
+      final r = await _runTest(t);
+      _used += r.commands.length;
+      step?.call(_summary(r));
+      if (r.commands.isEmpty || r.commands.every((c) => !c.written)) {
+        step?.call('Pattern probe: the app sent no buzz in this play (see '
+            'the reason above).');
+        return null;
+      }
+      return r;
     } finally {
       _running = false;
       _current = null;
       _testStart = null;
-      _writeStart = null;
+      _playStart = null;
     }
+  }
+
+  /// The band drops a command sent while it plays: wait for a live 100 after
+  /// the previous play's last write, or [settle] since that write.
+  Future<bool> _coolDown() async {
+    final w = _lastLanded;
+    if (w == null) return true;
+    while (!_stop && !_ended) {
+      final left = settle - _now().difference(w);
+      if (left <= Duration.zero) break;
+      await _wait(left < _poll ? left : _poll);
+    }
+    return !_stop;
   }
 
   Future<PatternTestResult> _runTest(PatternTest t) async {
@@ -519,6 +552,7 @@ class PatternProbe {
         c.written = false;
       }
       c.writtenMs = ms();
+      _lastLanded = _now();
       if (!c.written) c.reply ??= 'not written';
       return c.written;
     }
@@ -543,13 +577,17 @@ class PatternProbe {
         await write(t.listedEffects, 1);
       case BuzzStyle.paced:
       case BuzzStyle.eventPaced:
+      case BuzzStyle.delayed:
         for (var i = 0; i < t.count; i++) {
           if (_stop || !isConnected()) break;
           if (!await write(effects, 1) || i == t.count - 1) break;
           if (t.style == BuzzStyle.paced) {
             await _wait(pacedGap);
           } else if (await waitFor(eventTimeout, forEnd: true) && !_stop) {
-            await _wait(afterEnded);
+            final after = t.style == BuzzStyle.delayed
+                ? Duration(milliseconds: t.delayMs)
+                : afterEnded;
+            if (after > Duration.zero) await _wait(after);
           }
         }
     }
@@ -561,8 +599,9 @@ class PatternProbe {
     return r;
   }
 
-  String _summary(PatternTestResult r, int index) {
+  String _summary(PatternTestResult r) {
     final cs = r.commands;
+    final at = tests.indexWhere((x) => identical(x, r.test));
     final hex = cs.isEmpty
         ? ''
         : ' [${AlarmPayloads.gen5MaverickPattern(cs.first.effects, loop: cs.first.loop).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ')}]';
@@ -576,15 +615,27 @@ class PatternProbe {
             .map((e) =>
                 '${e.eventId} at +${e.happenedMs} (got +${e.receivedMs})')
             .join(', ');
-    final a = r.answer;
-    final b = a?.buzzes, g = a?.sequences;
-    final felt = a == null
-        ? 'not sure'
-        : '${b == null ? 'not sure how many buzzes' : '$b ${b == 1 ? 'buzz' : 'buzzes'}'}'
-            '${g == null ? ', not sure how many groups' : ' in $g ${g == 1 ? 'group' : 'groups'}'}';
-    return 'Pattern probe ${index + 1}/${tests.length}, ${r.test.description}: '
+    // Silence = a live 60 minus the 100 before it; buzz = a 100 minus its 60
+    // (phone receive times), so felt lengths can be fitted to real ones.
+    final silences = <int>[], buzzes = <int>[];
+    int? started, ended;
+    for (final e in r.events) {
+      if (e.eventId == 60) {
+        if (ended != null) silences.add(e.receivedMs - ended);
+        started = e.receivedMs;
+        ended = null;
+      } else if (e.eventId == 100 && started != null) {
+        buzzes.add(e.receivedMs - started);
+        ended = e.receivedMs;
+        started = null;
+      }
+    }
+    final measured = '${silences.isEmpty ? '' : '; silences: ${silences.join(', ')}'}'
+        '${buzzes.isEmpty ? '' : '; buzzes: ${buzzes.join(', ')}'}';
+    return 'Pattern probe play: ${at < 0 ? '?' : at + 1}/${tests.length}, '
+        '${r.test.description}: '
         '${cs.length} ${cs.length == 1 ? 'command' : 'commands'}$hex, $writes, '
-        'replies $replies; band events $ev; felt $felt.';
+        'replies $replies; band events $ev$measured.';
   }
 }
 

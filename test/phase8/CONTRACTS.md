@@ -617,6 +617,9 @@ Evidence and the fitted model: `docs/hardware/whoop-mg-haptics-and-ecg.md`. Test
 
 ## 8W: one command is one bzz-bzz; the pattern probe (Oct 2, 20:40 lab log)
 
+(The pattern probe's question flow, runner and panel below are replaced by the
+transcriber in 8Y; the payload, engine and count-buzz parts stand.)
+
 Evidence: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L3). Tests:
 `test/hardware/buzz_pattern_test.dart`, `pattern_probe_test.dart`,
 `pattern_probe_panel_test.dart`, `virtual_mg_test.dart`, `hardware_probes_test.dart`,
@@ -704,3 +707,57 @@ Tests: `test/gestures/ecg_contact_test.dart`, `ecg_tap_session_contact_test.dart
     throws as before.
   - A failure after a touch was counted (count 3 or more) is abandoned whatever
     the toggle. The retry counter and the failed-buzz state reset per gesture.
+
+## 8Y: the pattern probe as a transcriber (Oct 2, 22:27 lab log)
+
+Evidence: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L4). Tests:
+`test/gestures/pattern_transcript_test.dart`, `test/hardware/pattern_probe_test.dart`,
+`pattern_probe_panel_test.dart` (runner and panel), `pattern_probe_page_test.dart`
+(page); `test/ui2_tokens_test.dart` (the page is listed with the panel).
+
+- **Model** (`lib/gestures/pattern_transcript.dart`, pure Dart). `PatternTranscript`
+  is immutable: `lengths` (each 1-4, `ArgumentError` otherwise), entry i is a buzz
+  when i is even and a gap when odd, `maxEntries` 24, `append` / `replaceAt` /
+  `removeAt`, `isBuzz`, `code` ("B2 G1 B4"), `prose` ("buzz 2, gap 1, buzz 4").
+  `PatternEntrySession(tests)`: `testIndex`, two renditions per test, `activeRendition`
+  (reset to A on a test change), `cursor` (0 to length; the length is the empty next
+  slot), `plays(test)`; `nextTest` / `previousTest` / `goToTest` (clamped; cursor to
+  the end), `selectRendition`, `moveCursor`, `tap` (append at the end slot, else
+  replace; cursor + 1), `delete` (the entry at the cursor, or the last entry at the
+  end slot), `notePlayed([test])`, `logLines()` (one line per test with a transcript
+  or a play: `Pattern probe heard 5/40, <description>: A = …; B = —; played 3×.`).
+- **`PatternProbe`** plays on demand: `play(PatternTest)` returns the result or null
+  (logged: already playing, not connected, over the budget of `maxCommands` 160 per
+  session counted over all plays, stopped, nothing written). A cool-down before every
+  play waits for a live event 100 after the previous play's last write, or `settle`
+  (4 s) since it. Only live events count: happened no earlier than 500 ms before the
+  play started and received within 2 s. The per-play line is `Pattern probe play: n/40,
+  …` and ends with `silences: <ms>, …` (live 60 minus the live 100 before it) and
+  `buzzes: <ms>, …` (100 minus its 60).
+- **Tests.** `defaultTests` is 40: the 32 of 8W, then 8 gap tests, `BuzzStyle.delayed`
+  (`count` 2, `PatternTest.delayMs`; the next command goes `delayMs` after the live
+  100 of the previous one, 2.5 s if none), effect 14 then 47 alternating with delays
+  0, 300, 700, 1200: tests 33-40 are (14,0) (47,0) (14,300) (47,300) (14,700)
+  (47,700) (14,1200) (47,1200). Description of a gap test: `<name>, 2 commands, the
+  second <d> ms after the first ends`.
+- **Runner.** `HardwareProbeRunner.openPattern()` (refusals as before; opens the
+  session and a lab session `Pattern probe`, settings `40 tests, transcribed: 4
+  waveforms × 4 ways of sending × 2 counts, plus 8 gap tests`; sends nothing),
+  `pattern`, `patternPlaying`, `patternTestCount`, `playPattern()` (counts a play only
+  when the probe returned a result, against the test that was played), `patternTap`,
+  `patternDelete`, `patternMove`, `patternRendition`, `patternTest(delta)` (all
+  notify), `closePattern()` (stops the probe, logs `logLines()`, ends the lab session
+  with `<k> of 40 tests transcribed, <p> plays`; idempotent). `stop()` closes an open
+  pattern probe. The old `runPattern`, `patternQuestion`, `answerPattern` are gone.
+- **Page** (`lib/ui2/profile/pattern_probe_page.dart`, `PatternProbePage(runner:)`),
+  pushed by the panel's `probe-pattern` button after `openPattern()`. Keys:
+  `pattern-prev`, `pattern-next`, `pattern-play` ("Playing…" and disabled while a
+  play runs), `pattern-rendition-a` / `-b`, `pattern-wheel` (a `ListWheelScrollView`;
+  the centred row is the cursor; only the wearer's scrolling moves the cursor),
+  `pattern-len-1` … `pattern-len-4`, `pattern-delete`. The footer is outside the
+  scroll. The length buttons read "Buzz n" with solid bars when the cursor entry (or
+  the next slot) is a buzz, "Gap n" with hollow bars when it is a gap; the wheel rows
+  use the same two looks. Going back closes the probe (`PopScope`; a microtask in
+  `dispose` for any other removal, because closing notifies the lab log).
+- **Panel.** `probe-pattern` is enabled when `canRunPattern`; its caption says it opens
+  a screen and that leaving it ends the probe. No golden covers the panel or page.

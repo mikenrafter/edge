@@ -18,6 +18,10 @@ Logs referred to:
   wearer's counts of what they felt, and the cue-to-contact latencies. It
   replaces two L1/L2 readings below (marked "superseded"). Not stored as a
   fixture; the numbers below are read from it.
+- **L4**: 2026-10-02 22:27–22:36, the 8W pattern probe (32 tests) with the band's
+  events, replies and the wearer's counts. The counts were the old coarse input
+  (how many buzzes, how many groups), so findings that rest on them are marked
+  "rough". Not stored as a fixture; the numbers below are read from it.
 
 ## Clocks
 
@@ -68,6 +72,18 @@ layout is the protocol notes' reading; what the loop bytes mean is not confirmed
 | 113 is the stream start (time equal to the first packet's strap time); 114 follows the stream stop. | Medium | L1, L2. |
 | Consequence: a count of N is **N commands, one per pulse** (`maxPulsesPerBurst` = 1), each at least `buzzQuietGap` (1.8 s) after the previous write, which is past the longest play (1.5 s) and the ignore window. Pacing on event 100 instead is not used in gestures; the pattern probe's "event-paced" style tries it. | Rule | `ecg_tap_session.dart`; the virtual band swallows and ignores as above. |
 
+### Pattern probe findings (L4)
+
+Event envelope = event 60 to event 100, as the phone received them.
+
+| Finding | Confidence | Evidence |
+|---|---|---|
+| Effect envelopes: **47 alone 0.77–1.03 s**, felt as one buzz; **14 alone 0.53–0.91 s**, one buzz; **1 alone 0.22–0.61 s**, one short buzz or click; the **pair 47+152 1.07–1.36 s**, felt as two. | Medium (felt counts rough) | L4. |
+| **152 is felt as a buzz, not as a silent pause**: 47,152,47 felt as 3; 47,152,47,152 as 4; (47,152)x3 as 6; x,152,x,152,x as 5 for 47, 14 and 1. | Medium (rough counts, consistent over every waveform) | L4. |
+| **The overall loop byte is not a whole-pattern repeat.** Pair with loop 2 / 3 played 1.96 s / 2.0 s (a whole repeat would be about 2.6 s / 3.9 s) and was felt as 3 / 4; single effects with loop 2–3 played barely longer than loop 1 and were felt as 1–2. | Medium | L4. |
+| Separate commands all played when each was written **after the previous one's event 100** (even 0.03–0.25 s after). One written 20 ms before the 100 was dropped (the buzz probe's 1600 ms trial). So: send after the 100, never on a fixed timer shorter than the longest envelope. | High | L4. |
+| **The band delivers old 60/100 events late, in bursts** (22:36:31: about 25 events 17–80 s old). A probe must ignore events that are not live, or it releases commands on stale ones; test 21's event-paced commands went out on such events. | High | L4. |
+
 ## Start-up cost
 
 From double tap to the first packet: 0.7–2.8 s. From double tap to a decided
@@ -100,32 +116,51 @@ everything into the lab log ("Copy all logs").
   sensor showed the change. Cue times are mapped onto the strap clock through
   the least-delayed packet, so each latency includes your reaction time and the
   best packet's own latency (~0.15 s).
-- **Pattern probe** (8W, MG only). 32 tests: 4 waveforms x 4 ways of sending x
-  2 counts (2 and 3), cycling so that a Stop part-way has still tried every
-  waveform and every way.
+- **Pattern probe** (8W, MG only; a transcriber since 8Y). The button opens a
+  screen. 40 tests: 32 in the 8W cycle (4 waveforms x 4 ways of sending x 2
+  counts, 2 and 3, cycling so an early stop has still tried every waveform and
+  way), then 8 gap tests.
   - Waveforms (effect ids in the command's slots): the band's pair 47 + 152,
     effect 47 alone, effect 14, effect 1.
   - Ways of sending: *paced* (separate commands, each 1.8 s after the previous
-    write), *event-paced* (separate commands, each 100 ms after the band's event
-    100, or 2.5 s after the previous write if none came), *repeat* (one command,
-    overall loop = the count), *listed* (one command listing the waveform
-    count times, with a 152 slot between copies of a single effect).
-  - After each test it waits for the band's event 100 (at most 3.5 s), then asks
-    "How many buzzes?" (0-6) and "How many groups?" (0-4), each with "Not sure",
-    and Next. Then a 3 s rest.
-  - The log line per test gives each command's payload in hex, write time,
-    reply, the band events with their times, and what you felt.
-  - What it answers: whether the loop byte or listing more slots makes the band
-    play more than one bzz-bzz per command, whether 152 acts as a pause, and
-    whether effects 47 / 14 / 1 differ.
+    write), *event-paced* (separate commands, each 100 ms after the band's live
+    event 100, or 2.5 s after the previous write if none came), *repeat* (one
+    command, overall loop = the count), *listed* (one command listing the
+    waveform count times, with a 152 slot between copies of a single effect).
+  - Gap tests 33–40: *delayed*, two separate commands of effect 14 then 47
+    (alternating), the second 0, 300, 700 or 1200 ms after the live event 100
+    of the first (2.5 s if none came); order (14,0) (47,0) (14,300) (47,300)
+    (14,700) (47,700) (14,1200) (47,1200).
+  - **Play** sends the test on screen, as often as you like. Before each play it
+    waits for the band to finish the last one (a live event 100 after the last
+    write, or 4 s). After the last write it waits for a live 100 (4 s at most).
+    Only live events count: an event counts if it happened no earlier than 500 ms
+    before the play started and reached the phone within 2 s.
+  - **Transcribing.** You tap what you felt like morse: buttons of length 1–4,
+    entries alternating buzz, gap, buzz, gap (the first is a buzz; the footer
+    buttons read "Buzz 1–4" with solid bars or "Gap 1–4" with hollow bars for the
+    entry they write). The entries are a wheel you scroll to go back and forward
+    and edit any of them. Up to two renditions (A and B) per test, because the
+    band may not play a test the same way twice; previous / next moves between
+    tests and Play replays it there. Gap entries are the felt length of the
+    silence, so a later fit can map felt units to milliseconds.
+  - Leaving the screen writes one line per transcribed or played test:
+    `Pattern probe heard 5/40, <test>: A = buzz 2, gap 1, buzz 4 (B2 G1 B4);
+    B = —; played 3×.` Each play also logs its payload in hex, writes, replies,
+    the live band events with their times, and `silences: <ms>, …` (each live 60
+    minus the live 100 before it) and `buzzes: <ms>, …` (each 100 minus its 60).
+  - What it answers: what the loop byte does, whether 152 is a buzz, how long
+    each effect is felt, and the data to build an encoder from a tapped rhythm
+    to a band command (felt buzz and gap units against real envelopes and
+    delays).
 
 Safety and hardware health: the buzz and pattern probes send only the band's
 own buzz command (RUN_HAPTIC_PATTERN_MAVERICK), through the alert dispatcher
-like every other buzz. Hard bounds: the pattern probe writes at most 56
-commands per run (`PatternProbe.maxCommands`; the default plan needs 48, and
-the constructor refuses a plan that needs more), each pattern has 1-8 effects
-with ids 1-255, the loop is capped at 3, each test is followed by a 3 s rest,
-and a test where nothing could be written ends the run. The pattern probe is
+like every other buzz. Hard bounds: the pattern probe writes at most 160
+commands per session (`PatternProbe.maxCommands`, counted over all plays; a play
+that would go over is refused), each pattern has 1-8 effects with ids 1-255, the
+loop is capped at 3, every play waits for the band to finish the last one, and a
+play where nothing could be written is not counted. The pattern probe is
 refused on a band that is not an MG. The ECG stream is capped and always
 stopped, also on errors. No sample leaves RAM unless you copy the log
 (invariant 14). Dangerous opcodes (invariant 15) are not involved.
@@ -166,13 +201,12 @@ as L3 shows.
 
 ## Open questions (what the next lab run should answer)
 
-1. What the loop bytes mean: does the overall loop (last body byte) repeat the
-   whole pattern, and what are the two per-effect loop bytes? (Pattern probe:
-   *repeat* tests.) Do 3 plays of one command come as three bzz-bzz or one
+1. What the loop bytes mean. L4 says the overall loop (last body byte) is not a
+   whole-pattern repeat; what is it, and what are the two per-effect loop bytes?
+   (Pattern probe: *repeat* tests, now transcribed.) Do 3 plays of one command come as three bzz-bzz or one
    longer one, and does the band's busy window grow with it?
-2. Is effect 152 a pause (a silent slot between effects)? (Pattern probe:
-   *listed* tests of single effects with a 152 between copies, against the
-   pair 47 + 152.)
+2. What effect 152 is. L4 says it is felt as a buzz, not a silent pause; is it a
+   short click, or a weak buzz? (Pattern probe: *listed* tests, transcribed.)
 3. Which effect ids exist and feel different: only 47, 152, 14 and 1 are tried.
    Where does one effect end and the next begin in the band's own pair?
 4. Can one command play two or three bzz-bzz? If *listed* or *repeat* does it,
@@ -188,3 +222,9 @@ as L3 shows.
    trace.)
 8. Does the band keep streaming without the reading's RESTART? (Every gesture;
    the trace says "a reading would send RESTART here" when it would have.)
+9. What gap the band inserts between effect slots, and how a felt gap length
+   (units 1–4) maps to milliseconds. (Pattern probe: the 8 *delayed* gap tests
+   and the `silences:` of every play.)
+10. Can a tapped rhythm be encoded as a band command? The transcriptions of
+    tests 1–40 (renditions A and B) against the real envelopes and delays are
+    the data for it.
