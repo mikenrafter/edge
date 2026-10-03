@@ -144,6 +144,7 @@ class AlertCapabilityRegistry {
     'relay',
     'gesture',
     'buzzPreview',
+    'hardwareProbe',
   };
   static const derivedKinds = {
     'health',

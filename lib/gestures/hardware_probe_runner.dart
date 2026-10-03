@@ -11,11 +11,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
+import '../notify/alert_rule.dart';
 import 'hardware_probes.dart';
 import 'lab_log.dart';
 import 'strap_event.dart';
 
 enum ProbeKind { buzz, ecg }
+
+/// The buzz probe's dispatcher rule: band only, live link, its own id so a
+/// probe buzz never shares a claim with a real alert.
+const hardwareProbeRule = AlertRule(
+  id: 'hardware_probe',
+  kind: 'hardwareProbe',
+  destinations: AlertRule.band,
+  executionMode: AlertExecutionMode.phoneLive,
+  staleAfter: Duration(seconds: 10),
+  channelPolicyId: 'hardware_probe',
+);
 
 class HardwareProbeRunner extends ChangeNotifier {
   HardwareProbeRunner({

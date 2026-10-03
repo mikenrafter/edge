@@ -81,7 +81,8 @@ class HapticTrialResult {
     final replies = commands.map((c) => c.reply ?? 'waiting').join(', ');
     final written = commands.where((c) => c.written == true).length;
     final replied = commands
-        .where((c) => c.reply != null && c.reply != 'none')
+        .where((c) =>
+            c.reply != null && c.reply != 'none' && c.reply != 'not written')
         .length;
     final writes = commands
         .map((c) => c.writtenMs == null
@@ -197,6 +198,15 @@ class HapticProbe {
         final r = await _runTrial(trials[i]);
         results.add(r);
         if (_stop) break;
+        // Nothing reached the band: there is nothing to feel, and buzzing on
+        // would only repeat the refusal.
+        if (r.commands.isNotEmpty &&
+            r.commands.every((c) => c.written != true)) {
+          step?.call(r.summary);
+          step?.call('Buzz probe ended: the app sent no buzz in this trial '
+              '(see the reason above).');
+          return results;
+        }
         r.felt = await askFelt(trials[i], i);
         step?.call(r.summary);
         if (i < trials.length - 1 && !_stop) await _wait(rest);

@@ -332,7 +332,7 @@ class AppState extends ChangeNotifier {
   Future<bool> _probeBuzz(void Function(String? status, int ms) onReply) async {
     final now = DateTime.now();
     final r = await alertDispatcher.dispatch(
-      _hardwareProbeRule,
+      hardwareProbeRule,
       eventId: 'probe:${now.microsecondsSinceEpoch}',
       sourceTime: now,
       historical: false,
@@ -340,17 +340,13 @@ class AppState extends ChangeNotifier {
           buzz: () => engine.buzzBand(onReply: onReply),
           isConnected: () => engine.isConnected),
     );
-    return r.targets.contains('band');
+    final sent = r.targets.contains('band');
+    if (!sent) {
+      deviceLab.addStep('Probe buzz not sent: '
+          '${r.suppressionReason ?? 'no reason given'}.');
+    }
+    return sent;
   }
-
-  static const _hardwareProbeRule = AlertRule(
-    id: 'hardware_probe',
-    kind: 'hardwareProbe',
-    destinations: AlertRule.band,
-    executionMode: AlertExecutionMode.phoneLive,
-    staleAfter: Duration(seconds: 10),
-    channelPolicyId: 'hardware_probe',
-  );
 
   /// The ECG touch probe's stream: the gesture's start path (wrist, guard,
   /// generation checks), persist off, with its own "still wanted" test.
