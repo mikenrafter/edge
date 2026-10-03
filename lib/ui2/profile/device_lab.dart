@@ -49,7 +49,10 @@ class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});
 
   @override
-  Widget build(BuildContext c) {
+  Widget build(BuildContext c) =>
+      LabSession(runner: c.read<AppState>().hardwareProbes, child: _labBody(c));
+
+  Widget _labBody(BuildContext c) {
     final app = c.read<AppState>();
     final g = app.gestureSettings;
     // The text "Copy all logs" copies, read when asked: the lab's own button
@@ -84,6 +87,37 @@ class DeviceLab extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Marks the Device lab as open for as long as it is on screen: the band queue
+/// holds real alerts while it is, and lets them go when it closes (8AF).
+class LabSession extends StatefulWidget {
+  const LabSession({super.key, required this.runner, required this.child});
+  final HardwareProbeRunner runner;
+  final Widget child;
+
+  @override
+  State<LabSession> createState() => _LabSessionState();
+}
+
+class _LabSessionState extends State<LabSession> {
+  // Kept so dispose does not need the widget (or a context).
+  late final HardwareProbeRunner _runner = widget.runner;
+
+  @override
+  void initState() {
+    super.initState();
+    _runner.openLab();
+  }
+
+  @override
+  void dispose() {
+    _runner.closeLab();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class DeviceLabView extends StatelessWidget {

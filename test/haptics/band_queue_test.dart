@@ -3,12 +3,15 @@
 // first out, and only while the rolling safety limit (30 commands per 2
 // minutes, one ledger shared with the pattern probe) allows its commands.
 //
-//   BandCommandLedger({}): record(n, at), commandsLeft(now), nextFreeIn(now),
-//     waitFor(n, now), writeLog (the one list the pattern probe appends to)
+//   BandCommandLedger({}): record(n, at), reserve(n, at), commandsLeft(now),
+//     nextFreeIn(now), waitFor(n, now)
 //   BandEndedSignal: reset() on every write, signal() on a live event 100,
 //     wait(timeout) -> true when a 100 came since the last reset
-//   BandHapticQueue(ledger:, waitEnded:, log:).run(job, commands:, timeout:,
-//     startBy:, settle:) -> BuzzDelivery
+//   BandHapticQueue(ledger:, waitEnded:, onWrite:, log:).run(job(token),
+//     commands:, timeout:, startBy:, settle:) -> BuzzDelivery
+//
+// The reservation, cancellation and playback-hold behaviour has its own file,
+// band_queue_safety_test.dart.
 //
 // Times are fake (fake_async): the queue reads `clock`, never DateTime.now.
 
@@ -40,14 +43,14 @@ class _Jobs {
   final results = <String, BuzzDelivery>{};
   final errors = <String, Object>{};
 
-  Future<BuzzDelivery> Function() job(
+  Future<BuzzDelivery> Function(BandJobToken) job(
     String name, {
     Duration takes = Duration.zero,
     BuzzDelivery result = BuzzDelivery.complete,
     bool never = false,
     Object? throws,
   }) =>
-      () async {
+      (_) async {
         started[name] = async.elapsed.inMilliseconds;
         if (never) return Completer<BuzzDelivery>().future;
         if (takes > Duration.zero) await Future<void>.delayed(takes);
@@ -142,16 +145,17 @@ void main() {
       });
     });
 
-    test('writeLog is the one list the pattern probe appends its writes to',
+    test('record(n) adds writes the reservations and the probes count with',
         () {
       fakeAsync((async) {
         final l = BandCommandLedger();
-        l.writeLog.add(clock.now());
-        l.writeLog.add(clock.now());
+        l.record(2, clock.now());
         expect(l.commandsLeft(clock.now()), 28);
+        final r = l.reserve(3, clock.now())!;
+        expect(l.commandsLeft(clock.now()), 25);
+        r.take(clock.now());
         l.record(3, clock.now());
-        expect(l.writeLog, hasLength(5));
-        expect(identical(l.writeLog, l.writeLog), isTrue);
+        expect(l.commandsLeft(clock.now()), 22);
       });
     });
   });
@@ -509,6 +513,7 @@ void main() {
       final queue = BandHapticQueue(
         ledger: ledger,
         waitEnded: ended.wait,
+        onWrite: ended.reset,
         log: log.add,
       );
       final dispatcher = AlertDispatcher(
@@ -525,26 +530,21 @@ void main() {
             sourceTime: clock.now(),
             historical: false,
             bandTimeout: bandSequenceTimeout(seq, _mg),
-            bandDelivery: () => queue.run(
-              () => deliverBandSequence(
-                seq,
-                profile: _mg,
-                buzz: () async => true,
-                writePattern: (effects, loop) async {
-                  writes.add((who, async.elapsed.inMilliseconds));
-                  ended.reset();
-                  Timer(const Duration(milliseconds: 600), () {
-                    endedAt.add(async.elapsed.inMilliseconds);
-                    ended.signal();
-                  });
-                  return true;
-                },
-                waitEnded: ended.wait,
-                isConnected: () => true,
-              ),
-              commands: bandSequenceCommands(seq, _mg),
-              timeout: bandSequenceTimeout(seq, _mg),
-              settle: bandSequenceSettle(seq, _mg),
+            bandDelivery: () => deliverBandSequenceQueued(
+              queue,
+              seq,
+              profile: _mg,
+              buzz: () async => true,
+              writePattern: (effects, loop) async {
+                writes.add((who, async.elapsed.inMilliseconds));
+                Timer(const Duration(milliseconds: 600), () {
+                  endedAt.add(async.elapsed.inMilliseconds);
+                  ended.signal();
+                });
+                return true;
+              },
+              waitEnded: ended.wait,
+              isConnected: () => true,
             ),
           );
       return (
@@ -710,7 +710,7 @@ void main() {
     NotificationRelay relay({
       Future<BuzzDelivery> Function(BuzzSequence)? deliver,
       Future<BuzzDelivery> Function(
-              int commands, Future<BuzzDelivery> Function() job)?
+              int commands, Future<BuzzDelivery> Function(BandJobToken job) job)?
           runBand,
       List<String>? engineBuzzes,
     }) =>
@@ -755,19 +755,25 @@ void main() {
     });
 
     test('a matched-haptics pattern buzzes inside a queue job of its pulse '
-        'count', () async {
+        'count, each pulse counted when it is written', () async {
       final jobs = <int>[];
       final engine = <String>[];
+      final ledger = BandCommandLedger();
+      final queue = BandHapticQueue(ledger: ledger);
       final r = relay(
         engineBuzzes: engine,
         runBand: (commands, job) {
           jobs.add(commands);
-          return job();
+          return queue.run(job,
+              commands: commands,
+              timeout: const Duration(seconds: 5),
+              settle: Duration.zero);
         },
       );
       expect(await r.controller.buzz([0, 200, 100, 200]), isTrue);
       expect(jobs, [2]);
       expect(engine, ['buzz', 'buzz']);
+      expect(ledger.commandsLeft(clock.now()), 28);
     });
   });
 }

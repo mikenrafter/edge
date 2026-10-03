@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../data/db.dart';
+import '../haptics/band_queue.dart' show BandHold, kBandHoldKey;
 import 'alert_rule.dart';
 import 'buzz_sequence.dart';
 
@@ -85,6 +87,43 @@ class AlertDispatcher {
   /// compiled plan outlasts the taps' own estimate). Null: the sequence's own
   /// [BuzzSequence.transportTimeout].
   final Duration Function(BuzzSequence)? sequenceTimeout;
+
+  // [work] with a deadline of [limit] that does not run while the band queue
+  // holds the job for the Device lab: the queue pauses it through the
+  // [BandHold] in the zone and restarts it (in full) when the lab closes. The
+  // same hold lets the queue ask whether the alert has gone stale meanwhile.
+  Future<T> _within<T>(
+    Future<T> Function() work,
+    Duration limit,
+    T Function() onTimeout,
+    DateTime sourceTime,
+    Duration staleAfter,
+  ) {
+    final result = Completer<T>();
+    Timer? timer;
+    void arm() {
+      timer?.cancel();
+      if (result.isCompleted) return;
+      timer = Timer(limit, () {
+        if (!result.isCompleted) result.complete(onTimeout());
+      });
+    }
+
+    final hold = BandHold(
+      onHold: () => timer?.cancel(),
+      onRelease: arm,
+      isStale: () => now().difference(sourceTime) > staleAfter,
+    );
+    arm();
+    Future<T>.sync(
+      () => runZoned(work, zoneValues: <Object?, Object?>{kBandHoldKey: hold}),
+    ).then((v) {
+      if (!result.isCompleted) result.complete(v);
+    }, onError: (Object e, StackTrace st) {
+      if (!result.isCompleted) result.completeError(e, st);
+    }).whenComplete(() => timer?.cancel());
+    return result.future;
+  }
 
   Future<AlertDeliveryOutcome> dispatch(
     Object rule, {
@@ -188,13 +227,16 @@ class AlertDispatcher {
                     ? () => sequenceDelivery(saved)
                     : null);
         if (delivery != null) {
-          final d = await delivery().timeout(
+          final d = await _within(
+            delivery,
             limit,
-            onTimeout: () {
+            () {
               claimed = false;
               reason = 'deliveryUnconfirmed';
               return BuzzDelivery.unknown;
             },
+            sourceTime,
+            typed.staleAfter,
           );
           switch (d) {
             case BuzzDelivery.complete:
@@ -215,13 +257,16 @@ class AlertDispatcher {
                   (implicitSequence && sequencePlayer != null
                       ? () => sequencePlayer(saved)
                       : band);
-          success = await transport().timeout(
+          success = await _within(
+            transport,
             limit,
-            onTimeout: () {
+            () {
               claimed = false;
               reason = 'deliveryUnconfirmed';
               return false;
             },
+            sourceTime,
+            typed.staleAfter,
           );
         }
         if (success) {

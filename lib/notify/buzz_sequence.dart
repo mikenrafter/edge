@@ -80,6 +80,10 @@ class BuzzSequence {
   static const minGapMs = 1;
   static const maxGapMs = 2000;
 
+  /// The most commands a baked plan holds: the compiler's own limit, so a
+  /// stored plan can never be longer than one it could have produced.
+  static const maxBakedSteps = 8;
+
   /// Offsets describe press starts; durations preserve the time held down.
   BuzzSequence(
     List<int> offsetsMs, {
@@ -89,6 +93,7 @@ class BuzzSequence {
     this.profileId,
     this.profileVersion,
     List<BakedStep>? bakedSteps,
+    this.bakedRuntimeMs,
     this.patternId,
   }) : offsetsMs = List.unmodifiable(offsetsMs),
       durationsMs = List.unmodifiable(
@@ -119,19 +124,28 @@ class BuzzSequence {
   /// a saved rule.
   final List<BakedStep>? bakedSteps;
 
+  /// How long the baked plan is felt at its longest, in ms, as measured when
+  /// it was compiled. Delivery judges the runtime cap by it. Null for a rule
+  /// saved before this existed (the runtime is then worked out from the
+  /// profile) and whenever there is no baked plan.
+  final int? bakedRuntimeMs;
+
   /// 8AD: the stored pattern (HapticPatternStore) this rhythm is a snapshot of,
   /// or null when it was made by hand. Delivery never reads it; editing or
   /// deleting the stored pattern rewrites the snapshots that carry it.
   final String? patternId;
 
   /// The same rhythm with the given values replaced; the others are kept.
-  /// [clearPatternId] drops the pattern id (the rhythm stays).
+  /// [clearPatternId] drops the pattern id (the rhythm stays). A new
+  /// [bakedSteps] without a [bakedRuntimeMs] drops the old runtime: it
+  /// described the plan being replaced.
   BuzzSequence copyWith({
     bool? extended,
     String? notes,
     String? profileId,
     int? profileVersion,
     List<BakedStep>? bakedSteps,
+    int? bakedRuntimeMs,
     String? patternId,
     bool clearPatternId = false,
   }) => BuzzSequence(
@@ -142,6 +156,9 @@ class BuzzSequence {
     profileId: profileId ?? this.profileId,
     profileVersion: profileVersion ?? this.profileVersion,
     bakedSteps: bakedSteps ?? this.bakedSteps,
+    bakedRuntimeMs: bakedSteps != null
+        ? bakedRuntimeMs
+        : bakedRuntimeMs ?? this.bakedRuntimeMs,
     patternId: clearPatternId ? null : patternId ?? this.patternId,
   );
 
@@ -155,6 +172,22 @@ class BuzzSequence {
   Duration get transportTimeout => playTime + Duration(seconds: 2 * length + 1);
 
   void _validate() {
+    final plan = bakedSteps;
+    if (plan != null && plan.length > maxBakedSteps) {
+      throw ArgumentError.value(
+        plan.length,
+        'bakedSteps',
+        'a baked plan has at most $maxBakedSteps commands',
+      );
+    }
+    final runtime = bakedRuntimeMs;
+    if (runtime != null && (plan == null || runtime < 0)) {
+      throw ArgumentError.value(
+        runtime,
+        'bakedRuntimeMs',
+        'must be nonnegative and come with a baked plan',
+      );
+    }
     if (offsetsMs.isEmpty ||
         offsetsMs.length > maxBuzzes ||
         durationsMs.length != offsetsMs.length) {
@@ -195,6 +228,7 @@ class BuzzSequence {
       if (profileId != null) 'profileId': profileId,
       if (profileVersion != null) 'profileVersion': profileVersion,
       if (plan != null) 'plan': [for (final b in plan) b.toJson()],
+      if (bakedRuntimeMs != null) 'bakedRuntimeMs': bakedRuntimeMs,
       if (patternId != null) 'patternId': patternId,
     };
   }
@@ -210,6 +244,7 @@ class BuzzSequence {
     final Object? profileId = json is Map ? json['profileId'] : null;
     final Object? profileVersion = json is Map ? json['profileVersion'] : null;
     final Object? plan = json is Map ? json['plan'] : null;
+    final Object? runtime = json is Map ? json['bakedRuntimeMs'] : null;
     final Object? patternId = json is Map ? json['patternId'] : null;
     if (patternId != null && patternId is! String) {
       throw const FormatException('A buzz sequence pattern id is a string');
@@ -237,7 +272,17 @@ class BuzzSequence {
       if (plan is! List || plan.isEmpty) {
         throw const FormatException('A buzz sequence plan is a list of steps');
       }
+      if (plan.length > BuzzSequence.maxBakedSteps) {
+        throw const FormatException(
+          'A buzz sequence plan has at most ${BuzzSequence.maxBakedSteps} steps',
+        );
+      }
       baked = [for (final b in plan) BakedStep.fromJson(b)];
+    }
+    if (runtime != null && (runtime is! int || runtime < 0 || baked == null)) {
+      throw const FormatException(
+        'A buzz sequence plan runtime is a whole ms count and needs a plan',
+      );
     }
     if (offsets is! List ||
         offsets.any((v) => v is! int) ||
@@ -254,6 +299,7 @@ class BuzzSequence {
         profileId: profileId as String?,
         profileVersion: profileVersion as int?,
         bakedSteps: baked,
+        bakedRuntimeMs: runtime as int?,
         patternId: patternId as String?,
       );
     } on ArgumentError catch (e) {
@@ -280,6 +326,7 @@ class BuzzSequence {
       other.notes == notes &&
       other.profileId == profileId &&
       other.profileVersion == profileVersion &&
+      other.bakedRuntimeMs == bakedRuntimeMs &&
       other.patternId == patternId &&
       _sameSteps(other.bakedSteps, bakedSteps);
 
@@ -295,6 +342,7 @@ class BuzzSequence {
     profileId,
     profileVersion,
     bakedSteps == null ? null : Object.hashAll(bakedSteps!),
+    bakedRuntimeMs,
     patternId,
   );
 

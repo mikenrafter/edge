@@ -79,6 +79,7 @@ class HapticPlan {
     required this.feltMax,
     required this.cost,
     required this.exact,
+    required this.asWritten,
     required this.usesUnstable,
     required this.summary,
     this.runtimeMs = 0,
@@ -94,6 +95,13 @@ class HapticPlan {
   /// True when no cell is felt differently from the target (the command
   /// penalty is not counted): the target is felt as written.
   final bool exact;
+
+  /// True when the whole felt range, shortest ([feltMin]) and longest
+  /// ([feltMax]), is the requested timing and no wait varies. [exact] only
+  /// says one scored rendition matches, so a plan can be exact and still be
+  /// felt differently (effect 14 for a three-unit note is felt 3 to 4 units).
+  /// Only a plan that is [asWritten] may be said to play as written.
+  final bool asWritten;
 
   /// How long the plan is felt at its longest: [feltMax] on the 16th grid
   /// times the profile's unit.
@@ -333,16 +341,23 @@ HapticPlan? compile(
           gapStable: node.wait?.stable ?? true,
         ),
     ];
+    final feltMin = _felt(steps, useMax: false);
     final feltMax = _felt(steps, useMax: true);
     final runtimeMs = timeline(feltMax).length * p.unitMs;
     if (maxRuntimeMs != null && runtimeMs > maxRuntimeMs) continue;
+    final exact = cand.total.cost - commandPenalty * (cand.k - 1) == 0;
+    final dynamics = dynamicWeight > 0;
 
     return HapticPlan(
       steps: List.unmodifiable(steps),
-      feltMin: _felt(steps, useMax: false),
+      feltMin: feltMin,
       feltMax: feltMax,
       cost: cand.total.cost,
-      exact: cand.total.cost - commandPenalty * (cand.k - 1) == 0,
+      exact: exact,
+      asWritten: exact &&
+          steps.every((s) => s.restMinUnits == s.restMaxUnits) &&
+          _sameTiming(timeline(feltMin), cells, dynamics: dynamics) &&
+          _sameTiming(timeline(feltMax), cells, dynamics: dynamics),
       usesUnstable: steps.any((s) => !s.phrase.stable || !s.gapStable),
       summary: _summary(steps),
       runtimeMs: runtimeMs,
@@ -355,6 +370,22 @@ bool _sameCells(List<PatternDynamic?> a, List<PatternDynamic?> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
     if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+// Whether two timelines are the same length with notes and rests in the same
+// cells, and with [dynamics] the same loudness too.
+bool _sameTiming(
+  List<PatternDynamic?> a,
+  List<PatternDynamic?> b, {
+  required bool dynamics,
+}) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (dynamics ? a[i] != b[i] : (a[i] != null) != (b[i] != null)) {
+      return false;
+    }
   }
   return true;
 }

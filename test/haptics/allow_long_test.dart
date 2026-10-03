@@ -304,11 +304,11 @@ void main() {
       expect(codeOnly(helper), contains('maxRuntime:'));
     });
 
+    // The queued helper computes the plan's command count, timeout and settle
+    // from the same maxRuntime it is handed.
     for (final fn in [
-      'deliverBandSequence',
+      'deliverBandSequenceQueued',
       'bandSequenceTimeout',
-      'bandSequenceCommands',
-      'bandSequenceSettle',
     ]) {
       test('every call of $fn in app_state passes maxRuntime', () {
         final calls = RegExp('(?<![A-Za-z_])$fn\\(').allMatches(code).toList();

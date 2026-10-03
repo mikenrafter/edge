@@ -331,6 +331,11 @@ class AppState extends ChangeNotifier {
     },
     isEcgAlive: () => ecg.isCapturing,
     ledger: bandLedger,
+    // The lab's probes play alone on the band, ahead of waiting alerts, and
+    // while the lab screen is open real alerts are held (8AF).
+    runLab: (body) => bandQueue.runLab(body),
+    beginLab: () => bandQueue.beginLab(),
+    endLab: () => bandQueue.endLab(),
   );
 
   /// One ordinary buzz for the buzz probe: still a dispatcher delivery (its
@@ -347,11 +352,9 @@ class AppState extends ChangeNotifier {
           isConnected: () => engine.isConnected),
     );
     final sent = r.targets.contains('band');
-    if (sent) {
-      // The buzz probe keeps its own pacing; its commands still count in the
-      // limit the alert queue shares.
-      bandLedger.record(1, now);
-    } else {
+    if (!sent) {
+      // The buzz probe keeps its own pacing; its run reserved its commands in
+      // the limit the alert queue shares and counts each one as it goes.
       deviceLab.addStep('Probe buzz not sent: '
           '${r.suppressionReason ?? 'no reason given'}.');
     }
@@ -538,39 +541,45 @@ class AppState extends ChangeNotifier {
   Future<bool> _ecgTapBuzz(int pulses, String eventId) async {
     final now = DateTime.now();
     final seq = BuzzSequence([for (var i = 0; i < pulses; i++) i * 300]);
-    final r = await alertDispatcher.dispatch(
+    final r = await _asLabWork(() => alertDispatcher.dispatch(
       kEcgTapRule,
       eventId: eventId,
       sourceTime: now,
       historical: false,
       bandDelivery: () => _runBandJob(
         pulses,
-        () => deliverBuzzSequence(seq,
-            buzz: () => engine.buzzBand(),
-            isConnected: () => engine.isConnected),
+        (job) => deliverBuzzSequence(seq,
+            buzz: () => job.write(() => engine.buzzBand()),
+            isConnected: () => !job.cancelled && engine.isConnected),
         timeout: seq.transportTimeout,
       ),
-    );
+    ));
     return r.targets.contains('band');
   }
+
+  /// With the Device lab open, the touch counter's and the gestures' buzzes are
+  /// what the lab exercises: they are lab jobs in the band queue, not held
+  /// like a real alert.
+  Future<T> _asLabWork<T>(Future<T> Function() work) =>
+      bandQueue.labOpen ? bandQueue.asLab(work) : work();
 
   /// 8X: the one long buzz for a failed ECG (holdMs >= 500 is one command
   /// looped twice, distinct from the single-command count buzzes). Still a
   /// dispatcher delivery.
   Future<bool> _ecgTapFailBuzz(String eventId) async {
     final now = DateTime.now();
-    final r = await alertDispatcher.dispatch(
+    final r = await _asLabWork(() => alertDispatcher.dispatch(
       kEcgTapRule,
       eventId: eventId,
       sourceTime: now,
       historical: false,
       bandDelivery: () => _runBandJob(
         1,
-        () async => await engine.buzzBand(holdMs: 600)
+        (job) async => await job.write(() => engine.buzzBand(holdMs: 600))
             ? BuzzDelivery.complete
             : BuzzDelivery.rejected,
       ),
-    );
+    ));
     return r.targets.contains('band');
   }
 
@@ -579,9 +588,13 @@ class AppState extends ChangeNotifier {
     // The default band transport (tap ack, a water or medication buzz with no
     // saved rhythm): one short buzz, in the band queue like everything else.
     band: () async =>
-        await _runBandJob(1, () async {
-          await engine.buzz();
-          return BuzzDelivery.complete;
+        await _runBandJob(1, (job) async {
+          return await job.write(() async {
+            await engine.buzz();
+            return true;
+          })
+              ? BuzzDelivery.complete
+              : BuzzDelivery.rejected;
         }) ==
         BuzzDelivery.complete,
     // The default sequence transport also serves NotificationCenter and the
@@ -651,17 +664,20 @@ class AppState extends ChangeNotifier {
   late final BandHapticQueue bandQueue = BandHapticQueue(
     ledger: bandLedger,
     waitEnded: _bandEnded.wait,
+    onWrite: _bandEnded.reset,
     log: _log,
   );
 
   /// The one door to [bandQueue]: a job of [commands] band commands that must
-  /// answer within [timeout] once it starts, and holds the band for [settle]
-  /// after its last command (the band's ended event or that long).
+  /// answer within [timeout] once it starts. Every command is written through
+  /// the job's token, which counts it when it happens and refuses it once the
+  /// job has timed out. The band is held for [settle] after the last command
+  /// (its ended event or that long; one buzz's playback by default).
   Future<BuzzDelivery> _runBandJob(
     int commands,
-    Future<BuzzDelivery> Function() job, {
+    Future<BuzzDelivery> Function(BandJobToken job) job, {
     Duration? timeout,
-    Duration settle = Duration.zero,
+    Duration settle = kBandBuzzPlayback,
   }) =>
       bandQueue.run(
         job,
@@ -674,28 +690,18 @@ class AppState extends ChangeNotifier {
   /// dispatcher's two sequence transports, a preview, a rule alert and the
   /// notification relay): in the band queue, as compiled commands on a band
   /// with a haptic profile, else as per-tap buzzes.
-  Future<BuzzDelivery> _deliverBandSequence(BuzzSequence s) {
-    final profile = _bandProfile;
-    final maxRuntime = maxRuntimeFor(allowLong: Prefs.allowLongHaptics);
-    return _runBandJob(
-      bandSequenceCommands(s, profile, maxRuntime: maxRuntime),
-      () => deliverBandSequence(
+  Future<BuzzDelivery> _deliverBandSequence(BuzzSequence s) =>
+      deliverBandSequenceQueued(
+        bandQueue,
         s,
-        profile: profile,
+        profile: _bandProfile,
         buzz: _bandBuzz,
         buzzForDuration: _bandBuzzForDuration,
-        writePattern: (effects, loop) {
-          _bandEnded.reset();
-          return _bandBuzzPattern(effects, loop);
-        },
+        writePattern: _bandBuzzPattern,
         waitEnded: _bandEnded.wait,
         isConnected: () => engine.isConnected,
-        maxRuntime: maxRuntime,
-      ),
-      timeout: bandSequenceTimeout(s, profile, maxRuntime: maxRuntime),
-      settle: bandSequenceSettle(s, profile, maxRuntime: maxRuntime),
-    );
-  }
+        maxRuntime: maxRuntimeFor(allowLong: Prefs.allowLongHaptics),
+      );
 
   /// The runtime cap for compiled band haptics: 10 s unless the user allowed
   /// long sequences (Prefs.allowLongHaptics).
@@ -777,13 +783,17 @@ class AppState extends ChangeNotifier {
             ),
       bandTransport: alarm || pattern != null
           ? () async =>
-              await _runBandJob(1, () async {
-                if (alarm) {
-                  await engine.runAlarm();
-                } else {
-                  await engine.buzzPattern(pattern!);
-                }
-                return BuzzDelivery.complete;
+              await _runBandJob(1, (job) async {
+                return await job.write(() async {
+                  if (alarm) {
+                    await engine.runAlarm();
+                  } else {
+                    await engine.buzzPattern(pattern!);
+                  }
+                  return true;
+                })
+                    ? BuzzDelivery.complete
+                    : BuzzDelivery.rejected;
               }) ==
               BuzzDelivery.complete
           : null,
@@ -3062,7 +3072,7 @@ class AppState extends ChangeNotifier {
     if (e.eventId == 100 && e.isLive) _bandEnded.signal();
     unawaited(handled.then((outcomes) async {
       deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
-      await ackTap(alertDispatcher, e, outcomes);
+      await _asLabWork(() => ackTap(alertDispatcher, e, outcomes));
     }));
   }
 
@@ -5990,8 +6000,8 @@ class AppState extends ChangeNotifier {
       sourceTime: now,
       historical: false,
       bandTransport: () async =>
-          await _runBandJob(1, () async {
-            return await transport()
+          await _runBandJob(1, (job) async {
+            return await job.write(transport)
                 ? BuzzDelivery.complete
                 : BuzzDelivery.rejected;
           }) ==

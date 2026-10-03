@@ -12,6 +12,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../haptics/haptic_player.dart' show bakedRuntimeMsFor;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/pattern_store.dart';
 import '../../notify/buzz_sequence.dart';
@@ -30,14 +31,18 @@ Future<SavedHapticPattern> saveNewPattern(String name, BuzzSequence s) async {
 }
 
 /// What a stored pattern reads as: "N commands · ~X s" for notes, "Taps"
-/// without them.
-String patternDetail(BuzzSequence s) {
+/// without them. With a baked plan the time is the plan's (what the band
+/// plays, from its stored runtime, or worked out with [profile] for a rule
+/// saved before that was stored), never the compatibility taps'; when it
+/// cannot be known the time is left out. Without a plan it is the taps'.
+String patternDetail(BuzzSequence s, {HapticDeviceProfile? profile}) {
   if (s.notes == null) return 'Taps';
-  final secs = (s.playTime.inMilliseconds / 1000).toStringAsFixed(1);
+  String secs(int ms) => (ms / 1000).toStringAsFixed(1);
   final steps = s.bakedSteps?.length;
-  return steps == null
-      ? '~$secs s'
-      : '$steps ${steps == 1 ? 'command' : 'commands'} · ~$secs s';
+  if (steps == null) return '~${secs(s.playTime.inMilliseconds)} s';
+  final count = '$steps ${steps == 1 ? 'command' : 'commands'}';
+  final ms = bakedRuntimeMsFor(s, profile);
+  return ms == null ? count : '$count · ~${secs(ms)} s';
 }
 
 /// Opens the picker. [c] must stay mounted for the follow-up sheet or page.
@@ -68,6 +73,7 @@ Future<void> showPatternPicker(
       allowLong: allowLong,
       patternNames: names,
       onSave: onChoose,
+      // The sheet closes once this completes; a failure keeps the take open.
       onSaveNamed: (name, s) async {
         final saved = await onSaveNew(name, s);
         onChoose(saved.sequence);
@@ -86,10 +92,12 @@ Future<void> showPatternPicker(
           onPlay: onPlay,
           allowLong: allowLong ?? Prefs.allowLongHaptics,
           existingNames: names,
+          // The editor stays open until the pattern is stored; a failure
+          // reaches the editor, which says so.
           onSave: (name, s) async {
-            nav.pop();
             final saved = await onSaveNew(name, s);
             onChoose(saved.sequence);
+            if (nav.mounted) nav.pop();
           },
         ),
       ),
@@ -129,7 +137,8 @@ Future<void> showPatternPicker(
                   key: ValueKey('pattern-picker-row:${s.id}'),
                   icon: LucideIcons.waves,
                   title: s.name,
-                  sub: s.sequence.notes ?? patternDetail(s.sequence),
+                  sub: s.sequence.notes ??
+                      patternDetail(s.sequence, profile: profile),
                   selected:
                       current?.patternId != null &&
                       current!.patternId == s.id,

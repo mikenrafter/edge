@@ -10,6 +10,7 @@ import '../../haptics/haptic_compiler.dart';
 import '../ui2.dart';
 
 /// "May not play exactly as written. The band plays: N4mf R1 N4mf to ...".
+/// Also the line for a plan that scores exact but is felt as a range.
 String hapticNotExactLine(HapticPlan plan) {
   final lo = plan.feltMin.join(' ');
   final hi = plan.feltMax.join(' ');
@@ -34,7 +35,7 @@ List<Widget> hapticPlanLines(P p, HapticPlan? plan, {required bool tooLong}) {
   }
   return [
     Text(plan.summary, style: F.cap.copyWith(color: p.ink2)),
-    if (plan.exact)
+    if (plan.asWritten)
       Text('Plays as written.', style: F.cap.copyWith(color: p.ink2))
     else
       Row(

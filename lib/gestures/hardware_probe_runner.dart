@@ -49,7 +49,35 @@ class HardwareProbeRunner extends ChangeNotifier {
     required this.endEcg,
     required this.isEcgAlive,
     BandCommandLedger? ledger,
+    this.runLab,
+    this.beginLab,
+    this.endLab,
   }) : ledger = ledger ?? BandCommandLedger();
+
+  /// Runs a probe play as a lab job in the band queue (8AF): alone on the
+  /// band and ahead of waiting alerts. Null: probes write at once.
+  final Future<bool> Function(Future<void> Function() body)? runLab;
+
+  /// The lab screen opened / closed: the band queue holds real alerts while it
+  /// is open.
+  final void Function()? beginLab;
+  final void Function()? endLab;
+  bool _labOpen = false;
+
+  /// The Device lab screen opened. Safe to call twice.
+  void openLab() {
+    if (_labOpen) return;
+    _labOpen = true;
+    beginLab?.call();
+  }
+
+  /// The Device lab screen closed. Safe to call twice, and without
+  /// [openLab].
+  void closeLab() {
+    if (!_labOpen) return;
+    _labOpen = false;
+    endLab?.call();
+  }
 
   final DeviceLabLog lab;
 
@@ -145,6 +173,8 @@ class HardwareProbeRunner extends ChangeNotifier {
       askFelt: _ask,
       isConnected: isConnected,
       step: lab.addStep,
+      ledger: ledger,
+      runLab: runLab,
     );
     lab.beginSession(
       method: 'Buzz probe',
@@ -155,7 +185,14 @@ class HardwareProbeRunner extends ChangeNotifier {
     notifyListeners();
     try {
       final results = await probe.run();
-      lab.endSession(result: '${results.length} trials');
+      if (probe.refused) {
+        // No room in the rolling command limit: nothing was sent.
+        _say('The band is resting (30 commands per 2 minutes). '
+            'Try the buzz probe again in a moment.');
+        lab.endSession(result: 'resting');
+      } else {
+        lab.endSession(result: '${results.length} trials');
+      }
     } catch (e) {
       lab.addStep('Buzz probe failed: $e');
       lab.endSession(result: 'failed');
@@ -193,7 +230,8 @@ class HardwareProbeRunner extends ChangeNotifier {
       isConnected: isConnected,
       step: lab.addStep,
       now: clock.now,
-      writeLog: ledger.writeLog,
+      ledger: ledger,
+      runLab: runLab,
     );
     _session = PatternEntrySession(probe.tests);
     _patternPlaying = false;

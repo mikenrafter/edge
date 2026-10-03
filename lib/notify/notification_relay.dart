@@ -22,6 +22,7 @@ import 'notification_prefs.dart';
 import 'notification_center.dart';
 import 'notification_event.dart';
 import '../data/day_label.dart';
+import '../haptics/band_queue.dart' show BandJobToken;
 import '../state/feature_flags.dart';
 import 'dart:io' show Platform;
 import 'dart:typed_data';
@@ -515,7 +516,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   /// set, the matched-haptics pulses go through it.
   final Future<BuzzDelivery> Function(
     int commands,
-    Future<BuzzDelivery> Function() job,
+    Future<BuzzDelivery> Function(BandJobToken job) job,
   )? runBand;
 
   /// Whether the band is currently connected (no point buzzing nothing).
@@ -718,21 +719,29 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
       for (var i = 1; i < pattern.length; i += 2)
         if (pattern[i] > 0) i,
     ].length.clamp(1, 3);
-    Future<bool> play() async {
+    Future<bool> play(BandJobToken? job) async {
       for (var i = 0; i < pulses; i++) {
         if (i > 0) {
           await Future<void>.delayed(const Duration(milliseconds: 350));
         }
-        await buzz();
+        if (job == null) {
+          await buzz();
+        } else if (!await job.write(() async {
+          await buzz();
+          return true;
+        })) {
+          return false;
+        }
       }
       return true;
     }
 
     final queued = runBand;
-    if (queued == null) return play();
+    if (queued == null) return play(null);
     return await queued(
           pulses,
-          () async => await play() ? BuzzDelivery.complete : BuzzDelivery.rejected,
+          (job) async =>
+              await play(job) ? BuzzDelivery.complete : BuzzDelivery.rejected,
         ) ==
         BuzzDelivery.complete;
   }

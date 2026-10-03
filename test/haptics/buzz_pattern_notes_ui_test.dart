@@ -172,7 +172,11 @@ void main() {
     final plan = planForTaps(_apart(), _mg)!;
     expect(plan.steps.length, greaterThan(1));
     expect(plan.exact, isTrue);
-    expect(find.text('Plays as written.'), findsOneWidget);
+    // The wait between the commands is a measured range, so the plan is not
+    // "as written" even though it scores exact.
+    expect(plan.asWritten, isFalse);
+    expect(find.text('Plays as written.'), findsNothing);
+    expect(find.textContaining(_notExact(plan)), findsOneWidget);
     expect(find.text('Pauses between buzzes can vary a little.'),
         findsOneWidget);
   });
@@ -188,7 +192,10 @@ void main() {
     expect(on.usesUnstable, isTrue);
     expect(find.text('Extended haptics: timings may vary unexpectedly.'),
         findsOneWidget);
-    expect(find.text('Plays as written.'), findsOneWidget);
+    expect(on.exact, isTrue);
+    expect(on.asWritten, isFalse);
+    expect(find.text('Plays as written.'), findsNothing);
+    expect(find.textContaining(_notExact(on)), findsOneWidget);
   });
 
   testWidgets('no feedback text is drawn in an alarm colour', (t) async {
@@ -198,7 +205,7 @@ void main() {
     await t.pumpAndSettle();
     final p = P.of(t.element(find.byType(BuzzPatternSheet)));
     for (final text in [
-      'Plays as written.',
+      'The band plays',
       'Extended haptics: timings may vary',
       'Pauses between buzzes',
     ]) {
@@ -260,10 +267,13 @@ void main() {
     await t.pumpAndSettle();
     final on = planForTaps(_holds(extended: true), _mg)!;
     expect(on.exact, isTrue);
+    // Exact on the one rendition scored, but the 100 ms row is felt as 1 to 6
+    // units of silence: the range, not the claim.
+    expect(on.asWritten, isFalse);
     expect(find.textContaining(on.summary), findsOneWidget);
-    expect(find.textContaining('May not play exactly'), findsNothing);
-    expect(find.text('Plays as written.'), findsOneWidget);
-    expect(find.textContaining('N4mf R1 N4mf'), findsOneWidget);
+    expect(find.textContaining(_notExact(on)), findsOneWidget);
+    expect(find.text('Plays as written.'), findsNothing);
+    expect(find.textContaining('N4mf R1 N4mf'), findsAtLeastNWidgets(1));
     expect(find.text('Save'), findsOneWidget);
     expect(find.text('Tap your pattern'), findsNothing);
     expect(played, hasLength(1));

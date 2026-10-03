@@ -129,9 +129,9 @@ String _notExact(HapticPlan plan) {
 void _expectFeedback(HapticPlan plan) {
   expect(find.textContaining(plan.summary), findsOneWidget);
   expect(find.text('Plays as written.'),
-      plan.exact ? findsOneWidget : findsNothing);
+      plan.asWritten ? findsOneWidget : findsNothing);
   expect(find.text(_notExact(plan)),
-      plan.exact ? findsNothing : findsOneWidget);
+      plan.asWritten ? findsNothing : findsOneWidget);
   expect(find.text('Extended haptics: timings may vary unexpectedly.'),
       plan.usesUnstable ? findsOneWidget : findsNothing);
   expect(find.text('Pauses between buzzes can vary a little.'),

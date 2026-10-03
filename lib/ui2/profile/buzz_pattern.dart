@@ -8,6 +8,8 @@
 // connected. A band that is not connected still lets the take be saved — the
 // playback is a preview, not a condition.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:clock/clock.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
@@ -56,8 +58,10 @@ class BuzzPatternRow extends StatelessWidget {
 }
 
 /// Opens [BuzzPatternSheet] as a bottom sheet and closes it on Save. The sheet
-/// is closed BEFORE [onSave] or [onSaveNamed] runs, so a callback that opens
-/// a dialog or a page is not popped by the sheet's own close.
+/// is closed BEFORE [onSave] runs, so a callback that opens a dialog or a page
+/// is not popped by the sheet's own close. [onSaveNamed] is the opposite: the
+/// sheet stays open (the take is kept) until it completes, and closes only on
+/// success; if it throws the sheet says so under the name.
 Future<void> showBuzzPatternSheet(
   BuildContext c, {
   BuzzSequence? initial,
@@ -66,7 +70,7 @@ Future<void> showBuzzPatternSheet(
   HapticDeviceProfile? profile,
   bool? allowLong,
   Iterable<String>? patternNames,
-  void Function(String name, BuzzSequence s)? onSaveNamed,
+  FutureOr<void> Function(String name, BuzzSequence s)? onSaveNamed,
   required ValueChanged<BuzzSequence> onSave,
 }) {
   final p = P.of(c);
@@ -90,9 +94,9 @@ Future<void> showBuzzPatternSheet(
         },
         onSaveNamed: onSaveNamed == null
             ? null
-            : (name, s) {
-                Navigator.of(sheet).pop();
-                onSaveNamed(name, s);
+            : (name, s) async {
+                await onSaveNamed(name, s);
+                if (sheet.mounted) Navigator.of(sheet).pop();
               },
       ),
     ),
@@ -138,7 +142,7 @@ class BuzzPatternSheet extends StatefulWidget {
   final Iterable<String>? patternNames;
 
   /// Called instead of [onSave] when the take is saved under a name.
-  final void Function(String name, BuzzSequence s)? onSaveNamed;
+  final FutureOr<void> Function(String name, BuzzSequence s)? onSaveNamed;
 
   @override
   State<BuzzPatternSheet> createState() => _BuzzPatternSheetState();
@@ -164,6 +168,7 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
   bool _toPatterns = false;
   final _name = TextEditingController();
   String? _nameError;
+  bool _savingNamed = false;
 
   DateTime _recordTime() {
     _pressClock.start();
@@ -207,7 +212,7 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
 
   /// Save: under a name when "Save to my patterns" is on and the name is good,
   /// else as the take.
-  void _save(BuzzSequence result, HapticPlan? plan) {
+  Future<void> _save(BuzzSequence result, HapticPlan? plan) async {
     final seq = _toSave(result, plan);
     final names = widget.patternNames;
     if (!_toPatterns || names == null || widget.onSaveNamed == null) {
@@ -221,8 +226,17 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
       setState(() => _nameError = 'Keep it under $kPatternNameMax characters.');
     } else if (names.any((n) => n.toLowerCase() == name.toLowerCase())) {
       setState(() => _nameError = 'A pattern with that name already exists.');
-    } else {
-      widget.onSaveNamed!(name, seq);
+    } else if (!_savingNamed) {
+      _savingNamed = true;
+      try {
+        await widget.onSaveNamed!(name, seq);
+      } catch (_) {
+        if (mounted) {
+          setState(() => _nameError = 'Could not save that pattern. Try again.');
+        }
+      } finally {
+        _savingNamed = false;
+      }
     }
   }
 
@@ -245,6 +259,7 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
             delayMs: st.delayMs,
           ),
       ],
+      bakedRuntimeMs: plan.runtimeMs,
     );
   }
 

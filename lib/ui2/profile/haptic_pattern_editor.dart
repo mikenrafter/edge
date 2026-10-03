@@ -11,7 +11,10 @@
 // haptics opset switch. Play sends exactly what is on the page to the band.
 // "Start from taps" fills the notes from a tapped rhythm. Save asks for a name
 // when the pattern is new, bakes the plan and hands the result to [onSave]; the
-// caller closes the page.
+// caller closes the page once the pattern is stored, and a failed save leaves
+// the page open with the pattern kept.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -20,6 +23,7 @@ import '../../gestures/hardware_probes.dart';
 import '../../gestures/pattern_transcript.dart';
 import '../../haptics/haptic_compiler.dart';
 import '../../haptics/haptic_profile.dart';
+import '../../haptics/pattern_store.dart' show kPatternNameMax;
 import '../../haptics/tap_notes.dart';
 import '../../notify/buzz_sequence.dart';
 import '../ui2.dart';
@@ -53,8 +57,10 @@ class HapticPatternEditorPage extends StatefulWidget {
   /// Plays a sequence on the band; true when it was sent.
   final Future<bool> Function(BuzzSequence) onPlay;
 
-  /// Called with the name and the sequence to store.
-  final void Function(String name, BuzzSequence s) onSave;
+  /// Called with the name and the sequence to store. The page stays open
+  /// until it completes; if it throws, the page says the save failed and keeps
+  /// the pattern for another try.
+  final FutureOr<void> Function(String name, BuzzSequence s) onSave;
 
   /// Lift the 10 s runtime cap.
   final bool allowLong;
@@ -84,6 +90,11 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
   bool _playing = false;
   bool? _played;
   bool _saved = false;
+  bool _saving = false;
+  bool _saveFailed = false;
+
+  // The name last asked for, offered again after a failed save.
+  String? _lastName;
 
   List<PatternEntry> get _entries => _s.active.entries;
 
@@ -130,6 +141,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
       change();
       _played = null;
       _saved = false;
+      _saveFailed = false;
       _recompute();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncWheel());
@@ -166,6 +178,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
             delayMs: st.delayMs,
           ),
       ],
+      bakedRuntimeMs: plan.runtimeMs,
     );
   }
 
@@ -205,17 +218,35 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
 
   Future<void> _save() async {
     final seq = _sequence();
-    if (seq == null) return;
+    if (seq == null || _saving) return;
     var name = widget.name;
     if (name == null) {
       name = await showDialog<String>(
         context: context,
-        builder: (_) => PatternNameDialog(taken: widget.existingNames),
+        builder: (_) => PatternNameDialog(
+          taken: widget.existingNames,
+          initial: _lastName,
+        ),
       );
       if (name == null || !mounted) return;
+      _lastName = name;
     }
-    widget.onSave(name, seq);
-    if (mounted) setState(() => _saved = true);
+    setState(() {
+      _saving = true;
+      _saveFailed = false;
+    });
+    var ok = true;
+    try {
+      await widget.onSave(name, seq);
+    } catch (_) {
+      ok = false;
+    }
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      _saveFailed = !ok;
+      _saved = ok;
+    });
   }
 
   @override
@@ -342,6 +373,11 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                           if (_played == false)
                             Text(
                               'The phone could not send it to the band.',
+                              style: F.cap.copyWith(color: p.on(C.red)),
+                            ),
+                          if (_saveFailed)
+                            Text(
+                              'Could not save that pattern. Try again.',
                               style: F.cap.copyWith(color: p.on(C.red)),
                             ),
                           if (_saved)
@@ -475,10 +511,16 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
   }
 }
 
-/// Asks for a name. Pops with the trimmed name, or null on Cancel; an empty or
-/// taken name keeps the dialog open and says why.
+/// Asks for a name. Pops with the trimmed name, or null on Cancel; an empty,
+/// taken or over-long ([kPatternNameMax]) name keeps the dialog open and says
+/// why.
 class PatternNameDialog extends StatefulWidget {
-  const PatternNameDialog({super.key, required this.taken, this.initial});
+  const PatternNameDialog({
+    super.key,
+    required this.taken,
+    this.initial,
+    this.message,
+  });
 
   /// Names that may not be used (compared without regard to case). A rename
   /// leaves the pattern's own name out, so only its case can change.
@@ -487,13 +529,17 @@ class PatternNameDialog extends StatefulWidget {
   /// The text the field starts with, for a rename.
   final String? initial;
 
+  /// Shown under the field from the start, for a name that was refused after
+  /// the dialog closed (the save failed).
+  final String? message;
+
   @override
   State<PatternNameDialog> createState() => _PatternNameDialogState();
 }
 
 class _PatternNameDialogState extends State<PatternNameDialog> {
   late final _field = TextEditingController(text: widget.initial);
-  String? _error;
+  late String? _error = widget.message;
 
   @override
   void dispose() {
@@ -505,6 +551,8 @@ class _PatternNameDialogState extends State<PatternNameDialog> {
     final name = _field.text.trim();
     if (name.isEmpty) {
       setState(() => _error = 'Give it a name.');
+    } else if (name.length > kPatternNameMax) {
+      setState(() => _error = 'Keep it under $kPatternNameMax characters.');
     } else if (widget.taken.any((t) => t.toLowerCase() == name.toLowerCase())) {
       setState(() => _error = 'A pattern with that name already exists.');
     } else {

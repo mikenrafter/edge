@@ -14,6 +14,7 @@ import 'package:flutter/foundation.dart' show listEquals;
 
 import '../gestures/pattern_transcript.dart';
 import '../notify/buzz_sequence.dart';
+import 'band_queue.dart';
 import 'haptic_compiler.dart';
 import 'haptic_profile.dart';
 import 'tap_notes.dart';
@@ -116,13 +117,7 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
   final cmds = <_Cmd>[];
   var felt = 0;
   for (final b in steps) {
-    HapticPhrase? match;
-    for (final ph in profile.phrases) {
-      if (ph.loop == b.loop && listEquals(ph.effects, b.effects)) {
-        match = ph;
-        break;
-      }
-    }
+    final match = _phraseOf(b, profile);
     final span = match == null ? _kUnknownMs : match.unitsMax * profile.unitMs;
     cmds.add(_Cmd(
       b.effects,
@@ -136,19 +131,66 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
   return _Resolved(cmds, felt);
 }
 
+// The phrase of [profile] a stored command is, if any.
+HapticPhrase? _phraseOf(BakedStep b, HapticDeviceProfile profile) {
+  for (final ph in profile.phrases) {
+    if (ph.loop == b.loop && listEquals(ph.effects, b.effects)) return ph;
+  }
+  return null;
+}
+
+/// How long the stored plan of [s] is felt at its longest, in ms: the runtime
+/// recorded when it was saved, else (a rule saved before that was recorded)
+/// worked out from [profile] as each command's longest span plus the longest
+/// rest the profile measured for its write delay. Null when there is no plan,
+/// or it cannot be worked out (no stored runtime, and no profile it was made
+/// for). A command or delay the profile does not know counts for what it
+/// plays: 3 s for the command, the delay itself for the rest.
+int? bakedRuntimeMsFor(BuzzSequence s, HapticDeviceProfile? profile) {
+  final steps = s.bakedSteps;
+  if (steps == null || steps.isEmpty) return null;
+  final stored = s.bakedRuntimeMs;
+  if (stored != null) return stored;
+  if (profile == null || s.profileId != profile.id) return null;
+  var total = 0;
+  for (var i = 0; i < steps.length; i++) {
+    final b = steps[i];
+    final ph = _phraseOf(b, profile);
+    total += ph == null ? _kUnknownMs : ph.unitsMax * profile.unitMs;
+    if (i == 0) continue;
+    var rest = -1;
+    for (final g in profile.gaps) {
+      if (g.delayMs == b.delayMs && g.maxUnits * profile.unitMs > rest) {
+        rest = g.maxUnits * profile.unitMs;
+      }
+    }
+    total += rest < 0 ? b.delayMs : rest;
+  }
+  return total;
+}
+
 // A rule's stored plan; else its notes compiled now; else its taps compiled.
 // Notes that are all mf came from taps, which carry no loudness, so they are
 // compiled with the same weight planForTaps uses (what the editor showed is
-// what plays); notes with any other dynamic are weighed for loudness. Null
-// when nothing compiles (no stored plan, and over [maxRuntime] or empty; a null
-// [maxRuntime] lifts the cap).
+// what plays); notes with any other dynamic are weighed for loudness. A stored
+// plan longer than [maxRuntime] is not played (it was saved with the cap
+// lifted): the notes, then the taps, are compiled under the cap as if there
+// were no stored plan. Null when nothing compiles (no stored plan, and over
+// [maxRuntime] or empty; a null [maxRuntime] lifts the cap).
 _Resolved? _resolve(
   BuzzSequence s,
   HapticDeviceProfile profile,
   Duration? maxRuntime,
 ) {
   final baked = _fromBaked(s, profile);
-  if (baked != null) return baked;
+  if (baked != null) {
+    final runtime = bakedRuntimeMsFor(s, profile);
+    if (maxRuntime == null ||
+        runtime == null ||
+        runtime <= maxRuntime.inMilliseconds) {
+      return baked;
+    }
+  }
   final notes = s.notes;
   if (notes != null && s.profileId == profile.id) {
     try {
@@ -233,15 +275,51 @@ int bandSequenceCommands(
 }
 
 /// How long the band may take to report its last command ended, after the last
-/// write of a compiled plan; zero for the per-tap path. The queue holds its
-/// slot this long (or until the ended event) so the next job does not write
-/// while the band still plays.
+/// write: a compiled plan's last phrase, or one buzz's playback
+/// ([kBandBuzzPlayback]) on the per-tap path. The queue holds its slot this
+/// long (or until the ended event) so the next job does not write while the
+/// band still plays.
 Duration bandSequenceSettle(
   BuzzSequence s,
   HapticDeviceProfile? profile, {
   Duration? maxRuntime = kMaxHapticRuntime,
 }) {
   final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
-  if (resolved == null || resolved.cmds.isEmpty) return Duration.zero;
+  if (resolved == null) return kBandBuzzPlayback;
+  if (resolved.cmds.isEmpty) return Duration.zero;
   return Duration(milliseconds: resolved.cmds.last.waitMs);
 }
+
+/// [deliverBandSequence] as one job of [queue]: the commands it will write are
+/// reserved up front, every write goes through the job's token (so it is
+/// counted when it happens, resets the ended signal, and is refused once the
+/// job has timed out), and the band is held through the last playback.
+Future<BuzzDelivery> deliverBandSequenceQueued(
+  BandHapticQueue queue,
+  BuzzSequence s, {
+  required HapticDeviceProfile? profile,
+  required Future<bool> Function() buzz,
+  Future<bool> Function(int holdMs)? buzzForDuration,
+  required Future<bool> Function(List<int> effects, int loop) writePattern,
+  required Future<bool> Function(Duration timeout) waitEnded,
+  required bool Function() isConnected,
+  Duration? maxRuntime = kMaxHapticRuntime,
+}) =>
+    queue.run(
+      (token) => deliverBandSequence(
+        s,
+        profile: profile,
+        buzz: () => token.write(buzz),
+        buzzForDuration: buzzForDuration == null
+            ? null
+            : (holdMs) => token.write(() => buzzForDuration(holdMs)),
+        writePattern: (effects, loop) =>
+            token.write(() => writePattern(effects, loop)),
+        waitEnded: waitEnded,
+        isConnected: () => !token.cancelled && isConnected(),
+        maxRuntime: maxRuntime,
+      ),
+      commands: bandSequenceCommands(s, profile, maxRuntime: maxRuntime),
+      timeout: bandSequenceTimeout(s, profile, maxRuntime: maxRuntime),
+      settle: bandSequenceSettle(s, profile, maxRuntime: maxRuntime),
+    );

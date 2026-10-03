@@ -193,6 +193,8 @@ void main() {
 const _notComponents = {
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
+  // Lifecycle only (opens the band queue's lab mode), draws nothing.
+  'LabSession',
   // Reads AppState from Provider; `SyncControl` is its pure half and is in
   // the gallery.
   'HomeSyncControl',

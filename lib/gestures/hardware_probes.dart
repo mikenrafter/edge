@@ -46,7 +46,8 @@ import 'dart:async';
 import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
 import '../ble/ble_state.dart' show AlarmPayloads;
-import '../haptics/band_queue.dart' show BandCommandLedger;
+import '../haptics/band_queue.dart'
+    show BandCommandLedger, BandReservation;
 
 import 'ecg_stream_readiness.dart';
 
@@ -130,9 +131,13 @@ class HapticProbe {
     List<HapticTrial>? trials,
     this.replyWait = const Duration(milliseconds: 3500),
     this.rest = const Duration(seconds: 2),
+    BandCommandLedger? ledger,
+    Future<bool> Function(Future<void> Function() body)? runLab,
   })  : _now = now ?? DateTime.now,
         _wait = wait ?? ((d) => Future<void>.delayed(d)),
-        trials = trials ?? defaultTrials {
+        trials = trials ?? defaultTrials,
+        _ledger = ledger ?? BandCommandLedger(),
+        _runLab = runLab {
     final total = this.trials.fold<int>(0, (n, t) => n + t.commands);
     if (total > maxCommands) {
       throw ArgumentError.value(
@@ -178,13 +183,28 @@ class HapticProbe {
   /// Rest after every trial: the motor cools, and trials do not overlap.
   final Duration rest;
 
+  /// The rolling command limit shared with the alert queue and the pattern
+  /// probe. A run reserves all its buzzes here before the first write and each
+  /// buzz turns one reservation into a write.
+  final BandCommandLedger _ledger;
+
+  /// Runs the whole run as a lab job in the band queue; false when the band
+  /// could not be had. Null: run at once.
+  final Future<bool> Function(Future<void> Function() body)? _runLab;
+  BandReservation? _room;
+
   bool _running = false;
   bool _stop = false;
+  bool _refused = false;
   DateTime? _trialStart;
   HapticTrialResult? _current;
   final List<HapticTrialResult> results = [];
 
   bool get running => _running;
+
+  /// True when the latest [run] was refused for lack of room in the rolling
+  /// limit (the reason is in the log); nothing was sent.
+  bool get refused => _refused;
 
   /// Stop after the current command; a pending question is the caller's to
   /// cancel.
@@ -204,38 +224,64 @@ class HapticProbe {
   /// Run every trial once. Returns the results (also kept in [results]).
   Future<List<HapticTrialResult>> run() async {
     if (_running) return results;
+    _refused = false;
+    results.clear();
+    final total = trials.fold<int>(0, (n, t) => n + t.commands);
+    final room = _ledger.reserve(total, _now());
+    if (room == null) {
+      _refused = true;
+      final secs =
+          (_ledger.waitFor(total, _now()).inMilliseconds / 1000).ceil();
+      step?.call('Buzz probe: resting the band; ready in $secs s '
+          '($maxCommands commands per ${BandCommandLedger.window.inMinutes} '
+          'minutes).');
+      return results;
+    }
+    _room = room;
     _running = true;
     _stop = false;
-    results.clear();
     try {
-      step?.call('Buzz probe: ${trials.length} trials, '
-          '${trials.fold<int>(0, (n, t) => n + t.commands)} short buzzes at '
-          'most, ${rest.inMilliseconds} ms rest after each.');
-      for (var i = 0; i < trials.length; i++) {
-        if (_stop || !isConnected()) break;
-        final r = await _runTrial(trials[i]);
-        results.add(r);
-        if (_stop) break;
-        // Nothing reached the band: there is nothing to feel, and buzzing on
-        // would only repeat the refusal.
-        if (r.commands.isNotEmpty &&
-            r.commands.every((c) => c.written != true)) {
+      Future<void> body() async {
+        step?.call('Buzz probe: ${trials.length} trials, '
+            '${trials.fold<int>(0, (n, t) => n + t.commands)} short buzzes at '
+            'most, ${rest.inMilliseconds} ms rest after each.');
+        for (var i = 0; i < trials.length; i++) {
+          if (_stop || !isConnected()) break;
+          final r = await _runTrial(trials[i]);
+          results.add(r);
+          if (_stop) break;
+          // Nothing reached the band: there is nothing to feel, and buzzing on
+          // would only repeat the refusal.
+          if (r.commands.isNotEmpty &&
+              r.commands.every((c) => c.written != true)) {
+            step?.call(r.summary);
+            step?.call('Buzz probe ended: the app sent no buzz in this trial '
+                '(see the reason above).');
+            return;
+          }
+          r.felt = await askFelt(trials[i], i);
           step?.call(r.summary);
-          step?.call('Buzz probe ended: the app sent no buzz in this trial '
-              '(see the reason above).');
-          return results;
+          if (i < trials.length - 1 && !_stop) await _wait(rest);
         }
-        r.felt = await askFelt(trials[i], i);
-        step?.call(r.summary);
-        if (i < trials.length - 1 && !_stop) await _wait(rest);
+        step?.call(_stop
+            ? 'Buzz probe stopped after ${results.length} trials.'
+            : !isConnected()
+                ? 'Buzz probe ended: the band is not connected.'
+                : 'Buzz probe finished.');
       }
-      step?.call(_stop
-          ? 'Buzz probe stopped after ${results.length} trials.'
-          : !isConnected()
-              ? 'Buzz probe ended: the band is not connected.'
-              : 'Buzz probe finished.');
+
+      // The run has the band to itself, ahead of waiting alerts.
+      final slot = _runLab;
+      if (slot == null) {
+        await body();
+      } else if (!await slot(body)) {
+        step?.call('Buzz probe ended: the band was busy; try again.');
+      }
       return results;
     } finally {
+      // What the run did not send (stopped, not connected) goes back.
+      _room?.release();
+      _room = null;
       _running = false;
       _current = null;
       _trialStart = null;
@@ -253,6 +299,8 @@ class HapticProbe {
       if (left > Duration.zero) await _wait(left);
       final c = HapticCommandResult(i, _now().difference(t0).inMilliseconds);
       r.commands.add(c);
+      // The write happens now: one reservation becomes a ledger write.
+      _room?.take(_now());
       // Not awaited: the next command goes out on schedule, not after this
       // write lands (the write queue serializes them anyway, and the measured
       // write times show it).
@@ -450,11 +498,13 @@ class PatternProbe {
     DateTime Function()? now,
     Future<void> Function(Duration)? wait,
     List<PatternTest>? tests,
-    List<DateTime>? writeLog,
+    BandCommandLedger? ledger,
+    Future<bool> Function(Future<void> Function() body)? runLab,
   })  : _now = now ?? DateTime.now,
         _wait = wait ?? ((d) => Future<void>.delayed(d)),
         tests = tests ?? defaultTests,
-        _writes = writeLog ?? <DateTime>[];
+        _ledger = ledger ?? BandCommandLedger(),
+        _runLab = runLab;
 
   /// Hardware health: at most this many commands in any [commandWindow].
   static const int maxCommandsPerWindow = BandCommandLedger.maxCommands;
@@ -490,9 +540,15 @@ class PatternProbe {
   final Future<void> Function(Duration) _wait;
   final List<PatternTest> tests;
 
-  /// When each command was written, oldest first. Pass the same list to the
-  /// next probe so closing and reopening the screen does not reset the limit.
-  final List<DateTime> _writes;
+  /// The rolling command limit. Pass the same ledger to the next probe (and to
+  /// the alert queue) so closing and reopening the screen does not reset it.
+  /// A play reserves its whole command count here before its first write.
+  final BandCommandLedger _ledger;
+
+  /// Runs a play as a lab job in the band queue (alone on the band, ahead of
+  /// waiting alerts); false when the band could not be had. Null: run at once.
+  final Future<bool> Function(Future<void> Function() body)? _runLab;
+  BandReservation? _room;
   PatternRefusal? _refusal;
   DateTime? _restUntil;
 
@@ -565,12 +621,11 @@ class PatternProbe {
       return null;
     }
     final now = _now();
-    _writes.removeWhere((w) => !w.add(commandWindow).isAfter(now));
-    final over = _writes.length + t.commands - maxCommandsPerWindow;
-    if (over > 0 && _writes.isNotEmpty) {
-      // Enough of the oldest writes must leave the window.
-      final until = _writes[(over - 1).clamp(0, _writes.length - 1)]
-          .add(commandWindow);
+    final room = _ledger.reserve(t.commands, now);
+    if (room == null) {
+      // Room must come back: the oldest writes leaving the window, or a
+      // reservation held by an alert or another probe being released.
+      final until = now.add(_ledger.waitFor(t.commands, now));
       final secs = (until.difference(now).inMilliseconds / 1000).ceil();
       _refuse(
         PatternRefusal.resting,
@@ -586,20 +641,38 @@ class PatternProbe {
     _running = true;
     _stop = false;
     _playStart = _now();
+    _room = room;
     try {
-      if (!await _coolDown()) {
-        step?.call('Pattern probe: stopped before the play.');
-        return null;
+      PatternTestResult? out;
+      Future<void> body() async {
+        // Events from before the band was ours do not belong to this play.
+        _playStart = _now();
+        if (!await _coolDown()) {
+          step?.call('Pattern probe: stopped before the play.');
+          return;
+        }
+        final r = await _runTest(t);
+        step?.call(_summary(r));
+        if (r.commands.isEmpty || r.commands.every((c) => !c.written)) {
+          step?.call('Pattern probe: the app sent no buzz in this play (see '
+              'the reason above).');
+          return;
+        }
+        out = r;
       }
-      final r = await _runTest(t);
-      step?.call(_summary(r));
-      if (r.commands.isEmpty || r.commands.every((c) => !c.written)) {
-        step?.call('Pattern probe: the app sent no buzz in this play (see '
-            'the reason above).');
-        return null;
+
+      // The play has the band to itself, ahead of waiting alerts.
+      final slot = _runLab;
+      if (slot == null) {
+        await body();
+      } else if (!await slot(body)) {
+        step?.call('Pattern probe: the band was busy; try the play again.');
       }
-      return r;
+      return out;
     } finally {
+      // What the play did not write (stopped, a failed write) goes back.
+      _room?.release();
+      _room = null;
       _running = false;
       _current = null;
       _testStart = null;
@@ -630,7 +703,14 @@ class PatternProbe {
     Future<bool> write(List<int> effects, int loop) async {
       final c = PatternCommandResult(effects, loop, ms());
       r.commands.add(c);
-      _writes.add(_now());
+      // One reserved command becomes a write stamped now; none left means no
+      // write (the budget was exactly the test's command count).
+      if (!(_room?.take(_now()) ?? false)) {
+        c.written = false;
+        c.writtenMs = ms();
+        c.reply ??= 'not written';
+        return false;
+      }
       _ended = false;
       _writeStart = _now();
       try {

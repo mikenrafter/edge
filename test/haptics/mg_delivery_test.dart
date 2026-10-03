@@ -23,6 +23,7 @@ import 'dart:io';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
+import 'package:openstrap_edge/haptics/band_queue.dart' show kBandBuzzPlayback;
 import 'package:openstrap_edge/haptics/haptic_compiler.dart';
 import 'package:openstrap_edge/haptics/haptic_player.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
@@ -399,10 +400,11 @@ void main() {
       expect(helper, isNotEmpty,
           reason: 'AppState needs Future<BuzzDelivery> '
               '_deliverBandSequence(BuzzSequence s)');
-      expect(helper, matches(RegExp(r'(?<![A-Za-z_])deliverBandSequence\(')));
+      expect(helper,
+          matches(RegExp(r'(?<![A-Za-z_])deliverBandSequenceQueued\(')));
       // The pattern write goes through the _bandBuzzPattern wrapper (the
       // audit guard names a `Future<bool> _bandBuzz...` line as allowed).
-      expect(helper, contains('_bandBuzzPattern('));
+      expect(helper, contains('_bandBuzzPattern'));
       expect(bodyOf(src, 'Future<bool> _bandBuzzPattern('),
           contains('engine.buzzMaverickPattern('));
       expect(helper, contains('profile:'));
@@ -470,7 +472,7 @@ void main() {
         final enclosed = enclosedByCall(
               code,
               m.start,
-              RegExp(r'\bdeliverBandSequence\('),
+              RegExp(r'\bdeliverBandSequenceQueued\('),
             ) ||
             enclosedByCall(code, m.start, RegExp(r'\bdispatch\('));
         expect(named || enclosed, isTrue,
@@ -496,12 +498,13 @@ void main() {
     });
 
     test('bandSequenceSettle: the last command\'s ended wait on a profile, '
-        'nothing without one', () {
+        'one buzz\'s playback without one', () {
       final plan = planForTaps(_twoHolds, _mg)!;
       final last = plan.steps.last.phrase;
       expect(bandSequenceSettle(_twoHolds, _mg),
           Duration(milliseconds: last.unitsMax * _mg.unitMs + 1500));
-      expect(bandSequenceSettle(_twoHolds, null), Duration.zero);
+      // The per-tap path holds the band through one buzz's playback (8AF).
+      expect(bandSequenceSettle(_twoHolds, null), kBandBuzzPlayback);
     });
 
     test('a rule that does not compile costs its taps', () {
@@ -512,7 +515,7 @@ void main() {
       );
       expect(planForTaps(long, _mg), isNull);
       expect(bandSequenceCommands(long, _mg), 5);
-      expect(bandSequenceSettle(long, _mg), Duration.zero);
+      expect(bandSequenceSettle(long, _mg), kBandBuzzPlayback);
     });
   });
 
@@ -545,10 +548,9 @@ void main() {
     test('every band haptic path runs inside a queue job', () {
       // The helper for the four rhythm call sites.
       final deliver = bodyOf(src, 'Future<BuzzDelivery> _deliverBandSequence(');
-      expect(deliver, contains('_runBandJob('));
-      expect(deliver, contains('bandSequenceCommands('));
-      expect(deliver, contains('bandSequenceTimeout('));
-      expect(deliver, contains('bandSequenceSettle('));
+      // The queued helper reserves the plan's commands and holds the band
+      // (pinned by behaviour in band_queue_safety_test.dart).
+      expect(deliver, contains('deliverBandSequenceQueued('));
       // The ECG touch counter and its failure buzz.
       expect(bodyOf(src, 'Future<bool> _ecgTapBuzz('), contains('_runBandJob('));
       expect(bodyOf(src, 'Future<bool> _ecgTapFailBuzz('),
@@ -587,7 +589,7 @@ void main() {
           probePattern + bodyOf(src, 'Future<bool> _probePattern(').length;
       final openers = [
         RegExp(r'\b_runBandJob\('),
-        RegExp(r'\bdeliverBandSequence\('),
+        RegExp(r'\bdeliverBandSequenceQueued\('),
         RegExp(r'\b_userBuzz\('),
         // Constructor arguments handed to objects that only buzz through the
         // dispatcher or the queue (pinned in the next tests).
@@ -614,9 +616,10 @@ void main() {
       expect(offenders, isEmpty, reason: offenders.join('\n'));
     });
 
-    test('the buzz probe records its writes in the shared ledger', () {
+    test('the buzz probe counts its writes through the probe\'s own '
+        'reservation, not a second record here', () {
       expect(bodyOf(src, 'Future<bool> _probeBuzz('),
-          contains('bandLedger.record('));
+          isNot(contains('bandLedger.record(')));
     });
 
     test('the notification relay is handed the queue, the delivery and its '

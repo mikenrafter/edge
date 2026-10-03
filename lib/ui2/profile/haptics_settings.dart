@@ -11,6 +11,7 @@
 // is the same screen as a pure function of its inputs, which is what the tests
 // pump.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:clock/clock.dart';
@@ -116,19 +117,21 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     }
   }
 
-  Future<void> _add(String name, BuzzSequence s) => _run(() async {
+  // Add and replace let a failure through: the screen that asked (the editor,
+  // the name dialog) is still open and says so, so the take is not lost.
+  Future<void> _add(String name, BuzzSequence s) async {
     final store = _store ?? await HapticPatternStore.load();
     store.add(name, s);
     await store.save();
     if (!mounted) return;
     setState(() => _store = store);
-  });
+  }
 
-  Future<void> _replace(String id, BuzzSequence s) => _run(() async {
+  Future<void> _replace(String id, BuzzSequence s) async {
     final store = _store ?? await HapticPatternStore.load();
     store.replace(id, s);
     await _commit(store, id, replacement: store.byId(id)!.sequence);
-  });
+  }
 
   Future<void> _rename(String id, String name) => _run(() async {
     final store = _store ?? await HapticPatternStore.load();
@@ -228,8 +231,10 @@ class HapticsSettingsView extends StatelessWidget {
   final Future<bool> Function(BuzzSequence) onPlay;
   final VoidCallback onBuzz, onDeviceLab;
   final ValueChanged<bool> onAllowLong;
-  final void Function(String name, BuzzSequence s) onAdd;
-  final void Function(String id, BuzzSequence s) onReplace;
+  /// Store a new pattern / replace one. They may complete later and throw: the
+  /// screen that asked stays open until they succeed.
+  final FutureOr<void> Function(String name, BuzzSequence s) onAdd;
+  final FutureOr<void> Function(String id, BuzzSequence s) onReplace;
   final void Function(String id, String name) onRename;
   final ValueChanged<String> onDelete;
 
@@ -353,7 +358,7 @@ class HapticsSettingsView extends StatelessWidget {
                       style: F.over.copyWith(color: p.ink3),
                     ),
                   Text(
-                    patternDetail(s.sequence),
+                    patternDetail(s.sequence, profile: profile),
                     style: F.over.copyWith(color: p.ink3),
                   ),
                 ],
@@ -546,9 +551,9 @@ class HapticsSettingsView extends StatelessWidget {
           onPlay: onPlay,
           allowLong: allowLong,
           existingNames: _names,
-          onSave: (name, seq) {
-            nav.pop();
-            onReplace(s.id, seq);
+          onSave: (name, seq) async {
+            await onReplace(s.id, seq);
+            if (nav.mounted) nav.pop();
           },
         ),
       ),
@@ -564,9 +569,19 @@ class HapticsSettingsView extends StatelessWidget {
       onPlay: onPlay,
       profile: profile,
       allowLong: allowLong,
-      onSave: (seq) => onReplace(s.id, seq),
+      onSave: (seq) async {
+        try {
+          await onReplace(s.id, seq);
+        } catch (_) {
+          if (c.mounted) _saveFailed(c);
+        }
+      },
     );
   }
+
+  void _saveFailed(BuildContext c) => ScaffoldMessenger.of(c).showSnackBar(
+    const SnackBar(content: Text('Could not save that change.')),
+  );
 
   Future<void> _rename(BuildContext c, SavedHapticPattern s) async {
     if (!c.mounted) return;
@@ -619,13 +634,30 @@ class HapticsSettingsView extends StatelessWidget {
       onPlay: onPlay,
       profile: profile,
       allowLong: allowLong,
+      // The sheet is closed by now; the take lives on in the name dialog,
+      // which asks again (with what was typed and why) until the pattern is
+      // stored or the wearer cancels.
       onSave: (seq) async {
-        if (!c.mounted) return;
-        final name = await showDialog<String>(
-          context: c,
-          builder: (_) => PatternNameDialog(taken: _names),
-        );
-        if (name != null) onAdd(name, seq);
+        String? name;
+        String? message;
+        while (true) {
+          if (!c.mounted) return;
+          name = await showDialog<String>(
+            context: c,
+            builder: (_) => PatternNameDialog(
+              taken: _names,
+              initial: name,
+              message: message,
+            ),
+          );
+          if (name == null) return;
+          try {
+            await onAdd(name, seq);
+            return;
+          } catch (_) {
+            message = 'Could not save that pattern. Try again.';
+          }
+        }
       },
     );
   }
@@ -641,9 +673,9 @@ class HapticsSettingsView extends StatelessWidget {
           onPlay: onPlay,
           allowLong: allowLong,
           existingNames: _names,
-          onSave: (name, seq) {
-            nav.pop();
-            onAdd(name, seq);
+          onSave: (name, seq) async {
+            await onAdd(name, seq);
+            if (nav.mounted) nav.pop();
           },
         ),
       ),
