@@ -214,6 +214,7 @@ class HardwareProbeRunner extends ChangeNotifier {
   void patternTap(int len) => _edit((s) => s.tap(len));
   void patternToggleKind() => _edit((s) => s.toggleKind());
   void patternDynamicTempo(bool on) => _edit((s) => s.dynamicTempo = on);
+  void patternDynamic(PatternDynamic d) => _edit((s) => s.setDynamic(d));
   void patternDelete() => _edit((s) => s.delete());
   void patternMove(int delta) => _edit((s) => s.moveCursor(delta));
   void patternRendition(int r) => _edit((s) => s.selectRendition(r));

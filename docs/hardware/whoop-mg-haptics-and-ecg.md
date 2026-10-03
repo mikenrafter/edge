@@ -168,6 +168,16 @@ everything into the lab log ("Copy all logs").
     march's start. A replay marches a playhead through your entries at that tempo from the first
     write plus the lead, so a mismatch between what you wrote and what the band
     plays shows up as the playhead drifting from what you feel.
+  - **16th notes and dynamics (8AA).** The unit is now a sixteenth, so the lengths
+    are 1, 2, 4, 6 and 8 units (16th, eighth, quarter, dotted quarter, half), a 4/4
+    bar is 16 units, and the page starts at 125 ms per unit (the old 250 ms eighth;
+    the fit is clamped to 50–400 ms and the log says `1 sixteenth ≈ N ms`). Every
+    note also gets a dynamic, ff, mf, mp or pp, which is how strongly you felt that
+    buzz, loudest to softest. It is your own judgement per note, not a setting sent
+    to the band; the point is to see whether the same effect feels different in
+    different places. Notes in the log read `N<length><dynamic>` and rests
+    `R<length>`: `N4mf R2 N1ff` is a quarter note at mf, an eighth rest, then a 16th
+    note at ff.
 
 Safety and hardware health: the buzz and pattern probes send only the band's
 own buzz command (RUN_HAPTIC_PATTERN_MAVERICK), through the alert dispatcher

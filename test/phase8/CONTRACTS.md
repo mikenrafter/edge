@@ -818,3 +818,37 @@ Builds on 8Y. Tests: `test/gestures/pattern_transcript_test.dart`,
   changes the cursor or the entries. A tap, toggle, delete, rendition or test switch,
   or a scroll cancels it. An empty active rendition does not march. All timers are
   cancelled on dispose and when the session closes.
+
+## 8AA: 16th notes and dynamics
+
+Builds on 8Z. Tests: `test/gestures/pattern_transcript_test.dart`,
+`test/hardware/pattern_probe_page_test.dart`, `pattern_probe_panel_test.dart`;
+`test/ui2_tokens_test.dart`.
+
+- **Lengths.** The unit is now a sixteenth. `kPatternLengths = [1, 2, 4, 6, 8]`: 16th,
+  eighth, quarter, dotted quarter, half (a 4/4 bar is 16 units). Any other length is an
+  `ArgumentError` from `append`, `replaceAt` and `tap`. `defaultUnitMs` 125 (the old
+  250 ms eighth); the fit clamp is 50-400; the log line is
+  `Pattern probe tempo: 1 sixteenth ≈ N ms (...)`. `march` is unchanged and unit-based.
+- **Dynamics.** `enum PatternDynamic { ff, mf, mp, pp }`, loudest to softest.
+  `PatternEntry.dynamic` is required for a note and null for a rest (`ArgumentError`
+  otherwise) and is part of `==`/`hashCode`. `code` is "N4mf R2 N1ff"; `prose` is
+  "quarter note mf, eighth rest, 16th note ff".
+- **Sticky selector.** `PatternEntrySession.nextDynamic` starts `mf`; test, rendition
+  and cursor changes leave it alone. `tap(len)` writes notes with it (rests none).
+  `setDynamic(d)` sets it and, when the cursor is on a note, changes that note too
+  (cursor unchanged); on a rest or the empty next slot it only sets the selector.
+  Runner: `patternDynamic(d)` (notifies).
+- **Page.** Footer, top to bottom: the dynamics row (`pattern-dyn-ff|mf|mp|pp`, bold
+  italic names, the chosen one outlined and `selected` in semantics, faded but still
+  active while the toggle is on Rest), five equal length buttons (`pattern-len-1|2|4|6|8`,
+  keyed by the 16th count, short labels 16th, 8th, 4th, 4th., Half; the symbol's
+  semantics say "16th note", "dotted quarter rest" and so on), then Note/Rest and
+  Delete. The 16th note has two flags and the 16th rest two hooks. Note rows show their
+  dynamic in bold italic. Dash k of a length (one per sixteenth) takes the colour of
+  the beat it falls in, `kPatternUnitColours[((k - 1) ~/ 4) % 4]`; rests at a third of
+  the saturation. The metronome dot has 16 steps: steps 1, 5, 9, 13 the beat colours
+  (A, C, D, E) at full strength, 3, 7, 11, 15 the same colour at a third of the
+  saturation, the even steps an outline; label "metronome step N of 16". The tempo
+  label reads "1 sixteenth = N ms" (+ " · fitted"). At 360 x 640 the footer is still
+  fully visible with 32 entries (header and footer gaps were tightened to fit).

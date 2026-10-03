@@ -1,4 +1,4 @@
-// 8Y/8Z: the pattern probe as a transcriber, runner half and entry point. The
+// 8Y/8Z/8AA: the pattern probe as a transcriber, runner half and entry point. The
 // runner opens a session (refusals, the session line), plays the current test
 // on demand, passes edits through to the entry session, and writes what was
 // transcribed into the lab log when it closes (or when Stop is pressed). The
@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
+import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/pattern_probe_page.dart';
@@ -279,23 +280,27 @@ void main() {
       expectNotified('tap', () => r.patternTap(2));
       expectNotified('tap', () => r.patternTap(1));
       expectNotified('tap', () => r.patternTap(4));
-      expect(s.rendition(0, 0).code, 'N2 R1 N4');
+      expect(s.rendition(0, 0).code, 'N2mf R1 N4mf');
       expect(s.cursor, 3);
 
       expectNotified('move', () => r.patternMove(-2));
       expect(s.cursor, 1);
-      r.patternTap(3);
-      expect(s.rendition(0, 0).code, 'N2 R3 N4', reason: 'replaced in place');
+      r.patternTap(6);
+      expect(
+        s.rendition(0, 0).code,
+        'N2mf R6 N4mf',
+        reason: 'replaced in place',
+      );
       expect(s.cursor, 2);
 
       expectNotified('delete', r.patternDelete);
-      expect(s.rendition(0, 0).code, 'N2 R3');
+      expect(s.rendition(0, 0).code, 'N2mf R6');
 
       expectNotified('rendition', () => r.patternRendition(1));
       expect(s.activeRendition, 1);
       r.patternTap(4);
-      expect(s.rendition(0, 1).code, 'N4');
-      expect(s.rendition(0, 0).code, 'N2 R3');
+      expect(s.rendition(0, 1).code, 'N4mf');
+      expect(s.rendition(0, 0).code, 'N2mf R6');
 
       expectNotified('next test', () => r.patternTest(1));
       expect(s.testIndex, 1);
@@ -330,7 +335,7 @@ void main() {
       r.patternDynamicTempo(false);
       expect(heard, greaterThan(before), reason: 'the switch notifies');
       expect(s.dynamicTempo, isFalse);
-      expect(s.unitMs, 250);
+      expect(s.unitMs, 125);
       before = heard;
       r.patternDynamicTempo(true);
       expect(heard, greaterThan(before));
@@ -341,6 +346,41 @@ void main() {
       final closed = _runner(DeviceLabLog());
       closed.patternToggleKind();
       closed.patternDynamicTempo(false);
+      expect(closed.pattern, isNull);
+    });
+
+    testWidgets('the dynamic passes through and notifies; a note tap writes '
+        'it', (t) async {
+      final r = _runner(DeviceLabLog());
+      await r.openPattern();
+      final s = r.pattern!;
+      var heard = 0;
+      r.addListener(() => heard++);
+      expect(s.nextDynamic, PatternDynamic.mf);
+
+      var before = heard;
+      r.patternDynamic(PatternDynamic.ff);
+      expect(heard, greaterThan(before), reason: 'the dynamic notifies');
+      expect(s.nextDynamic, PatternDynamic.ff);
+      r.patternTap(4);
+      r.patternTap(2);
+      r.patternTap(1);
+      expect(s.rendition(0, 0).code, 'N4ff R2 N1ff');
+
+      // On a note under the cursor it edits that note.
+      r.patternMove(-3);
+      expect(s.cursor, 0);
+      before = heard;
+      r.patternDynamic(PatternDynamic.pp);
+      expect(heard, greaterThan(before));
+      expect(s.rendition(0, 0).code, 'N4pp R2 N1ff');
+      expect(s.cursor, 0);
+      expect(s.nextDynamic, PatternDynamic.pp);
+
+      // With nothing open it does nothing.
+      r.closePattern();
+      final closed = _runner(DeviceLabLog());
+      closed.patternDynamic(PatternDynamic.pp);
       expect(closed.pattern, isNull);
     });
 
@@ -397,11 +437,11 @@ void main() {
         expect(r.patternPlaying, isFalse);
         expect(s.plays(test), 1);
       }
-      // 1200 ms over 4 units: 300 ms a unit.
+      // 1200 ms over 4 sixteenths: 300 ms a unit.
       expect(s.fittedUnitMs(), inInclusiveRange(295, 305));
       expect(s.unitMs, inInclusiveRange(295, 305));
       r.patternDynamicTempo(false);
-      expect(s.unitMs, 250);
+      expect(s.unitMs, 125);
       r.closePattern();
     });
 
@@ -510,7 +550,7 @@ void main() {
         expect(s.plays(test), 1);
       }
       expect(s.fittedUnitMs(), isNull);
-      expect(s.unitMs, 250);
+      expect(s.unitMs, 125);
       r.closePattern();
     });
 
@@ -532,7 +572,7 @@ void main() {
       await t.pump(const Duration(seconds: 10));
       expect(r.pattern!.plays(0), 2);
       r.patternTest(1);
-      r.patternTap(3);
+      r.patternTap(6);
       expect(r.pattern!.testIndex, 1);
 
       r.closePattern();
@@ -542,12 +582,16 @@ void main() {
       final log = lab.steps.join('\n');
       expect(log, contains('Pattern probe heard 1/40'));
       expect(log, contains('Pattern probe heard 2/40'));
-      expect(log, contains('A = note 2, rest 1, note 4 (N2 R1 N4)'));
-      expect(log, contains('A = note 3 (N3)'));
+      expect(
+        log,
+        contains('A = eighth note mf, 16th rest, quarter note mf '
+            '(N2mf R1 N4mf)'),
+      );
+      expect(log, contains('A = dotted quarter note mf (N6mf)'));
       expect(log, contains('Pattern probe tempo: '));
       expect(
         log,
-        contains('1 unit ≈ 250 ms (fixed)'),
+        contains('1 sixteenth ≈ 125 ms (fixed)'),
         reason: 'no play measured a span',
       );
       expect(

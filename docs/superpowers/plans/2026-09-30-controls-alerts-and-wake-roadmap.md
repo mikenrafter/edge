@@ -883,6 +883,22 @@ The wearer wanted to write repeats and longer silences, and to hear the tempo.
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (units and tempo fit);
   `test/phase8/CONTRACTS.md` (8Z).
 
+### 8AA — 16th notes and dynamics
+
+The wearer wanted 16th notes and the dynamics ff, mf, mp and pp.
+
+- The unit becomes a sixteenth (125 ms by default; a 4/4 bar is 16 steps). A fifth
+  length button writes a 16th, beside eighth, quarter, dotted quarter and half
+  (lengths 1, 2, 4, 6, 8 sixteenths). Dashes are one per sixteenth, coloured by the
+  beat they fall in.
+- Every note carries a dynamic from a sticky selector (default mf) above the length
+  buttons; picking one with the cursor on a note changes that note. Rests have none.
+  The log codes read "N4mf R2 N1ff".
+- The metronome has 16 steps: the beat colour on each quarter, the same colour faint
+  on each "and", dark between.
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md` (the 16th unit and the codes);
+  `test/phase8/CONTRACTS.md` (8AA).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

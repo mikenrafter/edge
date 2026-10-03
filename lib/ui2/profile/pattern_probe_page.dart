@@ -1,9 +1,12 @@
 // Pattern probe page (8Y/8Z) — the transcriber the wearer taps.
 //
 // The band plays one test on demand. The wearer writes down what they felt in
-// music terms: notes and rests of length 1 to 4. One unit is an eighth, so a
-// length of 1, 2, 3, 4 is an eighth, quarter, dotted quarter, half, drawn as
-// the matching note or rest symbol above one coloured dash per unit. A
+// music terms: notes and rests. One unit is a sixteenth, so a length of 1, 2,
+// 4, 6, 8 is a 16th, eighth, quarter, dotted quarter, half, drawn as the
+// matching note or rest symbol above one coloured dash per sixteenth (the
+// colour is the beat the sixteenth falls in). Every note also has a dynamic,
+// ff, mf, mp or pp, picked on a row above the length buttons and sticky until
+// changed; with the cursor on a note, picking one changes that note. A
 // Note/Rest toggle flips after every tap and can be overridden, so two notes or
 // two rests can sit next to each other. The entries sit on a wheel; the centred
 // one is the cursor, so scrolling goes back and forward through them and a
@@ -11,8 +14,8 @@
 // B) per test, because the band may not play a pattern the same way twice. The
 // footer stays on screen whatever the list does.
 //
-// A metronome dot steps once per unit (4/4: eight steps to a bar, a coloured
-// step on each quarter and a rest between). When Play is pressed on a rendition
+// A metronome dot steps once per unit (4/4: sixteen steps to a bar, the beat's
+// colour on each quarter, the same colour faint on each "and", dark between). When Play is pressed on a rendition
 // that already has entries, a playhead marches through them on the same
 // schedule, from the moment the first write landed plus the measured Bluetooth
 // lead, and the dot restarts at that instant. The march never moves the cursor;
@@ -31,12 +34,12 @@ import '../../gestures/hardware_probes.dart';
 import '../../gestures/pattern_transcript.dart';
 import '../ui2.dart';
 
-/// The metronome's four coloured steps A, C, D, E. The dot and the dashes both
-/// read this, so they cannot drift apart: dash k uses colour k.
+/// The metronome's four beat colours A, C, D, E. The dot and the dashes both
+/// read this, so they cannot drift apart: a sixteenth in beat b uses colour b.
 const List<Color> kPatternUnitColours = [C.blue, C.green, C.orange, C.purple];
 
 /// Steps in one 4/4 bar.
-const int _barSteps = 8;
+const int _barSteps = 16;
 
 class PatternProbePage extends StatefulWidget {
   const PatternProbePage({super.key, required this.runner});
@@ -53,7 +56,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
   // length must not.
   bool _userScrolling = false;
 
-  // The metronome: a step 0 to 7, ticking every unit.
+  // The metronome: a step 0 to 15, ticking every unit.
   Timer? _tick;
   int _tickMs = 0;
   int _step = 0;
@@ -262,7 +265,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
                   step: _step,
                 ),
               ),
-              const SizedBox(height: S.x2),
+              const SizedBox(height: S.x1),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: S.x4),
                 child: Text(
@@ -301,6 +304,9 @@ class _PatternProbePageState extends State<PatternProbePage> {
                           length: i < active.length
                               ? active.entries[i].length
                               : null,
+                          dynamic: i < active.length
+                              ? active.entries[i].dynamic
+                              : null,
                           selected: i == s.cursor,
                           playing: i == _head,
                         ),
@@ -310,7 +316,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
               ),
               Container(
                 color: p.card,
-                padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x2),
+                padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, S.x1),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -321,11 +327,30 @@ class _PatternProbePageState extends State<PatternProbePage> {
                       'leaving this screen stops it.',
                       style: F.cap.copyWith(color: p.ink2, height: 1.3),
                     ),
-                    const SizedBox(height: S.x2),
+                    const SizedBox(height: S.x1),
                     Row(
                       children: [
-                        for (var n = 1; n <= 4; n++) ...[
-                          if (n > 1) const SizedBox(width: S.x2),
+                        for (final d in PatternDynamic.values) ...[
+                          if (d != PatternDynamic.values.first)
+                            const SizedBox(width: S.x2),
+                          Expanded(
+                            child: _DynamicButton(
+                              key: ValueKey('pattern-dyn-${d.name}'),
+                              dynamic: d,
+                              selected: d == s.nextDynamic,
+                              dim: !noteNext,
+                              onTap: () => r.patternDynamic(d),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: S.x1),
+                    Row(
+                      children: [
+                        for (final n in kPatternLengths) ...[
+                          if (n != kPatternLengths.first)
+                            const SizedBox(width: S.x1),
                           Expanded(
                             child: _LengthButton(
                               key: ValueKey('pattern-len-$n'),
@@ -337,7 +362,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
                         ],
                       ],
                     ),
-                    const SizedBox(height: S.x2),
+                    const SizedBox(height: S.x1),
                     Row(
                       children: [
                         Expanded(
@@ -429,7 +454,7 @@ class _Header extends StatelessWidget {
           textAlign: TextAlign.center,
           style: F.cap.copyWith(color: p.ink2, height: 1.3),
         ),
-        const SizedBox(height: S.x2),
+        const SizedBox(height: S.x1),
         Row(
           children: [
             _MetronomeDot(step: step),
@@ -470,7 +495,7 @@ class _Header extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                '1 = ${session.unitMs} ms${fitted ? ' · fitted' : ''}',
+                '1 sixteenth = ${session.unitMs} ms${fitted ? ' · fitted' : ''}',
                 style: F.cap.copyWith(color: p.ink2),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -500,8 +525,9 @@ class _Header extends StatelessWidget {
   }
 }
 
-/// The metronome: one dot, a solid colour on steps 1, 3, 5, 7 (A, C, D, E) and
-/// an outline between. It does not animate between steps.
+/// The metronome: one dot. Steps 1, 5, 9, 13 are the beat colours (A, C, D, E)
+/// at full strength, steps 3, 7, 11, 15 the same colour at a third of the
+/// saturation, and the even steps an outline. It does not animate.
 class _MetronomeDot extends StatelessWidget {
   const _MetronomeDot({required this.step});
   final int step;
@@ -520,7 +546,7 @@ class _MetronomeDot extends StatelessWidget {
           decoration: step.isEven
               ? BoxDecoration(
                   shape: BoxShape.circle,
-                  color: kPatternUnitColours[step ~/ 2],
+                  color: _beatColour(step ~/ 4, note: step % 4 == 0),
                 )
               : BoxDecoration(
                   shape: BoxShape.circle,
@@ -558,19 +584,31 @@ class _StepButton extends StatelessWidget {
   }
 }
 
-const _lengthNames = ['eighth', 'quarter', 'dotted quarter', 'half'];
+const _lengthNames = {
+  1: '16th',
+  2: 'eighth',
+  4: 'quarter',
+  6: 'dotted quarter',
+  8: 'half',
+};
 
-/// Dash [k] (1-based) of a length: the metronome's colour k, at a third of the
-/// saturation for a rest.
-Color _dashColour(int k, bool note) {
-  final c = kPatternUnitColours[k - 1];
+/// What a length button shows; the long name goes in its semantics.
+const _lengthShort = {1: '16th', 2: '8th', 4: '4th', 6: '4th.', 8: 'Half'};
+
+/// Beat [b]'s colour, at a third of the saturation unless [note].
+Color _beatColour(int b, {required bool note}) {
+  final c = kPatternUnitColours[b % kPatternUnitColours.length];
   if (note) return c;
   final hsl = HSLColor.fromColor(c);
   return hsl.withSaturation(hsl.saturation / 3).toColor();
 }
 
+/// Dash [k] (1-based) of a length: the colour of the beat it falls in (four
+/// sixteenths to a beat), at a third of the saturation for a rest.
+Color _dashColour(int k, bool note) => _beatColour((k - 1) ~/ 4, note: note);
+
 /// A length as music: the note or rest symbol above one coloured dash per
-/// unit.
+/// sixteenth.
 class _Notation extends StatelessWidget {
   const _Notation({required this.length, required this.note});
   final int length;
@@ -583,7 +621,8 @@ class _Notation extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Semantics(
-          label: '${_lengthNames[length - 1]} ${note ? 'note' : 'rest'}',
+          label: '${_lengthNames[length]} '
+              '${note ? 'note' : 'rest'}',
           child: CustomPaint(
             key: const ValueKey('pattern-symbol'),
             size: const Size(24, 28),
@@ -595,9 +634,9 @@ class _Notation extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             for (var k = 1; k <= length; k++) ...[
-              if (k > 1) const SizedBox(width: S.x1),
+              if (k > 1) const SizedBox(width: 2),
               SizedBox(
-                width: S.x4,
+                width: 4,
                 height: S.x1,
                 child: DecoratedBox(
                   key: ValueKey('dash-$k'),
@@ -615,7 +654,7 @@ class _Notation extends StatelessWidget {
   }
 }
 
-/// Draws an eighth, quarter, dotted quarter or half note, or the matching
+/// Draws a 16th, eighth, quarter, dotted quarter or half note, or the matching
 /// rest, in a 24 x 28 box. Painted, not a font glyph: Android fonts may not
 /// have the music block.
 class _SymbolPainter extends CustomPainter {
@@ -652,24 +691,44 @@ class _SymbolPainter extends CustomPainter {
       ..translate(cx, cy)
       ..rotate(-0.35);
     // A half note's head is hollow; the others are filled.
-    canvas.drawOval(head, length == 4 ? line : fill);
+    canvas.drawOval(head, length == 8 ? line : fill);
     canvas.restore();
     const stemX = cx + 4.4;
     canvas.drawLine(const Offset(stemX, cy - 1), const Offset(stemX, 2), line);
+    // An eighth has one flag, a 16th two.
+    if (length == 2) _flag(canvas, line, stemX, 2.5, 1);
     if (length == 1) {
-      canvas.drawPath(
-        Path()
-          ..moveTo(stemX, 2.5)
-          ..cubicTo(stemX + 2, 9, stemX + 9, 10, stemX + 5, 18),
-        line,
-      );
+      _flag(canvas, line, stemX, 2.5, .6);
+      _flag(canvas, line, stemX, 9, .6);
     }
-    if (length == 3) canvas.drawCircle(const Offset(cx + 11, cy - 1), 1.7, fill);
+    if (length == 6) canvas.drawCircle(const Offset(cx + 11, cy - 1), 1.7, fill);
+  }
+
+  void _flag(Canvas canvas, Paint line, double x, double y, double k) {
+    canvas.drawPath(
+      Path()
+        ..moveTo(x, y)
+        ..cubicTo(x + 2, y + 6.5 * k, x + 9, y + 7.5 * k, x + 5, y + 15.5 * k),
+      line,
+    );
   }
 
   void _paintRest(Canvas canvas, Paint fill, Paint line) {
     switch (length) {
       case 1:
+        // A 16th rest: two dots with hooks on a slanted stem.
+        canvas.drawCircle(const Offset(8, 9), 2.3, fill);
+        canvas.drawCircle(const Offset(6, 16), 2.3, fill);
+        canvas.drawPath(
+          Path()
+            ..moveTo(8, 9)
+            ..quadraticBezierTo(12, 11, 15, 5)
+            ..lineTo(8, 27)
+            ..moveTo(6, 16)
+            ..quadraticBezierTo(10, 18, 13, 12),
+          line,
+        );
+      case 2:
         // An eighth rest: a dot with a flag on a slanted stem.
         canvas.drawCircle(const Offset(8, 9), 2.3, fill);
         canvas.drawPath(
@@ -679,12 +738,12 @@ class _SymbolPainter extends CustomPainter {
             ..lineTo(9, 25),
           line,
         );
-      case 4:
+      case 8:
         // A half rest: a block sitting on the line.
         canvas.drawLine(const Offset(3, 15), const Offset(21, 15), line);
         canvas.drawRect(const Rect.fromLTRB(7, 9.5, 17, 14.5), fill);
       default:
-        // A quarter rest (dotted for 3): the zigzag.
+        // A quarter rest (dotted for 6): the zigzag.
         canvas.drawPath(
           Path()
             ..moveTo(8, 3)
@@ -694,7 +753,7 @@ class _SymbolPainter extends CustomPainter {
             ..cubicTo(8, 20, 7, 27, 12.5, 26),
           line,
         );
-        if (length == 3) canvas.drawCircle(const Offset(19, 11), 1.7, fill);
+        if (length == 6) canvas.drawCircle(const Offset(19, 11), 1.7, fill);
     }
   }
 
@@ -718,14 +777,13 @@ class _LengthButton extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final label = '${note ? 'Note' : 'Rest'} $length';
+    final label = '${_lengthNames[length]} ${note ? 'note' : 'rest'}';
     return Pressable(
       onTap: onTap,
       semanticLabel: label,
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.symmetric(vertical: S.x2),
+        padding: const EdgeInsets.symmetric(vertical: S.x1, horizontal: 2),
         decoration: BoxDecoration(
           color: p.wash(note ? C.blue : C.n400),
           borderRadius: R.rMd,
@@ -736,11 +794,64 @@ class _LengthButton extends StatelessWidget {
             _Notation(length: length, note: note),
             const SizedBox(height: S.x1),
             Text(
-              label,
+              _lengthShort[length]!,
               style: F.cap.copyWith(color: p.ink, fontWeight: FontWeight.w600),
               maxLines: 1,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One dynamics button. The chosen one is outlined and washed; while the toggle
+/// is on Rest they all look faded, but they still work (the choice is kept for
+/// the next note).
+class _DynamicButton extends StatelessWidget {
+  const _DynamicButton({
+    super.key,
+    required this.dynamic,
+    required this.selected,
+    required this.dim,
+    required this.onTap,
+  });
+  final PatternDynamic dynamic;
+  final bool selected;
+  final bool dim;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Semantics(
+      selected: selected,
+      child: Pressable(
+        onTap: onTap,
+        semanticLabel: 'Dynamic ${dynamic.name}',
+        child: Opacity(
+          opacity: dim ? .45 : 1,
+          child: Container(
+            width: double.infinity,
+            height: S.tap,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? p.wash(C.blue) : p.card,
+              borderRadius: R.rMd,
+              border: Border.all(
+                color: selected ? C.blue : p.ink3,
+                width: selected ? 2 : 1,
+              ),
+            ),
+            child: Text(
+              dynamic.name,
+              style: F.body.copyWith(
+                color: p.ink,
+                fontWeight: FontWeight.w700,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -754,12 +865,14 @@ class _EntryRow extends StatelessWidget {
     required this.index,
     required this.note,
     required this.length,
+    required this.dynamic,
     required this.selected,
     required this.playing,
   });
   final int index;
   final bool note;
   final int? length;
+  final PatternDynamic? dynamic;
   final bool selected;
   final bool playing;
 
@@ -768,7 +881,10 @@ class _EntryRow extends StatelessWidget {
     final p = P.of(c);
     final kind = note ? 'Note' : 'Rest';
     final label = length == null ? 'Next entry ($kind)' : kind;
-    final said = length == null ? label : '$label $length, entry ${index + 1}';
+    final said = length == null
+        ? label
+        : '${_lengthNames[length]} ${note ? 'note' : 'rest'}'
+              '${dynamic == null ? '' : ' ${dynamic!.name}'}, entry ${index + 1}';
     return Semantics(
       selected: selected,
       label: playing ? 'playing entry ${index + 1}, $said' : said,
@@ -807,6 +923,17 @@ class _EntryRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
+            if (dynamic != null) ...[
+              Text(
+                dynamic!.name,
+                style: F.body.copyWith(
+                  color: p.ink,
+                  fontWeight: FontWeight.w700,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(width: S.x3),
+            ],
             if (length != null) _Notation(length: length!, note: note),
           ],
         ),

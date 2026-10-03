@@ -1,21 +1,31 @@
-// 8Y/8Z: the pattern probe page, the transcriber the wearer taps. A header with
-// the test, Play, a metronome dot and the A / B renditions, a wheel of note and
-// rest entries with the cursor in the middle, and a footer (Note/Rest toggle,
-// Delete, 1-4 length buttons) that stays on screen. Fake async time: the
-// probe's real waits are pumped, not slept.
+// 8Y/8Z/8AA: the pattern probe page, the transcriber the wearer taps. A header
+// with the test, Play, a metronome dot and the A / B renditions, a wheel of note
+// and rest entries with the cursor in the middle, and a footer (dynamics row,
+// five length buttons, Note/Rest toggle, Delete) that stays on screen. The unit
+// is a sixteenth (125 ms). Fake async time: the probe's real waits are pumped,
+// not slept.
 //
 // Contracts these tests rely on that the spec leaves open:
+//  - the length buttons are keyed `pattern-len-1`, `-2`, `-4`, `-6`, `-8` by
+//    their 16th count; the dynamics buttons `pattern-dyn-ff`, `-mf`, `-mp`,
+//    `-pp`. A dynamics button shows its name in a Text (bold, italic); the
+//    selected one has the semantics "selected" flag. Only that flag and the
+//    text style are tested, not how a disabled-looking button is drawn.
+//  - a note row in the wheel shows its dynamic as a Text with the same name,
+//    bold and italic; rest rows and the empty next slot show none.
 //  - `pattern-metronome` is on the Semantics node labelled "metronome step N of
-//    8" (N 1..8, step 1 = A); the dot is a DecoratedBox below it whose
-//    BoxDecoration.color is a solid colour on odd steps and null/transparent
-//    on even steps. The colour does not animate.
+//    16" (N 1..16, one per sixteenth); the dot is a DecoratedBox below it whose
+//    BoxDecoration.color is the beat colour at full strength on steps 1, 5, 9,
+//    13, the same colour at a third of the saturation on steps 3, 7, 11, 15
+//    and null/transparent on the even steps. The colour does not animate.
 //  - `pattern-dynamic-tempo` is a Switch, or holds one.
 //  - note/rest symbols (8Z, F): inside each length button and wheel row there
 //    is one widget keyed `pattern-symbol` (a CustomPaint at its root) with a
 //    Semantics label such as "quarter note" or "dotted quarter rest" (the row
 //    label is swallowed by the row's own Semantics, so only the buttons are
-//    read); the dashes are keyed `dash-1`..`dash-N` (one per unit) and hold a
-//    DecoratedBox whose BoxDecoration.color is the dash colour.
+//    read); the dashes are keyed `dash-1`..`dash-N` (one per sixteenth) and
+//    hold a DecoratedBox whose BoxDecoration.color is the dash colour: beat
+//    colour ((k - 1) ~/ 4) % 4 of the dot, a third of the saturation for rests.
 //  - `pattern-kind` shows the text "Note" or "Rest".
 //  - the march (8Z, G): the playhead is the widget keyed `pattern-playhead` on
 //    the playing wheel row; the row's Semantics label says "playing entry N".
@@ -24,6 +34,7 @@
 //    entry's window rather than its edges.
 
 import 'dart:async';
+import 'dart:ui' show Tristate;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,6 +68,11 @@ HardwareProbeRunner _runner(
 );
 
 const _tall = Size(390, 844);
+
+/// The five length buttons by their 16th count, and what each is called.
+const _lens = [1, 2, 4, 6, 8];
+const _lenNames = ['16th', 'eighth', 'quarter', 'dotted quarter', 'half'];
+const _dyns = ['ff', 'mf', 'mp', 'pp'];
 
 Future<HardwareProbeRunner> _open(
   WidgetTester t,
@@ -103,10 +119,8 @@ void main() {
       'pattern-rendition-a',
       'pattern-rendition-b',
       'pattern-wheel',
-      'pattern-len-1',
-      'pattern-len-2',
-      'pattern-len-3',
-      'pattern-len-4',
+      for (final n in _lens) 'pattern-len-$n',
+      for (final d in _dyns) 'pattern-dyn-$d',
       'pattern-kind',
       'pattern-delete',
       'pattern-metronome',
@@ -136,7 +150,8 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('1 = 250 ms'), findsOneWidget);
+    expect(find.text('1 sixteenth = 125 ms'), findsOneWidget);
+    expect(find.text('1 = 250 ms'), findsNothing);
     expect(find.text('Dynamic tempo'), findsOneWidget);
     r.closePattern();
   });
@@ -148,8 +163,9 @@ void main() {
     await _tapKey(t, 'pattern-len-2');
     await _tapKey(t, 'pattern-len-1');
     await _tapKey(t, 'pattern-len-4');
-    // Nothing repeats yet, the toggle alternates: note, rest, note.
-    expect(r.pattern!.rendition(0, 0).code, 'N2 R1 N4');
+    // Nothing repeats yet, the toggle alternates: note, rest, note. Notes carry
+    // the selected dynamic (mf by default), rests none.
+    expect(r.pattern!.rendition(0, 0).code, 'N2mf R1 N4mf');
     expect(r.pattern!.cursor, 3);
     expect(find.text('Note'), findsWidgets);
     expect(find.text('Rest'), findsWidgets);
@@ -157,23 +173,21 @@ void main() {
     expect(find.text('Gap'), findsNothing);
     // Delete at the empty slot removes the last entry.
     await _tapKey(t, 'pattern-delete');
-    expect(r.pattern!.rendition(0, 0).code, 'N2 R1');
+    expect(r.pattern!.rendition(0, 0).code, 'N2mf R1');
     r.closePattern();
   });
 
   testWidgets('the footer stays on screen when the list is long', (t) async {
     final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
     for (var i = 0; i < 32; i++) {
-      r.patternTap(1 + i % 4);
+      r.patternTap(_lens[i % 5]);
     }
     await t.pump(const Duration(milliseconds: 600));
     expect(r.pattern!.rendition(0, 0).code.split(' '), hasLength(32));
     final screen = Offset.zero & const Size(360, 640);
     for (final k in [
-      'pattern-len-1',
-      'pattern-len-2',
-      'pattern-len-3',
-      'pattern-len-4',
+      for (final n in _lens) 'pattern-len-$n',
+      for (final d in _dyns) 'pattern-dyn-$d',
       'pattern-kind',
       'pattern-delete',
     ]) {
@@ -198,10 +212,10 @@ void main() {
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-len-1');
     await _tapKey(t, 'pattern-len-2');
-    await _tapKey(t, 'pattern-len-3');
+    await _tapKey(t, 'pattern-len-4');
     final s = r.pattern!;
     expect(s.cursor, 3, reason: 'on the empty next slot');
-    expect(s.active.code, 'N1 R2 N3');
+    expect(s.active.code, 'N1mf R2 N4mf');
 
     final wheel = find.byKey(const ValueKey('pattern-wheel'));
     await t.drag(wheel, const Offset(0, 300));
@@ -213,10 +227,10 @@ void main() {
       reason: 'dragging down goes back to earlier entries',
     );
 
-    await _tapKey(t, 'pattern-len-4');
+    await _tapKey(t, 'pattern-len-6');
     final entries = s.rendition(0, 0).code.split(' ');
     expect(entries, hasLength(3), reason: 'replaced, not appended');
-    expect(entries[c].substring(1), '4');
+    expect(entries[c].substring(1), startsWith('6'));
     expect(
       [
         for (var i = 0; i < 3; i++)
@@ -224,7 +238,7 @@ void main() {
       ],
       [
         for (var i = 0; i < 3; i++)
-          if (i != c) ['N1', 'R2', 'N3'][i],
+          if (i != c) ['N1mf', 'R2', 'N4mf'][i],
       ],
       reason: 'the other entries are untouched',
     );
@@ -240,10 +254,10 @@ void main() {
     await _tapKey(t, 'pattern-len-1');
     await _tapKey(t, 'pattern-rendition-b');
     expect(r.pattern!.activeRendition, 1);
-    await _tapKey(t, 'pattern-len-3');
+    await _tapKey(t, 'pattern-len-4');
     await _tapKey(t, 'pattern-len-2');
-    expect(r.pattern!.rendition(0, 1).code, 'N3 R2');
-    expect(r.pattern!.rendition(0, 0).code, 'N1');
+    expect(r.pattern!.rendition(0, 1).code, 'N4mf R2');
+    expect(r.pattern!.rendition(0, 0).code, 'N1mf');
     await _tapKey(t, 'pattern-rendition-a');
     expect(r.pattern!.activeRendition, 0);
     r.closePattern();
@@ -280,20 +294,27 @@ void main() {
     r.closePattern();
   });
 
-  /// The label each length button shows now.
-  List<String> footerLabels(WidgetTester t) => [
-    for (var n = 1; n <= 4; n++)
-      t
-          .widgetList<Text>(
-            find.descendant(
-              of: find.byKey(ValueKey('pattern-len-$n')),
-              matching: find.byType(Text),
-            ),
-          )
-          .map((w) => w.data)
-          .whereType<String>()
-          .join(' '),
-  ];
+  /// Whether button [n]'s symbol reads as a [kind] ('note' or 'rest') of its
+  /// length. Needs semantics on.
+  bool buttonIs(WidgetTester t, int n, String kind) {
+    final i = _lens.indexOf(n);
+    final label = t
+        .getSemantics(
+          find.descendant(
+            of: find.byKey(ValueKey('pattern-len-$n')),
+            matching: find.byKey(const ValueKey('pattern-symbol')),
+          ),
+        )
+        .label;
+    final other = kind == 'note' ? 'rest' : 'note';
+    return label.contains('${_lenNames[i]} $kind') && !label.contains(other);
+  }
+
+  void expectButtons(WidgetTester t, String kind) {
+    for (final n in _lens) {
+      expect(buttonIs(t, n, kind), isTrue, reason: 'button $n is a $kind');
+    }
+  }
 
   /// The text the Note/Rest toggle shows.
   String kindText(WidgetTester t) => t
@@ -307,26 +328,25 @@ void main() {
       .whereType<String>()
       .join(' ');
 
-  final note = ['Note 1', 'Note 2', 'Note 3', 'Note 4'];
-  final rest = ['Rest 1', 'Rest 2', 'Rest 3', 'Rest 4'];
-
   testWidgets('the toggle flips after every tap and the labels follow', (
     t,
   ) async {
+    final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
-    expect(footerLabels(t), note, reason: 'the first entry is a note');
+    expectButtons(t, 'note');
     expect(kindText(t), 'Note');
     await _tapKey(t, 'pattern-len-2');
-    expect(footerLabels(t), rest, reason: 'after N1 the toggle shows Rest');
+    expectButtons(t, 'rest');
     expect(kindText(t), 'Rest');
     await _tapKey(t, 'pattern-len-1');
-    expect(footerLabels(t), note);
+    expectButtons(t, 'note');
     expect(kindText(t), 'Note');
-    await _tapKey(t, 'pattern-len-3');
-    expect(footerLabels(t), rest);
+    await _tapKey(t, 'pattern-len-4');
+    expectButtons(t, 'rest');
     expect(r.pattern!.nextIsNote, isFalse);
-    expect(r.pattern!.active.code, 'N2 R1 N3');
+    expect(r.pattern!.active.code, 'N2mf R1 N4mf');
     r.closePattern();
+    h.dispose();
   });
 
   testWidgets('a repeating pattern does not change the toggle: it alternates '
@@ -335,52 +355,77 @@ void main() {
     for (final n in [1, 1, 1, 1, 1]) {
       await _tapKey(t, 'pattern-len-$n');
     }
-    expect(r.pattern!.active.code, 'N1 R1 N1 R1 N1');
+    expect(r.pattern!.active.code, 'N1mf R1 N1mf R1 N1mf');
     expect(kindText(t), 'Rest');
     r.closePattern();
   });
 
-  testWidgets('the toggle sits left of Delete, below the length buttons', (
-    t,
-  ) async {
+  testWidgets('the toggle sits left of Delete, below the length buttons and '
+      'the dynamics row', (t) async {
     final r = await _open(t, DeviceLabLog());
     final kind = t.getRect(find.byKey(const ValueKey('pattern-kind')));
     final del = t.getRect(find.byKey(const ValueKey('pattern-delete')));
     expect(kind.right, lessThanOrEqualTo(del.left), reason: '$kind $del');
     expect((kind.center.dy - del.center.dy).abs(), lessThan(8));
-    final len1 = t.getRect(find.byKey(const ValueKey('pattern-len-1')));
-    expect(len1.bottom, lessThanOrEqualTo(kind.top));
+    for (final n in _lens) {
+      final len = t.getRect(find.byKey(ValueKey('pattern-len-$n')));
+      expect(len.bottom, lessThanOrEqualTo(kind.top), reason: 'len $n');
+      for (final d in _dyns) {
+        final dyn = t.getRect(find.byKey(ValueKey('pattern-dyn-$d')));
+        expect(dyn.bottom, lessThanOrEqualTo(len.top), reason: '$d above $n');
+      }
+    }
+    r.closePattern();
+  });
+
+  testWidgets('five length buttons sit in one row of equal width', (t) async {
+    final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
+    final rects = [
+      for (final n in _lens) t.getRect(find.byKey(ValueKey('pattern-len-$n'))),
+    ];
+    for (var i = 1; i < rects.length; i++) {
+      expect(rects[i].left, greaterThanOrEqualTo(rects[i - 1].right));
+      expect((rects[i].top - rects[0].top).abs(), lessThan(1));
+      expect(rects[i].width, closeTo(rects[0].width, 1));
+    }
+    expect(rects.first.left, greaterThanOrEqualTo(0));
+    expect(rects.last.right, lessThanOrEqualTo(360));
+    expect(t.takeException(), isNull);
     r.closePattern();
   });
 
   testWidgets('overriding the toggle gives two rests in a row', (t) async {
+    final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-len-1'); // N1, then the toggle says Rest
     await _tapKey(t, 'pattern-len-2'); // R2, then the toggle says Note
-    expect(footerLabels(t), note);
+    expectButtons(t, 'note');
     await _tapKey(t, 'pattern-kind');
-    expect(footerLabels(t), rest);
+    expectButtons(t, 'rest');
     expect(kindText(t), 'Rest');
     expect(r.pattern!.nextIsNote, isFalse);
-    await _tapKey(t, 'pattern-len-3'); // a second rest
-    expect(r.pattern!.active.code, 'N1 R2 R3');
+    await _tapKey(t, 'pattern-len-4'); // a second rest
+    expect(r.pattern!.active.code, 'N1mf R2 R4');
     expect(kindText(t), 'Note', reason: 'it alternates again after the tap');
-    expect(footerLabels(t), note);
+    expectButtons(t, 'note');
     r.closePattern();
+    h.dispose();
   });
 
   testWidgets('overriding the toggle gives two notes in a row', (t) async {
+    final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-len-1'); // N1, then the toggle says Rest
     expect(kindText(t), 'Rest');
     await _tapKey(t, 'pattern-kind'); // back to Note
-    expect(footerLabels(t), note);
+    expectButtons(t, 'note');
     await _tapKey(t, 'pattern-len-2');
-    expect(r.pattern!.active.code, 'N1 N2');
+    expect(r.pattern!.active.code, 'N1mf N2mf');
     await _tapKey(t, 'pattern-kind');
     await _tapKey(t, 'pattern-kind');
     expect(kindText(t), 'Rest', reason: 'two flips cancel out');
     r.closePattern();
+    h.dispose();
   });
 
   testWidgets('the footer has no suggested-length mark', (t) async {
@@ -389,7 +434,7 @@ void main() {
     for (final n in [1, 1, 1, 1]) {
       await _tapKey(t, 'pattern-len-$n');
     }
-    for (var n = 1; n <= 4; n++) {
+    for (final n in _lens) {
       expect(
         t.getSemantics(find.byKey(ValueKey('pattern-len-$n'))).label,
         isNot(contains('suggested')),
@@ -402,10 +447,10 @@ void main() {
   testWidgets('moving the cursor sets the toggle opposite the entry before '
       'it', (t) async {
     final r = await _open(t, DeviceLabLog());
-    for (final n in [1, 2, 3]) {
+    for (final n in [1, 2, 4]) {
       await _tapKey(t, 'pattern-len-$n');
     }
-    expect(r.pattern!.active.code, 'N1 R2 N3');
+    expect(r.pattern!.active.code, 'N1mf R2 N4mf');
     final wheel = find.byKey(const ValueKey('pattern-wheel'));
     await t.drag(wheel, const Offset(0, 300));
     await t.pumpAndSettle();
@@ -417,6 +462,148 @@ void main() {
       before == 'N' ? 'Rest' : 'Note',
       reason: 'cursor at $c, entry before it $before',
     );
+    r.closePattern();
+  });
+
+  // ---- 8AA: dynamics ---------------------------------------------------------
+
+  /// Whether the dynamics button [d] is announced as selected.
+  bool dynSelected(WidgetTester t, String d) => t
+      .getSemantics(find.byKey(ValueKey('pattern-dyn-$d')))
+      .flagsCollection
+      .isSelected ==
+      Tristate.isTrue;
+
+  /// The Texts a dynamics button or wheel row shows for [d].
+  Finder dynTextIn(Finder of, String d) =>
+      find.descendant(of: of, matching: find.text(d));
+
+  testWidgets('the dynamics row has ff, mf, mp, pp in bold italic and mf is '
+      'selected by default', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    for (final d in _dyns) {
+      final text = dynTextIn(find.byKey(ValueKey('pattern-dyn-$d')), d);
+      expect(text, findsOneWidget, reason: 'button $d shows "$d"');
+      final style = t.widget<Text>(text).style;
+      expect(style?.fontStyle, FontStyle.italic, reason: '$d italic');
+      expect(
+        style?.fontWeight?.value ?? 0,
+        greaterThanOrEqualTo(FontWeight.w700.value),
+        reason: '$d bold',
+      );
+      expect(dynSelected(t, d), d == 'mf', reason: 'only mf starts selected');
+    }
+    // Loudest to softest, left to right.
+    final lefts = [
+      for (final d in _dyns)
+        t.getRect(find.byKey(ValueKey('pattern-dyn-$d'))).left,
+    ];
+    expect(lefts, [...lefts]..sort());
+    expect(r.pattern!.active.length, 0);
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('a dynamic is sticky: notes are written with it, rests have '
+      'none, and it stays selected after the tap', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-dyn-pp');
+    for (final d in _dyns) {
+      expect(dynSelected(t, d), d == 'pp', reason: 'pp alone is selected');
+    }
+    await _tapKey(t, 'pattern-len-4'); // N4pp
+    await _tapKey(t, 'pattern-len-2'); // R2, no dynamic
+    await _tapKey(t, 'pattern-len-1'); // N1pp, still pp
+    expect(r.pattern!.active.code, 'N4pp R2 N1pp');
+    expect(dynSelected(t, 'pp'), isTrue, reason: 'it does not reset');
+    expect(dynSelected(t, 'mf'), isFalse);
+    await _tapKey(t, 'pattern-dyn-ff');
+    await _tapKey(t, 'pattern-len-8'); // a rest now (after N1)
+    await _tapKey(t, 'pattern-len-6'); // N6ff
+    expect(r.pattern!.active.code, 'N4pp R2 N1pp R8 N6ff');
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('a dynamic picked on the Rest toggle still applies to the next '
+      'note', (t) async {
+    final h = t.ensureSemantics();
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-len-4'); // N4mf; the toggle says Rest
+    expect(kindText(t), 'Rest');
+    await _tapKey(t, 'pattern-dyn-mp');
+    expect(dynSelected(t, 'mp'), isTrue, reason: 'selectable on a rest');
+    expect(r.pattern!.active.code, 'N4mf', reason: 'nothing else changed');
+    expect(kindText(t), 'Rest', reason: 'the toggle is untouched');
+    await _tapKey(t, 'pattern-kind');
+    await _tapKey(t, 'pattern-len-2');
+    expect(r.pattern!.active.code, 'N4mf N2mp');
+    r.closePattern();
+    h.dispose();
+  });
+
+  testWidgets('a dynamic tapped on the empty next slot changes no row', (
+    t,
+  ) async {
+    final r = await _open(t, DeviceLabLog());
+    await _tapKey(t, 'pattern-len-4');
+    await _tapKey(t, 'pattern-len-2');
+    expect(r.pattern!.cursor, 2, reason: 'on the empty next slot');
+    await _tapKey(t, 'pattern-dyn-ff');
+    expect(r.pattern!.active.code, 'N4mf R2');
+    expect(r.pattern!.cursor, 2);
+    await _tapKey(t, 'pattern-len-1');
+    expect(r.pattern!.active.code, 'N4mf R2 N1ff');
+    r.closePattern();
+  });
+
+  testWidgets('a dynamic tapped while the cursor is on a note changes that '
+      'row and its dynamic text', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    final wheel = find.byKey(const ValueKey('pattern-wheel'));
+    await _tapKey(t, 'pattern-len-4'); // N4mf
+    await _tapKey(t, 'pattern-kind');
+    await _tapKey(t, 'pattern-len-2'); // N2mf; the toggle says Rest
+    await _tapKey(t, 'pattern-len-1'); // R1, so the toggle says Note
+    expect(r.pattern!.active.code, 'N4mf N2mf R1');
+    expect(dynTextIn(wheel, 'mf'), findsNWidgets(2), reason: 'notes only');
+    r.patternMove(-3); // onto the first note
+    await t.pump(const Duration(milliseconds: 400));
+    expect(r.pattern!.cursor, 0);
+    await _tapKey(t, 'pattern-dyn-ff');
+    expect(r.pattern!.active.code, 'N4ff N2mf R1');
+    expect(r.pattern!.cursor, 0, reason: 'the cursor stays');
+    expect(dynTextIn(wheel, 'ff'), findsOneWidget);
+    expect(dynTextIn(wheel, 'mf'), findsOneWidget);
+    // The sticky selection moved too, so the next note is ff.
+    r.patternMove(3);
+    await t.pump(const Duration(milliseconds: 400));
+    await _tapKey(t, 'pattern-len-2');
+    expect(r.pattern!.active.code, 'N4ff N2mf R1 N2ff');
+    r.closePattern();
+  });
+
+  testWidgets('note rows show their dynamic in bold italic, rest rows show '
+      'none', (t) async {
+    final r = await _open(t, DeviceLabLog());
+    final wheel = find.byKey(const ValueKey('pattern-wheel'));
+    await _tapKey(t, 'pattern-dyn-mp');
+    await _tapKey(t, 'pattern-len-4'); // N4mp
+    await _tapKey(t, 'pattern-len-2'); // R2
+    expect(r.pattern!.active.code, 'N4mp R2');
+    final mp = dynTextIn(wheel, 'mp');
+    expect(mp, findsOneWidget, reason: 'one note row says mp');
+    final style = t.widget<Text>(mp).style;
+    expect(style?.fontStyle, FontStyle.italic);
+    expect(
+      style?.fontWeight?.value ?? 0,
+      greaterThanOrEqualTo(FontWeight.w700.value),
+    );
+    for (final d in ['ff', 'mf', 'pp']) {
+      expect(dynTextIn(wheel, d), findsNothing, reason: 'no row says $d');
+    }
     r.closePattern();
   });
 
@@ -434,30 +621,30 @@ void main() {
           .decoration as BoxDecoration)
       .color;
 
-  /// The four metronome colours A, C, D, E, read off steps 1, 3, 5, 7 of the
-  /// dot; the dashes must use these same colours.
+  /// The metronome's four beat colours A, C, D, E, read off the dot at steps
+  /// 1, 5, 9 and 13; the dashes must use these same colours.
   Future<List<Color>> metronomeColours(WidgetTester t) async {
     final key = find.byKey(const ValueKey('pattern-metronome'));
-    final byStep = <int, Color>{};
-    for (var i = 0; i < 20 && byStep.length < 4; i++) {
-      final m = RegExp(r'metronome step (\d) of 8')
+    final byBeat = <int, Color>{};
+    for (var i = 0; i < 40 && byBeat.length < 4; i++) {
+      final m = RegExp(r'metronome step (\d+) of 16')
           .firstMatch(t.getSemantics(key).label);
       final step = int.parse(m!.group(1)!);
       final c = colourOf(t, key);
-      if (step.isOdd && c != null && c.a > 0) byStep[step] = c;
+      if (step % 4 == 1 && c != null && c.a > 0) byBeat[(step - 1) ~/ 4] = c;
       await t.pump(const Duration(milliseconds: 125));
     }
-    expect(byStep.keys.toSet(), {1, 3, 5, 7});
-    return [byStep[1]!, byStep[3]!, byStep[5]!, byStep[7]!];
+    expect(byBeat.keys.toSet(), {0, 1, 2, 3});
+    return [for (var b = 0; b < 4; b++) byBeat[b]!];
   }
 
-  testWidgets('each length button shows a music symbol: eighth, quarter, '
-      'dotted quarter, half', (t) async {
+  testWidgets('each length button shows a music symbol: 16th, eighth, '
+      'quarter, dotted quarter, half', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
-    const names = ['eighth', 'quarter', 'dotted quarter', 'half'];
     Future<void> check(String kind) async {
-      for (var n = 1; n <= 4; n++) {
+      for (var i = 0; i < _lens.length; i++) {
+        final n = _lens[i];
         final sym = find.descendant(
           of: find.byKey(ValueKey('pattern-len-$n')),
           matching: find.byKey(const ValueKey('pattern-symbol')),
@@ -474,7 +661,7 @@ void main() {
         );
         expect(
           t.getSemantics(sym).label,
-          contains('${names[n - 1]} $kind'),
+          contains('${_lenNames[i]} $kind'),
         );
       }
     }
@@ -486,8 +673,8 @@ void main() {
     h.dispose();
   });
 
-  testWidgets('dashes use the metronome colours in order; rests are the same '
-      'colours at one third of the saturation', (t) async {
+  testWidgets('dashes: one per 16th, coloured by the beat they fall in; rests '
+      'are the same colours at one third of the saturation', (t) async {
     final r = await _open(t, DeviceLabLog());
     final c = await metronomeColours(t);
     expect(c.toSet(), hasLength(4));
@@ -498,21 +685,26 @@ void main() {
     );
 
     void check(bool note) {
-      for (var n = 1; n <= 4; n++) {
+      for (final n in _lens) {
         for (var k = 1; k <= n; k++) {
           expect(dash(n, k), findsOneWidget, reason: 'button $n dash $k');
+          final want = c[((k - 1) ~/ 4) % 4];
           final got = colourOf(t, dash(n, k))!;
-          final base = HSLColor.fromColor(c[k - 1]);
+          final base = HSLColor.fromColor(want);
           final hsl = HSLColor.fromColor(got);
           if (note) {
-            expect(got.toARGB32(), c[k - 1].toARGB32(), reason: 'note $n/$k');
+            expect(got.toARGB32(), want.toARGB32(), reason: 'note $n/$k');
           } else {
-            expect(hsl.saturation, closeTo(base.saturation / 3, 0.03));
-            expect(hsl.hue, closeTo(base.hue, 2));
+            expect(
+              hsl.saturation,
+              closeTo(base.saturation / 3, 0.03),
+              reason: 'rest $n/$k',
+            );
+            expect(hsl.hue, closeTo(base.hue, 2), reason: 'rest $n/$k');
             expect(hsl.lightness, closeTo(base.lightness, 0.03));
           }
         }
-        expect(dash(n, n + 1), findsNothing, reason: 'one dash per unit');
+        expect(dash(n, n + 1), findsNothing, reason: 'one dash per sixteenth');
       }
     }
 
@@ -522,12 +714,42 @@ void main() {
     r.closePattern();
   });
 
+  testWidgets('a half note is 8 dashes and they fit the button and the row at '
+      '360 px', (t) async {
+    final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
+    final btn = t.getRect(find.byKey(const ValueKey('pattern-len-8')));
+    for (var k = 1; k <= 8; k++) {
+      final d = t.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('pattern-len-8')),
+          matching: find.byKey(ValueKey('dash-$k')),
+        ),
+      );
+      expect(d.left, greaterThanOrEqualTo(btn.left), reason: 'dash $k left');
+      expect(d.right, lessThanOrEqualTo(btn.right), reason: 'dash $k right');
+      expect(d.width, greaterThan(0));
+    }
+    await _tapKey(t, 'pattern-len-8');
+    expect(r.pattern!.active.code, 'N8mf');
+    final wheel = t.getRect(find.byKey(const ValueKey('pattern-wheel')));
+    final row = find.descendant(
+      of: find.byKey(const ValueKey('pattern-wheel')),
+      matching: find.byKey(const ValueKey('dash-8')),
+    );
+    expect(row, findsOneWidget, reason: 'the row shows all 8 dashes');
+    final d8 = t.getRect(row);
+    expect(d8.right, lessThanOrEqualTo(wheel.right));
+    expect(d8.left, greaterThanOrEqualTo(wheel.left));
+    expect(t.takeException(), isNull, reason: 'no overflow');
+    r.closePattern();
+  });
+
   testWidgets('wheel rows carry the same symbols and dash colours', (t) async {
     final r = await _open(t, DeviceLabLog());
     final c = await metronomeColours(t);
     await _tapKey(t, 'pattern-len-2'); // N2
-    await _tapKey(t, 'pattern-len-3'); // R3
-    expect(r.pattern!.active.code, 'N2 R3');
+    await _tapKey(t, 'pattern-len-6'); // R6
+    expect(r.pattern!.active.code, 'N2mf R6');
     final wheel = find.byKey(const ValueKey('pattern-wheel'));
     expect(
       find.descendant(
@@ -542,34 +764,42 @@ void main() {
           .evaluate())
         colourOf(t, find.byElementPredicate((x) => x == e))!,
     ];
-    // The note row (N2) has dashes 1 and 2 at full colour, the rest row (R3)
-    // has dashes 1 to 3 at a third of the saturation.
-    final full = c.map((x) => x.toARGB32()).toList();
-    expect(dashes(2).map((x) => x.toARGB32()), contains(full[1]));
-    for (var k = 1; k <= 3; k++) {
-      final base = HSLColor.fromColor(c[k - 1]);
-      expect(
-        dashes(k).any(
-          (x) =>
-              (HSLColor.fromColor(x).saturation - base.saturation / 3).abs() <
-              0.03,
-        ),
-        isTrue,
-        reason: 'a rest dash $k at one third saturation',
-      );
+    bool third(Color x, Color base) {
+      final a = HSLColor.fromColor(x);
+      final b = HSLColor.fromColor(base);
+      return (a.saturation - b.saturation / 3).abs() < 0.03 &&
+          (a.hue - b.hue).abs() < 2;
     }
-    expect(dashes(3).map((x) => x.toARGB32()), contains(isNot(full[2])));
+
+    // The note row (N2) has dashes 1 and 2 at full colour (beat 1); the rest
+    // row (R6) has dashes 1 to 4 at a third of beat 1's colour and dashes 5
+    // and 6 at a third of beat 2's.
+    expect(dashes(1), hasLength(2), reason: 'one per row');
+    expect(dashes(2), hasLength(2));
+    for (final k in [1, 2]) {
+      expect(dashes(k).map((x) => x.toARGB32()), contains(c[0].toARGB32()));
+      expect(dashes(k).any((x) => third(x, c[0])), isTrue, reason: 'rest $k');
+    }
+    for (final k in [3, 4]) {
+      expect(dashes(k), hasLength(1), reason: 'only the rest row');
+      expect(third(dashes(k).single, c[0]), isTrue, reason: 'rest dash $k');
+    }
+    for (final k in [5, 6]) {
+      expect(dashes(k), hasLength(1), reason: 'only the rest row');
+      expect(third(dashes(k).single, c[1]), isTrue, reason: 'rest dash $k');
+      expect(third(dashes(k).single, c[0]), isFalse, reason: 'beat 2, not 1');
+    }
     r.closePattern();
   });
 
-  testWidgets('the metronome steps every 250 ms through four colours with off '
-      'between', (t) async {
+  testWidgets('the metronome steps every 125 ms through 16 steps: beats full, '
+      'the ands at a third of the saturation, the rest off', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     final key = find.byKey(const ValueKey('pattern-metronome'));
     ({int step, Color? color}) dot() {
       final label = t.getSemantics(key).label;
-      final m = RegExp(r'metronome step (\d) of 8').firstMatch(label);
+      final m = RegExp(r'metronome step (\d+) of 16').firstMatch(label);
       expect(m, isNotNull, reason: 'label: $label');
       final box = t.widget<DecoratedBox>(
         find.descendant(of: key, matching: find.byType(DecoratedBox)).first,
@@ -583,20 +813,38 @@ void main() {
 
     await t.pump(const Duration(milliseconds: 10));
     var prev = dot().step;
-    final colours = <Color>{};
-    for (var i = 0; i < 17; i++) {
-      await t.pump(const Duration(milliseconds: 250));
+    final beats = <int, Color>{}; // beat 0..3 -> full colour
+    final ands = <int, Color>{}; // beat 0..3 -> the third-saturation colour
+    for (var i = 0; i < 33; i++) {
+      await t.pump(const Duration(milliseconds: 125));
       final d = dot();
-      expect(d.step, prev % 8 + 1, reason: 'one step per 250 ms, in a loop');
-      if (d.step.isOdd) {
-        expect(d.color, isNotNull, reason: 'step ${d.step} is coloured');
-        colours.add(d.color!);
+      expect(d.step, prev % 16 + 1, reason: 'one step per 125 ms, in a loop');
+      final beat = (d.step - 1) ~/ 4;
+      if (d.step % 4 == 1) {
+        expect(d.color, isNotNull, reason: 'step ${d.step} is a beat');
+        beats[beat] = d.color!;
+      } else if (d.step % 4 == 3) {
+        expect(d.color, isNotNull, reason: 'step ${d.step} is an and');
+        ands[beat] = d.color!;
       } else {
         expect(d.color, isNull, reason: 'step ${d.step} is off');
       }
       prev = d.step;
     }
-    expect(colours, hasLength(4), reason: 'A, C, D and E are four colours');
+    expect(beats.keys.toSet(), {0, 1, 2, 3});
+    expect(ands.keys.toSet(), {0, 1, 2, 3});
+    expect(
+      beats.values.map((c) => c.toARGB32()).toSet(),
+      hasLength(4),
+      reason: 'A, C, D and E are four colours',
+    );
+    for (var b = 0; b < 4; b++) {
+      final base = HSLColor.fromColor(beats[b]!);
+      final and = HSLColor.fromColor(ands[b]!);
+      expect(and.saturation, closeTo(base.saturation / 3, 0.03), reason: '$b');
+      expect(and.hue, closeTo(base.hue, 2), reason: 'same colour, beat $b');
+      expect(and.lightness, closeTo(base.lightness, 0.03));
+    }
     r.closePattern();
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 1));
@@ -610,16 +858,16 @@ void main() {
     final key = find.byKey(const ValueKey('pattern-metronome'));
     String label() => t.getSemantics(key).label;
     await t.pump(const Duration(milliseconds: 900));
-    expect(label(), isNot('metronome step 1 of 8'), reason: 'mid-bar');
+    expect(label(), isNot('metronome step 1 of 16'), reason: 'mid-bar');
     await t.tap(find.byKey(const ValueKey('pattern-play')));
     await t.pump(const Duration(milliseconds: 10));
     await t.pump(const Duration(milliseconds: 10));
     expect(r.patternPlaying, isTrue);
-    expect(label(), 'metronome step 1 of 8');
-    await t.pump(const Duration(milliseconds: 250));
-    expect(label(), 'metronome step 2 of 8');
-    await t.pump(const Duration(milliseconds: 250));
-    expect(label(), 'metronome step 3 of 8');
+    expect(label(), 'metronome step 1 of 16');
+    await t.pump(const Duration(milliseconds: 125));
+    expect(label(), 'metronome step 2 of 16');
+    await t.pump(const Duration(milliseconds: 125));
+    expect(label(), 'metronome step 3 of 16');
     hold.complete();
     await t.pump(const Duration(seconds: 20));
     r.closePattern();
@@ -639,8 +887,8 @@ void main() {
     r.closePattern();
   });
 
-  testWidgets('Dynamic tempo is on by default, shows 1 = 250 ms, and the '
-      'switch turns it off', (t) async {
+  testWidgets('Dynamic tempo is on by default, shows 1 sixteenth = 125 ms, '
+      'and the switch turns it off', (t) async {
     final r = await _open(t, DeviceLabLog());
     final f = find.byKey(const ValueKey('pattern-dynamic-tempo'));
     final sw = find.descendant(
@@ -650,13 +898,13 @@ void main() {
     );
     expect(t.widget<Switch>(sw).value, isTrue);
     expect(r.pattern!.dynamicTempo, isTrue);
-    expect(find.text('1 = 250 ms'), findsOneWidget);
+    expect(find.text('1 sixteenth = 125 ms'), findsOneWidget);
     expect(find.textContaining('fitted'), findsNothing);
     await t.tap(sw);
     await t.pump(const Duration(milliseconds: 400));
     expect(r.pattern!.dynamicTempo, isFalse);
     expect(t.widget<Switch>(sw).value, isFalse);
-    expect(find.text('1 = 250 ms'), findsOneWidget);
+    expect(find.text('1 sixteenth = 125 ms'), findsOneWidget);
     r.closePattern();
   });
 
@@ -666,14 +914,14 @@ void main() {
     r.patternTest(1);
     await t.pump(const Duration(milliseconds: 400));
     await _tapKey(t, 'pattern-len-1'); // test 2: N1
-    r.pattern!.noteMeasured(0, 500);
-    r.pattern!.noteMeasured(1, 500);
+    r.pattern!.noteMeasured(0, 250); // 1 sixteenth: 250 ms
+    r.pattern!.noteMeasured(1, 250);
     r.patternDynamicTempo(true); // notifies the page
     await t.pump(const Duration(milliseconds: 400));
-    expect(find.text('1 = 500 ms · fitted'), findsOneWidget);
+    expect(find.text('1 sixteenth = 250 ms · fitted'), findsOneWidget);
     r.patternDynamicTempo(false);
     await t.pump(const Duration(milliseconds: 400));
-    expect(find.text('1 = 250 ms'), findsOneWidget);
+    expect(find.text('1 sixteenth = 125 ms'), findsOneWidget);
     r.closePattern();
   });
 
@@ -724,12 +972,13 @@ void main() {
   final head = find.byKey(const ValueKey('pattern-playhead'));
   final wheelFinder = find.byKey(const ValueKey('pattern-wheel'));
 
-  /// Types N1 R2 N1 on the open test (A); the cursor ends on the empty slot.
+  /// Types an eighth note, a quarter rest and an eighth note (8 sixteenths)
+  /// on the open test (A); the cursor ends on the empty slot.
   Future<void> typeSequence(WidgetTester t, HardwareProbeRunner r) async {
-    for (final n in [1, 2, 1]) {
+    for (final n in [2, 4, 2]) {
       await _tapKey(t, 'pattern-len-$n');
     }
-    expect(r.pattern!.active.code, 'N1 R2 N1');
+    expect(r.pattern!.active.code, 'N2mf R4 N2mf');
   }
 
   void expectPlaying(WidgetTester t, int entry, {String? when}) {
@@ -755,7 +1004,7 @@ void main() {
     await advance(t, 100);
     expect(r.patternPlaying, isTrue);
     expect(head, findsNothing, reason: 'the 300 ms lead has not passed');
-    // Default: lead 300 ms, 250 ms per unit: N1 300-550, R2 550-1050, N1
+    // Default: lead 300 ms, 125 ms per sixteenth: N2 300-550, R4 550-1050, N2
     // 1050-1300.
     await advance(t, 400); // 500
     expectPlaying(t, 1);
@@ -769,7 +1018,7 @@ void main() {
     await advance(t, 400); // 1650
     expect(head, findsNothing, reason: 'the march is over');
     expect(s.cursor, 3);
-    expect(s.active.code, 'N1 R2 N1', reason: 'the march edits nothing');
+    expect(s.active.code, 'N2mf R4 N2mf', reason: 'the march edits nothing');
     expect(
       (t.getCenter(find.textContaining('Next entry')).dy -
               t.getCenter(wheelFinder).dy)
@@ -802,7 +1051,7 @@ void main() {
     expect(waited, lessThanOrEqualTo(300), reason: 'about 1000 ms after Play');
     expect(
       t.getSemantics(key).label,
-      'metronome step 1 of 8',
+      'metronome step 1 of 16',
       reason: 'the dot restarts when the march starts',
     );
     r.closePattern();
@@ -817,17 +1066,17 @@ void main() {
     await typeSequence(t, r);
     r.patternTest(1);
     await t.pump(const Duration(milliseconds: 400));
-    await _tapKey(t, 'pattern-len-1'); // test 2: N1
-    r.pattern!.noteMeasured(0, 2000); // 4 units: 500 ms each
-    r.pattern!.noteMeasured(1, 500); // 1 unit: 500 ms
+    await _tapKey(t, 'pattern-len-2'); // test 2: N2
+    r.pattern!.noteMeasured(0, 2000); // 8 sixteenths: 250 ms each
+    r.pattern!.noteMeasured(1, 500); // 2 sixteenths: 250 ms each
     r.patternTest(-1);
     await t.pump(const Duration(milliseconds: 400));
-    expect(r.pattern!.unitMs, 500);
-    expect(r.pattern!.active.code, 'N1 R2 N1');
+    expect(r.pattern!.unitMs, 250);
+    expect(r.pattern!.active.code, 'N2mf R4 N2mf');
     await t.tap(find.byKey(const ValueKey('pattern-play')));
-    // Lead 300 ms: N1 300-800, R2 800-1800, N1 1800-2300.
+    // Lead 300 ms: N2 300-800, R4 800-1800, N2 1800-2300.
     await advance(t, 1300);
-    expectPlaying(t, 2, when: 'at 1300 ms with 500 ms units');
+    expectPlaying(t, 2, when: 'at 1300 ms with 250 ms sixteenths');
     await advance(t, 800); // 2100
     expectPlaying(t, 3);
     r.closePattern();
@@ -880,7 +1129,7 @@ void main() {
     await t.tap(find.byKey(const ValueKey('pattern-len-1')));
     await advance(t, 100);
     expect(head, findsNothing, reason: 'a tap cancels the march');
-    expect(r.pattern!.active.code, 'N1 R2 N1 R1');
+    expect(r.pattern!.active.code, 'N2mf R4 N2mf R1');
     await advance(t, 1500);
     expect(head, findsNothing, reason: 'it does not start again');
     expect(r.pattern!.cursor, 4);
@@ -909,7 +1158,7 @@ void main() {
     expect(head, findsNothing, reason: 'a scroll cancels the march');
     await advance(t, 1500);
     expect(head, findsNothing, reason: 'it does not start again');
-    expect(r.pattern!.active.code, 'N1 R2 N1');
+    expect(r.pattern!.active.code, 'N2mf R4 N2mf');
     r.closePattern();
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 30));

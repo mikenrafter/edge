@@ -1,5 +1,6 @@
-// 8Y/8Z: the pattern probe's transcriber. The wearer taps buttons of length
-// 1-4; every entry is typed explicitly as a note or a rest (two notes or two
+// 8Y/8Z/8AA: the pattern probe's transcriber. The wearer taps buttons of
+// length 1, 2, 4, 6 or 8 sixteenths; every note also carries a dynamic (ff, mf,
+// mp, pp) from a sticky selector; every entry is typed explicitly as a note or a rest (two notes or two
 // rests may sit next to each other). A Note/Rest toggle flips after every tap
 // and can be overridden. Pure Dart: [PatternTranscript] is one immutable list of
 // [PatternEntry]s, [PatternEntrySession] holds which test is open, two
@@ -8,23 +9,51 @@
 
 import 'hardware_probes.dart';
 
-/// One transcribed entry: a note or a rest, 1 to 4 units long.
+/// The lengths a button can write, in sixteenths: 16th, eighth, quarter,
+/// dotted quarter, half.
+const List<int> kPatternLengths = [1, 2, 4, 6, 8];
+
+/// How hard a note is felt, loudest to softest.
+enum PatternDynamic { ff, mf, mp, pp }
+
+const Map<int, String> _lengthNames = {
+  1: '16th',
+  2: 'eighth',
+  4: 'quarter',
+  6: 'dotted quarter',
+  8: 'half',
+};
+
+/// One transcribed entry: a note (with a dynamic) or a rest (without one).
 class PatternEntry {
-  const PatternEntry({required this.note, required this.length});
+  const PatternEntry({required this.note, required this.length, this.dynamic});
 
   /// True for a note (the band buzzed), false for a rest.
   final bool note;
+
+  /// In sixteenths; one of [kPatternLengths].
   final int length;
+
+  /// Required for a note, null for a rest.
+  final PatternDynamic? dynamic;
 
   @override
   bool operator ==(Object other) =>
-      other is PatternEntry && other.note == note && other.length == length;
+      other is PatternEntry &&
+      other.note == note &&
+      other.length == length &&
+      other.dynamic == dynamic;
 
   @override
-  int get hashCode => Object.hash(note, length);
+  int get hashCode => Object.hash(note, length, dynamic);
 
+  /// "N4mf" or "R2".
   @override
-  String toString() => '${note ? 'N' : 'R'}$length';
+  String toString() => '${note ? 'N' : 'R'}$length${dynamic?.name ?? ''}';
+
+  /// "quarter note mf" or "eighth rest".
+  String get prose => '${_lengthNames[length]} ${note ? 'note' : 'rest'}'
+      '${dynamic == null ? '' : ' ${dynamic!.name}'}';
 }
 
 /// One transcription: an immutable list of typed entries.
@@ -43,8 +72,19 @@ class PatternTranscript {
   int get length => _entries.length;
 
   static void _check(PatternEntry e) {
-    if (e.length < 1 || e.length > 4) {
-      throw ArgumentError.value(e.length, 'length', 'a length is 1 to 4');
+    if (!kPatternLengths.contains(e.length)) {
+      throw ArgumentError.value(
+        e.length,
+        'length',
+        'a length is one of $kPatternLengths',
+      );
+    }
+    if (e.note != (e.dynamic != null)) {
+      throw ArgumentError.value(
+        e.dynamic,
+        'dynamic',
+        'a note has a dynamic and a rest has none',
+      );
     }
   }
 
@@ -62,13 +102,11 @@ class PatternTranscript {
   PatternTranscript removeAt(int i) =>
       PatternTranscript([..._entries]..removeAt(i));
 
-  /// "N2 R1 N4"; empty when nothing is entered.
+  /// "N2mf R1 N4pp"; empty when nothing is entered.
   String get code => _entries.join(' ');
 
-  /// "note 2, rest 1, note 4".
-  String get prose => [
-        for (final e in _entries) '${e.note ? 'note' : 'rest'} ${e.length}',
-      ].join(', ');
+  /// "quarter note mf, eighth rest, 16th note ff".
+  String get prose => [for (final e in _entries) e.prose].join(', ');
 }
 
 /// The state of one transcribing session. Mutable; the owner notifies its
@@ -82,10 +120,10 @@ class PatternEntrySession {
         ],
         _plays = List.filled(tests.length, 0);
 
-  /// One unit is an eighth: a 4/4 bar of 8 steps is 2 s. Measured on the band:
-  /// effect 1 plays about 0.22-0.6 s (1-2 units), 14 about 2-3, 47 about 3-4,
-  /// and each half of the 47 + 152 pair about 2.
-  static const int defaultUnitMs = 250;
+  /// One unit is a sixteenth: a 4/4 bar of 16 steps is 2 s. Measured on the
+  /// band (as eighths, 250 ms): effect 1 plays about 0.22-0.6 s, 14 about 2-3,
+  /// 47 about 3-4, and each half of the 47 + 152 pair about 2.
+  static const int defaultUnitMs = 125;
 
   /// The Bluetooth delay from a play's first write landing to the band
   /// starting, until a play has been measured.
@@ -106,6 +144,10 @@ class PatternEntrySession {
 
   /// The Note/Rest toggle: what the next tap writes.
   bool nextIsNote = true;
+
+  /// The sticky dynamic the next note is written with. Cursor, test and
+  /// rendition changes leave it alone.
+  PatternDynamic nextDynamic = PatternDynamic.mf;
 
   /// Whether the tempo follows the fit over the measured plays.
   bool dynamicTempo = true;
@@ -147,8 +189,23 @@ class PatternEntrySession {
   /// Override the toggle for the next entry.
   void toggleKind() => nextIsNote = !nextIsNote;
 
+  /// Set the sticky dynamic; with the cursor on a note, that note takes it too.
+  void setDynamic(PatternDynamic d) {
+    nextDynamic = d;
+    final t = active;
+    if (cursor >= t.length) return;
+    final e = t.entries[cursor];
+    if (!e.note) return;
+    _renditions[testIndex][activeRendition] =
+        t.replaceAt(cursor, PatternEntry(note: true, length: e.length, dynamic: d));
+  }
+
   void tap(int len) {
-    final e = PatternEntry(note: nextIsNote, length: len);
+    final e = PatternEntry(
+      note: nextIsNote,
+      length: len,
+      dynamic: nextIsNote ? nextDynamic : null,
+    );
     final t = active;
     if (cursor >= t.length) {
       final next = t.append(e);
@@ -209,7 +266,7 @@ class PatternEntrySession {
 
   /// (ms per unit, tests it came from), or null with fewer than 2 usable
   /// tests. Per test: span over the units of rendition A and B (averaged when
-  /// both have a note), the median over the tests, clamped to 100-800.
+  /// both have a note), the median over the tests, clamped to 50-400.
   (int, int)? _fit() {
     final perTest = <double>[];
     for (final MapEntry(key: test, value: ms) in _spans.entries) {
@@ -221,7 +278,7 @@ class PatternEntrySession {
       perTest.add(ms * units.length / units.reduce((a, b) => a + b));
     }
     if (perTest.length < 2) return null;
-    return (_median(perTest).round().clamp(100, 800), perTest.length);
+    return (_median(perTest).round().clamp(50, 400), perTest.length);
   }
 
   int? fittedUnitMs() => _fit()?.$1;
@@ -261,7 +318,7 @@ class PatternEntrySession {
     ];
     if (lines.isEmpty) return lines;
     final fit = dynamicTempo ? _fit() : null;
-    lines.add('Pattern probe tempo: 1 unit ≈ $unitMs ms '
+    lines.add('Pattern probe tempo: 1 sixteenth ≈ $unitMs ms '
         '${fit == null ? '(fixed)' : '(fitted from ${fit.$2} tests)'}.');
     return lines;
   }
