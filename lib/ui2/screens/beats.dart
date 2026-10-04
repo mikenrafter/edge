@@ -422,6 +422,7 @@ class _BeatsState extends State<Beats> with RevisionReload {
       l?.beatsTitle ?? 'Beats',
       [
         _asOf(d),
+        const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         if (_loading)
           const Padding(

@@ -44,6 +44,7 @@ import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show workoutSuggestionRoute;
 import '../telemetry/telemetry_service.dart';
+import 'calc_status.dart';
 import 'crossday_pipeline.dart';
 import 'kcal_minutes.dart';
 import 'sleep_blank.dart';
@@ -2621,6 +2622,23 @@ class DerivationEngine {
   static bool _running = false;
   bool get running => _running;
 
+  // The one step the status line shows for this pass (P4b). Static for the same
+  // reason as [_running]: one pass at a time, however many engines exist.
+  static CalcToken? _stageToken;
+  static String? _stageLabel;
+
+  /// Moves the shown step to [label] (null = none open). The same label twice
+  /// is one step, so stages that read alike do not restart the clock. Main
+  /// isolate only; every exit of a pass ends in `_calcStage(null)`, and the
+  /// next pass's first call closes anything an earlier one left behind.
+  static void _calcStage(String? label) {
+    if (label == _stageLabel) return;
+    final old = _stageToken;
+    _stageToken = label == null ? null : CalcStatus.instance.begin(label);
+    _stageLabel = label;
+    if (old != null) CalcStatus.instance.end(old);
+  }
+
   /// Run [body] under the process-wide derivation lock, returning [busy]
   /// unchanged if a pass is already in flight. Only for entry points that do
   /// NOT call another locked entry point (which would deadlock-by-skip).
@@ -2871,6 +2889,7 @@ class DerivationEngine {
       return 0;
     }
     _running = true;
+    _calcStage('Reading recordings');
     var passComputed = 0;
     var passTransient = 0;
     String? passError;
@@ -2997,6 +3016,7 @@ class DerivationEngine {
       onScope?.call(todoDays.length);
       onScopeDays?.call(todoDays.reversed.toList());
       _diag['stage'] = 'history';
+      _calcStage('Reading recordings');
       final history = await _BaselineHistoryCache.load();
       _log(
         'derive: ${todoDays.length} day(s) '
@@ -3021,6 +3041,7 @@ class DerivationEngine {
       var failures = 0;
       final activeDays = <String>{};
       _diag['stage'] = 'per_day';
+      _calcStage('Day calculations');
       _diag['active_days'] = const <String>[];
 
       // One day's full prepare→compute→persist body (identical to the old
@@ -3103,13 +3124,16 @@ class DerivationEngine {
         onCrossDay?.call(true);
         try {
           _diag['stage'] = 'baselines';
+          _calcStage('Baselines');
           await _refreshBaselines();
           _diag['stage'] = 'cross_day';
+          _calcStage('Trends across days');
           await _runCrossDay(profile);
         } finally {
           onCrossDay?.call(false);
         }
         _diag['stage'] = 'notifications';
+        _calcStage('Notifications');
         await _runNotifications();
       }
       // 5. Prune raw — never for a day still inside its raw window / un-derived.
@@ -3119,6 +3143,7 @@ class DerivationEngine {
       // ~12 MB/day without bound. `_pruneOldDecoded` is day-scoped and bounded,
       // so it is safe to run this often.
       _diag['stage'] = 'prune';
+      _calcStage('Tidying up');
       if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
       // The timezone hold is a FULL-RESTAGE concept — only a restage actually
       // re-derives every held day — so clearing it stays behind fullHistory.
@@ -3159,6 +3184,7 @@ class DerivationEngine {
       // `_running`. See _runStorageHousekeeping — this is the only place every
       // entry path and every early return actually reaches.
       _diag['stage'] = 'housekeeping';
+      _calcStage('Tidying up');
       await _runStorageHousekeeping();
       // ONE-SHOT: rescale stored strain onto the recalibrated scale. Days
       // inside the raw window re-derive from substrate above; everything older
@@ -3178,6 +3204,7 @@ class DerivationEngine {
       // than the next one. Still holds `_running`, so nothing else can be
       // reading day_result while it rewrites.
       _diag['stage'] = 'strain_rescale';
+      _calcStage('Strain rescale');
       try {
         final rescaled = await backfillStrainScale(
           female: workoutSex(profile.sex) == 'female',
@@ -3190,6 +3217,7 @@ class DerivationEngine {
       } catch (e) {
         _log('[derive] strain rescale failed (kept old values): $e');
       }
+      _calcStage(null);
       _running = false;
       final finishedAt = DateTime.now().millisecondsSinceEpoch;
       _diag
@@ -3226,6 +3254,7 @@ class DerivationEngine {
     if (days.isEmpty) return 0;
     if (_running) return 0;
     _running = true;
+    _calcStage('Reading recordings');
     perf.startPass();
     final startedAt = DateTime.now().millisecondsSinceEpoch;
     _diag
@@ -3275,6 +3304,7 @@ class DerivationEngine {
       _diag['todo_days'] = todoDays.length;
       onScopeDays?.call(todoDays.reversed.toList());
       final history = await _BaselineHistoryCache.load();
+      _calcStage('Day calculations');
       // Same bounded worker-pool pattern as run() — see its doc for why this
       // is safe (independent day_id-keyed writes + a frozen baseline shared
       // read-only across the whole batch).
@@ -3331,8 +3361,11 @@ class DerivationEngine {
         }
       }
       if (done > 0) {
+        _calcStage('Baselines');
         await _refreshBaselines();
+        _calcStage('Trends across days');
         await _runCrossDay(profile);
+        _calcStage('Notifications');
         await _runNotifications();
       }
       return done;
@@ -3342,7 +3375,9 @@ class DerivationEngine {
       return 0;
     } finally {
       _finishPassPerf();
+      _calcStage('Tidying up');
       await _runStorageHousekeeping();
+      _calcStage(null);
       final finishedAt = DateTime.now().millisecondsSinceEpoch;
       _diag
         ..['running'] = false
@@ -3612,8 +3647,13 @@ class DerivationEngine {
     // with no timeout at all, so a hung staging pass never completed its future
     // — `_running` stayed true and `DeriveScheduler._drain` never returned, i.e.
     // all derivation was dead until app restart.
-    final (candidateJson, observationJson) =
-        await _runIsolateCancellable(() {
+    // Begin/end rather than CalcStatus.run: a wrapping closure would capture
+    // `this` into the context the worker closure below shares, and the engine
+    // (and its _diag map) cannot be sent to the isolate.
+    final stagesStep = CalcStatus.instance.begin('Sleep stages');
+    final (String, String?) staged;
+    try {
+      staged = await _runIsolateCancellable(() {
       try {
         final p = profileJson == null
             ? null
@@ -3681,7 +3721,11 @@ class DerivationEngine {
         }
       }
       return (jsonEncode(candidate.toJson()), observationJson);
-    }, _perDayTimeout, label: 'sleep-staging $dayId');
+      }, _perDayTimeout, label: 'sleep-staging $dayId');
+    } finally {
+      CalcStatus.instance.end(stagesStep);
+    }
+    final (candidateJson, observationJson) = staged;
     final candidate = SleepSessionCandidate.fromJson(
         (jsonDecode(candidateJson) as Map).cast<String, dynamic>());
     if (override == null) {
@@ -4434,6 +4478,7 @@ class DerivationEngine {
 
       perf.startPass();
       perfStarted = true;
+      _calcStage('Day calculations');
       onScopeDays?.call(todoDays.reversed.toList());
       final history = await _BaselineHistoryCache.load();
       // Same bounded worker-pool pattern as run()/runDays — up to
@@ -4462,9 +4507,12 @@ class DerivationEngine {
 
       await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
 
+      _calcStage('Baselines');
       await _refreshBaselines();
       // Cross-day rollup + notifications reflect the refreshed scalars.
+      _calcStage('Trends across days');
       await _runCrossDay(profile);
+      _calcStage('Notifications');
       await _runNotifications();
       // Store the new signature so the next tick is a cheap no-op until it moves.
       await LocalDb.setCursor('baseline_sig', await _baselineSignature());
@@ -4474,7 +4522,9 @@ class DerivationEngine {
       return 0;
     } finally {
       if (perfStarted) _finishPassPerf();
+      if (perfStarted) _calcStage('Tidying up');
       await _runStorageHousekeeping();
+      _calcStage(null);
       _running = false;
     }
   }

@@ -355,6 +355,7 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
               padding: const EdgeInsets.only(bottom: S.x2),
               child: AsOfLabel(at: at)),
         ),
+        const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
         if (drawn == 0)
           StatusCard(
             l?.circadianDetailNoNightsTitle ?? 'No nights to plot yet',

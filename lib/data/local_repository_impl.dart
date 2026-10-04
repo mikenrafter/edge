@@ -18,6 +18,7 @@ import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math' as math;
 
+import '../compute/calc_status.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/hr_max.dart';
 import '../compute/kcal_minutes.dart';
@@ -908,9 +909,11 @@ class LocalRepositoryImpl extends LocalRepository {
     // A whole night of beats through the Lipponen-Tarvainen pass is real work:
     // off the UI isolate (invariant 10). Pure, no ambient globals, plain lists
     // in and a plain record out.
-    final c = await Isolate.run(() {
-      final r = ana.correctRr(rr, rrTsMs: ts);
-      return (nn: r.nn, cleanFraction: r.cleanFraction);
+    final c = await CalcStatus.instance.run('Correcting beats', () {
+      return Isolate.run(() {
+        final r = ana.correctRr(rr, rrTsMs: ts);
+        return (nn: r.nn, cleanFraction: r.cleanFraction);
+      });
     });
     return (nn: c.nn, rawBeats: rr.length, cleanFraction: c.cleanFraction);
   }
@@ -3542,11 +3545,14 @@ class LocalRepositoryImpl extends LocalRepository {
     };
 
     // Rank statistics over every tag and outcome: off the UI isolate. Pure.
-    final corr = await Isolate.run(
-      () => ana.journalCorrelations(
-        journal: jdays,
-        dates: dates,
-        outcomes: outcomes,
+    final corr = await CalcStatus.instance.run(
+      'Journal insights',
+      () => Isolate.run(
+        () => ana.journalCorrelations(
+          journal: jdays,
+          dates: dates,
+          outcomes: outcomes,
+        ),
       ),
     );
 
@@ -3637,11 +3643,14 @@ class LocalRepositoryImpl extends LocalRepository {
         (od['key'] as String): [for (final d in dates) maps[od['key']]![d]],
     };
 
-    final corr = await Isolate.run(
-      () => ana.journalNumericCorrelations(
-        journal: days,
-        dates: dates,
-        outcomes: outcomes,
+    final corr = await CalcStatus.instance.run(
+      'Journal insights',
+      () => Isolate.run(
+        () => ana.journalNumericCorrelations(
+          journal: days,
+          dates: dates,
+          outcomes: outcomes,
+        ),
       ),
     );
 
@@ -3897,7 +3906,8 @@ class LocalRepositoryImpl extends LocalRepository {
       dates.add(d);
       values.add((r['value'] as num?)?.toDouble());
     }
-    final m = await Isolate.run(() => ana.weekdayEffect(dates, values));
+    final m = await CalcStatus.instance.run('Weekday effect',
+        () => Isolate.run(() => ana.weekdayEffect(dates, values)));
     return {
       'present': m.present,
       'note': m.note,

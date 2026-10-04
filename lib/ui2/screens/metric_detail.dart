@@ -1013,6 +1013,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
 
     return detailScaffold(c, spec.title, [
       _asOf(d),
+      const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
       // Resting heart rate is the NIGHT's number; this is what the chest is
       // doing this second. Two different quantities, so the live one gets its
       // own card above the trend rather than a second figure on the same card,

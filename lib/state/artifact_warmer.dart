@@ -15,6 +15,7 @@
 // entry stays) and is not retried within the pass.
 import 'dart:async';
 
+import '../compute/calc_status.dart';
 import '../compute/derivation_engine.dart' show rawRetentionDays;
 import '../data/day_label.dart';
 import '../data/db.dart';
@@ -158,12 +159,30 @@ class ArtifactWarmer {
       if (sig == null) return; // nothing to key freshness on
       final stored = await _cache.read<Map>(key);
       if (stored != null && stored.sig == sig) return; // fresh
-      final value = await source.compute(key);
+      // Only a key that really computes is shown (fresh and unsigned ones
+      // returned above); closed whether the compute returns, throws or is
+      // discarded.
+      final value =
+          await CalcStatus.instance.run(_label(key), () => source.compute(key));
       if (_disposed || value == null) return;
       _cache.put<Map<String, dynamic>>(key, value, sig: sig);
       await _cache.flush();
     } catch (e) {
       _say('artifact warm $key failed: $e');
     }
+  }
+
+  // The status line's words for a key; an unknown key still gets honest ones.
+  static String _label(String key) {
+    final kind = key.split('|').first;
+    return switch (kind) {
+      'journal_insights' => 'Preparing journal insights',
+      'weekday_effect' => 'Preparing weekday effect',
+      'circadian' => 'Preparing Circadian',
+      'beats' => 'Preparing Beats',
+      'workout' => 'Preparing workout',
+      'kcal_minutes' => 'Preparing calorie curve',
+      _ => 'Preparing results',
+    };
   }
 }

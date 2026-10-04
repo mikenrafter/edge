@@ -42,6 +42,7 @@ import '../../data/journal_fields.dart';
 import '../../data/med_store.dart';
 import '../../data/nutrition_store.dart';
 import '../../ai/nightly_sweep.dart' show SweepFinding;
+import '../../compute/calc_status.dart' show CalcStep;
 import '../../compute/findings.dart';
 import '../../models/metric.dart';
 import '../activity/catalogue.dart';
@@ -850,6 +851,12 @@ Map<String, Widget> extraCases() => {
         shown: 0,
         asOf: (_) => DateTime(2026, 10, 3, 8, 42),
         builder: (c, at) => AsOfLabel(at: at, now: DateTime(2026, 10, 3, 9)),
+      ),
+      // The step a calculation is on and how long it has run (P4b).
+      'calc_status_line': CalcStatusLine(
+        status: ValueNotifier<CalcStep?>(
+            CalcStep('Sleep stages', DateTime(2026, 10, 3, 8, 59, 48))),
+        now: () => DateTime(2026, 10, 3, 9),
       ),
       'surface': Builder(
         builder: (c) => Surface(

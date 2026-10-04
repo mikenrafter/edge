@@ -33,6 +33,7 @@ import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
 import '../as_of.dart';
+import '../calc_status_line.dart';
 import '../charts.dart';
 import '../grammar.dart';
 import '../paint_activity.dart';
@@ -1033,6 +1034,11 @@ class _ActivitySummaryState extends State<ActivitySummary> {
               child: Align(
                   alignment: Alignment.centerLeft, child: AsOfLabel(at: at)),
             ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),
+            child: Align(
+                alignment: Alignment.centerLeft, child: CalcStatusLine()),
+          ),
           // A dedicated, plainly-labeled button rather than a bare icon in the
           // nav bar — this is the one export action worth naming outright.
           // Text only: no Strava logo/imagery, per the no-brand-assets policy

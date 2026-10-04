@@ -718,13 +718,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
   /// "As of <time>" at the top of a sub-tab while the day its rows are read
   /// from is being recalculated. The rows stay; see [AsOfHold].
   Widget _asOf(HealthData d, DateTime? Function(RecalcState recalc) at) =>
-      AsOfHold(
-        shown: d,
-        asOf: at,
-        builder: (c, t) => Padding(
-            padding: const EdgeInsets.only(bottom: S.x3),
-            child: AsOfLabel(at: t)),
-      );
+      Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        AsOfHold(
+          shown: d,
+          asOf: at,
+          builder: (c, t) => Padding(
+              padding: const EdgeInsets.only(bottom: S.x3),
+              child: AsOfLabel(at: t)),
+        ),
+        const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x3)),
+      ]);
 
   // ─────────────── LAST NIGHT ───────────────
   //

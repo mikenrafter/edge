@@ -1840,6 +1840,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
                 computedAt: d.activityAt,
                 recalc: recalc),
       ),
+      const CalcStatusLine(padding: EdgeInsets.only(top: S.x2)),
     ]);
   }
 

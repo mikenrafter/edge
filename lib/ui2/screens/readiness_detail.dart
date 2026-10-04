@@ -215,6 +215,7 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
               padding: const EdgeInsets.only(bottom: S.x2),
               child: AsOfLabel(at: at)),
         ),
+        const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
         if (d.day != null) ...[
           Text(
               l?.healthNightOf(prettyDay(d.day, l)) ??
