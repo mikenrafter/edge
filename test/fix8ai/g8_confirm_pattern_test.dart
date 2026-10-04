@@ -162,13 +162,18 @@ void main() {
           _compiled(store.bySystemKey(kGestureConfirmKey)!.sequence));
     });
 
-    test('an assignment for a key that is not a gesture cue is ignored', () {
+    test('an assignment for a key that is not a cue is ignored', () {
       final cues = resolveCuePatterns(store, {'alert.water': slow.id});
+      // The gesture cues and (Oct 4) the four breathing cues.
       expect(cues.keys.toSet(), {
         kGestureStartKey,
         kGestureFollowUpKey,
         kGestureConfirmKey,
         kGestureFailedKey,
+        kBreathInhaleKey,
+        kBreathExhaleKey,
+        kBreathHoldKey,
+        kBreathDoneKey,
       });
       expect(cues[kGestureConfirmKey]!.patternId,
           systemPatternId(kGestureConfirmKey));

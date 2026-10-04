@@ -423,6 +423,7 @@ class AppState extends ChangeNotifier {
     nudgeLive: _nudgeLive,
     repo: () => repo,
     dispatchBandAlert: _dispatchBandAlert,
+    playCue: _playBreathCue,
     notify: notifyListeners,
   );
 
@@ -732,6 +733,29 @@ class AppState extends ChangeNotifier {
                   )
               : () => haptics.deliver(rhythm!),
     );
+  }
+
+  /// A breathing cue slot (`breath.inhale|exhale|hold|done`) as one dispatcher
+  /// delivery, or false when the slot has nothing of its own to play on this
+  /// band: a 4.0 keeps its per-phase buzz unless the wearer assigned the slot.
+  /// The wearer's assignments are read here, just before the cue, as the
+  /// gesture cues' are, so a change on the Haptics screen applies at the next
+  /// phase. With [skipIfBusy] the band's queue is looked at inside the
+  /// delivery, as late as possible: a band still playing earlier work rejects
+  /// the cue (nothing written, the dispatcher gives the claim back), so a cue
+  /// is never stacked behind the last one to arrive late.
+  Future<bool> _playBreathCue(String slot, {required bool skipIfBusy}) async {
+    await _gestures.loadCues();
+    if (_disposed) return true;
+    if (haptics.profile == null && !_gestures.cueAssigned(slot)) return false;
+    await _dispatchBandAlert(
+      'breath',
+      deliver: (_, _) async => _disposed || (skipIfBusy && haptics.pending > 0)
+          ? BuzzDelivery.rejected
+          : gestureCues.slot(slot),
+      deliverTimeout: const Duration(seconds: 10),
+    );
+    return true;
   }
 
   /// Relay selected phone-app notifications to the strap as a buzz (Android only).

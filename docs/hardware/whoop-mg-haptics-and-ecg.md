@@ -294,6 +294,27 @@ whole vocabulary is the only mode, stable preferred). The log line reads `Patter
 The probe is meant to grow to other devices; the WHOOP 5.0 MG is the only one
 measured.
 
+**Breathing cues (Oct 4).** Guided breathing cues the wearer at each phase through four
+slots, `breath.inhale`, `breath.exhale`, `breath.hold` and `breath.done`, built-in and
+assignable like the gesture cues (Haptics > Where patterns are used > Breathing). Their
+defaults are four phrases from the table above, picked to be felt apart without looking:
+
+| Slot | Phrase | Felt | Length |
+|---|---|---|---|
+| `breath.inhale` | `buzz47x2` | one long, strong buzz (ff) | 6 sixteenths, 750 ms |
+| `breath.exhale` | `buzz14` | one shorter, softer buzz (f) | 3 to 4 sixteenths, 375 to 500 ms |
+| `breath.hold` | `click1` | two faint ticks (mp), the double | 2 sixteenths, 250 ms |
+| `breath.done` | `arc47` | a swell that settles (ff down to mf) | 13 sixteenths, 1.6 s |
+
+Long in, shorter out, a double for a hold: the same logic the 4.0's per-tap buzzes follow.
+Each is ONE command, so a cue costs one of the band's 30 commands in two minutes, as it did
+before, and every phase cue plays in the first fifth of the shortest built-in phase (4 s).
+Only the session-complete cue is longer, because nothing follows it. The exhale is the same
+`buzz14` as the gesture follow-up; the other three are phrases no gesture cue uses.
+Interval work plays the inhale cue and rest the exhale cue. A phase cue that would start while the band is still playing the last one is
+skipped, not queued: the band queue serialises everything, so a queued cue would play late
+and run into the next phase. The session-complete cue is queued instead.
+
 ## From taps to band commands
 
 A rhythm the wearer taps, or notes they write, reaches the band as measured

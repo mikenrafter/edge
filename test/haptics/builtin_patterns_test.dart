@@ -124,12 +124,20 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('seeding', () {
-    test('a fresh store holds the three gesture built-ins and the ten '
-        'presets, and none per alert rule', () async {
+    test('a fresh store holds the gesture and breathing cue built-ins and '
+        'the ten presets, and none per alert rule', () async {
       final all = await _builtIns();
       final keys = [for (final p in all) _key(p)];
       expect(keys.toSet(), hasLength(keys.length), reason: 'no duplicates');
-      for (final k in ['gesture.start', 'gesture.followUp', 'gesture.confirm']) {
+      for (final k in [
+        'gesture.start',
+        'gesture.followUp',
+        'gesture.confirm',
+        'breath.inhale',
+        'breath.exhale',
+        'breath.hold',
+        'breath.done',
+      ]) {
         expect(keys, contains(k));
       }
       expect(keys.where((k) => k!.startsWith('preset.')), hasLength(10));
@@ -138,7 +146,11 @@ void main() {
             reason: 'an alert slot plays a preset, it is not a built-in');
       }
       for (final k in keys) {
-        expect(k!.startsWith('preset.') || k.startsWith('gesture.'), isTrue,
+        expect(
+            k!.startsWith('preset.') ||
+                k.startsWith('gesture.') ||
+                k.startsWith('breath.'),
+            isTrue,
             reason: 'unexpected systemKey $k');
       }
     });

@@ -1,5 +1,5 @@
 // 8AF.6: the built-in (system) patterns. Four gesture cues (start, follow-up,
-// confirm, and since 8AK failed) and, since 8AI, ten presets (pulses, long pulses, SOS, Hip hip
+// confirm, and since 8AK failed), four breathing cues (Oct 4) and, since 8AI, ten presets (pulses, long pulses, SOS, Hip hip
 // hooray) are stored beside the user's patterns under a stable systemKey. They
 // can never be renamed or deleted; the cues can be customised and put back, the
 // presets are read-only. A non-alarm alert rule's default is one of the presets
@@ -21,6 +21,19 @@ const String kGestureConfirmKey = 'gesture.confirm';
 /// 8AK: the failed-gesture cue; its default is the failure buzz the engine
 /// used to play as a fixed call.
 const String kGestureFailedKey = 'gesture.failed';
+
+/// The four breathing cues (Oct 4): the start of an inhale, an exhale and a
+/// hold, and the end of the session. Interval work plays the inhale cue, rest
+/// the exhale cue, both holds the hold cue. Each default is ONE command of the
+/// MG's vocabulary (a breath is cued every few seconds and the band takes 30
+/// commands in two minutes) and short enough to finish well inside the
+/// shortest built-in phase: a long strong buzz to breathe in, a shorter and
+/// softer one to breathe out, two faint ticks for a hold, and a swell that
+/// settles for the end.
+const String kBreathInhaleKey = 'breath.inhale';
+const String kBreathExhaleKey = 'breath.exhale';
+const String kBreathHoldKey = 'breath.hold';
+const String kBreathDoneKey = 'breath.done';
 
 /// The ten presets (8AI), in the order they are listed: key, name and notes. A
 /// pulse is a quarter note, a long pulse a half, the rest between pulses a
@@ -96,14 +109,18 @@ class BuiltInSpec {
   final BuzzSequence sequence;
 }
 
-/// Every built-in key, in the order they are listed: the gesture cues, then
-/// the presets. (Alert slots are not built-ins of their own: see
+/// Every built-in key, in the order they are listed: the gesture cues, the
+/// breathing cues, then the presets. (Alert slots are not built-ins of their own: see
 /// [alertPresetKey].)
 List<String> builtInKeys() => [
       kGestureStartKey,
       kGestureFollowUpKey,
       kGestureConfirmKey,
       kGestureFailedKey,
+      kBreathInhaleKey,
+      kBreathExhaleKey,
+      kBreathHoldKey,
+      kBreathDoneKey,
       for (final p in kPresets) p.$1,
     ];
 
@@ -203,6 +220,18 @@ BuiltInSpec? builtInDefault(String systemKey) {
     case kGestureFailedKey:
       return BuiltInSpec(
           systemKey, 'Gesture failed', _fromPhrase(_phrase('pairx2'), id));
+    case kBreathInhaleKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing inhale', _fromPhrase(_phrase('buzz47x2'), id));
+    case kBreathExhaleKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing exhale', _fromPhrase(_phrase('buzz14'), id));
+    case kBreathHoldKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing hold', _fromPhrase(_phrase('click1'), id));
+    case kBreathDoneKey:
+      return BuiltInSpec(
+          systemKey, 'Breathing done', _fromPhrase(_phrase('arc47'), id));
   }
   for (final (key, name, notes) in kPresets) {
     if (key == systemKey) return BuiltInSpec(key, name, _fromNotes(notes, id));

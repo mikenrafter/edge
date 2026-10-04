@@ -1722,3 +1722,26 @@ C and D in phase 2).
   the 190 pt floor are unchanged. `test/health/support/wellness_harness.dart` no longer swallows
   `FlutterError.onError` (that was its only reason). Tests: `start_session_card_test` (in a
   ListView at 1x and 2x), `health_h2_wellness_link_test` (Mind tab pumps clean).
+
+## Breathing cues are haptic slots (Oct 4)
+- `breath.inhale`, `breath.exhale`, `breath.hold` and `breath.done` (`kBreathInhaleKey` ...
+  `kBreathDoneKey`, `lib/haptics/builtin_patterns.dart`) are system slots like the gesture cues:
+  built-in defaults, listed under "Breathing" in Haptics > Where patterns are used (`'breathing'`
+  section, labels Inhale / Exhale / Hold / Session complete), assigned through the same
+  `Prefs.hapticsCueAssign` map (`isCueSlot`, `decodeCueAssignments`, `resolveCuePatterns`).
+  The old `alert.breath` slot is gone from the screen: it never read what was put on it.
+- Defaults are one MG command each, all different: `buzz47x2` (inhale, long and strong),
+  `buzz14` (exhale, shorter and softer), `click1` (hold, two faint ticks), `arc47` (done, a swell
+  that settles). Why, and the lengths, are in `docs/hardware/whoop-mg-haptics-and-ecg.md`.
+- `BreathingController.buzzBreathPhase` / `buzzSessionComplete` ask `playCue(slot, skipIfBusy:)`
+  (wired to `AppState._playBreathCue`, one `_dispatchBandAlert('breath', deliver: ...)` delivery,
+  `GestureCues.slot`). Work plays inhale, rest plays exhale, both holds play hold.
+- gen5 plays the assigned or default pattern. A 4.0 keeps its per-tap buzzes (pattern 1 / 0 / 2 /
+  4) unless the wearer assigned that slot, then plays the assigned pattern's taps. A hook that
+  answers false or throws falls back to the per-tap buzz.
+- Spacing: the band queue serialises jobs, so a second cue never overlaps the first, but one
+  queued behind a still-playing cue plays late (up to the 15 s start wait). A phase cue is
+  therefore skipped (the delivery is rejected inside the dispatcher, nothing written) when
+  `haptics.pending > 0`; the session-complete cue is not skipped and queues behind the last phase
+  cue. Tests: `test/haptics/breath_cue_slots_test.dart`, `test/split8aj/seam4_breath_cues_test.dart`,
+  and the gen5 pin in `seam4_breathing_test` (was LATENT: every gen5 cue wrote one buzz).

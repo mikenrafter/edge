@@ -65,6 +65,18 @@ class GestureCues {
   /// The failure cue: the gesture could not be activated (8AK).
   Future<BuzzDelivery> failed() => _cue(kGestureFailedKey);
 
+  /// A breathing cue slot (Oct 4: `breath.inhale|exhale|hold|done`), played the
+  /// same way: the wearer's pattern, else the built-in, as one queue job. A
+  /// band with no vocabulary (a 4.0) plays a stored pattern as its taps, one
+  /// buzz each, since the wearer who put one on a breathing slot there meant
+  /// that rhythm; with none stored it plays one plain pulse. (The caller keeps
+  /// the 4.0's own per-phase buzzes for a slot nobody assigned.)
+  Future<BuzzDelivery> slot(String key) {
+    if (haptics.profile != null) return _cue(key);
+    final s = _pattern(key);
+    return s == null ? _plainPulses(1) : haptics.deliver(s);
+  }
+
   // [key]'s pattern as one queue job, compiled for the band like every other
   // stored pattern (the seeded default when the stored one does not compile).
   Future<BuzzDelivery> _cue(String key) {

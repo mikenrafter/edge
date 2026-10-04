@@ -386,15 +386,25 @@ class GestureController {
   // its built-in default.
   Map<String, BuzzSequence> _cuePatterns = const {};
 
+  // The cue slots the wearer put a stored pattern on (as of the last read).
+  Set<String> _cueAssigned = const {};
+
+  /// Whether the wearer assigned a pattern to cue slot [key], as of the last
+  /// [loadCues]. A 4.0 uses this to keep its own per-phase buzzes for the
+  /// breathing slots nobody assigned.
+  bool cueAssigned(String key) => _cueAssigned.contains(key);
+
   /// Re-read the wearer's cue assignments and patterns. Never throws.
   Future<void> loadCues() async {
     try {
       final store = await _loadPatterns();
       // A pattern the wearer put on a cue (8AI) wins over the cue's built-in.
-      _cuePatterns = resolveCuePatterns(
-        store,
-        decodeCueAssignments(_readCueAssignments()),
-      );
+      final given = decodeCueAssignments(_readCueAssignments());
+      _cuePatterns = resolveCuePatterns(store, given);
+      _cueAssigned = {
+        for (final e in given.entries)
+          if (store.byId(e.value) != null) e.key,
+      };
     } catch (_) {}
   }
 

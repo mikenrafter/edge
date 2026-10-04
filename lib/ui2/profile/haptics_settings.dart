@@ -32,6 +32,7 @@ import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/prefs.dart';
+import '../screens/calm_breathing.dart' show CalmBreathing;
 import '../ui2.dart';
 import 'buzz_pattern.dart';
 import 'device_lab.dart' show DeviceLab;
@@ -135,7 +136,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
   Future<void> _assign(String key, SavedHapticPattern? p) async {
     final repo = SettingsRepository.instance;
     final seq = p?.sequence.copyWith(patternId: p.id);
-    if (isGestureCueSlot(key)) {
+    if (isCueSlot(key)) {
       await repo.update((d) {
         final m = {
           ...decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, '')),
@@ -179,6 +180,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
         switch (sectionId) {
           'apps' => const BandNotifications(),
           'gestures' => const BandGestures(),
+          'breathing' => const CalmBreathing(),
           _ => const NotificationSettings(),
         },
       );

@@ -23,6 +23,8 @@ import 'dart:async';
 
 import '../data/db.dart';
 import '../data/local_repository.dart';
+import '../haptics/builtin_patterns.dart'
+    show kBreathDoneKey, kBreathExhaleKey, kBreathHoldKey, kBreathInhaleKey;
 import '../live/breathing_live_activity.dart';
 import '../notify/alert_dispatcher.dart';
 import '../stress/breath_phases.dart';
@@ -38,7 +40,9 @@ class BreathingController {
             {int? pattern})
         dispatchBandAlert,
     required void Function() notify,
-  })  : _isConnected = isConnected,
+    Future<bool> Function(String slotKey, {required bool skipIfBusy})? playCue,
+  })  : _playCue = playCue,
+        _isConnected = isConnected,
         _reconcileLiveStreams = reconcileLiveStreams,
         _nudgeLive = nudgeLive,
         _repo = repo,
@@ -52,6 +56,15 @@ class BreathingController {
   final Future<AlertDeliveryOutcome> Function(String ruleId, {int? pattern})
       _dispatchBandAlert;
   final void Function() _notify;
+
+  /// Plays breathing cue slot [slotKey] (see haptic_slots.dart) as one
+  /// dispatcher delivery and answers true, or answers false when the slot has
+  /// nothing of its own to play (a 4.0 with no pattern assigned), in which
+  /// case the per-phase buzz below plays. With [skipIfBusy] a cue that would
+  /// start while the band is still playing something is dropped, not queued
+  /// behind it. Null: every cue is the per-phase buzz.
+  final Future<bool> Function(String slotKey, {required bool skipIfBusy})?
+      _playCue;
 
   // ── guided-breathing cardiac coherence ──────────────────────────────────────
   // User taps "begin breathing session": enable live RR-bearing streams,
@@ -293,31 +306,58 @@ class BreathingController {
 
   /// Buzz the strap at a breathing or interval phase boundary.
   ///
-  /// Distinct patterns per phase so the cue is legible without looking: a
-  /// longer buzz to breathe in, a shorter one to breathe out, a double for a
-  /// hold. Never throws and never awaits the caller — this fires from a frame
-  /// callback, and a momentary disconnect must not interrupt the session or
-  /// stall the animation.
+  /// Distinct cues per phase so it is legible without looking: the slots
+  /// `breath.inhale|exhale|hold` (an interval's work plays the inhale cue, its
+  /// rest the exhale cue, both holds the hold cue), each the wearer's pattern
+  /// or a built-in of the band's own vocabulary. A band the slots do not
+  /// reach (a 4.0, nothing assigned) keeps its per-tap buzzes: a longer buzz
+  /// to breathe in, a shorter one to breathe out, a double for a hold. Never
+  /// throws and never awaits the caller: this fires from a frame callback, and
+  /// a momentary disconnect must not interrupt the session or stall the
+  /// animation. A cue that would start while the band still plays the last is
+  /// skipped, not queued: a phase shorter than its cue gets no cue rather than
+  /// one that arrives late and overlaps the next.
   void buzzBreathPhase(BreathPhaseKind kind) {
     if (!_isConnected()) return;
-    final pattern = switch (kind) {
-      BreathPhaseKind.inhale || BreathPhaseKind.work => 1,
-      BreathPhaseKind.exhale || BreathPhaseKind.rest => 0,
-      BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => 2,
+    final (slot, pattern) = switch (kind) {
+      BreathPhaseKind.inhale || BreathPhaseKind.work => (kBreathInhaleKey, 1),
+      BreathPhaseKind.exhale || BreathPhaseKind.rest => (kBreathExhaleKey, 0),
+      BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => (kBreathHoldKey, 2),
     };
-    unawaited(_dispatchBandAlert('breath', pattern: pattern));
+    unawaited(_cue(slot, skipIfBusy: true, legacy: () =>
+        _dispatchBandAlert('breath', pattern: pattern)));
   }
 
   /// The whole session is over, as opposed to one phase of it.
   ///
-  /// Its own pattern rather than a repeat of the phase cue: repeated
-  /// `runHapticsPattern` frames serialize on the BLE write chain and arrive
-  /// milliseconds apart, re-triggering the firmware's haptic engine while it
-  /// is still playing — so N of them are felt as one, and the user cannot tell
-  /// "round over" from "session over".
+  /// Its own cue (`breath.done`) rather than a repeat of the phase cue:
+  /// repeated `runHapticsPattern` frames serialize on the BLE write chain and
+  /// arrive milliseconds apart, re-triggering the firmware's haptic engine
+  /// while it is still playing, so N of them are felt as one, and the user
+  /// cannot tell "round over" from "session over". Never skipped: nothing
+  /// follows it, so it waits for the band instead.
   void buzzSessionComplete() {
     if (!_isConnected()) return;
-    unawaited(_dispatchBandAlert('breath', pattern: 4));
+    unawaited(_cue(kBreathDoneKey, skipIfBusy: false, legacy: () =>
+        _dispatchBandAlert('breath', pattern: 4)));
+  }
+
+  // The slot's cue, else [legacy]. With no slot hook the legacy call is made
+  // before the first await, as it always was.
+  Future<void> _cue(
+    String slot, {
+    required bool skipIfBusy,
+    required Future<Object?> Function() legacy,
+  }) async {
+    final play = _playCue;
+    if (play != null) {
+      try {
+        if (await play(slot, skipIfBusy: skipIfBusy)) return;
+      } catch (_) {
+        /* a slot that cannot play leaves the cue to the per-tap buzz */
+      }
+    }
+    await legacy();
   }
 
   Future<void> _recomputeBreathingCoherence() async {

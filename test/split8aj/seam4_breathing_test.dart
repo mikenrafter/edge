@@ -563,15 +563,25 @@ void main() {
           reason: 'four distinguishable cues');
     });
 
-    test('on a gen5 link every kind writes the same buzz today (the phase '
-        'index only shapes a gen4 pattern)', () async {
-      final a = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.inhale),
-          band: BandProfile.gen5);
-      final b = await bodyOf((a) => a.buzzBreathPhase(BreathPhaseKind.exhale),
-          band: BandProfile.gen5);
-      final c = await bodyOf((a) => a.buzzSessionComplete(),
-          band: BandProfile.gen5);
-      expect({a, b, c}, hasLength(1));
+    test('FIXED (was LATENT): on a gen5 link the four cues write four '
+        'different buzzes, and the paired kinds still match', () async {
+      Future<String> g5(void Function(AppState) cue) =>
+          bodyOf(cue, band: BandProfile.gen5);
+      final inhale = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.inhale));
+      final work = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.work));
+      final exhale = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.exhale));
+      final rest = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.rest));
+      final hold = await g5((a) => a.buzzBreathPhase(BreathPhaseKind.holdIn));
+      final holdOut =
+          await g5((a) => a.buzzBreathPhase(BreathPhaseKind.holdOut));
+      final complete = await g5((a) => a.buzzSessionComplete());
+      expect(inhale, work);
+      expect(exhale, rest);
+      expect(hold, holdOut);
+      expect({inhale, exhale, hold, complete}, hasLength(4),
+          reason: 'the phase index used to shape only a gen4 pattern; now the '
+              'breathing slots (breath.inhale|exhale|hold|done) shape the '
+              'MG\'s');
     });
 
     test('disconnected: a phase cue and the session-complete cue write '

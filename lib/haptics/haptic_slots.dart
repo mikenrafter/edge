@@ -2,13 +2,14 @@
 // grouped the way the Haptics screen lists them, and what each one plays now.
 //
 // A slot key is the systemKey scheme of 8AF.6: 'alert.<ruleId>' for an alert
-// rule, 'gesture.start|followUp|confirm|failed' for a gesture cue. An alert slot's
-// pattern lives in its rule (a snapshot carrying the pattern's id); a gesture
-// cue's is a pattern id kept in [decodeCueAssignments]'s map. With neither, the
-// slot plays its default (a preset for an alert, the cue's own built-in for a
-// gesture). The relay's slot is the apps channel's own pattern: the relay reads
-// its channel, not the rule, and with none chosen plays the registry rhythm,
-// which no preset stands for. Pure Dart.
+// rule, 'gesture.start|followUp|confirm|failed' for a gesture cue,
+// 'breath.inhale|exhale|hold|done' for a breathing cue. An alert slot's
+// pattern lives in its rule (a snapshot carrying the pattern's id); a cue's
+// (gesture or breathing) is a pattern id kept in [decodeCueAssignments]'s map.
+// With neither, the slot plays its default (a preset for an alert, the cue's
+// own built-in for a cue). The relay's slot is the apps channel's own pattern:
+// the relay reads its channel, not the rule, and with none chosen plays the
+// registry rhythm, which no preset stands for. Pure Dart.
 
 import 'dart:convert';
 
@@ -51,7 +52,6 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot('alert.movement', 'Movement nudge'),
     HapticSlot('alert.stepGoal', 'Step goal alerts'),
     HapticSlot('alert.zone', 'HR zone alert'),
-    HapticSlot('alert.breath', 'Breathing session cue'),
   ]),
   HapticSlotSection('apps', 'Apps and automation', [
     HapticSlot('alert.relay', 'App notifications'),
@@ -62,6 +62,12 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot(kGestureFollowUpKey, 'Gesture follow-up'),
     HapticSlot(kGestureConfirmKey, 'Gesture confirmed'),
     HapticSlot(kGestureFailedKey, 'Gesture failed'),
+  ]),
+  HapticSlotSection('breathing', 'Breathing', [
+    HapticSlot(kBreathInhaleKey, 'Inhale'),
+    HapticSlot(kBreathExhaleKey, 'Exhale'),
+    HapticSlot(kBreathHoldKey, 'Hold'),
+    HapticSlot(kBreathDoneKey, 'Session complete'),
   ]),
 ];
 
@@ -78,7 +84,20 @@ bool isGestureCueSlot(String slotKey) =>
     slotKey == kGestureConfirmKey ||
     slotKey == kGestureFailedKey;
 
-/// The pattern id each gesture cue was given, from its stored JSON (never
+/// Whether [slotKey] is one of the four breathing cues.
+bool isBreathCueSlot(String slotKey) =>
+    slotKey == kBreathInhaleKey ||
+    slotKey == kBreathExhaleKey ||
+    slotKey == kBreathHoldKey ||
+    slotKey == kBreathDoneKey;
+
+/// Whether [slotKey] is a cue slot: a gesture cue or a breathing cue. Its
+/// assigned pattern is a pattern id in [decodeCueAssignments]'s map, and it
+/// plays the cue's own built-in with none.
+bool isCueSlot(String slotKey) =>
+    isGestureCueSlot(slotKey) || isBreathCueSlot(slotKey);
+
+/// The pattern id each cue was given, from its stored JSON (never
 /// throws; anything unreadable is none).
 Map<String, String> decodeCueAssignments(String? raw) {
   if (raw == null || raw.isEmpty) return const {};
@@ -87,7 +106,7 @@ Map<String, String> decodeCueAssignments(String? raw) {
     if (d is! Map) return const {};
     return {
       for (final e in d.entries)
-        if (e.key is String && e.value is String && isGestureCueSlot(e.key as String))
+        if (e.key is String && e.value is String && isCueSlot(e.key as String))
           e.key as String: e.value as String,
     };
   } on FormatException {
@@ -97,8 +116,8 @@ Map<String, String> decodeCueAssignments(String? raw) {
 
 String encodeCueAssignments(Map<String, String> m) => jsonEncode(m);
 
-/// The sequence each gesture cue plays: the pattern [assignments] put on it
-/// (8AI) if the store still has it, else the cue's own built-in as stored (and
+/// The sequence each cue (gesture or breathing) plays: the pattern
+/// [assignments] put on it (8AI) if the store still has it, else the cue's own built-in as stored (and
 /// as the wearer may have changed it). A cue with neither is absent, and
 /// GestureCues plays its seeded default. The one place this is decided, so
 /// what plays is what the Haptics screen shows on the slot.
@@ -112,6 +131,10 @@ Map<String, BuzzSequence> resolveCuePatterns(
     kGestureFollowUpKey,
     kGestureConfirmKey,
     kGestureFailedKey,
+    kBreathInhaleKey,
+    kBreathExhaleKey,
+    kBreathHoldKey,
+    kBreathDoneKey,
   ]) {
     final given = assignments[key];
     final p = (given == null ? null : store.byId(given)) ??
@@ -163,7 +186,7 @@ String slotPatternLabel(
     return null;
   }
 
-  if (isGestureCueSlot(slotKey)) {
+  if (isCueSlot(slotKey)) {
     final given = _byId(patterns, cueAssignments[slotKey]);
     if (given != null) return patternLabel(given);
     return own(slotKey)?.name ?? builtInDefault(slotKey)?.name ?? '—';
