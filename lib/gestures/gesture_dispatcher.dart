@@ -175,9 +175,15 @@ class GestureDispatcher {
   /// implausible clocks only.
   final Map<String, DateTime> _lastAccepted = {};
 
+  bool _disposed = false;
+
+  /// The app is going away: later taps do nothing, and a tap waiting on a
+  /// session's count (which the owner has just ended) runs no action.
+  void dispose() => _disposed = true;
+
   /// Feed every live event here. Cheap for non-gesture events. Never throws.
   Future<List<GestureOutcome>> handle(StrapEvent e) async {
-    if (e.eventId != _doubleTapEventId) return const [];
+    if (_disposed || e.eventId != _doubleTapEventId) return const [];
     if (!_tapClassifiersOn()) return _runActions(e, settings.doubleTapActions);
     // Lab mode: suspended whether or not the capture below can start (a late
     // tap, a duplicate, a failed start) so a tap never runs half the lab and
@@ -215,6 +221,7 @@ class GestureDispatcher {
       GestureFailureKind kind = GestureFailureKind.doubleTap}) async {
     final out = <GestureOutcome>[];
     for (final a in actions) {
+      if (_disposed) break;
       out.add(await _handleOne(e, a, taps: taps));
     }
     // One report per tap, for the first action that failed.

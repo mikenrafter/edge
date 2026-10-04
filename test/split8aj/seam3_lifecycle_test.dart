@@ -1,9 +1,8 @@
 // 8AJ seam 3 characterization: lifetime of the gesture machinery. Identity of
 // the exposed objects, what AppState.dispose does and does not touch in this
 // area, timers left behind, listeners, and what a gesture does after dispose.
-// Several of these pin TODAY's behaviour even where it looks accidental (the
-// gesture sessions are never stopped by AppState.dispose); a GestureController
-// that changes one of them must say so. Passes before and after the move.
+// Dispose stops a gesture in flight (the repeat window, the ECG session) and
+// ends the dispatcher: a tap after dispose does nothing.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -167,11 +166,9 @@ void main() {
     });
   });
 
-  group('TODAY: what is left running when a gesture is in flight at dispose',
-      () {
-    test('a repeated-double-tap window outlives dispose: its timer is live, '
-        'and when it runs out the action still runs and the confirm cue '
-        'still plays', () async {
+  group('a gesture in flight at dispose is stopped', () {
+    test('a repeated-double-tap window armed at dispose never fires: no '
+        'action, no confirm cue, no pending gesture timer', () async {
       final spy = TimerSpy();
       await spy.run(() async {
         final order = <String>[];
@@ -184,35 +181,34 @@ void main() {
         await until(() => rig.cues.isNotEmpty);
         await settleMs(150); // the window is armed once the start cue played
         await rig.dispose();
-        expect(spy.live, isNotEmpty, reason: 'the window timer is still armed');
-        await until(() => ch.performed.isNotEmpty && rig.cues.contains('confirm'),
-            within: const Duration(seconds: 8));
-        expect(ch.performed, ['media_play_pause']);
-        expect(rig.cues, ['start', 'confirm']);
-        await settleMs(2500); // the band queue's playback settle
-        expect(spy.live, isEmpty, reason: 'and then it drains');
+        await settleMs(2500); // past the window and the band queue's settle
+        expect(ch.performed, isEmpty);
+        expect(rig.cues, ['start']);
+        expect(rig.app.gestureFailures.all, isEmpty);
+        expect(spy.live, isEmpty,
+            reason: 'live: ${spy.live.length} of ${spy.created} created');
         ch.dispose();
       });
     });
 
-    test('a tap that arrives after dispose still reaches the dispatcher: the '
-        'mapped action runs and the ack plays (the engine callbacks outlive '
-        'AppState.dispose)', () async {
+    test('a tap that arrives after dispose is ignored: no action, no ack, no '
+        'band write', () async {
       final rig = await newRig();
       await rig.app.gestureSettings
           .setDoubleTapActions({DeviceAction.mediaPlayPause});
       await rig.dispose();
+      final writesBefore = order.length;
       rig.doubleTap();
-      await until(() => channel.performed.isNotEmpty);
-      await until(() => rig.cues.isNotEmpty);
-      expect(channel.performed, ['media_play_pause']);
-      expect(rig.cues, ['confirm']);
+      await settleMs(800);
+      expect(channel.performed, isEmpty);
+      expect(rig.cues, isEmpty);
+      expect(order.length, writesBefore);
     });
 
-    // Last on purpose: it leaves the session's timer running.
-    test('an ECG session\'s poll timer outlives dispose (nothing stops the '
-        'session); it ends on its own at its start timeout, not tested here',
-        () async {
+    // Last on purpose: a regression leaves the session's timer running.
+    test('an ECG gesture in flight at dispose ends through the normal end '
+        'path: the stream is stopped, the poll timer is gone and no failure '
+        'is recorded', () async {
       final spy = TimerSpy();
       await spy.run(() async {
         final order = <String>[];
@@ -225,17 +221,18 @@ void main() {
         rig.doubleTap();
         await until(() => order.contains('band:generation'));
         await settleMs(100);
-        final before = spy.live.length;
+        expect(spy.live, isNotEmpty);
         await rig.dispose();
-        await settleMs(800);
-        expect(before, greaterThan(0));
-        expect(spy.live, isNotEmpty,
-            reason: 'the 250 ms poll timer of the session is still running');
+        await settleMs(2500);
+        expect(spy.live, isEmpty,
+            reason: 'the 250 ms poll timer of the session is gone; live: '
+                '${spy.live.length} of ${spy.created} created');
         expect(rig.app.gestureFailures.all, isEmpty,
-            reason: 'and the gesture has not ended or failed in the meantime');
+            reason: 'stopped by dispose is not a failed gesture');
         expect(ch.performed, isEmpty);
-        // Intentionally leaves that timer to expire with the test process: the
-        // session ends itself (no_stream) 20 s after its stream command.
+        expect(order.where((o) => o == 'band:generation').length, 2,
+            reason: 'the stream was started once and stopped once');
+        ch.dispose();
       });
     });
   });

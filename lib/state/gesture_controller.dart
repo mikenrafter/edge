@@ -104,20 +104,43 @@ class GestureController {
   final Future<void> Function(String json) _writeFailures;
   final Future<void> Function(EcgGestureRecord record) _recordEcgSession;
 
-  // Today nothing stops the sessions, the dispatcher, the failures store or the
-  // lab log when AppState is disposed (a gesture in flight outlives it, and
-  // seam3_lifecycle_test pins that). Tracked as a follow-up; this controller
-  // has no dispose until that is decided.
-
   late final GestureDispatcher dispatcher;
   late final DoubleTapRepeatSession _repeatTapSession;
   late final EcgTapSession _ecgTapSession;
 
+  bool _disposed = false;
+
+  /// Dispose stops the sessions: the repeat window is closed without its action
+  /// or confirm cue, an ECG gesture in flight ends through its normal end path
+  /// (stream stopped, no failure cue or record), and later taps and ECG packets
+  /// are ignored. Call it before the ECG controller is disposed.
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    try {
+      dispatcher.dispose(); // first: the waiting tap must run no action
+      _repeatTapSession.dispose();
+    } finally {
+      try {
+        unawaited(_ecgTapSession.stop().catchError((Object _) {}));
+      } finally {
+        _startCueSent = null;
+        final waiting = _tapCount;
+        _tapCount = null;
+        if (waiting != null && !waiting.isCompleted) waiting.complete(null);
+      }
+    }
+  }
+
   /// Hand one live strap event to the dispatcher; never throws.
-  Future<List<GestureOutcome>> handle(StrapEvent e) => dispatcher.handle(e);
+  Future<List<GestureOutcome>> handle(StrapEvent e) => _disposed
+      ? Future<List<GestureOutcome>>.value(const [])
+      : dispatcher.handle(e);
 
   /// The ECG controller's frame hook: a live packet for the touch counter.
-  void onEcgFrame(LabradorR17 r) => _ecgTapSession.onFrame(r);
+  void onEcgFrame(LabradorR17 r) {
+    if (!_disposed) _ecgTapSession.onFrame(r);
+  }
 
   /// A gesture holds the ECG stream (the Device lab's "ECG is busy" test).
   bool get ecgTapActive => _ecgTapSession.active;

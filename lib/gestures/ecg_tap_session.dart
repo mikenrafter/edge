@@ -793,6 +793,11 @@ class EcgTapSession {
     if (now != null) _handle(c.tick(now));
   }
 
+  /// The app is going away: end a gesture in flight through the normal end path
+  /// (the stream is stopped, the interval is written) with no failure cue and no
+  /// failure record. Does nothing when no gesture is running.
+  Future<void> stop() => _finish(null, 'app_closed', quiet: true);
+
   void _abandon(String reason) {
     final gen = _generation;
     if (_canRetry()) {
@@ -913,9 +918,9 @@ class EcgTapSession {
   /// the fallback on and no touch counted yet it ends with count 2 instead of
   /// null, so the double-tap action runs; returns true then.
   Future<bool> _finish(int? count, String? reason,
-      {bool stopStream = false}) async {
+      {bool stopStream = false, bool quiet = false}) async {
     if (!_active) return false;
-    final failed = count == null && reason != null;
+    final failed = count == null && reason != null && !quiet;
     final fallback = failed &&
         (_th?.fallbackToDoubleTap ?? true) &&
         (_counter?.count ?? 0) < 3;

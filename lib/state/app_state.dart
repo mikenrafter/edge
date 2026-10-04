@@ -2037,6 +2037,9 @@ class AppState extends ChangeNotifier {
     _syncQuietTimer?.cancel();
     _syncQuietTimer = null;
     _disposed = true;
+    // Before the ECG controller goes: a gesture in flight stops its stream
+    // through it.
+    _gestures.dispose();
     _ecg?.dispose();
     _ecgTransport?.dispose();
     // EVERY timer this object owns, not just three of them.
@@ -2827,6 +2830,9 @@ class AppState extends ChangeNotifier {
         (Object err) => _log('[event] persist failed: $err'),
       ),
     );
+    // The engine's callbacks outlive this object: nothing past the persist runs
+    // for an event that arrives after dispose.
+    if (_disposed) return;
     // M3: gesture dispatch and the alarm handler stay unscoped — neither is
     // device-scoped in M3's scope, and a double-tap on either band should
     // still log water.
