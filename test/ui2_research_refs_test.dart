@@ -1,8 +1,9 @@
 // Research citations: the table, and the links drawn from it.
 //
 // The table may only hold a DOI that already appears in the repo's own
-// sources. A reference with no DOI on record stays plain text — a link built
-// from a guessed DOI is worse than no link.
+// sources (docs/research-references.md records where each came from and how it
+// was verified). A reference with no DOI on record stays plain text — a link
+// built from a guessed DOI is worse than no link.
 
 import 'dart:io';
 
@@ -67,6 +68,23 @@ void main() {
     });
   });
 
+  group('provenance record', () {
+    test('docs/research-references.md lists every DOI with its reference', () {
+      final doc = File('docs/research-references.md').readAsStringSync();
+      for (final r in kResearchRefs) {
+        expect(doc, contains(r.label), reason: r.id);
+        if (r.doi != null) {
+          expect(doc, contains('https://doi.org/${r.doi}'), reason: r.id);
+        }
+      }
+    });
+
+    test('the references the app cannot link have no DOI on record', () {
+      final noDoi = {for (final r in kResearchRefs.where((r) => r.doi == null)) r.id};
+      expect(noDoi, {'banister1975', 'edwards1993', 'baevsky2008'});
+    });
+  });
+
   group('researchCitation', () {
     testWidgets('each linked citation opens exactly its doi.org URL',
         (t) async {
@@ -102,11 +120,11 @@ void main() {
     testWidgets('a reference without a DOI is plain text, not a link',
         (t) async {
       await t.pumpWidget(_host(Builder(
-        builder: (c) => researchCitation(c, 'Task Force 1996 · Plews 2013'),
+        builder: (c) => researchCitation(c, 'Banister 1975 · Edwards 1993'),
       )));
-      expect(_link('Plews 2013'), findsNothing);
+      expect(_link('Banister 1975'), findsNothing);
       expect(find.byType(Pressable), findsNothing);
-      expect(find.text('Task Force 1996 · Plews 2013'), findsOneWidget);
+      expect(find.text('Banister 1975 · Edwards 1993'), findsOneWidget);
     });
 
     testWidgets('only the part naming a linked study is tappable',
@@ -114,7 +132,7 @@ void main() {
       final opened = <String>[];
       await t.pumpWidget(_host(Builder(
         builder: (c) => researchCitation(
-            c, 'AN-2554 pedometer · O\'Connell 2017 · Plews 2013',
+            c, 'AN-2554 pedometer · O\'Connell 2017 · Banister 1975',
             open: (u) async {
           opened.add(u);
           return true;
@@ -123,7 +141,7 @@ void main() {
       expect(find.byType(Pressable), findsOneWidget);
       expect(_link('O\'Connell 2017'), findsOneWidget);
       await t.tap(find.text('AN-2554 pedometer'));
-      await t.tap(find.text('Plews 2013'));
+      await t.tap(find.text('Banister 1975'));
       expect(opened, isEmpty);
     });
   });
