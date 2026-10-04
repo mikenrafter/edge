@@ -14,6 +14,7 @@ import '../../data/db.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
@@ -53,6 +54,12 @@ class ReadinessData {
   /// as five consecutive days.
   final List<double?> series;
 
+  /// The night the headline is read off and when its row was computed — what
+  /// "As of" says while a pass recalculates it. Null unless the screen shows a
+  /// score of its own, so an absent number is never captioned with a time.
+  final String? asOfDay;
+  final DateTime? computedAt;
+
   const ReadinessData({
     this.readiness = Metric.empty,
     this.breakdown = const [],
@@ -61,6 +68,8 @@ class ReadinessData {
     this.day,
     this.series = const [],
     this.absentDiag,
+    this.asOfDay,
+    this.computedAt,
   });
 
   /// The absence diagnostic off a stored day bundle. Read straight from
@@ -93,6 +102,8 @@ class ReadinessData {
     final raw = daily is Map ? daily['readiness'] : null;
     final ownNight = day != null && day == heldOverNightOf(today);
     final readiness = ownNight ? metricOf(raw) : overnightMetric(today, raw);
+    final status = today['status'];
+    final scored = readiness.value != null;
 
     return ReadinessData(
       readiness: readiness,
@@ -110,6 +121,10 @@ class ReadinessData {
       inputsUsed: (v['inputs_used'] as num?)?.toInt() ?? 0,
       heldOverNight: heldOverNightOf(today),
       day: ownNight ? day : null,
+      asOfDay: scored && status is Map ? status['overnight_day']?.toString() : null,
+      computedAt: scored && status is Map
+          ? computedAtOf(status['overnight_computed_at'])
+          : null,
       series: denseDays(pointsOf(chart), 90),
       // Only read when there is nothing to explain away — a scored day has no
       // diag in its bundle anyway, and this is one more day_result decode.
@@ -138,7 +153,7 @@ class ReadinessDetail extends StatefulWidget {
   State<ReadinessDetail> createState() => _ReadinessDetailState();
 }
 
-class _ReadinessDetailState extends State<ReadinessDetail> {
+class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
   ReadinessData? _d;
   bool _loading = true;
 
@@ -152,6 +167,15 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
+
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a derive that rewrites the night is read again, which is also
+  /// what clears the "As of" label.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() => _load();
 
   Future<void> _load() async {
     final repo = repoOf(context);
@@ -183,6 +207,14 @@ class _ReadinessDetailState extends State<ReadinessDetail> {
         const SizedBox(height: S.x8),
         const Center(child: CircularProgressIndicator()),
       ] else ...[
+        AsOfHold(
+          shown: d,
+          asOf: (recalc) => asOfFor(
+              shownDay: d.asOfDay, computedAt: d.computedAt, recalc: recalc),
+          builder: (c, at) => Padding(
+              padding: const EdgeInsets.only(bottom: S.x2),
+              child: AsOfLabel(at: at)),
+        ),
         if (d.day != null) ...[
           Text(
               l?.healthNightOf(prettyDay(d.day, l)) ??

@@ -831,6 +831,17 @@ Map<String, Widget> extraCases() => {
       // an actual first run starts from, since an unset dismissed/last-shown
       // key reads as "eligible, never shown yet".
       'community_nudge': const CommunityNudge(),
+      // "As of" while newer results are calculated: today's time, another day's
+      // date with it, and the hold that keeps it up until the reload lands.
+      'as_of_label': AsOfLabel(
+          at: DateTime(2026, 10, 3, 8, 42), now: DateTime(2026, 10, 3, 9)),
+      'as_of_label_other_day': AsOfLabel(
+          at: DateTime(2026, 9, 30, 8, 42), now: DateTime(2026, 10, 3, 9)),
+      'as_of_hold': AsOfHold(
+        shown: 0,
+        asOf: (_) => DateTime(2026, 10, 3, 8, 42),
+        builder: (c, at) => AsOfLabel(at: at, now: DateTime(2026, 10, 3, 9)),
+      ),
       'surface': Builder(
         builder: (c) => Surface(
           child: Text(

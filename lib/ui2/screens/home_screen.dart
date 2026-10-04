@@ -32,6 +32,7 @@ import 'package:provider/provider.dart';
 
 import '../../ai/briefing.dart'
     show Briefing, BriefingPeriod, BriefingStore, currentBriefingPeriod, resolveBriefingToShow;
+import '../../compute/derive_perf.dart' show RenderLatency;
 import '../../data/day_label.dart' show todayLabel, calendarDaysBetween;
 import '../../data/db.dart' show DbRebuild;
 import '../../data/journal_fields.dart' show formatMinuteOfDay;
@@ -41,6 +42,7 @@ import '../../models/metric.dart';
 import '../../notify/notification_prefs.dart' show NotificationPrefs;
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
+import '../../state/recalc_state.dart';
 import '../../state/units_controller.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../activity/day_strain.dart' show DayStrainDetail;
@@ -1156,6 +1158,14 @@ class HomeData {
   /// case, and the screen owes the user the reason.
   final Map<String, dynamic>? insightsStale;
 
+  /// When the rows behind the rings were computed, and which day each belongs
+  /// to — what "As of" says while a newer result is being calculated. The
+  /// overnight pair (recovery, sleep) is null whenever the night on file is not
+  /// today's ([heldOverNight]): those numbers are refused above and a time
+  /// must not bring them back. Null with no row at all; never "now".
+  final DateTime? overnightAt, activityAt;
+  final String? overnightDay, activityDay;
+
   /// The last night that scored, when that is NOT today's — so the screen can
   /// say WHERE THE DATA STOPS on a day it has nothing of its own.
   ///
@@ -1199,6 +1209,10 @@ class HomeData {
     this.illnessDay,
     this.illnessZ,
     this.insightsStale,
+    this.overnightAt,
+    this.activityAt,
+    this.overnightDay,
+    this.activityDay,
   });
 
   /// The three illness fields, replaced together. Test-facing sugar, and they
@@ -1224,6 +1238,10 @@ class HomeData {
         illnessDay: day,
         illnessZ: z,
         insightsStale: insightsStale,
+        overnightAt: overnightAt,
+        activityAt: activityAt,
+        overnightDay: overnightDay,
+        activityDay: activityDay,
       );
 
   /// A day OTHER than today, for the Home day switcher.
@@ -1282,10 +1300,11 @@ class HomeData {
     // RATE ALONE — it has never been given a temperature series — so nothing
     // here may imply a second signal.
     final illness = today['illness'];
+    final status = today['status'] as Map?;
 
     return HomeData(
       name: profile['name']?.toString(),
-      dayId: (today['status'] as Map?)?['today_day']?.toString(),
+      dayId: status?['today_day']?.toString(),
       heldOverNight: heldOver,
       illnessState: illness is Map ? illness['state']?.toString() : null,
       illnessDay: illness is Map ? illness['date']?.toString() : null,
@@ -1316,6 +1335,12 @@ class HomeData {
           ? (strain['strain_target'] as Map).cast<String, dynamic>()
           : null,
       insightsStale: staleReasonOf(cd),
+      overnightAt:
+          heldOver == null ? computedAtOf(status?['overnight_computed_at']) : null,
+      overnightDay:
+          heldOver == null ? (status?['overnight_day'])?.toString() : null,
+      activityAt: computedAtOf(status?['activity_computed_at']),
+      activityDay: status?['activity_day']?.toString(),
     );
   }
 }
@@ -1379,7 +1404,25 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// offload landed, the derive ran, and Home kept saying "Nothing derived
   /// yet" until the app was relaunched.
   @override
-  void reload() => _load();
+  void reload() {
+    _latency.revisionBumped();
+    _load();
+  }
+
+  /// Revision -> first commit that consumed it, logged by AppState. Only a
+  /// revision-driven load is timed; the first load and the day switcher are
+  /// not revisions.
+  final RenderLatency _latency = RenderLatency(
+    nowMs: () => DateTime.now().millisecondsSinceEpoch,
+  );
+
+  void _recordRender() {
+    final ms = _latency.committed();
+    if (ms == null) return;
+    try {
+      context.read<AppState>().recordHomeRender(ms);
+    } catch (_) {}
+  }
 
   Future<void> _load() async {
     final repo = repoOf(context);
@@ -1397,9 +1440,15 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       final days = await repo.availableDays();
       if (stillNewest(#home, t)) {
         setState(() => (_d = d, _days = days, _loading = false, _failed = false));
+        _recordRender();
       }
     } catch (_) {
-      if (stillNewest(#home, t)) setState(() => (_loading = false, _failed = true));
+      if (stillNewest(#home, t)) {
+        setState(() => (_loading = false, _failed = true));
+        // Nothing usable was rendered: drop the pending measurement rather
+        // than time a later retry from this bump.
+        _latency.committed();
+      }
     }
   }
 
@@ -1710,6 +1759,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
               onFix: () => go(c, const ReadinessDetail()),
             );
           }),
+        _homeAsOf(c, d),
 
         // Right under the rings, above everything else — the one spot on
         // this screen nobody scrolls past without seeing.
@@ -1741,6 +1791,37 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
             () => go(c, const DayTimelineScreen())),
       ],
     ]));
+  }
+
+  /// "As of <time>" under the rings while a pass is recalculating their day:
+  /// recovery and sleep say when the overnight row was computed, strain and
+  /// activity when today's was. See [AsOfHold] for why it outlasts the pass by
+  /// one reload.
+  static Widget _homeAsOf(BuildContext c, HomeData d) {
+    Widget label(BuildContext c, DateTime at) => Padding(
+        padding: const EdgeInsets.only(top: S.x2), child: AsOfLabel(at: at));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      AsOfHold(
+        shown: d,
+        builder: label,
+        asOf: (recalc) => asOfFor(
+            shownDay: d.overnightDay,
+            computedAt: d.overnightAt,
+            recalc: recalc),
+      ),
+      AsOfHold(
+        shown: d,
+        builder: label,
+        // One line when both rows were computed together.
+        asOf: (recalc) => d.activityAt == d.overnightAt &&
+                d.activityDay == d.overnightDay
+            ? null
+            : asOfFor(
+                shownDay: d.activityDay,
+                computedAt: d.activityAt,
+                recalc: recalc),
+      ),
+    ]);
   }
 
   /// The illness watch, on Home, at amber as well as red.

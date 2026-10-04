@@ -19,6 +19,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
+import '../../state/recalc_state.dart';
 import '../activity/day_strain.dart' show DayStrainDetail;
 import '../ui2.dart';
 import 'circadian_detail.dart';
@@ -88,6 +89,12 @@ class HealthData {
   /// history is there from the first run instead of starting empty today.
   final List<Finding> findings;
 
+  /// The newest day among the stored series and when those series were last
+  /// computed (the reader's max `computed_at`) — what Trends says "As of"
+  /// while a pass recalculates that day. Null when no reader gave a time.
+  final String? chartsNewestDay;
+  final DateTime? chartsComputedAt;
+
   const HealthData({
     this.today = const {},
     this.insights = const {},
@@ -101,6 +108,8 @@ class HealthData {
     this.napCount,
     this.napDay = '',
     this.findings = const [],
+    this.chartsNewestDay,
+    this.chartsComputedAt,
   });
 
   /// The stored points for [key].
@@ -142,6 +151,8 @@ class HealthData {
     final days = await repo.availableDays();
 
     final charts = <String, List<ChartPoint>>{};
+    DateTime? chartsAt;
+    int? newestT;
     for (final k in const [
       'resting_hr',
       'hrv',
@@ -149,7 +160,15 @@ class HealthData {
       'stress',
       'resp_rate',
     ]) {
-      charts[k] = pointsOf(await repo.getChart(k));
+      final chart = await repo.getChart(k);
+      charts[k] = pointsOf(chart);
+      final at = computedAtOf(chart['computed_at']);
+      if (at != null && (chartsAt == null || at.isAfter(chartsAt))) {
+        chartsAt = at;
+      }
+      for (final pt in charts[k]!) {
+        if (newestT == null || pt.t > newestT) newestT = pt.t;
+      }
     }
 
     final coach = cd['sleep_coach'];
@@ -225,6 +244,10 @@ class HealthData {
       napDay: napDay,
       findings:
           findingsHistory(cd, readiness: ready, irregularDays: irregular),
+      chartsComputedAt: chartsAt,
+      chartsNewestDay: newestT == null
+          ? null
+          : dayLabelOf(DateTime.fromMillisecondsSinceEpoch(newestT * 1000)),
     );
   }
 }
@@ -695,6 +718,17 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     ]);
   }
 
+  /// "As of <time>" at the top of a sub-tab while the day its rows are read
+  /// from is being recalculated. The rows stay; see [AsOfHold].
+  Widget _asOf(HealthData d, DateTime? Function(RecalcState recalc) at) =>
+      AsOfHold(
+        shown: d,
+        asOf: at,
+        builder: (c, t) => Padding(
+            padding: const EdgeInsets.only(bottom: S.x3),
+            child: AsOfLabel(at: t)),
+      );
+
   // ─────────────── LAST NIGHT ───────────────
   //
   // One night, and nothing else: no sparklines and no trend arrows, because a
@@ -852,7 +886,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       z: illness is Map ? (illness['z'] as num?) : null,
     );
 
+    final status = d.today['status'];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Every row above comes off the overnight row, whichever night it is.
+      _asOf(
+          d,
+          (recalc) => asOfFor(
+              shownDay: status is Map ? status['overnight_day']?.toString() : null,
+              computedAt: computedAtOf(
+                  status is Map ? status['overnight_computed_at'] : null),
+              recalc: recalc)),
       if (night != null) ...[
         Text(l?.healthNightOf(prettyDay(night, l)) ?? 'Night of ${prettyDay(night, l)}',
             style: F.cap.copyWith(color: p.ink2)),
@@ -1097,7 +1140,16 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                 '${coverage.round()}% of the day'),
         hm(wear.value), '', () => go(c, const MetricDetail('wear')));
 
+    final status = d.today['status'];
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // Strain, steps and the rest of the day so far come off today's row.
+      _asOf(
+          d,
+          (recalc) => asOfFor(
+              shownDay: status is Map ? status['activity_day']?.toString() : null,
+              computedAt: computedAtOf(
+                  status is Map ? status['activity_computed_at'] : null),
+              recalc: recalc)),
       if (rows.isNotEmpty)
         Surface(
           pad: const EdgeInsets.symmetric(horizontal: S.x4),
@@ -1258,6 +1310,21 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     };
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      // The trends are the stored series, and chronotype and regularity are
+      // the cross-day rollup: either being recalculated says when it was last
+      // computed.
+      _asOf(
+          d,
+          (recalc) =>
+              asOfFor(
+                  shownDay: d.chartsNewestDay,
+                  computedAt: d.chartsComputedAt,
+                  recalc: recalc) ??
+              asOfFor(
+                  shownDay: null,
+                  computedAt: computedAtOf(cd['computed_at']),
+                  recalc: recalc,
+                  dependsOnCrossDay: true)),
       // Chronotype, jetlag and regularity ALL come out of the cross-day
       // rollup. When it is withheld, the section says why rather than showing
       // the cold-start "it takes a few weeks" line, which would be a lie.

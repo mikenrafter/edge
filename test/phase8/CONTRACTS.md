@@ -1222,6 +1222,55 @@ Tests: `test/phase8/settings_landing_test.dart`, `alarm_in_alerts_test.dart`,
   `profileMoreSettingsSub` (nothing referenced them after the landing screen went).
 - **Docs.** `docs/navigation-depth.md`; the roadmap entry 8AF.7.
 
+## 8AG P1/P1b: measure a pass, publish each day, quiet hidden tabs, "As of" while recalculating
+
+Tests: `test/perf/derive_perf_test.dart`, `revision_coalescer_test.dart`,
+`publish_each_day_test.dart`, `revision_hidden_tab_test.dart`, `home_render_perf_test.dart`,
+`recalc_state_test.dart`, `as_of_label_test.dart`, `last_result_cache_test.dart`,
+`as_of_screens_test.dart`, `perf_wiring_test.dart`; `test/phase8/settings_regroup_test.dart`.
+
+- **Measuring.** `DerivePerf` (`lib/compute/derive_perf.dart`, pure, injected clock) records queue
+  wait, the hold reasons seen while queued, and per-day prepare / compute / persist
+  milliseconds. `summary()` lands in `DerivationEngine.snapshot()['last_pass_perf']` and is
+  logged once per pass as `[perf] derive ...`. Home times an `insightsRevision` bump to its
+  first commit (`RenderLatency`, `AppState.lastHomeRenderMs`, `[perf] home render N ms`).
+  Settings > Developer has a read-only "Last calculation" row (`DerivePerf.describe`); "—"
+  when nothing was measured. No `kAlgoVersion` bump.
+- **Publishing.** `onDayDone` runs `refreshComputeFreshness` then `bumpInsights` through
+  `RevisionCoalescer` (at most one per 1500 ms, trailing flush). The end-of-pass bump stays, as
+  does the notify on every third day. A pass that ends with days still pending (failed,
+  cancelled) requests one more publish so labels can drop.
+- **Hidden tabs.** `AppShell` wraps every non-current tab in `TickerMode(enabled: false)`.
+  `RevisionReload` registers `TickerMode.valuesOf(context)`; a revision or a language change
+  while hidden only marks it dirty, and showing it reloads once. A never-built tab stays
+  unbuilt.
+- **RecalcState.** `AppState.recalc` is a `ValueListenable<RecalcState>` on its own notifier.
+  `{days, passStartedAt, crossDay}`: set from the engine's `onScopeDays`, a day leaves in
+  `onDayDone`, `crossDay` is true only while the baseline / cross-day step runs (`onCrossDay`),
+  and it returns to `RecalcState.idle` in `finally`. `rescanRecent` reports its days too.
+  `asOfFor` is non-null only when `computedAt` is non-null and (the shown day is in `days`, or
+  the card `dependsOnCrossDay` and `crossDay` is true).
+- **The label.** `AsOfLabel` (`lib/ui2/as_of.dart`, key `as-of-label`): "As of 08:42" (24 h),
+  "As of 30 Sep, 08:42" when the date is not today's local day, nothing for null; strings
+  `asOfTime`, `asOfDateTime`, `asOfSemantics` (English only, other languages fall back).
+  `AsOfHold` keeps the label from the moment the day leaves the pass until the screen's reload
+  replaces the old row. `computed_at` (epoch ms, from the row read) is on `getDaySleepV2`,
+  `getDayHrv`, `getDayStress`, `getChart` (newest day's `day_result` time) and `getInsights`
+  (the rollup's `updated_at`); Home reads `status.overnight_computed_at` and
+  `status.activity_computed_at`, and drops the overnight time while the night on file is not
+  today's.
+- **Screens.** Home (under the rings), Health (Last night, Today, Trends), SleepDetail,
+  ReadinessDetail, MetricDetail, Wellness (Mind tab stress), CircadianDetail (cross-day),
+  Beats. SleepDetail, MetricDetail, ReadinessDetail, CircadianDetail and Beats now reload on a
+  revision (`RevisionReload`) so the label clears when the fresh row lands.
+- **LastResultCache** (`lib/ui2/last_result_cache.dart`): 32 entries, least recently used out
+  first, `keyOf(screen, args)`, `load` stores only a normal return. Used by MetricDetail
+  (metrics with journal insights), Wellness `JournalFindings`, Beats (per night) and past
+  Workout detail (`keyOf('workout', [id])`; a failed `getWorkout` read is not cached). A hit
+  renders at once with `AsOfLabel(cachedAt)`, recomputes in the background, and the fresh
+  result replaces it and clears the label.
+- **Docs.** `docs/perf.md`; the roadmap entry 8AG-perf P1.
+
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 
 Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the

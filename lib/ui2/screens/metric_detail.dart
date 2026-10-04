@@ -20,6 +20,7 @@ import '../../data/db.dart' show LocalDb;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'beats.dart';
 import 'day_steps.dart';
@@ -462,6 +463,12 @@ class MetricData {
   /// did not contribute to; it does not re-query.
   final String? viewingDeviceId;
 
+  /// When the newest day drawn here was computed (the reader's own
+  /// `computed_at`, off the rows it read) and that day's label — what "As of"
+  /// says while a pass recalculates it. Null when the reader gave none.
+  final DateTime? computedAt;
+  final String? newestDay;
+
   const MetricData({
     this.series = const [],
     this.wear = const [],
@@ -474,6 +481,8 @@ class MetricData {
     this.recording = const {},
     this.sources = const [],
     this.viewingDeviceId,
+    this.computedAt,
+    this.newestDay,
   });
 
   static Future<MetricData> load(
@@ -513,8 +522,14 @@ class MetricData {
     }
     final coverage = _coverageOf(chart['coverage_devices']);
     final recording = _coverageOf(chart['coverage_recording']);
+    final points = pointsOf(chart);
     return MetricData(
-      series: pointsOf(chart),
+      computedAt: computedAtOf(chart['computed_at']),
+      newestDay: points.isEmpty
+          ? null
+          : dayLabelOf(
+              DateTime.fromMillisecondsSinceEpoch(points.last.t * 1000)),
+      series: points,
       wear: pointsOf({'points': chart['wear']}),
       percentile: pct,
       movers: movers,
@@ -646,7 +661,7 @@ class MetricDetail extends StatefulWidget {
   State<MetricDetail> createState() => _MetricDetailState();
 }
 
-class _MetricDetailState extends State<MetricDetail> {
+class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   // Today is its own window, not the left edge of the 7-day one. Asking "what
   // is it right now" and "what has it been lately" are different questions,
   // and a range list that starts at 7 days made the first one unanswerable.
@@ -781,6 +796,19 @@ class _MetricDetailState extends State<MetricDetail> {
     super.dispose();
   }
 
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a derive that rewrites the series is read again — and the "As
+  /// of" label below clears only when that new read has landed.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() => _load();
+
+  /// Set while [_d] is the last result of a previous open, shown at once while
+  /// the insights recompute; null once a fresh result has replaced it.
+  DateTime? _cachedAt;
+
   Future<void> _load() async {
     // FIRST LINE, because the line under it reads `context` unconditionally.
     // Both callers can land after disposal: the post-frame callback fires
@@ -803,8 +831,28 @@ class _MetricDetailState extends State<MetricDetail> {
           ? signalCandidates(context, context.read<AppState>(),
               requires: spec.requires)
           : const <DeviceOption>[];
-      final d = await MetricData.load(repo, widget.metricKey,
-          candidates: candidates);
+      // Only a metric with journal insights does the slow part on open (the
+      // 90-day insight pass); its last result is kept so the next open shows it
+      // at once, labelled, while this recomputes. Errors are never cached.
+      final cacheKey = _outcomeOf[widget.metricKey] == null
+          ? null
+          : LastResultCache.keyOf('metric_insights', [widget.metricKey]);
+      if (cacheKey != null && _d == null) {
+        final hit = LastResultCache.instance.get<MetricData>(cacheKey);
+        if (hit != null && mounted) {
+          setState(() {
+            _d = hit.value;
+            _cachedAt = hit.cachedAt;
+            _loading = false;
+          });
+        }
+      }
+      Future<MetricData> fresh() =>
+          MetricData.load(repo, widget.metricKey, candidates: candidates);
+      final d = cacheKey == null
+          ? await fresh()
+          : await LastResultCache.instance
+              .load<MetricData>(cacheKey, fresh);
       var winners = const <InputSignal, String?>{};
       if (d.sources.length >= 2 && spec.requires.isNotEmpty && mounted) {
         // Read before the query, so the `mounted` in the condition above is
@@ -829,6 +877,7 @@ class _MetricDetailState extends State<MetricDetail> {
       if (mounted) {
         setState(() {
           _d = d;
+          _cachedAt = null;
           _winners = winners;
           _loading = false;
           _openOnDay(d);
@@ -837,6 +886,21 @@ class _MetricDetailState extends State<MetricDetail> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// "As of <time>": the last result of an earlier open while it recomputes,
+  /// or the shown series while a pass recalculates its newest day.
+  Widget _asOf(MetricData d) {
+    Widget place(BuildContext c, DateTime at) => Padding(
+        padding: const EdgeInsets.only(bottom: S.x2), child: AsOfLabel(at: at));
+    final cached = _cachedAt;
+    if (cached != null) return place(context, cached);
+    return AsOfHold(
+      shown: d,
+      asOf: (recalc) => asOfFor(
+          shownDay: d.newestDay, computedAt: d.computedAt, recalc: recalc),
+      builder: place,
+    );
   }
 
   /// Moves to the narrowest offered window holding [MetricDetail.initialDay]
@@ -870,6 +934,7 @@ class _MetricDetailState extends State<MetricDetail> {
     final vals = [for (final v in series) ?v];
 
     return detailScaffold(c, spec.title, [
+      _asOf(d),
       // Resting heart rate is the NIGHT's number; this is what the chest is
       // doing this second. Two different quantities, so the live one gets its
       // own card above the trend rather than a second figure on the same card,

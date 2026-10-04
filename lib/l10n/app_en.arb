@@ -12420,5 +12420,35 @@
         "type": "int"
       }
     }
+  },
+  "asOfTime": "As of {time}",
+  "@asOfTime": {
+    "description": "Small label under a title while newer results are being calculated: the time the shown results were calculated, 24-hour, e.g. 08:42.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "asOfDateTime": "As of {date}, {time}",
+  "@asOfDateTime": {
+    "description": "Same label when the shown results are from another day: {date} is a short day and month (30 Sep), {time} is 24-hour.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "asOfSemantics": "Showing results calculated at {when}; new results are being calculated",
+  "@asOfSemantics": {
+    "description": "Screen-reader text for the As of label. {when} is the time, with a short date in front when it is not today.",
+    "placeholders": {
+      "when": {
+        "type": "String"
+      }
+    }
   }
 }

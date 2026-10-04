@@ -47,6 +47,7 @@ import '../telemetry/telemetry_service.dart';
 import 'crossday_pipeline.dart';
 import 'sleep_blank.dart';
 import 'derive_pacing.dart';
+import 'derive_perf.dart';
 import 'hr_max.dart'
     show estimatedMaxHr, kHrFloorBpm, smoothedMaxHr, smoothedMinHr;
 import 'movement_floor_policy.dart' as mfp;
@@ -2631,9 +2632,67 @@ class DerivationEngine {
     'active_days': <String>[],
     'concurrency': 1,
     'last_error': null,
+    // Summary of the last pass that computed at least one day (see [perf]).
+    'last_pass_perf': null,
   };
 
   Map<String, dynamic> snapshot() => Map<String, dynamic>.from(_diag);
+
+  /// Timing of the current / last pass. The scheduler feeds it the queue wait
+  /// and hold reasons before a pass starts; run()/runDays()/rescanRecent()
+  /// feed it the per-day phases. Measurement only: no metric reads it.
+  final DerivePerf perf = DerivePerf(
+    nowMs: () => DateTime.now().millisecondsSinceEpoch,
+  );
+
+  /// Persist time of each day currently inside [_derivePreparedDay], read back
+  /// by [_derivePreparedDayTimed] to split compute from persist.
+  final Map<String, int> _persistMs = {};
+
+  /// [_derivePreparedDay] with its wall time reported to [perf]: persist as
+  /// measured around `putDayResult`, compute as the rest.
+  Future<void> _derivePreparedDayTimed(
+    PreparedDerivationDay day,
+    Profile profile,
+    int dataNowSec,
+    _BaselineHistoryCache history,
+  ) async {
+    final sw = Stopwatch()..start();
+    try {
+      await _derivePreparedDay(day, profile, dataNowSec, history);
+    } finally {
+      final persist = _persistMs.remove(day.date);
+      final total = sw.elapsedMilliseconds;
+      perf.addPhase(
+        day.date,
+        DerivePhase.compute,
+        persist == null ? total : (total - persist < 0 ? 0 : total - persist),
+      );
+      if (persist != null) perf.addPhase(day.date, DerivePhase.persist, persist);
+    }
+  }
+
+  /// [_prepareTargetDay] with its wall time reported to [perf].
+  Future<PreparedDerivationDay?> _prepareTargetDayTimed(String dayId) async {
+    final sw = Stopwatch()..start();
+    try {
+      return await _prepareTargetDay(dayId);
+    } finally {
+      perf.addPhase(dayId, DerivePhase.prepare, sw.elapsedMilliseconds);
+    }
+  }
+
+  /// Publish a finished pass's timing: on `snapshot()` and as one
+  /// `[perf] derive …` log line.
+  /// A pass that computed no day (nothing to do, refused) keeps the previous
+  /// real pass on show instead of overwriting it with an empty one.
+  void _finishPassPerf() {
+    perf.endPass();
+    final s = perf.summary();
+    if (((s['days'] as int?) ?? 0) == 0) return;
+    _diag['last_pass_perf'] = s;
+    _log(perf.logLine());
+  }
 
   /// Run a derivation pass. [heavy]=false runs a bounded light pass over the
   /// freshness-critical day: TODAY when raw has reached today, else the latest
@@ -2646,6 +2705,9 @@ class DerivationEngine {
   /// is told how many days this pass will compute as soon as that is known
   /// (0 = nothing to do), before the first day starts. It is not called when
   /// the pass is refused (already running) or fails before it has a scope.
+  /// [onScopeDays] hears the same scope as a newest-first day list (empty =
+  /// nothing to do), and [onCrossDay] is true while the baseline / cross-day
+  /// step runs, so a screen can tell which results are still on the way.
   Future<int> run(
     Profile profile, {
     bool heavy = false,
@@ -2653,9 +2715,12 @@ class DerivationEngine {
     bool changedOnly = false,
     void Function(String day, int index, int total)? onDayDone,
     void Function(int total)? onScope,
+    void Function(List<String> days)? onScopeDays,
+    void Function(bool active)? onCrossDay,
   }) async {
     if (_running) return 0;
     _running = true;
+    perf.startPass();
     final startedAt = DateTime.now().millisecondsSinceEpoch;
     _diag
       ..['running'] = true
@@ -2707,6 +2772,7 @@ class DerivationEngine {
       if (noData && blankOnly.isEmpty) {
         _log('derive: no decoded data');
         onScope?.call(0);
+        onScopeDays?.call(const []);
         return 0;
       }
       final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
@@ -2768,11 +2834,13 @@ class DerivationEngine {
             ? 'derive: nothing changed — nothing to do'
             : 'derive: all days finalized — nothing to do');
         onScope?.call(0);
+        onScopeDays?.call(const []);
         if (!noData) await _pruneOldDecoded(scope.rawDays, dataNowSec);
         return 0;
       }
       _diag['todo_days'] = todoDays.length;
       onScope?.call(todoDays.length);
+      onScopeDays?.call(todoDays.reversed.toList());
       _diag['stage'] = 'history';
       final history = await _BaselineHistoryCache.load();
       _log(
@@ -2814,7 +2882,7 @@ class DerivationEngine {
         activeDays.add(dayId);
         _diag['active_days'] = activeDays.toList();
         try {
-          final prepared = await _prepareTargetDay(dayId);
+          final prepared = await _prepareTargetDayTimed(dayId);
           // Override day whose raw has been pruned (≥14 d): re-deriving would
           // produce an empty/absent result and clobber the user's manual sleep.
           // Keep the existing locked result instead.
@@ -2827,7 +2895,7 @@ class DerivationEngine {
             _log('derive day $dayId skipped: override day, raw pruned — kept');
           } else if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
-            await _derivePreparedDay(prepared, profile, dataNowSec, history);
+            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history);
             done++;
             _diag['done_days'] = done;
             await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -2874,10 +2942,15 @@ class DerivationEngine {
 
       // 4. Cross-day rollup + notifications (best-effort).
       if (done > 0) {
-        _diag['stage'] = 'baselines';
-        await _refreshBaselines();
-        _diag['stage'] = 'cross_day';
-        await _runCrossDay(profile);
+        onCrossDay?.call(true);
+        try {
+          _diag['stage'] = 'baselines';
+          await _refreshBaselines();
+          _diag['stage'] = 'cross_day';
+          await _runCrossDay(profile);
+        } finally {
+          onCrossDay?.call(false);
+        }
         _diag['stage'] = 'notifications';
         await _runNotifications();
       }
@@ -2915,6 +2988,7 @@ class DerivationEngine {
       _log('derive ERROR: $e\n$st');
       return 0;
     } finally {
+      _finishPassPerf();
       // Storage housekeeping runs here, after everything, still holding
       // `_running`. See _runStorageHousekeeping — this is the only place every
       // entry path and every early return actually reaches.
@@ -2981,10 +3055,12 @@ class DerivationEngine {
     bool force = true,
     void Function(String day, int index, int total)? onDayDone,
     void Function(String day)? onDayDerived,
+    void Function(List<String> days)? onScopeDays,
   }) async {
     if (days.isEmpty) return 0;
     if (_running) return 0;
     _running = true;
+    perf.startPass();
     final startedAt = DateTime.now().millisecondsSinceEpoch;
     _diag
       ..['running'] = true
@@ -3031,6 +3107,7 @@ class DerivationEngine {
         return 0;
       }
       _diag['todo_days'] = todoDays.length;
+      onScopeDays?.call(todoDays.reversed.toList());
       final history = await _BaselineHistoryCache.load();
       // Same bounded worker-pool pattern as run() — see its doc for why this
       // is safe (independent day_id-keyed writes + a frozen baseline shared
@@ -3045,10 +3122,10 @@ class DerivationEngine {
         activeDays.add(dayId);
         _diag['active_days'] = activeDays.toList();
         try {
-          final prepared = await _prepareTargetDay(dayId);
+          final prepared = await _prepareTargetDayTimed(dayId);
           if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
-            await _derivePreparedDay(prepared, profile, dataNowSec, history);
+            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history);
             done++;
             _diag['done_days'] = done;
             onDayDerived?.call(dayId);
@@ -3098,6 +3175,7 @@ class DerivationEngine {
       _log('derive selected ERROR: $e\n$st');
       return 0;
     } finally {
+      _finishPassPerf();
       await _runStorageHousekeeping();
       final finishedAt = DateTime.now().millisecondsSinceEpoch;
       _diag
@@ -4126,9 +4204,13 @@ class DerivationEngine {
   Future<int> rescanRecent(
     Profile profile, {
     void Function(String day, int index, int total)? onDayDone,
+    void Function(List<String> days)? onScopeDays,
   }) async {
     if (_running) return 0;
     _running = true;
+    // Measured only once the baseline gate lets a rescan through: the gated
+    // no-op runs after every heavy pass and must not wipe the last real pass.
+    var perfStarted = false;
     try {
       // Baseline gate: compute the CURRENT signature and compare to the stored
       // one. Unchanged → nothing to refresh; bail cheaply (no redundant writes).
@@ -4180,6 +4262,9 @@ class DerivationEngine {
         'recent day(s) (incl. finalized; v$kAlgoVersion)',
       );
 
+      perf.startPass();
+      perfStarted = true;
+      onScopeDays?.call(todoDays.reversed.toList());
       final history = await _BaselineHistoryCache.load();
       // Same bounded worker-pool pattern as run()/runDays — up to
       // _rescanWindowDays (21) days is exactly the kind of sweep that used
@@ -4191,9 +4276,9 @@ class DerivationEngine {
 
       Future<void> processDay(String dayId) async {
         try {
-          final prepared = await _prepareTargetDay(dayId);
+          final prepared = await _prepareTargetDayTimed(dayId);
           if (prepared != null) {
-            await _derivePreparedDay(prepared, profile, dataNowSec, history);
+            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history);
             done++;
           }
         } catch (e) {
@@ -4218,6 +4303,7 @@ class DerivationEngine {
       _log('rescan ERROR: $e\n$st');
       return 0;
     } finally {
+      if (perfStarted) _finishPassPerf();
       await _runStorageHousekeeping();
       _running = false;
     }
@@ -4998,6 +5084,7 @@ class DerivationEngine {
     final scalars =
         (bundle['scalars'] as Map?)?.cast<String, dynamic>() ?? const {};
     double? sc(String k) => (scalars[k] as num?)?.toDouble();
+    final persistWatch = Stopwatch()..start();
     await LocalDb.putDayResult(
       dayId: day.date,
       algoVersion: kAlgoVersion,
@@ -5128,6 +5215,7 @@ class DerivationEngine {
         'hr_ceiling_bpm': sc('hr_ceiling_bpm'),
       },
     );
+    _persistMs[day.date] = persistWatch.elapsedMilliseconds;
     // NOTE: the sweep's `history` snapshot is deliberately NOT updated here.
     // See _BaselineHistoryCache — mutating the shared snapshot mid-sweep is the
     // duplicate-day pollution bug, and each day already derives its own

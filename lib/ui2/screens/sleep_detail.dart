@@ -23,8 +23,8 @@ import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
-import '../../state/locale_controller.dart';
 import '../../state/prefs.dart';
+import '../../state/recalc_state.dart';
 import '../../models/metric.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
@@ -323,7 +323,7 @@ class SleepDetail extends StatefulWidget {
   State<SleepDetail> createState() => _SleepDetailState();
 }
 
-class _SleepDetailState extends State<SleepDetail> {
+class _SleepDetailState extends State<SleepDetail> with RevisionReload {
   SleepData? _d;
   bool _loading = true;
   String? _day;
@@ -353,30 +353,14 @@ class _SleepDetailState extends State<SleepDetail> {
 
   // `_rough` bakes `AppLocalizations` strings into `knows`/`moved` at load
   // time (see `loadRoughNight`), so a language switch while this screen is
-  // alive would otherwise leave the rough-night card showing the old locale
-  // until the user steps to another day. Sentinel so the system-default
-  // locale (`code == null`) is not mistaken for "never seen yet" on the first
-  // pass — same fix as `RevisionReload`/`DayTimelineScreen`.
-  static const Object _localeUnset = Object();
-  Object? _seenLocale = _localeUnset;
+  // alive has to read again, and so does a derive that rewrites this night —
+  // the "As of" label below clears only when the new row has landed.
+  // `RevisionReload` carries both.
+  @override
+  bool get revisionReloads => widget.data == null;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final Object localeKey;
-    try {
-      final code = context.watch<LocaleController>().code;
-      localeKey = code ?? Localizations.localeOf(context);
-    } catch (_) {
-      return;
-    }
-    if (identical(_seenLocale, _localeUnset)) {
-      _seenLocale = localeKey;
-    } else if (_seenLocale != localeKey && widget.data == null) {
-      _seenLocale = localeKey;
-      _load();
-    }
-  }
+  void reload() => _load();
 
   // A locale change and `_goDay` can each kick off a `_load()` while a prior
   // one is still in flight; whichever resolves last would otherwise win and
@@ -409,6 +393,20 @@ class _SleepDetailState extends State<SleepDetail> {
       if (mounted && gen == _loadGen) setState(() => _loading = false);
     }
   }
+
+  /// "As of <time>" while this night is being recalculated; the night on
+  /// screen stays. Its own row's time, so stepping to another night never
+  /// borrows this one's.
+  Widget _asOf(SleepData d) => AsOfHold(
+        shown: d,
+        asOf: (recalc) => asOfFor(
+            shownDay: d.day,
+            computedAt: computedAtOf(d.night['computed_at']),
+            recalc: recalc),
+        builder: (c, at) => Padding(
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: AsOfLabel(at: at)),
+      );
 
   /// Another night. The scrub cursor belongs to the night it was placed on, so
   /// it goes with it.
@@ -498,6 +496,7 @@ class _SleepDetailState extends State<SleepDetail> {
     // thing that dates the screen.
     return detailScaffold(c, title,
         sub: d.days.length < 2 ? (d.day ?? '').toUpperCase() : '', [
+      _asOf(d),
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       ..._nightControls(d),
 

@@ -24,6 +24,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/widgets.dart';
 
 import 'control_operations.dart';
+import 'recalc_state.dart';
+import 'revision_coalescer.dart';
 export 'control_operations.dart';
 
 import '../ai/ai_prefs.dart';
@@ -53,6 +55,7 @@ import '../ble/ble_state.dart'
 import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
 import '../compute/derivation_engine.dart';
+import '../compute/derive_perf.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/manual_session.dart'
     show strainFromPerMinuteHr, supersededSuggestionIds;
@@ -75,7 +78,7 @@ import '../wake/wake_controller.dart';
 import '../wake/wake_orchestrator.dart';
 import '../wake/wake_settings.dart';
 import '../wake/wake_stores.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show ValueListenable, defaultTargetPlatform;
 import 'capabilities.dart';
 import 'feature_flags.dart';
 import 'prefs.dart';
@@ -195,6 +198,21 @@ PairedDevice? healedPairing(PairedDevice? current, String? reportedSerial) {
   return PairedDevice(current.remoteId, clean, generation: current.generation);
 }
 
+/// The two engine calls [AppState._afterDrain] makes, as test seams (see
+/// `AppState.debugDeriveRun` / `debugRescanRecent`).
+typedef DeriveRunHook = Future<int> Function({
+  required bool heavy,
+  required bool changedOnly,
+  void Function(int total)? onScope,
+  void Function(List<String> days)? onScopeDays,
+  void Function(String day, int index, int total)? onDayDone,
+  void Function(bool active)? onCrossDay,
+});
+typedef RescanHook = Future<int> Function({
+  void Function(List<String> days)? onScopeDays,
+  void Function(String day, int index, int total)? onDayDone,
+});
+
 class AppState extends ChangeNotifier {
   late final BleEngine engine;
 
@@ -302,6 +320,12 @@ class AppState extends ChangeNotifier {
         _afterDrain(heavy: kind == DeriveJobKind.heavy),
     log: _log,
     onChanged: notifyListeners,
+    // Measurement only: queue wait and hold reasons for DerivePerf.
+    onQueued: () => _derive.perf.enqueued(),
+    onWaiting: ({required settling}) {
+      if (settling) _derive.perf.noteSettle();
+      _derive.perf.noteHolds(_deriveScheduler.snapshot());
+    },
   );
 
   /// Profile fed to the analytics (HRmax/calories/TRIMP personalization).
@@ -1865,6 +1889,99 @@ class AppState extends ChangeNotifier {
   /// Bumped whenever stored insights change so listeners can re-query without a
   /// full ChangeNotifier repaint.
   final ValueNotifier<int> insightsRevision = ValueNotifier<int>(0);
+
+  /// The days a running derive pass has not finished (and whether its
+  /// cross-day step is running), for the "As of" labels. A notifier of its own,
+  /// NOT notifyListeners: AppState ticks at ~1 Hz with live HR and the label
+  /// must not ride that.
+  final ValueNotifier<RecalcState> _recalc =
+      ValueNotifier<RecalcState>(RecalcState.idle);
+  ValueListenable<RecalcState> get recalc => _recalc;
+
+  /// Which pass owns [_recalc]. A pass only clears what it set, so a refused
+  /// pass (engine busy) returning early cannot wipe a running rescan's days.
+  int _recalcSeq = 0;
+  int _recalcOwner = 0;
+
+  void _setRecalc(RecalcState s) {
+    if (_disposed) return;
+    _recalc.value = s;
+  }
+
+  void _recalcScope(int owner, List<String> days) {
+    if (days.isEmpty) return;
+    _recalcOwner = owner;
+    _setRecalc(RecalcState(days: {...days}, passStartedAt: DateTime.now()));
+  }
+
+  void _recalcDayDone(int owner, String day) {
+    if (_recalcOwner != owner) return;
+    final cur = _recalc.value;
+    if (!cur.days.contains(day)) return;
+    _setRecalc(cur.copyWith(days: {...cur.days}..remove(day)));
+  }
+
+  void _recalcCrossDay(int owner, bool active) {
+    if (_recalcOwner != owner) return;
+    _setRecalc(_recalc.value.copyWith(crossDay: active));
+  }
+
+  void _recalcClear(int owner) {
+    if (_recalcOwner != owner) return;
+    _recalcOwner = 0;
+    final cut = _recalc.value;
+    _setRecalc(RecalcState.idle);
+    // A pass that ended with days still pending (failed, cancelled, refused)
+    // writes nothing more for them, and the labels on screen wait for a reload
+    // to drop: one more revision lets them. Not through the coalescer — this is
+    // the end of the pass, and a trailing timer outliving it helps no one.
+    if (!_disposed && (cut.days.isNotEmpty || cut.crossDay)) bumpInsights();
+  }
+
+  /// Each committed day publishes (freshness, then a revision bump) as it
+  /// lands, at most once per 1500 ms with a trailing flush, so Home and Health
+  /// fill in during a long pass instead of after it.
+  late final RevisionCoalescer _dayPublisher = RevisionCoalescer(
+    fire: _publishDay,
+    nowMs: () => DateTime.now().millisecondsSinceEpoch,
+  );
+
+  void _publishDay() {
+    unawaited(() async {
+      try {
+        await LocalDb.refreshComputeFreshness();
+      } catch (e) {
+        _log('[derive] freshness refresh failed: $e');
+      }
+      if (!_disposed) bumpInsights();
+    }());
+  }
+
+  /// First usable render: revision bump -> the Home commit that consumed it.
+  /// Null until a bump has been measured.
+  int? lastHomeRenderMs;
+
+  void recordHomeRender(int ms) {
+    lastHomeRenderMs = ms;
+    _log('[perf] home render $ms ms');
+  }
+
+  /// The last pass that computed a day, as [DerivePerf.summary] — null until
+  /// one has. Read-only, for Settings > Developer.
+  Map<String, Object?>? get lastPassPerf =>
+      (_derive.snapshot()['last_pass_perf'] as Map?)?.cast<String, Object?>();
+
+  /// Test seams: the engine is not injectable, so a test replaces the two
+  /// calls [_afterDrain] makes on it.
+  @visibleForTesting
+  DeriveRunHook? debugDeriveRun;
+  @visibleForTesting
+  RescanHook? debugRescanRecent;
+  @visibleForTesting
+  void debugSetRecalc(RecalcState s) => _setRecalc(s);
+  @visibleForTesting
+  Future<void> debugAfterDrain({bool heavy = false, bool changedOnly = false}) =>
+      _afterDrain(heavy: heavy, changedOnly: changedOnly);
   StreamSubscription<String>? _tapSub;
 
   void _handleTapRoute(String route) {
@@ -2136,6 +2253,7 @@ class AppState extends ChangeNotifier {
     BandOwnership.markForegroundIntent(false);
     _releaseForegroundLease();
     _deriveScheduler.dispose();
+    _dayPublisher.dispose();
     _waterBuzzer.dispose();
     _medBuzzer.dispose();
     // Owned notifiers/observers. notificationRelay in particular holds a
@@ -2148,6 +2266,7 @@ class AppState extends ChangeNotifier {
     sleepOperations.dispose();
     screenRequest.dispose();
     insightsRevision.dispose();
+    _recalc.dispose();
     super.dispose();
   }
 
@@ -2261,6 +2380,7 @@ class AppState extends ChangeNotifier {
     void Function(String day, int index, int total)? onDay,
   }) async {
     final mode = heavy ? 'heavy' : 'light';
+    final recalcId = ++_recalcSeq;
     try {
       // Context for whatever crash/ANR report comes next — the derivation
       // engine's heavy per-day compute is isolate-offloaded, but the
@@ -2272,15 +2392,20 @@ class AppState extends ChangeNotifier {
       // Refresh the UI after EACH day so Today/trends fill in as the sweep runs,
       // not only at the end (a multi-day backfill can be many days of work).
       var scopeTotal = -1;
-      await TelemetryService.instance.traced('derive_$mode', () => _derive.run(
-        _profile,
+      await TelemetryService.instance.traced('derive_$mode', () => _deriveRun(
         heavy: heavy,
         changedOnly: changedOnly,
         onScope: (total) {
           scopeTotal = total;
           onScope?.call(total);
         },
+        onScopeDays: (days) => _recalcScope(recalcId, days),
+        onCrossDay: (active) => _recalcCrossDay(recalcId, active),
         onDayDone: (day, index, total) async {
+          // The day's row is committed: it is no longer "recalculating", and
+          // Home / Health can re-read it now rather than after the pass.
+          _recalcDayDone(recalcId, day);
+          _dayPublisher.request();
           onDay?.call(day, index, total);
           if (index == total || index == 1 || index % 3 == 0) {
             notifyListeners();
@@ -2324,13 +2449,23 @@ class AppState extends ChangeNotifier {
         // recent FINALIZED days. Cheap when the baseline is unchanged (a single
         // signature read). Best-effort — never throws into the BLE path.
         unawaited(() async {
+          final rescanId = ++_recalcSeq;
           try {
-            final n = await _derive.rescanRecent(_profile);
+            final n = await _rescanRecent(
+              onScopeDays: (days) => _recalcScope(rescanId, days),
+              onDayDone: (day, index, total) {
+                _recalcDayDone(rescanId, day);
+                _dayPublisher.request();
+              },
+            );
             if (n > 0) {
+              bumpInsights();
               notifyListeners(); // screens re-read the refreshed scalars
             }
           } catch (e) {
             _log('[derive] rescan failed: $e');
+          } finally {
+            _recalcClear(rescanId);
           }
         }());
       }
@@ -2363,8 +2498,51 @@ class AppState extends ChangeNotifier {
       // fatal: the app keeps running, but this is worth knowing about.
       TelemetryService.instance.recordNonFatal(e, st, reason: 'post_drain_failed');
     } finally {
+      // On every path (success, failure, cancel): a pass puts back
+      // RecalcState.idle if it is the one that set the days.
+      _recalcClear(recalcId);
       TelemetryService.instance.setContext('derive_active', false);
     }
+  }
+
+  Future<int> _deriveRun({
+    required bool heavy,
+    required bool changedOnly,
+    void Function(int total)? onScope,
+    void Function(List<String> days)? onScopeDays,
+    void Function(String day, int index, int total)? onDayDone,
+    void Function(bool active)? onCrossDay,
+  }) {
+    final hook = debugDeriveRun;
+    if (hook != null) {
+      return hook(
+        heavy: heavy,
+        changedOnly: changedOnly,
+        onScope: onScope,
+        onScopeDays: onScopeDays,
+        onDayDone: onDayDone,
+        onCrossDay: onCrossDay,
+      );
+    }
+    return _derive.run(
+      _profile,
+      heavy: heavy,
+      changedOnly: changedOnly,
+      onScope: onScope,
+      onScopeDays: onScopeDays,
+      onDayDone: onDayDone,
+      onCrossDay: onCrossDay,
+    );
+  }
+
+  Future<int> _rescanRecent({
+    void Function(List<String> days)? onScopeDays,
+    void Function(String day, int index, int total)? onDayDone,
+  }) {
+    final hook = debugRescanRecent;
+    if (hook != null) return hook(onScopeDays: onScopeDays, onDayDone: onDayDone);
+    return _derive.rescanRecent(_profile,
+        onScopeDays: onScopeDays, onDayDone: onDayDone);
   }
 
   bool _vacuumedThisLaunch = false;

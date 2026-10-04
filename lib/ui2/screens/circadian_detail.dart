@@ -25,6 +25,7 @@ import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'metric_detail.dart';
@@ -80,6 +81,11 @@ class CircadianData {
   /// this screen only draws what it published.
   final ana.Metric<ana.AlertnessForecast> alertness;
 
+  /// When the cross-day rollup this screen reads was written — what "As of"
+  /// says while the cross-day step recalculates it. Null when the reader gave
+  /// none.
+  final DateTime? computedAt;
+
   const CircadianData({
     this.actogram = const [],
     this.labels = const [],
@@ -104,6 +110,7 @@ class CircadianData {
       inputs_used: [],
       note: 'no night loaded',
     ),
+    this.computedAt,
   });
 
   /// The middle value of [xs], which must be non-empty. A median, not a mean:
@@ -233,6 +240,7 @@ class CircadianData {
       cosinorV: cosV,
       coverage: (cd['circadian_coverage'] as Map?)?.cast<String, dynamic>() ??
           const {},
+      computedAt: computedAtOf(cd['computed_at']),
     );
   }
 
@@ -276,7 +284,7 @@ class CircadianDetail extends StatefulWidget {
   State<CircadianDetail> createState() => _CircadianDetailState();
 }
 
-class _CircadianDetailState extends State<CircadianDetail> {
+class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
   CircadianData? _d;
   bool _loading = true;
 
@@ -298,6 +306,15 @@ class _CircadianDetailState extends State<CircadianDetail> {
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
+
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a new cross-day rollup is read again, which is also what clears
+  /// the "As of" label.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() => _load();
 
   Future<void> _load() async {
     final repo = repoOf(context);
@@ -325,6 +342,19 @@ class _CircadianDetailState extends State<CircadianDetail> {
         const SizedBox(height: S.x8),
         const Center(child: CircularProgressIndicator()),
       ] else ...[
+        // Chronotype, jet lag, regularity and the rhythm battery all come off
+        // the cross-day rollup, so the label follows that step, not a day.
+        AsOfHold(
+          shown: d,
+          asOf: (recalc) => asOfFor(
+              shownDay: null,
+              computedAt: d.computedAt,
+              recalc: recalc,
+              dependsOnCrossDay: true),
+          builder: (c, at) => Padding(
+              padding: const EdgeInsets.only(bottom: S.x2),
+              child: AsOfLabel(at: at)),
+        ),
         if (drawn == 0)
           StatusCard(
             l?.circadianDetailNoNightsTitle ?? 'No nights to plot yet',

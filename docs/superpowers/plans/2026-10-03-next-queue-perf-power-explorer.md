@@ -99,6 +99,26 @@ no pgrep wait loops, no leftover flutter_tester)
    `pointsOf`, `LineChart` stacking, `AxisSpec.t()`, `_catalogue`.
 7. Intraday calories: analytics side in progress (../analytics branch feat/minute-energy, per-minute energy API, daily outputs unchanged); edge integration after P3 (cached per-day curve artifact) and as an Explorer intraday metric; cadence only ~3 days of raw data.
 
+## Status
+
+### 8AG-perf P1 — measure, publish each day, quiet hidden tabs, "As of" while recalculating (P1b)
+
+- **Measured**: `DerivePerf` records queue wait, hold reasons, and per-day prepare / compute /
+  persist; one `[perf] derive` line per pass, `last_pass_perf` on the engine snapshot, a
+  "Last calculation" row in Settings > Developer, and Home's bump-to-first-render time.
+- **Published early**: each committed day refreshes freshness and bumps `insightsRevision`
+  through a 1.5 s coalescer with a trailing flush; hidden shell tabs (`TickerMode`) read once
+  when shown instead of on every bump.
+- **As of**: `AppState.recalc` (days still in the pass, cross-day flag) and `asOfFor` decide;
+  `AsOfLabel` says "As of 08:42" (dated when not today) on Home, Health, Sleep, Readiness,
+  metric detail, Wellness, Body clock and Beats while the day on screen is recalculating. The
+  time is the shown row's own `computed_at`; no row, no label. Computed-on-open screens (metric
+  journal insights, Wellness insights, Beats, past workouts) keep their last result in a
+  32-entry `LastResultCache` and show it at once under the label.
+- Docs: `docs/perf.md`; `test/phase8/CONTRACTS.md` (8AG P1/P1b). Tests: `test/perf/`.
+- Not done here (later phases): persisted artifacts for the computed-on-open screens (P3, P4),
+  scheduler reliability (P2), power modes (P5).
+
 ## Critical files
 lib/compute/{derivation_engine,derive_scheduler,derive_pacing}.dart,
 lib/ble/ble_state.dart (DeriveDebouncer), lib/state/app_state.dart (_afterDrain,

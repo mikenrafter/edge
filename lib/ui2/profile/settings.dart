@@ -17,6 +17,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../compute/derive_perf.dart' show DerivePerf;
 import '../../data/auto_backup.dart';
 import '../../data/off_lookup.dart';
 import '../../health/health_export.dart' show HealthLinkState;
@@ -186,6 +187,8 @@ class _MoreSettingsState extends State<MoreSettings> {
     return MoreSettingsView(
       version: _version,
       devMode: caps.has(Feature.developerMode),
+      // The engine's `last_pass_perf` (8AG P1): measured values only.
+      lastCalculation: DerivePerf.describe(app.lastPassPerf),
       onVersionTap: _tapVersion,
       onToggleDev: () => _setDev(false),
       onGallery: () => goto(c, const GalleryScreen()),
@@ -599,6 +602,10 @@ class MoreSettingsView extends StatelessWidget {
   /// a feature: nothing in it is for anyone who has not deliberately asked.
   final bool devMode;
 
+  /// The Developer group's "Last calculation" line, already worded; an em dash
+  /// until a pass has been measured.
+  final String lastCalculation;
+
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
   /// The expected sleep schedule (local clock times), or null when never set.
@@ -661,6 +668,7 @@ class MoreSettingsView extends StatelessWidget {
     this.updateMandatory = false,
     this.version = '',
     this.devMode = false,
+    this.lastCalculation = '—',
     this.onVersionTap,
     this.onToggleDev,
     this.onGallery,
@@ -967,6 +975,8 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.flaskConical, C.purple, 'Device lab',
                         sub: 'Try gestures the band does not report on its own',
                         onTap: onDeviceLab),
+                    SetRow(LucideIcons.timer, C.n500, 'Last calculation',
+                        sub: lastCalculation, chevron: false),
                     SetRow(LucideIcons.code, C.n500,
                         l?.settingsDeveloperModeRowTitle ?? 'Developer mode',
                         value: on, chevron: false, onTap: onToggleDev),

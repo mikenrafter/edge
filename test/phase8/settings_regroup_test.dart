@@ -130,6 +130,8 @@ const Map<String, List<List<String>>> _rows = {
     ['Component gallery'],
     ['Live devices'],
     ['Device lab'],
+    // 8AG P1: the read-only timing line for the last derive pass.
+    ['Last calculation'],
     ['Developer mode'],
   ],
 };

@@ -56,6 +56,7 @@ import '../../data/journal_fields.dart' show formatMinuteOfDay;
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
+import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
@@ -111,6 +112,10 @@ class BeatsData {
   /// Which strap measured [day], when the bundle recorded one.
   final String? deviceFamily;
 
+  /// When the row behind [day] was computed (the reader's `computed_at`) — what
+  /// "As of" says while a pass recalculates the night. Null with no row.
+  final DateTime? computedAt;
+
   const BeatsData({
     this.day,
     this.days = const [],
@@ -129,13 +134,26 @@ class BeatsData {
     this.rhythmPoints = const [],
     this.rhythm24h,
     this.deviceFamily,
+    this.computedAt,
   });
 
-  static Future<BeatsData> load(LocalRepository repo, {String? want}) async {
+  /// Which night the screen is about: the cheap half of [load], split out so a
+  /// cached result for that night can be shown before the beats are read.
+  static Future<({String? day, List<String> days})> pickNight(
+      LocalRepository repo,
+      {String? want}) async {
     final today = await repo.getToday();
     final days = await repo.availableDays();
-    final day = pickDay(
-        days, want, (today['status'] as Map?)?['today_day']?.toString());
+    return (
+      day: pickDay(
+          days, want, (today['status'] as Map?)?['today_day']?.toString()),
+      days: days,
+    );
+  }
+
+  static Future<BeatsData> load(LocalRepository repo,
+      {String? want, ({String? day, List<String> days})? night}) async {
+    final (:day, :days) = night ?? await pickNight(repo, want: want);
     if (day == null) return BeatsData(days: days);
 
     final hrv = await repo.getDayHrv(day);
@@ -164,6 +182,7 @@ class BeatsData {
       rhythmPoints: pointsOf(await repo.getChart('irregular_rhythm_flag')),
       rhythm24h: heart['irregular_24h'],
       deviceFamily: hrv['device_family']?.toString(),
+      computedAt: computedAtOf(hrv['computed_at']),
     );
   }
 
@@ -203,7 +222,7 @@ class Beats extends StatefulWidget {
   State<Beats> createState() => _BeatsState();
 }
 
-class _BeatsState extends State<Beats> {
+class _BeatsState extends State<Beats> with RevisionReload {
   BeatsData? _d;
   bool _loading = true;
   String? _day;
@@ -220,18 +239,70 @@ class _BeatsState extends State<Beats> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Handed its data (golden, gallery): nothing behind it to read again.
+  /// Otherwise a derive that rewrites the night is read again, which is also
+  /// what clears the "As of" label.
+  @override
+  bool get revisionReloads => widget.data == null;
+
+  @override
+  void reload() => _load();
+
+  /// Set while [_d] is the last result of an earlier open, shown at once while
+  /// the beats are read again; null once the fresh read has replaced it.
+  DateTime? _cachedAt;
+
   Future<void> _load() async {
     final repo = repoOf(context);
     if (repo == null) {
       if (mounted) setState(() => _loading = false);
       return;
     }
+    final t = beginRead(#beats);
     try {
-      final d = await BeatsData.load(repo, want: _day);
-      if (mounted) setState(() => (_d = d, _loading = false));
+      final night = await BeatsData.pickNight(repo, want: _day);
+      // The corrected-RR read is the slow part. This night's last good result
+      // is kept so a re-open shows it at once, labelled, while it recomputes;
+      // an error is never kept.
+      final key = night.day == null
+          ? null
+          : LastResultCache.keyOf('beats', [night.day]);
+      if (key != null && _d?.day != night.day) {
+        final hit = LastResultCache.instance.get<BeatsData>(key);
+        if (hit != null && stillNewest(#beats, t)) {
+          setState(() {
+            _d = hit.value;
+            _cachedAt = hit.cachedAt;
+            _loading = false;
+          });
+        }
+      }
+      Future<BeatsData> fresh() =>
+          BeatsData.load(repo, want: _day, night: night);
+      final d = key == null
+          ? await fresh()
+          : await LastResultCache.instance.load<BeatsData>(key, fresh);
+      if (stillNewest(#beats, t)) {
+        setState(() => (_d = d, _cachedAt = null, _loading = false));
+      }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (stillNewest(#beats, t)) setState(() => _loading = false);
     }
+  }
+
+  /// "As of <time>": the last result of an earlier open while it recomputes,
+  /// or the shown night while a pass recalculates it.
+  Widget _asOf(BeatsData d) {
+    Widget place(BuildContext c, DateTime at) => Padding(
+        padding: const EdgeInsets.only(bottom: S.x2), child: AsOfLabel(at: at));
+    final cached = _cachedAt;
+    if (cached != null) return place(context, cached);
+    return AsOfHold(
+      shown: d,
+      asOf: (recalc) =>
+          asOfFor(shownDay: d.day, computedAt: d.computedAt, recalc: recalc),
+      builder: place,
+    );
   }
 
   void _goDay(String day) {
@@ -250,6 +321,7 @@ class _BeatsState extends State<Beats> {
       c,
       l?.beatsTitle ?? 'Beats',
       [
+        _asOf(d),
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         if (_loading)
           const Padding(

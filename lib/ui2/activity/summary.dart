@@ -32,6 +32,7 @@ import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
+import '../as_of.dart';
 import '../charts.dart';
 import '../grammar.dart';
 import '../paint_activity.dart';
@@ -679,11 +680,17 @@ class ActivitySummary extends StatefulWidget {
   /// escalation the spec refuses.
   final bool justFinished;
 
+  /// Set only while [result] is the last one computed for this session, shown
+  /// at once while it is computed again: "As of <time>". Null for a result
+  /// that is current.
+  final DateTime? asOf;
+
   const ActivitySummary(this.result,
       {super.key,
       this.weightKg,
       this.onRetrySave,
-      this.justFinished = false});
+      this.justFinished = false,
+      this.asOf});
 
   @override
   State<ActivitySummary> createState() => _ActivitySummaryState();
@@ -1020,6 +1027,12 @@ class _ActivitySummaryState extends State<ActivitySummary> {
               ]),
             ),
           ),
+          if (widget.asOf case final at?)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),
+              child: Align(
+                  alignment: Alignment.centerLeft, child: AsOfLabel(at: at)),
+            ),
           // A dedicated, plainly-labeled button rather than a bare icon in the
           // nav bar — this is the one export action worth naming outright.
           // Text only: no Strava logo/imagery, per the no-brand-assets policy

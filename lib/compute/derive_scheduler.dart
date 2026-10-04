@@ -18,6 +18,8 @@ class DeriveScheduler {
     this.lightSettle = const Duration(seconds: 8),
     this.heavySettle = const Duration(seconds: 2),
     this.workoutHoldCap = const Duration(hours: 6),
+    this.onQueued,
+    this.onWaiting,
   });
 
   final Future<void> Function({required DeriveJobKind kind}) run;
@@ -25,6 +27,14 @@ class DeriveScheduler {
   final void Function() onChanged;
   final Duration lightSettle;
   final Duration heavySettle;
+
+  /// Measurement taps (see DerivePerf), never behaviour: a job was queued.
+  final void Function()? onQueued;
+
+  /// Measurement tap: queued work is waiting. [settling] is true when the
+  /// settle timer was armed, false when a hold (offload, workout, background,
+  /// manual sync) is what keeps it parked.
+  final void Function({required bool settling})? onWaiting;
 
   /// Ceiling on the live-workout hold. The hold's whole justification is "a
   /// workout is minutes long and its own results are derived at the end
@@ -259,18 +269,21 @@ class DeriveScheduler {
       log('[derive-scheduler] could not queue $type: $e');
       return;
     }
+    onQueued?.call();
     await _refreshSnapshot();
     _arm();
   }
 
   void _arm() {
     if (_running || _offloadActive || _background || _workoutHeld || _manualHeld) {
+      if (_pendingLight || _pendingHeavy) onWaiting?.call(settling: false);
       return;
     }
     if (!_pendingLight && !_pendingHeavy) {
       unawaited(_refreshSnapshot());
       return;
     }
+    onWaiting?.call(settling: true);
     _timer?.cancel();
     _timer = Timer(_pendingHeavy ? heavySettle : lightSettle, () {
       unawaited(_drain());

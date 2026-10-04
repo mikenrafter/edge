@@ -69,19 +69,24 @@ class LocalRepositoryImpl extends LocalRepository {
   /// recovery". Fallbacks, in order: latest day with sleep → latest day with any
   /// scalars → newest decodable → null. This is what makes Today show yesterday's
   /// data when today hasn't filled yet (and the day-detail seams inherit it).
-  Future<Map<String, dynamic>?> _latestBundle() async {
+  Future<Map<String, dynamic>?> _latestBundle() async =>
+      (await _latestBundleAt()).bundle;
+
+  /// [_latestBundle] with the computed time of the row it picked.
+  Future<_BundleAt> _latestBundleAt() async {
     final rows = await LocalDb.recentDayResults(14);
-    Map<String, dynamic>? newest, withScalars;
+    _BundleAt? newest, withScalars;
     for (final row in rows) {
       final b = _decode(row['payload_json']);
       if (b == null) continue;
-      newest ??= b;
+      final at = _BundleAt(b, (row['computed_at'] as num?)?.toInt());
+      newest ??= at;
       if (b['skipped'] == true) continue;
       final scalars = b['scalars'];
-      if (scalars is Map && scalars.isNotEmpty) withScalars ??= b;
-      if (_bundleHasSleep(b)) return b; // latest COMPLETE day wins
+      if (scalars is Map && scalars.isNotEmpty) withScalars ??= at;
+      if (_bundleHasSleep(b)) return at; // latest COMPLETE day wins
     }
-    return withScalars ?? newest;
+    return withScalars ?? newest ?? const _BundleAt(null, null);
   }
 
   /// True when a bundle carries a real sleep (single-source accounting present).
@@ -106,9 +111,14 @@ class LocalRepositoryImpl extends LocalRepository {
 
   /// The stored artifact, UNGATED — only `_crossDay` and `getInsights` may
   /// read this, and only so `getInsights` can report why it withheld it.
-  Future<Map<String, dynamic>?> _crossDayArtifact() async {
+  Future<Map<String, dynamic>?> _crossDayArtifact() async =>
+      (await _crossDayArtifactAt()).bundle;
+
+  /// [_crossDayArtifact] with the time (epoch ms) the stored row was written.
+  Future<_BundleAt> _crossDayArtifactAt() async {
     final r = await LocalDb.baseline('crossday');
-    return _decode(r?['payload_json']);
+    return _BundleAt(
+        _decode(r?['payload_json']), (r?['updated_at'] as num?)?.toInt());
   }
 
   Future<Map<String, dynamic>?> _freshness(String key) async {
@@ -137,6 +147,21 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>?> _bundleForDate(String date) async =>
       await _bundle(date) ??
       (_isTodayLabel(date) ? await _latestBundle() : null);
+
+  /// [_bundleForDate] plus the computed time (epoch ms) of the row actually
+  /// read — the exact day's, or for Today's fallback the latest complete day's
+  /// own. Screens print it as "As of" while a newer result is being calculated,
+  /// so it is never "now" and never another row's time.
+  Future<_BundleAt> _bundleAtForDate(String date) async {
+    final row = await LocalDb.dayResult(date);
+    final b = row == null ? null : _decode(row['payload_json']);
+    if (row != null && b != null) {
+      return _BundleAt(b, (row['computed_at'] as num?)?.toInt());
+    }
+    return _isTodayLabel(date)
+        ? await _latestBundleAt()
+        : const _BundleAt(null, null);
+  }
 
   /// THE read seam for the compact curve format: every bundle this class serves
   /// comes through here, so downstream readers keep seeing plain [{t,v}] lists
@@ -592,7 +617,7 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getInsights() async {
-    final cd = await _crossDayArtifact();
+    final _BundleAt(bundle: cd, :computedAt) = await _crossDayArtifactAt();
     if (cd == null) return const {};
     final stale = crossDayStaleReason(cd, _todayLocalLabel());
     // FAIL CLOSED. Returning the reason INSTEAD of the artifact means every
@@ -600,7 +625,10 @@ class LocalRepositoryImpl extends LocalRepository {
     // screens already render honestly — while `stale` carries why, in the
     // spirit of `need_baseline:have=H,need=N`. Serving the old numbers with no
     // marker was the bug.
-    return stale == null ? cd : {'stale': stale};
+    // `computed_at`: when this rollup was written, for the "As of" label while
+    // the cross-day step recalculates it. Absent from the withheld shape — a
+    // rollup that is not shown has no time to caption it with.
+    return stale == null ? {...cd, 'computed_at': computedAt} : {'stale': stale};
   }
 
   Future<int> _stepGoal() async =>
@@ -805,9 +833,10 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getDayHrv(String date) async {
-    final b = await _bundleForDate(date);
+    final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
     if (b == null) return const {};
     return {
+      'computed_at': computedAt,
       'timeline': (_sub(b, 'series')?['hrv_timeline'] as List?) ?? const [],
       'rmssd': _scalar(b, 'rmssd'),
       'sdnn': _scalar(b, 'sdnn'),
@@ -889,7 +918,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>> getDaySleepV2(String date) => _daySleep(date);
 
   Future<Map<String, dynamic>> _daySleep(String date) async {
-    final b = await _bundleForDate(date);
+    final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
     final assertion = await LocalDb.getSleepOverride(date);
     final asserted = assertion != null && assertion['source'] != 'rejected';
     final savedWindow = <String, dynamic>{
@@ -970,6 +999,9 @@ class LocalRepositoryImpl extends LocalRepository {
     final night = <String, dynamic>{
       // Shape matches sleep_detail_screen's contract exactly.
       'has_sleep': true,
+      // When the row behind this night was computed (epoch ms) — "As of" while
+      // a newer one is being calculated.
+      'computed_at': computedAt,
       'sleep_source': sleepSource,
       'duration_min': (tst / 60).round(),
       'in_bed_min': spt == null ? null : (spt / 60).round(),
@@ -1406,7 +1438,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // score stays null when the SI is absent, so the screen renders "—" (the old
     // `100 - readiness` imputation was removed). Nocturnal arousal isn't computed,
     // so `sleep_stress` is intentionally absent (the screen handles it).
-    final b = await _bundleForDate(date);
+    final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
     if (b == null) return const {};
 
     final stressBlk = b['stress'] is Map
@@ -1448,6 +1480,7 @@ class LocalRepositoryImpl extends LocalRepository {
     }
 
     return {
+      'computed_at': computedAt,
       'stress': {
         'score': score,
         'si': si,
@@ -1863,7 +1896,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // then clip whatever we got to today's local-day window; an empty result
       // is the card's honest "No heart-rate data yet today" state.
       final today = _todayLocalLabel();
-      final b = await _bundleForDate(today);
+      final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(today);
       final curve = (_sub(b, 'series')?['hr_curve'] as List?) ?? const [];
       final dayStart = _localMidnightSec(today);
       final dayEnd = _localDayEndSec(today);
@@ -1876,6 +1909,7 @@ class LocalRepositoryImpl extends LocalRepository {
                 (e['t'] as num) < dayEnd)
               e,
         ],
+        'computed_at': computedAt,
       };
     }
     final key = _trendKey(metric);
@@ -1906,7 +1940,23 @@ class LocalRepositoryImpl extends LocalRepository {
     final oldestDaySec =
         rows.isEmpty ? _nowSec() : _dateToEpoch(rows.first['date'] as String);
 
+    // When the newest of the days drawn here was computed — the max of their
+    // day_result rows' own times (metric_series carries none), so "As of"
+    // names a row that was read. Null when none of them has a row.
+    final seriesDays = {for (final r in rows) r['date'] as String};
+    int? computedAt;
+    if (seriesDays.isNotEmpty) {
+      for (final m in await LocalDb.recentDayResultsMeta(seriesDays.length)) {
+        if (!seriesDays.contains(m['date'])) continue;
+        final at = (m['computed_at'] as num?)?.toInt();
+        if (at != null && (computedAt == null || at > computedAt)) {
+          computedAt = at;
+        }
+      }
+    }
+
     return {
+      'computed_at': computedAt,
       'points': [
         for (final r in rows)
           {
@@ -4229,6 +4279,14 @@ class _ZoneAnchors {
     this.observedCeilingBpm,
     this.restingHrHistory = const [],
   });
+}
+
+/// A decoded day bundle and the computed time (epoch ms) of the day_result row
+/// it came from; both null when there is no row to show.
+class _BundleAt {
+  final Map<String, dynamic>? bundle;
+  final int? computedAt;
+  const _BundleAt(this.bundle, this.computedAt);
 }
 
 /// TS-03 — the highest heart rate the band has OBSERVED, and where.

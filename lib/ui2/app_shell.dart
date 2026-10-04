@@ -97,7 +97,12 @@ class _AppShellState extends State<AppShell> {
                 // old shell built all forty screens' worth of state on launch.
                 for (final d in ShellDomain.values)
                   if (_built.contains(d))
-                    widget.builder(c, d)
+                    // A parked tab keeps its state but stops its tickers and
+                    // its revision reloads (see RevisionReload).
+                    TickerMode(
+                      enabled: d == _current,
+                      child: widget.builder(c, d),
+                    )
                   else
                     const SizedBox.shrink(),
               ],

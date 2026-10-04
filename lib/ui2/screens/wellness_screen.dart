@@ -26,6 +26,7 @@ import '../../data/journal_fields.dart';
 import '../../data/med_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
+import '../../state/recalc_state.dart';
 import '../../stress/breath_phases.dart';
 import '../ui2.dart';
 import 'calm_breathing.dart';
@@ -312,7 +313,20 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
         ),
         Section(
           l?.wellnessStressLastNight ?? 'Stress last night',
-          score == null
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // The stress on screen is today's stored row; while a pass
+            // recalculates today it says when that row was computed.
+            AsOfHold(
+              shown: _stress,
+              asOf: (recalc) => asOfFor(
+                  shownDay: _date,
+                  computedAt: computedAtOf(_stress['computed_at']),
+                  recalc: recalc),
+              builder: (c, at) => Padding(
+                  padding: const EdgeInsets.only(bottom: S.x2),
+                  child: AsOfLabel(at: at)),
+            ),
+            score == null
               // "Last night had none" was a claim about a gate this screen
               // never read — the stress payload carries no reason, so the card
               // states what stress IS and stops there.
@@ -331,6 +345,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                   unit: '/100',
                   sub: (level ?? '').toUpperCase(),
                 ),
+          ]),
         ),
       ],
     );
@@ -1347,6 +1362,10 @@ class _JournalFindingsState extends State<JournalFindings> {
   Map<String, dynamic> _weekday = const {};
   bool _loading = true;
 
+  /// Set while the rows on screen are the last result of an earlier open,
+  /// shown at once while the insights recompute; null once fresh ones land.
+  DateTime? _cachedAt;
+
   @override
   void initState() {
     super.initState();
@@ -1366,15 +1385,36 @@ class _JournalFindingsState extends State<JournalFindings> {
       return;
     }
     try {
-      final j = await repo.getJournalInsights(range: '90d');
-      final w = await repo.getWeekdayEffect();
+      // The insight pass is the slow part of opening this. Its last good result
+      // is kept so a re-open shows it at once, labelled, while this recomputes;
+      // an error is never kept.
+      final key = LastResultCache.keyOf('wellness_insights');
+      final hit = LastResultCache.instance
+          .get<({List<Map<String, dynamic>> rows, Map<String, dynamic> weekday})>(key);
+      if (hit != null && mounted) {
+        setState(() {
+          _rows = hit.value.rows;
+          _weekday = hit.value.weekday;
+          _cachedAt = hit.cachedAt;
+          _loading = false;
+        });
+      }
+      final r = await LastResultCache.instance.load(key, () async {
+        final j = await repo.getJournalInsights(range: '90d');
+        final w = await repo.getWeekdayEffect();
+        return (
+          rows: [
+            for (final e in (j['numeric_insights'] as List? ?? const []))
+              if (e is Map) e.cast<String, dynamic>(),
+          ],
+          weekday: w,
+        );
+      });
       if (!mounted) return;
       setState(() {
-        _rows = [
-          for (final e in (j['numeric_insights'] as List? ?? const []))
-            if (e is Map) e.cast<String, dynamic>(),
-        ];
-        _weekday = w;
+        _rows = r.rows;
+        _weekday = r.weekday;
+        _cachedAt = null;
         _loading = false;
       });
     } catch (_) {
@@ -1403,6 +1443,10 @@ class _JournalFindingsState extends State<JournalFindings> {
     ];
     return detailScaffold(c, title, [
       const SizedBox(height: S.x2),
+      if (_cachedAt case final at?)
+        Padding(
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: AsOfLabel(at: at)),
       if (_rows.isEmpty)
         StatusCard(
           l?.wellnessNothingSeparatedTitle ?? 'No clear pattern yet',

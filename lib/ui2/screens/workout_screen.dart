@@ -38,6 +38,7 @@ import '../activity/summary.dart';
 import '../charts.dart';
 import '../profile/profile.dart' show openProfile;
 import '../grammar.dart';
+import '../last_result_cache.dart';
 import '../revision.dart';
 import '../theme.dart';
 import '../../data/day_label.dart' show calendarDaysBetween;
@@ -967,6 +968,49 @@ class _QuickTile extends StatelessWidget {
   }
 }
 
+/// A past session's summary that can start on its last result and swap to a
+/// fresh one: [cachedAt] non-null means [first] is that earlier result and a
+/// new read is under way; the label goes when it lands. A read that fails keeps
+/// what is on screen, label included.
+class _PastSummary extends StatefulWidget {
+  final AppState app;
+  final _PastWorkout w;
+  final double? weightKg;
+  final ActivityResult first;
+  final DateTime? cachedAt;
+
+  const _PastSummary(this.app, this.w, this.weightKg,
+      {required this.first, this.cachedAt});
+
+  @override
+  State<_PastSummary> createState() => _PastSummaryState();
+}
+
+class _PastSummaryState extends State<_PastSummary> {
+  late ActivityResult _r = widget.first;
+  late DateTime? _cachedAt = widget.cachedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_cachedAt != null) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    final failed = <Object>[];
+    final r = await _detailOf(widget.app, widget.w, failed: failed);
+    if (failed.isNotEmpty) return;
+    LastResultCache.instance
+        .put<ActivityResult>(LastResultCache.keyOf('workout', [widget.w.id]), r);
+    if (!mounted) return;
+    setState(() => (_r = r, _cachedAt = null));
+  }
+
+  @override
+  Widget build(BuildContext c) =>
+      ActivitySummary(_r, weightKg: widget.weightKg, asOf: _cachedAt);
+}
+
 /// One past session. Taps through to the same summary a live session lands
 /// on, built from the stores rather than from the six columns in this row —
 /// the heart-rate curve, the sets and the route are all read on open.
@@ -986,9 +1030,23 @@ class _HistoryRow extends StatelessWidget {
 
   Future<void> _open(BuildContext c) async {
     final nav = Navigator.of(c);
-    final r = await _detailOf(c.read<AppState>(), w);
+    final app = c.read<AppState>();
+    // Reading the stores for a session is the slow part of opening it. The last
+    // good result is kept, so a re-open shows it at once, labelled, while the
+    // summary reads it again. A read that failed is not kept as a result.
+    final key = LastResultCache.keyOf('workout', [w.id]);
+    final hit = LastResultCache.instance.get<ActivityResult>(key);
+    if (hit != null) {
+      await nav.push(MaterialPageRoute(
+          builder: (_) => _PastSummary(app, w, weightKg,
+              first: hit.value, cachedAt: hit.cachedAt)));
+      return;
+    }
+    final failed = <Object>[];
+    final r = await _detailOf(app, w, failed: failed);
+    if (failed.isEmpty) LastResultCache.instance.put<ActivityResult>(key, r);
     await nav.push(MaterialPageRoute(
-        builder: (_) => ActivitySummary(r, weightKg: weightKg)));
+        builder: (_) => _PastSummary(app, w, weightKg, first: r)));
   }
 
   @override
@@ -1559,7 +1617,11 @@ List<double> _decodeZoneMinutes(Object? raw) => [
 
 /// One past session, opened from history — built from what the stores hold
 /// rather than from the six columns the list row carries.
-Future<ActivityResult> _detailOf(AppState app, _PastWorkout w) async {
+///
+/// A failed `getWorkout` read is added to [failed], so a caller can tell a
+/// degraded result from a complete one.
+Future<ActivityResult> _detailOf(AppState app, _PastWorkout w,
+    {List<Object>? failed}) async {
   var out = w.toResult();
   final repo = app.repo;
   if (repo == null) return out;
@@ -1622,8 +1684,9 @@ Future<ActivityResult> _detailOf(AppState app, _PastWorkout w) async {
       // objection to falling back here was actually about.
       zoneMinutes: usedBundleSplit ? decoded : out.zoneMinutes,
     );
-  } catch (_) {
+  } catch (e) {
     // Enrichment is best-effort; the scalars on the row still render.
+    failed?.add(e);
   }
   // TS-09 — the session's own rating. `getWorkout` is the derived bundle and
   // does not carry the column, so this is one primary-key read of the row.
