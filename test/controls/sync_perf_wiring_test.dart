@@ -8,7 +8,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  final app = File('lib/state/app_state.dart').readAsStringSync();
+  // The manual sync lives in the sync controller (8AJ seam 5).
+  final app = File('lib/state/sync_controller.dart').readAsStringSync();
   final body = () {
     final start = app.indexOf('Future<void> _manualSync');
     return app.substring(start, app.indexOf('@visibleForTesting', start));
@@ -27,7 +28,10 @@ void main() {
 
   test('absorb is only claimed after the derive completed', () {
     final flag = body.indexOf('derived = true;');
-    final run = body.indexOf('_afterDrain(');
+    // The coordinator's afterDrain (the pre-seam-1 `_afterDrain(` name no
+    // longer exists; searching for it found nothing and passed vacuously).
+    final run = body.indexOf('_deriveCoordinator.afterDrain(');
+    expect(run, greaterThanOrEqualTo(0), reason: 'the derive call must be found');
     expect(flag, greaterThan(run));
     expect(body, contains('absorb: derived'));
   });

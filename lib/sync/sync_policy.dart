@@ -133,7 +133,7 @@ const int kIosBackgroundPromptIntervalSeconds = 900;
 
 /// Lease requested per ENTER_HIGH_FREQ_SYNC for the background prompt. Under
 /// gen5's 28800 s ceiling. Renewed once past half-way by [BandPromptPolicy],
-/// driven from the 25-min background tick in `AppState._runPeriodicBackfill`,
+/// driven from the 25-min background tick in `SyncController._runPeriodicBackfill`,
 /// which fires on the first prompt wake after it falls due.
 const Duration kIosBackgroundPromptLease = Duration(hours: 2);
 

@@ -116,7 +116,10 @@ void main() {
       ]) {
         expect(app, contains(line), reason: 'missing delegate: $line');
       }
-      expect(app, contains('_deriveCoordinator.afterDrain('));
+      // The manual sync hands its derive to the coordinator; it moved to the
+      // sync controller with seam 5.
+      final sync = File('lib/state/sync_controller.dart').readAsStringSync();
+      expect('$app\n$sync', contains('_deriveCoordinator.afterDrain('));
     });
 
     test('the derive logic no longer lives in AppState', () {

@@ -132,7 +132,7 @@ void main() {
       expect(s.contains('_deriveScheduler.setBackground(_background);'), isTrue);
       // The manual sync is the coordinator's run callback and re-notifies AppState.
       expect(RegExp(r'SyncCoordinator\(\s*run:\s*_manualSync,').hasMatch(s), isTrue);
-      expect(s.contains('..addListener(notifyListeners)'), isTrue);
+      expect(s.contains('..addListener(notifyListeners)') || s.contains('..addListener(_notify)'), isTrue);
     });
 
     test('_onDataStored marks the sync activity synchronously, BEFORE the '
@@ -184,27 +184,29 @@ void main() {
   });
 
   group('lifecycle wiring in dispose (source)', () {
-    test('dispose cancels the quiet timer first, stops the backfill timer and '
-        'the supervisor, releases the claim, and disposes the coordinator',
-        () {
+    test('dispose stops the timers through the controller, releases the claim '
+        'and disposes the coordinator', () {
       final s = _appOnly();
       final start = s.indexOf('  void dispose() {');
       final body = s.substring(start, s.indexOf('void debugArmOwnedTimers', start));
-      expect(body.indexOf('_syncQuietTimer?.cancel()'), greaterThan(0));
-      expect(body.indexOf('_syncQuietTimer?.cancel()'),
-          lessThan(body.indexOf('_disposed = true;')));
-      expect(body.contains('_stopBackfillTimer();') || body.contains('_sync.dispose()'), isTrue);
-      expect(body.contains('_stopReconnectSupervisor();') || body.contains('_sync.dispose()'), isTrue);
+      expect(body, contains('_sync.dispose();'));
       expect(body, contains('BandOwnership.markForegroundIntent(false);'));
-      expect(body.indexOf('_releaseForegroundLease();'),
+      expect(body.indexOf('_sync.releaseForegroundLease();'),
           greaterThan(body.indexOf('BandOwnership.markForegroundIntent(false);')));
       expect(body, contains('syncOperations.dispose();'));
+      // The controller's dispose cancels all three timers it owns.
+      final c = File('lib/state/sync_controller.dart').readAsStringSync();
+      final cStart = c.indexOf('  void dispose() {');
+      final cBody = c.substring(cStart);
+      expect(cBody, contains('_syncQuietTimer?.cancel()'));
+      expect(cBody, contains('_stopBackfillTimer();'));
+      expect(cBody, contains('_stopReconnectSupervisor();'));
     });
 
-    test('every path that stops wanting a link stops both timers: unpair and '
-        'endSession', () {
+    test('every path that stops wanting a link stops both timers: the link '
+        'half of unpair and endSession', () {
       final s = _src();
-      for (final sig in ['Future<void> unpair() async', 'Future<void> endSession() async']) {
+      for (final sig in ['Future<void> unpairSession() async', 'Future<void> endSession() async']) {
         final at = s.indexOf(sig);
         expect(at, greaterThan(0), reason: sig);
         final body = s.substring(at, at + 700);

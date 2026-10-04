@@ -8,6 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final app = File('lib/state/app_state.dart').readAsStringSync();
+  // The progress report and the manual sync live in the sync controller
+  // (8AJ seam 5); the drain's call site into the report stays in AppState.
+  final sync = File('lib/state/sync_controller.dart').readAsStringSync();
 
   test('the progress report runs after the commit returns, never before', () {
     final commit = app.indexOf('await _bandHost.commitNativeBatch(');
@@ -17,15 +20,15 @@ void main() {
   });
 
   test('the progress report cannot throw into the drain', () {
-    final start = app.indexOf('void _reportSyncCommit(');
-    final body = app.substring(start, app.indexOf('Future<void> _manualSync'));
+    final start = sync.indexOf('void reportSyncCommit(');
+    final body = sync.substring(start, sync.indexOf('Future<void> _manualSync'));
     expect(body, contains('try {'));
     expect(body, contains('} catch (_) {}'));
   });
 
   test('manual sync forwards onDayDone and clears waiting in finally', () {
-    final start = app.indexOf('Future<void> _manualSync');
-    final body = app.substring(start, app.indexOf('@visibleForTesting', start));
+    final start = sync.indexOf('Future<void> _manualSync');
+    final body = sync.substring(start, sync.indexOf('@visibleForTesting', start));
     expect(body, contains('onDay:'));
     expect(body, contains('reportDay('));
     expect(body, contains('} finally {'));

@@ -200,7 +200,8 @@ void main() {
     });
 
     test('a manual sync hold is always handed back in a finally', () {
-      final src = File('lib/state/app_state.dart').readAsStringSync();
+      // The manual sync is in the sync controller (8AJ seam 5).
+      final src = File('lib/state/sync_controller.dart').readAsStringSync();
       expect(src, contains('beginManualSync('));
       expect(src, contains('endManualSync('));
       final begin = src.indexOf('beginManualSync(');

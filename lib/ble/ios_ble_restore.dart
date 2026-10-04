@@ -90,7 +90,7 @@ class IosBleRestore {
   /// between them — where `appOwnsBand` could already be false with nothing
   /// armed to replace it, i.e. no one left watching for the band at all. The
   /// native side also wraps this in a short `beginBackgroundTask` extension.
-  /// See `AppState._armRecovery`.
+  /// See `SyncController._armRecovery`.
   static Future<void> armRecoveryNow(String remoteId) async {
     if (!Platform.isIOS) return;
     foregroundActive = false;
