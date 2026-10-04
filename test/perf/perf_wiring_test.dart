@@ -22,6 +22,9 @@ String _body(String src, String signature, {int span = 9000}) {
 void main() {
   final engine = _read('lib/compute/derivation_engine.dart');
   final app = _read('lib/state/app_state.dart');
+  // The derive pass moved to the DeriveCoordinator (8AJ seam 1); AppState
+  // delegates to it.
+  final coord = _read('lib/state/derive_coordinator.dart');
 
   group('engine', () {
     test('run() and runDays() report the scope\'s days', () {
@@ -64,8 +67,8 @@ void main() {
   group('AppState', () {
     test('owns recalc as a ValueNotifier and clears it in finally', () {
       expect(app, contains('ValueListenable<RecalcState> get recalc'));
-      expect(app, contains('ValueNotifier<RecalcState>'));
-      final drain = _body(app, 'Future<DeriveOutcome> _afterDrain(', span: 9000);
+      expect(coord, contains('ValueNotifier<RecalcState>'));
+      final drain = _body(coord, 'Future<DeriveOutcome> afterDrain(', span: 9000);
       expect(drain, contains('onScopeDays'));
       expect(drain, contains('onCrossDay'));
       final fin = drain.lastIndexOf('} finally {');
@@ -75,8 +78,8 @@ void main() {
     });
 
     test('each committed day is published through the coalescer', () {
-      final drain = _body(app, 'Future<DeriveOutcome> _afterDrain(', span: 5000);
-      expect(app, contains('RevisionCoalescer('));
+      final drain = _body(coord, 'Future<DeriveOutcome> afterDrain(', span: 5000);
+      expect(coord, contains('RevisionCoalescer('));
       final done = drain.indexOf('onDayDone:');
       expect(done, greaterThan(0));
       expect(drain.substring(done, done + 1400), contains('request()'));
@@ -85,8 +88,9 @@ void main() {
     });
 
     test('lastHomeRenderMs exists and is nullable', () {
-      expect(app, contains('int? lastHomeRenderMs'));
-      expect(app, contains('[perf] home render'));
+      expect(app, contains('int? get lastHomeRenderMs'));
+      expect(coord, contains('int? lastHomeRenderMs'));
+      expect(coord, contains('[perf] home render'));
     });
   });
 

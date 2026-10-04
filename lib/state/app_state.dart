@@ -17,7 +17,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:battery_plus/battery_plus.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -26,9 +25,10 @@ import 'package:flutter/widgets.dart';
 
 import 'control_operations.dart';
 import 'recalc_state.dart';
-import 'revision_coalescer.dart';
 import 'artifact_warmer.dart';
+import 'derive_coordinator.dart';
 export 'control_operations.dart';
+export 'derive_coordinator.dart' show DeriveRunHook, RescanHook;
 
 import '../ai/ai_prefs.dart';
 import '../ai/briefing.dart';
@@ -58,7 +58,6 @@ import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/derive_perf.dart';
-import '../compute/periodic_calculation_policy.dart';
 import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/manual_session.dart'
@@ -204,21 +203,6 @@ PairedDevice? healedPairing(PairedDevice? current, String? reportedSerial) {
   return PairedDevice(current.remoteId, clean, generation: current.generation);
 }
 
-/// The two engine calls [AppState._afterDrain] makes, as test seams (see
-/// `AppState.debugDeriveRun` / `debugRescanRecent`).
-typedef DeriveRunHook = Future<int> Function({
-  required bool heavy,
-  required bool changedOnly,
-  void Function(int total)? onScope,
-  void Function(List<String> days)? onScopeDays,
-  void Function(String day, int index, int total)? onDayDone,
-  void Function(bool active)? onCrossDay,
-});
-typedef RescanHook = Future<int> Function({
-  void Function(List<String> days)? onScopeDays,
-  void Function(String day, int index, int total)? onDayDone,
-});
-
 class AppState extends ChangeNotifier {
   late final BleEngine engine;
 
@@ -321,46 +305,30 @@ class AppState extends ChangeNotifier {
   // constructors have already set by the time anything touches `_derive`.
   late final DerivationEngine _derive =
       DerivationEngine(log: _log, background: _background);
-  /// What the scheduler runs for a job. The automatic LIGHT pass skips days
-  /// whose input has not moved since they were last derived ([changedOnly]);
-  /// heavy keeps the full sweep (finalize extras, force paths). Returns how the
-  /// pass ended, which decides whether the job is deleted or retried.
-  Future<DeriveOutcome> _runScheduled({required DeriveJobKind kind}) =>
-      _afterDrain(
-        heavy: kind == DeriveJobKind.heavy,
-        changedOnly: kind == DeriveJobKind.light,
-        automatic: true,
-      );
-
-  /// Whether a light pass may reuse cached calculations: only while the
-  /// phone is unplugged and the causal stager says the wearer is awake.
-  late final PeriodicCalculationPolicy _calculationPolicy =
-      PeriodicCalculationPolicy(
-    phoneCharging: _phoneCharging,
-    loadSamples: loadWakeSamples,
-  );
-
-  /// Null when the platform cannot say; the policy treats that as charging.
-  static Future<bool?> _phoneCharging() async =>
-      switch (await Battery().batteryState) {
-        BatteryState.discharging => false,
-        BatteryState.charging ||
-        BatteryState.full ||
-        BatteryState.connectedNotCharging => true,
-        BatteryState.unknown => null,
-      };
-
-  late final DeriveScheduler _deriveScheduler = DeriveScheduler(
-    run: _runScheduled,
+  /// The derive orchestration (8AJ seam 1): scheduler wiring, the pass itself,
+  /// recalc state, per-day publish, warmer hand-off. Everything it needs from
+  /// here arrives as a callback; it never sees AppState.
+  late final DeriveCoordinator _deriveCoordinator = DeriveCoordinator(
+    engine: () => _derive,
+    profile: () => _profile,
     log: _log,
-    onChanged: notifyListeners,
-    // Measurement only: queue wait and hold reasons for DerivePerf.
-    onQueued: () => _derive.perf.enqueued(),
-    onWaiting: ({required settling}) {
-      if (settling) _derive.perf.noteSettle();
-      _derive.perf.noteHolds(_deriveScheduler.snapshot());
-    },
+    notify: notifyListeners,
+    isDisposed: () => _disposed,
+    repo: () => repo,
+    warmHeld: () => _liveSessionActive || _background,
+    refreshPhoneStepsToday: _refreshPhoneStepsToday,
+    maybeNotifyRecoveryReady: _maybeNotifyRecoveryReady,
+    runHealthExport: _runHealthExport,
+    healthSyncEnabled: () => healthSyncEnabled,
+    telemetryConsent: () => telemetryConsent,
+    healthShareConsent: () => healthShareConsent,
+    maybeReclaimDiskSpace: _maybeReclaimDiskSpace,
   );
+
+  /// The scheduler that decides when a derive pass runs (owned by the
+  /// coordinator; the holds and stored-data marks below feed it).
+  DeriveScheduler get _deriveScheduler => _deriveCoordinator.scheduler;
+
 
   /// Profile fed to the analytics (HRmax/calories/TRIMP personalization).
   Profile get _profile => Profile.fromMap(user);
@@ -1989,131 +1957,56 @@ class AppState extends ChangeNotifier {
   final ValueNotifier<String?> screenRequest = ValueNotifier<String?>(null);
 
   /// Bumped whenever stored insights change so listeners can re-query without a
-  /// full ChangeNotifier repaint.
-  final ValueNotifier<int> insightsRevision = ValueNotifier<int>(0);
+  /// full ChangeNotifier repaint. The notifier lives in the DeriveCoordinator;
+  /// this is the same object for the whole app lifetime.
+  ValueNotifier<int> get insightsRevision => _deriveCoordinator.insightsRevision;
 
   /// The days a running derive pass has not finished (and whether its
   /// cross-day step is running), for the "As of" labels. A notifier of its own,
   /// NOT notifyListeners: AppState ticks at ~1 Hz with live HR and the label
   /// must not ride that.
-  final ValueNotifier<RecalcState> _recalc =
-      ValueNotifier<RecalcState>(RecalcState.idle);
-  ValueListenable<RecalcState> get recalc => _recalc;
-
-  /// Which pass owns [_recalc]. A pass only clears what it set, so a refused
-  /// pass (engine busy) returning early cannot wipe a running rescan's days.
-  int _recalcSeq = 0;
-  int _recalcOwner = 0;
-
-  void _setRecalc(RecalcState s) {
-    if (_disposed) return;
-    _recalc.value = s;
-  }
-
-  void _recalcScope(int owner, List<String> days) {
-    if (days.isEmpty) return;
-    _recalcOwner = owner;
-    _setRecalc(RecalcState(days: {...days}, passStartedAt: DateTime.now()));
-  }
-
-  void _recalcDayDone(int owner, String day) {
-    if (_recalcOwner != owner) return;
-    final cur = _recalc.value;
-    if (!cur.days.contains(day)) return;
-    _setRecalc(cur.copyWith(days: {...cur.days}..remove(day)));
-  }
-
-  void _recalcCrossDay(int owner, bool active) {
-    if (_recalcOwner != owner) return;
-    _setRecalc(_recalc.value.copyWith(crossDay: active));
-  }
-
-  void _recalcClear(int owner) {
-    if (_recalcOwner != owner) return;
-    _recalcOwner = 0;
-    final cut = _recalc.value;
-    _setRecalc(RecalcState.idle);
-    // A pass that ended with days still pending (failed, cancelled, refused)
-    // writes nothing more for them, and the labels on screen wait for a reload
-    // to drop: one more revision lets them. Not through the coalescer — this is
-    // the end of the pass, and a trailing timer outliving it helps no one.
-    if (!_disposed && (cut.days.isNotEmpty || cut.crossDay)) bumpInsights();
-  }
-
-  /// Each committed day publishes (freshness, then a revision bump) as it
-  /// lands, at most once per 1500 ms with a trailing flush, so Home and Health
-  /// fill in during a long pass instead of after it.
-  late final RevisionCoalescer _dayPublisher = RevisionCoalescer(
-    fire: _publishDay,
-    nowMs: () => DateTime.now().millisecondsSinceEpoch,
-  );
-
-  void _publishDay() {
-    unawaited(() async {
-      try {
-        await LocalDb.refreshComputeFreshness();
-      } catch (e) {
-        _log('[derive] freshness refresh failed: $e');
-      }
-      if (!_disposed) bumpInsights();
-    }());
-  }
+  ValueListenable<RecalcState> get recalc => _deriveCoordinator.recalc;
 
   /// First usable render: revision bump -> the Home commit that consumed it.
   /// Null until a bump has been measured.
-  int? lastHomeRenderMs;
+  int? get lastHomeRenderMs => _deriveCoordinator.lastHomeRenderMs;
+  set lastHomeRenderMs(int? v) => _deriveCoordinator.lastHomeRenderMs = v;
 
-  void recordHomeRender(int ms) {
-    lastHomeRenderMs = ms;
-    _log('[perf] home render $ms ms');
-  }
+  void recordHomeRender(int ms) => _deriveCoordinator.recordHomeRender(ms);
 
   /// The last pass that computed a day, as [DerivePerf.summary] — null until
   /// one has. Read-only, for Settings > Developer.
-  Map<String, Object?>? get lastPassPerf =>
-      (_derive.snapshot()['last_pass_perf'] as Map?)?.cast<String, Object?>();
+  Map<String, Object?>? get lastPassPerf => _deriveCoordinator.lastPassPerf;
 
   /// Test seams: the engine is not injectable, so a test replaces the two
-  /// calls [_afterDrain] makes on it.
+  /// calls the derive pass makes on it.
   @visibleForTesting
-  DeriveRunHook? debugDeriveRun;
+  DeriveRunHook? get debugDeriveRun => _deriveCoordinator.debugDeriveRun;
+  @visibleForTesting
+  set debugDeriveRun(DeriveRunHook? v) => _deriveCoordinator.debugDeriveRun = v;
 
-  /// The source the artifact warmer uses (see [_warmer]). Null in production:
-  /// the repository's own.
+  /// The source the artifact warmer uses. Null in production: the
+  /// repository's own.
   @visibleForTesting
-  ArtifactSource? debugArtifactSource;
+  ArtifactSource? get debugArtifactSource =>
+      _deriveCoordinator.debugArtifactSource;
   @visibleForTesting
-  RescanHook? debugRescanRecent;
+  set debugArtifactSource(ArtifactSource? v) =>
+      _deriveCoordinator.debugArtifactSource = v;
+  @visibleForTesting
+  RescanHook? get debugRescanRecent => _deriveCoordinator.debugRescanRecent;
+  @visibleForTesting
+  set debugRescanRecent(RescanHook? v) =>
+      _deriveCoordinator.debugRescanRecent = v;
   @visibleForTesting
   Future<DeriveOutcome> debugRunScheduled({required DeriveJobKind kind}) =>
-      _runScheduled(kind: kind);
+      _deriveCoordinator.debugRunScheduled(kind: kind);
   @visibleForTesting
-  void debugSetRecalc(RecalcState s) => _setRecalc(s);
+  void debugSetRecalc(RecalcState s) => _deriveCoordinator.debugSetRecalc(s);
   @visibleForTesting
   Future<void> debugAfterDrain({bool heavy = false, bool changedOnly = false}) =>
-      _afterDrain(heavy: heavy, changedOnly: changedOnly);
+      _deriveCoordinator.debugAfterDrain(heavy: heavy, changedOnly: changedOnly);
   StreamSubscription<String>? _tapSub;
-
-  // The ONE background warmer of the slow screen artifacts (8AG-perf P3). Built
-  // when first needed, after a pass that computed days; never while a workout,
-  // breathing session or ECG capture is live, while the band is offloading or
-  // while this is a headless run.
-  ArtifactWarmer? _artifactWarmer;
-
-  ArtifactWarmer? get _warmer {
-    final existing = _artifactWarmer;
-    if (existing != null) return existing;
-    final r = repo;
-    final source = debugArtifactSource ??
-        (r is LocalRepositoryImpl ? RepoArtifactSource(r) : null);
-    if (source == null) return null;
-    return _artifactWarmer = ArtifactWarmer(
-      source: source,
-      hold: () =>
-          _liveSessionActive || _background || _deriveScheduler.offloadActive,
-      log: _log,
-    );
-  }
 
   void _handleTapRoute(String route) {
     final t = resolveTapRoute(route); // pure — lib/notify/tap_router.dart
@@ -2339,7 +2232,7 @@ class AppState extends ChangeNotifier {
   /// Setting `_disposed` and checking it at each await point only covers the
   /// paths someone remembered to guard. Several notifications reach here from
   /// places that never see that flag — the derive scheduler's `onChanged`
-  /// callback, in-flight `_afterDrain()` continuations, BLE engine callbacks —
+  /// callback, in-flight derive-pass continuations, BLE engine callbacks —
   /// and notifying a disposed ChangeNotifier throws in release. Overriding the
   /// single funnel every one of them goes through makes the guard total instead
   /// of a list of remembered sites.
@@ -2383,9 +2276,7 @@ class AppState extends ChangeNotifier {
     if (pmdId != null) _clearLiveHrTrace(pmdId);
     BandOwnership.markForegroundIntent(false);
     _releaseForegroundLease();
-    _deriveScheduler.dispose();
-    _artifactWarmer?.dispose();
-    _dayPublisher.dispose();
+    _deriveCoordinator.dispose();
     _waterBuzzer.dispose();
     _medBuzzer.dispose();
     // Owned notifiers/observers. notificationRelay in particular holds a
@@ -2397,8 +2288,6 @@ class AppState extends ChangeNotifier {
     syncOperations.dispose();
     sleepOperations.dispose();
     screenRequest.dispose();
-    insightsRevision.dispose();
-    _recalc.dispose();
     super.dispose();
   }
 
@@ -2492,233 +2381,6 @@ class AppState extends ChangeNotifier {
   /// change made in Settings would not apply until the next restart.
   Future<void> refreshBatteryThreshold(NotificationPrefs prefs) async {
     _deviceAlerts.refreshThreshold();
-  }
-
-  /// Compute trigger: kick the DerivationEngine after data is persisted.
-  /// [heavy]=false is the bounded light pass (TODAY when raw has reached today,
-  /// else the latest pending day); [heavy]=true is the foreground finalize
-  /// sweep. Best-effort + non-blocking — never throws into the BLE path.
-  /// Refreshes the UI when results land so screens re-read the fresh derived rows.
-  ///
-  /// A manual sync runs this with [changedOnly]: the derive covers only days
-  /// whose input changed since they were last derived ([onScope] hears how
-  /// many, [onDay] hears each one finish), and a pass that found nothing to do
-  /// returns before the post-derive work, none of which has anything new to act
-  /// on. The automatic light pass (see [_runScheduled]) runs this way too.
-  ///
-  /// Returns how the DERIVE ended (never throws): a failure before the derive
-  /// reported is `failed`; one in the post-derive work after it is only logged,
-  /// since re-running the derive would not repair it.
-  Future<DeriveOutcome> _afterDrain({
-    bool heavy = false,
-    bool changedOnly = false,
-    bool automatic = false,
-    void Function(int total)? onScope,
-    void Function(String day, int index, int total)? onDay,
-  }) async {
-    final mode = heavy ? 'heavy' : 'light';
-    final recalcId = ++_recalcSeq;
-    DeriveOutcome? outcome;
-    // The days this pass reported done, in order: what the artifact warmer
-    // re-signs once the pass has been published.
-    final computedDays = <String>[];
-    try {
-      // Context for whatever crash/ANR report comes next — the derivation
-      // engine's heavy per-day compute is isolate-offloaded, but the
-      // assembly/UI-refresh wiring around it still runs on the main isolate,
-      // so this is real signal if a freeze/ANR correlates with a derive pass.
-      TelemetryService.instance.setContext('derive_mode', mode);
-      TelemetryService.instance.setContext('derive_active', true);
-      TelemetryService.instance.breadcrumb('derive: $mode start');
-      // Refresh the UI after EACH day so Today/trends fill in as the sweep runs,
-      // not only at the end (a multi-day backfill can be many days of work).
-      var scopeTotal = -1;
-      outcome = await TelemetryService.instance.traced<DeriveOutcome>('derive_$mode', () => _deriveRun(
-        heavy: heavy,
-        changedOnly: changedOnly,
-        onScope: (total) {
-          scopeTotal = total;
-          onScope?.call(total);
-        },
-        onScopeDays: (days) => _recalcScope(recalcId, days),
-        onCrossDay: (active) => _recalcCrossDay(recalcId, active),
-        onDayDone: (day, index, total) async {
-          // The day's row is committed: it is no longer "recalculating", and
-          // Home / Health can re-read it now rather than after the pass.
-          _recalcDayDone(recalcId, day);
-          _dayPublisher.request();
-          computedDays.add(day);
-          onDay?.call(day, index, total);
-          if (index == total || index == 1 || index % 3 == 0) {
-            notifyListeners();
-          }
-        },
-      ));
-      TelemetryService.instance.breadcrumb('derive: $mode done');
-      if (changedOnly && scopeTotal == 0 && _derive.snapshot()['last_error'] == null) {
-        _log('[derive] $mode: nothing changed since the last derive');
-        // An automatic pass follows a drain that DID land rows, possibly a
-        // workout window on a day that is already finalized (so not in scope).
-        // The cheap session rescore still runs; screens only re-read if it
-        // changed something.
-        if (automatic) {
-          unawaited(_refreshPhoneStepsToday());
-          try {
-            final fixed = await repo?.rescoreRecentSessions() ?? 0;
-            if (fixed > 0) {
-              _log('[derive] rescored $fixed session(s) from substrate');
-              bumpInsights();
-              notifyListeners();
-            }
-          } catch (e) {
-            _log('[derive] session rescore failed: $e');
-          }
-        }
-        return outcome;
-      }
-      // A drain can bank band coverage and a day can have rolled over since the
-      // last read — both change which source owns today's steps.
-      unawaited(_refreshPhoneStepsToday());
-      // The drain that triggered this pass may have landed the 1 Hz window of a
-      // workout the app slept through, whose strain/calories were scored from
-      // whatever few minutes the foreground tally saw (issue #206). Re-score
-      // recent sessions against the substrate now that it is here, so the
-      // workout LIST is corrected too and not just a detail screen someone
-      // happens to open. Monotone and idempotent — see reconcileSessionScore.
-      try {
-        final fixed = await repo?.rescoreRecentSessions() ?? 0;
-        if (fixed > 0) {
-          _log('[derive] rescored $fixed session(s) from substrate');
-        }
-      } catch (e) {
-        _log('[derive] session rescore failed: $e');
-      }
-      await LocalDb.refreshComputeFreshness();
-      bumpInsights();
-      notifyListeners(); // screens re-fetch from the derived store
-      // Warm the slow screen artifacts (journal insights, weekday effect, the
-      // night's beats, workouts, circadian) in the background, AFTER the
-      // publish: one serial warmer, off the UI isolate, never awaited here and
-      // never throwing into the derive path. A pass that computed nothing has
-      // nothing new to sign.
-      if (outcome.computed >= 1 && computedDays.isNotEmpty && !_disposed) {
-        unawaited(_warmer?.warmAfterPass(changedDays: computedDays));
-      }
-      // Same signal, for the surfaces that can't listen: home/lock-screen
-      // widget, Watch mirror, Siri intents (WidgetService.refresh).
-      unawaited(WidgetService.refresh(repo));
-      // A heavy finalize is where a freshly-closed sleep window + recovery for a
-      // new physiological day lands — fire the "recovery ready" push off it.
-      if (heavy) {
-        unawaited(_maybeNotifyRecoveryReady());
-        // Baseline-dirty rescan: new data may have shifted the rolling baseline,
-        // so refresh baseline-dependent scalars (readiness/illness/stress) on
-        // recent FINALIZED days. Cheap when the baseline is unchanged (a single
-        // signature read). Best-effort — never throws into the BLE path.
-        unawaited(() async {
-          final rescanId = ++_recalcSeq;
-          try {
-            final n = await _rescanRecent(
-              onScopeDays: (days) => _recalcScope(rescanId, days),
-              onDayDone: (day, index, total) {
-                _recalcDayDone(rescanId, day);
-                _dayPublisher.request();
-              },
-            );
-            if (n > 0) {
-              bumpInsights();
-              notifyListeners(); // screens re-read the refreshed scalars
-            }
-          } catch (e) {
-            _log('[derive] rescan failed: $e');
-          } finally {
-            _recalcClear(rescanId);
-          }
-        }());
-      }
-      // Continuous health export: push freshly-derived days (incl. TODAY) to Apple
-      // Health / Health Connect AS SOON as they're computed — runs on BOTH the
-      // light (every drain) and heavy passes, not only on finalize. Idempotent
-      // (delete-then-write), best-effort, never throws into the BLE/derive path.
-      if (healthSyncEnabled) {
-        unawaited(() async {
-          try {
-            final n = await _runHealthExport();
-            if (n > 0) _log('[health] exported $n day(s)');
-          } catch (e) {
-            _log('[health] export failed: $e');
-          }
-        }());
-      }
-      // Companion (opt-in): flush any queued telemetry now that we're doing network
-      // work anyway, and — on a heavy (finalize) pass — consider the once/day full
-      // .db upload (itself gated on Wi-Fi + charging + >24h). Both best-effort.
-      if (telemetryConsent) unawaited(TelemetryService.instance.flush());
-      if (heavy && healthShareConsent) {
-        unawaited(HealthUploader.instance.maybeUpload(consented: true));
-      }
-      if (heavy) unawaited(_maybeReclaimDiskSpace());
-    } catch (e, st) {
-      _log('[derive] post-drain failed: $e');
-      // Was silently swallowed before — this is a real pipeline failure
-      // (derive/health-export/etc.) that Firebase never saw. Non-fatal, not
-      // fatal: the app keeps running, but this is worth knowing about.
-      TelemetryService.instance.recordNonFatal(e, st, reason: 'post_drain_failed');
-      outcome ??= DeriveOutcome(failed: true, error: '$e');
-    } finally {
-      // On every path (success, failure, cancel): a pass puts back
-      // RecalcState.idle if it is the one that set the days.
-      _recalcClear(recalcId);
-      TelemetryService.instance.setContext('derive_active', false);
-    }
-    return outcome;
-  }
-
-  Future<DeriveOutcome> _deriveRun({
-    required bool heavy,
-    required bool changedOnly,
-    void Function(int total)? onScope,
-    void Function(List<String> days)? onScopeDays,
-    void Function(String day, int index, int total)? onDayDone,
-    void Function(bool active)? onCrossDay,
-  }) async {
-    final hook = debugDeriveRun;
-    if (hook != null) {
-      final n = await hook(
-        heavy: heavy,
-        changedOnly: changedOnly,
-        onScope: onScope,
-        onScopeDays: onScopeDays,
-        onDayDone: onDayDone,
-        onCrossDay: onCrossDay,
-      );
-      return DeriveOutcome(computed: n);
-    }
-    final calculationMode =
-        await _calculationPolicy.select(heavy: heavy, forced: false);
-    final n = await _derive.run(
-      _profile,
-      heavy: heavy,
-      changedOnly: changedOnly,
-      calculationMode: calculationMode,
-      onScope: onScope,
-      onScopeDays: onScopeDays,
-      onDayDone: onDayDone,
-      onCrossDay: onCrossDay,
-    );
-    // Read right after the run returns: the engine records how THIS call ended
-    // (failed 'busy' when another pass held the lock).
-    return _derive.lastOutcome ?? DeriveOutcome(computed: n);
-  }
-
-  Future<int> _rescanRecent({
-    void Function(List<String> days)? onScopeDays,
-    void Function(String day, int index, int total)? onDayDone,
-  }) {
-    final hook = debugRescanRecent;
-    if (hook != null) return hook(onScopeDays: onScopeDays, onDayDone: onDayDone);
-    return _derive.rescanRecent(_profile,
-        onScopeDays: onScopeDays, onDayDone: onDayDone);
   }
 
   bool _vacuumedThisLaunch = false;
@@ -3869,9 +3531,7 @@ class AppState extends ChangeNotifier {
   /// `notifyListeners` is NOT that signal — it also ticks at ~1 Hz with live
   /// HR, so screens listen to this instead and re-read only when something
   /// actually landed.
-  void bumpInsights() {
-    insightsRevision.value = insightsRevision.value + 1;
-  }
+  void bumpInsights() => _deriveCoordinator.bumpInsights();
 
   /// Called when the app goes to the background.
   ///
@@ -7126,7 +6786,7 @@ class AppState extends ChangeNotifier {
       cancel.throwIfCancelled();
       _deriveScheduler.markManualDeriveStarted(hold);
       int? scoped;
-      await _afterDrain(
+      await _deriveCoordinator.afterDrain(
         heavy: true,
         changedOnly: true,
         onScope: (total) {
