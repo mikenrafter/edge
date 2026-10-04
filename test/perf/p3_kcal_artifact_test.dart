@@ -273,14 +273,14 @@ void main() {
   });
 
   group('no output change', () {
-    test('regression guard (passes today): kAlgoVersion is not bumped', () {
-      expect(kAlgoVersion, 100,
-          reason: 'P3 adds an artifact; no stored output changes, so no bump');
+    test('P3 itself bumps nothing: 101 is the incremental repin\'s bump '
+        '(lombScargle first-sample shift), not this artifact\'s', () {
+      expect(kAlgoVersion, 101);
     });
 
-    test('regression guard (passes today): the analytics pin is unchanged '
-        '(it already carries minuteEnergy)', () {
-      expect(kAnalyticsPin, '7334289ef811c65b6938a3aba692b26670fd4a90');
+    test('the analytics pin carries minuteEnergy (7334289 and its '
+        'descendant 65c8901)', () {
+      expect(kAnalyticsPin, '65c8901c8fb09cd076290ea37676d55ef6c47429');
     });
 
     test('a changelog note next to kAnalyticsPin says edge now persists '

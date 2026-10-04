@@ -1759,7 +1759,20 @@ import 'substrate.dart';
 // detection; and the rolling `sleep_user_profile` is refolded without a
 // blanked night (observations are now stored in its payload, `folded_obs`).
 // Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
-const int kAlgoVersion = 100;
+// v101 (analytics repin 7334289 -> 65c8901): `lombScargle` now measures time
+// from the first sample instead of from the raw epoch seconds. On ~1.8e9 s the
+// trig arguments reached ~1e10 rad and the periodogram was off by up to ~5e-6
+// relative per frequency; the spectrum is shift invariant, so after the shift
+// the error is ~1e-13. Every Lomb-Scargle consumer moves at that level: stored
+// `hrvFreq` band powers and LF/HF, `cardiacCoherence`, the respiration RSA
+// rate, and the cardio stager's LF/HF (so a stage on a threshold can flip,
+// rarely). Real data moves ~1e-14 relative, so this bump is for the immutable
+// per-version rows, not for a visible change. The same pin also carries the
+// incremental states edge now uses on awake passes (`hrDipFromDayTotals`,
+// `IncrementalMinuteMetrics`, `IncrementalEnmoSeries`, `CalculationCache`) and
+// `IntHistogram`; those are bit-for-bit (or 1e-9) equal to their batch
+// readers and change no output.
+const int kAlgoVersion = 101;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -1947,7 +1960,11 @@ const int kAlgoVersion = 100;
 // calories). It is a new stored output, not a change to an existing one:
 // `calories`, `calories_total` and every `day_result` row are untouched, so no
 // kAlgoVersion bump.
-const String kAnalyticsPin = '7334289ef811c65b6938a3aba692b26670fd4a90';
+// REPIN @ 65c8901 — same fork and branch (feat/minute-energy), three commits on
+// 7334289: the incremental calculation states, `hrDipFromDayTotals`,
+// `IntHistogram`, and the `lombScargle` first-sample time shift. The shift is
+// the one OUTPUT CHANGE (see v101 above), so kAlgoVersion bumped 100 -> 101.
+const String kAnalyticsPin = '65c8901c8fb09cd076290ea37676d55ef6c47429';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

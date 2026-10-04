@@ -54,8 +54,10 @@ void main() {
       expect(off, greaterThan(step));
     });
 
-    test('no kAlgoVersion bump: nothing here changes a metric output', () {
-      expect(engine, contains('const int kAlgoVersion = 100;'));
+    test('kAlgoVersion is declared once, as an int literal', () {
+      // 101: the analytics repin that carries the lombScargle first-sample
+      // shift (an output change). Nothing in the perf work moves an output.
+      expect(engine, contains('const int kAlgoVersion = 101;'));
     });
   });
 

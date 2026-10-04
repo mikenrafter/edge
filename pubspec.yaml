@@ -510,7 +510,19 @@ dependencies:
       # Calories.minuteEnergy + hourlyRollup (per-minute energy, abstains on
       # missing HR). Daily dailyEnergy outputs are unchanged (golden == tests in
       # test/onehz/minute_energy_test.dart), so no kAlgoVersion bump.
-      ref: 7334289ef811c65b6938a3aba692b26670fd4a90
+      #
+      # 2026-10-04 REPIN: feat/minute-energy @ 65c8901 (same fork, three commits
+      # on 7334289). Carries the incremental calculation states edge now uses on
+      # awake passes (CalculationCache, IncrementalMinuteMetrics,
+      # IncrementalEnmoSeries), `hrDipFromDayTotals` (hrDip's day side),
+      # `IntHistogram` (exact medians; unused by the app so far), and ONE OUTPUT
+      # CHANGE: `lombScargle` measures time from the first sample, not from raw
+      # epoch seconds, so hrvFreq, cardiacCoherence, the respiration RSA rate
+      # and the cardio stager's LF/HF move by ~1e-14 relative on real data (up
+      # to ~5e-6 per frequency worst case). kAlgoVersion bumped 100 -> 101.
+      # Verified against the SHA:
+      #   `git show 65c8901:lib/src/onehz/util.dart | grep -n 'every trig argument'`
+      ref: 65c8901c8fb09cd076290ea37676d55ef6c47429
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
