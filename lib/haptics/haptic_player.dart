@@ -37,6 +37,10 @@ class HapticPlayStart {
 /// How long past a phrase's longest span the band may take to report it ended.
 const int _kEndedGraceMs = 1500;
 
+/// What is added to a recorded playback estimate before the band is released
+/// without its ended event.
+const int _kSettleMarginMs = 500;
+
 /// The wait for the ended event after a stored command no phrase of the
 /// profile matches, and the span assumed for it when sizing a timeout.
 const int _kUnknownMs = 3000;
@@ -144,6 +148,18 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
       match == null ? _kUnknownMs : span + _kEndedGraceMs,
     ));
     felt += span + b.delayMs;
+  }
+  // The runtime recorded when the plan was saved is the better estimate of how
+  // long it plays. When it is longer than the commands add up to (a command no
+  // phrase matches is sized at a flat 3 s), the difference is the last
+  // command's: the band is held that much longer after the last write.
+  final stored = s.bakedRuntimeMs;
+  if (stored != null && stored > felt) {
+    final extra = stored - felt;
+    final last = cmds.removeLast();
+    cmds.add(_Cmd(last.effects, last.loop, last.delayMs, last.spanMs + extra,
+        last.waitMs + extra + _kSettleMarginMs));
+    felt = stored;
   }
   return _Resolved(cmds, felt);
 }
@@ -316,7 +332,9 @@ int bandSequenceCommands(
 }
 
 /// How long the band may take to report its last command ended, after the last
-/// write: a compiled plan's last phrase, or one buzz's playback
+/// write, when its ended event does not come: a compiled plan's last phrase plus
+/// a margin (longer when the plan's recorded runtime says it plays longer than
+/// its commands add up to), at most [kBandSettleMax], or one buzz's playback
 /// ([kBandBuzzPlayback]) on the per-tap path. The queue holds its slot this
 /// long (or until the ended event) so the next job does not write while the
 /// band still plays.
@@ -328,7 +346,8 @@ Duration bandSequenceSettle(
   final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
   if (resolved == null) return kBandBuzzPlayback;
   if (resolved.cmds.isEmpty) return Duration.zero;
-  return Duration(milliseconds: resolved.cmds.last.waitMs);
+  final settle = Duration(milliseconds: resolved.cmds.last.waitMs);
+  return settle > kBandSettleMax ? kBandSettleMax : settle;
 }
 
 /// [deliverBandSequence] as one job of [queue]: the commands it will write are

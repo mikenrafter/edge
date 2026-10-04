@@ -19,6 +19,10 @@ enum _Ask { discord, donate }
 class CommunityNudge extends StatefulWidget {
   const CommunityNudge({super.key});
 
+  /// Test hook: forget this launch's dismissals, as a new process would.
+  @visibleForTesting
+  static void debugResetSession() => _CommunityNudgeState._sessionHidden.clear();
+
   @override
   State<CommunityNudge> createState() => _CommunityNudgeState();
 }
@@ -29,10 +33,19 @@ class _CommunityNudgeState extends State<CommunityNudge> {
   // that was just a slip.
   static const _cooldownMs = 14 * 24 * 60 * 60 * 1000;
 
+  // Asks dismissed during this launch. Developer mode ignores the stored
+  // dismissal and cooldown (below), so without this a remount of the card —
+  // which Home causes whenever its list changes shape during a recalculation —
+  // would bring a dismissed ask straight back. Process memory only: a new
+  // launch shows the asks again.
+  static final Set<String> _sessionHidden = {};
+
   static String _dismissedKey(_Ask a) => 'nudge.${a.name}.dismissed';
   static String _lastShownKey(_Ask a) => 'nudge.${a.name}.last_shown_ms';
 
   static bool _eligible(_Ask a, {required bool devMode}) {
+    // Dismissed this launch: stays dismissed, developer mode or not.
+    if (_sessionHidden.contains(a.name)) return false;
     // Developer mode is someone deliberately testing the app, not a real
     // reader being nagged — silencing or a cooldown here would just make
     // this unreachable on every build after the first tap.
@@ -60,11 +73,13 @@ class _CommunityNudgeState extends State<CommunityNudge> {
   }
 
   void _snooze(_Ask a) {
+    _sessionHidden.add(a.name);
     Prefs.setInt(_lastShownKey(a), DateTime.now().millisecondsSinceEpoch);
     _hide(a);
   }
 
   void _silence(_Ask a) {
+    _sessionHidden.add(a.name);
     Prefs.setBool(_dismissedKey(a), true);
     _hide(a);
   }
@@ -74,10 +89,9 @@ class _CommunityNudgeState extends State<CommunityNudge> {
     // widget tree was torn down while that was in flight, setState here
     // would throw after dispose.
     if (!mounted) return;
-    // Dev mode ignores its own dismissal/cooldown (see _eligible) — writing
-    // it above is harmless, but re-adding it here is what testing it needs.
-    final devMode = context.capsRead.has(Feature.developerMode);
-    setState(() => devMode ? null : _asks.remove(a));
+    // Developer mode ignores the stored dismissal and cooldown on a new
+    // launch (see _eligible), but a tap still hides the card for this one.
+    setState(() => _asks.remove(a));
   }
 
   @override

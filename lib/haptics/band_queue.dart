@@ -41,6 +41,10 @@ const Duration kBandQueueWait = Duration(seconds: 15);
 /// event 100 at all, so this bounds every hold.
 const Duration kBandBuzzPlayback = Duration(milliseconds: 1500);
 
+/// The most a band is held after a job's last write waiting for its playback
+/// to end, whatever the pattern's estimated length.
+const Duration kBandSettleMax = Duration(seconds: 12);
+
 /// How long a timed-out job's write may stay in flight before the queue stops
 /// waiting for it and goes on.
 const Duration kBandWriteGrace = Duration(seconds: 3);
