@@ -387,7 +387,7 @@ const _catalogue = <_Cat>[
     _CatRow('active_min', 'active_min', 'Minutes of body movement, walking or not'),
     _CatRow('calories', 'calories', 'Active energy from heart rate and your profile'),
     _CatRow('strain', 'strain', 'Cardiovascular load over the day, on 0–21'),
-    _CatRow('trimp', 'trimp', 'Minutes in each heart-rate zone, weighted by zone intensity'),
+    _CatRow('trimp', 'trimp', 'Minutes weighted by heart-rate reserve, harder minutes count more'),
   ]),
   _Cat('Body & wear', [
     _CatRow('skin_temp', 'skin_temp_z', 'Skin temperature vs your recent nights, in standard deviations'),

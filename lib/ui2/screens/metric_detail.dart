@@ -236,8 +236,9 @@ const _specs = <String, MetricSpec>{
     title: 'Training load',
     color: C.purple,
     icon: LucideIcons.dumbbell,
-    method: 'Training impulse (TRIMP): time in each heart-rate zone, multiplied '
-            'by a weight for that zone.',
+    method: 'Training impulse (TRIMP): each minute counts by how far your heart '
+            'rate sits between resting and maximum, weighted so harder minutes '
+            'count exponentially more.',
     citation: 'Banister 1991 · Morton 1990',
     requires: {InputSignal.hr1Hz},
   ),

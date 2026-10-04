@@ -6838,7 +6838,7 @@
   "@healthBlurbStrain": {
     "description": "Explore catalogue one-line description for strain"
   },
-  "healthBlurbTrimp": "Time in each heart-rate zone, weighted by zone intensity",
+  "healthBlurbTrimp": "Minutes weighted by heart-rate reserve, harder minutes count more",
   "@healthBlurbTrimp": {
     "description": "Explore catalogue one-line description for TRIMP"
   },
