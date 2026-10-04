@@ -143,6 +143,11 @@ enum Feature {
 
   /// The Automation screen's Android intent copy.
   androidAutomation,
+
+  /// Counting steps with this phone's own sensor (CMPedometer on iOS, the step
+  /// counter on Android). Disabled, never hidden, where the platform has none:
+  /// My devices keeps listing the phone and says why it cannot count.
+  phoneSteps,
 }
 
 /// What a screen does with a [Feature].
@@ -276,6 +281,7 @@ class Capabilities {
   static const String _noEcg = 'This band has no ECG sensor';
   static const String _needMg = 'Take ECG needs a connected WHOOP MG.';
   static const String _noLink = 'Connect to the band first';
+  static const String _noStepSensor = 'This device cannot count steps';
 
   bool _on(FeatureFlag f) => !inputs.flagsOff.contains(f);
 
@@ -318,6 +324,10 @@ class Capabilities {
           _when(inputs.healthShareBuild || inputs.healthShareConsent),
         Feature.androidAutomation =>
           _when(inputs.platform == TargetPlatform.android),
+        Feature.phoneSteps => inputs.platform == TargetPlatform.android ||
+                inputs.platform == TargetPlatform.iOS
+            ? Availability.available
+            : Availability.disabled(_noStepSensor),
       };
 
   /// Shorthand for the many call sites that only draw or do not draw.

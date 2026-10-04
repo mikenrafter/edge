@@ -1044,6 +1044,22 @@ vocabulary was used only by patterns the wearer wrote.
   migrated once (on becomes Band).
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md`; `test/phase8/CONTRACTS.md` (8AF.6).
 
+### 8AF.7 — Settings as the landing screen, remembered accordions, the phone in Devices, one sync line
+
+- **No Profile screen**: Home's Profile button opens Settings. Community is the first accordion,
+  Alarm sits in Alerts, and the Quick access area is gone (My devices already lives in Band).
+- **Accordions remember**: every settings accordion keeps its open/closed state between visits.
+- **The phone is always in My devices**: listed even with step counting off, dimmed with "Step
+  counting from this phone is off", with a "Count steps from this phone" switch that is the
+  same setting as Settings > You & preferences. A platform with no step sensor shows it
+  disabled with the reason (`Feature.phoneSteps`).
+- **Sync is one line**: icon, one sentence, at most one action ("Sync now" / "Retry"); the
+  running time sits left of the sentence while a sync runs; tap the line to see the four steps
+  (remembered). Never a percentage or an estimate.
+- **Pull down to sync** is a setting (default on). Off removes Home's pull-to-refresh; the
+  status line's Sync now stays.
+- Docs: `docs/navigation-depth.md`; `test/phase8/CONTRACTS.md` (8AF.7).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

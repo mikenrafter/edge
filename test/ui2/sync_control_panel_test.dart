@@ -1,9 +1,16 @@
-// 8M — the sync control is a status panel, not a spinner: a step list with
-// each step's state and time, live counts, a ticking elapsed time while busy,
-// and Retry after a failure. No percentage is ever drawn: the band does not
-// say how much it holds, so there is nothing true to divide by.
+// 8M — the sync control reports a sync, not a spinner: a step list with each
+// step's state and time, live counts, a ticking elapsed time while busy, and
+// Retry after a failure. No percentage is ever drawn: the band does not say how
+// much it holds, so there is nothing true to divide by.
+//
+// 8AF.7: the control is one status line and the step list sits behind a tap on
+// that line (collapsed by default), so these tests open it first. The elapsed
+// time is shown only while a sync runs, there is no button while one does, and
+// the "last successful sync" caption is the sentence itself ("Synced just now").
+// The sentence for every phase is pinned in test/phase8/sync_status_line_test.dart.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -67,7 +74,19 @@ Widget _host(Widget child, {double scale = 1}) => MaterialApp(
   home: Scaffold(body: SingleChildScrollView(child: child)),
 );
 
+/// Tap the status sentence to open the step list under it.
+Future<void> _open(
+  WidgetTester t,
+  SyncPresentationState state,
+  DateTime now,
+) async {
+  await t.tap(find.text(syncStatusLine(state, now)));
+  await t.pump();
+}
+
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   testWidgets('idle: one Sync now and nothing else claiming activity', (
     t,
   ) async {
@@ -91,15 +110,16 @@ void main() {
   testWidgets('running: the four steps, their states and the live counts', (
     t,
   ) async {
+    final at = _t0.add(const Duration(seconds: 75));
     await t.pumpWidget(
       _host(
-        SyncControl(
-          state: _downloading(),
-          onSync: () {},
-          clock: () => _t0.add(const Duration(seconds: 75)),
-        ),
+        SyncControl(state: _downloading(), onSync: () {}, clock: () => at),
       ),
     );
+    for (final label in ['Connect', 'Download', 'Calculate', 'Done']) {
+      expect(find.text(label), findsNothing, reason: 'collapsed: $label');
+    }
+    await _open(t, _downloading(), at);
     for (final label in ['Connect', 'Download', 'Calculate', 'Done']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
@@ -107,29 +127,28 @@ void main() {
     expect(find.textContaining('31 chunks'), findsOneWidget);
     expect(find.textContaining('Synced through'), findsOneWidget);
     // The band reported its newest record, so a backlog is a fact: 10 h 30 m.
-    expect(find.textContaining('10 h 30 m'), findsOneWidget);
+    expect(find.text('Band time still to fetch: 10 h 30 min'), findsOneWidget);
+    expect(find.text('Downloading · 10 h 30 min of band time to go'),
+        findsOneWidget);
     // Connect finished in 2 s.
     expect(find.text('2 s'), findsOneWidget);
     // Total elapsed.
     expect(find.text('1:15'), findsOneWidget);
     // Waiting steps are labelled as waiting, not left blank.
     expect(find.text('Waiting'), findsNWidgets(2));
-    // Busy: the button is present but inert.
-    expect(find.text('Sync now'), findsOneWidget);
+    // Busy: no button at all.
+    expect(find.text('Sync now'), findsNothing);
   });
 
   testWidgets('never draws a percentage or a made-up total', (t) async {
-    await t.pumpWidget(
-      _host(
-        SyncControl(
-          state: _downloading(
-            detail: const SyncDownloadDetail(records: 800, chunks: 2),
-          ),
-          onSync: () {},
-          clock: () => _t0.add(const Duration(seconds: 5)),
-        ),
-      ),
+    final state = _downloading(
+      detail: const SyncDownloadDetail(records: 800, chunks: 2),
     );
+    final at = _t0.add(const Duration(seconds: 5));
+    await t.pumpWidget(
+      _host(SyncControl(state: state, onSync: () {}, clock: () => at)),
+    );
+    await _open(t, state, at);
     expect(find.textContaining('%'), findsNothing);
     expect(find.textContaining('backlog'), findsNothing);
     expect(find.textContaining('800 records'), findsOneWidget);
@@ -181,21 +200,13 @@ void main() {
       ],
     );
     DateTime clock() => _t0.add(const Duration(seconds: 40));
-    await t.pumpWidget(
-      _host(
-        SyncControl(
-          state: calc(
-            const SyncCalculateDetail(
-              dayIndex: 2,
-              dayTotal: 5,
-              day: '2026-10-01',
-            ),
-          ),
-          onSync: () {},
-          clock: clock,
-        ),
-      ),
+    final days = calc(
+      const SyncCalculateDetail(dayIndex: 2, dayTotal: 5, day: '2026-10-01'),
     );
+    await t.pumpWidget(
+      _host(SyncControl(state: days, onSync: () {}, clock: clock)),
+    );
+    await _open(t, days, clock());
     expect(find.textContaining('Day 2 of 5'), findsOneWidget);
     expect(find.textContaining('2026-10-01'), findsOneWidget);
     expect(find.text('Already connected'), findsOneWidget);
@@ -251,13 +262,13 @@ void main() {
     expect(find.textContaining('Bad state'), findsNothing);
     expect(find.text('Retry'), findsOneWidget);
     expect(find.text('Sync now'), findsNothing);
-    // Frozen at the moment it failed, not the three hours since.
-    expect(find.text('0:08'), findsOneWidget);
+    // A failed sync is not running, so no timer is drawn.
+    expect(find.text('0:08'), findsNothing);
     await t.tap(find.text('Retry'));
     expect(taps, 1);
   });
 
-  testWidgets('a busy control ignores a second tap', (t) async {
+  testWidgets('a busy control offers no second sync', (t) async {
     var taps = 0;
     await t.pumpWidget(
       _host(
@@ -268,11 +279,12 @@ void main() {
         ),
       ),
     );
-    await t.tap(find.text('Sync now'));
+    expect(find.text('Sync now'), findsNothing);
+    expect(find.text('Retry'), findsNothing);
     expect(taps, 0);
   });
 
-  testWidgets('completed: every step done, last success shown', (t) async {
+  testWidgets('completed: every step done, "Synced just now" shown', (t) async {
     final done = SyncPresentationState(
       phase: 'completed',
       contactedBand: true,
@@ -293,7 +305,8 @@ void main() {
       _host(SyncControl(state: done, onSync: () {}, clock: () => _t0)),
     );
     expect(find.text('Sync now'), findsOneWidget);
-    expect(find.textContaining('Last successful sync'), findsOneWidget);
+    expect(find.text('Synced just now'), findsOneWidget);
+    expect(find.textContaining('Last successful sync'), findsNothing);
   });
 
   testWidgets('partial: download note, calculate done, Done (partial)', (
@@ -338,7 +351,9 @@ void main() {
     await t.pumpWidget(
       _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
     );
-    expect(find.text('Sync partly completed'), findsOneWidget);
+    expect(find.text('Synced, but some days need another pass'),
+        findsOneWidget);
+    await _open(t, state, _t0);
     expect(
       find.text('More remains on the band — sync again to continue'),
       findsOneWidget,
@@ -378,6 +393,7 @@ void main() {
     await t.pumpWidget(
       _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
     );
+    await _open(t, state, _t0);
     expect(find.text('Skipped — nothing new'), findsOneWidget);
   });
 
@@ -404,6 +420,9 @@ void main() {
     await t.pumpWidget(
       _host(SyncControl(state: state, onSync: () {}, clock: () => _t0)),
     );
+    // Nothing has finished yet, so the sentence does not name a day.
+    expect(find.text('Calculating…'), findsOneWidget);
+    await _open(t, state, _t0);
     expect(find.text('Day 0 of 3'), findsOneWidget);
   });
 

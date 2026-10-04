@@ -53,16 +53,19 @@ DateTime _syncNow() => _syncT0.add(const Duration(seconds: 75));
 
 // Scrollable, as the panel is on a real page: on a short phone at large text
 // it is taller than the screen and must scroll, not overflow.
-Widget syncFixture(SyncPresentationState state) => Scaffold(
-  body: SingleChildScrollView(
-    padding: const EdgeInsets.all(24),
-    // Top-aligned so the panel is as tall as its content, not the fixture.
-    child: Align(
-      alignment: Alignment.topCenter,
-      child: SyncControl(state: state, onSync: () {}, clock: _syncNow),
-    ),
-  ),
-);
+Widget syncFixture(SyncPresentationState state,
+        {DateTime Function()? clock}) =>
+    Scaffold(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        // Top-aligned so the panel is as tall as its content, not the fixture.
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: SyncControl(
+              state: state, onSync: () {}, clock: clock ?? _syncNow),
+        ),
+      ),
+    );
 
 SyncStep _s(
   SyncStepId id,
@@ -224,6 +227,8 @@ void main() {
             _s(SyncStepId.done, SyncStepStatus.done, start: 0, end: 0),
           ],
         ),
+        // Ten seconds after it finished, so it still says "just now".
+        clock: () => _syncT0.add(const Duration(seconds: 10)),
       ),
     ),
     'sleep_empty': (
@@ -353,11 +358,19 @@ void main() {
           expect(tester.takeException(), isNull);
           if (fixture.key.startsWith('sync_') ||
               fixture.key == 'primary_band_sync') {
-            // One control: "Sync now", or "Retry" once the last attempt failed.
-            expect(
-              find.text(fixture.key == 'sync_failed' ? 'Retry' : 'Sync now'),
-              findsOneWidget,
-            );
+            // At most one action: "Sync now" when settled, "Retry" once the last
+            // attempt failed, and none while a sync runs.
+            final action = switch (fixture.key) {
+              'sync_failed' => 'Retry',
+              'sync_offline' || 'sync_completed' => 'Sync now',
+              _ => null,
+            };
+            for (final label in const ['Sync now', 'Retry']) {
+              expect(find.text(label),
+                  label == action ? findsOneWidget : findsNothing,
+                  reason: '${fixture.key}: $label');
+            }
+            expect(find.byType(SyncControl), findsOneWidget);
           }
           if (fixture.key.startsWith('sleep_')) {
             expect(find.text('Recalculate this night'), findsOneWidget);
@@ -394,52 +407,136 @@ void main() {
 
   // Structural cover for every SCREEN fixture that has no picture. Each entry
   // names what the screen must show; the harness adds the overflow sweep.
+  //
+  // 8AF.7: the sync control is one status line with the four steps behind a tap
+  // on it. The structural blocks pin the line; `expandedSyncStructure` below
+  // opens the steps and pins those, with the same overflow sweep.
   const syncSteps = ['Connect', 'Download', 'Calculate', 'Done'];
-  void syncSteps_() {
+  void syncStepsCollapsed() {
     for (final step in syncSteps) {
-      expect(find.text(step), findsOneWidget, reason: '$step step missing');
+      expect(find.text(step), findsNothing, reason: '$step shown collapsed');
     }
   }
 
+  void expectNoAction() {
+    expect(find.text('Sync now'), findsNothing);
+    expect(find.text('Retry'), findsNothing);
+  }
+
   screenStructure('sync_offline', fixtures['sync_offline']!.$2, () {
-    expect(find.text('Band sync'), findsOneWidget);
-    expect(find.text('Local data refreshed. Band not contacted.'),
-        findsOneWidget);
+    // The band is away and nothing has ever synced: one honest sentence.
+    expect(find.text('Band not connected · not synced yet'), findsOneWidget);
     expect(find.text('Sync now'), findsOneWidget);
-    // No run, no step list.
-    expect(find.text('Download'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    // No run, no step list, and nothing to open.
+    syncStepsCollapsed();
+    expect(find.text('Band sync'), findsNothing);
+    expect(find.text('Local data refreshed. Band not contacted.'), findsNothing);
   });
   screenStructure('sync_downloading', fixtures['sync_downloading']!.$2, () {
-    expect(find.text('Syncing with your band'), findsOneWidget);
-    syncSteps_();
-    expect(find.text('12,400 records · 31 chunks'), findsOneWidget);
-    expect(find.text('Sync now'), findsOneWidget);
+    expect(find.text('Downloading · 10 h 30 min of band time to go'),
+        findsOneWidget);
+    // The running time sits left of the sentence while a sync runs.
+    expect(find.text('1:15'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expectNoAction();
+    syncStepsCollapsed();
+    expect(find.text('Syncing with your band'), findsNothing);
   });
   screenStructure('sync_calculating', fixtures['sync_calculating']!.$2, () {
-    expect(find.text('Syncing with your band'), findsOneWidget);
-    syncSteps_();
+    expect(find.text('Calculating · day 2 of 5'), findsOneWidget);
+    expect(find.text('1:15'), findsOneWidget);
+    expectNoAction();
+    syncStepsCollapsed();
+  });
+  screenStructure('sync_waiting', fixtures['sync_waiting']!.$2, () {
+    // Waiting its turn, with download detail: the download line, not the
+    // fallback.
+    expect(
+        find.byWidgetPredicate((w) =>
+            w is Text &&
+            RegExp(r'^Downloaded · synced through .*09:10$')
+                .hasMatch(w.data ?? '')),
+        findsOneWidget);
+    expect(find.text('Waiting for another calculation…'), findsNothing);
+    expectNoAction();
+    syncStepsCollapsed();
+  });
+  screenStructure('sync_failed', fixtures['sync_failed']!.$2, () {
+    expect(find.text('Sync failed: Band disconnected during sync'),
+        findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Sync now'), findsNothing);
+    // A failed sync is not running: no timer, no spinner.
+    expect(find.text('0:41'), findsNothing);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    syncStepsCollapsed();
+  });
+  screenStructure('sync_completed', fixtures['sync_completed']!.$2, () {
+    expect(find.text('Synced just now'), findsOneWidget);
+    expect(find.text('Sync now'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    syncStepsCollapsed();
+  });
+
+  // The steps behind the line, opened by a tap on the sentence. Each fixture is
+  // pumped at the small phone at 2x text (where cards overflow), opened, and
+  // swept for overflow; the steps and the counts the engine reported must show.
+  void expandedSyncStructure(
+      String key, String sentence, void Function() present) {
+    testWidgets('$key opened content and no overflow at 2x text', (t) async {
+      t.view.devicePixelRatio = 1;
+      t.view.physicalSize = const Size(360, 640);
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(Brightness.light),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: fixtures[key]!.$2,
+      ));
+      await t.pump();
+      await t.tap(find.text(sentence));
+      await t.pump(const Duration(milliseconds: 100));
+      expect(t.takeException(), isNull, reason: '$key overflowed when opened');
+      final scrollable = find.byType(Scrollable);
+      final position = t.state<ScrollableState>(scrollable.first).position;
+      while (position.pixels < position.maxScrollExtent) {
+        position.jumpTo(
+            (position.pixels + 400).clamp(0, position.maxScrollExtent));
+        await t.pump();
+        expect(t.takeException(), isNull, reason: '$key overflowed scrolled');
+      }
+      position.jumpTo(0);
+      await t.pump();
+      for (final step in syncSteps) {
+        expect(find.text(step), findsOneWidget, reason: '$step step missing');
+      }
+      present();
+    });
+  }
+
+  expandedSyncStructure(
+      'sync_downloading', 'Downloading · 10 h 30 min of band time to go', () {
+    expect(find.text('12,400 records · 31 chunks'), findsOneWidget);
+    expect(find.text('Band time still to fetch: 10 h 30 min'), findsOneWidget);
+  });
+  expandedSyncStructure('sync_calculating', 'Calculating · day 2 of 5', () {
     expect(find.text('Day 2 of 5 · 2026-09-29'), findsOneWidget);
     expect(find.text('Already connected'), findsOneWidget);
   });
-  screenStructure('sync_waiting', fixtures['sync_waiting']!.$2, () {
-    syncSteps_();
-    expect(find.text('Waiting for another calculation to finish'),
-        findsOneWidget);
+  expandedSyncStructure('sync_failed',
+      'Sync failed: Band disconnected during sync', () {
+    expect(find.text('Failed'), findsOneWidget);
+    expect(find.text('2,200 records · 6 chunks'), findsOneWidget);
+    expect(find.text('Not reached'), findsNWidgets(2));
   });
-  screenStructure('sync_failed', fixtures['sync_failed']!.$2, () {
-    expect(find.text('Sync failed'), findsOneWidget);
-    syncSteps_();
-    expect(find.text('Band disconnected during sync'), findsOneWidget);
-    expect(find.text('Last successful sync: 7:40 AM'), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
-    expect(find.text('Sync now'), findsNothing);
-  });
-  screenStructure('sync_completed', fixtures['sync_completed']!.$2, () {
-    expect(find.text('Sync completed'), findsOneWidget);
-    syncSteps_();
+  expandedSyncStructure('sync_completed', 'Synced just now', () {
     expect(find.text('Day 5 of 5 · 2026-09-26'), findsOneWidget);
-    expect(find.text('Last successful sync: 9:15 AM'), findsOneWidget);
-    expect(find.text('Sync now'), findsOneWidget);
+    expect(find.text('41,800 records · 104 chunks'), findsOneWidget);
   });
   screenStructure('sleep_empty', fixtures['sleep_empty']!.$2, () {
     expect(find.text('No night to show'), findsOneWidget);

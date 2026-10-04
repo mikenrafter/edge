@@ -26,10 +26,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:openstrap_edge/state/app_state.dart';
-import 'package:openstrap_edge/state/control_operations.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
-import 'package:openstrap_edge/ui2/sync_control.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 final _t0 = DateTime(2026, 9, 30, 9, 15);

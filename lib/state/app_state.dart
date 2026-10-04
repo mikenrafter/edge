@@ -1288,6 +1288,11 @@ class AppState extends ChangeNotifier {
     return ok;
   }
 
+  /// The one switch behind every door to this preference (Settings and My
+  /// devices): on turns it off, off asks the OS and turns it on.
+  Future<void> togglePhoneSteps() =>
+      phoneStepsEnabled ? disablePhoneSteps() : requestPhoneSteps();
+
   /// Turn phone steps off and DROP the counts we pulled.
   ///
   /// Leaving the rows behind would keep serving phone-sourced steps from a
@@ -6573,7 +6578,7 @@ class AppState extends ChangeNotifier {
     reloadLocal: () async { bumpInsights(); },
     log: _log,
   )..addListener(notifyListeners);
-  SyncPresentationState get syncPresentation => syncOperations.presentation;
+  SyncPresentationState get syncPresentation => syncOperations.view;
   Future<void> syncNow() async { await syncOperations.syncNow(); }
   Future<void> refreshData() async { await syncOperations.refresh(); }
 

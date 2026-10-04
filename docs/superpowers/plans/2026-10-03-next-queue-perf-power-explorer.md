@@ -55,6 +55,13 @@ no pgrep wait loops, no leftover flutter_tester)
      compute/persist/first usable render; bump a per-day revision at each day
      commit so Home/Health refresh while history continues; hidden tabs don't
      reload on every revision.
+   - P1b (user, 2026-10-03) Show the last calculated data on EVERY screen while
+     new data is calculated, labelled "As of <last calculated time>" (date too
+     when not today) wherever a screen's numbers come from a calculation that is
+     re-running; the label clears when the fresh result lands. Never show
+     another day's value as today's (§4.1/§3.7): a stale day keeps its own date.
+     Applies to computed-on-open screens too, by caching their last result (P3
+     makes those persistent; P1b uses the last in-memory/persisted result).
    - P2 Reliable scheduling: transaction-maintained input revisions (fix the
      fingerprint), structured run outcomes (failure ≠ complete), keep dirty
      intent when data arrives mid-run, `changedOnly` for automatic runs.

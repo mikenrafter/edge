@@ -856,8 +856,44 @@ class HealthSource {
     this.isBand = false,
     this.deviceId,
     this.family,
+    this.disabledReason,
   });
+
+  /// Why this source is listed but not doing its job, or null when it is. The
+  /// phone is the case: My devices always lists it, and when step counting is
+  /// off (or the platform has no step sensor) the row is dimmed and says so
+  /// here rather than disappearing.
+  final String? disabledReason;
 }
+
+/// The phone, as a source. Always buildable; [HealthSource.disabledReason] says
+/// when it is not counting.
+HealthSource phoneSource(AppState app) {
+  final gate = app.capabilities.of(Feature.phoneSteps);
+  final String? reason = gate.isDisabled
+      ? gate.reason
+      : app.phoneStepsEnabled
+          ? null
+          : phoneStepsOffReason;
+  return HealthSource(
+    name: 'This phone',
+    kind: 'Motion coprocessor',
+    tier: SourceTier.phone,
+    icon: LucideIcons.smartphone,
+    // NOT the toggle. On iOS `requestAuthorization` reports success even when
+    // the user denied READ, so the toggle sits on while every read comes back
+    // empty — this row used to hardcode `true` and claim a source that was
+    // measuring nothing. Steps actually banked is the only evidence the phone
+    // is a source.
+    connected: reason == null &&
+        app.phoneStepsLastSyncedDays != null &&
+        (app.phoneStepsLastTotal ?? 0) > 0,
+    disabledReason: reason,
+  );
+}
+
+/// The honest reason on a phone row whose step counting is switched off.
+const String phoneStepsOffReason = 'Step counting from this phone is off';
 
 /// The one-row device disclosure (MT-12 / CV-04a).
 ///
@@ -942,8 +978,13 @@ SourceTier? tierNamed(Object? name) {
 /// it changes on every beat: routing it through [AppState] would notify every
 /// listener in the app at 1 Hz for the duration of a workout, which is the
 /// rebuild storm this screen has already been fixed for once.
+///
+/// [alwaysListPhone] is My devices's: the phone is listed even with step
+/// counting off, disabled with its reason. Every other caller (the metric
+/// device filters, the source service) wants only sources that are counting.
 List<HealthSource> liveSources(AppState app,
-        {Set<String> liveAdapterIds = const {}}) =>
+        {Set<String> liveAdapterIds = const {},
+        bool alwaysListPhone = false}) =>
     [
       if (app.isPaired)
         HealthSource(
@@ -990,20 +1031,7 @@ List<HealthSource> liveSources(AppState app,
           deviceId: r['id'] as String?,
           family: r['adapter_id'] as String?,
         ),
-      if (app.phoneStepsEnabled)
-        HealthSource(
-          name: 'This phone',
-          kind: 'Motion coprocessor',
-          tier: SourceTier.phone,
-          icon: LucideIcons.smartphone,
-          // NOT the toggle. On iOS `requestAuthorization` reports success even
-          // when the user denied READ, so the toggle sits on while every read
-          // comes back empty — this row used to hardcode `true` and claim a
-          // source that was measuring nothing. Steps actually banked is the
-          // only evidence the phone is a source.
-          connected: app.phoneStepsLastSyncedDays != null &&
-              (app.phoneStepsLastTotal ?? 0) > 0,
-        ),
+      if (app.phoneStepsEnabled || alwaysListPhone) phoneSource(app),
     ];
 
 /// Quality first, then recency, then the name. The inverse of last-writer-wins.
@@ -1062,7 +1090,8 @@ class MyDevices extends StatelessWidget {
 
   Widget _build(BuildContext c, AppState app, Set<String> liveAdapterIds) {
     return MyDevicesView(
-      sources: rankSources(liveSources(app, liveAdapterIds: liveAdapterIds)),
+      sources: rankSources(liveSources(app,
+          liveAdapterIds: liveAdapterIds, alwaysListPhone: true)),
       // The band row's dot says connected or not. That covers six different
       // problems with six different fixes, and a user cannot fix a problem the
       // app will not name — so the engine's own verdict rides alongside it.
@@ -1076,6 +1105,10 @@ class MyDevices extends StatelessWidget {
       // way back to pairing. So push it.
       onPair: () => goto(c, const RePair()),
       onAddSensor: () => addSensor(c),
+      onTogglePhoneSteps: app.togglePhoneSteps,
+      phoneStepsOn: app.phoneStepsEnabled,
+      phoneStepsUnavailable:
+          app.capabilities.of(Feature.phoneSteps).reason,
       contendedSignals: contendedSignals(app),
       // FeatureFlag.sourceResolverUi OFF: no catalog or resolved-data entry,
       // and the priority editor appears only when two devices contend, as
@@ -1462,6 +1495,14 @@ class MyDevicesView extends StatelessWidget {
   final List<InputSignal> contendedSignals;
   final VoidCallback? onSignalPriority, onSourceCatalog;
 
+  /// The phone's "Count steps from this phone" switch, drawn under its row and
+  /// bound to the same preference as Settings. Null: no switch (a fixture with
+  /// no AppState). [phoneStepsUnavailable] is the platform's reason it cannot
+  /// count at all (Capabilities), which makes the switch inert and says why.
+  final VoidCallback? onTogglePhoneSteps;
+  final bool phoneStepsOn;
+  final String? phoneStepsUnavailable;
+
   const MyDevicesView({
     super.key,
     this.sources = const [],
@@ -1471,6 +1512,9 @@ class MyDevicesView extends StatelessWidget {
     this.contendedSignals = const [],
     this.onSignalPriority,
     this.onSourceCatalog,
+    this.onTogglePhoneSteps,
+    this.phoneStepsOn = false,
+    this.phoneStepsUnavailable,
   });
 
   @override
@@ -1540,6 +1584,20 @@ class MyDevicesView extends StatelessWidget {
                         fix: fault.fix ?? '',
                         icon: LucideIcons.bluetoothOff),
                   ],
+                  if (s.tier == SourceTier.phone && onTogglePhoneSteps != null) ...[
+                    const SizedBox(height: S.x2),
+                    Surface(
+                      pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                      child: SwitchRow(
+                        'Count steps from this phone',
+                        phoneStepsOn,
+                        (_) => onTogglePhoneSteps!(),
+                        sub: phoneStepsUnavailable ?? '',
+                        enabled: phoneStepsUnavailable == null,
+                        switchFirst: true,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: S.x3),
                 ],
                 // At the foot of LIVE, because that is what it adds to. Not
@@ -1597,7 +1655,9 @@ class MyDevicesView extends StatelessWidget {
                   // empty one is now a genuine invitation rather than a dead
                   // end.
                   ...[
-                    TierRow(t, filled: sources.any((s) => s.tier == t)),
+                    TierRow(t,
+                        filled: sources.any(
+                            (s) => s.tier == t && s.disabledReason == null)),
                     const SizedBox(height: S.x3),
                   ],
               ],
@@ -1631,6 +1691,7 @@ String sourceState(HealthSource s) {
     return s.tier == null ? 'Paired · storing what it sends' : 'Waiting for a workout';
   }
   if (s.tier == SourceTier.phone) {
+    if (s.disabledReason case final why?) return why;
     return s.connected ? 'Reporting steps' : 'No steps arriving';
   }
   if (s.syncing) return 'Syncing';
@@ -1646,6 +1707,7 @@ String _localizedSourceState(BuildContext c, HealthSource s) {
         : (l?.devicesWaitingForWorkout ?? 'Waiting for a workout');
   }
   if (s.tier == SourceTier.phone) {
+    if (s.disabledReason case final why?) return why;
     return s.connected
         ? (l?.devicesReportingSteps ?? 'Reporting steps')
         : (l?.devicesNoStepsArriving ?? 'No steps arriving');
@@ -1666,7 +1728,7 @@ class SourceRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final battery = s.batteryPct;
-    return Surface(
+    final row = Surface(
       onTap: onTap,
       child: Row(children: [
         Container(
@@ -1734,6 +1796,9 @@ class SourceRow extends StatelessWidget {
               t.accent),
       ]),
     );
+    // Disabled stays listed and reachable (its page holds the switch that turns
+    // it back on); it is only dimmed.
+    return s.disabledReason == null ? row : Opacity(opacity: .55, child: row);
   }
 }
 
@@ -2495,6 +2560,7 @@ Future<void> _confirmForget(BuildContext c, AppState app, String name) async {
 class DeviceDetailView extends StatelessWidget {
   final HealthSource s;
   final VoidCallback? onFind, onForget, onSync;
+
   final SyncPresentationState? syncPresentation;
 
   /// The sync panel's time source. Production leaves it null (wall clock);
@@ -2591,7 +2657,7 @@ class DeviceDetailView extends StatelessWidget {
                   const SizedBox(height: S.x5),
                 ],
                 if (s.tier case final t?) ...[
-                  TierRow(t, filled: true),
+                  TierRow(t, filled: s.disabledReason == null),
                   const SizedBox(height: S.x5),
                 ],
                 // A PAIRED SENSOR'S OWN CARD, not the band block below. It has

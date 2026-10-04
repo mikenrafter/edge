@@ -103,6 +103,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Language'],
     ['Units'],
     ['Appearance'],
+    ['Pull down to sync'],
     ['Expected sleep schedule'],
     ['Icon'],
     ['Cycle tracking'],

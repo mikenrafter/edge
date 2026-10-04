@@ -34,6 +34,7 @@ import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/locale_controller.dart';
+import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
 import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
@@ -82,6 +83,9 @@ class _MoreSettingsState extends State<MoreSettings> {
   /// Whether a food barcode may be looked up online. Not on AppState: it is a
   /// screen-local preference like the map basemap's, read straight off Prefs.
   bool _barcode = offLookupAllowed;
+
+  /// Home's pull-to-sync, read straight off Prefs like [_barcode].
+  bool _pullToSync = Prefs.pullToSyncOn;
   String _version = '';
   int _taps = 0;
 
@@ -193,6 +197,11 @@ class _MoreSettingsState extends State<MoreSettings> {
       phoneSteps: app.phoneStepsEnabled,
       telemetry: app.telemetryConsent,
       barcodeLookup: _barcode,
+      pullToSync: _pullToSync,
+      onTogglePullToSync: () {
+        Prefs.setBool(Prefs.pullToSync, !_pullToSync);
+        setState(() => _pullToSync = !_pullToSync);
+      },
       // Shown when the build has the feature OR when this install already
       // consented under an older build. A consent that cannot be withdrawn is
       // not consent, and the old `lib/ui` toggle died with that package while
@@ -229,9 +238,7 @@ class _MoreSettingsState extends State<MoreSettings> {
           (theme.choice.index + 1) % AppThemeChoice.values.length]),
       onToggleCycleTracking: () =>
           app.setCycleTrackingEnabled(!app.cycleTrackingEnabled),
-      onTogglePhoneSteps: () => app.phoneStepsEnabled
-          ? app.disablePhoneSteps()
-          : app.requestPhoneSteps(),
+      onTogglePhoneSteps: app.togglePhoneSteps,
       onToggleTelemetry: () => app.setTelemetryConsent(!app.telemetryConsent),
       onToggleBarcodeLookup: () => _toggleBarcode(c),
       onToggleHealthShare: () => _toggleHealthShare(c, app),
@@ -555,6 +562,10 @@ class MoreSettingsView extends StatelessWidget {
   final String units, appearance;
   final bool phoneSteps, telemetry, barcodeLookup, cycleTracking;
 
+  /// Home's pull down to sync. On by default.
+  final bool pullToSync;
+  final VoidCallback? onTogglePullToSync;
+
   /// The home-screen icon, or null where the OS will not change it — Android,
   /// and the managed iOS configurations that refuse. Null means the row is not
   /// drawn: a control that cannot do its one job is worse than no control.
@@ -634,6 +645,8 @@ class MoreSettingsView extends StatelessWidget {
     this.appIcon,
     this.onPickIcon,
     this.phoneSteps = false,
+    this.pullToSync = true,
+    this.onTogglePullToSync,
     this.healthSync = false,
     this.healthState = HealthLinkState.unknown,
     this.healthStore = 'Apple Health',
@@ -782,6 +795,12 @@ class MoreSettingsView extends StatelessWidget {
                   SetRow(LucideIcons.sun, C.yellow,
                       l?.settingsAppearanceRowTitle ?? 'Appearance',
                       value: appearance, onTap: onCycleAppearance),
+                  // Home's pull-to-refresh. Off removes the gesture; the sync
+                  // status line on Home keeps its Sync now button either way.
+                  SetRow(LucideIcons.refreshCw, C.blue, 'Pull down to sync',
+                      sub: 'Pull Home down to sync with the band',
+                      value: pullToSync ? on : off,
+                      onTap: onTogglePullToSync),
                   // Intentionally also in Alarm > Wake, where it is the alarm's
                   // input in context. Both rows edit the same preference.
                   SetRow(LucideIcons.moon, C.indigo, 'Expected sleep schedule',

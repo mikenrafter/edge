@@ -271,7 +271,10 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
 /// "On"/"Off" word that a screen would then have to count.
 class SwitchRow extends StatelessWidget {
   const SwitchRow(this.title, this.value, this.onChanged,
-      {super.key, this.sub = '', this.enabled = true});
+      {super.key,
+      this.sub = '',
+      this.enabled = true,
+      this.switchFirst = false});
   final String title, sub;
   final bool value;
   final ValueChanged<bool>? onChanged;
@@ -279,20 +282,26 @@ class SwitchRow extends StatelessWidget {
   /// 8K: false keeps the row in the list, dimmed, with its switch inert.
   final bool enabled;
 
+  /// The switch leads the label instead of trailing it. For a switch that sits
+  /// under another row's icon column (the phone's, in My devices), where it
+  /// reads as that row's own control.
+  final bool switchFirst;
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final label = Expanded(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: F.body.copyWith(color: p.ink)),
+        if (sub.isNotEmpty) Text(sub, style: F.over.copyWith(color: p.ink3)),
+      ]),
+    );
+    final toggle = Switch(value: value, onChanged: enabled ? onChanged : null);
     final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x2),
       child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: F.body.copyWith(color: p.ink)),
-            if (sub.isNotEmpty) Text(sub, style: F.over.copyWith(color: p.ink3)),
-          ]),
-        ),
-        const SizedBox(width: S.x2),
-        Switch(value: value, onChanged: enabled ? onChanged : null),
+        if (switchFirst) ...[toggle, const SizedBox(width: S.x3), label]
+        else ...[label, const SizedBox(width: S.x2), toggle],
       ]),
     );
     return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);

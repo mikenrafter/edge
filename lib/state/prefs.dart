@@ -93,6 +93,12 @@ class Prefs {
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
   static bool get allowLongHaptics => getBool(hapticsAllowLong, false);
 
+  /// "Pull down to sync": Home's pull-to-refresh. On unless somebody turned it
+  /// off, so nobody else sees a change; off leaves syncing to the status line's
+  /// Sync now button.
+  static const String pullToSync = 'pull_to_sync';
+  static bool get pullToSyncOn => getBool(pullToSync, true);
+
   /// Per-metric range toggle on the shared MetricScreen (Today/Week/Month/3M).
   /// Keyed by the metric id so Sleep / Heart / Body each remember independently.
   static String metricTab(String metric) => 'ui.metric_tab.$metric';

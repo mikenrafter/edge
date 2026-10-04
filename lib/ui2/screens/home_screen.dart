@@ -40,6 +40,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../notify/notification_prefs.dart' show NotificationPrefs;
 import '../../state/app_state.dart';
+import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../activity/day_strain.dart' show DayStrainDetail;
@@ -1773,8 +1774,12 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// a derive that fails silently, an import, or anything that lands without
   /// bumping it still leaves the user a way to ask.
   // HomeSyncControl renders AppState's shared SyncPresentationState.
-  Widget _refreshable(Widget list) =>
-      RefreshIndicator(onRefresh: () async {
+  //
+  // "Pull down to sync" (Settings) off means no RefreshIndicator at all, so an
+  // overscroll does nothing; the status line's Sync now is the way to sync.
+  Widget _refreshable(Widget list) => !Prefs.pullToSyncOn
+      ? list
+      : RefreshIndicator(onRefresh: () async {
         try { await context.read<AppState>().refreshData(); }
         on ProviderNotFoundException { /* Standalone fixture has local data only. */ }
         if (mounted) await _load();

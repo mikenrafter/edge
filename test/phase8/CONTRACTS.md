@@ -1177,6 +1177,51 @@ Tests: `test/haptics/fastest_selection_test.dart`, `builtin_patterns_test.dart`,
 - **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` (Patterns and safety); the roadmap
   entry 8AF.6.
 
+## 8AF.7: Settings is the landing screen, remembered accordions, the phone in Devices, one status line for sync
+
+Tests: `test/phase8/settings_landing_test.dart`, `alarm_in_alerts_test.dart`,
+`phone_device_test.dart`, `sync_status_line_test.dart`, `pull_to_sync_test.dart`,
+`nav_depth_test.dart`, `nav_depth_guard_test.dart`; `test/settings/accordion_state_test.dart`;
+`test/ui2/sync_control_panel_test.dart`, `test/proof/affected_views_test.dart` (sync_*,
+`primary_band_sync`), `test/state/capabilities_test.dart` (`phoneSteps`).
+
+- **Landing.** Home's Profile button opens Settings (`openProfile`); there is no Profile
+  screen and no Quick access group. Community is Settings' first accordion; Alarm is the first
+  row of the Alerts accordion. Every `SettingsAccordion` with an `id` remembers open/closed
+  under `accordion_<screen>_<section>` (`accordionPrefKey`) through `SettingsRepository`
+  (`appBool` to read, `update` to write); first visit is expanded.
+- **The phone is always a device.** `liveSources(app, alwaysListPhone: true)` (My devices
+  only; every other caller still lists the phone only while it counts) adds `phoneSource(app)`.
+  Off, or on a platform with no step sensor, it carries `HealthSource.disabledReason`
+  ("Step counting from this phone is off", or the Capabilities reason) which replaces the state
+  line, dims the row (`Opacity`) and keeps it tappable; its tier rung is not filled. Under the
+  row, `MyDevicesView` draws a `SwitchRow` "Count steps from this phone" (`switchFirst`, so the
+  switch leads), bound to `AppState.togglePhoneSteps`, the same call Settings > You &
+  preferences > Steps makes. Both doors read `AppState.phoneStepsEnabled` and rebuild live. The
+  platform gate is `Feature.phoneSteps` (available on Android and iOS, disabled with "This
+  device cannot count steps" elsewhere); a disabled gate makes the switch inert.
+- **One status line for sync.** `SyncControl` is one row: a mark (a spinner while busy), the
+  running time left of the sentence while busy, one sentence (`syncStatusLine`, pure), at most
+  one action ("Sync now", or "Retry" after a failure; none while a sync runs). Tapping the
+  sentence opens the four steps inline when there are any; open/closed is remembered under
+  `accordionPrefKey('sync-details')`, collapsed by default. Phases: `idle` ("Synced 12 min ago"
+  / "Not synced yet"), `offline` ("Band not connected · synced 3 h ago"), `connecting`,
+  `downloading` (band time to go only when the band reported its newest record, else
+  "Downloading…" or "Nothing new on the band"), `deriving` ("Calculating · day i of n" only
+  when known; while waiting on another calculation the download line, else "Waiting for
+  another calculation…"), `completed` ("Synced just now" for a minute, then the idle line;
+  partial: "Synced, but some days need another pass"), `failed` ("Sync failed: <reason>", red,
+  reason falls back to "Please retry"). `SyncCoordinator.view` shows a settled `offline` as
+  `idle` while the band is connected; `AppState.syncPresentation` returns it. "The band is
+  sending data now." and `SyncPresentationState.description` are gone. A count or a span is
+  drawn only when reported; no phase draws a percentage or an estimate.
+- **Pull down to sync.** `Prefs.pullToSync` (`pull_to_sync`, default on, `Prefs.pullToSyncOn`),
+  a row in Settings > You & preferences after Appearance. Off: Home's `_refreshable` returns
+  the list without a `RefreshIndicator`; the status line's Sync now is the way to sync.
+- **Removed l10n keys.** `profileQuickAccessGroup`, `profileSourcesCount`,
+  `profileMoreSettingsSub` (nothing referenced them after the landing screen went).
+- **Docs.** `docs/navigation-depth.md`; the roadmap entry 8AF.7.
+
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 
 Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the

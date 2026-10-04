@@ -215,6 +215,44 @@ void main() {
     });
   });
 
+  group('a platform with no step sensor (Feature.phoneSteps)', () {
+    testWidgets('the phone is still listed, disabled with the platform reason, '
+        'and its switch is inert', (t) async {
+      var flips = 0;
+      await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: MyDevicesView(
+          sources: const [
+            HealthSource(
+              name: 'This phone',
+              kind: 'Motion coprocessor',
+              tier: SourceTier.phone,
+              icon: Icons.smartphone,
+              disabledReason: 'This device cannot count steps',
+            ),
+          ],
+          onTogglePhoneSteps: () => flips++,
+          phoneStepsUnavailable: 'This device cannot count steps',
+        ),
+      ));
+      await t.pump();
+      expect(find.text('This phone'), findsOneWidget);
+      expect(find.text('This device cannot count steps'), findsWidgets);
+      expect(isDimmed(t, find.text('This phone')), isTrue);
+      await t.tap(find.byType(Switch), warnIfMissed: false);
+      expect(flips, 0, reason: 'inert: a sensor that is not there cannot be '
+          'switched on');
+    });
+
+    test('the phone source carries the Capabilities reason, not the "off" one',
+        () {
+      final app = _Phone(enabled: false);
+      addTearDown(app.dispose);
+      // Flutter tests run as Android, which has a step sensor.
+      expect(phoneSource(app).disabledReason, 'Step counting from this phone is off');
+    });
+  });
+
   group('the toggle lives with the phone', () {
     testWidgets('off: the toggle reads off; flipping it turns steps on',
         (t) async {

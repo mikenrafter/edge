@@ -4,36 +4,34 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../settings/settings_repository.dart';
 import '../state/app_state.dart';
 import 'grammar.dart';
 import 'profile/devices.dart' show formatDayTime;
+import 'profile/profile.dart' show accordionPrefKey;
 import 'theme.dart';
 
 /// THE sync control. Home and the primary band detail both render this, from
 /// the one `SyncCoordinator` state, so there is never a second button with its
 /// own idea of whether a sync is running.
 ///
-/// While a sync runs it is a status panel, not a spinner: the four steps with
-/// their state and time, what the download has banked so far, which day the
-/// calculation is on, and the total time ticking. It never draws a percentage:
-/// the band does not say how much it holds, so there is nothing true to divide
-/// by. After a failure it says why, in words, and the button becomes Retry.
+/// It is ONE row: a mark (a spinner while a sync runs), the running time while
+/// one does, one sentence about where the sync is, and at most one action. Tap
+/// the sentence to open the four steps inline; whether they are open is
+/// remembered between visits like an accordion (key `sync-details`). It never
+/// draws a percentage or an estimate: the band does not say how much it holds,
+/// so a figure is shown only when the band or the derivation reported it.
 class SyncControl extends StatefulWidget {
   final SyncPresentationState state;
   final VoidCallback? onSync;
 
   /// The time source for the elapsed readout; tests and goldens pin it.
   final DateTime Function()? clock;
-
-  /// The band is sending data although no manual sync is running (a
-  /// background or reconnect drain). Said, never styled as a sync.
-  final bool bandSending;
   const SyncControl({
     super.key,
     required this.state,
     this.onSync,
     this.clock,
-    this.bandSending = false,
   });
 
   @override
@@ -41,12 +39,22 @@ class SyncControl extends StatefulWidget {
 }
 
 class _SyncControlState extends State<SyncControl> {
+  /// The accordion id the open or closed state is stored under.
+  static const _detailsId = 'sync-details';
+
   Timer? _tick;
+  bool _tickBusy = false;
+  bool _open = false;
+
+  /// Set once the person has toggled it: a stored answer that arrives after
+  /// that must not undo what they just did.
+  bool _toggled = false;
 
   @override
   void initState() {
     super.initState();
     _syncTicker();
+    _restore();
   }
 
   @override
@@ -55,16 +63,51 @@ class _SyncControlState extends State<SyncControl> {
     _syncTicker();
   }
 
-  /// A clock only while there is something to count; a settled control holds
-  /// no timer. Real seconds, so this is [Motion.tick] and not [motion].
+  /// A second-by-second clock while a sync runs, and a slow one while a "synced
+  /// 12 min ago" sentence is on screen, so it does not go stale. Real seconds,
+  /// so this is [Motion.tick] and not [motion]. A control with nothing to count
+  /// holds no timer.
   void _syncTicker() {
-    if (widget.state.busy) {
-      _tick ??= Timer.periodic(Motion.tick, (_) {
-        if (mounted) setState(() {});
-      });
-    } else {
+    final busy = widget.state.busy;
+    final needsClock = busy || widget.state.lastSuccess != null;
+    if (!needsClock) {
       _tick?.cancel();
       _tick = null;
+      return;
+    }
+    if (_tick != null && _tickBusy == busy) return;
+    _tick?.cancel();
+    _tickBusy = busy;
+    _tick = Timer.periodic(busy ? Motion.tick : Motion.slowTick, (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Future<void> _restore() async {
+    bool? stored;
+    try {
+      stored =
+          await SettingsRepository.instance.appBool(accordionPrefKey(_detailsId));
+    } catch (_) {
+      return; // Unreadable: stay collapsed.
+    }
+    if (!mounted || _toggled || stored == null || stored == _open) return;
+    setState(() => _open = stored!);
+  }
+
+  Future<void> _toggle() async {
+    final open = !_open;
+    setState(() {
+      _toggled = true;
+      _open = open;
+    });
+    try {
+      await SettingsRepository.instance.update(
+        (d) => d.setBool(accordionPrefKey(_detailsId), open),
+        sections: const {},
+      );
+    } catch (_) {
+      // It still opened on screen; it just will not be remembered.
     }
   }
 
@@ -80,84 +123,173 @@ class _SyncControlState extends State<SyncControl> {
     final s = widget.state;
     final now = (widget.clock ?? DateTime.now)();
     final failed = s.phase == 'failed';
-    final elapsed = s.elapsed(now);
-    final title = switch (s.phase) {
-      'connecting' || 'downloading' || 'deriving' => 'Syncing with your band',
-      'completed' => s.partial ? 'Sync partly completed' : 'Sync completed',
-      'failed' => 'Sync failed',
-      _ => 'Band sync',
-    };
-    final last = s.lastSuccess;
+    final elapsed = s.busy ? s.elapsed(now) : null;
+    final (icon, tint) = _mark(s, p);
+    final onSync = widget.onSync;
+    // With no steps (a fresh launch, a refresh that never touched the band)
+    // there is nothing to open, so the sentence is not a control.
+    final canOpen = s.steps.isNotEmpty;
+    final status = Row(children: [
+      if (s.busy)
+        SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: p.on(C.blue)),
+        )
+      else
+        Icon(icon, size: 20, color: tint),
+      const SizedBox(width: S.x3),
+      if (elapsed != null) ...[
+        Semantics(
+          label: 'Elapsed ${_spoken(elapsed)}',
+          child: ExcludeSemantics(
+            child: Text(_clock(elapsed), style: F.n17.copyWith(color: p.ink2)),
+          ),
+        ),
+        const SizedBox(width: S.x2),
+      ],
+      Expanded(
+        child: Text(
+          syncStatusLine(s, now),
+          style: F.body.copyWith(color: failed ? p.on(C.red) : p.ink),
+        ),
+      ),
+    ]);
     return Surface(
+      pad: const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x2),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: S.tap),
+            child: Row(children: [
               Expanded(
-                child: Text(title, style: F.head.copyWith(color: p.ink)),
+                child: canOpen
+                    ? Semantics(
+                        expanded: _open,
+                        child: Pressable(onTap: _toggle, child: status),
+                      )
+                    : status,
               ),
-              if (elapsed != null) ...[
+              if (!s.busy && onSync != null) ...[
                 const SizedBox(width: S.x2),
-                Semantics(
-                  label: 'Elapsed ${_spoken(elapsed)}',
-                  child: ExcludeSemantics(
+                Pressable(
+                  onTap: onSync,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: S.x2),
                     child: Text(
-                      _clock(elapsed),
-                      style: F.n17.copyWith(color: p.ink2),
+                      failed ? 'Retry' : 'Sync now',
+                      style: F.body.copyWith(
+                          color: p.on(C.blue), fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
               ],
-            ],
+            ]),
           ),
-          if (s.steps.isEmpty && !failed) ...[
-            const SizedBox(height: S.x1),
-            // The honest offline line: a refresh that never touched the band
-            // says so, in the words it has always used.
-            Text(s.description, style: F.cap.copyWith(color: p.ink2)),
-          ],
-          if (s.steps.isNotEmpty) ...[
-            const SizedBox(height: S.x3),
+          if (_open && canOpen) ...[
+            const SizedBox(height: S.x2),
             for (final step in s.steps) _StepRow(step: step, now: now),
+            const SizedBox(height: S.x1),
           ],
-          if (failed) ...[
-            const SizedBox(height: S.x2),
-            Text(
-              s.failureReason ?? s.error ?? 'Please retry.',
-              style: F.cap.copyWith(color: p.on(C.red)),
-            ),
-          ],
-          if (widget.bandSending && !s.busy) ...[
-            const SizedBox(height: S.x2),
-            Text(
-              'The band is sending data now.',
-              style: F.cap.copyWith(color: p.ink2),
-            ),
-          ],
-          if (last != null) ...[
-            const SizedBox(height: S.x2),
-            Text(
-              'Last successful sync: '
-              '${TimeOfDay.fromDateTime(last.toLocal()).format(c)}',
-              style: F.cap.copyWith(color: p.ink3),
-            ),
-          ],
-          const SizedBox(height: S.x3),
-          Opacity(
-            opacity: s.busy ? .55 : 1,
-            child: BigButton(
-              failed ? 'Retry' : 'Sync now',
-              icon: failed ? LucideIcons.rotateCw : LucideIcons.refreshCw,
-              soft: s.busy,
-              onTap: s.busy ? null : widget.onSync,
-            ),
-          ),
         ],
       ),
     );
   }
+}
+
+/// The mark in front of the sentence when no sync is running.
+(IconData, Color) _mark(SyncPresentationState s, P p) =>
+    switch (s.phase) {
+      'failed' => (LucideIcons.circleX, p.on(C.red)),
+      'offline' => (LucideIcons.unplug, p.ink3),
+      'completed' when s.partial => (LucideIcons.circleAlert, p.on(C.orange)),
+      _ when s.lastSuccess == null => (LucideIcons.refreshCw, p.ink3),
+      _ => (LucideIcons.circleCheck, p.on(C.green)),
+    };
+
+/// The one sentence for [s] at [now]. Pure, so every phase is pinned by a test
+/// without a widget. A count or a span appears only when the band or the
+/// derivation reported it; everything else says what is happening and no more.
+String syncStatusLine(SyncPresentationState s, DateTime now) {
+  switch (s.phase) {
+    case 'connecting':
+      return 'Connecting to the band…';
+    case 'downloading':
+      final step = s.step(SyncStepId.download);
+      final d = step.download;
+      if (d != null && d.records == 0 && step.status == SyncStepStatus.done) {
+        return 'Nothing new on the band';
+      }
+      final backlog = d?.backlog;
+      return backlog == null
+          ? 'Downloading…'
+          : 'Downloading · ${_gap(backlog)} of band time to go';
+    case 'deriving':
+      final calc = s.calculate;
+      if (calc != null && calc.waiting) {
+        // Another calculation holds the lock. The most useful true thing to say
+        // is what the download did; only with no download detail is "waiting"
+        // the whole story.
+        return _downloadLine(s) ?? 'Waiting for another calculation…';
+      }
+      final i = calc?.dayIndex, total = calc?.dayTotal;
+      return i != null && total != null && i > 0
+          ? 'Calculating · day $i of $total'
+          : 'Calculating…';
+    case 'completed':
+      if (s.partial) return 'Synced, but some days need another pass';
+      final done = s.finishedAt;
+      if (done != null && now.difference(done).inSeconds < 60) {
+        return 'Synced just now';
+      }
+      return _lastSynced(s, now, offline: false);
+    case 'failed':
+      final why = s.failureReason?.trim();
+      return 'Sync failed: ${why == null || why.isEmpty ? 'Please retry' : why}';
+    case 'offline':
+      return _lastSynced(s, now, offline: true);
+    default: // 'idle'
+      return _lastSynced(s, now, offline: false);
+  }
+}
+
+/// What the download did, for the line shown while the calculation waits its
+/// turn. Null when the download left no detail.
+String? _downloadLine(SyncPresentationState s) {
+  final d = s.download;
+  if (d == null) return null;
+  if (d.records == 0) return 'Nothing new on the band';
+  if (d.backlog case final backlog?) {
+    return '${_gap(backlog)} of band time still to fetch';
+  }
+  if (d.syncedThrough case final through?) {
+    return 'Downloaded · synced through ${formatDayTime(through.toLocal())}';
+  }
+  return 'Downloaded';
+}
+
+/// "Synced 12 min ago", "Not synced yet", and when the band is away "Band not
+/// connected · synced 3 h ago".
+String _lastSynced(SyncPresentationState s, DateTime now,
+    {required bool offline}) {
+  final last = s.lastSuccess;
+  final synced = last == null
+      ? 'not synced yet'
+      : 'synced ${_ago(now.difference(last))}';
+  if (offline) return 'Band not connected · $synced';
+  return last == null ? 'Not synced yet' : 'Synced ${_ago(now.difference(last))}';
+}
+
+/// `just now`, `12 min ago`, `3 h ago`, `2 d ago`. A time in the future (a
+/// clock moved) reads as just now rather than a negative span.
+String _ago(Duration d) {
+  final min = d.inMinutes;
+  if (min < 1) return 'just now';
+  if (min < 60) return '$min min ago';
+  if (min < 1440) return '${min ~/ 60} h ago';
+  return '${min ~/ 1440} d ago';
 }
 
 class _StepRow extends StatelessWidget {
@@ -206,7 +338,7 @@ class _StepRow extends StatelessWidget {
           if (d.syncedThrough case final through?)
             'Synced through ${formatDayTime(through.toLocal())}',
           if (running && backlog != null)
-            'Band time still to fetch: ${_span(backlog)}',
+            'Band time still to fetch: ${_gap(backlog)}',
           // A download that stopped early says so, and what to do about it.
           if (!running && note != null) note,
         ];
@@ -323,12 +455,12 @@ String _took(Duration d) {
   return '${s ~/ 3600} h ${(s % 3600) ~/ 60} min';
 }
 
-/// A span of band time: `45 m`, `10 h 30 m`, `2 d 3 h`.
-String _span(Duration d) {
+/// A span of band time: `45 min`, `2 h 10 min`, `2 d 3 h`.
+String _gap(Duration d) {
   final min = d.inMinutes;
-  if (min < 1) return 'under 1 m';
-  if (min < 60) return '$min m';
-  if (min < 1440) return '${min ~/ 60} h ${min % 60} m';
+  if (min < 1) return 'under 1 min';
+  if (min < 60) return '$min min';
+  if (min < 1440) return '${min ~/ 60} h ${min % 60} min';
   return '${min ~/ 1440} d ${(min % 1440) ~/ 60} h';
 }
 
@@ -357,7 +489,6 @@ class HomeSyncControl extends StatelessWidget {
     return SyncControl(
       state: state,
       onSync: app.syncNow,
-      bandSending: app.syncingNow,
     );
   }
 }

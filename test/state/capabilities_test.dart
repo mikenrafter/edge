@@ -281,6 +281,22 @@ void main() {
     });
   });
 
+  group('phoneSteps', () {
+    test('available on Android and iOS, disabled with a reason elsewhere', () {
+      for (final p in [TargetPlatform.android, TargetPlatform.iOS]) {
+        expect(_caps(platform: p).of(Feature.phoneSteps),
+            Availability.available,
+            reason: '$p');
+      }
+      for (final p in TargetPlatform.values.where(
+          (p) => p != TargetPlatform.android && p != TargetPlatform.iOS)) {
+        final a = _caps(platform: p).of(Feature.phoneSteps);
+        expect(a.isDisabled, isTrue, reason: '$p is disabled, never hidden');
+        expect(a.reason, 'This device cannot count steps');
+      }
+    });
+  });
+
   group('inputs', () {
     test('equal inputs make equal capabilities, so a provider can skip notify',
         () {

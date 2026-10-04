@@ -1339,19 +1339,6 @@
   "@profileDefaultName": {
     "description": "Default display name."
   },
-  "profileQuickAccessGroup": "Quick access",
-  "@profileQuickAccessGroup": {
-    "description": "Group header."
-  },
-  "profileSourcesCount": "{n, plural, one{1 source} other{{n} sources}}",
-  "@profileSourcesCount": {
-    "description": "Row sub: N sources.",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
   "profileEditProfile": "Edit profile",
   "@profileEditProfile": {
     "description": "Row title."
@@ -1379,15 +1366,6 @@
   "profileMoreSettings": "More settings",
   "@profileMoreSettings": {
     "description": "Row title."
-  },
-  "profileMoreSettingsSub": "Import from {store}, export, backup, units, privacy, reset",
-  "@profileMoreSettingsSub": {
-    "description": "Row sub with health-store name.",
-    "placeholders": {
-      "store": {
-        "type": "String"
-      }
-    }
   },
   "welcomeHeadline": "Your WHOOP band data, decoded on this phone",
   "@welcomeHeadline": {

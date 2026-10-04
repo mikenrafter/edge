@@ -22,7 +22,7 @@ Widget _app(Widget home, {NavigatorObserver? observer}) =>
       value: LocaleController.seed(null),
       child: MaterialApp(
         theme: buildTheme(Brightness.light),
-        navigatorObservers: [if (observer != null) observer],
+        navigatorObservers: [?observer],
         home: home,
       ),
     );

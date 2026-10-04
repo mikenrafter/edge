@@ -150,6 +150,10 @@ class SyncStep {
 }
 
 class SyncPresentationState {
+  /// 'connecting', 'downloading', 'deriving' while a sync runs; 'completed' and
+  /// 'failed' when one ends; 'offline' after a refresh that never touched the
+  /// band; and 'idle' for nothing happening while the band is connected (see
+  /// [SyncCoordinator.view]). Both settled phases keep [lastSuccess].
   final String phase;
   final bool busy, contactedBand;
   final DateTime? lastSuccess;
@@ -206,14 +210,19 @@ class SyncPresentationState {
         partial: partial,
       );
 
-  String get description => switch (phase) {
-    'connecting' => 'Connecting to the band…',
-    'downloading' => 'Downloading recordings…',
-    'deriving' => 'Calculating from recordings…',
-    'completed' => partial ? 'Sync partly completed' : 'Sync completed',
-    'failed' => 'Sync failed: ${error ?? 'Please retry'}',
-    _ => 'Local data refreshed. Band not contacted.',
-  };
+  /// The same state under another settled [phase] ('offline' seen as 'idle').
+  SyncPresentationState withPhase(String next) => SyncPresentationState(
+        phase: next,
+        busy: busy,
+        contactedBand: contactedBand,
+        lastSuccess: lastSuccess,
+        error: error,
+        steps: steps,
+        startedAt: startedAt,
+        finishedAt: finishedAt,
+        failureReason: failureReason,
+        partial: partial,
+      );
 }
 
 /// A failure as a sentence, not a stack-trace label.
@@ -259,6 +268,15 @@ class SyncCoordinator extends ChangeNotifier {
   /// cancelled) to finish unwinding before it starts anyway.
   final Duration retireGrace;
   SyncPresentationState presentation = const SyncPresentationState();
+
+  /// [presentation] as a screen should draw it. A settled 'offline' is only
+  /// true while the band is away: with the link up and no sync running nothing
+  /// is happening, which is 'idle'. Derived at read time so a connect or a
+  /// disconnect needs no publish of its own.
+  SyncPresentationState get view =>
+      presentation.phase == 'offline' && isConnected()
+          ? presentation.withPhase('idle')
+          : presentation;
   Future<SyncOperationResult>? _active;
   int _generation = 0;
   SyncCancelToken _token = SyncCancelToken();

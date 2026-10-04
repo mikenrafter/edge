@@ -293,11 +293,8 @@ void main() {
       expect(p.step(SyncStepId.calculate).status, SyncStepStatus.skipped);
       expect(p.step(SyncStepId.done).status, SyncStepStatus.skipped);
       expect(p.finishedAt, isNotNull);
-      // Existing callers keep working.
-      expect(
-        p.description,
-        'Sync failed: Bad state: Could not connect to the band',
-      );
+      // The sentence a person reads is pinned in
+      // test/phase8/sync_status_line_test.dart (8AF.7 removed `description`).
     });
 
     test('a failure partway keeps the finished steps finished', () async {

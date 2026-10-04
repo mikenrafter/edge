@@ -394,6 +394,10 @@ class Motion {
   /// tick is how thirteen ungated tickers happened last time.
   static const tick = Duration(seconds: 1);
 
+  /// A slow wall clock for text that ages in minutes ("synced 12 min ago"):
+  /// real time, never passed through [motion], like [tick].
+  static const slowTick = Duration(seconds: 30);
+
   /// One full breath cycle for the paced-breathing ring — 5 s in, 5 s out is
   /// the pace the breathing session already uses. The PHASE is still owned by
   /// the screen (see `BreathRing.t`); this is only how long a cycle lasts, and
