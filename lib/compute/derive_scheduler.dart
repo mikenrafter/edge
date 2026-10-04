@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import '../data/db.dart';
+import 'derive_outcome.dart';
 
 enum DeriveJobKind { light, heavy }
 
@@ -20,9 +21,20 @@ class DeriveScheduler {
     this.workoutHoldCap = const Duration(hours: 6),
     this.onQueued,
     this.onWaiting,
+    this.retryBackoff = deriveRetryBackoff,
+    this.maxAttempts = kDeriveMaxAttempts,
   });
 
-  final Future<void> Function({required DeriveJobKind kind}) run;
+  /// Runs one pass and says how it ended. A complete outcome deletes the job;
+  /// anything else (or a throw) keeps it for a retry, see [retryBackoff].
+  final Future<DeriveOutcome> Function({required DeriveJobKind kind}) run;
+
+  /// How long a job that just failed its Nth attempt waits before the next.
+  final Duration Function(int attempts) retryBackoff;
+
+  /// A job that has failed this many attempts is parked as 'failed' (it stays
+  /// in the queue table, visible, and is never retried again).
+  final int maxAttempts;
   final void Function(String) log;
   final void Function() onChanged;
   final Duration lightSettle;
@@ -108,6 +120,14 @@ class DeriveScheduler {
   bool _pendingLight = false;
   bool _pendingHeavy = false;
   Timer? _timer;
+
+  /// Wakes the scheduler when the earliest backed-off retry falls due. Separate
+  /// from [_timer] (the settle timer) so a hold that cancels one leaves the
+  /// other: a retry that comes due while held simply drains on release.
+  Timer? _retryTimer;
+
+  /// Earliest `next_run_at` (epoch ms) among queued jobs that are not due yet.
+  int? _nextRetryAt;
   bool _refreshing = false;
 
   Future<void> init() async {
@@ -252,6 +272,8 @@ class DeriveScheduler {
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    _retryTimer?.cancel();
+    _retryTimer = null;
     _workoutCapTimer?.cancel();
     _workoutCapTimer = null;
   }
@@ -326,18 +348,18 @@ class DeriveScheduler {
     await _refreshSnapshot();
     log('[derive-scheduler] running ${kind == DeriveJobKind.heavy ? "heavy" : "light"} pass');
     try {
-      await run(kind: kind);
-      if (id != null && id.isNotEmpty) {
-        await LocalDb.completeComputeJob(id);
-      }
-    } catch (e) {
       // _drain runs unawaited from a timer: a failed pass is recorded on its
       // job and logged, not rethrown into the zone.
-      log('[derive-scheduler] ${kind.name} pass failed: $e');
+      DeriveOutcome? outcome;
+      String? thrown;
+      try {
+        outcome = await run(kind: kind);
+      } catch (e) {
+        thrown = '$e';
+        log('[derive-scheduler] ${kind.name} pass failed: $e');
+      }
       if (id != null && id.isNotEmpty) {
-        try {
-          await LocalDb.failComputeJob(id, '$e');
-        } catch (_) {}
+        await _settleJob(id, job, outcome, thrown);
       }
     } finally {
       _running = false;
@@ -345,6 +367,55 @@ class DeriveScheduler {
       if (_pendingHeavy || _pendingLight) _arm();
       onChanged();
     }
+  }
+
+  /// Decide the claimed job's fate from how its pass ended: delete it when
+  /// complete, otherwise back it off for a retry, parking it as 'failed' once
+  /// it has used its attempts. Never throws.
+  Future<void> _settleJob(
+    String id,
+    Map<String, dynamic> job,
+    DeriveOutcome? outcome,
+    String? thrown,
+  ) async {
+    try {
+      if (outcome != null && outcome.complete) {
+        await LocalDb.completeComputeJob(id);
+        return;
+      }
+      final reason = thrown ??
+          outcome?.error ??
+          (outcome != null && outcome.transientFailures > 0
+              ? '${outcome.transientFailures} day(s) failed transiently'
+              : 'derive failed');
+      // The claim already counted this attempt.
+      final attempts = (job['attempts'] as num?)?.toInt() ?? 1;
+      if (attempts >= maxAttempts) {
+        log('[derive-scheduler] giving up after $attempts attempts: $reason');
+        await LocalDb.failComputeJob(id, reason);
+      } else {
+        final wait = retryBackoff(attempts);
+        log('[derive-scheduler] retrying in ${wait.inSeconds}s '
+            '(attempt $attempts of $maxAttempts): $reason');
+        await LocalDb.retryComputeJob(id, reason, wait);
+      }
+    } catch (e) {
+      log('[derive-scheduler] could not record the pass result: $e');
+    }
+  }
+
+  /// Wake at the earliest not-yet-due retry so it runs without another trigger.
+  /// The wake only re-reads the queue and re-arms through the normal gates.
+  void _armRetryTimer(int now) {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    final at = _nextRetryAt;
+    if (at == null) return;
+    final ms = at - now;
+    _retryTimer = Timer(Duration(milliseconds: ms < 1 ? 1 : ms), () {
+      _retryTimer = null;
+      unawaited(_refreshSnapshot().then((_) => _arm()));
+    });
   }
 
   DeriveJobKind _parseKind(String? type) {
@@ -362,14 +433,23 @@ class DeriveScheduler {
     _refreshing = true;
     try {
       final jobs = await LocalDb.computeJobs(state: 'queued', limit: 50);
-      _pendingLight = jobs.any(
-        (job) =>
-            job['type']?.toString() == 'derive_light',
-      );
-      _pendingHeavy = jobs.any(
-        (job) =>
-            job['type']?.toString() == 'derive_heavy',
-      );
+      // A job still waiting out a retry backoff is not drain-now work: counting
+      // it would arm the settle timer, take nothing, and spin.
+      final now = DateTime.now().millisecondsSinceEpoch;
+      int? nextRetry;
+      final due = <Map<String, dynamic>>[];
+      for (final job in jobs) {
+        final at = (job['next_run_at'] as num?)?.toInt();
+        if (at == null || at <= now) {
+          due.add(job);
+        } else if (nextRetry == null || at < nextRetry) {
+          nextRetry = at;
+        }
+      }
+      _pendingLight = due.any((job) => job['type']?.toString() == 'derive_light');
+      _pendingHeavy = due.any((job) => job['type']?.toString() == 'derive_heavy');
+      _nextRetryAt = nextRetry;
+      _armRetryTimer(now);
     } catch (e) {
       // Keep the last known pending flags; a failed read is not "nothing queued".
       log('[derive-scheduler] could not read the job queue: $e');

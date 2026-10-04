@@ -15,6 +15,7 @@
 // a held scheduler never creates a timer at all.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/compute/derive_outcome.dart';
 import 'package:openstrap_edge/compute/derive_scheduler.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:path/path.dart' as p;
@@ -56,7 +57,10 @@ void main() {
     // not write into this test's results.
     final mine = ran = [];
     s = DeriveScheduler(
-      run: ({required DeriveJobKind kind}) async => mine.add(kind),
+      run: ({required DeriveJobKind kind}) async {
+        mine.add(kind);
+        return const DeriveOutcome();
+      },
       log: (_) {},
       onChanged: () {},
       lightSettle: _settle,

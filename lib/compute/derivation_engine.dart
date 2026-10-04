@@ -46,6 +46,7 @@ import '../notify/tap_router.dart' show workoutSuggestionRoute;
 import '../telemetry/telemetry_service.dart';
 import 'crossday_pipeline.dart';
 import 'sleep_blank.dart';
+import 'derive_outcome.dart';
 import 'derive_pacing.dart';
 import 'derive_perf.dart';
 import 'hr_max.dart'
@@ -2632,11 +2633,35 @@ class DerivationEngine {
     'active_days': <String>[],
     'concurrency': 1,
     'last_error': null,
+    // How the last run() ended (see [lastOutcome]).
+    'last_outcome': null,
     // Summary of the last pass that computed at least one day (see [perf]).
     'last_pass_perf': null,
   };
 
   Map<String, dynamic> snapshot() => Map<String, dynamic>.from(_diag);
+
+  DeriveOutcome? _lastOutcome;
+
+  /// How the last [run] call ended; null before the first. A call refused
+  /// because a pass was in flight reports failed 'busy' (it did not do the
+  /// requested work). [run] keeps returning the day count for its many
+  /// callers; the scheduler reads this to decide whether its job is done.
+  DeriveOutcome? get lastOutcome => _lastOutcome;
+
+  void _setOutcome(DeriveOutcome o) {
+    _lastOutcome = o;
+    _diag['last_outcome'] = o.toMap();
+  }
+
+  /// Test seams, null in production. [debugDayHook] runs at the top of
+  /// processDay's try, before the day is prepared (a throw is handled like a
+  /// failed prepare); [debugScopeHook] runs right after `_deriveScope` (a
+  /// throw is a pass-level failure).
+  @visibleForTesting
+  Future<void> Function(String dayId)? debugDayHook;
+  @visibleForTesting
+  Future<void> Function()? debugScopeHook;
 
   /// Timing of the current / last pass. The scheduler feeds it the queue wait
   /// and hold reasons before a pass starts; run()/runDays()/rescanRecent()
@@ -2718,8 +2743,14 @@ class DerivationEngine {
     void Function(List<String> days)? onScopeDays,
     void Function(bool active)? onCrossDay,
   }) async {
-    if (_running) return 0;
+    if (_running) {
+      _setOutcome(const DeriveOutcome(failed: true, error: 'busy'));
+      return 0;
+    }
     _running = true;
+    var passComputed = 0;
+    var passTransient = 0;
+    String? passError;
     perf.startPass();
     final startedAt = DateTime.now().millisecondsSinceEpoch;
     _diag
@@ -2760,6 +2791,7 @@ class DerivationEngine {
 
     try {
       final scope = await _deriveScope(heavy: heavy, force: force);
+      await debugScopeHook?.call();
       _diag
         ..['scope_days'] = scope.targetDays.length
         ..['scope_reason'] = scope.reason;
@@ -2882,6 +2914,7 @@ class DerivationEngine {
         activeDays.add(dayId);
         _diag['active_days'] = activeDays.toList();
         try {
+          await debugDayHook?.call(dayId);
           final prepared = await _prepareTargetDayTimed(dayId);
           // Override day whose raw has been pruned (≥14 d): re-deriving would
           // produce an empty/absent result and clobber the user's manual sleep.
@@ -2927,6 +2960,8 @@ class DerivationEngine {
           );
           if (!_transientSkipReasons.contains(skipReason)) {
             await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+          } else {
+            passTransient++;
           }
           _diag['skipped_days'] = (_diag['skipped_days'] as int) + 1;
           _diag['last_error'] = '$e';
@@ -2982,12 +3017,20 @@ class DerivationEngine {
           );
         }
       }
+      passComputed = done;
       return done;
     } catch (e, st) {
       _diag['last_error'] = '$e';
+      passError = '$e';
       _log('derive ERROR: $e\n$st');
       return 0;
     } finally {
+      _setOutcome(DeriveOutcome(
+        computed: passComputed,
+        transientFailures: passTransient,
+        failed: passError != null,
+        error: passError,
+      ));
       _finishPassPerf();
       // Storage housekeeping runs here, after everything, still holding
       // `_running`. See _runStorageHousekeeping — this is the only place every

@@ -117,7 +117,22 @@ no pgrep wait loops, no leftover flutter_tester)
   32-entry `LastResultCache` and show it at once under the label.
 - Docs: `docs/perf.md`; `test/phase8/CONTRACTS.md` (8AG P1/P1b). Tests: `test/perf/`.
 - Not done here (later phases): persisted artifacts for the computed-on-open screens (P3, P4),
-  scheduler reliability (P2), power modes (P5).
+  power modes (P5). Scheduler reliability landed in P2, below.
+
+### 8AG-perf P2 — reliable scheduling
+
+- **Input revisions**: `input_rev` buckets (`rec_ts / 900`) bumped by triggers on `decoded_onehz`
+  and `decoded_rr`; the day fingerprint is `MAX:COUNT:REVSUM`, so an in-place replace or an
+  RR-only change reads as changed. Schema 58.
+- **Outcomes**: `DeriveOutcome` on `DerivationEngine.lastOutcome`; a pass error, a refused
+  (busy) call or a transient day skip is not complete. A failed day stays prune-pending.
+- **Retry**: an incomplete or thrown pass requeues its job with 30 s doubling backoff (15 min
+  cap) and a timer; the fifth failure parks it as `failed`. Complete deletes it.
+- **Dirty intent**: enqueue dedupes against queued jobs only, so data stored mid-run gets one
+  follow-up pass.
+- **Automatic runs**: the scheduler's light pass is `changedOnly: true`; heavy is unchanged.
+- Docs: `docs/perf.md`; `test/phase8/CONTRACTS.md` (8AG P2). Tests: `test/perf/p2_*`.
+- Not done here: persisted artifacts (P3, P4), power modes (P5).
 
 ## Critical files
 lib/compute/{derivation_engine,derive_scheduler,derive_pacing}.dart,

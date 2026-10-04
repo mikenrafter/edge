@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:openstrap_edge/compute/derive_outcome.dart';
 import 'package:openstrap_edge/compute/derive_scheduler.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/control_operations.dart';
@@ -87,6 +88,9 @@ void main() {
           log: (_) {},
           onChanged: () {},
           lightSettle: const Duration(milliseconds: 10),
+          // A throw is retried now; with a single attempt allowed the first
+          // one parks the job, which is what this test pins.
+          maxAttempts: 1,
         );
         await s.init();
         s.markStoredData();
@@ -103,7 +107,7 @@ void main() {
     test('a manual sync hold is always released, even when dropping the '
         'absorbed job fails', () async {
       final s = DeriveScheduler(
-        run: ({required DeriveJobKind kind}) async {},
+        run: ({required DeriveJobKind kind}) async => const DeriveOutcome(),
         log: (_) {},
         onChanged: () {},
       );

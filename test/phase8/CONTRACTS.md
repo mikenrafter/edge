@@ -1271,6 +1271,35 @@ Tests: `test/perf/derive_perf_test.dart`, `revision_coalescer_test.dart`,
   result replaces it and clears the label.
 - **Docs.** `docs/perf.md`; the roadmap entry 8AG-perf P1.
 
+## 8AG P2: reliable scheduling
+
+Tests: `test/perf/p2_input_rev_test.dart`, `p2_enqueue_test.dart`, `p2_derive_outcome_test.dart`,
+`p2_engine_outcome_test.dart`, `p2_scheduler_retry_test.dart`, `p2_auto_changed_only_test.dart`,
+`p2_transient_prune_pending_test.dart`, `p2_prune_pending_guard_test.dart`; `perf_wiring_test.dart`
+(`_afterDrain` returns a `DeriveOutcome`).
+
+- **Input revisions.** `input_rev(bucket INTEGER PRIMARY KEY, rev INTEGER NOT NULL)`, bucket =
+  `rec_ts / 900`. Triggers on `decoded_onehz` and `decoded_rr` (insert, update, delete) bump it,
+  created by `_createInputRev` from the v58 step and from `_repairOpenSchema`. `schemaVersion` 58.
+  `decodedDayFingerprints` returns `MAX(rec_ts):COUNT(*):REVSUM`.
+- **Outcomes.** `DeriveOutcome` (`lib/compute/derive_outcome.dart`, pure): `computed`,
+  `transientFailures`, `failed`, `error`; `complete = !failed && transientFailures == 0`.
+  `DerivationEngine.lastOutcome` / `snapshot()['last_outcome']`; `run` still returns `Future<int>`.
+  A refused call is failed `busy`. Structural skips are not failures. Test seams
+  `debugDayHook` and `debugScopeHook`.
+- **Retry.** `DeriveScheduler(run: Future<DeriveOutcome> ..., retryBackoff, maxAttempts)`.
+  Complete: `completeComputeJob`. Otherwise (or a throw) `LocalDb.retryComputeJob(id, error, backoff)`:
+  queued, `next_run_at = now + deriveRetryBackoff(attempts)` (30 s doubling, 15 min cap), attempts
+  kept; at `kDeriveMaxAttempts` (5) `failComputeJob`. `takeNextComputeJob` returns the
+  post-claim `attempts`. A timer wakes the scheduler at the earliest not-yet-due retry; a backing-off
+  job is not in `pendingLight` / `pendingHeavy`.
+- **Enqueue.** Dedupe against queued jobs only; a running job never absorbs new intent. Job ids
+  are `derive_<type>_<ms>_<seq>`.
+- **Automatic runs.** `AppState._runScheduled`: light ⇒ `_afterDrain(changedOnly: true)`, heavy ⇒
+  false. `_afterDrain` returns the pass's `DeriveOutcome` and never throws; a failure after the
+  derive reported is logged, not turned into a retry. Manual sync and the force paths are unchanged.
+- **No `kAlgoVersion` bump.** Docs: `docs/perf.md` (P2 scheduling); the roadmap entry 8AG-perf P2.
+
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 
 Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the

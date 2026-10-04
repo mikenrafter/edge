@@ -352,7 +352,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 57;
+  static const int schemaVersion = 58;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1109,6 +1109,17 @@ class LocalDb {
           // derived moves. _repairOpenSchema re-runs it on every open.
           await _createEcgTables(db);
         }
+        if (oldV < 58) {
+          // 8AG-perf P2: input revisions behind the "did this day's inputs
+          // change" fingerprint. Last in the ladder on purpose: a rebuilt or
+          // renamed decoded_* table above loses its triggers, so they are
+          // attached only once every table is in its final shape. Table and
+          // triggers only, no backfill (a missing bucket reads as revision 0),
+          // so it is cheap under iOS's CPU watchdog (invariant 11). No
+          // kAlgoVersion bump: nothing derived moves. _repairOpenSchema
+          // re-runs it on every open.
+          await _createInputRev(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1200,10 +1211,67 @@ class LocalDb {
     );
     await _ensureWakeSchema(db);
     await _createEcgTables(db);
+    // After every step above that can rebuild decoded_* (_relaxDecodedHrNull):
+    // a rebuilt table drops its triggers, this puts them back.
+    await _createInputRev(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
     await _dropRawStore(db);
+  }
+
+  /// `input_rev` plus the triggers that keep it current: one revision counter
+  /// per absolute 15-minute bucket (`rec_ts ~/ 900`) of `decoded_onehz` and
+  /// `decoded_rr`, bumped by every INSERT, UPDATE and DELETE on either table.
+  /// Triggers rather than hand-stamping because there are many write sites
+  /// (live ingest, drain, re-decode, upgrade, eviction, import) and any one
+  /// missed would let a changed day read as unchanged. The day fingerprint sums
+  /// the buckets a day spans, so an in-place row replacement and an RR-only
+  /// change both move it.
+  ///
+  /// Each trigger body is a guarded `INSERT` then `UPDATE rev = rev + 1`, not an
+  /// UPSERT: SQLite below 3.24 (older Android) has no `ON CONFLICT DO UPDATE`.
+  /// Not `INSERT OR IGNORE` either: an ON CONFLICT clause on the statement that
+  /// fires a trigger overrides the one inside the body, so under the hot path's
+  /// `INSERT OR REPLACE` it would REPLACE the bucket and reset its revision.
+  /// Rows with a NULL or non-positive rec_ts are ignored. An UPDATE bumps the
+  /// new bucket and, when rec_ts moved bucket, the old one too. Idempotent
+  /// (`IF NOT EXISTS`); a table that is absent is skipped, not an error.
+  static Future<void> _createInputRev(Database db) async {
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS input_rev ('
+      'bucket INTEGER PRIMARY KEY, rev INTEGER NOT NULL)',
+    );
+    String bump(String row) =>
+        'INSERT INTO input_rev(bucket, rev) SELECT $row.rec_ts / 900, 0 '
+        'WHERE NOT EXISTS (SELECT 1 FROM input_rev WHERE bucket = $row.rec_ts / 900); '
+        'UPDATE input_rev SET rev = rev + 1 WHERE bucket = $row.rec_ts / 900;';
+    const live = 'NEW.rec_ts IS NOT NULL AND NEW.rec_ts > 0';
+    const gone = 'OLD.rec_ts IS NOT NULL AND OLD.rec_ts > 0';
+    for (final t in const ['decoded_onehz', 'decoded_rr']) {
+      final present = await db.rawQuery(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        [t],
+      );
+      if (present.isEmpty) continue;
+      await db.execute(
+        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_ai AFTER INSERT ON $t '
+        'WHEN $live BEGIN ${bump('NEW')} END',
+      );
+      await db.execute(
+        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_au AFTER UPDATE ON $t '
+        'WHEN $live BEGIN ${bump('NEW')} END',
+      );
+      await db.execute(
+        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_au_old AFTER UPDATE ON $t '
+        'WHEN $gone AND (NEW.rec_ts IS NULL OR '
+        'NEW.rec_ts / 900 != OLD.rec_ts / 900) BEGIN ${bump('OLD')} END',
+      );
+      await db.execute(
+        'CREATE TRIGGER IF NOT EXISTS ${t}_rev_ad AFTER DELETE ON $t '
+        'WHEN $gone BEGIN ${bump('OLD')} END',
+      );
+    }
   }
 
   /// Periodic snapshot of a LIVE workout's per-second tallies (per-minute HR
@@ -10056,11 +10124,21 @@ class LocalDb {
 
   static const String _derivedFpPrefix = 'derived_fp:';
 
-  /// `{day -> "MAX(rec_ts):COUNT(*)"}` over the canonical decoded 1 Hz rows of
-  /// each of [days] that has any. The count matters as much as the newest
+  /// `{day -> "MAX(rec_ts):COUNT(*):REVSUM"}` for each of [days] that has any
+  /// canonical decoded 1 Hz row. The count matters as much as the newest
   /// timestamp: a gap filled behind the day's newest record changes the rows a
   /// derive reads without moving MAX(rec_ts). Both are single range reads on
   /// the `rec_ts` primary key.
+  ///
+  /// REVSUM is the sum of `input_rev` over the 15-minute buckets the day spans
+  /// (`lo ~/ 900` through `(hi - 1) ~/ 900`; local midnight is a multiple of
+  /// 900 s in every real zone, so a day is an exact bucket range, and `lo`/`hi`
+  /// come from the DST-aware day bounds, never 86400 arithmetic). It is what
+  /// sees a row replaced in place (same rec_ts, same count) and any change to
+  /// `decoded_rr`, neither of which MAX:COUNT can. Days written before the
+  /// triggers existed have no buckets and read 0; the first fingerprint after
+  /// the upgrade differs from every stored two-part one, so each day derives
+  /// once more (no output change).
   static Future<Map<String, String>> decodedDayFingerprints(
     Iterable<String> days,
   ) async {
@@ -10077,7 +10155,13 @@ class LocalDb {
       );
       final mx = rows.isEmpty ? null : (rows.first['mx'] as num?)?.toInt();
       if (mx == null) continue;
-      out[day] = '$mx:${(rows.first['n'] as num?)?.toInt() ?? 0}';
+      final rev = await db.rawQuery(
+        'SELECT COALESCE(SUM(rev), 0) AS r FROM input_rev '
+        'WHERE bucket >= ? AND bucket <= ?',
+        [lo ~/ 900, (hi - 1) ~/ 900],
+      );
+      final r = rev.isEmpty ? 0 : (rev.first['r'] as num?)?.toInt() ?? 0;
+      out[day] = '$mx:${(rows.first['n'] as num?)?.toInt() ?? 0}:$r';
     }
     return out;
   }
@@ -10477,6 +10561,10 @@ class LocalDb {
     );
   }
 
+  // Disambiguates ids minted in the same millisecond (a follow-up enqueued
+  // right behind the claim of the job it follows); `id` is the primary key.
+  static int _deriveJobSeq = 0;
+
   static Future<void> enqueueDeriveJob({
     required String type,
     required String reason,
@@ -10484,11 +10572,14 @@ class LocalDb {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.transaction((txn) async {
+      // Dedupe against QUEUED jobs only. A running job already read its
+      // inputs, so data that lands after that must queue a follow-up rather
+      // than be absorbed into a pass that cannot see it.
       final active = await txn.query(
         'compute_jobs',
         columns: ['id', 'type', 'state'],
-        where: 'scope = ? AND state IN (?, ?)',
-        whereArgs: ['derive', 'queued', 'running'],
+        where: 'scope = ? AND state = ?',
+        whereArgs: ['derive', 'queued'],
       );
       bool hasType(String t) =>
           active.any((row) => row['type']?.toString() == t);
@@ -10503,7 +10594,7 @@ class LocalDb {
         );
       }
       await txn.insert('compute_jobs', {
-        'id': 'derive_${type}_$now',
+        'id': 'derive_${type}_${now}_${++_deriveJobSeq}',
         'type': type,
         'scope': 'derive',
         'priority': type == 'derive_heavy' ? 200 : 100,
@@ -10544,8 +10635,36 @@ class LocalDb {
         where: 'id = ?',
         whereArgs: [row['id']],
       );
-      return {...row, 'state': 'running', 'updated_at': now};
+      return {
+        ...row,
+        'state': 'running',
+        'attempts': ((row['attempts'] as num?)?.toInt() ?? 0) + 1,
+        'updated_at': now,
+      };
     });
+  }
+
+  /// Put a failed job back on the queue to run again after [backoff]. The
+  /// attempt it just used stays counted (the claim already incremented it), and
+  /// [error] is kept as the reason so a waiting job says why.
+  static Future<void> retryComputeJob(
+    String id,
+    String error,
+    Duration backoff,
+  ) async {
+    final db = await instance;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    await db.update(
+      'compute_jobs',
+      {
+        'state': 'queued',
+        'reason': error,
+        'next_run_at': now + backoff.inMilliseconds,
+        'updated_at': now,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   /// Put a claimed job back on the queue without counting it as an attempt.

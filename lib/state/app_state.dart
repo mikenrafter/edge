@@ -56,6 +56,7 @@ import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/derive_perf.dart';
+import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/manual_session.dart'
     show strainFromPerMinuteHr, supersededSuggestionIds;
@@ -315,9 +316,19 @@ class AppState extends ChangeNotifier {
   // constructors have already set by the time anything touches `_derive`.
   late final DerivationEngine _derive =
       DerivationEngine(log: _log, background: _background);
+  /// What the scheduler runs for a job. The automatic LIGHT pass skips days
+  /// whose input has not moved since they were last derived ([changedOnly]);
+  /// heavy keeps the full sweep (finalize extras, force paths). Returns how the
+  /// pass ended, which decides whether the job is deleted or retried.
+  Future<DeriveOutcome> _runScheduled({required DeriveJobKind kind}) =>
+      _afterDrain(
+        heavy: kind == DeriveJobKind.heavy,
+        changedOnly: kind == DeriveJobKind.light,
+        automatic: true,
+      );
+
   late final DeriveScheduler _deriveScheduler = DeriveScheduler(
-    run: ({required DeriveJobKind kind}) =>
-        _afterDrain(heavy: kind == DeriveJobKind.heavy),
+    run: _runScheduled,
     log: _log,
     onChanged: notifyListeners,
     // Measurement only: queue wait and hold reasons for DerivePerf.
@@ -1978,6 +1989,9 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   RescanHook? debugRescanRecent;
   @visibleForTesting
+  Future<DeriveOutcome> debugRunScheduled({required DeriveJobKind kind}) =>
+      _runScheduled(kind: kind);
+  @visibleForTesting
   void debugSetRecalc(RecalcState s) => _setRecalc(s);
   @visibleForTesting
   Future<void> debugAfterDrain({bool heavy = false, bool changedOnly = false}) =>
@@ -2372,15 +2386,21 @@ class AppState extends ChangeNotifier {
   /// whose input changed since they were last derived ([onScope] hears how
   /// many, [onDay] hears each one finish), and a pass that found nothing to do
   /// returns before the post-derive work, none of which has anything new to act
-  /// on.
-  Future<void> _afterDrain({
+  /// on. The automatic light pass (see [_runScheduled]) runs this way too.
+  ///
+  /// Returns how the DERIVE ended (never throws): a failure before the derive
+  /// reported is `failed`; one in the post-derive work after it is only logged,
+  /// since re-running the derive would not repair it.
+  Future<DeriveOutcome> _afterDrain({
     bool heavy = false,
     bool changedOnly = false,
+    bool automatic = false,
     void Function(int total)? onScope,
     void Function(String day, int index, int total)? onDay,
   }) async {
     final mode = heavy ? 'heavy' : 'light';
     final recalcId = ++_recalcSeq;
+    DeriveOutcome? outcome;
     try {
       // Context for whatever crash/ANR report comes next — the derivation
       // engine's heavy per-day compute is isolate-offloaded, but the
@@ -2392,7 +2412,7 @@ class AppState extends ChangeNotifier {
       // Refresh the UI after EACH day so Today/trends fill in as the sweep runs,
       // not only at the end (a multi-day backfill can be many days of work).
       var scopeTotal = -1;
-      await TelemetryService.instance.traced('derive_$mode', () => _deriveRun(
+      outcome = await TelemetryService.instance.traced<DeriveOutcome>('derive_$mode', () => _deriveRun(
         heavy: heavy,
         changedOnly: changedOnly,
         onScope: (total) {
@@ -2415,7 +2435,24 @@ class AppState extends ChangeNotifier {
       TelemetryService.instance.breadcrumb('derive: $mode done');
       if (changedOnly && scopeTotal == 0 && _derive.snapshot()['last_error'] == null) {
         _log('[derive] $mode: nothing changed since the last derive');
-        return;
+        // An automatic pass follows a drain that DID land rows, possibly a
+        // workout window on a day that is already finalized (so not in scope).
+        // The cheap session rescore still runs; screens only re-read if it
+        // changed something.
+        if (automatic) {
+          unawaited(_refreshPhoneStepsToday());
+          try {
+            final fixed = await repo?.rescoreRecentSessions() ?? 0;
+            if (fixed > 0) {
+              _log('[derive] rescored $fixed session(s) from substrate');
+              bumpInsights();
+              notifyListeners();
+            }
+          } catch (e) {
+            _log('[derive] session rescore failed: $e');
+          }
+        }
+        return outcome;
       }
       // A drain can bank band coverage and a day can have rolled over since the
       // last read — both change which source owns today's steps.
@@ -2497,25 +2534,27 @@ class AppState extends ChangeNotifier {
       // (derive/health-export/etc.) that Firebase never saw. Non-fatal, not
       // fatal: the app keeps running, but this is worth knowing about.
       TelemetryService.instance.recordNonFatal(e, st, reason: 'post_drain_failed');
+      outcome ??= DeriveOutcome(failed: true, error: '$e');
     } finally {
       // On every path (success, failure, cancel): a pass puts back
       // RecalcState.idle if it is the one that set the days.
       _recalcClear(recalcId);
       TelemetryService.instance.setContext('derive_active', false);
     }
+    return outcome;
   }
 
-  Future<int> _deriveRun({
+  Future<DeriveOutcome> _deriveRun({
     required bool heavy,
     required bool changedOnly,
     void Function(int total)? onScope,
     void Function(List<String> days)? onScopeDays,
     void Function(String day, int index, int total)? onDayDone,
     void Function(bool active)? onCrossDay,
-  }) {
+  }) async {
     final hook = debugDeriveRun;
     if (hook != null) {
-      return hook(
+      final n = await hook(
         heavy: heavy,
         changedOnly: changedOnly,
         onScope: onScope,
@@ -2523,8 +2562,9 @@ class AppState extends ChangeNotifier {
         onDayDone: onDayDone,
         onCrossDay: onCrossDay,
       );
+      return DeriveOutcome(computed: n);
     }
-    return _derive.run(
+    final n = await _derive.run(
       _profile,
       heavy: heavy,
       changedOnly: changedOnly,
@@ -2533,6 +2573,9 @@ class AppState extends ChangeNotifier {
       onDayDone: onDayDone,
       onCrossDay: onCrossDay,
     );
+    // Read right after the run returns: the engine records how THIS call ended
+    // (failed 'busy' when another pass held the lock).
+    return _derive.lastOutcome ?? DeriveOutcome(computed: n);
   }
 
   Future<int> _rescanRecent({

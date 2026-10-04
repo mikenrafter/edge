@@ -62,3 +62,46 @@ in `LastResultCache` (32 entries, least recently used out first, process
 lifetime). A re-open shows it at once with `AsOfLabel(cachedAt)`, recomputes in
 the background, and swaps in the fresh result, which clears the label. An error
 is never cached.
+
+## P2 scheduling
+
+How a day is judged "changed". `input_rev(bucket, rev)` counts writes per 15-minute
+bucket of `rec_ts / 900`. SQLite triggers on `decoded_onehz` and `decoded_rr` (insert,
+update, delete) bump it, so every write path is covered, including in-place replaces
+and RR-only changes. A day's fingerprint is `MAX(rec_ts):COUNT(*):REVSUM`, REVSUM being
+the sum of `rev` over the buckets the local day spans, taken from `localDayStartSec` /
+`localDayEndSec` (DST-safe). The engine folds in the profile and the previous day's
+fingerprint (`deriveFingerprint`). The first pass after the upgrade sees every day as
+changed once; no output changes.
+
+What a pass reports. `DerivationEngine.run` still returns the day count, and records
+`lastOutcome` (`DeriveOutcome`, also `snapshot()['last_outcome']`):
+
+- a pass-level error: `failed`, with the error;
+- a call refused because another pass holds the engine: `failed`, error `busy`;
+- a day skipped for a transient reason (timeout, error): `transientFailures` + 1;
+- a structural skip (budget exceeded, no bounded window): not a failure, its fingerprint
+  is recorded on purpose.
+
+`complete` means no failure and no transient skip. A transiently failed day records no
+fingerprint and keeps no complete `day_result`, so it stays prune-pending (AGENTS.md
+3.9) and the next `changedOnly` pass takes it again.
+
+What the scheduler does with it. The callback returns a `DeriveOutcome`. Complete: the
+job is deleted. Anything else, or a throw: the job goes back to `queued` with
+`next_run_at = now + 30 s * 2^(attempts - 1)` (capped at 15 minutes), the error as its
+reason, attempts kept. After 5 attempts it is parked as `failed` and stays in
+`compute_jobs`. The scheduler arms a timer for the earliest not-yet-due retry; a job
+still backing off is not counted in `pendingLight` / `pendingHeavy`.
+
+Enqueue. `enqueueDeriveJob` dedupes against QUEUED jobs only: a light request is
+absorbed by a queued light or heavy, a heavy by a queued heavy (and drops queued
+lights). A running job never absorbs a request, so data stored mid-run gets one
+follow-up pass, and at most one per type waits in the queue. A job that is waiting out
+a retry backoff is a queued job, so it absorbs requests too.
+
+Automatic passes. The scheduler's light pass runs with `changedOnly: true` and skips
+days whose fingerprint has not moved; heavy keeps `changedOnly: false`. A light pass
+that finds nothing to do stops before the post-derive work, as a manual sync does. Edits
+that are not decoded input (sleep override, nap edit, phone steps) recompute through
+`_reanalyzeForOverride` (`force: true`), which `changedOnly` never skips.

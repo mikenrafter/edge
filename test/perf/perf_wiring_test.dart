@@ -63,7 +63,7 @@ void main() {
     test('owns recalc as a ValueNotifier and clears it in finally', () {
       expect(app, contains('ValueListenable<RecalcState> get recalc'));
       expect(app, contains('ValueNotifier<RecalcState>'));
-      final drain = _body(app, 'Future<void> _afterDrain(', span: 9000);
+      final drain = _body(app, 'Future<DeriveOutcome> _afterDrain(', span: 9000);
       expect(drain, contains('onScopeDays'));
       expect(drain, contains('onCrossDay'));
       final fin = drain.lastIndexOf('} finally {');
@@ -73,7 +73,7 @@ void main() {
     });
 
     test('each committed day is published through the coalescer', () {
-      final drain = _body(app, 'Future<void> _afterDrain(', span: 5000);
+      final drain = _body(app, 'Future<DeriveOutcome> _afterDrain(', span: 5000);
       expect(app, contains('RevisionCoalescer('));
       final done = drain.indexOf('onDayDone:');
       expect(done, greaterThan(0));

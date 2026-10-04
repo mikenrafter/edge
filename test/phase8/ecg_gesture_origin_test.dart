@@ -288,7 +288,8 @@ void main() {
       };
     }
 
-    test('schemaVersion is 57', () => expect(LocalDb.schemaVersion, 57));
+    test('schemaVersion is at least 57',
+        () => expect(LocalDb.schemaVersion, greaterThanOrEqualTo(57)));
 
     test('v56 -> v57 adds origin and the session table, keeping rows',
         () async {
@@ -300,7 +301,8 @@ void main() {
       final db = await LocalDb.instance;
       expect(LocalDb.lastRebuild, isNull,
           reason: '${LocalDb.lastRebuild?.cause}');
-      expect((await db.rawQuery('PRAGMA user_version')).first.values.first, 57);
+      expect((await db.rawQuery('PRAGMA user_version')).first.values.first,
+          LocalDb.schemaVersion);
       expect(await cols('ecg_raw_packet'), contains('origin'));
       expect(await cols('ecg_gesture_session'), contains('strap_start'));
       final row = (await db.query('ecg_raw_packet')).single;
