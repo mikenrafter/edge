@@ -44,6 +44,21 @@ void main() {
   Future<List<Map<String, Object?>>> sessionRows() async =>
       (await LocalDb.instance).query('ecg_gesture_session');
 
+  /// The session rows once [ready] accepts them (the row is written after the
+  /// gesture's action runs, so it lands in its own time), or whatever is
+  /// there when [within] runs out.
+  Future<List<Map<String, Object?>>> sessionRowsWhen(
+      bool Function(List<Map<String, Object?>>) ready,
+      {Duration within = const Duration(seconds: 10)}) async {
+    final end = DateTime.now().add(within);
+    var rows = await sessionRows();
+    while (!ready(rows) && DateTime.now().isBefore(end)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      rows = await sessionRows();
+    }
+    return rows;
+  }
+
   group('settings the sessions read live', () {
     test('the ECG thresholds in force are the ones the session reports', () async {
       final rig = await newRig();
@@ -52,9 +67,11 @@ void main() {
           EcgTapThresholds(startMs: 500, gapMs: 300, confirmMs: 400));
       rig.doubleTap(); // no wrist remembered: fails to start, session ends
       await until(() => channel.performed.isNotEmpty);
-      await settleMs(300);
-      expect(labText(rig),
-          contains('ECG sensor touches | start 500 ms, gap 300 ms, confirm 400 ms'));
+      const line =
+          'ECG sensor touches | start 500 ms, gap 300 ms, confirm 400 ms';
+      await until(() => labText(rig).contains(line));
+      expect(labText(rig), contains(line));
+      await sessionRowsWhen((r) => r.isNotEmpty); // its row, before teardown
     });
 
     test('the repeat window in force is the one the session opens', () async {
@@ -64,7 +81,8 @@ void main() {
       rig.doubleTap();
       await until(() => channel.performed.isNotEmpty,
           within: const Duration(seconds: 8));
-      await settleMs(300);
+      await until(
+          () => labText(rig).contains('More double taps | window 1250 ms'));
       expect(labText(rig), contains('More double taps | window 1250 ms'));
     });
 
@@ -84,6 +102,7 @@ void main() {
       expect(labText(rig), isNot(contains('Packet 2:')),
           reason: 'it stops counting at the most taps anything is set to, '
               'on the first packet');
+      await sessionRowsWhen((r) => r.isNotEmpty); // its row, before teardown
     });
   });
 
@@ -99,8 +118,8 @@ void main() {
       await until(() => channel.performed.isNotEmpty,
           within: const Duration(seconds: 8));
       await until(() => rig.cues.contains('confirm'));
-      await settleMs(500);
-      final rows = await sessionRows();
+      final rows = await sessionRowsWhen(
+          (r) => r.isNotEmpty && r.first['strap_end'] != null);
       expect(rows, hasLength(1));
       expect(rows.single['final_count'], 3);
       expect(rows.single['outcome'], 'counted');
@@ -117,8 +136,7 @@ void main() {
       await mapActions(rig.app, [2, 3]);
       rig.doubleTap();
       await until(() => channel.performed.isNotEmpty);
-      await settleMs(500);
-      final rows = await sessionRows();
+      final rows = await sessionRowsWhen((r) => r.isNotEmpty);
       expect(rows, hasLength(1));
       expect(rows.single['final_count'], isNull);
       expect(rows.single['outcome'], 'abandoned');
@@ -165,8 +183,9 @@ void main() {
       await playEcgCount(rig, 2);
       await until(() => channel.performed.isNotEmpty,
           within: const Duration(seconds: 8));
-      await settleMs(500);
+      await until(() => rig.app.hardwareProbes.canRunEcg);
       expect(rig.app.hardwareProbes.canRunEcg, isTrue);
+      await sessionRowsWhen((r) => r.isNotEmpty); // its row, before teardown
     });
 
     test('and false while the ECG screen\'s own reading holds the stream',

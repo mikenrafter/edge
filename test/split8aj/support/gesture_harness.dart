@@ -21,6 +21,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
 import 'package:openstrap_edge/ecg/ble_ecg_transport.dart';
@@ -288,12 +289,28 @@ class GestureRig {
     ));
   }
 
+  Future<void> _deviceRowLanded() async {
+    final end = DateTime.now().add(const Duration(seconds: 10));
+    while (DateTime.now().isBefore(end)) {
+      final db = await LocalDb.instance;
+      final rows = await db.query('device',
+          columns: ['adapter_id'],
+          where: 'id = ?',
+          whereArgs: [LocalDb.kPrimaryDeviceId]);
+      if (rows.isNotEmpty && rows.first['adapter_id'] != null) return;
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
   /// Play each gesture cue once on this band and remember the body it writes.
   /// Call before any gesture; the writes it makes are cleared afterwards.
   Future<void> measureCues() async {
-    // The hello answer starts a device-row write; let it land before a test
-    // can finish and close the database.
-    await settleMs(80);
+    // The hello answer starts a device-row write (insert, then the update
+    // that sets the band's family); wait for it to land before a test can
+    // finish and close the database. A rig with no hello writes nothing, so
+    // it has nothing to wait for. Polled, not slept: how long the two
+    // statements take depends on how busy the machine is.
+    if (mg) await _deviceRowLanded();
     final plays = <String, Future<dynamic> Function()>{
       'start': app.gestureCues.start,
       'followUp': app.gestureCues.followUp,

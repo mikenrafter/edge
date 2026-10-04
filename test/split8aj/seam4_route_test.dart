@@ -7,7 +7,8 @@
 
 import 'dart:async';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart' hide test;
+import 'package:flutter_test/flutter_test.dart' as ft show test;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/gps/gps_source.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -32,13 +33,40 @@ void main() {
     await deriveDbTearDown(_db);
   });
 
+  // Every test body runs with its periodic timers under a TimerProbe: the
+  // workout's real 1 Hz tick would otherwise fire (and notify) whenever the
+  // machine is slow enough for a test to take a second, which is a wall-clock
+  // race with the exact notify counts below. Nothing here wants a tick except
+  // the one test that fires it by hand.
+  void test(String name, Future<void> Function() body) =>
+      ft.test(name, () => TimerProbe().run(body));
+
   List<String> geo() => [for (final c in spies.geolocator) c.method];
 
-  Future<AppState> run(String id, String type, {PlatformSpies? p}) async {
+  /// Wait for the route start a workout kicks off (unawaited) to finish one
+  /// way or the other: a tracker listening to the position stream, or a named
+  /// refusal. Never a fixed sleep: the permission round trip is a channel
+  /// call and takes as long as the machine makes it take.
+  Future<void> routeSettled(AppState app) async {
+    await until(
+        () => app.routeLocationIssue != null || app.routeTracker != null);
+    if (app.routeTracker != null) await until(() => spies.geoListening);
+  }
+
+  Future<AppState> run(String id, String type) async {
     final app = AppState.forTesting();
     app.startWorkout(workoutId: id, type: type);
-    await settleMs(200);
+    await sessionLanded(id);
+    await routeSettled(app);
     return app;
+  }
+
+  // The held permission question has been answered all the way through (both
+  // plugin calls made), so whatever the app was going to do with the answer
+  // has had its chance; a short flush then covers the microtasks after it.
+  Future<void> answerLanded() async {
+    await until(() => spies.geolocator.length >= 2);
+    await settleMs(100);
   }
 
   group('which workouts record a route', () {
@@ -49,6 +77,7 @@ void main() {
       final ticks = TickCounter(app);
       app.startWorkout(workoutId: 'w4-g1', type: 'running');
       await sessionLanded('w4-g1');
+      await routeSettled(app);
       expect(geo(), ['isLocationServiceEnabled', 'checkPermission']);
       expect(spies.geoListens, 1);
       expect(app.routeTracking, isTrue);
@@ -91,6 +120,7 @@ void main() {
       final ticks = TickCounter(app);
       app.startWorkout(workoutId: 'w4-p1', type: 'cycling');
       await sessionLanded('w4-p1');
+      await routeSettled(app);
       expect(app.routeLocationIssue, GpsPermissionStatus.serviceOff);
       expect(geo(), ['isLocationServiceEnabled']);
       expect(app.routeTracker, isNull);
@@ -165,7 +195,9 @@ void main() {
       spies.emitFix(51.0, 0.0);
       spies.emitFix(51.0, 0.0, accuracy: 80);
       spies.emitFix(51.001, 0.0); // ~111 m north
-      await settleMs(50);
+      // Fixes are delivered in order, so once the last one has moved the
+      // distance the poor one before it has been through the filter too.
+      await until(() => (app.liveDistanceKm ?? 0) > 0);
       expect(app.liveDistanceKm, closeTo(0.111, 0.005));
       expect(app.routeTracker!.pointCount, 2);
       await finish(app);
@@ -181,13 +213,14 @@ void main() {
         app.engine.state.generation = 'gen4';
         app.startWorkout(workoutId: 'w4-f2', type: 'running');
         await sessionLanded('w4-f2');
+        await routeSettled(app);
         setLiveHr(app, 160);
         probe.active(kTick).single.fire();
         final zone = app.liveZone;
         expect(zone, isNotNull);
         spies.emitFix(51.0, 0.0);
         spies.emitFix(51.001, 0.0);
-        await settleMs(50);
+        await until(() => app.routeTracker!.path.value.length >= 2);
         final vertices = app.routeTracker!.path.value;
         expect(vertices, isNotEmpty);
         expect(vertices.first.zone, zone);
@@ -205,7 +238,7 @@ void main() {
         '0, not null)', () async {
       final app = await run('w4-f3', 'running');
       spies.emitFix(51.0, 0.0);
-      await settleMs(50);
+      await until(() => app.routeTracker!.path.value.isNotEmpty);
       expect(app.routeTracker!.path.value.single.zone, 0);
       await finish(app);
     });
@@ -217,7 +250,7 @@ void main() {
       final app = await run('w4-d1', 'running');
       expect(spies.geoListening, isTrue);
       await app.stopWorkout();
-      await settleMs(50);
+      await until(() => spies.geoCancels > 0);
       expect(app.routeTracker, isNull);
       expect(app.routeTracking, isFalse);
       expect(app.liveDistanceKm, isNull);
@@ -229,7 +262,7 @@ void main() {
     test('a delete-teardown ends the recorder too', () async {
       final app = await run('w4-d2', 'running');
       await app.deleteWorkout('w4-d2');
-      await settleMs(50);
+      await until(() => spies.geoCancels > 0);
       expect(app.routeTracker, isNull);
       expect(spies.geoCancels, 1);
       await finish(app);
@@ -241,9 +274,11 @@ void main() {
       final app = AppState.forTesting();
       app.startWorkout(workoutId: 'w4-d3', type: 'running');
       await sessionLanded('w4-d3');
+      // The permission question is open (held at the gate) before the stop.
+      await until(() => spies.geolocator.isNotEmpty);
       await app.stopWorkout();
       spies.geoGate!.complete();
-      await settleMs(200);
+      await answerLanded();
       expect(app.routeTracker, isNull);
       expect(spies.geoListens, 0);
       expect(app.routeLocationIssue, isNull);
@@ -256,9 +291,10 @@ void main() {
       final app = AppState.forTesting();
       app.startWorkout(workoutId: 'w4-d4', type: 'running');
       await sessionLanded('w4-d4');
+      await until(() => spies.geolocator.isNotEmpty);
       app.dispose();
       spies.geoGate!.complete();
-      await settleMs(200);
+      await answerLanded();
       expect(app.routeTracker, isNull);
       expect(spies.geoListens, 0);
       await settleMs(200);
@@ -273,6 +309,7 @@ void main() {
       expect(tracker.isRunning, isTrue);
       expect(spies.geoCancels, 0);
       await tracker.stop(); // the test cleans up what dispose did not
+      await until(() => spies.geoCancels > 0);
       expect(spies.geoCancels, 1);
       await settleMs(200);
     });
