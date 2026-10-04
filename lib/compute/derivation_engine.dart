@@ -5435,8 +5435,12 @@ class DerivationEngine {
     required int sleepOnsetSec,
     required int sleepOffsetSec,
     List<List<int>> stepSpans = const [],
+    DayCalculationState? state,
+    ana.CalculationMode mode = ana.CalculationMode.forced,
   }) {
-    if (_motionMinutes(daySub).isEmpty) return null;
+    // Same state and mode as the activity pass, so this is a cache hit rather
+    // than a second full ENMO series over the day.
+    if (_motionMinutes(daySub, state: state, mode: mode).isEmpty) return null;
     return buildKcalMinutes(
       daySub: daySub,
       profile: profile,
@@ -9034,6 +9038,8 @@ class DerivationEngine {
         sleepOnsetSec: onset,
         sleepOffsetSec: offset,
         stepSpans: inp.stepSpans,
+        state: inp.calculationState,
+        mode: inp.calculationMode,
       ),
       suggestionsToPersist: wc.suggestionsToPersist,
       sessionHrrWrites: wc.sessionHrrWrites,
