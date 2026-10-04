@@ -1935,7 +1935,11 @@ const int kAlgoVersion = 100;
 // feat/causal-stage-api: 0441ef9 plus the additive causal stage API for
 // Natural Wake (phase 6B). No existing analytics output changed, so no
 // kAlgoVersion bump comes from the pin itself.
-const String kAnalyticsPin = '7fe67a700e1ce23e7ff810098c0a90b5d2b6e06a';
+// REPIN @ 7334289 — same fork, branch feat/minute-energy (child of 7fe67a7):
+// adds Calories.minuteEnergy + hourlyRollup. dailyEnergy outputs are
+// bit-for-bit unchanged (golden == tests in the analytics repo), and edge
+// does not persist the new per-minute output yet, so no kAlgoVersion bump.
+const String kAnalyticsPin = '7334289ef811c65b6938a3aba692b26670fd4a90';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
