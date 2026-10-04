@@ -2,6 +2,8 @@
 // "Sync now" panel and, on a bare or stale day, a status card with its own
 // "Sync the band" button reading a different busy flag (`syncingNow` plus a
 // local tap latch). Both buttons now come from the one SyncCoordinator state.
+// Oct 4: the one control is the status line in the greeting header
+// (`HomeSyncStatus`); the card above the greeting is gone.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -32,7 +34,8 @@ void main() {
   void expectOne(WidgetTester t) {
     expect(find.text('Sync now'), findsOneWidget);
     expect(find.text('Sync the band'), findsNothing);
-    expect(find.byType(SyncControl), findsOneWidget);
+    expect(find.byType(HomeSyncStatus), findsOneWidget);
+    expect(find.byType(SyncControl), findsNothing);
   }
 
   testWidgets('first run (nothing derived, nothing loaded)', (t) async {
@@ -95,12 +98,17 @@ void main() {
     await t.pumpWidget(_home(app, data: const HomeData(dayId: '2026-05-20')));
     await t.pump();
     // Manual sync fails fast here (no band paired), which is itself a state
-    // the single control must show with a reason and a Retry.
+    // the single control must show with a Retry and, behind "Show details",
+    // the reason.
     await t.runAsync(() => app.syncNow());
     await t.pump();
     expect(find.text('Retry'), findsOneWidget);
     expect(find.text('Sync now'), findsNothing);
     expect(find.text('Sync the band'), findsNothing);
+    expect(find.text('Sync failed'), findsOneWidget);
+    await t.tap(find.text('Show details'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 400));
     expect(find.textContaining('Pair a band before syncing'), findsWidgets);
   });
 }

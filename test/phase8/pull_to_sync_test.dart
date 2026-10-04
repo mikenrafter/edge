@@ -226,7 +226,7 @@ void main() {
       final app = _Spy();
       addTearDown(app.dispose);
       await _pumpHome(t, app);
-      expect(find.byType(SyncControl), findsOneWidget);
+      expect(find.byType(HomeSyncStatus), findsOneWidget);
       await t.tap(find.text('Sync now'));
       await t.pump();
       expect(app.syncs, 1);
@@ -237,7 +237,7 @@ void main() {
       addTearDown(app.dispose);
       await _pumpHome(t, app);
       expect(find.byType(ListView), findsWidgets);
-      expect(find.byType(SyncControl), findsOneWidget);
+      expect(find.byType(HomeSyncStatus), findsOneWidget);
     });
   });
 }

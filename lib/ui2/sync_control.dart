@@ -42,8 +42,7 @@ class _SyncControlState extends State<SyncControl> {
   /// The accordion id the open or closed state is stored under.
   static const _detailsId = 'sync-details';
 
-  Timer? _tick;
-  bool _tickBusy = false;
+  final _ticker = _SyncTicker();
   bool _open = false;
 
   /// Set once the person has toggled it: a stored answer that arrives after
@@ -63,25 +62,13 @@ class _SyncControlState extends State<SyncControl> {
     _syncTicker();
   }
 
-  /// A second-by-second clock while a sync runs, and a slow one while a "synced
-  /// 12 min ago" sentence is on screen, so it does not go stale. Real seconds,
-  /// so this is [Motion.tick] and not [motion]. A control with nothing to count
-  /// holds no timer.
-  void _syncTicker() {
-    final busy = widget.state.busy;
-    final needsClock = busy || widget.state.lastSuccess != null;
-    if (!needsClock) {
-      _tick?.cancel();
-      _tick = null;
-      return;
-    }
-    if (_tick != null && _tickBusy == busy) return;
-    _tick?.cancel();
-    _tickBusy = busy;
-    _tick = Timer.periodic(busy ? Motion.tick : Motion.slowTick, (_) {
+  void _syncTicker() => _ticker.update(
+    busy: widget.state.busy,
+    needsClock: widget.state.busy || widget.state.lastSuccess != null,
+    onTick: () {
       if (mounted) setState(() {});
-    });
-  }
+    },
+  );
 
   Future<void> _restore() async {
     bool? stored;
@@ -113,7 +100,7 @@ class _SyncControlState extends State<SyncControl> {
 
   @override
   void dispose() {
-    _tick?.cancel();
+    _ticker.dispose();
     super.dispose();
   }
 
@@ -190,13 +177,60 @@ class _SyncControlState extends State<SyncControl> {
           ),
           if (_open && canOpen) ...[
             const SizedBox(height: S.x2),
-            for (final step in s.steps) _StepRow(step: step, now: now),
+            ...syncStepRows(s, now),
             const SizedBox(height: S.x1),
           ],
         ],
       ),
     );
   }
+}
+
+/// A second-by-second clock while a sync runs, and a slow one while a "synced
+/// 12 min ago" sentence is on screen, so it does not go stale. Real seconds,
+/// so this is [Motion.tick] and not [motion]. A readout with nothing to count
+/// holds no timer.
+class _SyncTicker {
+  Timer? _timer;
+  bool _busy = false;
+
+  void update({
+    required bool busy,
+    required bool needsClock,
+    required VoidCallback onTick,
+  }) {
+    if (!needsClock) {
+      _timer?.cancel();
+      _timer = null;
+      return;
+    }
+    if (_timer != null && _busy == busy) return;
+    _timer?.cancel();
+    _busy = busy;
+    _timer = Timer.periodic(busy ? Motion.tick : Motion.slowTick, (_) => onTick());
+  }
+
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+  }
+}
+
+/// The step rows (connect, download, calculate, done) for [s] at [now]. The
+/// band page's inline list and Home's bottom sheet draw the same rows.
+List<Widget> syncStepRows(SyncPresentationState s, DateTime now) =>
+    [for (final step in s.steps) _StepRow(step: step, now: now)];
+
+/// The short problem a settled sync left behind, or null when there is none.
+/// A sync that is running has no problem yet, and "offline" is the band being
+/// away, which the connection line already says.
+({String text, bool failed})? syncProblem(SyncPresentationState s) {
+  if (s.busy) return null;
+  if (s.phase == 'failed') return (text: 'Sync failed', failed: true);
+  if (s.phase == 'completed' && s.partial) {
+    return (text: 'Needs another pass', failed: false);
+  }
+  return null;
 }
 
 /// The mark in front of the sentence when no sync is running.
@@ -475,20 +509,267 @@ String _count(int n) {
   return out.toString();
 }
 
-class HomeSyncControl extends StatelessWidget {
-  const HomeSyncControl({super.key});
+/// Home's sync status: the "Synced through 15:33" line of the greeting header,
+/// with the sync UI on the same line. Same `SyncCoordinator` state as
+/// [SyncControl], so there is still one idea of whether a sync is running.
+///
+///     Synced through 15:33          1 h ago [Sync now]      idle
+///     Synced through 15:33 · 0:42 · Show details   [ ◌ ]    syncing
+///     Synced through 15:33 · Sync failed · Show details     problem
+///
+/// [through] is the data edge ("how far are we?") and stays Home's own text;
+/// [throughShort] ("Through 15:33") replaces it when the line would not fit.
+/// The timer is the running time while syncing and the time since the last
+/// good sync otherwise; "Show details" (only while syncing or on a problem)
+/// opens [showSyncDetails]. Never a percentage or an estimate. With no
+/// AppState above it (a golden) it is just the data edge.
+class HomeSyncStatus extends StatefulWidget {
+  final String through, throughShort;
+  const HomeSyncStatus({
+    super.key,
+    required this.through,
+    required this.throughShort,
+  });
+
   @override
-  Widget build(BuildContext context) {
-    AppState? app;
+  State<HomeSyncStatus> createState() => _HomeSyncStatusState();
+}
+
+class _HomeSyncStatusState extends State<HomeSyncStatus> {
+  final _ticker = _SyncTicker();
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  static double _width(BuildContext c, String text, TextStyle style) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: DefaultTextStyle.of(c).style.merge(style)),
+      textDirection: Directionality.of(c),
+      textScaler: MediaQuery.textScalerOf(c),
+      maxLines: 1,
+    )..layout();
+    final w = tp.width;
+    tp.dispose();
+    return w;
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final base = F.cap.copyWith(color: p.ink3);
+    final SyncPresentationState s;
     try {
-      app = context.watch<AppState>();
+      s = c.watch<AppState>().syncPresentation;
     } on ProviderNotFoundException {
-      return const SizedBox.shrink();
+      return Text(widget.through, style: base);
     }
-    final SyncPresentationState state = app.syncPresentation;
-    return SyncControl(
-      state: state,
-      onSync: app.syncNow,
+    final now = DateTime.now();
+    _ticker.update(
+      busy: s.busy,
+      needsClock: s.busy || s.lastSuccess != null,
+      onTick: () {
+        if (mounted) setState(() {});
+      },
+    );
+    final elapsed = s.busy ? s.elapsed(now) : null;
+    final problem = syncProblem(s);
+    final last = s.lastSuccess;
+    final ago = s.busy || last == null ? null : _ago(now.difference(last));
+    final failed = s.phase == 'failed';
+    final action = failed ? 'Retry' : 'Sync now';
+    final timerText = elapsed == null ? null : _clock(elapsed);
+    final link = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
+    final button = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
+    final hasLink = s.busy || problem != null;
+
+    return LayoutBuilder(builder: (c, box) {
+      // What the right-hand end needs, so the left can decide between the full
+      // label and the short one before anything has to wrap or clip.
+      final right = s.busy
+          ? S.tap
+          : (ago == null ? 0.0 : _width(c, ago, base) + S.x2) +
+              (_width(c, action, button) + 2 * S.x2).clamp(S.tap, double.infinity);
+      var left = 0.0;
+      if (timerText != null) left += _width(c, timerText, base) + _width(c, ' ·', base) + S.x1;
+      if (hasLink) {
+        left += _width(c, 'Show details', link) +
+            (problem == null ? 0 : _width(c, '${problem.text} · ', link)) +
+            S.x1;
+      }
+      final dot = hasLink || timerText != null ? _width(c, ' ·', base) : 0;
+      final room = box.maxWidth - right - S.x2;
+      // A few px of slack: a measured width can differ from the laid-out one by
+      // a fraction.
+      final through = _width(c, widget.through, base) + dot + left + 4 <= room
+          ? widget.through
+          : widget.throughShort;
+
+      Widget seg(String text, {bool dot = true}) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: Text(text, style: base)),
+          if (dot) Text(' ·', style: base),
+        ],
+      );
+
+      final lead = <Widget>[
+        seg(through, dot: timerText != null || hasLink),
+        if (timerText != null)
+          Semantics(
+            label: 'Elapsed ${_spoken(elapsed!)}',
+            child: ExcludeSemantics(child: seg(timerText, dot: hasLink)),
+          ),
+        if (hasLink)
+          Pressable(
+            onTap: () => showSyncDetails(c, c.read<AppState>()),
+            // A Wrap, not a Row: at large text it breaks between the problem
+            // and the link instead of overflowing.
+            child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+              if (problem != null) ...[
+                Text(problem.text,
+                    style: F.cap.copyWith(
+                        color: p.on(problem.failed ? C.red : C.orange))),
+                Text(' · ', style: base),
+              ],
+              Text('Show details', style: link),
+            ]),
+          ),
+      ];
+
+      final trail = <Widget>[
+        if (s.busy)
+          Semantics(
+            label: 'Syncing',
+            child: SizedBox(
+              width: S.tap,
+              height: S.tap,
+              child: Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: p.on(C.blue)),
+                ),
+              ),
+            ),
+          )
+        else ...[
+          if (ago != null) Text(ago, style: base),
+          Pressable(
+            onTap: () => c.read<AppState>().syncNow(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: S.x2),
+              child: Text(action, style: button),
+            ),
+          ),
+        ],
+      ];
+
+      return Row(children: [
+        Expanded(
+          child: Wrap(
+            spacing: S.x1,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: lead,
+          ),
+        ),
+        const SizedBox(width: S.x2),
+        ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: box.maxWidth * .6),
+          child: Wrap(
+            alignment: WrapAlignment.end,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: S.x2,
+            children: trail,
+          ),
+        ),
+      ]);
+    });
+  }
+}
+
+/// The four steps and the running time, in a bottom sheet. It reads [app] live,
+/// so a sync that finishes while the sheet is open updates it in place. Opened
+/// from a tap, with [app] read before the sheet exists: nothing here touches a
+/// BuildContext after an await.
+Future<void> showSyncDetails(BuildContext c, AppState app) {
+  final p = P.of(c);
+  return showModalBottomSheet<void>(
+    context: c,
+    backgroundColor: p.card,
+    showDragHandle: true,
+    builder: (_) => _SyncDetailsSheet(app: app),
+  );
+}
+
+class _SyncDetailsSheet extends StatefulWidget {
+  final AppState app;
+  const _SyncDetailsSheet({required this.app});
+
+  @override
+  State<_SyncDetailsSheet> createState() => _SyncDetailsSheetState();
+}
+
+class _SyncDetailsSheetState extends State<_SyncDetailsSheet> {
+  final _ticker = _SyncTicker();
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return ListenableBuilder(
+      listenable: widget.app,
+      builder: (c, _) {
+        final s = widget.app.syncPresentation;
+        final now = DateTime.now();
+        _ticker.update(
+          busy: s.busy,
+          needsClock: s.busy,
+          onTick: () {
+            if (mounted) setState(() {});
+          },
+        );
+        final elapsed = s.startedAt == null ? null : s.elapsed(now);
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  Expanded(
+                    child: Text('Sync', style: F.head.copyWith(color: p.ink)),
+                  ),
+                  if (elapsed != null)
+                    Semantics(
+                      label: 'Elapsed ${_spoken(elapsed)}',
+                      child: ExcludeSemantics(
+                        child: Text(_clock(elapsed),
+                            style: F.n17.copyWith(color: p.ink2)),
+                      ),
+                    ),
+                ]),
+                const SizedBox(height: S.x1),
+                Text(
+                  syncStatusLine(s, now),
+                  style: F.body.copyWith(
+                      color: s.phase == 'failed' ? p.on(C.red) : p.ink),
+                ),
+                const SizedBox(height: S.x2),
+                ...syncStepRows(s, now),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

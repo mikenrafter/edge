@@ -184,17 +184,32 @@ DateTime? lastDataAtOf(BuildContext c) {
 /// thing this line could say.
 String syncedThroughLabel(DateTime? at, String? todayId,
     [AppLocalizations? l]) {
-  if (at == null) return l?.homeSyncedNever ?? 'No band data yet';
+  final when = _throughWhen(at, todayId, l);
+  if (when == null) return l?.homeSyncedNever ?? 'No band data yet';
+  return l?.homeSyncedThrough(when) ?? 'Synced through $when';
+}
+
+/// "Through 11:06": the same fact in less width, for a header line that has
+/// other things to carry. Only the lead word goes; the time never does.
+String syncedThroughShortLabel(DateTime? at, String? todayId,
+    [AppLocalizations? l]) {
+  final when = _throughWhen(at, todayId, l);
+  if (when == null) return l?.homeSyncedNever ?? 'No band data yet';
+  return 'Through $when';
+}
+
+/// The time part of [syncedThroughLabel]; null when no record exists.
+String? _throughWhen(DateTime? at, String? todayId, AppLocalizations? l) {
+  if (at == null) return null;
   final today = todayId == null ? null : DateTime.tryParse(todayId);
   final isToday = today != null &&
       at.year == today.year &&
       at.month == today.month &&
       at.day == today.day;
-  final when = isToday
+  return isToday
       ? '${at.hour.toString().padLeft(2, '0')}:'
           '${at.minute.toString().padLeft(2, '0')}'
       : formatDayTime(at, l);
-  return l?.homeSyncedThrough(when) ?? 'Synced through $when';
 }
 
 /// The band's battery, straight off the same [DeviceState] devices.dart
@@ -226,21 +241,45 @@ bool lowBattery(double pct, bool charging) =>
     // near it.
     !charging && pct < NotificationPrefs.batteryPctDefault;
 
-/// "78%" with a battery glyph, next to the sync line — the one place that
-/// already used a battery icon as an unrelated recovery-ring metaphor, but
-/// this is the actual reading. Mirrors devices.dart's `SourceRow` battery
-/// chip (same icon swap, same 13px size) rather than inventing a new look.
-Widget? batteryLine(BuildContext c) {
-  final battery = deviceBatteryOf(c);
-  if (battery == null) return null;
-  final (pct, charging) = battery;
+/// Whether the band link is up, read off the same [DeviceState] the rest of
+/// the app uses. Null when there is no AppState above (a golden).
+bool? deviceConnectedOf(BuildContext c) {
+  try {
+    return c.select<AppState, bool>((a) => a.isConnected);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// "59% · Connected" with a battery glyph, under the sync line. Connection is
+/// said here and only here; the sync line above carries data recency and time.
+/// Mirrors devices.dart's `SourceRow` battery chip (same icon swap, same 13px
+/// size). The reading is the strap's last report, so it is shown only while
+/// connected; with no level yet (or no link) it is the connection alone, never
+/// a placeholder. Null with no AppState above.
+Widget? connectionLine(BuildContext c, [AppLocalizations? l]) {
+  final connected = deviceConnectedOf(c);
+  if (connected == null) return null;
+  final battery = connected ? deviceBatteryOf(c) : null;
   final p = P.of(c);
-  final color = lowBattery(pct, charging) ? p.on(C.red) : p.ink3;
+  final color = battery != null && lowBattery(battery.$1, battery.$2)
+      ? p.on(C.red)
+      : p.ink3;
+  final state = connected
+      ? (l?.devicesConnected ?? 'Connected')
+      : (l?.devicesNotConnected ?? 'Not connected');
   return Row(mainAxisSize: MainAxisSize.min, children: [
-    Icon(charging ? LucideIcons.batteryCharging : LucideIcons.battery,
-        size: 13, color: color),
-    const SizedBox(width: 3),
-    Text('${pct.round()}%', style: F.cap.copyWith(color: color)),
+    if (battery != null) ...[
+      Icon(battery.$2 ? LucideIcons.batteryCharging : LucideIcons.battery,
+          size: 13, color: color),
+      const SizedBox(width: 3),
+    ],
+    Flexible(
+      child: Text(
+        battery == null ? state : '${battery.$1.round()}% · $state',
+        style: F.cap.copyWith(color: color),
+      ),
+    ),
   ]);
 }
 
@@ -249,9 +288,10 @@ Widget? batteryLine(BuildContext c) {
 /// loudest is the one where there is no day to show.
 Widget syncedThroughLine(BuildContext c, String? todayId,
     [AppLocalizations? l]) {
-  return Text(
-    syncedThroughLabel(lastDataAtOf(c), todayId, l),
-    style: F.cap.copyWith(color: P.of(c).ink3),
+  final at = lastDataAtOf(c);
+  return HomeSyncStatus(
+    through: syncedThroughLabel(at, todayId, l),
+    throughShort: syncedThroughShortLabel(at, todayId, l),
   );
 }
 
@@ -1486,8 +1526,8 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// sleep-stage + spectra pass takes.
   ///
   /// It does NOT say "syncing" or "connecting" any more, and it has no sync
-  /// button: the one [HomeSyncControl] above the list owns all of that, from
-  /// the one SyncCoordinator state. This card used to read a second busy flag
+  /// button: the sync status line in the greeting header ([HomeSyncStatus])
+  /// owns all of that, from the one SyncCoordinator state. This card used to read a second busy flag
   /// (`syncingNow`) plus a 20 s tap latch of its own, which is how Home showed
   /// two sync controls that disagreed about whether a sync was running.
   ///
@@ -1534,7 +1574,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
           : (l?.homeNothingTodayBody(prettyDay(d.heldOverNight, l)) ??
               'The last night this app scored was '
                   '${prettyDay(d.heldOverNight, l)}. Nothing has reached it since.'),
-      // No button: Home's one sync control sits above this card.
+      // No button: Home's sync status line (greeting header) owns Sync now.
       icon: LucideIcons.watch,
     );
   }
@@ -1563,18 +1603,18 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
 
     if (d == null) {
       return _refreshable(ListView(padding: pad, children: [
-        const HomeSyncControl(),
-        const SizedBox(height: S.x8),
+        const SizedBox(height: S.x4),
         // No day on screen ⇒ no `todayId`, so this renders the dated form.
         // Shown here TOO: a first run, a failed read and a sync in flight are
         // exactly when "how far are we?" is worth answering, and the header
-        // this line normally sits under does not exist on this path.
-        Align(alignment: Alignment.centerLeft, child: syncedThroughLine(c, null, l)),
-        // The battery reading lives on AppState.device, independent of
-        // HomeData — a load failure or first run must not hide it too.
-        if (batteryLine(c) case final battery?) ...[
+        // this line normally sits under does not exist on this path. It is
+        // also where Sync now lives, so a failed load can still be retried.
+        syncedThroughLine(c, null, l),
+        // The connection and battery live on AppState.device, independent of
+        // HomeData — a load failure or first run must not hide them too.
+        if (connectionLine(c, l) case final conn?) ...[
           const SizedBox(height: 2),
-          Align(alignment: Alignment.centerLeft, child: battery),
+          Align(alignment: Alignment.centerLeft, child: conn),
         ],
         const SizedBox(height: S.x3),
         if (_loading)
@@ -1599,7 +1639,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
             return StatusCard(
               l?.homeNothingDerivedTitle ?? 'Nothing derived yet',
               l?.homeNothingDerivedBody ?? 'No band recordings processed yet.',
-              // No button: Home's one sync control sits above this card.
+              // No button: Home's sync status line owns Sync now.
               icon: LucideIcons.watch,
             );
           }),
@@ -1636,8 +1676,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     final rebuilt = dbRebuiltCard(dbRebuildOf(c), l);
 
     return _refreshable(ListView(padding: pad, children: [
-      const HomeSyncControl(),
-      if (rebuilt != null) ...[const SizedBox(height: S.x3), rebuilt],
+      ?rebuilt,
 
       // ── the one observation Home is allowed to make ──
       //
@@ -1672,15 +1711,17 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
               Text(prettyDay(d.dayId, l), style: F.cap.copyWith(color: p.ink3)),
               // How far the band's data reaches, always — the question "am I
               // looking at today, or at last night?" used to be answerable
-              // only by opening Profile > Devices.
+              // only by opening Profile > Devices. Time since the last sync and
+              // Sync now sit on this same line (right-aligned, just left of
+              // the gear), so the status has one home.
               syncedThroughLine(c, d.dayId, l),
               // Its own line, not squeezed into the sync line's row: at
               // accessibility text sizes that row has no slack left, and
               // `Expanded` would only shrink the sync text into extra wrapped
               // lines to make room rather than ever actually overflow.
-              if (batteryLine(c) case final battery?) ...[
+              if (connectionLine(c, l) case final conn?) ...[
                 const SizedBox(height: 2),
-                battery,
+                conn,
               ],
             ]),
           ),
@@ -1874,7 +1915,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// Pull to reload. The screen also reloads itself on `insightsRevision`, but
   /// a derive that fails silently, an import, or anything that lands without
   /// bumping it still leaves the user a way to ask.
-  // HomeSyncControl renders AppState's shared SyncPresentationState.
+  // HomeSyncStatus renders AppState's shared SyncPresentationState.
   //
   // "Pull down to sync" (Settings) off means no RefreshIndicator at all, so an
   // overscroll does nothing; the status line's Sync now is the way to sync.

@@ -579,27 +579,29 @@ void main() {
           ),
         );
 
+    // Oct 4: on Home the line is the greeting header's status line
+    // (HomeSyncStatus), and the steps open in a bottom sheet, not inline.
     testWidgets('Home shows the line even when nothing has ever synced',
         (t) async {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
       await t.pumpWidget(home(app));
       await t.pump();
-      expect(find.byType(SyncControl), findsOneWidget);
+      expect(find.byType(HomeSyncStatus), findsOneWidget);
+      expect(find.byType(SyncControl), findsNothing);
       expect(find.text('Sync now'), findsOneWidget);
       expect(find.text('Band sync'), findsNothing);
       expect(find.text('Local data refreshed. Band not contacted.'),
           findsNothing);
-      expect(
-          find.byWidgetPredicate((w) =>
-              w is Text &&
-              ((w.data ?? '').startsWith('Band not connected') ||
-                  w.data == 'Not synced yet')),
-          findsOneWidget,
+      expect(find.text('No band data yet'), findsOneWidget,
           reason: 'one honest sentence for a band that was never synced');
+      expect(find.text('Not connected'), findsOneWidget);
+      expect(find.textContaining(' ago'), findsNothing,
+          reason: 'no last sync, so no time since it');
     });
 
-    testWidgets('Home: a failed sync is the line with its reason and Retry',
+    testWidgets('Home: a failed sync is the line with Retry; the reason is in '
+        'the sheet',
         (t) async {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
@@ -609,6 +611,11 @@ void main() {
       await t.pump();
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Sync now'), findsNothing);
+      expect(find.text('Sync failed'), findsOneWidget);
+      expect(find.textContaining('Pair a band before syncing'), findsNothing);
+      await t.tap(find.text('Show details'));
+      await t.pump();
+      await t.pump(const Duration(milliseconds: 400));
       expect(find.text('Sync failed: Pair a band before syncing'),
           findsOneWidget);
     });
