@@ -39,9 +39,19 @@ void main() {
       }
     });
 
-    test('a reference with no DOI has no URL', () {
-      for (final r in kResearchRefs.where((r) => r.doi == null)) {
+    test('a reference with neither DOI nor link has no URL', () {
+      for (final r in kResearchRefs.where((r) => r.doi == null && r.link == null)) {
         expect(r.url, isNull, reason: r.id);
+      }
+    });
+
+    test('a non-DOI link is https, and never sits beside a DOI', () {
+      final linked = kResearchRefs.where((r) => r.link != null).toList();
+      expect(linked, isNotEmpty);
+      for (final r in linked) {
+        expect(r.doi, isNull, reason: r.id);
+        expect(r.link, startsWith('https://'), reason: r.id);
+        expect(r.url, r.link, reason: r.id);
       }
     });
 
@@ -73,22 +83,24 @@ void main() {
       final doc = File('docs/research-references.md').readAsStringSync();
       for (final r in kResearchRefs) {
         expect(doc, contains(r.label), reason: r.id);
-        if (r.doi != null) {
-          expect(doc, contains('https://doi.org/${r.doi}'), reason: r.id);
+        // Every URL a citation can open (DOI or book link) is written out in
+        // the record, so no link ships without its provenance.
+        if (r.url != null) {
+          expect(doc, contains(r.url), reason: r.id);
         }
       }
     });
 
-    test('the references the app cannot link have no DOI on record', () {
-      final noDoi = {for (final r in kResearchRefs.where((r) => r.doi == null)) r.id};
-      expect(noDoi, {'banister1975', 'edwards1993', 'baevsky2008'});
+    test('only the reference with no confirmed source stays plain text', () {
+      final noUrl = {for (final r in kResearchRefs.where((r) => r.url == null)) r.id};
+      expect(noUrl, {'baevsky2008'});
     });
   });
 
   group('researchCitation', () {
     testWidgets('each linked citation opens exactly its doi.org URL',
         (t) async {
-      for (final r in kResearchRefs.where((r) => r.doi != null)) {
+      for (final r in kResearchRefs.where((r) => r.url != null)) {
         final opened = <String>[];
         await t.pumpWidget(_host(Builder(
           builder: (c) => researchCitation(c, 'Something else · ${r.label}',
@@ -100,7 +112,7 @@ void main() {
         final link = _link(r.label);
         expect(link, findsOneWidget, reason: r.id);
         await t.tap(link);
-        expect(opened, ['https://doi.org/${r.doi}'], reason: r.id);
+        expect(opened, [r.url], reason: r.id);
       }
     });
 
@@ -120,11 +132,12 @@ void main() {
     testWidgets('a reference without a DOI is plain text, not a link',
         (t) async {
       await t.pumpWidget(_host(Builder(
-        builder: (c) => researchCitation(c, 'Banister 1975 · Edwards 1993'),
+        builder: (c) => researchCitation(c, 'Baevsky 2008 · Hopkins smallest-worthwhile-change gate'),
       )));
-      expect(_link('Banister 1975'), findsNothing);
+      expect(_link('Baevsky 2008'), findsNothing);
       expect(find.byType(Pressable), findsNothing);
-      expect(find.text('Banister 1975 · Edwards 1993'), findsOneWidget);
+      expect(find.text('Baevsky 2008 · Hopkins smallest-worthwhile-change gate'),
+          findsOneWidget);
     });
 
     testWidgets('only the part naming a linked study is tappable',
@@ -132,7 +145,7 @@ void main() {
       final opened = <String>[];
       await t.pumpWidget(_host(Builder(
         builder: (c) => researchCitation(
-            c, 'AN-2554 pedometer · O\'Connell 2017 · Banister 1975',
+            c, 'AN-2554 pedometer · O\'Connell 2017 · Baevsky 2008',
             open: (u) async {
           opened.add(u);
           return true;
@@ -141,9 +154,23 @@ void main() {
       expect(find.byType(Pressable), findsOneWidget);
       expect(_link('O\'Connell 2017'), findsOneWidget);
       await t.tap(find.text('AN-2554 pedometer'));
-      await t.tap(find.text('Banister 1975'));
+      await t.tap(find.text('Baevsky 2008'));
       expect(opened, isEmpty);
     });
+  });
+
+  testWidgets('Nerd stats shows the training-load citations as links',
+      (t) async {
+    t.view.physicalSize = const Size(390 * 3, 3000 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: const Investigate('trimp', data: InvestigateData()),
+    ));
+    await t.pumpAndSettle();
+    expect(_link('Banister 1991'), findsOneWidget);
+    expect(_link('Morton 1990'), findsOneWidget);
   });
 
   testWidgets('Nerd stats shows the steps citations as links', (t) async {

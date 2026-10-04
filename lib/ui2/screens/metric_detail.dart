@@ -238,7 +238,7 @@ const _specs = <String, MetricSpec>{
     icon: LucideIcons.dumbbell,
     method: 'Training impulse (TRIMP): time in each heart-rate zone, multiplied '
             'by a weight for that zone.',
-    citation: 'Banister 1975 · Edwards 1993',
+    citation: 'Banister 1991 · Morton 1990',
     requires: {InputSignal.hr1Hz},
   ),
   'stress': MetricSpec(
