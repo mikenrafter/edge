@@ -1,8 +1,9 @@
 // Research citations: the table, and the links drawn from it.
 //
 // The table may only hold a DOI that already appears in the repo's own
-// sources. A reference with no DOI on record stays plain text — a link built
-// from a guessed DOI is worse than no link.
+// sources (docs/research-references.md records where each came from and how it
+// was verified). A reference with no DOI on record stays plain text — a link
+// built from a guessed DOI is worse than no link.
 
 import 'dart:io';
 
@@ -38,9 +39,19 @@ void main() {
       }
     });
 
-    test('a reference with no DOI has no URL', () {
-      for (final r in kResearchRefs.where((r) => r.doi == null)) {
+    test('a reference with neither DOI nor link has no URL', () {
+      for (final r in kResearchRefs.where((r) => r.doi == null && r.link == null)) {
         expect(r.url, isNull, reason: r.id);
+      }
+    });
+
+    test('a non-DOI link is https, and never sits beside a DOI', () {
+      final linked = kResearchRefs.where((r) => r.link != null).toList();
+      expect(linked, isNotEmpty);
+      for (final r in linked) {
+        expect(r.doi, isNull, reason: r.id);
+        expect(r.link, startsWith('https://'), reason: r.id);
+        expect(r.url, r.link, reason: r.id);
       }
     });
 
@@ -67,10 +78,29 @@ void main() {
     });
   });
 
+  group('provenance record', () {
+    test('docs/research-references.md lists every DOI with its reference', () {
+      final doc = File('docs/research-references.md').readAsStringSync();
+      for (final r in kResearchRefs) {
+        expect(doc, contains(r.label), reason: r.id);
+        // Every URL a citation can open (DOI or book link) is written out in
+        // the record, so no link ships without its provenance.
+        if (r.url != null) {
+          expect(doc, contains(r.url), reason: r.id);
+        }
+      }
+    });
+
+    test('only the reference with no confirmed source stays plain text', () {
+      final noUrl = {for (final r in kResearchRefs.where((r) => r.url == null)) r.id};
+      expect(noUrl, {'baevsky2008'});
+    });
+  });
+
   group('researchCitation', () {
     testWidgets('each linked citation opens exactly its doi.org URL',
         (t) async {
-      for (final r in kResearchRefs.where((r) => r.doi != null)) {
+      for (final r in kResearchRefs.where((r) => r.url != null)) {
         final opened = <String>[];
         await t.pumpWidget(_host(Builder(
           builder: (c) => researchCitation(c, 'Something else · ${r.label}',
@@ -82,7 +112,7 @@ void main() {
         final link = _link(r.label);
         expect(link, findsOneWidget, reason: r.id);
         await t.tap(link);
-        expect(opened, ['https://doi.org/${r.doi}'], reason: r.id);
+        expect(opened, [r.url], reason: r.id);
       }
     });
 
@@ -102,11 +132,12 @@ void main() {
     testWidgets('a reference without a DOI is plain text, not a link',
         (t) async {
       await t.pumpWidget(_host(Builder(
-        builder: (c) => researchCitation(c, 'Task Force 1996 · Plews 2013'),
+        builder: (c) => researchCitation(c, 'Baevsky 2008 · Hopkins smallest-worthwhile-change gate'),
       )));
-      expect(_link('Plews 2013'), findsNothing);
+      expect(_link('Baevsky 2008'), findsNothing);
       expect(find.byType(Pressable), findsNothing);
-      expect(find.text('Task Force 1996 · Plews 2013'), findsOneWidget);
+      expect(find.text('Baevsky 2008 · Hopkins smallest-worthwhile-change gate'),
+          findsOneWidget);
     });
 
     testWidgets('only the part naming a linked study is tappable',
@@ -114,7 +145,7 @@ void main() {
       final opened = <String>[];
       await t.pumpWidget(_host(Builder(
         builder: (c) => researchCitation(
-            c, 'AN-2554 pedometer · O\'Connell 2017 · Plews 2013',
+            c, 'AN-2554 pedometer · O\'Connell 2017 · Baevsky 2008',
             open: (u) async {
           opened.add(u);
           return true;
@@ -123,9 +154,23 @@ void main() {
       expect(find.byType(Pressable), findsOneWidget);
       expect(_link('O\'Connell 2017'), findsOneWidget);
       await t.tap(find.text('AN-2554 pedometer'));
-      await t.tap(find.text('Plews 2013'));
+      await t.tap(find.text('Baevsky 2008'));
       expect(opened, isEmpty);
     });
+  });
+
+  testWidgets('Nerd stats shows the training-load citations as links',
+      (t) async {
+    t.view.physicalSize = const Size(390 * 3, 3000 * 3);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: const Investigate('trimp', data: InvestigateData()),
+    ));
+    await t.pumpAndSettle();
+    expect(_link('Banister 1991'), findsOneWidget);
+    expect(_link('Morton 1990'), findsOneWidget);
   });
 
   testWidgets('Nerd stats shows the steps citations as links', (t) async {
