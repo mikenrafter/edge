@@ -122,7 +122,10 @@ void main() {
   });
 
   group('AppState wiring (source guards)', () {
-    final src = File('lib/state/app_state.dart').readAsStringSync();
+    // The cue methods live in the gesture controller (8AJ seam 3); the ack in
+    // _onLiveEvent stays in AppState.
+    final src = File('lib/state/gesture_controller.dart').readAsStringSync();
+    final appSrc = File('lib/state/app_state.dart').readAsStringSync();
 
     test('the count buzz no longer builds the fixed 300 ms per-tap sequence',
         () {
@@ -131,13 +134,13 @@ void main() {
       expect(body, isNot(contains('i * 300')),
           reason: 'a profiled band plays compiled cues; gen4 is the cues\' '
               'own fallback');
-      expect(body, contains('gestureCues.followUp'));
+      expect(body, contains('cues.followUp'));
     });
 
     test('every gesture cue is a dispatcher delivery in the band queue', () {
       final body = codeOnly(bodyOf(src, 'Future<bool> _gestureCue('));
-      expect(body, contains('alertDispatcher.dispatch('));
-      expect(body, contains('haptics.asLabWork('));
+      expect(body, contains('_alertDispatcher().dispatch('));
+      expect(body, contains('_haptics.asLabWork('));
       for (final f in [
         'Future<bool> _ecgTapStartBuzz(',
         'Future<bool> _ecgTapBuzz(',
@@ -153,17 +156,18 @@ void main() {
       // Its built-in default is the long buzz it used to be (pairx2, one
       // command [47, 152] looped twice); see test/gestures8ak/d_failed_cue_test.
       final body = codeOnly(bodyOf(src, 'Future<bool> _ecgTapFailBuzz('));
-      expect(body, contains('gestureCues.failed'));
+      expect(body, contains('cues.failed'));
       expect(body, isNot(contains('buzzBand')));
     });
 
     test('the action-done ack goes through ackTap with the confirm cue', () {
-      final body = codeOnly(bodyOf(src, 'void _onLiveEvent('));
+      final body = codeOnly(bodyOf(appSrc, 'void _onLiveEvent('));
       expect(body, contains('ackTap('));
       expect(body, contains('gestureCues.confirm'));
     });
 
-    test('AppState owns one GestureCues over the haptics service', () {
+    test('the gesture controller owns one GestureCues over the haptics service',
+        () {
       expect(codeOnly(src), contains('GestureCues('));
     });
   });

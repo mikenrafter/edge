@@ -117,26 +117,21 @@ import '../health/health_export.dart';
 import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
-import '../gestures/double_tap_repeat.dart';
 import '../gestures/ecg_tap_begin.dart';
-import '../gestures/ecg_tap_session.dart';
 import '../gestures/hardware_probe_runner.dart';
-import '../gestures/gesture_dispatcher.dart';
 import '../gestures/gesture_failures.dart';
 import '../gestures/lab_log.dart';
 import '../gestures/moment_stamp.dart';
 import '../gestures/strap_event.dart';
 import '../gestures/tap_ack.dart';
-import '../gestures/tap_names.dart';
 import '../haptics/band_queue.dart';
 import '../haptics/ble_haptics_port.dart';
 import '../haptics/gesture_cues.dart';
-import '../haptics/haptic_slots.dart'
-    show decodeCueAssignments, resolveCuePatterns;
 import '../haptics/haptics_service.dart';
 import '../haptics/wake_haptics.dart';
 import '../haptics/haptic_player.dart' show HapticPlayStart;
 import 'live_stream_buffer.dart';
+import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
@@ -267,7 +262,7 @@ class AppState extends ChangeNotifier {
     // The Device lab's touch counter and ECG touch probe read the same live
     // packets (RAM only). At most one of them holds the stream.
     c.onFrame = (r) {
-      _ecgTapSession.onFrame(r);
+      _gestures.onEcgFrame(r);
       hardwareProbes.onFrame(r);
     };
     return c;
@@ -339,7 +334,49 @@ class AppState extends ChangeNotifier {
 
   /// Band-gesture → action mapping (double-tap, etc.). Exposed for the settings UI.
   final GestureSettings gestureSettings = GestureSettings();
-  late final GestureDispatcher _gestureDispatcher;
+
+  /// The band-gesture seam (8AJ seam 3): the dispatcher, the two tap-counting
+  /// sessions, the cues and the failure store. Assigned in both constructors,
+  /// before the engine, as the dispatcher was.
+  late final GestureController _gestures;
+
+  GestureController _newGestureController() => GestureController(
+        settings: gestureSettings,
+        haptics: haptics,
+        deviceLab: deviceLab,
+        alertDispatcher: () => alertDispatcher,
+        ecg: () => ecg,
+        ecgSupported: () => engine.isMaverick,
+        clockRef: () => engine.clockRef,
+        log: _log,
+        onMarkMoment: _markMomentFromGesture,
+        onWorkoutToggle: _toggleWorkoutFromGesture,
+        onLogWater: _logWaterFromGesture,
+        // 8N: the stream makes the band save raw ECG that history sync delivers
+        // later; keep the interval (no samples) so it is labelled gesture
+        // contact.
+        recordEcgSession: (r) async {
+          await LocalDb.recordEcgGestureSession(
+            deviceId: LocalDb.kPrimaryDeviceId,
+            strapStart: r.strapStart,
+            strapEnd: r.strapEnd,
+            finalCount: r.finalCount,
+            reason: r.reason,
+            createdAtMs: DateTime.now().millisecondsSinceEpoch,
+          );
+        },
+        loadPatterns: () => SettingsRepository.instance.patterns(),
+        readCueAssignments: () => Prefs.getString(Prefs.hapticsCueAssign, ''),
+        readFailures: () => Prefs.getString(Prefs.gestureFailures, ''),
+        writeFailures: (json) async => Prefs.setString(Prefs.gestureFailures, json),
+      );
+
+  /// 8AK: the gestures that failed to activate, newest first, kept across
+  /// restarts. Home shows the newest undismissed one; Settings lists them all.
+  GestureFailureStore get gestureFailures => _gestures.failures;
+
+  /// The gesture cues (start, follow-up, confirm, failed) over [haptics].
+  GestureCues get gestureCues => _gestures.cues;
 
   /// The last 30 s of every live stream, per device (8B). RAM only: live
   /// high-rate streams are never persisted (invariant 14). Fed from the live
@@ -371,7 +408,7 @@ class AppState extends ChangeNotifier {
     sendPattern: _probePattern,
     isConnected: () => engine.isConnected,
     ecgSupported: () => engine.isMaverick,
-    ecgBusy: () => _ecgTapSession.active || ecg.isCapturing,
+    ecgBusy: () => _gestures.ecgTapActive || ecg.isCapturing,
     beginEcg: _beginEcgForProbe,
     endEcg: () async {
       try {
@@ -449,277 +486,9 @@ class AppState extends ChangeNotifier {
         note: deviceLab.addStep,
       );
 
-  GestureDispatcher _newGestureDispatcher() => GestureDispatcher(
-        settings: gestureSettings,
-        log: _log,
-        onMarkMoment: _markMomentFromGesture,
-        onWorkoutToggle: _toggleWorkoutFromGesture,
-        onLogWater: _logWaterFromGesture,
-        ecgSupported: () => engine.isMaverick,
-        onEcgTap: _ecgTapSession.start,
-        onCountTaps: _countTaps,
-        repeatSession: _repeatTapSession,
-        onFailed: (e, kind, reason) {
-          // The route's trace says nothing of a failed action: say it, so the
-          // saved log tells the story.
-          deviceLab.addStep('Gesture failed ($reason).');
-          _recordGestureFailure(e, kind, reason);
-        },
-      );
-
-  /// 8AK: the gestures that failed to activate, newest first, kept across
-  /// restarts. Home shows the newest undismissed one; Settings lists them all.
-  /// Built on first use, after Prefs is loaded.
-  late final GestureFailureStore gestureFailures = GestureFailureStore(
-    read: () => Prefs.getString(Prefs.gestureFailures, ''),
-    write: (json) async => Prefs.setString(Prefs.gestureFailures, json),
-  );
-
-  /// Keep one failed gesture with the Device lab's log as it stands (the trace,
-  /// not the raw ECG packets: those would crowd it out of the record). Never
-  /// throws.
-  void _recordGestureFailure(
-      StrapEvent tap, GestureFailureKind kind, String reason) {
-    try {
-      gestureFailures.record(
-        kind: kind,
-        reason: reason,
-        gestureId: gestureFailureId(tap),
-        log: deviceLab.toPlainText(withPackets: false),
-      );
-    } catch (_) {}
-  }
-
   void _labBuzzDiagnostic(String line) {
     if (deviceLab.tracingAt(DateTime.now())) deviceLab.addStep(line);
   }
-
-  /// The slower multi-tap method: more firmware double taps inside a window.
-  /// Needs no ECG, so any band can use it.
-  late final DoubleTapRepeatSession _repeatTapSession = DoubleTapRepeatSession(
-    maxTaps: () => gestureSettings.repeatTapMax,
-    window: () => gestureSettings.repeatTapWindow,
-    // The same cues as the ECG route (8AK): the start cue once, one follow-up
-    // per further double tap, the confirm at the end; each window opens only
-    // after its cue was played.
-    startBuzz: _ecgTapStartBuzz,
-    buzz: (id) => _ecgTapBuzz(1, id),
-    confirmBuzz: _ecgTapConfirmBuzz,
-    bandIdle: haptics.whenIdle,
-    step: deviceLab.addStep,
-    onStarted: (tap, settings) => deviceLab.beginSession(
-        method: 'More double taps', settings: settings, tapAt: tap.receivedAt),
-    onFinished: (count) {
-      deviceLab.endSession(count: count);
-      if (gestureSettings.repeatTapsLab) {
-        deviceLab.addStep('Result: $count taps. This is a draft; no action '
-            'was run.');
-      }
-    },
-  );
-
-  /// 8L: counts ECG-sensor touches after a live double tap. Built lazily so
-  /// [AppState.forTesting] pays nothing for it.
-  late final EcgTapSession _ecgTapSession = EcgTapSession(
-    beginStream: _beginEcgForTap,
-    // 8AN fast mode: the same start; it leaves out the raw-save by asking the
-    // session which mode the gesture in flight runs.
-    beginFastStream: _beginEcgForTap,
-    tapMode: () => gestureSettings.ecgTapMode,
-    startBuzz: _ecgTapStartBuzz,
-    endStream: () async {
-      try {
-        await ecg.cancel();
-      } catch (_) {}
-    },
-    isStreamAlive: () => ecg.isCapturing,
-    buzz: _ecgTapBuzz,
-    confirmBuzz: _ecgTapConfirmBuzz,
-    bandIdle: haptics.whenIdle,
-    failBuzz: _ecgTapFailBuzz,
-    onFailed: (tap, reason) =>
-        _recordGestureFailure(tap, GestureFailureKind.ecg, reason),
-    maxTaps: () => gestureSettings.ecgTapMax,
-    thresholds: () => gestureSettings.ecgTapThresholds,
-    onStarted: (tap, settings) => deviceLab.beginSession(
-        method: 'ECG sensor touches', settings: settings, tapAt: tap.receivedAt),
-    onFinished: (count, reason) {
-      // Release the dispatcher first: a throw from the lab log below must not
-      // leave the tap's action chain awaiting a count that never comes.
-      final waiting = _tapCount;
-      _tapCount = null;
-      if (waiting != null && !waiting.isCompleted) waiting.complete(count);
-      final lab = gestureSettings.ecgOnDoubleTap;
-      deviceLab.addStep(count != null
-          ? 'Result: ${ecgTapCountName(count)}.${lab ? ' This is a draft; no action was run.' : ''}'
-          : 'Result: abandoned ($reason). No action was run.');
-      deviceLab.endSession(count: count, reason: reason);
-    },
-    step: deviceLab.addStep,
-    // 8V: every packet, raw, for the lab's replay export (RAM only).
-    onPacket: deviceLab.addPacket,
-    // 8V: in the lab, watch the sensor for 3 s after the count is decided.
-    postRoll: () => gestureSettings.ecgOnDoubleTap
-        ? const Duration(seconds: 3)
-        : Duration.zero,
-    // 8N: the stream makes the band save raw ECG that history sync delivers
-    // later; keep the interval (no samples) so it is labelled gesture contact.
-    recordSession: (r) async {
-      await LocalDb.recordEcgGestureSession(
-        deviceId: LocalDb.kPrimaryDeviceId,
-        strapStart: r.strapStart,
-        strapEnd: r.strapEnd,
-        finalCount: r.finalCount,
-        reason: r.reason,
-        createdAtMs: DateTime.now().millisecondsSinceEpoch,
-      );
-    },
-    strapNow: () {
-      final ref = engine.clockRef;
-      if (ref == null) return null;
-      // strap = wall - (wall - device) at the correlation instant.
-      return DateTime.now().millisecondsSinceEpoch ~/ 1000 - ref.driftSec;
-    },
-  );
-
-  /// The gesture the dispatcher is waiting on (outside the lab), completed by
-  /// the session's onFinished. Cleared on every exit.
-  Completer<int?>? _tapCount;
-
-  /// [GestureDispatcher.onCountTaps]: run the session for this tap and wait for
-  /// its final count (null = abandoned). One gesture at a time: a second double
-  /// tap while one is counting is ignored. Throws when the stream did not start.
-  Future<int?> _countTaps(StrapEvent e) async {
-    if (_ecgTapSession.active) return null;
-    final done = _tapCount = Completer<int?>();
-    try {
-      await _ecgTapSession.start(e);
-    } catch (_) {
-      _tapCount = null;
-      rethrow;
-    }
-    return done.future;
-  }
-
-  /// Start the ECG stream for a tap through the existing controller. The wrist
-  /// is the one remembered from a normal ECG reading; without it the lab says
-  /// so instead of guessing which electrode the AFE should read.
-  ///
-  /// The gesture's generation is checked after every await (finding G): the
-  /// session abandons a slow start after its begin timeout, but Future.timeout
-  /// does not cancel this work, so a late start would otherwise switch the
-  /// band's ECG on for a gesture that is gone.
-  ///
-  /// 8AK: the band seems to answer a command written while it vibrates late or
-  /// not at all (the 2026-10-04 lab log: four of five starts refused at
-  /// PREPARE, a second buzz reply landing in the middle of it). So the start cue
-  /// is written first, the start waits for that write, and then PREPARE and
-  /// START run as one exclusive job of the band queue: after the cue has
-  /// played, ahead of waiting alerts, with no haptic write of any other job
-  /// until they are done.
-  Future<bool> _beginEcgForTap() async {
-    final gen = _ecgTapSession.generation; // set before this is called
-    await _startCueWritten();
-    final started = await haptics.runExclusive(() => beginEcgForTap(
-          isCurrent: () =>
-              _ecgTapSession.active && _ecgTapSession.generation == gen,
-          isCapturing: () => ecg.isCapturing,
-          lookupWrist: () async {
-            final serial = ecg.transport.serial;
-            return serial == null ? null : await ecg.guard.wrist(serial);
-          },
-          // persist: false: a long touch can reach a normal terminal, and a
-          // gesture must never leave an ECG reading behind (invariant 14).
-          begin: (wrist) => ecg.begin(wrist,
-              persist: false,
-              rawSave: !_ecgTapSession.fast,
-              trace: deviceLab.addStep),
-          captureEpoch: () => ecg.captureEpoch,
-          cancel: () => ecg.cancel(),
-          note: deviceLab.addStep,
-        ).timeout(const Duration(seconds: 30)));
-    return started ?? false;
-  }
-
-  // The start cue of the gesture in flight, for [_startCueWritten].
-  Future<bool>? _startCueSent;
-
-  /// Wait (at most 3 s) for the start cue's write, so it is the first thing the
-  /// band gets. Never throws; no cue, or one that failed, is no wait.
-  Future<void> _startCueWritten() async {
-    final cue = _startCueSent;
-    _startCueSent = null;
-    if (cue == null) return;
-    try {
-      await cue.timeout(const Duration(seconds: 3));
-    } catch (_) {}
-  }
-
-  /// One gesture cue as a dispatcher delivery (live-only band alert, own event
-  /// id, never a straight engine write): [play] is the cue, in its own job of
-  /// the band queue. The wearer's cue assignments are read inside the delivery,
-  /// beside the dispatcher's own claim steps rather than ahead of them (8AI), so
-  /// a cue is not held up reading them.
-  Future<bool> _gestureCue(
-    String eventId,
-    Future<BuzzDelivery> Function() play,
-  ) async {
-    final now = DateTime.now();
-    final cues = _loadGestureCues();
-    final r = await haptics.asLabWork(() => alertDispatcher.dispatch(
-      kEcgTapRule,
-      eventId: eventId,
-      sourceTime: now,
-      historical: false,
-      bandTimeout: const Duration(seconds: 10),
-      bandDelivery: () async {
-        await cues;
-        return play();
-      },
-    ));
-    return r.targets.contains('band');
-  }
-
-  /// 8AI: the gesture-start cue, sent the moment the double tap is accepted;
-  /// the session fires it without waiting and starts the ECG stream at once.
-  Future<bool> _ecgTapStartBuzz(String eventId) =>
-      _startCueSent = _gestureCue(eventId, gestureCues.start);
-
-  /// One follow-up cue per count increment (3, 4, 5), queued as soon as the
-  /// touch is seen: never the start cue again, never a recount. [pulses] is
-  /// always 1.
-  Future<bool> _ecgTapBuzz(int pulses, String eventId) =>
-      _gestureCue(eventId, gestureCues.followUp);
-
-  /// The confirm cue of a counted gesture, once, when it ends.
-  Future<bool> _ecgTapConfirmBuzz(String eventId) =>
-      _gestureCue(eventId, gestureCues.confirm);
-
-  // The wearer's customised gesture cues, read just before a cue plays so
-  // GestureCues can take them synchronously. A cue that cannot be read plays
-  // its built-in default.
-  Map<String, BuzzSequence> _cuePatterns = const {};
-
-  Future<void> _loadGestureCues() async {
-    try {
-      final store = await SettingsRepository.instance.patterns();
-      // A pattern the wearer put on a cue (8AI) wins over the cue's built-in.
-      _cuePatterns = resolveCuePatterns(
-        store,
-        decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, '')),
-      );
-    } catch (_) {}
-  }
-
-  late final GestureCues gestureCues =
-      GestureCues(haptics: haptics, patternFor: (k) => _cuePatterns[k]);
-
-  /// The failure cue of an abandoned gesture, "Gesture failed" (8AK): the
-  /// wearer's assigned pattern, else the built-in (today's long failure buzz).
-  /// One path with the other cues, so the dispatcher's claim and deadline steps
-  /// apply.
-  Future<bool> _ecgTapFailBuzz(String eventId) =>
-      _gestureCue(eventId, gestureCues.failed);
 
   late final AlertDispatcher alertDispatcher = AlertDispatcher(
     phone: () async => false,
@@ -2045,7 +1814,7 @@ class AppState extends ChangeNotifier {
                        lifecycle == AppLifecycleState.hidden;
     _background = isHeadless;
 
-    _gestureDispatcher = _newGestureDispatcher();
+    _gestures = _newGestureController();
     engine = BleEngine(
       onRecord: _onRecord,
       onState: (s) => _onEngineState(LocalDb.kPrimaryDeviceId, s),
@@ -2187,7 +1956,7 @@ class AppState extends ChangeNotifier {
   AppState.forTesting({BleEngine? engine, EcgController? ecg}) {
     _background = false;
     _ecg = ecg;
-    _gestureDispatcher = _newGestureDispatcher();
+    _gestures = _newGestureController();
     this.engine = engine ??
         BleEngine(
           onRecord: _onRecord,
@@ -3066,7 +2835,7 @@ class AppState extends ChangeNotifier {
     // dispatcher. They also decide the acknowledgement buzz, which goes through
     // alertDispatcher (live-only, short deadline) and never straight to the
     // engine.
-    final handled = _gestureDispatcher.handle(e);
+    final handled = _gestures.handle(e);
     hardwareProbes.onBandEvent(e);
     // The band's "ended" event releases the next compiled command and the
     // next queued job; a late one (the band delivers old events in bursts)
@@ -3074,7 +2843,7 @@ class AppState extends ChangeNotifier {
     haptics.onBandEvent(e);
     unawaited(handled.then((outcomes) async {
       deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
-      if (haptics.profile != null) await _loadGestureCues();
+      if (haptics.profile != null) await _gestures.loadCues();
       await haptics.asLabWork(() => ackTap(alertDispatcher, e, outcomes,
           bandDelivery: haptics.profile == null ? null : gestureCues.confirm));
     }));

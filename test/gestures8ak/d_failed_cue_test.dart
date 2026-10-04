@@ -223,11 +223,11 @@ void main() {
   });
 
   group('the wiring', () {
-    test('AppState plays the failure through gestureCues.failed, not a fixed '
-        'engine buzz', () {
-      final src = File('lib/state/app_state.dart').readAsStringSync();
+    test('the gesture controller plays the failure through cues.failed, not a '
+        'fixed engine buzz', () {
+      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
       final fn = codeOnly(bodyOf(src, 'Future<bool> _ecgTapFailBuzz'));
-      expect(fn, contains('gestureCues.failed'));
+      expect(fn, contains('cues.failed'));
       expect(fn, isNot(contains('buzzBand')));
       expect(fn, contains('_gestureCue'),
           reason: 'one path for every gesture cue: the dispatcher claim, the '

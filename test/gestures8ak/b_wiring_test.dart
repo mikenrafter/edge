@@ -2,7 +2,7 @@
 // (source guards, the repo's way of pinning wiring that needs a whole AppState
 // to run).
 //
-// ASSUMED WIRING (lib/state/app_state.dart):
+// ASSUMED WIRING (lib/state/gesture_controller.dart since 8AJ seam 3):
 //   * `_repeatTapSession` (DoubleTapRepeatSession) gets `startBuzz:` (the same
 //     start cue as the ECG route, `_ecgTapStartBuzz`), `buzz:` (the follow-up,
 //     `_ecgTapBuzz`, as today), `confirmBuzz:` (`_ecgTapConfirmBuzz`) and
@@ -22,7 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../phase8/support/dart_source.dart';
 
 void main() {
-  final src = File('lib/state/app_state.dart').readAsStringSync();
+  final src = File('lib/state/gesture_controller.dart').readAsStringSync();
   final code = codeOnly(src);
 
   String between(String from, String to) {
@@ -35,8 +35,8 @@ void main() {
 
   test('the repeated-double-tap session gets the same start, follow-up and '
       'confirm cues as the ECG session, and the band-idle signal', () {
-    final repeat = between('late final DoubleTapRepeatSession _repeatTapSession',
-        'late final EcgTapSession _ecgTapSession');
+    final repeat = between('DoubleTapRepeatSession _newRepeatSession()',
+        'EcgTapSession _newEcgSession()');
     expect(repeat, contains('startBuzz: _ecgTapStartBuzz'));
     expect(repeat, contains('buzz: (id) => _ecgTapBuzz(1, id)'));
     expect(repeat, contains('confirmBuzz: _ecgTapConfirmBuzz'));
@@ -44,13 +44,13 @@ void main() {
   });
 
   test('the ECG session gets the band-idle signal', () {
-    final ecg = between('late final EcgTapSession _ecgTapSession',
+    final ecg = between('EcgTapSession _newEcgSession()',
         'Completer<int?>? _tapCount;');
     expect(ecg, contains('bandIdle:'));
   });
 
   test('both read it from the haptics service', () {
-    expect(RegExp(r'bandIdle\s*:\s*haptics\.whenIdle').allMatches(code).length,
+    expect(RegExp(r'bandIdle\s*:\s*_haptics\.whenIdle').allMatches(code).length,
         2);
   });
 }

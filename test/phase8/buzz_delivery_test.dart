@@ -165,6 +165,9 @@ void main() {
     final app = codeOnly(File('lib/state/app_state.dart').readAsStringSync());
     final engine =
         codeOnly(File('lib/ble/ble_engine.dart').readAsStringSync());
+    // The count buzz lives in the gesture controller (8AJ seam 3).
+    final gestures =
+        codeOnly(File('lib/state/gesture_controller.dart').readAsStringSync());
 
     test('nothing is named for a confirmation it does not wait for', () {
       expect(app, isNot(contains('buzzConfirmed')));
@@ -176,8 +179,8 @@ void main() {
       // 8AF.6: the count buzz is the gesture cues'; a band with no haptic
       // profile writes its plain pulses through the haptics port
       // (BleEngineHapticsPort -> engine.buzzBand).
-      expect(bodyOf(app, 'Future<bool> _ecgTapBuzz('),
-          contains('gestureCues.followUp'));
+      expect(bodyOf(gestures, 'Future<bool> _ecgTapBuzz('),
+          contains('cues.followUp'));
       expect(File('lib/haptics/gesture_cues.dart').readAsStringSync(),
           contains('port.buzzBand('));
     });

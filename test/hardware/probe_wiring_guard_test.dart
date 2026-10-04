@@ -13,6 +13,10 @@ import '../phase8/support/dart_source.dart';
 void main() {
   final src = File('lib/state/app_state.dart').readAsStringSync();
   final code = codeOnly(src);
+  // The gesture cues and the ECG tap session live in the gesture controller
+  // (8AJ seam 3); the onFrame fan-out and the event path stay in AppState.
+  final gsrc = File('lib/state/gesture_controller.dart').readAsStringSync();
+  final gcode = codeOnly(gsrc);
 
   test('the live band-event path feeds hardwareProbes.onBandEvent', () {
     final body = bodyOf(src, 'void _onLiveEvent(');
@@ -25,7 +29,7 @@ void main() {
     expect(at, isNonNegative, reason: 'the controller callback is assigned');
     final body = code.substring(at, code.indexOf(';\n    return c;', at));
     expect(body, contains('hardwareProbes.onFrame('));
-    expect(body, contains('_ecgTapSession.onFrame('));
+    expect(body, contains('_gestures.onEcgFrame('));
   });
 
   test('the probe buzz is a dispatcher delivery that hears the band reply', () {
@@ -91,23 +95,23 @@ void main() {
   // dispatcher delivery as every other gesture cue.
   test('the ECG failure buzz is the Gesture failed cue inside a dispatcher '
       'delivery', () {
-    final body = bodyOf(src, 'Future<bool> _ecgTapFailBuzz(');
+    final body = bodyOf(gsrc, 'Future<bool> _ecgTapFailBuzz(');
     expect(body, isNotEmpty);
     final c = codeOnly(body);
     expect(c, contains('_gestureCue('));
-    expect(c, contains('gestureCues.failed'));
-    final cue = codeOnly(bodyOf(src, 'Future<bool> _gestureCue('));
+    expect(c, contains('cues.failed'));
+    final cue = codeOnly(bodyOf(gsrc, 'Future<bool> _gestureCue('));
     expect(cue, contains('kEcgTapRule'));
-    expect(cue, contains('alertDispatcher.dispatch('));
+    expect(cue, contains('_alertDispatcher().dispatch('));
     expect(cue, contains('bandDelivery:'));
   });
 
   test('the ECG tap session is built with the failure buzz', () {
-    final at = code.indexOf('late final EcgTapSession _ecgTapSession =');
+    final at = gcode.indexOf('EcgTapSession _newEcgSession() =>');
     expect(at, isNonNegative);
-    final open = code.indexOf('EcgTapSession(', at);
+    final open = gcode.indexOf('EcgTapSession(', at);
     expect(
-      code.substring(open, closingOf(code, open + 'EcgTapSession('.length - 1)),
+      gcode.substring(open, closingOf(gcode, open + 'EcgTapSession('.length - 1)),
       contains('failBuzz: _ecgTapFailBuzz'),
     );
   });

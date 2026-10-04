@@ -111,16 +111,17 @@ void main() {
   });
 
   group('the wiring', () {
-    test('AppState keeps a failure store and feeds it from both reporters',
-        () {
-      final src = File('lib/state/app_state.dart').readAsStringSync();
+    test('the gesture controller keeps a failure store and feeds it from both '
+        'reporters, and AppState exposes it', () {
+      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
       final code = codeOnly(src);
+      final app = codeOnly(File('lib/state/app_state.dart').readAsStringSync());
       expect(code, contains('GestureFailureStore'));
-      expect(code, contains('gestureFailures'));
+      expect(app, contains('gestureFailures'));
       expect(RegExp(r'onFailed\s*:').allMatches(code).length,
           greaterThanOrEqualTo(2),
           reason: 'the ECG session and the dispatcher both report');
-      expect(code, contains('gestureFailures.record('));
+      expect(code, contains('failures.record('));
       expect(code, contains('toPlainText'),
           reason: 'the record carries the Device lab log text');
     });

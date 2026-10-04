@@ -145,7 +145,9 @@ void main() {
       expect(src.contains('onEvent: (id, ts, hex)'), isFalse,
           reason: 'the positional closures must be gone');
       expect(src.contains('_gestureDispatcher.onEvent('), isFalse);
-      expect(src, contains('_gestureDispatcher.handle('));
+      expect(src.contains('_gestures.onEvent('), isFalse);
+      // The dispatcher is owned by the gesture controller (8AJ seam 3).
+      expect(src, contains('_gestures.handle('));
     });
 
     test('the headless drain persists the full event, not (id, ts, hex)', () {

@@ -19,8 +19,8 @@
 //     stream command has gone out, whether or not the buzz has finished. A
 //     start buzz that throws, or answers false, is logged to `step` and
 //     changes nothing else about the gesture.
-//   * AppState wires it (lib/state/app_state.dart `_ecgTapSession =
-//     EcgTapSession(...)`) to the gesture start cue through the same
+//   * The gesture controller wires it (lib/state/gesture_controller.dart
+//     `_newEcgSession()` = EcgTapSession(...)) to the gesture start cue through the same
 //     dispatcher path as the count buzz (`startBuzz: ...`).
 //
 // Failure mode today: EcgTapSession has no `startBuzz`, so every test that
@@ -151,8 +151,9 @@ void main() {
     });
 
     test('AppState wires the start buzz into the session it builds', () {
-      final src = File('lib/state/app_state.dart').readAsStringSync();
-      final ctor = codeOnly(bodyOf(src, 'late final EcgTapSession _ecgTapSession'));
+      // Built in the gesture controller since 8AJ seam 3.
+      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
+      final ctor = codeOnly(bodyOf(src, 'EcgTapSession _newEcgSession()'));
       expect(ctor, contains('startBuzz:'),
           reason: 'the ECG tap session is given the gesture-start cue');
     });

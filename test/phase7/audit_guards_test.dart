@@ -189,8 +189,9 @@ void main() {
   group('latch wiring in AppState', () {
     test('the ECG tap session releases the dispatcher\'s count wait before it '
         'writes the lab log', () {
-      final src = File('lib/state/app_state.dart').readAsStringSync();
-      final from = src.indexOf('late final EcgTapSession _ecgTapSession =');
+      // The session is built in the gesture controller (8AJ seam 3).
+      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
+      final from = src.indexOf('EcgTapSession _newEcgSession() =>');
       final body = src.substring(from, src.indexOf('Completer<int?>? _tapCount;'));
       final release = body.indexOf('waiting.complete(count)');
       final log = body.indexOf('deviceLab.addStep');

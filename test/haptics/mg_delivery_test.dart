@@ -463,6 +463,8 @@ void main() {
     final src = File('lib/state/app_state.dart').readAsStringSync();
     final code = codeOnly(src);
     final svc = codeOnly(File('lib/haptics/haptics_service.dart').readAsStringSync());
+    // The gesture cues live in the gesture controller (8AJ seam 3).
+    final gestures = File('lib/state/gesture_controller.dart').readAsStringSync();
 
     test('AppState builds one service, which owns the one queue and ledger; '
         'the probes count into that ledger', () {
@@ -495,13 +497,13 @@ void main() {
       // The ECG touch counter and its failure buzz.
       // 8AF.6: the count buzz is the gesture cues', whose delivery is a queue
       // job (compiled: haptics.deliver; no profile: haptics.runJob).
-      expect(bodyOf(src, 'Future<bool> _ecgTapBuzz('),
-          contains('gestureCues.followUp'));
+      expect(bodyOf(gestures, 'Future<bool> _ecgTapBuzz('),
+          contains('cues.followUp'));
       final cues = File('lib/haptics/gesture_cues.dart').readAsStringSync();
       expect(cues, contains('haptics.deliver('));
       expect(cues, contains('haptics.runJob('));
-      expect(bodyOf(src, 'Future<bool> _ecgTapFailBuzz('),
-          contains('gestureCues.failed'));
+      expect(bodyOf(gestures, 'Future<bool> _ecgTapFailBuzz('),
+          contains('cues.failed'));
       // The user-facing test buzz, pattern test and find-my-strap.
       expect(bodyOf(src, 'Future<bool> _userBuzz('), contains('haptics.runJob('));
       // The alert dispatcher's default band transport (tap ack, water and

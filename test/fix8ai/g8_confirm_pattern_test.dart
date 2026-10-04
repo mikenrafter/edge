@@ -176,17 +176,23 @@ void main() {
   });
 
   group('wiring (source guards)', () {
-    final src = File('lib/state/app_state.dart').readAsStringSync();
+    // The cue loading moved to the gesture controller (8AJ seam 3); the ack
+    // path in AppState._onLiveEvent calls it.
+    final src = File('lib/state/gesture_controller.dart').readAsStringSync();
+    final appSrc = File('lib/state/app_state.dart').readAsStringSync();
 
-    test('AppState reads the cues through resolveCuePatterns', () {
-      final body = codeOnly(bodyOf(src, 'Future<void> _loadGestureCues()'));
+    test('the gesture controller reads the cues through resolveCuePatterns',
+        () {
+      final body = codeOnly(bodyOf(src, 'Future<void> loadCues()'));
       expect(body, contains('resolveCuePatterns('));
     });
 
     test('the confirm cue is loaded before it plays on every path', () {
       final code = codeOnly(src);
       // The ack path and the counted path both read the stored cues first.
-      expect(code, contains('await _loadGestureCues();'));
+      expect(codeOnly(appSrc), contains('await _gestures.loadCues();'));
+      expect(codeOnly(bodyOf(src, 'Future<bool> _gestureCue(')),
+          contains('loadCues();'));
       final confirmWire = RegExp(r'confirmBuzz:\s*_ecgTapConfirmBuzz');
       expect(confirmWire.hasMatch(code), isTrue,
           reason: 'the touch counter\'s final cue is the confirm cue');

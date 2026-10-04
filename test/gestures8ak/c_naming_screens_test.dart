@@ -162,12 +162,12 @@ void main() {
     });
   });
 
-  test('app_state names the ECG result with the helper, not a bare count',
-      () {
-    final src = File('lib/state/app_state.dart').readAsStringSync();
+  test('the gesture controller names the ECG result with the helper, not a '
+      'bare count', () {
+    final src = File('lib/state/gesture_controller.dart').readAsStringSync();
     expect(src, contains('gestures/tap_names.dart'));
-    // The ECG session's construction in AppState, up to the next member.
-    final from = src.indexOf('late final EcgTapSession _ecgTapSession');
+    // The ECG session's construction in the controller, up to the next member.
+    final from = src.indexOf('EcgTapSession _newEcgSession()');
     final to = src.indexOf('Completer<int?>? _tapCount;', from);
     expect(from, greaterThan(0));
     final session = src.substring(from, to);

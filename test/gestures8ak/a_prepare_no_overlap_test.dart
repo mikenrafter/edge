@@ -104,9 +104,9 @@ void main() {
     });
   });
 
-  test('AppState starts the stream through it, behind the start cue\'s '
-      'write (source guard)', () {
-    final src = File('lib/state/app_state.dart').readAsStringSync();
+  test('the gesture controller starts the stream through it, behind the '
+      'start cue\'s write (source guard)', () {
+    final src = File('lib/state/gesture_controller.dart').readAsStringSync();
     final a = src.indexOf('Future<bool> _beginEcgForTap()');
     final body = codeOnly(src.substring(a, src.indexOf('_startCueSent;', a)));
     expect(body.indexOf('_startCueWritten()'), greaterThan(0));
