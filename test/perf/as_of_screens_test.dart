@@ -35,9 +35,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/recalc_state.dart';
@@ -68,9 +70,21 @@ AppState _app(LocalRepository repo) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUpAll(() {
+  // The screens now write their last result through to `last_result`; a private
+  // file keeps that away from the default database other test files share.
+  const dbName = 'openstrap_perf_as_of_screens_test.db';
+  setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+    LocalDb.dbName = dbName;
+    await databaseFactory.deleteDatabase(
+        p.join(await databaseFactory.getDatabasesPath(), dbName));
+  });
+  tearDownAll(() async {
+    await LastResultCache.instance.flush();
+    await LocalDb.close();
+    await databaseFactory.deleteDatabase(
+        p.join(await databaseFactory.getDatabasesPath(), dbName));
   });
   setUp(() {
     SharedPreferences.setMockInitialValues({});

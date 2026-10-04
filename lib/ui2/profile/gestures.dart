@@ -30,6 +30,7 @@ import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../ui2.dart';
 import 'device_lab.dart';
+import 'haptics_settings.dart' show HapticsSettings;
 import 'profile.dart';
 
 class BandGestures extends StatelessWidget {
@@ -62,6 +63,11 @@ class BandGestures extends StatelessWidget {
           return g.setActionsForTaps(n, on ? {...cur, a} : cur.difference({a}));
         },
         extraTaps: caps.has(Feature.extraTapCounting),
+        onHaptics: () => goto(c, const HapticsSettings()),
+        // The assignment sheet is opened from this very screen: leave the
+        // sheet and land on it, never a second copy stacked on top.
+        onViewAllGestures: () =>
+            Navigator.of(c).popUntil((r) => r == ModalRoute.of(c)),
       ),
     );
   }
@@ -112,6 +118,14 @@ class BandGesturesView extends StatelessWidget {
   /// plain double-tap action list.
   final bool extraTaps;
 
+  /// Opens the Haptics screen, where the buzzes these gestures play are
+  /// chosen (8AI). The row is always drawn; without a callback it is inert.
+  final VoidCallback? onHaptics;
+
+  /// "View all gestures" in the tap-count sheet: called after the sheet has
+  /// closed, to take the wearer to this screen.
+  final VoidCallback? onViewAllGestures;
+
   const BandGesturesView({
     super.key,
     required this.chosen,
@@ -129,6 +143,8 @@ class BandGesturesView extends StatelessWidget {
     this.thresholds,
     this.onThresholds,
     this.extraTaps = true,
+    this.onHaptics,
+    this.onViewAllGestures,
   });
 
   @override
@@ -258,6 +274,17 @@ class BandGesturesView extends StatelessWidget {
                           : null,
                     ),
                 ]),
+                Surface(
+                  pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                  child: SetRow(
+                    LucideIcons.vibrate,
+                    C.purple,
+                    'Haptics',
+                    key: const ValueKey('gestures-open-haptics'),
+                    sub: 'The buzzes these gestures play',
+                    onTap: onHaptics,
+                  ),
+                ),
                 if (extraTaps)
                 Section(
                   'What needs a WHOOP MG',
@@ -325,6 +352,19 @@ class BandGesturesView extends StatelessWidget {
                       onTapToggle!(taps, a, next);
                     },
                   ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: S.x5),
+                  child: SetRow(
+                    LucideIcons.layoutList,
+                    C.blue,
+                    'View all gestures',
+                    key: const ValueKey('gesture-sheet-view-all'),
+                    onTap: () {
+                      Navigator.of(sheet).pop();
+                      onViewAllGestures?.call();
+                    },
+                  ),
+                ),
               ],
             ),
           ),

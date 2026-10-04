@@ -310,8 +310,8 @@ class _ZonesDetailState extends State<ZonesDetail> {
     final d = _d ?? const ZonesData();
     return detailScaffold(c, l?.activityZonesTitle ?? 'Heart-rate zones', [
       if (_loading && _d == null) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else ...[
         _ceiling(p, l, d),
         Section(l?.activityZonesYourZonesSection ?? 'Your zones', _zones(p, l, d)),

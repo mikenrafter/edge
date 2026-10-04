@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../settings/settings_repository.dart';
 import '../../state/locale_controller.dart';
+import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'settings.dart';
 
@@ -150,7 +151,13 @@ String accordionPrefKey(String id) => 'accordion_$id';
 /// the app-prefs section of [SettingsRepository] (one bool per section, written
 /// when it is toggled). A section that was never toggled starts as
 /// [initiallyExpanded]. Without an [id] nothing is stored.
-class SettingsAccordion extends StatefulWidget {
+///
+/// The open flag lives in a State, and the lists these sit in gain and lose
+/// neighbours (a permission card, a "not connected" card). Positionally, a
+/// neighbour would inherit the folded section's State and fold or open with it.
+/// So this widget is a thin const description and the State sits in a card
+/// keyed by [id]: an accordion that moves gets the State for its own id.
+class SettingsAccordion extends StatelessWidget {
   const SettingsAccordion(this.title,
       {super.key,
       required this.children,
@@ -166,15 +173,36 @@ class SettingsAccordion extends StatefulWidget {
   final bool initiallyExpanded;
 
   @override
-  State<SettingsAccordion> createState() => _SettingsAccordionState();
+  Widget build(BuildContext context) => _SettingsAccordionCard(
+      key: id == null ? null : ValueKey<String>('accordion_$id'), this);
 }
 
-class _SettingsAccordionState extends State<SettingsAccordion> {
-  late bool _open = widget.initiallyExpanded;
+class _SettingsAccordionCard extends StatefulWidget {
+  const _SettingsAccordionCard(this.a, {super.key});
+  final SettingsAccordion a;
+
+  @override
+  State<_SettingsAccordionCard> createState() => _SettingsAccordionState();
+}
+
+class _SettingsAccordionState extends State<_SettingsAccordionCard> {
+  late bool _open = _remembered();
 
   /// Set once the person has toggled it: a stored answer that arrives after
   /// that must not undo what they just did.
   bool _toggled = false;
+
+  /// The stored answer for this id, read synchronously from the start-up
+  /// cache ([Prefs.ensureLoaded] runs before runApp), else [initiallyExpanded].
+  /// Building in the remembered state on the first frame matters: a folded
+  /// section built open and folded a frame later makes a long page shrink under
+  /// a person who has already started scrolling it. Before the cache is loaded
+  /// this is the default, and [_restore] still corrects it.
+  bool _remembered() {
+    final id = widget.a.id;
+    if (id == null) return widget.a.initiallyExpanded;
+    return Prefs.getBool(accordionPrefKey(id), widget.a.initiallyExpanded);
+  }
 
   @override
   void initState() {
@@ -182,8 +210,19 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
     _restore();
   }
 
+  @override
+  void didUpdateWidget(_SettingsAccordionCard old) {
+    super.didUpdateWidget(old);
+    if (old.a.id == widget.a.id) return;
+    // This State now belongs to another section: show that section's answer,
+    // not the one it held, and let a read still in flight for the old id lapse.
+    _toggled = false;
+    _open = _remembered();
+    _restore();
+  }
+
   Future<void> _restore() async {
-    final id = widget.id;
+    final id = widget.a.id;
     if (id == null) return;
     bool? stored;
     try {
@@ -191,8 +230,10 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
     } catch (_) {
       return; // Unreadable: keep today's default.
     }
-    if (!mounted || _toggled || stored == null || stored == _open) return;
-    setState(() => _open = stored!);
+    if (!mounted || widget.a.id != id || _toggled) return;
+    final answer = stored ?? widget.a.initiallyExpanded;
+    if (answer == _open) return;
+    setState(() => _open = answer);
   }
 
   Future<void> _toggle() async {
@@ -201,7 +242,7 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
       _toggled = true;
       _open = open;
     });
-    final id = widget.id;
+    final id = widget.a.id;
     if (id == null) return;
     try {
       await SettingsRepository.instance.update(
@@ -216,7 +257,7 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
-    final summary = widget.summary;
+    final summary = widget.a.summary;
     return Padding(
       padding: const EdgeInsets.only(top: S.x3),
       // The card is drawn here rather than by Surface, which wraps its child in
@@ -233,7 +274,7 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
         child: Column(children: [
           Pressable(
             onTap: _toggle,
-            semanticLabel: '${widget.title}, ${_open ? 'expanded' : 'collapsed'}',
+            semanticLabel: '${widget.a.title}, ${_open ? 'expanded' : 'collapsed'}',
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: S.x3),
               child: Row(children: [
@@ -241,7 +282,7 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(widget.title,
+                        Text(widget.a.title,
                             style: F.body.copyWith(
                                 color: p.ink, fontWeight: FontWeight.w600)),
                         if (!_open && summary != null && summary.isNotEmpty)
@@ -257,7 +298,7 @@ class _SettingsAccordionState extends State<SettingsAccordion> {
             ),
           ),
           if (_open)
-            for (final row in widget.children) ...[
+            for (final row in widget.a.children) ...[
               Divider(color: p.line, height: 1),
               row,
             ],

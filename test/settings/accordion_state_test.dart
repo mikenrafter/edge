@@ -8,7 +8,8 @@
 //                             SettingsRepository.changes
 //   leave and reopen       -> each section comes back the way it was left
 //   another screen         -> its same-titled section is NOT affected
-//                             (Settings > Band vs the band's Device detail >
+//                             (Settings > Hardware, once Band, vs the band's
+//                             Device detail >
 //                             Band)
 //   another locale         -> same key, same remembered state
 //
@@ -169,8 +170,8 @@ void main() {
       final writes = _Writes();
       addTearDown(writes.close);
       await _open(t, _screens['Settings']!());
-      await _toggle(t, _byTitle('Band'));
-      expect(_isOpen(t, _byTitle('Band')), isFalse);
+      await _toggle(t, _byTitle('Hardware'));
+      expect(_isOpen(t, _byTitle('Hardware')), isFalse);
       expect(writes.all, hasLength(1));
       final entry = writes.all.single;
       expect(entry, hasLength(1), reason: 'one section, one key');
@@ -187,10 +188,10 @@ void main() {
     testWidgets('collapse, leave, reopen: still collapsed; the others untouched',
         (t) async {
       await _open(t, _screens['Settings']!());
-      await _toggle(t, _byTitle('Band'));
+      await _toggle(t, _byTitle('Hardware'));
       await _leave(t);
       await _open(t, _screens['Settings']!());
-      expect(_isOpen(t, _byTitle('Band')), isFalse,
+      expect(_isOpen(t, _byTitle('Hardware')), isFalse,
           reason: 'closed last visit, closed this visit');
       for (final other in ['Alerts', 'You & preferences', 'Data & privacy']) {
         expect(_isOpen(t, _byTitle(other)), isTrue, reason: other);
@@ -226,14 +227,16 @@ void main() {
   });
 
   group('the key is screen id + section id', () {
-    testWidgets('Settings > Band and the band page > Band are different keys',
+    testWidgets('Settings > Hardware and the band page > Band are different '
+        'keys',
         (t) async {
       await _open(t, _screens['Settings']!());
-      await _toggle(t, _byTitle('Band'));
+      await _toggle(t, _byTitle('Hardware'));
       await _leave(t);
       await _open(t, _screens['Device detail']!());
       expect(_isOpen(t, _byTitle('Band')), isTrue,
-          reason: 'folding Settings > Band must not fold Device detail > Band');
+          reason: 'folding Settings > Hardware must not fold Device '
+              'detail > Band');
       await expectAllSectionsExpanded(t, 'Device detail');
     });
 
@@ -305,7 +308,7 @@ void main() {
       await _leave(t);
       await _open(t, _screens['Settings']!(), locale: es);
       expect(_isOpen(t, _byTitle('Acerca de')), isFalse);
-      expect(_isOpen(t, _byTitle('Band')), isTrue);
+      expect(_isOpen(t, _byTitle('Hardware')), isTrue);
     });
   });
 

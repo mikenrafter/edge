@@ -92,7 +92,9 @@ void main() {
 
     test('dynamics still never invents loudness: written mf stays mf when it '
         'can', () {
-      final d = _plan('N2mf R2 N2mf', priority: HapticPriority.dynamics);
+      // The pair's longer rendition (N3 R1 N3 at mf); its own N2 R2 N2 would
+      // shorten a written rest of 2 in the other rendition (8AI).
+      final d = _plan('N3mf R1 N3mf', priority: HapticPriority.dynamics);
       expect(d.exact, isTrue);
       expect(d.cost, 0);
     });
@@ -121,8 +123,8 @@ void main() {
     test('a pattern of any notes costs what the same timing costs at a '
         'loudness the band has', () {
       for (final prio in HapticPriority.values) {
-        final anyPlan = _plan('N2* R2 N2*', priority: prio);
-        final mfPlan = _plan('N2mf R2 N2mf', priority: prio);
+        final anyPlan = _plan('N3* R1 N3*', priority: prio);
+        final mfPlan = _plan('N3mf R1 N3mf', priority: prio);
         expect(anyPlan.cost, mfPlan.cost, reason: '$prio');
         expect(anyPlan.cost, 0);
       }

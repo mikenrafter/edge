@@ -352,7 +352,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 58;
+  static const int schemaVersion = 59;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1120,6 +1120,14 @@ class LocalDb {
           // re-runs it on every open.
           await _createInputRev(db);
         }
+        if (oldV < 59) {
+          // 8AI G1: the last good result of each slow screen read, kept across
+          // restarts. One small additive table, no backfill (an empty table is
+          // a screen's first-open state), so it is cheap under iOS's CPU
+          // watchdog (invariant 11). No kAlgoVersion bump: nothing derived
+          // moves. _repairOpenSchema re-runs it on every open.
+          await _createLastResult(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1214,10 +1222,60 @@ class LocalDb {
     // After every step above that can rebuild decoded_* (_relaxDecodedHrNull):
     // a rebuilt table drops its triggers, this puts them back.
     await _createInputRev(db);
+    await _createLastResult(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
     await _dropRawStore(db);
+  }
+
+  /// `last_result`: the repository-level JSON a computed-on-open screen built
+  /// its last good view from, one row per key. `computed_at` is when that result
+  /// was computed (epoch ms), never when it was written or read back.
+  static Future<void> _createLastResult(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS last_result ('
+        'key TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, '
+        'payload_json TEXT NOT NULL)',
+      );
+
+  /// One stored result, or null. A store error is the caller's to swallow: a
+  /// missing result is a spinner, never a crash.
+  static Future<({int computedAt, String payload})?> lastResult(
+      String key) async {
+    final db = await instance;
+    final rows = await db.query('last_result',
+        columns: ['computed_at', 'payload_json'],
+        where: 'key = ?',
+        whereArgs: [key],
+        limit: 1);
+    if (rows.isEmpty) return null;
+    final at = rows.single['computed_at'];
+    final json = rows.single['payload_json'];
+    if (at is! int || json is! String) return null;
+    return (computedAt: at, payload: json);
+  }
+
+  /// Replaces [key]'s row and drops the oldest rows (by `computed_at`) beyond
+  /// [maxRows], in one transaction.
+  static Future<void> putLastResult(
+      String key, int computedAt, String payload, int maxRows) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      await txn.insert(
+          'last_result',
+          {'key': key, 'computed_at': computedAt, 'payload_json': payload},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.rawDelete(
+          'DELETE FROM last_result WHERE key NOT IN ('
+          'SELECT key FROM last_result ORDER BY computed_at DESC, key DESC '
+          'LIMIT ?)',
+          [maxRows]);
+    });
+  }
+
+  static Future<void> clearLastResults() async {
+    final db = await instance;
+    await db.delete('last_result');
   }
 
   /// `input_rev` plus the triggers that keep it current: one revision counter
@@ -8939,6 +8997,11 @@ class LocalDb {
     return deleted;
   }
 
+  /// Bumped by every [wipeAll]. An in-memory copy of stored results
+  /// (`LastResultCache`) is only good for the epoch it was taken in, so a
+  /// "Delete everything" cannot leave a deleted result on screen.
+  static int wipeEpoch = 0;
+
   /// Empty EVERY table — the honest reading of "Delete everything".
   ///
   /// Enumerated from `sqlite_master`, never from a hand-written list. The
@@ -8960,6 +9023,9 @@ class LocalDb {
   /// the tail of a destructive user action). Views are `type='view'` and are
   /// not matched; the sqlite/Android internal tables are skipped by name.
   static Future<int> wipeAll() async {
+    // Anything cached in memory from before this point described data that is
+    // now gone (see [wipeEpoch]).
+    wipeEpoch++;
     final db = await instance;
     final rows = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' "

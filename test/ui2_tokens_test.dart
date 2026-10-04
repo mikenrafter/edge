@@ -195,6 +195,11 @@ const _notComponents = {
   'AppShell', 'Domain', 'GalleryScreen',
   // Lifecycle only (opens the band queue's lab mode), draws nothing.
   'LabSession',
+  // A spinner animates forever, so a gallery case would keep the sweeps and
+  // goldens that settle the frame from ever settling. It is a Surface around a
+  // CircularProgressIndicator and is asserted structurally in
+  // test/fix8ai/g1_calc_screens_shell_test.dart.
+  'InlineLoading',
   // Reads AppState from Provider; `SyncControl` is its pure half and is in
   // the gallery.
   'HomeSyncControl',

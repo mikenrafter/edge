@@ -48,9 +48,15 @@ const Map<String, String> _kStreamLabels = {
   'accel_y': 'Accelerometer Y (g)',
   'accel_z': 'Accelerometer Z (g)',
   'accel_mag': 'Acceleration (g)',
-  'gyro_x': 'Gyroscope X',
-  'gyro_y': 'Gyroscope Y',
-  'gyro_z': 'Gyroscope Z',
+  'gyro_x': 'Gyroscope X (°/s)',
+  'gyro_y': 'Gyroscope Y (°/s)',
+  'gyro_z': 'Gyroscope Z (°/s)',
+  'ecg_uv': 'ECG, filtered (µV)',
+  'ecg_band_hr': 'ECG: heart rate the band reports (bpm)',
+  'ecg_quality': 'ECG: signal quality (band code)',
+  // Meaning unconfirmed by protocol: shown as raw channels, never as a sensor.
+  'r11_ch1': 'R11 raw channel 1 (unidentified)',
+  'r11_ch2': 'R11 raw channel 2 (unidentified)',
   'skin_temp': 'Skin temperature (°C)',
   'spo2': 'Blood oxygen (%)',
   'battery': 'Battery (%)',
@@ -111,10 +117,13 @@ class LiveDevices extends StatefulWidget {
 
 class _LiveDevicesState extends State<LiveDevices> {
   Timer? _tick;
+  late final AppState _app;
 
   @override
   void initState() {
     super.initState();
+    // Held for dispose: a context lookup there is unsafe (§4.5).
+    _app = context.read<AppState>();
     // The buffer moves many times a second and is deliberately not a
     // listenable (a rebuild per sample would be the 1 Hz storm other screens
     // were fixed for); redraw once a second instead.
@@ -126,6 +135,9 @@ class _LiveDevicesState extends State<LiveDevices> {
   @override
   void dispose() {
     _tick?.cancel();
+    // Nothing streams behind a closed screen. Stop clears the owner before its
+    // first await, so not awaiting it here cannot leave the feed on.
+    unawaited(_app.stopLiveFeed(LocalDb.kPrimaryDeviceId));
     super.dispose();
   }
 
@@ -152,7 +164,14 @@ class _LiveDevicesState extends State<LiveDevices> {
             );
           }(),
     ];
-    return LiveDevicesView(devices: devices, buffer: app.liveStreams, now: now);
+    return LiveDevicesView(
+      devices: devices,
+      buffer: app.liveStreams,
+      now: now,
+      feedOn: app.isLiveFeedOn,
+      onFeed: (id, on) =>
+          unawaited(on ? app.startLiveFeed(id) : app.stopLiveFeed(id)),
+    );
   }
 
   static DateTime? _newest(LiveStreamBuffer b, String id) {
@@ -173,11 +192,18 @@ class LiveDevicesView extends StatelessWidget {
     required this.devices,
     required this.buffer,
     required this.now,
+    this.feedOn,
+    this.onFeed,
   });
 
   final List<LiveDevice> devices;
   final LiveStreamBuffer buffer;
   final DateTime now;
+
+  /// Whether a device's live feed is on, and the Start / Stop control. Both
+  /// null (a view with no AppState behind it) means no control is drawn.
+  final bool Function(String deviceId)? feedOn;
+  final void Function(String deviceId, bool on)? onFeed;
 
   @override
   Widget build(BuildContext c) {
@@ -206,7 +232,15 @@ class LiveDevicesView extends StatelessWidget {
                       style: F.cap.copyWith(color: p.ink3)),
                   for (final d in devices) ...[
                     const SizedBox(height: S.x4),
-                    _DeviceCard(device: d, buffer: buffer, now: now),
+                    _DeviceCard(
+                      device: d,
+                      buffer: buffer,
+                      now: now,
+                      feedOn: feedOn?.call(d.id) ?? false,
+                      onFeed: feedOn == null || onFeed == null || d.id != _kBandId
+                          ? null
+                          : (on) => onFeed!(d.id, on),
+                    ),
                   ],
                 ],
               ],
@@ -218,13 +252,25 @@ class LiveDevicesView extends StatelessWidget {
   }
 }
 
+// The band's id in the buffer (LocalDb.kPrimaryDeviceId); only it has a feed.
+const String _kBandId = LocalDb.kPrimaryDeviceId;
+
 class _DeviceCard extends StatelessWidget {
-  const _DeviceCard(
-      {required this.device, required this.buffer, required this.now});
+  const _DeviceCard({
+    required this.device,
+    required this.buffer,
+    required this.now,
+    required this.feedOn,
+    required this.onFeed,
+  });
 
   final LiveDevice device;
   final LiveStreamBuffer buffer;
   final DateTime now;
+  final bool feedOn;
+
+  /// Null when the device has no feed control.
+  final void Function(bool on)? onFeed;
 
   @override
   Widget build(BuildContext c) {
@@ -250,6 +296,29 @@ class _DeviceCard extends StatelessWidget {
               style: F.body.copyWith(color: p.ink2))
         else ...[
           Text('Connected', style: F.cap.copyWith(color: p.on(C.green))),
+          if (onFeed != null) ...[
+            const SizedBox(height: S.x3),
+            BigButton(
+              feedOn ? 'Stop live feed' : 'Start live feed',
+              soft: feedOn,
+              color: feedOn ? C.red : C.green,
+              onTap: () => onFeed!(!feedOn),
+            ),
+          ],
+          if (buffer.streamKeys(device.id).isNotEmpty) ...[
+            const SizedBox(height: S.x3),
+            // What this device has reported so far, one row per stream.
+            Column(
+              key: ValueKey<String>('live-sensors:${device.id}'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Streams reported', style: F.cap.copyWith(color: p.ink3)),
+                for (final key in buffer.streamKeys(device.id))
+                  Text(liveStreamLabel(key),
+                      style: F.cap.copyWith(color: p.ink2)),
+              ],
+            ),
+          ],
           for (final key in buffer.streamKeys(device.id)) ...[
             const SizedBox(height: S.x3),
             _StreamBlock(

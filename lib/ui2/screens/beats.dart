@@ -151,23 +151,23 @@ class BeatsData {
     );
   }
 
-  static Future<BeatsData> load(LocalRepository repo,
+  /// Everything but the corrected-RR beats (`nn`, `rawBeats`, `cleanFraction`
+  /// stay empty): the stored night's own rows, which are cheap. The beats are
+  /// the slow read and come separately — [readBeats], [withBeats] — so the
+  /// panels that do not need them can be drawn first.
+  static Future<BeatsData> loadShell(LocalRepository repo,
       {String? want, ({String? day, List<String> days})? night}) async {
     final (:day, :days) = night ?? await pickNight(repo, want: want);
     if (day == null) return BeatsData(days: days);
 
     final hrv = await repo.getDayHrv(day);
     final heart = await repo.getDayHeart(day);
-    final beats = await repo.getNightBeats(day);
     final dcEnv = hrv['prsa_dc'];
     final shapeEnv = hrv['night_shape'];
 
     return BeatsData(
       day: day,
       days: days,
-      nn: beats.nn,
-      rawBeats: beats.rawBeats,
-      cleanFraction: beats.cleanFraction,
       poincare: hrv['irregular'] is Map
           ? (hrv['irregular'] as Map).cast<String, dynamic>()
           : const {},
@@ -183,6 +183,48 @@ class BeatsData {
       rhythm24h: heart['irregular_24h'],
       deviceFamily: hrv['device_family']?.toString(),
       computedAt: computedAtOf(hrv['computed_at']),
+    );
+  }
+
+  /// The corrected-RR read for [day] as the plain JSON map that is stored and
+  /// read back across restarts (never a widget object).
+  static Future<Map<String, dynamic>> readBeats(
+      LocalRepository repo, String day) async {
+    final b = await repo.getNightBeats(day);
+    return {
+      'nn': b.nn,
+      'raw_beats': b.rawBeats,
+      'clean_fraction': b.cleanFraction,
+    };
+  }
+
+  /// This result with the beats of a [readBeats] map. A map that is not that
+  /// shape adds no beats (they stay empty, never invented).
+  BeatsData withBeats(Map<String, dynamic> m) {
+    final raw = m['nn'];
+    final nn = [
+      for (final v in (raw is List ? raw : const []))
+        if (v is num) v.toDouble(),
+    ];
+    return BeatsData(
+      day: day,
+      days: days,
+      nn: nn,
+      rawBeats: (m['raw_beats'] as num?)?.toInt() ?? 0,
+      cleanFraction: (m['clean_fraction'] as num?)?.toDouble() ?? 0,
+      poincare: poincare,
+      bins: bins,
+      firstThirdMs: firstThirdMs,
+      lastThirdMs: lastThirdMs,
+      shape: shape,
+      originMs: originMs,
+      dcPoints: dcPoints,
+      dcAnchors: dcAnchors,
+      dc: dc,
+      rhythmPoints: rhythmPoints,
+      rhythm24h: rhythm24h,
+      deviceFamily: deviceFamily,
+      computedAt: computedAt,
     );
   }
 
@@ -248,9 +290,27 @@ class _BeatsState extends State<Beats> with RevisionReload {
   @override
   void reload() => _load();
 
-  /// Set while [_d] is the last result of an earlier open, shown at once while
-  /// the beats are read again; null once the fresh read has replaced it.
+  /// Set while the beats on screen are the last result of an earlier open
+  /// (memory or the stored copy), shown at once while they are read again; null
+  /// once the fresh read has replaced them.
   DateTime? _cachedAt;
+
+  /// What [_d] is built from: the night's own rows (cheap) and, separately, the
+  /// corrected-RR beats (the slow read, as its stored JSON map).
+  BeatsData? _shell;
+  Map<String, dynamic>? _beats;
+  bool _beatsFailed = false;
+
+  /// The beats panel is still waiting on the slow read, with nothing to show.
+  bool get _beatsPending =>
+      widget.data == null && _beats == null && !_beatsFailed;
+
+  void _compose() {
+    final sh = _shell;
+    if (sh == null) return;
+    final m = _beats;
+    _d = m == null ? sh : sh.withBeats(m);
+  }
 
   Future<void> _load() async {
     final repo = repoOf(context);
@@ -261,30 +321,63 @@ class _BeatsState extends State<Beats> with RevisionReload {
     final t = beginRead(#beats);
     try {
       final night = await BeatsData.pickNight(repo, want: _day);
-      // The corrected-RR read is the slow part. This night's last good result
-      // is kept so a re-open shows it at once, labelled, while it recomputes;
-      // an error is never kept.
-      final key = night.day == null
+      if (!stillNewest(#beats, t)) return;
+      final day = night.day;
+      if (_d == null || _d!.day != day) {
+        // The night is known after the cheap pick: its header and day stepper
+        // are drawn now, around whatever is still being read.
+        setState(() {
+          _d = BeatsData(day: day, days: night.days);
+          _shell = null;
+          _beats = null;
+          _beatsFailed = false;
+          _cachedAt = null;
+          _loading = true;
+        });
+      }
+      // The corrected-RR read is the slow part. It starts now, beside the
+      // cheap rows, and this night's last good result (memory, else the stored
+      // copy) is shown under an "As of" label until it lands. An error is never
+      // kept; here it comes back as null so it cannot escape unawaited.
+      final slow = day == null
           ? null
-          : LastResultCache.keyOf('beats', [night.day]);
-      if (key != null && _d?.day != night.day) {
-        final hit = LastResultCache.instance.get<BeatsData>(key);
-        if (hit != null && stillNewest(#beats, t)) {
-          setState(() {
-            _d = hit.value;
-            _cachedAt = hit.cachedAt;
-            _loading = false;
-          });
+          : LastResultCache.instance
+              .loadShowingLast<Map<String, dynamic>>(
+                LastResultCache.keyOf('beats', [day]),
+                () => BeatsData.readBeats(repo, day),
+                onLast: (hit) {
+                  // Only while nothing is shown for this night: a re-read of a
+                  // night that already has fresh beats is not stale.
+                  if (!stillNewest(#beats, t) || _beats != null) return;
+                  setState(() {
+                    _beats = hit.value;
+                    _cachedAt = hit.cachedAt;
+                    _compose();
+                  });
+                },
+              )
+              .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+      final shell = await BeatsData.loadShell(repo, night: night);
+      if (!stillNewest(#beats, t)) return;
+      setState(() {
+        _shell = shell;
+        _loading = false;
+        _compose();
+      });
+      if (slow == null) return;
+      final m = await slow;
+      if (!stillNewest(#beats, t)) return;
+      setState(() {
+        if (m != null) {
+          _beats = m;
+          _cachedAt = null;
+        } else {
+          // A failed read keeps an earlier result (labelled); with none, the
+          // panel is left out rather than claiming the beats are gone.
+          _beatsFailed = _beats == null;
         }
-      }
-      Future<BeatsData> fresh() =>
-          BeatsData.load(repo, want: _day, night: night);
-      final d = key == null
-          ? await fresh()
-          : await LastResultCache.instance.load<BeatsData>(key, fresh);
-      if (stillNewest(#beats, t)) {
-        setState(() => (_d = d, _cachedAt = null, _loading = false));
-      }
+        _compose();
+      });
     } catch (_) {
       if (stillNewest(#beats, t)) setState(() => _loading = false);
     }
@@ -298,7 +391,9 @@ class _BeatsState extends State<Beats> with RevisionReload {
     final cached = _cachedAt;
     if (cached != null) return place(context, cached);
     return AsOfHold(
-      shown: d,
+      // The night's own read, not the composed view: beats landing swap `_d`
+      // but must not release a label held for the old night rows.
+      shown: _shell ?? d,
       asOf: (recalc) =>
           asOfFor(shownDay: d.day, computedAt: d.computedAt, recalc: recalc),
       builder: place,
@@ -325,8 +420,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         if (_loading)
           const Padding(
-            padding: EdgeInsets.only(top: S.x8),
-            child: Center(child: CircularProgressIndicator()),
+            padding: EdgeInsets.only(top: S.x4),
+            child: InlineLoading(),
           )
         else if (d.day == null)
           StatusCard(
@@ -337,7 +432,13 @@ class _BeatsState extends State<Beats> with RevisionReload {
             icon: LucideIcons.heartPulse,
           )
         else ...[
-          _poincare(c, d),
+          if (_beatsPending)
+            Section(
+              l?.beatsPoincareSection ?? 'Every beat against the one before it',
+              const InlineLoading(),
+            )
+          else if (!_beatsFailed)
+            _poincare(c, d),
           const SizedBox(height: S.x5),
           _nightCurve(c, d),
           const SizedBox(height: S.x5),

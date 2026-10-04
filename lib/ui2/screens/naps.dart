@@ -240,8 +240,8 @@ class _NapsScreenState extends State<NapsScreen> {
     if (d == null) {
       return detailScaffold(c, l?.napsTitle ?? 'Naps', const [
         Padding(
-          padding: EdgeInsets.only(top: S.x8),
-          child: Center(child: CircularProgressIndicator()),
+          padding: EdgeInsets.only(top: S.x4),
+          child: InlineLoading(),
         ),
       ]);
     }

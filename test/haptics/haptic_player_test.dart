@@ -181,7 +181,9 @@ void main() {
 
     test('the next write comes after the ended event plus delayMs', () {
       fakeAsync((async) {
-        final plan = _plan('N4ff R6 N4f');
+        // A rest of 4 is the 300 ms row's shortest (8AI: rests are never
+        // shortened, so a rest of 6 would take the 700 ms row).
+        final plan = _plan('N4ff R4 N4f');
         final delay = plan.steps[1].delayMs;
         expect(delay, 300);
         final band = _Band(async)
@@ -194,7 +196,7 @@ void main() {
     test('a delay is honoured exactly: one millisecond early nothing is '
         'written', () {
       fakeAsync((async) {
-        final plan = _plan('N4ff R6 N4f');
+        final plan = _plan('N4ff R4 N4f');
         final band = _Band(async)
           ..endedAfter = const Duration(milliseconds: 1000);
         BuzzDelivery? out;
@@ -232,7 +234,7 @@ void main() {
 
     test('a zero delay writes the moment the ended event lands', () {
       fakeAsync((async) {
-        final plan = _plan('N4ff R4 N4ff');
+        final plan = _plan('N4ff R3 N4ff');
         expect(plan.steps[1].delayMs, 0);
         final band = _Band(async)
           ..endedAfter = const Duration(milliseconds: 400);

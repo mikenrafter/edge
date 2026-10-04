@@ -6,6 +6,12 @@
 // that stick until changed, and Delete. There is one rendition, no tests, no
 // metronome and no limit pill. The tempo is the band profile's unit.
 //
+// Two modes (8AI, remembered in Prefs.hapticsEditorMode): Follow rhythm, the
+// default, hides the dynamics bar and writes every new note as a `*` note
+// (length only); Allow dynamics shows the bar and writes new notes at the sticky
+// dynamic. Switching never rewrites an entry, it only governs the next ones and
+// what is shown.
+//
 // Under the wheel the editor says what the band plays for the notes as they
 // are now (the 8AC wording, recomputed on every edit). Play sends exactly what is on the page to the band.
 // "Start from taps" fills the notes from a tapped rhythm. Save asks for a name
@@ -28,10 +34,14 @@ import '../../haptics/haptic_profile.dart';
 import '../../haptics/pattern_store.dart' show kPatternNameMax;
 import '../../haptics/tap_notes.dart';
 import '../../notify/buzz_sequence.dart';
+import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'haptic_plan_text.dart';
 import 'pattern_notation.dart';
 import 'tap_take_pad.dart';
+
+const String _modeFollow = 'follow_rhythm';
+const String _modeAllow = 'allow_dynamics';
 
 /// The lengths with a button of their own; the Dot makes 2, 4, 8 into 3, 6, 12.
 const List<int> _buttonLengths = [1, 2, 4, 8];
@@ -99,6 +109,11 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
 
   late HapticPriority _priority =
       widget.initial?.priority ?? HapticPriority.rhythm;
+
+  // Follow rhythm (true, the default) or Allow dynamics; read once, written on
+  // every switch.
+  bool _follow =
+      Prefs.getString(Prefs.hapticsEditorMode, _modeFollow) != _modeAllow;
   HapticPlan? _plan;
   bool _tooLong = false;
   bool _playing = false;
@@ -274,6 +289,25 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
     if (!mounted || !_wheel.hasClients || _marching) return;
     if (_wheel.selectedItem == _s.cursor) return;
     _wheel.jumpToItem(_s.cursor);
+  }
+
+  void _setMode({required bool follow}) {
+    if (follow == _follow) return;
+    setState(() => _follow = follow);
+    Prefs.setString(Prefs.hapticsEditorMode, follow ? _modeFollow : _modeAllow);
+  }
+
+  // One entry of [n] sixteenths at the cursor. In Follow rhythm a note is `*`
+  // whatever the sticky dynamic is, which is left as it was.
+  void _tapLength(int n) {
+    if (!_follow) return _s.tap(n);
+    final keep = _s.nextDynamic;
+    _s.nextDynamic = PatternDynamic.any;
+    try {
+      _s.tap(n);
+    } finally {
+      _s.nextDynamic = keep;
+    }
   }
 
   void _scrolled(int item) {
@@ -545,22 +579,45 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                     ],
                   ),
                   Row(
+                    key: const ValueKey('pattern-editor-mode'),
                     children: [
-                      for (final d in PatternDynamic.values) ...[
-                        if (d != PatternDynamic.values.first)
-                          const SizedBox(width: S.x2),
-                        Expanded(
-                          child: PatternDynamicButton(
-                            key: ValueKey('pattern-dyn-${d.name}'),
-                            dynamic: d,
-                            selected: d == _s.nextDynamic,
-                            dim: !noteNext,
-                            onTap: () => _edit(() => _s.setDynamic(d)),
-                          ),
+                      Expanded(
+                        child: _PriorityOption(
+                          key: const ValueKey('pattern-editor-mode-follow'),
+                          label: 'Follow rhythm',
+                          selected: _follow,
+                          onTap: () => _setMode(follow: true),
                         ),
-                      ],
+                      ),
+                      const SizedBox(width: S.x2),
+                      Expanded(
+                        child: _PriorityOption(
+                          key: const ValueKey('pattern-editor-mode-dynamics'),
+                          label: 'Allow dynamics',
+                          selected: !_follow,
+                          onTap: () => _setMode(follow: false),
+                        ),
+                      ),
                     ],
                   ),
+                  if (!_follow)
+                    Row(
+                      children: [
+                        for (final d in PatternDynamic.values) ...[
+                          if (d != PatternDynamic.values.first)
+                            const SizedBox(width: S.x2),
+                          Expanded(
+                            child: PatternDynamicButton(
+                              key: ValueKey('pattern-dyn-${d.name}'),
+                              dynamic: d,
+                              selected: d == _s.nextDynamic,
+                              dim: !noteNext,
+                              onTap: () => _edit(() => _s.setDynamic(d)),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   const SizedBox(height: S.x1),
                   IntrinsicHeight(
                     child: Row(
@@ -575,7 +632,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                               // A 16th has no dotted form.
                               onTap: dot && n == 1
                                   ? null
-                                  : () => _edit(() => _s.tap(n)),
+                                  : () => _edit(() => _tapLength(n)),
                             ),
                           ),
                           const SizedBox(width: S.x1),

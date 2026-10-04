@@ -1,7 +1,9 @@
 // 8AF.6 C: the gesture response vocabulary. A response to a gesture is the
 // start cue (gesture.start) and then, for a count above one, a follow-up cue
-// (gesture.followUp) per extra pulse, chained at the fastest wait the band's
-// vocabulary measured, all as ONE job of the band queue. The final "action
+// (gesture.followUp) per extra pulse, chained at the vocabulary's minimum gap
+// (HapticDeviceProfile.minVibrationGapMs), all as ONE job of the band queue.
+// Two jobs in a row (the start cue the tap sends, then the count) are spaced by
+// the same gap in the queue itself. The final "action
 // done" ack is the confirm cue (gesture.confirm). The cues are the built-in
 // patterns, so a customised one is what plays. A band with no haptic profile
 // (a 4.0) keeps today's plain pulses.
@@ -53,7 +55,7 @@ class GestureCues {
     final start = _steps(kGestureStartKey, p);
     final follow = _steps(kGestureFollowUpKey, p);
     if (start == null || follow == null) return _plainPulses(count);
-    final wait = p.fastestGap()?.delayMs ?? 0;
+    final wait = p.minVibrationGapMs;
     final cap = haptics.maxRuntime;
     var plan = [...start];
     for (var i = 1; i < count; i++) {

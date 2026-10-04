@@ -163,7 +163,7 @@ Widget _hub(
     );
 
 void main() {
-  group('Settings > Band > Haptics', () {
+  group('Settings > Hardware > Haptics', () {
     testWidgets('the row sits after Gestures and opens the hub', (t) async {
       var opened = 0;
       await pumpTall(
@@ -177,7 +177,7 @@ void main() {
       expect(row, findsOneWidget);
       expect(find.text('Haptics'), findsOneWidget);
       expect(
-          find.descendant(of: section('Band'), matching: find.text('Haptics')),
+          find.descendant(of: section('Hardware'), matching: find.text('Haptics')),
           findsOneWidget);
       expect(find.text('Your buzz patterns and band safety'), findsOneWidget);
       final gestures = t.getTopLeft(find.text('Gestures')).dy;
@@ -198,14 +198,15 @@ void main() {
   });
 
   group('the hub: groups', () {
-    testWidgets('Patterns, Safety and Test; Calibration only in dev mode',
-        (t) async {
+    testWidgets('Your patterns, Presets, Where patterns are used, Safety and '
+        'Test; Calibration only in dev mode', (t) async {
       final c = _Calls();
+      const first = ['Your patterns', 'Presets', 'Where patterns are used'];
       await pumpTall(t, _hub(c, profile: _mg));
-      expect(sectionTitles(t), ['Patterns', 'Safety', 'Test']);
+      expect(sectionTitles(t), [...first, 'Safety', 'Test']);
       expect(find.byKey(const ValueKey('haptics-device-lab')), findsNothing);
       await pumpTall(t, _hub(c, profile: _mg, devMode: true));
-      expect(sectionTitles(t), ['Patterns', 'Safety', 'Test', 'Calibration']);
+      expect(sectionTitles(t), [...first, 'Safety', 'Test', 'Calibration']);
       await expectAllSectionsExpanded(t, 'Haptics');
     });
 
@@ -451,7 +452,8 @@ void main() {
       await t.pumpAndSettle();
       expect(c.added, hasLength(1));
       expect(c.added.single.$1, 'Short');
-      expect(c.added.single.$2.notes, 'N4mf');
+      // The editor opens in Follow rhythm (8AI): every note is a `*` note.
+      expect(c.added.single.$2.notes, 'N4*');
       expect(c.replaced, isEmpty);
     });
 
@@ -727,7 +729,7 @@ void main() {
       await t.pumpAndSettle();
       expect(saved, hasLength(1));
       expect(saved.single.$1, 'Written');
-      expect(saved.single.$2.notes, 'N4mf');
+      expect(saved.single.$2.notes, 'N4*'); // Follow rhythm (8AI)
       expect(chosen, hasLength(1));
       expect(chosen.single.patternId, 'n1');
     });

@@ -93,6 +93,15 @@ class Prefs {
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
   static bool get allowLongHaptics => getBool(hapticsAllowLong, false);
 
+  /// 8AI: the notes editor's mode, 'follow_rhythm' (the default: every note is
+  /// a `*` note and the dynamics bar is hidden) or 'allow_dynamics'.
+  static const String hapticsEditorMode = 'haptics_editor_mode';
+
+  /// 8AI: the pattern each gesture cue was given, a JSON map of slot key to
+  /// pattern id (see haptic_slots.dart). Written through the settings
+  /// repository; a cue not in it plays its own built-in.
+  static const String hapticsCueAssign = 'haptics_gesture_cue_assign';
+
   /// "Pull down to sync": Home's pull-to-refresh. On unless somebody turned it
   /// off, so nobody else sees a change; off leaves syncing to the status line's
   /// Sync now button.

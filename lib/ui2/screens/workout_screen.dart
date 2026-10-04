@@ -19,6 +19,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/db.dart';
+import '../../data/local_repository.dart' show LocalRepository;
 import '../../gps/gps_source.dart';
 import '../../gps/route_models.dart';
 import '../../health/health_import_state.dart';
@@ -38,10 +39,13 @@ import '../activity/summary.dart';
 import '../charts.dart';
 import '../profile/profile.dart' show openProfile;
 import '../grammar.dart';
+import '../inline_loading.dart';
 import '../last_result_cache.dart';
 import '../revision.dart';
 import '../theme.dart';
-import '../../data/day_label.dart' show calendarDaysBetween;
+import '../../data/day_label.dart' show calendarDaysBetween, dayLabelOf;
+import 'home_screen.dart' show prettyDay;
+import 'metric_detail.dart' show detailScaffold;
 import 'log_workout.dart';
 import 'start_card.dart';
 
@@ -968,47 +972,82 @@ class _QuickTile extends StatelessWidget {
   }
 }
 
-/// A past session's summary that can start on its last result and swap to a
-/// fresh one: [cachedAt] non-null means [first] is that earlier result and a
-/// new read is under way; the label goes when it lands. A read that fails keeps
-/// what is on screen, label included.
+/// A past session's summary, opened at once and filled in. The route shows the
+/// session's title and an inline loading card first; the slow reads (the derived
+/// bundle, then the stores) run inside it. When a result of an earlier open is
+/// stored (memory, else the table) it is built into the summary straight away
+/// under an "As of" label, and the fresh read swaps it in and clears the label.
+/// A read that fails keeps what is on screen, label included.
 class _PastSummary extends StatefulWidget {
   final AppState app;
   final _PastWorkout w;
   final double? weightKg;
-  final ActivityResult first;
-  final DateTime? cachedAt;
 
-  const _PastSummary(this.app, this.w, this.weightKg,
-      {required this.first, this.cachedAt});
+  const _PastSummary(this.app, this.w, this.weightKg);
 
   @override
   State<_PastSummary> createState() => _PastSummaryState();
 }
 
 class _PastSummaryState extends State<_PastSummary> {
-  late ActivityResult _r = widget.first;
-  late DateTime? _cachedAt = widget.cachedAt;
+  /// Null until there is something to draw the summary from.
+  ActivityResult? _r;
+  DateTime? _cachedAt;
+
+  /// A result built from a fresh read is on screen (or was tried): a stored one
+  /// that finishes building later must not replace it.
+  bool _fresh = false;
 
   @override
   void initState() {
     super.initState();
-    if (_cachedAt != null) _refresh();
+    _load();
   }
 
-  Future<void> _refresh() async {
-    final failed = <Object>[];
-    final r = await _detailOf(widget.app, widget.w, failed: failed);
-    if (failed.isNotEmpty) return;
-    LastResultCache.instance
-        .put<ActivityResult>(LastResultCache.keyOf('workout', [widget.w.id]), r);
+  Future<void> _load() async {
+    final repo = widget.app.repo;
+    final w = widget.w;
+    if (repo == null) {
+      final r = await _detailOf(widget.app, w, bundle: null);
+      if (mounted) setState(() => _r = r);
+      return;
+    }
+    // The derived bundle is the slow part of opening a session. Its last good
+    // result is kept (the bundle map itself, never the screen's object); an
+    // error is not kept and comes back as null here.
+    final bundle = await LastResultCache.instance
+        .loadShowingLast<Map<String, dynamic>>(
+          LastResultCache.keyOf('workout', [w.id]),
+          () => repo.getWorkout(w.id),
+          onLast: (hit) async {
+            final r = await _detailOf(widget.app, w, bundle: hit.value);
+            if (!mounted || _fresh) return;
+            setState(() => (_r = r, _cachedAt = hit.cachedAt));
+          },
+        )
+        .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+    _fresh = true;
+    // No bundle and a stored result already on screen: that stays, labelled.
+    if (bundle == null && _r != null) return;
+    final r = await _detailOf(widget.app, w, bundle: bundle);
     if (!mounted) return;
     setState(() => (_r = r, _cachedAt = null));
   }
 
   @override
-  Widget build(BuildContext c) =>
-      ActivitySummary(_r, weightKg: widget.weightKg, asOf: _cachedAt);
+  Widget build(BuildContext c) {
+    final r = _r;
+    if (r != null) {
+      return ActivitySummary(r, weightKg: widget.weightKg, asOf: _cachedAt);
+    }
+    final w = widget.w;
+    return detailScaffold(
+      c,
+      w.importedTitle ?? w.activity.name,
+      const [InlineLoading()],
+      sub: prettyDay(dayLabelOf(w.start), AppLocalizations.of(c)),
+    );
+  }
 }
 
 /// One past session. Taps through to the same summary a live session lands
@@ -1029,24 +1068,11 @@ class _HistoryRow extends StatelessWidget {
       {this.weightKg, this.onRetime, this.onDelete});
 
   Future<void> _open(BuildContext c) async {
-    final nav = Navigator.of(c);
-    final app = c.read<AppState>();
-    // Reading the stores for a session is the slow part of opening it. The last
-    // good result is kept, so a re-open shows it at once, labelled, while the
-    // summary reads it again. A read that failed is not kept as a result.
-    final key = LastResultCache.keyOf('workout', [w.id]);
-    final hit = LastResultCache.instance.get<ActivityResult>(key);
-    if (hit != null) {
-      await nav.push(MaterialPageRoute(
-          builder: (_) => _PastSummary(app, w, weightKg,
-              first: hit.value, cachedAt: hit.cachedAt)));
-      return;
-    }
-    final failed = <Object>[];
-    final r = await _detailOf(app, w, failed: failed);
-    if (failed.isEmpty) LastResultCache.instance.put<ActivityResult>(key, r);
-    await nav.push(MaterialPageRoute(
-        builder: (_) => _PastSummary(app, w, weightKg, first: r)));
+    // The route goes up first. Reading the stores for a session is the slow
+    // part of opening it, and it runs inside the page (see [_PastSummary]).
+    await Navigator.of(c).push(MaterialPageRoute(
+        builder: (_) =>
+            _PastSummary(c.read<AppState>(), w, weightKg)));
   }
 
   @override
@@ -1618,15 +1644,17 @@ List<double> _decodeZoneMinutes(Object? raw) => [
 /// One past session, opened from history — built from what the stores hold
 /// rather than from the six columns the list row carries.
 ///
-/// A failed `getWorkout` read is added to [failed], so a caller can tell a
-/// degraded result from a complete one.
+/// [bundle] is the `getWorkout` map, read (or restored) by the caller; null
+/// leaves the list row's own scalars, the degraded but honest result.
 Future<ActivityResult> _detailOf(AppState app, _PastWorkout w,
-    {List<Object>? failed}) async {
+    {required Map<String, dynamic>? bundle}) async {
   var out = w.toResult();
   final repo = app.repo;
   if (repo == null) return out;
+  final b = bundle;
+  // No bundle (its read failed, or none yet): the row's own scalars stand.
+  if (b == null) return _withStoreReads(w, repo, out);
   try {
-    final b = await repo.getWorkout(w.id);
     final band = _topBand(b['zone_bands']);
     // The bundle's own split — and whether it is the one that ends up on
     // screen. A short or absent `zone_min` falls back to the list row's split
@@ -1684,10 +1712,16 @@ Future<ActivityResult> _detailOf(AppState app, _PastWorkout w,
       // objection to falling back here was actually about.
       zoneMinutes: usedBundleSplit ? decoded : out.zoneMinutes,
     );
-  } catch (e) {
+  } catch (_) {
     // Enrichment is best-effort; the scalars on the row still render.
-    failed?.add(e);
   }
+  return _withStoreReads(w, repo, out);
+}
+
+/// The primary-key reads of a session's own tables on top of [out]: its rating,
+/// its strength sets and its route.
+Future<ActivityResult> _withStoreReads(
+    _PastWorkout w, LocalRepository repo, ActivityResult out) async {
   // TS-09 — the session's own rating. `getWorkout` is the derived bundle and
   // does not carry the column, so this is one primary-key read of the row.
   try {

@@ -341,7 +341,7 @@ class _CycleTabState extends State<CycleTab> with RevisionReload {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final d = _d;
-    if (d == null) return const Center(child: CircularProgressIndicator());
+    if (d == null) return const InlineLoading();
 
     if (!d.enabled) {
       return StatusCard(

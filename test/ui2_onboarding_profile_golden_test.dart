@@ -97,13 +97,12 @@ Map<String, Widget> _cases() => {
       'my_devices_empty': const MyDevicesView(),
       'device_detail': DeviceDetailView(_band, onFind: () {}, onForget: () {}),
       'more_settings': const MoreSettingsView(
-          units: 'Metric', appearance: 'Dark', phoneSteps: true),
+          units: 'Metric', appearance: 'Dark'),
       // The icon row appears only where the OS will actually change the icon,
       // so the default case above is drawn without it — this is the iOS one.
       'more_settings_icon': const MoreSettingsView(
           units: 'Metric',
           appearance: 'Dark',
-          phoneSteps: true,
           appIcon: AppIconChoice.colourful),
       // The alarm's three confirmation states are the point of the screen: it
       // must not draw a confident tick over an alarm the band never

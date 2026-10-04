@@ -26,21 +26,28 @@ import 'haptic_pattern_editor.dart';
 import 'haptic_plan_text.dart';
 import 'profile.dart' show SetRow;
 
-/// "1 buzz" / "3 buzzes" — what the row says about the rhythm behind it.
+/// "1 buzz" / "3 buzzes": what the recording sheet says about the take being
+/// made. An alert's row names its pattern instead (see [BuzzPatternRow]).
 String buzzSummary(BuzzSequence s) =>
     s.length == 1 ? '1 buzz' : '${s.length} buzzes';
 
-/// The row that opens the sheet. Disabled (present, dimmed, inert) when the
-/// alert does not go to the band, rather than absent.
+/// The row that opens the sheet, saying which pattern the alert plays by NAME
+/// ("Three pulses", "Your: Morning nudge"), never by how many buzzes it has. A
+/// rhythm whose pattern is not known reads "Custom". Disabled (present,
+/// dimmed, inert) when the alert does not go to the band, rather than absent.
 class BuzzPatternRow extends StatelessWidget {
   const BuzzPatternRow({
     super.key,
     required this.sequence,
+    this.patternName,
     this.onTap,
     this.enabled = true,
   });
 
   final BuzzSequence sequence;
+
+  /// The pattern's name; null when the screen does not know it.
+  final String? patternName;
   final VoidCallback? onTap;
   final bool enabled;
 
@@ -50,7 +57,7 @@ class BuzzPatternRow extends StatelessWidget {
       LucideIcons.waves,
       C.purple,
       'Buzz pattern',
-      value: buzzSummary(sequence),
+      value: patternName ?? 'Custom',
       chevron: false,
       enabled: enabled,
       onTap: onTap,

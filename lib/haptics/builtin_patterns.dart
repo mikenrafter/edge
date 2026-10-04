@@ -1,8 +1,11 @@
 // 8AF.6: the built-in (system) patterns. Three gesture cues (start, follow-up,
-// confirm) and one default per non-alarm alert rule are stored beside the
-// user's patterns under a stable systemKey. They can be customised and put
-// back, never renamed or deleted. The defaults are built here, for the WHOOP
-// MG profile with the taps rhythm kept for a 4.0 band. Pure Dart.
+// confirm) and, since 8AI, ten presets (pulses, long pulses, SOS, Hip hip
+// hooray) are stored beside the user's patterns under a stable systemKey. They
+// can never be renamed or deleted; the cues can be customised and put back, the
+// presets are read-only. A non-alarm alert rule's default is one of the presets
+// ([alertPresetKey]); its slot key 'alert.<ruleId>' only names where it is
+// used. The defaults are built here, for the WHOOP MG profile with the taps
+// rhythm kept for a 4.0 band. Pure Dart.
 
 import '../gestures/pattern_transcript.dart';
 import '../notify/buzz_sequence.dart';
@@ -15,33 +18,63 @@ const String kGestureStartKey = 'gesture.start';
 const String kGestureFollowUpKey = 'gesture.followUp';
 const String kGestureConfirmKey = 'gesture.confirm';
 
-/// The alert rules with no built-in pattern: the alarms and the wake buzz.
-const Set<String> _noBuiltIn = {
-  'alarm',
-  'nativeAlarm',
-  'wake',
-  'alarmLatchFailed',
-  'alarmNightCheck',
+/// The ten presets (8AI), in the order they are listed: key, name and notes. A
+/// pulse is a quarter note, a long pulse a half, the rest between pulses a
+/// quarter. SOS is three short, three long, three short; Hip hip hooray is two
+/// rounds of short, short, longer.
+const List<(String, String, String)> kPresets = [
+  ('preset.one_pulse', 'One pulse', 'N4*'),
+  ('preset.two_pulses', 'Two pulses', 'N4* R4 N4*'),
+  ('preset.three_pulses', 'Three pulses', 'N4* R4 N4* R4 N4*'),
+  ('preset.four_pulses', 'Four pulses', 'N4* R4 N4* R4 N4* R4 N4*'),
+  ('preset.five_pulses', 'Five pulses', 'N4* R4 N4* R4 N4* R4 N4* R4 N4*'),
+  ('preset.one_long_pulse', 'One long pulse', 'N8*'),
+  ('preset.two_long_pulses', 'Two long pulses', 'N8* R4 N8*'),
+  ('preset.three_long_pulses', 'Three long pulses', 'N8* R4 N8* R4 N8*'),
+  (
+    'preset.sos',
+    'SOS',
+    'N2* R2 N2* R2 N2* R4 N6* R3 N6* R3 N6* R4 N2* R2 N2* R2 N2*',
+  ),
+  (
+    'preset.hip_hip_hooray_x2',
+    'Hip hip hooray ×2',
+    'N2* R2 N2* R2 N4* R6 N2* R2 N2* R2 N4*',
+  ),
+];
+
+/// Which preset each alert slot plays until the wearer picks another. Spread so
+/// that no preset serves more than two slots and alerts that can fire close
+/// together differ in count and length. SOS is not a default anywhere: a 4.0
+/// holds eight taps at most (BuzzSequence.maxBuzzes), so its taps rhythm is
+/// the SOS minus its last short pulse, and nobody gets that unasked.
+const Map<String, String> _alertPresets = {
+  'health': 'preset.three_long_pulses',
+  'recovery': 'preset.two_pulses',
+  'reminders': 'preset.five_pulses',
+  'device': 'preset.two_long_pulses',
+  'water': 'preset.three_pulses',
+  'autoDetect': 'preset.one_long_pulse',
+  'movement': 'preset.four_pulses',
+  'meds': 'preset.five_pulses',
+  'checkIn': 'preset.one_pulse',
+  'stepGoal': 'preset.hip_hip_hooray_x2',
+  'windDown': 'preset.one_long_pulse',
+  'zone': 'preset.two_long_pulses',
+  'breath': 'preset.one_pulse',
+  'tasker': 'preset.two_pulses',
+  'relay': 'preset.three_pulses',
+  'gesture': 'preset.four_pulses',
 };
 
-const Map<String, String> _alertNames = {
-  'health': 'Health alert',
-  'recovery': 'Recovery alert',
-  'reminders': 'Reminder alert',
-  'device': 'Device alert',
-  'water': 'Water alert',
-  'autoDetect': 'Workout detected alert',
-  'movement': 'Movement alert',
-  'meds': 'Medication alert',
-  'checkIn': 'Check-in alert',
-  'stepGoal': 'Step goal alert',
-  'windDown': 'Wind-down alert',
-  'zone': 'Heart-rate zone alert',
-  'breath': 'Breathing cue',
-  'tasker': 'Automation alert',
-  'relay': 'Relayed notification',
-  'gesture': 'Gesture alert',
-};
+/// The preset key behind alert slot [slotKey] (`alert.<ruleId>`), or null for a
+/// key that is not an alert slot with a default.
+String? alertPresetKey(String slotKey) => slotKey.startsWith('alert.')
+    ? _alertPresets[slotKey.substring('alert.'.length)]
+    : null;
+
+/// Whether [systemKey] is one of the read-only presets.
+bool isPresetKey(String systemKey) => systemKey.startsWith('preset.');
 
 /// The systemKey of the built-in for alert rule [ruleId].
 String alertSystemKey(String ruleId) => 'alert.$ruleId';
@@ -61,13 +94,13 @@ class BuiltInSpec {
 }
 
 /// Every built-in key, in the order they are listed: the gesture cues, then
-/// one per non-alarm alert rule.
+/// the presets. (Alert slots are not built-ins of their own: see
+/// [alertPresetKey].)
 List<String> builtInKeys() => [
       kGestureStartKey,
       kGestureFollowUpKey,
       kGestureConfirmKey,
-      for (final id in NotificationPrefs.alertRuleOrder)
-        if (!_noBuiltIn.contains(id)) alertSystemKey(id),
+      for (final p in kPresets) p.$1,
     ];
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
@@ -88,15 +121,34 @@ BuzzSequence _fromPhrase(HapticPhrase ph, String id) {
 
 HapticPhrase _phrase(String id) => _mg.phrases.firstWhere((p) => p.id == id);
 
-/// Today's default rhythm for alert [ruleId] as `*` notes, compiled for the
-/// MG with the taps rhythm kept so a 4.0 band plays what it always did.
-BuzzSequence _alertDefault(String ruleId, String id) {
-  final taps =
-      BuzzSequence.defaultFor(NotificationPrefs.alertRuleOrder.indexOf(ruleId));
-  final notes = notesFromTaps(taps, unitMs: _mg.unitMs, dynamic: PatternDynamic.any);
-  final plan = compile(notes, _mg, dynamicWeight: 0);
+// [code] as a pattern: its notes, the taps those notes make, and the plan
+// compiled for the MG under the default cap. A 4.0 holds at most eight taps, so
+// the taps rhythm stops after the eighth pulse.
+BuzzSequence _fromNotes(String code, String id) {
+  final notes = PatternTranscript.parseCode(code).entries;
+  var pulses = 0;
+  var inNote = false;
+  var keep = notes.length;
+  for (var i = 0; i < notes.length; i++) {
+    if (notes[i].note) {
+      if (!inNote && ++pulses > BuzzSequence.maxBuzzes) {
+        keep = i;
+        break;
+      }
+      inNote = true;
+    } else {
+      inNote = false;
+    }
+  }
+  final taps = tapsFromNotes(notes.sublist(0, keep), unitMs: _mg.unitMs);
+  final plan = compile(
+    notes,
+    _mg,
+    dynamicWeight: 0,
+    maxRuntimeMs: kMaxHapticRuntime.inMilliseconds,
+  );
   final s = taps.copyWith(
-    notes: notes.join(' '),
+    notes: code,
     profileId: _mg.id,
     profileVersion: _mg.version,
     patternId: id,
@@ -115,6 +167,21 @@ BuzzSequence _alertDefault(String ruleId, String id) {
   );
 }
 
+/// Whether [s] is the rhythm alert [ruleId] was seeded with before the presets
+/// (the nine count-and-gap rhythms of BuzzSequence.defaultFor, as `*` notes): a
+/// stored copy of it was never the wearer's choice and gives way to the preset.
+bool isLegacyAlertDefault(String ruleId, BuzzSequence s) {
+  final i = NotificationPrefs.alertRuleOrder.indexOf(ruleId);
+  if (i < 0) return false;
+  final taps = BuzzSequence.defaultFor(i);
+  final notes =
+      notesFromTaps(taps, unitMs: _mg.unitMs, dynamic: PatternDynamic.any)
+          .join(' ');
+  return s.notes == notes &&
+      s.offsetsMs.join(',') == taps.offsetsMs.join(',') &&
+      s.durationsMs.join(',') == taps.durationsMs.join(',');
+}
+
 /// The seeded default for [systemKey], or null for a key that is not built in.
 BuiltInSpec? builtInDefault(String systemKey) {
   final id = systemPatternId(systemKey);
@@ -130,12 +197,10 @@ BuiltInSpec? builtInDefault(String systemKey) {
       return BuiltInSpec(
           systemKey, 'Gesture confirm', _fromPhrase(_phrase('buzz47'), id));
   }
-  if (!systemKey.startsWith('alert.')) return null;
-  final ruleId = systemKey.substring('alert.'.length);
-  final name = _alertNames[ruleId];
-  if (name == null || !NotificationPrefs.alertRuleOrder.contains(ruleId)) {
-    return null;
+  for (final (key, name, notes) in kPresets) {
+    if (key == systemKey) return BuiltInSpec(key, name, _fromNotes(notes, id));
   }
-  if (_noBuiltIn.contains(ruleId)) return null;
-  return BuiltInSpec(systemKey, name, _alertDefault(ruleId, id));
+  // An alert slot's default is its preset.
+  final preset = alertPresetKey(systemKey);
+  return preset == null ? null : builtInDefault(preset);
 }

@@ -295,8 +295,8 @@ class _DayStepsDetailState extends State<DayStepsDetail> {
         sub: d.days.length < 2 ? dayNavLabel(d.day).toUpperCase() : '', [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading && _d == null) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else if (d.spans.isEmpty)
         _absent(c, d)
       else ...[

@@ -27,6 +27,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/lab_catalogue.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
@@ -46,8 +47,13 @@ import '../proof/structure_harness.dart';
 /// Tests run on the held-over path on purpose: the night is NOT today's, so
 /// "label the night's date" has a date to label and "SleepDetail for that
 /// night" has a day that differs from today's.
-const _night = '2026-10-02';
-const _today = '2026-10-03';
+// From the clock, not literals: a fixed date turns "today" into a held-over
+// day at the next local midnight and the Today rows correctly go blank.
+final _today = todayLabel();
+final _night = dayLabelOf(() {
+  final n = DateTime.now();
+  return DateTime(n.year, n.month, n.day - 1, 12);
+}());
 
 Map<String, dynamic> _env(num v, {String tier = 'ESTIMATE', String? unit}) => {
       'value': v,
@@ -135,7 +141,7 @@ HealthData _data({String illness = 'amber', bool heldOver = true}) => HealthData
       napDay: _night,
     );
 
-const _vitals = VitalsData(
+final _vitals = VitalsData(
   day: _today,
   days: [_today, _night],
   timeline: {

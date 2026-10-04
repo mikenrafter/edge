@@ -4,8 +4,8 @@
 // When it is off the row is present but disabled (dimmed) with the honest
 // reason "Step counting from this phone is off". The phone's row or detail
 // carries the "Count steps from this phone" toggle, bound to the SAME
-// AppState preference as Settings > You & preferences, so both read the same
-// value live.
+// AppState preference the (removed, 8AI G2) Settings row used; My devices is
+// now the only door, and it follows the preference live.
 //
 // Contracts these tests pin that the spec leaves open:
 //  - "Disabled" means dimmed (an Opacity below 1 at or above the row text) AND
@@ -17,8 +17,7 @@
 //  - Turning it on/off goes through AppState.requestPhoneSteps /
 //    disablePhoneSteps (the existing methods Settings already calls); the spy
 //    below replaces their platform work.
-//  - The Settings row keeps its title ("Steps" or "Steps from this phone");
-//    it is a SetRow (value On/Off) or a SwitchRow.
+//  - 8AI G2: Settings no longer has a steps row under any name.
 //  - The "this platform cannot count steps" gate (Capabilities) is not pinned
 //    here: it needs a new Feature whose name this spec does not give. Add a
 //    test for it with the implementation if the gate is introduced.
@@ -38,7 +37,6 @@ import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
-import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -112,36 +110,6 @@ Future<Finder> _toggle(WidgetTester t) async {
 }
 
 bool _switchOn(WidgetTester t) => t.widget<Switch>(find.byType(Switch)).value;
-
-/// Settings > You & preferences > the steps row, as on/off.
-bool? _settingsOn(WidgetTester t) {
-  for (final title in const ['Steps', 'Steps from this phone', _toggleLabel]) {
-    final f = find.text(title);
-    if (f.evaluate().isEmpty) continue;
-    final sw = find.ancestor(of: f, matching: find.byType(SwitchRow));
-    if (sw.evaluate().isNotEmpty) return t.widget<SwitchRow>(sw.first).value;
-    final row = find.ancestor(of: f, matching: find.byType(SetRow));
-    if (row.evaluate().isNotEmpty) {
-      final v = t.widget<SetRow>(row.first).value;
-      return v == 'On' ? true : v == 'Off' ? false : null;
-    }
-  }
-  return null;
-}
-
-Future<void> _tapSettingsRow(WidgetTester t) async {
-  for (final title in const ['Steps', 'Steps from this phone', _toggleLabel]) {
-    final f = find.text(title);
-    if (f.evaluate().isEmpty) continue;
-    final sw = find.descendant(
-        of: find.ancestor(of: f, matching: find.byType(SwitchRow)),
-        matching: find.byType(Switch));
-    await t.tap(sw.evaluate().isNotEmpty ? sw.first : f);
-    await _wait(t);
-    return;
-  }
-  fail('no phone steps row in Settings');
-}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -297,17 +265,24 @@ void main() {
     });
   });
 
-  group('one preference, two doors', () {
+  group('one door: Settings has no steps row (8AI G2)', () {
     Future<NavigatorState> openSettings(WidgetTester t, AppState app) async {
       await _pump(t, app, const MoreSettings());
       return t.state<NavigatorState>(find.byType(Navigator));
     }
 
-    testWidgets('turned on in My devices: Settings reads On', (t) async {
+    void expectNoStepsRow() {
+      for (final title in const ['Steps', 'Steps from this phone', _toggleLabel]) {
+        expect(find.text(title), findsNothing, reason: title);
+      }
+    }
+
+    testWidgets('turned on in My devices: reopening it shows the switch on, '
+        'Settings still has no steps row', (t) async {
       final app = _Phone(enabled: false);
       addTearDown(app.dispose);
       final nav = await openSettings(t, app);
-      expect(_settingsOn(t), isFalse);
+      expectNoStepsRow();
 
       await t.tap(find.text('My devices'));
       await _wait(t);
@@ -315,44 +290,34 @@ void main() {
       await t.tap(find.byType(Switch));
       await _wait(t);
       expect(app.enables, 1);
+      expect(app.phoneStepsEnabled, isTrue);
 
       nav.popUntil((r) => r.isFirst);
       await _wait(t);
-      expect(_settingsOn(t), isTrue, reason: 'one source of truth');
+      expectNoStepsRow();
+
+      await t.tap(find.text('My devices'));
+      await _wait(t);
+      expect(find.text(_reason), findsNothing);
+      await _toggle(t);
+      expect(_switchOn(t), isTrue, reason: 'one source of truth');
     });
 
-    testWidgets('turned off in Settings: My devices shows the phone disabled',
+    testWidgets('turned off in My devices: the phone row is disabled there',
         (t) async {
       final app = _Phone(enabled: true)
         ..phoneStepsLastSyncedDays = 1
         ..phoneStepsLastTotal = 4200;
       addTearDown(app.dispose);
       await openSettings(t, app);
-      expect(_settingsOn(t), isTrue);
-
-      await _tapSettingsRow(t);
-      expect(app.disables, 1);
-
       await t.tap(find.text('My devices'));
       await _wait(t);
-      expect(find.text('This phone'), findsOneWidget);
+      await _toggle(t);
+      await t.tap(find.byType(Switch));
+      await _wait(t);
+      expect(app.disables, 1);
       expect(find.text(_reason), findsOneWidget);
       expect(isDimmed(t, find.text('This phone')), isTrue);
-    });
-
-    testWidgets('turned on in Settings: the phone is enabled in My devices '
-        'and its toggle reads on', (t) async {
-      final app = _Phone(enabled: false);
-      addTearDown(app.dispose);
-      await openSettings(t, app);
-      await _tapSettingsRow(t);
-      expect(app.enables, 1);
-
-      await t.tap(find.text('My devices'));
-      await _wait(t);
-      expect(find.text(_reason), findsNothing);
-      await _toggle(t);
-      expect(_switchOn(t), isTrue);
     });
   });
 }

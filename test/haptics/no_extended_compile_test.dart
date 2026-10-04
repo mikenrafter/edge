@@ -53,6 +53,15 @@ void main() {
         for (final target in [p.min, p.max]) {
           final plan = compile(target, _mg)!;
           expect(plan.usesUnstable, isFalse, reason: p.id);
+          // 8AI: the pair's N2 R2 N2 rendition would shorten the rest in its
+          // other rendition, so it takes two commands (stable ones).
+          if (p.id == 'pair' && target == p.min) {
+            expect(plan.steps.length, greaterThan(1));
+            for (final s in plan.steps) {
+              expect(s.phrase.stable && s.gapStable, isTrue);
+            }
+            continue;
+          }
           expect(plan.steps, hasLength(1), reason: p.id);
           expect(plan.steps.single.phrase.stable, isTrue, reason: p.id);
           expect(plan.cost, 0, reason: p.id);
@@ -61,10 +70,11 @@ void main() {
       }
     });
 
-    test('N4ff R6 N4f stays on the stable 300 ms row (cost 2)', () {
+    test('N4ff R6 N4f stays on the stable 700 ms row (cost 2)', () {
+      // The 300 ms row feels 4..6 and would shorten a written rest of 6 (8AI).
       final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(_ids(plan), ['buzz47', 'buzz14']);
-      expect(plan.steps[1].delayMs, 300);
+      expect(plan.steps[1].delayMs, 700);
       expect(plan.steps[1].gapStable, isTrue);
       expect(plan.cost, 2);
       expect(plan.usesUnstable, isFalse);

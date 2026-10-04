@@ -844,8 +844,8 @@ class _DayTimelineScreenState extends State<DayTimelineScreen> {
         sub: l?.dayTimelineSub ?? 'MIDNIGHT TO MIDNIGHT', [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else ...[
         if (_candidates.length >= 2) ...[
           const SizedBox(height: S.x2),

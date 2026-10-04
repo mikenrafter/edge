@@ -174,7 +174,7 @@ void main() {
       expect(find.text('Plays as written.'), findsNothing);
       expect(
         find.textContaining(
-          'The band plays: N4ff R4 N4ff to N4ff R6 N4ff',
+          'The band plays: N4ff R6 N4ff to N4ff R8 N4ff',
         ),
         findsOneWidget,
       );

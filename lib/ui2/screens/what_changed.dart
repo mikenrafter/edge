@@ -149,8 +149,8 @@ class _WhatChangedScreenState extends State<WhatChangedScreen> {
         sub: l?.whatChangedSub ?? 'AGAINST YOUR OWN HISTORY', [
       ...dayNavRow(_day ?? d.day, d.days, _goDay),
       if (_loading) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else
         ...whatChangedBody(c, d),
     ]);

@@ -31,14 +31,18 @@ class WakeHaptics {
 
   final HapticsService haptics;
 
-  // [ids] as one plan on [p], each command written the instant the one before
-  // ended (a 0 ms gap). Null when the profile lacks a phrase.
+  // [ids] as one plan on [p], each command written the vocabulary's minimum
+  // gap after the one before ended. Null when the profile lacks a phrase.
   BuzzSequence? _plan(HapticDeviceProfile p, List<String> ids) {
     final steps = <BakedStep>[];
     for (final id in ids) {
       final ph = p.phrases.where((x) => x.id == id).firstOrNull;
       if (ph == null) return null;
-      steps.add(BakedStep(effects: ph.effects, loop: ph.loop, delayMs: 0));
+      steps.add(BakedStep(
+        effects: ph.effects,
+        loop: ph.loop,
+        delayMs: steps.isEmpty ? 0 : p.minVibrationGapMs,
+      ));
     }
     return BuzzSequence(
       const [0],

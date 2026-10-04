@@ -52,9 +52,9 @@ void main() {
     });
   }
 
-  testWidgets('Settings: "Band" is a section', (t) async {
+  testWidgets('Settings: "Hardware" (was "Band") is a section', (t) async {
     await pumpTall(t, const MoreSettingsView());
-    expect(sectionTitles(t), contains('Band'));
+    expect(sectionTitles(t), contains('Hardware'));
   });
 
   testWidgets('App notifications on the band: all three channel sections start open',

@@ -16,6 +16,14 @@
 // then fewer commands, then fewer unstable parts, then less total write
 // delay; ties inside that are settled by the fixed order of the profile's
 // rows.
+//
+// A rest the pattern's author wrote is kept (8AI). The search above scores
+// cells in place, so it can win by merging two pulses over a short rest or by
+// dropping the rest. A plan is accepted only if, in both its shortest and its
+// longest rendition, it has as many rests between pulses as were written and
+// none of them shorter. When no plan of the search above does, a second search
+// (_compileKeepingRests) plans pulse by pulse and lengthens a rest to the
+// band's nearest measured wait instead; loudness is given up before a rest.
 
 import '../gestures/pattern_transcript.dart';
 import 'haptic_priority.dart';
@@ -356,6 +364,9 @@ HapticPlan? compile(
     return 0;
   });
 
+  final written = _interiorRests(cells);
+  HapticPlan? merged; // the best plan that fits the cap but lost a rest
+  HapticPlan? kept; // the best of the search above that keeps every rest
   for (final cand in candidates) {
     final chain = <_Node>[];
     var k = cand.k;
@@ -381,30 +392,329 @@ HapticPlan? compile(
           startUnit: first + (node.wait == null ? 0 : node.prev + node.wait!.units),
         ),
     ];
-    final feltMin = _felt(steps, useMax: false);
-    final feltMax = _felt(steps, useMax: true);
-    final runtimeMs = timeline(feltMax).length * p.unitMs;
-    if (maxRuntimeMs != null && runtimeMs > maxRuntimeMs) continue;
-    final exact = cand.total.cost -
-            commandPenalty * (cand.k - 1) -
-            _kUnstableCost * cand.total.unstable ==
-        0;
-    final dynamics = dynamicWeight > 0;
+    final plan = _assemble(steps, cells, p,
+        cost: cand.total.cost,
+        commands: cand.k,
+        unstableParts: cand.total.unstable,
+        commandPenalty: commandPenalty,
+        dynamics: dynamicWeight > 0);
+    if (maxRuntimeMs != null && plan.runtimeMs > maxRuntimeMs) continue;
+    merged ??= plan;
+    if (_keepsRests(plan, written)) {
+      kept = plan;
+      break;
+    }
+  }
+  // The best plan overall is usually the first; when it lost a rest the
+  // pulse-by-pulse search may do better than the first one that kept them.
+  if (kept != null && identical(kept, merged)) return kept;
+  final lengthened = _compileKeepingRests(
+    cells, first, p,
+    mismatch: mismatch,
+    loudness: loudness,
+    dynamics: dynamicWeight > 0,
+    maxCommands: maxCommands,
+    commandPenalty: commandPenalty,
+    maxRuntimeMs: maxRuntimeMs,
+  );
+  if (kept != null && lengthened != null) {
+    return lengthened.cost < kept.cost ? lengthened : kept;
+  }
+  return kept ?? lengthened ?? merged;
+}
 
-    return HapticPlan(
-      steps: List.unmodifiable(steps),
-      feltMin: feltMin,
-      feltMax: feltMax,
-      cost: cand.total.cost,
-      exact: exact,
-      asWritten: exact &&
-          steps.every((s) => s.restMinUnits == s.restMaxUnits) &&
-          _sameTiming(timeline(feltMin), cells, dynamics: dynamics) &&
-          _sameTiming(timeline(feltMax), cells, dynamics: dynamics),
-      usesUnstable: steps.any((s) => !s.phrase.stable || !s.gapStable),
-      summary: _summary(steps),
-      runtimeMs: runtimeMs,
-    );
+// The plan for [steps] against the target [cells] (leading rests trimmed):
+// what is felt at the shortest and the longest, and whether that is the
+// pattern as written.
+HapticPlan _assemble(
+  List<HapticStep> steps,
+  List<PatternDynamic?> cells,
+  HapticDeviceProfile p, {
+  required int cost,
+  required int commands,
+  required int unstableParts,
+  required int commandPenalty,
+  required bool dynamics,
+}) {
+  final feltMin = _felt(steps, useMax: false);
+  final feltMax = _felt(steps, useMax: true);
+  final exact =
+      cost - commandPenalty * (commands - 1) - _kUnstableCost * unstableParts ==
+          0;
+  return HapticPlan(
+    steps: List.unmodifiable(steps),
+    feltMin: feltMin,
+    feltMax: feltMax,
+    cost: cost,
+    exact: exact,
+    asWritten: exact &&
+        steps.every((s) => s.restMinUnits == s.restMaxUnits) &&
+        _sameTiming(timeline(feltMin), cells, dynamics: dynamics) &&
+        _sameTiming(timeline(feltMax), cells, dynamics: dynamics),
+    usesUnstable: steps.any((s) => !s.phrase.stable || !s.gapStable),
+    summary: _summary(steps),
+    runtimeMs: timeline(feltMax).length * p.unitMs,
+  );
+}
+
+// The lengths of the rest runs strictly between the first and the last note.
+List<int> _interiorRests(List<PatternDynamic?> cells) {
+  final first = cells.indexWhere((c) => c != null);
+  final last = cells.lastIndexWhere((c) => c != null);
+  if (first < 0) return const [];
+  final out = <int>[];
+  var run = 0;
+  for (var i = first; i <= last; i++) {
+    if (cells[i] == null) {
+      run++;
+    } else if (run > 0) {
+      out.add(run);
+      run = 0;
+    }
+  }
+  return out;
+}
+
+// Whether [plan] has the [written] rests between pulses in both renditions:
+// as many, none shorter.
+bool _keepsRests(HapticPlan plan, List<int> written) {
+  for (final felt in [plan.feltMin, plan.feltMax]) {
+    final got = _interiorRests(timeline(felt));
+    if (got.length != written.length) return false;
+    for (var i = 0; i < got.length; i++) {
+      if (got[i] < written[i]) return false;
+    }
+  }
+  return true;
+}
+
+// A target or a phrase rendition as pulses (runs of notes) and the rests
+// between them. Leading and trailing rests are not kept.
+class _Shape {
+  _Shape(List<PatternDynamic?> cells) {
+    var run = 0;
+    for (final c in cells) {
+      if (c != null) {
+        if (pulses.isEmpty) {
+          pulses.add([c]);
+        } else if (run > 0) {
+          rests.add(run);
+          run = 0;
+          pulses.add([c]);
+        } else {
+          pulses.last.add(c);
+        }
+      } else if (pulses.isNotEmpty) {
+        run++;
+      }
+    }
+  }
+  final List<List<PatternDynamic?>> pulses = [];
+  final List<int> rests = [];
+}
+
+// One command of the pulse-by-pulse search: [phrase] starts at target pulse
+// [at], after [wait] (null for the first).
+class _Seg {
+  _Seg(this.score, this.prev, this.wait, this.phrase, this.at);
+  final _Score score;
+  final int prev; // pulses covered before this command; -1 for the first
+  final _Wait? wait;
+  final HapticPhrase phrase;
+  final int at;
+}
+
+// The second search: plans the pattern one pulse at a time instead of one
+// sixteenth at a time, so a written rest can be kept by lengthening it. A
+// command may carry several pulses (the pair, the arcs) when its own rests are
+// no shorter than the ones written there; between commands the wait's SHORTEST
+// felt rest must reach the written rest, so a rest comes out the same or
+// longer in every rendition. Pulse lengths and loudness are scored as in
+// [compile]; each unit a rest's shortest rendition runs past the written one
+// costs one (so a lengthened rest is not exact, one that is only inside the
+// wait's range is). A rest longer than the
+// longest measured wait is extrapolated, one unit per unit. Null when no plan
+// of at most [maxCommands] fits [maxRuntimeMs].
+HapticPlan? _compileKeepingRests(
+  List<PatternDynamic?> cells,
+  int first,
+  HapticDeviceProfile p, {
+  required int mismatch,
+  required int loudness,
+  required bool dynamics,
+  required int maxCommands,
+  required int commandPenalty,
+  required int? maxRuntimeMs,
+}) {
+  final target = _Shape(cells);
+  final m = target.pulses.length;
+  if (m < 2) return null;
+  // Where each target pulse starts, counting from the first note.
+  final startAt = <int>[];
+  var at = 0;
+  for (var i = 0; i < m; i++) {
+    startAt.add(at);
+    at += target.pulses[i].length +
+        (i < target.rests.length ? target.rests[i] : 0);
+  }
+
+  int pulseCost(List<PatternDynamic?> want, List<PatternDynamic?> got) {
+    var c = 0;
+    final n = want.length > got.length ? want.length : got.length;
+    for (var t = 0; t < n; t++) {
+      final w = t < want.length ? want[t] : null;
+      final g = t < got.length ? got[t] : null;
+      if ((w != null) != (g != null)) {
+        c += mismatch;
+      } else if (w != null) {
+        c += loudness * w.distanceTo(g!);
+      }
+    }
+    return c;
+  }
+
+  // What each phrase costs when it carries target pulses [i, i + its count):
+  // null when it cannot (too many pulses, or a rest of its own shorter than
+  // the one written there).
+  final shapes = <HapticPhrase, (_Shape, _Shape)>{
+    for (final ph in p.phrases)
+      ph: (_Shape(timeline(ph.min)), _Shape(timeline(ph.max))),
+  };
+  final usable = [
+    for (final ph in p.phrases)
+      if (shapes[ph]!.$1.pulses.length == shapes[ph]!.$2.pulses.length) ph,
+  ];
+  int? fit(HapticPhrase ph, int i) {
+    final (lo, hi) = shapes[ph]!;
+    final c = lo.pulses.length;
+    if (i + c > m) return null;
+    // As in [compile], a phrase is as good as its better rendition matches the
+    // pulses; the rests it carries must hold in both.
+    var viaLo = 0, viaHi = 0, longer = 0;
+    for (var j = 0; j < c; j++) {
+      viaLo += pulseCost(target.pulses[i + j], lo.pulses[j]);
+      viaHi += pulseCost(target.pulses[i + j], hi.pulses[j]);
+      if (j < c - 1) {
+        final want = target.rests[i + j];
+        final shortest = lo.rests[j] < hi.rests[j] ? lo.rests[j] : hi.rests[j];
+        if (shortest < want) return null;
+        longer += shortest - want;
+      }
+    }
+    return (viaLo < viaHi ? viaLo : viaHi) + longer;
+  }
+
+  HapticGap? longest;
+  for (final g in p.gaps) {
+    if (g.stable && (longest == null || g.maxUnits > longest.maxUnits)) {
+      longest = g;
+    }
+  }
+  // The waits whose shortest rest reaches [units].
+  List<_Wait> waitsAtLeast(int units) {
+    final out = [
+      for (final g in p.gaps)
+        if (g.minUnits >= units)
+          _Wait(g.delayMs, g.minUnits, g.maxUnits, g.minUnits, g.stable),
+    ];
+    if (out.isEmpty && longest != null) {
+      out.add(_Wait(
+        longest.delayMs + (units - longest.minUnits) * p.unitMs,
+        units,
+        units,
+        units,
+        true,
+      ));
+    }
+    return out;
+  }
+
+  // best[k][i]: the best way to have placed k commands over the first i pulses.
+  final best = List.generate(maxCommands + 1, (_) => List<_Seg?>.filled(m + 1, null));
+  void offer(int k, int i, _Seg s) {
+    final cur = best[k][i];
+    if (cur == null || s.score.lessThan(cur.score)) best[k][i] = s;
+  }
+
+  for (final ph in usable) {
+    final c = shapes[ph]!.$1.pulses.length;
+    final f = fit(ph, 0);
+    if (f == null) continue;
+    final u = ph.stable ? 0 : 1;
+    offer(1, c, _Seg(_Score(f + u * _kUnstableCost, u, 0), -1, null, ph, 0));
+  }
+  for (var k = 1; k < maxCommands; k++) {
+    for (var i = 1; i < m; i++) {
+      final from = best[k][i];
+      if (from == null) continue;
+      final want = target.rests[i - 1];
+      final waits = waitsAtLeast(want);
+      for (final w in waits) {
+        for (final ph in usable) {
+          final f = fit(ph, i);
+          if (f == null) continue;
+          final u = (w.stable ? 0 : 1) + (ph.stable ? 0 : 1);
+          offer(
+            k + 1,
+            i + shapes[ph]!.$1.pulses.length,
+            _Seg(
+              from.score +
+                  _Score(f + (w.minUnits - want) + u * _kUnstableCost, u,
+                      w.delayMs),
+              i,
+              w,
+              ph,
+              i,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  final done = <({int k, _Score total})>[
+    for (var k = 1; k <= maxCommands; k++)
+      if (best[k][m] != null)
+        (
+          k: k,
+          total: best[k][m]!.score + _Score(commandPenalty * (k - 1), 0, 0),
+        ),
+  ]..sort((a, b) {
+      if (a.total.cost != b.total.cost) {
+        return a.total.cost.compareTo(b.total.cost);
+      }
+      if (a.k != b.k) return a.k.compareTo(b.k);
+      return a.total.lessThan(b.total) ? -1 : (b.total.lessThan(a.total) ? 1 : 0);
+    });
+  for (final cand in done) {
+    final chain = <_Seg>[];
+    var k = cand.k;
+    var i = m;
+    while (k >= 1) {
+      final seg = best[k][i]!;
+      chain.add(seg);
+      i = seg.prev;
+      k--;
+    }
+    final steps = [
+      for (final seg in chain.reversed)
+        HapticStep(
+          phrase: seg.phrase,
+          delayMs: seg.wait?.delayMs ?? 0,
+          restMinUnits: seg.wait?.minUnits ?? 0,
+          restMaxUnits: seg.wait?.maxUnits ?? 0,
+          gapStable: seg.wait?.stable ?? true,
+          startUnit: first + startAt[seg.at],
+        ),
+    ];
+    final plan = _assemble(steps, cells, p,
+        cost: cand.total.cost,
+        commands: cand.k,
+        unstableParts: cand.total.unstable,
+        commandPenalty: commandPenalty,
+        dynamics: dynamics);
+    if (maxRuntimeMs != null && plan.runtimeMs > maxRuntimeMs) continue;
+    return plan;
   }
   return null;
 }

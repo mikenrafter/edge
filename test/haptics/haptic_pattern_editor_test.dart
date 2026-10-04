@@ -25,6 +25,10 @@
 //    release) takes the rhythm; two seconds after the last release the pad
 //    closes and the notes become notesFromTaps(take): any-loudness (*) notes (8AF.6). There is no
 //    `buzz-extended` switch (8AF.6: the full vocabulary is the only mode).
+//  - 8AI: the editor opens in Follow rhythm unless the stored mode says
+//    otherwise (see test/fix8ai/g4_editor_modes_test.dart). These tests were
+//    written for the dynamics bar, so every one of them runs in Allow
+//    dynamics (set in setUp).
 //  - the name dialog is an AlertDialog with a TextField keyed
 //    `pattern-name-field` and buttons Save and Cancel; an empty name says
 //    "Give it a name." and a duplicate (case-insensitive) says "A pattern
@@ -43,10 +47,12 @@ import 'package:openstrap_edge/haptics/haptic_player.dart' show HapticPlayStart;
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/tap_notes.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/ui2/profile/haptic_pattern_editor.dart';
 import 'package:openstrap_edge/ui2/profile/haptic_plan_text.dart';
 import 'package:openstrap_edge/ui2/profile/pattern_notation.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
 const _codeKey = ValueKey('pattern-editor-code');
@@ -169,6 +175,12 @@ Finder _inDialog(String text) =>
     find.descendant(of: find.byType(AlertDialog), matching: find.text(text));
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    await Prefs.ensureLoaded();
+    Prefs.setString(Prefs.hapticsEditorMode, 'allow_dynamics');
+  });
+
   group('the page', () {
     testWidgets('has the entry controls, the switch and the three actions',
         (t) async {

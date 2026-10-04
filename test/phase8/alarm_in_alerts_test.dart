@@ -69,10 +69,11 @@ void main() {
       expect(_rowTitles(t, 'Alerts'), ['Alarm', 'Alerts and notifications']);
     });
 
-    testWidgets('Alarm is gone from Band, which keeps its other rows',
+    testWidgets('Alarm is gone from Hardware (once Band), which keeps its '
+        'other rows',
         (t) async {
       await _pump(t, const MoreSettingsView(relaySupported: true));
-      expect(_rowTitles(t, 'Band'), ['My devices', 'Gestures', 'Haptics']);
+      expect(_rowTitles(t, 'Hardware'), ['My devices', 'Gestures', 'Haptics']);
     });
 
     testWidgets('one home: Alarm appears exactly once on the screen',
@@ -146,13 +147,13 @@ void main() {
     test('in settings.dart the Alarm row is inside the Alerts accordion', () {
       final src = File('lib/ui2/profile/settings.dart').readAsStringSync();
       final alerts = src.indexOf("SettingsAccordion('Alerts'");
-      final prefs = src.indexOf("SettingsAccordion('You & preferences'");
-      final band = src.indexOf("SettingsAccordion('Band'");
+      final data = src.indexOf("SettingsAccordion('Data & privacy'");
+      final band = src.indexOf("SettingsAccordion('Hardware'");
       final alarm = src.indexOf('onTap: onAlarm');
       expect(alerts, greaterThan(band));
       expect(alarm, greaterThan(alerts),
           reason: 'the Alarm row sits after the Alerts header');
-      expect(alarm, lessThan(prefs),
+      expect(alarm, lessThan(data),
           reason: 'and before the next group begins');
       expect(src.indexOf('onTap: onAlarm', alarm + 1), -1,
           reason: 'only one Alarm row on the Settings screen');

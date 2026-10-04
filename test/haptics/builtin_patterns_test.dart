@@ -1,10 +1,12 @@
 // 8AF.6 sections B, G.1 and G.2 (red first): the built-in (system) patterns.
 //
-// Three gesture cues (start, follow-up, confirm) and one default per
-// non-alarm alert rule are stored beside the user's patterns. They cannot be
-// renamed or deleted, but can be customised and put back (Reset to default).
-// The hub and the picker list "Your patterns" first, then a divider, then
-// "Built in".
+// Three gesture cues (start, follow-up, confirm) and, since 8AI, the ten
+// presets are stored beside the user's patterns (the per-alert built-ins of
+// 8AF.6 are gone: an alert slot's default is one of the presets, see
+// test/fix8ai/g4_presets_test.dart). They cannot be renamed or deleted; the
+// cues can be customised and put back (Reset to default), the presets are
+// read-only. The hub lists them under "Your patterns" and "Presets"; the
+// picker lists "Your patterns", a divider, then "Built in".
 //
 // Contracts these tests pin that the spec leaves open:
 //  - `SavedHapticPattern.system` (bool) and `.systemKey` (String?) are read
@@ -45,8 +47,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
-import 'package:openstrap_edge/haptics/haptic_compiler.dart' show restEntries;
-import 'package:openstrap_edge/haptics/haptic_priority.dart';
+import 'package:openstrap_edge/haptics/builtin_patterns.dart' show builtInDefault;
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
@@ -94,26 +95,8 @@ SavedHapticPattern _byKey(List<SavedHapticPattern> all, String key) =>
     all.firstWhere((p) => _key(p) == key,
         orElse: () => throw TestFailure('no built-in with systemKey $key'));
 
-List<(bool, int)> _shape(List<PatternEntry> es) =>
-    [for (final e in es) (e.note, e.length)];
-
 List<PatternEntry> _entries(BuzzSequence s) =>
     PatternTranscript.parseCode(s.notes!).entries;
-
-/// The notes of BuzzSequence.defaultFor(index) as taps give them: no hold, so
-/// every note is a sixteenth, and each release gap is rests.
-List<(bool, int)> _defaultShape(int index) {
-  final d = BuzzSequence.defaultFor(index);
-  final out = <(bool, int)>[];
-  for (var i = 0; i < d.length; i++) {
-    out.add((true, 1));
-    if (i + 1 < d.length) {
-      final gap = d.offsetsMs[i + 1] - d.offsetsMs[i] - d.durationsMs[i];
-      out.addAll(_shape(restEntries((gap / 125).round())));
-    }
-  }
-  return out;
-}
 
 BuzzSequence _mine() => BuzzSequence(
       const [0, 625],
@@ -140,29 +123,22 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('seeding', () {
-    test('a fresh store holds the three gesture built-ins and one per '
-        'non-alarm alert rule', () async {
+    test('a fresh store holds the three gesture built-ins and the ten '
+        'presets, and none per alert rule', () async {
       final all = await _builtIns();
       final keys = [for (final p in all) _key(p)];
       expect(keys.toSet(), hasLength(keys.length), reason: 'no duplicates');
       for (final k in ['gesture.start', 'gesture.followUp', 'gesture.confirm']) {
         expect(keys, contains(k));
       }
-      for (final id in _alertRules) {
-        expect(keys, contains('alert.$id'));
-      }
-      for (final id in _alarmish) {
+      expect(keys.where((k) => k!.startsWith('preset.')), hasLength(10));
+      for (final id in NotificationPrefs.alertRuleOrder) {
         expect(keys, isNot(contains('alert.$id')),
-            reason: 'wake and alarm rules are not built-in patterns');
+            reason: 'an alert slot plays a preset, it is not a built-in');
       }
-      final known = {
-        'gesture.start',
-        'gesture.followUp',
-        'gesture.confirm',
-        for (final id in NotificationPrefs.alertRuleOrder) 'alert.$id',
-      };
       for (final k in keys) {
-        expect(known, contains(k), reason: 'unexpected systemKey $k');
+        expect(k!.startsWith('preset.') || k.startsWith('gesture.'), isTrue,
+            reason: 'unexpected systemKey $k');
       }
     });
 
@@ -302,54 +278,70 @@ void main() {
     });
   });
 
-  group('the alert built-ins are today\'s rhythms, not re-voiced', () {
-    test('alert.<ruleId> is defaultFor(index) as any-loudness notes, '
-        'rhythm priority', () async {
+  group('an alert slot plays a preset until the wearer picks another', () {
+    test('every alert rule with a default has one, a preset carrying its own '
+        'id', () async {
       final all = await _builtIns();
       for (final id in _alertRules) {
-        final i = NotificationPrefs.alertRuleOrder.indexOf(id);
-        final s = _byKey(all, 'alert.$id').sequence;
-        expect(s.notes, isNotNull, reason: id);
-        final es = _entries(s);
-        expect(_shape(es), _defaultShape(i), reason: id);
-        for (final e in es.where((e) => e.note)) {
-          expect(e.dynamic, PatternDynamic.any, reason: id);
-        }
-        expect(s.priority, HapticPriority.rhythm, reason: id);
+        final spec = builtInDefault('alert.$id');
+        expect(spec, isNotNull, reason: id);
+        final stored = all.firstWhere((p) => p.name == spec!.name,
+            orElse: () => throw TestFailure('preset ${spec!.name} not seeded'));
+        expect(_key(stored), startsWith('preset.'), reason: id);
+        expect(spec!.sequence.patternId, stored.id, reason: id);
+        expect(spec.sequence.profileId, _mg.id, reason: id);
+        expect(spec.sequence.bakedSteps, isNotEmpty, reason: id);
       }
     });
 
-    test('they are not the fastest single: a buzz is one sixteenth, not '
-        'buzz14\'s three or four', () async {
-      final s = _byKey(await _builtIns(), 'alert.health').sequence;
-      expect(_shape(_entries(s)), [(true, 1)]);
+    test('the store hands the slot its preset by the slot key', () async {
+      final store = await HapticPatternStore.load();
+      for (final id in _alertRules) {
+        expect(store.bySystemKey('alert.$id')?.name,
+            builtInDefault('alert.$id')?.name,
+            reason: id);
+      }
+      expect(store.bySystemKey('alert.wake'), isNull);
     });
 
-    test('the taps rhythm is the original, so a 4.0 band is unchanged',
+    test('the zone alert has a default (the HR zone alert is a full alert, '
+        '8AF.6 G.3)', () {
+      expect(builtInDefault('alert.zone'), isNotNull);
+    });
+
+    test('the per-alert built-ins a store holds from before the presets: one '
+        'still on its old rhythm gives way, one the wearer changed stays',
         () async {
-      final all = await _builtIns();
-      for (final id in _alertRules) {
-        final i = NotificationPrefs.alertRuleOrder.indexOf(id);
-        final want = BuzzSequence.defaultFor(i);
-        final s = _byKey(all, 'alert.$id').sequence;
-        expect(s.offsetsMs, want.offsetsMs, reason: id);
-        expect(s.durationsMs, want.durationsMs, reason: id);
-      }
-    });
-
-    test('each carries a baked plan for the MG, so delivery needs no '
-        'compile', () async {
-      final all = await _builtIns();
-      for (final id in _alertRules) {
-        final s = _byKey(all, 'alert.$id').sequence;
-        expect(s.profileId, _mg.id, reason: id);
-        expect(s.bakedSteps, isNotEmpty, reason: id);
-      }
-    });
-
-    test('the zone alert has its own built-in (the HR zone alert is a full '
-        'alert, 8AF.6 G.3)', () async {
-      expect(_byKey(await _builtIns(), 'alert.zone'), isNotNull);
+      final untouched = BuzzSequence.defaultFor(
+          NotificationPrefs.alertRuleOrder.indexOf('health'));
+      SharedPreferences.setMockInitialValues({
+        HapticPatternStore.prefsKey: jsonEncode([
+          // health: still its seeded rhythm (a single sixteenth note).
+          {
+            'id': 'sys.alert.health',
+            'name': 'Health alert',
+            'systemKey': 'alert.health',
+            'sequence': untouched
+                .copyWith(notes: 'N1*', patternId: 'sys.alert.health')
+                .toJson(),
+          },
+          // water: the wearer rewrote it.
+          {
+            'id': 'sys.alert.water',
+            'name': 'Water alert',
+            'systemKey': 'alert.water',
+            'sequence': _mine().copyWith(patternId: 'sys.alert.water').toJson(),
+          },
+        ]),
+      });
+      final all = (await _repo.read()).patterns;
+      expect(all.where((p) => p.id == 'sys.alert.health'), isEmpty);
+      final kept = all.firstWhere((p) => p.id == 'sys.alert.water');
+      expect(kept.sequence.notes, 'N4mf R1 N4mf');
+      final store = await HapticPatternStore.load();
+      expect(store.bySystemKey('alert.health')?.name,
+          builtInDefault('alert.health')?.name);
+      expect(store.bySystemKey('alert.water')?.id, 'sys.alert.water');
     });
   });
 
@@ -433,7 +425,7 @@ void main() {
     });
   });
 
-  group('the hub: Your patterns, a divider, then Built in', () {
+  group('the hub: Your patterns, then Presets', () {
     Widget hub(
       List<SavedHapticPattern> patterns, {
       HapticDeviceProfile? profile,
@@ -475,33 +467,24 @@ void main() {
 
     double top(WidgetTester t, Finder f) => t.getTopLeft(f.first).dy;
 
-    double topmost(WidgetTester t, Finder f) {
-      final n = f.evaluate().length;
-      expect(n, greaterThan(0), reason: f.toString());
-      return [for (var i = 0; i < n; i++) t.getTopLeft(f.at(i)).dy]
-          .reduce((a, b) => a < b ? a : b);
-    }
-
-    testWidgets('the headers, the divider and the rows sit in that order',
-        (t) async {
+    testWidgets('the Your patterns and Presets accordions and their rows sit '
+        'in that order', (t) async {
       final (built, mine) = await mixed(t);
       // The view is handed one list, the user's patterns and the built-ins
       // interleaved, and splits it itself.
       await pumpTall(t, hub([built.first, ...mine, ...built.skip(1)],
           profile: _mg));
-      final yours = topmost(t, find.text('Your patterns'));
-      final builtIn = topmost(t, find.text('Built in'));
-      final divider = top(t, find.byKey(const ValueKey('built-in-divider')));
-      expect(yours, lessThan(builtIn));
+      final yours = top(t, section('Your patterns'));
+      final presets = top(t, section('Presets'));
+      expect(yours, lessThan(presets));
       for (final p in mine) {
         final y = top(t, find.byKey(ValueKey('haptic-pattern:${p.id}')));
         expect(y, greaterThan(yours), reason: p.name);
-        expect(y, lessThan(divider), reason: p.name);
+        expect(y, lessThan(presets), reason: p.name);
       }
-      expect(divider, lessThan(builtIn));
       for (final p in built) {
         final y = top(t, find.byKey(ValueKey('haptic-pattern:${p.id}')));
-        expect(y, greaterThan(builtIn), reason: '${_key(p)}');
+        expect(y, greaterThan(presets), reason: '${_key(p)}');
       }
     });
 
@@ -510,9 +493,8 @@ void main() {
       final (built, _) = await mixed(t);
       // A fresh store: the two patterns _addMine made are not in this list.
       await pumpTall(t, hub(built, profile: _mg));
-      expect(find.text('Your patterns'), findsWidgets);
-      expect(topmost(t, find.text('Your patterns')),
-          lessThan(topmost(t, find.text('Built in'))));
+      expect(top(t, section('Your patterns')),
+          lessThan(top(t, section('Presets'))));
     });
 
     testWidgets('a built-in row says so (a lock or "Built in") and a user '

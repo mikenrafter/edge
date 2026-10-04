@@ -64,8 +64,10 @@ Future<void> showPatternPicker(
   required Future<bool> Function(BuzzSequence) onPlay,
   required VoidCallback onDefault,
   required ValueChanged<BuzzSequence> onChoose,
-  required Future<SavedHapticPattern> Function(String name, BuzzSequence s)
-  onSaveNew,
+
+  /// Stores a new pattern for "Record new" and "Write notes". Null hides both
+  /// (a slot's picker only chooses among what is stored).
+  Future<SavedHapticPattern> Function(String name, BuzzSequence s)? onSaveNew,
 }) {
   final p = P.of(c);
   final names = [for (final s in patterns) s.name];
@@ -83,7 +85,7 @@ Future<void> showPatternPicker(
       onSave: onChoose,
       // The sheet closes once this completes; a failure keeps the take open.
       onSaveNamed: (name, s) async {
-        final saved = await onSaveNew(name, s);
+        final saved = await onSaveNew!(name, s);
         onChoose(saved.sequence);
       },
     );
@@ -103,7 +105,7 @@ Future<void> showPatternPicker(
           // The editor stays open until the pattern is stored; a failure
           // reaches the editor, which says so.
           onSave: (name, s) async {
-            final saved = await onSaveNew(name, s);
+            final saved = await onSaveNew!(name, s);
             onChoose(saved.sequence);
             if (nav.mounted) nav.pop();
           },
@@ -166,17 +168,18 @@ Future<void> showPatternPicker(
               _header(p, 'Your patterns'),
               for (final s in patterns)
                 if (!s.system) row(s),
-              _PickerRow(
-                key: const ValueKey('pattern-picker-record'),
-                icon: LucideIcons.hand,
-                title: 'Record new…',
-                sub: 'Tap out a rhythm',
-                onTap: () {
-                  Navigator.of(sheet).pop();
-                  record();
-                },
-              ),
-              if (profile != null)
+              if (onSaveNew != null)
+                _PickerRow(
+                  key: const ValueKey('pattern-picker-record'),
+                  icon: LucideIcons.hand,
+                  title: 'Record new…',
+                  sub: 'Tap out a rhythm',
+                  onTap: () {
+                    Navigator.of(sheet).pop();
+                    record();
+                  },
+                ),
+              if (onSaveNew != null && profile != null)
                 _PickerRow(
                   key: const ValueKey('pattern-picker-notes'),
                   icon: LucideIcons.music,

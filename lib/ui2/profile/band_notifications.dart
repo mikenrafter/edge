@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../haptics/haptic_slots.dart' show sequenceLabel;
+import '../../haptics/pattern_store.dart' show SavedHapticPattern;
 import '../../l10n/app_localizations.dart';
 import '../../settings/settings_repository.dart';
 import '../../notify/buzz_sequence.dart';
@@ -61,10 +63,23 @@ class _BandNotificationsState extends State<BandNotifications>
     with WidgetsBindingObserver {
   NotificationRelay get _relay => context.read<AppState>().notificationRelay;
 
+  // The stored patterns, to name what each channel and app plays.
+  List<SavedHapticPattern> _patterns = const [];
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _loadPatterns();
+  }
+
+  Future<void> _loadPatterns() async {
+    try {
+      final list = (await SettingsRepository.instance.patterns()).list;
+      if (mounted) setState(() => _patterns = list);
+    } catch (_) {
+      // Unnamed rows say "Custom"; the relay still works.
+    }
   }
 
   @override
@@ -98,6 +113,8 @@ class _BandNotificationsState extends State<BandNotifications>
         ],
         channels: relay.controller.channels,
         onChannel: relay.setChannel,
+        patternNameOf: (own) =>
+            sequenceLabel(own, _patterns, ifNone: 'Default rhythm'),
         onEnabled: relay.setEnabled,
         onlyWhileWorn: relay.onlyWhileWorn,
         wearReport: relay.wearReport,
@@ -180,9 +197,15 @@ class BandNotificationsView extends StatelessWidget {
     this.onChannel,
     this.onAppBuzzPattern,
     this.onChannelBuzzPattern,
+    this.patternNameOf,
   });
 
   final bool supported, enabled, granted;
+
+  /// The name of the pattern a channel or an app plays, from the sequence it
+  /// chose itself (null: none chosen, it follows the default). Null: the rows
+  /// say "Custom".
+  final String Function(BuzzSequence? own)? patternNameOf;
   final List<RelayApp> apps;
 
   /// Per-channel policy by name (apps, alarms, calls). Absent means defaults.
@@ -257,6 +280,11 @@ class BandNotificationsView extends StatelessWidget {
             onChanged: onApp,
             sequence: (channels['apps'] ?? ChannelConfig.forChannel('apps'))
                 .sequenceForApp(a.package),
+            patternName: patternNameOf?.call(
+                (channels['apps'] ?? ChannelConfig.forChannel('apps'))
+                        .appSequences[a.package] ??
+                    (channels['apps'] ?? ChannelConfig.forChannel('apps'))
+                        .buzzSequence),
             onBuzzPattern: onAppBuzzPattern),
   ];
 
@@ -298,6 +326,7 @@ class BandNotificationsView extends StatelessWidget {
       BuzzPatternRow(
         key: ValueKey('buzz-pattern:channel:$name'),
         sequence: cfg.effectiveSequence,
+        patternName: patternNameOf?.call(cfg.buzzSequence),
         enabled: !cfg.matchHaptics && onChannelBuzzPattern != null,
         onTap: () => onChannelBuzzPattern?.call(name),
       ),
@@ -468,11 +497,13 @@ class _AppRow extends StatelessWidget {
       {this.enabled = true,
       this.onChanged,
       this.sequence,
+      this.patternName,
       this.onBuzzPattern});
   final RelayApp app;
   final bool enabled;
   final void Function(String pkg, bool on)? onChanged;
   final BuzzSequence? sequence;
+  final String? patternName;
   final void Function(String pkg)? onBuzzPattern;
 
   @override
@@ -537,7 +568,7 @@ class _AppRow extends StatelessWidget {
               onTap: enabled && app.on && onBuzzPattern != null
                   ? () => onBuzzPattern!(app.package)
                   : null,
-              semanticLabel: 'Buzz pattern, ${buzzSummary(sequence!)}',
+              semanticLabel: 'Buzz pattern, ${patternName ?? 'Custom'}',
               child: Opacity(
                 opacity: enabled && app.on && onBuzzPattern != null ? 1 : .4,
                 child: Padding(

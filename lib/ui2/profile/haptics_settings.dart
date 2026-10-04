@@ -1,8 +1,10 @@
 // HAPTICS (8AD) — Settings > The band > Haptics.
 //
-// Four groups: Patterns (the named patterns every Buzz pattern picker offers:
-// yours first, then a divider and the built-in ones, which can be customised
-// and put back but not renamed or deleted),
+// Groups, in order: Your patterns (the wearer's saved patterns), Presets (the
+// built-in ones: the ten presets are read-only, the gesture cues can be
+// customised and put back; none can be renamed or deleted), Where patterns are
+// used (every alert and gesture cue that plays a pattern, by the NAME of the
+// pattern, grouped by section with a link to the screen where it is set),
 // Safety (allow long sequences, and what the band's rolling command limit and
 // queue are doing), Test (buzz the band) and, in developer mode only,
 // Calibration (the Device lab).
@@ -20,7 +22,9 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
 import '../../haptics/band_queue.dart' show BandCommandLedger;
+import '../../haptics/builtin_patterns.dart' show isPresetKey, kPresets;
 import '../../haptics/haptic_profile.dart';
+import '../../haptics/haptic_slots.dart';
 import '../../haptics/pattern_store.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../settings/settings_repository.dart';
@@ -31,9 +35,12 @@ import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'buzz_pattern.dart';
 import 'device_lab.dart' show DeviceLab;
+import 'band_notifications.dart' show BandNotifications;
+import 'gestures.dart' show BandGestures;
 import 'haptic_pattern_editor.dart';
-import 'pattern_picker.dart' show patternDetail;
+import 'pattern_picker.dart' show patternDetail, showPatternPicker;
 import 'profile.dart';
+import 'settings.dart' show NotificationSettings;
 
 const String _riskCaption = 'May cause harm to your device. Use at your own risk.';
 
@@ -122,6 +129,60 @@ class _HapticsSettingsState extends State<HapticsSettings> {
   Future<void> _reset(String id) =>
       _run(() => _commit(id, (store) => store.resetToDefault(id)));
 
+  /// Puts [p] on slot [key] (8AI): an alert's rule (or the relay's apps
+  /// channel) holds a snapshot of it, a gesture cue holds its id. The store
+  /// itself is not edited. [p] null puts the slot back on its default.
+  Future<void> _assign(String key, SavedHapticPattern? p) async {
+    final repo = SettingsRepository.instance;
+    final seq = p?.sequence.copyWith(patternId: p.id);
+    if (isGestureCueSlot(key)) {
+      await repo.update((d) {
+        final m = {
+          ...decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, '')),
+        };
+        if (p == null) {
+          m.remove(key);
+        } else {
+          m[key] = p.id;
+        }
+        d.setString(Prefs.hapticsCueAssign, encodeCueAssignments(m));
+      }, sections: const {});
+    } else if (key == kRelaySlotKey) {
+      await repo.update((d) {
+        final cfg = d.channels[kRelaySlotChannel];
+        if (cfg == null) return;
+        d.channels = {
+          ...d.channels,
+          kRelaySlotChannel: seq == null
+              ? cfg.copyWith(clearBuzzSequence: true)
+              : cfg.copyWith(buzzSequence: seq),
+        };
+      }, sections: {SettingsSection.channels});
+    } else {
+      final id = key.substring('alert.'.length);
+      await repo.update((d) {
+        final rule = {...d.alerts.alertRule(id).toJson()};
+        if (seq == null) {
+          rule.remove('buzzSequence');
+        } else {
+          rule['buzzSequence'] = seq.toJson();
+        }
+        d.alerts = d.alerts.withAlertRule(rule);
+      }, sections: {SettingsSection.alerts});
+    }
+    await _load();
+  }
+
+  // The screen where a section's slots are set.
+  void _openSlotScreen(BuildContext c, String sectionId) => goto(
+        c,
+        switch (sectionId) {
+          'apps' => const BandNotifications(),
+          'gestures' => const BandGestures(),
+          _ => const NotificationSettings(),
+        },
+      );
+
   @override
   Widget build(BuildContext c) {
     final snap = _snap;
@@ -171,6 +232,17 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       onDelete: _delete,
       onReset: _reset,
       onDeviceLab: () => goto(c, const DeviceLab()),
+      slotPatternName: (key) => slotPatternLabel(
+        key,
+        patterns: snap.patterns,
+        alerts: snap.alerts,
+        channels: snap.channels,
+        cueAssignments:
+            decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, '')),
+      ),
+      onOpenSlotScreen: (id) => _openSlotScreen(c, id),
+      onAssignToSlot: (key, p) => _assign(key, p),
+      onResetSlot: (key) => _assign(key, null),
     );
   }
 }
@@ -196,6 +268,10 @@ class HapticsSettingsView extends StatelessWidget {
     required this.onDelete,
     required this.onDeviceLab,
     this.onReset,
+    this.slotPatternName,
+    this.onOpenSlotScreen,
+    this.onAssignToSlot,
+    this.onResetSlot,
   });
 
   /// The stored patterns, in the order to show them.
@@ -225,6 +301,22 @@ class HapticsSettingsView extends StatelessWidget {
   /// Puts a built-in pattern back to its default.
   final ValueChanged<String>? onReset;
 
+  /// What the slot with this key (see haptic_slots.dart) plays now, by NAME.
+  /// Null: the rows say "Default".
+  final String Function(String slotKey)? slotPatternName;
+
+  /// Opens the screen where a section's slots are set; null hides the links.
+  final void Function(String sectionId)? onOpenSlotScreen;
+
+  /// Puts a stored pattern or preset on a slot without editing the store. May
+  /// complete later and throw (the view says so). Null hides "Use on a slot"
+  /// and makes the slot rows inert.
+  final FutureOr<void> Function(String slotKey, SavedHapticPattern pattern)?
+      onAssignToSlot;
+
+  /// Puts a slot back on its default.
+  final void Function(String slotKey)? onResetSlot;
+
   List<String> get _names => [for (final p in patterns) p.name];
 
   @override
@@ -243,8 +335,13 @@ class HapticsSettingsView extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
                 children: [
-                  SettingsAccordion('Patterns',
-                      id: 'haptics_patterns', children: _patternRows(c, p)),
+                  SettingsAccordion('Your patterns',
+                      id: 'haptics_your_patterns',
+                      children: _yourRows(c, p)),
+                  SettingsAccordion('Presets',
+                      id: 'haptics_presets', children: _presetRows(c, p)),
+                  SettingsAccordion('Where patterns are used',
+                      id: 'haptics_where_used', children: _slotRows(c, p)),
                   SettingsAccordion('Safety',
                       id: 'haptics_safety', children: _safetyRows(c, p)),
                   SettingsAccordion('Test', id: 'haptics_test', children: [
@@ -283,17 +380,12 @@ class HapticsSettingsView extends StatelessWidget {
     );
   }
 
-  List<Widget> _patternRows(BuildContext c, P p) {
+  List<Widget> _yourRows(BuildContext c, P p) {
     final mine = [
       for (final s in patterns)
         if (!s.system) s,
     ];
-    final builtIn = [
-      for (final s in patterns)
-        if (s.system) s,
-    ];
     return [
-      _sectionHeader(p, 'Your patterns'),
       if (mine.isEmpty)
         Padding(
           padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -323,14 +415,89 @@ class HapticsSettingsView extends StatelessWidget {
           sub: 'Notes and rests, with dynamics',
           onTap: () => _newFromNotes(c),
         ),
-      if (builtIn.isNotEmpty) ...[
-        Divider(
-          key: const ValueKey('built-in-divider'),
-          height: S.x6,
-          color: p.ink3.withValues(alpha: 0.3),
+    ];
+  }
+
+  // The built-ins: the ten presets in their own order, then the rest (the
+  // gesture cues, and a per-alert built-in the wearer had changed).
+  List<Widget> _presetRows(BuildContext c, P p) {
+    final order = [for (final k in kPresets) k.$1];
+    int rank(SavedHapticPattern s) {
+      final i = order.indexOf(s.systemKey ?? '');
+      return i < 0 ? order.length : i;
+    }
+
+    final builtIn = [
+      for (final s in patterns)
+        if (s.system) s,
+    ]..sort((a, b) => rank(a).compareTo(rank(b)));
+    if (builtIn.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child: Text('No presets to show.',
+              style: F.over.copyWith(color: p.ink3)),
         ),
-        _sectionHeader(p, 'Built in'),
-        for (final s in builtIn) _patternRow(c, p, s),
+      ];
+    }
+    return [for (final s in builtIn) _patternRow(c, p, s)];
+  }
+
+  // Slots by section, each section under its header and a link to its screen,
+  // a divider between two sections.
+  List<Widget> _slotRows(BuildContext c, P p) {
+    final name = slotPatternName;
+    return [
+      for (var i = 0; i < kHapticSlotSections.length; i++) ...[
+        if (i > 0)
+          Divider(
+            key: ValueKey('haptic-slot-sep:${kHapticSlotSections[i].id}'),
+            height: S.x6,
+            color: p.ink3.withValues(alpha: 0.3),
+          ),
+        Padding(
+          key: ValueKey('haptic-slot-section:${kHapticSlotSections[i].id}'),
+          padding: const EdgeInsets.only(top: S.x2),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(kHapticSlotSections[i].title,
+                    style: F.cap.copyWith(color: p.ink2)),
+              ),
+              if (onOpenSlotScreen != null)
+                Pressable(
+                  key: ValueKey(
+                      'haptic-slot-section-link:${kHapticSlotSections[i].id}'),
+                  onTap: () => onOpenSlotScreen!(kHapticSlotSections[i].id),
+                  semanticLabel: 'Open ${kHapticSlotSections[i].title}',
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x1),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Open',
+                            style: F.cap.copyWith(
+                                color: p.on(C.blue),
+                                fontWeight: FontWeight.w700)),
+                        Icon(LucideIcons.chevronRight,
+                            size: 16, color: p.on(C.blue)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        for (final slot in kHapticSlotSections[i].slots)
+          SetRow(
+            LucideIcons.waves,
+            C.purple,
+            slot.label,
+            key: ValueKey('haptic-slot:${slot.key}'),
+            value: name == null ? 'Default' : name(slot.key),
+            chevron: false,
+            onTap: onAssignToSlot == null ? null : () => _pickForSlot(c, slot),
+          ),
       ],
     ];
   }
@@ -463,7 +630,86 @@ class HapticsSettingsView extends StatelessWidget {
     }
   }
 
+  // The picker for one slot: any stored pattern or preset goes onto it, or its
+  // default comes back. Making a new pattern is done under Your patterns.
+  void _pickForSlot(BuildContext c, HapticSlot slot) {
+    showPatternPicker(
+      c,
+      patterns: patterns,
+      profile: profile,
+      bandConnected: bandConnected,
+      allowLong: allowLong,
+      onPlay: onPlay,
+      onDefault: () => onResetSlot?.call(slot.key),
+      onChoose: (seq) {
+        SavedHapticPattern? chosen;
+        for (final s in patterns) {
+          if (s.id == seq.patternId) chosen = s;
+        }
+        if (chosen != null) _assign(c, slot.key, chosen);
+      },
+    );
+  }
+
+  Future<void> _assign(
+      BuildContext c, String slotKey, SavedHapticPattern s) async {
+    try {
+      await onAssignToSlot!(slotKey, s);
+    } catch (_) {
+      if (c.mounted) _saveFailed(c);
+    }
+  }
+
+  // Every slot, grouped by section, for putting [s] on one.
+  void _assignSheet(BuildContext c, SavedHapticPattern s) {
+    final p = P.of(c);
+    final name = slotPatternName;
+    showModalBottomSheet<void>(
+      context: c,
+      backgroundColor: p.card,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            key: const ValueKey('haptic-assign-sheet'),
+            padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: S.x2),
+                  child: Text('Use "${s.name}" on',
+                      style: F.head.copyWith(color: p.ink)),
+                ),
+                for (final section in kHapticSlotSections) ...[
+                  _sectionHeader(p, section.title),
+                  for (final slot in section.slots)
+                    SetRow(
+                      LucideIcons.waves,
+                      C.purple,
+                      slot.label,
+                      key: ValueKey('haptic-assign-slot:${slot.key}'),
+                      value: name == null ? '' : name(slot.key),
+                      chevron: false,
+                      onTap: () {
+                        Navigator.of(sheet).pop();
+                        _assign(c, slot.key, s);
+                      },
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openSheet(BuildContext c, SavedHapticPattern s) {
+    // A preset is read-only: it can be played and put on a slot, nothing more.
+    final preset = isPresetKey(s.systemKey ?? '');
     final p = P.of(c);
     showModalBottomSheet<void>(
       context: c,
@@ -496,7 +742,20 @@ class HapticsSettingsView extends StatelessWidget {
                     _preview(c, s.sequence);
                   },
                 ),
-                if (profile != null)
+                if (onAssignToSlot != null)
+                  SetRow(
+                    LucideIcons.waves,
+                    C.blue,
+                    'Use on a slot',
+                    key: const ValueKey('haptic-action-assign'),
+                    sub: 'An alert or a gesture cue',
+                    chevron: false,
+                    onTap: () {
+                      Navigator.of(sheet).pop();
+                      _assignSheet(c, s);
+                    },
+                  ),
+                if (profile != null && !preset)
                   SetRow(
                     LucideIcons.music,
                     C.blue,
@@ -508,18 +767,20 @@ class HapticsSettingsView extends StatelessWidget {
                       _edit(c, s);
                     },
                   ),
-                SetRow(
-                  LucideIcons.hand,
-                  C.blue,
-                  'Re-record',
-                  key: const ValueKey('haptic-action-rerecord'),
-                  chevron: false,
-                  onTap: () {
-                    Navigator.of(sheet).pop();
-                    _rerecord(c, s);
-                  },
-                ),
-                if (s.system)
+                if (!preset)
+                  SetRow(
+                    LucideIcons.hand,
+                    C.blue,
+                    'Re-record',
+                    key: const ValueKey('haptic-action-rerecord'),
+                    chevron: false,
+                    onTap: () {
+                      Navigator.of(sheet).pop();
+                      _rerecord(c, s);
+                    },
+                  ),
+                if (!preset)
+                  if (s.system)
                   SetRow(
                     LucideIcons.rotateCcw,
                     C.blue,

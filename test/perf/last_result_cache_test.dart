@@ -139,6 +139,53 @@ void main() {
     });
   });
 
+  group('loadShowingLast (8AI G1)', () {
+    test('a remembered result is handed over at once, before the loader '
+        'finishes, and the fresh one is stored', () async {
+      final c = LastResultCache();
+      c.put<int>('a', 1);
+      final seen = <int>[];
+      var finish = false;
+      final f = c.loadShowingLast<int>('a', () async {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        finish = true;
+        return 2;
+      }, onLast: (h) => seen.add(h.value));
+      expect(seen, [1], reason: 'in the same turn, loader still running');
+      expect(finish, isFalse);
+      expect(await f, 2);
+      expect(c.get<int>('a')!.value, 2);
+    });
+
+    test('an error propagates, stores nothing and keeps the earlier entry',
+        () async {
+      final c = LastResultCache();
+      c.put<int>('a', 1);
+      await expectLater(
+        c.loadShowingLast<int>('a', () async => throw StateError('nope'),
+            onLast: (_) {}),
+        throwsStateError,
+      );
+      expect(c.get<int>('a')!.value, 1);
+      final d = LastResultCache();
+      await expectLater(
+        d.loadShowingLast<int>('b', () async => throw StateError('nope'),
+            onLast: (_) {}),
+        throwsStateError,
+      );
+      expect(d.get<int>('b'), isNull);
+    });
+
+    test('nothing remembered: onLast is never called', () async {
+      final c = LastResultCache();
+      var called = false;
+      await c.loadShowingLast<int>('a', () async => 1,
+          onLast: (_) => called = true);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      expect(called, isFalse);
+    });
+  });
+
   test('clear empties it', () {
     final c = LastResultCache();
     c.put<int>('a', 1);

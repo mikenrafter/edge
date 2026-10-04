@@ -213,7 +213,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
               color: C.domMind),
           const SizedBox(height: S.x5),
           if (_loading)
-            const Center(child: CircularProgressIndicator())
+            const InlineLoading()
           else ...[
             // Mind is the only tab here with something to START. The other
             // four are logs and reviews, and a "begin" card over a medication
@@ -1360,11 +1360,18 @@ class JournalFindings extends StatefulWidget {
 class _JournalFindingsState extends State<JournalFindings> {
   List<Map<String, dynamic>> _rows = const [];
   Map<String, dynamic> _weekday = const {};
-  bool _loading = true;
 
-  /// Set while the rows on screen are the last result of an earlier open,
-  /// shown at once while the insights recompute; null once fresh ones land.
-  DateTime? _cachedAt;
+  /// Which of the two slow reads have something to show: the insight rows, and
+  /// the weekday effect. Until one does, its part of the page is an inline
+  /// loading card; the title and the other part are already drawn.
+  bool _rowsReady = false;
+  bool _weekdayReady = false;
+
+  /// Set while the rows / the weekday card on screen are the last result of an
+  /// earlier open, shown at once while the insights recompute; null once fresh
+  /// ones land.
+  DateTime? _rowsCachedAt;
+  DateTime? _weekdayCachedAt;
 
   @override
   void initState() {
@@ -1372,66 +1379,97 @@ class _JournalFindingsState extends State<JournalFindings> {
     if (widget.rows != null) {
       _rows = widget.rows!;
       _weekday = widget.weekday ?? const {};
-      _loading = false;
+      _rowsReady = _weekdayReady = true;
       return;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  static List<Map<String, dynamic>> _rowsOf(Map<String, dynamic> j) => [
+        for (final e in (j['numeric_insights'] as List? ?? const []))
+          if (e is Map) e.cast<String, dynamic>(),
+      ];
+
   Future<void> _load() async {
     final repo = context.read<AppState>().repo;
     if (repo == null) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _rowsReady = _weekdayReady = true);
+      }
       return;
     }
-    try {
-      // The insight pass is the slow part of opening this. Its last good result
-      // is kept so a re-open shows it at once, labelled, while this recomputes;
-      // an error is never kept.
-      final key = LastResultCache.keyOf('wellness_insights');
-      final hit = LastResultCache.instance
-          .get<({List<Map<String, dynamic>> rows, Map<String, dynamic> weekday})>(key);
-      if (hit != null && mounted) {
-        setState(() {
-          _rows = hit.value.rows;
-          _weekday = hit.value.weekday;
-          _cachedAt = hit.cachedAt;
-          _loading = false;
-        });
-      }
-      final r = await LastResultCache.instance.load(key, () async {
-        final j = await repo.getJournalInsights(range: '90d');
-        final w = await repo.getWeekdayEffect();
-        return (
-          rows: [
-            for (final e in (j['numeric_insights'] as List? ?? const []))
-              if (e is Map) e.cast<String, dynamic>(),
-          ],
-          weekday: w,
-        );
-      });
+    // The insight pass and the weekday effect are the slow parts of opening
+    // this. Each one's last good result (memory, else the stored copy) is shown
+    // under an "As of" label while it recomputes; an error is never kept. A
+    // failure comes back as null so it cannot escape unawaited.
+    final cache = LastResultCache.instance;
+    final rowsF = cache
+        .loadShowingLast<Map<String, dynamic>>(
+          LastResultCache.keyOf('wellness_insights'),
+          () => repo.getJournalInsights(range: '90d'),
+          onLast: (hit) {
+            if (!mounted || _rowsReady) return;
+            setState(() {
+              _rows = _rowsOf(hit.value);
+              _rowsReady = true;
+              _rowsCachedAt = hit.cachedAt;
+            });
+          },
+        )
+        .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+    final weekdayF = cache
+        .loadShowingLast<Map<String, dynamic>>(
+          LastResultCache.keyOf('wellness_weekday'),
+          () => repo.getWeekdayEffect(),
+          onLast: (hit) {
+            if (!mounted || _weekdayReady) return;
+            setState(() {
+              _weekday = hit.value;
+              _weekdayReady = true;
+              _weekdayCachedAt = hit.cachedAt;
+            });
+          },
+        )
+        .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+    // Each lands on its own: the weekday card does not wait for the slower
+    // insight pass, nor the other way round.
+    rowsF.then((j) {
       if (!mounted) return;
       setState(() {
-        _rows = r.rows;
-        _weekday = r.weekday;
-        _cachedAt = null;
-        _loading = false;
+        // A failed read keeps an earlier result (labelled) and otherwise shows
+        // the empty state, as before.
+        if (j != null) {
+          _rows = _rowsOf(j);
+          _rowsCachedAt = null;
+        }
+        _rowsReady = true;
       });
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
-    }
+    });
+    weekdayF.then((w) {
+      if (!mounted) return;
+      setState(() {
+        if (w != null) {
+          _weekday = w;
+          _weekdayCachedAt = null;
+        }
+        _weekdayReady = true;
+      });
+    });
+  }
+
+  /// The older of the two stale parts on screen: the label never claims more
+  /// recent than the oldest thing it covers.
+  DateTime? get _cachedAt {
+    final a = _rowsCachedAt, b = _weekdayCachedAt;
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isBefore(b) ? a : b;
   }
 
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
     final title = l?.wellnessWhatYouLogScreenTitle ?? 'What you log';
-    if (_loading) {
-      return detailScaffold(c, title, const [
-        SizedBox(height: S.x8),
-        Center(child: CircularProgressIndicator()),
-      ]);
-    }
     final p = P.of(c);
     final doses = [
       for (final r in _rows)
@@ -1447,7 +1485,9 @@ class _JournalFindingsState extends State<JournalFindings> {
         Padding(
             padding: const EdgeInsets.only(bottom: S.x2),
             child: AsOfLabel(at: at)),
-      if (_rows.isEmpty)
+      if (!_rowsReady)
+        const InlineLoading()
+      else if (_rows.isEmpty)
         StatusCard(
           l?.wellnessNothingSeparatedTitle ?? 'No clear pattern yet',
           l?.wellnessNothingSeparatedBody ??
@@ -1477,7 +1517,7 @@ class _JournalFindingsState extends State<JournalFindings> {
       ],
       Section(
         l?.wellnessWhichDayOfWeek ?? 'Which day of the week',
-        _weekdayCard(c),
+        _weekdayReady ? _weekdayCard(c) : const InlineLoading(),
       ),
     ]);
   }

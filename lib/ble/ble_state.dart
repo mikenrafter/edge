@@ -1960,6 +1960,11 @@ class LiveStreamOwners {
   /// decision in #287 was taken in gen5 terms.
   final bool foreground;
 
+  /// The developer's "Start live feed" on the Live devices screen (HR and the
+  /// high-rate stream, both families). An explicit, user-held request to see
+  /// everything the band sends; released by Stop or when the screen closes.
+  final bool developerLiveFeed;
+
   const LiveStreamOwners({
     this.visibleLiveHrView = false,
     this.activeWorkout = false,
@@ -1968,6 +1973,7 @@ class LiveStreamOwners {
     this.movementSampling = false,
     this.passiveStrapSteps = false,
     this.foreground = false,
+    this.developerLiveFeed = false,
   });
 
   static const none = LiveStreamOwners();
@@ -1977,13 +1983,16 @@ class LiveStreamOwners {
       'hrView: $visibleLiveHrView, workout: $activeWorkout, '
       'fgGait: $foregroundGaitWorkout, breathing: $breathing, '
       'movement: $movementSampling, '
-      'passiveSteps: $passiveStrapSteps, foreground: $foreground)';
+      'passiveSteps: $passiveStrapSteps, foreground: $foreground, '
+      'developer: $developerLiveFeed)';
 }
 
 /// The streams the current owners call for.
 ///
 ///   wantHr  = visibleLiveHrView || activeWorkout || breathing
+///             || developerLiveFeed
 ///   wantImu = foregroundGaitWorkout || movementSampling || passiveStrapSteps
+///             || developerLiveFeed
 ///
 /// plus, on gen4 only, `foreground` as an owner of both (see
 /// [LiveStreamOwners.foreground]). History sync is never an owner — it reads
@@ -2001,10 +2010,12 @@ LiveStreamIntent desiredLiveStreams(
   final hr = o.visibleLiveHrView ||
       o.activeWorkout ||
       o.breathing ||
+      o.developerLiveFeed ||
       legacy;
   final imu = (o.foregroundGaitWorkout ||
           o.movementSampling ||
           o.passiveStrapSteps ||
+          o.developerLiveFeed ||
           legacy) &&
       !standardHrFallback;
   return LiveStreamIntent(hr: hr, imu: imu);

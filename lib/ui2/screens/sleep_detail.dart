@@ -427,8 +427,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
     if (_loading && _d == null) {
       return detailScaffold(c, title, const [
-        SizedBox(height: S.x8),
-        Center(child: CircularProgressIndicator()),
+        SizedBox(height: S.x4),
+        InlineLoading(),
       ]);
     }
 

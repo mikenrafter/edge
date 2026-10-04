@@ -126,8 +126,8 @@ void main() {
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
 
-  test('schema ladder is at 58', () {
-    expect(LocalDb.schemaVersion, 58);
+  test('schema ladder is at 58 or later', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(58));
   });
 
   group('the day fingerprint sees what MAX:COUNT cannot', () {
@@ -363,7 +363,7 @@ void main() {
       expect(first, greaterThanOrEqualTo(6));
       final db = await LocalDb.instance;
       final v = await db.rawQuery('PRAGMA user_version');
-      expect(v.first.values.first, 58);
+      expect(v.first.values.first, LocalDb.schemaVersion);
 
       // Idempotent: stamp it back to 57 WITHOUT removing anything, run the
       // rung again.

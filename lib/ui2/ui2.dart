@@ -10,6 +10,7 @@ export 'as_of.dart';
 export 'charts.dart';
 export 'community_links.dart';
 export 'grammar.dart';
+export 'inline_loading.dart';
 export 'last_result_cache.dart';
 export 'live_hr.dart';
 export 'metric_labels.dart';

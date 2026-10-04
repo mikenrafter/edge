@@ -339,8 +339,8 @@ class _CircadianDetailState extends State<CircadianDetail> with RevisionReload {
 
     return detailScaffold(c, l?.circadianDetailTitle ?? 'Body clock', [
       if (_loading && _d == null) ...[
-        const SizedBox(height: S.x8),
-        const Center(child: CircularProgressIndicator()),
+        const SizedBox(height: S.x4),
+        const InlineLoading(),
       ] else ...[
         // Chronotype, jet lag, regularity and the rhythm battery all come off
         // the cross-day rollup, so the label follows that step, not a day.

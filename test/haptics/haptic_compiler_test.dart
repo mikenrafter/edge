@@ -5,6 +5,12 @@
 // lands as close to the target as the measured vocabulary allows. Every test
 // here derives its expectation from the profile table or from the spec's
 // worked examples; none pins a tie-break the spec does not state.
+//
+// 8AI: a rest the author wrote is kept, and never shortened in either rendition
+// (see test/fix8ai/g4_encoder_rests_test.dart). Where a phrase's rests vary
+// (the pair feels R2 or R1), it serves a target only if its shortest rest
+// reaches the written one, so the examples below that used to take the pair, or
+// a gap row at the end of its range, take what reaches the rest instead.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
@@ -47,6 +53,34 @@ bool _singleBuzz(HapticPhrase p) => p.effects.length == 1 && p.loop == 1;
 
 List<String> _ids(HapticPlan p) => [for (final s in p.steps) s.phrase.id];
 
+/// The rest runs strictly between the first and the last note of [es].
+List<int> _restRuns(List<PatternEntry> es) {
+  final cells = timeline(es);
+  final first = cells.indexWhere((c) => c != null);
+  final last = cells.lastIndexWhere((c) => c != null);
+  final out = <int>[];
+  var run = 0;
+  for (var i = first; i <= last; i++) {
+    if (cells[i] == null) {
+      run++;
+    } else if (run > 0) {
+      out.add(run);
+      run = 0;
+    }
+  }
+  return out;
+}
+
+/// Whether phrase [p] can play [target] (a rendition of it) alone: each of its
+/// own rests, in its shorter rendition, reaches the one written in [target].
+bool _servesAlone(HapticPhrase p, List<PatternEntry> target) {
+  final lo = _restRuns(p.min), hi = _restRuns(p.max), want = _restRuns(target);
+  for (var i = 0; i < want.length; i++) {
+    if ((lo[i] < hi[i] ? lo[i] : hi[i]) < want[i]) return false;
+  }
+  return true;
+}
+
 void main() {
   group('timeline', () {
     test('one cell per sixteenth; notes carry their dynamic, rests are null',
@@ -85,6 +119,12 @@ void main() {
         for (final target in [p.min, p.max]) {
           final plan = compile(target, _mg);
           expect(plan, isNotNull, reason: p.id);
+          if (!_servesAlone(p, target)) {
+            // The pair's R2 rendition: its own R1 rendition would shorten the
+            // rest, so two commands keep it.
+            expect(plan!.steps.length, greaterThan(1), reason: '${p.id} $target');
+            continue;
+          }
           expect(plan!.exact, isTrue, reason: '${p.id} $target');
           expect(plan.cost, 0, reason: p.id);
           expect(plan.steps, hasLength(1), reason: p.id);
@@ -106,13 +146,17 @@ void main() {
     test('trailing target rests cost nothing', () {
       for (final p in _mg.phrases.where((p) => p.stable)) {
         final plan = compile([...p.min, ..._rest(7)], _mg);
+        if (!_servesAlone(p, p.min)) {
+          expect(plan!.steps.length, greaterThan(1), reason: p.id);
+          continue;
+        }
         expect(plan!.exact, isTrue, reason: p.id);
         expect(plan.steps, hasLength(1), reason: p.id);
       }
     });
 
-    test('single-buzz pair x every stable gap row, every rest length inside',
-        () {
+    test('single-buzz pair x every stable gap row, at the rest it measured at '
+        'least', () {
       final singles = _mg.phrases.where((p) => p.stable).where(_singleBuzz);
       final gaps = _mg.gaps.where((g) => g.stable);
       expect(singles.length, greaterThanOrEqualTo(2));
@@ -121,7 +165,9 @@ void main() {
       for (final p in singles) {
         for (final q in singles) {
           for (final g in gaps) {
-            for (var k = g.minUnits; k <= g.maxUnits; k++) {
+            // A rest is never shortened, so a row serves the rests from its
+            // shortest felt rest up to the next row's; test the row's own.
+            for (final k in [g.minUnits]) {
               final target = [...p.min, ..._rest(k), ...q.min];
               final plan = compile(target, _mg);
               final why = '${p.id} + ${q.id}, rest $k, gap ${g.delayMs} ms';
@@ -129,10 +175,10 @@ void main() {
               expect(plan!.exact, isTrue, reason: why);
               expect(plan.steps, hasLength(2), reason: why);
               expect(plan.steps[0].delayMs, 0, reason: why);
-              // Two stable rows may both cover k (0 ms and 100 ms both feel
-              // 3..4 units); the tie goes to the lower delay.
+              // Every row whose shortest felt rest reaches k serves it (0 ms and
+              // 100 ms both feel 3..4 units); the tie goes to the lower delay.
               final expected = gaps
-                  .where((r) => r.minUnits <= k && k <= r.maxUnits)
+                  .where((r) => r.minUnits >= k)
                   .map((r) => r.delayMs)
                   .reduce((a, b) => a < b ? a : b);
               expect(plan.steps[1].delayMs, expected, reason: why);
@@ -144,13 +190,14 @@ void main() {
       expect(checked, greaterThan(0));
     });
 
-    test('N4ff R6 N4f -> effect 47, then 300 ms after it ends, effect 14', () {
+    test('N4ff R6 N4f -> effect 47, then 700 ms after it ends, effect 14', () {
       {
         final plan = compile(_c('N4ff R6 N4f'), _mg)!;
         expect(_ids(plan), ['buzz47', 'buzz14']);
         expect(plan.steps[0].delayMs, 0);
-        expect(plan.steps[1].delayMs, 300,
-            reason: 'stable beats lower delay; 6 units is in the 300 ms row');
+        expect(plan.steps[1].delayMs, 700,
+            reason: 'the 300 ms row feels 4..6 and would shorten a written '
+                'rest of 6; the 700 ms row feels 6..8');
         expect(plan.exact, isTrue);
         // Exact, so the only cost is the penalty for the second command.
         expect(plan.cost, 2);
@@ -162,15 +209,15 @@ void main() {
 
     test('the plan feels like the shortest and longest the band can do', () {
       final plan = compile(_c('N4ff R6 N4f'), _mg)!;
-      // The 300 ms row feels 4..6 units; buzz14 is 3..4 units long.
-      expect(timeline(plan.feltMin), timeline(_c('N4ff R4 N3f')));
-      expect(timeline(plan.feltMax), timeline(_c('N4ff R6 N4f')));
+      // The 700 ms row feels 6..8 units; buzz14 is 3..4 units long.
+      expect(timeline(plan.feltMin), timeline(_c('N4ff R6 N3f')));
+      expect(timeline(plan.feltMax), timeline(_c('N4ff R8 N4f')));
     });
 
     test('summary names the commands and the waits', () {
       final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(plan.summary,
-          '2 commands: effect 47, then 300 ms after it ends, effect 14');
+          '2 commands: effect 47, then 700 ms after it ends, effect 14');
       final one = compile(_c('N4ff'), _mg)!;
       expect(one.summary, contains('effect 47'));
       expect(one.summary, isNot(contains('commands')));
@@ -213,6 +260,7 @@ void main() {
     test('every stable phrase\'s own shortest rendition is exact', () {
       for (final p in _mg.phrases.where((p) => p.stable)) {
         final plan = compile(p.min, _mg)!;
+        if (!_servesAlone(p, p.min)) continue; // the pair: see the header
         expect(plan.exact, isTrue, reason: p.id);
       }
     });
@@ -324,7 +372,10 @@ void main() {
       }
     });
 
-    test('14 units is still the measured 1200 ms row', () {
+    test('14 units is past what the 1200 ms row always feels', () {
+      // The row feels 12..14: a written rest of 14 would be shortened in its
+      // shortest rendition, so the wait grows one unit per unit from the row's
+      // shortest rest (12): 1200 + 2 x 125.
       final target = [
         ..._phrase('buzz47').min,
         ..._rest(14),
@@ -332,7 +383,7 @@ void main() {
       ];
       final plan = compile(target, _mg)!;
       expect(plan.exact, isTrue);
-      expect(plan.steps[1].delayMs, 1200);
+      expect(plan.steps[1].delayMs, 1450);
     });
   });
 
@@ -357,13 +408,12 @@ void main() {
       expect(plan.exact, isTrue);
     });
 
-    test('a heavy penalty makes one approximate command beat an exact pair',
-        () {
+    test('a heavy penalty never makes one command beat a written rest', () {
+      // Before 8AI one approximate command won here and dropped the rest.
       final plan = compile(_c('N4ff R6 N4f'), _mg, commandPenalty: 100)!;
-      expect(plan.steps, hasLength(1));
-      expect(plan.exact, isFalse);
-      expect(plan.cost, greaterThan(0));
-      expect(plan.cost, lessThan(100));
+      expect(plan.steps, hasLength(2));
+      expect(plan.exact, isTrue);
+      expect(plan.cost, 100);
     });
 
     test('exact is still decided by cell mismatches, not by cost', () {
@@ -392,7 +442,7 @@ void main() {
     test('runtimeMs is the longest felt timeline times the unit', () {
       final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(plan.runtimeMs, timeline(plan.feltMax).length * _mg.unitMs);
-      expect(plan.runtimeMs, 14 * 125);
+      expect(plan.runtimeMs, 16 * 125);
       final one = compile(_c('N4ff'), _mg)!;
       expect(one.runtimeMs, 4 * 125);
     });

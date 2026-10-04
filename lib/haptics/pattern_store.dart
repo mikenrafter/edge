@@ -136,6 +136,15 @@ class HapticPatternStore {
       }
     }
     if (!seed) return HapticPatternStore._(good);
+    // The per-alert built-ins of before the presets (8AI): one that still holds
+    // its old seeded rhythm was never the wearer's choice, so the slot's preset
+    // takes over; one the wearer changed stays as it is.
+    good.removeWhere((p) {
+      final key = p.systemKey;
+      return key != null &&
+          key.startsWith('alert.') &&
+          isLegacyAlertDefault(key.substring('alert.'.length), p.sequence);
+    });
     final have = {for (final p in good) p.systemKey};
     final names = {for (final p in good) p.name.toLowerCase()};
     for (final key in builtInKeys()) {
@@ -179,12 +188,15 @@ class HapticPatternStore {
 
   SavedHapticPattern? byId(String id) => _patterns[id];
 
-  /// The built-in pattern with [key] ('gesture.start', 'alert.water' ...).
+  /// The built-in pattern with [key] ('gesture.start', 'preset.sos' ...). For
+  /// an alert slot ('alert.water') the wearer's own changed copy of the old
+  /// per-alert built-in if there is one, else the slot's preset.
   SavedHapticPattern? bySystemKey(String key) {
     for (final p in _patterns.values) {
       if (p.systemKey == key) return p;
     }
-    return null;
+    final preset = alertPresetKey(key);
+    return preset == null ? null : bySystemKey(preset);
   }
 
   bool _taken(String name, {String? except}) => _patterns.values.any(

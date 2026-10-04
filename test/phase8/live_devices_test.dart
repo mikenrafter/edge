@@ -165,7 +165,12 @@ void main() {
       await pump(t);
       // band: hr, accel_x, novel_stream have data; skin_temp does not.
       expect(find.byType(LiveStreamChart), findsNWidgets(3));
-      expect(find.text(liveStreamLabel('novel_stream')), findsOneWidget);
+      // The sensors list (8AI G6) names every stream too, so look in the graph.
+      expect(
+          find.descendant(
+              of: find.byType(LiveStreamChart),
+              matching: find.text(liveStreamLabel('novel_stream'))),
+          findsOneWidget);
       expect(liveStreamLabel('novel_stream'), 'novel_stream',
           reason: 'an unknown key is shown as-is');
       expect(liveStreamLabel('hr'), isNot('hr'),
@@ -174,7 +179,8 @@ void main() {
 
     testWidgets('an empty stream says so instead of a flat line', (t) async {
       await pump(t);
-      expect(find.text(liveStreamLabel('skin_temp')), findsOneWidget);
+      // Named once in the sensors list (8AI G6) and once over its empty note.
+      expect(find.text(liveStreamLabel('skin_temp')), findsNWidgets(2));
       expect(find.text('No data in the last 30 s'), findsOneWidget);
     });
 

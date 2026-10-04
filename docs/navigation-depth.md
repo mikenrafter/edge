@@ -32,13 +32,20 @@ gone.
 ## What changed
 
 - There is no Profile home. Its Quick access area is gone: Settings is the
-  landing, and My devices stays in Settings > Band, its one door. The Community
-  links (GitHub, Reddit, Discord, Sponsor) are now the first Settings group.
+  landing, and My devices stays in Settings > Hardware (called Band until 8AI),
+  its one door. The Community links (GitHub, Reddit, Discord, Sponsor) are a
+  Settings group, directly above Connections since 8AI.
   Nothing else lived only on the old screen: it never drew the profile name, and
   the Storage size was already in Settings > Data & privacy.
-- Settings is grouped by task, in this order: Community, Band, Alerts, You &
-  preferences, Data & privacy, Connections, About, and Developer (developer
-  mode only). Reset all data stays last.
+- Settings is grouped by task, in this order: You & preferences, Hardware,
+  Alerts, Data & privacy, Community, Connections, About, and Developer
+  (developer mode only). Reset all data stays last. (8AI: You & preferences
+  moved first, Community moved down to sit above Connections, and Band became
+  Hardware. Hardware keeps the saved fold id `settings_band`, so nobody's
+  remembered state is lost.)
+- 8AI also moved "Look barcodes up online" from Data & privacy into Connections,
+  and removed the Steps row from Settings: counting steps from the phone has one
+  door, the phone's row in My devices.
 - Alarm moved from Band to Alerts. It is the first row of the Alerts group on
   the Settings screen itself, not a row inside Alerts and notifications, so its
   depth did not change and it has one door.

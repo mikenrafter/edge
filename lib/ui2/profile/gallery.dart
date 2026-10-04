@@ -1629,9 +1629,14 @@ Map<String, Widget> _listCases() => {
       ]),
       'buzz_pattern_row': Surface(
         child: Column(children: [
-          BuzzPatternRow(sequence: BuzzSequence.defaultFor(4), onTap: () {}),
           BuzzPatternRow(
-              sequence: BuzzSequence.defaultFor(4), enabled: false),
+              sequence: BuzzSequence.defaultFor(4),
+              patternName: 'Three pulses',
+              onTap: () {}),
+          BuzzPatternRow(
+              sequence: BuzzSequence.defaultFor(4),
+              patternName: 'Three pulses',
+              enabled: false),
         ]),
       ),
       'repeat_window_adjuster': Surface(

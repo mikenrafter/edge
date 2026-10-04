@@ -439,7 +439,7 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       // never rebuilt on a tap, which is why that one needs a request notifier.
       kRouteWorkoutSuggestion =>
         WorkoutSuggestionScreen(focusId: routeId(route)),
-      // Battery, band and sources live behind Settings > Band > My devices;
+      // Battery, band and sources live behind Settings > Hardware > My devices;
       // there is no profile landing screen in between (8AF.7).
       kRouteProfile => const MoreSettings(),
       // The alarm safety notifications land where either can actually be

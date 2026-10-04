@@ -485,6 +485,33 @@ class MetricData {
     this.newestDay,
   });
 
+  /// The rows of a `getJournalInsights` map that are about [outcome].
+  static List<Map<String, dynamic>> moversOf(
+      Map<String, dynamic> journal, String outcome) {
+    final ins = journal['insights'];
+    return [
+      for (final e in (ins is List ? ins : const []))
+        if (e is Map && e['outcome'] == outcome) e.cast<String, dynamic>(),
+    ];
+  }
+
+  /// This result with its [movers] replaced.
+  MetricData withMovers(List<Map<String, dynamic>> movers) => MetricData(
+        series: series,
+        wear: wear,
+        percentile: percentile,
+        movers: movers,
+        daysAvailable: daysAvailable,
+        algoBreaks: algoBreaks,
+        stepGoal: stepGoal,
+        coverage: coverage,
+        recording: recording,
+        sources: sources,
+        viewingDeviceId: viewingDeviceId,
+        computedAt: computedAt,
+        newestDay: newestDay,
+      );
+
   static Future<MetricData> load(
     LocalRepository repo,
     String key, {
@@ -492,6 +519,10 @@ class MetricData {
     /// Const-empty default so every existing caller and every test compiles
     /// unchanged and gets today's screen.
     List<DeviceOption> candidates = const [],
+
+    /// False leaves out the slow 90-day journal pass (`movers` stays empty):
+    /// the screen reads that on its own so the series can be drawn first.
+    bool journal = true,
   }) async {
     final spec = specOf(key);
     if (spec.suppress != null) return const MetricData();
@@ -513,12 +544,9 @@ class MetricData {
       final all = cd['percentiles'];
       final one = all is Map ? all[outcome] : null;
       pct = envValue(one);
-      final j = await repo.getJournalInsights(range: '90d');
-      final ins = j['insights'];
-      movers = [
-        for (final e in (ins is List ? ins : const []))
-          if (e is Map && e['outcome'] == outcome) e.cast<String, dynamic>(),
-      ];
+      if (journal) {
+        movers = moversOf(await repo.getJournalInsights(range: '90d'), outcome);
+      }
     }
     final coverage = _coverageOf(chart['coverage_devices']);
     final recording = _coverageOf(chart['coverage_recording']);
@@ -805,9 +833,33 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   @override
   void reload() => _load();
 
-  /// Set while [_d] is the last result of a previous open, shown at once while
-  /// the insights recompute; null once a fresh result has replaced it.
+  /// Set while the insights on screen are the last result of a previous open
+  /// (memory or the stored copy), shown at once while the 90-day pass
+  /// recomputes; null once a fresh result has replaced them.
   DateTime? _cachedAt;
+
+  /// What [_d] is built from: the cheap read (series, percentile) and the slow
+  /// 90-day journal insights, which arrive on their own.
+  MetricData? _base;
+  Map<String, dynamic>? _journal;
+  bool _journalFailed = false;
+
+  String? get _outcome => _outcomeOf[widget.metricKey];
+
+  /// "What moves it" is still waiting on the slow read, with nothing to show.
+  bool get _moversPending =>
+      widget.data == null &&
+      _outcome != null &&
+      _journal == null &&
+      !_journalFailed;
+
+  void _recompose() {
+    final b = _base;
+    if (b == null) return;
+    final j = _journal;
+    final o = _outcome;
+    _d = (j == null || o == null) ? b : b.withMovers(MetricData.moversOf(j, o));
+  }
 
   Future<void> _load() async {
     // FIRST LINE, because the line under it reads `context` unconditionally.
@@ -832,27 +884,34 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               requires: spec.requires)
           : const <DeviceOption>[];
       // Only a metric with journal insights does the slow part on open (the
-      // 90-day insight pass); its last result is kept so the next open shows it
-      // at once, labelled, while this recomputes. Errors are never cached.
-      final cacheKey = _outcomeOf[widget.metricKey] == null
+      // 90-day insight pass). It starts now, beside the cheap series read, and
+      // its last result (memory, else the stored copy) is shown under an "As
+      // of" label until it lands. Errors are never stored.
+      final cacheKey = _outcome == null
           ? null
           : LastResultCache.keyOf('metric_insights', [widget.metricKey]);
-      if (cacheKey != null && _d == null) {
-        final hit = LastResultCache.instance.get<MetricData>(cacheKey);
-        if (hit != null && mounted) {
-          setState(() {
-            _d = hit.value;
-            _cachedAt = hit.cachedAt;
-            _loading = false;
-          });
-        }
-      }
-      Future<MetricData> fresh() =>
-          MetricData.load(repo, widget.metricKey, candidates: candidates);
-      final d = cacheKey == null
-          ? await fresh()
-          : await LastResultCache.instance
-              .load<MetricData>(cacheKey, fresh);
+      // A failure is carried as null: it must not escape while the series is
+      // still being read.
+      final slow = cacheKey == null
+          ? null
+          : LastResultCache.instance
+              .loadShowingLast<Map<String, dynamic>>(
+                cacheKey,
+                () => repo.getJournalInsights(range: '90d'),
+                onLast: (hit) {
+                  // Only while nothing is shown yet: a re-read of a screen
+                  // that already has a fresh result is not stale.
+                  if (!mounted || _journal != null) return;
+                  setState(() {
+                    _journal = hit.value;
+                    _cachedAt = hit.cachedAt;
+                    _recompose();
+                  });
+                },
+              )
+              .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
+      final d = await MetricData.load(repo, widget.metricKey,
+          candidates: candidates, journal: false);
       var winners = const <InputSignal, String?>{};
       if (d.sources.length >= 2 && spec.requires.isNotEmpty && mounted) {
         // Read before the query, so the `mounted` in the condition above is
@@ -874,15 +933,28 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
         if (!mounted) return;
         winners = resolved;
       }
-      if (mounted) {
-        setState(() {
-          _d = d;
+      if (!mounted) return;
+      setState(() {
+        _base = d;
+        _recompose();
+        _winners = winners;
+        _loading = false;
+        _openOnDay(d);
+      });
+      if (slow == null) return;
+      final j = await slow;
+      if (!mounted) return;
+      setState(() {
+        if (j != null) {
+          _journal = j;
           _cachedAt = null;
-          _winners = winners;
-          _loading = false;
-          _openOnDay(d);
-        });
-      }
+        } else {
+          // A failed refresh leaves an earlier result (labelled) in place; with
+          // none, the section is simply absent rather than loading forever.
+          _journalFailed = _journal == null;
+        }
+        _recompose();
+      });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -896,7 +968,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
     final cached = _cachedAt;
     if (cached != null) return place(context, cached);
     return AsOfHold(
-      shown: d,
+      // The series' own read, not the composed view: a late journal result
+      // swaps `_d` but must not release a label held for the old series.
+      shown: _base ?? d,
       asOf: (recalc) => asOfFor(
           shownDay: d.newestDay, computedAt: d.computedAt, recalc: recalc),
       builder: place,
@@ -961,7 +1035,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
         _ranges(c, d, spec.color),
         const SizedBox(height: S.x5),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          const InlineLoading()
         else
           StatusCard(
             win == 1
@@ -1026,7 +1100,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                 all.isEmpty ? null : all.last.t)),
         if (d.movers.isNotEmpty)
           Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
-              _movers(c, d.movers)),
+              _movers(c, d.movers))
+        else if (_moversPending)
+          Section(l?.metricDetailWhatMovesItSection ?? 'What moves it',
+              const InlineLoading()),
         const SizedBox(height: S.x5),
         // Steps are the one metric assembled from SPANS of the day, each
         // counted by a different sensor. That breakdown is a day's worth of

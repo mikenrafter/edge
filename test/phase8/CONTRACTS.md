@@ -1342,3 +1342,29 @@ phase-two files in the same folder). Health's sub-tabs are, in order, 0 Last nig
 - **Removed.** The Explore and Vitals tabs, the HRV deep-dive card and its preview chart on
   Vitals, the "N of M measures" card, and the stale comments named in the test.
 - **Docs.** `docs/navigation-depth.md` (Health); the roadmap entry 8AF.
+
+## 8AI: device-test fixes (Oct 4, APK a613d8d8)
+
+- Slow screens persist their last good repository result in `last_result`
+  (schema 59, bounded 200 rows, errors never stored); `LastResultCache` is a
+  32-entry memory LRU in front of it. A calculation screen draws its shell at
+  once; only the slow section shows `InlineLoading`, or the stored result under
+  `AsOfLabel(computed_at)` until the fresh one lands. No full-width spinner.
+- Settings: You & preferences first, Community directly above Connections;
+  "Band" is "Hardware" (persisted id `settings_band` kept); the phone-steps row
+  lives only in My devices; barcode lookup sits in Connections.
+- SettingsAccordion: state is keyed by its id (no positional hand-over) and the
+  first frame builds in the remembered state (no shrink-under-scroll).
+- Haptics: Your patterns · Presets · Where patterns are used (sections,
+  separators, links); slot rows and Alerts rows show pattern names; ten built-in
+  presets incl. SOS and Hip hip hooray ×2 (step goal); no preset defaults more
+  than 2 alert slots; editor modes Follow rhythm (default, `*` notes, dynamics
+  hidden) / Allow dynamics; the compiler keeps every written rest (lengthens,
+  never shortens or merges); `HapticDeviceProfile.minVibrationGapMs` is the one
+  spacing source and the band queue spaces jobs by the previous plan's end + it.
+- Gestures: the start buzz fires un-awaited on an accepted tap, before the ECG
+  stream begins; links to Haptics from Gestures and Alerts; "View all gestures".
+- Live devices (dev): Start/Stop live feed via `LiveStreamOwners.developerLiveFeed`
+  (reconciler stays the only writer; released on stop/dispose; never in
+  background); accel in g; gyro, ECG (µV), band ECG HR/quality, gen4 R11 raw
+  channels, any other decoded numeric field by raw name; RAM only.

@@ -25,6 +25,9 @@ import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../platform/tasker_bridge.dart';
+import '../../haptics/builtin_patterns.dart' show alertSystemKey;
+import '../../haptics/haptic_slots.dart' show slotPatternLabel;
+import '../../haptics/pattern_store.dart' show SavedHapticPattern;
 import '../../notify/alert_rule.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../notify/notification_prefs.dart';
@@ -197,7 +200,6 @@ class _MoreSettingsState extends State<MoreSettings> {
       cycleTracking: app.cycleTrackingEnabled,
       appIcon: _icon,
       onPickIcon: _pickIcon,
-      phoneSteps: app.phoneStepsEnabled,
       telemetry: app.telemetryConsent,
       barcodeLookup: _barcode,
       pullToSync: _pullToSync,
@@ -241,7 +243,6 @@ class _MoreSettingsState extends State<MoreSettings> {
           (theme.choice.index + 1) % AppThemeChoice.values.length]),
       onToggleCycleTracking: () =>
           app.setCycleTrackingEnabled(!app.cycleTrackingEnabled),
-      onTogglePhoneSteps: app.togglePhoneSteps,
       onToggleTelemetry: () => app.setTelemetryConsent(!app.telemetryConsent),
       onToggleBarcodeLookup: () => _toggleBarcode(c),
       onToggleHealthShare: () => _toggleHealthShare(c, app),
@@ -563,7 +564,7 @@ Future<void> editExpectedSleepSchedule(BuildContext context, AppState app) async
 
 class MoreSettingsView extends StatelessWidget {
   final String units, appearance;
-  final bool phoneSteps, telemetry, barcodeLookup, cycleTracking;
+  final bool telemetry, barcodeLookup, cycleTracking;
 
   /// Home's pull down to sync. On by default.
   final bool pullToSync;
@@ -636,7 +637,6 @@ class MoreSettingsView extends StatelessWidget {
       onAutomation,
       onCycleUnits,
       onCycleAppearance,
-      onTogglePhoneSteps,
       onToggleTelemetry,
       onToggleBarcodeLookup,
       onToggleCycleTracking,
@@ -651,7 +651,6 @@ class MoreSettingsView extends StatelessWidget {
     this.appearance = 'System',
     this.appIcon,
     this.onPickIcon,
-    this.phoneSteps = false,
     this.pullToSync = true,
     this.onTogglePullToSync,
     this.healthSync = false,
@@ -690,7 +689,6 @@ class MoreSettingsView extends StatelessWidget {
     this.onAutomation,
     this.onCycleUnits,
     this.onCycleAppearance,
-    this.onTogglePhoneSteps,
     this.onToggleTelemetry,
     this.onToggleBarcodeLookup,
     this.onToggleCycleTracking,
@@ -719,71 +717,10 @@ class MoreSettingsView extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
                 // Grouped by task (8AE). This is the landing screen (8AF.7):
-                // Community, which used to sit on the Profile screen, comes
-                // first, and every other row has exactly one door here.
-                SettingsAccordion(
-                    l?.profileCommunityGroup ?? 'Community',
-                    id: 'settings_community',
-                    children: [
-                  SetRow.brand(brandGlyph('assets/icons/github.svg'), C.n500,
-                      l?.profileGithubTitle ?? 'GitHub',
-                      sub: l?.profileGithubSub ??
-                          'Star the project to show support.',
-                      onTap: () => open3rdPartyLink(kGithubUrl)),
-                  SetRow.brand(brandGlyph('assets/icons/reddit.svg'), C.orange,
-                      l?.profileRedditTitle ?? 'Reddit',
-                      sub: l?.profileRedditSub ??
-                          'Join r/OpenStrap to share results and ask questions.',
-                      onTap: () => open3rdPartyLink(kRedditUrl)),
-                  SetRow.brand(brandGlyph('assets/icons/discord.svg'),
-                      C.indigo, l?.profileDiscordTitle ?? 'Discord',
-                      sub: l?.profileDiscordSub ??
-                          'Chat with other users and the developers.',
-                      onTap: () => open3rdPartyLink(kDiscordUrl)),
-                  SetRow(LucideIcons.heartHandshake, C.pink,
-                      l?.profileSponsorTitle ?? 'Sponsor',
-                      sub: l?.profileSponsorSub ??
-                          'This is a free, open-source project. Sponsoring funds development.',
-                      onTap: () => open3rdPartyLink(kSponsorUrl)),
-                ]),
-                SettingsAccordion('Band', id: 'settings_band', children: [
-                  SetRow(LucideIcons.watch, C.blue,
-                      l?.profileMyDevices ?? 'My devices',
-                      sub: 'Pair, rename and manage your band',
-                      onTap: onDevices),
-                  SetRow(LucideIcons.hand, C.orange, 'Gestures',
-                      sub: l?.settingsDoubleTapRowSub ??
-                          'What a double-tap on the band does',
-                      onTap: onGestures),
-                  // The named buzz patterns and the band's safety limits (8AD).
-                  SetRow(LucideIcons.vibrate, C.purple, 'Haptics',
-                      key: const ValueKey('settings-haptics'),
-                      sub: 'Your buzz patterns and band safety',
-                      onTap: onHaptics),
-                ]),
-                SettingsAccordion('Alerts', id: 'settings_alerts', children: [
-                  // The alarm's one door (8AF.7): a row here, not a row inside
-                  // the Alerts and notifications screen.
-                  SetRow(LucideIcons.alarmClock, C.orange,
-                      l?.settingsAlarmRowTitle ?? 'Alarm',
-                      sub: l?.settingsAlarmRowSub ??
-                          'Buzzes on your wrist and runs on the band\'s clock',
-                      onTap: onAlarm),
-                  SetRow(LucideIcons.bell, C.blue,
-                      l?.settingsManageNotificationsRowTitle ??
-                          'Alerts and notifications',
-                      sub: l?.settingsManageNotificationsRowSub ??
-                          'Turn alerts on or off and set '
-                          'quiet hours',
-                      onTap: onNotifications),
-                  // The one door to the relay screen (8AE). Android-only and
-                  // omitted elsewhere rather than shown against nothing.
-                  if (relaySupported)
-                    SetRow(LucideIcons.bellRing, C.purple,
-                        'App notifications on the band',
-                        sub: 'Which apps, alarms and calls make the band buzz',
-                        onTap: onBandNotifications),
-                ]),
+                // every row has exactly one door here. Your own preferences
+                // come first and Community sits just above Connections (8AI).
+                // Hardware keeps the id `settings_band` it was saved under as
+                // "Band", so a section somebody folded stays folded.
                 SettingsAccordion('You & preferences',
                     id: 'settings_preferences',
                     children: [
@@ -830,16 +767,44 @@ class MoreSettingsView extends StatelessWidget {
                               'keeps everything already logged',
                       value: cycleTracking ? on : off,
                       onTap: onToggleCycleTracking),
-                  // Asks the OS for a sensor and decides where a measurement
-                  // comes from, so it reads as a setting about this phone, not
-                  // about how numbers are drawn.
-                  SetRow(LucideIcons.footprints, C.teal,
-                      l?.settingsStepsRowTitle ?? 'Steps',
-                      sub: l?.settingsStepsRowSub ??
-                          'Counts steps with this phone\'s own sensor for the hours the '
-                          'band doesn\'t cover. Nothing leaves the device',
-                      value: phoneSteps ? on : off,
-                      onTap: onTogglePhoneSteps),
+                ]),
+                SettingsAccordion('Hardware', id: 'settings_band', children: [
+                  SetRow(LucideIcons.watch, C.blue,
+                      l?.profileMyDevices ?? 'My devices',
+                      sub: 'Pair, rename and manage your band',
+                      onTap: onDevices),
+                  SetRow(LucideIcons.hand, C.orange, 'Gestures',
+                      sub: l?.settingsDoubleTapRowSub ??
+                          'What a double-tap on the band does',
+                      onTap: onGestures),
+                  // The named buzz patterns and the band's safety limits (8AD).
+                  SetRow(LucideIcons.vibrate, C.purple, 'Haptics',
+                      key: const ValueKey('settings-haptics'),
+                      sub: 'Your buzz patterns and band safety',
+                      onTap: onHaptics),
+                ]),
+                SettingsAccordion('Alerts', id: 'settings_alerts', children: [
+                  // The alarm's one door (8AF.7): a row here, not a row inside
+                  // the Alerts and notifications screen.
+                  SetRow(LucideIcons.alarmClock, C.orange,
+                      l?.settingsAlarmRowTitle ?? 'Alarm',
+                      sub: l?.settingsAlarmRowSub ??
+                          'Buzzes on your wrist and runs on the band\'s clock',
+                      onTap: onAlarm),
+                  SetRow(LucideIcons.bell, C.blue,
+                      l?.settingsManageNotificationsRowTitle ??
+                          'Alerts and notifications',
+                      sub: l?.settingsManageNotificationsRowSub ??
+                          'Turn alerts on or off and set '
+                          'quiet hours',
+                      onTap: onNotifications),
+                  // The one door to the relay screen (8AE). Android-only and
+                  // omitted elsewhere rather than shown against nothing.
+                  if (relaySupported)
+                    SetRow(LucideIcons.bellRing, C.purple,
+                        'App notifications on the band',
+                        sub: 'Which apps, alarms and calls make the band buzz',
+                        onTap: onBandNotifications),
                 ]),
                 SettingsAccordion('Data & privacy',
                     id: 'settings_data_privacy',
@@ -882,17 +847,31 @@ class MoreSettingsView extends StatelessWidget {
                           'Reports are sent only if you opt in',
                       value: telemetry ? on : off,
                       onTap: onToggleTelemetry),
-                  // The food log's one outbound call. Named by what it sends,
-                  // not by the feature it powers — a scan is the only thing
-                  // that triggers it and the barcode is the whole payload.
-                  SetRow(LucideIcons.scanBarcode, C.domFood,
-                      l?.settingsBarcodeLookupRowTitle ??
-                          'Look barcodes up online',
-                      sub: l?.settingsBarcodeLookupRowSub ??
-                          'Sends a scanned barcode to openfoodfacts.org. '
-                          'It sees the barcode and your IP address, nothing else about you',
-                      value: barcodeLookup ? on : off,
-                      onTap: onToggleBarcodeLookup),
+                ]),
+                SettingsAccordion(
+                    l?.profileCommunityGroup ?? 'Community',
+                    id: 'settings_community',
+                    children: [
+                  SetRow.brand(brandGlyph('assets/icons/github.svg'), C.n500,
+                      l?.profileGithubTitle ?? 'GitHub',
+                      sub: l?.profileGithubSub ??
+                          'Star the project to show support.',
+                      onTap: () => open3rdPartyLink(kGithubUrl)),
+                  SetRow.brand(brandGlyph('assets/icons/reddit.svg'), C.orange,
+                      l?.profileRedditTitle ?? 'Reddit',
+                      sub: l?.profileRedditSub ??
+                          'Join r/OpenStrap to share results and ask questions.',
+                      onTap: () => open3rdPartyLink(kRedditUrl)),
+                  SetRow.brand(brandGlyph('assets/icons/discord.svg'),
+                      C.indigo, l?.profileDiscordTitle ?? 'Discord',
+                      sub: l?.profileDiscordSub ??
+                          'Chat with other users and the developers.',
+                      onTap: () => open3rdPartyLink(kDiscordUrl)),
+                  SetRow(LucideIcons.heartHandshake, C.pink,
+                      l?.profileSponsorTitle ?? 'Sponsor',
+                      sub: l?.profileSponsorSub ??
+                          'This is a free, open-source project. Sponsoring funds development.',
+                      onTap: () => open3rdPartyLink(kSponsorUrl)),
                 ]),
                 SettingsAccordion('Connections',
                     id: 'settings_connections',
@@ -934,6 +913,17 @@ class MoreSettingsView extends StatelessWidget {
                                         'your IP address and when you open the app'),
                         value: updateChecks ? on : off,
                         onTap: onToggleUpdateChecks),
+                  // The food log's one outbound call. Named by what it sends,
+                  // not by the feature it powers — a scan is the only thing
+                  // that triggers it and the barcode is the whole payload.
+                  SetRow(LucideIcons.scanBarcode, C.domFood,
+                      l?.settingsBarcodeLookupRowTitle ??
+                          'Look barcodes up online',
+                      sub: l?.settingsBarcodeLookupRowSub ??
+                          'Sends a scanned barcode to openfoodfacts.org. '
+                          'It sees the barcode and your IP address, nothing else about you',
+                      value: barcodeLookup ? on : off,
+                      onTap: onToggleBarcodeLookup),
                 ]),
                 SettingsAccordion(l?.settingsGroupAbout ?? 'About',
                     id: 'settings_about',
@@ -1028,6 +1018,9 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   NotificationPrefs? _prefs;
   bool _granted = false;
 
+  // The stored patterns, to name what each alert plays.
+  List<SavedHapticPattern> _patterns = const [];
+
   @override
   void initState() {
     super.initState();
@@ -1037,10 +1030,17 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   Future<void> _load() async {
     final p = await NotificationPrefs.load();
     final granted = await NotificationService.instance.hasPermission();
+    List<SavedHapticPattern> patterns = const [];
+    try {
+      patterns = (await SettingsRepository.instance.patterns()).list;
+    } catch (_) {
+      // Unnamed rows say "Custom"; the alerts still work.
+    }
     if (!mounted) return;
     setState(() {
       _prefs = p;
       _granted = granted;
+      _patterns = patterns;
     });
   }
 
@@ -1088,6 +1088,14 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       onChanged: _apply,
       onRequestPermission: _requestPermission,
       onBuzzPattern: _pickPattern,
+      patternNameFor: (id) => slotPatternLabel(
+        alertSystemKey(id),
+        patterns: _patterns,
+        alerts: p ?? const NotificationPrefs(),
+        channels: const {},
+        cueAssignments: const {},
+      ),
+      onOpenHaptics: () => goto(c, const HapticsSettings()),
       zoneAlertZone: app.zoneAlertTargetZone,
       onCycleZoneAlertZone: () => app.setZoneAlertTargetZone(
           app.zoneAlertTargetZone >= 5 ? 1 : app.zoneAlertTargetZone + 1),
@@ -1104,6 +1112,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     final caps = context.capsRead;
     SettingsRepository.instance.patterns().then((store) {
       if (!mounted) return;
+      setState(() => _patterns = store.list);
       showPatternPicker(
         context,
         patterns: store.list,
@@ -1136,7 +1145,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
 /// in order to run. A destination this alert cannot honour is shown disabled.
 class _AlertRow extends StatelessWidget {
   const _AlertRow(this.icon, this.color, this.title, this.sub, this.rule,
-      this.onMask, {this.sequence, this.onBuzzPattern});
+      this.onMask, {this.sequence, this.patternName, this.onBuzzPattern});
   final IconData icon;
   final Color color;
   final String title, sub;
@@ -1146,6 +1155,9 @@ class _AlertRow extends StatelessWidget {
   /// What this alert buzzes the band with, and the opener for the sheet that
   /// changes it. Null [sequence] means the alert cannot reach the band.
   final BuzzSequence? sequence;
+
+  /// The name of the pattern behind [sequence].
+  final String? patternName;
   final VoidCallback? onBuzzPattern;
 
   static const _options = [
@@ -1216,6 +1228,7 @@ class _AlertRow extends StatelessWidget {
         BuzzPatternRow(
           key: ValueKey('buzz-pattern:${rule.id}'),
           sequence: sequence!,
+          patternName: patternName,
           enabled: mask & AlertRule.band != 0 && onBuzzPattern != null,
           onTap: onBuzzPattern,
         ),
@@ -1239,6 +1252,14 @@ class NotificationSettingsView extends StatelessWidget {
   /// Opens the buzz-pattern sheet for one alert (by rule id).
   final void Function(String ruleId)? onBuzzPattern;
 
+  /// The name of the pattern an alert plays (by rule id), shown on its buzz
+  /// pattern row. Null: the rows say "Custom".
+  final String Function(String ruleId)? patternNameFor;
+
+  /// Opens the Haptics screen, where the patterns are made and every slot is
+  /// listed (8AI).
+  final VoidCallback? onOpenHaptics;
+
   /// The HR zone alert's own settings: the zone (1..5) it watches, the step
   /// to the next one, and the door to the zone screen.
   final int zoneAlertZone;
@@ -1253,6 +1274,8 @@ class NotificationSettingsView extends StatelessWidget {
     this.onChanged,
     this.onRequestPermission,
     this.onBuzzPattern,
+    this.patternNameFor,
+    this.onOpenHaptics,
     this.zoneAlertZone = 3,
     this.onCycleZoneAlertZone,
     this.onOpenZones,
@@ -1275,6 +1298,7 @@ class NotificationSettingsView extends StatelessWidget {
                   null
               ? prefs.buzzSequenceFor(id)
               : null,
+          patternName: patternNameFor?.call(id),
           onBuzzPattern: () => onBuzzPattern?.call(id));
     }
 
@@ -1501,6 +1525,17 @@ class NotificationSettingsView extends StatelessWidget {
                             criticalOverridesQuiet:
                                 !prefs.criticalOverridesQuiet))),
                   ]),
+                  Surface(
+                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                    child: SetRow(
+                      LucideIcons.vibrate,
+                      C.purple,
+                      'Haptics',
+                      key: const ValueKey('alerts-open-haptics'),
+                      sub: 'The pattern each alert plays, and your own',
+                      onTap: onOpenHaptics,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: S.x3),
                 StatusCard(

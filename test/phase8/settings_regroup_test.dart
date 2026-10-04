@@ -6,22 +6,24 @@
 //
 // Contracts these tests pin that the spec leaves open:
 //  - Row titles are the English fallbacks: "GitHub", "Reddit", "Discord",
-//    "Sponsor" (Community, the first group since 8AF.7); "My devices",
-//    "Gestures", "Haptics" (Band; the HR zone alert and its Target zone moved
+//    "Sponsor" (Community; first group in 8AF.7, directly above Connections
+//    since 8AI G2); "My devices", "Gestures", "Haptics" (Hardware, called
+//    "Band" until 8AI G2; the HR zone alert and its Target zone moved
 //    to Alerts in 8AF.6, see zone_alert_test.dart); "Alarm" (moved from Band to
 //    the first row of Alerts in 8AF.7), "Alerts and
 //    notifications" and "App notifications on the band" (Alerts); "Edit
 //    profile", "Language", "Units", "Appearance", "Expected sleep schedule",
-//    "Icon", "Cycle tracking", "Steps" (You & preferences); "Storage",
-//    "Export, backup, import", "Write to Apple Health", "Contribute my health
-//    data", "Crash reports", "Look barcodes up online" (Data & privacy); "AI
-//    coach", "Tasker and Shortcuts", "Check for updates" (Connections);
+//    "Icon", "Cycle tracking" (You & preferences, the first group since 8AI
+//    G2; the "Steps" row is gone, phone steps live only in My devices);
+//    "Storage", "Export, backup, import", "Write to Apple Health", "Contribute
+//    my health data", "Crash reports" (Data & privacy); "AI coach", "Tasker
+//    and Shortcuts", "Check for updates", "Look barcodes up online"
+//    (Connections, moved from Data & privacy in 8AI G2);
 //    "Version", "Notices and licences" (About); "Component gallery", "Live
 //    devices", "Device lab", "Developer mode" (Developer).
-//  - Two titles are written loosely in the spec, so either spelling passes:
-//    the phone-steps row may be "Steps" or "Steps from this phone", and the
+//  - One title is written loosely in the spec, so either spelling passes: the
 //    Tasker row may keep "Tasker and Shortcuts" or be called "Automation".
-//  - "My devices" is a Settings > Band row. Since 8AF.7 there is no Profile
+//  - "My devices" is a Settings > Hardware row. Since 8AF.7 there is no Profile
 //    landing screen, so every moved row has exactly one door.
 //  - The device-lab push through MoreSettingsView(onDeviceLab:) is in
 //    settings_device_lab_entry_test.dart so a missing parameter name fails
@@ -71,11 +73,11 @@ Widget _settings({bool dev = false, bool relay = true}) => MoreSettingsView(
     );
 
 const _groups = [
-  'Community',
-  'Band',
-  'Alerts',
   'You & preferences',
+  'Hardware',
+  'Alerts',
   'Data & privacy',
+  'Community',
   'Connections',
   'About',
 ];
@@ -88,7 +90,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Discord'],
     ['Sponsor'],
   ],
-  'Band': [
+  'Hardware': [
     ['My devices'],
     ['Gestures'],
     ['Haptics'],
@@ -107,7 +109,6 @@ const Map<String, List<List<String>>> _rows = {
     ['Expected sleep schedule'],
     ['Icon'],
     ['Cycle tracking'],
-    ['Steps', 'Steps from this phone'],
   ],
   'Data & privacy': [
     ['Storage'],
@@ -115,12 +116,12 @@ const Map<String, List<List<String>>> _rows = {
     ['Write to Apple Health'],
     ['Contribute my health data'],
     ['Crash reports'],
-    ['Look barcodes up online'],
   ],
   'Connections': [
     ['AI coach'],
     ['Tasker and Shortcuts', 'Automation'],
     ['Check for updates'],
+    ['Look barcodes up online'],
   ],
   'About': [
     ['Version'],
@@ -180,7 +181,7 @@ void _expectRowsInOrder(WidgetTester t, String sectionTitle) {
 
 void main() {
   group('Settings top level: groups and order', () {
-    testWidgets('dev mode off: the seven groups, Community first, in this order',
+    testWidgets('dev mode off: the seven groups, You & preferences first, in this order',
         (t) async {
       await _pump(t, _settings());
       expect(sectionTitles(t), _groups);
@@ -260,12 +261,14 @@ void main() {
       expect(find.text('Band notifications'), findsNothing);
     });
 
-    testWidgets('Steps and Units live in You & preferences, not elsewhere',
-        (t) async {
+    testWidgets('Units live in You & preferences, not elsewhere; phone steps '
+        'are not on Settings at all', (t) async {
       await _pump(t, _settings());
-      expect(_in('Band', 'Units'), findsNothing);
+      expect(_in('Hardware', 'Units'), findsNothing);
       expect(_in('Alerts', 'Units'), findsNothing);
       expect(find.text('This phone'), findsNothing);
+      expect(find.text('Steps'), findsNothing,
+          reason: 'My devices is the one door (8AI G2)');
     });
 
     testWidgets('Contribute my health data is not under a Privacy group',
@@ -336,9 +339,9 @@ void main() {
       });
     }
 
-    testWidgets('My devices is a Band row', (t) async {
+    testWidgets('My devices is a Hardware row', (t) async {
       await _pump(t, _settings());
-      expect(_in('Band', 'My devices'), findsOneWidget);
+      expect(_in('Hardware', 'My devices'), findsOneWidget);
     });
 
     testWidgets('there is no Quick access area and no "More settings" row',

@@ -58,6 +58,7 @@ class HapticsService {
       waitEnded: _ended.wait,
       onWrite: _ended.reset,
       log: log,
+      minGap: () => Duration(milliseconds: profile?.minVibrationGapMs ?? 0),
     );
   }
 

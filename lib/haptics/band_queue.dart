@@ -13,6 +13,10 @@
 // dispatcher reads as "give the claim back". Once a job has started, its
 // transport timeout counts from the start.
 //
+// Between two jobs the band is also left the vocabulary's minimum gap after the
+// last vibration ended (8AI, [BandHapticQueue.minGap]), so a second gesture job
+// is not written the instant the first one stops. Lab jobs are not spaced.
+//
 // Lab mode (8AF): while the Device lab is open ([BandHapticQueue.beginLab]),
 // lab jobs (the probes, the touch counter's buzzes) go first and every other
 // job is HELD: not started, its start deadline suspended, restarted when the
@@ -263,9 +267,15 @@ class BandHapticQueue {
     this.waitEnded,
     this.onWrite,
     this.log,
+    this.minGap,
   });
 
   final BandCommandLedger ledger;
+
+  /// How long the band is left alone after a job that wrote, once its last
+  /// vibration ended, before the next job starts (the vocabulary's minimum
+  /// gap, read at every job). Null or zero: none.
+  final Duration Function()? minGap;
 
   /// Waits for the band's ended event; used to hold the slot after a job that
   /// asked to [run] with a settle time. Null: no settling.
@@ -507,6 +517,10 @@ class BandHapticQueue {
               result == BuzzDelivery.partial ||
               (result == BuzzDelivery.unknown && token.writes > 0))) {
         await w(j.settle);
+      }
+      final gap = j.lab ? Duration.zero : (minGap?.call() ?? Duration.zero);
+      if (gap > Duration.zero && token.writes > 0) {
+        await Future<void>.delayed(gap);
       }
     } catch (_) {
       // No answer is the same as a timeout: the band has finished by then.

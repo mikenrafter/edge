@@ -5,9 +5,13 @@
 // flowing ([EcgStreamReadiness]) and the sensor has settled ([sensorSettle]),
 // opens the first touch window there, turns each R17 packet into 100 Hz samples
 // on the stream's own clock, paces every buzz request so the band plays it
-// ([buzzQuietGap]), and stops the stream when the gesture ends. Nothing buzzes
-// before the first window is decided: the first buzz is the count so far (three
-// for a finger already on the sensor, two to end at two). No sample is persisted
+// ([buzzQuietGap]), and stops the stream when the gesture ends. The one buzz
+// before the first window is decided is the start cue ([startBuzz], 8AI): sent
+// the moment the tap is accepted and never waited for, so the wearer's hand is
+// on the sensor by the time the stream runs (a touch that comes late counts as
+// a double tap, not a triple). After it the first buzz is the count so far
+// (three for a finger already on the sensor, two to end at two); the count is
+// always a whole answer on its own, so it does not drop its opening cue. No sample is persisted
 // (invariant 14): the packets are consumed and dropped here. The one thing kept
 // is the session's strap-clock INTERVAL (see [EcgGestureRecord]): turning the
 // stream on makes the band save raw ECG that ordinary history sync delivers
@@ -102,6 +106,7 @@ class EcgTapSession {
     required this.thresholds,
     required this.onFinished,
     this.failBuzz,
+    this.startBuzz,
     this.onStarted,
     this.recordSession,
     this.onPacket,
@@ -152,6 +157,13 @@ class EcgTapSession {
   /// per failed gesture with the event id `<gesture id>:failed`, queued behind
   /// any count buzz. True when it was written to the band.
   final Future<bool> Function(String eventId)? failBuzz;
+
+  /// The gesture-start cue (8AI), through AlertDispatcher: called once, in the
+  /// same turn the tap is accepted and BEFORE the stream is asked to start,
+  /// with the event id `<gesture id>:ecg:start`. [start] never waits for it:
+  /// ECG monitoring begins at once and the buzz plays beside it. A buzz that
+  /// throws or is not written is logged and changes nothing else.
+  final Future<bool> Function(String eventId)? startBuzz;
 
   /// A gesture began: the tap and a one-line description of the thresholds in
   /// force, for the Device lab's session summary.
@@ -340,8 +352,32 @@ class EcgTapSession {
       onStarted?.call(tap, t.summary);
     } catch (_) {}
     step?.call('Double tap received. Starting the ECG stream.');
+    _fireCue(tap, startBuzz);
     await _startStream(gen);
   }
+
+  /// The start cue, sent without waiting: a throw, a late failure and a "not
+  /// written" are logged and nothing more. When it has been written the band is
+  /// quiet for [buzzQuietGap] before a count buzz asks for it.
+  void _fireCue(StrapEvent tap, Future<bool> Function(String eventId)? send) {
+    if (send == null) return;
+    try {
+      send('${_eventBase(tap)}:ecg:start').then((ok) {
+        step?.call(ok
+            ? 'Start buzz written.'
+            : 'Start buzz could not be written.');
+        if (ok) _quietUntil = _now().add(buzzQuietGap);
+      }, onError: (Object e) => step?.call('Start buzz failed: $e'));
+    } catch (e) {
+      step?.call('Start buzz failed: $e');
+    }
+  }
+
+  // The id every buzz of this gesture is built on: the tap's own identity, made
+  // unique when the band's clock is not trusted.
+  String _eventBase(StrapEvent tap) => tap.plausible
+      ? tap.identity
+      : '${tap.identity}:${tap.receivedAt.microsecondsSinceEpoch}';
 
   /// A fresh counter, readiness and clock: the first try's, or the retry's.
   void _newAttempt() {
@@ -676,10 +712,7 @@ class EcgTapSession {
   Future<void> _sendBuzz(int pulses) {
     final tap = _tap;
     if (tap == null) return Future<void>.value();
-    final base = tap.plausible
-        ? tap.identity
-        : '${tap.identity}:${tap.receivedAt.microsecondsSinceEpoch}';
-    final id = '$base:ecg:${_buzzes++}';
+    final id = '${_eventBase(tap)}:ecg:${_buzzes++}';
     final requested = _now();
     _buzzTail = _buzzTail
         .then((_) => _deliverBuzz(pulses, id, requested))

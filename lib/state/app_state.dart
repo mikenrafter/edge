@@ -129,6 +129,7 @@ import '../haptics/ble_haptics_port.dart';
 import '../haptics/builtin_patterns.dart'
     show kGestureConfirmKey, kGestureFollowUpKey, kGestureStartKey;
 import '../haptics/gesture_cues.dart';
+import '../haptics/haptic_slots.dart' show decodeCueAssignments;
 import '../haptics/haptics_service.dart';
 import '../haptics/wake_haptics.dart';
 import '../haptics/haptic_player.dart' show HapticPlayStart;
@@ -481,6 +482,7 @@ class AppState extends ChangeNotifier {
   /// [AppState.forTesting] pays nothing for it.
   late final EcgTapSession _ecgTapSession = EcgTapSession(
     beginStream: _beginEcgForTap,
+    startBuzz: _ecgTapStartBuzz,
     endStream: () async {
       try {
         await ecg.cancel();
@@ -599,6 +601,29 @@ class AppState extends ChangeNotifier {
     return r.targets.contains('band');
   }
 
+  /// 8AI: the gesture-start cue, sent the moment the double tap is accepted.
+  /// The session fires it without waiting and starts the ECG stream at once, so
+  /// the cues are read beside the dispatcher's own claim steps (inside the
+  /// delivery, not before the dispatch) rather than ahead of the buzz. Still a
+  /// dispatcher delivery in the band queue, which spaces it from the count that
+  /// follows.
+  Future<bool> _ecgTapStartBuzz(String eventId) async {
+    final now = DateTime.now();
+    final cues = _loadGestureCues();
+    final r = await haptics.asLabWork(() => alertDispatcher.dispatch(
+      kEcgTapRule,
+      eventId: eventId,
+      sourceTime: now,
+      historical: false,
+      bandTimeout: const Duration(seconds: 10),
+      bandDelivery: () async {
+        await cues;
+        return gestureCues.response(1);
+      },
+    ));
+    return r.targets.contains('band');
+  }
+
   // The wearer's customised gesture cues, read just before a response so
   // GestureCues can take them synchronously. A cue that cannot be read plays
   // its built-in default.
@@ -607,13 +632,19 @@ class AppState extends ChangeNotifier {
   Future<void> _loadGestureCues() async {
     try {
       final store = await SettingsRepository.instance.patterns();
+      // A pattern the wearer put on a cue (8AI) wins over the cue's built-in.
+      final given =
+          decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, ''));
+      pick(String k) =>
+          (given[k] == null ? null : store.byId(given[k]!)) ??
+          store.bySystemKey(k);
       _cuePatterns = {
         for (final k in const [
           kGestureStartKey,
           kGestureFollowUpKey,
           kGestureConfirmKey,
         ])
-          if (store.bySystemKey(k) != null) k: store.bySystemKey(k)!.sequence,
+          if (pick(k) != null) k: pick(k)!.sequence,
       };
     } catch (_) {}
   }
@@ -3875,6 +3906,42 @@ class AppState extends ChangeNotifier {
 
   bool _movementSampling = false;
 
+  /// The developer's "Start live feed" on the Live devices screen is on.
+  /// RAM only: never a preference, so a restart never re-arms the flood.
+  bool _developerLiveFeed = false;
+
+  /// Whether the feed is on for [deviceId]. Only the band (the primary id) has
+  /// one: a paired sensor's streams are already on while it is connected.
+  bool isLiveFeedOn(String deviceId) =>
+      deviceId == LocalDb.kPrimaryDeviceId && _developerLiveFeed;
+
+  /// Turn the band's realtime streams on so the Live devices screen has
+  /// something to draw: an explicit owner of both streams, on gen4 and gen5.
+  /// The engine's reconciler stays the only writer. An explicit foreground
+  /// action, so it also clears the sticky marginal-radio fallback (otherwise a
+  /// latched fallback would leave HR only). Idempotent.
+  Future<void> startLiveFeed(String deviceId) async {
+    if (deviceId != LocalDb.kPrimaryDeviceId) return;
+    if (!_developerLiveFeed) {
+      _developerLiveFeed = true;
+      notifyListeners();
+    }
+    await engine.clearRadioFallbackAndReconcile();
+  }
+
+  /// Release the developer owner and let the reconciler turn the streams off.
+  /// The owner is cleared BEFORE the first await, so a band that refuses (or
+  /// throws on) the disable writes, or a caller that never awaits this (a
+  /// screen's dispose), cannot leave the flag set; the engine's keep-alive
+  /// retries the writes. gen4's own foreground owner keeps its streams on.
+  /// Stop without Start writes nothing.
+  Future<void> stopLiveFeed(String deviceId) async {
+    if (deviceId != LocalDb.kPrimaryDeviceId || !_developerLiveFeed) return;
+    _developerLiveFeed = false;
+    notifyListeners();
+    await engine.reconcileLiveStreams();
+  }
+
   /// Passive strap-step collection: OFF by default on gen5 (#287 decision 1).
   /// A future explicit opt-in requests IMU through this same owner.
   static const bool _passiveStrapSteps = false;
@@ -3891,6 +3958,8 @@ class AppState extends ChangeNotifier {
       movementSampling: _movementSampling,
       passiveStrapSteps: _passiveStrapSteps,
       foreground: !_background,
+      // Like a mounted live-HR view, not held behind a locked screen.
+      developerLiveFeed: !_background && _developerLiveFeed,
     );
   }
 
@@ -3975,6 +4044,87 @@ class AppState extends ChangeNotifier {
         _trackCoverage(recTs);
       }
     }
+    _bufferLiveExtras(pt, hex);
+  }
+
+  /// Decoded fields that already have their own stream (or are a time or type
+  /// tag, not a reading) and so are not repeated under their raw name.
+  /// `hr_precise` is the HR byte as a double.
+  static const _liveNamedElsewhere = {
+    'rec_type',
+    'packet_type',
+    'ts_epoch',
+    'ts_subsec',
+    'counter',
+    'hr',
+    'hr_precise',
+  };
+
+  /// Everything else a live frame carries, into the Live devices buffer (RAM
+  /// only, invariant 14): gyro axes, R11's two raw channels, the MG's filtered
+  /// ECG with the band's own HR and quality, and any other numeric field the
+  /// decoder names, under that name. Fixed unit scales only; a field the
+  /// packet did not carry adds no stream. A frame that does not decode adds
+  /// nothing.
+  void _bufferLiveExtras(int pt, String hex) {
+    try {
+      final bytes = proto.hexToBytes(hex);
+      final rec = bytes.length > 1 ? bytes[1] : -1;
+      if (pt == 0x2B) {
+        final g5 = proto.parseGen5ImuBuffer(bytes);
+        final r10 = g5 == null && rec == 10 ? proto.decodeR10Imu(hex) : null;
+        final gyro = g5 != null
+            ? [g5.gyroXdps, g5.gyroYdps, g5.gyroZdps]
+            : r10 != null
+                ? [r10.gyroX, r10.gyroY, r10.gyroZ]
+                : null;
+        if (gyro != null) {
+          _bufferLiveSeries('gyro_x', gyro[0], 10);
+          _bufferLiveSeries('gyro_y', gyro[1], 10);
+          _bufferLiveSeries('gyro_z', gyro[2], 10);
+        }
+        if (rec == 11) {
+          // Meaning unconfirmed (protocol R11Raw): raw channels, ~50 Hz each.
+          final r11 = proto.decodeR11Raw(hex);
+          if (r11 != null) {
+            _bufferLiveSeries('r11_ch1', r11.channelA, 20);
+            _bufferLiveSeries('r11_ch2', r11.channelB, 20);
+          }
+        }
+        final r17 = rec == proto.LabradorR17.revision
+            ? proto.LabradorR17.parse(bytes)
+            : null;
+        if (r17 != null) {
+          _bufferLiveSeries('ecg_uv', r17.samples, 10); // 100 Hz, µV
+          _bufferLiveSeries('ecg_quality', [r17.quality], 10);
+          // 0 is "no reading", not a heart rate.
+          if (r17.liveHr > 0) _bufferLiveSeries('ecg_band_hr', [r17.liveHr], 10);
+        }
+      }
+      final fields = proto
+          .decodeFrame(proto.Frame(bytes, true, true))
+          .fields;
+      final now = DateTime.now();
+      for (final MapEntry(:key, :value) in fields.entries) {
+        if (value is num && !_liveNamedElsewhere.contains(key)) {
+          liveStreams.add(LocalDb.kPrimaryDeviceId, key, now, value.toDouble());
+        }
+      }
+    } catch (_) {
+      // Debug view only: a frame that will not decode is simply not drawn.
+    }
+  }
+
+  /// [values] into the Live devices buffer under [key], oldest first, the
+  /// newest stamped now and each earlier one [stepMs] before the next.
+  void _bufferLiveSeries(String key, List<num> values, int stepMs) {
+    final n = values.length;
+    final end = DateTime.now();
+    for (var i = 0; i < n; i++) {
+      liveStreams.add(LocalDb.kPrimaryDeviceId, key,
+          end.subtract(Duration(milliseconds: (n - 1 - i) * stepMs)),
+          values[i].toDouble());
+    }
   }
 
   /// Beat intervals of one live frame into the Live devices buffer (RAM only).
@@ -3995,23 +4145,20 @@ class AppState extends ChangeNotifier {
   }
 
   /// One live IMU frame's accel samples (100 Hz) into the Live devices buffer.
-  /// Per-axis when the decoder gave axes, otherwise the magnitude only.
+  /// Per-axis when the decoder gave axes, otherwise the magnitude only. The
+  /// decoder returns the axes as raw int16 counts (only `mags` is in g), so
+  /// they are scaled to g here: 1/4096 g per count on both families.
   void _bufferLiveImu(proto.ImuFrame f) {
     final n = f.mags.length;
     if (n == 0) return;
-    final end = DateTime.now();
-    DateTime at(int i) => end.subtract(Duration(milliseconds: (n - 1 - i) * 10));
     final axes = {'accel_x': f.xs, 'accel_y': f.ys, 'accel_z': f.zs};
     if (axes.values.every((a) => a != null && a.length == n)) {
       for (final MapEntry(:key, :value) in axes.entries) {
-        for (var i = 0; i < n; i++) {
-          liveStreams.add(LocalDb.kPrimaryDeviceId, key, at(i), value![i]);
-        }
+        _bufferLiveSeries(
+            key, [for (final v in value!) v * proto.kGen5AccelScaleG], 10);
       }
     } else {
-      for (var i = 0; i < n; i++) {
-        liveStreams.add(LocalDb.kPrimaryDeviceId, 'accel_mag', at(i), f.mags[i]);
-      }
+      _bufferLiveSeries('accel_mag', f.mags, 10);
     }
   }
 

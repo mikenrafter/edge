@@ -139,6 +139,12 @@ class HapticDeviceProfile {
     return best;
   }
 
+  /// The least the band needs between the end of one vibration and the write
+  /// of the next: the delay of [fastestGap] (0 when none is stable). The one
+  /// source for every reader that chains or queues vibrations (gesture cues,
+  /// wake plans, the band queue), so none of them repeats the number.
+  int get minVibrationGapMs => fastestGap()?.delayMs ?? 0;
+
   static List<PatternEntry> _notes(String code) =>
       PatternTranscript.parseCode(code).entries;
 

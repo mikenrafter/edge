@@ -1,12 +1,14 @@
 // 8AF.7 section A (red first): no Profile landing screen. Whatever opened
 // Profile home opens Settings (MoreSettings) directly; Quick access is gone;
-// Community (GitHub, Reddit, Discord, Sponsor) is the FIRST accordion in
-// Settings; everything else keeps its 8AE grouping; depths shrink by one.
+// Community (GitHub, Reddit, Discord, Sponsor) is an accordion in Settings;
+// everything else keeps its 8AE grouping; depths shrink by one.
+// 8AI G2 later reordered it: "You & preferences" first, Community directly
+// above Connections, and "Band" is called "Hardware" (same persisted id).
 //
 // What lived only on Profile home today (checked against ProfileHomeView):
-//  - Quick access > My devices      -> Settings > Band > My devices (exists)
+//  - Quick access > My devices      -> Settings > Hardware > My devices (exists)
 //  - Quick access > Settings        -> obsolete (this IS Settings now)
-//  - Community x4                   -> Settings > Community (new, first)
+//  - Community x4                   -> Settings > Community (new)
 //  - the "N sources" sub-line under My devices (profileSourcesCount) has no
 //    twin; the My devices screen itself lists the sources. Not asserted.
 //  - ProfileStats.name is loaded but never drawn: nothing to preserve.
@@ -62,11 +64,11 @@ class _Pushes extends NavigatorObserver {
 }
 
 const _groups = [
-  'Community',
-  'Band',
-  'Alerts',
   'You & preferences',
+  'Hardware',
+  'Alerts',
   'Data & privacy',
+  'Community',
   'Connections',
   'About',
 ];
@@ -138,8 +140,8 @@ void main() {
     });
   });
 
-  group('Community is the first accordion in Settings', () {
-    testWidgets('group order: Community, then the 8AE groups unchanged',
+  group('Community sits directly above Connections in Settings', () {
+    testWidgets('group order: the 8AE groups, Community moved above Connections (8AI G2)',
         (t) async {
       await _pump(t, const MoreSettingsView(version: '1'));
       expect(sectionTitles(t), _groups);
@@ -161,17 +163,19 @@ void main() {
       }
     });
 
-    testWidgets('Community starts expanded, above Band', (t) async {
+    testWidgets('Community starts expanded, below Hardware, above Connections',
+        (t) async {
       await _pump(t, const MoreSettingsView());
-      final first = accordions(t).first;
-      expect(first.title, 'Community');
+      final community = accordions(t).singleWhere((a) => a.title == 'Community');
       expect(
           find.descendant(
               of: section('Community'),
-              matching: find.byWidget(first.children.first)),
+              matching: find.byWidget(community.children.first)),
           findsOneWidget);
+      expect(t.getTopLeft(find.text('Hardware')).dy,
+          lessThan(t.getTopLeft(find.text('Community')).dy));
       expect(t.getTopLeft(find.text('Community')).dy,
-          lessThan(t.getTopLeft(find.text('Band')).dy));
+          lessThan(t.getTopLeft(find.text('Connections')).dy));
     });
 
     testWidgets('each Profile-only item exists exactly once on Settings',
@@ -188,9 +192,9 @@ void main() {
       }
       expect(
           find.descendant(
-              of: section('Band'), matching: find.text('My devices')),
+              of: section('Hardware'), matching: find.text('My devices')),
           findsOneWidget,
-          reason: 'My devices keeps its Band home');
+          reason: 'My devices keeps its home, now called Hardware');
     });
   });
 

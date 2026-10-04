@@ -134,6 +134,12 @@ no pgrep wait loops, no leftover flutter_tester)
 - Docs: `docs/perf.md`; `test/phase8/CONTRACTS.md` (8AG P2). Tests: `test/perf/p2_*`.
 - Not done here: persisted artifacts (P3, P4), power modes (P5).
 
+### 8AI device-test fixes (inserted before P3, user priority)
+Persisted last results + no full-page spinners; Settings order/Hardware/steps/
+barcode; accordion identity + first-frame state; haptics presets/slots/modes/
+rest-keeping encoder/one spacing source; gesture start buzz before ECG; dev live
+feed for gen4 + gen5/MG. See test/phase8/CONTRACTS.md "8AI".
+
 ## Critical files
 lib/compute/{derivation_engine,derive_scheduler,derive_pacing}.dart,
 lib/ble/ble_state.dart (DeriveDebouncer), lib/state/app_state.dart (_afterDrain,

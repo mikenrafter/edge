@@ -290,7 +290,7 @@ void main() {
     test('notes without a baked plan are compiled', () {
       fakeAsync((async) {
         final rig = _Rig(async)
-          ..deliver(rule(notes: 'N4ff R6 N4f', id: _mg.id), profile: _mg);
+          ..deliver(rule(notes: 'N4ff R4 N4f', id: _mg.id), profile: _mg);
         expect(rig.patterns, ['[47] x1', '[14] x1']);
         expect(rig.patternAt[1], 500 + 300);
       });
