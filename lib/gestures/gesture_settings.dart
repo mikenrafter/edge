@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../platform/device_actions.dart';
 import 'device_action.dart';
 import 'ecg_tap_counter.dart';
+import 'ecg_tap_mode.dart';
 
 /// How taps beyond the firmware's double tap are counted. One mapping store
 /// (slot n = n taps, 2..5) serves both; only the way the count is made differs.
@@ -53,6 +54,7 @@ class GestureSettings extends ChangeNotifier {
   static const _kEcgTolerant = 'gesture_ecg_tolerant_startup';
   static const _kEcgFallback = 'gesture_ecg_fallback';
   static const _kTapMethod = 'gesture_tap_method';
+  static const _kEcgTapMode = 'gesture_ecg_tap_mode';
   static const _kRepeatWindowMs = 'gesture_repeat_window_ms';
   static const _kRepeatLab = 'gesture_repeat_lab';
 
@@ -90,6 +92,7 @@ class GestureSettings extends ChangeNotifier {
   bool _ecgOnDoubleTap = false;
   EcgTapThresholds _ecgThresholds = EcgTapThresholds();
   TapCountMethod? _tapMethod;
+  EcgTapMode _ecgTapMode = EcgTapMode.accurate;
   int _repeatWindowMs = defaultRepeatWindowMs;
   bool _repeatLab = false;
 
@@ -128,6 +131,9 @@ class GestureSettings extends ChangeNotifier {
 
   /// The user's explicit choice of counting method; null follows the default.
   TapCountMethod? get tapMethodChoice => _tapMethod;
+
+  /// 8AN: how an ECG touch is judged. Accurate until the user picks Fast.
+  EcgTapMode get ecgTapMode => _ecgTapMode;
 
   /// The method in force for the connected band: ECG on a WHOOP MG unless the
   /// user picked double taps; double taps on every band without ECG (whatever
@@ -186,6 +192,8 @@ class GestureSettings extends ChangeNotifier {
     _repeatLab = prefs.getBool(_kRepeatLab) ?? false;
     if (_ecgOnDoubleTap && _repeatLab) _repeatLab = false; // exclusive
     _tapMethod = TapCountMethod.fromId(prefs.getString(_kTapMethod));
+    _ecgTapMode = EcgTapMode.fromId(prefs.getString(_kEcgTapMode)) ??
+        EcgTapMode.accurate;
     final window = prefs.getInt(_kRepeatWindowMs);
     _repeatWindowMs = window != null && isValidRepeatWindow(window)
         ? window
@@ -286,6 +294,14 @@ class GestureSettings extends ChangeNotifier {
     _tapMethod = m;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kTapMethod, m.id);
+    notifyListeners();
+  }
+
+  Future<void> setEcgTapMode(EcgTapMode m) async {
+    if (_ecgTapMode == m) return;
+    _ecgTapMode = m;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kEcgTapMode, m.id);
     notifyListeners();
   }
 

@@ -1129,13 +1129,16 @@ class BleEngine implements AlarmBandWriter {
     await _awaitHistoryLifecycleQuiescence();
   }
 
-  static List<_EcgMember> _ecgPrepareMembers(WristSelection wrist) => [
+  static List<_EcgMember> _ecgPrepareMembers(WristSelection wrist,
+          {bool rawSave = true}) =>
+      [
         ('selectWrist', Cmd.selectWrist,
             (seq, band) => cmdSelectWrist(seq, wrist, profile: band)),
         ('filteredOn', Cmd.toggleLabradorFiltered,
             (seq, band) => cmdLabradorFiltered(seq, true, profile: band)),
-        ('rawSaveOn', Cmd.toggleLabradorRawSave,
-            (seq, band) => cmdLabradorRawSave(seq, true, profile: band)),
+        if (rawSave)
+          ('rawSaveOn', Cmd.toggleLabradorRawSave,
+              (seq, band) => cmdLabradorRawSave(seq, true, profile: band)),
       ];
 
   static List<_EcgMember> _ecgStartMembers(LabradorOperation op) => [
@@ -1160,13 +1163,15 @@ class BleEngine implements AlarmBandWriter {
         (seq, band) => cmdLabradorRawSave(seq, false, profile: band)),
   ];
 
-  /// PREPARE: 123 wrist, 139 filtered ON, 125 raw-save ON. Attempt-all; the
-  /// caller accepts only when every member succeeded.
+  /// PREPARE: 123 wrist, 139 filtered ON, 125 raw-save ON (not with
+  /// [rawSave] false, the ECG tap fast path). Attempt-all; the caller accepts
+  /// only when every member succeeded.
   Future<List<EcgCommandOutcome>> ecgPrepare(
     EcgLease lease,
-    WristSelection wrist,
-  ) =>
-      _runEcgList(lease, _ecgPrepareMembers(wrist));
+    WristSelection wrist, {
+    bool rawSave = true,
+  }) =>
+      _runEcgList(lease, _ecgPrepareMembers(wrist, rawSave: rawSave));
 
   /// START: 20 abort-history (unconditional), 124 generation START.
   Future<List<EcgCommandOutcome>> ecgStart(EcgLease lease) =>

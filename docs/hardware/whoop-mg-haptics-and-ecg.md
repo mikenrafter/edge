@@ -483,6 +483,29 @@ Replay test: `test/gestures8ak/a_log_replay_test.dart` rebuilds the five
 gestures of the 2026-10-04 log from its own timestamps and packet summaries
 (`support/ak_log_timeline.dart`); it failed before the retry and passes after.
 
+## Fast mode (8AN)
+
+Settings > Hardware > Gestures > "How ECG touches are read": Accurate (the
+default) or Fast. Fast is a hybrid: touches are still timed from the samples
+(`ecgContactMask`, the same start/gap/confirm thresholds), but the gesture does
+not wait for a steady stream or the 2.5 s sensor settle, and PREPARE leaves out
+raw-save (123 wrist and 139 filtered only; cleanup still sends all three OFF).
+
+What stands in for the settle is the band's own contact flag: R17 inner[14]
+bit 3, "presence", debounced by the band. `EcgPresenceGate`
+(`lib/gestures/ecg_presence_gate.dart`) vetoes the sample contact of any packet
+whose presence bit is clear. If the band never sets presence while the samples
+show contact for 4 packets in a row, the flag is taken as unusable on this
+strap and the veto is lifted for the rest of the gesture ("Presence fallback"
+in the trace, `fellBackToSamples` in the record); until then those packets
+cannot close the first touch window.
+
+A packet comes about once a second, so presence is a per-second signal; it only
+filters, it never times a touch. Both modes log "Presence on/off" and "Sample
+contact on/off" with the milliseconds since the tap, so one lab capture gives
+the band's debounce (sample contact start to presence on, lift to presence
+off). Not yet measured: no capture with real status bytes exists.
+
 ## Replaying off the band
 
 The lab keeps the last ~6 minutes of ECG packets (raw samples and status
@@ -547,3 +570,7 @@ as L3 shows.
 10. Can a tapped rhythm be encoded as a band command? The transcriptions of
     tests 1–40 (renditions A and B) against the real envelopes and delays are
     the data for it.
+11. How long the band debounces presence, and whether it sets presence at all
+    on a gesture's start (persist off, no RESTART). One Fast and one Accurate
+    session in the lab answer it: the trace's "Presence on/off" against
+    "Sample contact on/off" lines. Fast becomes the default only after this.

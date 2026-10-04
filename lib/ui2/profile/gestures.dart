@@ -23,6 +23,7 @@ import 'package:provider/provider.dart';
 
 import '../../gestures/device_action.dart';
 import '../../gestures/ecg_tap_counter.dart';
+import '../../gestures/ecg_tap_mode.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/tap_names.dart';
 import '../../l10n/app_localizations.dart';
@@ -58,6 +59,8 @@ class BandGestures extends StatelessWidget {
         ecgSupported: caps.has(Feature.ecgTouchTaps),
         tapMethod: g.tapMethodFor(ecgSupported: caps.has(Feature.ecgTouchTaps)),
         onTapMethod: g.setTapMethod,
+        ecgTapMode: g.ecgTapMode,
+        onEcgTapMode: g.setEcgTapMode,
         tapActions: {for (var n = 3; n <= 5; n++) n: g.actionsForTaps(n)},
         onTapToggle: (n, a, on) {
           final cur = g.actionsForTaps(n);
@@ -99,6 +102,10 @@ class BandGesturesView extends StatelessWidget {
   final TapCountMethod? tapMethod;
   final ValueChanged<TapCountMethod>? onTapMethod;
 
+  /// How an ECG touch is judged (8AN). Null follows the default, accurate.
+  final EcgTapMode? ecgTapMode;
+  final ValueChanged<EcgTapMode>? onEcgTapMode;
+
   /// The pause and touch-window tuning controls moved to the Device lab (8AE),
   /// where they were already shared widgets; this screen draws neither. The
   /// four fields stay so existing construction sites keep compiling.
@@ -137,6 +144,8 @@ class BandGesturesView extends StatelessWidget {
     this.ecgSupported = false,
     this.tapMethod,
     this.onTapMethod,
+    this.ecgTapMode,
+    this.onEcgTapMode,
     this.repeatWindowMs,
     this.onRepeatWindowMs,
     this.tapActions = const {},
@@ -162,6 +171,7 @@ class BandGesturesView extends StatelessWidget {
     final method =
         ecgSupported ? (tapMethod ?? TapCountMethod.ecg) : TapCountMethod.repeat;
     final ecg = method == TapCountMethod.ecg;
+    final mode = ecgTapMode ?? EcgTapMode.accurate;
 
     return Scaffold(
       backgroundColor: p.bg,
@@ -242,6 +252,35 @@ class BandGesturesView extends StatelessWidget {
                     enabled: true,
                     onTap: () => onTapMethod?.call(TapCountMethod.repeat),
                   ),
+                  // Only the ECG method has a contact judgement to choose.
+                  if (ecg) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: S.x2),
+                      child: Text(l?.ecgTapModeHeading ?? 'How ECG touches are read',
+                          style: F.cap.copyWith(color: p.ink3)),
+                    ),
+                    _MethodRow(
+                      keyPrefix: 'ecg-tap-mode',
+                      id: EcgTapMode.accurate.id,
+                      title: l?.ecgTapModeAccurateTitle ?? 'Accurate',
+                      sub: l?.ecgTapModeAccurateSub ??
+                          'Reads the signal and waits for it to settle.',
+                      selected: mode == EcgTapMode.accurate,
+                      enabled: true,
+                      onTap: () => onEcgTapMode?.call(EcgTapMode.accurate),
+                    ),
+                    _MethodRow(
+                      keyPrefix: 'ecg-tap-mode',
+                      id: EcgTapMode.fast.id,
+                      title: l?.ecgTapModeFastTitle ?? 'Fast',
+                      sub: l?.ecgTapModeFastSub ??
+                          "Uses the band's own contact flag to ignore noise, "
+                              'starts counting at once.',
+                      selected: mode == EcgTapMode.fast,
+                      enabled: true,
+                      onTap: () => onEcgTapMode?.call(EcgTapMode.fast),
+                    ),
+                  ],
                 ]),
                 // 2 taps is the switches above; there is no 1-tap row. The
                 // rest are a DRAFT: touches of the ECG sensor after the double
@@ -389,6 +428,7 @@ class BandGesturesView extends StatelessWidget {
 /// one of two, and a disabled choice stays visible and dimmed with its reason.
 class _MethodRow extends StatelessWidget {
   const _MethodRow({
+    this.keyPrefix = 'tap-method',
     required this.id,
     required this.title,
     required this.sub,
@@ -397,7 +437,7 @@ class _MethodRow extends StatelessWidget {
     required this.onTap,
   });
 
-  final String id, title, sub;
+  final String keyPrefix, id, title, sub;
   final bool selected, enabled;
   final VoidCallback onTap;
 
@@ -405,7 +445,7 @@ class _MethodRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final row = Pressable(
-      key: ValueKey('tap-method:$id'),
+      key: ValueKey('$keyPrefix:$id'),
       onTap: enabled ? onTap : null,
       semanticLabel: '$title. $sub',
       child: Padding(

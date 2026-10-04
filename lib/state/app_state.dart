@@ -507,6 +507,10 @@ class AppState extends ChangeNotifier {
   /// [AppState.forTesting] pays nothing for it.
   late final EcgTapSession _ecgTapSession = EcgTapSession(
     beginStream: _beginEcgForTap,
+    // 8AN fast mode: the same start; it leaves out the raw-save by asking the
+    // session which mode the gesture in flight runs.
+    beginFastStream: _beginEcgForTap,
+    tapMode: () => gestureSettings.ecgTapMode,
     startBuzz: _ecgTapStartBuzz,
     endStream: () async {
       try {
@@ -611,8 +615,10 @@ class AppState extends ChangeNotifier {
           },
           // persist: false: a long touch can reach a normal terminal, and a
           // gesture must never leave an ECG reading behind (invariant 14).
-          begin: (wrist) =>
-              ecg.begin(wrist, persist: false, trace: deviceLab.addStep),
+          begin: (wrist) => ecg.begin(wrist,
+              persist: false,
+              rawSave: !_ecgTapSession.fast,
+              trace: deviceLab.addStep),
           captureEpoch: () => ecg.captureEpoch,
           cancel: () => ecg.cancel(),
           note: deviceLab.addStep,

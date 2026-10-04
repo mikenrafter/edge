@@ -1583,3 +1583,24 @@ C and D in phase 2).
   `docs/navigation-depth.md` names it.
 - Timing rules and the log analysis: `docs/hardware/whoop-mg-haptics-and-ecg.md`,
   "Timing rules (8AK)".
+
+## 8AN: ECG tap fast path (Oct 4)
+
+- `EcgTapMode { accurate, fast }` (`lib/gestures/ecg_tap_mode.dart`);
+  `GestureSettings.ecgTapMode` persists under `gesture_ecg_tap_mode`, default
+  accurate, unknown stored value follows the default. Gestures shows the two
+  options (`ecg-tap-mode:*`) under "Count extra taps with" when the ECG method
+  is in force.
+- Fast (hybrid): the session starts through `beginFastStream`, with no
+  readiness wait and no sensor settle; PREPARE without raw-save
+  (`rawSave: false` through `EcgController.begin`, `EcgTransport.prepare`,
+  `BleEngine.ecgPrepare`); cleanup unchanged. Counting stays sample-timed; each
+  packet's mask passes `EcgPresenceGate.filter` first (presence clear ⇒ no
+  contact; sticky fallback after `kEcgPresenceFallbackPackets` = 4
+  contact-without-presence packets when presence was never seen, recorded as
+  `EcgGestureRecord.fellBackToSamples`). The mode is fixed when the gesture
+  starts.
+- Both modes trace "Presence on|off, N ms after the tap" and "Sample contact
+  on|off, N ms after the tap" (measurement for the band's debounce).
+- Tests: `test/fix8an/` (gate, session, parity 2..5, measure, prepare,
+  settings). Doc: `docs/hardware/whoop-mg-haptics-and-ecg.md`, "Fast mode (8AN)".

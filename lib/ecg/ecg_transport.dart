@@ -88,7 +88,12 @@ abstract class EcgTransport {
   /// End the phone-side history owner and wait for it to go quiescent.
   Future<void> cancelHistory(EcgLeaseHandle lease);
 
-  Future<EcgCommandListResult> prepare(EcgLeaseHandle lease, EcgWrist wrist);
+  /// [rawSave] false leaves out the raw-save ON member (the ECG tap fast path).
+  Future<EcgCommandListResult> prepare(
+    EcgLeaseHandle lease,
+    EcgWrist wrist, {
+    bool rawSave = true,
+  });
   Future<EcgCommandListResult> start(EcgLeaseHandle lease);
   Future<EcgCommandListResult> restart(EcgLeaseHandle lease);
 
