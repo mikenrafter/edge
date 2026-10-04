@@ -2814,10 +2814,12 @@ class DerivationEngine {
     int dataNowSec,
     _BaselineHistoryCache history, {
     ana.CalculationMode calculationMode = ana.CalculationMode.forced,
+    DayResultWrite reason = DayResultWrite.derive,
   }) async {
     final sw = Stopwatch()..start();
     try {
-      await _derivePreparedDay(day, profile, dataNowSec, history, calculationMode: calculationMode);
+      await _derivePreparedDay(day, profile, dataNowSec, history,
+          calculationMode: calculationMode, reason: reason);
     } finally {
       final persist = _persistMs.remove(day.date);
       final total = sw.elapsedMilliseconds;
@@ -3072,7 +3074,13 @@ class DerivationEngine {
             _log('derive day $dayId skipped: override day, raw pruned — kept');
           } else if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
-            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history, calculationMode: selectedMode);
+            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history,
+                calculationMode: selectedMode,
+                // A force pass and a sleep/nap-edit day are the user's own
+                // doing, so they may rewrite a frozen (finalized) row.
+                reason: force || overrideDays.contains(dayId)
+                    ? DayResultWrite.userOverride
+                    : DayResultWrite.derive);
             done++;
             _diag['done_days'] = done;
             await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -3321,7 +3329,12 @@ class DerivationEngine {
           final prepared = await _prepareTargetDayTimed(dayId);
           if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
-            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history);
+            // `force` only ever comes from a user action (see callers), so it
+            // is the one case allowed to rewrite a frozen (finalized) row.
+            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history,
+                reason: force
+                    ? DayResultWrite.userOverride
+                    : DayResultWrite.derive);
             done++;
             _diag['done_days'] = done;
             onDayDerived?.call(dayId);
@@ -4403,10 +4416,12 @@ class DerivationEngine {
 
   // ── baseline-dirty recent rescan ─────────────────────────────────────────────
 
-  /// Re-derive the recent (≤ raw-retention) window — INCLUDING finalized days —
-  /// when the rolling baseline has actually shifted, so baseline-DEPENDENT
-  /// scalars (readiness/recovery, illness/anomaly, stress) on already-finalized
-  /// days refresh as later data moves their baseline.
+  /// Re-derive the recent (≤ raw-retention) window when the rolling baseline
+  /// has actually shifted, so baseline-DEPENDENT scalars (readiness/recovery,
+  /// illness/anomaly, stress) on still-provisional days refresh as later data
+  /// moves their baseline. Days finalized at [kAlgoVersion] are frozen and
+  /// skipped (logged once per pass); a day finalized only at an older version
+  /// has no frozen row at this one and is still reached.
   ///
   /// CHEAP BY DEFAULT: we gate on a baseline SIGNATURE — a stable hash of the
   /// current rolling baseline compared to the stored `baseline_sig` cursor. If unchanged
@@ -4436,9 +4451,9 @@ class DerivationEngine {
       }
 
       // Same hold `_deriveScope` installs, for the same reason. This re-derives
-      // FINALIZED days by design, and `decodedRecTsMaxByDay` buckets them in
-      // the CURRENT timezone — so after a real trip it relabels and overwrites
-      // (ConflictAlgorithm.replace) exactly the nights the hold was protecting,
+      // recent days, and `decodedRecTsMaxByDay` buckets them in the CURRENT
+      // timezone — so after a real trip it relabels and overwrites
+      // (ConflictAlgorithm.replace) the not-yet-frozen nights the hold was protecting,
       // minutes after `run()` logged that it was protecting them. Wait for
       // "Re-analyze data", which is what clears the guard.
       //
@@ -4462,10 +4477,23 @@ class DerivationEngine {
         return 0;
       }
       final cutoffSec = dataNowSec - _rescanWindowDays * 86400;
+      // A day finalized at this version is frozen (see LocalDb.putDayResult):
+      // the rescan used to rewrite it to refresh its baseline-dependent
+      // scalars, and that is exactly what the freeze ends.
+      final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
       final todoDays = [
         for (final dayId in rawByDay.keys)
-          if (_localNextDayLabelToSec(dayId) >= cutoffSec) dayId,
+          if (_localNextDayLabelToSec(dayId) >= cutoffSec &&
+              !finalized.contains(dayId))
+            dayId,
       ]..sort();
+      final frozen = rawByDay.keys
+          .where((d) =>
+              _localNextDayLabelToSec(d) >= cutoffSec && finalized.contains(d))
+          .length;
+      if (frozen > 0) {
+        _log('rescan: $frozen finalized day(s) at v$kAlgoVersion left frozen');
+      }
       if (todoDays.isEmpty) {
         _log('rescan: no recent decoded-backed days');
         await LocalDb.setCursor('baseline_sig', sig);
@@ -4473,7 +4501,7 @@ class DerivationEngine {
       }
       _log(
         'rescan: baseline changed — re-deriving ${todoDays.length} '
-        'recent day(s) (incl. finalized; v$kAlgoVersion)',
+        'recent day(s) (v$kAlgoVersion)',
       );
 
       perf.startPass();
@@ -4626,7 +4654,12 @@ class DerivationEngine {
           continue;
         }
         try {
-          await _deriveDay(sub, day, profile, dataNowSec, forceFinalize: true);
+          await _deriveDay(sub, day, profile, dataNowSec,
+              forceFinalize: true,
+              // The user's own import; isMeasuredDay above already kept
+              // every day the band measured, so what is left (a previous
+              // import, a skip marker) is theirs to replace.
+              reason: DayResultWrite.userOverride);
           done++;
           onDayDone?.call(day.date);
         } catch (e) {
@@ -4657,6 +4690,7 @@ class DerivationEngine {
     Profile profile,
     int dataNowSec, {
     bool forceFinalize = false,
+    DayResultWrite reason = DayResultWrite.derive,
   }) async {
     final daySub = sub.slice(day.startSec, day.endSec);
     // Same buffered slice prepareDerivationPayload uses — without it, imported
@@ -4703,6 +4737,7 @@ class DerivationEngine {
       dataNowSec,
       await _BaselineHistoryCache.load(),
       forceFinalize: forceFinalize,
+      reason: reason,
     );
   }
 
@@ -4713,6 +4748,7 @@ class DerivationEngine {
     _BaselineHistoryCache history, {
     bool forceFinalize = false,
     ana.CalculationMode calculationMode = ana.CalculationMode.forced,
+    DayResultWrite reason = DayResultWrite.derive,
   }) async {
     final daySub = day.daySub;
     final sleepSub = day.sleepSub;
@@ -4873,7 +4909,7 @@ class DerivationEngine {
       bundle['sleep_source'] = blankSource;
       await _dropFrozenHeadline(day.date);
       if (producedNothing) {
-        await _blankStoredNight(day, bundle, blankSource);
+        await _blankStoredNight(day, bundle, blankSource, reason);
         return;
       }
     }
@@ -5303,7 +5339,7 @@ class DerivationEngine {
 
     // A failed/timed-out second half yields a headline-only bundle, and
     // putDayResult replaces the row wholesale — so re-deriving an already
-    // complete day (rescanRecent deliberately revisits finalized days) destroyed
+    // complete day (a force re-derive deliberately revisits finalized days) destroyed
     // its naps, sleep periods, workouts, HRR, wear and curves. Carry the
     // previous result's detail forward instead of blanking it. Same principle as
     // the producedNothing guard above and the skip-marker guard in
@@ -5470,6 +5506,7 @@ class DerivationEngine {
         // this series; the date/session behind it lives in that day's bundle.
         'hr_ceiling_bpm': sc('hr_ceiling_bpm'),
       },
+      reason: reason,
     );
     _persistMs[day.date] = persistWatch.elapsedMilliseconds;
     if (secondHalfOk) await _storeKcalMinutes(day, profile, kcalMinutes);
@@ -5706,6 +5743,7 @@ class DerivationEngine {
     PreparedDerivationDay day,
     Map<String, dynamic> absent,
     String source,
+    DayResultWrite reason,
   ) async {
     final existing = await LocalDb.dayResult(day.date);
     final prev = _isRealDayResult(existing)
@@ -5730,6 +5768,7 @@ class DerivationEngine {
       finalized: (existing?['finalized'] as num?)?.toInt() == 1,
       source: 'band',
       blankKeys: kSleepDerivedMetricKeys,
+      reason: reason,
     );
     _log('derive ${day.date}: night blanked by the user ($source), no raw '
         'left — stored night replaced, rest of the day kept');

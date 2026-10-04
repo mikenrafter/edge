@@ -1656,3 +1656,69 @@ C and D in phase 2).
   `alarm_screen_draft_test`, `phase8/alarm_sections_test`, `disable_not_hide_test`,
   `settings_naming_test`, `fix8ai/g3_accordion_identity_test`,
   `fix8ai/g4_haptics_screen_test`, `haptics/wake_vocabulary_wiring_test`.
+
+## P4a: finalized day results are frozen (Oct 4)
+- Rule: a provisional `day_result` row is replaced on re-derive; once a (day, version)
+  row is finalized it is never rewritten for that version. Only a new `kAlgoVersion`
+  (a new sibling row), a user-triggered re-derive, or a value-identical re-encode
+  (`reencodeLegacyDayResults`) touches it.
+- One guard, in `LocalDb.putDayResult(..., reason: DayResultWrite.derive)`. A derive
+  write onto a finalized same-version row returns silently and writes nothing
+  (`day_result`, `metric_series`, `metric_series_version`, blankKeys deletes), so
+  `dayResultRev` and artifact signatures do not move. `DayResultWrite.userOverride`
+  writes as before. An import write (payload `imported: true`) may still replace a
+  finalized row that is not measured here (a previous import, a skip marker).
+- The engine passes `userOverride` for `runDays(force: true)` (Re-analyze after a sleep
+  edit, "Rebuild history with this priority"), `run(force: true)` and override days,
+  and `deriveImportedDays`. Every other write is `derive`. `force: true` is only ever
+  called from a user action.
+- `rescanRecent` skips days finalized at `kAlgoVersion` (logged once per pass); a day
+  finalized only at an older version is still reached. Strain rescale never writes a
+  `kAlgoVersion` row over a finalized one.
+- `dayResultComputedAt` reads the same served row as `dayResult` (version ceiling).
+- Tests: `test/p4a/`; `rescan_baseline_test` split into a provisional-replace and a
+  finalized-frozen case.
+
+## Home: sync in the greeting header (Oct 4)
+- The card above the greeting ("Synced 1 h ago ... Sync now") is gone. Home's sync UI is
+  `HomeSyncStatus` (`lib/ui2/sync_control.dart`), the "Synced through 15:33" line of the
+  greeting header, from the same `SyncPresentationState` as `SyncControl` (which the band
+  detail page still renders, unchanged). The no-day path (first run, failed load) uses the
+  same line, so Sync now is still there.
+- Center line, left to right: data edge ("Synced through 15:33", Home's own text), then
+  while syncing the running time and "Show details"; right-aligned just left of the gear,
+  when idle, the time since the last good sync ("1 h ago", absent if never) and Sync now
+  (Retry after a failure). While syncing a spinner takes the button's place and nothing
+  else is tappable there. Nothing is estimated and nothing is a percentage.
+- A problem (`syncProblem`: "Sync failed", "Needs another pass") leads the link:
+  "Sync failed · Show details". "Show details" shows only while syncing or on a problem.
+- "Show details" opens a modal bottom sheet (`showSyncDetails`): the running time, the one
+  sentence (with the failure reason) and the four steps (`syncStepRows`, shared with
+  `SyncControl`). It reads `AppState` live. Home no longer expands steps inline; the
+  `sync-details` accordion state is unused on Home.
+- The battery line is the connection line: "59% · Connected" or "Not connected". The
+  battery level shows only while connected and when the strap has reported one; there is
+  no placeholder. Connection is said only there.
+- Narrow widths: the label shortens ("Through 15:33") when the line would not fit, then
+  the link wraps to a second line. Nothing overflows at 360 pt with text scale 1.3.
+- Tests: `test/ui2/home_sync_header_test.dart` (idle / syncing / problem / not connected,
+  order and alignment, spinner, sheet, old card gone, 360 pt at 1.3x); updated
+  `home_one_sync_control_test`, `phase8/pull_to_sync_test`, `phase8/sync_status_line_test`,
+  `ui2_tokens_test` (exemption renamed). No Home golden changed (the golden images are
+  not committed, so that group is skipped here).
+
+## Wellness extras moved to Sleep and Readiness (Oct 4)
+- Nothing new was added. Both screens already carried the four extras that 8AF B dropped from
+  Wellness > Recovery, from the same `getInsights()` data: Sleep detail's "Tonight" section
+  (`SleepDetail._tonight`) shows the target bedtime ("lights out"), the sleep need and the debt
+  (the "Your need is 7h 42m, you are 22m down" sentence); Readiness detail's "What went into it"
+  (`ReadinessDetail._breakdown`) shows the `readiness_glassbox` breakdown rows. A second copy of
+  any of them would be a duplicated value (AGENTS.md 4.10), so none was added.
+- Each is absence-safe: no debt means no "down" clause (never "0m down"), no need means the
+  bedtime stands alone, none of them means "Sleep need not established". Pinned in
+  `ui2_sleep_detail_test`. Strain bonus, nap credit and target wake from the old tab are not shown.
+- `StartCard` (Mind and Workout) put a `Spacer` in a `Column` that a `ListView` gives unbounded
+  height, which raised a debug layout error. The row is now wrapped in `IntrinsicHeight`; look and
+  the 190 pt floor are unchanged. `test/health/support/wellness_harness.dart` no longer swallows
+  `FlutterError.onError` (that was its only reason). Tests: `start_session_card_test` (in a
+  ListView at 1x and 2x), `health_h2_wellness_link_test` (Mind tab pumps clean).

@@ -65,8 +65,11 @@ Line counts drift constantly; don't trust a number here, `wc -l` the file.
 INSERT-OR-REPLACE) + `decoded_rr` (beats, cascades on eviction) + `raw_archive`
 (never pruned; undecodable/unknown-version records) + `raw_records` (retained as
 replay/debug ledger and upgrade fallback) + `events`/`band_events`. Derived
-output: versioned **immutable** `day_result` (PK `day_id, algo_version`) and
-`metric_series` (PK `date,key`, REPLACE).
+output: versioned `day_result` (PK `day_id, algo_version`) and `metric_series`
+(PK `date,key`, REPLACE). Provisional rows are replaced on re-derive; once
+finalized, a (day, version) row is frozen — only a new `kAlgoVersion` (new
+sibling row), a user-triggered re-derive, or a value-identical re-encode touches
+it. `LocalDb.putDayResult` is the one place the rule is enforced.
 
 **Bug-density hotspots** (fix-titled commit churn, last 300 commits):
 `state/app_state.dart` 30 · `data/db.dart` 25 · `compute/derivation_engine.dart`
@@ -89,9 +92,11 @@ a hotspot.
    imputation, no substituted defaults, no deriving one metric from another as a
    fallback. Most-violated rule in the repo (§4.1).
 4. **Bump `kAlgoVersion`** (`compute/derivation_engine.dart`) whenever any
-   analytics *output* changes, including via a sibling re-pin. Rows are immutable
-   per version; without a bump nothing recomputes. Add a changelog entry above
-   the constant.
+   analytics *output* changes, including via a sibling re-pin. Provisional rows
+   are replaced on re-derive; once finalized, a (day, version) row is frozen —
+   only a new `kAlgoVersion` (new sibling row), a user-triggered re-derive
+   (`DayResultWrite.userOverride`), or a value-identical re-encode touches it.
+   Without a bump nothing recomputes. Add a changelog entry above the constant.
 5. **A bump citing a sibling change must be backed by the pin.** Verify the SHA
    in `pubspec.yaml` actually contains the cited change. v43's changelog
    described an analytics fix its pin never contained; the bug stayed live three

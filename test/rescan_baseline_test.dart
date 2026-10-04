@@ -6,9 +6,10 @@
 //      (a new metric_series row that moves the median) → signature changes, so a
 //      rescan would fire.
 //   2. The OVERWRITE path: putDayResult is INSERT OR REPLACE keyed on
-//      (day_id, algo_version), so re-deriving a FINALIZED recent day overwrites
-//      its row in place (refreshed readiness/recovery), not a duplicate — and the
-//      day stays finalized.
+//      (day_id, algo_version), so re-deriving a PROVISIONAL recent day overwrites
+//      its row in place (refreshed readiness/recovery), not a duplicate. A
+//      FINALIZED day is frozen: the rescan skips it and putDayResult refuses a
+//      second derive write (P4a).
 
 import 'dart:convert';
 
@@ -111,23 +112,23 @@ void main() {
         reason: 'a string of low-RMSSD days drops the rolling RMSSD median');
   });
 
-  test('finalized recent day row is OVERWRITTEN in place (replace, not dup)',
+  test('provisional recent day row is OVERWRITTEN in place (replace, not dup)',
       () async {
     const day = '2026-06-15';
     await seedDay(day,
-        finalized: true, rhr: 55, rmssd: 60, readiness: 70, resp: 14);
+        finalized: false, rhr: 55, rmssd: 60, readiness: 70, resp: 14);
 
-    // Confirm it is stored, finalized, with the original readiness.
+    // Confirm it is stored, not finalized, with the original readiness.
     var row = await LocalDb.dayResult(day);
     expect(row, isNotNull);
-    expect(row!['finalized'], 1);
+    expect(row!['finalized'], 0);
     expect((row['readiness'] as num).toDouble(), 70);
-    expect(await LocalDb.finalizedDayIds(kAlgoVersion), contains(day));
+    expect(await LocalDb.finalizedDayIds(kAlgoVersion), isNot(contains(day)));
 
     // Re-derive (simulate a rescan recompute) — SAME (day_id, algo_version),
-    // refreshed baseline-dependent readiness, still finalized.
+    // refreshed baseline-dependent readiness, still provisional.
     await seedDay(day,
-        finalized: true, rhr: 55, rmssd: 60, readiness: 48, resp: 14);
+        finalized: false, rhr: 55, rmssd: 60, readiness: 48, resp: 14);
 
     // Exactly ONE row for this day at this version, with the NEW readiness.
     final db = await LocalDb.instance;
@@ -138,13 +139,33 @@ void main() {
     row = await LocalDb.dayResult(day);
     expect((row!['readiness'] as num).toDouble(), 48,
         reason: 'baseline-dependent scalar refreshed on overwrite');
-    expect(row['finalized'], 1, reason: 'day remains locked after rescan');
 
     // The metric_series scalar also overwrote (PK date,key → replace).
     final series = await LocalDb.metricSeries('readiness');
     final mine = series.where((r) => r['date'] == day).toList();
     expect(mine.length, 1);
     expect((mine.first['value'] as num).toDouble(), 48);
+  });
+
+  test('finalized recent day row is FROZEN: a second derive write is refused',
+      () async {
+    const day = '2026-06-16';
+    await seedDay(day,
+        finalized: true, rhr: 55, rmssd: 60, readiness: 70, resp: 14);
+    expect(await LocalDb.finalizedDayIds(kAlgoVersion), contains(day));
+
+    // What a rescan used to do: same (day_id, algo_version), refreshed
+    // readiness. The finalized row now refuses it, silently.
+    await seedDay(day,
+        finalized: true, rhr: 55, rmssd: 60, readiness: 48, resp: 14);
+
+    final row = await LocalDb.dayResult(day);
+    expect((row!['readiness'] as num).toDouble(), 70,
+        reason: 'a finalized (day, version) row is never rewritten');
+    expect(row['finalized'], 1);
+    final series = await LocalDb.metricSeries('readiness');
+    final mine = series.where((r) => r['date'] == day).toList();
+    expect((mine.single['value'] as num).toDouble(), 70);
   });
 }
 

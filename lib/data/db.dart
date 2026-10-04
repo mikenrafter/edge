@@ -133,6 +133,12 @@ String derivableSourceSql([String col = 'source']) => kDerivableSources.isEmpty
 /// widen [derivableSourceSql] and must NOT widen this one.
 const String kPrimaryBandSourceSql = 'source IS NULL';
 
+/// Why a `day_result` write is happening. [derive] (the default) is refused on
+/// a row already finalized at the same (day, version); [userOverride] — a
+/// user-triggered re-derive or a sleep edit — writes over it. See
+/// [LocalDb.putDayResult].
+enum DayResultWrite { derive, userOverride }
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
@@ -4422,9 +4428,11 @@ class LocalDb {
   // ── VERSIONED IMMUTABLE DERIVED STORE (ARCHITECTURE_V2 invariant 6) ─────────
   // day_result — one row per (physiological day, algo_version). Derived rows are
   // IMMUTABLE per version: an algo_version bump writes a NEW row (never mutates).
-  // The serve seam reads the LATEST algo_version per day_id. A day stays
-  // recomputable for ~48 h after its wake (finalized=0); then it LOCKS
-  // (finalized=1) and is no longer recomputed even on a version bump.
+  // The serve seam reads the LATEST algo_version per day_id. A provisional row
+  // (finalized=0) is replaced on re-derive for ~48 h after the day's data edge;
+  // once finalized (finalized=1), a (day, version) row is frozen — only a new
+  // kAlgoVersion (a new sibling row), a user-triggered re-derive
+  // (DayResultWrite.userOverride) or a value-identical re-encode touches it.
   static Future<void> _createDayResult(Database db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS day_result (
@@ -8233,6 +8241,15 @@ class LocalDb {
   /// Upsert one (day_id, algo_version) result + its indexed scalars in one
   /// transaction. Immutable PER VERSION: a version bump writes a new row. The
   /// `finalized` flag locks a day from further recompute (~48 h after wake).
+  ///
+  /// FROZEN ONCE FINALIZED. A provisional row is replaced as before; a row
+  /// already finalized at this same (day, version) is left exactly as it is —
+  /// no `day_result`, `metric_series`, `metric_series_version` or blankKeys
+  /// write, no throw — unless [reason] is [DayResultWrite.userOverride], or this
+  /// write is an IMPORT snapshot (payload `imported: true`) over a row that is
+  /// not measured on this device (a previous import, a skip marker), so a newer
+  /// import still replaces an older one. This is the ONE place the rule lives;
+  /// every writer funnels through here.
   static Future<void> putDayResult({
     required String dayId,
     required int algoVersion,
@@ -8280,6 +8297,7 @@ class LocalDb {
     // is what REPLACE-per-key cannot do alone: a key the derive no longer
     // produces keeps its OLD row forever.
     Set<String> blankKeys = const {},
+    DayResultWrite reason = DayResultWrite.derive,
   }) async {
     final db = await instance;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -8290,6 +8308,23 @@ class LocalDb {
     // SeriesCodec leaves anything it cannot encode exactly as it found it.
     final encodedPayload = SeriesCodec.encodePayloadJson(payloadJson);
     await db.transaction((txn) async {
+      if (reason != DayResultWrite.userOverride) {
+        final cur = await txn.query(
+          'day_result',
+          columns: ['payload_json', 'skipped'],
+          where: 'day_id = ? AND algo_version = ? AND finalized = 1',
+          whereArgs: [dayId, algoVersion],
+          limit: 1,
+        );
+        // A frozen row yields only to a newer IMPORT over a row that is itself
+        // not measured on this device (a previous import or a skip marker) —
+        // the replacement every importer already had; see [isMeasuredDayRow].
+        if (cur.isNotEmpty &&
+            !(_isImportedPayload(payloadJson) &&
+                !isMeasuredDayRow(cur.first))) {
+          return;
+        }
+      }
       await txn.insert('day_result', {
         'day_id': dayId,
         'algo_version': algoVersion,
@@ -8352,6 +8387,19 @@ class LocalDb {
         }
       }
     });
+  }
+
+  /// True when a stored or incoming payload is an import snapshot. An
+  /// unreadable payload is not one: it is refused like any real row.
+  static bool _isImportedPayload(Object? payloadJson) {
+    if (payloadJson is! String || !payloadJson.contains('"imported"')) {
+      return false;
+    }
+    try {
+      return SeriesCodec.decodePayloadJson(payloadJson)?['imported'] == true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// The version a `day_result` read is allowed to serve at most: the algo
@@ -10325,12 +10373,14 @@ class LocalDb {
     );
   }
 
-  /// When [day]'s newest `day_result` row was computed (epoch ms), or null.
+  /// When the `day_result` row [dayResult] serves for [day] was computed (epoch
+  /// ms), or null. Same served-version ceiling as [dayResult].
   static Future<int?> dayResultComputedAt(String day) async {
     final db = await instance;
     final rows = await db.rawQuery(
-      'SELECT MAX(computed_at) AS at FROM day_result WHERE day_id = ?',
-      [day],
+      'SELECT computed_at AS at FROM day_result WHERE day_id = ? '
+      'AND algo_version <= ? ORDER BY algo_version DESC LIMIT 1',
+      [day, _servedAlgoCeiling],
     );
     return rows.isEmpty ? null : (rows.first['at'] as num?)?.toInt();
   }

@@ -305,7 +305,9 @@ void main() {
   group('CloudImporter._writeDay return value (dayCount accuracy)', () {
     test('returns false and does not write when the band already measured '
         'this date', () async {
-      const day = '2026-06-01';
+      // Its own day: 2026-06-01 already holds a finalized import row from the
+      // merge tests above, and a finalized row is frozen against this seed.
+      const day = '2026-06-20';
       await LocalDb.putDayResult(
         dayId: day,
         algoVersion: kAlgoVersion,
