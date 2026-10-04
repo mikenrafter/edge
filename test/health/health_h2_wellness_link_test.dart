@@ -14,6 +14,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/app.dart' show domainForTab;
 import 'package:openstrap_edge/ui2/screens/screens.dart';
+import 'package:openstrap_edge/ui2/screens/start_card.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 import 'support/wellness_harness.dart';
@@ -60,6 +61,16 @@ void main() {
         expect(find.text(name), findsWidgets, reason: 'Wellness sub-tab "$name"');
       }
       expect(find.text('Last night in Health'), findsNothing);
+    });
+
+    testWidgets('the Mind tab comes up with no framework error (StartCard Spacer)',
+        (t) async {
+      // The harness no longer swallows FlutterError.onError, so an error while
+      // the screen came up fails here via takeException.
+      await openWellness(t, tab: 'Mind');
+      expect(find.byType(StartCard), findsOneWidget);
+      expect(find.byType(ErrorWidget), findsNothing);
+      expect(t.takeException(), isNull);
     });
 
     testWidgets('Habits and Medication still render without the link or an error',

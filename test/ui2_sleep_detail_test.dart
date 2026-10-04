@@ -368,4 +368,45 @@ void main() {
     expect(find.textContaining('Your need is 7h 42m'), findsOneWidget);
     expect(find.textContaining('22m down'), findsOneWidget);
   });
+
+  // 8AF B: need, debt and bedtime left the Wellness Recovery tab and live in
+  // this section only. Each one is absent-safe: no value, no sentence, no zero.
+  testWidgets('tonight: no debt means no "down" clause, never "0m down"',
+      (t) async {
+    await _pump(
+      t,
+      SleepData(
+        day: '2026-05-20',
+        night: _night(),
+        need: const Metric(
+            value: 462, unit: 'min', confidence: .7, tier: MetricTier.estimate),
+        bedtime:
+            const Metric(value: 1360, confidence: .7, tier: MetricTier.estimate),
+      ),
+    );
+    expect(find.textContaining('Your need is 7h 42m'), findsOneWidget);
+    expect(find.textContaining('down'), findsNothing);
+  });
+
+  testWidgets('tonight: no need means the bedtime stands alone', (t) async {
+    await _pump(
+      t,
+      SleepData(
+        day: '2026-05-20',
+        night: _night(),
+        bedtime:
+            const Metric(value: 1360, confidence: .7, tier: MetricTier.estimate),
+      ),
+    );
+    expect(find.text('lights out'), findsOneWidget);
+    expect(find.textContaining('Your need'), findsNothing);
+  });
+
+  testWidgets('tonight: nothing known says so instead of inventing a time',
+      (t) async {
+    await _pump(t, SleepData(day: '2026-05-20', night: _night()));
+    expect(find.text('lights out'), findsNothing);
+    expect(find.textContaining('Your need'), findsNothing);
+    expect(find.textContaining('Sleep need not established'), findsOneWidget);
+  });
 }

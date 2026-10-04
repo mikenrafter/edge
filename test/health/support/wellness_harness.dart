@@ -89,19 +89,8 @@ Future<AppState> openWellness(WidgetTester t, {String tab = 'Recovery'}) async {
   final app = AppState.forTesting();
   addTearDown(app.dispose);
   app.repo = _Repo();
-  // The Mind tab has a layout complaint of its own (StartCard's
-  // Spacer in an unbounded Column; see ui2_wellness_recovery_paint_test), which
-  // the framework reports as a test failure. It is not what these tests are
-  // about, so errors raised while the screen comes up are collected and dropped.
-  //
   // The screen is built ON the requested tab (`tabRequest`, read in initState)
-  // rather than opened on Mind and tapped over. A Mind layout failure that is
-  // swallowed here leaves the semantics tree dirty, and the first pump after
-  // this returns would then trip the framework's own assertion in the test body
-  // — which has nothing to do with the tab under test.
-  final previous = FlutterError.onError;
-  final errors = <FlutterErrorDetails>[];
-  FlutterError.onError = (d) => errors.add(d);
+  // rather than opened on Mind and tapped over.
   WellnessScreen.tabRequest.value = WellnessScreen.tabs.indexOf(tab);
   addTearDown(() => WellnessScreen.tabRequest.value = -1);
   await t.pumpWidget(MaterialApp(
@@ -113,7 +102,6 @@ Future<AppState> openWellness(WidgetTester t, {String tab = 'Recovery'}) async {
   ));
   await settle(t);
   WellnessScreen.tabRequest.value = -1;
-  FlutterError.onError = previous;
   return app;
 }
 

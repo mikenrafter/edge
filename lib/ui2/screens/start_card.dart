@@ -115,52 +115,57 @@ class StartCard extends StatelessWidget {
                       ]),
             boxShadow: p.el(3),
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(S.x4, S.x4, S.x2, S.x4),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(label,
-                            style: F.over.copyWith(
-                                color: C.white.withValues(alpha: .75))),
-                        const Spacer(),
-                        Text('$count $noun',
-                            style: F.t2.copyWith(color: C.white),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: S.x1),
-                        Text(subText,
-                            style: F.cap.copyWith(
-                                color: C.white.withValues(alpha: .8)),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: S.x3),
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                              color: C.white, shape: BoxShape.circle),
-                          child: Icon(LucideIcons.play,
-                              size: 22, color: p.fill(accent)),
-                        ),
-                      ]),
+          // IntrinsicHeight, because the Column's Spacer needs a bounded height
+          // and a ListView hands this card an unbounded one. The row settles on
+          // its own content (or the 190 floor) and the Spacer fills the slack.
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(S.x4, S.x4, S.x2, S.x4),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(label,
+                              style: F.over.copyWith(
+                                  color: C.white.withValues(alpha: .75))),
+                          const Spacer(),
+                          Text('$count $noun',
+                              style: F.t2.copyWith(color: C.white),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: S.x1),
+                          Text(subText,
+                              style: F.cap.copyWith(
+                                  color: C.white.withValues(alpha: .8)),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: S.x3),
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                                color: C.white, shape: BoxShape.circle),
+                            child: Icon(LucideIcons.play,
+                                size: 22, color: p.fill(accent)),
+                          ),
+                        ]),
+                  ),
                 ),
-              ),
-              // Bottom right, standing on the base of the card. Decoration
-              // only: no semantics, no hit test, and the one thing here allowed
-              // to be cut off by the edge — which is what the ClipRect is for.
-              ExcludeSemantics(
-                child: IgnorePointer(
-                  child: Image.asset('assets/images/$asset',
-                      height: mascotHeight,
-                      filterQuality: FilterQuality.medium),
+                // Bottom right, standing on the base of the card. Decoration
+                // only: no semantics, no hit test, and the one thing here allowed
+                // to be cut off by the edge — which is what the ClipRect is for.
+                ExcludeSemantics(
+                  child: IgnorePointer(
+                    child: Image.asset('assets/images/$asset',
+                        height: mascotHeight,
+                        filterQuality: FilterQuality.medium),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

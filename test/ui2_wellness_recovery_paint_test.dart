@@ -354,10 +354,10 @@ Future<void> _openRecovery(
   ));
   final loaded = await _settleLoad(t);
 
-  // Cleared, NOT asserted on. The Mind tab this opens on has a pre-existing
-  // layout complaint of its own (`StartCard`'s `Spacer` sits in a `Column`
-  // that a `ListView` hands unbounded height), and this test is about the tab
-  // that comes next. Only what the switch to Recovery reports is in scope.
+  // Cleared, NOT asserted on: this pump interleaves real delays with frames,
+  // which can raise the harness-only semantics asserts `_harnessArtifact` names,
+  // and this test is about the tab that comes next. (The Mind tab's StartCard
+  // Spacer error is fixed; health_h2_wellness_link_test pins Mind clean.)
   errors.clear();
   await t.tap(find.text('Recovery'), warnIfMissed: false);
   await _frames(t);
