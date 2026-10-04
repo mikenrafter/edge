@@ -200,9 +200,10 @@ class NotificationPrefs {
     if (stored != null) {
       // Once written, the blob owns rule policies. Legacy flags cannot
       // re-run migration or add a destination the user removed.
-      final rules = NotificationPrefs.fromJson(
+      var rules = NotificationPrefs.fromJson(
         Map<String, dynamic>.from(jsonDecode(stored) as Map),
       );
+      rules = await _migrateZonePref(p, rules);
       // Existing background consumers can adjust quiet hours and schedule
       // settings without changing delivery targets or re-running migration.
       return rules.copyWith(
@@ -266,6 +267,35 @@ class NotificationPrefs {
       throw StateError('Unable to migrate alert preferences');
     }
     return migrated;
+  }
+
+  static const _kZonePrefMigrated = 'alerts.zone_pref_migrated';
+
+  /// The HR zone alert used to be its own switch (`zone_alert_enabled`). It is
+  /// now the zone rule's destinations. Once, when the two disagree the old
+  /// switch decides: on becomes the band (today's behaviour), off becomes off.
+  /// A marker, written when it changes something, makes it run once, so the
+  /// user's later choice (Phone + Band, say) is never undone by the old key.
+  static Future<NotificationPrefs> _migrateZonePref(
+    SharedPreferences p,
+    NotificationPrefs rules,
+  ) async {
+    if (p.getBool(_kZonePrefMigrated) == true) return rules;
+    final old = p.getBool('workout.zone_alert_enabled');
+    final rule = rules.alertRule('zone');
+    // Agreement (every save mirrors the rule into the old key) or no old key:
+    // nothing to do, and a read writes nothing.
+    if (old == null || old == rule.enabled) return rules;
+    final out = rules.withAlertRule(
+      rule
+          .copyWith(enabled: old, destinations: old ? AlertRule.band : 0)
+          .toJson(),
+    );
+    if (!await p.setString(storageKey, jsonEncode(out.toJson()))) {
+      throw StateError('Unable to migrate the zone alert preference');
+    }
+    await p.setBool(_kZonePrefMigrated, true);
+    return out;
   }
 
   /// Writes these prefs, whole. A thin wrapper over the settings repository:

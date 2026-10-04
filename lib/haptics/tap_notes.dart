@@ -1,6 +1,7 @@
 // 8AC: a tapped rhythm as notes. Each press becomes a note whose length is the
-// allowed length nearest its hold (a quick tap is a sixteenth) at mf, and each
-// release gap becomes rests. Pure Dart.
+// allowed length nearest its hold (a quick tap is a sixteenth), and each
+// release gap becomes rests. Taps carry no pressure, so the notes are "any
+// loudness" (`*`, 8AF.6): length is all a tap says. Pure Dart.
 
 import '../gestures/pattern_transcript.dart';
 import '../notify/buzz_sequence.dart';
@@ -15,15 +16,20 @@ int _nearestLength(int units) {
   return best;
 }
 
-/// The notes and rests of [s] on a grid of [unitMs] per sixteenth.
-List<PatternEntry> notesFromTaps(BuzzSequence s, {int unitMs = 125}) {
+/// The notes and rests of [s] on a grid of [unitMs] per sixteenth, each note
+/// at [dynamic] (any loudness unless said).
+List<PatternEntry> notesFromTaps(
+  BuzzSequence s, {
+  int unitMs = 125,
+  PatternDynamic dynamic = PatternDynamic.any,
+}) {
   final out = <PatternEntry>[];
   for (var i = 0; i < s.length; i++) {
     final hold = (s.durationsMs[i] / unitMs).round();
     out.add(PatternEntry(
       note: true,
       length: _nearestLength(hold < 1 ? 1 : hold),
-      dynamic: PatternDynamic.mf,
+      dynamic: dynamic,
     ));
     if (i + 1 < s.length) {
       final gap = s.offsetsMs[i + 1] - s.offsetsMs[i] - s.durationsMs[i];
@@ -44,7 +50,6 @@ HapticPlan? planForTaps(
     compile(
       notesFromTaps(s, unitMs: p.unitMs),
       p,
-      extended: s.extended,
       dynamicWeight: 0,
       maxRuntimeMs: maxRuntime?.inMilliseconds,
     );

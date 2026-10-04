@@ -89,7 +89,6 @@ class BuzzSequence {
   BuzzSequence(
     List<int> offsetsMs, {
     List<int>? durationsMs,
-    this.extended = false,
     this.notes,
     this.profileId,
     this.profileVersion,
@@ -107,11 +106,6 @@ class BuzzSequence {
 
   final List<int> offsetsMs;
   final List<int> durationsMs;
-
-  /// 8AC: allow the band commands whose timing varies unexpectedly when this
-  /// rhythm is compiled for a band with a measured haptic profile. Off by
-  /// default; the same taps with it on or off are different rules.
-  final bool extended;
 
   /// 8AC: the rhythm as notes (a PatternTranscript code such as
   /// "N4mf R2 N1mf"), the device profile they were made for, and the plan
@@ -146,7 +140,6 @@ class BuzzSequence {
   /// [bakedSteps] without a [bakedRuntimeMs] drops the old runtime: it
   /// described the plan being replaced.
   BuzzSequence copyWith({
-    bool? extended,
     String? notes,
     String? profileId,
     int? profileVersion,
@@ -158,7 +151,6 @@ class BuzzSequence {
   }) => BuzzSequence(
     offsetsMs,
     durationsMs: durationsMs,
-    extended: extended ?? this.extended,
     notes: notes ?? this.notes,
     profileId: profileId ?? this.profileId,
     profileVersion: profileVersion ?? this.profileVersion,
@@ -218,13 +210,13 @@ class BuzzSequence {
     }
   }
 
-  /// The old list or map form is written unchanged; 'extended', the notes and
-  /// profile, and the baked 'plan' appear only when they are set.
+  /// The old list or map form is written unchanged; the notes and profile, and
+  /// the baked 'plan' appear only when they are set. The old 'extended' flag is
+  /// never written (see [fromJson]).
   Object toJson() {
     final withNotes = notes != null;
     final plan = bakedSteps;
-    if (!extended &&
-        !withNotes &&
+    if (!withNotes &&
         plan == null &&
         patternId == null &&
         priority == HapticPriority.rhythm) {
@@ -235,7 +227,6 @@ class BuzzSequence {
     return {
       'offsetsMs': offsetsMs,
       'durationsMs': durationsMs,
-      if (extended) 'extended': true,
       if (withNotes) 'notes': notes,
       if (profileId != null) 'profileId': profileId,
       if (profileVersion != null) 'profileVersion': profileVersion,
@@ -249,10 +240,8 @@ class BuzzSequence {
   factory BuzzSequence.fromJson(Object? json) {
     final Object? offsets = json is Map ? json['offsetsMs'] : json;
     final Object? durations = json is Map ? json['durationsMs'] : null;
-    final Object? extended = json is Map ? json['extended'] : null;
-    if (extended != null && extended is! bool) {
-      throw const FormatException('A buzz sequence extended flag is a bool');
-    }
+    // An 'extended' key from before the full vocabulary became the only mode
+    // is not read: it parses and is dropped.
     final Object? notes = json is Map ? json['notes'] : null;
     final Object? profileId = json is Map ? json['profileId'] : null;
     final Object? profileVersion = json is Map ? json['profileVersion'] : null;
@@ -313,7 +302,6 @@ class BuzzSequence {
       return BuzzSequence(
         offsets.cast<int>(),
         durationsMs: durations == null ? null : (durations as List).cast<int>(),
-        extended: extended == true,
         notes: notes as String?,
         profileId: profileId as String?,
         profileVersion: profileVersion as int?,
@@ -344,7 +332,6 @@ class BuzzSequence {
       other is BuzzSequence &&
       _listEquals(other.offsetsMs, offsetsMs) &&
       _listEquals(other.durationsMs, durationsMs) &&
-      other.extended == extended &&
       other.notes == notes &&
       other.profileId == profileId &&
       other.profileVersion == profileVersion &&
@@ -360,7 +347,6 @@ class BuzzSequence {
   int get hashCode => Object.hash(
     Object.hashAll(offsetsMs),
     Object.hashAll(durationsMs),
-    extended,
     notes,
     profileId,
     profileVersion,
@@ -373,7 +359,6 @@ class BuzzSequence {
   @override
   String toString() =>
       'BuzzSequence($offsetsMs, durationsMs: $durationsMs'
-      '${extended ? ', extended: true' : ''}'
       '${priority == HapticPriority.rhythm ? '' : ', priority: ${priority.name}'}'
       '${notes == null ? '' : ', notes: $notes'})';
 }

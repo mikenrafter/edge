@@ -32,8 +32,8 @@ List<PatternEntry> _c(String code) => [
         : PatternEntry(note: false, length: int.parse(tok.substring(1))),
 ];
 
-HapticPlan _plan(String code, {bool extended = false}) =>
-    compile(_c(code), _mg, extended: extended)!;
+HapticPlan _plan(String code) =>
+    compile(_c(code), _mg)!;
 
 /// A fake band: records every write and every wait with the fake clock.
 class _Band {

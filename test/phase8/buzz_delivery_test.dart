@@ -173,8 +173,13 @@ void main() {
 
     test('every AppState band buzz goes through engine.buzzBand', () {
       expect(app, contains('engine.buzzBand('));
+      // 8AF.6: the count buzz is the gesture cues'; a band with no haptic
+      // profile writes its plain pulses through the haptics port
+      // (BleEngineHapticsPort -> engine.buzzBand).
       expect(bodyOf(app, 'Future<bool> _ecgTapBuzz('),
-          contains('buzzBand('));
+          contains('gestureCues.response('));
+      expect(File('lib/haptics/gesture_cues.dart').readAsStringSync(),
+          contains('port.buzzBand('));
     });
 
     test('the engine never gates a buzz on the reply', () {

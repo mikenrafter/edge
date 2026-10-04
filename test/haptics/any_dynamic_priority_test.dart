@@ -110,21 +110,29 @@ void main() {
     });
   });
 
-  group('the heard log never reads an any', () {
+  // 8AF.6: a take from taps in the lab probe is `*` notes until each is rated.
+  // A probe line left with one still parses, as an unrated test.
+  group('the heard log reads an any as "not rated"', () {
     String line(String a) =>
         '03:34:45.545 | tap +1 ms | last +0 ms | Pattern probe heard 1/40, '
         'test one: A = $a; B = —; played 1×.';
 
-    test('a probe line whose code carries * is refused, not read as any', () {
-      expect(
-        () => parseHeardLines(line('eighth note, any loudness (N2*)')),
-        throwsA(predicate(_junk)),
-      );
+    test('a probe line whose code carries * parses and is flagged unrated',
+        () {
+      final r = parseHeardLines(line('eighth note, any loudness (N2*)'));
+      expect(r.single.a.join(' '), 'N2*');
+      expect(r.single.unrated, isTrue);
     });
 
-    test('the same line with a real dynamic still reads', () {
+    test('the same line with a real dynamic still reads, and is rated', () {
       final r = parseHeardLines(line('eighth note mf (N2mf)'));
       expect(r.single.a.join(' '), 'N2mf');
+      expect(r.single.unrated, isFalse);
+    });
+
+    test('a rest never makes a test unrated', () {
+      final r = parseHeardLines(line('rest (R2)'));
+      expect(r.single.unrated, isFalse);
     });
   });
 
@@ -137,7 +145,6 @@ void main() {
         {
           'offsetsMs': [0],
           'durationsMs': [500],
-          'extended': true,
           'notes': 'N4* R1 N2mf',
           'profileId': 'whoop-5.0-mg',
           'profileVersion': 1,
@@ -201,7 +208,7 @@ void main() {
 
     test('copyWith keeps the priority it was not told to change', () {
       final s = BuzzSequence.fromJson(_mapJson(priority: 'dynamics'));
-      final c = s.copyWith(extended: true);
+      final c = s.copyWith(patternId: 'p');
       expect((c.toJson() as Map)['priority'], 'dynamics');
       expect(c, isNot(s));
     });

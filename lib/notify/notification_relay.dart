@@ -270,9 +270,14 @@ class RelayController {
     this.playSequence,
     this.deliverSequence,
     this.sequenceTimeout,
+    this.defaultSequence,
   });
   final AlertDispatcher dispatcher;
   final Future<bool> Function(List<int> pattern) buzz;
+
+  /// The relay's built-in pattern (alert.relay, 8AF.6), played for a channel or
+  /// app with no rhythm of its own. Null, or null from it: the registry default.
+  final Future<BuzzSequence?> Function()? defaultSequence;
 
   /// Plays a user-chosen rhythm as one band delivery. When set, it replaces the
   /// fixed one-buzz pattern unless the channel mirrors the app's own haptics.
@@ -419,11 +424,20 @@ class RelayController {
           ? const [0, 250]
           : readable ?? cfg.fallbackPattern;
       final play = playSequence;
-      final sequence = play == null || cfg.matchHaptics
+      var sequence = play == null || cfg.matchHaptics
           ? null
           : channel == 'apps'
               ? cfg.sequenceForApp('${m['package']}')
               : cfg.effectiveSequence;
+      final own = channel == 'apps'
+          ? cfg.appSequences['${m['package']}'] ?? cfg.buzzSequence
+          : cfg.buzzSequence;
+      if (sequence != null && own == null) {
+        try {
+          sequence = await defaultSequence?.call() ?? sequence;
+        } catch (_) {}
+      }
+      final chosen = sequence;
       final postMs = m['postTimeMs'] as int? ?? nowMs();
       final outcome = await dispatcher.dispatch(
         AlertRule(
@@ -446,15 +460,15 @@ class RelayController {
         sourceTime: DateTime.fromMillisecondsSinceEpoch(postMs),
         historical: false,
         phoneTransport: phone,
-        bandTimeout: sequence == null
+        bandTimeout: chosen == null
             ? null
-            : sequenceTimeout?.call(sequence) ?? sequence.transportTimeout,
-        bandTransport: sequence == null
+            : sequenceTimeout?.call(chosen) ?? chosen.transportTimeout,
+        bandTransport: chosen == null
             ? () => buzz(pattern)
-            : () => play!(sequence),
-        bandDelivery: sequence == null || deliverSequence == null
+            : () => play!(chosen),
+        bandDelivery: chosen == null || deliverSequence == null
             ? null
-            : () => deliverSequence!(sequence),
+            : () => deliverSequence!(chosen),
       );
       return RelayResult(
         targets: outcome.targets,
@@ -516,6 +530,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
     this.worn,
     this.deliverSequence,
     this.sequenceTimeout,
+    this.defaultSequence,
     this.runBand,
     @visibleForTesting this.debugSupported,
     @visibleForTesting this.nativeTimeout = const Duration(seconds: 5),
@@ -566,6 +581,9 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
 
   /// How long [deliverSequence] needs for a rhythm on the connected band.
   final Duration Function(BuzzSequence)? sequenceTimeout;
+
+  /// The relay's built-in pattern (see [RelayController.defaultSequence]).
+  final Future<BuzzSequence?> Function()? defaultSequence;
 
   /// Runs a job of [commands] band commands in the global band queue. When
   /// set, the matched-haptics pulses go through it.
@@ -672,6 +690,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
           isConnected: isConnected,
         ),
     sequenceTimeout: sequenceTimeout,
+    defaultSequence: defaultSequence,
     phone: _phoneFallback,
     policy: _policy,
     nowMs: () => DateTime.now().millisecondsSinceEpoch,

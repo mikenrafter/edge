@@ -36,6 +36,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
+/// The user-made patterns: a read also holds the built-ins (8AF.6).
+List<SavedHapticPattern> _own(List<SavedHapticPattern> all) => [
+  for (final p in all)
+    if (!p.system) p,
+];
+
 final BuzzSequence _taps = BuzzSequence([0, 500, 1000]);
 final BuzzSequence _tapsB = BuzzSequence([0, 800]);
 
@@ -262,7 +268,7 @@ void main() {
       expect(s.channels.keys.toList(), relayChannels);
       expect(s.channels['apps']!.enabled, isTrue);
       expect(s.channels['alarms']!.enabled, isFalse);
-      expect(s.patterns, isEmpty);
+      expect(_own(s.patterns), isEmpty);
     });
 
     test('the snapshot is immutable', () async {
@@ -274,7 +280,7 @@ void main() {
       expect(() => s.channels['apps'] = const ChannelConfig(), throwsUnsupportedError);
       expect(() => s.patterns.clear(), throwsUnsupportedError);
       expect(s.channels['apps']!.appSequences['com.x']!.patternId, 'p1');
-      expect(s.patterns.single.name, 'Calm');
+      expect(_own(s.patterns).single.name, 'Calm');
     });
 
     test('unreadable stored channels read as defaults, not a throw', () async {
@@ -284,7 +290,7 @@ void main() {
       });
       final s = await repo.read();
       expect(s.channels['apps']!.enabled, isTrue);
-      expect(s.patterns, isEmpty);
+      expect(_own(s.patterns), isEmpty);
     });
   });
 
@@ -404,7 +410,7 @@ void main() {
         store.failing = false;
         SharedPreferences.resetStatic();
         final s = await repo.read();
-        expect(s.patterns.map((p) => p.name), ['Calm']);
+        expect(_own(s.patterns).map((p) => p.name), ['Calm']);
         expect(s.channels['calls']!.enabled, isFalse);
         expect(await _raw(), before);
       });
@@ -812,7 +818,7 @@ void main() {
       expect(s.alerts.alertRule('water').buzzSequence!.toJson(), want);
       expect(s.channels['apps']!.buzzSequence!.toJson(), want);
       expect(s.channels['apps']!.appSequences['com.x']!.toJson(), want);
-      expect(s.patterns.single.sequence.toJson(), want);
+      expect(_own(s.patterns).single.sequence.toJson(), want);
       expect(s.patternUsage('p1'), 3);
     });
 
@@ -824,7 +830,7 @@ void main() {
         d.propagatePattern('p1');
       });
       final s = await repo.read();
-      expect(s.patterns, isEmpty);
+      expect(_own(s.patterns), isEmpty);
       expect(s.alerts.alertRule('water').buzzSequence!.offsetsMs, [0, 500, 1000]);
       expect(s.alerts.alertRule('water').buzzSequence!.patternId, isNull);
       expect(s.channels['apps']!.buzzSequence!.patternId, isNull);
@@ -870,7 +876,10 @@ void main() {
         d.propagatePattern('p1', replacement: d.patterns.byId('p1')!.sequence);
       });
       final after = await _raw();
-      expect(jsonDecode(after['haptic_patterns_v1']! as String), hasLength(2));
+      expect([
+        for (final e in jsonDecode(after['haptic_patterns_v1']! as String) as List)
+          if ((e as Map)['systemKey'] == null) e,
+      ], hasLength(2));
       // Alerts blob now exists (the update loaded it), channels did not change.
       expect(after.containsKey('notif_relay_channels'), isFalse);
       expect(before.keys.every((k) => after.containsKey(k)), isTrue);

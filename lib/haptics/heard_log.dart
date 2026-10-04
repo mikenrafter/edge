@@ -26,6 +26,12 @@ class HeardTest {
   final List<PatternEntry> b;
   final bool unstable;
   final int plays;
+
+  /// A note in either rendition is still `*`: written from taps and never
+  /// rated, so nothing was recorded about its loudness. A vocabulary is not
+  /// built from such a test.
+  bool get unrated => [...a, ...b].any(
+      (e) => e.note && e.dynamic == PatternDynamic.any);
 }
 
 final RegExp _heard = RegExp(
@@ -42,10 +48,6 @@ List<PatternEntry> _rendition(String text) {
   final m = _trailingCode.firstMatch(text);
   if (m == null) return const [];
   final entries = PatternTranscript.parseCode(m[1]!).entries;
-  // The probe records what was felt, never "any loudness".
-  if (entries.any((e) => e.dynamic == PatternDynamic.any)) {
-    throw FormatException('a heard rendition has no any-loudness note', m[1]);
-  }
   return entries;
 }
 

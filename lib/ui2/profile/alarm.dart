@@ -53,6 +53,11 @@ import 'settings.dart' show editExpectedSleepSchedule;
 /// change; Wake says so once instead of a disabled row (8AE).
 const String _kFixedWaveform = 'The alarm uses the band\'s own buzz.';
 
+// Gradual and Natural wake play fixed plans of the MG's measured vocabulary
+// (8AF.6); they are not configurable.
+const String _kWakeVocabulary =
+    'Wake buzzes use the band\'s measured vocabulary.';
+
 /// What we actually know about the armed alarm.
 enum AlarmArmState {
   /// Nothing armed.
@@ -948,6 +953,10 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
       Padding(
         padding: const EdgeInsets.only(top: S.x3),
         child: Text(_kFixedWaveform, style: F.over.copyWith(color: p.ink3)),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(top: S.x1),
+        child: Text(_kWakeVocabulary, style: F.over.copyWith(color: p.ink3)),
       ),
     ];
   }

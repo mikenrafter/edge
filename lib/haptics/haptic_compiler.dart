@@ -132,6 +132,11 @@ const int _kMismatch = 4;
 const int _kDynamicsMismatch = 1;
 const int _kDynamicsLoudness = 4;
 
+/// Cost of each unstable phrase or gap row in a plan. The whole vocabulary is
+/// always on the table, but stable parts stay preferred: an unstable one wins
+/// only where it fits better than one cell's worth (a mismatch costs 4).
+const int _kUnstableCost = 1;
+
 // A cost that orders plans by cost, then unstable parts, then total delay.
 // (The command count is the outer loop of the search; the final pick orders
 // by cost, then command count, then the rest of this.)
@@ -182,8 +187,9 @@ class _Node {
 }
 
 /// Compiles [target] for [p]. Leading rests are ignored; a target with no
-/// note gives null. Without [extended] only the profile's stable phrases and
-/// gap rows are used. At most [maxCommands] commands; when the cap bites the
+/// note gives null. Every phrase and gap row of the profile is considered;
+/// each unstable one adds a small cost, so stable parts win unless an unstable
+/// one fits meaningfully better. At most [maxCommands] commands; when the cap bites the
 /// plan is not exact. Each command beyond the first adds [commandPenalty] to
 /// the cost. With [maxRuntimeMs] a plan that runs longer is skipped, and a
 /// target that itself runs longer gives null (it would otherwise be cut short
@@ -192,7 +198,6 @@ class _Node {
 HapticPlan? compile(
   List<PatternEntry> target,
   HapticDeviceProfile p, {
-  required bool extended,
   int dynamicWeight = 1,
   HapticPriority priority = HapticPriority.rhythm,
   int maxCommands = 8,
@@ -214,7 +219,7 @@ HapticPlan? compile(
   if (maxRuntimeMs != null && n * p.unitMs > maxRuntimeMs) return null;
 
   final renders = <_Render>[];
-  for (final ph in p.phrasesFor(extended: extended)) {
+  for (final ph in p.phrases) {
     final lo = _Render(ph, ph.min);
     renders.add(lo);
     final hi = _Render(ph, ph.max);
@@ -222,7 +227,7 @@ HapticPlan? compile(
   }
   if (renders.isEmpty) return null;
 
-  final gaps = p.gapsFor(extended: extended);
+  final gaps = p.gaps;
   // Beyond the longest measured rest, waiting longer only lengthens the
   // silence: delay grows by one unit per unit, from the longest stable row.
   HapticGap? longest;
@@ -283,7 +288,11 @@ HapticPlan? compile(
 
   for (final r in renders) {
     final e = r.cells.length;
-    final s = _Score(place(r, 0), r.phrase.stable ? 0 : 1, 0);
+    final s = _Score(
+      place(r, 0) + (r.phrase.stable ? 0 : _kUnstableCost),
+      r.phrase.stable ? 0 : 1,
+      0,
+    );
     final cur = best[1][e];
     if (cur == null || s.lessThan(cur.score)) {
       best[1][e] = _Node(s, -1, null, r);
@@ -303,7 +312,10 @@ HapticPlan? compile(
             final end = start + r.cells.length;
             final s = from.score +
                 _Score(
-                  gapCost + place(r, start),
+                  gapCost +
+                      place(r, start) +
+                      (w.stable ? 0 : _kUnstableCost) +
+                      (r.phrase.stable ? 0 : _kUnstableCost),
                   (w.stable ? 0 : 1) + (r.phrase.stable ? 0 : 1),
                   w.delayMs,
                 );
@@ -373,7 +385,10 @@ HapticPlan? compile(
     final feltMax = _felt(steps, useMax: true);
     final runtimeMs = timeline(feltMax).length * p.unitMs;
     if (maxRuntimeMs != null && runtimeMs > maxRuntimeMs) continue;
-    final exact = cand.total.cost - commandPenalty * (cand.k - 1) == 0;
+    final exact = cand.total.cost -
+            commandPenalty * (cand.k - 1) -
+            _kUnstableCost * cand.total.unstable ==
+        0;
     final dynamics = dynamicWeight > 0;
 
     return HapticPlan(

@@ -170,11 +170,11 @@ void main() {
 
     test('notes over 10 s: null with the cap, a plan without', () {
       expect(
-        compile(notes, _mg, extended: false,
+        compile(notes, _mg,
             maxRuntimeMs: kMaxHapticRuntime.inMilliseconds),
         isNull,
       );
-      final plan = compile(notes, _mg, extended: false, maxRuntimeMs: null);
+      final plan = compile(notes, _mg, maxRuntimeMs: null);
       expect(plan, isNotNull);
       expect(plan!.runtimeMs, greaterThan(10000));
       expect(plan.steps, hasLength(6));
@@ -182,7 +182,7 @@ void main() {
 
     test('the 8-command cap still holds with the runtime cap lifted', () {
       final ten = PatternTranscript.parseCode(_tenNotes()).entries;
-      final plan = compile(ten, _mg, extended: false, maxRuntimeMs: null);
+      final plan = compile(ten, _mg, maxRuntimeMs: null);
       expect(plan, isNotNull);
       expect(plan!.steps.length, lessThanOrEqualTo(8));
       expect(plan.exact, isFalse);

@@ -33,10 +33,9 @@ const _nameKey = ValueKey('pattern-name-field');
 const _tooLongName = 'Keep it under 40 characters.';
 const _saveFailed = 'Could not save that pattern. Try again.';
 
-HapticPlan _plan(String code, {bool extended = false}) => compile(
+HapticPlan _plan(String code) => compile(
   PatternTranscript.parseCode(code).entries,
   _mg,
-  extended: extended,
   maxRuntimeMs: kMaxHapticRuntime.inMilliseconds,
 )!;
 

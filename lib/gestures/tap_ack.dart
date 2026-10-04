@@ -12,6 +12,7 @@
 
 import '../notify/alert_dispatcher.dart';
 import '../notify/alert_rule.dart';
+import '../notify/buzz_sequence.dart' show BuzzDelivery;
 import 'gesture_dispatcher.dart';
 import 'strap_event.dart';
 
@@ -37,13 +38,15 @@ bool shouldAckTap(StrapEvent e, List<GestureOutcome> outcomes) =>
     outcomes.every((o) => o.taps == null) &&
     outcomes.any((o) => o.status == GestureStatus.ran);
 
-/// Buzz the band once for this tap, through [d]'s default band transport.
-/// Returns whether a buzz was delivered. Never throws.
+/// Buzz the band once for this tap, through [d]'s default band transport, or
+/// through [bandDelivery] (the gesture confirm cue, 8AF.6) when given. Returns
+/// whether a buzz was delivered. Never throws.
 Future<bool> ackTap(
   AlertDispatcher d,
   StrapEvent e,
-  List<GestureOutcome> outcomes,
-) async {
+  List<GestureOutcome> outcomes, {
+  Future<BuzzDelivery> Function()? bandDelivery,
+}) async {
   if (!shouldAckTap(e, outcomes)) return false;
   // An unset RTC gives every tap one identity; receipt time keeps the second
   // ack from being swallowed by the first one's claim.
@@ -56,6 +59,7 @@ Future<bool> ackTap(
       eventId: id,
       sourceTime: e.effectiveTime,
       historical: false,
+      bandDelivery: bandDelivery,
     );
     return r.targets.contains('band');
   } catch (_) {

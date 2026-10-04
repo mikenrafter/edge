@@ -195,7 +195,7 @@ class SettingsRepository {
   /// The stored patterns as a store to edit (what HapticPatternStore.load
   /// returns). Saving it again goes through [update].
   Future<HapticPatternStore> patterns() => _serialize(
-    () async => HapticPatternStore.decode(
+    () async => HapticPatternStore.decodeSeeded(
       (await _prefs()).getString(HapticPatternStore.prefsKey),
     ),
   );
@@ -211,7 +211,7 @@ class SettingsRepository {
     return SettingsSnapshot(
       alerts: await NotificationPrefs.readFrom(sp),
       channels: decodeChannels(sp.getString(channelsKey)),
-      patterns: HapticPatternStore.decode(
+      patterns: HapticPatternStore.decodeSeeded(
         sp.getString(HapticPatternStore.prefsKey),
       ).list,
     );
@@ -272,7 +272,7 @@ class SettingsRepository {
         ? decodeChannels(sp.getString(channelsKey))
         : null;
     final basePatterns = sections.contains(SettingsSection.patterns)
-        ? HapticPatternStore.decode(sp.getString(HapticPatternStore.prefsKey))
+        ? HapticPatternStore.decodeSeeded(sp.getString(HapticPatternStore.prefsKey))
         : null;
     final draft = SettingsDraft._(
       sections: sections,

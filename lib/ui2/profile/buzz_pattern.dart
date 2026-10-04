@@ -22,6 +22,7 @@ import '../../haptics/pattern_store.dart' show kPatternNameMax;
 import '../../notify/buzz_sequence.dart';
 import '../../state/prefs.dart';
 import '../ui2.dart';
+import 'haptic_pattern_editor.dart';
 import 'haptic_plan_text.dart';
 import 'profile.dart' show SetRow;
 
@@ -71,6 +72,9 @@ Future<void> showBuzzPatternSheet(
   bool? allowLong,
   Iterable<String>? patternNames,
   FutureOr<void> Function(String name, BuzzSequence s)? onSaveNamed,
+  FutureOr<void> Function(String name, BuzzSequence s)? onSaveAsNotes,
+  Iterable<String>? notesNames,
+  String? notesName,
   required ValueChanged<BuzzSequence> onSave,
 }) {
   final p = P.of(c);
@@ -87,20 +91,42 @@ Future<void> showBuzzPatternSheet(
         profile: profile,
         allowLong: allowLong,
         patternNames: patternNames,
+        notesNames: notesNames,
+        notesName: notesName,
         onPhoneBuzz: HapticFeedback.heavyImpact,
         onSave: (s) {
-          Navigator.of(sheet).pop();
+          _closeSheet(sheet);
           onSave(s);
         },
         onSaveNamed: onSaveNamed == null
             ? null
             : (name, s) async {
                 await onSaveNamed(name, s);
-                if (sheet.mounted) Navigator.of(sheet).pop();
+                if (sheet.mounted) _closeSheet(sheet);
+              },
+        onSaveAsNotes: onSaveAsNotes == null
+            ? null
+            : (name, s) async {
+                await onSaveAsNotes(name, s);
+                if (sheet.mounted) _closeSheet(sheet);
               },
       ),
     ),
   );
+}
+
+// Closes the sheet's own route. With the notes editor open above it the sheet
+// is not the top route, so a plain pop would close the editor instead.
+void _closeSheet(BuildContext sheet) {
+  if (!sheet.mounted) return;
+  final route = ModalRoute.of(sheet);
+  if (route == null || !route.isActive) return;
+  final nav = Navigator.of(sheet);
+  if (route.isCurrent) {
+    nav.pop();
+  } else {
+    nav.removeRoute(route);
+  }
 }
 
 class BuzzPatternSheet extends StatefulWidget {
@@ -115,6 +141,9 @@ class BuzzPatternSheet extends StatefulWidget {
     this.allowLong,
     this.patternNames,
     this.onSaveNamed,
+    this.onSaveAsNotes,
+    this.notesNames,
+    this.notesName,
   });
 
   /// The rhythm in use now, shown above the button. Null shows nothing.
@@ -144,6 +173,17 @@ class BuzzPatternSheet extends StatefulWidget {
   /// Called instead of [onSave] when the take is saved under a name.
   final FutureOr<void> Function(String name, BuzzSequence s)? onSaveNamed;
 
+  /// 8AF.6 F.3: called with the name and notes when the take was opened in the
+  /// notes editor ("Edit as notes") and saved there. Without it the editor
+  /// saves through [onSaveNamed], else [onSave].
+  final FutureOr<void> Function(String name, BuzzSequence s)? onSaveAsNotes;
+
+  /// The names the notes editor refuses as taken; [patternNames] when null.
+  final Iterable<String>? notesNames;
+
+  /// The name of the pattern being re-recorded, so the editor does not ask.
+  final String? notesName;
+
   @override
   State<BuzzPatternSheet> createState() => _BuzzPatternSheetState();
 }
@@ -160,9 +200,6 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
   /// null = not played, true/false = the band's answer to the last playback.
   bool? _played;
 
-  /// The rule's extended haptics opset setting; carried by what is played and
-  /// saved, and kept across "Record again".
-  late bool _extended = widget.initial?.extended ?? false;
   late final Stopwatch _pressClock = clock.stopwatch();
 
   bool _toPatterns = false;
@@ -189,7 +226,7 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
     if (!widget.bandConnected || play == null) return;
     bool ok;
     try {
-      ok = await play(seq.copyWith(extended: _extended));
+      ok = await play(seq);
     } catch (_) {
       ok = false;
     }
@@ -198,13 +235,13 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
 
   bool get _allowLong => widget.allowLong ?? Prefs.allowLongHaptics;
 
-  /// The plan for a take on a band with a profile, with the opset switch as
-  /// it is now. Null without a profile, or when the take runs over the cap.
+  /// The plan for a take on a band with a profile. Null without a profile, or
+  /// when the take runs over the cap.
   HapticPlan? _planFor(BuzzSequence result) {
     final profile = widget.profile;
     if (profile == null) return null;
     return planForTaps(
-      result.copyWith(extended: _extended),
+      result,
       profile,
       maxRuntime: maxRuntimeFor(allowLong: _allowLong),
     );
@@ -240,11 +277,11 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
     }
   }
 
-  /// What was saved: the take with the switch, and on a band with a profile
+  /// What was saved: the take, and on a band with a profile
   /// also the notes it was heard as, the profile and the plan compiled for
   /// them, so the rule plays the same later whatever the vocabulary becomes.
   BuzzSequence _toSave(BuzzSequence result, HapticPlan? plan) {
-    final s = result.copyWith(extended: _extended);
+    final s = result;
     final profile = widget.profile;
     if (profile == null || plan == null) return s;
     return s.copyWith(
@@ -263,13 +300,51 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
     );
   }
 
+  /// Opens the take in the advanced editor as `*` notes on "Prioritize
+  /// rhythm" (taps carry no loudness). Saving there goes through
+  /// [BuzzPatternSheet.onSaveAsNotes] (else [onSaveNamed], else [onSave]) and
+  /// closes the editor; a failure stays in the editor.
+  void _editAsNotes(BuzzSequence result, HapticPlan? plan) {
+    final profile = widget.profile;
+    if (profile == null) return;
+    final seed = plan != null
+        ? _toSave(result, plan)
+        : result.copyWith(
+            notes: notesFromTaps(result, unitMs: profile.unitMs).join(' '),
+            profileId: profile.id,
+            profileVersion: profile.version,
+          );
+    final nav = Navigator.of(context);
+    final onSave = widget.onSave;
+    final named = widget.onSaveAsNotes ?? widget.onSaveNamed;
+    late final MaterialPageRoute<void> route;
+    route = MaterialPageRoute<void>(
+      builder: (_) => HapticPatternEditorPage(
+        initial: seed,
+        name: widget.notesName,
+        profile: profile,
+        onPlay: widget.onPlay ?? (_) async => false,
+        allowLong: _allowLong,
+        existingNames: widget.notesNames ?? widget.patternNames ?? const [],
+        onSave: (name, s) async {
+          if (named != null) {
+            await named(name, s);
+          } else {
+            onSave?.call(s);
+          }
+          if (route.isActive) nav.pop();
+        },
+      ),
+    );
+    nav.push(route);
+  }
+
   /// On a band with a profile: the notes the take was heard as and one calm
-  /// line about what the band will play, recompiled whenever the switch
-  /// changes.
+  /// line about what the band will play.
   List<Widget> _heard(P p, BuzzSequence result, HapticPlan? plan) {
     final profile = widget.profile;
     if (profile == null) return const [];
-    final s = result.copyWith(extended: _extended);
+    final s = result;
     return [
       const SizedBox(height: S.x2),
       Text(
@@ -331,31 +406,6 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
               style: F.over.copyWith(color: p.ink3),
             ),
           const SizedBox(height: S.x3),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Extended haptics opset',
-                      style: F.body.copyWith(color: p.ink),
-                    ),
-                    Text(
-                      'Timings may vary unexpectedly.',
-                      style: F.over.copyWith(color: p.ink3),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                key: const ValueKey('buzz-extended'),
-                value: _extended,
-                onChanged: (v) => setState(() => _extended = v),
-              ),
-            ],
-          ),
-          const SizedBox(height: S.x3),
           if (result == null)
             BigButton(
               'Tap your pattern',
@@ -416,6 +466,16 @@ class _BuzzPatternSheetState extends State<BuzzPatternSheet> {
               'Save',
               onTap: canSave ? () => _save(result, plan) : null,
             ),
+            if (widget.profile != null) ...[
+              const SizedBox(height: S.x2),
+              BigButton(
+                'Edit as notes',
+                key: const ValueKey('buzz-edit-notes'),
+                soft: true,
+                color: C.purple,
+                onTap: () => _editAsNotes(result, plan),
+              ),
+            ],
             const SizedBox(height: S.x2),
             BigButton(
               'Record again',

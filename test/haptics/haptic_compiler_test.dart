@@ -79,11 +79,11 @@ void main() {
   group('compile: the vocabulary round-trips', () {
     test('every stable phrase: its own min and max rendition is one exact step',
         () {
-      final stable = _mg.phrasesFor(extended: false);
+      final stable = _mg.phrases.where((p) => p.stable);
       expect(stable, isNotEmpty);
       for (final p in stable) {
         for (final target in [p.min, p.max]) {
-          final plan = compile(target, _mg, extended: false);
+          final plan = compile(target, _mg);
           expect(plan, isNotNull, reason: p.id);
           expect(plan!.exact, isTrue, reason: '${p.id} $target');
           expect(plan.cost, 0, reason: p.id);
@@ -104,8 +104,8 @@ void main() {
     });
 
     test('trailing target rests cost nothing', () {
-      for (final p in _mg.phrasesFor(extended: false)) {
-        final plan = compile([...p.min, ..._rest(7)], _mg, extended: false);
+      for (final p in _mg.phrases.where((p) => p.stable)) {
+        final plan = compile([...p.min, ..._rest(7)], _mg);
         expect(plan!.exact, isTrue, reason: p.id);
         expect(plan.steps, hasLength(1), reason: p.id);
       }
@@ -113,8 +113,8 @@ void main() {
 
     test('single-buzz pair x every stable gap row, every rest length inside',
         () {
-      final singles = _mg.phrasesFor(extended: false).where(_singleBuzz);
-      final gaps = _mg.gapsFor(extended: false);
+      final singles = _mg.phrases.where((p) => p.stable).where(_singleBuzz);
+      final gaps = _mg.gaps.where((g) => g.stable);
       expect(singles.length, greaterThanOrEqualTo(2));
       expect(gaps, isNotEmpty);
       var checked = 0;
@@ -123,7 +123,7 @@ void main() {
           for (final g in gaps) {
             for (var k = g.minUnits; k <= g.maxUnits; k++) {
               final target = [...p.min, ..._rest(k), ...q.min];
-              final plan = compile(target, _mg, extended: false);
+              final plan = compile(target, _mg);
               final why = '${p.id} + ${q.id}, rest $k, gap ${g.delayMs} ms';
               expect(plan, isNotNull, reason: why);
               expect(plan!.exact, isTrue, reason: why);
@@ -145,9 +145,9 @@ void main() {
     });
 
     test('N4ff R6 N4f -> effect 47, then 300 ms after it ends, effect 14', () {
-      for (final extended in [false, true]) {
-        final plan = compile(_c('N4ff R6 N4f'), _mg, extended: extended)!;
-        expect(_ids(plan), ['buzz47', 'buzz14'], reason: 'extended $extended');
+      {
+        final plan = compile(_c('N4ff R6 N4f'), _mg)!;
+        expect(_ids(plan), ['buzz47', 'buzz14']);
         expect(plan.steps[0].delayMs, 0);
         expect(plan.steps[1].delayMs, 300,
             reason: 'stable beats lower delay; 6 units is in the 300 ms row');
@@ -161,59 +161,47 @@ void main() {
     });
 
     test('the plan feels like the shortest and longest the band can do', () {
-      final plan = compile(_c('N4ff R6 N4f'), _mg, extended: false)!;
+      final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       // The 300 ms row feels 4..6 units; buzz14 is 3..4 units long.
       expect(timeline(plan.feltMin), timeline(_c('N4ff R4 N3f')));
       expect(timeline(plan.feltMax), timeline(_c('N4ff R6 N4f')));
     });
 
     test('summary names the commands and the waits', () {
-      final plan = compile(_c('N4ff R6 N4f'), _mg, extended: false)!;
+      final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(plan.summary,
           '2 commands: effect 47, then 300 ms after it ends, effect 14');
-      final one = compile(_c('N4ff'), _mg, extended: false)!;
+      final one = compile(_c('N4ff'), _mg)!;
       expect(one.summary, contains('effect 47'));
       expect(one.summary, isNot(contains('commands')));
       expect(one.summary, isNot(contains('after it ends')));
     });
   });
 
-  group('compile: unstable vocabulary needs the extended opset', () {
-    test('a target only click1soft matches: exact when extended', () {
+  group('compile: unstable parts are always on the table, stable preferred', () {
+    test('a target only click1soft matches takes click1soft, exactly', () {
       final soft = _phrase('click1soft');
       expect(soft.stable, isFalse);
-      final plan = compile(soft.min, _mg, extended: true)!;
+      final plan = compile(soft.min, _mg)!;
       expect(plan.exact, isTrue);
       expect(plan.usesUnstable, isTrue);
       expect(_ids(plan), ['click1soft']);
     });
 
-    test('the same target without it is compiled but not exact', () {
-      final plan = compile(_phrase('click1soft').min, _mg, extended: false);
-      expect(plan, isNotNull);
-      expect(plan!.exact, isFalse);
-      expect(plan.cost, greaterThan(0));
-      expect(plan.usesUnstable, isFalse);
-      expect(plan.steps.map((s) => s.phrase.stable), everyElement(isTrue));
-    });
-
     test('N4ff R1 N4ff needs the unstable 100 ms gap row', () {
       final target = _c('N4ff R1 N4ff');
-      final on = compile(target, _mg, extended: true)!;
-      expect(on.exact, isTrue);
-      expect(on.usesUnstable, isTrue);
-      expect(on.steps, hasLength(2));
-      expect(on.steps[1].delayMs, 100);
-      final off = compile(target, _mg, extended: false)!;
-      expect(off.exact, isFalse);
-      expect(off.usesUnstable, isFalse);
+      final plan = compile(target, _mg)!;
+      expect(plan.exact, isTrue);
+      expect(plan.usesUnstable, isTrue);
+      expect(plan.steps, hasLength(2));
+      expect(plan.steps[1].delayMs, 100);
     });
 
-    test('non-extended never uses an unstable phrase, for any phrase target',
+    test('a stable phrase\'s own rendition never takes an unstable phrase',
         () {
-      for (final p in _mg.phrases) {
+      for (final p in _mg.phrases.where((p) => p.stable)) {
         for (final target in [p.min, p.max]) {
-          final plan = compile(target, _mg, extended: false)!;
+          final plan = compile(target, _mg)!;
           expect(plan.usesUnstable, isFalse, reason: p.id);
           for (final s in plan.steps) {
             expect(s.phrase.stable, isTrue, reason: '${p.id} -> ${s.phrase.id}');
@@ -222,9 +210,9 @@ void main() {
       }
     });
 
-    test('extended never loses exactness a non-extended plan had', () {
-      for (final p in _mg.phrasesFor(extended: false)) {
-        final plan = compile(p.min, _mg, extended: true)!;
+    test('every stable phrase\'s own shortest rendition is exact', () {
+      for (final p in _mg.phrases.where((p) => p.stable)) {
+        final plan = compile(p.min, _mg)!;
         expect(plan.exact, isTrue, reason: p.id);
       }
     });
@@ -232,9 +220,9 @@ void main() {
 
   group('compile: edges', () {
     test('leading rests are ignored', () {
-      final bare = compile(_c('N4ff R6 N4f'), _mg, extended: false)!;
+      final bare = compile(_c('N4ff R6 N4f'), _mg)!;
       final lead =
-          compile([..._rest(13), ..._c('N4ff R6 N4f')], _mg, extended: false)!;
+          compile([..._rest(13), ..._c('N4ff R6 N4f')], _mg)!;
       expect(_ids(lead), _ids(bare));
       expect([for (final s in lead.steps) s.delayMs],
           [for (final s in bare.steps) s.delayMs]);
@@ -244,20 +232,19 @@ void main() {
     });
 
     test('empty target and rests-only target -> null', () {
-      expect(compile(const [], _mg, extended: false), isNull);
-      expect(compile(const [], _mg, extended: true), isNull);
-      expect(compile(_c('R4 R8'), _mg, extended: false), isNull);
+      expect(compile(const [], _mg), isNull);
+            expect(compile(_c('R4 R8'), _mg), isNull);
     });
 
     test('maxCommands caps the steps (and the plan is then not exact)', () {
       final target = _c('N4ff R4 N4ff R4 N4ff R4 N4ff');
-      final free = compile(target, _mg, extended: false)!;
+      final free = compile(target, _mg)!;
       expect(free.exact, isTrue);
       expect(free.steps.length, greaterThanOrEqualTo(2));
-      final one = compile(target, _mg, extended: false, maxCommands: 1)!;
+      final one = compile(target, _mg, maxCommands: 1)!;
       expect(one.steps, hasLength(1));
       expect(one.exact, isFalse);
-      final two = compile(target, _mg, extended: false, maxCommands: 2)!;
+      final two = compile(target, _mg, maxCommands: 2)!;
       expect(two.steps.length, lessThanOrEqualTo(2));
     });
 
@@ -265,15 +252,15 @@ void main() {
       final target = <PatternEntry>[
         for (var i = 0; i < 12; i++) ..._c('N4ff R4'),
       ];
-      final plan = compile(target, _mg, extended: false)!;
+      final plan = compile(target, _mg)!;
       expect(plan.steps.length, lessThanOrEqualTo(8));
     });
 
     test('deterministic: the same target compiles to the same plan', () {
       final target = _c('N2mf R3 N6ff R5 N1pp R2 N4f');
-      for (final extended in [false, true]) {
-        final a = compile(target, _mg, extended: extended)!;
-        final b = compile(target, _mg, extended: extended)!;
+      {
+        final a = compile(target, _mg)!;
+        final b = compile(target, _mg)!;
         expect(_ids(b), _ids(a));
         expect([for (final s in b.steps) s.delayMs],
             [for (final s in a.steps) s.delayMs]);
@@ -285,7 +272,7 @@ void main() {
     });
 
     test('the first step never waits', () {
-      final plan = compile(_c('N4ff R6 N4f R12 N4ff'), _mg, extended: false)!;
+      final plan = compile(_c('N4ff R6 N4f R12 N4ff'), _mg)!;
       expect(plan.steps.first.delayMs, 0);
     });
   });
@@ -297,9 +284,9 @@ void main() {
     test('dynamicWeight scales the loudness cost; 0 makes it free', () {
       final target = _c('N4mf');
       final free =
-          compile(target, _mg, extended: false, dynamicWeight: 0)!;
-      final one = compile(target, _mg, extended: false, dynamicWeight: 1)!;
-      final two = compile(target, _mg, extended: false, dynamicWeight: 2)!;
+          compile(target, _mg, dynamicWeight: 0)!;
+      final one = compile(target, _mg, dynamicWeight: 1)!;
+      final two = compile(target, _mg, dynamicWeight: 2)!;
       expect(free.exact, isTrue);
       expect(free.cost, 0);
       expect(one.exact, isFalse);
@@ -309,24 +296,24 @@ void main() {
 
     test('dynamicWeight defaults to 1', () {
       final target = _c('N4mf');
-      final dflt = compile(target, _mg, extended: false)!;
-      final one = compile(target, _mg, extended: false, dynamicWeight: 1)!;
+      final dflt = compile(target, _mg)!;
+      final one = compile(target, _mg, dynamicWeight: 1)!;
       expect(dflt.cost, one.cost);
       expect(dflt.exact, one.exact);
     });
   });
 
   group('compile: rests longer than 14 units extrapolate', () {
-    test('delay = 1200 + (units - 13) x 125, in both modes', () {
+    test('delay = 1200 + (units - 13) x 125', () {
       for (final units in [15, 16, 20, 30]) {
-        for (final extended in [false, true]) {
+        {
           final target = [
             ..._phrase('buzz47').min,
             ..._rest(units),
             ..._phrase('buzz47').min,
           ];
-          final plan = compile(target, _mg, extended: extended)!;
-          final why = 'rest $units extended $extended';
+          final plan = compile(target, _mg)!;
+          final why = 'rest $units';
           expect(plan.exact, isTrue, reason: why);
           expect(plan.steps, hasLength(2), reason: why);
           expect(plan.steps[1].delayMs, 1200 + (units - 13) * 125,
@@ -343,7 +330,7 @@ void main() {
         ..._rest(14),
         ..._phrase('buzz47').min,
       ];
-      final plan = compile(target, _mg, extended: false)!;
+      final plan = compile(target, _mg)!;
       expect(plan.exact, isTrue);
       expect(plan.steps[1].delayMs, 1200);
     });
@@ -351,30 +338,28 @@ void main() {
 
   group('compile: the command penalty (prefer one command)', () {
     test('cost adds 2 per command beyond the first; exact stays true', () {
-      final one = compile(_c('N4ff'), _mg, extended: false)!;
+      final one = compile(_c('N4ff'), _mg)!;
       expect(one.steps, hasLength(1));
       expect(one.cost, 0);
-      final two = compile(_c('N4ff R6 N4f'), _mg, extended: false)!;
+      final two = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(two.steps, hasLength(2));
       expect(two.cost, 2);
       expect(two.exact, isTrue, reason: 'exact ignores the penalty');
       final four =
-          compile(_c('N4ff R4 N4ff R4 N4ff R4 N4ff'), _mg, extended: false)!;
+          compile(_c('N4ff R4 N4ff R4 N4ff R4 N4ff'), _mg)!;
       expect(four.exact, isTrue);
       expect(four.cost, 2 * (four.steps.length - 1));
     });
 
     test('commandPenalty 0 gives the old raw cost', () {
-      final plan = compile(_c('N4ff R6 N4f'), _mg,
-          extended: false, commandPenalty: 0)!;
+      final plan = compile(_c('N4ff R6 N4f'), _mg, commandPenalty: 0)!;
       expect(plan.cost, 0);
       expect(plan.exact, isTrue);
     });
 
     test('a heavy penalty makes one approximate command beat an exact pair',
         () {
-      final plan = compile(_c('N4ff R6 N4f'), _mg,
-          extended: false, commandPenalty: 100)!;
+      final plan = compile(_c('N4ff R6 N4f'), _mg, commandPenalty: 100)!;
       expect(plan.steps, hasLength(1));
       expect(plan.exact, isFalse);
       expect(plan.cost, greaterThan(0));
@@ -383,8 +368,7 @@ void main() {
 
     test('exact is still decided by cell mismatches, not by cost', () {
       for (final penalty in [0, 1, 2, 3]) {
-        final plan = compile(_c('N4ff R6 N4f'), _mg,
-            extended: false, commandPenalty: penalty)!;
+        final plan = compile(_c('N4ff R6 N4f'), _mg, commandPenalty: penalty)!;
         expect(plan.exact, isTrue, reason: 'penalty $penalty');
         expect(plan.cost, penalty, reason: 'penalty $penalty');
       }
@@ -392,10 +376,10 @@ void main() {
 
     test('the penalty never changes whether an unreachable target is exact',
         () {
-      final off = compile(_c('N4ff R1 N4ff'), _mg, extended: false)!;
+      // A 10-unit rest falls between the 700 ms and 1200 ms rows.
+      final off = compile(_c('N4ff R8 R2 N4ff'), _mg)!;
       expect(off.exact, isFalse);
-      final off0 = compile(_c('N4ff R1 N4ff'), _mg,
-          extended: false, commandPenalty: 0)!;
+      final off0 = compile(_c('N4ff R8 R2 N4ff'), _mg, commandPenalty: 0)!;
       expect(off0.exact, isFalse);
     });
   });
@@ -406,25 +390,25 @@ void main() {
     });
 
     test('runtimeMs is the longest felt timeline times the unit', () {
-      final plan = compile(_c('N4ff R6 N4f'), _mg, extended: false)!;
+      final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(plan.runtimeMs, timeline(plan.feltMax).length * _mg.unitMs);
       expect(plan.runtimeMs, 14 * 125);
-      final one = compile(_c('N4ff'), _mg, extended: false)!;
+      final one = compile(_c('N4ff'), _mg)!;
       expect(one.runtimeMs, 4 * 125);
     });
 
     test('no cap by default: a long target still compiles', () {
       final target = _c('N4ff R12 N4ff R12 N4ff R12 N4ff R12 N4ff');
-      expect(compile(target, _mg, extended: false), isNotNull);
+      expect(compile(target, _mg), isNotNull);
     });
 
     test('a target longer than the cap gives null', () {
       final target = _c('N4ff R12 N4ff R12 N4ff R12 N4ff R12 N4ff R12 N4ff');
-      final free = compile(target, _mg, extended: false)!;
+      final free = compile(target, _mg)!;
       expect(free.runtimeMs, greaterThan(5000));
-      expect(compile(target, _mg, extended: false, maxRuntimeMs: 5000),
+      expect(compile(target, _mg, maxRuntimeMs: 5000),
           isNull);
-      expect(compile(_c('N4ff R6 N4f'), _mg, extended: false, maxRuntimeMs: 100),
+      expect(compile(_c('N4ff R6 N4f'), _mg, maxRuntimeMs: 100),
           isNull);
     });
 
@@ -438,25 +422,23 @@ void main() {
       for (final target in targets) {
         for (final cap in [250, 500, 1000, 1500, 2000, 3000, 4000, 8000]) {
           final plan =
-              compile(target, _mg, extended: false, maxRuntimeMs: cap);
+              compile(target, _mg, maxRuntimeMs: cap);
           if (plan != null) {
             expect(plan.runtimeMs, lessThanOrEqualTo(cap),
                 reason: '$target cap $cap');
           }
         }
-        final roomy = compile(target, _mg,
-            extended: false, maxRuntimeMs: 1000000)!;
-        final free = compile(target, _mg, extended: false)!;
+        final roomy = compile(target, _mg, maxRuntimeMs: 1000000)!;
+        final free = compile(target, _mg)!;
         expect(roomy.summary, free.summary);
         expect(roomy.cost, free.cost);
       }
     });
 
     test('the cap is inclusive', () {
-      final plan = compile(_c('N4ff R6 N4f'), _mg, extended: false)!;
+      final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(
-          compile(_c('N4ff R6 N4f'), _mg,
-              extended: false, maxRuntimeMs: plan.runtimeMs),
+          compile(_c('N4ff R6 N4f'), _mg, maxRuntimeMs: plan.runtimeMs),
           isNotNull);
     });
   });

@@ -105,6 +105,12 @@ Map<String, ChannelConfig> _channels({
   'calls': ChannelConfig(buzzSequence: calls),
 };
 
+/// The user-made patterns: the built-ins (8AF.6) are seeded beside them.
+List<SavedHapticPattern> _mine(HapticPatternStore s) => [
+  for (final p in s.list)
+    if (!p.system) p,
+];
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -117,8 +123,12 @@ void main() {
         '{"offsetsMs":[0,600],"durationsMs":[100,100]}',
       );
       expect(
-        jsonEncode(BuzzSequence([0, 500], extended: true).toJson()),
-        '{"offsetsMs":[0,500],"durationsMs":[0,0],"extended":true}',
+        jsonEncode(BuzzSequence.fromJson({
+          'offsetsMs': [0, 500],
+          'durationsMs': [0, 0],
+          'extended': true,
+        }).toJson()),
+        '[0,500]', // the old flag is read and no longer written
       );
       expect(
         jsonEncode(_notes().toJson()),
@@ -135,7 +145,7 @@ void main() {
       expect(s.patternId, 'abc');
       expect(s.offsetsMs, _taps.offsetsMs);
       // copyWith keeps it when not given.
-      expect(s.copyWith(extended: true).patternId, 'abc');
+      expect(s.copyWith(profileId: 'x').patternId, 'abc');
     });
 
     test('JSON carries it only when set, and a plain taps list becomes a map',
@@ -156,7 +166,7 @@ void main() {
     test('round trips through JSON text', () {
       for (final s in [
         _taps.copyWith(patternId: 'p1'),
-        _notes().copyWith(patternId: 'p2', extended: true),
+        _notes().copyWith(patternId: 'p2'),
         BuzzSequence([0, 600], durationsMs: [100, 100], patternId: 'p3'),
       ]) {
         final back = BuzzSequence.fromJson(jsonDecode(jsonEncode(s.toJson())));
@@ -274,9 +284,9 @@ void main() {
       expect(HapticPatternStore.prefsKey, 'haptic_patterns_v1');
     });
 
-    test('a fresh store is empty', () async {
+    test('a fresh store has no patterns of your own (the built-ins are seeded)', () async {
       final s = await HapticPatternStore.load();
-      expect(s.list, isEmpty);
+      expect(_mine(s), isEmpty);
       expect(s.byId('nope'), isNull);
     });
 
@@ -300,7 +310,7 @@ void main() {
       s.add('Apple', _taps);
       s.add('cherry', _taps);
       s.add('Banjo', _taps);
-      expect([for (final p in s.list) p.name], [
+      expect([for (final p in _mine(s)) p.name], [
         'Apple',
         'banana',
         'Banjo',
@@ -315,7 +325,7 @@ void main() {
       expect(() => s.add('  CALM ', _tapsB), throwsArgumentError);
       expect(() => s.add('', _tapsB), throwsArgumentError);
       expect(() => s.add('a' * 41, _tapsB), throwsArgumentError);
-      expect(s.list, hasLength(1));
+      expect(_mine(s), hasLength(1));
     });
 
     test('rename changes the name only, keeps id and sequence', () async {
@@ -326,7 +336,7 @@ void main() {
       final r = s.byId(a.id)!;
       expect(r.name, 'Zen');
       expect(r.sequence, a.sequence);
-      expect([for (final p in s.list) p.name], ['Alert', 'Zen']);
+      expect([for (final p in _mine(s)) p.name], ['Alert', 'Zen']);
     });
 
     test('rename to its own name in another case is allowed; to a taken '
@@ -368,10 +378,10 @@ void main() {
       final b = s.add('Alert', _tapsB);
       s.delete(a.id);
       expect(s.byId(a.id), isNull);
-      expect([for (final p in s.list) p.id], [b.id]);
+      expect([for (final p in _mine(s)) p.id], [b.id]);
       // The name is free again.
       s.add('Calm', _taps);
-      expect(s.list, hasLength(2));
+      expect(_mine(s), hasLength(2));
     });
 
     test('save then load gives the same patterns', () async {
@@ -380,7 +390,7 @@ void main() {
       final b = s.add('Notes', _notes());
       await s.save();
       final again = await HapticPatternStore.load();
-      expect([for (final p in again.list) p.id], [for (final p in s.list) p.id]);
+      expect([for (final p in _mine(again)) p.id], [for (final p in _mine(s)) p.id]);
       expect(again.byId(a.id)!.name, 'Calm');
       expect(again.byId(a.id)!.sequence, a.sequence);
       expect(again.byId(b.id)!.sequence, b.sequence);
@@ -390,7 +400,7 @@ void main() {
     test('unsaved changes are not persisted', () async {
       final s = await HapticPatternStore.load();
       s.add('Calm', _taps);
-      expect((await HapticPatternStore.load()).list, isEmpty);
+      expect(_mine(await HapticPatternStore.load()), isEmpty);
     });
 
     test('the stored value is a JSON list under haptic_patterns_v1',
@@ -402,10 +412,14 @@ void main() {
         'haptic_patterns_v1',
       );
       expect(raw, isNotNull);
-      final list = jsonDecode(raw!) as List;
+      // The built-ins are stored beside it; look at the user's own entry.
+      final list = [
+        for (final e in jsonDecode(raw!) as List)
+          if ((e as Map)['systemKey'] == null) e,
+      ];
       expect(list, hasLength(1));
-      expect((list.single as Map)['id'], a.id);
-      expect((list.single as Map)['name'], 'Calm');
+      expect(list.single['id'], a.id);
+      expect(list.single['name'], 'Calm');
     });
 
     test('a store written by hand loads', () async {
@@ -424,12 +438,12 @@ void main() {
       SharedPreferences.setMockInitialValues({
         'haptic_patterns_v1': 'this is not json',
       });
-      expect((await HapticPatternStore.load()).list, isEmpty);
+      expect(_mine(await HapticPatternStore.load()), isEmpty);
 
       SharedPreferences.setMockInitialValues({
         'haptic_patterns_v1': jsonEncode({'not': 'a list'}),
       });
-      expect((await HapticPatternStore.load()).list, isEmpty);
+      expect(_mine(await HapticPatternStore.load()), isEmpty);
 
       SharedPreferences.setMockInitialValues({
         'haptic_patterns_v1': jsonEncode([
@@ -440,7 +454,7 @@ void main() {
         ]),
       });
       final s = await HapticPatternStore.load();
-      expect([for (final p in s.list) p.id], ['ok']);
+      expect([for (final p in _mine(s)) p.id], ['ok']);
     });
 
     test('concurrent saves and loads do not lose or corrupt data', () async {
@@ -454,7 +468,7 @@ void main() {
       ]);
       final again = await HapticPatternStore.load();
       expect(again.byId(a.id)!.name, 'Calm');
-      expect(again.list, hasLength(1));
+      expect(_mine(again), hasLength(1));
     });
   });
 

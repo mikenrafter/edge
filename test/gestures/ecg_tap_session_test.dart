@@ -79,6 +79,9 @@ class _Rig {
     Duration reacquire = Duration.zero,
   }) {
     session = EcgTapSession(
+      // The pacing rig: one pulse per call, each after the quiet gap (8W). The
+      // default is one call per count since 8AF.6.
+      maxPulsesPerBurst: 1,
       beginStream: () async {
         began++;
         await beginGate?.future;
@@ -725,8 +728,9 @@ void main() {
         onFinished: (_, _) {},
       );
       expect(s.sensorReacquire, const Duration(milliseconds: 1500));
-      expect(s.maxPulsesPerBurst, 1,
-          reason: 'one command is one bzz-bzz; a count is separate commands');
+      expect(s.maxPulsesPerBurst, 5,
+          reason: 'a count is one call (8AF.6): the gesture cues play it as '
+              'one queue job, which paces its own commands');
     });
   });
 

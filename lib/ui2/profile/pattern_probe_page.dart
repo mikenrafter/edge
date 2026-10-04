@@ -368,6 +368,9 @@ class _PatternProbePageState extends State<PatternProbePage> {
       padKey: const ValueKey('pattern-tap-pad'),
     );
     if (take == null || !mounted) return;
+    // Taps carry no pressure, so the take is `*` notes like every other tap
+    // take. The probe records what was felt: each `*` is "not rated yet" and
+    // the page asks for a dynamic per note before the next test.
     widget.runner.patternSetRendition(notesFromTaps(take, unitMs: s.unitMs));
   }
 
@@ -798,6 +801,9 @@ class _Header extends StatelessWidget {
     final playing = runner.patternPlaying;
     final unstable = session.unstable(i);
     final fitted = session.dynamicTempo && session.fittedUnitMs() != null;
+    // A take from taps leaves `*` notes: leaving the test waits until each has
+    // a dynamic.
+    final unrated = session.unratedNotes(i) > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -807,7 +813,7 @@ class _Header extends StatelessWidget {
               key: const ValueKey('pattern-prev'),
               icon: LucideIcons.chevronLeft,
               label: 'Previous test',
-              onTap: i > 0 ? () => runner.patternTest(-1) : null,
+              onTap: i > 0 && !unrated ? () => runner.patternTest(-1) : null,
             ),
             Expanded(
               child: Text(
@@ -827,7 +833,7 @@ class _Header extends StatelessWidget {
               key: const ValueKey('pattern-next'),
               icon: LucideIcons.chevronRight,
               label: 'Next test',
-              onTap: i < last ? () => runner.patternTest(1) : null,
+              onTap: i < last && !unrated ? () => runner.patternTest(1) : null,
             ),
           ],
         ),
@@ -836,6 +842,13 @@ class _Header extends StatelessWidget {
           textAlign: TextAlign.center,
           style: F.cap.copyWith(color: p.ink2, height: 1.3),
         ),
+        if (unrated)
+          Text(
+            'Rate each * note: move to it and tap a dynamic.',
+            key: const ValueKey('pattern-unrated-hint'),
+            textAlign: TextAlign.center,
+            style: F.cap.copyWith(color: p.ink2, height: 1.3),
+          ),
         const SizedBox(height: S.x1),
         Row(
           children: [

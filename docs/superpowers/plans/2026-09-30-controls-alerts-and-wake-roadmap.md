@@ -1020,6 +1020,30 @@ Three additions to the advanced notes editor, found while testing 8AE.5 and 8AF 
   preview the band has not started shows no playhead.
 - Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md`; `test/phase8/CONTRACTS.md` (8AF.5).
 
+### 8AF.6 — Built-in patterns, gesture cues, wake on the vocabulary, one home for the HR zone alert
+
+Found testing 8AF.5 on the band: gesture responses were all double buzzes, and the band's measured
+vocabulary was used only by patterns the wearer wrote.
+
+- **Built-in patterns**: three gesture cues (start, follow-up, confirm) and one default per
+  non-alarm alert rule are real patterns under "Built in", below "Your patterns" and a divider.
+  The wearer can preview, edit, re-record and reset them; not rename or delete them. "Default"
+  in a picker now means the rule's built-in, and it can be played from the picker.
+- **Fastest selection, gesture cues only**: the start cue is the pair, each further pulse is the
+  fastest single (`buzz14`) at the fastest gap (0 ms), the confirm is `buzz47`, all one band
+  job. The alert defaults are today's rhythms, unchanged. A 4.0 keeps plain pulses at the old
+  pacing (one per call, a quiet gap apart).
+- **No extended mode**: the whole vocabulary is the only mode; unstable choices cost a little
+  and are taken only when they fit better. Tap takes are `*` notes with rhythm priority, and
+  "Edit as notes" opens the advanced editor on them.
+- **Wake on the vocabulary**: gradual steps are `buzz14` (steady) or `click1` up to `buzz47x3`
+  (ramp); Natural and Smart wake are three `buzz47x3`. Fixed in code, not configurable.
+  RUN_ALARM stays for a 4.0 and when the plan cannot be written.
+- **HR zone alert is an alert**: destinations, buzz pattern, target zone and a "Zone view"
+  button, all in Alerts; the old Settings > Band rows are gone and the old on/off pref is
+  migrated once (on becomes Band).
+- Docs: `docs/hardware/whoop-mg-haptics-and-ecg.md`; `test/phase8/CONTRACTS.md` (8AF.6).
+
 ### Order
 
 8G, 8H, 8D (dispatcher work) → 8E (analytics-facing) → 8F, 8C, 8K, 8J, 8A,

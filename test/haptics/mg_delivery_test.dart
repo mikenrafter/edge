@@ -107,12 +107,11 @@ void main() {
       });
     });
 
-    test('the sequence\'s extended flag reaches the plan', () {
+    test('the unstable 100 ms gap row is always on the table', () {
       fakeAsync((async) {
         // N4mf R1 N4mf: a 1-unit silence is only measured on the unstable
         // 100 ms gap row.
-        final s = BuzzSequence([0, 625],
-            durationsMs: [500, 500], extended: true);
+        final s = BuzzSequence([0, 625], durationsMs: [500, 500]);
         final rig = _Rig(async)..deliver(s, profile: _mg);
         expect(rig.out, BuzzDelivery.complete);
         expect(rig.patterns, hasLength(2));
@@ -139,16 +138,6 @@ void main() {
         expect(rig.buzzes, [500, 500]);
         expect(rig.patterns, isEmpty);
         expect(rig.waits, 0);
-      });
-    });
-
-    test('the extended flag changes nothing without a profile', () {
-      fakeAsync((async) {
-        final s = BuzzSequence([0, 875],
-            durationsMs: [500, 500], extended: true);
-        final rig = _Rig(async)..deliver(s, profile: null);
-        expect(rig.buzzes, [500, 500]);
-        expect(rig.patterns, isEmpty);
       });
     });
 
@@ -213,12 +202,10 @@ void main() {
       String? notes,
       String? id,
       List<BakedStep>? plan,
-      bool extended = false,
     }) =>
         BuzzSequence(
           const [0, 875],
           durationsMs: const [500, 500],
-          extended: extended,
           notes: notes,
           profileId: id,
           profileVersion: id == null ? null : 1,
@@ -275,22 +262,6 @@ void main() {
               profile: _mg);
         expect(rig.patterns, ['[14] x2']);
       });
-    });
-
-    test('extended does not change a baked plan', () {
-      late _Rig a;
-      late _Rig b;
-      fakeAsync((async) {
-        a = _Rig(async)..deliver(rule(id: _mg.id, plan: baked), profile: _mg);
-      });
-      fakeAsync((async) {
-        b = _Rig(async)
-          ..deliver(rule(id: _mg.id, plan: baked, extended: true),
-              profile: _mg);
-      });
-      expect(b.patterns, a.patterns);
-      expect(b.patternAt, a.patternAt);
-      expect(a.patternAt, [0, 800]);
     });
 
     test('notes made of mf only (from taps) compile without loudness', () {
@@ -385,7 +356,7 @@ void main() {
     test('bandSequenceTimeout for notes is the compiled notes plan', () {
       final s = rule(notes: 'N4ff R6 N4f', id: _mg.id);
       final plan = compile(PatternTranscript.parseCode('N4ff R6 N4f').entries,
-          _mg, extended: false)!;
+          _mg)!;
       final planned = Duration(
           milliseconds: plan.runtimeMs + 2000 * plan.steps.length + 1000);
       expect(bandSequenceTimeout(s, _mg),
@@ -522,7 +493,13 @@ void main() {
       // The helper for the four rhythm call sites.
       expect(code, contains('haptics.deliver('));
       // The ECG touch counter and its failure buzz.
-      expect(bodyOf(src, 'Future<bool> _ecgTapBuzz('), contains('haptics.runJob('));
+      // 8AF.6: the count buzz is the gesture cues', whose delivery is a queue
+      // job (compiled: haptics.deliver; no profile: haptics.runJob).
+      expect(bodyOf(src, 'Future<bool> _ecgTapBuzz('),
+          contains('gestureCues.response('));
+      final cues = File('lib/haptics/gesture_cues.dart').readAsStringSync();
+      expect(cues, contains('haptics.deliver('));
+      expect(cues, contains('haptics.runJob('));
       expect(bodyOf(src, 'Future<bool> _ecgTapFailBuzz('),
           contains('haptics.runJob('));
       // The user-facing test buzz, pattern test and find-my-strap.

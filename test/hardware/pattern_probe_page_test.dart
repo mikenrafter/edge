@@ -71,6 +71,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
+import 'package:openstrap_edge/haptics/heard_log.dart';
 import 'package:openstrap_edge/ui2/profile/pattern_probe_page.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -2414,13 +2415,15 @@ void main() {
   // rendition an AlertDialog (Replace / Cancel) asks first; then a pad keyed
   // `pattern-tap-pad` (text "Tap your pattern"; press, hold, release) takes the
   // rhythm, closes 2 s after the last release and the active rendition becomes
-  // notesFromTaps(take) at mf, with the cursor on the empty slot after it.
+  // notesFromTaps(take), with the cursor on the empty slot after it. Taps carry
+  // no pressure, so the notes are `*` (8AF.6): unrated, and the page waits for
+  // a dynamic per note before leaving the test.
   // The runner logs "Pattern probe: test N rendition A from taps: <code>".
   group('8AD tap a baseline', () {
     const baseline = ValueKey('pattern-tap-baseline');
     const pad = ValueKey('pattern-tap-pad');
 
-    // Two half-second holds with a 125 ms release gap: N4mf R1 N4mf.
+    // Two half-second holds with a 125 ms release gap: N4* R1 N4*.
     Future<void> takeHolds(WidgetTester t) async {
       final at = t.getCenter(find.byKey(pad));
       final a = await t.startGesture(at, pointer: 1);
@@ -2487,13 +2490,13 @@ void main() {
       await takeHolds(t);
       expect(find.byKey(pad), findsNothing, reason: 'the pad closed');
       final s = r.pattern!;
-      expect(s.rendition(0, 0).code, 'N4mf R1 N4mf');
+      expect(s.rendition(0, 0).code, 'N4* R1 N4*');
       expect(s.rendition(0, 1).code, '', reason: 'B is untouched');
       expect(s.cursor, 3, reason: 'on the empty slot after the take');
       expect(s.nextIsNote, isFalse, reason: 'the toggle follows the last note');
       // The wheel shows them.
       await _tapKey(t, 'pattern-len-2');
-      expect(s.rendition(0, 0).code, 'N4mf R1 N4mf R2');
+      expect(s.rendition(0, 0).code, 'N4* R1 N4* R2');
       r.closePattern();
     });
 
@@ -2504,7 +2507,7 @@ void main() {
       await _tapKey(t, 'pattern-tap-baseline');
       await takeHolds(t);
       final s = r.pattern!;
-      expect(s.rendition(0, 1).code, 'N4mf R1 N4mf');
+      expect(s.rendition(0, 1).code, 'N4* R1 N4*');
       expect(s.rendition(0, 0).code, 'N1mf');
       expect(s.activeRendition, 1);
       r.closePattern();
@@ -2536,8 +2539,48 @@ void main() {
       expect(r.pattern!.rendition(0, 0).code, 'N2mf',
           reason: 'not replaced before there is a take');
       await takeHolds(t);
-      expect(r.pattern!.rendition(0, 0).code, 'N4mf R1 N4mf');
+      expect(r.pattern!.rendition(0, 0).code, 'N4* R1 N4*');
       r.closePattern();
+    });
+
+    testWidgets('a take is unrated: a hint shows and the test cannot be left '
+        'until every * note has a dynamic', (t) async {
+      final r = await _open(t, DeviceLabLog());
+      await _tapKey(t, 'pattern-tap-baseline');
+      await takeHolds(t);
+      final hint = find.byKey(const ValueKey('pattern-unrated-hint'));
+      expect(hint, findsOneWidget);
+      final s = r.pattern!;
+      expect(s.unratedNotes(0), 2);
+      // The page's Next does nothing while unrated.
+      await _tapKey(t, 'pattern-next');
+      expect(s.testIndex, 0);
+      // Rate both notes: move the cursor onto each and tap a dynamic.
+      s.cursor = 0;
+      await _tapKey(t, 'pattern-dyn-f');
+      s.cursor = 2;
+      await _tapKey(t, 'pattern-dyn-p');
+      await t.pump();
+      expect(s.rendition(0, 0).code, 'N4f R1 N4p');
+      expect(s.unratedNotes(0), 0);
+      expect(hint, findsNothing);
+      await _tapKey(t, 'pattern-next');
+      expect(s.testIndex, 1, reason: 'rated: the test can be left');
+      r.closePattern();
+    });
+
+    testWidgets('left unrated at close, the log carries the * and the heard '
+        'log reads it as unrated', (t) async {
+      final lab = DeviceLabLog();
+      final r = await _open(t, lab);
+      await _tapKey(t, 'pattern-tap-baseline');
+      await takeHolds(t);
+      r.closePattern();
+      final heard = lab.steps.where((l) => l.contains('Pattern probe heard 1/40'));
+      expect(heard, hasLength(1));
+      expect(heard.single, contains('(N4* R1 N4*)'));
+      final parsed = parseHeardLines(heard.single);
+      expect(parsed.single.unrated, isTrue);
     });
 
     testWidgets('the lab log says which test and rendition came from taps',
@@ -2552,7 +2595,7 @@ void main() {
       r.closePattern();
       expect(
         lab.steps.where((l) => l.contains(
-            'Pattern probe: test 3 rendition B from taps: N4mf R1 N4mf')),
+            'Pattern probe: test 3 rendition B from taps: N4* R1 N4*')),
         hasLength(1),
       );
       expect(lab.steps.join('\n'), contains('Pattern probe heard 3/40'));

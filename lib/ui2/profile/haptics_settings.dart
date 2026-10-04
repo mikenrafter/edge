@@ -1,6 +1,8 @@
 // HAPTICS (8AD) — Settings > The band > Haptics.
 //
-// Four groups: Patterns (the named patterns every Buzz pattern picker offers),
+// Four groups: Patterns (the named patterns every Buzz pattern picker offers:
+// yours first, then a divider and the built-in ones, which can be customised
+// and put back but not renamed or deleted),
 // Safety (allow long sequences, and what the band's rolling command limit and
 // queue are doing), Test (buzz the band) and, in developer mode only,
 // Calibration (the Device lab).
@@ -117,6 +119,9 @@ class _HapticsSettingsState extends State<HapticsSettings> {
   Future<void> _delete(String id) =>
       _run(() => _commit(id, (store) => store.delete(id), deleted: true));
 
+  Future<void> _reset(String id) =>
+      _run(() => _commit(id, (store) => store.resetToDefault(id)));
+
   @override
   Widget build(BuildContext c) {
     final snap = _snap;
@@ -164,6 +169,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       onReplace: _replace,
       onRename: _rename,
       onDelete: _delete,
+      onReset: _reset,
       onDeviceLab: () => goto(c, const DeviceLab()),
     );
   }
@@ -189,6 +195,7 @@ class HapticsSettingsView extends StatelessWidget {
     required this.onRename,
     required this.onDelete,
     required this.onDeviceLab,
+    this.onReset,
   });
 
   /// The stored patterns, in the order to show them.
@@ -214,6 +221,9 @@ class HapticsSettingsView extends StatelessWidget {
   final FutureOr<void> Function(String id, BuzzSequence s) onReplace;
   final void Function(String id, String name) onRename;
   final ValueChanged<String> onDelete;
+
+  /// Puts a built-in pattern back to its default.
+  final ValueChanged<String>? onReset;
 
   List<String> get _names => [for (final p in patterns) p.name];
 
@@ -269,37 +279,62 @@ class HapticsSettingsView extends StatelessWidget {
     );
   }
 
-  List<Widget> _patternRows(BuildContext c, P p) => [
-    if (patterns.isEmpty)
-      Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Text(
-          'No saved patterns yet. Record one from taps'
-          '${profile != null ? ' or write one as notes' : ''}, '
-          'then pick it for any alert.',
-          style: F.over.copyWith(color: p.ink3),
-        ),
-      )
-    else
-      for (final s in patterns) _patternRow(c, p, s),
-    SetRow(
-      LucideIcons.hand,
-      C.blue,
-      'New from taps',
-      key: const ValueKey('haptics-new-taps'),
-      sub: 'Tap out a rhythm',
-      onTap: () => _newFromTaps(c),
-    ),
-    if (profile != null)
+  List<Widget> _patternRows(BuildContext c, P p) {
+    final mine = [
+      for (final s in patterns)
+        if (!s.system) s,
+    ];
+    final builtIn = [
+      for (final s in patterns)
+        if (s.system) s,
+    ];
+    return [
+      _sectionHeader(p, 'Your patterns'),
+      if (mine.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child: Text(
+            'No saved patterns yet. Record one from taps'
+            '${profile != null ? ' or write one as notes' : ''}, '
+            'then pick it for any alert.',
+            style: F.over.copyWith(color: p.ink3),
+          ),
+        )
+      else
+        for (final s in mine) _patternRow(c, p, s),
       SetRow(
-        LucideIcons.music,
+        LucideIcons.hand,
         C.blue,
-        'New from notes',
-        key: const ValueKey('haptics-new-notes'),
-        sub: 'Notes and rests, with dynamics',
-        onTap: () => _newFromNotes(c),
+        'New from taps',
+        key: const ValueKey('haptics-new-taps'),
+        sub: 'Tap out a rhythm',
+        onTap: () => _newFromTaps(c),
       ),
-  ];
+      if (profile != null)
+        SetRow(
+          LucideIcons.music,
+          C.blue,
+          'New from notes',
+          key: const ValueKey('haptics-new-notes'),
+          sub: 'Notes and rests, with dynamics',
+          onTap: () => _newFromNotes(c),
+        ),
+      if (builtIn.isNotEmpty) ...[
+        Divider(
+          key: const ValueKey('built-in-divider'),
+          height: S.x6,
+          color: p.ink3.withValues(alpha: 0.3),
+        ),
+        _sectionHeader(p, 'Built in'),
+        for (final s in builtIn) _patternRow(c, p, s),
+      ],
+    ];
+  }
+
+  Widget _sectionHeader(P p, String label) => Padding(
+    padding: const EdgeInsets.only(top: S.x2),
+    child: Text(label, style: F.cap.copyWith(color: p.ink2)),
+  );
 
   Widget _patternRow(BuildContext c, P p, SavedHapticPattern s) {
     final notes = s.sequence.notes;
@@ -342,6 +377,10 @@ class HapticsSettingsView extends StatelessWidget {
               ),
             ),
             const SizedBox(width: S.x2),
+            if (s.system) ...[
+              Icon(LucideIcons.lock, size: 14, color: p.ink3),
+              const SizedBox(width: S.x2),
+            ],
             Icon(LucideIcons.chevronRight, size: 17, color: p.ink3),
           ],
         ),
@@ -476,29 +515,43 @@ class HapticsSettingsView extends StatelessWidget {
                     _rerecord(c, s);
                   },
                 ),
-                SetRow(
-                  LucideIcons.pencil,
-                  C.blue,
-                  'Rename',
-                  key: const ValueKey('haptic-action-rename'),
-                  chevron: false,
-                  onTap: () {
-                    Navigator.of(sheet).pop();
-                    _rename(c, s);
-                  },
-                ),
-                SetRow(
-                  LucideIcons.trash2,
-                  C.red,
-                  'Delete',
-                  key: const ValueKey('haptic-action-delete'),
-                  danger: true,
-                  chevron: false,
-                  onTap: () {
-                    Navigator.of(sheet).pop();
-                    _confirmDelete(c, s);
-                  },
-                ),
+                if (s.system)
+                  SetRow(
+                    LucideIcons.rotateCcw,
+                    C.blue,
+                    'Reset to default',
+                    key: const ValueKey('haptic-action-reset'),
+                    chevron: false,
+                    onTap: () {
+                      Navigator.of(sheet).pop();
+                      onReset?.call(s.id);
+                    },
+                  )
+                else ...[
+                  SetRow(
+                    LucideIcons.pencil,
+                    C.blue,
+                    'Rename',
+                    key: const ValueKey('haptic-action-rename'),
+                    chevron: false,
+                    onTap: () {
+                      Navigator.of(sheet).pop();
+                      _rename(c, s);
+                    },
+                  ),
+                  SetRow(
+                    LucideIcons.trash2,
+                    C.red,
+                    'Delete',
+                    key: const ValueKey('haptic-action-delete'),
+                    danger: true,
+                    chevron: false,
+                    onTap: () {
+                      Navigator.of(sheet).pop();
+                      _confirmDelete(c, s);
+                    },
+                  ),
+                ],
               ],
             ),
           ),
@@ -546,6 +599,10 @@ class HapticsSettingsView extends StatelessWidget {
       onPlay: onPlay,
       profile: profile,
       allowLong: allowLong,
+      // Edit as notes: saved in the editor, which does not ask a name.
+      notesName: s.name,
+      notesNames: _names,
+      onSaveAsNotes: (_, seq) => onReplace(s.id, seq),
       onSave: (seq) async {
         try {
           await onReplace(s.id, seq);
@@ -611,6 +668,9 @@ class HapticsSettingsView extends StatelessWidget {
       onPlay: onPlay,
       profile: profile,
       allowLong: allowLong,
+      // Edit as notes: the editor asks the name and stores the pattern.
+      notesNames: _names,
+      onSaveAsNotes: (name, seq) => onAdd(name, seq),
       // The sheet is closed by now; the take lives on in the name dialog,
       // which asks again (with what was typed and why) until the pattern is
       // stored or the wearer cancels.

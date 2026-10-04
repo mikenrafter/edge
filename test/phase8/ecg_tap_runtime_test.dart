@@ -362,7 +362,13 @@ void main() {
         'a reply', () {
       final body = bodyOf(src, 'Future<bool> _ecgTapBuzz(');
       expect(body, isNotEmpty);
-      expect(codeOnly(body), contains('buzzBand('));
+      // 8AF.6: the count buzz is the gesture cues' (their plain-pulse path
+      // writes through the haptics port's buzzBand, a compiled one through
+      // writes as well; none waits on a reply).
+      expect(codeOnly(body), contains('gestureCues.response('));
+      expect(
+          File('lib/haptics/gesture_cues.dart').readAsStringSync(),
+          contains('port.buzzBand('));
     });
 
     test('the live event path still acks only through ackTap', () {

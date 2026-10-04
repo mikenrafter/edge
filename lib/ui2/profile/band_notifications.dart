@@ -137,6 +137,7 @@ class _BandNotificationsState extends State<BandNotifications>
         context,
         patterns: store.list,
         current: pkg == null ? cfg.effectiveSequence : cfg.sequenceForApp(pkg),
+        defaultSequence: store.bySystemKey('alert.relay')?.sequence,
         bandConnected: caps.has(Feature.bandBuzz),
         onPlay: app.previewBuzzSequence,
         // The band's measured vocabulary (an MG), none on a 4.0.

@@ -186,6 +186,9 @@ void main() {
     final t0 = now;
     int ms() => now.difference(t0).inMilliseconds;
     final s = EcgTapSession(
+      // The pacing rig: one pulse per call, as 8W measured the band (a count is
+      // one call by default since 8AF.6).
+      maxPulsesPerBurst: 1,
       beginStream: () async => true,
       endStream: () async {},
       isStreamAlive: () => true,

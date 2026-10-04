@@ -20,11 +20,10 @@ List<PatternEntry> _c(String code) => PatternTranscript.parseCode(code).entries;
 HapticPlan _plan(
   String code, {
   HapticPriority? priority,
-  bool extended = false,
 }) =>
     priority == null
-        ? compile(_c(code), _mg, extended: extended)!
-        : compile(_c(code), _mg, extended: extended, priority: priority)!;
+        ? compile(_c(code), _mg)!
+        : compile(_c(code), _mg, priority: priority)!;
 
 /// How many cells of the plan's scored rendition (the shortest felt) are notes.
 int _feltNotes(HapticPlan p) =>

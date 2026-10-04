@@ -37,6 +37,7 @@ import '../../state/locale_controller.dart';
 import '../../state/units_controller.dart';
 import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
+import '../activity/zones.dart' show ZonesDetail;
 import '../screens/coach.dart' show CoachSetup, coachSubtitle;
 import '../ui2.dart';
 import 'alarm.dart';
@@ -187,8 +188,6 @@ class _MoreSettingsState extends State<MoreSettings> {
       units: units.system.label,
       appearance: theme.choice.label,
       cycleTracking: app.cycleTrackingEnabled,
-      zoneAlertEnabled: app.zoneAlertEnabled,
-      zoneAlertZone: app.zoneAlertTargetZone,
       appIcon: _icon,
       onPickIcon: _pickIcon,
       phoneSteps: app.phoneStepsEnabled,
@@ -239,10 +238,6 @@ class _MoreSettingsState extends State<MoreSettings> {
       onToggleHealthSync: () => _toggleHealthSync(app),
       onToggleUpdateChecks: () =>
           app.setUpdateChecksEnabled(!app.updateChecksEnabled),
-      onToggleZoneAlert: () =>
-          app.setZoneAlertEnabled(!app.zoneAlertEnabled),
-      onCycleZoneAlertZone: () => app.setZoneAlertTargetZone(
-          app.zoneAlertTargetZone >= 5 ? 1 : app.zoneAlertTargetZone + 1),
       onReset: () => _confirmReset(c, app),
     );
   }
@@ -560,11 +555,6 @@ class MoreSettingsView extends StatelessWidget {
   final String units, appearance;
   final bool phoneSteps, telemetry, barcodeLookup, cycleTracking;
 
-  /// The live-workout HR-zone-crossing haptic. Off by default; [zoneAlertZone]
-  /// (1..5) is only meaningful — and only drawn — while this is on.
-  final bool zoneAlertEnabled;
-  final int zoneAlertZone;
-
   /// The home-screen icon, or null where the OS will not change it — Android,
   /// and the managed iOS configurations that refuse. Null means the row is not
   /// drawn: a control that cannot do its one job is worse than no control.
@@ -635,8 +625,6 @@ class MoreSettingsView extends StatelessWidget {
       onToggleHealthShare,
       onToggleHealthSync,
       onToggleUpdateChecks,
-      onToggleZoneAlert,
-      onCycleZoneAlertZone,
       onReset;
 
   const MoreSettingsView({
@@ -652,8 +640,6 @@ class MoreSettingsView extends StatelessWidget {
     this.telemetry = false,
     this.barcodeLookup = true,
     this.cycleTracking = false,
-    this.zoneAlertEnabled = false,
-    this.zoneAlertZone = 3,
     this.showHealthShare = false,
     this.healthShare = false,
     this.showUpdateChecks = false,
@@ -690,8 +676,6 @@ class MoreSettingsView extends StatelessWidget {
     this.onToggleHealthShare,
     this.onToggleHealthSync,
     this.onToggleUpdateChecks,
-    this.onToggleZoneAlert,
-    this.onCycleZoneAlertZone,
     this.onReset,
   });
 
@@ -735,28 +719,6 @@ class MoreSettingsView extends StatelessWidget {
                       key: const ValueKey('settings-haptics'),
                       sub: 'Your buzz patterns and band safety',
                       onTap: onHaptics),
-                  // Off by default — an existing user did not ask their band
-                  // to start buzzing mid-workout. The target-zone row below
-                  // is always drawn and dimmed while this is off (8K).
-                  SetRow(LucideIcons.heartPulse, C.red,
-                      l?.settingsZoneAlertRowTitle ?? 'HR zone alert',
-                      sub: l?.settingsZoneAlertRowSub ??
-                          'Buzz when your heart rate crosses into or out of '
-                              'the target zone during a live workout',
-                      value: zoneAlertEnabled ? on : off,
-                      chevron: false,
-                      onTap: onToggleZoneAlert),
-                  SetRow(LucideIcons.target, C.red,
-                      l?.settingsZoneAlertTargetRowTitle ?? 'Target zone',
-                      enabled: zoneAlertEnabled,
-                      sub: zoneAlertEnabled
-                          ? 'The zone to stay in'
-                          : 'Turn on HR zone alert first',
-                      value:
-                          l?.settingsZoneAlertTargetRowValue(zoneAlertZone) ??
-                              'Zone $zoneAlertZone',
-                      chevron: false,
-                      onTap: onCycleZoneAlertZone),
                 ]),
                 SettingsAccordion('Alerts', children: [
                   SetRow(LucideIcons.bell, C.blue,
@@ -1052,6 +1014,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
   @override
   Widget build(BuildContext c) {
     final p = _prefs;
+    final app = c.watch<AppState>();
     return NotificationSettingsView(
       prefs: p ?? const NotificationPrefs(),
       loaded: p != null,
@@ -1059,6 +1022,10 @@ class _NotificationSettingsState extends State<NotificationSettings> {
       onChanged: _apply,
       onRequestPermission: _requestPermission,
       onBuzzPattern: _pickPattern,
+      zoneAlertZone: app.zoneAlertTargetZone,
+      onCycleZoneAlertZone: () => app.setZoneAlertTargetZone(
+          app.zoneAlertTargetZone >= 5 ? 1 : app.zoneAlertTargetZone + 1),
+      onOpenZones: () => goto(c, const ZonesDetail()),
     );
   }
 
@@ -1075,6 +1042,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
         context,
         patterns: store.list,
         current: p.buzzSequenceFor(id),
+        defaultSequence: store.bySystemKey('alert.$id')?.sequence,
         bandConnected: caps.has(Feature.bandBuzz),
         onPlay: app.previewBuzzSequence,
         // The band's measured vocabulary (an MG), none on a 4.0.
@@ -1205,6 +1173,11 @@ class NotificationSettingsView extends StatelessWidget {
   /// Opens the buzz-pattern sheet for one alert (by rule id).
   final void Function(String ruleId)? onBuzzPattern;
 
+  /// The HR zone alert's own settings: the zone (1..5) it watches, the step
+  /// to the next one, and the door to the zone screen.
+  final int zoneAlertZone;
+  final VoidCallback? onCycleZoneAlertZone, onOpenZones;
+
   const NotificationSettingsView({
     super.key,
     this.prefs = const NotificationPrefs(),
@@ -1214,6 +1187,9 @@ class NotificationSettingsView extends StatelessWidget {
     this.onChanged,
     this.onRequestPermission,
     this.onBuzzPattern,
+    this.zoneAlertZone = 3,
+    this.onCycleZoneAlertZone,
+    this.onOpenZones,
   });
 
   @override
@@ -1320,6 +1296,30 @@ class NotificationSettingsView extends StatelessWidget {
                             l?.settingsStepGoalAlertsRowSub ??
                                 'Notifies you once when today\'s steps '
                                 'reach your goal'),
+                        // A live-workout alert: the band buzzes when the heart
+                        // rate crosses into or out of the target zone. The
+                        // zone row is always drawn, dimmed while it is off (8K).
+                        row('zone', LucideIcons.heartPulse, C.red,
+                            l?.settingsZoneAlertRowTitle ?? 'HR zone alert',
+                            l?.settingsZoneAlertRowSub ??
+                                'Buzz when your heart rate crosses into or out '
+                                    'of the target zone during a live workout'),
+                        SetRow(LucideIcons.target, C.red,
+                            l?.settingsZoneAlertTargetRowTitle ?? 'Target zone',
+                            enabled: prefs.alertRule('zone').enabled,
+                            sub: prefs.alertRule('zone').enabled
+                                ? 'The zone to stay in'
+                                : 'Turn on HR zone alert first',
+                            value: l?.settingsZoneAlertTargetRowValue(
+                                    zoneAlertZone) ??
+                                'Zone $zoneAlertZone',
+                            chevron: false,
+                            onTap: onCycleZoneAlertZone),
+                        SetRow(LucideIcons.activity, C.red, 'Zone view',
+                            key: const ValueKey('zone-alert-open-zones'),
+                            sub: 'Your heart-rate zones and their limits',
+                            onTap: onOpenZones ??
+                                () => goto(c, const ZonesDetail())),
                       ]),
                   SettingsAccordion(
                       'Reminders',

@@ -97,17 +97,47 @@ class HapticDeviceProfile {
   final List<HapticPhrase> phrases;
   final List<HapticGap> gaps;
 
-  /// The phrases to compile with; without [extended] only the stable ones.
-  List<HapticPhrase> phrasesFor({required bool extended}) => List.unmodifiable([
-        for (final p in phrases)
-          if (extended || p.stable) p,
-      ]);
+  static int _noteCount(List<PatternEntry> es) => es.where((e) => e.note).length;
 
-  /// The gaps to compile with; without [extended] only the stable ones.
-  List<HapticGap> gapsFor({required bool extended}) => List.unmodifiable([
-        for (final g in gaps)
-          if (extended || g.stable) g,
-      ]);
+  /// The quickest single command: the stable phrase whose shortest and longest
+  /// renditions are each exactly one note, with the smallest [HapticPhrase
+  /// .unitsMax] (ties: the smaller unitsMin, then the id). Null when there is
+  /// none. Unstable phrases are never picked.
+  HapticPhrase? fastestSingle() {
+    HapticPhrase? best;
+    for (final p in phrases) {
+      if (!p.stable || _noteCount(p.min) != 1 || _noteCount(p.max) != 1) {
+        continue;
+      }
+      if (best == null) {
+        best = p;
+        continue;
+      }
+      final c = p.unitsMax != best.unitsMax
+          ? p.unitsMax.compareTo(best.unitsMax)
+          : p.unitsMin != best.unitsMin
+              ? p.unitsMin.compareTo(best.unitsMin)
+              : p.id.compareTo(best.id);
+      if (c < 0) best = p;
+    }
+    return best;
+  }
+
+  /// The quickest wait between two commands: the stable gap row with the
+  /// smallest [HapticGap.maxUnits] (ties: the lowest delay). Null when there
+  /// is none.
+  HapticGap? fastestGap() {
+    HapticGap? best;
+    for (final g in gaps) {
+      if (!g.stable) continue;
+      if (best == null ||
+          g.maxUnits < best.maxUnits ||
+          (g.maxUnits == best.maxUnits && g.delayMs < best.delayMs)) {
+        best = g;
+      }
+    }
+    return best;
+  }
 
   static List<PatternEntry> _notes(String code) =>
       PatternTranscript.parseCode(code).entries;

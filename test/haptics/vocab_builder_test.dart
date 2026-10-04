@@ -102,6 +102,19 @@ void main() {
     expect(_mg.version, 1);
   });
 
+  group('a test with notes never rated (8AF.6)', () {
+    test('is left out: the profile is the same with or without it', () {
+      // Test 10 heard longer, but left at any loudness: not used.
+      final unrated = _longer10.replaceAll('N8ff', 'N8*');
+      expect(_snap(_build([_l6(), unrated])), _snap(_build([_l6()])));
+    });
+
+    test('the same line rated is used', () {
+      expect(_snap(_build([_l6(), _longer10])),
+          isNot(_snap(_build([_l6()]))));
+    });
+  });
+
   group('the L6 log alone', () {
     test('reproduces HapticDeviceProfile.whoopMg exactly', () {
       final built = _build([_l6()]);
@@ -242,11 +255,11 @@ void main() {
       expect(ph.stable, isFalse);
       expect(built.version, 2);
       expect(
-        [for (final p in built.phrasesFor(extended: false)) p.id],
+        [for (final p in built.phrases.where((p) => p.stable)) p.id],
         isNot(contains('click1x2')),
       );
       expect(
-        [for (final p in built.phrasesFor(extended: true)) p.id],
+        [for (final p in built.phrases) p.id],
         contains('click1x2'),
       );
     });
@@ -344,7 +357,7 @@ void main() {
       expect(built.gaps.where((g) => g.delayMs == 300 && !g.stable),
           isNotEmpty);
       expect(
-        [for (final g in built.gapsFor(extended: false)) g.delayMs],
+        [for (final g in built.gaps.where((g) => g.stable)) g.delayMs],
         isNot(contains(300)),
       );
       expect(built.version, 2);

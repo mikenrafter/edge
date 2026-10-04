@@ -213,6 +213,9 @@ Future<ReplayResult> replayTrace(
   final results = <(int?, String?)>[];
   var now = packets.first.receivedAt.subtract(tapLead);
   final s = EcgTapSession(
+    // The pacing rig: one pulse per call, as 8W measured the band (a count is
+    // one call by default since 8AF.6).
+    maxPulsesPerBurst: 1,
     beginStream: () async => true,
     endStream: () async {},
     isStreamAlive: () => true,

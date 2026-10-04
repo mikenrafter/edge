@@ -119,7 +119,8 @@ class EcgTapSession {
     this.sensorSettle = const Duration(milliseconds: 2500),
     this.sensorReacquire = const Duration(milliseconds: 1500),
     this.buzzQuietGap = const Duration(milliseconds: 1800),
-    this.maxPulsesPerBurst = 1,
+    this.maxPulsesPerBurst = 5,
+    this.pulsesPerBurst,
     Duration Function()? postRoll,
     Future<void> Function(Duration)? wait,
   })  : _now = now ?? DateTime.now,
@@ -226,16 +227,20 @@ class EcgTapSession {
   /// that depends on the lift.
   final Duration sensorReacquire;
 
-  /// The most pulses sent back to back in one burst. Measured, not specified:
-  /// one command is felt as ONE "bzz-bzz" (the band logs one haptic start/stop
-  /// pair for it, 1.1-1.5 s apart), and a second command written while the
-  /// band still plays is answered "pending" and not played. So a count of two
-  /// or three is two or three commands, one pulse per burst, each after
-  /// [buzzQuietGap]. Earlier logs (2026-10-02 18:17) suggested two pulses
-  /// 300 ms apart were felt as two; the 20:40 log showed the second was
-  /// swallowed. More pulses per burst only make sense if a later measurement
-  /// finds a command that plays several.
+  /// The most pulses sent in one buzz call. A count is one call (8AF.6): the
+  /// gesture cues play the start cue and a follow-up cue per extra pulse as
+  /// ONE job of the band queue, which writes each command only after the band
+  /// reports the one before it ended, so a second command is never written
+  /// while the band still plays (the 2026-10-02 lab logs: such a command is
+  /// swallowed). Before that a count was separate calls, one pulse each,
+  /// [buzzQuietGap] apart (8W). The touch counter never counts above 5.
   final int maxPulsesPerBurst;
+
+  /// Read at every count buzz: the pulses one call may carry right now, or null
+  /// for [maxPulsesPerBurst]. A band with no haptic profile (a 4.0) answers 1,
+  /// keeping its old pacing: one pulse per call, [buzzQuietGap] apart. Only a
+  /// band with the vocabulary plays a whole count as one call.
+  final int? Function()? pulsesPerBurst;
 
   /// Lab only: how long to keep the stream on after the gesture ended, so the
   /// trace shows what the sensor did next (a re-touch that came too late, for
@@ -688,12 +693,12 @@ class EcgTapSession {
   /// logged and ends the buzz (the count it reports already stands), and the
   /// gesture still ends (or carries on) on its own clock.
   Future<void> _deliverBuzz(int pulses, String id, DateTime requested) async {
-    final bursts = (pulses + maxPulsesPerBurst - 1) ~/ maxPulsesPerBurst;
+    final limit = pulsesPerBurst?.call() ?? maxPulsesPerBurst;
+    final per = limit < 1 ? 1 : limit;
+    final bursts = (pulses + per - 1) ~/ per;
     var sent = 0;
     for (var k = 0; k < bursts; k++) {
-      final n = pulses - sent < maxPulsesPerBurst
-          ? pulses - sent
-          : maxPulsesPerBurst;
+      final n = pulses - sent < per ? pulses - sent : per;
       final what = bursts == 1
           ? 'Buzz x$pulses'
           : 'Buzz x$pulses, ${n == 1 ? 'pulse ${sent + 1}' : 'pulses ${sent + 1}–${sent + n}'}';

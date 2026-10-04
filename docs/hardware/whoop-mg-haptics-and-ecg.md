@@ -287,9 +287,9 @@ some tests were very variable. A test is unstable when the wearer marked it so
 not matter to the data) or, in a legacy log, when a rendition ends with `R1 R2 R4`
 (a sixteenth, an eighth and a quarter rest) as a flag; those three rests are
 stripped before use. Unstable rows (`click1soft`, the 100 ms gap with the 1 to 6
-spread) are left out of the compiler's rules by default and used only with the
-"Extended haptics opset, timings may vary unexpectedly" toggle (off by default),
-which a rule stores as `extended`. The log line reads `Pattern probe heard 24/40,
+spread) cost a little more in the compiler, so they are used only when they fit
+meaningfully better (8AF.6 removed the old "Extended haptics opset" toggle: the
+whole vocabulary is the only mode, stable preferred). The log line reads `Pattern probe heard 24/40,
 ..., unstable (A and B are the shortest and longest): A = ...; B = ...; played N×.`
 The probe is meant to grow to other devices; the WHOOP 5.0 MG is the only one
 measured.
@@ -313,8 +313,9 @@ commands, never as a guessed timing.
    so their weight is 0. A **penalty** of 2 per command beyond the first prefers
    one command when it is nearly as good. Ties go to fewer commands, then stable
    parts only, then lower delay. `exact` means no cell or dynamic mismatch,
-   whatever the penalty. Without the extended opset only stable phrases and gaps
-   are used.
+   whatever the penalty. Every phrase and gap is considered; each unstable one adds 1
+   to the cost, so a stable choice wins unless an unstable one fits better. A plan
+   that uses one says "timings may vary".
 3. **The 10 s cap.** A plan whose longest felt length is over `kMaxHapticRuntime`
    (10 s) is not produced; the editor says "Too long for the band: keep it under 10
    seconds." and disables Save. (8AD adds an override.)
@@ -350,6 +351,40 @@ limits are shown.
   looks the store up. Replacing, renaming or deleting a pattern goes through
   `propagatePattern`, which rewrites the copies in the alert rules, the relay channels and
   the per-app sequences; a deleted pattern's copies keep their rhythm and lose the id.
+- **Built-in patterns (8AF.6).** Three gesture cues and one default per non-alarm alert
+  rule are stored beside the wearer's patterns under a stable `systemKey`
+  (`gesture.start`, `gesture.followUp`, `gesture.confirm`, `alert.<ruleId>`, including
+  `alert.relay`, the relay's default). They are seeded when missing, never duplicated, and
+  can be customised (Preview, Edit notes, Re-record) and put back with "Reset to default",
+  but not renamed or deleted. The hub and the picker list "Your patterns" first, then a
+  divider, then "Built in". A rule with no rhythm of its own plays its built-in. The
+  picker's Default row shows that built-in's notes and plan, and plays it.
+- **Fastest selection, for the gesture cues only.** `fastestSingle()` is the stable phrase
+  whose shortest and longest renditions are each exactly one note, with the smallest longest
+  length (on the MG `buzz14`, N3f to N4f); `fastestGap()` is the stable gap with the smallest
+  longest span (0 ms, 3 to 4 sixteenths). Both are pinned against the table, so a new
+  vocabulary re-picks deliberately. They seed and drive the gesture cues: the start cue is
+  the pair (`pair`, one command), the follow-up is one `buzz14`, the confirm is `buzz47`. A
+  response of N pulses is the start cue and N - 1 follow-ups, each written at the fastest gap
+  after the band's ended event for the one before, all one band queue job. The fail buzz is
+  still the one long buzz and is not a built-in. A 4.0 keeps plain pulses, one per call a
+  quiet gap apart. The alert built-ins are NOT re-voiced: each is today's default rhythm for
+  that rule transcribed to `*` notes (rhythm priority) and compiled as any pattern is.
+- **`*` and priority in taps.** Taps carry no pressure, so notes made from taps are `*`
+  (any loudness) and compile with rhythm priority and no loudness weighting. The tap sheet
+  has no priority toggle; "Edit as notes" opens the advanced editor on the take's `*` notes
+  with Prioritize rhythm, where the wearer may change the notes, dynamics and priority.
+- **Wake on the vocabulary (not configurable).** Gradual wake plays one phrase per step:
+  steady is `buzz14` every step; ramp is `click1`, `buzz14`, `buzz47`, `buzz47x2`,
+  `buzz47x3`, then stays at `buzz47x3`. Natural wake and the legacy Smart Wake early fire
+  play `buzz47x3`, 0 ms, `buzz47x3`, 0 ms, `buzz47x3` as one job. These plans live in code
+  (`lib/haptics/wake_haptics.dart`), not in the pattern store, and cannot be edited. A band
+  with no haptic profile keeps the per-tap gradual rhythm and RUN_ALARM; RUN_ALARM is also
+  the fallback when nothing of the plan could be written (not connected). A plan that
+  started but did not finish is not followed by RUN_ALARM, so the wearer is not buzzed
+  twice. Alarm > Wake says "Wake buzzes use the band's measured vocabulary."
+- **No extended mode.** The "Extended haptics opset" switch is gone. A rule's JSON no longer
+  writes `extended`; old JSON that has it still parses and the flag is ignored.
 - **Writing notes.** On an MG the notes editor writes a pattern as notes and rests (16th,
   eighth, quarter, half, a dot, six dynamics), shows what the band will play for them, and
   plays exactly what is on the page. A 4.0 has no measured vocabulary: it has tap patterns
@@ -358,8 +393,10 @@ limits are shown.
   `N2*` ("eighth note, any loudness"): the wearer does not mind how loud the band plays that
   note, so the compiler picks whatever loudness serves the length best. It costs nothing
   against any phrase and counts as written for any loudness. It is not a position on the
-  ff to pp scale. The probe does not offer it and the heard-log reader refuses it: a probe
-  line records what was felt, never "any".
+  ff to pp scale. The probe's dynamics row does not offer it. A probe's "Tap what you felt" take is `*`
+  notes (taps carry no pressure) and the page asks for a dynamic per note before leaving the
+  test; a `*` left in a probe line is read back as unrated and that test is left out when a
+  vocabulary is built.
 - **Prioritize rhythm / dynamics.** When the band cannot play a pattern exactly, the editor's
   toggle says what gives. Rhythm (the default) keeps the timing and settles for a nearby
   loudness: a cell that disagrees about note versus rest costs 4, a loudness step 1.

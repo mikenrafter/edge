@@ -327,17 +327,17 @@ void main() {
     });
   });
 
-  group('phrasesFor and gapsFor', () {
-    test('extended: true gives every phrase and every gap, in table order',
+  group('stable and unstable rows', () {
+    test('the profile holds every phrase and every gap, in table order',
         () {
-      expect([for (final p in mg.phrasesFor(extended: true)) p.id], [
+      expect([for (final p in mg.phrases) p.id], [
         for (final r in _table) r.id,
       ]);
-      expect(mg.gapsFor(extended: true), hasLength(6));
+      expect(mg.gaps, hasLength(6));
     });
 
-    test('extended: false gives the stable phrases only', () {
-      final ids = [for (final p in mg.phrasesFor(extended: false)) p.id];
+    test('the stable phrases are all but the unstable ones', () {
+      final ids = [for (final p in mg.phrases.where((p) => p.stable)) p.id];
       expect(ids, [
         for (final r in _table)
           if (r.stable) r.id,
@@ -346,8 +346,8 @@ void main() {
       expect(ids, isNot(contains('click1soft')));
     });
 
-    test('extended: false gives the stable gaps only', () {
-      final gaps = mg.gapsFor(extended: false);
+    test('the stable gaps are all but the unstable row', () {
+      final gaps = mg.gaps.where((g) => g.stable);
       expect(gaps, hasLength(5));
       expect(gaps.every((g) => g.stable), isTrue);
       expect(
@@ -357,13 +357,13 @@ void main() {
     });
 
     test('the lists do not let a caller change the profile', () {
-      final before = mg.phrasesFor(extended: true).length;
+      final before = mg.phrases.length;
       try {
-        mg.phrasesFor(extended: true).removeLast();
+        mg.phrases.removeLast();
       } on UnsupportedError {
         // fine: unmodifiable
       }
-      expect(mg.phrasesFor(extended: true), hasLength(before));
+      expect(mg.phrases, hasLength(before));
       expect(mg.phrases, hasLength(before));
     });
   });

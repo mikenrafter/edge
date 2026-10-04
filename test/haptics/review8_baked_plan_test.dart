@@ -31,7 +31,6 @@ const String _gappy = 'N4ff R12 R12 N4ff';
 HapticPlan _plan(String code, {int? maxRuntimeMs}) => compile(
   PatternTranscript.parseCode(code).entries,
   _mg,
-  extended: false,
   maxRuntimeMs: maxRuntimeMs,
 )!;
 
@@ -206,7 +205,7 @@ void main() {
         ]),
       });
       final store = await HapticPatternStore.load();
-      expect([for (final p in store.list) p.id], ['ok']);
+      expect([for (final p in store.list) if (!p.system) p.id], ['ok']);
     });
 
     test('copyWith cannot sneak an oversize plan in either', () {

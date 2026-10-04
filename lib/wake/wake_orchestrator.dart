@@ -89,6 +89,7 @@ class WakeHapticRequest {
     required this.sourceTime,
     this.stepIndex,
     this.sequence,
+    this.gradualPattern,
   });
   final WakeHapticKind kind;
 
@@ -99,6 +100,9 @@ class WakeHapticRequest {
   final DateTime sourceTime;
   final int? stepIndex;
   final BuzzSequence? sequence;
+
+  /// The gradual pattern the step belongs to (null for Natural).
+  final GradualPattern? gradualPattern;
 }
 
 class WakeHapticResult {
@@ -812,6 +816,7 @@ class WakeOrchestrator {
         sourceTime: now,
         stepIndex: latest.index,
         sequence: latest.sequence,
+        gradualPattern: plan.gradualPattern,
       ),
     );
     if (!attempted) return null;

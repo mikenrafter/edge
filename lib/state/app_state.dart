@@ -122,7 +122,11 @@ import '../gestures/strap_event.dart';
 import '../gestures/tap_ack.dart';
 import '../haptics/band_queue.dart';
 import '../haptics/ble_haptics_port.dart';
+import '../haptics/builtin_patterns.dart'
+    show kGestureConfirmKey, kGestureFollowUpKey, kGestureStartKey;
+import '../haptics/gesture_cues.dart';
 import '../haptics/haptics_service.dart';
+import '../haptics/wake_haptics.dart';
 import '../haptics/haptic_player.dart' show HapticPlayStart;
 import 'live_stream_buffer.dart';
 import '../platform/tasker_bridge.dart';
@@ -449,6 +453,9 @@ class AppState extends ChangeNotifier {
     },
     isStreamAlive: () => ecg.isCapturing,
     buzz: _ecgTapBuzz,
+    // A band with no haptic profile keeps one pulse per call, a quiet gap
+    // apart; only the vocabulary plays a whole count as one call (8AF.6).
+    pulsesPerBurst: () => haptics.profile == null ? 1 : null,
     failBuzz: _ecgTapFailBuzz,
     maxTaps: () => gestureSettings.ecgTapMax,
     thresholds: () => gestureSettings.ecgTapThresholds,
@@ -540,26 +547,44 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// One touch-counter buzz: still a dispatcher delivery (live-only band
-  /// alert, own event id), never a straight engine write.
+  /// One touch-counter response: the start cue and a follow-up cue per extra
+  /// pulse (8AF.6), in one queue job. Still a dispatcher delivery (live-only
+  /// band alert, own event id), never a straight engine write.
   Future<bool> _ecgTapBuzz(int pulses, String eventId) async {
     final now = DateTime.now();
-    final seq = BuzzSequence([for (var i = 0; i < pulses; i++) i * 300]);
+    await _loadGestureCues();
     final r = await haptics.asLabWork(() => alertDispatcher.dispatch(
       kEcgTapRule,
       eventId: eventId,
       sourceTime: now,
       historical: false,
-      bandDelivery: () => haptics.runJob(
-        pulses,
-        (job) => deliverBuzzSequence(seq,
-            buzz: () => job.write(() => engine.buzzBand()),
-            isConnected: () => !job.cancelled && engine.isConnected),
-        timeout: seq.transportTimeout,
-      ),
+      bandTimeout: Duration(seconds: 6 + 4 * pulses),
+      bandDelivery: () => gestureCues.response(pulses),
     ));
     return r.targets.contains('band');
   }
+
+  // The wearer's customised gesture cues, read just before a response so
+  // GestureCues can take them synchronously. A cue that cannot be read plays
+  // its built-in default.
+  Map<String, BuzzSequence> _cuePatterns = const {};
+
+  Future<void> _loadGestureCues() async {
+    try {
+      final store = await SettingsRepository.instance.patterns();
+      _cuePatterns = {
+        for (final k in const [
+          kGestureStartKey,
+          kGestureFollowUpKey,
+          kGestureConfirmKey,
+        ])
+          if (store.bySystemKey(k) != null) k: store.bySystemKey(k)!.sequence,
+      };
+    } catch (_) {}
+  }
+
+  late final GestureCues gestureCues =
+      GestureCues(haptics: haptics, patternFor: (k) => _cuePatterns[k]);
 
   /// 8X: the one long buzz for a failed ECG (holdMs >= 500 is one command
   /// looped twice, distinct from the single-command count buzzes). Still a
@@ -669,16 +694,42 @@ class AppState extends ChangeNotifier {
     channelPolicyId: 'buzz_preview',
   );
 
+  /// The rhythm of alert [ruleId]'s built-in pattern, or null when it cannot
+  /// be read (the registry default then applies).
+  Future<BuzzSequence?> _builtInRhythm(String ruleId) async {
+    try {
+      final store = await SettingsRepository.instance.patterns();
+      return store.bySystemKey('alert.$ruleId')?.sequence;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<AlertDeliveryOutcome> _dispatchBandAlert(
     String ruleId, {
     int? pattern,
     DateTime? sourceTime,
     String? eventId,
-    bool alarm = false,
     BuzzSequence? sequence,
+    // The rule's own delivery in place of its rhythm (wake on the vocabulary).
+    // It gets the rhythm that would have played, and RUN_ALARM as one queue
+    // job, for a band that cannot take the plan.
+    Future<BuzzDelivery> Function(
+      BuzzSequence rhythm,
+      Future<BuzzDelivery> Function() runAlarm,
+    )? deliver,
+    Duration? deliverTimeout,
   }) async {
     final time = sourceTime ?? DateTime.now();
     final prefs = await NotificationPrefs.load();
+    // A rule with no rhythm of its own plays its built-in pattern (which holds
+    // today's default rhythm unless the wearer customised it).
+    final rhythm = pattern != null
+        ? null
+        : sequence ??
+              prefs.alertRule(ruleId).buzzSequence ??
+              await _builtInRhythm(ruleId) ??
+              prefs.buzzSequenceFor(ruleId);
     return alertDispatcher.dispatch(
       prefs.alertRule(ruleId),
       eventId: eventId ?? '$ruleId:${time.microsecondsSinceEpoch}',
@@ -705,18 +756,14 @@ class AppState extends ChangeNotifier {
         phoneOnly: true,
       ),
       // A recorded rhythm can outlast the dispatcher's flat 10 s.
-      bandTimeout: alarm || pattern != null
+      bandTimeout: pattern != null
           ? null
-          : haptics.sequenceTimeout(sequence ?? prefs.buzzSequenceFor(ruleId)),
-      bandTransport: alarm || pattern != null
+          : deliverTimeout ?? haptics.sequenceTimeout(rhythm!),
+      bandTransport: pattern != null
           ? () async =>
               await haptics.runJob(1, (job) async {
                 return await job.write(() async {
-                  if (alarm) {
-                    await engine.runAlarm();
-                  } else {
-                    await engine.buzzPattern(pattern!);
-                  }
+                  await engine.buzzPattern(pattern);
                   return true;
                 })
                     ? BuzzDelivery.complete
@@ -727,9 +774,21 @@ class AppState extends ChangeNotifier {
       // The rule's own rhythm (or its registry default), played as one
       // delivery: the dispatcher's claim covers every step, and survives a
       // partial or unanswered delivery.
-      bandDelivery: alarm || pattern != null
+      bandDelivery: pattern != null
           ? null
-          : () => haptics.deliver(sequence ?? prefs.buzzSequenceFor(ruleId)),
+          : deliver != null
+              ? () => deliver(
+                    rhythm!,
+                    () => haptics.runJob(1, (job) async {
+                      return await job.write(() async {
+                        await engine.runAlarm();
+                        return true;
+                      })
+                          ? BuzzDelivery.complete
+                          : BuzzDelivery.rejected;
+                    }),
+                  )
+              : () => haptics.deliver(rhythm!),
     );
   }
 
@@ -741,6 +800,8 @@ class AppState extends ChangeNotifier {
     // Every rhythm and matched-haptics pulse goes through the band queue.
     deliverSequence: haptics.deliver,
     sequenceTimeout: haptics.sequenceTimeout,
+    // A channel or app with no rhythm of its own plays the relay's built-in.
+    defaultSequence: () => _builtInRhythm('relay'),
     runBand: haptics.runJob,
     dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
@@ -1763,30 +1824,8 @@ class AppState extends ChangeNotifier {
     if (on) await refreshAppStatus();
   }
 
-  /// The live-workout HR-zone-crossing haptic (see [ZoneCrossingAlert]). Off
-  /// by default, and read fresh at [startWorkout] rather than watched mid-
-  /// session — flipping the switch while a session is already running takes
-  /// effect on the next one, same as every other session-start anchor.
-  bool get zoneAlertEnabled => Prefs.getBool(Prefs.zoneAlertEnabled, false);
-
-  Future<void> setZoneAlertEnabled(bool on) async {
-    Prefs.setBool(Prefs.zoneAlertEnabled, on);
-    // One update: the zone rule is read and written inside the queue.
-    await SettingsRepository.instance.update((d) {
-      final rule = d.alerts.alertRule('zone');
-      d.alerts = d.alerts.withAlertRule(
-        rule
-            .copyWith(
-              enabled: on,
-              destinations: on
-                  ? (rule.destinations == 0 ? 2 : rule.destinations)
-                  : 0,
-            )
-            .toJson(),
-      );
-    }, sections: {SettingsSection.alerts});
-    notifyListeners();
-  }
+  // The HR zone alert is an alert rule ('zone'): its destinations and buzz
+  // pattern are in the alert prefs. Only the zone it watches lives here.
 
   /// The zone (1..5) the crossing alert watches. Clamped on read so a stray
   /// value can never hand [ZoneCrossingAlert] a target outside the table.
@@ -2993,7 +3032,9 @@ class AppState extends ChangeNotifier {
     haptics.onBandEvent(e);
     unawaited(handled.then((outcomes) async {
       deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
-      await haptics.asLabWork(() => ackTap(alertDispatcher, e, outcomes));
+      if (haptics.profile != null) await _loadGestureCues();
+      await haptics.asLabWork(() => ackTap(alertDispatcher, e, outcomes,
+          bandDelivery: haptics.profile == null ? null : gestureCues.confirm));
     }));
   }
 
@@ -3909,8 +3950,9 @@ class AppState extends ChangeNotifier {
   int? _workoutRawBase;
 
   /// The debounced HR-zone-crossing watch for the active session, or null
-  /// when [zoneAlertEnabled] was off at start (or the session has none —
-  /// same "session-scoped, reset on both teardown paths" shape as
+  /// when the session has none. Armed for every session: whether a
+  /// crossing buzzes is the 'zone' alert rule's choice, read when it happens
+  /// (same "session-scoped, reset on both teardown paths" shape as
   /// [_workoutRawBase] above, rather than living on [LiveWorkoutState] itself,
   /// so arming it needs no change to that class's constructor.
   ZoneCrossingAlert? _zoneAlert;
@@ -5584,11 +5626,20 @@ class AppState extends ChangeNotifier {
       );
 
   Future<WakeHapticResult> _sendWakeHaptic(WakeHapticRequest r) async {
+    // Wake plays the band's measured vocabulary (not configurable). RUN_ALARM
+    // stays for a band with no profile and as the fallback.
+    final wakeHaptics = WakeHaptics(haptics);
+    final natural = r.kind == WakeHapticKind.natural;
     final o = await _dispatchBandAlert(
       'wake',
-      // Natural keeps the long-standing RUN_ALARM haptic; Gradual plays its
-      // escalating rhythm as one dispatcher delivery per step.
-      alarm: r.kind == WakeHapticKind.natural,
+      deliver: (rhythm, runAlarm) => natural
+          ? wakeHaptics.natural(runAlarm: runAlarm)
+          : wakeHaptics.gradualStep(
+              r.gradualPattern ?? GradualPattern.ramp,
+              r.stepIndex ?? 0,
+              perTap: rhythm,
+            ),
+      deliverTimeout: natural ? const Duration(seconds: 30) : null,
       sequence: r.sequence,
       eventId: r.eventId,
       sourceTime: r.sourceTime,
@@ -5700,7 +5751,10 @@ class AppState extends ChangeNotifier {
     );
     if (!detected) return;
     _smartWakeFiredForEpoch = epoch; // set BEFORE the write
-    await _dispatchBandAlert('wake', alarm: true,
+    await _dispatchBandAlert('wake',
+        deliver: (rhythm, runAlarm) =>
+            WakeHaptics(haptics).natural(runAlarm: runAlarm),
+        deliverTimeout: const Duration(seconds: 30),
         eventId: 'wake:$epoch', sourceTime: now);
     _log('[smart-wake] light sleep detected inside the window — early buzz.');
   }
@@ -7269,8 +7323,7 @@ class AppState extends ChangeNotifier {
     _workoutRawBase = _liveRaw;
     _workoutSawSamples = false;
     _workoutMinuteSteps.clear();
-    _zoneAlert =
-        zoneAlertEnabled ? ZoneCrossingAlert(targetZone: zoneAlertTargetZone) : null;
+    _zoneAlert = ZoneCrossingAlert(targetZone: zoneAlertTargetZone);
     // A first night may have been derived since init. This read finishes
     // after the session below is constructed, so it back-fills the anchor on
     // `activeWorkout` when it lands rather than blocking the start.
@@ -7587,9 +7640,7 @@ class AppState extends ChangeNotifier {
           _workoutRawBase = _liveRaw;
           _workoutSawSamples = false;
           _workoutMinuteSteps.clear();
-          _zoneAlert = zoneAlertEnabled
-              ? ZoneCrossingAlert(targetZone: zoneAlertTargetZone)
-              : null;
+          _zoneAlert = ZoneCrossingAlert(targetZone: zoneAlertTargetZone);
     // A first night may have been derived since init. This read finishes
     // after the session below is constructed, so it back-fills the anchor on
     // `activeWorkout` when it lands rather than blocking the start.
@@ -8026,7 +8077,8 @@ class AppState extends ChangeNotifier {
       if (hr > 0) w.zoneSeconds[_zoneFor(hr)] += 1;
     }
 
-    // HR-zone-crossing haptic (opt-in, see [zoneAlertEnabled]). Skipped
+    // HR-zone-crossing alert (the 'zone' rule decides where it goes: off by
+    // default, see [NotificationPrefs]). Skipped
     // entirely on a null [hr] — same "absent stays absent" rule the peak and
     // zone-seconds tally above follow — rather than feeding it as zone 0: a
     // few-second link blip would otherwise read as "left the target zone"

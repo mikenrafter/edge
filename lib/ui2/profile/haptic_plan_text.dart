@@ -1,6 +1,6 @@
 // What the band plays for a compiled haptic plan, as the calm lines under a
 // pattern (8AC): the command summary, whether it plays as written, the
-// extended opset and pause warnings. Shared by the tap sheet and the notes
+// timing-variation and pause warnings. Shared by the tap sheet and the notes
 // editor so the two cannot word it differently.
 
 import 'package:flutter/material.dart';
@@ -151,7 +151,7 @@ List<Widget> hapticPlanLines(
       ),
     if (plan.usesUnstable)
       Text(
-        'Extended haptics: timings may vary unexpectedly.',
+        'This uses a command whose timings may vary unexpectedly.',
         style: F.cap.copyWith(color: p.ink3),
       ),
     if (plan.steps.length > 1)

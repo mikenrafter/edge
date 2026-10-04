@@ -17,6 +17,7 @@ import '../notify/buzz_sequence.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/notification_relay.dart';
 import '../settings/settings_repository.dart';
+import 'builtin_patterns.dart';
 
 const int kPatternNameMax = 40;
 
@@ -39,6 +40,7 @@ class SavedHapticPattern {
     required this.id,
     required String name,
     required this.sequence,
+    this.systemKey,
   }) : name = _checkedName(name) {
     if (id.isEmpty) throw ArgumentError.value(id, 'id', 'must not be empty');
   }
@@ -47,7 +49,20 @@ class SavedHapticPattern {
   final String name;
   final BuzzSequence sequence;
 
-  Object toJson() => {'id': id, 'name': name, 'sequence': sequence.toJson()};
+  /// 8AF.6: the stable key of a built-in pattern ('gesture.start',
+  /// 'alert.water' ...); null for one the user made.
+  final String? systemKey;
+
+  /// A built-in pattern: it cannot be renamed or deleted, but it can be
+  /// customised and put back to its default.
+  bool get system => systemKey != null;
+
+  Object toJson() => {
+    'id': id,
+    'name': name,
+    'sequence': sequence.toJson(),
+    if (systemKey != null) 'systemKey': systemKey,
+  };
 
   factory SavedHapticPattern.fromJson(Object? json) {
     if (json is! Map) {
@@ -66,6 +81,7 @@ class SavedHapticPattern {
         id: id,
         name: name,
         sequence: BuzzSequence.fromJson(json['sequence']),
+        systemKey: json['systemKey'] is String ? json['systemKey'] as String : null,
       );
     } on ArgumentError catch (e) {
       throw FormatException('Invalid saved pattern: ${e.message}');
@@ -88,8 +104,17 @@ class HapticPatternStore {
       SettingsRepository.instance.patterns();
 
   /// The store a stored string reads as ([raw] is the value under [prefsKey],
-  /// or null). Never throws; entries that do not read are dropped.
-  factory HapticPatternStore.decode(String? raw) {
+  /// or null). Never throws; entries that do not read are dropped. The
+  /// built-ins are not added here: see [decodeSeeded].
+  factory HapticPatternStore.decode(String? raw) => _decode(raw, seed: false);
+
+  /// [HapticPatternStore.decode], with every built-in that is not stored yet
+  /// added at its default (in memory: it is written with the next write of the
+  /// store). The settings repository reads through this.
+  factory HapticPatternStore.decodeSeeded(String? raw) =>
+      _decode(raw, seed: true);
+
+  static HapticPatternStore _decode(String? raw, {required bool seed}) {
     final good = <SavedHapticPattern>[];
     if (raw != null) {
       try {
@@ -109,6 +134,25 @@ class HapticPatternStore {
       } on FormatException {
         // Not JSON: an empty store.
       }
+    }
+    if (!seed) return HapticPatternStore._(good);
+    final have = {for (final p in good) p.systemKey};
+    final names = {for (final p in good) p.name.toLowerCase()};
+    for (final key in builtInKeys()) {
+      if (have.contains(key)) continue;
+      final spec = builtInDefault(key);
+      if (spec == null) continue;
+      // A user pattern that already holds the name keeps it; the built-in is
+      // told apart.
+      var name = spec.name;
+      if (names.contains(name.toLowerCase())) name = '$name (built in)';
+      if (!names.add(name.toLowerCase())) continue;
+      good.add(SavedHapticPattern(
+        id: systemPatternId(key),
+        name: name,
+        sequence: spec.sequence,
+        systemKey: key,
+      ));
     }
     return HapticPatternStore._(good);
   }
@@ -134,6 +178,14 @@ class HapticPatternStore {
       });
 
   SavedHapticPattern? byId(String id) => _patterns[id];
+
+  /// The built-in pattern with [key] ('gesture.start', 'alert.water' ...).
+  SavedHapticPattern? bySystemKey(String key) {
+    for (final p in _patterns.values) {
+      if (p.systemKey == key) return p;
+    }
+    return null;
+  }
 
   bool _taken(String name, {String? except}) => _patterns.values.any(
     (p) => p.id != except && p.name.toLowerCase() == name.toLowerCase(),
@@ -170,6 +222,9 @@ class HapticPatternStore {
 
   void rename(String id, String name) {
     final old = _existing(id);
+    if (old.system) {
+      throw ArgumentError.value(id, 'id', 'A built-in pattern cannot be renamed');
+    }
     final n = _checkedName(name);
     if (_taken(n, except: id)) {
       throw ArgumentError.value(name, 'name', 'That name is already used');
@@ -178,6 +233,7 @@ class HapticPatternStore {
       id: id,
       name: n,
       sequence: old.sequence,
+      systemKey: old.systemKey,
     );
   }
 
@@ -187,11 +243,26 @@ class HapticPatternStore {
       id: id,
       name: old.name,
       sequence: sequence.copyWith(patternId: id),
+      systemKey: old.systemKey,
     );
   }
 
+  /// Puts a built-in pattern back to its seeded default (its name and id stay).
+  /// A user pattern, or a key with no default, is an ArgumentError.
+  void resetToDefault(String id) {
+    final old = _existing(id);
+    final key = old.systemKey;
+    final spec = key == null ? null : builtInDefault(key);
+    if (spec == null) {
+      throw ArgumentError.value(id, 'id', 'Only a built-in pattern has a default');
+    }
+    replace(id, spec.sequence);
+  }
+
   void delete(String id) {
-    _existing(id);
+    if (_existing(id).system) {
+      throw ArgumentError.value(id, 'id', 'A built-in pattern cannot be deleted');
+    }
     _patterns.remove(id);
   }
 }

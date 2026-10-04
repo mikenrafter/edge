@@ -238,88 +238,57 @@ void main() {
     });
   });
 
-  group('BuzzSequence.extended (8AC: the extended haptics opset rule toggle)',
-      () {
-    // Built through Function.apply and read through dynamic so this file
-    // keeps compiling before `extended` exists and fails per test instead.
-    BuzzSequence ext(List<int> offsets, {List<int>? durations}) =>
-        Function.apply(BuzzSequence.new, [
-          offsets
-        ], {
-          #durationsMs: durations,
-          #extended: true,
-        }) as BuzzSequence;
-    bool flag(BuzzSequence s) => (s as dynamic).extended as bool;
+  group('BuzzSequence: the retired extended flag (8AC, removed in 8AF.6)', () {
+    Map<String, Object?> old({bool? extended}) => {
+          'offsetsMs': [0, 900],
+          'durationsMs': [750, 80],
+          'extended': ?extended,
+        };
 
-    test('off by default, for every way of building one', () {
-      expect(flag(BuzzSequence(const [0, 300])), isFalse);
-      expect(flag(BuzzSequence(const [0, 300], durationsMs: [100, 100])),
-          isFalse);
-      expect(flag(BuzzSequence.defaultFor(4)), isFalse);
-      expect(flag(BuzzSequence.fromJson(const [0, 300])), isFalse);
+    test('old JSON with the flag on still parses and equals the same rhythm '
+        'without it', () {
+      final on = BuzzSequence.fromJson(jsonDecode(jsonEncode(old(extended: true))));
+      final off = BuzzSequence.fromJson(jsonDecode(jsonEncode(old())));
+      expect(on, off);
+      expect(on.hashCode, off.hashCode);
+      expect(on.durationsMs, [750, 80]);
     });
 
-    test('is part of equality and hashCode', () {
-      expect(ext(const [0, 300]), isNot(BuzzSequence(const [0, 300])));
-      expect(BuzzSequence(const [0, 300]), isNot(ext(const [0, 300])));
-      expect(ext(const [0, 300]), ext(const [0, 300]));
-      expect(ext(const [0, 300]).hashCode, ext(const [0, 300]).hashCode);
-      expect(ext(const [0, 300]).hashCode,
-          isNot(BuzzSequence(const [0, 300]).hashCode));
-    });
-
-    test('JSON: the map form, with extended: true only when true', () {
-      final json = ext(const [0, 300]).toJson() as Map;
-      expect(json['extended'], isTrue);
-      expect(json['offsetsMs'], [0, 300]);
-      expect(flag(BuzzSequence.fromJson(jsonDecode(jsonEncode(json)))), isTrue);
-      expect(BuzzSequence.fromJson(jsonDecode(jsonEncode(json))),
-          ext(const [0, 300]));
-      final withHold = ext(const [0, 900], durations: [750, 80]);
-      final back = BuzzSequence.fromJson(
-          jsonDecode(jsonEncode(withHold.toJson())));
-      expect(back, withHold);
-      expect((back as dynamic).durationsMs, [750, 80]);
-      expect(flag(back), isTrue);
-    });
-
-    test('JSON: a non-extended sequence never writes the key', () {
-      final plain = BuzzSequence(const [0, 900], durationsMs: [750, 80]);
-      expect((plain.toJson() as Map).containsKey('extended'), isFalse);
-      expect(plain.toJson(), {
+    test('it is never written: not for a rule that had it, not for a plain '
+        'sequence', () {
+      final on = BuzzSequence.fromJson(old(extended: true));
+      expect((on.toJson() as Map).containsKey('extended'), isFalse);
+      expect(on.toJson(), {
         'offsetsMs': [0, 900],
         'durationsMs': [750, 80],
       });
       expect(BuzzSequence(const [0, 300]).toJson(), [0, 300]);
     });
 
-    test('old JSON round-trips byte-identical and reads as not extended', () {
-      for (final old in <Object>[
+    test('old JSON without it round-trips byte-identical', () {
+      for (final o in <Object>[
         [0, 300, 900],
         {
           'offsetsMs': [0, 900],
           'durationsMs': [750, 80],
         },
       ]) {
-        final s = BuzzSequence.fromJson(jsonDecode(jsonEncode(old)));
-        expect(flag(s), isFalse, reason: '$old');
-        expect(jsonEncode(s.toJson()), jsonEncode(old), reason: '$old');
+        final s = BuzzSequence.fromJson(jsonDecode(jsonEncode(o)));
+        expect(jsonEncode(s.toJson()), jsonEncode(o), reason: '$o');
       }
     });
 
-    test('an explicit extended: false in the map reads as false and is '
-        'dropped on write', () {
+    test('an explicit extended: false in the map is dropped on write', () {
       final s = BuzzSequence.fromJson({
         'offsetsMs': [0, 300],
         'durationsMs': [100, 100],
         'extended': false,
       });
-      expect(flag(s), isFalse);
       // Holds make it the map form (all-zero holds would be the plain list).
       expect((s.toJson() as Map).containsKey('extended'), isFalse);
     });
 
-    test('an AlertRule carries it through JSON', () {
+    test('an AlertRule that carried it reads, and writes it no more', () {
       const base = AlertRule(
         id: 'water',
         kind: 'water',
@@ -327,11 +296,16 @@ void main() {
         executionMode: AlertExecutionMode.phoneLive,
         channelPolicyId: 'water',
       );
-      final r = base.copyWith(buzzSequence: ext(const [0, 300]));
+      final r = base.copyWith(
+          buzzSequence: BuzzSequence.fromJson({
+        'offsetsMs': [0, 300],
+        'durationsMs': [0, 0],
+        'extended': true,
+      }));
       final back = AlertRule.fromJson(
           jsonDecode(jsonEncode(r.toJson())) as Map<String, dynamic>);
-      expect(back.buzzSequence, ext(const [0, 300]));
-      expect(flag(back.buzzSequence!), isTrue);
+      expect(back.buzzSequence, BuzzSequence.fromJson(const [0, 300]));
+      expect(jsonEncode(back.toJson()), isNot(contains('extended')));
     });
   });
 
@@ -340,10 +314,9 @@ void main() {
       BakedStep(effects: const [47], loop: 1, delayMs: 0),
       BakedStep(effects: const [14], loop: 2, delayMs: 300),
     ];
-    BuzzSequence full({bool extended = false}) => BuzzSequence(
+    BuzzSequence full() => BuzzSequence(
           const [0, 625],
           durationsMs: const [500, 500],
-          extended: extended,
           notes: 'N4mf R1 N4mf',
           profileId: 'whoop-5.0-mg',
           profileVersion: 1,
@@ -379,9 +352,9 @@ void main() {
       expect(BuzzSequence(const [0, 300]).toJson(), [0, 300]);
     });
 
-    test('JSON round-trips everything, with and without extended', () {
-      for (final ext in [false, true]) {
-        final s = full(extended: ext);
+    test('JSON round-trips everything', () {
+      {
+        final s = full();
         final back =
             BuzzSequence.fromJson(jsonDecode(jsonEncode(s.toJson())));
         expect(back, s);
@@ -389,7 +362,6 @@ void main() {
         expect(back.profileId, 'whoop-5.0-mg');
         expect(back.profileVersion, 1);
         expect(back.bakedSteps, baked);
-        expect(back.extended, ext);
         expect(back.durationsMs, [500, 500]);
       }
     });
@@ -455,8 +427,8 @@ void main() {
     });
 
     test('copyWith keeps them and can set them', () {
-      final c = full().copyWith(extended: true);
-      expect(c.extended, isTrue);
+      final c = full().copyWith(patternId: 'p');
+      expect(c.patternId, 'p');
       expect(c.notes, 'N4mf R1 N4mf');
       expect(c.profileId, 'whoop-5.0-mg');
       expect(c.profileVersion, 1);

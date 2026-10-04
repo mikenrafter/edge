@@ -7,8 +7,7 @@
 // metronome and no limit pill. The tempo is the band profile's unit.
 //
 // Under the wheel the editor says what the band plays for the notes as they
-// are now (the 8AC wording, recomputed on every edit) and has the extended
-// haptics opset switch. Play sends exactly what is on the page to the band.
+// are now (the 8AC wording, recomputed on every edit). Play sends exactly what is on the page to the band.
 // "Start from taps" fills the notes from a tapped rhythm. Save asks for a name
 // when the pattern is new, bakes the plan and hands the result to [onSave]; the
 // caller closes the page once the pattern is stored, and a failed save leaves
@@ -98,7 +97,6 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
   // cursor, not a jump when the list changes length.
   bool _userScrolling = false;
 
-  late bool _extended = widget.initial?.extended ?? false;
   late HapticPriority _priority =
       widget.initial?.priority ?? HapticPriority.rhythm;
   HapticPlan? _plan;
@@ -250,7 +248,6 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
         ? compile(
             entries,
             p,
-            extended: _extended,
             priority: _priority,
             maxRuntimeMs: cap,
           )
@@ -258,7 +255,7 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
     _tooLong = _plan == null &&
         cap != null &&
         entries.any((e) => e.note) &&
-        compile(entries, p, extended: _extended, priority: _priority) != null;
+        compile(entries, p, priority: _priority) != null;
   }
 
   void _edit(void Function() change) {
@@ -285,14 +282,13 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
   }
 
   /// What Play and Save use: the notes, the profile and the plan baked for
-  /// them, the switch, and the rhythm of the notes. Null while there is no
+  /// them, the priority, and the rhythm of the notes. Null while there is no
   /// plan to bake.
   BuzzSequence? _sequence() {
     final plan = _plan;
     if (plan == null) return null;
     final p = widget.profile;
     return tapsFromNotes(_entries, unitMs: p.unitMs).copyWith(
-      extended: _extended,
       priority: _priority,
       notes: _s.active.code,
       profileId: p.id,
@@ -528,22 +524,6 @@ class _HapticPatternEditorState extends State<HapticPatternEditorPage> {
                         ],
                       ),
                     ),
-                  ),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Extended haptics opset',
-                          style: F.body.copyWith(color: p.ink),
-                        ),
-                      ),
-                      Switch(
-                        key: const ValueKey('buzz-extended'),
-                        value: _extended,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        onChanged: (v) => _edit(() => _extended = v),
-                      ),
-                    ],
                   ),
                   Row(
                     key: const ValueKey('pattern-editor-priority'),

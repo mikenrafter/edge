@@ -138,7 +138,6 @@ void main() {
         final s = BuzzSequence(const [0],
             durationsMs: const [500], notes: code, profileId: _mg.id);
         final plan = compile(PatternTranscript.parseCode(code).entries, _mg,
-            extended: false,
             dynamicWeight: 1,
             maxRuntimeMs: kMaxHapticRuntime.inMilliseconds)!;
         final taps = planForTaps(s, _mg)!;

@@ -239,6 +239,14 @@ class PatternEntrySession {
   /// Flip the open test's unstable flag.
   void toggleUnstable() => _unstable[testIndex] = !_unstable[testIndex];
 
+  /// Notes of [test] (either rendition) still at any loudness: written from
+  /// taps and not yet rated with a dynamic.
+  int unratedNotes(int test) => [
+        for (final t in _renditions[test])
+          for (final e in t.entries)
+            if (e.note && e.dynamic == PatternDynamic.any) e,
+      ].length;
+
   /// Plays over all tests.
   int get totalPlays => _plays.fold(0, (a, b) => a + b);
 

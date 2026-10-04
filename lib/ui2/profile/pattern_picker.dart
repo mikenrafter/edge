@@ -1,8 +1,9 @@
 // PATTERN PICKER (8AD) — the sheet the Buzz pattern rows in Notifications and
 // Band notifications open before the tap sheet.
 //
-// Default clears the rule to the registry default; a stored pattern is chosen as
-// a SNAPSHOT of it, carrying its patternId; "Record new" is today's tap sheet,
+// Default clears the rule to the registry default (its built-in pattern); a
+// stored pattern is chosen as a SNAPSHOT of it, carrying its patternId. Below
+// Default come "Your patterns", a divider and the "Built in" patterns; "Record new" is today's tap sheet,
 // which here (and only here) can also save the take to the store; "Write
 // notes" opens the advanced editor and is for a band with a haptic profile (an
 // MG) only. The picker does not touch the store itself: the caller hands it the
@@ -53,6 +54,10 @@ Future<void> showPatternPicker(
   BuildContext c, {
   required List<SavedHapticPattern> patterns,
   BuzzSequence? current,
+
+  /// The rhythm the Default row stands for (the rule's built-in pattern). With
+  /// it the row shows its notes and a summary, and can be played to compare.
+  BuzzSequence? defaultSequence,
   HapticDeviceProfile? profile,
   bool bandConnected = false,
   bool? allowLong,
@@ -112,7 +117,27 @@ Future<void> showPatternPicker(
     backgroundColor: p.card,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (sheet) => SafeArea(
+    builder: (sheet) {
+      Widget row(SavedHapticPattern s) => _PickerRow(
+        key: ValueKey('pattern-picker-row:${s.id}'),
+        icon: LucideIcons.waves,
+        title: s.name,
+        sub: s.sequence.notes ?? patternDetail(s.sequence, profile: profile),
+        selected:
+            current?.patternId != null && current!.patternId == s.id,
+        locked: s.system,
+        onTap: () {
+          Navigator.of(sheet).pop();
+          onChoose(s.sequence.copyWith(patternId: s.id));
+        },
+      );
+      final def = defaultSequence;
+      final defaultSub = def == null
+          ? 'The standard rhythm for this alert'
+          : def.notes == null
+              ? 'The standard rhythm · ${def.length} ${def.length == 1 ? 'tap' : 'taps'}'
+              : '${def.notes} · ${patternDetail(def, profile: profile)}';
+      return SafeArea(
       child: SingleChildScrollView(
         child: Padding(
           key: const ValueKey('pattern-picker'),
@@ -129,27 +154,18 @@ Future<void> showPatternPicker(
                 key: const ValueKey('pattern-picker-default'),
                 icon: LucideIcons.rotateCcw,
                 title: 'Default',
-                sub: 'The standard rhythm for this alert',
+                sub: defaultSub,
+                onPlay: def == null || !bandConnected
+                    ? null
+                    : () => onPlay(def),
                 onTap: () {
                   Navigator.of(sheet).pop();
                   onDefault();
                 },
               ),
+              _header(p, 'Your patterns'),
               for (final s in patterns)
-                _PickerRow(
-                  key: ValueKey('pattern-picker-row:${s.id}'),
-                  icon: LucideIcons.waves,
-                  title: s.name,
-                  sub: s.sequence.notes ??
-                      patternDetail(s.sequence, profile: profile),
-                  selected:
-                      current?.patternId != null &&
-                      current!.patternId == s.id,
-                  onTap: () {
-                    Navigator.of(sheet).pop();
-                    onChoose(s.sequence.copyWith(patternId: s.id));
-                  },
-                ),
+                if (!s.system) row(s),
               _PickerRow(
                 key: const ValueKey('pattern-picker-record'),
                 icon: LucideIcons.hand,
@@ -171,13 +187,29 @@ Future<void> showPatternPicker(
                     write();
                   },
                 ),
+              if (patterns.any((s) => s.system)) ...[
+                Divider(
+                  key: const ValueKey('built-in-divider'),
+                  height: S.x6,
+                  color: p.ink3.withValues(alpha: 0.3),
+                ),
+                _header(p, 'Built in'),
+                for (final s in patterns)
+                  if (s.system) row(s),
+              ],
             ],
           ),
         ),
       ),
-    ),
+    );
+    },
   );
 }
+
+Widget _header(P p, String label) => Padding(
+  padding: const EdgeInsets.only(top: S.x2),
+  child: Text(label, style: F.cap.copyWith(color: p.ink2)),
+);
 
 class _PickerRow extends StatelessWidget {
   const _PickerRow({
@@ -187,12 +219,17 @@ class _PickerRow extends StatelessWidget {
     required this.sub,
     required this.onTap,
     this.selected = false,
+    this.locked = false,
+    this.onPlay,
   });
 
   final IconData icon;
   final String title, sub;
-  final bool selected;
+  final bool selected, locked;
   final VoidCallback onTap;
+
+  /// Plays the row's rhythm without choosing it (the Default row).
+  final VoidCallback? onPlay;
 
   @override
   Widget build(BuildContext c) {
@@ -229,6 +266,18 @@ class _PickerRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (onPlay != null)
+              IconButton(
+                key: const ValueKey('pattern-picker-default-play'),
+                tooltip: 'Play',
+                icon: Icon(LucideIcons.play, size: 16, color: p.ink2),
+                onPressed: onPlay,
+              ),
+            if (locked)
+              Padding(
+                padding: const EdgeInsets.only(left: S.x2),
+                child: Icon(LucideIcons.lock, size: 14, color: p.ink3),
+              ),
             if (selected)
               Icon(
                 LucideIcons.check,

@@ -11,10 +11,10 @@
 //    back as a code line, a Text keyed `pattern-editor-code` that shows
 //    "N4mf R1 N4mf" and is absent while there are no entries.
 //  - the feedback under the wheel is the 8AC wording, from compile(notes,
-//    profile, extended, maxRuntimeMs: 10 s) with the DEFAULT dynamicWeight
+//    profile, maxRuntimeMs: 10 s) with the DEFAULT dynamicWeight
 //    (notes carry dynamics, unlike taps). With allowLong the cap is lifted.
 //  - Play (`pattern-editor-play`) hands onPlay a BuzzSequence with the notes,
-//    the profile id/version, the baked plan and the switch. Save
+//    the profile id/version and the baked plan. Save
 //    (`pattern-editor-save`) hands onSave the same plus offsets and durations
 //    derived from the notes. Both are inert while there are no notes, or the
 //    plan is over the cap and allowLong is off. The footer controls, Play and
@@ -23,8 +23,8 @@
 //    AlertDialog asks first, with buttons Replace and Cancel. Then a pad
 //    (`pattern-editor-tap-pad`, text "Tap your pattern"; press, hold,
 //    release) takes the rhythm; two seconds after the last release the pad
-//    closes and the notes become notesFromTaps(take). The pad has no
-//    `buzz-extended` switch of its own (the page's is the only one).
+//    closes and the notes become notesFromTaps(take): any-loudness (*) notes (8AF.6). There is no
+//    `buzz-extended` switch (8AF.6: the full vocabulary is the only mode).
 //  - the name dialog is an AlertDialog with a TextField keyed
 //    `pattern-name-field` and buttons Save and Cancel; an empty name says
 //    "Give it a name." and a duplicate (case-insensitive) says "A pattern
@@ -50,7 +50,6 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
 const _codeKey = ValueKey('pattern-editor-code');
-const _extKey = ValueKey('buzz-extended');
 const _playKey = ValueKey('pattern-editor-play');
 const _saveKey = ValueKey('pattern-editor-save');
 const _tapsKey = ValueKey('pattern-editor-from-taps');
@@ -106,11 +105,10 @@ String _code(WidgetTester t) {
 BuzzSequence _withNotes(String notes) =>
     BuzzSequence(const [0], durationsMs: const [500], notes: notes);
 
-HapticPlan? _plan(String code, {bool extended = false, bool long = false}) =>
+HapticPlan? _plan(String code, {bool long = false}) =>
     compile(
       PatternTranscript.parseCode(code).entries,
       _mg,
-      extended: extended,
       maxRuntimeMs: long ? null : kMaxHapticRuntime.inMilliseconds,
     );
 
@@ -137,7 +135,7 @@ void _expectFeedback(HapticPlan plan) {
       plan.asWritten ? findsOneWidget : findsNothing);
   expect(find.text(_notExact(plan)),
       plan.asWritten ? findsNothing : findsOneWidget);
-  expect(find.text('Extended haptics: timings may vary unexpectedly.'),
+  expect(find.text('This uses a command whose timings may vary unexpectedly.'),
       plan.usesUnstable ? findsOneWidget : findsNothing);
   expect(find.text('Pauses between buzzes can vary a little.'),
       plan.steps.length > 1 ? findsOneWidget : findsNothing);
@@ -153,7 +151,7 @@ Future<void> _enterOverCap(WidgetTester t) async {
   }
 }
 
-/// Two half-second holds with a 125 ms gap: N4mf R1 N4mf.
+/// Two half-second holds with a 125 ms gap: N4* R1 N4*.
 Future<void> _takeHolds(WidgetTester t) async {
   final at = t.getCenter(find.byKey(_padKey));
   final a = await t.startGesture(at, pointer: 1);
@@ -185,14 +183,14 @@ void main() {
         for (final d in _dyns) 'pattern-dyn-$d',
         'pattern-kind',
         'pattern-delete',
-        'buzz-extended',
         'pattern-editor-play',
         'pattern-editor-from-taps',
         'pattern-editor-save',
       ]) {
         expect(find.byKey(ValueKey(k)), findsOneWidget, reason: k);
       }
-      expect(find.text('Extended haptics opset'), findsOneWidget);
+      expect(find.byKey(const ValueKey('buzz-extended')), findsNothing);
+      expect(find.text('Extended haptics opset'), findsNothing);
     });
 
     testWidgets('has none of the probe-only parts', (t) async {
@@ -399,29 +397,12 @@ void main() {
       _expectFeedback(_plan('N4ff R1 N4pp')!);
     });
 
-    testWidgets('the opset switch recompiles without any edit', (t) async {
-      await _show(t, initial: _withNotes('N4mf R1 N4mf'));
-      expect(t.widget<Switch>(find.byKey(_extKey)).value, isFalse);
-      await _tapKey(t, _extKey);
-      expect(t.widget<Switch>(find.byKey(_extKey)).value, isTrue);
-      _expectFeedback(_plan('N4mf R1 N4mf', extended: true)!);
-      expect(_code(t), 'N4mf R1 N4mf');
-      await _tapKey(t, _extKey);
-      _expectFeedback(_plan('N4mf R1 N4mf')!);
-    });
-
-    testWidgets('the switch starts from initial.extended', (t) async {
-      await _show(
-        t,
-        initial: BuzzSequence(
-          const [0],
-          durationsMs: const [500],
-          notes: 'N4mf R1 N4mf',
-          extended: true,
-        ),
-      );
-      expect(t.widget<Switch>(find.byKey(_extKey)).value, isTrue);
-      _expectFeedback(_plan('N4mf R1 N4mf', extended: true)!);
+    testWidgets('an unstable plan shows the timings-may-vary line', (t) async {
+      await _show(t, initial: _withNotes('N4ff R1 N4ff'));
+      final plan = _plan('N4ff R1 N4ff')!;
+      expect(plan.usesUnstable, isTrue);
+      _expectFeedback(plan);
+      expect(_code(t), 'N4ff R1 N4ff');
     });
 
     testWidgets('over the 10 second cap: the 8AC message and no plan lines',
@@ -463,10 +444,9 @@ void main() {
       expect(played.single.bakedSteps, _baked(plan));
       expect(played.single.profileId, _mg.id);
       expect(played.single.profileVersion, _mg.version);
-      expect(played.single.extended, isFalse);
     });
 
-    testWidgets('plays what is on the page now, with the switch', (t) async {
+    testWidgets('plays what is on the page now', (t) async {
       final played = <BuzzSequence>[];
       await _show(
         t,
@@ -479,11 +459,9 @@ void main() {
       await _tap(t, 'pattern-len-4');
       await _tap(t, 'pattern-len-1');
       await _tap(t, 'pattern-len-4');
-      await _tapKey(t, _extKey);
       await _tapKey(t, _playKey);
-      final plan = _plan('N4ff R1 N4ff', extended: true)!;
+      final plan = _plan('N4ff R1 N4ff')!;
       expect(played.single.notes, 'N4ff R1 N4ff');
-      expect(played.single.extended, isTrue);
       expect(played.single.bakedSteps, _baked(plan));
     });
 
@@ -542,11 +520,10 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byKey(_padKey), findsOneWidget);
       expect(find.text('Tap your pattern'), findsOneWidget);
-      expect(find.byKey(_extKey), findsOneWidget,
-          reason: 'the pad has no switch of its own');
+      expect(find.byType(Switch), findsNothing);
       await _takeHolds(t);
       expect(find.byKey(_padKey), findsNothing, reason: 'the pad closed');
-      expect(_code(t), 'N4mf R1 N4mf');
+      expect(_code(t), 'N4* R1 N4*');
       expect(
         PatternTranscript.parseCode(_code(t)).entries,
         notesFromTaps(
@@ -554,7 +531,7 @@ void main() {
           unitMs: _mg.unitMs,
         ),
       );
-      _expectFeedback(_plan('N4mf R1 N4mf')!);
+      _expectFeedback(_plan('N4* R1 N4*')!);
     });
 
     testWidgets('with notes it confirms first; Cancel keeps them and opens '
@@ -579,7 +556,7 @@ void main() {
       expect(find.byKey(_padKey), findsOneWidget);
       expect(_code(t), 'N2mf R2 N2mf', reason: 'not replaced before a take');
       await _takeHolds(t);
-      expect(_code(t), 'N4mf R1 N4mf');
+      expect(_code(t), 'N4* R1 N4*');
     });
   });
 
@@ -668,7 +645,6 @@ void main() {
       await _show(t,
           initial: _withNotes('N4mf R1 N4mf'),
           onSave: (n, s) => saved.add((n, s)));
-      await _tapKey(t, _extKey);
       await _tapKey(t, _saveKey);
       await t.enterText(find.byKey(_nameKey), '  Evening  ');
       await t.tap(_inDialog('Save'));
@@ -679,8 +655,7 @@ void main() {
       expect(s.notes, 'N4mf R1 N4mf');
       expect(s.profileId, _mg.id);
       expect(s.profileVersion, _mg.version);
-      expect(s.extended, isTrue);
-      expect(s.bakedSteps, _baked(_plan('N4mf R1 N4mf', extended: true)!));
+      expect(s.bakedSteps, _baked(_plan('N4mf R1 N4mf')!));
       // A note is a press as long as its length (4 x 125 ms), a rest a gap.
       expect(s.offsetsMs, [0, 625]);
       expect(s.durationsMs, [500, 500]);

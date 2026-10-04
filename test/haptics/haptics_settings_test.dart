@@ -182,9 +182,9 @@ void main() {
       expect(find.text('Your buzz patterns and band safety'), findsOneWidget);
       final gestures = t.getTopLeft(find.text('Gestures')).dy;
       final haptics = t.getTopLeft(find.text('Haptics')).dy;
-      final zone = t.getTopLeft(find.text('HR zone alert')).dy;
       expect(haptics, greaterThan(gestures));
-      expect(haptics, lessThan(zone));
+      // The HR zone alert left Settings > Band for Alerts (8AF.6).
+      expect(find.text('HR zone alert'), findsNothing);
       await t.tap(row);
       expect(opened, 1);
     });
@@ -409,7 +409,7 @@ void main() {
       await _tapText(t, 'Save');
       expect(c.replaced, hasLength(1));
       expect(c.replaced.single.$1, 'a');
-      expect(c.replaced.single.$2.notes, 'N4mf R1 N4mf');
+      expect(c.replaced.single.$2.notes, 'N4* R1 N4*');
       expect(c.added, isEmpty);
     });
 
@@ -434,7 +434,7 @@ void main() {
       expect(c.added, hasLength(1));
       expect(c.added.single.$1, 'Noon');
       expect(c.added.single.$2.offsetsMs, [0, 625]);
-      expect(c.added.single.$2.notes, 'N4mf R1 N4mf');
+      expect(c.added.single.$2.notes, 'N4* R1 N4*');
     });
 
     testWidgets('New from notes: the editor, empty; Save asks the name',
@@ -672,7 +672,7 @@ void main() {
       await _tapText(t, 'Save');
       expect(chosen, hasLength(1));
       expect(chosen.single.patternId, isNull);
-      expect(chosen.single.notes, 'N4mf R1 N4mf');
+      expect(chosen.single.notes, 'N4* R1 N4*');
       expect(saved, isEmpty);
     });
 
@@ -695,10 +695,10 @@ void main() {
       await _tapText(t, 'Save');
       expect(saved, hasLength(1));
       expect(saved.single.$1, 'Fresh');
-      expect(saved.single.$2.notes, 'N4mf R1 N4mf');
+      expect(saved.single.$2.notes, 'N4* R1 N4*');
       expect(chosen, hasLength(1));
       expect(chosen.single.patternId, 'n1');
-      expect(chosen.single.notes, 'N4mf R1 N4mf');
+      expect(chosen.single.notes, 'N4* R1 N4*');
     });
 
     testWidgets('Record new works on a 4.0 band too', (t) async {

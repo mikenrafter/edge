@@ -6,7 +6,8 @@
 //
 // Contracts these tests pin that the spec leaves open:
 //  - Row titles are the English fallbacks: "My devices", "Alarm", "Gestures",
-//    "Haptics", "HR zone alert", "Target zone" (Band); "Alerts and
+//    "Haptics" (Band; the HR zone alert and its Target zone moved to Alerts in
+//    8AF.6, see zone_alert_test.dart); "Alerts and
 //    notifications" and "App notifications on the band" (Alerts); "Edit
 //    profile", "Language", "Units", "Appearance", "Expected sleep schedule",
 //    "Icon", "Cycle tracking", "Steps" (You & preferences); "Storage",
@@ -84,8 +85,6 @@ const Map<String, List<List<String>>> _rows = {
     ['Alarm'],
     ['Gestures'],
     ['Haptics'],
-    ['HR zone alert'],
-    ['Target zone'],
   ],
   'Alerts': [
     ['Alerts and notifications'],

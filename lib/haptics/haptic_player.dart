@@ -187,9 +187,9 @@ int? bakedRuntimeMsFor(BuzzSequence s, HapticDeviceProfile? profile) {
 }
 
 // A rule's stored plan; else its notes compiled now; else its taps compiled.
-// Notes that are all mf came from taps, which carry no loudness, so they are
-// compiled with the same weight planForTaps uses (what the editor showed is
-// what plays); notes with any other dynamic are weighed for loudness. A stored
+// Notes that are all mf or `*` came from taps, which carry no loudness, so
+// they are compiled with the same weight planForTaps uses (what the editor
+// showed is what plays); notes with any other dynamic are weighed for loudness. A stored
 // plan longer than [maxRuntime] is not played (it was saved with the cap
 // lifted): the notes, then the taps, are compiled under the cap as if there
 // were no stored plan. Null when nothing compiles (no stored plan, and over
@@ -212,11 +212,13 @@ _Resolved? _resolve(
   if (notes != null && s.profileId == profile.id) {
     try {
       final entries = PatternTranscript.parseCode(notes).entries;
-      final loud = entries.any((e) => e.note && e.dynamic != PatternDynamic.mf);
+      final loud = entries.any((e) =>
+          e.note &&
+          e.dynamic != PatternDynamic.mf &&
+          e.dynamic != PatternDynamic.any);
       final plan = compile(
         entries,
         profile,
-        extended: s.extended,
         // A rule that asks for dynamics priority weighs loudness even when
         // every note is mf, as the editor did when it compiled the preview.
         dynamicWeight: loud || s.priority == HapticPriority.dynamics ? 1 : 0,
@@ -266,6 +268,23 @@ Future<BuzzDelivery> deliverBandSequence(
     isConnected: isConnected,
     onWritten: onWritten,
   );
+}
+
+/// The commands [s] plays on a band with [profile], as stored steps: its baked
+/// plan, else its notes compiled, else its taps compiled (see
+/// [deliverBandSequence]). Null when nothing compiles under [maxRuntime] (null
+/// lifts the cap).
+List<BakedStep>? bandStepsFor(
+  BuzzSequence s,
+  HapticDeviceProfile profile, {
+  Duration? maxRuntime = kMaxHapticRuntime,
+}) {
+  final resolved = _resolve(s, profile, maxRuntime);
+  if (resolved == null) return null;
+  return [
+    for (final c in resolved.cmds)
+      BakedStep(effects: c.effects, loop: c.loop, delayMs: c.delayMs),
+  ];
 }
 
 /// How long a delivery of [s] may take: the sequence's own transport timeout,

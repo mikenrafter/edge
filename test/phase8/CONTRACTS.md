@@ -585,7 +585,7 @@ Evidence and the fitted model: `docs/hardware/whoop-mg-haptics-and-ecg.md`. Test
 - **Reacquire.** `EcgTapCounter(reacquire:)` (default zero) is added to every window
   after a lift: `[E+gap, E+gap+reacquire+confirm)`. `EcgTapSession.sensorReacquire`
   defaults to 1500 ms.
-- **Bursts.** (Superseded by 8W: the default is now 1.) `EcgTapSession.maxPulsesPerBurst` (2): a count buzz of N pulses is
+- **Bursts.** (Superseded by 8W, then by 8AF.6: the default is now 5, one call per count.) `EcgTapSession.maxPulsesPerBurst` (was 2): a count buzz of N pulses is
   `buzz(2)`, then `buzz(1)` …, each a separate call with event id `<id>` then
   `<id>:b<k>`, each after `buzzQuietGap` (now 1800 ms) from the previous write. Log
   lines: `Buzz x3, pulses 1–2 written…`, `Buzz x3, pulse 3 waits N ms…`. A burst that
@@ -631,9 +631,18 @@ Evidence: `docs/hardware/whoop-mg-haptics-and-ecg.md` (L3). Tests:
 
 - **Count buzzes.** One band command plays as one "bzz-bzz"; a command written while
   the band plays is answered "pending" and not played, and the band then ignores the
-  next command for ~1 s. `EcgTapSession.maxPulsesPerBurst` defaults to 1: a count of
-  2 or 3 is 2 or 3 commands, each at least `buzzQuietGap` (1800 ms) after the
-  previous write. A burst that cannot be written still ends that buzz.
+  next command for ~1 s. 8AF.6: `EcgTapSession.maxPulsesPerBurst` defaults to 5, so a
+  count of N is ONE `buzz(N, id)` call. `AppState._ecgTapBuzz` hands it to
+  `GestureCues.response(N)` (`lib/haptics/gesture_cues.dart`): the start cue
+  (`gesture.start`, the pair) then N-1 follow-ups (`gesture.followUp`, one fastest
+  single) with the fastest gap (0 ms) between them, all ONE band queue job that
+  writes each command only after the band's ended event for the one before. The
+  action-done ack is `GestureCues.confirm()` (`gesture.confirm`) through
+  `ackTap(..., bandDelivery:)`; the fail buzz stays the long buzz. A band with no
+  haptic profile (4.0) plays N plain pulses 300 ms apart in one job. The
+  one-pulse-per-call pacing (`maxPulsesPerBurst: 1`, 8W: each call at least
+  `buzzQuietGap` (1800 ms) after the previous write) stays available and pinned. A
+  burst that cannot be written still ends that buzz.
 - **Payload.** `AlarmPayloads.gen5MaverickPattern(effects, {loop = 1})` is
   `[0x01, ...effects padded to 8, 0, 0, loop]` (12 bytes); `ArgumentError` unless
   1-8 effects, each 1-255, and loop 1-3. `gen5MaverickBuzz(overallLoop: 1)` equals
@@ -918,16 +927,16 @@ Builds on 8AB. Tests: `test/haptics/*` (profile, heard log, compiler, tap notes,
   `pattern-unstable`, log line "unstable (A and B are the shortest and longest)".
 - **Vocabulary.** `lib/haptics/haptic_profile.dart`: `HapticPhrase`, `HapticGap`,
   `HapticDeviceProfile.whoopMg` (id `whoop-5.0-mg`, version 1, `unitMs` 125),
-  `forGeneration('gen5')`, `phrasesFor` / `gapsFor(extended:)`. The stable input set is
+  `forGeneration('gen5')`, the `phrases` and `gaps` tables (8AF.6 removed `phrasesFor` / `gapsFor(extended:)`; every phrase and gap is considered). The stable input set is
   `kWhoopMgPatternProbeSet` (`whoop-mg-pattern-v1`, 40 tests, never reordered).
   `lib/haptics/heard_log.dart` (`parseHeardLines`) reads the output set; a test checks
   the table against the L6 log.
-- **Compiler.** `compile(target, profile, extended:, dynamicWeight:, maxCommands:,
+- **Compiler.** `compile(target, profile, dynamicWeight:, maxCommands:,
   maxRuntimeMs:)` returns a `HapticPlan` (steps with write delays, felt shortest and
   longest, cost, `exact`, `usesUnstable`, `runtimeMs`, summary). Cost: 4 per note/rest
   mismatch, dynamic weight times index distance, `commandPenalty` 2 per command beyond
   the first. Plans over `kMaxHapticRuntime` (10 s) are not produced.
-- **Rules.** `BuzzSequence` gains `extended`, `notes`, `profileId`, `profileVersion` and
+- **Rules.** `BuzzSequence` gains `notes`, `profileId`, `profileVersion` and
   `bakedSteps` (`BakedStep`, JSON key `plan`); each is written only when set, so old JSON
   round-trips unchanged. The editor takes an optional `profile:`, shows the notes and what
   the band will play, and on Save stores notes, profile and the baked plan.
@@ -1075,8 +1084,11 @@ Tests: `test/haptics/any_dynamic_priority_test.dart` (model, heard log, stored J
   is the six that run ff to pp; use it where the six are meant (the probe's row). `any` has
   no index distance (`distanceTo` is 0), compiles at no loudness cost and counts as written
   for any loudness. `PatternEntry.parse` accepts `N2*`; a rest never takes it. The probe
-  page and `HardwareProbeRunner.patternDynamic` do not offer or accept it; `parseHeardLines`
-  throws a `FormatException` on one. The editor shows `pattern-dyn-any` ("*", semantics
+  page and `HardwareProbeRunner.patternDynamic` do not offer or accept it. 8AF.6: the probe's
+  tap baseline writes `*` notes; the page shows `pattern-unrated-hint` and disables
+  `pattern-prev` / `pattern-next` while `PatternEntrySession.unratedNotes(test)` is above 0
+  (rate a note by moving the cursor onto it and tapping a dynamic); a `*` left in a probe
+  line parses (`HeardTest.unrated`) and `buildProfileFromLogs` skips that test. The editor shows `pattern-dyn-any` ("*", semantics
   "Dynamic any loudness") beside the six.
 - **Priority.** `HapticPriority { rhythm, dynamics }` (`haptic_priority.dart`, re-exported by
   `haptic_compiler.dart`), `compile(priority:)` default rhythm: cells 4 / loudness 1 against
@@ -1095,6 +1107,75 @@ Tests: `test/haptics/any_dynamic_priority_test.dart` (model, heard log, stored J
   editor reads it from the plan it baked.
 - **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` (Patterns and safety); the roadmap
   entry 8AF.5.
+
+## 8AF.6: built-in patterns, gesture cues, wake on the vocabulary, the HR zone alert as an alert
+
+Tests: `test/haptics/fastest_selection_test.dart`, `builtin_patterns_test.dart`,
+`gesture_cues_test.dart`, `gesture_cues_wiring_test.dart`, `default_preview_test.dart`,
+`no_extended_compile_test.dart`, `no_extended_mode_test.dart`, `tap_sheet_notes_test.dart`,
+`wake_vocabulary_test.dart`, `wake_vocabulary_wiring_test.dart`, `pattern_store_test.dart`,
+`haptics_settings_test.dart`; `test/phase8/zone_alert_test.dart`,
+`settings_regroup_test.dart`, `disable_not_hide_test.dart`;
+`test/gestures/ecg_tap_session_one_command_test.dart`.
+
+- **Fastest selection.** `HapticDeviceProfile.fastestSingle()` (stable phrase whose shortest
+  and longest renditions are one note each; smallest `unitsMax`, then `unitsMin`, then id; MG:
+  `buzz14`) and `fastestGap()` (stable gap, smallest `maxUnits`, then lowest delay; MG: 0 ms).
+  Both are stable-only and pinned against the table.
+- **System patterns.** `SavedHapticPattern.systemKey` / `system` (JSON additive). Keys
+  `gesture.start`, `gesture.followUp`, `gesture.confirm`, `alert.<ruleId>` for every
+  non-alarm rule in `NotificationPrefs.alertRuleOrder` (no `alarm`, `nativeAlarm`, `wake`,
+  `alarmLatchFailed`, `alarmNightCheck`) and `alert.relay` (the relay's default). Ids are
+  `sys.<systemKey>`. `lib/haptics/builtin_patterns.dart` builds the defaults; the store seeds
+  what is missing on load (idempotent, survives reorder). The store refuses to rename or
+  delete one; `resetToDefault(id)` puts the seeded default back. Only the three gesture
+  cues use the fastest phrase and gap; each `alert.*` default is today's
+  `BuzzSequence.defaultFor(index)` rhythm as `*` notes with rhythm priority. A rule with no
+  rhythm of its own resolves to its built-in; a 4.0 keeps the taps.
+- **Hub and picker.** "Your patterns" first, then a divider, then "Built in" (rows with a
+  lock and a "Built in" tag; sheet: Preview, Edit notes (MG), Re-record, Reset to default; no
+  Rename, no Delete). The picker's Default row stays on top, shows the rule's built-in notes
+  and plan and has `pattern-picker-default-play` (the normal preview path).
+- **Gesture cues.** `GestureCues` (`lib/haptics/gesture_cues.dart`): `response(N)` is the
+  start cue and N - 1 follow-ups at the fastest gap as ONE queue job; `confirm()` is
+  `gesture.confirm` (`ackTap(..., bandDelivery:)`). A customised built-in is what plays. A
+  band with no haptic profile keeps its old pacing: `EcgTapSession.pulsesPerBurst` (read at
+  every count buzz) answers 1 while `AppState.haptics.profile` is null, so a count is one
+  pulse per call, each at least `buzzQuietGap` after the previous write. The fail buzz stays
+  the long buzz.
+- **No extended mode.** The `buzz-extended` switch is gone (tap sheet and editor);
+  `compile` / `planForTaps` / delivery consider every phrase and gap, each unstable one
+  adding 1 to the cost; `usesUnstable` and "timings may vary" stay. `BuzzSequence.extended`
+  is not written; old JSON with it parses (ignored); JSON without it is unchanged.
+- **Taps in the tap sheet.** Tap-derived notes are `*`, rhythm priority, no loudness weight;
+  no priority toggle. After a take on an MG the sheet offers `buzz-edit-notes` ("Edit as
+  notes"): the advanced editor on the take's `*` notes with Prioritize rhythm; saving returns
+  to the same picker or hub flow as a notes pattern.
+- **Wake.** `lib/haptics/wake_haptics.dart`: `gradualPhraseId(pattern, step)` (steady
+  `buzz14`; ramp `click1`, `buzz14`, `buzz47`, `buzz47x2`, `buzz47x3`, then the last),
+  `kNaturalWakePhraseIds` (3 x `buzz47x3`), `WakeHaptics(haptics)` with
+  `gradualStep(pattern, index, perTap:)` and `natural(runAlarm:)`. The plans are code, not
+  in the store, and not editable. `AppState._sendWakeHaptic` and `_checkLegacySmartWake`
+  go through `_dispatchBandAlert(deliver:)`, which hands the delivery the rule's rhythm and a
+  `runAlarm` queue job; RUN_ALARM runs on a band with no profile and when the plan was
+  rejected with nothing written (every `engine.runAlarm(` call is still inside a dispatcher
+  delivery). A partial or unconfirmed plan is not followed by RUN_ALARM.
+  `WakeHapticRequest.gradualPattern` carries the step's pattern. Alarm > Wake adds "Wake
+  buzzes use the band's measured vocabulary."
+- **HR zone alert.** It is the `zone` alert rule, in Alerts (`NotificationSettingsView`, the
+  Activity group): the standard destination picker, the Buzz pattern row
+  (`buzz-pattern:zone`, built-in `alert.zone`), a "Target zone" row (`zoneAlertZone`,
+  `onCycleZoneAlertZone`, always drawn, dimmed while the alert is off) and `zone-alert-open-zones`
+  ("Zone view", `onOpenZones`, else pushes `ZonesDetail`). Settings > Band lost "HR zone
+  alert" and "Target zone" (`MoreSettingsView` no longer takes `zoneAlertEnabled`,
+  `zoneAlertZone`, `onToggleZoneAlert`, `onCycleZoneAlertZone`; `AppState.zoneAlertEnabled` and
+  `setZoneAlertEnabled` are gone). `NotificationPrefs.readFrom` migrates the old
+  `workout.zone_alert_enabled` pref once (marker `alerts.zone_pref_migrated`): when it
+  disagrees with the rule, on becomes Band and off becomes off; afterwards it never changes
+  the rule again. A live session always arms the crossing watch; `_dispatchBandAlert('zone')`
+  resolves the rule, so its destinations and pattern decide what happens.
+- **Docs.** `docs/hardware/whoop-mg-haptics-and-ecg.md` (Patterns and safety); the roadmap
+  entry 8AF.6.
 
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 

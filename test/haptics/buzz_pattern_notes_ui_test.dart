@@ -1,8 +1,8 @@
 // 8AC — the rule editor on a WHOOP MG band: after a take it shows the notes it
-// heard and what the band will play (one calm line, spec I.2), the extended
-// opset switch recompiles that preview without a new take (spec F), and Save
-// stores the notes, the profile and the baked plan (spec I.1, I.6). The switch itself and
-// the no-profile text are in test/phase8/buzz_pattern_ui_test.dart.
+// heard and what the band will play (one calm line, spec I.2), and Save
+// stores the notes, the profile and the baked plan (spec I.1, I.6). The
+// full vocabulary is the only mode (8AF.6), so there is no switch. The
+// no-profile text is in test/phase8/buzz_pattern_ui_test.dart.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,7 +15,6 @@ import 'package:openstrap_edge/ui2/profile/buzz_pattern.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
-const _extKey = ValueKey('buzz-extended');
 
 Future<void> _pump(WidgetTester t, Widget w) async {
   t.view.physicalSize = const Size(1170, 15000);
@@ -38,7 +37,7 @@ Widget _sheet({
       ),
     );
 
-/// Two half-second holds with a 125 ms release gap: N4mf R1 N4mf.
+/// Two half-second holds with a 125 ms release gap: N4* R1 N4*.
 Future<void> _takeHolds(WidgetTester t) async {
   final at = t.getCenter(find.text('Tap your pattern'));
   final a = await t.startGesture(at, pointer: 1);
@@ -52,7 +51,7 @@ Future<void> _takeHolds(WidgetTester t) async {
   await t.pumpAndSettle();
 }
 
-/// Two half-second holds with a 750 ms release gap: N4mf R6 N4mf.
+/// Two half-second holds with a 750 ms release gap: N4* R6 N4*.
 Future<void> _takeApart(WidgetTester t) async {
   final at = t.getCenter(find.text('Tap your pattern'));
   final a = await t.startGesture(at, pointer: 1);
@@ -69,7 +68,7 @@ Future<void> _takeApart(WidgetTester t) async {
 BuzzSequence _apart() => BuzzSequence(const [0, 1250],
     durationsMs: const [500, 500]);
 
-/// One half-second hold: N4mf.
+/// One half-second hold: N4*.
 Future<void> _takeSingle(WidgetTester t) async {
   final at = t.getCenter(find.text('Tap your pattern'));
   final a = await t.startGesture(at, pointer: 1);
@@ -91,8 +90,8 @@ Future<void> _takeLong(WidgetTester t) async {
   await t.pumpAndSettle();
 }
 
-BuzzSequence _single({required bool extended}) =>
-    BuzzSequence(const [0], durationsMs: const [500], extended: extended);
+BuzzSequence _single() =>
+    BuzzSequence(const [0], durationsMs: const [500]);
 
 /// The not-exact line for [plan]: "May not play exactly as written. The band
 /// plays: (shortest)[ to (longest)]."
@@ -103,10 +102,9 @@ String _notExact(HapticPlan plan) {
       '${lo == hi ? lo : '$lo to $hi'}.';
 }
 
-BuzzSequence _holds({required bool extended}) => BuzzSequence(
+BuzzSequence _holds() => BuzzSequence(
       const [0, 625],
       durationsMs: const [500, 500],
-      extended: extended,
     );
 
 void main() {
@@ -121,8 +119,8 @@ void main() {
       (t) async {
     await _pump(t, _sheet());
     await _takeHolds(t);
-    expect(find.textContaining('N4mf R1 N4mf'), findsOneWidget);
-    final plan = planForTaps(_holds(extended: false), _mg)!;
+    expect(find.textContaining('N4* R1 N4*'), findsOneWidget);
+    final plan = planForTaps(_holds(), _mg)!;
     expect(find.textContaining(plan.summary), findsOneWidget);
   });
 
@@ -131,9 +129,9 @@ void main() {
     await _pump(t, _sheet());
     await _takeHolds(t);
     // One unit of silence between commands is only measured on the unstable
-    // 100 ms row, so with the opset off the plan is not exact.
-    final plan = planForTaps(_holds(extended: false), _mg)!;
-    expect(plan.exact, isFalse);
+    // 100 ms row, which is felt as a range: the plan is not "as written".
+    final plan = planForTaps(_holds(), _mg)!;
+    expect(plan.asWritten, isFalse);
     expect(find.textContaining('close, not exact'), findsNothing);
     expect(find.textContaining(_notExact(plan)), findsOneWidget);
     expect(find.text('Plays as written.'), findsNothing);
@@ -144,7 +142,7 @@ void main() {
       (t) async {
     await _pump(t, _sheet());
     await _takeSingle(t);
-    final plan = planForTaps(_single(extended: false), _mg)!;
+    final plan = planForTaps(_single(), _mg)!;
     expect(plan.exact, isTrue);
     expect(find.text('Plays as written.'), findsOneWidget);
     expect(find.textContaining('May not play exactly'), findsNothing);
@@ -157,7 +155,7 @@ void main() {
       (t) async {
     await _pump(t, _sheet());
     await _takeHolds(t);
-    final plan = planForTaps(_holds(extended: false), _mg)!;
+    final plan = planForTaps(_holds(), _mg)!;
     final differ = plan.feltMin.join(' ') != plan.feltMax.join(' ');
     final line = t
         .widget<Text>(find.textContaining('May not play exactly'))
@@ -181,16 +179,12 @@ void main() {
         findsOneWidget);
   });
 
-  testWidgets('an unstable plan adds the extended haptics line', (t) async {
+  testWidgets('an unstable plan adds the timings-may-vary line', (t) async {
     await _pump(t, _sheet());
     await _takeHolds(t);
-    expect(find.textContaining('Extended haptics: timings may vary'),
-        findsNothing);
-    await t.tap(find.byKey(_extKey));
-    await t.pumpAndSettle();
-    final on = planForTaps(_holds(extended: true), _mg)!;
+    final on = planForTaps(_holds(), _mg)!;
     expect(on.usesUnstable, isTrue);
-    expect(find.text('Extended haptics: timings may vary unexpectedly.'),
+    expect(find.textContaining('timings may vary unexpectedly'),
         findsOneWidget);
     expect(on.exact, isTrue);
     expect(on.asWritten, isFalse);
@@ -201,19 +195,15 @@ void main() {
   testWidgets('no feedback text is drawn in an alarm colour', (t) async {
     await _pump(t, _sheet());
     await _takeHolds(t);
-    await t.tap(find.byKey(_extKey));
-    await t.pumpAndSettle();
     final p = P.of(t.element(find.byType(BuzzPatternSheet)));
     for (final text in [
       'The band plays',
-      'Extended haptics: timings may vary',
+      'timings may vary',
       'Pauses between buzzes',
     ]) {
       final w = t.widget<Text>(find.textContaining(text));
       expect(w.style?.color, anyOf(p.ink2, p.ink3), reason: text);
     }
-    await t.tap(find.byKey(_extKey));
-    await t.pumpAndSettle();
     final w = t.widget<Text>(find.textContaining('May not play exactly'));
     expect(w.style?.color, anyOf(p.ink2, p.ink3));
   });
@@ -249,54 +239,12 @@ void main() {
         findsNothing);
   });
 
-  testWidgets('switching the opset on recompiles the preview: no re-record, '
-      'no second playback', (t) async {
-    final played = <BuzzSequence>[];
-    await _pump(
-        t,
-        _sheet(onPlay: (s) async {
-          played.add(s);
-          return true;
-        }));
-    await _takeHolds(t);
-    expect(find.textContaining('May not play exactly as written.'),
-        findsOneWidget);
-    expect(played, hasLength(1));
-
-    await t.tap(find.byKey(_extKey));
-    await t.pumpAndSettle();
-    final on = planForTaps(_holds(extended: true), _mg)!;
-    expect(on.exact, isTrue);
-    // Exact on the one rendition scored, but the 100 ms row is felt as 1 to 6
-    // units of silence: the range, not the claim.
-    expect(on.asWritten, isFalse);
-    expect(find.textContaining(on.summary), findsOneWidget);
-    expect(find.textContaining(_notExact(on)), findsOneWidget);
-    expect(find.text('Plays as written.'), findsNothing);
-    expect(find.textContaining('N4mf R1 N4mf'), findsAtLeastNWidgets(1));
-    expect(find.text('Save'), findsOneWidget);
-    expect(find.text('Tap your pattern'), findsNothing);
-    expect(played, hasLength(1));
-
-    await t.tap(find.byKey(_extKey));
-    await t.pumpAndSettle();
-    expect(find.textContaining('May not play exactly as written.'),
-        findsOneWidget);
-    expect(find.textContaining(
-            planForTaps(_holds(extended: false), _mg)!.summary),
-        findsOneWidget);
-  });
-
-  testWidgets('the saved sequence carries the switch after a recompile',
-      (t) async {
+  testWidgets('the saved sequence is the take', (t) async {
     final saved = <BuzzSequence>[];
     await _pump(t, _sheet(onSave: saved.add));
     await _takeHolds(t);
-    await t.tap(find.byKey(_extKey));
-    await t.pumpAndSettle();
     await t.tap(find.text('Save'));
     expect(saved, hasLength(1));
-    expect(saved.single.extended, isTrue);
     expect(saved.single.offsetsMs, [0, 625]);
     expect(saved.single.durationsMs, [500, 500]);
   });
@@ -308,22 +256,18 @@ void main() {
       await _takeHolds(t);
       await t.tap(find.text('Save'));
       final s = saved.single;
-      expect(s.notes, 'N4mf R1 N4mf');
+      expect(s.notes, 'N4* R1 N4*');
       expect(s.profileId, _mg.id);
       expect(s.profileVersion, _mg.version);
-      expect(s.extended, isFalse);
     });
 
     testWidgets('the baked steps are the plan the sheet showed', (t) async {
       final saved = <BuzzSequence>[];
       await _pump(t, _sheet(onSave: saved.add));
       await _takeHolds(t);
-      await t.tap(find.byKey(_extKey));
-      await t.pumpAndSettle();
       await t.tap(find.text('Save'));
-      final plan = planForTaps(_holds(extended: true), _mg)!;
+      final plan = planForTaps(_holds(), _mg)!;
       final s = saved.single;
-      expect(s.extended, isTrue);
       expect(s.bakedSteps, isNotNull);
       expect([for (final b in s.bakedSteps!) b.effects],
           [for (final st in plan.steps) st.phrase.effects]);
@@ -339,7 +283,7 @@ void main() {
       await _takeSingle(t);
       await t.tap(find.text('Save'));
       expect(BuzzSequence.fromJson(saved.single.toJson()), saved.single);
-      expect(saved.single.notes, 'N4mf');
+      expect(saved.single.notes, 'N4*');
     });
 
     testWidgets('the played preview is the take (the plan is made on delivery)',

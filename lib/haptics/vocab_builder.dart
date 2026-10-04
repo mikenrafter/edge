@@ -134,6 +134,8 @@ HapticDeviceProfile buildProfileFromLogs(
   for (final e in heard.entries) {
     final owner = phraseOf[e.key];
     for (final h in e.value) {
+      // A rendition with notes never rated says nothing about loudness.
+      if (h.unrated) continue;
       final k = int.tryParse(_commands.firstMatch(h.description)?[1] ?? '') ?? 1;
       final m = owner == null ? 0 : owner.min.where((x) => x.note).length;
       for (final rendition in [h.a, h.b]) {

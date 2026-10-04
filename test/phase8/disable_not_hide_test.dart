@@ -156,9 +156,10 @@ void main() {
     });
   });
 
-  group('Settings', () {
+  group('Alerts', () {
+    // The HR zone alert moved from Settings > Band to Alerts (8AF.6).
     testWidgets('HR zone alert off: Target zone present, dimmed', (t) async {
-      await pumpTall(t, const MoreSettingsView(zoneAlertEnabled: false));
+      await pumpTall(t, const NotificationSettingsView());
       final row = find.text('Target zone');
       expect(row, findsOneWidget);
       expect(isDimmed(t, row), isTrue);
