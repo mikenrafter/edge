@@ -137,6 +137,7 @@ import '../haptics/haptics_service.dart';
 import '../haptics/wake_haptics.dart';
 import '../haptics/haptic_player.dart' show HapticPlayStart;
 import 'live_stream_buffer.dart';
+import 'live_stream_controller.dart';
 import '../platform/tasker_bridge.dart';
 import '../data/models.dart';
 import '../live/live_activity.dart';
@@ -344,6 +345,20 @@ class AppState extends ChangeNotifier {
   /// high-rate streams are never persisted (invariant 14). Fed from the live
   /// callbacks below; read by the Live devices screen.
   final LiveStreamBuffer liveStreams = LiveStreamBuffer();
+
+  /// The live-stream seam (8AJ seam 2): the owner set the engine reads, the
+  /// developer live feed, mounted live-HR views, and the buffer-feeding helpers.
+  /// AppState keeps the buffer, the HR trace and the frame router.
+  late final LiveStreamController _live = LiveStreamController(
+    buffer: liveStreams,
+    isBackground: () => _background,
+    activeWorkoutType: () => activeWorkout?.type,
+    breathing: () => breathingActive || breathingWindowOpen,
+    reconcile: () => engine.reconcileLiveStreams(),
+    clearRadioFallbackAndReconcile: () =>
+        engine.clearRadioFallbackAndReconcile(),
+    notify: notifyListeners,
+  );
 
   /// The Device lab's rolling log (8I/8L). RAM only.
   final DeviceLabLog deviceLab = DeviceLabLog();
@@ -2102,7 +2117,7 @@ class AppState extends ChangeNotifier {
       onLiveFrame: _onLiveFrame,
       // Live HR/IMU ownership (#287): the engine reads the owner set inside
       // its reconcile loop; this side only mutates owners and nudges.
-      liveOwners: _liveOwners,
+      liveOwners: _live.owners,
       deriveDataStaleness: () {
         final ts = _lastRecTs;
         if (ts == null || ts <= 0) return const Duration(days: 3650);
@@ -2180,7 +2195,7 @@ class AppState extends ChangeNotifier {
           log: _log,
           // M2: same marker as the constructor above.
           onEvent: _onLiveEvent,
-          liveOwners: _liveOwners,
+          liveOwners: _live.owners,
         );
     // Same wiring as the real constructor, and for the same reason it is safe
     // here: a ValueNotifier, no plugin.
@@ -2311,7 +2326,7 @@ class AppState extends ChangeNotifier {
 
   /// The live-stream owner set the engine reads right now. Tests only.
   @visibleForTesting
-  LiveStreamOwners get debugLiveOwners => _liveOwners();
+  LiveStreamOwners get debugLiveOwners => _live.owners();
 
   /// Run start-up (guarded, exactly as the constructor fires it) so a test can
   /// drive the failure path. Tests only.
@@ -3216,7 +3231,7 @@ class AppState extends ChangeNotifier {
             await _recoverOrphanedLiveSession();
             _resetLivePedometer();
             // Apply the owners' intent to the fresh link: backgrounded owns
-            // no live stream on either platform (see [_liveOwners]). On iOS
+            // no live stream on either platform (see [LiveStreamController.owners]). On iOS
             // the band's HIGH_FREQ_SYNC prompt is what wakes the suspended
             // process, so it must be armed HERE too — this path is the
             // relaunch after a process kill, and with no stream and no
@@ -3571,7 +3586,7 @@ class AppState extends ChangeNotifier {
     _deriveScheduler.setBackground(true);
     // `_background` is an owner input (foreground gait IMU, the gen4 bundle,
     // the iOS keepalive): let the engine step the streams to what the
-    // remaining owners call for. See [_liveOwners].
+    // remaining owners call for. See [LiveStreamController.owners].
     _nudgeLive();
     if (Platform.isAndroid) {
       // Android: ensure the Edge Tracking foreground service is up (idempotent) so the
@@ -3584,7 +3599,7 @@ class AppState extends ChangeNotifier {
       IosBleRestore.foregroundActive =
           true; // "app owns the band" — don't let restore compete
       await IosBleRestore.setOwnsBand(true);
-      // The live stream is off now (see _liveOwners); ask the band to prompt
+      // The live stream is off now (see LiveStreamController.owners); ask the band to prompt
       // us instead. Each prompt is one BLE notification → one wake → one
       // flash offload → suspend again. This is what keeps continuous capture
       // going without the 1 Hz stream.
@@ -3603,34 +3618,8 @@ class AppState extends ChangeNotifier {
 
   // ── live HR / IMU ownership (#287) ──────────────────────────────────────────
   //
-  // A foreground connection used to be an implicit request for both the
-  // realtime-HR stream and the 100 Hz IMU stream, and every feature that
-  // needed one re-armed the whole bundle and tried to remember whether it was
-  // the one that had turned it on. The engine now owns the streams through a
-  // serialized desired-vs-applied reconciler; this side only says WHO wants
-  // WHAT ([_liveOwners]) and nudges it whenever an owner changes.
-  //
-  // Policy (gen5; `desiredLiveStreams` in ble_state.dart):
-  //   HR  ← a mounted live-HR view, any workout, a breathing session or
-  //         window. iOS background is NOT an owner any more: the 1 Hz stream
-  //         was held there purely to keep the suspended process schedulable
-  //         (~86,400 wakes/day, most of a day's battery). The band's own
-  //         HIGH_FREQ_SYNC prompt is the wake source now — see
-  //         BandPromptPolicy and _refreshHighFreqWakeWindow.
-  //   IMU ← a gait workout in the FOREGROUND, a bounded movement-sampling
-  //         window, or the passive strap-step opt-in (off).
-  //   An ordinary foreground connection owns nothing on gen5: the on-chip daily
-  //   counter is the step fallback and the phone can supply windowed steps.
-  //   Backgrounded with no owner is fully OFF on both platforms — on Android
-  //   the EdgeTracking foreground service keeps the process alive without any
-  //   inbound stream, on iOS the band's prompt wakes it; the 1 Hz stream with
-  //   no consumer was ~86,400 wakes a day either way. Liveness
-  //   is covered by the keep-alive's forced battery poll
-  //   (kNoStreamPollSilenceSeconds) and the resume paths judge freshness by
-  //   the no-stream bar. `state.wristOn`/`liveHr` simply stop updating while
-  //   nothing owns HR.
-  // gen4 keeps its previous behaviour: a foreground connection owns HR plus
-  // the R10/R11 + IMU + optical bundle (see `LiveStreamOwners.foreground`).
+  // The owner set, the developer feed and the live-HR view count live in
+  // [LiveStreamController] (policy notes there); AppState delegates.
 
   /// A feature session (workout, breathing, ECG capture) is running — the
   /// "nothing else in flight" bar the one-off VACUUM waits for. ECG matters
@@ -3643,98 +3632,25 @@ class AppState extends ChangeNotifier {
       breathingWindowOpen ||
       (_ecg?.isCapturing ?? false);
 
-  /// Screens showing the live BPM that are mounted right now.
-  int _liveHrViewers = 0;
-
   /// A screen that displays the live heart rate is on screen: own the HR
   /// stream while it is. Pair with [releaseLiveHrView] in `dispose`.
-  void retainLiveHrView() {
-    _liveHrViewers++;
-    _nudgeLive();
-  }
+  void retainLiveHrView() => _live.retainLiveHrView();
 
-  void releaseLiveHrView() {
-    if (_liveHrViewers > 0) _liveHrViewers--;
-    _nudgeLive();
-  }
+  void releaseLiveHrView() => _live.releaseLiveHrView();
 
-  /// A bounded movement-reminder sampling window is open (IMU-only owner).
-  ///
-  /// There is NO scheduler yet, and enabling the movement-reminder preference
-  /// must not hold the IMU stream: sampling only inside bounded windows cannot
-  /// prove that movement did not happen between them, so a standing owner
-  /// would let the reminder claim an uninterrupted stillness it never
-  /// observed. A separately validated scheduler that can account for the gaps
-  /// is the only thing that should call this.
-  void setMovementSamplingWindow(bool active) {
-    if (_movementSampling == active) return;
-    _movementSampling = active;
-    _nudgeLive();
-  }
+  void setMovementSamplingWindow(bool active) =>
+      _live.setMovementSamplingWindow(active);
 
-  bool _movementSampling = false;
+  /// The developer live feed is on for [deviceId] (the band only).
+  bool isLiveFeedOn(String deviceId) => _live.isLiveFeedOn(deviceId);
 
-  /// The developer's "Start live feed" on the Live devices screen is on.
-  /// RAM only: never a preference, so a restart never re-arms the flood.
-  bool _developerLiveFeed = false;
+  Future<void> startLiveFeed(String deviceId) => _live.startLiveFeed(deviceId);
 
-  /// Whether the feed is on for [deviceId]. Only the band (the primary id) has
-  /// one: a paired sensor's streams are already on while it is connected.
-  bool isLiveFeedOn(String deviceId) =>
-      deviceId == LocalDb.kPrimaryDeviceId && _developerLiveFeed;
+  Future<void> stopLiveFeed(String deviceId) => _live.stopLiveFeed(deviceId);
 
-  /// Turn the band's realtime streams on so the Live devices screen has
-  /// something to draw: an explicit owner of both streams, on gen4 and gen5.
-  /// The engine's reconciler stays the only writer. An explicit foreground
-  /// action, so it also clears the sticky marginal-radio fallback (otherwise a
-  /// latched fallback would leave HR only). Idempotent.
-  Future<void> startLiveFeed(String deviceId) async {
-    if (deviceId != LocalDb.kPrimaryDeviceId) return;
-    if (!_developerLiveFeed) {
-      _developerLiveFeed = true;
-      notifyListeners();
-    }
-    await engine.clearRadioFallbackAndReconcile();
-  }
-
-  /// Release the developer owner and let the reconciler turn the streams off.
-  /// The owner is cleared BEFORE the first await, so a band that refuses (or
-  /// throws on) the disable writes, or a caller that never awaits this (a
-  /// screen's dispose), cannot leave the flag set; the engine's keep-alive
-  /// retries the writes. gen4's own foreground owner keeps its streams on.
-  /// Stop without Start writes nothing.
-  Future<void> stopLiveFeed(String deviceId) async {
-    if (deviceId != LocalDb.kPrimaryDeviceId || !_developerLiveFeed) return;
-    _developerLiveFeed = false;
-    notifyListeners();
-    await engine.reconcileLiveStreams();
-  }
-
-  /// Passive strap-step collection: OFF by default on gen5 (#287 decision 1).
-  /// A future explicit opt-in requests IMU through this same owner.
-  static const bool _passiveStrapSteps = false;
-
-  LiveStreamOwners _liveOwners() {
-    final w = activeWorkout;
-    return LiveStreamOwners(
-      // A route is not disposed when the app backgrounds, so a mounted
-      // live-HR page must not keep the stream on behind a locked screen.
-      visibleLiveHrView: !_background && _liveHrViewers > 0,
-      activeWorkout: w != null,
-      foregroundGaitWorkout: w != null && !_background && isGaitStepType(w.type),
-      breathing: breathingActive || breathingWindowOpen,
-      movementSampling: _movementSampling,
-      passiveStrapSteps: _passiveStrapSteps,
-      foreground: !_background,
-      // Like a mounted live-HR view, not held behind a locked screen.
-      developerLiveFeed: !_background && _developerLiveFeed,
-    );
-  }
-
-  /// An owner input changed: let the engine converge. Fire-and-forget; the
-  /// engine reads [_liveOwners] inside its own loop, and its keep-alive tick
-  /// heals a nudge that was missed.
-  void _nudgeLive() => unawaited(engine.reconcileLiveStreams());
+  /// An owner input changed: let the engine converge (see
+  /// [LiveStreamController.nudge]).
+  void _nudgeLive() => _live.nudge();
 
   /// iOS recovery: release the band to the native restore central's no-timeout pending
   /// connect so the OS relaunches us when the band is reachable again.
@@ -3786,7 +3702,7 @@ class AppState extends ChangeNotifier {
     // (byte[1] != 10) — realtimeRr already yields no beats from it, but it
     // should not occupy the breathing R-R buffer at all (edge#286).
     final isRrBearing = pt == 0x28 || (pt == 0x2B && _isR10Record(hex));
-    if (isRrBearing) _bufferLiveRr(hex);
+    if (isRrBearing) _live.bufferLiveRr(hex);
     if ((breathingActive || breathingWindowOpen) && isRrBearing) {
       if (_breathingFrames.length < 8000) _breathingFrames.add(hex);
     }
@@ -3799,7 +3715,7 @@ class AppState extends ChangeNotifier {
       _imuStreamSeen = true;
       final f = _safeFrameAccel(hex);
       if (f != null) {
-        _bufferLiveImu(f);
+        _live.bufferLiveImu(f);
         _ingestLiveMags(f);
         _trackCoverage(recTs);
       }
@@ -3807,126 +3723,12 @@ class AppState extends ChangeNotifier {
       // Gen5 Maverick live IMU is 0x2B (100 Hz planar), not top-level 0x33.
       final f = _safeFrameAccel(hex);
       if (f != null) {
-        _bufferLiveImu(f);
+        _live.bufferLiveImu(f);
         _ingestLiveMags(f);
         _trackCoverage(recTs);
       }
     }
-    _bufferLiveExtras(pt, hex);
-  }
-
-  /// Decoded fields that already have their own stream (or are a time or type
-  /// tag, not a reading) and so are not repeated under their raw name.
-  /// `hr_precise` is the HR byte as a double.
-  static const _liveNamedElsewhere = {
-    'rec_type',
-    'packet_type',
-    'ts_epoch',
-    'ts_subsec',
-    'counter',
-    'hr',
-    'hr_precise',
-  };
-
-  /// Everything else a live frame carries, into the Live devices buffer (RAM
-  /// only, invariant 14): gyro axes, R11's two raw channels, the MG's filtered
-  /// ECG with the band's own HR and quality, and any other numeric field the
-  /// decoder names, under that name. Fixed unit scales only; a field the
-  /// packet did not carry adds no stream. A frame that does not decode adds
-  /// nothing.
-  void _bufferLiveExtras(int pt, String hex) {
-    try {
-      final bytes = proto.hexToBytes(hex);
-      final rec = bytes.length > 1 ? bytes[1] : -1;
-      if (pt == 0x2B) {
-        final g5 = proto.parseGen5ImuBuffer(bytes);
-        final r10 = g5 == null && rec == 10 ? proto.decodeR10Imu(hex) : null;
-        final gyro = g5 != null
-            ? [g5.gyroXdps, g5.gyroYdps, g5.gyroZdps]
-            : r10 != null
-                ? [r10.gyroX, r10.gyroY, r10.gyroZ]
-                : null;
-        if (gyro != null) {
-          _bufferLiveSeries('gyro_x', gyro[0], 10);
-          _bufferLiveSeries('gyro_y', gyro[1], 10);
-          _bufferLiveSeries('gyro_z', gyro[2], 10);
-        }
-        if (rec == 11) {
-          // Meaning unconfirmed (protocol R11Raw): raw channels, ~50 Hz each.
-          final r11 = proto.decodeR11Raw(hex);
-          if (r11 != null) {
-            _bufferLiveSeries('r11_ch1', r11.channelA, 20);
-            _bufferLiveSeries('r11_ch2', r11.channelB, 20);
-          }
-        }
-        final r17 = rec == proto.LabradorR17.revision
-            ? proto.LabradorR17.parse(bytes)
-            : null;
-        if (r17 != null) {
-          _bufferLiveSeries('ecg_uv', r17.samples, 10); // 100 Hz, µV
-          _bufferLiveSeries('ecg_quality', [r17.quality], 10);
-          // 0 is "no reading", not a heart rate.
-          if (r17.liveHr > 0) _bufferLiveSeries('ecg_band_hr', [r17.liveHr], 10);
-        }
-      }
-      final fields = proto
-          .decodeFrame(proto.Frame(bytes, true, true))
-          .fields;
-      final now = DateTime.now();
-      for (final MapEntry(:key, :value) in fields.entries) {
-        if (value is num && !_liveNamedElsewhere.contains(key)) {
-          liveStreams.add(LocalDb.kPrimaryDeviceId, key, now, value.toDouble());
-        }
-      }
-    } catch (_) {
-      // Debug view only: a frame that will not decode is simply not drawn.
-    }
-  }
-
-  /// [values] into the Live devices buffer under [key], oldest first, the
-  /// newest stamped now and each earlier one [stepMs] before the next.
-  void _bufferLiveSeries(String key, List<num> values, int stepMs) {
-    final n = values.length;
-    final end = DateTime.now();
-    for (var i = 0; i < n; i++) {
-      liveStreams.add(LocalDb.kPrimaryDeviceId, key,
-          end.subtract(Duration(milliseconds: (n - 1 - i) * stepMs)),
-          values[i].toDouble());
-    }
-  }
-
-  /// Beat intervals of one live frame into the Live devices buffer (RAM only).
-  /// Each beat gets its own time, after the last one stored ([stampLiveBeats]);
-  /// stamped from arrival alone, a batched frame's earlier beats were refused
-  /// as late and the graph drew holes while beats were coming in.
-  DateTime? _lastRrAt;
-  void _bufferLiveRr(String hex) {
-    final rr = proto.realtimeRr(hex)?.rrMs;
-    if (rr == null || rr.isEmpty) return;
-    final at = stampLiveBeats(DateTime.now(), rr, after: _lastRrAt);
-    for (var i = 0; i < rr.length; i++) {
-      if (liveStreams.add(LocalDb.kPrimaryDeviceId, 'rr', at[i], rr[i].toDouble())) {
-        _lastRrAt = at[i];
-      }
-    }
-  }
-
-  /// One live IMU frame's accel samples (100 Hz) into the Live devices buffer.
-  /// Per-axis when the decoder gave axes, otherwise the magnitude only. The
-  /// decoder returns the axes as raw int16 counts (only `mags` is in g), so
-  /// they are scaled to g here: 1/4096 g per count on both families.
-  void _bufferLiveImu(proto.ImuFrame f) {
-    final n = f.mags.length;
-    if (n == 0) return;
-    final axes = {'accel_x': f.xs, 'accel_y': f.ys, 'accel_z': f.zs};
-    if (axes.values.every((a) => a != null && a.length == n)) {
-      for (final MapEntry(:key, :value) in axes.entries) {
-        _bufferLiveSeries(
-            key, [for (final v in value!) v * proto.kGen5AccelScaleG], 10);
-      }
-    } else {
-      _bufferLiveSeries('accel_mag', f.mags, 10);
-    }
+    _live.bufferLiveExtras(pt, hex);
   }
 
   /// True iff a live inner packet's record-type byte ([1]) is 10 (R10, the
@@ -4675,8 +4477,7 @@ class AppState extends ChangeNotifier {
     _liveHrTrace.add((at: at, hr: hr, deviceId: deviceId));
     // The same reading for the Live devices graph: the band's and every paired
     // sensor's beats arrive here, so this is the one tap for the 'hr' stream.
-    liveStreams.add(deviceId, 'hr',
-        DateTime.fromMillisecondsSinceEpoch(at), hr.toDouble());
+    _live.bufferLiveHr(deviceId, at, hr);
     // The cap is PER DEVICE, so a second band cannot evict the first band's
     // trace by streaming faster.
     // ponytail: reverse scan is O(n) at n <= 90 * devices, once per
@@ -6561,7 +6362,7 @@ class AppState extends ChangeNotifier {
           // Compute + arm the next weekly-schedule occurrence on every
           // successful (re)connect — see _armNextAlarmOccurrence.
           await _armNextAlarmOccurrence();
-          // Live streams come up per the current owners (see _liveOwners:
+          // Live streams come up per the current owners (see LiveStreamController.owners:
           // backgrounded with no owner is OFF on both platforms);
           // the FULL drain (no short timeout — the ENTIRE offline backlog the
           // band flashed while out of range) runs concurrently, single-flight,
@@ -7099,7 +6900,7 @@ class AppState extends ChangeNotifier {
   int? _windowRowStartedAt;
 
   /// Open the quiet window: HR stream on, frames buffering, no pacing yet.
-  /// The window is an HR owner in its own right (see [_liveOwners]), so the
+  /// The window is an HR owner in its own right (see [LiveStreamController.owners]), so the
   /// paced block's stop cannot turn off a stream the post window still reads.
   Future<void> openBreathingWindow() async {
     if (breathingWindowOpen || breathingActive) return;
@@ -7193,7 +6994,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     unawaited(BreathingLiveActivity.start(startedAt: DateTime.now()));
     try {
-      // The session is an HR owner (see [_liveOwners]); the engine's
+      // The session is an HR owner (see [LiveStreamController.owners]); the engine's
       // reconciler serialises this against any in-flight transition, e.g. a
       // background downgrade still writing when a band double-tap starts the
       // session — the exact race that used to leave the session without its
