@@ -10257,6 +10257,33 @@ class LocalDb {
     return out;
   }
 
+  /// The same `MAX(rec_ts):COUNT(*):REVSUM` fingerprint as
+  /// [decodedDayFingerprints], over the closed window `[loSec, hiSec]` instead
+  /// of a calendar day: what a finished session's cached result was computed
+  /// from. REVSUM covers the whole 15-minute buckets the window touches, so it
+  /// can only be coarser than the window (a neighbouring write in the same
+  /// bucket recomputes once; it never reuses a changed window). Null when the
+  /// window holds no canonical decoded 1 Hz row.
+  static Future<String?> decodedWindowFingerprint(int loSec, int hiSec) async {
+    if (hiSec < loSec) return null;
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT MAX(rec_ts) AS mx, COUNT(*) AS n FROM decoded_onehz '
+      'WHERE rec_ts > 0 AND ${derivableSourceSql()} '
+      'AND rec_ts >= ? AND rec_ts <= ?',
+      [loSec, hiSec],
+    );
+    final mx = rows.isEmpty ? null : (rows.first['mx'] as num?)?.toInt();
+    if (mx == null) return null;
+    final rev = await db.rawQuery(
+      'SELECT COALESCE(SUM(rev), 0) AS r FROM input_rev '
+      'WHERE bucket >= ? AND bucket <= ?',
+      [loSec ~/ 900, hiSec ~/ 900],
+    );
+    final r = rev.isEmpty ? 0 : (rev.first['r'] as num?)?.toInt() ?? 0;
+    return '$mx:${(rows.first['n'] as num?)?.toInt() ?? 0}:$r';
+  }
+
   // ── artifact input signatures (8AG-perf P3) ─────────────────────────────────
   //
   // The cheap reads an artifact's signature is built from: counts, maxima and

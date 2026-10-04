@@ -2700,6 +2700,59 @@ class DerivationEngine {
   final Map<String, DayCalculationState> _calculationStates = {};
   static const _retainedCalculationDays = 3;
 
+  /// A finished session's observed-HR-ceiling result, keyed `day|session id`.
+  /// [sig] names everything the result was computed from (see
+  /// [_ceilingSignatures]); an entry is reused only on an exact match, and only
+  /// by a periodic awake pass. Oldest entries go first.
+  final Map<String, ({String sig, Map<String, dynamic> json, double? bpm})>
+      _ceilingCache = {};
+  static const _ceilingCacheMax = 128;
+  int _ceilingHits = 0, _ceilingComputed = 0;
+
+  @visibleForTesting
+  int get debugCeilingHits => _ceilingHits;
+
+  @visibleForTesting
+  int get debugCeilingComputed => _ceilingComputed;
+
+  /// The signature of each finished session of [day] whose ceiling can be
+  /// cached, by session id. The session window is clipped to the samples the
+  /// day substrate holds, because that is all `_dayHrCeiling` reads. The
+  /// signature carries the algorithm version, the strap family, the clipped
+  /// window, the decoded-sample revision over it ([LocalDb.decodedWindowFingerprint],
+  /// which also sees an in-place replacement), and the priority order and owned
+  /// spans that decided whose rows fill the substrate. A live session, one with
+  /// no decoded samples to fingerprint, or one without an id is left out and is
+  /// computed every pass.
+  Future<Map<String, String>> _ceilingSignatures(
+    PreparedDerivationDay day,
+    List<Map<String, dynamic>> sessions,
+  ) async {
+    final s = day.daySub;
+    if (s.length == 0) return const {};
+    final first = s.tsSec.first, last = s.tsSec.last;
+    final out = <String, String>{};
+    for (final row in sessions) {
+      final id = row['id']?.toString();
+      final start = (row['start_ts'] as num?)?.toInt();
+      final end = (row['end_ts'] as num?)?.toInt();
+      if (id == null || start == null || end == null || end <= start) continue;
+      if (row['status'] == 'live') continue;
+      final lo = math.max(start, first), hi = math.min(end, last);
+      final fp = await LocalDb.decodedWindowFingerprint(lo, hi);
+      if (fp == null) continue;
+      final owners = <String>[
+        for (final sig in const [InputSignal.hr1Hz, InputSignal.accel1Hz])
+          for (final span in day.ownership[sig] ?? const <OwnedSpan>[])
+            if (span.end > lo && span.start <= hi)
+              '${sig.name}:${span.start}-${span.end}:${span.deviceId ?? ''}',
+      ];
+      out[id] = '$kAlgoVersion|${s.deviceFamily}|$start-$end|$lo-$hi|$fp|'
+          '${priorityKey(day.priority)}|${owners.join(',')}';
+    }
+    return out;
+  }
+
   void _publishCalculationState(String day, DayCalculationState state) {
     _calculationStates.remove(day);
     _calculationStates[day] = state;
@@ -4876,6 +4929,21 @@ class DerivationEngine {
         _localDayLabelToSec(day.date),
         localNextMidnightSecForDayLabel(day.date),
       );
+      // A finished session's observed ceiling does not change unless its
+      // samples do: a periodic awake pass reuses the result whose signature
+      // still matches. Every other mode computes in full.
+      final ceilingSigs = await _ceilingSignatures(day, savedSessions);
+      final ceilingReuse =
+          <String, ({Map<String, dynamic> json, double? bpm})>{};
+      if (calculationMode == ana.CalculationMode.periodicAwake) {
+        ceilingSigs.forEach((id, sig) {
+          final hit = _ceilingCache['${day.date}|$id'];
+          if (hit != null && hit.sig == sig) {
+            ceilingReuse[id] = (json: hit.json, bpm: hit.bpm);
+          }
+        });
+        _ceilingHits += ceilingReuse.length;
+      }
 
       // Off-wrist / charging spans over the NAP window (which runs past this
       // day's end), read here because the isolate has no DB handle. These are
@@ -4978,6 +5046,7 @@ class DerivationEngine {
 
       final blocksInput = _DayBlocksInput(
         calculationState: candidateState, calculationMode: calculationMode,
+        ceilingReuse: ceilingReuse,
         daySub: daySub,
         napSub: day.napSub,
         napEdits: napEdits,
@@ -5024,6 +5093,19 @@ class DerivationEngine {
       final blocks =
           await _runDayBlocksCancellable(blocksInput, _perDayTimeout);
       candidateState = blocks.calculationState;
+      // Keep what was computed. An entry is a pure function of its signature,
+      // so it is safe to keep even if a later step of this day fails.
+      for (final e in blocks.ceilingComputed.entries) {
+        final sig = ceilingSigs[e.key];
+        if (sig == null) continue;
+        _ceilingComputed++;
+        final key = '${day.date}|${e.key}';
+        _ceilingCache.remove(key);
+        _ceilingCache[key] = (sig: sig, json: e.value.json, bpm: e.value.bpm);
+        while (_ceilingCache.length > _ceilingCacheMax) {
+          _ceilingCache.remove(_ceilingCache.keys.first);
+        }
+      }
       await debugAfterDayBlocks?.call(day.date);
 
       // Merge the computed blocks back into the isolate-1 bundle. scMap is the
@@ -8984,7 +9066,14 @@ class DerivationEngine {
     bundlePatch['workout_suggestions'] = wc.boutJson;
     if (wc.hrrBpm != null) scMap['hrr_bpm'] = wc.hrrBpm;
     if (wc.hrrTauS != null) scMap['hrr_tau_s'] = wc.hrrTauS;
-    final ceiling = _dayHrCeiling(daySub, inp.savedSessions);
+    final ceilingComputed =
+        <String, ({Map<String, dynamic> json, double? bpm})>{};
+    final ceiling = _dayHrCeiling(
+      daySub,
+      inp.savedSessions,
+      reuse: inp.ceilingReuse,
+      computed: ceilingComputed,
+    );
     bundlePatch['hr_ceiling'] = ceiling;
     // TS-03 — the day's observed ceiling as a SCALAR too, so the app-wide
     // "highest we've seen" is a max over `metric_series` (one small query the
@@ -9042,6 +9131,7 @@ class DerivationEngine {
 
     return _DayBlocksOutput(
       calculationState: inp.calculationState,
+      ceilingComputed: ceilingComputed,
       bundlePatch: bundlePatch,
       seriesPatch: seriesPatch,
       scalarPatch: scMap,
@@ -9255,22 +9345,45 @@ class DerivationEngine {
   @visibleForTesting
   static Map<String, dynamic> dayHrCeiling(
     Substrate s,
-    List<Map<String, dynamic>> saved,
-  ) =>
-      _dayHrCeiling(s, saved);
+    List<Map<String, dynamic>> saved, {
+    Map<String, ({Map<String, dynamic> json, double? bpm})> reuse = const {},
+    Map<String, ({Map<String, dynamic> json, double? bpm})>? computed,
+  }) => _dayHrCeiling(s, saved, reuse: reuse, computed: computed);
 
+  /// [reuse] holds the already-validated result of a finished session, by id:
+  /// that session is not scanned. [computed], when given, receives the result of
+  /// every finished (not `live`) session that WAS scanned, for the caller's
+  /// cache. A result is the `Metric.toJson` map plus the unrounded bpm the max
+  /// is taken over, so reuse picks the same session a full scan would.
   static Map<String, dynamic> _dayHrCeiling(
     Substrate s,
-    List<Map<String, dynamic>> saved,
-  ) {
-    ana.Metric<ana.HrCeiling>? best;
+    List<Map<String, dynamic>> saved, {
+    Map<String, ({Map<String, dynamic> json, double? bpm})> reuse = const {},
+    Map<String, ({Map<String, dynamic> json, double? bpm})>? computed,
+  }) {
+    Map<String, dynamic>? bestJson;
+    double? bestBpm;
     String? bestId;
     String? bestType;
-    ana.Metric<ana.HrCeiling>? lastAbsent;
+    Map<String, dynamic>? lastAbsentJson;
     for (final row in saved) {
       final start = (row['start_ts'] as num?)?.toInt();
       final end = (row['end_ts'] as num?)?.toInt();
       if (start == null || end == null || end <= start) continue;
+      final id = row['id']?.toString();
+      final cached = id == null ? null : reuse[id];
+      if (cached != null) {
+        final bpm = cached.bpm;
+        if (bpm == null) {
+          lastAbsentJson = cached.json;
+        } else if (bestBpm == null || bpm > bestBpm) {
+          bestJson = cached.json;
+          bestBpm = bpm;
+          bestId = id;
+          bestType = row['type']?.toString();
+        }
+        continue;
+      }
       final hr = <ana.HrSample>[];
       final accel = <ana.AccelSample>[];
       for (var i = 0; i < s.length; i++) {
@@ -9284,25 +9397,30 @@ class DerivationEngine {
       }
       if (hr.isEmpty) continue;
       final m = ana.sessionHrCeiling(hr, accel, deviceFamily: s.deviceFamily);
+      final json = m.toJson((v) => v.toJson());
+      if (computed != null && id != null && row['status'] != 'live') {
+        computed[id] = (json: json, bpm: m.present ? m.value!.bpm : null);
+      }
       if (!m.present) {
-        lastAbsent = m;
+        lastAbsentJson = json;
         continue;
       }
-      if (best == null || m.value!.bpm > best.value!.bpm) {
-        best = m;
-        bestId = row['id']?.toString();
+      if (bestBpm == null || m.value!.bpm > bestBpm) {
+        bestJson = json;
+        bestBpm = m.value!.bpm;
+        bestId = id;
         bestType = row['type']?.toString();
       }
     }
-    final m = best ??
-        lastAbsent ??
+    final json = bestJson ??
+        lastAbsentJson ??
         const ana.Metric<ana.HrCeiling>.absent(
           tier: ana.Tier.high,
           inputs_used: ['hr_1hz', 'accel_1hz', 'device_family'],
           note: 'no saved session on this day to observe a ceiling in',
-        );
+        ).toJson((v) => v.toJson());
     return {
-      ...m.toJson((v) => v.toJson()),
+      ...json,
       'session_id': ?bestId,
       'session_type': ?bestType,
     };
@@ -9635,6 +9753,9 @@ Future<R> runCancellableIsolate<R>(
 class _DayBlocksInput {
   final DayCalculationState calculationState;
   final ana.CalculationMode calculationMode;
+
+  /// Finished sessions whose observed ceiling is already known, by session id.
+  final Map<String, ({Map<String, dynamic> json, double? bpm})> ceilingReuse;
   final Substrate daySub;
   final Substrate napSub;
   final Substrate sleepSub;
@@ -9708,6 +9829,7 @@ class _DayBlocksInput {
   const _DayBlocksInput({
     required this.calculationState,
     required this.calculationMode,
+    required this.ceilingReuse,
     required this.daySub,
     required this.napSub,
     required this.sleepSub,
@@ -9741,6 +9863,9 @@ class _DayBlocksInput {
 /// [notifBout] are the DB writes + notification the caller applies.
 class _DayBlocksOutput {
   final DayCalculationState calculationState;
+
+  /// Finished sessions whose observed ceiling was scanned this pass, by id.
+  final Map<String, ({Map<String, dynamic> json, double? bpm})> ceilingComputed;
   final Map<String, dynamic> bundlePatch;
   final Map<String, dynamic> seriesPatch;
   final Map<String, dynamic> scalarPatch;
@@ -9753,6 +9878,7 @@ class _DayBlocksOutput {
   final ({String id, int durationMin})? notifBout;
   const _DayBlocksOutput({
     required this.calculationState,
+    required this.ceilingComputed,
     required this.bundlePatch,
     required this.seriesPatch,
     required this.scalarPatch,
