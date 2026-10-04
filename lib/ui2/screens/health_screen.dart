@@ -704,10 +704,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
       SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
       if (_loading && _d == null)
-        const Padding(
-          padding: EdgeInsets.only(top: S.x8),
-          child: Center(child: CircularProgressIndicator()),
-        )
+        const InlineLoading()
       else
         switch (_tab) {
           0 => _lastNight(c, d),
@@ -1181,9 +1178,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                 _loadVitals();
               })
             : const Padding(
-                padding: EdgeInsets.only(top: S.x4),
-                child: Center(child: CircularProgressIndicator()),
-              ),
+                padding: EdgeInsets.only(top: S.x3), child: InlineLoading()),
     ]);
   }
 
@@ -1390,9 +1385,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
                 _loadExplore();
               })
             : const Padding(
-                padding: EdgeInsets.only(top: S.x8),
-                child: Center(child: CircularProgressIndicator()),
-              )
+                padding: EdgeInsets.only(top: S.x3), child: InlineLoading())
       else ...[
         // Not a promise of insight — a statement of what a tap gets you. Every
         // row below opens the same drill-down: the chart, your own range, the
@@ -1503,10 +1496,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               setState(() => _lFailed = false);
               _loadLabs();
             })
-          : const Padding(
-              padding: EdgeInsets.only(top: S.x8),
-              child: Center(child: CircularProgressIndicator()),
-            );
+          : const InlineLoading();
     }
 
     final sex = (_d?.profile['sex'])?.toString();

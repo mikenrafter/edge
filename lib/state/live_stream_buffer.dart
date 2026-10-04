@@ -13,6 +13,34 @@ class LiveSample {
   final double value;
 }
 
+/// Times for the beats of one live frame, oldest first. The newest sits at
+/// [arrival] and each earlier beat one interval before the beat that followed
+/// it, but every beat lands strictly after [after] (the previous beat stored)
+/// and after the beat before it in the frame. Frames arrive in batches, so a
+/// frame's earlier beats can fall before the last frame's newest; stamped
+/// there, [LiveStreamBuffer.add] refuses them and the graph shows a hole where
+/// beats were arriving. Placed just after it instead, each keeps its own time.
+///
+/// The frame's own ts is whole seconds and repeats across a session, so it is
+/// no finer than arrival and is not used.
+List<DateTime> stampLiveBeats(DateTime arrival, List<int> rrMs,
+    {DateTime? after}) {
+  final out = List<DateTime>.filled(rrMs.length, arrival);
+  var at = arrival;
+  for (var i = rrMs.length - 1; i >= 0; i--) {
+    out[i] = at;
+    at = at.subtract(Duration(milliseconds: rrMs[i]));
+  }
+  var prev = after;
+  for (var i = 0; i < out.length; i++) {
+    if (prev != null && !out[i].isAfter(prev)) {
+      out[i] = prev.add(const Duration(milliseconds: 1));
+    }
+    prev = out[i];
+  }
+  return out;
+}
+
 class LiveStreamBuffer {
   LiveStreamBuffer({this.window = const Duration(seconds: 30)});
 

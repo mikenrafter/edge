@@ -1300,6 +1300,47 @@ Tests: `test/perf/p2_input_rev_test.dart`, `p2_enqueue_test.dart`, `p2_derive_ou
   derive reported is logged, not turned into a retry. Manual sync and the force paths are unchanged.
 - **No `kAlgoVersion` bump.** Docs: `docs/perf.md` (P2 scheduling); the roadmap entry 8AG-perf P2.
 
+## 8AG P3: persisted artifacts and the intraday calorie curve
+
+Tests: `test/perf/p3_schema_test.dart`, `p3_signature_test.dart`, `p3_artifact_cache_test.dart`,
+`p3_screens_fresh_test.dart`, `p3_warmer_test.dart`, `p3_app_warm_test.dart`,
+`p3_real_source_test.dart`, `p3_kcal_builder_test.dart`, `p3_kcal_artifact_test.dart`
+(support: `test/perf/support/p3_support.dart`, `p3_warmer_support.dart`).
+
+- **Schema 60.** `last_result.input_sig TEXT`, nullable, added by `_addColumnIfMissing` from the
+  `oldV < 60` rung and `_repairOpenSchema`. A NULL signature is never fresh.
+- **Signatures.** `LocalRepository.artifactSignature(key)` (default null) and `computeArtifact(key)`
+  (default null). Keys: `journal_insights|90d`, `weekday_effect`, `circadian`, `beats|<day>`,
+  `workout|<id>`, `kcal_minutes|<day>`. A signature starts with `'$kAlgoVersion|'`. Writing
+  `last_result` never moves one.
+- **Fresh opens.** `LastResultCache.put(key, value, sig:)` and `loadArtifact(key, loader, signature:,
+  onLast:)`: a stored entry whose signature equals the current one is returned with no loader call
+  and no `onLast`, so no "As of" label. Stale: `onLast`, one recompute, the new value stored under
+  the signature asked first. A loader error stores nothing. The heavy reads (RR correction, journal
+  correlations, weekday effect) run in `Isolate.run`.
+- **Warmer.** `ArtifactWarmer` (`lib/state/artifact_warmer.dart`), serial, after a pass that computed
+  days only, held while a workout, breathing or ECG capture is live or the derive scheduler holds
+  (the rest of the pass is dropped), cancelled by dispose, failures logged and not stored.
+  `RepoArtifactSource.candidateKeys` is the order listed in `p3_real_source_test.dart`.
+- **Intraday calories.** `buildKcalMinutes` (`lib/compute/kcal_minutes.dart`, pure) over every minute from
+  the first to the last wake minute; payload `{v: 1, basal_kcal_per_min, covered_minutes, minutes:
+  [{t, total, active, basal, source}]}`, `t` epoch seconds, abstained minutes null in every figure.
+  Inputs match `wakeDayEnergy` (wake series without the sleep window, `estimatedMaxHr`, the nocturnal
+  or entered resting HR, `cadenceSpmForMinutes` with gap minutes masked), so the sum of `active` is the
+  day's stored `calories` (without the workout-gap credit). Null wherever `wakeDayEnergy` is null, and
+  for a day with no motion minutes.
+- **Stored by the derive** inside `_computeDayBlocks` (the isolate), after the day row commits, under
+  the signature of the fingerprint read in `_prepareTargetDay` before the substrate load
+  (`PreparedDerivationDay.inputFp`; none on the import path, so nothing stored). A store failure is
+  logged, never fatal. A re-derive replaces the row; a null curve on a day that still has raw deletes
+  the row; a day without raw keeps its row. `DerivationEngine.kcalMinutesForStoredDay` rebuilds it
+  for the warmer from the stored day's window and resting HR.
+- **Reader.** `getDayCalorieCurve(day)` reads the row: `{minutes: [{t, total, active, basal}],
+  basal_kcal_per_min, covered_minutes, computed_at}`, null when there is none.
+- **No `kAlgoVersion` bump** (100 stays): no existing output changes; the note beside `kAnalyticsPin`
+  says edge now persists `Calories.minuteEnergy`. Docs: `docs/perf.md` (P3 artifacts); the roadmap
+  entry 8AG-perf P3.
+
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 
 Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the
@@ -1368,3 +1409,67 @@ phase-two files in the same folder). Health's sub-tabs are, in order, 0 Last nig
   (reconciler stays the only writer; released on stop/dispose; never in
   background); accel in g; gyro, ECG (µV), band ECG HR/quality, gen4 R11 raw
   channels, any other decoded numeric field by raw name; RAM only.
+
+## 8AI.2: device-test polish (Oct 4, APK f88d230c)
+
+- Live devices, "Beat intervals": a beat stream is event-timed, so it is not
+  resampled into fixed slots and "gap" is not "empty slot". `liveEventSeries`
+  joins neighbouring beats and breaks only after no beat for max(3 s, 3 x the
+  median interval); the scrub quotes beats only. `stampLiveBeats` places each
+  frame's beats strictly after the last stored one, so a batched frame no longer
+  has its earlier beats refused as late (the cause of the holes). The frame's own
+  ts (whole seconds, repeats across a session) is not used.
+- `TrendCard` (Resting HR / HRV / Sleep): the hero value never truncates. When
+  value, caption and change do not share a line, the change restacks; the caption
+  is the part that wraps or shortens.
+- `axisDay` says "1 day ago" / "1 night ago" for one.
+- The Haptics links on Gestures and Alerts, and "View all gestures" in the
+  tap-count sheet, keep the S.x3 gap above them that accordions draw.
+- Reset all data moved from the foot of Settings to Your data > Advanced (last
+  row); `MoreSettingsView.onReset` is gone, `confirmResetAllData` lives in
+  data.dart. One home; the dialog and flow are unchanged.
+- Health tab: the waiting sub-tab bodies (Today vitals, Trends measures, Labs, and
+  the first read) show `InlineLoading`, not a bare spinner; health_screen.dart is
+  in the 8AI G1 audit guard.
+- Tests: `test/fix8ai/g7_*_test.dart`.
+
+## 8AI.3: gesture cues are additive (Oct 4)
+
+- A gesture is answered by an additive sequence of cues, each its own band-queue
+  job (the queue spaces jobs by the previous plan's end + `minVibrationGapMs`,
+  so none is dropped, merged or reordered): the START cue once, when the tap is
+  accepted (8AI start buzz); then ONE follow-up per count increment; then the
+  CONFIRM when the gesture ends counted. A gesture that goes to 5 is
+  `start, follow-up, follow-up, follow-up, confirm`; one that ends at 3 is
+  `start, follow-up, confirm`; one that ends at 2 is `start, confirm`.
+- The opening is count 2: the firmware double tap that starts the gesture
+  (`EcgTapCounter.start` sets it). Each touch that engages after it is one
+  increment (3, 4, 5) and `EcgTapBuzz` (no `pulses` field) is its follow-up,
+  requested at the engage sample. `EcgTapConfirm` precedes `EcgTapDone` on every
+  counted end (deadline, max, max 2, quick start with no finger); an abandoned
+  gesture emits neither.
+- `EcgTapSession`: `buzz(pulses, id)` is the follow-up cue (`pulses` is always
+  1), new optional `confirmBuzz(id)` (`<gesture id>:ecg:confirm`; null = none).
+  `maxPulsesPerBurst`, `pulsesPerBurst` and `buzzQuietGap` are removed: the
+  session adds no wait of its own, cues are called in order, and a cue that is
+  not written, throws or hangs ends only itself.
+- `GestureCues`: `start()`, `followUp()`, `confirm()`; `response(n)` is removed.
+  A band with no haptic profile plays one plain pulse per cue.
+- `AppState`: `_gestureCue` is the one dispatcher delivery for every cue;
+  `_ecgTapStartBuzz`, `_ecgTapBuzz` (follow-up; also the repeat-double-tap
+  method's per-tap buzz) and `_ecgTapConfirmBuzz` use it.
+- Root causes. (1) A count step played `response(n)`, which began with the START
+  cue again and chained n - 1 follow-ups, so the wearer felt the start pattern
+  replayed (four pulses) at each step. (2) A counted gesture's closing buzz was
+  `response(1)`, the start cue; the confirm cue only played for the plain
+  double-tap ack (`ackTap`), never for a counted gesture. (3) Cue assignments
+  were resolved inline in `_loadGestureCues`; that is now
+  `resolveCuePatterns(store, assignments)` (haptic_slots.dart), tested against
+  the virtual band.
+- The "Gesture alert" haptic slot (`alert.gesture`), its Haptics row and its
+  `'gesture': 'preset.four_pulses'` default are removed. The stored `gesture`
+  alert rule stays in the registry (order is frozen; old data decodes) but
+  nothing reads it: gesture buzzes go out under `kEcgTapRule` /
+  `kGestureAckRule`, and the dispatcher is handed those constants, so the rule's
+  enabled flag gated nothing.
+- Tests: `test/fix8ai/g8_*_test.dart`.

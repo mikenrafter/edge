@@ -67,14 +67,15 @@ LabradorR17 _packet(
 class _Rig {
   _Rig() {
     session = EcgTapSession(
-      // The pacing rig: one pulse per call, each after the quiet gap (8W). The
-      // default is one call per count since 8AF.6.
-      maxPulsesPerBurst: 1,
       beginStream: () async => true,
       endStream: () async => ended++,
       isStreamAlive: () => true,
       buzz: (pulses, id) async {
         buzzes.add((pulses, id));
+        return true;
+      },
+      confirmBuzz: (id) async {
+        confirms.add(id);
         return true;
       },
       maxTaps: () => max,
@@ -93,6 +94,7 @@ class _Rig {
   late final EcgTapSession session;
   int ended = 0;
   final buzzes = <(int, String)>[];
+  final confirms = <String>[];
   final results = <(int?, String?)>[];
   final steps = <String>[];
 
@@ -144,7 +146,8 @@ void main() {
       r.deliver(_packet(1004, contactFrom: 10, contactTo: 60), 2320);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [1, 1, 1]);
+      expect(r.buzzes.map((b) => b.$1), [1], reason: 'one follow-up, for 3');
+      expect(r.confirms, hasLength(1));
     });
   });
 
@@ -221,7 +224,8 @@ void main() {
       r.deliver(_packet(1002, n: 40, contactFrom: 0), 2500);
       await r.settle();
       expect(r.results, [(3, null)]);
-      expect(r.buzzes.map((b) => b.$1), [1, 1, 1]);
+      expect(r.buzzes.map((b) => b.$1), [1], reason: 'one follow-up, for 3');
+      expect(r.confirms, hasLength(1));
     });
 
     test('the same contact across a 400 ms unobserved gap does not count: the '

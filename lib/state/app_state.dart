@@ -26,6 +26,7 @@ import 'package:flutter/widgets.dart';
 import 'control_operations.dart';
 import 'recalc_state.dart';
 import 'revision_coalescer.dart';
+import 'artifact_warmer.dart';
 export 'control_operations.dart';
 
 import '../ai/ai_prefs.dart';
@@ -126,10 +127,9 @@ import '../gestures/strap_event.dart';
 import '../gestures/tap_ack.dart';
 import '../haptics/band_queue.dart';
 import '../haptics/ble_haptics_port.dart';
-import '../haptics/builtin_patterns.dart'
-    show kGestureConfirmKey, kGestureFollowUpKey, kGestureStartKey;
 import '../haptics/gesture_cues.dart';
-import '../haptics/haptic_slots.dart' show decodeCueAssignments;
+import '../haptics/haptic_slots.dart'
+    show decodeCueAssignments, resolveCuePatterns;
 import '../haptics/haptics_service.dart';
 import '../haptics/wake_haptics.dart';
 import '../haptics/haptic_player.dart' show HapticPlayStart;
@@ -465,6 +465,7 @@ class AppState extends ChangeNotifier {
   late final DoubleTapRepeatSession _repeatTapSession = DoubleTapRepeatSession(
     maxTaps: () => gestureSettings.repeatTapMax,
     window: () => gestureSettings.repeatTapWindow,
+    // Each further double tap is one count increment: one follow-up cue.
     buzz: (id) => _ecgTapBuzz(1, id),
     step: deviceLab.addStep,
     onStarted: (tap, settings) => deviceLab.beginSession(
@@ -490,9 +491,7 @@ class AppState extends ChangeNotifier {
     },
     isStreamAlive: () => ecg.isCapturing,
     buzz: _ecgTapBuzz,
-    // A band with no haptic profile keeps one pulse per call, a quiet gap
-    // apart; only the vocabulary plays a whole count as one call (8AF.6).
-    pulsesPerBurst: () => haptics.profile == null ? 1 : null,
+    confirmBuzz: _ecgTapConfirmBuzz,
     failBuzz: _ecgTapFailBuzz,
     maxTaps: () => gestureSettings.ecgTapMax,
     thresholds: () => gestureSettings.ecgTapThresholds,
@@ -584,30 +583,15 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// One touch-counter response: the start cue and a follow-up cue per extra
-  /// pulse (8AF.6), in one queue job. Still a dispatcher delivery (live-only
-  /// band alert, own event id), never a straight engine write.
-  Future<bool> _ecgTapBuzz(int pulses, String eventId) async {
-    final now = DateTime.now();
-    await _loadGestureCues();
-    final r = await haptics.asLabWork(() => alertDispatcher.dispatch(
-      kEcgTapRule,
-      eventId: eventId,
-      sourceTime: now,
-      historical: false,
-      bandTimeout: Duration(seconds: 6 + 4 * pulses),
-      bandDelivery: () => gestureCues.response(pulses),
-    ));
-    return r.targets.contains('band');
-  }
-
-  /// 8AI: the gesture-start cue, sent the moment the double tap is accepted.
-  /// The session fires it without waiting and starts the ECG stream at once, so
-  /// the cues are read beside the dispatcher's own claim steps (inside the
-  /// delivery, not before the dispatch) rather than ahead of the buzz. Still a
-  /// dispatcher delivery in the band queue, which spaces it from the count that
-  /// follows.
-  Future<bool> _ecgTapStartBuzz(String eventId) async {
+  /// One gesture cue as a dispatcher delivery (live-only band alert, own event
+  /// id, never a straight engine write): [play] is the cue, in its own job of
+  /// the band queue. The wearer's cue assignments are read inside the delivery,
+  /// beside the dispatcher's own claim steps rather than ahead of them (8AI), so
+  /// a cue is not held up reading them.
+  Future<bool> _gestureCue(
+    String eventId,
+    Future<BuzzDelivery> Function() play,
+  ) async {
     final now = DateTime.now();
     final cues = _loadGestureCues();
     final r = await haptics.asLabWork(() => alertDispatcher.dispatch(
@@ -618,13 +602,28 @@ class AppState extends ChangeNotifier {
       bandTimeout: const Duration(seconds: 10),
       bandDelivery: () async {
         await cues;
-        return gestureCues.response(1);
+        return play();
       },
     ));
     return r.targets.contains('band');
   }
 
-  // The wearer's customised gesture cues, read just before a response so
+  /// 8AI: the gesture-start cue, sent the moment the double tap is accepted;
+  /// the session fires it without waiting and starts the ECG stream at once.
+  Future<bool> _ecgTapStartBuzz(String eventId) =>
+      _gestureCue(eventId, gestureCues.start);
+
+  /// One follow-up cue per count increment (3, 4, 5), queued as soon as the
+  /// touch is seen: never the start cue again, never a recount. [pulses] is
+  /// always 1.
+  Future<bool> _ecgTapBuzz(int pulses, String eventId) =>
+      _gestureCue(eventId, gestureCues.followUp);
+
+  /// The confirm cue of a counted gesture, once, when it ends.
+  Future<bool> _ecgTapConfirmBuzz(String eventId) =>
+      _gestureCue(eventId, gestureCues.confirm);
+
+  // The wearer's customised gesture cues, read just before a cue plays so
   // GestureCues can take them synchronously. A cue that cannot be read plays
   // its built-in default.
   Map<String, BuzzSequence> _cuePatterns = const {};
@@ -633,19 +632,10 @@ class AppState extends ChangeNotifier {
     try {
       final store = await SettingsRepository.instance.patterns();
       // A pattern the wearer put on a cue (8AI) wins over the cue's built-in.
-      final given =
-          decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, ''));
-      pick(String k) =>
-          (given[k] == null ? null : store.byId(given[k]!)) ??
-          store.bySystemKey(k);
-      _cuePatterns = {
-        for (final k in const [
-          kGestureStartKey,
-          kGestureFollowUpKey,
-          kGestureConfirmKey,
-        ])
-          if (pick(k) != null) k: pick(k)!.sequence,
-      };
+      _cuePatterns = resolveCuePatterns(
+        store,
+        decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, '')),
+      );
     } catch (_) {}
   }
 
@@ -2017,6 +2007,11 @@ class AppState extends ChangeNotifier {
   /// calls [_afterDrain] makes on it.
   @visibleForTesting
   DeriveRunHook? debugDeriveRun;
+
+  /// The source the artifact warmer uses (see [_warmer]). Null in production:
+  /// the repository's own.
+  @visibleForTesting
+  ArtifactSource? debugArtifactSource;
   @visibleForTesting
   RescanHook? debugRescanRecent;
   @visibleForTesting
@@ -2028,6 +2023,27 @@ class AppState extends ChangeNotifier {
   Future<void> debugAfterDrain({bool heavy = false, bool changedOnly = false}) =>
       _afterDrain(heavy: heavy, changedOnly: changedOnly);
   StreamSubscription<String>? _tapSub;
+
+  // The ONE background warmer of the slow screen artifacts (8AG-perf P3). Built
+  // when first needed, after a pass that computed days; never while a workout,
+  // breathing session or ECG capture is live, while the band is offloading or
+  // while this is a headless run.
+  ArtifactWarmer? _artifactWarmer;
+
+  ArtifactWarmer? get _warmer {
+    final existing = _artifactWarmer;
+    if (existing != null) return existing;
+    final r = repo;
+    final source = debugArtifactSource ??
+        (r is LocalRepositoryImpl ? RepoArtifactSource(r) : null);
+    if (source == null) return null;
+    return _artifactWarmer = ArtifactWarmer(
+      source: source,
+      hold: () =>
+          _liveSessionActive || _background || _deriveScheduler.offloadActive,
+      log: _log,
+    );
+  }
 
   void _handleTapRoute(String route) {
     final t = resolveTapRoute(route); // pure — lib/notify/tap_router.dart
@@ -2298,6 +2314,7 @@ class AppState extends ChangeNotifier {
     BandOwnership.markForegroundIntent(false);
     _releaseForegroundLease();
     _deriveScheduler.dispose();
+    _artifactWarmer?.dispose();
     _dayPublisher.dispose();
     _waterBuzzer.dispose();
     _medBuzzer.dispose();
@@ -2432,6 +2449,9 @@ class AppState extends ChangeNotifier {
     final mode = heavy ? 'heavy' : 'light';
     final recalcId = ++_recalcSeq;
     DeriveOutcome? outcome;
+    // The days this pass reported done, in order: what the artifact warmer
+    // re-signs once the pass has been published.
+    final computedDays = <String>[];
     try {
       // Context for whatever crash/ANR report comes next — the derivation
       // engine's heavy per-day compute is isolate-offloaded, but the
@@ -2457,6 +2477,7 @@ class AppState extends ChangeNotifier {
           // Home / Health can re-read it now rather than after the pass.
           _recalcDayDone(recalcId, day);
           _dayPublisher.request();
+          computedDays.add(day);
           onDay?.call(day, index, total);
           if (index == total || index == 1 || index % 3 == 0) {
             notifyListeners();
@@ -2505,6 +2526,14 @@ class AppState extends ChangeNotifier {
       await LocalDb.refreshComputeFreshness();
       bumpInsights();
       notifyListeners(); // screens re-fetch from the derived store
+      // Warm the slow screen artifacts (journal insights, weekday effect, the
+      // night's beats, workouts, circadian) in the background, AFTER the
+      // publish: one serial warmer, off the UI isolate, never awaited here and
+      // never throwing into the derive path. A pass that computed nothing has
+      // nothing new to sign.
+      if (outcome.computed >= 1 && computedDays.isNotEmpty && !_disposed) {
+        unawaited(_warmer?.warmAfterPass(changedDays: computedDays));
+      }
       // Same signal, for the surfaces that can't listen: home/lock-screen
       // widget, Watch mirror, Siri intents (WidgetService.refresh).
       unawaited(WidgetService.refresh(repo));
@@ -4128,19 +4157,18 @@ class AppState extends ChangeNotifier {
   }
 
   /// Beat intervals of one live frame into the Live devices buffer (RAM only).
-  /// The newest beat is stamped now; earlier ones are placed back by the
-  /// intervals that followed them.
+  /// Each beat gets its own time, after the last one stored ([stampLiveBeats]);
+  /// stamped from arrival alone, a batched frame's earlier beats were refused
+  /// as late and the graph drew holes while beats were coming in.
+  DateTime? _lastRrAt;
   void _bufferLiveRr(String hex) {
     final rr = proto.realtimeRr(hex)?.rrMs;
     if (rr == null || rr.isEmpty) return;
-    var at = DateTime.now();
-    final stamped = <(DateTime, int)>[];
-    for (var i = rr.length - 1; i >= 0; i--) {
-      stamped.add((at, rr[i]));
-      at = at.subtract(Duration(milliseconds: rr[i]));
-    }
-    for (final (t, v) in stamped.reversed) {
-      liveStreams.add(LocalDb.kPrimaryDeviceId, 'rr', t, v.toDouble());
+    final at = stampLiveBeats(DateTime.now(), rr, after: _lastRrAt);
+    for (var i = 0; i < rr.length; i++) {
+      if (liveStreams.add(LocalDb.kPrimaryDeviceId, 'rr', at[i], rr[i].toDouble())) {
+        _lastRrAt = at[i];
+      }
     }
   }
 

@@ -10,6 +10,7 @@
 // Reads RAM only (invariant 14): nothing on this screen is stored.
 
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -85,6 +86,60 @@ List<double?> liveSeries(
     counts[i]++;
   }
   return [for (var i = 0; i < slots; i++) counts[i] == 0 ? null : sums[i] / counts[i]];
+}
+
+/// Streams with one sample per EVENT (a beat), not per tick. A fixed slot grid
+/// calls every empty slot a gap, which for events means normal beat-to-beat
+/// spacing; these are drawn by [liveEventSeries] instead.
+const Set<String> kLiveEventStreams = {'rr'};
+
+/// An event stream as the chart needs it. [drawn] is the line: each beat in its
+/// slot, the slots between two neighbouring beats filled by a straight join, and
+/// null only where beats really stopped or outside the first and last beat.
+/// [read] has a value only in a slot that holds a beat, so a scrub quotes beats
+/// and never a joined point.
+class LiveEventSeries {
+  const LiveEventSeries(this.drawn, this.read);
+  final List<double?> drawn, read;
+}
+
+/// A gap in an event stream: no beat for max(3 s, 3 x the median interval
+/// between the beats held). Anything shorter is ordinary spacing, however
+/// uneven. A silence this long is shown as a break, never joined across, and
+/// the last beat is not carried on to "now".
+LiveEventSeries liveEventSeries(
+  List<LiveSample> samples,
+  DateTime now,
+  Duration window, {
+  int slots = 60,
+}) {
+  final read = liveSeries(samples, now, window, slots: slots);
+  final drawn = List<double?>.of(read);
+  if (samples.length < 2) return LiveEventSeries(drawn, read);
+  final gaps = [
+    for (var i = 1; i < samples.length; i++)
+      samples[i].at.difference(samples[i - 1].at).inMicroseconds,
+  ]..sort();
+  final median = gaps[gaps.length ~/ 2];
+  final limit = math.max(3000000, 3 * median);
+  final startUs = now.subtract(window).microsecondsSinceEpoch;
+  final span = window.inMicroseconds;
+  int slotOf(LiveSample s) =>
+      ((s.at.microsecondsSinceEpoch - startUs) * slots ~/ span)
+          .clamp(0, slots - 1);
+  for (var i = 1; i < samples.length; i++) {
+    final a = samples[i - 1], b = samples[i];
+    final dt = b.at.difference(a.at).inMicroseconds;
+    if (dt > limit) continue;
+    final sa = slotOf(a), sb = slotOf(b);
+    for (var k = sa + 1; k < sb; k++) {
+      // Slot k's centre, on the straight line from beat a to beat b.
+      final centre = startUs + (2 * k + 1) * span ~/ (2 * slots);
+      final f = (centre - a.at.microsecondsSinceEpoch) / dt;
+      drawn[k] = a.value + (b.value - a.value) * f.clamp(0.0, 1.0);
+    }
+  }
+  return LiveEventSeries(drawn, read);
 }
 
 /// How many slots to split [window] into for [samples]: each slot is at least
@@ -354,7 +409,8 @@ class _StreamBlock extends StatelessWidget {
           label: liveStreamLabel(streamKey),
           samples: samples,
           now: now,
-          window: window);
+          window: window,
+          event: kLiveEventStreams.contains(streamKey));
     }
     // Nothing in the window is not a zero: say so rather than draw a line.
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -373,6 +429,7 @@ class LiveStreamChart extends StatelessWidget {
     required this.samples,
     required this.now,
     required this.window,
+    this.event = false,
   });
 
   final String label;
@@ -380,12 +437,18 @@ class LiveStreamChart extends StatelessWidget {
   final DateTime now;
   final Duration window;
 
+  /// One sample per event (a beat): drawn by [liveEventSeries], broken only
+  /// where beats really stopped.
+  final bool event;
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final latest = samples.last.value;
-    final slots = liveSlotsFor(samples, window);
-    final series = liveSeries(samples, now, window, slots: slots);
+    final ev = event ? liveEventSeries(samples, now, window) : null;
+    final slots = ev?.drawn.length ?? liveSlotsFor(samples, window);
+    final series = ev?.read ?? liveSeries(samples, now, window, slots: slots);
+    final line = ev?.drawn ?? series;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Expanded(child: Text(label, style: F.body.copyWith(color: p.ink))),
@@ -398,7 +461,9 @@ class LiveStreamChart extends StatelessWidget {
       // 72 pt is the trace alone: the key row sits beneath it.
       ChartScrub(
         label: label,
-        gaps: hasChartGaps([series]),
+        // An event line starts at its first beat and ends at its last: only a
+        // hole between two beats is "Not recorded".
+        gaps: event ? hasChartGaps([_between(line)]) : hasChartGaps([series]),
         time: (at) {
           final i = ChartScrub.slotAt(series.length, at);
           final ago = window.inMilliseconds * (series.length - 1 - i) ~/
@@ -408,7 +473,10 @@ class LiveStreamChart extends StatelessWidget {
         },
         keys: [
           // The stream's name is the heading above; the key says what a slot is.
-          ChartKey.slots('Reading (${liveSlotWidth(window, slots)} mean)',
+          ChartKey.slots(
+              event
+                  ? 'Beat'
+                  : 'Reading (${liveSlotWidth(window, slots)} mean)',
               p.on(C.blue), series,
               (i, v) => v.toStringAsFixed(v.abs() >= 100 ? 0 : 1)),
         ],
@@ -416,10 +484,16 @@ class LiveStreamChart extends StatelessWidget {
           height: 72,
           child: CustomPaint(
             size: Size.infinite,
-            painter: LineChart(series, p.on(C.blue), fill: false),
+            painter: LineChart(line, p.on(C.blue), fill: false),
           ),
         ),
       ),
     ]);
   }
+}
+
+/// [s] from its first value to its last (empty when it has none).
+List<double?> _between(List<double?> s) {
+  final first = s.indexWhere((v) => v != null);
+  return first < 0 ? const [] : s.sublist(first, s.lastIndexWhere((v) => v != null) + 1);
 }

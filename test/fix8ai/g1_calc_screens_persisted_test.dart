@@ -7,9 +7,11 @@
 // ASSUMED API: LastResultCache.clearMemory(), flush() and the table as in
 // g1_last_result_cache_persist_test.dart. What each screen persists is the
 // REPOSITORY-level JSON it builds from, not a widget object:
-//   MetricDetail      key 'metric_insights|<metric>'  getJournalInsights('90d')
-//   Wellness findings key 'wellness_insights...'      getJournalInsights('90d')
-//                                                     + getWeekdayEffect()
+//   MetricDetail      key 'journal_insights|90d'      getJournalInsights('90d')
+//   Wellness findings key 'journal_insights|90d'      getJournalInsights('90d')
+//                     + 'weekday_effect'              + getWeekdayEffect()
+// (8AG-perf P3: one key per artifact, shared by the screens that read it; was
+// 'metric_insights|<metric>', 'wellness_insights' and 'wellness_weekday'.)
 //   Beats             key 'beats|<day>...'            the corrected-RR read
 //                                                     (nn, rawBeats, cleanFraction)
 // The exact key suffixes and whether Wellness uses one row or two are the
@@ -110,7 +112,7 @@ void main() {
       await settle(t);
       await _restart(t);
 
-      final rows = await _rows(t, 'metric_insights');
+      final rows = await _rows(t, 'journal_insights');
       expect(rows, hasLength(1), reason: 'one row for this metric');
       expect(_anyPayloadHas(rows, 'first-run'), isTrue,
           reason: 'the repository map itself is what is stored');
@@ -132,7 +134,7 @@ void main() {
       await settle(t);
       expect(_label, findsNothing, reason: 'fresh result clears the label');
       await t.runAsync(() => LastResultCache.instance.flush());
-      final after = await _rows(t, 'metric_insights');
+      final after = await _rows(t, 'journal_insights');
       expect(_anyPayloadHas(after, 'second-run'), isTrue);
       expect(_anyPayloadHas(after, 'first-run'), isFalse,
           reason: 'the fresh result replaced the row');
@@ -146,7 +148,7 @@ void main() {
       await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
       await settle(t);
       await _restart(t);
-      expect(await _rows(t, 'metric_insights'), isEmpty);
+      expect(await _rows(t, 'journal_insights'), isEmpty);
 
       await t.pumpWidget(const SizedBox());
       repo
@@ -172,7 +174,7 @@ void main() {
       await t.pumpWidget(perfApp(app, const JournalFindings()));
       await settle(t);
       await _restart(t);
-      final rows = await _rows(t, 'wellness_insights');
+      final rows = await _rows(t, 'journal_insights');
       expect(rows, isNotEmpty);
       expect(_anyPayloadHas(rows, 'w-first'), isTrue);
 
@@ -189,7 +191,7 @@ void main() {
       await settle(t);
       expect(_label, findsNothing);
       await t.runAsync(() => LastResultCache.instance.flush());
-      final after = await _rows(t, 'wellness_insights');
+      final after = await _rows(t, 'journal_insights');
       expect(_anyPayloadHas(after, 'w-second'), isTrue);
       expect(_anyPayloadHas(after, 'w-first'), isFalse);
     });
@@ -202,7 +204,7 @@ void main() {
       await t.pumpWidget(perfApp(app, const JournalFindings()));
       await settle(t);
       await _restart(t);
-      expect(await _rows(t, 'wellness_insights'), isEmpty);
+      expect(await _rows(t, 'journal_insights'), isEmpty);
 
       await t.pumpWidget(const SizedBox());
       repo

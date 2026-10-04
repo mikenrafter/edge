@@ -352,7 +352,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 59;
+  static const int schemaVersion = 60;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1128,6 +1128,15 @@ class LocalDb {
           // moves. _repairOpenSchema re-runs it on every open.
           await _createLastResult(db);
         }
+        if (oldV < 60) {
+          // 8AG-perf P3: the signature of the inputs a stored result was
+          // computed from, so a result whose inputs have not moved is fresh.
+          // One nullable column through the one helper, no backfill (a NULL
+          // signature is never fresh, so an old row recomputes once): cheap
+          // under iOS's CPU watchdog (invariant 11). No kAlgoVersion bump:
+          // nothing derived moves. _repairOpenSchema re-runs it on every open.
+          await _addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1223,6 +1232,7 @@ class LocalDb {
     // a rebuilt table drops its triggers, this puts them back.
     await _createInputRev(db);
     await _createLastResult(db);
+    await _addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -1232,19 +1242,21 @@ class LocalDb {
   /// `last_result`: the repository-level JSON a computed-on-open screen built
   /// its last good view from, one row per key. `computed_at` is when that result
   /// was computed (epoch ms), never when it was written or read back.
+  /// `input_sig` is the signature of the inputs it was computed from (NULL when
+  /// none was given, and for every row written before P3).
   static Future<void> _createLastResult(Database db) => db.execute(
         'CREATE TABLE IF NOT EXISTS last_result ('
         'key TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, '
-        'payload_json TEXT NOT NULL)',
+        'payload_json TEXT NOT NULL, input_sig TEXT)',
       );
 
   /// One stored result, or null. A store error is the caller's to swallow: a
   /// missing result is a spinner, never a crash.
-  static Future<({int computedAt, String payload})?> lastResult(
+  static Future<({int computedAt, String payload, String? sig})?> lastResult(
       String key) async {
     final db = await instance;
     final rows = await db.query('last_result',
-        columns: ['computed_at', 'payload_json'],
+        columns: ['computed_at', 'payload_json', 'input_sig'],
         where: 'key = ?',
         whereArgs: [key],
         limit: 1);
@@ -1252,18 +1264,25 @@ class LocalDb {
     final at = rows.single['computed_at'];
     final json = rows.single['payload_json'];
     if (at is! int || json is! String) return null;
-    return (computedAt: at, payload: json);
+    final sig = rows.single['input_sig'];
+    return (computedAt: at, payload: json, sig: sig is String ? sig : null);
   }
 
   /// Replaces [key]'s row and drops the oldest rows (by `computed_at`) beyond
   /// [maxRows], in one transaction.
   static Future<void> putLastResult(
-      String key, int computedAt, String payload, int maxRows) async {
+      String key, int computedAt, String payload, int maxRows,
+      {String? sig}) async {
     final db = await instance;
     await db.transaction((txn) async {
       await txn.insert(
           'last_result',
-          {'key': key, 'computed_at': computedAt, 'payload_json': payload},
+          {
+            'key': key,
+            'computed_at': computedAt,
+            'payload_json': payload,
+            'input_sig': sig,
+          },
           conflictAlgorithm: ConflictAlgorithm.replace);
       await txn.rawDelete(
           'DELETE FROM last_result WHERE key NOT IN ('
@@ -1271,6 +1290,12 @@ class LocalDb {
           'LIMIT ?)',
           [maxRows]);
     });
+  }
+
+  /// Removes [key]'s row (none is fine).
+  static Future<void> deleteLastResult(String key) async {
+    final db = await instance;
+    await db.delete('last_result', where: 'key = ?', whereArgs: [key]);
   }
 
   static Future<void> clearLastResults() async {
@@ -10232,6 +10257,116 @@ class LocalDb {
     return out;
   }
 
+  // ── artifact input signatures (8AG-perf P3) ─────────────────────────────────
+  //
+  // The cheap reads an artifact's signature is built from: counts, maxima and
+  // single narrow rows, never a payload decode. `last_result` is deliberately
+  // not among them, so storing an artifact cannot invalidate its own signature.
+
+  /// `count:max(computed_at):max(day_id)` over the `day_result` rows from
+  /// [sinceDay] on (all of them when null). Any version counts: a re-derive
+  /// writes a new `computed_at` whichever row it replaces.
+  static Future<String> dayResultRev({String? sinceDay}) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT COUNT(*) AS n, MAX(computed_at) AS at, MAX(day_id) AS d '
+      'FROM day_result${sinceDay == null ? '' : ' WHERE day_id >= ?'}',
+      [?sinceDay],
+    );
+    final r = rows.first;
+    return '${r['n']}:${r['at'] ?? ''}:${r['d'] ?? ''}';
+  }
+
+  /// The two columns a day's calorie curve is rebuilt against, from the same
+  /// row [dayResult] serves and without its payload: the nocturnal resting HR
+  /// and the sleep window. Null when the day has no row.
+  static Future<({double? rhr, String? windowJson})?> dayCalorieInputs(
+      String day) async {
+    final db = await instance;
+    final rows = await db.query(
+      'day_result',
+      columns: ['rhr', 'window_json'],
+      where: 'day_id = ? AND algo_version <= ?',
+      whereArgs: [day, _servedAlgoCeiling],
+      orderBy: 'algo_version DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return (
+      rhr: (rows.first['rhr'] as num?)?.toDouble(),
+      windowJson: rows.first['window_json'] as String?,
+    );
+  }
+
+  /// When [day]'s newest `day_result` row was computed (epoch ms), or null.
+  static Future<int?> dayResultComputedAt(String day) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT MAX(computed_at) AS at FROM day_result WHERE day_id = ?',
+      [day],
+    );
+    return rows.isEmpty ? null : (rows.first['at'] as num?)?.toInt();
+  }
+
+  /// `count:max(updated_at)` of the `journal` rows and of the `journal_metric`
+  /// rows from [sinceDay] on (all when null): what the journal correlations
+  /// read. An edit moves the stamp, a delete moves the count.
+  static Future<String> journalInputRev({String? sinceDay}) async {
+    final db = await instance;
+    final where = sinceDay == null ? '' : ' WHERE date >= ?';
+    final args = [?sinceDay];
+    final j = (await db.rawQuery(
+      'SELECT COUNT(*) AS n, MAX(updated_at) AS at FROM journal$where',
+      args,
+    )).first;
+    final m = (await db.rawQuery(
+      'SELECT COUNT(*) AS n, MAX(updated_at) AS at FROM journal_metric$where',
+      args,
+    )).first;
+    return '${j['n']}:${j['at'] ?? ''}/${m['n']}:${m['at'] ?? ''}';
+  }
+
+  /// `updated_at` of the `baselines` row [key] (epoch ms), or null.
+  static Future<int?> baselineUpdatedAt(String key) async {
+    final db = await instance;
+    final rows = await db.query(
+      'baselines',
+      columns: ['updated_at'],
+      where: 'key = ?',
+      whereArgs: [key],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : (rows.first['updated_at'] as num?)?.toInt();
+  }
+
+  /// Every column of one `sessions` row that `getWorkout` shows or scores from,
+  /// joined into one string (the table has no `updated_at`, so the fields
+  /// themselves are the stamp), with the window's bounds apart so the caller can
+  /// name the days it spans. Null when there is no such session. The heavy
+  /// `trace_json` is left out; `trace_samples` stands for it.
+  static Future<({int? startTs, int? endTs, String rev})?> sessionRev(
+      String id) async {
+    final db = await instance;
+    final rows = await db.query(
+      'sessions',
+      columns: [
+        'start_ts', 'end_ts', 'status', 'type', 'calories', 'strain', 'max_hr',
+        'duration_min', 'steps', 'rpe', 'trace_samples', 'zone_min_json',
+        'avg_hr', 'hrr_bpm', 'vo2max_estimate', 'private', 'device_family',
+      ],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final r = rows.first;
+    return (
+      startTs: (r['start_ts'] as num?)?.toInt(),
+      endTs: (r['end_ts'] as num?)?.toInt(),
+      rev: r.values.map((v) => v ?? '').join(','),
+    );
+  }
+
   /// The fingerprint each day was last derived from, at [algoVersion]. A row
   /// written under another version is not returned, so a version bump makes
   /// every day look changed (which is exactly right: the code that reads it
@@ -11361,6 +11496,20 @@ class LocalDb {
       whereArgs: [fromTs, toTs],
       orderBy: 'start_ts DESC',
     );
+  }
+
+  /// Ids of the sessions that START in `[fromTs, toTs]`, newest first. No row
+  /// payload: the artifact warmer only needs to name them.
+  static Future<List<String>> sessionIdsInRange(int fromTs, int toTs) async {
+    final db = await instance;
+    final rows = await db.query(
+      'sessions',
+      columns: ['id'],
+      where: 'start_ts >= ? AND start_ts <= ?',
+      whereArgs: [fromTs, toTs],
+      orderBy: 'start_ts DESC',
+    );
+    return [for (final r in rows) r['id'] as String];
   }
 
   static Future<void> deleteSession(String id) async {

@@ -1,11 +1,10 @@
 // 8AF.6 C: the wiring behind the gesture cues (see gesture_cues_test.dart for
 // the cues themselves, played against the virtual MG band).
 //
-//  - The ECG tap session asks for a whole count response as ONE buzz call
-//    (the cues play start + follow-ups inside one queue job), not N separate
-//    one-pulse calls 1800 ms apart.
+//  - The ECG tap session asks for ONE follow-up cue per count increment (8AI.3:
+//    additive, one call each, never a recount of the pulses so far).
 //  - AppState._ecgTapBuzz stops building the fixed 300 ms per-tap BuzzSequence
-//    for a profiled band and hands the count to the cues; the failure buzz is
+//    for a profiled band and hands the cue to GestureCues; the failure buzz is
 //    still the existing long buzz (not a system pattern); the action-done ack
 //    goes through ackTap with the confirm cue.
 //
@@ -105,21 +104,20 @@ class _Rig {
 }
 
 void main() {
-  group('the ECG session asks for a response, not N separate pulses', () {
-    test('a count of 3 is one buzz call carrying 3 pulses', () async {
+  group('the ECG session asks for one follow-up per increment', () {
+    test('a count of 3 is one follow-up call of one pulse', () async {
       final r = _Rig(max: 3);
       await r.fingerOn();
       expect(r.results, [(3, null)]);
-      expect(r.calls, [3],
-          reason: 'start + 2 follow-ups are chained in ONE queue job by the '
-              'cues, so the session must not split them into one-pulse calls');
+      expect(r.calls, [1],
+          reason: 'one increment (2 to 3), one follow-up; never a recount');
     });
 
-    test('a count of 2 is one buzz call carrying 2 pulses', () async {
+    test('a count of 2 has no increment, so no follow-up call', () async {
       final r = _Rig(max: 2);
       await r.fingerOn();
       expect(r.results, [(2, null)]);
-      expect(r.calls, [2]);
+      expect(r.calls, isEmpty);
     });
   });
 
@@ -133,14 +131,20 @@ void main() {
       expect(body, isNot(contains('i * 300')),
           reason: 'a profiled band plays compiled cues; gen4 is the cues\' '
               'own fallback');
-      expect(body, contains('gestureCues'));
+      expect(body, contains('gestureCues.followUp'));
     });
 
-    test('the count buzz is still a dispatcher delivery in the band queue',
-        () {
-      final body = codeOnly(bodyOf(src, 'Future<bool> _ecgTapBuzz('));
+    test('every gesture cue is a dispatcher delivery in the band queue', () {
+      final body = codeOnly(bodyOf(src, 'Future<bool> _gestureCue('));
       expect(body, contains('alertDispatcher.dispatch('));
       expect(body, contains('haptics.asLabWork('));
+      for (final f in [
+        'Future<bool> _ecgTapStartBuzz(',
+        'Future<bool> _ecgTapBuzz(',
+        'Future<bool> _ecgTapConfirmBuzz(',
+      ]) {
+        expect(codeOnly(bodyOf(src, f)), contains('_gestureCue('), reason: f);
+      }
     });
 
     test('the failure buzz is unchanged: the existing long buzz', () {

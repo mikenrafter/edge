@@ -4,26 +4,26 @@
 // live double tap it: starts the ECG stream, WAITS until real R17 packets are
 // flowing ([EcgStreamReadiness]) and the sensor has settled ([sensorSettle]),
 // opens the first touch window there, turns each R17 packet into 100 Hz samples
-// on the stream's own clock, paces every buzz request so the band plays it
-// ([buzzQuietGap]), and stops the stream when the gesture ends. The one buzz
-// before the first window is decided is the start cue ([startBuzz], 8AI): sent
-// the moment the tap is accepted and never waited for, so the wearer's hand is
-// on the sensor by the time the stream runs (a touch that comes late counts as
-// a double tap, not a triple). After it the first buzz is the count so far
-// (three for a finger already on the sensor, two to end at two); the count is
-// always a whole answer on its own, so it does not drop its opening cue. No sample is persisted
-// (invariant 14): the packets are consumed and dropped here. The one thing kept
-// is the session's strap-clock INTERVAL (see [EcgGestureRecord]): turning the
-// stream on makes the band save raw ECG that ordinary history sync delivers
-// later, and the receiving side needs the interval to label those packets as
-// gesture contact (8N), never a reading.
+// on the stream's own clock, asks for one cue per decision, and stops the stream
+// when the gesture ends. The cues are additive: the start cue ([startBuzz],
+// 8AI) goes out the moment the tap is accepted and is never waited for, so the
+// wearer's hand is on the sensor by the time the stream runs (a touch that
+// comes late counts as a double tap, not a triple); then ONE follow-up
+// ([buzz]) per count increment, as soon as it is seen; then the confirm
+// ([confirmBuzz]) when the gesture ends counted. Each is its own call, in
+// order, and the band queue spaces them: the session adds no wait of its own.
+// No sample is persisted (invariant 14): the packets are consumed and dropped
+// here. The one thing kept is the session's strap-clock INTERVAL (see
+// [EcgGestureRecord]): turning the stream on makes the band save raw ECG that
+// ordinary history sync delivers later, and the receiving side needs the
+// interval to label those packets as gesture contact (8N), never a reading.
 //
 // Time. Every touch decision is on the stream's own (strap) sample clock, and
 // only on it: a packet's strap time is its NEWEST sample and its samples run
 // back from there (see PACKET TIME in ecg_stream_readiness.dart). The first
 // window opens at a sample time ([sensorSettle] after the stream's first
 // sample), not at a phone time mapped across. The phone clock is only used to
-// notice a stalled stream and to pace buzzes. The stream is called steady only
+// notice a stalled stream. The stream is called steady only
 // when the sample clock is continuous and in step with the wall clock
 // ([EcgStreamReadiness]). Missing samples are the counter's discontinuity
 // policy (see ecg_tap_counter.dart). The trace prints, per packet, where its
@@ -57,7 +57,7 @@ import 'ecg_stream_readiness.dart';
 import 'ecg_tap_counter.dart';
 import 'strap_event.dart';
 
-/// The band buzz for each counter step: band-only, live-only, a few seconds of
+/// The band buzz for each count step: band-only, live-only, a few seconds of
 /// life, like the tap acknowledgement.
 const AlertRule kEcgTapRule = AlertRule(
   id: 'gesture_ecg_tap',
@@ -107,6 +107,7 @@ class EcgTapSession {
     required this.onFinished,
     this.failBuzz,
     this.startBuzz,
+    this.confirmBuzz,
     this.onStarted,
     this.recordSession,
     this.onPacket,
@@ -123,9 +124,6 @@ class EcgTapSession {
     this.buzzTimeout = const Duration(seconds: 15),
     this.sensorSettle = const Duration(milliseconds: 2500),
     this.sensorReacquire = const Duration(milliseconds: 1500),
-    this.buzzQuietGap = const Duration(milliseconds: 1800),
-    this.maxPulsesPerBurst = 5,
-    this.pulsesPerBurst,
     Duration Function()? postRoll,
     Future<void> Function(Duration)? wait,
   })  : _now = now ?? DateTime.now,
@@ -142,10 +140,17 @@ class EcgTapSession {
   /// Whether the stream is still up (false after a link drop or timeout).
   final bool Function() isStreamAlive;
 
-  /// Ask the band to buzz [pulses] times for [eventId], through AlertDispatcher.
+  /// Ask the band for ONE follow-up cue for [eventId], through AlertDispatcher:
+  /// called once per count increment (3, 4, 5), never for the opening count of
+  /// 2. [pulses] is always 1 (an increment is one follow-up, not a recount).
   /// True when the buzz was WRITTEN to the band (the band's reply is not
   /// awaited), false when it could not be.
   final Future<bool> Function(int pulses, String eventId) buzz;
+
+  /// The confirm cue, through AlertDispatcher: called once when the gesture
+  /// ends counted, after the follow-up it closes, with the event id
+  /// `<gesture id>:ecg:confirm`. Null: no confirm.
+  final Future<bool> Function(String eventId)? confirmBuzz;
 
   final int Function() maxTaps;
   final EcgTapThresholds Function() thresholds;
@@ -239,36 +244,11 @@ class EcgTapSession {
   /// that depends on the lift.
   final Duration sensorReacquire;
 
-  /// The most pulses sent in one buzz call. A count is one call (8AF.6): the
-  /// gesture cues play the start cue and a follow-up cue per extra pulse as
-  /// ONE job of the band queue, which writes each command only after the band
-  /// reports the one before it ended, so a second command is never written
-  /// while the band still plays (the 2026-10-02 lab logs: such a command is
-  /// swallowed). Before that a count was separate calls, one pulse each,
-  /// [buzzQuietGap] apart (8W). The touch counter never counts above 5.
-  final int maxPulsesPerBurst;
-
-  /// Read at every count buzz: the pulses one call may carry right now, or null
-  /// for [maxPulsesPerBurst]. A band with no haptic profile (a 4.0) answers 1,
-  /// keeping its old pacing: one pulse per call, [buzzQuietGap] apart. Only a
-  /// band with the vocabulary plays a whole count as one call.
-  final int? Function()? pulsesPerBurst;
-
   /// Lab only: how long to keep the stream on after the gesture ended, so the
   /// trace shows what the sensor did next (a re-touch that came too late, for
   /// one). The result is reported at once; only the stop waits. Zero outside
   /// the lab.
   final Duration Function() _postRoll;
-
-  /// The quiet time after one burst finishes writing before the next may be
-  /// asked for. Measured, not specified: in the 2026-10-02 lab logs the band
-  /// plays one command for 1.1-1.5 s (event 60 to event 100). A command
-  /// written inside that time is swallowed (reply "pending", not played), and
-  /// the band then ignores the next command, with no reply, for about 1.0-1.3
-  /// s. A command written after the 100 always plays. 1.8 s after the last
-  /// write puts the next command past both the play and the ignore window.
-  /// docs/hardware/whoop-mg-haptics-and-ecg.md keeps the evidence.
-  final Duration buzzQuietGap;
 
   final Future<void> Function(Duration) _wait;
 
@@ -294,14 +274,10 @@ class EcgTapSession {
   Duration? _lastEnd;
   int _packets = 0;
   int _buzzes = 0;
-  // Packet bursts can request several confirmations at once. Preserve their
-  // order across session cleanup, including the final touch's feedback.
+  // Cues are requested in the order they are decided, one call at a time, and
+  // that order survives session cleanup (the final follow-up and the confirm
+  // are still in flight when the gesture ends).
   Future<void> _buzzTail = Future<void>.value();
-
-  /// No buzz is asked for before this ([buzzQuietGap] after the last one
-  /// finished writing). Kept across gestures: the band does not care which
-  /// gesture a buzz belongs to.
-  DateTime? _quietUntil;
 
   bool _postRolling = false;
   int _postPackets = 0;
@@ -357,8 +333,8 @@ class EcgTapSession {
   }
 
   /// The start cue, sent without waiting: a throw, a late failure and a "not
-  /// written" are logged and nothing more. When it has been written the band is
-  /// quiet for [buzzQuietGap] before a count buzz asks for it.
+  /// written" are logged and nothing more. The band queue holds the cues that
+  /// follow it until it has played.
   void _fireCue(StrapEvent tap, Future<bool> Function(String eventId)? send) {
     if (send == null) return;
     try {
@@ -366,7 +342,6 @@ class EcgTapSession {
         step?.call(ok
             ? 'Start buzz written.'
             : 'Start buzz could not be written.');
-        if (ok) _quietUntil = _now().add(buzzQuietGap);
       }, onError: (Object e) => step?.call('Start buzz failed: $e'));
     } catch (e) {
       step?.call('Start buzz failed: $e');
@@ -692,12 +667,23 @@ class EcgTapSession {
   void _handle(List<EcgTapOutput> outs) {
     for (final o in outs) {
       switch (o) {
-        case EcgTapBuzz(:final at, :final pulses):
+        case EcgTapBuzz(:final at):
           step?.call(
-            'Buzz x$pulses requested at sample time '
-            '${at.inMilliseconds} ms.',
+            'Follow-up buzz requested at sample time ${at.inMilliseconds} ms.',
           );
-          unawaited(_sendBuzz(pulses));
+          unawaited(_sendCue(
+            'Follow-up buzz',
+            (id) => buzz(1, id),
+            '${_buzzes++}',
+          ));
+        case EcgTapConfirm(:final at):
+          step?.call(
+            'Confirm buzz requested at sample time ${at.inMilliseconds} ms.',
+          );
+          final confirm = confirmBuzz;
+          if (confirm != null) {
+            unawaited(_sendCue('Confirm buzz', confirm, 'confirm'));
+          }
         case EcgTapDone(:final at, :final count):
           step?.call(
             'Final count $count at sample time ${at.inMilliseconds} ms.',
@@ -709,55 +695,31 @@ class EcgTapSession {
     }
   }
 
-  Future<void> _sendBuzz(int pulses) {
+  /// One cue, in order behind the cues before it: [send] with this gesture's
+  /// event id `<base>:ecg:<suffix>`. Not written, a throw and a hang are logged
+  /// and end only this cue; the ones after it still go out.
+  Future<void> _sendCue(
+    String what,
+    Future<bool> Function(String eventId) send,
+    String suffix,
+  ) {
     final tap = _tap;
     if (tap == null) return Future<void>.value();
-    final id = '${_eventBase(tap)}:ecg:${_buzzes++}';
+    final id = '${_eventBase(tap)}:ecg:$suffix';
     final requested = _now();
-    _buzzTail = _buzzTail
-        .then((_) => _deliverBuzz(pulses, id, requested))
-        .catchError((Object _) {});
-    return _buzzTail;
-  }
-
-  /// One count buzz, in order: bursts of at most [maxPulsesPerBurst] pulses
-  /// (one command each by default),
-  /// each after the band's quiet gap. A burst that could not be written is
-  /// logged and ends the buzz (the count it reports already stands), and the
-  /// gesture still ends (or carries on) on its own clock.
-  Future<void> _deliverBuzz(int pulses, String id, DateTime requested) async {
-    final limit = pulsesPerBurst?.call() ?? maxPulsesPerBurst;
-    final per = limit < 1 ? 1 : limit;
-    final bursts = (pulses + per - 1) ~/ per;
-    var sent = 0;
-    for (var k = 0; k < bursts; k++) {
-      final n = pulses - sent < per ? pulses - sent : per;
-      final what = bursts == 1
-          ? 'Buzz x$pulses'
-          : 'Buzz x$pulses, ${n == 1 ? 'pulse ${sent + 1}' : 'pulses ${sent + 1}–${sent + n}'}';
-      final quiet = _quietUntil;
-      final now = _now();
-      if (quiet != null && quiet.isAfter(now)) {
-        final w = quiet.difference(now);
-        step?.call('$what waits ${w.inMilliseconds} ms: the band is still '
-            'busy with the last buzz.');
-        await _wait(w);
-      }
+    _buzzTail = _buzzTail.then((_) async {
       var ok = false;
       try {
-        ok = await buzz(n, k == 0 ? id : '$id:b$k').timeout(buzzTimeout);
+        ok = await send(id).timeout(buzzTimeout);
       } catch (_) {
         ok = false;
       }
-      final done = _now();
-      _quietUntil = done.add(buzzQuietGap);
       step?.call(
         '$what ${ok ? 'written' : 'could not be written'}, '
-        '${done.difference(requested).inMilliseconds} ms after the request.',
+        '${_now().difference(requested).inMilliseconds} ms after the request.',
       );
-      if (!ok) return;
-      sent += n;
-    }
+    }).catchError((Object _) {});
+    return _buzzTail;
   }
 
   /// End the gesture. Order matters (8N): the flags reset first (the next tap
@@ -865,8 +827,7 @@ class EcgTapSession {
     return fallback;
   }
 
-  /// The failure buzz, queued behind any count buzz and after the band's quiet
-  /// gap. A throw, a refusal or a hang is logged and ends there.
+  /// The failure buzz, queued behind any count buzz. A throw, a refusal or a hang is logged and ends there.
   void _sendFailBuzz() {
     final tap = _tap, fb = failBuzz;
     if (tap == null || fb == null) return;
@@ -875,21 +836,12 @@ class EcgTapSession {
         : '${tap.identity}:${tap.receivedAt.microsecondsSinceEpoch}';
     final id = '$base:failed';
     _buzzTail = _buzzTail.then((_) async {
-      final quiet = _quietUntil;
-      final now = _now();
-      if (quiet != null && quiet.isAfter(now)) {
-        final w = quiet.difference(now);
-        step?.call('The failure buzz waits ${w.inMilliseconds} ms: the band is '
-            'still busy with the last buzz.');
-        await _wait(w);
-      }
       var ok = false;
       try {
         ok = await fb(id).timeout(buzzTimeout);
       } catch (_) {
         ok = false;
       }
-      _quietUntil = _now().add(buzzQuietGap);
       step?.call('The failure buzz ${ok ? 'written' : 'could not be written'}.');
     }).catchError((Object _) {});
   }

@@ -105,3 +105,74 @@ days whose fingerprint has not moved; heavy keeps `changedOnly: false`. A light 
 that finds nothing to do stops before the post-derive work, as a manual sync does. Edits
 that are not decoded input (sleep override, nap edit, phone steps) recompute through
 `_reanalyzeForOverride` (`force: true`), which `changedOnly` never skips.
+
+## P3 artifacts
+
+A slow screen read is an artifact: its result is stored in `last_result` under a key,
+together with `input_sig`, the signature of the inputs it was computed from (schema 60,
+nullable, NULL for every older row). A stored row whose signature equals the current one is
+fresh: the screen shows it with no recompute and no "As of" label. A stale or missing
+signature behaves as in P1b: show the stored result under "As of", recompute once, store
+the new result under the signature that was read first.
+
+Keys and what moves their signature (`LocalRepositoryImpl.artifactSignature`, a few indexed
+reads, never a payload decode; it always starts with `kAlgoVersion|`; null when nothing can
+be keyed):
+
+- `journal_insights|90d`: day results and journal rows in the window, and the window start.
+- `weekday_effect`: the day results.
+- `circadian`: today's label and the cross-day baseline's `updated_at`.
+- `beats|<night day>`: the decoded fingerprint of the night's day and the evening before,
+  and the day's `day_result.computed_at` (the sleep window).
+- `workout|<id>`: the session's revision, the decoded fingerprint of every day the window
+  (plus ~205 s of recovery) touches, and a stamp of the profile.
+- `kcal_minutes|<day>`: the day's decoded fingerprint and the calorie anchors of the
+  profile. Null when the day has no decoded raw.
+
+`computeArtifact(key)` is the producer: the same map the matching reader returns, with the
+heavy part (RR correction, rank statistics, permutation test, substrate load) off the UI
+isolate. Screens and the warmer both go through it and `LastResultCache.loadArtifact`, so a
+warmed row and an on-open row are one thing.
+
+The warmer (`lib/state/artifact_warmer.dart`) runs after a derive pass that computed days,
+never after one that computed none. It walks the candidate keys one at a time (the five
+readers, the newest night, the workouts that start on a changed day, and the calorie curves
+below), skips every key whose stored signature is current, stores the rest, and logs and
+skips a failure. It holds while a workout, breathing session or ECG capture is live or the
+derive scheduler holds: the rest of the pass is dropped, not queued. Dispose cancels it.
+
+### Intraday calories (`kcal_minutes|<day>`)
+
+`Calories.minuteEnergy` is `dailyEnergy`'s computation, one record per minute. Edge now
+persists it per day. The payload:
+
+    {v: 1, basal_kcal_per_min, covered_minutes,
+     minutes: [{t, total, active, basal, source}]}
+
+`t` is the epoch second of the minute, ascending, one record per minute from the day's first
+to its last wake minute. `source` is `hr`, `cadence` or `rest`. A minute nobody measured (a
+gap in the data, or inside the sleep window) has every figure null: gaps stay gaps and are
+never interpolated. `basal_kcal_per_min * 1440` is the day's basal and `total = basal +
+active` on a covered minute.
+
+The minutes are built from the inputs the day's calorie pass uses (`lib/compute/
+kcal_minutes.dart`): the per-minute mean of the seconds with HR above zero, minus the sleep
+window; `estimatedMaxHr(age, family)`; the nocturnal resting HR or the one the user entered;
+the credited step spans for cadence. A gap minute is passed with HR 0 and its cadence
+masked, because `dailyEnergy` never sees it. So the sum of `active` is the day's stored
+`calories` (without the workout-gap credit, which has no minute). No calorie anchors, no
+height, no resting HR, no wake HR or no motion minutes: no series, and no row.
+
+Where it is built. For a day derived from here on, inside the offloaded second half of the
+derive (`_computeDayBlocks`, in the isolate), and stored after the day's own row commits,
+under the signature of the fingerprint read before the substrate was. A failure is logged
+and never fails the derive. A re-derive replaces the row; a day whose raw exists but whose
+curve is now null (say the height was removed) loses its row, so a curve never outlives the
+figure it explains. For a recent day derived before P3, the warmer builds it from the
+substrate (`DerivationEngine.kcalMinutesForStoredDay`: the stored day's sleep window and
+resting HR, the same loader, `Isolate.run`) while raw lives, about `rawRetentionDays`. A day
+past retention has no raw, no signature and no curve.
+
+Reader: `LocalRepository.getDayCalorieCurve(day)` returns `{minutes: [{t, total, active,
+basal}], basal_kcal_per_min, covered_minutes, computed_at}` or null. It reads the row. No UI
+uses it yet (the Explorer will). `kAlgoVersion` is not bumped: no existing output changed.

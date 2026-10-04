@@ -39,10 +39,13 @@ gone.
   the Storage size was already in Settings > Data & privacy.
 - Settings is grouped by task, in this order: You & preferences, Hardware,
   Alerts, Data & privacy, Community, Connections, About, and Developer
-  (developer mode only). Reset all data stays last. (8AI: You & preferences
+  (developer mode only). (8AI: You & preferences
   moved first, Community moved down to sit above Connections, and Band became
   Hardware. Hardware keeps the saved fold id `settings_band`, so nobody's
   remembered state is lost.)
+- 8AI.2 moved Reset all data out of Settings (it was the last row) into Your data >
+  Advanced, after Rebuild all history. One home; the confirmation is unchanged.
+  Settings now ends with its last group.
 - 8AI also moved "Look barcodes up online" from Data & privacy into Connections,
   and removed the Steps row from Settings: counting steps from the phone has one
   door, the phone's row in My devices.

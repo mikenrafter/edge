@@ -170,31 +170,20 @@ class ReplayResult {
   ReplayResult(this.steps, this.buzzes, this.results);
   final List<String> steps;
 
-  /// Pulses of every buzz call, in order (one command per pulse by default).
+  /// Pulses of every follow-up buzz call, in order (always 1).
   final List<int> buzzes;
   final List<(int?, String?)> results;
 
   /// The count decided, or null when the trace ended first.
   int? get count => results.isEmpty ? null : results.single.$1;
 
-  /// Taps counted so far, decided or not: 3 once the three-pulse buzz was
-  /// asked for, plus one per later one-pulse buzz that is not the final
-  /// confirmation (which shares its sample time with the "Final count" line).
+  /// Taps counted so far, decided or not: the opening 2, plus one per
+  /// follow-up buzz asked for (one per count increment).
   int get counted {
     final decided = count;
     if (decided != null) return decided;
-    final asked = <(int, String)>[];
-    String? finalAt;
-    for (final s in steps) {
-      final b = RegExp(r'^Buzz x(\d+) requested at sample time (\d+) ms')
-          .firstMatch(s);
-      if (b != null) asked.add((int.parse(b.group(1)!), b.group(2)!));
-      final f = RegExp(r'^Final count \d+ at sample time (\d+) ms').firstMatch(s);
-      if (f != null) finalAt = f.group(1);
-    }
-    if (asked.isEmpty || asked.first.$1 != 3) return 2;
-    return 3 +
-        asked.skip(1).where((a) => a.$1 == 1 && a.$2 != finalAt).length;
+    return 2 +
+        steps.where((s) => s.startsWith('Follow-up buzz requested')).length;
   }
 }
 
@@ -213,9 +202,6 @@ Future<ReplayResult> replayTrace(
   final results = <(int?, String?)>[];
   var now = packets.first.receivedAt.subtract(tapLead);
   final s = EcgTapSession(
-    // The pacing rig: one pulse per call, as 8W measured the band (a count is
-    // one call by default since 8AF.6).
-    maxPulsesPerBurst: 1,
     beginStream: () async => true,
     endStream: () async {},
     isStreamAlive: () => true,

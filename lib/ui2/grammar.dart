@@ -1246,6 +1246,26 @@ class TrendCard extends StatelessWidget {
         ),
       ],
     );
+    // Whether value, a sliver of caption and the change share one line. When
+    // they do not, the change restacks (the Wrap below) rather than the value
+    // giving way: the hero number is never the part that is cut.
+    final scaler = MediaQuery.textScalerOf(c);
+    double width(String t, TextStyle st) => (TextPainter(
+            text: TextSpan(text: t, style: st),
+            textDirection: TextDirection.ltr,
+            textScaler: scaler,
+            maxLines: 1)
+          ..layout())
+        .width;
+    final changeStyle = F.cap.copyWith(fontWeight: FontWeight.w600);
+    bool oneRow(double room) =>
+        width(value, F.n34) +
+            S.x1 +
+            math.min(width(unit, F.cap), 72) +
+            S.x2 +
+            (j == null ? 0 : 14 + S.x1) +
+            width(delta, changeStyle) <=
+        room;
     return Surface(
       onTap: onTap,
       semanticLabel:
@@ -1260,8 +1280,9 @@ class TrendCard extends StatelessWidget {
           // to pass on — pushed the delta and its arrow clean off the card: 202 px
           // at 2×, 458 at 3×. Above the restack point the change moves to its own
           // run rather than off the edge.
-          if (bigText(c))
-            Wrap(
+          LayoutBuilder(
+            builder: (lc, box) => bigText(c) || !oneRow(box.maxWidth)
+            ? Wrap(
               crossAxisAlignment: WrapCrossAlignment.end,
               spacing: S.x2,
               runSpacing: S.x1,
@@ -1271,27 +1292,35 @@ class TrendCard extends StatelessWidget {
                 change,
               ],
             )
-          else
-            Row(
+          : Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Flexible(
+                // The value and the change take the room they need and the
+                // caption takes what is left, so on a narrow card it is the
+                // caption that wraps or shortens. The value used to be the
+                // flexible one: "Time asleep" beside "4h 22m" and a delta cut
+                // the hero to "4h 2…" at 360 pt.
+                Text(
+                  value,
+                  style: F.n34.copyWith(color: p.ink),
+                  maxLines: 1,
+                  softWrap: false,
+                ),
+                const SizedBox(width: S.x1),
+                // `unit` takes the remainder and left-aligns in it, which is
+                // also what keeps the change flush right (a Spacer next to a
+                // flexible unit split the row 50/50 and shortened a long
+                // reading with empty space beside it).
+                Expanded(
                   child: Text(
-                    value,
-                    style: F.n34.copyWith(color: p.ink),
-                    maxLines: 1,
+                    unit,
+                    style: F.cap.copyWith(color: p.ink3),
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(width: S.x1),
-                // `unit` used to be Expanded purely to shove the delta
-                // rightwards. That made it a flex PEER of the value, so the two
-                // split the row 50/50 and a long reading ellipsised at half
-                // width with empty space beside it. A Spacer does the shoving
-                // and the unit goes back to its own size.
-                Text(unit, style: F.cap.copyWith(color: p.ink3)),
-                const Spacer(),
+                const SizedBox(width: S.x2),
                 if (j != null) ...[
                   Icon(
                     up ? LucideIcons.arrowUpRight : LucideIcons.arrowDownRight,
@@ -1309,6 +1338,7 @@ class TrendCard extends StatelessWidget {
                 ),
               ],
             ),
+          ),
           const SizedBox(height: S.x1),
           Text(window, style: F.over.copyWith(color: p.ink3)),
           const SizedBox(height: S.x4),

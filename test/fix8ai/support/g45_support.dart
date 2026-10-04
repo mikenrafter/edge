@@ -37,9 +37,11 @@ const List<String> kPresetNames = [
 ];
 
 /// The alert rules that have no built-in pattern today (alarms and wake play
-/// fixed plans in code); every other rule in the registry is a slot with a
-/// default pattern.
+/// fixed plans in code; 'gesture' is not an alert slot since 8AI.3, its cues
+/// are the three gesture slots); every other rule in the registry is a slot
+/// with a default pattern.
 const Set<String> kRulesWithoutDefault = {
+  'gesture',
   'alarm',
   'nativeAlarm',
   'wake',

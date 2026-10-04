@@ -2,19 +2,20 @@
 // virtual MG band and the real HapticsService (as test/haptics/
 // haptics_service_test.dart and haptic_play_start_test.dart wire it).
 //
-// Spec C: the FIRST buzz of a response is gesture.start (today's pair), every
-// later buzz of the same response is gesture.followUp (one fastest single,
-// buzz14), chained with the fastest gap (0 ms) in ONE queue job; the final
-// "action done" ack is gesture.confirm (buzz47). A user-customised built-in is
-// what plays. gen4 (no profile) keeps today's per-tap path.
+// Spec C: start() is gesture.start (today's pair), followUp() is
+// gesture.followUp (one fastest single, buzz14), and the final "action done"
+// ack is gesture.confirm (buzz47). Since 8AI.3 each is its own queue job and a
+// gesture is the additive sequence start, follow-up per increment, confirm
+// (test/fix8ai/g8_cue_sequence_test.dart pins the sequence). A user-customised
+// built-in is what plays. gen4 (no profile) plays one plain pulse per cue.
 //
-// CONTRACT these tests pin that the spec leaves open (a new file,
-// lib/haptics/gesture_cues.dart):
+// CONTRACT these tests pin (lib/haptics/gesture_cues.dart):
 //
 //   GestureCues({required HapticsService haptics,
 //                BuzzSequence? Function(String systemKey)? patternFor})
-//   Future<BuzzDelivery> response(int pulses)  // start + (pulses - 1) follow-ups
-//   Future<BuzzDelivery> confirm()             // the action-done ack
+//   Future<BuzzDelivery> start()      // the gesture began
+//   Future<BuzzDelivery> followUp()   // one count increment
+//   Future<BuzzDelivery> confirm()    // the gesture ended / the action-done ack
 //
 // [patternFor] is how the system pattern the wearer customised reaches it (the
 // keys are the spec's 'gesture.start' / 'gesture.followUp' / 'gesture.confirm');
@@ -102,27 +103,28 @@ StrapEvent _tap() {
 }
 
 void main() {
-  group('a response on the MG: start, then single follow-ups', () {
-    test('a count of 1 is just the opening cue: the pair, one command', () {
+  group('the cues on the MG: start, then single follow-ups', () {
+    test('start() is the opening cue: the pair, one command', () {
       fakeAsync((async) {
         final (band, svc) = _rig();
         final cues = GestureCues(haptics: svc);
         BuzzDelivery? done;
-        cues.response(1).then((v) => done = v);
+        cues.start().then((v) => done = v);
         async.elapse(const Duration(seconds: 20));
         expect(done, BuzzDelivery.complete);
         expect(_cmds(band), ['[47, 152] x1']);
       });
     });
 
-    test('a count of 3 is the pair, then two single buzz14s', () {
+    test('start, then two follow-ups are the pair, then two single buzz14s',
+        () {
       fakeAsync((async) {
         final (band, svc) = _rig();
         final cues = GestureCues(haptics: svc);
-        BuzzDelivery? done;
-        cues.response(3).then((v) => done = v);
+        cues.start();
+        cues.followUp();
+        cues.followUp();
         async.elapse(const Duration(seconds: 30));
-        expect(done, BuzzDelivery.complete);
         expect(_cmds(band), ['[47, 152] x1', '[14] x1', '[14] x1'],
             reason: 'the double is only the opening cue; the rest are single');
         _expectNoOverlap(band);
@@ -130,14 +132,15 @@ void main() {
       });
     });
 
-    test('a count of 2 is the pair and one follow-up', () {
+    test('each cue is its own queue job', () {
       fakeAsync((async) {
-        final (band, svc) = _rig();
-        GestureCues(haptics: svc).response(2);
-        async.elapse(const Duration(seconds: 30));
-        expect(_cmds(band), ['[47, 152] x1', '[14] x1']);
-        _expectNoOverlap(band);
-        _expectZeroGap(band);
+        final (_, svc) = _rig();
+        final cues = GestureCues(haptics: svc);
+        cues.start();
+        cues.followUp();
+        cues.followUp();
+        async.elapse(const Duration(milliseconds: 40));
+        expect(svc.pending, 3, reason: 'one job per cue, none merged');
       });
     });
 
@@ -152,37 +155,38 @@ void main() {
             : a.unitsMin.compareTo(b.unitsMin));
       fakeAsync((async) {
         final (band, svc) = _rig();
-        GestureCues(haptics: svc).response(2);
+        GestureCues(haptics: svc).followUp();
         async.elapse(const Duration(seconds: 30));
-        expect(band.writes[1].effects, fastest.first.effects);
-        expect(band.writes[1].loop, fastest.first.loop);
+        expect(band.writes[0].effects, fastest.first.effects);
+        expect(band.writes[0].loop, fastest.first.loop);
       });
     });
 
-    test('the whole response is ONE queue job: a job queued behind it waits '
-        'for the last follow-up', () {
+    test('a job queued behind a cue waits for it', () {
       fakeAsync((async) {
         final (band, svc) = _rig();
         final cues = GestureCues(haptics: svc);
-        cues.response(3);
+        cues.followUp();
         async.elapse(const Duration(milliseconds: 40));
-        expect(svc.pending, 1, reason: 'one job, not one per buzz');
         var seen = -1;
         svc.runJob(1, (job) async {
           seen = band.writes.length;
           return BuzzDelivery.complete;
         });
         async.elapse(const Duration(seconds: 30));
-        expect(seen, 3,
-            reason: 'nothing else may write between the cues of one response');
+        expect(seen, 1,
+            reason: 'nothing else may write while a cue of the gesture plays');
       });
     });
 
-    test('a count of 3 spends three commands of the band\'s rolling limit',
-        () {
+    test('start and two follow-ups spend three commands of the band\'s '
+        'rolling limit', () {
       fakeAsync((async) {
         final (_, svc) = _rig();
-        GestureCues(haptics: svc).response(3);
+        final cues = GestureCues(haptics: svc);
+        cues.start();
+        cues.followUp();
+        cues.followUp();
         async.elapse(const Duration(seconds: 30));
         expect(svc.commandsLeft, 27);
       });
@@ -291,7 +295,9 @@ void main() {
           ]),
         };
         final cues = GestureCues(haptics: svc, patternFor: (k) => stored[k]);
-        cues.response(3);
+        cues.start();
+        cues.followUp();
+        cues.followUp();
         async.elapse(const Duration(seconds: 30));
         expect(_cmds(band), ['[47] x3', '[47] x1', '[47] x1']);
         _expectNoOverlap(band);
@@ -323,7 +329,8 @@ void main() {
                 ])
               : null,
         );
-        cues.response(2);
+        cues.start();
+        cues.followUp();
         async.elapse(const Duration(seconds: 30));
         expect(_cmds(band), ['[47, 152] x1', '[47] x1']);
       });
@@ -342,7 +349,9 @@ void main() {
                 ])
               : null,
         );
-        cues.response(3);
+        cues.start();
+        cues.followUp();
+        cues.followUp();
         async.elapse(const Duration(seconds: 60));
         expect(_cmds(band), [
           '[47, 152] x1',
@@ -358,22 +367,21 @@ void main() {
   });
 
   group('gen4 is unchanged: no profile, today\'s per-tap path', () {
-    test('a count of 3 is three plain pulses 300 ms apart', () {
+    test('start and two follow-ups are three plain pulses, one job each', () {
       fakeAsync((async) {
         final (band, svc) = _rig(generation: 'gen4');
         expect(svc.profile, isNull);
-        GestureCues(haptics: svc).response(3);
-        async.elapse(const Duration(seconds: 10));
+        final cues = GestureCues(haptics: svc);
+        cues.start();
+        cues.followUp();
+        cues.followUp();
+        async.elapse(const Duration(seconds: 30));
         expect(band.writes, hasLength(3));
         expect([for (final w in band.writes) w.effects], [
           [0],
           [0],
           [0],
         ]);
-        expect([
-          for (var i = 1; i < 3; i++)
-            band.writes[i].atMs - band.writes[i - 1].atMs,
-        ], [300, 300]);
       });
     });
 
@@ -389,12 +397,12 @@ void main() {
   });
 
   group('not connected', () {
-    test('a response writes nothing and says it was rejected', () {
+    test('a cue writes nothing and says it was rejected', () {
       fakeAsync((async) {
         final (band, svc) = _rig();
         band.connected = false;
         BuzzDelivery? done;
-        GestureCues(haptics: svc).response(3).then((v) => done = v);
+        GestureCues(haptics: svc).start().then((v) => done = v);
         async.elapse(const Duration(seconds: 20));
         expect(band.writes, isEmpty);
         expect(done, BuzzDelivery.rejected);

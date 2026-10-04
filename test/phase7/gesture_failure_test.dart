@@ -70,9 +70,6 @@ class _Rig {
     Duration t = const Duration(milliseconds: 40),
   }) {
     session = EcgTapSession(
-      // The pacing rig: one pulse per call, each after the quiet gap (8W). The
-      // default is one call per count since 8AF.6.
-      maxPulsesPerBurst: 1,
       beginStream: () {
         began++;
         return beginHangs ? Completer<bool>().future : Future.value(true);
@@ -84,6 +81,14 @@ class _Rig {
       isStreamAlive: () => alive,
       buzz: (pulses, id) {
         buzzes.add((pulses, id));
+        return buzzHangsOnCall == buzzes.length
+            ? Completer<bool>().future
+            : Future.value(true);
+      },
+      // The confirm is the one cue a gesture that ends at 2 sends; it hangs
+      // like a count buzz would (buzzes holds both).
+      confirmBuzz: (id) {
+        buzzes.add((1, id));
         return buzzHangsOnCall == buzzes.length
             ? Completer<bool>().future
             : Future.value(true);
@@ -202,8 +207,8 @@ void main() {
       await r.steady();
       await r.noTouch();
       expect(r.buzzes.single.$1, 1,
-          reason: 'the first command of the two-command count buzz; it timed '
-              'out, so the second is not sent');
+          reason: 'the confirm, the one cue of a gesture that ends at 2; it '
+              'timed out');
       await r.settle(200);
       expect(r.session.active, isFalse);
       expect(r.results.single, (2, null));
@@ -220,9 +225,9 @@ void main() {
       await r.steady(sec: 2000);
       await r.noTouch(sec: 2000);
       await r.settle(200);
-      expect(r.buzzes.length, 3,
-          reason: 'the first gesture sent one command and timed out; the '
-              'second gesture sent both of its commands');
+      expect(r.buzzes.length, 2,
+          reason: 'the first gesture\'s confirm timed out; the second '
+              'gesture still sent its own');
     });
 
     test('BLE disconnect mid-gesture: ended once (count 2 by the default '
@@ -269,7 +274,7 @@ void main() {
       expect(b.buzzes, isEmpty);
       expect(b.session.active, isTrue);
       await b.noTouch(sec: 5000);
-      expect(b.buzzes.map((x) => x.$1), [1, 1]);
+      expect(b.buzzes.map((x) => x.$1), [1], reason: 'the confirm');
       expect(b.results, [(2, null)]);
     });
   });

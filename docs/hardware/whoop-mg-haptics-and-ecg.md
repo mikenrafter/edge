@@ -70,7 +70,7 @@ layout is the protocol notes' reading; what the loop bytes mean is not confirmed
 | **Superseded (L1/L2):** "each pulse of a multi-pulse buzz is its own command, two pulses 300 ms apart are felt as two." L1 and L2 took the replies and the wearer's counts as two pulses played; L3, with the 60 and 100 events beside each command, shows that a second command inside the play was swallowed. | Superseded | L3 shows the second command's reply is "pending" with no event 60. |
 | **Superseded (L1/L2):** "the band takes one more command while busy and drops the rest; busy time ~1.25-2.0 s from the first write." Replaced by the play window plus ignore window above; the missing reply of the 3rd command in L2 fits the ignore window after a swallowed 2nd. | Superseded | L3. |
 | 113 is the stream start (time equal to the first packet's strap time); 114 follows the stream stop. | Medium | L1, L2. |
-| Consequence: a count of N is **N commands, one per pulse** (`maxPulsesPerBurst` = 1), each at least `buzzQuietGap` (1.8 s) after the previous write, which is past the longest play (1.5 s) and the ignore window. Pacing on event 100 instead is not used in gestures; the pattern probe's "event-paced" style tries it. | Rule | `ecg_tap_session.dart`; the virtual band swallows and ignores as above. |
+| Consequence: no command is written while the band plays. Until 8AI.3 the session enforced it with a 1.8 s `buzzQuietGap` between one-pulse commands; since 8AI.3 each gesture cue is its own band-queue job, written after the band's event 100 plus `minVibrationGapMs`, and the session waits for nothing. | Rule | `band_queue.dart`, `gesture_cues.dart`; the virtual band swallows and ignores as above. |
 
 ### Pattern probe findings (L4)
 
@@ -470,9 +470,10 @@ as L3 shows.
 3. Which effect ids exist and feel different: only 47, 152, 14 and 1 are tried.
    Where does one effect end and the next begin in the band's own pair?
 4. Can one command play two or three bzz-bzz? If *listed* or *repeat* does it,
-   `maxPulsesPerBurst` can go up and a count is felt sooner. (Pattern probe.)
+   one cue can carry more of a count (the gesture cues are one job per cue
+   since 8AI.3). (Pattern probe.)
 5. Does pacing on event 100 (100 ms after it) always play? (Pattern probe:
-   *event-paced*; gestures still use the fixed 1.8 s gap.)
+   *event-paced*; the band queue paces gesture cues on event 100 since 8AI.3.)
 6. The touch window after a lift: the sensor needs ~1.9 s after the finger
    lands, and the code still adds a fixed 1.5 s after the lift. Should the
    window open on the lift and close ~1.9 s + confirm after the *earliest

@@ -75,14 +75,15 @@ class _Rig {
     this.onWait,
   }) {
     session = EcgTapSession(
-      // The pacing rig: one pulse per call, each after the quiet gap (8W). The
-      // default is one call per count since 8AF.6.
-      maxPulsesPerBurst: 1,
       beginStream: () async => true,
       endStream: () async => ended++,
       isStreamAlive: () => true,
       buzz: (pulses, id) async {
         buzzes.add((pulses, id));
+        return true;
+      },
+      confirmBuzz: (id) async {
+        confirms.add(id);
         return true;
       },
       maxTaps: () => max,
@@ -106,6 +107,7 @@ class _Rig {
   late final EcgTapSession session;
   int ended = 0;
   final buzzes = <(int, String)>[];
+  final confirms = <String>[];
   final results = <(int?, String?)>[];
   final steps = <String>[];
 
@@ -144,7 +146,8 @@ void main() {
       await r.settle();
       expect(r.line(3), startsWith('Packet 3: 100 samples, 0 with contact, '));
       expect(r.results, [(2, null)]);
-      expect(r.buzzes.map((b) => b.$1), [1, 1]);
+      expect(r.buzzes, isEmpty);
+      expect(r.confirms, hasLength(1));
     });
 
     test('a constant negative level is no contact either', () async {
@@ -164,7 +167,7 @@ void main() {
       await r.settle();
       expect(r.line(3), startsWith('Packet 3: 100 samples, 100 with contact '
           '(samples 0–99), '));
-      expect(r.steps, contains('Buzz x3 requested at sample time 1001700 ms.'));
+      expect(r.steps, contains('Follow-up buzz requested at sample time 1001700 ms.'));
     });
 
     test('the packet line counts mask samples and places them', () async {
@@ -194,7 +197,7 @@ void main() {
       await r.steady();
       r.deliver1002(_samples(100, moving: [(50, 75)])); // 1001.50 .. 1001.75
       await r.settle();
-      expect(r.steps, contains('Buzz x3 requested at sample time 1001700 ms.'));
+      expect(r.steps, contains('Follow-up buzz requested at sample time 1001700 ms.'));
     });
 
     test('a packet that only starts contact in its last block keeps it (it '
@@ -248,7 +251,7 @@ void main() {
     test('off: first to last contact sample is one touch, so the flat stretch '
         'in the middle does not break it', () async {
       final r = await run(EcgTapThresholds());
-      expect(r.steps, contains('Buzz x3 requested at sample time 1001700 ms.'),
+      expect(r.steps, contains('Follow-up buzz requested at sample time 1001700 ms.'),
           reason: 'filled: contact from 1001.5 holds 200 ms');
       expect(r.results, [(3, null)]);
     });
@@ -268,12 +271,12 @@ void main() {
         await r.steady();
         r.deliver1002(samples);
         await r.settle();
-        return r.steps.where((s) => s.startsWith('Buzz x3 requested')).toList();
+        return r.steps.where((s) => s.startsWith('Follow-up buzz requested')).toList();
       }
 
       final moving = _samples(100, moving: [(0, 100)]);
       final zero = [...moving]..[69] = 0;
-      expect(await held(zero), ['Buzz x3 requested at sample time 1001700 ms.'],
+      expect(await held(zero), ['Follow-up buzz requested at sample time 1001700 ms.'],
           reason: 'a zero between moving samples is still movement');
     });
   });
@@ -325,12 +328,12 @@ void main() {
       return r;
     }
 
-    test('no contact in the first sampled packet: the count is 2 at once, two '
-        'buzzes, before the stream is even steady', () async {
+    test('no contact in the first sampled packet: the count is 2 at once, the '
+        'confirm, before the stream is even steady', () async {
       final r = await firstPackets(quick, List.filled(49, 0));
       expect(r.results, [(2, null)]);
-      expect(r.buzzes.map((b) => b.$1), [1, 1],
-          reason: 'x2, as two one-pulse commands');
+      expect(r.buzzes, isEmpty, reason: 'no increment: no follow-up');
+      expect(r.confirms, hasLength(1));
       expect(r.steps, contains(quickLine));
       expect(r.steps, isNot(contains(startsWith('Stream is steady'))));
       expect(r.session.active, isFalse);
@@ -362,7 +365,8 @@ void main() {
     test('max 2: one count, not two', () async {
       final r = await firstPackets(quick, List.filled(49, 0), max: 2);
       expect(r.results, [(2, null)]);
-      expect(r.buzzes.map((b) => b.$1), [1, 1]);
+      expect(r.buzzes, isEmpty);
+      expect(r.confirms, hasLength(1));
     });
 
     test('nothing is decided before a packet with samples arrives', () async {
@@ -412,7 +416,8 @@ void main() {
         final r = await run(quick);
         expect(r.steps, isNot(contains(quickLine)));
         expect(r.results, [(3, null)]);
-        expect(r.buzzes.map((b) => b.$1), [1, 1, 1]);
+        expect(r.buzzes.map((b) => b.$1), [1], reason: 'one follow-up, for 3');
+        expect(r.confirms, hasLength(1));
       });
 
       test('the same packets with tolerant startup give the same result',

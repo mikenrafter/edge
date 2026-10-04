@@ -1399,14 +1399,18 @@ class _JournalFindingsState extends State<JournalFindings> {
       return;
     }
     // The insight pass and the weekday effect are the slow parts of opening
-    // this. Each one's last good result (memory, else the stored copy) is shown
-    // under an "As of" label while it recomputes; an error is never kept. A
-    // failure comes back as null so it cannot escape unawaited.
+    // this. Each is one artifact (shared with MetricDetail and the warmer): a
+    // stored result whose input signature still matches is shown as is, a stale
+    // one is shown under an "As of" label while it recomputes; an error is never
+    // kept. A failure comes back as null so it cannot escape unawaited.
     final cache = LastResultCache.instance;
+    final insightsKey = LastResultCache.keyOf('journal_insights', ['90d']);
+    final weekdayKey = LastResultCache.keyOf('weekday_effect');
     final rowsF = cache
-        .loadShowingLast<Map<String, dynamic>>(
-          LastResultCache.keyOf('wellness_insights'),
+        .loadArtifact<Map<String, dynamic>>(
+          insightsKey,
           () => repo.getJournalInsights(range: '90d'),
+          signature: () => repo.artifactSignature(insightsKey),
           onLast: (hit) {
             if (!mounted || _rowsReady) return;
             setState(() {
@@ -1418,9 +1422,10 @@ class _JournalFindingsState extends State<JournalFindings> {
         )
         .then<Map<String, dynamic>?>((v) => v, onError: (_) => null);
     final weekdayF = cache
-        .loadShowingLast<Map<String, dynamic>>(
-          LastResultCache.keyOf('wellness_weekday'),
+        .loadArtifact<Map<String, dynamic>>(
+          weekdayKey,
           () => repo.getWeekdayEffect(),
+          signature: () => repo.artifactSignature(weekdayKey),
           onLast: (hit) {
             if (!mounted || _weekdayReady) return;
             setState(() {

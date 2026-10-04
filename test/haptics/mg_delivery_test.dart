@@ -496,7 +496,7 @@ void main() {
       // 8AF.6: the count buzz is the gesture cues', whose delivery is a queue
       // job (compiled: haptics.deliver; no profile: haptics.runJob).
       expect(bodyOf(src, 'Future<bool> _ecgTapBuzz('),
-          contains('gestureCues.response('));
+          contains('gestureCues.followUp'));
       final cues = File('lib/haptics/gesture_cues.dart').readAsStringSync();
       expect(cues, contains('haptics.deliver('));
       expect(cues, contains('haptics.runJob('));

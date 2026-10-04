@@ -280,6 +280,26 @@ abstract class LocalRepository {
   Future<Map<String, dynamic>> getWeekdayEffect({String key = 'readiness'}) =>
       throw UnimplementedError('re-layer: getWeekdayEffect');
 
+  // ── persisted artifacts (8AG-perf P3) ─────────────────────────────────────────
+
+  /// The CURRENT signature of the inputs the artifact [key] is computed from
+  /// (`journal_insights|90d`, `weekday_effect`, `beats|<day>`,
+  /// `workout|<id>`, `circadian`, `kcal_minutes|<day>`), or null when none can
+  /// be given. A stored result whose signature equals this one is fresh. The
+  /// default is null: a repository that cannot sign is never fresh.
+  Future<String?> artifactSignature(String key) async => null;
+
+  /// The value to store for [key]: exactly what the matching reader returns, so
+  /// a warmed row and an on-open row are the same thing. Null = nothing to
+  /// store. Throws on a failure. The default has nothing to compute.
+  Future<Map<String, dynamic>?> computeArtifact(String key) async => null;
+
+  /// A day's intraday calories `{minutes: [{t, total, active, basal}],
+  /// basal_kcal_per_min, covered_minutes, computed_at}` (`t` epoch seconds, a
+  /// minute nobody measured has null figures, never an interpolated one), or
+  /// null when none is stored. A read, no compute.
+  Future<Map<String, dynamic>?> getDayCalorieCurve(String day) async => null;
+
   /// One day's numeric journal fields, keyed by field name.
   Future<Map<String, JournalMetricValue>> getJournalMetrics(String date) =>
       throw UnimplementedError('re-layer: getJournalMetrics');

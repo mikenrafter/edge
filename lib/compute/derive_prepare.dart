@@ -48,6 +48,13 @@ class PreparedDerivationDay {
   /// NOT threaded through `toJson`/`fromJson`, same reason as [ownership].
   final Map<InputSignal, List<String>> priority;
 
+  /// The day's decoded-raw fingerprint (`LocalDb.decodedDayFingerprints`) read
+  /// BEFORE the substrate was, so rows landing mid-derive leave it stale rather
+  /// than falsely current. The input signature of the `kcal_minutes|<day>`
+  /// artifact the derive stores. Null on the import path (no decoded raw): no
+  /// signature, no artifact.
+  final String? inputFp;
+
   const PreparedDerivationDay({
     required this.date,
     required this.endSec,
@@ -63,6 +70,7 @@ class PreparedDerivationDay {
     this.sleepSource = 'auto',
     this.ownership = const {},
     this.priority = const {},
+    this.inputFp,
   }) : napSub = napSub ?? daySub;
 
   Map<String, dynamic> toJson() => {
@@ -229,6 +237,7 @@ class SleepSessionCandidate {
     Substrate? napSub,
     Map<InputSignal, List<OwnedSpan>> ownership = const {},
     Map<InputSignal, List<String>> priority = const {},
+    String? inputFp,
   }) => PreparedDerivationDay(
     date: dayId,
     // `endSec` is what the engine anchors FINALIZATION on
@@ -253,6 +262,7 @@ class SleepSessionCandidate {
     sleepSub: sleepSub,
     ownership: ownership,
     priority: priority,
+    inputFp: inputFp,
   );
 }
 

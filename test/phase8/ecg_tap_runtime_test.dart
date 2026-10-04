@@ -365,7 +365,7 @@ void main() {
       // 8AF.6: the count buzz is the gesture cues' (their plain-pulse path
       // writes through the haptics port's buzzBand, a compiled one through
       // writes as well; none waits on a reply).
-      expect(codeOnly(body), contains('gestureCues.response('));
+      expect(codeOnly(body), contains('gestureCues.followUp'));
       expect(
           File('lib/haptics/gesture_cues.dart').readAsStringSync(),
           contains('port.buzzBand('));

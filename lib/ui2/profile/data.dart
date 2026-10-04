@@ -39,6 +39,7 @@ import '../screens/home_screen.dart' show dbRebuiltCard;
 import '../ui2.dart';
 import 'phone_import.dart';
 import 'profile.dart';
+import 'settings.dart' show backToRoot;
 
 /// What an action has to say for itself: the line to show, and whether it is a
 /// failure. Without the second half every outcome rendered as "Done ✓".
@@ -240,6 +241,7 @@ class _DataScreenState extends State<DataScreen> {
       onImport: () => _run(() => _import(app)),
       onPhoneImport: () => goto(c, const PhoneImport()),
       onReanalyze: () => _run(() => _reanalyze(app)),
+      onReset: () => confirmResetAllData(c, app),
     );
   }
 }
@@ -267,6 +269,7 @@ class DataScreenView extends StatelessWidget {
     this.onImport,
     this.onPhoneImport,
     this.onReanalyze,
+    this.onReset,
   });
 
   final Widget? rebuiltCard;
@@ -283,7 +286,8 @@ class DataScreenView extends StatelessWidget {
       onBackupNow,
       onImport,
       onPhoneImport,
-      onReanalyze;
+      onReanalyze,
+      onReset;
 
   @override
   Widget build(BuildContext c) {
@@ -407,6 +411,13 @@ class DataScreenView extends StatelessWidget {
                           'Recalculates every day from stored data. Run it after a long-haul flight or after an import that added days out of order.',
                       value: reanalyzeProgress,
                       onTap: busy || reanalyzing ? null : onReanalyze),
+                  // Last, and inside Advanced: it was a red row at the foot of
+                  // Settings. The dialog and the flow behind it are unchanged.
+                  SetRow(LucideIcons.trash2, C.red,
+                      l?.settingsResetAllDataRowTitle ?? 'Reset all data',
+                      danger: true,
+                      chevron: false,
+                      onTap: busy ? null : onReset),
                 ]),
                 if (busy) ...[
                   const SizedBox(height: S.x6),
@@ -452,6 +463,60 @@ class DataScreenView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "Reset all data": confirm, delete everything, then unwind to the gate. It
+/// lives in Your data > Advanced (it used to be the last row of Settings, front
+/// and centre) and has no other door.
+Future<void> confirmResetAllData(BuildContext c, AppState app) async {
+  final l = AppLocalizations.of(c);
+  final ok = await showDialog<bool>(
+    context: c,
+    builder: (d) => AlertDialog(
+      title: Text(l?.settingsResetTitle ?? 'Delete everything?'),
+      // Enumerated, because the previous wording ("every measured day, session
+      // and profile field") was false in about twenty places: it deleted the
+      // derived days and left the labs, the meals, the doses, the breathing
+      // sessions, the logged sets, the baselines, the consent flags, the
+      // install id, the stored API key and the home-screen widget standing.
+      // It now removes all of that, so it can say so.
+      content: Text(
+        l?.settingsResetBody ??
+            'This deletes, permanently and with no copy anywhere else:\n\n'
+                '· every measured day, sleep, workout and route\n'
+                '· every lab result, meal, medication dose, habit, breathing session '
+                'and logged set\n'
+                '· your journal, cycle log and rolling baselines\n'
+                '· your profile, every preference and any stored AI key\n'
+                '· the home-screen widget and every scheduled reminder\n\n'
+                'The band is unpaired, and it cannot re-send history it has already '
+                'handed over. Export from Your data first if you want a copy.',
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(d).pop(false),
+            child: Text(l?.settingsResetKeepData ?? 'Keep my data')),
+        TextButton(
+            onPressed: () => Navigator.of(d).pop(true),
+            child: Text(l?.settingsResetDeleteEverything ?? 'Delete everything')),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  await app.resetAllData();
+  // "with no copy anywhere else" was false while automatic backup was on:
+  // `wipeAll` deletes rows and cannot touch files, so up to [kBackupsKept]
+  // gzipped whole-database copies survived in a folder the user can browse and
+  // Import a file can read straight back.
+  try {
+    await pruneBackups(await backupDirectory(), keep: 0);
+  } catch (_) {
+    // No backup folder is the normal case — nothing to delete.
+  }
+  // resetAllData swaps the gate to Welcome, which is UNDER this screen —
+  // without this the user stays on Settings, reading a profile that has been
+  // deleted.
+  if (c.mounted) backToRoot(c);
 }
 
 /// Off → Daily → Weekly → Off. Three states cycle in a row; a picker for three

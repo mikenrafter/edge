@@ -9,6 +9,11 @@
 // written through — never a widget object — and the table keeps at most
 // [maxRows] rows, oldest `computed_at` out first.
 //
+// An entry may carry the signature of the inputs it was computed from
+// (`input_sig`). [loadArtifact] treats an entry whose signature still equals the
+// current one as FRESH: shown as is, never recomputed on open. A missing
+// signature (an old row, a put that gave none) is never fresh.
+//
 // An error is never stored, and a failed refresh leaves the earlier good entry
 // in place — a stale result is labelled, a missing one would be a spinner. A
 // store that cannot be read or written is a miss, never an exception: this
@@ -21,17 +26,21 @@ import 'dart:convert';
 import '../data/db.dart';
 
 class CachedResult<T> {
-  const CachedResult(this.value, this.cachedAt);
+  const CachedResult(this.value, this.cachedAt, {this.sig});
   final T value;
 
   /// When the value was computed and stored, not when it was read.
   final DateTime cachedAt;
+
+  /// The signature of the inputs it was computed from; null when none was kept.
+  final String? sig;
 }
 
 class _Entry {
-  _Entry(this.value, this.cachedAt, this.epoch);
+  _Entry(this.value, this.cachedAt, this.epoch, this.sig);
   final Object? value;
   final DateTime cachedAt;
+  final String? sig;
 
   /// [LocalDb.wipeEpoch] when it was taken; an older one is gone with the wipe.
   final int epoch;
@@ -70,7 +79,7 @@ class LastResultCache {
     if (e.epoch != LocalDb.wipeEpoch) return null;
     _m[key] = e;
     final v = e.value;
-    return v is T ? CachedResult<T>(v, e.cachedAt) : null;
+    return v is T ? CachedResult<T>(v, e.cachedAt, sig: e.sig) : null;
   }
 
   /// Memory first, then the table. A table hit is promoted into memory, so
@@ -86,25 +95,28 @@ class LastResultCache {
       if (v is! T) return null;
       final at = DateTime.fromMillisecondsSinceEpoch(row.computedAt);
       // A newer result put while the table was read stays.
-      if (!_m.containsKey(key)) _store(key, v, at, epoch);
-      return CachedResult<T>(v, at);
+      if (!_m.containsKey(key)) _store(key, v, at, epoch, row.sig);
+      return CachedResult<T>(v, at, sig: row.sig);
     } catch (_) {
       return null; // unreadable or corrupt: a miss
     }
   }
 
-  void put<T>(String key, T value) {
+  /// [sig] is the signature of the inputs [value] was computed from, kept with
+  /// it in memory and in the table (NULL when omitted).
+  void put<T>(String key, T value, {String? sig}) {
     final at = _now();
-    _store(key, value, at, LocalDb.wipeEpoch);
+    _store(key, value, at, LocalDb.wipeEpoch, sig);
     final json = _encode(value);
     if (json == null) return;
     _enqueue(() => LocalDb.putLastResult(
-        key, at.millisecondsSinceEpoch, json, maxRows));
+        key, at.millisecondsSinceEpoch, json, maxRows,
+        sig: sig));
   }
 
-  void _store(String key, Object? value, DateTime at, int epoch) {
+  void _store(String key, Object? value, DateTime at, int epoch, String? sig) {
     _m.remove(key);
-    _m[key] = _Entry(value, at, epoch);
+    _m[key] = _Entry(value, at, epoch, sig);
     while (_m.length > capacity) {
       _m.remove(_m.keys.first);
     }
@@ -190,6 +202,38 @@ class LastResultCache {
     final v = await fresh;
     landed = true;
     put<T>(key, v);
+    return v;
+  }
+
+  /// What an artifact screen opens with. [signature] is asked ONCE, before
+  /// anything else, so a result whose inputs move while it is being computed is
+  /// stored under the older signature and reads stale next time; an error from
+  /// it is a null signature. The stored entry (memory, then the table) is FRESH
+  /// when it exists and its signature equals a non-null current one: its value
+  /// is returned, [loader] and [onLast] never run and nothing is rewritten.
+  /// Otherwise a stored entry goes to [onLast], [loader] runs once and its value
+  /// is stored under the current signature. An error from [loader] propagates
+  /// and stores nothing; the earlier entry stays. [onLast] runs where the caller
+  /// must check it is still mounted.
+  Future<T> loadArtifact<T>(
+    String key,
+    Future<T> Function() loader, {
+    required Future<String?> Function() signature,
+    required void Function(CachedResult<T> last) onLast,
+  }) async {
+    String? current;
+    try {
+      current = await signature();
+    } catch (_) {
+      current = null;
+    }
+    final stored = await read<T>(key);
+    if (stored != null) {
+      if (current != null && stored.sig == current) return stored.value;
+      onLast(stored);
+    }
+    final v = await loader();
+    put<T>(key, v, sig: current);
     return v;
   }
 

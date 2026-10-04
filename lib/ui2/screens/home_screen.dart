@@ -435,7 +435,12 @@ String axisDay(int? epochSec,
   final behind = daysBehind(epochSec);
   if (behind == null) return '';
   if (behind <= 0) return todayWord;
-  return '$behind $unitWord ago';
+  // "1 days ago" read as a typo on the card that says "as of ...". The words
+  // passed in are English plurals ("days", "nights"), so one drops the s.
+  final unit = behind == 1 && unitWord.endsWith('s')
+      ? unitWord.substring(0, unitWord.length - 1)
+      : unitWord;
+  return '$behind $unit ago';
 }
 
 /// Whole calendar days between a stored point and today, or null when there is

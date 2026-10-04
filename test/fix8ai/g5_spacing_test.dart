@@ -116,16 +116,29 @@ void main() {
     });
   });
 
-  group('within one response (guard: already so)', () {
-    test('every follow-up is written the constant after the ended event', () {
+  group('within one cue (8AI.3: each cue is its own job)', () {
+    test('a cue of two commands writes the second the constant after the '
+        'ended event', () {
       fakeAsync((async) {
         final (band, svc) = _rig(_slow);
-        GestureCues(haptics: svc).response(3);
+        // The built-in start is one command; the confirm is one; a stored
+        // two-command cue is what chains inside one job.
+        GestureCues(
+          haptics: svc,
+          patternFor: (k) => BuzzSequence(
+            const [0],
+            durationsMs: const [500],
+            profileId: _slow.id,
+            profileVersion: _slow.version,
+            bakedSteps: [
+              BakedStep(effects: const [47], loop: 1, delayMs: 0),
+              BakedStep(effects: const [14], loop: 1, delayMs: 300),
+            ],
+          ),
+        ).followUp();
         async.elapse(const Duration(seconds: 30));
-        expect(band.writes, hasLength(3));
-        for (var i = 1; i < 3; i++) {
-          expect(_gapBefore(band, i), 300, reason: 'follow-up $i');
-        }
+        expect(band.writes, hasLength(2));
+        expect(_gapBefore(band, 1), 300);
       });
     });
   });
@@ -136,14 +149,16 @@ void main() {
       fakeAsync((async) {
         final (band, svc) = _rig(_slow);
         final cues = GestureCues(haptics: svc);
-        cues.response(1); // the start cue the tap sends
-        cues.response(2); // the count, behind it in the queue
+        cues.start(); // the start cue the tap sends
+        cues.followUp(); // the first count increment, behind it in the queue
+        cues.followUp(); // the next one
         async.elapse(const Duration(seconds: 60));
         expect(band.writes, hasLength(3));
         expect(band.played, hasLength(3), reason: 'none swallowed');
-        expect(_gapBefore(band, 1), greaterThanOrEqualTo(300),
-            reason: 'the second job started too close to the first');
-        expect(_gapBefore(band, 2), 300, reason: 'inside the second job');
+        for (var i = 1; i < 3; i++) {
+          expect(_gapBefore(band, i), greaterThanOrEqualTo(300),
+              reason: 'job ${i + 1} started too close to job $i');
+        }
       });
     });
 
@@ -152,8 +167,8 @@ void main() {
       fakeAsync((async) {
         final (band, svc) = _rig(_mg);
         final cues = GestureCues(haptics: svc);
-        cues.response(1);
-        cues.response(1);
+        cues.start();
+        cues.followUp();
         async.elapse(const Duration(seconds: 60));
         expect(band.writes, hasLength(2));
         expect(_gapBefore(band, 1), (_mg as dynamic).minVibrationGapMs);
@@ -200,7 +215,10 @@ void main() {
           reason: 'it is fastestGap().delayMs, not a second literal');
     });
 
-    for (final f in ['wake_haptics.dart', 'gesture_cues.dart']) {
+    // 8AI.3: a gesture cue is its own queue job, so the spacing between cues
+    // is the queue's (haptics_service.dart hands it the constant); the cues
+    // themselves chain nothing and repeat no gap.
+    for (final f in ['wake_haptics.dart', 'haptics_service.dart']) {
       test('$f reads the constant and repeats neither the number nor '
           'fastestGap()', () {
         final code = codeOnly(File('lib/haptics/$f').readAsStringSync());
@@ -211,5 +229,14 @@ void main() {
             reason: 'a literal 0 ms gap is the number copied');
       });
     }
+
+    test('gesture_cues.dart chains no cues and repeats no gap', () {
+      final code =
+          codeOnly(File('lib/haptics/gesture_cues.dart').readAsStringSync());
+      expect(code, isNot(contains('fastestGap(')));
+      expect(code, isNot(contains('minVibrationGapMs')),
+          reason: 'the queue spaces the cues, not GestureCues');
+      expect(RegExp(r'delayMs:\s*0\b').hasMatch(code), isFalse);
+    });
   });
 }

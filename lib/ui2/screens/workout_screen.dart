@@ -1012,13 +1012,17 @@ class _PastSummaryState extends State<_PastSummary> {
       if (mounted) setState(() => _r = r);
       return;
     }
-    // The derived bundle is the slow part of opening a session. Its last good
-    // result is kept (the bundle map itself, never the screen's object); an
-    // error is not kept and comes back as null here.
+    // The derived bundle is the slow part of opening a session. It is one
+    // artifact (the bundle map itself, never the screen's object): a stored
+    // result whose input signature still matches is shown as is, a stale one is
+    // shown under an "As of" label while it recomputes; an error is not kept and
+    // comes back as null here.
+    final key = LastResultCache.keyOf('workout', [w.id]);
     final bundle = await LastResultCache.instance
-        .loadShowingLast<Map<String, dynamic>>(
-          LastResultCache.keyOf('workout', [w.id]),
+        .loadArtifact<Map<String, dynamic>>(
+          key,
           () => repo.getWorkout(w.id),
+          signature: () => repo.artifactSignature(key),
           onLast: (hit) async {
             final r = await _detailOf(widget.app, w, bundle: hit.value);
             if (!mounted || _fresh) return;

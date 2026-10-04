@@ -177,7 +177,7 @@ void main() {
       // profile writes its plain pulses through the haptics port
       // (BleEngineHapticsPort -> engine.buzzBand).
       expect(bodyOf(app, 'Future<bool> _ecgTapBuzz('),
-          contains('gestureCues.response('));
+          contains('gestureCues.followUp'));
       expect(File('lib/haptics/gesture_cues.dart').readAsStringSync(),
           contains('port.buzzBand('));
     });

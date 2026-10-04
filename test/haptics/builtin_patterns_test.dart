@@ -65,7 +65,8 @@ final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
 bool _sys(SavedHapticPattern p) => (p as dynamic).system as bool;
 String? _key(SavedHapticPattern p) => (p as dynamic).systemKey as String?;
 
-const _alarmish = {'alarm', 'nativeAlarm', 'wake'};
+// 'gesture' plays nothing of its own (8AI.3): the three gesture cues do.
+const _alarmish = {'alarm', 'nativeAlarm', 'wake', 'gesture'};
 const _open = {'alarmLatchFailed', 'alarmNightCheck'};
 
 final List<String> _alertRules = [

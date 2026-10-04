@@ -185,20 +185,25 @@ void main() {
     var now = packets.first.receivedAt.subtract(const Duration(seconds: 1));
     final t0 = now;
     int ms() => now.difference(t0).inMilliseconds;
+    // One cue is one band command (felt as one bzz-bzz); ~100 ms to write it.
+    // The band queue holds a cue until the band has finished the one before
+    // it, so this stands in for it: the session adds no wait of its own.
+    Future<bool> cue() async {
+      if (haptics.log.isNotEmpty) {
+        final free = haptics.log.last.$1 + haptics.busyMs - 100;
+        if (ms() < free) now = now.add(Duration(milliseconds: free - ms()));
+      }
+      haptics.command(ms() + 100);
+      now = now.add(const Duration(milliseconds: 150));
+      return true;
+    }
+
     final s = EcgTapSession(
-      // The pacing rig: one pulse per call, as 8W measured the band (a count is
-      // one call by default since 8AF.6).
-      maxPulsesPerBurst: 1,
       beginStream: () async => true,
       endStream: () async {},
       isStreamAlive: () => true,
-      buzz: (pulses, _) async {
-        // One call is one band command, whatever it asks for (a command is
-        // felt as one bzz-bzz); ~100 ms to write it.
-        haptics.command(ms() + 100);
-        now = now.add(const Duration(milliseconds: 150));
-        return true;
-      },
+      buzz: (pulses, _) => cue(),
+      confirmBuzz: (_) => cue(),
       maxTaps: () => 5,
       thresholds: () => th ?? EcgTapThresholds(startMs: 500, confirmMs: 1000),
       onFinished: (c, r) => results.add((c, r)),
@@ -241,12 +246,12 @@ void main() {
       expect(g.results, [(3, null)]);
     });
 
-    test('every command the gesture sends is played: one per pulse, each '
-        'after the band\'s quiet', () async {
+    test('every cue the gesture sends is played, each after the band is done '
+        'with the one before', () async {
       final g = await gesture(fourTaps);
-      // x3 for tap 3 (three commands), x1 for tap 4, x1 confirmation.
-      expect(g.haptics.log, hasLength(5));
-      expect(g.haptics.played, 5, reason: g.haptics.log.toString());
+      // A follow-up for tap 3, one for tap 4, the confirm.
+      expect(g.haptics.log, hasLength(3));
+      expect(g.haptics.played, 3, reason: g.haptics.log.toString());
     });
 
     test('a 300 ms tap after a lift is never seen, so it is not counted',

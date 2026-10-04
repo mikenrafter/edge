@@ -64,7 +64,6 @@ const Map<String, String> _alertPresets = {
   'breath': 'preset.one_pulse',
   'tasker': 'preset.two_pulses',
   'relay': 'preset.three_pulses',
-  'gesture': 'preset.four_pulses',
 };
 
 /// The preset key behind alert slot [slotKey] (`alert.<ruleId>`), or null for a

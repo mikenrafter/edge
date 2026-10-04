@@ -224,15 +224,15 @@ void main() {
       _expectRowsInOrder(t, 'Developer');
     });
 
-    testWidgets('Reset all data comes last, below every group', (t) async {
+    testWidgets('Reset all data is not on Settings: it lives in Your data > '
+        'Advanced (8AI.2)', (t) async {
       await _pump(t, _settings(dev: true));
-      expect(find.text('Reset all data'), findsOneWidget);
-      final resetY = t.getTopLeft(find.text('Reset all data')).dy;
+      expect(find.text('Reset all data'), findsNothing);
+      // Developer, when shown, is the last thing on the page.
       final lastGroup = section('Developer');
-      expect(resetY, greaterThan(t.getBottomLeft(lastGroup).dy));
-      // And nothing but the reset row sits under the last group.
-      for (final g in [..._groups, 'Developer']) {
-        expect(resetY, greaterThan(t.getBottomLeft(section(g)).dy),
+      for (final g in _groups) {
+        expect(t.getBottomLeft(lastGroup).dy,
+            greaterThan(t.getBottomLeft(section(g)).dy),
             reason: g);
       }
     });

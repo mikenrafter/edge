@@ -45,6 +45,7 @@ import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show workoutSuggestionRoute;
 import '../telemetry/telemetry_service.dart';
 import 'crossday_pipeline.dart';
+import 'kcal_minutes.dart';
 import 'sleep_blank.dart';
 import 'derive_outcome.dart';
 import 'derive_pacing.dart';
@@ -1939,8 +1940,12 @@ const int kAlgoVersion = 100;
 // kAlgoVersion bump comes from the pin itself.
 // REPIN @ 7334289 — same fork, branch feat/minute-energy (child of 7fe67a7):
 // adds Calories.minuteEnergy + hourlyRollup. dailyEnergy outputs are
-// bit-for-bit unchanged (golden == tests in the analytics repo), and edge
-// does not persist the new per-minute output yet, so no kAlgoVersion bump.
+// bit-for-bit unchanged (golden == tests in the analytics repo).
+// 8AG-perf P3: edge now persists Calories.minuteEnergy, as the `last_result`
+// artifact `kcal_minutes|<day>` (the day's minutes sum to its stored active
+// calories). It is a new stored output, not a change to an existing one:
+// `calories`, `calories_total` and every `day_result` row are untouched, so no
+// kAlgoVersion bump.
 const String kAnalyticsPin = '7334289ef811c65b6938a3aba692b26670fd4a90';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
@@ -3294,6 +3299,9 @@ class DerivationEngine {
     // is telemetry-only). Each day now gets its own local accumulator,
     // merged into the shared running max exactly once, below.
     final stats = _PrepareStats();
+    // The day's raw as it stands BEFORE anything below reads it: the input
+    // signature of the calorie artifact this derive stores.
+    final inputFp = (await LocalDb.decodedDayFingerprints([dayId]))[dayId];
     final candidate = await _sleepCandidateForDay(dayId, stats: stats);
     final dayStart = _localDayLabelToSec(dayId);
     final dayEnd = _localNextDayLabelToSec(dayId);
@@ -3360,6 +3368,7 @@ class DerivationEngine {
       sleepSub: sleepSub,
       ownership: ownership,
       priority: priority,
+      inputFp: inputFp,
     );
   }
 
@@ -4783,6 +4792,8 @@ class DerivationEngine {
     // loses the ability to ever back-fill naps/workouts/HRR/wear/curves for
     // this day once its raw substrate is pruned.
     var secondHalfOk = true;
+    // The intraday calorie series this derive built (null: none to store).
+    Map<String, dynamic>? kcalMinutes;
     try {
       final dayLo = daySub.length == 0 ? 0 : daySub.tsSec.first;
       final dayHi = daySub.length == 0 ? 0 : daySub.tsSec.last + 60;
@@ -4963,6 +4974,7 @@ class DerivationEngine {
             blocks.seriesPatch,
           );
       scMap?.addAll(blocks.scalarPatch);
+      kcalMinutes = blocks.kcalMinutes;
 
       // M5: COVERAGE. Same map, one key, written only when there is
       // something to attribute. `ownersOf` counts DISTINCT NON-NULL owners
@@ -5259,6 +5271,7 @@ class DerivationEngine {
       },
     );
     _persistMs[day.date] = persistWatch.elapsedMilliseconds;
+    if (secondHalfOk) await _storeKcalMinutes(day, profile, kcalMinutes);
     // NOTE: the sweep's `history` snapshot is deliberately NOT updated here.
     // See _BaselineHistoryCache — mutating the shared snapshot mid-sweep is the
     // duplicate-day pollution bug, and each day already derives its own
@@ -5268,6 +5281,115 @@ class DerivationEngine {
       '(sleep=${day.sleepOffsetSec > day.sleepOnsetSec}, final=$finalized)',
     );
     await _maybeFreezeHeadlineReadiness(day, dataNowSec, sc('readiness'));
+  }
+
+  /// Stores the day's intraday calorie series as the artifact
+  /// `kcal_minutes|<day>`, AFTER the day's own row committed, under the
+  /// signature [LocalRepositoryImpl.artifactSignature] gives the same inputs
+  /// (the fingerprint read before the substrate was). A failure is logged and
+  /// never fails the derive: the curve is derivable again and the warmer will.
+  /// No series (the builder abstained) removes an older row of a day that still
+  /// has raw, so a curve never outlives the figure it explains; a day without
+  /// raw keeps what it has, and an import (no fingerprint) stores nothing.
+  Future<void> _storeKcalMinutes(
+    PreparedDerivationDay day,
+    Profile profile,
+    Map<String, dynamic>? kcal,
+  ) async {
+    final fp = day.inputFp;
+    if (fp == null) return;
+    final key = 'kcal_minutes|${day.date}';
+    try {
+      if (kcal == null) {
+        if (!day.daySub.isEmpty) await LocalDb.deleteLastResult(key);
+        return;
+      }
+      await LocalDb.putLastResult(
+        key,
+        DateTime.now().millisecondsSinceEpoch,
+        jsonEncode(kcal),
+        200, // the LastResultCache row cap, which every artifact shares
+        sig: '$kAlgoVersion|${kcalSignatureBody(fp, profile)}',
+      );
+    } catch (e) {
+      _log('derive ${day.date}: could not store the calorie curve: $e');
+    }
+  }
+
+  /// The intraday calorie series of an already-derived day, rebuilt from its
+  /// decoded raw while that lives: what the warmer stores for a day derived
+  /// before P3 stored it. The inputs are the stored day's own (its sleep window
+  /// and nocturnal resting HR from `day_result`) and the same credited step
+  /// spans, over the same substrate loader, so the answer is the series the
+  /// derive would have stored. Null when the day has no raw, was never derived,
+  /// or the builder abstains. The substrate load and the build both run off the
+  /// calling isolate.
+  Future<Map<String, dynamic>?> kcalMinutesForStoredDay(
+    String day,
+    Profile profile,
+  ) async {
+    final lo = localDayStartSec(day), hi = localDayEndSec(day);
+    if (lo == null || hi == null) return null;
+    final stored = await LocalDb.dayCalorieInputs(day);
+    if (stored == null) return null; // not derived: no sleep window to honour
+    int onset = 0, offset = 0;
+    final win = stored.windowJson == null || stored.windowJson!.isEmpty
+        ? null
+        : (jsonDecode(stored.windowJson!) as Map)['value'];
+    if (win is Map) {
+      final on = (win['onset_ms'] as num?)?.toDouble();
+      final off = (win['offset_ms'] as num?)?.toDouble();
+      // A window without both ends cannot say what is sleep: abstain.
+      if (on == null || off == null) return null;
+      onset = (on / 1000).round();
+      offset = (off / 1000).round() + 1;
+    }
+    final (ownership, _) = await _resolveOwnership(lo, hi - 1);
+    final daySub = await _loadSubstrateRange(
+      lo,
+      hi - 1,
+      dayId: day,
+      ownership: ownership,
+    );
+    if (daySub.isEmpty) return null;
+    final liveSteps = await LocalDb.resolvedStepsForDay(day);
+    final spans = [
+      for (final s in liveSteps.spans) [s.startTs, s.endTs, s.steps],
+    ];
+    return Isolate.run(
+      () => kcalMinutesForDay(
+        daySub: daySub,
+        profile: profile,
+        nocturnalRhr: stored.rhr,
+        sleepOnsetSec: onset,
+        sleepOffsetSec: offset,
+        stepSpans: spans,
+      ),
+    );
+  }
+
+  /// The day's calorie series, or null wherever the day's stored calories would
+  /// be absent: the energy pass runs only for a day with motion minutes, and
+  /// prices against the nocturnal resting HR or the one the user entered, never
+  /// a daytime fallback. Pure; the offloaded second half and the warmer's
+  /// rebuild both go through here so they cannot disagree.
+  static Map<String, dynamic>? kcalMinutesForDay({
+    required Substrate daySub,
+    required Profile profile,
+    required double? nocturnalRhr,
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+    List<List<int>> stepSpans = const [],
+  }) {
+    if (_motionMinutes(daySub).isEmpty) return null;
+    return buildKcalMinutes(
+      daySub: daySub,
+      profile: profile,
+      restingHr: nocturnalRhr ?? profile.restingHrManual?.toDouble(),
+      sleepOnsetSec: sleepOnsetSec,
+      sleepOffsetSec: sleepOffsetSec,
+      stepSpans: stepSpans,
+    );
   }
 
   /// Pin today's morning readiness headline once its overnight is genuinely
@@ -8682,6 +8804,16 @@ class DerivationEngine {
       seriesPatch: seriesPatch,
       scalarPatch: scMap,
       wake: wake,
+      // Off the same inputs `applyDayActivity` priced the day from, here in the
+      // isolate with them: the minutes sum to the stored active figure.
+      kcalMinutes: kcalMinutesForDay(
+        daySub: daySub,
+        profile: inp.profile,
+        nocturnalRhr: inp.rhr,
+        sleepOnsetSec: onset,
+        sleepOffsetSec: offset,
+        stepSpans: inp.stepSpans,
+      ),
       suggestionsToPersist: wc.suggestionsToPersist,
       sessionHrrWrites: wc.sessionHrrWrites,
       notifBout: wc.notifBout,
@@ -9364,6 +9496,9 @@ class _DayBlocksOutput {
   final Map<String, dynamic> seriesPatch;
   final Map<String, dynamic> scalarPatch;
   final Map<String, dynamic> wake;
+
+  /// The `kcal_minutes|<day>` payload, or null (see `kcalMinutesForDay`).
+  final Map<String, dynamic>? kcalMinutes;
   final List<Map<String, dynamic>> suggestionsToPersist;
   final List<(String, double)> sessionHrrWrites;
   final ({String id, int durationMin})? notifBout;
@@ -9372,6 +9507,7 @@ class _DayBlocksOutput {
     required this.seriesPatch,
     required this.scalarPatch,
     required this.wake,
+    required this.kcalMinutes,
     required this.suggestionsToPersist,
     required this.sessionHrrWrites,
     required this.notifBout,

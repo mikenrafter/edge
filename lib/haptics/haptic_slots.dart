@@ -61,7 +61,6 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot(kGestureStartKey, 'Gesture start'),
     HapticSlot(kGestureFollowUpKey, 'Gesture follow-up'),
     HapticSlot(kGestureConfirmKey, 'Gesture confirmed'),
-    HapticSlot('alert.gesture', 'Gesture alert'),
   ]),
 ];
 
@@ -95,6 +94,29 @@ Map<String, String> decodeCueAssignments(String? raw) {
 }
 
 String encodeCueAssignments(Map<String, String> m) => jsonEncode(m);
+
+/// The sequence each gesture cue plays: the pattern [assignments] put on it
+/// (8AI) if the store still has it, else the cue's own built-in as stored (and
+/// as the wearer may have changed it). A cue with neither is absent, and
+/// GestureCues plays its seeded default. The one place this is decided, so
+/// what plays is what the Haptics screen shows on the slot.
+Map<String, BuzzSequence> resolveCuePatterns(
+  HapticPatternStore store,
+  Map<String, String> assignments,
+) {
+  final out = <String, BuzzSequence>{};
+  for (final key in const [
+    kGestureStartKey,
+    kGestureFollowUpKey,
+    kGestureConfirmKey,
+  ]) {
+    final given = assignments[key];
+    final p = (given == null ? null : store.byId(given)) ??
+        store.bySystemKey(key);
+    if (p != null) out[key] = p.sequence;
+  }
+  return out;
+}
 
 /// How a pattern is named where a slot says what it plays: a preset or other
 /// built-in by its name, the wearer's own as "Your: name".

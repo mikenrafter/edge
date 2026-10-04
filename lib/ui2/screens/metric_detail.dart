@@ -884,20 +884,24 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
               requires: spec.requires)
           : const <DeviceOption>[];
       // Only a metric with journal insights does the slow part on open (the
-      // 90-day insight pass). It starts now, beside the cheap series read, and
-      // its last result (memory, else the stored copy) is shown under an "As
-      // of" label until it lands. Errors are never stored.
+      // 90-day insight pass). It starts now, beside the cheap series read. The
+      // pass is ONE artifact shared with Wellness and the warmer, keyed by what
+      // it reads, not by the metric: a stored result whose input signature
+      // still matches is shown as is and not recomputed; a stale one is shown
+      // under an "As of" label until the recompute lands. Errors are never
+      // stored.
       final cacheKey = _outcome == null
           ? null
-          : LastResultCache.keyOf('metric_insights', [widget.metricKey]);
+          : LastResultCache.keyOf('journal_insights', ['90d']);
       // A failure is carried as null: it must not escape while the series is
       // still being read.
       final slow = cacheKey == null
           ? null
           : LastResultCache.instance
-              .loadShowingLast<Map<String, dynamic>>(
+              .loadArtifact<Map<String, dynamic>>(
                 cacheKey,
                 () => repo.getJournalInsights(range: '90d'),
+                signature: () => repo.artifactSignature(cacheKey),
                 onLast: (hit) {
                   // Only while nothing is shown yet: a re-read of a screen
                   // that already has a fresh result is not stale.

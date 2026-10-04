@@ -12,6 +12,11 @@
 //     self-heals);
 //   * no existing table is touched.
 //
+// 8AG-perf P3 moves this to schema 60: `last_result` gains the nullable
+// `input_sig` column (see test/perf/p3_schema_test.dart); the other columns and
+// the ladder below are unchanged, so this file now expects 60 and the extra
+// column.
+//
 // Real sqflite_ffi, same idiom as test/db_alarm_schedule_migration_test.dart.
 // Failure mode today: schemaVersion is 58 and `last_result` does not exist
 // ("no such table" / a column list that is empty).
@@ -63,23 +68,24 @@ void main() {
     }
   });
 
-  test('schemaVersion is 59', () {
-    expect(LocalDb.schemaVersion, 59);
+  test('schemaVersion is 60', () {
+    expect(LocalDb.schemaVersion, 60);
   });
 
-  test('upgrade from v58 reaches 59 and creates last_result with the agreed '
+  test('upgrade from v58 reaches 60 and creates last_result with the agreed '
       'columns', () async {
     const name = 'openstrap_fix8ai_g1_schema_58.db';
     created.add(name);
     await _seedEmptyV58(name);
     final db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 59);
+    expect(await _userVersion(db), 60);
 
     final cols = {
       for (final c in await db.rawQuery('PRAGMA table_info(last_result)'))
         c['name'] as String: c,
     };
-    expect(cols.keys.toSet(), {'key', 'computed_at', 'payload_json'});
+    expect(cols.keys.toSet(),
+        {'key', 'computed_at', 'payload_json', 'input_sig'});
     expect(cols['key']!['type'], 'TEXT');
     expect(cols['key']!['pk'], 1, reason: 'key is the primary key');
     expect(cols['computed_at']!['type'], 'INTEGER');
@@ -103,7 +109,7 @@ void main() {
     expect(rows.single['computed_at'], 1000);
   });
 
-  test('self-heal: a v59 database missing the table gets it back on open',
+  test('self-heal: a current-version database missing the table gets it back on open',
       () async {
     const name = 'openstrap_fix8ai_g1_schema_heal.db';
     created.add(name);
@@ -111,7 +117,7 @@ void main() {
     var db = await _openThroughLocalDb(name);
     await db.execute('DROP TABLE last_result');
     db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 59);
+    expect(await _userVersion(db), 60);
     expect(await db.query('last_result'), isEmpty,
         reason: '_repairOpenSchema re-runs the creator on every open');
   });
@@ -121,7 +127,7 @@ void main() {
     created.add(name);
     await databaseFactory.deleteDatabase(await _path(name));
     final db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 59);
+    expect(await _userVersion(db), 60);
     expect(await db.query('last_result'), isEmpty);
   });
 }

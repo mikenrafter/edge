@@ -1,12 +1,17 @@
-// 8AF.6 C: the gesture response vocabulary. A response to a gesture is the
-// start cue (gesture.start) and then, for a count above one, a follow-up cue
-// (gesture.followUp) per extra pulse, chained at the vocabulary's minimum gap
-// (HapticDeviceProfile.minVibrationGapMs), all as ONE job of the band queue.
-// Two jobs in a row (the start cue the tap sends, then the count) are spaced by
-// the same gap in the queue itself. The final "action
-// done" ack is the confirm cue (gesture.confirm). The cues are the built-in
-// patterns, so a customised one is what plays. A band with no haptic profile
-// (a 4.0) keeps today's plain pulses.
+// 8AF.6 C: the gesture cue vocabulary. A gesture is answered by an ADDITIVE
+// sequence of cues, each its own job of the band queue:
+//
+//   start()      the start cue (gesture.start), once, when the gesture begins
+//   followUp()   ONE follow-up cue (gesture.followUp) per count increment
+//                (the touch that makes it 3, then 4, then 5), queued the moment
+//                the increment is seen; never a recount of the pulses so far
+//   confirm()    the confirm cue (gesture.confirm), when the gesture ends
+//
+// The queue spaces two jobs by the vocabulary's minimum gap
+// (HapticDeviceProfile.minVibrationGapMs, 8AI), so no cue is dropped, merged or
+// reordered. Each cue plays the pattern the wearer assigned to it, else the
+// built-in; a customised one is what plays. A band with no haptic profile (a
+// 4.0) plays one plain pulse per cue.
 //
 // This class only plays; it never decides whether a gesture may buzz. Callers
 // reach it from inside an AlertDispatcher delivery.
@@ -47,41 +52,23 @@ class GestureCues {
     return fallback == null ? null : bandStepsFor(fallback, p, maxRuntime: null);
   }
 
-  /// The start cue, then [pulses] - 1 follow-ups, in one queue job.
-  Future<BuzzDelivery> response(int pulses) {
-    final count = pulses < 1 ? 1 : pulses;
-    final p = haptics.profile;
-    if (p == null) return _plainPulses(count);
-    final start = _steps(kGestureStartKey, p);
-    final follow = _steps(kGestureFollowUpKey, p);
-    if (start == null || follow == null) return _plainPulses(count);
-    final wait = p.minVibrationGapMs;
-    final cap = haptics.maxRuntime;
-    var plan = [...start];
-    for (var i = 1; i < count; i++) {
-      final next = [
-        ...plan,
-        for (var j = 0; j < follow.length; j++)
-          BakedStep(
-            effects: follow[j].effects,
-            loop: follow[j].loop,
-            delayMs: j == 0 ? wait : follow[j].delayMs,
-          ),
-      ];
-      if (next.length > BuzzSequence.maxBakedSteps) break;
-      final felt = bakedRuntimeMsFor(_sequence(p, next), p);
-      if (cap != null && felt != null && felt > cap.inMilliseconds) break;
-      plan = next;
-    }
-    return haptics.deliver(_sequence(p, plan));
-  }
+  /// The start cue: the gesture began.
+  Future<BuzzDelivery> start() => _cue(kGestureStartKey);
 
-  /// The confirm cue: the action is done.
-  Future<BuzzDelivery> confirm() {
+  /// One follow-up cue: the count went up by one.
+  Future<BuzzDelivery> followUp() => _cue(kGestureFollowUpKey);
+
+  /// The confirm cue: the gesture ended.
+  Future<BuzzDelivery> confirm() => _cue(kGestureConfirmKey);
+
+  // [key]'s pattern as one queue job, compiled for the band like every other
+  // stored pattern (the seeded default when the stored one does not compile).
+  Future<BuzzDelivery> _cue(String key) {
     final p = haptics.profile;
-    final seq = p == null ? null : _pattern(kGestureConfirmKey);
-    if (p == null || seq == null) return _plainPulses(1);
-    return haptics.deliver(seq);
+    if (p == null) return _plainPulses(1);
+    final steps = _steps(key, p);
+    if (steps == null) return _plainPulses(1);
+    return haptics.deliver(_sequence(p, steps));
   }
 
   // A one-press sequence carrying [steps] as its stored plan for [p].

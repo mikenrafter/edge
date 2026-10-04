@@ -7,14 +7,13 @@
 // clock), never phone receipt time, because samples reach the phone in bursts
 // and receipt time would turn a 200 ms window into noise.
 //
-// FIRST BUZZ = THE COUNT SO FAR. Nothing buzzes when the gesture starts. The
-// first window decides the first buzz: a touch that engages in it (a finger
-// already on the sensor counts) is tap 3 and buzzes three times; no touch by
-// the deadline ends the gesture at 2 with two buzzes. Every later tap buzzes
-// once, and a count that a window running out makes final gets one more
-// confirming buzz. A count that is final the moment it is buzzed (2 at the
-// first deadline, or [max] reached) gets no extra buzz: that buzz is the
-// confirmation.
+// CUES ARE ADDITIVE. The gesture opens at count 2: the double tap that starts
+// it (the start cue plays then, outside this class). Every touch that engages
+// after that is one increment (count 3, 4, 5) and asks for exactly ONE buzz, a
+// follow-up, the moment it is seen; a count is never buzzed again from the top.
+// When the gesture ends counted (a window runs out, [max] is reached, or max 2
+// ends at once) it asks for one confirm before the done. An abandoned gesture
+// asks for neither.
 //
 //  * A DEADLINE is only ever decided by a sample reaching it. [tick] exists to
 //    notice a stalled stream and nothing else: it can abandon, never confirm.
@@ -29,7 +28,7 @@
 //    the sensor's own blind time after a lift (zero by default; the session
 //    sets the measured value), [EcgTapThresholds.confirm] the wearer's.
 //  * Every output is a request. The caller routes buzzes through
-//    AlertDispatcher and paces them; this class sends nothing.
+//    AlertDispatcher and the band queue spaces them; this class sends nothing.
 //
 // DISCONTINUITY POLICY (review finding E). Contact and no-contact only count
 // when they are OBSERVED. Two consecutive samples further apart than
@@ -164,10 +163,15 @@ sealed class EcgTapOutput {
   final Duration at;
 }
 
-/// Ask the band to buzz [pulses] times.
+/// Ask the band for one follow-up cue: the count went up by one.
 final class EcgTapBuzz extends EcgTapOutput {
-  const EcgTapBuzz(super.at, {this.pulses = 1});
-  final int pulses;
+  const EcgTapBuzz(super.at);
+}
+
+/// Ask the band for the confirm cue: the gesture ended counted. Always
+/// followed by the [EcgTapDone] it confirms.
+final class EcgTapConfirm extends EcgTapOutput {
+  const EcgTapConfirm(super.at);
 }
 
 /// The gesture ended with [count] taps; run that count's actions.
@@ -228,9 +232,9 @@ class EcgTapCounter {
   bool get started => _started;
   bool get finished => _finished;
 
-  /// A live double tap begins the gesture at count 2. Nothing buzzes yet: the
-  /// first window decides whether the first buzz says 2 or 3. With [max] 2
-  /// there is nothing to wait for, so it buzzes twice and ends. A late tap
+  /// A live double tap begins the gesture at count 2, the opening. Nothing is
+  /// asked for yet (the start cue plays at the tap, outside the counter). With
+  /// [max] 2 there is nothing to wait for, so it confirms and ends. A late tap
   /// never starts it.
   List<EcgTapOutput> start(StrapEvent tap, {required Duration at}) {
     if (_started || _finished || !tap.isLive) return const [];
@@ -238,7 +242,7 @@ class EcgTapCounter {
     _count = 2;
     if (max == 2) {
       _finished = true;
-      return [EcgTapBuzz(at, pulses: 2), EcgTapDone(at, 2)];
+      return [EcgTapConfirm(at), EcgTapDone(at, 2)];
     }
     return const [];
   }
@@ -249,7 +253,7 @@ class EcgTapCounter {
   List<EcgTapOutput> noFinger(Duration at) {
     if (!_started || _finished || _phase != _Phase.awaitingOpen) return const [];
     _finished = true;
-    return [EcgTapBuzz(at, pulses: 2), EcgTapDone(at, 2)];
+    return [EcgTapConfirm(at), EcgTapDone(at, 2)];
   }
 
   /// The sensor is ready: opens the first window `[at, at + start)`. Samples
@@ -307,10 +311,11 @@ class EcgTapCounter {
           if (at >= _deadline) return _confirm(at, out);
         } else if (at - _contactStart >= thresholds.gap) {
           _count++;
-          // Tap 3 is the first buzz of the gesture: it says the whole count.
-          out.add(EcgTapBuzz(at, pulses: _count == 3 ? 3 : 1));
+          // One follow-up per increment, as soon as the touch engages.
+          out.add(EcgTapBuzz(at));
           if (_count >= max) {
             _finished = true;
+            out.add(EcgTapConfirm(at));
             out.add(EcgTapDone(at, _count));
           } else {
             _phase = _Phase.touching;
@@ -359,13 +364,10 @@ class EcgTapCounter {
     return _abandon(at, 'link_lost');
   }
 
-  /// A window ran out. At count 2 nothing has buzzed yet, so the two-pulse
-  /// count buzz is also the confirmation; later counts were already buzzed
-  /// and get one confirming buzz.
+  /// A window ran out: the count is final, so the confirm closes it.
   List<EcgTapOutput> _confirm(Duration at, List<EcgTapOutput> out) {
     _finished = true;
-    final pulses = _count == 2 ? 2 : 1;
-    return [...out, EcgTapBuzz(at, pulses: pulses), EcgTapDone(at, _count)];
+    return [...out, EcgTapConfirm(at), EcgTapDone(at, _count)];
   }
 
   List<EcgTapOutput> _abandon(Duration at, String reason) {

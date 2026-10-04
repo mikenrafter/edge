@@ -6,10 +6,11 @@
 //
 // Timeline vocabulary used below (ms on the sample clock), default thresholds
 // (start 300, gap 200, confirm 200):
-//   start(tap) at 0 -> nothing buzzes yet; open(500) -> first window
-//   [500, 500+start). A touch that engages there is tap 3 and buzzes three
-//   times; no touch by the deadline buzzes twice and ends at 2. Later taps buzz
-//   once, and a window running out after tap 3 confirms with one more buzz.
+//   start(tap) at 0 -> count 2, nothing buzzes yet; open(500) -> first window
+//   [500, 500+start). Each touch that engages is one increment (3, 4, 5) and
+//   asks for ONE follow-up buzz; a gesture that ends counted (the deadline, or
+//   the max) asks for one confirm before the done; an abandoned one asks for
+//   neither (8AI.3).
 //   Engage = `gap` ms continuous contact. Release = `gap` ms
 //   continuous no-contact. After contact ends at E, a next touch must START in
 //   [E+gap, E+gap+confirm); at E+gap+confirm with no new touch it confirms.
@@ -52,6 +53,7 @@ class _Run {
   }
 
   List<EcgTapBuzz> get buzzes => out.whereType<EcgTapBuzz>().toList();
+  List<EcgTapConfirm> get confirms => out.whereType<EcgTapConfirm>().toList();
   EcgTapDone? get done => out.whereType<EcgTapDone>().firstOrNull;
   bool get abandoned => out.any((o) => o is EcgTapAbandoned);
 }
@@ -129,22 +131,22 @@ void main() {
       r.at(800, false);
       expect(r.done!.count, 2);
       expect(r.done!.at, _ms(800));
-      expect(r.buzzes.map((b) => b.pulses), [2],
-          reason: 'the count buzz is the confirmation: no extra buzz');
-      expect(r.buzzes.last.at, _ms(800));
+      expect(r.buzzes, isEmpty, reason: 'no increment: no follow-up');
+      expect(r.confirms.single.at, _ms(800));
     });
 
     test('3: touch < 300 ms · buzz buzz buzz · release · > 400 ms · buzz',
         () {
       final r = _toThree(5);
-      expect(r.buzzes.map((b) => b.pulses), [3]);
+      expect(r.buzzes, hasLength(1), reason: 'one increment: one follow-up');
       expect(r.buzzes[0].at, _ms(800), reason: 'engage = start + 200 ms');
       expect(r.c.count, 3);
       r.span(1200, 1600, false);
       expect(r.done, isNull);
       r.at(1600, false);
       expect(r.done!.count, 3);
-      expect(r.buzzes.map((b) => b.pulses), [3, 1]);
+      expect(r.buzzes, hasLength(1));
+      expect(r.confirms, hasLength(1), reason: 'the deadline confirms');
     });
 
     test('3: a finger already on the sensor when the window opens', () {
@@ -154,7 +156,7 @@ void main() {
       r.span(500, 700, true);
       r.at(700, true);
       expect(r.c.count, 3);
-      expect(r.buzzes.single.pulses, 3);
+      expect(r.buzzes, hasLength(1));
       expect(r.buzzes.single.at, _ms(700),
           reason: 'held from the window opening: open + gap');
     });
@@ -169,7 +171,8 @@ void main() {
       r.span(2000, 2400, false);
       r.at(2400, false);
       expect(r.done!.count, 4);
-      expect(r.buzzes.map((b) => b.pulses), [3, 1, 1]);
+      expect(r.buzzes, hasLength(2), reason: 'one follow-up per increment');
+      expect(r.confirms, hasLength(1));
     });
 
     test('5: … touch 200–400 ms · buzz (max, runs at once)', () {
@@ -181,8 +184,10 @@ void main() {
       r.at(2500, true); // engage at 2500 -> count 5 = max
       expect(r.done!.count, 5);
       expect(r.done!.at, _ms(2500));
-      expect(r.buzzes.map((b) => b.pulses), [3, 1, 1],
-          reason: 'the max buzz is the last one; no confirm buzz after it');
+      expect(r.buzzes, hasLength(3),
+          reason: 'one follow-up each for 3, 4 and 5');
+      expect(r.confirms, hasLength(1), reason: 'the max closes with a confirm');
+      expect(r.confirms.single.at, _ms(2500));
       r.span(2510, 4000, false);
       expect(r.out.whereType<EcgTapDone>(), hasLength(1));
     });
@@ -204,8 +209,8 @@ void main() {
       r.at(800, true);
       expect(r.done!.count, 3);
       expect(r.done!.at, _ms(800));
-      expect(r.buzzes.map((b) => b.pulses), [3],
-          reason: 'the three-pulse count buzz is the confirmation');
+      expect(r.buzzes, hasLength(1), reason: 'the follow-up for 3');
+      expect(r.confirms, hasLength(1));
     });
 
     test('max = 4: the fourth touch runs at once', () {
@@ -245,7 +250,7 @@ void main() {
       r.span(1200, 1600, false);
       r.at(1600, false);
       expect(r.done!.count, 3, reason: 'the gap was not a second touch');
-      expect(r.buzzes.map((b) => b.pulses), [3, 1]);
+      expect(r.buzzes, hasLength(1));
     });
 
     test('a touch that starts at the end of the first window is too late', () {
@@ -442,12 +447,11 @@ void main() {
   group('8X: noFinger (the quick start: no contact in the first sampled '
       'packet)', () {
     test('after start and before the window opens, the count is 2 right '
-        'away: two buzzes and a final 2', () {
+        'away: the confirm and a final 2', () {
       final r = _Run(5)..start();
       final out = r.c.noFinger(_ms(1000));
       expect(out, hasLength(2));
-      expect(out[0], isA<EcgTapBuzz>());
-      expect((out[0] as EcgTapBuzz).pulses, 2);
+      expect(out[0], isA<EcgTapConfirm>());
       expect(out[0].at, _ms(1000));
       expect(out[1], isA<EcgTapDone>());
       expect((out[1] as EcgTapDone).count, 2);
@@ -460,7 +464,8 @@ void main() {
       for (final max in [3, 4, 5]) {
         final r = _Run(max)..start();
         final out = r.c.noFinger(_ms(0));
-        expect(out.whereType<EcgTapBuzz>().single.pulses, 2, reason: '$max');
+        expect(out.whereType<EcgTapConfirm>(), hasLength(1), reason: '$max');
+        expect(out.whereType<EcgTapBuzz>(), isEmpty, reason: '$max');
         expect(out.whereType<EcgTapDone>().single.count, 2, reason: '$max');
       }
       final r = _Run(2);

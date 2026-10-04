@@ -336,15 +336,20 @@ class _BeatsState extends State<Beats> with RevisionReload {
         });
       }
       // The corrected-RR read is the slow part. It starts now, beside the
-      // cheap rows, and this night's last good result (memory, else the stored
-      // copy) is shown under an "As of" label until it lands. An error is never
-      // kept; here it comes back as null so it cannot escape unawaited.
-      final slow = day == null
+      // cheap rows. It is one artifact per night (shared with the warmer): a
+      // stored result whose input signature still matches is shown as is, a
+      // stale one (memory, else the stored copy) is shown under an "As of" label
+      // until the recompute lands. An error is never kept; here it comes back as
+      // null so it cannot escape unawaited.
+      final beatsKey =
+          day == null ? null : LastResultCache.keyOf('beats', [day]);
+      final slow = day == null || beatsKey == null
           ? null
           : LastResultCache.instance
-              .loadShowingLast<Map<String, dynamic>>(
-                LastResultCache.keyOf('beats', [day]),
+              .loadArtifact<Map<String, dynamic>>(
+                beatsKey,
                 () => BeatsData.readBeats(repo, day),
+                signature: () => repo.artifactSignature(beatsKey),
                 onLast: (hit) {
                   // Only while nothing is shown for this night: a re-read of a
                   // night that already has fresh beats is not stale.

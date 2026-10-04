@@ -274,15 +274,20 @@ class BandGesturesView extends StatelessWidget {
                           : null,
                     ),
                 ]),
-                Surface(
-                  pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                  child: SetRow(
-                    LucideIcons.vibrate,
-                    C.purple,
-                    'Haptics',
-                    key: const ValueKey('gestures-open-haptics'),
-                    sub: 'The buzzes these gestures play',
-                    onTap: onHaptics,
+                // The accordions draw their own gap above themselves; a link card
+                // has to bring the same one or it sits flush on the card above.
+                Padding(
+                  padding: const EdgeInsets.only(top: S.x3),
+                  child: Surface(
+                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                    child: SetRow(
+                      LucideIcons.vibrate,
+                      C.purple,
+                      'Haptics',
+                      key: const ValueKey('gestures-open-haptics'),
+                      sub: 'The buzzes these gestures play',
+                      onTap: onHaptics,
+                    ),
                   ),
                 ),
                 if (extraTaps)
@@ -353,7 +358,7 @@ class BandGesturesView extends StatelessWidget {
                     },
                   ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: S.x5),
+                  padding: const EdgeInsets.fromLTRB(S.x5, S.x3, S.x5, 0),
                   child: SetRow(
                     LucideIcons.layoutList,
                     C.blue,

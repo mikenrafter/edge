@@ -67,9 +67,6 @@ class _Rig {
     Duration? buzzTimeout,
   }) {
     session = EcgTapSession(
-      // The pacing rig: one pulse per call, each after the quiet gap (8W). The
-      // default is one call per count since 8AF.6.
-      maxPulsesPerBurst: 1,
       beginStream: () async {
         began++;
         log.add('begin');
@@ -257,23 +254,20 @@ void main() {
       expect(r.failIds, isEmpty);
     });
 
-    test('it is queued behind the count buzzes and waits out the quiet gap',
+    test('it is queued behind the count buzzes, with no wait of its own',
         () async {
       final r = _Rig(max: 5);
       await r.session.start(_tap());
       await r.steady();
       r.now = _t0.add(const Duration(seconds: 2));
-      r.session.onFrame(_pkt(1002, _moving())); // tap 3: x3 as three commands
+      r.session.onFrame(_pkt(1002, _moving())); // tap 3: one follow-up
       await r.settle();
       r.alive = false;
       r.session.poll();
       await r.settle();
-      expect(r.order, ['count:1', 'count:1', 'count:1', 'fail']);
-      expect(r.waits, [
-        const Duration(milliseconds: 1800),
-        const Duration(milliseconds: 1800),
-        const Duration(milliseconds: 1800),
-      ], reason: 'two between the count commands, one before the failure buzz');
+      expect(r.order, ['count:1', 'fail']);
+      expect(r.waits, isEmpty,
+          reason: 'the band queue spaces the jobs, not the session');
     });
 
     test('a failure buzz that throws or is refused is logged and nothing '

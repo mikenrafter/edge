@@ -20,6 +20,7 @@ import 'dart:math' as math;
 
 import '../compute/derivation_engine.dart';
 import '../compute/hr_max.dart';
+import '../compute/kcal_minutes.dart';
 import '../compute/manual_session.dart';
 import '../compute/onehz_pipeline.dart' show kUnknownAbsenceNote, needInputNote;
 import '../compute/profile.dart';
@@ -904,7 +905,13 @@ class LocalRepositoryImpl extends LocalRepository {
       rr.add(v.toDouble());
     }
     if (rr.length < 2) return none;
-    final c = ana.correctRr(rr, rrTsMs: ts);
+    // A whole night of beats through the Lipponen-Tarvainen pass is real work:
+    // off the UI isolate (invariant 10). Pure, no ambient globals, plain lists
+    // in and a plain record out.
+    final c = await Isolate.run(() {
+      final r = ana.correctRr(rr, rrTsMs: ts);
+      return (nn: r.nn, cleanFraction: r.cleanFraction);
+    });
     return (nn: c.nn, rawBeats: rr.length, cleanFraction: c.cleanFraction);
   }
 
@@ -3534,10 +3541,13 @@ class LocalRepositoryImpl extends LocalRepository {
         (od['key'] as String): [for (final d in dates) maps[od['key']]![d]],
     };
 
-    final corr = ana.journalCorrelations(
-      journal: jdays,
-      dates: dates,
-      outcomes: outcomes,
+    // Rank statistics over every tag and outcome: off the UI isolate. Pure.
+    final corr = await Isolate.run(
+      () => ana.journalCorrelations(
+        journal: jdays,
+        dates: dates,
+        outcomes: outcomes,
+      ),
     );
 
     // Flatten to UI rows: one row per (tag, outcome) that is meaningful, phrased
@@ -3627,10 +3637,12 @@ class LocalRepositoryImpl extends LocalRepository {
         (od['key'] as String): [for (final d in dates) maps[od['key']]![d]],
     };
 
-    final corr = ana.journalNumericCorrelations(
-      journal: days,
-      dates: dates,
-      outcomes: outcomes,
+    final corr = await Isolate.run(
+      () => ana.journalNumericCorrelations(
+        journal: days,
+        dates: dates,
+        outcomes: outcomes,
+      ),
     );
 
     // Custom field definitions so a user-invented field reads by its own name
@@ -3693,6 +3705,170 @@ class LocalRepositoryImpl extends LocalRepository {
     // — never mixed into one ranking that would read as a league table.
     out.sort((a, b) => _effectSize(b).compareTo(_effectSize(a)));
     return out;
+  }
+
+  // ── persisted artifacts (8AG-perf P3) ───────────────────────────────────────
+  //
+  // A slow screen read is an ARTIFACT: stored in `last_result` under its key
+  // with the signature of the inputs it read. The screens and the warmer both go
+  // through these two methods, so a warmed row and an on-open row are the same
+  // thing. Keys: `journal_insights|<range>`, `weekday_effect`, `circadian`,
+  // `beats|<day>`, `workout|<id>`, `kcal_minutes|<day>`.
+
+  static (String kind, String arg) _artifactKey(String key) {
+    final i = key.indexOf('|');
+    return i < 0 ? (key, '') : (key.substring(0, i), key.substring(i + 1));
+  }
+
+  /// `'<kAlgoVersion>|<inputs>'`, a few indexed reads and no payload decode, or
+  /// null for an unknown kind, a session that does not exist and a day with no
+  /// decoded raw (kcal). An empty database still has a signature: "nothing yet"
+  /// is a state. Writing the artifact itself (`last_result`) never moves it.
+  @override
+  Future<String?> artifactSignature(String key) async {
+    final (kind, arg) = _artifactKey(key);
+    final String body;
+    switch (kind) {
+      case 'journal_insights':
+        // The window's start is an input: a day sliding out of it changes the
+        // answer with no new write.
+        final since = _rangeSinceLabel(arg.isEmpty ? '90d' : arg);
+        body = '${since ?? ''}|${await LocalDb.dayResultRev(sinceDay: since)}'
+            '|${await LocalDb.journalInputRev(sinceDay: since)}';
+      case 'weekday_effect':
+        // The whole series, not a window (see getWeekdayEffect).
+        body = await LocalDb.dayResultRev();
+      case 'circadian':
+        // `crossDayStaleReason` reads today, so the day is an input too.
+        body = '${_todayLocalLabel()}'
+            '|${await LocalDb.baselineUpdatedAt('crossday') ?? ''}';
+      case 'beats':
+        final lo = localDayStartSec(arg);
+        if (lo == null) return null;
+        // The night spans midnight, so the evening before is read as well; the
+        // sleep window comes out of this day's own row, which a re-derive can
+        // move without any decoded row changing.
+        final prev =
+            dayLabelOf(DateTime.fromMillisecondsSinceEpoch((lo - 1) * 1000));
+        final fp = await LocalDb.decodedDayFingerprints([arg, prev]);
+        body = '${fp[arg] ?? ''}|${fp[prev] ?? ''}'
+            '|${await LocalDb.dayResultComputedAt(arg) ?? ''}';
+      case 'workout':
+        final s = await LocalDb.sessionRev(arg);
+        final start = s?.startTs;
+        if (s == null || start == null) return null;
+        // The window plus the post-end recovery read (~205 s), which can cross
+        // midnight. A live session reads up to now.
+        final end = (s.endTs ?? DateTime.now().millisecondsSinceEpoch ~/ 1000) +
+            210;
+        final fp = await LocalDb.decodedDayFingerprints(
+            _daysSpanning(start, end));
+        body = '${s.rev}|${_stampOf(fp.entries.map((e) => '${e.key}=${e.value}'))}'
+            '|${_profileStamp()}';
+      case 'kcal_minutes':
+        final fp = (await LocalDb.decodedDayFingerprints([arg]))[arg];
+        if (fp == null) return null;
+        // The calorie anchors, as the repository reports them right now; the
+        // derive that stores the row builds the same body.
+        body = kcalSignatureBody(fp, Profile.fromMap(getProfileMap()));
+      default:
+        return null;
+    }
+    return '$kAlgoVersion|$body';
+  }
+
+  /// The local day labels the window `[fromSec, toSec]` touches, oldest first
+  /// (DST-safe: each next day starts at the previous day's local midnight end),
+  /// capped so a corrupt row cannot walk for ever.
+  List<String> _daysSpanning(int fromSec, int toSec) {
+    final out = <String>[];
+    var d = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(fromSec * 1000));
+    while (out.length < 4) {
+      out.add(d);
+      final hi = localDayEndSec(d);
+      if (hi == null || toSec < hi) break;
+      d = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(hi * 1000));
+    }
+    return out;
+  }
+
+  /// A short, stable stamp of the profile (FNV-1a over its sorted entries). The
+  /// zones and the score of a workout read it, so editing it makes a stored
+  /// workout stale.
+  String _profileStamp() {
+    final m = getProfileMap();
+    if (m == null) return '';
+    final keys = m.keys.toList()..sort();
+    return _stampOf([for (final k in keys) '$k=${m[k]}']);
+  }
+
+  static String _stampOf(Iterable<String> parts) {
+    var h = 0x811c9dc5;
+    for (final c in parts.join(';').codeUnits) {
+      h = ((h ^ c) * 0x01000193) & 0xffffffff;
+    }
+    return h.toRadixString(16);
+  }
+
+  /// What the warmer stores for [key]: the SAME map the matching reader returns.
+  /// The heavy parts (the correlations, the permutation test, the RR
+  /// correction) already run under `Isolate.run` inside those readers. Null =
+  /// nothing to store; a failure throws.
+  @override
+  Future<Map<String, dynamic>?> computeArtifact(String key) async {
+    final (kind, arg) = _artifactKey(key);
+    switch (kind) {
+      case 'journal_insights':
+        return getJournalInsights(range: arg.isEmpty ? '90d' : arg);
+      case 'weekday_effect':
+        return getWeekdayEffect();
+      case 'circadian':
+        return getInsights();
+      case 'beats':
+        // The shape `BeatsData.readBeats` builds: one definition of the row.
+        final b = await getNightBeats(arg);
+        return {
+          'nn': b.nn,
+          'raw_beats': b.rawBeats,
+          'clean_fraction': b.cleanFraction,
+        };
+      case 'workout':
+        final w = await getWorkout(arg);
+        return w.isEmpty ? null : w;
+      case 'kcal_minutes':
+        // A day derived before the artifact existed: rebuilt from its decoded
+        // raw (the substrate load and the build run off this isolate).
+        return DerivationEngine()
+            .kcalMinutesForStoredDay(arg, Profile.fromMap(getProfileMap()));
+      default:
+        return null;
+    }
+  }
+
+  /// A day's intraday calories: one record per minute, gaps null, as the
+  /// derive stored them (`kcal_minutes|<day>`); null when there is none (no raw
+  /// ever, or the profile could not price the day). Never interpolated or
+  /// filled. A read of the stored row: no compute.
+  @override
+  Future<Map<String, dynamic>?> getDayCalorieCurve(String day) async {
+    final row = await LocalDb.lastResult('kcal_minutes|$day');
+    if (row == null) return null;
+    final p = jsonDecode(row.payload);
+    if (p is! Map) return null;
+    return {
+      'minutes': [
+        for (final m in (p['minutes'] as List? ?? const []))
+          {
+            't': (m as Map)['t'],
+            'total': m['total'],
+            'active': m['active'],
+            'basal': m['basal'],
+          },
+      ],
+      'basal_kcal_per_min': p['basal_kcal_per_min'],
+      'covered_minutes': p['covered_minutes'],
+      'computed_at': row.computedAt,
+    };
   }
 
   /// MIND-12 — which day of the week costs you, on one outcome.

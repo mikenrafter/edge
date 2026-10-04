@@ -134,6 +134,23 @@ no pgrep wait loops, no leftover flutter_tester)
 - Docs: `docs/perf.md`; `test/phase8/CONTRACTS.md` (8AG P2). Tests: `test/perf/p2_*`.
 - Not done here: persisted artifacts (P3, P4), power modes (P5).
 
+### 8AG-perf P3 — analytics out of readers: persisted artifacts + intraday calories
+
+- **Artifacts**: `last_result.input_sig` (schema 60); a stored result whose input signature is
+  current opens with no recompute and no "As of" label. Keys: journal insights, weekday effect,
+  circadian, the night's beats, a workout, the day's calorie curve. Signatures are a few indexed
+  reads (`LocalRepository.artifactSignature`); `computeArtifact` is the one producer for screens
+  and the warmer. Heavy reads moved off the UI isolate.
+- **Warmer**: after a derive pass that computed days, serial, held during a workout / breathing /
+  ECG capture or a scheduler hold, cancelled on dispose; a failure is logged and stores nothing.
+- **Intraday calories**: `kcal_minutes|<day>` = `Calories.minuteEnergy` per minute (total, active,
+  basal, source; gaps null). Built in the derive's isolate from the same inputs as the day's
+  calories (the minutes sum to the stored `calories`), stored after the day commits; recent days
+  derived before P3 get it from the warmer while raw lives. `getDayCalorieCurve(day)` reads it;
+  no UI until the Explorer. No `kAlgoVersion` bump.
+- Docs: `docs/perf.md` (P3 artifacts); `test/phase8/CONTRACTS.md` (8AG P3). Tests: `test/perf/p3_*`.
+- Not done here: P4, power modes (P5), the Explorer intraday metric.
+
 ### 8AI device-test fixes (inserted before P3, user priority)
 Persisted last results + no full-page spinners; Settings order/Hardware/steps/
 barcode; accordion identity + first-frame state; haptics presets/slots/modes/
