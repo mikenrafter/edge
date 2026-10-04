@@ -57,7 +57,8 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
-import '../perf/support/perf_fakes.dart';
+import '../perf/support/p3_support.dart';
+import '../perf/support/p3_warmer_support.dart';
 import '../phase8/support/dart_source.dart';
 import 'support/g1_db.dart';
 
@@ -165,11 +166,22 @@ void main() {
         (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = BeatsRepo()..beatsGate = Completer();
-      final app = _app(repo);
+      // The read is the warmer's now: the screen asks for it and waits.
+      final key = p3Beats(todayId);
+      final repo = P3BeatsRepo()..sigs[key] = 'b1';
+      final src = FakeArtifactSource()
+        ..sigs[key] = 'b1'
+        ..results[key] = {
+          'nn': [for (var i = 0; i < 400; i++) 880 + (i % 37) * 3.0],
+          'raw_beats': 412,
+          'clean_fraction': .97,
+        }
+        ..gates[key] = Completer<void>();
+      final app = _app(repo)..debugArtifactSource = src;
       await t.pumpWidget(perfApp(app, const Beats()));
       await settle(t, n: 20);
-      expect(repo.beatsCalls, 1);
+      expect(src.computes(key), 1, reason: 'the warm is requested once');
+      expect(repo.beatsCalls, 0, reason: 'the screen computes nothing');
 
       expect(find.text('Beats'), findsOneWidget);
       expect(find.textContaining('Night of'), findsOneWidget,
@@ -180,7 +192,7 @@ void main() {
               'that waits');
       _expectInlineLoading(t, 'Beats');
 
-      repo.beatsGate!.complete();
+      src.gates[key]!.complete();
       await settle(t);
       expect(_bars, findsNothing);
     });

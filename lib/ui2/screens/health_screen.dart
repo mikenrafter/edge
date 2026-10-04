@@ -717,16 +717,18 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
 
   /// "As of <time>" at the top of a sub-tab while the day its rows are read
   /// from is being recalculated. The rows stay; see [AsOfHold].
-  Widget _asOf(HealthData d, DateTime? Function(RecalcState recalc) at) =>
+  Widget _asOf(HealthData d, DateTime? Function(RecalcState recalc) at,
+          {String? day, DateTime? computedAt}) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         AsOfHold(
           shown: d,
+          day: day,
+          computedAt: computedAt,
           asOf: at,
           builder: (c, t) => Padding(
               padding: const EdgeInsets.only(bottom: S.x3),
               child: AsOfLabel(at: t)),
         ),
-        const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x3)),
       ]);
 
   // ─────────────── LAST NIGHT ───────────────
@@ -895,7 +897,10 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               shownDay: status is Map ? status['overnight_day']?.toString() : null,
               computedAt: computedAtOf(
                   status is Map ? status['overnight_computed_at'] : null),
-              recalc: recalc)),
+              recalc: recalc),
+          day: status is Map ? status['overnight_day']?.toString() : null,
+          computedAt: computedAtOf(
+              status is Map ? status['overnight_computed_at'] : null)),
       if (night != null) ...[
         Text(l?.healthNightOf(prettyDay(night, l)) ?? 'Night of ${prettyDay(night, l)}',
             style: F.cap.copyWith(color: p.ink2)),
@@ -1149,7 +1154,10 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
               shownDay: status is Map ? status['activity_day']?.toString() : null,
               computedAt: computedAtOf(
                   status is Map ? status['activity_computed_at'] : null),
-              recalc: recalc)),
+              recalc: recalc),
+          day: status is Map ? status['activity_day']?.toString() : null,
+          computedAt: computedAtOf(
+              status is Map ? status['activity_computed_at'] : null)),
       if (rows.isNotEmpty)
         Surface(
           pad: const EdgeInsets.symmetric(horizontal: S.x4),

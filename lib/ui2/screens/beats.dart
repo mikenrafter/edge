@@ -319,6 +319,7 @@ class _BeatsState extends State<Beats> with RevisionReload {
       return;
     }
     final t = beginRead(#beats);
+    final warm = warmRequesterOf(context);
     try {
       final night = await BeatsData.pickNight(repo, want: _day);
       if (!stillNewest(#beats, t)) return;
@@ -335,21 +336,23 @@ class _BeatsState extends State<Beats> with RevisionReload {
           _loading = true;
         });
       }
-      // The corrected-RR read is the slow part. It starts now, beside the
-      // cheap rows. It is one artifact per night (shared with the warmer): a
-      // stored result whose input signature still matches is shown as is, a
-      // stale one (memory, else the stored copy) is shown under an "As of" label
-      // until the recompute lands. An error is never kept; here it comes back as
-      // null so it cannot escape unawaited.
+      // The corrected-RR read is the slow part, and this screen does not run
+      // it: it is one artifact per night, prepared by the background warmer. A
+      // stored result whose input signature still matches is shown as is; a
+      // stale one (memory, else the stored copy) is shown under an "As of"
+      // label; with none the panel waits (InlineLoading) while the warm is
+      // requested, and the revision it moves reads the night again. Null when
+      // the warm left nothing fresh (held, failed): the panel waits for the
+      // next read.
       final beatsKey =
           day == null ? null : LastResultCache.keyOf('beats', [day]);
       final slow = day == null || beatsKey == null
           ? null
           : LastResultCache.instance
-              .loadArtifact<Map<String, dynamic>>(
+              .loadWarmed<Map<String, dynamic>>(
                 beatsKey,
-                () => BeatsData.readBeats(repo, day),
                 signature: () => repo.artifactSignature(beatsKey),
+                warm: () => warm == null ? Future<void>.value() : warm(beatsKey),
                 onLast: (hit) {
                   // Only while nothing is shown for this night: a re-read of a
                   // night that already has fresh beats is not stale.
@@ -399,6 +402,8 @@ class _BeatsState extends State<Beats> with RevisionReload {
       // The night's own read, not the composed view: beats landing swap `_d`
       // but must not release a label held for the old night rows.
       shown: _shell ?? d,
+      day: d.day,
+      computedAt: d.computedAt,
       asOf: (recalc) =>
           asOfFor(shownDay: d.day, computedAt: d.computedAt, recalc: recalc),
       builder: place,
@@ -422,7 +427,6 @@ class _BeatsState extends State<Beats> with RevisionReload {
       l?.beatsTitle ?? 'Beats',
       [
         _asOf(d),
-        const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
         ...dayNavRow(_day ?? d.day, d.days, _goDay),
         if (_loading)
           const Padding(

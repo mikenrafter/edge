@@ -222,7 +222,9 @@ class DeriveCoordinator {
       } catch (e) {
         _log('[derive] freshness refresh failed: $e');
       }
-      if (!_disposed) bumpInsights();
+      if (_disposed) return;
+      LocalRepositoryImpl.invalidateBundleMemo();
+      bumpInsights();
     }());
   }
 
@@ -276,6 +278,14 @@ class DeriveCoordinator {
       hold: () => _warmHeld() || scheduler.offloadActive,
       log: _log,
     );
+  }
+
+  /// Warms [key] on demand through the same warmer and queue as a pass, then
+  /// says so if it stored something. Never throws; no warmer is a no-op.
+  Future<void> requestWarm(String key) async {
+    final w = _warmer;
+    if (w == null || _disposed) return;
+    if (await w.warmKeys([key]) && !_disposed) bumpInsights();
   }
 
   /// Cancels everything this coordinator owns: the scheduler's timers, the
@@ -390,6 +400,7 @@ class DeriveCoordinator {
         _log('[derive] session rescore failed: $e');
       }
       await LocalDb.refreshComputeFreshness();
+      LocalRepositoryImpl.invalidateBundleMemo();
       bumpInsights();
       _notify(); // screens re-fetch from the derived store
       // Warm the slow screen artifacts (journal insights, weekday effect, the

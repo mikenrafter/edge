@@ -46,7 +46,8 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 
-import '../perf/support/perf_fakes.dart';
+import '../perf/support/p3_support.dart';
+import '../perf/support/p3_warmer_support.dart';
 import 'support/g1_db.dart';
 
 const _db = 'openstrap_fix8ai_g1_persisted.db';
@@ -224,11 +225,21 @@ void main() {
         (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = BeatsRepo()
-        ..nn = [for (var i = 0; i < 400; i++) 913.25 + (i % 11)];
-      final app = _app(repo);
+      // The corrected-RR read is the warmer's: the screen asks for it, and what
+      // the warmer stores is what persists.
+      final key = p3Beats(todayId);
+      Map<String, dynamic> night(double base, int mod) => {
+            'nn': [for (var i = 0; i < 400; i++) base + (i % mod)],
+            'raw_beats': 412,
+            'clean_fraction': .97,
+          };
+      final repo = P3BeatsRepo()..sigs[key] = 'B1';
+      final src = FakeArtifactSource()
+        ..sigs[key] = 'B1'
+        ..results[key] = night(913.25, 11);
+      final app = _app(repo)..debugArtifactSource = src;
       await t.pumpWidget(perfApp(app, const Beats()));
-      await settle(t);
+      await settle(t, n: 30);
       await _restart(t);
       final rows = await _rows(t, 'beats');
       expect(rows, isNotEmpty);
@@ -239,17 +250,20 @@ void main() {
       }
 
       await t.pumpWidget(const SizedBox());
-      repo
-        ..nn = [for (var i = 0; i < 400; i++) 777.5 + (i % 13)]
-        ..beatsGate = Completer();
+      repo.sigs[key] = 'B2'; // the inputs moved: what is stored is stale
+      src
+        ..sigs[key] = 'B2'
+        ..results[key] = night(777.5, 13)
+        ..gates[key] = Completer<void>();
       await t.pumpWidget(perfApp(app, const Beats()));
       await settle(t, n: 20);
-      expect(repo.beatsCalls, 2);
+      expect(src.computes(key), 2, reason: 'warmed again in the background');
+      expect(repo.beatsCalls, 0, reason: 'never computed by the screen');
       expect(_spinner, findsNothing,
           reason: 'the persisted night renders instead of a spinner');
       expect(_label, findsWidgets);
 
-      repo.beatsGate!.complete();
+      src.gates[key]!.complete();
       await settle(t);
       expect(_label, findsNothing);
       await t.runAsync(() => LastResultCache.instance.flush());
@@ -261,21 +275,25 @@ void main() {
     testWidgets('an error is never persisted', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = BeatsRepo()..beatsThrow = true;
-      final app = _app(repo);
+      final key = p3Beats(todayId);
+      final repo = P3BeatsRepo()..sigs[key] = 'B1';
+      final src = FakeArtifactSource()
+        ..sigs[key] = 'B1'
+        ..computeThrows.add(key);
+      final app = _app(repo)..debugArtifactSource = src;
       await t.pumpWidget(perfApp(app, const Beats()));
-      await settle(t);
+      await settle(t, n: 30);
       await _restart(t);
       expect(await _rows(t, 'beats'), isEmpty);
 
       await t.pumpWidget(const SizedBox());
-      repo
-        ..beatsThrow = false
-        ..beatsGate = Completer();
+      src
+        ..computeThrows.clear()
+        ..gates[key] = Completer<void>();
       await t.pumpWidget(perfApp(app, const Beats()));
       await settle(t, n: 20);
       expect(_label, findsNothing);
-      repo.beatsGate!.complete();
+      src.gates[key]!.complete();
       await settle(t);
     });
   });

@@ -975,6 +975,8 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
       // The series' own read, not the composed view: a late journal result
       // swaps `_d` but must not release a label held for the old series.
       shown: _base ?? d,
+      day: d.newestDay,
+      computedAt: d.computedAt,
       asOf: (recalc) => asOfFor(
           shownDay: d.newestDay, computedAt: d.computedAt, recalc: recalc),
       builder: place,
@@ -1013,7 +1015,6 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
 
     return detailScaffold(c, spec.title, [
       _asOf(d),
-      const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
       // Resting heart rate is the NIGHT's number; this is what the chest is
       // doing this second. Two different quantities, so the live one gets its
       // own card above the trend rather than a second figure on the same card,

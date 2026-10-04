@@ -58,3 +58,24 @@ DateTime? asOfFor({
   if (dependsOnCrossDay && recalc.crossDay) return computedAt;
   return null;
 }
+
+/// Why derive work is held (from `DeriveScheduler.snapshot()`). There is no
+/// power member on purpose: "Waiting for power" belongs to the power hold that
+/// does not exist yet.
+enum StaleHold { workout, sync, background }
+
+/// The hold a scheduler snapshot describes: a live workout first (a lapsed
+/// hold, forgotten past its cap, no longer counts), then a sync, then the app
+/// being in the background. A running or queued pass is not a hold.
+StaleHold? staleHoldOf(Map<String, dynamic> snapshot) {
+  if (snapshot['workout_active'] == true &&
+      snapshot['workout_hold_expired'] != true) {
+    return StaleHold.workout;
+  }
+  if (snapshot['offload_active'] == true ||
+      snapshot['manual_sync_hold'] == true) {
+    return StaleHold.sync;
+  }
+  if (snapshot['background'] == true) return StaleHold.background;
+  return null;
+}

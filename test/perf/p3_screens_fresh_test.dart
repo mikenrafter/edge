@@ -48,6 +48,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart';
 
 import '../fix8ai/support/g1_db.dart';
 import 'support/p3_support.dart';
+import 'support/p3_warmer_support.dart';
 
 const _db = 'openstrap_p3_screens_fresh_test.db';
 final _label = find.byKey(const ValueKey('as-of-label'));
@@ -295,18 +296,24 @@ void main() {
       expect(_spinner, findsNothing);
     });
 
-    testWidgets('STALE: As-of + one recompute, then the label clears and the '
-        'row carries the new signature', (t) async {
+    testWidgets('STALE: As-of + one warm request (never an inline compute), '
+        'then the label clears and the row carries the new signature',
+        (t) async {
       _tall(t);
       await _fresh(t);
       final repo = P3BeatsRepo()..sigs[key] = 'B2';
       await _seed(t, key, stored, 'B1');
-      repo.beatsGate = Completer();
-      await t.pumpWidget(perfApp(_app(repo), const Beats()));
+      final src = FakeArtifactSource()
+        ..sigs[key] = 'B2'
+        ..results[key] = stored
+        ..gates[key] = Completer<void>();
+      final app = _app(repo)..debugArtifactSource = src;
+      await t.pumpWidget(perfApp(app, const Beats()));
       await settle(t, n: 20);
-      expect(repo.beatsCalls, 1);
+      expect(src.computes(key), 1, reason: 'the warm was requested once');
+      expect(repo.beatsCalls, 0, reason: 'the screen never computes it');
       expect(_label, findsWidgets);
-      repo.beatsGate!.complete();
+      src.gates[key]!.complete();
       await settle(t);
       expect(_label, findsNothing);
       expect(await _sigOf(t, key), 'B2');
@@ -337,10 +344,19 @@ void main() {
       expect(w, contains("keyOf('workout'"));
     });
 
-    test('MetricDetail, Wellness and Beats read through loadArtifact', () {
-      for (final f in ['metric_detail.dart', 'wellness_screen.dart', 'beats.dart']) {
+    test('MetricDetail and Wellness read through loadArtifact', () {
+      for (final f in ['metric_detail.dart', 'wellness_screen.dart']) {
         expect(src(f), contains('loadArtifact'), reason: f);
         expect(src(f), contains('artifactSignature'), reason: f);
+      }
+    });
+
+    test('Beats and Circadian read the stored artifact and ask the warmer '
+        'on a miss (loadWarmed), never computing in the build path', () {
+      for (final f in ['beats.dart', 'circadian_detail.dart']) {
+        expect(src(f), contains('loadWarmed'), reason: f);
+        expect(src(f), contains('artifactSignature'), reason: f);
+        expect(src(f), contains('warmRequesterOf'), reason: f);
       }
     });
 

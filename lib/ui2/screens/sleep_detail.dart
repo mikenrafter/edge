@@ -399,6 +399,8 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
   /// borrows this one's.
   Widget _asOf(SleepData d) => AsOfHold(
         shown: d,
+        day: d.day,
+        computedAt: computedAtOf(d.night['computed_at']),
         asOf: (recalc) => asOfFor(
             shownDay: d.day,
             computedAt: computedAtOf(d.night['computed_at']),
@@ -502,9 +504,6 @@ class _SleepDetailState extends State<SleepDetail> with RevisionReload {
 
       // ── 1 · THE ANSWER ──
       _answer(c, p, d, n),
-      // Under the answer, not above it: a list child with no height at the very
-      // top is not "on stage", and the line has none while nothing calculates.
-      const CalcStatusLine(padding: EdgeInsets.only(top: S.x2)),
 
       // ── 2 · THE NIGHT ITSELF ──
       const SizedBox(height: S.x3),

@@ -39,6 +39,7 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/data/circadian_artifact.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/artifact_warmer.dart';
@@ -195,7 +196,8 @@ void main() {
 
     await expectRow(p3Journal, await repo.getJournalInsights(range: '90d'));
     await expectRow(p3Weekday, await repo.getWeekdayEffect());
-    await expectRow(p3Circadian, await repo.getInsights());
+    // The rollup plus everything the Body clock screen draws (P4c).
+    await expectRow(p3Circadian, await buildCircadianArtifact(repo));
     await expectRow(p3Beats(p3Day(1)), await BeatsData.readBeats(repo, p3Day(1)));
     await expectRow(p3Workout('s-today'), await repo.getWorkout('s-today'));
   });

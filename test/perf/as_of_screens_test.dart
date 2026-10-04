@@ -46,7 +46,8 @@ import 'package:openstrap_edge/state/recalc_state.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 
-import 'support/perf_fakes.dart';
+import 'support/p3_support.dart';
+import 'support/p3_warmer_support.dart';
 
 final _label = find.byKey(const ValueKey('as-of-label'));
 
@@ -412,43 +413,53 @@ void main() {
       await t.pump();
     });
 
-    testWidgets('corrected RR: re-open renders the cached night at once, '
-        'then swaps', (t) async {
-      _tall(t);
-      final repo = BeatsRepo();
-      final app = _app(repo);
-      await t.pumpWidget(perfApp(app, const Beats()));
-      await settle(t);
-      expect(repo.beatsCalls, 1);
-      expect(_label, findsNothing);
+    final key = p3Beats(todayId);
+    final night = {
+      'nn': [for (var i = 0; i < 400; i++) 880 + (i % 37) * 3.0],
+      'raw_beats': 412,
+      'clean_fraction': .97,
+    };
 
-      await t.pumpWidget(const SizedBox());
-      repo.beatsGate = Completer();
+    testWidgets('corrected RR: re-open renders the stored night at once, the '
+        'warm is requested in the background, then it swaps', (t) async {
+      _tall(t);
+      final repo = P3BeatsRepo()..sigs[key] = 'B2';
+      LastResultCache.instance.put<Map<String, dynamic>>(key, night, sig: 'B1');
+      final src = FakeArtifactSource()
+        ..sigs[key] = 'B2'
+        ..results[key] = night
+        ..gates[key] = Completer<void>();
+      final app = _app(repo)..debugArtifactSource = src;
       await t.pumpWidget(perfApp(app, const Beats()));
       await settle(t, n: 20);
-      expect(repo.beatsCalls, 2, reason: 'recomputed in the background');
+      expect(src.computes(key), 1, reason: 'warmed in the background');
+      expect(repo.beatsCalls, 0, reason: 'never computed by the screen');
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(_label, findsWidgets);
 
-      repo.beatsGate!.complete();
+      src.gates[key]!.complete();
       await settle(t);
       expect(_label, findsNothing);
     });
 
-    testWidgets('an error is never cached', (t) async {
+    testWidgets('a failed warm is never cached: no label on the next open',
+        (t) async {
       _tall(t);
-      final repo = BeatsRepo()..beatsThrow = true;
-      final app = _app(repo);
+      await t.runAsync(LastResultCache.instance.clear);
+      final repo = P3BeatsRepo()..sigs[key] = 'B1';
+      final src = FakeArtifactSource()
+        ..sigs[key] = 'B1'
+        ..computeThrows.add(key);
+      final app = _app(repo)..debugArtifactSource = src;
       await t.pumpWidget(perfApp(app, const Beats()));
       await settle(t);
       await t.pumpWidget(const SizedBox());
-      repo
-        ..beatsThrow = false
-        ..beatsGate = Completer();
+      src.computeThrows.clear();
+      src.gates[key] = Completer<void>();
       await t.pumpWidget(perfApp(app, const Beats()));
       await settle(t, n: 20);
       expect(_label, findsNothing);
-      repo.beatsGate!.complete();
+      src.gates[key]!.complete();
       await settle(t);
     });
   });

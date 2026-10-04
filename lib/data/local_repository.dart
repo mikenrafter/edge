@@ -294,6 +294,10 @@ abstract class LocalRepository {
   /// store. Throws on a failure. The default has nothing to compute.
   Future<Map<String, dynamic>?> computeArtifact(String key) async => null;
 
+  /// The newest recording the stored result of [day] covers (local time), for
+  /// the staleness line; null when unknown. The default knows nothing.
+  Future<DateTime?> dayRecordingsThrough(String day) async => null;
+
   /// A day's intraday calories `{minutes: [{t, total, active, basal}],
   /// basal_kcal_per_min, covered_minutes, computed_at}` (`t` epoch seconds, a
   /// minute nobody measured has null figures, never an interpolated one), or

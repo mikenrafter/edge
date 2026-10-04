@@ -10472,6 +10472,27 @@ class LocalDb {
     return out;
   }
 
+  /// The newest recording (`MAX(rec_ts)`, epoch seconds) the stored result of
+  /// [day] was derived from, read off its fingerprint at [algoVersion]: one
+  /// keyed read, no payload. Null when the day has none, it was written under
+  /// another version, or it does not parse. A legacy two-part fingerprint still
+  /// gives its MAX.
+  static Future<int?> derivedFingerprintMaxRecTs(
+    String day,
+    int algoVersion,
+  ) async {
+    final row = await computeFreshness('$_derivedFpPrefix$day');
+    if (row == null) return null;
+    try {
+      final m = jsonDecode(row['payload_json'] as String);
+      if (m is! Map || m['v'] != algoVersion || m['fp'] is! String) return null;
+      final mx = int.tryParse((m['fp'] as String).split(':').first);
+      return mx == null || mx <= 0 ? null : mx;
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> putDerivedFingerprint(
     String day,
     int algoVersion,

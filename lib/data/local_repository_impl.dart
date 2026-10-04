@@ -14,9 +14,12 @@
 // Profile-gated metrics are null when the profile field is missing.
 
 import 'dart:async';
+import 'dart:collection' show LinkedHashMap;
 import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math' as math;
+
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../compute/calc_status.dart';
 import '../compute/derivation_engine.dart';
@@ -28,6 +31,7 @@ import '../compute/profile.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
+import 'circadian_artifact.dart';
 import 'day_label.dart';
 import 'db.dart';
 import '../health/health_export.dart';
@@ -60,7 +64,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>?> _bundle(String date) async {
     final row = await LocalDb.dayResult(date);
     if (row == null) return null;
-    return _decode(row['payload_json']);
+    return _decodeDay(row);
   }
 
   /// The most-recent COMPLETE derived day to show on Today. With the calendar-day
@@ -78,17 +82,19 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<_BundleAt> _latestBundleAt() async {
     final rows = await LocalDb.recentDayResults(14);
     _BundleAt? newest, withScalars;
+    // The walk reads the memoised decodes in place; only the one picked is
+    // copied for the caller.
     for (final row in rows) {
-      final b = _decode(row['payload_json']);
+      final b = _decodeDayShared(row);
       if (b == null) continue;
       final at = _BundleAt(b, (row['computed_at'] as num?)?.toInt());
       newest ??= at;
       if (b['skipped'] == true) continue;
       final scalars = b['scalars'];
       if (scalars is Map && scalars.isNotEmpty) withScalars ??= at;
-      if (_bundleHasSleep(b)) return at; // latest COMPLETE day wins
+      if (_bundleHasSleep(b)) return at.owned(); // latest COMPLETE day wins
     }
-    return withScalars ?? newest ?? const _BundleAt(null, null);
+    return (withScalars ?? newest)?.owned() ?? const _BundleAt(null, null);
   }
 
   /// True when a bundle carries a real sleep (single-source accounting present).
@@ -156,7 +162,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// so it is never "now" and never another row's time.
   Future<_BundleAt> _bundleAtForDate(String date) async {
     final row = await LocalDb.dayResult(date);
-    final b = row == null ? null : _decode(row['payload_json']);
+    final b = row == null ? null : _decodeDay(row);
     if (row != null && b != null) {
       return _BundleAt(b, (row['computed_at'] as num?)?.toInt());
     }
@@ -174,6 +180,77 @@ class LocalRepositoryImpl extends LocalRepository {
   /// grid/offset shape, which nothing but `putDayResult` ever writes.
   static Map<String, dynamic>? _decode(Object? json) =>
       SeriesCodec.decodePayloadJson(json);
+
+  // ── decoded day_result bundles, memoised ──────────────────────────────────
+  //
+  // Every read used to decode the payload again on the main isolate: the
+  // latest-bundle walk up to 14, Sleep detail twice for one night, Circadian
+  // ~49 per open. One process-wide LRU of [_bundleMemoCap] (static, like
+  // [_decode]: the warmer's, the background task's and the screens' repositories
+  // share it) keyed by (day, algo_version, computed_at) of the row the read
+  // actually got, so a re-derive or a newer algo version is a miss and an older
+  // decode is never served. A wipe drops it (a re-seeded row can carry the same
+  // key), as does every derive publish ([invalidateBundleMemo]). A write the
+  // frozen-row guard refuses changes no row, so it drops nothing.
+  static const int _bundleMemoCap = 32;
+  static final LinkedHashMap<String, Map<String, dynamic>> _bundleMemo =
+      LinkedHashMap<String, Map<String, dynamic>>();
+  static int _bundleMemoEpoch = 0;
+
+  /// Actual payload decodes of a day_result bundle (a memo hit adds none).
+  @visibleForTesting
+  static int debugBundleDecodes = 0;
+
+  @visibleForTesting
+  static int get debugBundleMemoLength => _bundleMemo.length;
+
+  /// Empties the memo and zeroes the counter.
+  @visibleForTesting
+  static void debugResetBundleMemo() {
+    _bundleMemo.clear();
+    debugBundleDecodes = 0;
+  }
+
+  /// Empties the memo (a derive publish).
+  static void invalidateBundleMemo() => _bundleMemo.clear();
+
+  /// The decoded bundle of a `day_result` [row], for the caller to keep and
+  /// change: a deep copy of the memoised one.
+  static Map<String, dynamic>? _decodeDay(Map<String, dynamic> row) =>
+      _deepCopy(_decodeDayShared(row)) as Map<String, dynamic>?;
+
+  /// The memoised decode itself: shared, so it is READ ONLY. Only a walk that
+  /// copies what it keeps may use it.
+  static Map<String, dynamic>? _decodeDayShared(Map<String, dynamic> row) {
+    if (_bundleMemoEpoch != LocalDb.wipeEpoch) {
+      _bundleMemo.clear();
+      _bundleMemoEpoch = LocalDb.wipeEpoch;
+    }
+    final at = row['computed_at'];
+    final key =
+        at == null ? null : '${row['day_id']}|${row['algo_version']}|$at';
+    if (key != null) {
+      final hit = _bundleMemo.remove(key);
+      if (hit != null) return _bundleMemo[key] = hit; // most recent last
+    }
+    debugBundleDecodes++;
+    final b = _decode(row['payload_json']);
+    if (b != null && key != null) {
+      _bundleMemo[key] = b;
+      while (_bundleMemo.length > _bundleMemoCap) {
+        _bundleMemo.remove(_bundleMemo.keys.first);
+      }
+    }
+    return b;
+  }
+
+  static Object? _deepCopy(Object? v) => switch (v) {
+    Map() => <String, dynamic>{
+      for (final e in v.entries) e.key as String: _deepCopy(e.value),
+    },
+    List() => <dynamic>[for (final e in v) _deepCopy(e)],
+    _ => v,
+  };
 
   /// Pull a sub-map by dotted path (e.g. 'clinical.hrv_time').
   Map<String, dynamic>? _sub(Map<String, dynamic>? b, String path) {
@@ -3832,7 +3909,9 @@ class LocalRepositoryImpl extends LocalRepository {
       case 'weekday_effect':
         return getWeekdayEffect();
       case 'circadian':
-        return getInsights();
+        // Everything the Body clock screen draws, not only the rollup, so a
+        // warm open reads no day bundle (see circadian_artifact.dart).
+        return buildCircadianArtifact(this);
       case 'beats':
         // The shape `BeatsData.readBeats` builds: one definition of the row.
         final b = await getNightBeats(arg);
@@ -3852,6 +3931,15 @@ class LocalRepositoryImpl extends LocalRepository {
       default:
         return null;
     }
+  }
+
+  /// The newest recording the stored result of [day] was derived from: the
+  /// MAX(rec_ts) of its `derived_fp:<day>` fingerprint at this build's algo
+  /// version, as a local time. One keyed read; no payload is read or decoded.
+  @override
+  Future<DateTime?> dayRecordingsThrough(String day) async {
+    final sec = await LocalDb.derivedFingerprintMaxRecTs(day, kAlgoVersion);
+    return sec == null ? null : DateTime.fromMillisecondsSinceEpoch(sec * 1000);
   }
 
   /// A day's intraday calories: one record per minute, gaps null, as the
@@ -4473,6 +4561,12 @@ class _BundleAt {
   final Map<String, dynamic>? bundle;
   final int? computedAt;
   const _BundleAt(this.bundle, this.computedAt);
+
+  /// The same pair with a bundle the caller may change (see
+  /// [LocalRepositoryImpl._decodeDayShared]).
+  _BundleAt owned() => _BundleAt(
+      LocalRepositoryImpl._deepCopy(bundle) as Map<String, dynamic>?,
+      computedAt);
 }
 
 /// TS-03 — the highest heart rate the band has OBSERVED, and where.

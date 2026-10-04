@@ -209,13 +209,14 @@ class _ReadinessDetailState extends State<ReadinessDetail> with RevisionReload {
       ] else ...[
         AsOfHold(
           shown: d,
+          day: d.asOfDay,
+          computedAt: d.computedAt,
           asOf: (recalc) => asOfFor(
               shownDay: d.asOfDay, computedAt: d.computedAt, recalc: recalc),
           builder: (c, at) => Padding(
               padding: const EdgeInsets.only(bottom: S.x2),
               child: AsOfLabel(at: at)),
         ),
-        const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
         if (d.day != null) ...[
           Text(
               l?.healthNightOf(prettyDay(d.day, l)) ??

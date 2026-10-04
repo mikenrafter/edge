@@ -139,50 +139,50 @@ void main() {
     });
   });
 
-  group('loadShowingLast (8AI G1)', () {
-    test('a remembered result is handed over at once, before the loader '
-        'finishes, and the fresh one is stored', () async {
+  group('loadWarmed (P4c)', () {
+    Future<T?> run<T>(LastResultCache c,
+            {String? sig = 's1',
+            required Future<void> Function() warm,
+            void Function(CachedResult<T>)? onLast}) =>
+        c.loadWarmed<T>('a',
+            signature: () async => sig, warm: warm, onLast: onLast ?? (_) {});
+
+    test('a fresh stored entry is returned and nothing is warmed', () async {
       final c = LastResultCache();
-      c.put<int>('a', 1);
-      final seen = <int>[];
-      var finish = false;
-      final f = c.loadShowingLast<int>('a', () async {
-        await Future<void>.delayed(const Duration(milliseconds: 5));
-        finish = true;
-        return 2;
-      }, onLast: (h) => seen.add(h.value));
-      expect(seen, [1], reason: 'in the same turn, loader still running');
-      expect(finish, isFalse);
-      expect(await f, 2);
-      expect(c.get<int>('a')!.value, 2);
+      c.put<int>('a', 1, sig: 's1');
+      var warmed = false;
+      expect(await run<int>(c, warm: () async => warmed = true), 1);
+      expect(warmed, isFalse);
     });
 
-    test('an error propagates, stores nothing and keeps the earlier entry',
+    test('a miss asks for the warm, then returns what it stored', () async {
+      final c = LastResultCache();
+      expect(await run<int>(c, warm: () async => c.put<int>('a', 7, sig: 's1')),
+          7);
+    });
+
+    test('a warm that stores nothing (held, failed) is null, not a made-up '
+        'value', () async {
+      final c = LastResultCache();
+      expect(await run<int>(c, warm: () async {}), isNull);
+      expect(await run<int>(c, warm: () async => throw StateError('x')),
+          isNull);
+    });
+
+    test('a stale entry goes to onLast and is never returned as fresh',
         () async {
       final c = LastResultCache();
-      c.put<int>('a', 1);
-      await expectLater(
-        c.loadShowingLast<int>('a', () async => throw StateError('nope'),
-            onLast: (_) {}),
-        throwsStateError,
-      );
-      expect(c.get<int>('a')!.value, 1);
-      final d = LastResultCache();
-      await expectLater(
-        d.loadShowingLast<int>('b', () async => throw StateError('nope'),
-            onLast: (_) {}),
-        throwsStateError,
-      );
-      expect(d.get<int>('b'), isNull);
+      c.put<int>('a', 1, sig: 'old');
+      final seen = <int>[];
+      expect(await run<int>(c, warm: () async {}, onLast: (h) => seen.add(h.value)),
+          isNull);
+      expect(seen, [1]);
     });
 
-    test('nothing remembered: onLast is never called', () async {
+    test('no current signature: never fresh, never returned', () async {
       final c = LastResultCache();
-      var called = false;
-      await c.loadShowingLast<int>('a', () async => 1,
-          onLast: (_) => called = true);
-      await Future<void>.delayed(const Duration(milliseconds: 5));
-      expect(called, isFalse);
+      c.put<int>('a', 1, sig: 's1');
+      expect(await run<int>(c, sig: null, warm: () async {}), isNull);
     });
   });
 

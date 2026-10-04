@@ -86,6 +86,19 @@ LocalRepository? repoOf(BuildContext c) {
   }
 }
 
+/// Asks the background warmer for an artifact (`beats|<day>`, `circadian`):
+/// what a screen with nothing stored does instead of computing in its build
+/// path. The returned future completes when the warm has finished or been
+/// dropped, and the revision has moved if it stored something. Null in a golden
+/// (no AppState to ask).
+Future<void> Function(String key)? warmRequesterOf(BuildContext c) {
+  try {
+    return c.read<AppState>().requestWarm;
+  } catch (_) {
+    return null;
+  }
+}
+
 /// The user's unit system, or null in a golden. A screen that cannot reach it
 /// renders what the store holds, which is metric.
 UnitsController? unitsOf(BuildContext c) {
@@ -1618,7 +1631,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
         ],
         const SizedBox(height: S.x3),
         if (_loading)
-          const Center(child: CircularProgressIndicator())
+          const InlineLoading()
         else if (_failed)
           StatusCard(
             l?.homeLoadFailedTitle ?? 'Today could not be read',
@@ -1864,6 +1877,8 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       AsOfHold(
         shown: d,
         builder: label,
+        day: d.overnightDay,
+        computedAt: d.overnightAt,
         asOf: (recalc) => asOfFor(
             shownDay: d.overnightDay,
             computedAt: d.overnightAt,
@@ -1872,6 +1887,8 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       AsOfHold(
         shown: d,
         builder: label,
+        day: d.activityDay,
+        computedAt: d.activityAt,
         // One line when both rows were computed together.
         asOf: (recalc) => d.activityAt == d.overnightAt &&
                 d.activityDay == d.overnightDay
@@ -1881,7 +1898,6 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
                 computedAt: d.activityAt,
                 recalc: recalc),
       ),
-      const CalcStatusLine(padding: EdgeInsets.only(top: S.x2)),
     ]);
   }
 

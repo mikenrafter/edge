@@ -117,6 +117,38 @@ class ArtifactWarmer {
     return _tail = _tail.then((_) => _warm(days));
   }
 
+  // Keys asked for through [warmKeys] that have not finished: a key asked for
+  // again meanwhile joins the first ask instead of computing twice.
+  final Map<String, Future<bool>> _requested = {};
+
+  /// Warms exactly [keys] on demand (a screen with nothing stored for one),
+  /// through the same serial queue, hold rule and per-key rules as a pass.
+  /// Completes when they have finished, been skipped (fresh, or no signature),
+  /// dropped (held, disposed) or failed; never throws. True when something new
+  /// was stored. A held request is dropped, not queued: the screen asks again on
+  /// its next read.
+  Future<bool> warmKeys(List<String> keys) async {
+    if (_disposed || _held()) return false;
+    final asks = <Future<bool>>[];
+    for (final key in {...keys}) {
+      final inFlight = _requested[key];
+      if (inFlight != null) {
+        asks.add(inFlight);
+        continue;
+      }
+      final done = _tail.then((_) async {
+        if (_stop) return false;
+        return _warmKey(key);
+      });
+      _tail = done.then((_) {});
+      final ask = _requested[key] = done;
+      unawaited(ask.whenComplete(() => _requested.remove(key)));
+      asks.add(ask);
+    }
+    final stored = await Future.wait(asks);
+    return stored.any((b) => b);
+  }
+
   /// Cancels: no further key starts, an in-flight compute's result is
   /// discarded, and later passes return at once.
   void dispose() => _disposed = true;
@@ -151,24 +183,27 @@ class ArtifactWarmer {
     }
   }
 
-  Future<void> _warmKey(String key) async {
+  /// True when this call stored a new result.
+  Future<bool> _warmKey(String key) async {
     try {
       // Asked BEFORE the compute, so a result whose inputs move while it runs is
       // stored under the older signature and reads stale next time.
       final sig = await source.signature(key);
-      if (sig == null) return; // nothing to key freshness on
+      if (sig == null) return false; // nothing to key freshness on
       final stored = await _cache.read<Map>(key);
-      if (stored != null && stored.sig == sig) return; // fresh
+      if (stored != null && stored.sig == sig) return false; // fresh
       // Only a key that really computes is shown (fresh and unsigned ones
       // returned above); closed whether the compute returns, throws or is
       // discarded.
       final value =
           await CalcStatus.instance.run(_label(key), () => source.compute(key));
-      if (_disposed || value == null) return;
+      if (_disposed || value == null) return false;
       _cache.put<Map<String, dynamic>>(key, value, sig: sig);
       await _cache.flush();
+      return true;
     } catch (e) {
       _say('artifact warm $key failed: $e');
+      return false;
     }
   }
 

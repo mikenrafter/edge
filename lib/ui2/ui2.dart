@@ -7,7 +7,6 @@
 
 export 'app_shell.dart';
 export 'as_of.dart';
-export 'calc_status_line.dart';
 export 'charts.dart';
 export 'community_links.dart';
 export 'grammar.dart';

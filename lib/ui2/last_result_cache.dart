@@ -178,31 +178,41 @@ class LastResultCache {
     return v;
   }
 
-  /// What a screen opens with: [loader] starts at once, and while it runs
-  /// [onLast] is handed the last stored result for [key] (memory in the same
-  /// frame, the table a moment later) unless the fresh one has already landed.
-  /// The fresh result is stored without waiting for the table. An error from
-  /// [loader] propagates and stores nothing. [onLast] runs where the caller
-  /// must check it is still mounted.
-  Future<T> loadShowingLast<T>(
-    String key,
-    Future<T> Function() loader, {
+  /// What a screen with no business computing in its build path opens with:
+  /// the artifact [key] FRESH from the store (same rule as [loadArtifact]: its
+  /// signature equals a non-null current one), else [warm] is awaited, which is
+  /// the request to the one background warmer, and the store is read again. A
+  /// stale stored entry goes to [onLast] first. Returns null when the warm did
+  /// not leave a fresh entry (held, failed, nothing to sign): the caller keeps
+  /// its loading state and asks again on its next read. Nothing is computed
+  /// here and nothing is stored here; [onLast] runs where the caller must check
+  /// it is still mounted.
+  Future<T?> loadWarmed<T>(
+    String key, {
+    required Future<String?> Function() signature,
+    required Future<void> Function() warm,
     required void Function(CachedResult<T> last) onLast,
   }) async {
-    var landed = false;
-    final fresh = loader();
-    final mem = get<T>(key);
-    if (mem != null) {
-      onLast(mem);
-    } else {
-      read<T>(key).then((hit) {
-        if (hit != null && !landed) onLast(hit);
-      });
+    String? current;
+    try {
+      current = await signature();
+    } catch (_) {
+      current = null;
     }
-    final v = await fresh;
-    landed = true;
-    put<T>(key, v);
-    return v;
+    final stored = await read<T>(key);
+    if (stored != null) {
+      if (current != null && stored.sig == current) return stored.value;
+      onLast(stored);
+    }
+    try {
+      await warm();
+    } catch (_) {
+      return null;
+    }
+    final landed = await read<T>(key);
+    return landed != null && current != null && landed.sig == current
+        ? landed.value
+        : null;
   }
 
   /// What an artifact screen opens with. [signature] is asked ONCE, before

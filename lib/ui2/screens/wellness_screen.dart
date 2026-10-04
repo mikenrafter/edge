@@ -318,6 +318,8 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
             // recalculates today it says when that row was computed.
             AsOfHold(
               shown: _stress,
+              day: _date,
+              computedAt: computedAtOf(_stress['computed_at']),
               asOf: (recalc) => asOfFor(
                   shownDay: _date,
                   computedAt: computedAtOf(_stress['computed_at']),
@@ -326,7 +328,6 @@ class _WellnessScreenState extends State<WellnessScreen> with RevisionReload {
                   padding: const EdgeInsets.only(bottom: S.x2),
                   child: AsOfLabel(at: at)),
             ),
-            const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
             score == null
               // "Last night had none" was a claim about a gate this screen
               // never read — the stress payload carries no reason, so the card
@@ -1491,7 +1492,6 @@ class _JournalFindingsState extends State<JournalFindings> {
         Padding(
             padding: const EdgeInsets.only(bottom: S.x2),
             child: AsOfLabel(at: at)),
-      const CalcStatusLine(padding: EdgeInsets.only(bottom: S.x2)),
       if (!_rowsReady)
         const InlineLoading()
       else if (_rows.isEmpty)

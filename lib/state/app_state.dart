@@ -1840,6 +1840,23 @@ class AppState extends ChangeNotifier {
       _deriveCoordinator.debugRunScheduled(kind: kind);
   @visibleForTesting
   void debugSetRecalc(RecalcState s) => _deriveCoordinator.debugSetRecalc(s);
+
+  /// Why derive work is held right now, for the staleness line; null when
+  /// nothing is. Read off the scheduler, which already notifies on every hold
+  /// change, so a screen following it needs no database read.
+  StaleHold? get staleHold => staleHoldOf(_deriveScheduler.snapshot());
+
+  /// Warm the artifact [key] (`beats|<day>`, `circadian`, ...) in the
+  /// background through the one warmer: what a screen with nothing stored asks
+  /// for instead of computing in its build path. When the warm stored a result
+  /// the revision moves, so screens re-read and find it fresh. No warmer (no
+  /// repository) or nothing stored: no bump.
+  Future<void> requestWarm(String key) => _deriveCoordinator.requestWarm(key);
+
+  @visibleForTesting
+  DeriveScheduler get debugDeriveScheduler => _deriveScheduler;
+  @visibleForTesting
+  set debugLastRecTs(int? epochSeconds) => _lastRecTs = epochSeconds;
   @visibleForTesting
   Future<void> debugAfterDrain({bool heavy = false, bool changedOnly = false}) =>
       _deriveCoordinator.debugAfterDrain(heavy: heavy, changedOnly: changedOnly);
