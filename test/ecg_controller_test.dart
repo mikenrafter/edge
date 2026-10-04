@@ -760,4 +760,55 @@ void main() {
       expect(r.c.state.wrist, EcgWrist.right);
     });
   });
+
+  group('dispose', () {
+    test('a capture running at dispose gets its one cleanup, releases the '
+        'lease and the screen hold, and notifies nobody', () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      final seen = r.phases.length;
+      r.c.dispose();
+      for (var i = 0; i < 5; i++) {
+        await r.settle();
+      }
+      expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+      expect(r.t.current, isNull);
+      expect(r.screen, ['hold:ecg', 'release:ecg']);
+      expect(r.guard.active, isEmpty, reason: 'the retained guard is cleared');
+      expect(r.phases.length, seen, reason: 'a disposed notifier is not told');
+    });
+
+    test('a cleanup already running when the owner disposes finishes without '
+        'a throw and releases the lease', () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      r.t.holdCleanup = Completer<void>();
+      final cancelling = r.c.cancel();
+      await r.settle();
+      r.c.dispose();
+      r.t.holdCleanup!.complete();
+      await cancelling; // threw from the final notify before the guard
+      expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+      expect(r.t.current, isNull);
+      expect(r.screen, ['hold:ecg', 'release:ecg']);
+    });
+
+    test('after dispose a late cancel or begin does nothing', () async {
+      final r = Rig();
+      await r.c.begin(EcgWrist.right);
+      r.c.dispose();
+      await r.settle();
+      await r.c.cancel();
+      await r.c.begin(EcgWrist.left);
+      expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
+      expect(r.t.acquired, 1);
+    });
+
+    test('an idle controller disposes without touching the band', () async {
+      final r = Rig();
+      r.c.dispose();
+      await r.settle();
+      expect(r.t.calls, isEmpty);
+    });
+  });
 }

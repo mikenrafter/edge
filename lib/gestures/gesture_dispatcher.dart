@@ -178,7 +178,8 @@ class GestureDispatcher {
   bool _disposed = false;
 
   /// The app is going away: later taps do nothing, and a tap waiting on a
-  /// session's count (which the owner has just ended) runs no action.
+  /// session's count (which the owner has just ended) or on its claim runs no
+  /// action and starts no session.
   void dispose() => _disposed = true;
 
   /// Feed every live event here. Cheap for non-gesture events. Never throws.
@@ -222,7 +223,11 @@ class GestureDispatcher {
     final out = <GestureOutcome>[];
     for (final a in actions) {
       if (_disposed) break;
-      out.add(await _handleOne(e, a, taps: taps));
+      final o = await _handleOne(e, a, taps: taps);
+      // Disposed while this one waited (its claim): nothing ran, and a
+      // stopped gesture is not a failed one.
+      if (o == null) return const [];
+      out.add(o);
     }
     // One report per tap, for the first action that failed.
     for (final o in out) {
@@ -253,6 +258,11 @@ class GestureDispatcher {
         if (!await _claim(claimKey)) return null;
       } catch (err) {
         log?.call('[gesture] ecg: claim failed: $err');
+        return null;
+      }
+      // Disposed while the claim was pending: start nothing, give it back.
+      if (_disposed) {
+        await _giveBackEcgTap((claimKey: claimKey, debounceKey: debounceKey));
         return null;
       }
     } else {
@@ -338,6 +348,10 @@ class GestureDispatcher {
       log?.call('[gesture] rep: claim failed: $err');
       return null;
     }
+    if (_disposed) {
+      await _giveBackEcgTap((claimKey: claimKey, debounceKey: debounceKey));
+      return null;
+    }
     return (claimKey: claimKey, debounceKey: debounceKey);
   }
 
@@ -380,7 +394,9 @@ class GestureDispatcher {
     return _runActions(e, settings.actionsForTaps(count), taps: count);
   }
 
-  Future<GestureOutcome> _handleOne(StrapEvent e, DeviceAction a,
+  /// Null: the dispatcher was disposed while this action waited for its claim,
+  /// so it was given back and nothing ran.
+  Future<GestureOutcome?> _handleOne(StrapEvent e, DeviceAction a,
       {int? taps}) async {
     GestureOutcome outcome(GestureStatus s, [Object? error]) => GestureOutcome(
         action: a,
@@ -423,6 +439,20 @@ class GestureDispatcher {
       _lastAccepted.removeWhere(
           (_, t) => e.receivedAt.difference(t) >= _receiptDebounce);
       _lastAccepted[debounceKey] = e.receivedAt;
+    }
+
+    // The claim is a database round trip: the app may have gone away during it.
+    // No action may start after teardown (a workout timer, a counting
+    // session's cues), and the occurrence goes back so a re-send can run it.
+    if (_disposed) {
+      if (claimKey != null) {
+        try {
+          await _release(claimKey);
+        } catch (_) {}
+      } else {
+        _lastAccepted.remove(debounceKey);
+      }
+      return null;
     }
 
     // d. Run.

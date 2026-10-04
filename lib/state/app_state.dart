@@ -2870,11 +2870,23 @@ class AppState extends ChangeNotifier {
     // next queued job; a late one (the band delivers old events in bursts)
     // must not.
     haptics.onBandEvent(e);
+    // An action that finished after dispose, or a cue load that did, must not
+    // buzz the band for a tap whose owner is gone: checked on resuming, after
+    // the load and again inside the deferred band delivery.
     unawaited(handled.then((outcomes) async {
+      if (_disposed) return;
       deviceLab.addEntry(DeviceLabEntry.fromEvent(e, outcomes: outcomes));
-      if (haptics.profile != null) await _gestures.loadCues();
+      if (haptics.profile != null) {
+        await _gestures.loadCues();
+        if (_disposed) return;
+      }
       await haptics.asLabWork(() => ackTap(alertDispatcher, e, outcomes,
-          bandDelivery: haptics.profile == null ? null : gestureCues.confirm));
+          bandDelivery: haptics.profile == null
+              ? null
+              : () async {
+                  if (_disposed) return BuzzDelivery.rejected;
+                  return gestureCues.confirm();
+                }));
     }));
   }
 

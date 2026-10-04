@@ -94,6 +94,9 @@ class ActionChannel {
         final id = (call.arguments as Map)['action'] as String;
         performed.add(id);
         order?.add('action:$id');
+        // A native action that answers late: the test lets it go.
+        final h = hold;
+        if (h != null) await h.future;
         return ok;
       }
       return <String>[];
@@ -103,6 +106,9 @@ class ActionChannel {
   final performed = <String>[];
   final List<String>? order;
   bool ok;
+
+  /// When set, every `perform` waits for it before it answers.
+  Completer<void>? hold;
   void dispose() => TestDefaultBinaryMessengerBinding
       .instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_ch, null);

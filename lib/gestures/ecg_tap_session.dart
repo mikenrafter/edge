@@ -325,6 +325,11 @@ class EcgTapSession {
   Future<void> _buzzTail = Future<void>.value();
 
   bool _postRolling = false;
+  // Completed by [stop] to end a post-roll's wait at once.
+  Completer<void>? _postRollCut;
+  // Bumped by every [stop]: a start that was waiting on a stop in flight sees
+  // the owner closed meanwhile and begins nothing.
+  int _stops = 0;
   int _postPackets = 0;
   int? _postEndStrapSec;
 
@@ -361,9 +366,10 @@ class EcgTapSession {
     // The previous gesture's stop may still be in flight (bounded by
     // [endTimeout]). Starting a stream before it lands would let that stop
     // switch the NEW stream off.
+    final stops = _stops;
     final prior = _stopInFlight;
     if (prior != null) await prior;
-    if (_active) return;
+    if (_stops != stops || _active) return;
     _active = true;
     _retried = false;
     final gen = ++_generation;
@@ -769,8 +775,18 @@ class EcgTapSession {
 
   /// The app is going away: end a gesture in flight through the normal end path
   /// (the stream is stopped, the interval is written) with no failure cue and no
-  /// failure record. Does nothing when no gesture is running.
-  Future<void> stop() => _finish(null, 'app_closed', quiet: true);
+  /// failure record. A gesture that already counted and is in its lab post-roll
+  /// (no longer [active], but the stream is still on) skips the rest of the wait
+  /// and stops the stream now; a stop already in flight is awaited; a start
+  /// waiting on that stop begins nothing. Does nothing when nothing is running.
+  Future<void> stop() async {
+    _stops++;
+    final cut = _postRollCut;
+    if (cut != null && !cut.isCompleted) cut.complete();
+    await _finish(null, 'app_closed', quiet: true);
+    final stopping = _stopInFlight;
+    if (stopping != null) await stopping;
+  }
 
   void _abandon(String reason) {
     final gen = _generation;
@@ -958,9 +974,11 @@ class EcgTapSession {
           _postPackets = 0;
           step?.call('Keeping the stream on for ${post.inMilliseconds} ms to '
               'see what the sensor does next (Device lab only).');
+          final cut = _postRollCut = Completer<void>();
           try {
-            await _wait(post);
+            await Future.any([_wait(post), cut.future]);
           } catch (_) {}
+          _postRollCut = null;
           _postRolling = false;
         }
         await _endStreamSafely();

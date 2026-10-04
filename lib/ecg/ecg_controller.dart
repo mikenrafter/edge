@@ -173,6 +173,7 @@ class EcgController extends ChangeNotifier {
   bool _armed = false;
   bool _restartInFlight = false;
   bool _cleanupDone = false;
+  bool _disposed = false;
   bool _screenHeld = false;
   bool _persist = true;
   void Function(String line)? _trace;
@@ -193,9 +194,12 @@ class EcgController extends ChangeNotifier {
   @visibleForTesting
   EcgReducerState get reducerState => _reducer;
 
+  // A capture that ends after dispose (its cleanup was still running) must
+  // still finish: notifying a disposed notifier throws in debug and would end
+  // the exit path before the lease is released.
   void _set(EcgCaptureState s) {
     _state = s;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   bool _stale(int epoch) => _epoch != epoch || _lease == null;
@@ -230,7 +234,7 @@ class EcgController extends ChangeNotifier {
     bool rawSave = true,
     void Function(String line)? trace,
   }) async {
-    if (_lease != null) return; // single-flight
+    if (_disposed || _lease != null) return; // single-flight
     final epoch = ++_epoch;
     _persist = persist;
     _trace = trace;
@@ -380,7 +384,7 @@ class EcgController extends ChangeNotifier {
 
   /// Back / explicit cancel. Cleans up; the band stops generating.
   Future<void> cancel() async {
-    if (_lease == null) return;
+    if (_lease == null || _disposed) return;
     final epoch = ++_epoch;
     await _finish(epoch, EcgCapturePhase.cancelled, reason: 'cancelled');
   }
@@ -388,7 +392,7 @@ class EcgController extends ChangeNotifier {
   /// The app went to the background mid-capture — same as cancel (the
   /// official screen stops on ON_PAUSE too).
   Future<void> onAppPaused() async {
-    if (_lease == null) return;
+    if (_lease == null || _disposed) return;
     final epoch = ++_epoch;
     await _finish(epoch, EcgCapturePhase.cancelled, reason: 'paused');
   }
@@ -400,8 +404,18 @@ class EcgController extends ChangeNotifier {
     _sub = null;
   }
 
+  /// A capture still holding the band at dispose gets its one cleanup now (the
+  /// owner cannot await it): the stop is written and the lease and screen hold
+  /// are released without notifying. One already cleaning up carries on alone.
   @override
   void dispose() {
+    _disposed = true;
+    if (_lease != null && !_cleanupDone) {
+      unawaited(
+        _finish(++_epoch, EcgCapturePhase.cancelled, reason: 'disposed')
+            .catchError((Object _) {}),
+      );
+    }
     _timer?.cancel();
     _sub?.cancel();
     super.dispose();

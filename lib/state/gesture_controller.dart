@@ -80,7 +80,9 @@ class GestureController {
       onWorkoutToggle: onWorkoutToggle,
       onLogWater: onLogWater,
       ecgSupported: ecgSupported,
-      onEcgTap: _ecgTapSession.start,
+      onEcgTap: (e) async {
+        if (!_disposed) await _ecgTapSession.start(e);
+      },
       onCountTaps: _countTaps,
       repeatSession: _repeatTapSession,
       onFailed: (e, kind, reason) {
@@ -261,7 +263,7 @@ class GestureController {
   /// its final count (null = abandoned). One gesture at a time: a second double
   /// tap while one is counting is ignored. Throws when the stream did not start.
   Future<int?> _countTaps(StrapEvent e) async {
-    if (_ecgTapSession.active) return null;
+    if (_disposed || _ecgTapSession.active) return null;
     final done = _tapCount = Completer<int?>();
     try {
       await _ecgTapSession.start(e);
@@ -290,7 +292,11 @@ class GestureController {
   /// until they are done.
   Future<bool> _beginEcgForTap() async {
     final gen = _ecgTapSession.generation; // set before this is called
+    if (_disposed) return false;
     await _startCueWritten();
+    // The cue wait is up to 3 s: the app may have gone away meanwhile, and the
+    // ECG controller with it.
+    if (_disposed) return false;
     final started = await _haptics.runExclusive(() => beginEcgForTap(
           isCurrent: () =>
               _ecgTapSession.active && _ecgTapSession.generation == gen,
@@ -335,6 +341,7 @@ class GestureController {
     String eventId,
     Future<BuzzDelivery> Function() play,
   ) async {
+    if (_disposed) return false;
     final now = DateTime.now();
     final loaded = loadCues();
     final r = await _haptics.asLabWork(() => _alertDispatcher().dispatch(
@@ -345,6 +352,7 @@ class GestureController {
           bandTimeout: const Duration(seconds: 10),
           bandDelivery: () async {
             await loaded;
+            if (_disposed) return BuzzDelivery.rejected;
             return play();
           },
         ));

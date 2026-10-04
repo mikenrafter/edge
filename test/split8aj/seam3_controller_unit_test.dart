@@ -364,4 +364,24 @@ void main() {
       expect(h.acted, ['mark', 'mark']);
     });
   });
+
+  group('the session starts refuse after dispose', () {
+    test('the dispatcher\'s ECG start callback begins no gesture', () async {
+      await newHost();
+      h.controller.dispose();
+      await h.controller.dispatcher.onEcgTap!(h.doubleTap());
+      expect(h.controller.ecgTapActive, isFalse);
+      expect(h.ecg.begins, isEmpty);
+      expect(h.order, isEmpty, reason: 'no cue and no ECG write');
+    });
+
+    test('the dispatcher\'s touch-counting callback counts nothing', () async {
+      await newHost();
+      h.controller.dispose();
+      expect(await h.controller.dispatcher.onCountTaps!(h.doubleTap()), isNull);
+      expect(h.controller.ecgTapActive, isFalse);
+      expect(h.ecg.begins, isEmpty);
+      expect(h.order, isEmpty);
+    });
+  });
 }
