@@ -13,12 +13,10 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
-import '../../health/health_import_state.dart' show storeName;
 import '../../l10n/app_localizations.dart';
-import '../../state/app_state.dart';
+import '../../settings/settings_repository.dart';
 import '../../state/locale_controller.dart';
 import '../ui2.dart';
-import 'devices.dart';
 import 'settings.dart';
 
 // ══════════════════ shared list furniture ══════════════════
@@ -136,21 +134,35 @@ Widget settingsGroup(BuildContext c, String title, List<Widget> rows) {
   );
 }
 
+/// The app-pref key under which an accordion remembers whether it is open. [id]
+/// is the screen and section as stable ids ("settings_band"), never the
+/// translated title, so the answer survives a change of language.
+String accordionPrefKey(String id) => 'accordion_$id';
+
 /// A titled card whose rows open and close behind an explicit header tap. It
 /// starts expanded: every setting is visible until the person folds a section
 /// away. The header always stays in place, so a group never appears or moves
 /// because some setting elsewhere changed; only this header's own tap changes
 /// its height. Folded, [summary] stays under the title as one line, so a closed
 /// section still says what is inside it.
+///
+/// With an [id] the open or folded state is remembered between visits, through
+/// the app-prefs section of [SettingsRepository] (one bool per section, written
+/// when it is toggled). A section that was never toggled starts as
+/// [initiallyExpanded]. Without an [id] nothing is stored.
 class SettingsAccordion extends StatefulWidget {
   const SettingsAccordion(this.title,
       {super.key,
       required this.children,
       this.summary,
+      this.id,
       this.initiallyExpanded = true});
   final String title;
   final List<Widget> children;
   final String? summary;
+
+  /// Screen id + section id, e.g. "settings_band". See [accordionPrefKey].
+  final String? id;
   final bool initiallyExpanded;
 
   @override
@@ -160,17 +172,67 @@ class SettingsAccordion extends StatefulWidget {
 class _SettingsAccordionState extends State<SettingsAccordion> {
   late bool _open = widget.initiallyExpanded;
 
+  /// Set once the person has toggled it: a stored answer that arrives after
+  /// that must not undo what they just did.
+  bool _toggled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _restore();
+  }
+
+  Future<void> _restore() async {
+    final id = widget.id;
+    if (id == null) return;
+    bool? stored;
+    try {
+      stored = await SettingsRepository.instance.appBool(accordionPrefKey(id));
+    } catch (_) {
+      return; // Unreadable: keep today's default.
+    }
+    if (!mounted || _toggled || stored == null || stored == _open) return;
+    setState(() => _open = stored!);
+  }
+
+  Future<void> _toggle() async {
+    final open = !_open;
+    setState(() {
+      _toggled = true;
+      _open = open;
+    });
+    final id = widget.id;
+    if (id == null) return;
+    try {
+      await SettingsRepository.instance.update(
+        (d) => d.setBool(accordionPrefKey(id), open),
+        sections: const {},
+      );
+    } catch (_) {
+      // The fold still happened on screen; it just will not be remembered.
+    }
+  }
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final summary = widget.summary;
     return Padding(
       padding: const EdgeInsets.only(top: S.x3),
-      child: Surface(
-        pad: const EdgeInsets.symmetric(horizontal: S.x4),
+      // The card is drawn here rather than by Surface, which wraps its child in
+      // an inert Pressable: the first Pressable inside an accordion is its
+      // header, the only control a tap or a screen reader should find first.
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: S.x4),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: R.rLg,
+          boxShadow: p.el(1),
+        ),
         child: Column(children: [
           Pressable(
-            onTap: () => setState(() => _open = !_open),
+            onTap: _toggle,
             semanticLabel: '${widget.title}, ${_open ? 'expanded' : 'collapsed'}',
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -243,9 +305,10 @@ class SwitchRow extends StatelessWidget {
 Future<void> goto(BuildContext c, Widget w) =>
     Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => w));
 
-/// The one way into the profile stack. Home's avatar calls this — profile is
-/// a pushed route, never a sixth tab.
-void openProfile(BuildContext c) => goto(c, const ProfileHome());
+/// The one way into Settings from Home's Profile button. There is no profile
+/// landing screen in between (8AF.7): Settings is the landing, and it is a
+/// pushed route, never a sixth tab.
+void openProfile(BuildContext c) => goto(c, const MoreSettings());
 
 /// Display name for a language code, sourced from a small hardcoded table.
 /// Add a row here when a contributor's `app_<code>.arb` lands — nothing else
@@ -304,138 +367,4 @@ String formatBytes(int b) {
     i++;
   }
   return '${v < 10 ? v.toStringAsFixed(1) : v.round()} ${units[i]}';
-}
-
-// ══════════════════ 1 · PROFILE HOME ══════════════════
-
-/// What the profile screen still shows: who you are, how many sources are
-/// live, and how much room the data takes.
-///
-/// The workouts / records / days / sessions counters are gone with the tile
-/// that displayed them. They cost a `getRecords()` and a whole year-of-workouts
-/// query on every open, so leaving the fields behind would have kept paying for
-/// numbers nobody reads.
-class ProfileStats {
-  final String? name;
-  final int sources;
-  final int? storageBytes;
-
-  const ProfileStats({this.name, this.sources = 0, this.storageBytes});
-}
-
-class ProfileHome extends StatefulWidget {
-  const ProfileHome({super.key});
-
-  @override
-  State<ProfileHome> createState() => _ProfileHomeState();
-}
-
-class _ProfileHomeState extends State<ProfileHome> {
-  /// Re-read after every screen this one pushes. It used to be a single
-  /// `late final` Future, so pairing a band from My sources (which auto-pops
-  /// straight back here) left the row reading "0 sources", and an import or a
-  /// reset left Storage on the old size until the screen was left and
-  /// re-entered.
-  late Future<ProfileStats> _stats = _load();
-
-  Future<ProfileStats> _load() async {
-    final app = context.read<AppState>();
-    // Storage moved into Settings (8AE), which reads the size itself; the
-    // profile screen no longer pays for a file stat it does not draw.
-    return ProfileStats(
-        name: app.user?['name'] as String?,
-        sources: liveSources(app).length);
-  }
-
-  Future<void> _open(BuildContext c, Widget w) async {
-    await goto(c, w);
-    if (mounted) setState(() => _stats = _load());
-  }
-
-  @override
-  Widget build(BuildContext c) => FutureBuilder<ProfileStats>(
-        future: _stats,
-        builder: (c, snap) => ProfileHomeView(
-          stats: snap.data,
-          onDevices: () => _open(c, const MyDevices()),
-          onSettings: () => _open(c, const MoreSettings()),
-        ),
-      );
-}
-
-class ProfileHomeView extends StatelessWidget {
-  /// Null while the counts are still being read — the numbers are absent, not
-  /// zero, and a zero rendered during a load is a wrong number on screen.
-  final ProfileStats? stats;
-  final VoidCallback? onDevices, onSettings;
-
-  const ProfileHomeView(
-      {super.key, this.stats, this.onDevices, this.onSettings});
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final l = AppLocalizations.of(c);
-    final s = stats;
-    return Scaffold(
-      backgroundColor: p.bg,
-      body: SafeArea(
-        child: Column(children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar(l?.profileTitle ?? 'Profile'),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
-              children: [
-                const SizedBox(height: S.x4),
-                settingsGroup(c, l?.profileQuickAccessGroup ?? 'Quick access', [
-                  SetRow(LucideIcons.watch, C.blue,
-                      l?.profileMyDevices ?? 'My devices',
-                      sub: s == null
-                          ? ''
-                          : (l?.profileSourcesCount(s.sources) ??
-                              '${s.sources} source${s.sources == 1 ? '' : 's'}'),
-                      onTap: onDevices),
-                  // The one door to everything else (8AE): profile, language,
-                  // storage, the coach and the developer tools all moved into
-                  // Settings, grouped by task.
-                  SetRow(LucideIcons.settings, C.n500,
-                      l?.settingsNavTitle ?? 'Settings',
-                      sub: l?.profileMoreSettingsSub(storeName) ??
-                          'Import from $storeName, export, backup, units, '
-                              'privacy, reset',
-                      onTap: onSettings),
-                ]),
-                settingsGroup(c, l?.profileCommunityGroup ?? 'Community', [
-                  SetRow.brand(brandGlyph('assets/icons/github.svg'), C.n500,
-                      l?.profileGithubTitle ?? 'GitHub',
-                      sub: l?.profileGithubSub ??
-                          'Star the project to show support.',
-                      onTap: () => open3rdPartyLink(kGithubUrl)),
-                  SetRow.brand(brandGlyph('assets/icons/reddit.svg'), C.orange,
-                      l?.profileRedditTitle ?? 'Reddit',
-                      sub: l?.profileRedditSub ??
-                          'Join r/OpenStrap to share results and ask questions.',
-                      onTap: () => open3rdPartyLink(kRedditUrl)),
-                  SetRow.brand(brandGlyph('assets/icons/discord.svg'),
-                      C.indigo, l?.profileDiscordTitle ?? 'Discord',
-                      sub: l?.profileDiscordSub ??
-                          'Chat with other users and the developers.',
-                      onTap: () => open3rdPartyLink(kDiscordUrl)),
-                  SetRow(LucideIcons.heartHandshake, C.pink,
-                      l?.profileSponsorTitle ?? 'Sponsor',
-                      sub: l?.profileSponsorSub ??
-                          'This is a free, open-source project. Sponsoring funds development.',
-                      onTap: () => open3rdPartyLink(kSponsorUrl)),
-                ]),
-              ],
-            ),
-          ),
-        ]),
-      ),
-    );
-  }
-
 }

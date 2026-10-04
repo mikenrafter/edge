@@ -2602,7 +2602,9 @@ class DeviceDetailView extends StatelessWidget {
                 // NOTHING, for every sensor, and that has to be on the screen
                 // rather than inferred from a metric quietly still abstaining.
                 if (!s.isBand && s.deviceId != null) ...[
-                  SettingsAccordion('Sensor', children: [
+                  SettingsAccordion('Sensor',
+                      id: 'device_detail_sensor',
+                      children: [
                       SetRow(LucideIcons.flaskConical, C.orange,
                           l?.devicesSupport ?? 'Support',
                           value: l?.devicesExperimental ?? 'Experimental',
@@ -2662,7 +2664,9 @@ class DeviceDetailView extends StatelessWidget {
                 // exact screen someone lands on when phone steps are silently
                 // failing, where the answer is the permission, not a battery.
                 if (s.isBand) ...[
-                  SettingsAccordion('Band', children: [
+                  SettingsAccordion('Band',
+                      id: 'device_detail_band',
+                      children: [
                       // The name is the band's own advertising name, written
                       // to the strap — not a phone-side label. So it is only
                       // editable on a live link, and the row says so rather
@@ -2738,7 +2742,9 @@ class DeviceDetailView extends StatelessWidget {
                             chevron: false),
                       ],
                   ]),
-                  SettingsAccordion('Tools', children: [
+                  SettingsAccordion('Tools',
+                      id: 'device_detail_tools',
+                      children: [
                       SetRow(LucideIcons.bellRing, C.orange,
                           l?.devicesBuzzTheBand ?? 'Buzz the band',
                           enabled: onFind != null,

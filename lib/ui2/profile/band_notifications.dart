@@ -380,7 +380,9 @@ class BandNotificationsView extends StatelessWidget {
                   )
                 else ...[
                   SettingsAccordion(l?.bandNotifRelayGroup ??
-                      'App notifications on the band', children: [
+                      'App notifications on the band',
+                      id: 'band_notifications_relay',
+                      children: [
                     SetRow(LucideIcons.bellRing, C.purple,
                         l?.bandNotifBuzzOnAppNotifs ??
                             'Buzz on app notifications',
@@ -401,7 +403,9 @@ class BandNotificationsView extends StatelessWidget {
                         onTap: () => onEnabled?.call(!enabled)),
                   ]),
                   // One setting for the whole relay, not one per channel.
-                  SettingsAccordion('Wear', children: [
+                  SettingsAccordion('Wear',
+                      id: 'band_notifications_wear',
+                      children: [
                     SwitchRow('Only buzz while worn', onlyWhileWorn,
                         onOnlyWhileWorn,
                         sub: _wearSub),
@@ -435,13 +439,16 @@ class BandNotificationsView extends StatelessWidget {
                   // Three channels, each with its own policy. Per-app choices
                   // exist only on App notifications.
                   SettingsAccordion('App notifications',
+                      id: 'band_notifications_apps',
                       children: [
                         ..._appRows(c, l),
                         ..._policyRows(c, 'apps'),
                       ]),
                   SettingsAccordion('Alarms & timers',
+                      id: 'band_notifications_alarms',
                       children: _policyRows(c, 'alarms')),
                   SettingsAccordion('Incoming calls',
+                      id: 'band_notifications_calls',
                       children: _policyRows(c, 'calls')),
                 ],
               ],

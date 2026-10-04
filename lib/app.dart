@@ -25,7 +25,7 @@ import 'ui2/pairing/device_picker.dart';
 import 'ui2/onboarding/splash.dart';
 import 'ui2/onboarding/welcome.dart';
 import 'ui2/profile/alarm.dart';
-import 'ui2/profile/profile.dart';
+import 'ui2/profile/settings.dart' show MoreSettings;
 import 'ui2/screens/ai_briefing.dart';
 import 'ui2/screens/calm_breathing.dart';
 import 'ui2/screens/what_changed.dart';
@@ -439,8 +439,9 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       // never rebuilt on a tap, which is why that one needs a request notifier.
       kRouteWorkoutSuggestion =>
         WorkoutSuggestionScreen(focusId: routeId(route)),
-      // Battery, band and sources all live behind this one.
-      kRouteProfile => const ProfileHome(),
+      // Battery, band and sources live behind Settings > Band > My devices;
+      // there is no profile landing screen in between (8AF.7).
+      kRouteProfile => const MoreSettings(),
       // The alarm safety notifications land where either can actually be
       // fixed — the schedule itself.
       kRouteAlarm => const AlarmScreen(),

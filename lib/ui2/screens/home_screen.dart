@@ -44,7 +44,7 @@ import '../../state/units_controller.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../activity/day_strain.dart' show DayStrainDetail;
 import '../profile/devices.dart' show formatDayTime;
-import '../profile/profile.dart';
+import '../profile/settings.dart' show MoreSettings;
 import '../ui2.dart';
 import 'ai_briefing.dart' show AiBriefingScreen;
 import 'coach.dart';
@@ -1645,7 +1645,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
           ],
           Pressable(
             semanticLabel: l?.homeProfileSettings ?? 'Profile and settings',
-            onTap: () => go(c, const ProfileHome()),
+            onTap: () => go(c, const MoreSettings()),
             child: Container(
               width: 40,
               height: 40,

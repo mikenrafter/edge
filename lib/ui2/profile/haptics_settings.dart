@@ -243,9 +243,11 @@ class HapticsSettingsView extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
                 children: [
-                  SettingsAccordion('Patterns', children: _patternRows(c, p)),
-                  SettingsAccordion('Safety', children: _safetyRows(c, p)),
-                  SettingsAccordion('Test', children: [
+                  SettingsAccordion('Patterns',
+                      id: 'haptics_patterns', children: _patternRows(c, p)),
+                  SettingsAccordion('Safety',
+                      id: 'haptics_safety', children: _safetyRows(c, p)),
+                  SettingsAccordion('Test', id: 'haptics_test', children: [
                     SetRow(
                       LucideIcons.bellRing,
                       C.orange,
@@ -260,7 +262,9 @@ class HapticsSettingsView extends StatelessWidget {
                     ),
                   ]),
                   if (devMode)
-                    SettingsAccordion('Calibration', children: [
+                    SettingsAccordion('Calibration',
+                        id: 'haptics_calibration',
+                        children: [
                       SetRow(
                         LucideIcons.flaskConical,
                         C.purple,

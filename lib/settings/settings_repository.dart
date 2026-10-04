@@ -175,10 +175,20 @@ class SettingsRepository {
   static const String journalKey = 'settings_recovery_journal_v1';
 
   static Future<void> _tail = Future.value();
+  static int _inFlight = 0;
 
   static Future<T> _serialize<T>(Future<T> Function() action) {
-    final next = _tail.then((_) => action());
-    _tail = next.then<void>((_) {}, onError: (Object _, StackTrace s) {});
+    // With nothing queued, start from a fresh future in the caller's zone. A
+    // listener added to an already-completed future runs in the zone that
+    // future was made in, so chaining on the last one would hand this action to
+    // a zone that may have finished (a test's, say) and never run it.
+    final prev = _inFlight == 0 ? Future<void>.value() : _tail;
+    _inFlight++;
+    final next = prev.then((_) => action());
+    _tail = next.then<void>(
+      (_) => _inFlight--,
+      onError: (Object _, StackTrace s) => _inFlight--,
+    );
     return next;
   }
 
@@ -204,6 +214,14 @@ class SettingsRepository {
   Future<Map<String, ChannelConfig>> channels() => _serialize(
     () async => decodeChannels((await _prefs()).getString(channelsKey)),
   );
+
+  /// One stored app-pref bool, or null when nothing (or nothing boolean) is
+  /// stored under [key]. Reads in the same queue as every write, so it never
+  /// sees half of an update.
+  Future<bool?> appBool(String key) => _serialize(() async {
+    final v = (await _prefs()).get(key);
+    return v is bool ? v : null;
+  });
 
   /// Every section, as one consistent snapshot.
   Future<SettingsSnapshot> read() => _serialize(() async {

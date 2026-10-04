@@ -1,45 +1,50 @@
 # Navigation depth
 
-Every setting is at most two pushes from Profile home. A push is one screen
-opened on top of another; each arrow below is one push. Paths start at Profile
-home (the screen with Quick access), so they are one shorter than a count made
-from Home.
+Settings is the landing screen: the Profile button on Home opens it directly,
+and so does a tap on a battery notification (the `/profile` route). Every
+setting is at most two pushes from Settings. A push is one screen opened on top
+of another; each arrow below is one push. Paths start at Settings, so they are
+one shorter than a count made from Home.
 
-Row names are the labels on screen. "Before" is the app as of 8AD, "After" is
-8AE.
+Row names are the labels on screen. "Before" is 8AE, when Settings sat one push
+below a Profile home (paths start there). "After" is 8AF.7, with Profile home
+gone.
 
 | Screen | Before | After |
 |---|---|---|
-| Settings | Profile → More settings | Profile → Settings |
-| Alerts and notifications | Profile → More settings → Manage notifications | Profile → Settings → Alerts and notifications |
-| App notifications on the band | Profile → More settings → Band notifications | Profile → Settings → App notifications on the band |
-| Gestures | Profile → More settings → Gestures | Profile → Settings → Gestures |
-| Haptics | Profile → More settings → Haptics | Profile → Settings → Haptics |
-| Alarm | Profile → More settings → Alarm | Profile → Settings → Alarm |
-| Automation | Profile → More settings → Tasker and Shortcuts | Profile → Settings → Tasker and Shortcuts |
-| Data | Profile → More settings → Export, backup, import | Profile → Settings → Export, backup, import |
-| Expected sleep schedule | Profile → More settings → Expected sleep schedule | Profile → Settings → Expected sleep schedule |
-| Device detail | Profile → My devices → Device detail | Profile → My devices → Device detail |
-| Device lab | Profile → My devices → Device detail → Device lab | Profile → Settings → Device lab |
-| Edit profile | Profile → Edit profile | Profile → Settings → Edit profile |
-| Live devices | Profile → Live devices | Profile → Settings → Live devices |
-| AI coach | Profile → AI coach | Profile → Settings → AI coach |
-| Language | Profile → Language | Profile → Settings → Language |
-| Storage | Profile | Profile → Settings |
+| Settings | Profile → Settings | Settings |
+| Alerts and notifications | Profile → Settings → Alerts and notifications | Settings → Alerts and notifications |
+| App notifications on the band | Profile → Settings → App notifications on the band | Settings → App notifications on the band |
+| Gestures | Profile → Settings → Gestures | Settings → Gestures |
+| Haptics | Profile → Settings → Haptics | Settings → Haptics |
+| Alarm | Profile → Settings → Alarm | Settings → Alarm |
+| Automation | Profile → Settings → Tasker and Shortcuts | Settings → Tasker and Shortcuts |
+| Data | Profile → Settings → Export, backup, import | Settings → Export, backup, import |
+| Expected sleep schedule | Profile → Settings → Expected sleep schedule | Settings → Expected sleep schedule |
+| Device detail | Profile → My devices → Device detail | Settings → My devices → Device detail |
+| Device lab | Profile → Settings → Device lab | Settings → Device lab |
+| Edit profile | Profile → Settings → Edit profile | Settings → Edit profile |
+| Live devices | Profile → Settings → Live devices | Settings → Live devices |
+| AI coach | Profile → Settings → AI coach | Settings → AI coach |
+| Language | Profile → Settings → Language | Settings → Language |
+| Storage | Profile → Settings | Settings |
 
 ## What changed
 
-- Settings is regrouped by task, in this order: Band, Alerts, You &
+- There is no Profile home. Its Quick access area is gone: Settings is the
+  landing, and My devices stays in Settings > Band, its one door. The Community
+  links (GitHub, Reddit, Discord, Sponsor) are now the first Settings group.
+  Nothing else lived only on the old screen: it never drew the profile name, and
+  the Storage size was already in Settings > Data & privacy.
+- Settings is grouped by task, in this order: Community, Band, Alerts, You &
   preferences, Data & privacy, Connections, About, and Developer (developer
   mode only). Reset all data stays last.
-- Profile home keeps two Quick access rows, My devices and Settings (the old
-  "More settings" row, renamed). Live devices, Edit profile, AI coach, Language
-  and Storage, and the whole "Your data" group, moved into Settings. Each moved
-  row has one door; My devices is the one deliberate pair (Profile Quick access
-  and Settings > Band).
-- Those moves put Edit profile, Live devices, AI coach and Language one push
-  deeper than before (two pushes from Profile home, the limit). Storage is a
-  display row, not a screen.
+- Alarm moved from Band to Alerts. It is the first row of the Alerts group on
+  the Settings screen itself, not a row inside Alerts and notifications, so its
+  depth did not change and it has one door.
+- Settings keeps what 8AE moved into it: Live devices, Edit profile, AI coach,
+  Language and Storage, and the whole "Your data" group. Each moved row has one
+  door. Storage is a display row, not a screen.
 - Device lab left the band's Device detail Tools. It opens from Settings >
   Developer (developer mode) and from Haptics > Calibration (developer mode).
   The tapClassifiers feature flag still gates its tap tools inside.
@@ -56,7 +61,10 @@ Row names are the labels on screen. "Before" is the app as of 8AD, "After" is
   once that the alarm uses the band's own buzz.
 - Every settings screen lists its settings as sections that start expanded
   (`SettingsAccordion`). A section can be folded; it keeps a one-line summary
-  under its header while folded.
+  under its header while folded. Each section remembers whether it was open or
+  folded: the state is stored per screen and section id (never the translated
+  title) in the app preferences, so a section closed on the last visit is closed
+  on the next.
 
 ## Intentional exceptions
 

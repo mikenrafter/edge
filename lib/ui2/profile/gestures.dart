@@ -172,7 +172,9 @@ class BandGesturesView extends StatelessWidget {
                     ),
                   ),
                 ),
-                SettingsAccordion(l?.gesturesItDoesTitle ?? 'It does', children: [
+                SettingsAccordion(l?.gesturesItDoesTitle ?? 'It does',
+                    id: 'gestures_it_does',
+                    children: [
                   for (final a in offered) ...[
                     SwitchRow(
                       a.localizedLabel(c),
@@ -202,7 +204,9 @@ class BandGesturesView extends StatelessWidget {
                 // How taps beyond the double tap are counted. ECG is dimmed and
                 // inert (never hidden) on a band without the sensor.
                 if (extraTaps)
-                SettingsAccordion('Count extra taps with', children: [
+                SettingsAccordion('Count extra taps with',
+                    id: 'gestures_extra_taps',
+                    children: [
                   _MethodRow(
                     id: 'ecg',
                     title: 'ECG sensor touches',
@@ -227,7 +231,9 @@ class BandGesturesView extends StatelessWidget {
                 // tap, or more double taps in a row. One mapping serves both:
                 // the slot for 3 taps is the slot for 2 double taps.
                 if (extraTaps)
-                SettingsAccordion('Tap counts', children: [
+                SettingsAccordion('Tap counts',
+                    id: 'gestures_tap_counts',
+                    children: [
                   _TapCountRow(
                     title: ecg ? '2 taps' : 'Double tap',
                     summary: _summary(chosen),

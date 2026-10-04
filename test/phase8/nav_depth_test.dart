@@ -1,7 +1,8 @@
-// 8A — flatter navigation: from Profile home, App notifications on the band,
-// Gestures, Alarm and every other settings screen are at most two pushes away.
-// 8AE moved Live devices (now Developer), Edit profile, AI coach and the rest
-// of Profile's old rows into Settings, so they are two pushes too. Walks the
+// 8A — flatter navigation: from the Settings landing, App notifications on the
+// band, Gestures, Alarm and every other settings screen are at most two pushes
+// away. 8AE moved Live devices (now Developer), Edit profile, AI coach and the
+// rest of Profile's old rows into Settings. 8AF.7 removed the Profile landing
+// screen, so Settings is the start and each of them is ONE push. Walks the
 // pure views by tapping rows and counts pushes.
 // The stateful wrappers' wiring is pinned in nav_depth_guard_test.dart.
 // See test/phase8/CONTRACTS.md §8A.
@@ -9,7 +10,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
-import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:provider/provider.dart';
@@ -71,10 +71,7 @@ void main() {
         navigatorKey: nav,
         navigatorObservers: [pushes],
         theme: buildTheme(Brightness.light),
-        home: ProfileHomeView(
-          onSettings: () => push(settings()),
-          onDevices: () => push(const _Dest('My devices')),
-        ),
+        home: settings(),
       ),
     ));
     await t.pumpAndSettle();
@@ -90,7 +87,7 @@ void main() {
     expect(find.text('DEST:$dest'), findsOneWidget);
   }
 
-  testWidgets('My devices is one push from Profile (Quick access)', (t) async {
+  testWidgets('My devices is one push from Settings (Band)', (t) async {
     await pumpHome(t);
     await walk(t, ['My devices'], 'My devices');
     expect(pushes.depth, 1);
@@ -102,10 +99,11 @@ void main() {
     'Alarm',
     'Haptics',
   ]) {
-    testWidgets('$dest is two pushes away, via "Band" or "Alerts"', (t) async {
+    testWidgets('$dest is one push from Settings, via "Band" or "Alerts"',
+        (t) async {
       await pumpHome(t);
-      await walk(t, ['Settings', dest], dest);
-      expect(pushes.depth, 2);
+      await walk(t, [dest], dest);
+      expect(pushes.depth, 1);
     });
   }
 
@@ -119,10 +117,10 @@ void main() {
     ('Live devices', 'Live devices'),
     ('Device lab', 'Device lab'),
   ]) {
-    testWidgets('$dest is at most two pushes away', (t) async {
+    testWidgets('$dest is one push from Settings', (t) async {
       await pumpHome(t);
-      await walk(t, ['Settings', row], dest);
-      expect(pushes.depth, lessThanOrEqualTo(2));
+      await walk(t, [row], dest);
+      expect(pushes.depth, 1);
     });
   }
 

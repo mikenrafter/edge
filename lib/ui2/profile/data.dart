@@ -317,7 +317,9 @@ class DataScreenView extends StatelessWidget {
                   rebuilt,
                   const SizedBox(height: S.x5),
                 ],
-                SettingsAccordion(l?.dataExportGroup ?? 'Export', children: [
+                SettingsAccordion(l?.dataExportGroup ?? 'Export',
+                    id: 'data_export',
+                    children: [
                   SetRow(LucideIcons.fileSpreadsheet, C.green,
                       l?.dataExportSpreadsheets ?? 'Export as spreadsheets',
                       // export-provenance: the daily file now carries `source`
@@ -348,7 +350,9 @@ class DataScreenView extends StatelessWidget {
                           'and there is no recovery.',
                       onTap: busy ? null : onExportEncrypted),
                 ]),
-                SettingsAccordion(l?.dataAutoBackupGroup ?? 'Automatic backup', children: [
+                SettingsAccordion(l?.dataAutoBackupGroup ?? 'Automatic backup',
+                    id: 'data_auto_backup',
+                    children: [
                   SetRow(LucideIcons.calendarClock, C.purple,
                       l?.dataHowOften ?? 'How often',
                       // Unencrypted, and it says so. The encrypted format is
@@ -371,7 +375,9 @@ class DataScreenView extends StatelessWidget {
                       l?.dataBackUpNow ?? 'Back up now',
                       onTap: busy ? null : onBackupNow),
                 ]),
-                SettingsAccordion(l?.dataBringDataInGroup ?? 'Bring data in', children: [
+                SettingsAccordion(l?.dataBringDataInGroup ?? 'Bring data in',
+                    id: 'data_bring_in',
+                    children: [
                   SetRow(LucideIcons.upload, C.orange,
                       l?.dataImportFile ?? 'Import a file',
                       sub: l?.dataImportFileSub ??
@@ -388,7 +394,9 @@ class DataScreenView extends StatelessWidget {
                               'body temperature',
                       onTap: busy ? null : onPhoneImport),
                 ]),
-                SettingsAccordion('Advanced', children: [
+                SettingsAccordion('Advanced',
+                    id: 'data_advanced',
+                    children: [
                   // The engine puts days on hold after a ≥3 h timezone jump
                   // "until Re-analyze data runs" — and nothing in the app ran
                   // it. A flight abroad quietly stopped days updating with no

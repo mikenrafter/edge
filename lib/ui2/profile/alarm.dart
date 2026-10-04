@@ -611,6 +611,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                           ),
                         SettingsAccordion(
                           'Alarm',
+                          id: 'alarm_days',
                           summary: anyDayEnabled
                               ? '${week.where((d) => d.enabled).length} of '
                                     '${week.length} days on'
@@ -647,11 +648,13 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                         ),
                         SettingsAccordion(
                           'Wake',
+                          id: 'alarm_wake',
                           summary: _wakeSummary(week),
                           children: _wakeChildren(c, p, week),
                         ),
                         SettingsAccordion(
                           'Status',
+                          id: 'alarm_status',
                           summary: AlarmScreenView._localizedStateLabel(
                             c,
                             w.state,

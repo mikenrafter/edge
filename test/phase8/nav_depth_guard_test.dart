@@ -3,8 +3,9 @@
 //
 // docs/navigation-depth.md holds ONE markdown table with a header row whose
 // cells include "Screen", "Before" and "After". Each body row names a settings
-// screen and its push path from Profile home before and after 8A, written as
-// "Profile → A → B" (→, U+2192). Depth = number of arrows.
+// screen and its push path before and after, written as "Settings → A → B"
+// (→, U+2192). "Before" is 8AE (paths start at a Profile home); "After" is
+// 8AF.7, when Settings became the landing. Depth = number of arrows.
 
 import 'dart:io';
 
@@ -29,16 +30,6 @@ const _required = [
   'Language',
   'Storage',
 ];
-
-// 8AE moved these rows from Profile into Settings, one push deeper on purpose
-// (still within the two-push limit). Every other row must not get deeper.
-const _movedDeeper = {
-  'Edit profile',
-  'Live devices',
-  'AI coach',
-  'Language',
-  'Storage',
-};
 
 List<List<String>> _rows(String md) {
   final lines = md.split('\n').where((l) => l.trim().startsWith('|')).toList();
@@ -73,13 +64,16 @@ void main() {
         expect(names, contains(s), reason: 'row for $s');
       }
       for (final r in body) {
-        expect(r[after], startsWith('Profile'), reason: r[screen]);
+        expect(r[after], startsWith('Settings'), reason: r[screen]);
         expect(_depth(r[after]), lessThanOrEqualTo(2),
-            reason: '${r[screen]} after 8AE: ${r[after]}');
-        if (!_movedDeeper.contains(r[screen])) {
-          expect(_depth(r[before]), greaterThanOrEqualTo(_depth(r[after])),
-              reason: '${r[screen]} never gets deeper');
-        }
+            reason: '${r[screen]} after 8AF.7: ${r[after]}');
+        // My devices was already one push from the old Profile home (a Quick
+        // access row), so Device detail keeps its depth; nothing gets deeper.
+        expect(_depth(r[before]),
+            r[screen] == 'Device detail'
+                ? equals(_depth(r[after]))
+                : greaterThan(_depth(r[after])),
+            reason: '${r[screen]} gets one push shallower');
       }
     });
   });
@@ -107,16 +101,12 @@ void main() {
       expect(build, contains('DeviceLab()'));
     });
 
-    test('ProfileHome: My devices and Settings only', () {
+    test('openProfile: the Profile entry opens Settings, nothing between', () {
       final src = File('lib/ui2/profile/profile.dart').readAsStringSync();
-      final home = codeOnly(bodyOf(src, 'class _ProfileHomeState'));
-      expect(home, contains('onDevices:'));
-      expect(home, contains('MyDevices()'));
-      expect(home, contains('onSettings:'));
-      expect(home, contains('MoreSettings()'));
-      expect(home, isNot(contains('LiveDevices()')));
-      expect(home, isNot(contains('EditProfile()')));
-      expect(home, isNot(contains('CoachSetup()')));
+      final code = codeOnly(src);
+      expect(code, contains('void openProfile(BuildContext c) => '
+          'goto(c, const MoreSettings());'));
+      expect(code, isNot(contains('class ProfileHome')));
     });
 
     test('DeviceDetail: no Device lab entry any more', () {

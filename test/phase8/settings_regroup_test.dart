@@ -5,9 +5,11 @@
 // Pumped headless as the pure views, like settings_sections_test.dart.
 //
 // Contracts these tests pin that the spec leaves open:
-//  - Row titles are the English fallbacks: "My devices", "Alarm", "Gestures",
-//    "Haptics" (Band; the HR zone alert and its Target zone moved to Alerts in
-//    8AF.6, see zone_alert_test.dart); "Alerts and
+//  - Row titles are the English fallbacks: "GitHub", "Reddit", "Discord",
+//    "Sponsor" (Community, the first group since 8AF.7); "My devices",
+//    "Gestures", "Haptics" (Band; the HR zone alert and its Target zone moved
+//    to Alerts in 8AF.6, see zone_alert_test.dart); "Alarm" (moved from Band to
+//    the first row of Alerts in 8AF.7), "Alerts and
 //    notifications" and "App notifications on the band" (Alerts); "Edit
 //    profile", "Language", "Units", "Appearance", "Expected sleep schedule",
 //    "Icon", "Cycle tracking", "Steps" (You & preferences); "Storage",
@@ -19,9 +21,8 @@
 //  - Two titles are written loosely in the spec, so either spelling passes:
 //    the phone-steps row may be "Steps" or "Steps from this phone", and the
 //    Tasker row may keep "Tasker and Shortcuts" or be called "Automation".
-//  - "My devices" is in BOTH Profile > Quick access and Settings > Band: the
-//    spec's A.1 says it is a Band row and its Profile paragraph says Quick
-//    access keeps it. The "exactly once" rule below covers the other five.
+//  - "My devices" is a Settings > Band row. Since 8AF.7 there is no Profile
+//    landing screen, so every moved row has exactly one door.
 //  - The device-lab push through MoreSettingsView(onDeviceLab:) is in
 //    settings_device_lab_entry_test.dart so a missing parameter name fails
 //    only that file.
@@ -70,6 +71,7 @@ Widget _settings({bool dev = false, bool relay = true}) => MoreSettingsView(
     );
 
 const _groups = [
+  'Community',
   'Band',
   'Alerts',
   'You & preferences',
@@ -80,13 +82,19 @@ const _groups = [
 
 // Each row is a list of accepted spellings (usually one).
 const Map<String, List<List<String>>> _rows = {
+  'Community': [
+    ['GitHub'],
+    ['Reddit'],
+    ['Discord'],
+    ['Sponsor'],
+  ],
   'Band': [
     ['My devices'],
-    ['Alarm'],
     ['Gestures'],
     ['Haptics'],
   ],
   'Alerts': [
+    ['Alarm'],
     ['Alerts and notifications'],
     ['App notifications on the band'],
   ],
@@ -169,7 +177,7 @@ void _expectRowsInOrder(WidgetTester t, String sectionTitle) {
 
 void main() {
   group('Settings top level: groups and order', () {
-    testWidgets('dev mode off: seven groups minus Developer, in this order',
+    testWidgets('dev mode off: the seven groups, Community first, in this order',
         (t) async {
       await _pump(t, _settings());
       expect(sectionTitles(t), _groups);
@@ -308,83 +316,34 @@ void main() {
     });
   });
 
-  group('Profile and Settings together: one door per moved row', () {
-    final stats = const ProfileStats(sources: 2, storageBytes: 123456);
-
-    Widget profile() => ProfileHomeView(stats: stats);
-
-    int count(WidgetTester t, String text) =>
-        find.text(text).evaluate().length;
-
+  group('Settings alone: one door per moved row', () {
     for (final title in const [
       'Edit profile',
       'Language',
       'Storage',
       'AI coach',
       'Live devices',
+      'My devices',
+      'GitHub',
+      'Sponsor',
     ]) {
-      testWidgets('"$title" appears exactly once across both screens',
-          (t) async {
-        await _pump(t, profile());
-        final onProfile = count(t, title);
+      testWidgets('"$title" appears exactly once', (t) async {
         await _pump(t, _settings(dev: true));
-        final onSettings = count(t, title);
-        expect(onProfile, 0, reason: '$title is gone from Profile');
-        expect(onSettings, 1, reason: '$title is in Settings, once');
+        expect(find.text(title), findsOneWidget);
       });
     }
 
-    testWidgets('My devices: Profile Quick access keeps it and Settings > '
-        'Band has it too', (t) async {
-      await _pump(t, profile());
-      expect(find.text('My devices'), findsOneWidget);
+    testWidgets('My devices is a Band row', (t) async {
       await _pump(t, _settings());
       expect(_in('Band', 'My devices'), findsOneWidget);
     });
-  });
 
-  group('Profile tab: Quick access is My devices and Settings', () {
-    List<String> setRowTitles(WidgetTester t) =>
-        t.widgetList<SetRow>(find.byType(SetRow)).map((r) => r.title).toList();
-
-    testWidgets('rows are My devices, Settings, then Community unchanged',
+    testWidgets('there is no Quick access area and no "More settings" row',
         (t) async {
-      await _pump(t, ProfileHomeView(
-          stats: const ProfileStats(sources: 2, storageBytes: 99)));
-      expect(setRowTitles(t),
-          ['My devices', 'Settings', 'GitHub', 'Reddit', 'Discord', 'Sponsor']);
-    });
-
-    testWidgets('the groups are Quick access and Community only', (t) async {
-      await _pump(t, ProfileHomeView(
-          stats: const ProfileStats(sources: 2, storageBytes: 99)));
-      expect(find.text('Quick access'), findsOneWidget);
-      expect(find.text('Community'), findsOneWidget);
-      expect(find.text('Your data'), findsNothing);
+      await _pump(t, _settings(dev: true));
+      expect(find.text('Quick access'), findsNothing);
       expect(find.text('More settings'), findsNothing);
-    });
-
-    testWidgets('Settings sits inside Quick access, above Community',
-        (t) async {
-      await _pump(t, ProfileHomeView(
-          stats: const ProfileStats(sources: 2, storageBytes: 99)));
-      final settingsY = t.getTopLeft(find.text('Settings').last).dy;
-      expect(settingsY, lessThan(t.getTopLeft(find.text('Community')).dy));
-      expect(settingsY, greaterThan(t.getTopLeft(find.text('Quick access')).dy));
-    });
-
-    testWidgets('My devices and Settings still open their screens',
-        (t) async {
-      var devices = 0, settings = 0;
-      await _pump(
-          t,
-          ProfileHomeView(
-              stats: const ProfileStats(sources: 2),
-              onDevices: () => devices++,
-              onSettings: () => settings++));
-      await t.tap(find.text('My devices'));
-      await t.tap(find.text('Settings').last);
-      expect((devices, settings), (1, 1));
+      expect(find.text('Your data'), findsNothing);
     });
   });
 

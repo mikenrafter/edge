@@ -697,19 +697,39 @@ class MoreSettingsView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                // Grouped by task (8AE). Every row that used to live on the
-                // Profile tab has exactly one door here; "My devices" is the
-                // one deliberate pair, kept in Profile's Quick access too.
-                SettingsAccordion('Band', children: [
+                // Grouped by task (8AE). This is the landing screen (8AF.7):
+                // Community, which used to sit on the Profile screen, comes
+                // first, and every other row has exactly one door here.
+                SettingsAccordion(
+                    l?.profileCommunityGroup ?? 'Community',
+                    id: 'settings_community',
+                    children: [
+                  SetRow.brand(brandGlyph('assets/icons/github.svg'), C.n500,
+                      l?.profileGithubTitle ?? 'GitHub',
+                      sub: l?.profileGithubSub ??
+                          'Star the project to show support.',
+                      onTap: () => open3rdPartyLink(kGithubUrl)),
+                  SetRow.brand(brandGlyph('assets/icons/reddit.svg'), C.orange,
+                      l?.profileRedditTitle ?? 'Reddit',
+                      sub: l?.profileRedditSub ??
+                          'Join r/OpenStrap to share results and ask questions.',
+                      onTap: () => open3rdPartyLink(kRedditUrl)),
+                  SetRow.brand(brandGlyph('assets/icons/discord.svg'),
+                      C.indigo, l?.profileDiscordTitle ?? 'Discord',
+                      sub: l?.profileDiscordSub ??
+                          'Chat with other users and the developers.',
+                      onTap: () => open3rdPartyLink(kDiscordUrl)),
+                  SetRow(LucideIcons.heartHandshake, C.pink,
+                      l?.profileSponsorTitle ?? 'Sponsor',
+                      sub: l?.profileSponsorSub ??
+                          'This is a free, open-source project. Sponsoring funds development.',
+                      onTap: () => open3rdPartyLink(kSponsorUrl)),
+                ]),
+                SettingsAccordion('Band', id: 'settings_band', children: [
                   SetRow(LucideIcons.watch, C.blue,
                       l?.profileMyDevices ?? 'My devices',
                       sub: 'Pair, rename and manage your band',
                       onTap: onDevices),
-                  SetRow(LucideIcons.alarmClock, C.orange,
-                      l?.settingsAlarmRowTitle ?? 'Alarm',
-                      sub: l?.settingsAlarmRowSub ??
-                          'Buzzes on your wrist and runs on the band\'s clock',
-                      onTap: onAlarm),
                   SetRow(LucideIcons.hand, C.orange, 'Gestures',
                       sub: l?.settingsDoubleTapRowSub ??
                           'What a double-tap on the band does',
@@ -720,7 +740,14 @@ class MoreSettingsView extends StatelessWidget {
                       sub: 'Your buzz patterns and band safety',
                       onTap: onHaptics),
                 ]),
-                SettingsAccordion('Alerts', children: [
+                SettingsAccordion('Alerts', id: 'settings_alerts', children: [
+                  // The alarm's one door (8AF.7): a row here, not a row inside
+                  // the Alerts and notifications screen.
+                  SetRow(LucideIcons.alarmClock, C.orange,
+                      l?.settingsAlarmRowTitle ?? 'Alarm',
+                      sub: l?.settingsAlarmRowSub ??
+                          'Buzzes on your wrist and runs on the band\'s clock',
+                      onTap: onAlarm),
                   SetRow(LucideIcons.bell, C.blue,
                       l?.settingsManageNotificationsRowTitle ??
                           'Alerts and notifications',
@@ -736,7 +763,9 @@ class MoreSettingsView extends StatelessWidget {
                         sub: 'Which apps, alarms and calls make the band buzz',
                         onTap: onBandNotifications),
                 ]),
-                SettingsAccordion('You & preferences', children: [
+                SettingsAccordion('You & preferences',
+                    id: 'settings_preferences',
+                    children: [
                   SetRow(LucideIcons.userPen, C.purple,
                       l?.profileEditProfile ?? 'Edit profile',
                       sub: l?.profileEditProfileSub ??
@@ -785,7 +814,9 @@ class MoreSettingsView extends StatelessWidget {
                       value: phoneSteps ? on : off,
                       onTap: onTogglePhoneSteps),
                 ]),
-                SettingsAccordion('Data & privacy', children: [
+                SettingsAccordion('Data & privacy',
+                    id: 'settings_data_privacy',
+                    children: [
                   SetRow(LucideIcons.database, C.green,
                       l?.profileStorage ?? 'Storage',
                       value: storageBytes == null
@@ -836,7 +867,9 @@ class MoreSettingsView extends StatelessWidget {
                       value: barcodeLookup ? on : off,
                       onTap: onToggleBarcodeLookup),
                 ]),
-                SettingsAccordion('Connections', children: [
+                SettingsAccordion('Connections',
+                    id: 'settings_connections',
+                    children: [
                   // THE ONLY DOOR TO THE COACH'S SETUP: Home's sparkles button
                   // is gated on `coachReady`, so on a fresh install there is
                   // no icon to find it behind. `watch` rather than `read` so
@@ -875,7 +908,9 @@ class MoreSettingsView extends StatelessWidget {
                         value: updateChecks ? on : off,
                         onTap: onToggleUpdateChecks),
                 ]),
-                SettingsAccordion(l?.settingsGroupAbout ?? 'About', children: [
+                SettingsAccordion(l?.settingsGroupAbout ?? 'About',
+                    id: 'settings_about',
+                    children: [
                   if (version.isNotEmpty)
                     SetRow(LucideIcons.info, C.n500,
                         l?.settingsVersionRowTitle ?? 'Version',
@@ -894,7 +929,9 @@ class MoreSettingsView extends StatelessWidget {
                           mode: LaunchMode.externalApplication)),
                 ]),
                 if (devMode)
-                  SettingsAccordion(l?.settingsGroupDeveloper ?? 'Developer', children: [
+                  SettingsAccordion(l?.settingsGroupDeveloper ?? 'Developer',
+                      id: 'settings_developer',
+                      children: [
                     SetRow(LucideIcons.layoutGrid, C.purple,
                         l?.settingsComponentGalleryRowTitle ??
                             'Component gallery',
@@ -1242,6 +1279,7 @@ class NotificationSettingsView extends StatelessWidget {
                   // has one destination picker and says what it needs to run.
                   SettingsAccordion(
                       'Alarms & Wake',
+                      id: 'notifications_alarms_wake',
                       initiallyExpanded: true,
                       children: [
                         // On by default: this exists to catch a wake alarm that
@@ -1260,7 +1298,9 @@ class NotificationSettingsView extends StatelessWidget {
                                 'A 7pm reminder on any night with no wake alarm '
                                 'armed. Sends nothing otherwise'),
                       ]),
-                  SettingsAccordion('Health', children: [
+                  SettingsAccordion('Health',
+                      id: 'notifications_health',
+                      children: [
                     row('health', LucideIcons.heartPulse, C.red,
                         l?.settingsHealthExceptionsRowTitle ??
                             'Health exceptions',
@@ -1274,6 +1314,7 @@ class NotificationSettingsView extends StatelessWidget {
                   ]),
                   SettingsAccordion(
                       'Activity',
+                      id: 'notifications_activity',
                       initiallyExpanded: true,
                       children: [
                         // The auto-detector's off switch: it stops the prompt,
@@ -1323,6 +1364,7 @@ class NotificationSettingsView extends StatelessWidget {
                       ]),
                   SettingsAccordion(
                       'Reminders',
+                      id: 'notifications_reminders',
                       initiallyExpanded: true,
                       children: [
                         row('reminders', LucideIcons.calendarDays, C.purple,
@@ -1373,7 +1415,9 @@ class NotificationSettingsView extends StatelessWidget {
                                 'your quiet hours. Appears after about a '
                                 'week of wear'),
                       ]),
-                  SettingsAccordion('Device', children: [
+                  SettingsAccordion('Device',
+                      id: 'notifications_device',
+                      children: [
                     row('device', LucideIcons.watch, C.orange,
                         l?.settingsBandAlertsRowTitle ?? 'Band battery',
                         l?.settingsBandAlertsRowSub ??
@@ -1392,7 +1436,9 @@ class NotificationSettingsView extends StatelessWidget {
                               batteryAlertPct:
                                   _nextBatteryPct(prefs.batteryAlertPct)))),
                   ]),
-                  SettingsAccordion(l?.settingsGroupQuietHours ?? 'Quiet hours', children: [
+                  SettingsAccordion(l?.settingsGroupQuietHours ?? 'Quiet hours',
+                      id: 'notifications_quiet_hours',
+                      children: [
                     SetRow(LucideIcons.moon, C.indigo,
                         l?.settingsQuietHoursRowTitle ?? 'Quiet hours',
                         sub: l?.settingsQuietHoursRowSub ??
@@ -1748,7 +1794,9 @@ class _EditProfileViewState extends State<EditProfileView> {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                SettingsAccordion('About you', children: [
+                SettingsAccordion('About you',
+                    id: 'edit_profile_about_you',
+                    children: [
                   _text(c, _name, l?.settingsNameFieldLabel ?? 'NAME',
                       TextInputType.name),
                   Padding(
@@ -1797,7 +1845,7 @@ class _EditProfileViewState extends State<EditProfileView> {
                   _text(c, _age, l?.settingsAgeYearsFieldLabel ?? 'AGE (YEARS)',
                       TextInputType.number),
                 ]),
-                SettingsAccordion('Body', children: [
+                SettingsAccordion('Body', id: 'edit_profile_body', children: [
                   _text(c, _height, _u.heightLabel.toUpperCase(),
                       TextInputType.number),
                   _text(c, _weight, _u.weightLabel.toUpperCase(),
@@ -1828,7 +1876,9 @@ class _EditProfileViewState extends State<EditProfileView> {
     if (widget.onImport == null) return const [];
     final l = AppLocalizations.of(c);
     return [
-      SettingsAccordion('From $storeName', children: [
+      SettingsAccordion('From $storeName',
+          id: 'edit_profile_import',
+          children: [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: S.x3),
           child:
@@ -1975,6 +2025,7 @@ class AutomationSettingsView extends StatelessWidget {
                 SettingsAccordion(
                   l?.settingsSyncFinishesSectionTitle ??
                       'When a sync finishes',
+                  id: 'automation_sync_finishes',
                   children: [
                     Padding(
                     padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -2010,6 +2061,7 @@ class AutomationSettingsView extends StatelessWidget {
                 ),
                 SettingsAccordion(
                   l?.settingsNeverSendSectionTitle ?? 'What it will never send',
+                  id: 'automation_never_send',
                   children: [
                     Padding(
                     padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -2026,6 +2078,7 @@ class AutomationSettingsView extends StatelessWidget {
                 SettingsAccordion(
                   l?.settingsBuzzFromShortcutSectionTitle ??
                       'Buzzing the band from a shortcut',
+                  id: 'automation_buzz_shortcut',
                   children: [
                     Padding(
                     padding: const EdgeInsets.symmetric(vertical: S.x3),

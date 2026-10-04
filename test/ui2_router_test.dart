@@ -35,6 +35,7 @@ import 'package:openstrap_edge/ui2/screens/log_workout.dart'
 import 'package:openstrap_edge/ui2/screens/nutrition_screen.dart';
 import 'package:openstrap_edge/ui2/profile/devices.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart';
+import 'package:openstrap_edge/ui2/profile/settings.dart' show MoreSettings;
 import 'package:openstrap_edge/ui2/ui2.dart';
 
 /// A viewport tall enough that nothing under test is below the fold. The
@@ -161,8 +162,10 @@ void main() {
       // `resolveTapRoute` does not carry yet — the destinations exist here so
       // they stop landing on Home the moment it does.
       expect(domainForRoute('/profile'), ShellDomain.home);
-      expect(screenForRoute('/profile'), isA<ProfileHome>(),
-          reason: 'the battery notification promises the band, not Home');
+      expect(screenForRoute('/profile'), isA<MoreSettings>(),
+          reason: 'the battery notification promises the band, not Home; '
+              'Settings > Band > My devices is where it lives (no Profile '
+              'landing screen since 8AF.7)');
       // A week of sleep, strain and recovery is Health. There is no recap
       // screen; landing on Home was not even close.
       expect(domainForRoute('/recap'), ShellDomain.health);
