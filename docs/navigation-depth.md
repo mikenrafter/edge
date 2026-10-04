@@ -72,8 +72,13 @@ gone.
   quiet hours set in Alerts unless its "Override quiet hours" switch is on; its
   Starts and Ends rows show only then. In Alerts and notifications the "Band
   alerts" row is now "Band battery".
-- Alarm: the Haptics group (one disabled Buzz pattern row) is gone. Wake says
-  once that the alarm uses the band's own buzz.
+- Alarm: the Haptics group (one disabled Buzz pattern row) is gone. A row of
+  weekday tabs (the app's sub-tab component) picks the day, then two accordions
+  show that day: "Alarm and wake" (on or off, wake time, Natural Wake, Gradual
+  Wake, and "Apply to full week") and "Timeline and status". The old notes about
+  the band's own buzz and measured vocabulary are gone.
+- Haptics, "Where patterns are used": no divider between the section headers;
+  the accordion's own hairline above each row is the only line.
 - Every settings screen lists its settings as sections that start expanded
   (`SettingsAccordion`). A section can be folded; it keeps a one-line summary
   under its header while folded. Each section remembers whether it was open or

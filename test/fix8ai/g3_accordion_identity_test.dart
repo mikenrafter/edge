@@ -88,12 +88,12 @@ final _cases = <_Case>[
       'band_notifications_calls',
     },
   ),
-  // "The band is not connected" card sits ahead of Alarm, Wake and Status.
+  // "The band is not connected" card sits ahead of the two Alarm accordions.
   _Case(
     'Alarm (not-connected card)',
     (connected) => AlarmScreenView(connected: connected, schedule: _schedule),
-    'alarm_wake',
-    {'alarm_days', 'alarm_wake', 'alarm_status'},
+    'alarm_timeline',
+    {'alarm_day', 'alarm_timeline'},
   ),
 ];
 

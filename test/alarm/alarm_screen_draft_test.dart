@@ -38,9 +38,13 @@ AlarmScreenView _view(_Saves s, {bool connected = true}) => AlarmScreenView(
 
 Future<void> _pump(WidgetTester t, Widget w) => pumpTall(t, w);
 
-/// The day rows of the Alarm section, by weekday label.
-Finder _dayRow(String label) =>
-    find.descendant(of: section('Alarm'), matching: find.text(label));
+/// Turns Tuesday on: pick its tab, then flip its on/off row.
+Future<void> _toggleTue(WidgetTester t) async {
+  await t.tap(find.byKey(const ValueKey('wake-day-1')));
+  await t.pumpAndSettle();
+  await t.tap(find.byKey(const ValueKey('alarm-day-enabled')));
+  await t.pumpAndSettle();
+}
 
 Finder _headerButton(String label) =>
     find.ancestor(of: find.text(label), matching: find.byType(BigButton)).first;
@@ -109,8 +113,7 @@ void main() {
     ) async {
       final s = _Saves();
       await _pump(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       expect(s.calls, isEmpty, reason: 'no save while editing');
       expect(_enabled(t, 'Save'), isTrue);
       expect(_enabled(t, 'Cancel'), isTrue);
@@ -120,8 +123,7 @@ void main() {
     testWidgets('an editable row works with the band disconnected', (t) async {
       final s = _Saves();
       await _pump(t, _view(s, connected: false));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       expect(
         _enabled(t, 'Save'),
         isTrue,
@@ -134,8 +136,7 @@ void main() {
     ) async {
       final s = _Saves();
       await _pump(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _tapText(t, 'Cancel');
       expect(s.calls, isEmpty);
       expect(_enabled(t, 'Save'), isFalse);
@@ -148,8 +149,7 @@ void main() {
     ) async {
       final s = _Saves();
       await _pump(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _tapText(t, 'Save');
       expect(s.calls, hasLength(1));
       expect(s.calls.single, hasLength(7));
@@ -162,8 +162,7 @@ void main() {
       final s = _Saves()
         ..outcome = const AlarmSaveOutcome(AlarmSaveStatus.savedOffline);
       await _pump(t, _view(s, connected: false));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _tapText(t, 'Save');
       expect(
         find.text('Saved — the band updates when it next connects'),
@@ -180,8 +179,7 @@ void main() {
             error: 'the band did not take the alarm',
           );
         await _pump(t, _view(s));
-        await t.tap(_dayRow('Tue'));
-        await t.pumpAndSettle();
+        await _toggleTue(t);
         await _tapText(t, 'Save');
         expect(
           find.textContaining('the band did not take the alarm'),
@@ -207,8 +205,7 @@ void main() {
           error: 'disk full',
         );
       await _pump(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _tapText(t, 'Save');
       expect(find.textContaining('Not saved: disk full'), findsOneWidget);
       expect(_enabled(t, 'Cancel'), isTrue, reason: 'still unsaved');
@@ -227,8 +224,7 @@ void main() {
     testWidgets('unsaved edits: the nav-bar back opens Save / Discard / Keep '
         'editing', (t) async {
       await _launch(t, _view(_Saves()));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _navBack(t);
       expect(_onScreen, findsOneWidget, reason: 'did not leave');
       for (final b in ['Save', 'Discard', 'Keep editing']) {
@@ -238,8 +234,7 @@ void main() {
 
     testWidgets('system back is guarded the same way', (t) async {
       await _launch(t, _view(_Saves()));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await t.binding.handlePopRoute();
       await t.pumpAndSettle();
       expect(_onScreen, findsOneWidget);
@@ -249,8 +244,7 @@ void main() {
     testWidgets('Keep editing stays, with the draft intact', (t) async {
       final s = _Saves();
       await _launch(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _navBack(t);
       await t.tap(_dialog('Keep editing'));
       await t.pumpAndSettle();
@@ -263,8 +257,7 @@ void main() {
     testWidgets('Discard leaves and saves nothing', (t) async {
       final s = _Saves();
       await _launch(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _navBack(t);
       await t.tap(_dialog('Discard'));
       await t.pumpAndSettle();
@@ -275,8 +268,7 @@ void main() {
     testWidgets('Save in the dialog saves once, then leaves', (t) async {
       final s = _Saves();
       await _launch(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _navBack(t);
       await t.tap(_dialog('Save'));
       await t.pumpAndSettle();
@@ -293,8 +285,7 @@ void main() {
           error: 'link dropped',
         );
       await _launch(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _navBack(t);
       await t.tap(_dialog('Save'));
       await t.pumpAndSettle();
@@ -306,8 +297,7 @@ void main() {
         'send finishing later is harmless', (t) async {
       final s = _Saves()..gate = Completer<AlarmSaveOutcome>();
       await _launch(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await t.tap(find.text('Save'));
       await t.pump();
       await _navBack(t);
@@ -326,8 +316,7 @@ void main() {
         'leaves', (t) async {
       final s = _Saves()..gate = Completer<AlarmSaveOutcome>();
       await _launch(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await t.tap(find.text('Save'));
       await t.pump();
       await _navBack(t);
@@ -347,8 +336,7 @@ void main() {
           error: 'link dropped',
         );
       await _launch(t, _view(s));
-      await t.tap(_dayRow('Tue'));
-      await t.pumpAndSettle();
+      await _toggleTue(t);
       await _tapText(t, 'Save');
       await _navBack(t);
       expect(_onScreen, findsNothing);

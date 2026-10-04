@@ -21,6 +21,7 @@ import 'package:openstrap_edge/ui2/ui2.dart' show NavBar;
 import 'support/sections.dart';
 
 const _relayName = 'App notifications on the band';
+// Dropped from the Alarm screen (Oct 4); the test says it stays gone.
 const _alarmCaption = "The alarm uses the band's own buzz.";
 
 final _schedule = fillDefaultAlarmSchedule(const [
@@ -95,9 +96,10 @@ void main() {
   });
 
   group('Alarm', () {
-    testWidgets('has Alarm, Wake and Status, and no Haptics group', (t) async {
+    testWidgets('has Alarm and wake, then Timeline and status, and no Haptics '
+        'group', (t) async {
       await pumpTall(t, _alarm());
-      expect(sectionTitles(t), ['Alarm', 'Wake', 'Status']);
+      expect(sectionTitles(t), ['Alarm and wake', 'Timeline and status']);
       expect(find.text('Haptics'), findsNothing);
     });
 
@@ -112,17 +114,11 @@ void main() {
     });
 
     for (final connected in [true, false]) {
-      testWidgets('Wake carries the caption once (connected: $connected)',
+      testWidgets('no own-buzz caption anywhere (connected: $connected)',
           (t) async {
         await pumpTall(t, _alarm(connected: connected));
-        expect(find.text(_alarmCaption), findsOneWidget);
-        expect(
-          find.descendant(
-            of: section('Wake'),
-            matching: find.text(_alarmCaption),
-          ),
-          findsOneWidget,
-        );
+        expect(find.text(_alarmCaption), findsNothing,
+            reason: 'dropped with the Alarm rework (Oct 4)');
       });
     }
   });

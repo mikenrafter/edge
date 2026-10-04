@@ -443,21 +443,16 @@ class HapticsSettingsView extends StatelessWidget {
     return [for (final s in builtIn) _patternRow(c, p, s)];
   }
 
-  // Slots by section, each section under its header and a link to its screen,
-  // a divider between two sections.
+  // Slots by section, each section under its header and a link to its screen.
+  // No divider between two sections: the accordion already draws a hairline
+  // above every row, header rows included, and a second one doubled the line.
   List<Widget> _slotRows(BuildContext c, P p) {
     final name = slotPatternName;
     return [
       for (var i = 0; i < kHapticSlotSections.length; i++) ...[
-        if (i > 0)
-          Divider(
-            key: ValueKey('haptic-slot-sep:${kHapticSlotSections[i].id}'),
-            height: S.x6,
-            color: p.ink3.withValues(alpha: 0.3),
-          ),
         Padding(
           key: ValueKey('haptic-slot-section:${kHapticSlotSections[i].id}'),
-          padding: const EdgeInsets.only(top: S.x2),
+          padding: const EdgeInsets.symmetric(vertical: S.x2),
           child: Row(
             children: [
               Expanded(

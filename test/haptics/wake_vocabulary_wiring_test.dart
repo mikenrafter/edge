@@ -1,9 +1,9 @@
 // 8AF.6 D: the wiring and the words around wake on the vocabulary (the plans
 // themselves are in wake_vocabulary_test.dart).
 //
-//  - Alarm > Wake says, in one caption, that wake buzzes are the band's
-//    measured vocabulary (and so are not configurable): "Wake buzzes use the
-//    band's measured vocabulary."
+//  - Alarm no longer prints a caption about it (dropped Oct 4): wake buzzes
+//    are the band's measured vocabulary and not configurable, and the screen
+//    just does not offer a pattern for them.
 //  - AppState: natural wake, the legacy Smart Wake early fire and the gradual
 //    steps go through the wake vocabulary; RUN_ALARM stays (gen4 and the
 //    fallback). Source guards: AppState needs a whole engine.
@@ -36,17 +36,15 @@ AlarmScreenView _view() => AlarmScreenView(
     );
 
 void main() {
-  group('Alarm > Wake caption', () {
-    testWidgets('the Wake section says wake buzzes use the measured '
-        'vocabulary', (t) async {
+  group('Alarm: no wake caption', () {
+    testWidgets('the screen carries no sentence about the vocabulary', (
+      t,
+    ) async {
       await pumpTall(t, _view());
       await t.tap(find.byKey(const ValueKey('wake-day-1')));
       await t.pumpAndSettle();
-      expect(
-        find.descendant(of: section('Wake'), matching: find.text(_caption)),
-        findsOneWidget,
-      );
-      expect(find.text(_caption), findsOneWidget, reason: 'said once');
+      expect(find.text(_caption), findsNothing);
+      expect(find.textContaining('measured vocabulary'), findsNothing);
     });
   });
 

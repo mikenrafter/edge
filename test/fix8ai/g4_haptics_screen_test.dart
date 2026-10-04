@@ -4,8 +4,9 @@
 // Spec: three accordions in order, "Your patterns", "Presets", "Where patterns
 // are used", then Safety / Test / Calibration unchanged. The last one lists the
 // haptic SLOTS grouped by section (Alerts, Gestures, Wake/Alarm, Workout, ...)
-// with a separator between sections and a link that opens the screen where the
-// slot is used. A slot row shows the NAME of the pattern it plays ("Three
+// under a header row each, no separator between sections (the accordion already
+// draws a hairline above every row; a second one doubled it, Oct 4), and a link
+// that opens the screen where the slot is used. A slot row shows the NAME of the pattern it plays ("Three
 // pulses", "Your: Morning nudge"), never "N buzzes". A saved pattern, and a
 // slot's own picker, can put a saved pattern on any slot; presets stay
 // read-only.
@@ -27,8 +28,8 @@
 //     "Presets" / `haptics_presets`, "Where patterns are used" /
 //     `haptics_where_used`.
 //   * Keys: a slot row `haptic-slot:<slotKey>`; a section header
-//     `haptic-slot-section:<sectionId>`; a separator between two sections
-//     `haptic-slot-sep:<sectionId>` (the id of the section it sits above);
+//     `haptic-slot-section:<sectionId>`; there is NO
+//     separator between two sections (`haptic-slot-sep:` is gone, Oct 4);
 //     a section's link `haptic-slot-section-link:<sectionId>` calling
 //     `onOpenSlotScreen(sectionId)`. Section ids include `alerts` and
 //     `gestures`; the Alerts section holds the alert rules, the Gestures
@@ -49,6 +50,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 
 import '../phase8/support/dart_source.dart';
 import '../phase8/support/sections.dart';
@@ -179,15 +181,19 @@ void main() {
           findsNothing);
     });
 
-    testWidgets('grouped by section with a separator between sections',
-        (t) async {
+    testWidgets('grouped by section, with no separator of its own between '
+        'sections', (t) async {
       await pumpHub(t, HubCalls());
       final headers = withKeyPrefix(t, 'haptic-slot-section:').toList();
       final seps = withKeyPrefix(t, 'haptic-slot-sep:').toList();
       expect(headers.length, greaterThanOrEqualTo(2),
           reason: 'at least Alerts and Gestures');
-      expect(seps, hasLength(headers.length - 1),
-          reason: 'a separator between sections, none before the first');
+      expect(seps, isEmpty,
+          reason: 'the accordion draws a hairline above every row; a hand-made '
+              'divider next to it doubled the line');
+      final drawn = _in(_where, find.byType(Divider)).evaluate().length;
+      expect(drawn, t.widget<SettingsAccordion>(_accordion(_where)).children.length,
+          reason: 'only the accordion\'s own one-per-row hairlines');
       expect(find.byKey(const ValueKey('haptic-slot-section:alerts')),
           findsOneWidget);
       expect(find.byKey(const ValueKey('haptic-slot-section:gestures')),

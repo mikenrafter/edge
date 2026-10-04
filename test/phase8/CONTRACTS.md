@@ -236,6 +236,9 @@ optional, no Provider needed; same section rule. `DataScreen` /
 
 ## 8J — Alarm sections (`alarm_sections_test.dart`, *compile-safe*)
 
+(Reworked Oct 4: now two sections, see "Alarm: day tabs, two accordions, apply to
+full week" at the end. The text below is the history.)
+
 `AlarmScreenView` sections, in order: `Alarm`, `Wake`, `Status` (8AE removed the
 `Haptics` group; its disabled `Buzz pattern` row is gone and `Wake` carries the caption
 `The alarm uses the band's own buzz.`), all expanded. `Wake` contains `Natural Wake` and
@@ -1627,3 +1630,29 @@ C and D in phase 2).
   `hardware/lab_packets_test.dart`, `hardware/pattern_probe_page_test.dart`,
   `hardware/pattern_probe_panel_test.dart` and `phase7/feature_flags_test.dart` now
   use a fake saver.
+
+## Alarm: day tabs, two accordions, apply to full week (Oct 4)
+- `AlarmScreenView` puts one `SubTabs` (weekdays, `dense`, keys `wake-day-0..6`,
+  screen-reader label "Edit wake settings for <Day>") above two accordions, both for
+  the selected day. A day that is off is `muted` (card2 look) and still selectable.
+  The tabs scroll when a font or the text scale is wider than 360 pt allows.
+- "Alarm and wake" (`alarm_day`): `Alarm` on/off (key `alarm-day-enabled`), `Wake time`,
+  Natural Wake and Expected sleep schedule (when supported), Gradual Wake, pattern,
+  cadence, then `Apply to full week` (key `alarm-apply-week`).
+- "Timeline and status" (`alarm_timeline`): the `TIMELINE FOR <DAY> hh:mm` rows, then
+  Armed state, Next alarm, Last wake decision. The old ids `alarm_days`, `alarm_wake`,
+  `alarm_status` are unused; a stored open or closed answer under them is ignored.
+- Apply to full week = `AlarmDraft.applyToWeek(weekday)`: copies on/off, time, Natural
+  window, Gradual window, pattern and cadence onto all seven days (the legacy Smart
+  window stays per day). It is a draft edit (dirty, Save sends the week), says
+  "Applied to every day. Save to send it to the band.", and the button is dimmed and
+  inert while `weekMatches(weekday)`.
+- Gone: "The alarm uses the band's own buzz." and "Wake buzzes use the band's measured
+  vocabulary." Tests assert neither appears.
+- Haptics > "Where patterns are used": the `haptic-slot-sep:` dividers are gone (the
+  accordion draws a hairline above every row, header rows included).
+- Tests: `test/alarm/alarm_day_tabs_test.dart`, `alarm_apply_week_draft_test.dart`,
+  `test/ui2_sub_tabs_options_test.dart`; updated `alarm_wake_section_test`,
+  `alarm_screen_draft_test`, `phase8/alarm_sections_test`, `disable_not_hide_test`,
+  `settings_naming_test`, `fix8ai/g3_accordion_identity_test`,
+  `fix8ai/g4_haptics_screen_test`, `haptics/wake_vocabulary_wiring_test`.

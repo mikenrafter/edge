@@ -49,15 +49,6 @@ import '../ui2.dart';
 import 'profile.dart' show SetRow, SettingsAccordion, kDisabledOpacity;
 import 'settings.dart' show editExpectedSleepSchedule;
 
-/// The alarm waveform is fixed on the band, so there is no pattern to show or
-/// change; Wake says so once instead of a disabled row (8AE).
-const String _kFixedWaveform = 'The alarm uses the band\'s own buzz.';
-
-// Gradual and Natural wake play fixed plans of the MG's measured vocabulary
-// (8AF.6); they are not configurable.
-const String _kWakeVocabulary =
-    'Wake buzzes use the band\'s measured vocabulary.';
-
 /// What we actually know about the armed alarm.
 enum AlarmArmState {
   /// Nothing armed.
@@ -341,8 +332,9 @@ enum _Leave { keep, discard, save }
 class _AlarmScreenViewState extends State<AlarmScreenView> {
   late final AlarmDraft _draft = AlarmDraft(widget.schedule);
 
-  /// Which weekday the Wake section is editing. Seeded once, from the first
-  /// day that is on, so toggling days above never moves it.
+  /// Which weekday the day tabs have selected (0=Mon..6=Sun); both accordions
+  /// show it. Seeded once, from the first day that is on, so switching a day
+  /// on or off never moves it.
   late int _wakeDay = _draft.entries
       .firstWhere((e) => e.enabled, orElse: () => _draft.entry(0))
       .weekday;
@@ -609,88 +601,21 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                             'keeps running on the band.',
                             icon: LucideIcons.bluetoothOff,
                           ),
+                        _dayTabs(c, week),
                         SettingsAccordion(
-                          'Alarm',
-                          id: 'alarm_days',
-                          summary: anyDayEnabled
-                              ? '${week.where((d) => d.enabled).length} of '
-                                    '${week.length} days on'
-                              : 'No days on',
-                          children: [
-                            for (final day in week) ...[
-                              SetRow(
-                                LucideIcons.calendarDays,
-                                C.orange,
-                                AlarmScreenView._weekdayLabel(c, day.weekday),
-                                value: day.enabled
-                                    ? (l?.stateOn ?? 'On')
-                                    : (l?.stateOff ?? 'Off'),
-                                chevron: false,
-                                onTap: () => _draft.setEnabled(
-                                  day.weekday,
-                                  !day.enabled,
-                                ),
-                              ),
-                              SetRow(
-                                LucideIcons.clock,
-                                C.blue,
-                                l?.alarmWakeTimeRowTitle ?? 'Wake time',
-                                enabled: day.enabled,
-                                value: AlarmScreenView._hhmmOf(
-                                  day.hour,
-                                  day.minute,
-                                ),
-                                chevron: false,
-                                onTap: () => _pickDayTime(day),
-                              ),
-                            ],
-                          ],
+                          'Alarm and wake',
+                          id: 'alarm_day',
+                          summary: _daySummary(c, week[_wakeDay]),
+                          children: _dayChildren(c, p, week),
                         ),
                         SettingsAccordion(
-                          'Wake',
-                          id: 'alarm_wake',
-                          summary: _wakeSummary(week),
-                          children: _wakeChildren(c, p, week),
-                        ),
-                        SettingsAccordion(
-                          'Status',
-                          id: 'alarm_status',
+                          'Timeline and status',
+                          id: 'alarm_timeline',
                           summary: AlarmScreenView._localizedStateLabel(
                             c,
                             w.state,
                           ),
-                          children: [
-                            SetRow(
-                              AlarmScreenView._stateIcon(w.state),
-                              AlarmScreenView._stateColor(w.state),
-                              'Armed state',
-                              value: AlarmScreenView._localizedStateLabel(
-                                c,
-                                w.state,
-                              ),
-                              chevron: false,
-                            ),
-                            SetRow(
-                              LucideIcons.alarmClock,
-                              C.blue,
-                              'Next alarm',
-                              value: at == null
-                                  ? '—'
-                                  : AlarmScreenView._dayAndTime(c, at),
-                              chevron: false,
-                            ),
-                            SetRow(
-                              LucideIcons.listChecks,
-                              C.indigo,
-                              'Last wake decision',
-                              sub: w.wakeTrace.isNotEmpty
-                                  ? w.wakeTrace.join('\n')
-                                  : at == null
-                                  ? 'Nothing recorded: no alarm is armed'
-                                  : 'Nothing recorded for this wake yet',
-                              chevron: false,
-                            ),
-                          ],
+                          children: _timelineChildren(c, p, week),
                         ),
                         const SizedBox(height: S.x4),
                         // Present always; inert and dimmed when there is nothing
@@ -805,34 +730,57 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
     );
   }
 
-  // ── Wake section ───────────────────────────────────────────────────────────
+  // ── Day tabs and the two accordions ────────────────────────────────────────
 
-  String _wakeSummary(List<AlarmScheduleEntry> week) {
-    final n = widget.naturalWakeSupported
-        ? week.where((d) => d.naturalWindowMinutes > 0).length
-        : 0;
-    final g = week.where((d) => d.gradualWindowMinutes > 0).length;
-    if (!widget.naturalWakeSupported) {
-      return g == 0
-          ? 'Gradual Wake is off'
-          : 'Gradual Wake on $g ${g == 1 ? 'day' : 'days'}';
-    }
-    if (n == 0 && g == 0) return 'Natural Wake and Gradual Wake are off';
-    return 'Natural Wake on $n ${n == 1 ? 'day' : 'days'}, '
-        'Gradual Wake on $g ${g == 1 ? 'day' : 'days'}';
+  /// The weekday picker: the app's SubTabs, one tab per day in weekday order,
+  /// so a tab's index is its weekday. A day that is off is drawn off but stays
+  /// selectable, since its settings are still editable.
+  Widget _dayTabs(BuildContext c, List<AlarmScheduleEntry> week) => Padding(
+    padding: const EdgeInsets.only(top: S.x1),
+    child: SubTabs(
+      [for (final d in week) AlarmScreenView._weekdayLabel(c, d.weekday)],
+      _wakeDay,
+      (i) => setState(() => _wakeDay = i),
+      color: C.blue,
+      dense: true,
+      muted: {
+        for (final d in week)
+          if (!d.enabled) d.weekday,
+      },
+      itemKeys: [for (final d in week) ValueKey('wake-day-${d.weekday}')],
+      semanticLabels: [
+        for (final d in week)
+          'Edit wake settings for ${AlarmScreenView._weekdayLabel(c, d.weekday)}',
+      ],
+    ),
+  );
+
+  String _daySummary(BuildContext c, AlarmScheduleEntry day) {
+    final label = AlarmScreenView._weekdayLabel(c, day.weekday);
+    return day.enabled
+        ? '$label: on at ${AlarmScreenView._hhmmOf(day.hour, day.minute)}'
+        : '$label: off';
   }
 
-  List<Widget> _wakeChildren(
+  /// Copies the selected day's settings onto every day of the draft. Still a
+  /// draft edit: nothing is sent until Save.
+  void _applyToWeek() {
+    _draft.applyToWeek(_wakeDay);
+    _say('Applied to every day. Save to send it to the band.');
+  }
+
+  List<Widget> _dayChildren(
     BuildContext c,
     P p,
     List<AlarmScheduleEntry> week,
   ) {
     final w = widget;
+    final l = AppLocalizations.of(c);
     final day = week[_wakeDay];
     final dayOn = day.enabled;
     final naturalOk = dayOn && w.hasExpectedSleep && !w.upgradePending;
     final gradualOn = day.gradualWindowMinutes > 0;
-    final label = AlarmScreenView._weekdayLabel(c, day.weekday);
+    final uniform = _draft.weekMatches(_wakeDay);
 
     String windowValue(int m) => m == 0 ? 'Off' : '$m min';
 
@@ -849,27 +797,26 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
           'Needs the phone connected.';
     }
 
-    // The timeline is for the next time this weekday's alarm will ring, drawn
-    // from the DRAFT so it answers what the user is looking at.
-    final wakeAt = nextAlarmOccurrence([
-      day.copyWith(enabled: true),
-    ], w.now ?? DateTime.now())!;
-    // Without an expected sleep schedule Natural Wake cannot tell a main sleep
-    // from a nap and stays quiet, so the preview does not promise it.
-    final shown = w.hasExpectedSleep && w.naturalWakeSupported
-        ? day
-        : day.copyWith(naturalWindowMinutes: 0);
-    final timeline =
-        w.timelineFor?.call(wakeAt, shown) ??
-        WakeTimeline.compute(
-          wakeAt: wakeAt,
-          naturalMinutes: w.upgradePending ? 0 : shown.naturalWindowMinutes,
-          gradualMinutes: shown.gradualWindowMinutes,
-        );
-
     return [
       if (w.upgradePending) _upgradeCard(p),
-      _dayChips(c, p, week),
+      SetRow(
+        LucideIcons.calendarDays,
+        C.orange,
+        'Alarm',
+        key: const ValueKey('alarm-day-enabled'),
+        value: dayOn ? (l?.stateOn ?? 'On') : (l?.stateOff ?? 'Off'),
+        chevron: false,
+        onTap: () => _draft.setEnabled(day.weekday, !dayOn),
+      ),
+      SetRow(
+        LucideIcons.clock,
+        C.blue,
+        l?.alarmWakeTimeRowTitle ?? 'Wake time',
+        enabled: dayOn,
+        value: AlarmScreenView._hhmmOf(day.hour, day.minute),
+        chevron: false,
+        onTap: () => _pickDayTime(day),
+      ),
       if (w.naturalWakeSupported) ...[
         SetRow(
           LucideIcons.sunrise,
@@ -924,8 +871,56 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
         chevron: false,
         onTap: () => _pickCadence(day),
       ),
+      // Dimmed and inert once every day already carries these settings.
       Padding(
-        padding: const EdgeInsets.only(top: S.x3),
+        padding: const EdgeInsets.symmetric(vertical: S.x3),
+        child: Opacity(
+          opacity: uniform ? kDisabledOpacity : 1,
+          child: BigButton(
+            'Apply to full week',
+            key: const ValueKey('alarm-apply-week'),
+            icon: LucideIcons.calendarCheck,
+            color: C.blue,
+            soft: true,
+            onTap: uniform ? null : _applyToWeek,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _timelineChildren(
+    BuildContext c,
+    P p,
+    List<AlarmScheduleEntry> week,
+  ) {
+    final w = widget;
+    final at = w.armedAt;
+    final day = week[_wakeDay];
+    final dayOn = day.enabled;
+    final label = AlarmScreenView._weekdayLabel(c, day.weekday);
+
+    // The timeline is for the next time this weekday's alarm will ring, drawn
+    // from the DRAFT so it answers what the user is looking at.
+    final wakeAt = nextAlarmOccurrence([
+      day.copyWith(enabled: true),
+    ], w.now ?? DateTime.now())!;
+    // Without an expected sleep schedule Natural Wake cannot tell a main sleep
+    // from a nap and stays quiet, so the preview does not promise it.
+    final shown = w.hasExpectedSleep && w.naturalWakeSupported
+        ? day
+        : day.copyWith(naturalWindowMinutes: 0);
+    final timeline =
+        w.timelineFor?.call(wakeAt, shown) ??
+        WakeTimeline.compute(
+          wakeAt: wakeAt,
+          naturalMinutes: w.upgradePending ? 0 : shown.naturalWindowMinutes,
+          gradualMinutes: shown.gradualWindowMinutes,
+        );
+
+    return [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: S.x3),
         child: Align(
           alignment: Alignment.centerLeft,
           child: Opacity(
@@ -953,57 +948,32 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
               : 'phone must be connected',
           chevron: false,
         ),
-      Padding(
-        padding: const EdgeInsets.only(top: S.x3),
-        child: Text(_kFixedWaveform, style: F.over.copyWith(color: p.ink3)),
+      SetRow(
+        AlarmScreenView._stateIcon(w.state),
+        AlarmScreenView._stateColor(w.state),
+        'Armed state',
+        value: AlarmScreenView._localizedStateLabel(c, w.state),
+        chevron: false,
       ),
-      Padding(
-        padding: const EdgeInsets.only(top: S.x1),
-        child: Text(_kWakeVocabulary, style: F.over.copyWith(color: p.ink3)),
+      SetRow(
+        LucideIcons.alarmClock,
+        C.blue,
+        'Next alarm',
+        value: at == null ? '—' : AlarmScreenView._dayAndTime(c, at),
+        chevron: false,
+      ),
+      SetRow(
+        LucideIcons.listChecks,
+        C.indigo,
+        'Last wake decision',
+        sub: w.wakeTrace.isNotEmpty
+            ? w.wakeTrace.join('\n')
+            : at == null
+            ? 'Nothing recorded: no alarm is armed'
+            : 'Nothing recorded for this wake yet',
+        chevron: false,
       ),
     ];
-  }
-
-  Widget _dayChips(BuildContext c, P p, List<AlarmScheduleEntry> week) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: S.x2),
-      child: Row(
-        children: [
-          for (final d in week)
-            Expanded(
-              child: Pressable(
-                key: ValueKey('wake-day-${d.weekday}'),
-                onTap: () => setState(() => _wakeDay = d.weekday),
-                semanticLabel:
-                    'Edit wake settings for '
-                    '${AlarmScreenView._weekdayLabel(c, d.weekday)}',
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  padding: const EdgeInsets.symmetric(vertical: S.x2),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: d.weekday == _wakeDay ? p.wash(C.blue) : p.card2,
-                    borderRadius: R.rSm,
-                  ),
-                  child: Text(
-                    AlarmScreenView._weekdayLabel(c, d.weekday),
-                    style: F.cap.copyWith(
-                      color: d.weekday == _wakeDay
-                          ? p.on(C.blue)
-                          : d.enabled
-                          ? p.ink
-                          : p.ink3,
-                      fontWeight: d.weekday == _wakeDay
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
   }
 
   /// Smart Wake became Natural Wake. Shown until the user has read it.

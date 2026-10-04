@@ -1,5 +1,6 @@
-// 8J — the Alarm screen as sections: Alarm, Wake, Status (8AE dropped the
-// Haptics group; the alarm buzz is the band's own).
+// 8J — the Alarm screen as sections. Now two (Oct 4): "Alarm and wake" for the
+// day picked in the day tabs, and "Timeline and status". (8AE dropped the
+// Haptics group; the footnotes about the band's own buzz are gone too.)
 // All expanded by default; a collapsed section still shows a one-line summary
 // under its header; disconnected means disabled rows, not missing ones (8K).
 // Compile-safe on purpose: reads SettingsAccordion only through its existing
@@ -26,29 +27,31 @@ AlarmScreenView _view({bool connected = true}) => AlarmScreenView(
       now: DateTime(2026, 8, 21, 22, 40),
     );
 
-const _sections = ['Alarm', 'Wake', 'Status'];
+const _sections = ['Alarm and wake', 'Timeline and status'];
 
 void main() {
-  testWidgets('three sections, in order, all expanded', (t) async {
+  testWidgets('two sections, in order, all expanded', (t) async {
     await pumpTall(t, _view());
     expect(sectionTitles(t), _sections);
     await expectAllSectionsExpanded(t, 'Alarm screen');
   });
 
-  testWidgets('Wake holds Natural Wake and Gradual Wake', (t) async {
+  testWidgets('Alarm and wake holds Natural Wake and Gradual Wake', (t) async {
     await pumpTall(t, _view());
     for (final row in ['Natural Wake', 'Gradual Wake']) {
       expect(
-          find.descendant(of: section('Wake'), matching: find.textContaining(row)),
+          find.descendant(
+              of: section('Alarm and wake'), matching: find.textContaining(row)),
           findsWidgets,
           reason: row);
     }
   });
 
-  testWidgets('Status holds the armed state', (t) async {
+  testWidgets('Timeline and status holds the armed state', (t) async {
     await pumpTall(t, _view());
     expect(
-        find.descendant(of: section('Status'), matching: find.text('Confirmed')),
+        find.descendant(
+            of: section('Timeline and status'), matching: find.text('Confirmed')),
         findsWidgets);
   });
 
@@ -73,27 +76,25 @@ void main() {
     });
   }
 
-  testWidgets('disconnected: every section and every day row is still there',
-      (t) async {
+  testWidgets('disconnected: both sections and the selected day\'s rows are '
+      'still there', (t) async {
     await pumpTall(t, _view(connected: false));
     expect(sectionTitles(t), _sections);
     expect(find.text('The band is not connected'), findsOneWidget,
         reason: 'the reason is stated once');
-    final wake = find.text('Wake time');
-    expect(wake, findsNWidgets(_schedule.length),
-        reason: 'one wake-time row per day, enabled or not');
-    // 8O: edits are a draft, so a missing band does not block them. Only the
-    // days that are off dim their time row, connected or not.
-    final dimmed = wake.evaluate().where((e) => isDimmed(t, find.byWidget(e.widget)));
-    expect(dimmed, hasLength(_schedule.where((d) => !d.enabled).length));
+    expect(find.text('Wake time'), findsOneWidget,
+        reason: 'the selected day only; the tabs pick the others');
+    // 8O: edits are a draft, so a missing band does not block them. Only a day
+    // that is off dims its time row, connected or not.
+    expect(isDimmed(t, find.text('Wake time')), isFalse,
+        reason: 'the first day that is on is selected');
   });
 
-  testWidgets('connected: a day that is off still shows its wake time, dimmed',
-      (t) async {
+  testWidgets('a day that is off still shows its wake time, dimmed', (t) async {
     await pumpTall(t, _view());
-    final wake = find.text('Wake time');
-    expect(wake, findsNWidgets(_schedule.length));
-    final dimmed = wake.evaluate().where((e) => isDimmed(t, find.byWidget(e.widget)));
-    expect(dimmed, hasLength(_schedule.where((d) => !d.enabled).length));
+    await t.tap(find.byKey(const ValueKey('wake-day-0')));
+    await t.pumpAndSettle();
+    expect(find.text('Wake time'), findsOneWidget);
+    expect(isDimmed(t, find.text('Wake time')), isTrue);
   });
 }

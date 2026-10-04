@@ -27,11 +27,13 @@ void main() {
         AlarmScheduleEntry(weekday: 0, hour: 7, minute: 0, enabled: true),
       ]);
       await pumpTall(t, AlarmScreenView(connected: true, schedule: schedule));
-      final rows = find.text('Wake time');
-      expect(rows, findsNWidgets(7), reason: 'one per day, on or off');
-      final off = rows.evaluate().skip(1).first.widget;
-      expect(isDimmed(t, find.byWidget(off)), isTrue);
-      await t.tap(find.byWidget(off), warnIfMissed: false);
+      // The day tabs pick the day; Tuesday is off.
+      await t.tap(find.byKey(const ValueKey('wake-day-1')));
+      await t.pumpAndSettle();
+      final row = find.text('Wake time');
+      expect(row, findsOneWidget, reason: 'present on a day that is off');
+      expect(isDimmed(t, row), isTrue);
+      await t.tap(row, warnIfMissed: false);
       await t.pumpAndSettle();
       expect(find.byType(TimePickerDialog), findsNothing,
           reason: 'a disabled row opens nothing');

@@ -268,6 +268,43 @@ class AlarmDraft extends ChangeNotifier {
     _edit(weekday, (e) => e.copyWith(gradualCadenceSec: seconds));
   }
 
+  /// Copies [weekday]'s alarm settings (on/off, time, Natural and Gradual) onto
+  /// every other day, as one edit: one notification, and no change at all when
+  /// the week already matches. The legacy Smart Wake window stays per day.
+  void applyToWeek(int weekday) {
+    if (weekMatches(weekday)) return;
+    final from = entry(weekday);
+    _entries = [
+      for (final e in _entries)
+        e.copyWith(
+          enabled: from.enabled,
+          hour: from.hour,
+          minute: from.minute,
+          naturalWindowMinutes: from.naturalWindowMinutes,
+          gradualWindowMinutes: from.gradualWindowMinutes,
+          gradualPattern: from.gradualPattern,
+          gradualCadenceSec: from.gradualCadenceSec,
+        ),
+    ];
+    _outcome = null;
+    _notify();
+  }
+
+  /// Every day already carries [weekday]'s settings, so applying it is a no-op.
+  bool weekMatches(int weekday) {
+    final from = entry(weekday);
+    return _entries.every((e) => _sameSettings(e, from));
+  }
+
+  static bool _sameSettings(AlarmScheduleEntry a, AlarmScheduleEntry b) =>
+      a.enabled == b.enabled &&
+      a.hour == b.hour &&
+      a.minute == b.minute &&
+      a.naturalWindowMinutes == b.naturalWindowMinutes &&
+      a.gradualWindowMinutes == b.gradualWindowMinutes &&
+      a.gradualPattern == b.gradualPattern &&
+      a.gradualCadenceSec == b.gradualCadenceSec;
+
   /// Cancel: back to the saved schedule. Touches nothing outside this object.
   void discard() {
     _entries = List.of(_saved);

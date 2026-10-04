@@ -2464,6 +2464,22 @@ class SubTabs extends StatelessWidget {
   /// there is nothing behind it.
   final Set<int> disabled;
 
+  /// Indices drawn in the same inert `card2` look as [disabled] but still
+  /// tappable: an option that is switched off yet worth opening (an alarm day
+  /// that is off still has settings). A selected tab keeps the accent wash.
+  final Set<int> muted;
+
+  /// A key per tab, for tests and for finding one tab among several.
+  final List<Key?>? itemKeys;
+
+  /// What a screen reader says for each tab instead of its label.
+  final List<String>? semanticLabels;
+
+  /// Tighter padding and gaps (the 44 pt hit box stays), so a row of short
+  /// labels (seven weekdays) fits a 360 pt phone in a real font. It still
+  /// scrolls when a label or the text scale is wider.
+  final bool dense;
+
   const SubTabs(
     this.items,
     this.index,
@@ -2471,6 +2487,10 @@ class SubTabs extends StatelessWidget {
     super.key,
     this.color = C.green,
     this.disabled = const {},
+    this.muted = const {},
+    this.itemKeys,
+    this.semanticLabels,
+    this.dense = false,
   });
 
   @override
@@ -2486,20 +2506,23 @@ class SubTabs extends StatelessWidget {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: items.length,
-          separatorBuilder: (_, _) => const SizedBox(width: S.x2),
+          separatorBuilder: (_, _) => SizedBox(width: dense ? 2 : S.x2),
           itemBuilder: (_, i) {
             final off = disabled.contains(i);
             final on = i == index && !off;
             return Pressable(
+              key: itemKeys?[i],
               onTap: off ? null : () => onTap(i),
               // `Pressable` drops `Semantics(button: true)` when `onTap` is
               // null, so without this a screen reader announced a disabled
               // pill exactly like a working one.
-              semanticLabel: off ? '${items[i]}, unavailable' : null,
+              semanticLabel: off
+                  ? '${items[i]}, unavailable'
+                  : semanticLabels?[i],
               child: AnimatedContainer(
                 duration: motion(c, Motion.base),
-                constraints: const BoxConstraints(minWidth: S.tap),
-                padding: const EdgeInsets.symmetric(horizontal: S.x4),
+                constraints: BoxConstraints(minWidth: dense ? 0 : S.tap),
+                padding: EdgeInsets.symmetric(horizontal: dense ? 6 : S.x4),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   // THREE STATES, THREE LOOKS. A disabled pill used to compute
@@ -2510,7 +2533,7 @@ class SubTabs extends StatelessWidget {
                   // the active pill and the empty ground of a live one, and
                   // `ink3` is solved for 4.5:1 ON `card2` (see theme.dart), so
                   // this cue costs no contrast the way dimming would.
-                  color: off
+                  color: off || (muted.contains(i) && !on)
                       ? p.card2
                       : on
                           ? p.wash(color)

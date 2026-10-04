@@ -1,4 +1,4 @@
-// 8O/6B-UI — the Wake section is live: Natural Wake window, Gradual Wake window
+// 8O/6B-UI — the Wake settings are live: Natural Wake window, Gradual Wake window
 // / pattern / cadence, the exact timeline, and the upgrade explanation. Rows
 // that do not apply are present and dimmed, never hidden (8K). Everything here
 // edits the draft; nothing reaches the DB or the band until Save.
@@ -66,8 +66,14 @@ class _Harness {
   );
 }
 
+// The Wake settings of the selected day, and its timeline and status.
 Finder _wake(String text) =>
-    find.descendant(of: section('Wake'), matching: find.text(text));
+    find.descendant(of: section('Alarm and wake'), matching: find.text(text));
+
+Finder _timeline(String text) => find.descendant(
+  of: section('Timeline and status'),
+  matching: find.text(text),
+);
 
 Future<void> _selectDay(WidgetTester t, int weekday) async {
   await t.tap(find.byKey(ValueKey('wake-day-$weekday')));
@@ -239,17 +245,17 @@ void main() {
         reason: 'drawn by the wake controller, from the DRAFT day',
       );
       expect(
-        _wake('works without phone'),
+        _timeline('works without phone'),
         findsOneWidget,
         reason: 'only the band alarm at the wake time',
       );
       expect(
-        _wake('phone must be connected'),
+        _timeline('phone must be connected'),
         findsNWidgets(3),
         reason: 'collection, Natural window, Gradual steps',
       );
-      expect(_wake('Band alarm'), findsOneWidget);
-      expect(_wake('07:00'), findsWidgets);
+      expect(_timeline('Band alarm'), findsOneWidget);
+      expect(_timeline('07:00'), findsWidgets);
     });
 
     testWidgets('with nothing on, the timeline is the band alarm alone', (
@@ -257,15 +263,15 @@ void main() {
     ) async {
       await pumpTall(t, _Harness().view());
       await _selectDay(t, 1);
-      expect(_wake('works without phone'), findsOneWidget);
-      expect(_wake('phone must be connected'), findsNothing);
+      expect(_timeline('works without phone'), findsOneWidget);
+      expect(_timeline('phone must be connected'), findsNothing);
     });
 
     testWidgets('a day that is off keeps its timeline, dimmed', (t) async {
       await pumpTall(t, _Harness().view());
       await _selectDay(t, 0);
-      expect(_wake('Band alarm'), findsOneWidget);
-      expect(isDimmed(t, _wake('Band alarm')), isTrue);
+      expect(_timeline('Band alarm'), findsOneWidget);
+      expect(isDimmed(t, _timeline('Band alarm')), isTrue);
     });
   });
 
@@ -314,7 +320,7 @@ void main() {
           ],
         ),
       );
-      final status = section('Status');
+      final status = section('Timeline and status');
       expect(
         find.descendant(of: status, matching: find.text('Confirmed')),
         findsWidgets,
@@ -345,7 +351,7 @@ void main() {
       await pumpTall(t, _Harness().view());
       expect(
         find.descendant(
-          of: section('Status'),
+          of: section('Timeline and status'),
           matching: find.textContaining('Nothing recorded'),
         ),
         findsOneWidget,
