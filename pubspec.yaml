@@ -506,7 +506,11 @@ dependencies:
       # this repin alone needs no kAlgoVersion bump. Verified with
       # `git ls-remote <fork-url> refs/heads/feat/causal-stage-api` and a
       # grep for `abstract final class CausalStager` in the pub-cache checkout.
-      ref: 7fe67a700e1ce23e7ff810098c0a90b5d2b6e06a
+      # feat/minute-energy @ 7334289 (child of 7fe67a7): adds
+      # Calories.minuteEnergy + hourlyRollup (per-minute energy, abstains on
+      # missing HR). Daily dailyEnergy outputs are unchanged (golden == tests in
+      # test/onehz/minute_energy_test.dart), so no kAlgoVersion bump.
+      ref: 7334289ef811c65b6938a3aba692b26670fd4a90
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
