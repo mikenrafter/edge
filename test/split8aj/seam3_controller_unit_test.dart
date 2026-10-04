@@ -9,7 +9,6 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_mode.dart';
 import 'package:openstrap_edge/gestures/gesture_dispatcher.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
@@ -163,6 +162,9 @@ void main() {
   Future<FakeHost> newHost({bool supported = true, bool wrist = true}) async {
     h = FakeHost(supported: supported, wrist: wrist);
     addTearDown(h.dispose);
+    // The app's default is repeated double taps; an ECG band here counts
+    // touches, as one whose wearer chose them.
+    if (supported) await h.settings.setTapMethod(TapCountMethod.ecg);
     return h;
   }
 
@@ -197,15 +199,12 @@ void main() {
       await newHost();
       await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
       await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
-      await h.settings.setEcgTapMode(EcgTapMode.fast);
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       expect(h.controller.ecgTapActive, isTrue);
-      // The band's warm-up packet (never counted), then the finger.
-      h.controller.onEcgFrame(presencePacket(1000,
-          presence: true, count: 49, contactFrom: 35, contactTo: 49));
-      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
-      final out = await done.timeout(const Duration(seconds: 8));
+      // A steady stream with the finger on the sensor.
+      await feedEcgOpening(h.controller.onEcgFrame);
+      final out = await done.timeout(const Duration(seconds: 15));
       expect(out.single.taps, 3);
       expect(h.acted, ['water']);
       expect(h.sessions.single.$1, 3);
@@ -220,20 +219,17 @@ void main() {
         'follows it', () async {
       await newHost();
       await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
-      await h.settings.setEcgTapMode(EcgTapMode.fast);
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       expect(h.order.first, 'cue');
       expect(h.order.indexOf('cue'), lessThan(h.order.indexOf('ecg:prepare')));
-      // The band's warm-up packet (never counted), then the finger.
-      h.controller.onEcgFrame(presencePacket(1000,
-          presence: true, count: 49, contactFrom: 35, contactTo: 49));
-      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
-      await done.timeout(const Duration(seconds: 8));
+      // A steady stream with the finger on the sensor.
+      await feedEcgOpening(h.controller.onEcgFrame);
+      await done.timeout(const Duration(seconds: 15));
       // Start, one follow-up (2 to 3) and the confirm.
       await until(() => h.order.where((l) => l == 'cue').length == 3);
-      expect(h.ecg.begins.single, (false, false),
-          reason: 'never persisted; fast mode leaves out the raw save');
+      expect(h.ecg.begins, [false], reason: 'never persisted');
+      expect(h.ecg.prepares.single, contains('rawSaveOn'));
       await until(() => !h.controller.ecgTapActive);
       await settleMs(50);
     });
@@ -297,14 +293,11 @@ void main() {
       await expectLater(h.controller.loadCues(), completes);
       expect(h.assignmentReads, 0);
       await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
-      await h.settings.setEcgTapMode(EcgTapMode.fast);
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
-      // The band's warm-up packet (never counted), then the finger.
-      h.controller.onEcgFrame(presencePacket(1000,
-          presence: true, count: 49, contactFrom: 35, contactTo: 49));
-      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
-      await done.timeout(const Duration(seconds: 8));
+      // A steady stream with the finger on the sensor.
+      await feedEcgOpening(h.controller.onEcgFrame);
+      await done.timeout(const Duration(seconds: 15));
       expect(h.order, contains('cue'));
       await until(() => !h.controller.ecgTapActive);
       await settleMs(50);
@@ -314,14 +307,11 @@ void main() {
         () async {
       await newHost();
       await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
-      await h.settings.setEcgTapMode(EcgTapMode.fast);
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
-      // The band's warm-up packet (never counted), then the finger.
-      h.controller.onEcgFrame(presencePacket(1000,
-          presence: true, count: 49, contactFrom: 35, contactTo: 49));
-      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
-      await done.timeout(const Duration(seconds: 8));
+      // A steady stream with the finger on the sensor.
+      await feedEcgOpening(h.controller.onEcgFrame);
+      await done.timeout(const Duration(seconds: 15));
       await until(() => h.order.where((l) => l == 'cue').length == 3);
       expect(h.loads, 3, reason: 'the start, follow-up and confirm cues');
       await until(() => !h.controller.ecgTapActive);
@@ -334,17 +324,14 @@ void main() {
         'nothing and the first still completes with its own count', () async {
       await newHost();
       await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
-      await h.settings.setEcgTapMode(EcgTapMode.fast);
       final first = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       final second = await h.controller.handle(h.doubleTap());
       expect(second, isEmpty);
       expect(h.controller.ecgTapActive, isTrue);
-      // The band's warm-up packet (never counted), then the finger.
-      h.controller.onEcgFrame(presencePacket(1000,
-          presence: true, count: 49, contactFrom: 35, contactTo: 49));
-      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
-      final out = await first.timeout(const Duration(seconds: 8));
+      // A steady stream with the finger on the sensor.
+      await feedEcgOpening(h.controller.onEcgFrame);
+      final out = await first.timeout(const Duration(seconds: 15));
       expect(out.single.taps, 3);
       expect(h.acted, ['water']);
       await until(() => !h.controller.ecgTapActive);

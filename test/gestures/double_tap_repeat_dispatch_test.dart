@@ -256,9 +256,21 @@ void main() {
   });
 
   group('WHOOP MG: the user can choose', () {
-    test('default is ECG: the touch counter is used, not repeated taps',
+    test('default is double taps: the window is used, not the ECG counter',
         () async {
       final s = await _mapped();
+      fakeAsync((async) {
+        final r = _Rig(s, mg: true)..tap(_tap());
+        async.elapse(const Duration(milliseconds: 2500));
+        async.flushMicrotasks();
+        expect(r.ecgCounted, isEmpty);
+        expect(r.ran, ['water']);
+      });
+    });
+
+    test('a stored choice of ECG is kept: the touch counter is used, not '
+        'repeated taps', () async {
+      final s = await _mapped(prefs: {'gesture_tap_method': 'ecg'});
       fakeAsync((async) {
         final r = _Rig(s, mg: true)..tap(_tap());
         async.flushMicrotasks();

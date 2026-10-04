@@ -13,6 +13,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
@@ -51,6 +52,7 @@ void main() {
             chosen: {},
             supported: _supported,
             ecgSupported: true,
+            tapMethod: TapCountMethod.ecg,
             extraTaps: false));
     final row = find.byKey(const ValueKey('gestures-open-haptics'));
     expect(row, findsOneWidget);
@@ -64,6 +66,7 @@ void main() {
             chosen: {},
             supported: _supported,
             ecgSupported: true,
+            tapMethod: TapCountMethod.ecg,
             extraTaps: true));
     final row = find.byKey(const ValueKey('gestures-open-haptics'));
     expect(row, findsOneWidget);
@@ -85,6 +88,7 @@ void main() {
             chosen: const {},
             supported: _supported,
             ecgSupported: true,
+            tapMethod: TapCountMethod.ecg,
             extraTaps: true,
             tapActions: const {3: {}, 4: {}, 5: {}},
             onTapToggle: (n, a, on) async {}));

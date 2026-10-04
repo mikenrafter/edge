@@ -504,51 +504,53 @@ Replay test: `test/gestures8ak/a_log_replay_test.dart` rebuilds the five
 gestures of the 2026-10-04 log from its own timestamps and packet summaries
 (`support/ak_log_timeline.dart`); it failed before the retry and passes after.
 
-## Fast mode (8AN)
+## Fast mode (retired)
 
-Settings > Hardware > Gestures > "How ECG touches are read": Accurate (the
-default) or Fast. Fast times touches from the samples exactly as Accurate does
-(`ecgContactMask`, the same start/gap/confirm thresholds, the 8AK rule that
-later windows open after the follow-up cue played), but it does not wait for a
-steady stream or the 2.5 s sensor settle, and PREPARE leaves out raw-save (123
-wrist and 139 filtered only; cleanup still sends all three OFF).
+8AN added a Fast option under Settings > Hardware > Gestures ("How ECG touches
+are read"): no wait for a steady stream, no 2.5 s sensor settle, PREPARE without
+raw-save, the band's warm-up packet skipped and the first touch window opened at
+that packet's end. It is gone (Oct 4), with `EcgTapMode`, the
+`gesture_ecg_tap_mode` setting (an orphaned stored value is ignored, not
+migrated), `EcgTapSession.beginFastStream` and the `rawSave` switch on
+`EcgController.begin` / `EcgTransport.prepare` / `BleEngine.ecgPrepare`. PREPARE
+is always 123 wrist, 139 filtered ON, 125 raw-save ON.
 
-What Fast does instead of settling: it skips the band's warm-up packet. The
-first live packet with samples never counts (its contact mask is treated as no
-contact; the trace says "Warm-up packet skipped"), and the first touch window
-opens at the sample time of that packet's end, its newest sample. The start
-window (200 ms in the capture) then covers the first 200 ms of the next packet.
+What two device captures showed (WHOOP MG; `edge.research/
+ecg-hybrid-difference-2026-10-04.log`, 9 sessions, 7 Fast and 2 Accurate, and
+`ecg-fast-2026-10-04-1711.log`, the fixed Fast build):
 
-What the 2026-10-04 capture showed (WHOOP MG, 9 sessions, 7 Fast and 2
-Accurate; `edge.research/ecg-hybrid-difference-2026-10-04.log`):
+- **Startup floor.** The band sends its first usable ECG samples 3.5-5 s after
+  the tap, in either mode. The packets before them carry no samples (flags 0x00
+  then 0x02). Skipping the settle cannot make it faster than this.
+- **Per-touch latency.** A touch is visible only one packet later, about 1 s
+  after the finger lands, because the band reports in ~1 s packets. A lift is
+  seen the same way.
+- **Presence latches.** The presence bit turns on with the first packet with
+  samples and never turns off in any session, while the samples' own contact
+  went off and on for 1-8 s. It carries no touch information on the MG and can
+  veto nothing (this repeats L3 above). The lab still logs "Presence on/off" and
+  "Sample contact on/off" with the milliseconds since the tap.
+- **Warm-up artefact.** In 6 of 9 sessions the first packet with samples is 49
+  samples with "14 with contact (samples 35-48)", flags 0x0a, S2 1, quality 1.
+  It is not a finger. Accurate ignores it inside the settle; Fast had to skip
+  it by hand.
+- **Fast still ended every gesture as "Double tap".** The first Fast build
+  opened its window at the warm-up packet's first sample, over in sample time
+  before the packet was read; opening at the packet's end fixed that. It still
+  failed: the first-touch window is 200 ms, a finger cannot land inside 200 ms of
+  a packet that already arrived about a second after the tap, so the window
+  closed before any touch. A fair Fast would need a first-touch window as long
+  as Accurate's settle, which is Accurate.
 
-- The first Fast build opened the first window at the first sampled packet's
-  FIRST sample. A packet arrives about a second after its first sample, so the
-  200 ms window was already over in sample time when the packet was read: all 7
-  Fast gestures ended "Double tap" at that packet, touch or no touch. Accurate
-  opens its window 2.5 s after the first sample, in the future relative to the
-  packet, so touches land. Opening at the packet's end puts the window in the
-  future too.
-- The first packet with samples is a warm-up artefact in 6 of the 9 sessions, in
-  both modes: 49 samples, "14 with contact (samples 35-48)", flags 0x0a, S2 1,
-  quality 1, and presence turns on with it. The packets before it carry no
-  samples (flags 0x00 then 0x02). The contact in it is not a finger, so it must
-  not count (in Accurate it falls inside the settle and is ignored).
-- Presence latches on with that packet and never turns off in any session. In
-  the Accurate sessions the samples' contact went off and on again repeatedly
-  (lifts of 1-8 s) while presence stayed on. It is not per-touch contact on the
-  MG and it cannot veto anything (this repeats L3 above).
+Decision: nothing is gained, so Fast is removed. The repeated firmware
+double-tap method ("More double taps") is the default way to count taps beyond
+the double tap, on every band, a WHOOP MG included. ECG sensor touches stay as
+an opt-in method on an MG and run only the Accurate path (steady stream, then
+the 2.5 s settle, then the windows). A stored explicit choice of ECG on an MG
+still wins; a band without ECG always counts double taps.
 
-So the first Fast design, a presence gate (`EcgPresenceGate`) that vetoed
-packets with presence clear and fell back to the samples after 4 packets, is
-gone, with its "Presence fallback" trace line and `fellBackToSamples` in the
-gesture record. Both modes still log "Presence on/off" and "Sample contact
-on/off" with the milliseconds since the tap, for the lab.
-
-Test: `test/fix8an/ecg_fast_capture_test.dart` rebuilds the capture's packet
-shapes (two empty packets, the 49-sample warm-up with contact at 35-48,
-100-sample packets one second apart); it failed before the change (count 2 at
-the warm-up packet) and passes after.
+Test: `test/fix8an/ecg_fast_measure_test.dart` pins the Presence / Sample
+contact trace lines on the one remaining path.
 
 ## Replaying off the band
 
@@ -616,9 +618,8 @@ as L3 shows.
     tests 1–40 (renditions A and B) against the real envelopes and delays are
     the data for it.
 11. How long the band debounces presence, and whether it sets presence at all
-    on a gesture's start. Answered by the 2026-10-04 capture (see "Fast mode
-    (8AN)"): presence turns on with the first packet with samples, the warm-up
-    packet, about 4 s after the tap, and never turns off in a session, whatever
-    the finger does, so it carries no touch information on the MG. What is
-    still open is whether Fast should be the default: it needs a lab run of the
-    fixed Fast mode against Accurate.
+    on a gesture's start. Answered by the 2026-10-04 captures (see "Fast mode
+    (retired)"): presence turns on with the first packet with samples, the
+    warm-up packet, about 4 s after the tap, and never turns off in a session,
+    whatever the finger does, so it carries no touch information on the MG.
+    Fast mode was tried and removed.

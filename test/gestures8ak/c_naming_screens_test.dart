@@ -26,6 +26,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
@@ -44,6 +45,7 @@ BandGesturesView _view({bool ecg = true}) => BandGesturesView(
       chosen: const <DeviceAction>{},
       supported: _supported,
       ecgSupported: ecg,
+      tapMethod: ecg ? TapCountMethod.ecg : null,
       tapActions: const {
         3: <DeviceAction>{},
         4: <DeviceAction>{},

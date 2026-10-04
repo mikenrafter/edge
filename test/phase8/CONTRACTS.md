@@ -1767,3 +1767,30 @@ C and D in phase 2).
   memory, direct open, 360 pt at 1.3x). `openHapticsTab` in `test/fix8ai/support/g45_support.dart`
   selects a tab for the older screen tests (g4_haptics_screen, g8_gesture_alert_removed,
   haptics_settings, breath_cue_slots, d_failed_cue, capabilities_screens).
+
+## ECG Fast retired; double taps are the default (Oct 4)
+
+- Two device captures (`edge.research/ecg-hybrid-difference-2026-10-04.log`,
+  `ecg-fast-2026-10-04-1711.log`) showed the MG sends its first usable ECG samples
+  3.5-5 s after the tap in either mode and shows each touch one ~1 s packet later;
+  Fast's 200 ms first-touch window closes before a finger can land, so it still ended
+  every gesture as "Double tap". A fair Fast needs Accurate's settle, so it gains
+  nothing and the 8AN Fast mode above is removed: `EcgTapMode`, `ecgTapMode` /
+  `setEcgTapMode` (an orphaned `gesture_ecg_tap_mode` is ignored, not migrated),
+  `EcgTapSession.tapMode` / `beginFastStream`, the `rawSave` switch on
+  `EcgController.begin`, `EcgTransport.prepare` and `BleEngine.ecgPrepare` (nothing
+  else used it; PREPARE is always 123, 139 ON, 125 ON), and the "How ECG touches are
+  read" selector with its `ecgTapMode*` strings.
+- `GestureSettings.tapMethodFor`: `TapCountMethod.repeat` on every band unless the user
+  explicitly chose `ecg` on a band with the ECG sensor (a stored `ecg` on a band without
+  one still falls back to repeat). The Gestures screen shows "More double taps" selected
+  by default, including on an MG. ECG touches are an opt-in and run only the Accurate
+  path.
+- Kept: the "Presence on|off" and "Sample contact on|off" trace lines
+  (`test/fix8an/ecg_fast_measure_test.dart`).
+- Tests: `test/gestures/tap_method_settings_test.dart` (default, stored choice, no Fast
+  setting), `test/phase8/gestures_tap_method_test.dart`,
+  `test/gestures/double_tap_repeat_dispatch_test.dart`; the seam 3 rig tests choose the
+  ECG method on an MG rig (`GestureRig.measureCues`) and feed the Accurate path through
+  `feedEcgOpening` / `playEcgCount` in `test/split8aj/support/gesture_harness.dart`.
+- Doc: `docs/hardware/whoop-mg-haptics-and-ecg.md`, "Fast mode (retired)".

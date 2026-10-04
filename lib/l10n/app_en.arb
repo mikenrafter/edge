@@ -11021,26 +11021,6 @@
       }
     }
   },
-  "ecgTapModeHeading": "How ECG touches are read",
-  "@ecgTapModeHeading": {
-    "description": "Small heading above the two ECG tap modes on the Gestures screen."
-  },
-  "ecgTapModeAccurateTitle": "Accurate",
-  "@ecgTapModeAccurateTitle": {
-    "description": "Title of the ECG tap mode that reads the signal and waits for it to settle."
-  },
-  "ecgTapModeAccurateSub": "Reads the signal and waits for it to settle.",
-  "@ecgTapModeAccurateSub": {
-    "description": "One plain line under the Accurate ECG tap mode."
-  },
-  "ecgTapModeFastTitle": "Fast",
-  "@ecgTapModeFastTitle": {
-    "description": "Title of the ECG tap mode that starts counting at once."
-  },
-  "ecgTapModeFastSub": "Skips the band's warm-up and starts counting about a second sooner.",
-  "@ecgTapModeFastSub": {
-    "description": "One plain line under the Fast ECG tap mode."
-  },
   "gesturesItDoesTitle": "It does",
   "@gesturesItDoesTitle": {
     "description": "Heading for the group of selectable double-tap actions"

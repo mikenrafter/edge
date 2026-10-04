@@ -8,8 +8,8 @@
 //  * the Device lab's "ECG packets" export keeps flags/unreadable so a packet
 //    with presence set round-trips into test/support/ecg_trace.dart.
 //
-// ASSUMED trace wording (EcgTapSession `step`, accurate mode here; the fast
-// mode's own lines are pinned in ecg_fast_session_test.dart):
+// Kept after ECG Fast mode was retired (Oct 4): these lines belong to the one
+// ECG path. Trace wording (EcgTapSession `step`):
 //   'Presence on, <ms> ms after the tap.'      / 'Presence off, <ms> ms ...'
 //   'Sample contact on, <ms> ms after the tap.' / 'Sample contact off, <ms> ms ...'
 // One line per CHANGE (the state before the first packet is "off"); a packet
@@ -30,7 +30,7 @@ final _contact = RegExp(r'^Sample contact (on|off), (\d+) ms after the tap');
 List<String> _lines(List<String> steps, RegExp re) =>
     [for (final s in steps) if (re.hasMatch(s)) s];
 
-/// An accurate-mode EcgTapSession (existing API only) on a virtual clock.
+/// An EcgTapSession (existing API only) on a virtual clock.
 class _Rig {
   _Rig(EcgTapThresholds th) {
     session = EcgTapSession(

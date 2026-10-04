@@ -38,7 +38,8 @@ void main() {
     expect(find.text('More double taps'), findsOneWidget);
   });
 
-  testWidgets('WHOOP MG: both enabled; ECG is the default choice', (t) async {
+  testWidgets('WHOOP MG: both enabled; double taps are the default choice',
+      (t) async {
     await pumpTall(
         t,
         const BandGesturesView(
@@ -47,11 +48,11 @@ void main() {
     expect(isDimmed(t, find.text('More double taps')), isFalse);
     expect(
         find.descendant(
-            of: _option('ecg'), matching: find.byIcon(LucideIcons.check)),
+            of: _option('repeat'), matching: find.byIcon(LucideIcons.check)),
         findsOneWidget);
     expect(
         find.descendant(
-            of: _option('repeat'), matching: find.byIcon(LucideIcons.check)),
+            of: _option('ecg'), matching: find.byIcon(LucideIcons.check)),
         findsNothing);
   });
 
@@ -98,7 +99,11 @@ void main() {
       await pumpTall(
           t,
           const BandGesturesView(
-              chosen: {}, supported: _supported, ecgSupported: true));
+            chosen: {},
+            supported: _supported,
+            ecgSupported: true,
+            tapMethod: TapCountMethod.ecg,
+          ));
       for (final name in [
         'Double tap',
         'Double tap + 1 ECG tap',

@@ -2,6 +2,8 @@
 // store (slot n = n taps) serves both methods; only the method choice and the
 // window are new. Persisted in the existing gesture preferences; no migration.
 
+import 'dart:io';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -28,10 +30,11 @@ void main() {
       .setMockMethodCallHandler(_channel, null));
 
   group('method choice', () {
-    test('default: ECG on a WHOOP MG, double taps everywhere else', () async {
+    test('default: repeated double taps on every band, an MG included',
+        () async {
       final s = await _boot({});
       expect(s.tapMethodChoice, isNull);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
+      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
       expect(s.tapMethodFor(ecgSupported: false), TapCountMethod.repeat);
     });
 
@@ -39,14 +42,14 @@ void main() {
       final s = await _boot({});
       var notified = 0;
       s.addListener(() => notified++);
-      await s.setTapMethod(TapCountMethod.repeat);
+      await s.setTapMethod(TapCountMethod.ecg);
       expect(notified, 1);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
+      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
       final again = GestureSettings();
       await again.bootstrap();
-      expect(again.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
-      await s.setTapMethod(TapCountMethod.ecg);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
+      expect(again.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
+      await s.setTapMethod(TapCountMethod.repeat);
+      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
     });
 
     test('a band without ECG always counts double taps, whatever is stored',
@@ -59,7 +62,7 @@ void main() {
     test('an unknown stored value follows the default', () async {
       final s = await _boot({'gesture_tap_method': 'telepathy'});
       expect(s.tapMethodChoice, isNull);
-      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.ecg);
+      expect(s.tapMethodFor(ecgSupported: true), TapCountMethod.repeat);
     });
 
     test('both methods share the one mapping store', () async {
@@ -68,6 +71,28 @@ void main() {
       await s.setTapMethod(TapCountMethod.repeat);
       expect(s.actionsForTaps(3), {DeviceAction.logWater});
       expect(s.maxMappedTaps, 3);
+    });
+  });
+
+  group('ECG Fast mode is retired', () {
+    test('GestureSettings has no tap-mode setting and ignores a stored one',
+        () async {
+      final s = await _boot({'gesture_ecg_tap_mode': 'fast'});
+      expect(() => (s as dynamic).ecgTapMode, throwsNoSuchMethodError);
+      expect(() => (s as dynamic).setEcgTapMode, throwsNoSuchMethodError);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('gesture_ecg_tap_mode'), 'fast',
+          reason: 'an orphaned value is left alone, not migrated');
+    });
+
+    test('the mode enum, its screen selector and its strings are gone', () {
+      expect(File('lib/gestures/ecg_tap_mode.dart').existsSync(), isFalse);
+      expect(File('lib/ui2/profile/gestures.dart').readAsStringSync(),
+          isNot(contains('EcgTapMode')));
+      expect(File('lib/l10n/app_en.arb').readAsStringSync(),
+          isNot(contains('ecgTapMode')));
+      expect(File('lib/gestures/ecg_tap_session.dart').readAsStringSync(),
+          isNot(contains('beginFastStream')));
     });
   });
 

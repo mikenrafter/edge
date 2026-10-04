@@ -146,6 +146,7 @@ void main() {
 
     test('an ECG-counted gesture whose action failed: kind ECG', () async {
       final s = await boot(three: true);
+      await s.setTapMethod(TapCountMethod.ecg);
       final d = make(s, mg: true, count: (e) async => 3);
       final out = await d.handle(repTap());
       expect(out.single.status, GestureStatus.failed);
@@ -158,6 +159,7 @@ void main() {
         'did not start is the session\'s to report, not the dispatcher\'s (no '
         'double record)', () async {
       final s = await boot(three: true);
+      await s.setTapMethod(TapCountMethod.ecg);
       final d = make(s, mg: true, count: (e) async => throw StateError('x'));
       await d.handle(repTap());
       expect(fails, isEmpty);

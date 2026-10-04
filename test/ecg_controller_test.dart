@@ -135,10 +135,7 @@ class FakeTransport implements EcgTransport {
 
   @override
   Future<EcgCommandListResult> prepare(
-    EcgLeaseHandle lease,
-    EcgWrist wrist, {
-    bool rawSave = true,
-  }) async {
+      EcgLeaseHandle lease, EcgWrist wrist) async {
     calls.add('prepare:${wrist.name}');
     return prepareResult ?? _ok(['selectWrist', 'filteredOn', 'rawSaveOn']);
   }

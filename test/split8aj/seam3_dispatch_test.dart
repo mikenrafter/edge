@@ -16,7 +16,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_mode.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
 
 import 'support/gesture_harness.dart';
@@ -200,12 +199,11 @@ void main() {
     });
   });
 
-  group('ECG touches (WHOOP MG), fast mode', () {
+  group('ECG touches (WHOOP MG)', () {
     Future<GestureRig> ecgRig() async {
       final rig = await newRig(mg: true);
       await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
       await mapActions(rig.app, [2, 3, 4, 5]);
-      await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
       return rig;
     }
 
@@ -249,7 +247,7 @@ void main() {
     });
   });
 
-  group('ECG touches (WHOOP MG), accurate mode', () {
+  group('ECG touches (WHOOP MG), a stream paced like the band\'s', () {
     test('no finger on the sensor: the stream settles on the wall clock, then '
         'the count is 2 (the plain double tap)', () async {
       final rig = await newRig(mg: true);
@@ -257,7 +255,7 @@ void main() {
       await mapActions(rig.app, [2, 3]);
       rig.doubleTap();
       await until(() => order.contains('band:generation'));
-      // Accurate mode waits for a steady stream: packets in step with the
+      // The session waits for a steady stream: packets in step with the
       // clock, one a second, until the touch window has run out.
       for (var i = 0; i < 12 && labCount(rig, 'Final count') == 0; i++) {
         rig.feedEcg(presencePacket(1000 + i));
@@ -269,7 +267,7 @@ void main() {
       expect(channel.performed, ['media_play_pause']);
       expect(rig.cues, ['start', 'confirm']);
       expect(order.where((e) => e == 'band:rawSave').length, 2,
-          reason: 'accurate mode: raw-save ON in PREPARE and OFF in CLEANUP');
+          reason: 'raw-save ON in PREPARE and OFF in CLEANUP');
     }, timeout: const Timeout(Duration(seconds: 40)));
   });
 

@@ -8,10 +8,10 @@
 // GestureController move.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_mode.dart';
 
 import 'support/gesture_harness.dart';
 
@@ -111,7 +111,6 @@ void main() {
     final rig = await newRig(mg: true);
     await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
     await mapActions(rig.app, [2, 3]);
-    await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
     final t = _Ticks(rig);
     rig.doubleTap();
     await until(() => order.contains('band:generation'));
@@ -140,7 +139,7 @@ void main() {
     final rig = await newRig();
     final t = _Ticks(rig);
     await rig.app.gestureSettings.setDoubleTapActions({DeviceAction.torch});
-    await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
+    await rig.app.gestureSettings.setTapMethod(TapCountMethod.repeat);
     await rig.app.gestureSettings.setRepeatTapWindowMs(1500);
     await settleMs(100);
     expect((t.app.ticks, t.settings, t.failures), (0, 3, 0));

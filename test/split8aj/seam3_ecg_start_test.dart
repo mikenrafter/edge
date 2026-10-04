@@ -4,8 +4,8 @@
 // CLEANUP into the same ordered trace as the band's haptic writes.
 //
 // Pinned: begin() is called with persist: false (a gesture never leaves an ECG
-// reading behind, invariant 14) and rawSave per the tap mode in force when the
-// gesture begins (accurate: true, fast: false); the start cue is the first
+// reading behind, invariant 14) and PREPARE always carries the raw-save member
+// (the ECG method has one path, 8AN's Fast mode is retired); the start cue is the first
 // thing the band gets, PREPARE and START then run back to back with no haptic
 // write between them; a capture the gesture did not start is left alone; an
 // abandoned gesture buzzes the failure cue and keeps one failure record.
@@ -14,7 +14,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_mode.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
 
 import 'support/gesture_harness.dart';
@@ -38,10 +37,7 @@ void main() {
   late SpyEcg spy;
   late GestureRig rig;
 
-  Future<void> start({
-    EcgTapMode mode = EcgTapMode.fast,
-    bool wrist = true,
-  }) async {
+  Future<void> start({bool wrist = true}) async {
     order = <String>[];
     channel = ActionChannel(order: order);
     addTearDown(channel.dispose);
@@ -59,40 +55,18 @@ void main() {
     await rig.measureCues();
     // 2 and 3 mapped: a counted gesture, so the ECG route is taken.
     await mapActions(rig.app, [2, 3]);
-    await rig.app.gestureSettings.setEcgTapMode(mode);
   }
 
   Future<void> streamUp() => until(() => order.contains('ecg:start'));
 
-  test('fast mode: begin(persist: false, rawSave: false), PREPARE without the '
-      'raw-save member', () async {
-    await start(mode: EcgTapMode.fast);
+  test('begin(persist: false), PREPARE with the raw-save member', () async {
+    await start();
     rig.doubleTap();
     await streamUp();
-    expect(spy.begins, [(false, false)]);
-    expect(spy.prepares, [false]);
-  });
-
-  test('accurate mode: begin(persist: false, rawSave: true)', () async {
-    await start(mode: EcgTapMode.accurate);
-    rig.doubleTap();
-    await streamUp();
-    expect(spy.begins, [(false, true)]);
-    expect(spy.prepares, [true]);
-  });
-
-  test('the tap mode is read when each gesture begins', () async {
-    await start(mode: EcgTapMode.fast);
-    rig.doubleTap();
-    await streamUp();
-    await spy.cancel(); // the stream drops: the gesture is abandoned
-    await until(() => rig.cues.contains('failed'));
-    await settleMs(300);
-    await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.accurate);
-    order.clear();
-    rig.doubleTap();
-    await streamUp();
-    expect(spy.begins, [(false, false), (false, true)]);
+    expect(spy.begins, [false]);
+    expect(spy.prepares, [
+      ['selectWrist', 'filteredOn', 'rawSaveOn']
+    ]);
   });
 
   test('the start cue is written before PREPARE; PREPARE and START run back '
@@ -145,7 +119,7 @@ void main() {
     await until(() => rig.cues.contains('failed'));
     await until(() => channel.performed.isNotEmpty);
     await settleMs(200);
-    expect(spy.begins, [(true, true)], reason: 'only the user\'s own begin');
+    expect(spy.begins, [true], reason: 'only the user\'s own begin');
     expect(spy.isCapturing, isTrue, reason: 'never cancelled by the gesture');
     expect(order, isNot(contains('ecg:cleanup')));
     expect(rig.app.gestureFailures.all.single.reason, 'start_failed');

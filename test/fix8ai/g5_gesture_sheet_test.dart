@@ -26,6 +26,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 
@@ -43,6 +44,7 @@ Widget _view({VoidCallback? onViewAll, List<String>? toggled}) {
     #chosen: <DeviceAction>{},
     #supported: _supported,
     #ecgSupported: true,
+    #tapMethod: TapCountMethod.ecg,
     #tapActions: <int, Set<DeviceAction>>{
       3: <DeviceAction>{},
       4: <DeviceAction>{},

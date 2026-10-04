@@ -30,6 +30,7 @@ import 'package:openstrap_edge/ecg/ecg_guard_store.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/ecg/ecg_transport.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -115,7 +116,8 @@ class ActionChannel {
 }
 
 /// An EcgController over a transport that records its calls into [order] and
-/// [begins]; every begin() is remembered with the flags the gesture passed.
+/// [begins]; every begin() is remembered with the persist flag the gesture
+/// passed.
 class SpyEcg extends EcgController {
   SpyEcg._(this._t, this.guardStore)
       : super(
@@ -136,29 +138,28 @@ class SpyEcg extends EcgController {
   final _SpyTransport _t;
   final MemoryEcgGuardStore guardStore;
 
-  /// `(persist, rawSave)` of every begin().
-  final begins = <(bool, bool)>[];
+  /// The `persist` flag of every begin().
+  final begins = <bool>[];
 
-  /// Prepared with the raw-save member?
-  List<bool> get prepares => _t.prepares;
+  /// The members of every PREPARE the transport answered, in order.
+  List<List<String>> get prepares => _t.prepares;
   int get cleanups => _t.cleanups;
 
   @override
   Future<void> begin(
     EcgWrist wrist, {
     bool persist = true,
-    bool rawSave = true,
     void Function(String line)? trace,
   }) {
-    begins.add((persist, rawSave));
-    return super.begin(wrist, persist: persist, rawSave: rawSave, trace: trace);
+    begins.add(persist);
+    return super.begin(wrist, persist: persist, trace: trace);
   }
 }
 
 class _SpyTransport implements EcgTransport {
   _SpyTransport(this.order);
   final List<String> order;
-  final prepares = <bool>[];
+  final prepares = <List<String>>[];
   int cleanups = 0;
   EcgLeaseHandle? current;
   final _events = StreamController<EcgTransportEvent>.broadcast();
@@ -191,11 +192,12 @@ class _SpyTransport implements EcgTransport {
   @override
   Future<void> cancelHistory(EcgLeaseHandle lease) async {}
   @override
-  Future<EcgCommandListResult> prepare(EcgLeaseHandle lease, EcgWrist wrist,
-      {bool rawSave = true}) async {
+  Future<EcgCommandListResult> prepare(
+      EcgLeaseHandle lease, EcgWrist wrist) async {
     order.add('ecg:prepare');
-    prepares.add(rawSave);
-    return _ok(['selectWrist', 'filteredOn', if (rawSave) 'rawSaveOn']);
+    const members = ['selectWrist', 'filteredOn', 'rawSaveOn'];
+    prepares.add(members);
+    return _ok(members);
   }
 
   @override
@@ -309,8 +311,14 @@ class GestureRig {
   }
 
   /// Play each gesture cue once on this band and remember the body it writes.
-  /// Call before any gesture; the writes it makes are cleared afterwards.
+  /// Call before any gesture; the writes it makes are cleared afterwards. A
+  /// WHOOP MG rig also chooses the ECG counting method here (the app's default
+  /// is repeated double taps), so its gestures take the ECG route; a test that
+  /// wants double taps on it sets [TapCountMethod.repeat] afterwards.
   Future<void> measureCues() async {
+    if (mg) {
+      await app.gestureSettings.setTapMethod(TapCountMethod.ecg);
+    }
     // The hello answer starts a device-row write (insert, then the update
     // that sets the band's family); wait for it to land before a test can
     // finish and close the database. A rig with no hello writes nothing, so
@@ -380,25 +388,36 @@ String labText(GestureRig rig) =>
 int labCount(GestureRig rig, String needle) =>
     needle.allMatches(labText(rig)).length;
 
-/// A fast-mode ECG gesture's packets for a count of [n] (2..5): the band's
-/// warm-up packet (49 samples, contact at 35..48, never counted), the finger on
-/// the sensor at the next packet, then one lift and one touch per further
-/// count, waiting for each follow-up cue to finish before the next touch, then
-/// quiet packets until the gesture ends. Stops feeding the moment the session
-/// reports its final count.
+/// The opening of an ECG gesture the way the band delivers it, on the real
+/// clock: [steady] packets of one second of finger contact (or none, when
+/// [finger] is false), each fed 450 ms after the last (the stream runs ahead of
+/// the wall clock, inside the readiness step tolerance), so the stream is
+/// steady and the sensor has settled by the last one. A first packet with no
+/// finger is the quick start: the count is decided as 2 at once. Returns the
+/// next strap second.
+Future<int> feedEcgOpening(void Function(LabradorR17) feed,
+    {int sec = 1000, int steady = 3, bool finger = true}) async {
+  for (var i = 0; i < steady; i++) {
+    feed(presencePacket(sec++, presence: finger, contact: finger));
+    await settleMs(450);
+  }
+  return sec;
+}
+
+/// An ECG gesture's packets for a count of [n] (2..5) through the accurate
+/// path: the opening ([feedEcgOpening], finger on the sensor, or none for 2),
+/// then one lift and one touch per further count, waiting for each follow-up
+/// cue to finish before the next touch, then quiet packets until the gesture
+/// ends. Stops feeding the moment the session reports its final count.
 Future<void> playEcgCount(GestureRig rig, int n) async {
   bool done() => labCount(rig, 'Final count') > 0;
-  var sec = 1000;
-  rig.feedEcg(presencePacket(sec++,
-      presence: true, count: 49, contactFrom: 35, contactTo: 49));
-  await settleMs(20);
-  for (var i = 0; i < n - 2 && !done(); i++) {
-    rig.feedEcg(presencePacket(sec++, presence: true, contact: true));
-    await settleMs(20);
-    if (done()) return;
+  var sec = await feedEcgOpening(rig.feedEcg, finger: n > 2);
+  for (var i = 0; i < n - 3 && !done(); i++) {
     rig.feedEcg(presencePacket(sec++)); // the lift, while the cue plays
     await until(() => labCount(rig, 'Follow-up cue played') > i);
     await settleMs(5);
+    rig.feedEcg(presencePacket(sec++, presence: true, contact: true));
+    await settleMs(20);
   }
   for (var i = 0; i < 14 && !done(); i++) {
     rig.feedEcg(presencePacket(sec++));

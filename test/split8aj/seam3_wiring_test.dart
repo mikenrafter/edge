@@ -11,7 +11,6 @@ import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_mode.dart';
 
 import 'support/gesture_harness.dart';
 
@@ -91,20 +90,17 @@ void main() {
       final rig = await newRig();
       await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
       await mapActions(rig.app, [3]);
-      await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
       rig.doubleTap();
       await until(() => order.contains('band:generation'));
-      // The band's warm-up packet (never counted), then the finger.
-      rig.feedEcg(presencePacket(1000,
-          presence: true, count: 49, contactFrom: 35, contactTo: 49));
-      rig.feedEcg(presencePacket(1001, presence: true, contact: true));
+      // A steady stream with the finger on the sensor.
+      await feedEcgOpening(rig.feedEcg);
       await until(() => channel.performed.isNotEmpty,
           within: const Duration(seconds: 8));
       expect(channel.performed, ['media_next']);
       expect(labText(rig), contains('Final count 3'));
-      expect(labText(rig), isNot(contains('Packet 3:')),
+      expect(labText(rig), isNot(contains('Packet 4:')),
           reason: 'it stops counting at the most taps anything is set to, '
-              'on the first packet after the warm-up');
+              'on the packet that settles the sensor');
       await sessionRowsWhen((r) => r.isNotEmpty); // its row, before teardown
     });
   });
@@ -114,7 +110,6 @@ void main() {
       final rig = await newRig();
       await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
       await mapActions(rig.app, [2, 3]);
-      await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
       rig.doubleTap();
       await until(() => order.contains('band:generation'));
       await playEcgCount(rig, 3);
@@ -178,7 +173,6 @@ void main() {
       final rig = await newRig();
       await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
       await mapActions(rig.app, [2, 3]);
-      await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
       expect(rig.app.hardwareProbes.canRunEcg, isTrue);
       rig.doubleTap();
       await until(() => order.contains('band:generation'));

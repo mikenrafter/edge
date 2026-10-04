@@ -31,8 +31,9 @@
 // the 8H tap-ack quiet (the counter's own buzzes are the acknowledgement).
 //
 // Two ways to count the taps beyond the firmware's double tap, chosen per band
-// (GestureSettings.tapMethodFor): ECG sensor touches (above; WHOOP MG only) or
-// MORE DOUBLE TAPS, which any band can do. The second opens a window at the
+// (GestureSettings.tapMethodFor): MORE DOUBLE TAPS, the default, which any band
+// can do, or ECG sensor touches (above; WHOOP MG only, an opt-in). The first
+// opens a window at the
 // first live double tap; every tap, opener or member, takes its own once-ever
 // claim before it is accepted, and the session groups taps by the band's clock
 // (a tap too long after the last one starts the next group). Each further live

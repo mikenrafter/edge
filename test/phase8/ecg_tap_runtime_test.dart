@@ -55,6 +55,9 @@ Future<GestureSettings> _boot(Map<String, Object> prefs) async {
 /// 2 taps -> log water, 3 taps -> mark moment, 4 taps -> workout toggle.
 Future<GestureSettings> _mapped({bool three = true, bool four = true}) async {
   final s = await _boot({});
+  // Counting touches of the ECG sensor is an opt-in; the app's default is
+  // repeated double taps.
+  await s.setTapMethod(TapCountMethod.ecg);
   await s.setDoubleTapActions({DeviceAction.logWater});
   if (three) await s.setActionsForTaps(3, {DeviceAction.markMoment});
   if (four) await s.setActionsForTaps(4, {DeviceAction.workoutToggle});
@@ -259,6 +262,7 @@ void main() {
 
     test('only 4 taps mapped and no 2-tap action: still counted', () async {
       final s = await _boot({});
+      await s.setTapMethod(TapCountMethod.ecg);
       await s.setActionsForTaps(4, {DeviceAction.workoutToggle});
       final r = _Rig(s)..counter = (_) async => 4;
       await r.dispatcher.handle(_tap());

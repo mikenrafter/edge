@@ -9,7 +9,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_mode.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/state/app_state.dart';
 
@@ -217,7 +216,6 @@ void main() {
         await rig.measureCues();
         await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
         await mapActions(rig.app, [2, 3]);
-        await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
         rig.doubleTap();
         await until(() => order.contains('band:generation'));
         await settleMs(100);

@@ -188,7 +188,11 @@ void main() {
       await pumpTall(
           t,
           const BandGesturesView(
-              chosen: {}, supported: _supported, ecgSupported: true));
+            chosen: {},
+            supported: _supported,
+            ecgSupported: true,
+            tapMethod: TapCountMethod.ecg,
+          ));
       const names = {
         2: 'Double tap',
         3: 'Double tap + 1 ECG tap',

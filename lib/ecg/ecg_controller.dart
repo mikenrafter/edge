@@ -224,14 +224,10 @@ class EcgController extends ChangeNotifier {
   /// the band start its signal over). Both are reported through [trace].
   /// It is set per begin, so it can never outlive the capture it was for.
   ///
-  /// [rawSave] false makes PREPARE leave out the raw-save ON write (the tap
-  /// gesture's fast mode reads only the live stream); CLEANUP is unchanged.
-  ///
   /// [trace] gets one line per start stage with the time it took (Device lab).
   Future<void> begin(
     EcgWrist wrist, {
     bool persist = true,
-    bool rawSave = true,
     void Function(String line)? trace,
   }) async {
     if (_disposed || _lease != null) return; // single-flight
@@ -335,7 +331,7 @@ class EcgController extends ChangeNotifier {
       // Subscribe BEFORE any generation write: the first post-START packet
       // can arrive at the write/response boundary.
       _sub ??= transport.events.listen(_onEvent);
-      final prep = await transport.prepare(lease, wrist, rawSave: rawSave);
+      final prep = await transport.prepare(lease, wrist);
       if (_stale(epoch)) return;
       stage('prepare answered (${prep.allSucceeded ? 'accepted' : 'refused'})');
       if (!prep.allSucceeded) {

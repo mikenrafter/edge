@@ -199,10 +199,6 @@ class GestureController {
   /// 8L: counts ECG-sensor touches after a live double tap.
   EcgTapSession _newEcgSession() => EcgTapSession(
         beginStream: _beginEcgForTap,
-        // 8AN fast mode: the same start; it leaves out the raw-save by asking
-        // the session which mode the gesture in flight runs.
-        beginFastStream: _beginEcgForTap,
-        tapMode: () => _settings.ecgTapMode,
         startBuzz: _ecgTapStartBuzz,
         endStream: () async {
           try {
@@ -309,7 +305,6 @@ class GestureController {
           // gesture must never leave an ECG reading behind (invariant 14).
           begin: (wrist) => _ecg().begin(wrist,
               persist: false,
-              rawSave: !_ecgTapSession.fast,
               trace: _deviceLab.addStep),
           captureEpoch: () => _ecg().captureEpoch,
           cancel: () => _ecg().cancel(),

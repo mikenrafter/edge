@@ -38,12 +38,6 @@
 // log shows the band refusing a start that the very next one accepted. The retry
 // only ever calls the injected [beginStream]/[endStream]; it names no opcode.
 //
-// Fast mode (8AN, [EcgTapMode.fast]) leaves out the raw-save, the steady-stream
-// wait and the settle. It skips the band's warm-up packet (the first one with
-// samples; its contact never counts) and opens the first window at that
-// packet's end. The band's presence bit is only traced: on the MG it latches on
-// with the warm-up packet and never drops, so it cannot veto a touch.
-//
 // Why the wait: a start command being written only means the command left the
 // phone. The band can take many seconds to begin sending, and then its sensor
 // reads zero for a while even with a finger on it. Startup is slow, so
@@ -69,7 +63,6 @@ import '../notify/alert_rule.dart';
 import 'ecg_contact.dart';
 import 'ecg_stream_readiness.dart';
 import 'ecg_tap_counter.dart';
-import 'ecg_tap_mode.dart';
 import 'strap_event.dart';
 
 /// The band buzz for each count step: band-only, live-only, a few seconds of
@@ -130,8 +123,6 @@ class EcgTapSession {
     this.onFailed,
     this.strapNow,
     this.step,
-    this.tapMode,
-    this.beginFastStream,
     DateTime Function()? now,
     this.stallAfter = const Duration(seconds: 3),
     this.maxSampleGap = const Duration(milliseconds: 50),
@@ -152,14 +143,6 @@ class EcgTapSession {
   /// Start the ECG stream; true when the command went out and the controller is
   /// running. It does NOT mean packets are flowing: see [EcgStreamReadiness].
   final Future<bool> Function() beginStream;
-
-  /// The ECG tap mode in force, read when a gesture begins. Null: accurate.
-  final EcgTapMode Function()? tapMode;
-
-  /// Fast mode's stream start, called INSTEAD of [beginStream]: the same ECG
-  /// stream without the raw-save the readings need. Null: fast mode is not
-  /// available and the gesture runs accurate.
-  final Future<bool> Function()? beginFastStream;
 
   /// Stop it and clean up. Never throws.
   final Future<void> Function() endStream;
@@ -303,9 +286,6 @@ class EcgTapSession {
   bool _opened = false; // the counter has started and its first window is open
   Duration? _firstSampleAt; // the stream's first sample, on the sample clock
   EcgTapCounter? _counter;
-  // 8AN fast mode, fixed when the gesture begins: no readiness or settle wait,
-  // and the band's warm-up packet is skipped ([_skipWarmup]).
-  bool _fast = false;
   // The last presence / sample-contact state the trace reported (8AN A).
   bool _presenceOn = false, _sampleOn = false;
   EcgStreamReadiness _readiness = EcgStreamReadiness();
@@ -337,10 +317,6 @@ class EcgTapSession {
   int? _firstStrapSec, _lastEndStrapSec, _strapAtBegin;
 
   bool get active => _active;
-
-  /// Whether the gesture in flight runs in fast mode (false when idle): the
-  /// stream start reads it to leave out the raw-save.
-  bool get fast => _active && _fast;
 
   int _generation = 0;
   Future<void>? _stopInFlight;
@@ -378,26 +354,13 @@ class EcgTapSession {
     _tapAt = tap.receivedAt.isAfter(now) ? now : tap.receivedAt;
     _strapAtBegin = _strapNowSafe();
     final t = _th = thresholds();
-    _fast = beginFastStream != null && _modeNow() == EcgTapMode.fast;
     _newAttempt();
     try {
       onStarted?.call(tap, t.summary);
     } catch (_) {}
     step?.call('Double tap received. Starting the ECG stream.');
-    if (_fast) {
-      step?.call('Fast mode: no raw-save, no wait for the stream to settle; '
-          "the band's first packet with samples is skipped as warm-up.");
-    }
     _fireCue(tap, startBuzz);
     await _startStream(gen);
-  }
-
-  EcgTapMode _modeNow() {
-    try {
-      return tapMode?.call() ?? EcgTapMode.accurate;
-    } catch (_) {
-      return EcgTapMode.accurate;
-    }
   }
 
   /// The start cue, sent without waiting: a throw, a late failure and a "not
@@ -439,8 +402,7 @@ class EcgTapSession {
 
   Future<void> _startStream(int gen) async {
     try {
-      final begin = _fast ? beginFastStream! : beginStream;
-      if (!await begin().timeout(beginTimeout)) {
+      if (!await beginStream().timeout(beginTimeout)) {
         throw StateError('the ECG stream did not start');
       }
       if (!_active || gen != _generation) {
@@ -600,19 +562,6 @@ class EcgTapSession {
     _prevEnd = end;
     final firstSampled = n > 0 && _firstSampleAt == null;
     if (n > 0) _firstSampleAt ??= base;
-    if (_fast) {
-      // No readiness or settle wait: the first packet with samples is the
-      // band's warm-up, skipped, and the first window opens where it ends.
-      if (n > 0 && !_opened) {
-        _skipWarmup(c, end, raw);
-        return;
-      }
-      if (!_opened) return;
-      for (var i = 0; i < n && _active; i++) {
-        _handle(c.sample(base + _samplePeriod * i, contact: contactAt(i)));
-      }
-      return;
-    }
 
     if (!_readiness.ready &&
         _readiness.offer(at: wall, strapTime: r.strapTime, sampleCount: n)) {
@@ -696,29 +645,6 @@ class EcgTapSession {
     );
   }
 
-  /// Fast mode's start. The first packet with samples is the band's warm-up
-  /// (49 samples, a burst of "contact" in its last 14, in 6 of 9 sessions of
-  /// the 2026-10-04 capture): its contact never counts. The counter starts and
-  /// its first window opens at the packet's END, its newest sample, so the next
-  /// packet's samples fall inside it. Opening at the packet's first sample left
-  /// the window over, in sample time, before the packet had even arrived.
-  void _skipWarmup(EcgTapCounter c, Duration end, int contact) {
-    final tap = _tap;
-    if (_opened || tap == null) return;
-    step?.call('Warm-up packet skipped ($contact samples with contact '
-        'ignored).');
-    _opened = true;
-    _handle(c.start(tap, at: end)); // max 2 ends here
-    if (!_active) return;
-    step?.call(
-      'Touch window open at sample time ${end.inMilliseconds} ms, at the end '
-      'of the warm-up packet, ${_sinceTap()} ms after the tap '
-      '(${c.thresholds.startMs} ms for the first touch to begin; a finger '
-      'already on the sensor counts).',
-    );
-    _handle(c.open(end));
-  }
-
   /// Start the counter and open its first window, once, when the stream
   /// command has returned AND the packets are steady. The window opens on the
   /// sample clock at [sensorSettle] after the stream's first sample, or at the
@@ -750,16 +676,7 @@ class EcgTapSession {
       return;
     }
     final start = _startedAt;
-    if (_fast && !_opened) {
-      // The first window opens with the warm-up packet: until then the
-      // counter's own stall check does not run.
-      final seen = _lastFrameWall;
-      if (seen != null && _now().difference(seen) > stallAfter) {
-        _abandon('stalled');
-        return;
-      }
-    }
-    if (!(_fast ? _packets > 0 : _readiness.ready) &&
+    if (!_readiness.ready &&
         start != null &&
         _now().difference(start) > startTimeout) {
       step?.call(
@@ -954,7 +871,6 @@ class EcgTapSession {
       _firstStrapSec = _lastEndStrapSec = _strapAtBegin = null;
       _retried = false;
       _th = null;
-      _fast = false;
       _presenceOn = _sampleOn = false;
     }
     // Both are best effort and must not leak an error out of an unawaited

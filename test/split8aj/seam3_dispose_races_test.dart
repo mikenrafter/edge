@@ -10,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
-import 'package:openstrap_edge/gestures/ecg_tap_mode.dart';
 
 import 'support/gesture_harness.dart';
 
@@ -95,7 +94,6 @@ void main() {
         'and the lease is free again', () async {
       final rig = await newRig(mg: true);
       await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);
-      await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
       await rig.app.gestureSettings.setEcgOnDoubleTap(true);
       int stops() => order.where((o) => o == 'band:generation').length;
       rig.doubleTap();
