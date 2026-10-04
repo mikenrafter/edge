@@ -1215,7 +1215,7 @@ class _InvestigateState extends State<Investigate> {
             style: F.cap.copyWith(color: p.ink2, height: 1.6)),
         if (spec.citation.isNotEmpty) ...[
           const SizedBox(height: S.x3),
-          Text(spec.citation,
+          researchCitation(c, spec.citation,
               style: F.over.copyWith(color: p.ink3, fontFamily: 'Menlo')),
         ],
       ]),

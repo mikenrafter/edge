@@ -202,7 +202,8 @@ const _specs = <String, MetricSpec>{
             'the two was recording it. A stretch both covered counts once. '
             'Walking cadence is above what one sample a second can resolve, so '
             '1 Hz data gives no step estimate. A day with no pedometer data shows no steps.',
-    citation: 'AN-2554 pedometer · phone pedometer (HealthKit / Health Connect)',
+    citation: 'AN-2554 pedometer · phone pedometer (HealthKit / Health Connect)'
+        ' · Straczkiewicz 2023 · O\'Connell 2017',
     // Deliberately EMPTY — see final-plan §4.6. Steps are resolved by
     // `live_coverage_policy.dart`, which ranks by SPAN not device and credits
     // by overlap subtraction; a device-ownership filter on this screen would
