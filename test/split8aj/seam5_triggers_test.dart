@@ -104,8 +104,14 @@ void main() {
       ticks.stop();
     }));
 
-    test('if the burst it waits on fails, it logs and does NOT start its own',
+    test('if the burst it waits on fails, that failure is not its own: it '
+        'goes on to run its own offload and the light derive',
         syncCase((rig, timers) async {
+      // FIXED (was LATENT): the awaited burst's throw used to surface as
+      // "Resync failed" and skip the caller's own offload, so a workout
+      // window the failed burst never pulled stayed unpulled until the next
+      // periodic tick. The code's own comment is "wait out the burst, THEN
+      // re-trigger"; the burst's owner already logged its failure.
       rig.engine.syncGate = Completer<void>();
       rig.engine.syncScript.add(StateError('first burst failed'));
       await rig.app.openSession();
@@ -113,8 +119,26 @@ void main() {
       final resync = rig.app.forceResync();
       rig.engine.syncGate!.complete();
       await resync;
-      expect(_logged(rig, 'Resync failed: Bad state: first burst failed'), isTrue);
-      expect(rig.engine.count('requestHistorySync'), 0);
+      expect(_logged(rig, 'Resync failed'), isFalse);
+      await rig.waitFor(() => _logged(rig, 'Background sync burst failed: Bad state: first burst failed'));
+      expect(rig.engine.count('requestHistorySync'), 1);
+      expect(rig.engine.count('runSync'), 2, reason: 'the failed one, then its own');
+      await rig.jobQueued('derive_light');
+      await rig.quiesce();
+    }));
+
+    test('after waiting out a failed burst, a failure of its OWN offload is '
+        'still logged, never thrown', syncCase((rig, timers) async {
+      rig.engine.syncGate = Completer<void>();
+      rig.engine.syncScript
+          .addAll([StateError('first burst failed'), StateError('own failed')]);
+      await rig.app.openSession();
+      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      final resync = rig.app.forceResync();
+      rig.engine.syncGate!.complete();
+      await resync;
+      expect(_logged(rig, 'Resync failed: Bad state: own failed'), isTrue);
+      expect(rig.engine.count('requestHistorySync'), 1);
       await rig.quiesce();
     }));
   });

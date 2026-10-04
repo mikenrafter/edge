@@ -216,8 +216,9 @@ void main() {
     }, paired: false));
 
     test('headless background, connect refused: logged, no backfill timer, '
-        'and the lease and intent are NOT released (latent: a headless wake '
-        'stays blocked until a reconnect lands)', syncCase((rig, timers) async {
+        'and the lease and intent are released (FIXED, was LATENT: a headless '
+        'wake stayed blocked until a reconnect landed); the supervisor stays',
+        syncCase((rig, timers) async {
       await pairedCase(rig);
       await rig.app.pauseForBackground();
       rig.engine.connectScript.add(false);
@@ -225,9 +226,11 @@ void main() {
       expect(_logged(rig, '[init] bg connect returned false — arming recovery'), isTrue);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
       expect(timers.activePeriodic(kSuperviseEvery), hasLength(1));
-      expect(BandOwnership.owner, BandOwnerKind.foreground);
-      expect(BandOwnership.foregroundIntent, isTrue);
-      expect(BandOwnership.tryAcquireHeadless(), isNull);
+      expect(BandOwnership.owner, isNull);
+      expect(BandOwnership.foregroundIntent, isFalse);
+      final lease = BandOwnership.tryAcquireHeadless();
+      expect(lease, isNotNull);
+      BandOwnership.release(lease!);
       expect(IosBleRestore.foregroundActive, isFalse, reason: 'iOS-only here');
     }, paired: false));
 
@@ -239,7 +242,8 @@ void main() {
       await rig.app.debugInit();
       expect(_logged(rig, '[init] bg connect failed: Bad state: radio off — arming recovery'), isTrue);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
-      expect(BandOwnership.owner, BandOwnerKind.foreground);
+      expect(BandOwnership.owner, isNull);
+      expect(BandOwnership.foregroundIntent, isFalse);
     }, paired: false));
   });
 

@@ -146,19 +146,29 @@ void main() {
       expect(rig.app.status, 'connected');
     }));
 
-    test('LATENT: a poll that throws right after the link is back ends the loop '
-        'with no drain and no backfill timer (the link is up, so the loop '
-        'considers itself done)', syncCase((rig, timers) async {
+    test('a poll that throws right after the link is back is a failed '
+        'attempt: the link is torn down and the loop retries, ending fully up '
+        '(drain, backfill timer, intent and lease)',
+        syncCase((rig, timers) async {
+      // FIXED (was LATENT): the loop used to see the link up, call itself
+      // done and stop with no drain and no backfill timer. A failed attempt
+      // (issue #208) is connect AND setup, so it leaves the link down. The
+      // throw is one-shot so the retry's poll works.
       await _open(rig);
-      rig.engine.batteryThrows = StateError('no reply');
+      rig.engine.batteryThrowsOnce = StateError('no reply');
       rig.engine.drop();
-      await rig.waitFor(() => _logged(rig, 'Reconnect attempt 1 failed: Bad state: no reply'));
-      await rig.quiesce();
+      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      await rig.waitFor(() => timers.activePeriodic(kBackfillEvery).isNotEmpty);
+      expect(_logged(rig, 'Reconnect attempt 1 failed: Bad state: no reply'), isTrue);
+      expect(rig.engine.count('disconnect'), 1,
+          reason: 'the half-set-up link is dropped before the retry');
+      expect(rig.engine.count('connect'), 2);
+      expect(rig.engine.only('backoff'), ['backoff:1', 'backoff:2']);
       expect(rig.engine.isConnected, isTrue);
-      expect(rig.engine.count('runSync'), 0);
-      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
-      expect(await rig.jobTypes(), isEmpty);
+      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
       expect(BandOwnership.foregroundIntent, isTrue);
+      expect(BandOwnership.owner, BandOwnerKind.foreground);
+      await rig.jobQueued('derive_heavy');
     }));
 
     test('the drain after a reconnect fails: logged, no derive request, the '
@@ -186,9 +196,12 @@ void main() {
   });
 
   group('the bond-refusal give-up as AppState wires it', () {
-    test('paused at the edge: no loop starts, the lease is released, but the '
-        'foreground INTENT is left on (LATENT: tryAcquireHeadless is refused '
-        'for as long as the pause stands)', syncCase((rig, timers) async {
+    test('paused at the edge: no loop starts, and BOTH the lease and the '
+        'foreground intent are released, so a headless wake is not refused for '
+        'as long as the pause stands', syncCase((rig, timers) async {
+      // FIXED (was LATENT): the edge released only the lease and left the
+      // intent on, which refuses tryAcquireHeadless until the pause expires.
+      // The loop's own finally already clears the intent on this give-up.
       await _open(rig);
       rig.engine.state.autoReconnectPaused = true;
       rig.engine.drop();
@@ -196,8 +209,10 @@ void main() {
       expect(rig.engine.count('markReconnecting'), 0);
       expect(rig.engine.count('connect'), 0);
       expect(BandOwnership.owner, isNull);
-      expect(BandOwnership.foregroundIntent, isTrue);
-      expect(BandOwnership.tryAcquireHeadless(), isNull);
+      expect(BandOwnership.foregroundIntent, isFalse);
+      final lease = BandOwnership.tryAcquireHeadless();
+      expect(lease, isNotNull);
+      BandOwnership.release(lease!);
     }));
 
     test('the supervisor expires the pause (asks the engine every tick), '
@@ -313,12 +328,15 @@ void main() {
       expect(BandOwnership.foregroundIntent, isFalse);
     }));
 
-    test('LATENT: the generation is only checked at the loop head, so a connect '
-        'that was in flight when endSession retired the loop and then answers '
-        'true still runs the post-connect block (poll, live reconcile, drain) '
-        'with no wish for a link left. (The real engine serialises disconnect '
-        'behind the in-flight connect, so there it races the teardown; the fake '
-        'does not model that lock.)', syncCase((rig, timers) async {
+    test('a connect that was in flight when endSession retired the loop, and '
+        'then answers true, does NOT run the post-connect block (no poll, live '
+        'reconcile, band prompt, drain or backfill timer) and leaves no intent '
+        'or lease behind', syncCase((rig, timers) async {
+      // FIXED (was LATENT): the generation was only checked at the loop head,
+      // so the retired loop still ran the whole block with no wish for a link
+      // left. (The real engine serialises disconnect behind the in-flight
+      // connect, so there it raced the teardown; the fake does not model that
+      // lock.) The stray link it wins is dropped, once.
       await _open(rig);
       final gate = rig.holdConnect();
       rig.engine.drop();
@@ -326,12 +344,23 @@ void main() {
       await rig.app.endSession();
       rig.engine.events.clear();
       gate.complete();
-      await rig.waitFor(() => rig.engine.count('runSync') == 1);
-      expect(rig.engine.count('getBattery'), 1);
-      expect(rig.engine.count('reconcile'), greaterThanOrEqualTo(1));
-      expect(timers.activePeriodic(kBackfillEvery), isEmpty,
-          reason: 'the backfill timer needs _keepAlive, which endSession dropped');
+      // The retired loop's finally logs this once it is out; everything it
+      // could have started was awaited before that point.
+      await rig.waitFor(() => _logged(rig, 'was superseded'));
+      expect(rig.engine.count('getBattery'), 0);
+      expect(rig.engine.count('getStrapName'), 0);
+      expect(rig.engine.count('reconcile'), 0);
+      expect(rig.engine.count('prompt'), 0);
       await rig.quiesce();
+      expect(rig.engine.count('runSync'), 0);
+      expect(rig.engine.count('requestHistorySync'), 0);
+      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
+      expect(BandOwnership.foregroundIntent, isFalse);
+      expect(BandOwnership.owner, isNull);
+      expect(await rig.jobTypes(), isEmpty);
+      // endSession means no link: the stray link the connect won is dropped.
+      expect(rig.engine.count('disconnect'), 1);
+      expect(rig.engine.isConnected, isFalse);
     }));
 
     test('endSession then openSession while the old attempt is parked: the '

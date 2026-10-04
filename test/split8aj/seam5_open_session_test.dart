@@ -191,9 +191,11 @@ void main() {
           reason: 'we still WANT a link; the supervisor retries it');
       expect(_ev(rig), ['setBackground:false', 'connect:$kRemoteId:gen4']);
       expect(rig.app.logLines, contains('Session start: could not reach the band.'));
-      // LATENT (AGENTS 4.3): set before the connect and not cleared on this
-      // path, so on iOS the native restore wake no-ops until a connect lands.
-      expect(IosBleRestore.foregroundActive, isTrue);
+      // FIXED (was LATENT, AGENTS 4.3): the flag is set before the connect, so
+      // the exit that leaves no link must clear it, or on iOS the native
+      // restore wake no-ops until a connect lands. (Reset directly: the
+      // recovery arm is iOS-only, and the flag is a plain static.)
+      expect(IosBleRestore.foregroundActive, isFalse);
       expect(rig.app.status, 'disconnected');
     }));
 
@@ -204,26 +206,34 @@ void main() {
       expect(rig.app.busy, isFalse);
       expect(BandOwnership.foregroundIntent, isFalse);
       expect(BandOwnership.owner, isNull);
+      // FIXED (was LATENT): the throw exit clears the iOS restore flag too.
+      expect(IosBleRestore.foregroundActive, isFalse);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
       expect(rig.app.logLines, contains('Session start failed: Bad state: gatt 133'));
     }));
 
-    test('a poll throws after the link is up: busy clears, but the session is '
-        'half open (link up, intent and lease held, no drain, no backfill '
-        'timer, no derive request)', syncCase((rig, timers) async {
-      rig.engine.batteryThrows = StateError('no reply');
+    test('a poll throws after the link is up: the half-built session is torn '
+        'down (link dropped, not left up with no drain) and the reconnect loop '
+        'that the drop starts brings it fully up: drain, backfill timer, intent '
+        'and lease', syncCase((rig, timers) async {
+      // FIXED (was LATENT): a throw after the connect used to leave the link
+      // up with the intent and lease held, no drain and no backfill timer. A
+      // session is fully up or torn down. One-shot so the retry's poll works.
+      rig.engine.batteryThrowsOnce = StateError('no reply');
       await rig.app.openSession();
       expect(rig.app.busy, isFalse);
+      expect(rig.app.logLines, contains('Session start failed: Bad state: no reply'));
+      expect(rig.engine.count('disconnect'), 1,
+          reason: 'the link is torn down, not left half open');
+      // The disconnect edge starts the loop; it re-runs the whole setup.
+      await rig.waitFor(() => rig.engine.count('runSync') == 1);
+      await rig.waitFor(() => timers.activePeriodic(kBackfillEvery).isNotEmpty);
+      expect(rig.engine.count('connect'), 2);
       expect(rig.engine.isConnected, isTrue);
-      // LATENT: nothing starts the drain or the periodic backfill after this
-      // throw; the link stays up with the intent held.
+      expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
       expect(BandOwnership.foregroundIntent, isTrue);
       expect(BandOwnership.owner, BandOwnerKind.foreground);
-      expect(rig.engine.count('runSync'), 0);
-      expect(timers.activePeriodic(kBackfillEvery), isEmpty);
-      await rig.quiesce();
-      expect(await rig.jobTypes(), isEmpty);
-      expect(rig.app.logLines, contains('Session start failed: Bad state: no reply'));
+      await rig.jobQueued('derive_heavy');
     }));
 
     test('the link is gone by the time the session settles: the finally clears '

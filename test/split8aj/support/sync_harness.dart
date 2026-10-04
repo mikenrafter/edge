@@ -174,6 +174,11 @@ class SyncFakeEngine extends BleEngine {
   int? newestTs;
   DateTime? rxAt;
   Object? batteryThrows;
+
+  /// Like [batteryThrows] but spent after one throw, so a reconnect loop that
+  /// tears the link down and retries gets a working poll the second time
+  /// (a persistent throw would spin the zero-delay fake backoff).
+  Object? batteryThrowsOnce;
   Object? requestSyncThrows;
 
   /// Runs inside the band-prompt write (to look at the world at that moment);
@@ -240,6 +245,11 @@ class SyncFakeEngine extends BleEngine {
   Future<void> getBattery() async {
     events.add('getBattery');
     await batteryHook?.call();
+    final once = batteryThrowsOnce;
+    if (once != null) {
+      batteryThrowsOnce = null;
+      throw once;
+    }
     if (batteryThrows != null) throw batteryThrows!;
   }
 

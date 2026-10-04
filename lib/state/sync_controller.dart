@@ -16,11 +16,10 @@
 // all. It holds no reference to AppState.
 //
 // AppState.dispose calls [dispose], which cancels the quiet timer, the
-// backfill timer and the supervisor, and releases the foreground lease
-// separately. It does not stop wanting a link: a drop or an openSession that
-// lands after dispose still runs here. That is today's behaviour, pinned by
-// test/split8aj/seam5_dispose_test.dart, and is tracked as a follow-up rather
-// than changed in a move.
+// backfill timer and the supervisor, stops wanting a link, and marks the
+// object disposed; releasing the foreground lease is the host's separate call.
+// After that nothing new starts here (pinned by
+// test/split8aj/seam5_dispose_test.dart).
 import 'dart:async';
 import 'dart:io';
 
@@ -135,6 +134,7 @@ class SyncController {
 
   bool _keepAlive = false;
   bool _reconnecting = false;
+  bool _disposed = false;
 
   /// When the current reconnect ATTEMPT started, for the supervisor's
   /// staleness check (issue #208). Per-attempt, not per-loop: a loop against a
@@ -554,8 +554,31 @@ class SyncController {
         _reconnect();
       }
     } else {
+      // Nothing to reconnect (bond-refusal pause, or no session): let go of the
+      // claim. A running loop owns the intent, so only clear it when none is.
+      if (!_reconnecting) BandOwnership.markForegroundIntent(false);
       _releaseForegroundLease();
     }
+  }
+
+  /// Tear down a link whose setup threw, so a half-set-up link (no drain, no
+  /// backfill timer) is never left up: the disconnect edge restarts the loop.
+  Future<void> _dropHalfOpenLink() async {
+    try {
+      await engine.disconnect();
+    } catch (e) {
+      _log('Teardown of a half-set-up link failed: $e');
+    }
+  }
+
+  /// Give back what a failed session start took (restore flag, intent, lease),
+  /// unless a reconnect loop is running: that loop owns them.
+  void _releaseClaimsUnlessLooping() {
+    if (_keepAlive && _reconnecting) return;
+    IosBleRestore.foregroundActive = false;
+    BandOwnership.markForegroundIntent(false);
+    _log('[OWNERSHIP] foreground intent off (${BandOwnership.debugState})');
+    _releaseForegroundLease();
   }
 
   /// The headless / background cold start of a paired install ([AppState]'s
@@ -602,10 +625,15 @@ class SyncController {
         // and the only way back is the user manually opening the app.
         _log('[init] bg connect returned false — arming recovery');
         await _armRecovery();
+        // The lease and intent taken above must not outlive the failed start
+        // (they refuse every later headless wake); the supervisor retries.
+        _releaseClaimsUnlessLooping();
       }
     } catch (e) {
       _log('[init] bg connect failed: $e — arming recovery');
+      if (engine.isConnected) await _dropHalfOpenLink();
       await _armRecovery();
+      _releaseClaimsUnlessLooping();
     }
   }
 
@@ -659,7 +687,7 @@ class SyncController {
   }
 
   Future<void> openSession() async {
-    if (busy || paired == null) return;
+    if (busy || paired == null || _disposed) return;
     BandOwnership.markForegroundIntent(true);
     _log('[OWNERSHIP] foreground intent on (${BandOwnership.debugState})');
     // Returning to the foreground with the connection still alive (kept during
@@ -759,6 +787,12 @@ class SyncController {
         _log('Session start: could not reach the band.');
         return;
       }
+      if (_disposed) {
+        // Parked in the connect past dispose: start nothing; the finally lets go.
+        _log('Session start abandoned — disposed while connecting.');
+        await _dropHalfOpenLink();
+        return;
+      }
       await engine.getBattery();
       await engine.getStrapName(); // populate strap name for the Profile UI
       // Alarm is displayed from the locally-set/persisted value (authoritative);
@@ -788,6 +822,7 @@ class SyncController {
       await engine.reconcileLiveStreams(); // the owners' intent, not full live
       unawaited(
         _kickSyncBurst(kickFirst: false).then((report) async {
+          if (_disposed) return;
           _log(
             'Backlog drained: ${report.records} records in ${report.batches} '
             'batches (${report.complete ? "complete" : "stopped early"}).',
@@ -808,12 +843,13 @@ class SyncController {
       _startBackfillTimer();
     } catch (e) {
       _log('Session start failed: $e');
+      // A throw after the link came up is a failed setup: drop the link so the
+      // loop the disconnect edge starts redoes it, rather than a half-open one.
+      if (engine.isConnected) await _dropHalfOpenLink();
     } finally {
       if (!engine.isConnected || !_keepAlive) {
         _stopBackfillTimer();
-        BandOwnership.markForegroundIntent(false);
-        _log('[OWNERSHIP] foreground intent off (${BandOwnership.debugState})');
-        _releaseForegroundLease();
+        _releaseClaimsUnlessLooping();
       }
       _setBusy(false);
     }
@@ -824,7 +860,7 @@ class SyncController {
   static const int _directAttemptsBeforeOsFallback = 4;
 
   Future<void> _reconnect() async {
-    if (_reconnecting || paired == null) return;
+    if (_reconnecting || paired == null || _disposed) return;
     // Bond-refusal give-up: a band that keeps refusing the bond will never accept
     // commands, so the auto-reconnect loop is paused (surfaced as needsRepairGuide).
     // A manual user connect / re-pair clears the pause on the next successful bond.
@@ -896,6 +932,14 @@ class SyncController {
           connected = await engine.connectToRemoteId(paired!.remoteId,
               generationHint: paired!.generation);
         }
+        // The loop was retired (endSession / unpair / superseded) while the
+        // connect was in flight: no post-connect block for a session nobody wants.
+        if (generation != _reconnectGeneration) {
+          // No session wants a link any more: the one the connect won is dropped.
+          // (Superseded by a live replacement, _keepAlive is still true: leave it.)
+          if (!_keepAlive && engine.isConnected) await _dropHalfOpenLink();
+          break;
+        }
         if (connected) {
           // Reclaim the band from the iOS restore central so it stops competing.
           if (Platform.isIOS) {
@@ -925,6 +969,7 @@ class SyncController {
           _log('Reconnected — live on; draining backlog in background.');
           unawaited(
             _kickSyncBurst(kickFirst: false).then((report) async {
+              if (_disposed) return;
               _log('Reconnect backlog drained: ${report.records} records.');
               // Re-evaluate the high-frequency wake window now the backlog
               // landed.
@@ -959,6 +1004,11 @@ class SyncController {
           }
         } catch (e) {
           _log('Reconnect attempt $attempt failed: $e — retrying.');
+          // A throw once the link is up is a failed attempt too: drop the link
+          // so the next iteration redoes the whole setup.
+          if (engine.isConnected && generation == _reconnectGeneration) {
+            await _dropHalfOpenLink();
+          }
         }
       }
     } catch (e) {
@@ -1002,7 +1052,10 @@ class SyncController {
       // re-trigger a fresh offload over the live connection (no reconnect) and
       // wait for it to fully hand over. Live streams stay on; no mode change.
       while (_syncBurst != null) {
-        await _syncBurst;
+        // The burst's owner logs its own failure; this caller still re-triggers.
+        try {
+          await _syncBurst;
+        } catch (_) {}
       }
       await _kickSyncBurst(kickFirst: true);
       _notify();
@@ -1247,9 +1300,11 @@ class SyncController {
     _notify();
   }
 
-  /// The quiet timer, the backfill timer and the supervisor: every timer this
-  /// object owns. Nothing else is stopped (see the header).
+  /// The quiet timer, the backfill timer and the supervisor, and the wish for a
+  /// link: after this nothing new starts (see the header).
   void dispose() {
+    _disposed = true;
+    _keepAlive = false;
     _syncQuietTimer?.cancel();
     _syncQuietTimer = null;
     _stopBackfillTimer();

@@ -241,7 +241,7 @@ void main() {
       final tail = body.substring(fin);
       expect(tail, contains('if (!engine.isConnected || !_keepAlive) {'));
       expect(tail, contains('_stopBackfillTimer();'));
-      expect(tail, contains('_releaseForegroundLease();'));
+      expect(tail, contains('_releaseClaimsUnlessLooping();'));
       expect(tail, contains('_setBusy(false);'));
     });
 
