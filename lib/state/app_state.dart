@@ -17,6 +17,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:battery_plus/battery_plus.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -57,6 +58,7 @@ import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/derive_perf.dart';
+import '../compute/periodic_calculation_policy.dart';
 import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/manual_session.dart'
@@ -327,6 +329,24 @@ class AppState extends ChangeNotifier {
         changedOnly: kind == DeriveJobKind.light,
         automatic: true,
       );
+
+  /// Whether a light pass may reuse cached calculations: only while the
+  /// phone is unplugged and the causal stager says the wearer is awake.
+  late final PeriodicCalculationPolicy _calculationPolicy =
+      PeriodicCalculationPolicy(
+    phoneCharging: _phoneCharging,
+    loadSamples: loadWakeSamples,
+  );
+
+  /// Null when the platform cannot say; the policy treats that as charging.
+  static Future<bool?> _phoneCharging() async =>
+      switch (await Battery().batteryState) {
+        BatteryState.discharging => false,
+        BatteryState.charging ||
+        BatteryState.full ||
+        BatteryState.connectedNotCharging => true,
+        BatteryState.unknown => null,
+      };
 
   late final DeriveScheduler _deriveScheduler = DeriveScheduler(
     run: _runScheduled,
@@ -2624,10 +2644,13 @@ class AppState extends ChangeNotifier {
       );
       return DeriveOutcome(computed: n);
     }
+    final calculationMode =
+        await _calculationPolicy.select(heavy: heavy, forced: false);
     final n = await _derive.run(
       _profile,
       heavy: heavy,
       changedOnly: changedOnly,
+      calculationMode: calculationMode,
       onScope: onScope,
       onScopeDays: onScopeDays,
       onDayDone: onDayDone,

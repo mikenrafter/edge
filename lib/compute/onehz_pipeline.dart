@@ -39,6 +39,7 @@ import 'hr_max.dart'
         trainingZones;
 import 'profile.dart' show workoutSex;
 import 'step_cadence.dart' show cadenceSpmForMinutes;
+import 'day_calculation_state.dart';
 // Same argument: a pure `DateTime` lookup, no DB / IO / Flutter binding. It is
 // the ONE definition of "the UTC offset in effect at this instant" in the tree,
 // and a second copy here would be the exact drift SLP-09's timezone guard is
@@ -331,8 +332,18 @@ class DayBundleInput {
 /// Pure: takes the serialized [DayBundleInput] map, returns a plain JSON map (the
 /// full derived bundle). Call directly + synchronously in tests, or via
 /// `Isolate.run(() => deriveDayBundle(input))` in production.
-Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
+Map<String, dynamic> deriveDayBundle(
+  Map<String, dynamic> inputJson, {
+  DayCalculationState? state,
+  CalculationMode mode = CalculationMode.forced,
+}) {
   final d = DayBundleInput.fromJson(inputJson);
+  T memo<T>(String key, Object? dependencies, T Function() calculate) =>
+      state == null
+      ? calculate()
+      : state.evaluate(key, dependencies, calculate, mode);
+  // Each snapshot includes the full window, masks and bounds. RR correction
+  // is a batch calculation whenever raw beats change; no suffix is assumed safe.
 
   // ── HR over the DAY (for the curve, strain zones, dip day-side) ───────────
   final dayHr = [for (final h in d.dayHr) h.toDouble()];
@@ -363,7 +374,10 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // HRV/RHR are rest/sleep-only per the catalog. Running correctRr+hrvTime over
   // the SLEEP RR (not the whole day) is what brings RMSSD back to physiological
   // tens-of-ms instead of the whole-day ~166 ms inflated value.
-  final corrected = correctRr(d.sleepRrMs, rrTsMs: d.sleepRrTsMs);
+  final corrected = memo('sleep_rr', [
+    d.sleepRrMs,
+    d.sleepRrTsMs,
+  ], () => correctRr(d.sleepRrMs, rrTsMs: d.sleepRrTsMs));
   final nn = corrected.nn;
   final nnTimes = corrected.nnTimesMs;
   final artifactFraction = (1.0 - corrected.cleanFraction).clamp(0.0, 1.0);
@@ -390,33 +404,53 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // worse night. `absence_reason` is why a window produced nothing.
   final unobservedSec = (d.sleepJson['unobserved_sec'] as num?)?.toInt();
   final absenceReason = d.sleepJson['absence_reason'] as String?;
-  final runs = _sleepRuns(d);
+  final runs = memo('sleep_runs', [
+    d.hypnoStages,
+    d.sleepSource,
+    d.sleepOnsetSec,
+  ], () => _sleepRuns(d));
 
   // ── CLINICAL (sleep-windowed) ──────────────────────────────────────────────
   // Whole-window time-domain HRV is kept for SDNN / detail rows only. The
   // nightly headline HRV is the mean of 5-min cleaned-window RMSSDs across the
   // detected sleep session, not one RMSSD over the whole night's NN stream.
-  final hrvT = hrvTime(nn, nnTimesMs: nnTimes);
+  final hrvT = memo(
+    'hrv_time',
+    [nn, nnTimes],
+    () => hrvTime(nn, nnTimesMs: nnTimes),
+  );
   // Keep the robust estimator as a secondary detail only; the canonical nightly
   // RMSSD follows the sleep-session windowed formulation.
   final nremMask = _nremMaskAlignedToNn(d, nnTimes, d.sleepRrTsMs);
-  final robustRmssd = nocturnalRmssd(nn, nnTimes, stageMaskPerSec: nremMask);
-  final sleepSessionRmssdMetric = sleepSessionWindowedRmssd(
-    d.sleepRrMs,
-    d.sleepRrTsMs,
-    startSec: d.sleepOnsetSec,
-    endSec: d.sleepOffsetSec,
+  final robustRmssd = memo(
+    'nocturnal_rmssd',
+    [nn, nnTimes, nremMask],
+    () => nocturnalRmssd(nn, nnTimes, stageMaskPerSec: nremMask),
+  );
+  final sleepSessionRmssdMetric = memo(
+    'session_rmssd',
+    [d.sleepRrMs, d.sleepRrTsMs, d.sleepOnsetSec, d.sleepOffsetSec],
+    () => sleepSessionWindowedRmssd(
+      d.sleepRrMs,
+      d.sleepRrTsMs,
+      startSec: d.sleepOnsetSec,
+      endSec: d.sleepOffsetSec,
+    ),
   );
   final sleepSessionRmssd = sleepSessionRmssdMetric.present
       ? sleepSessionRmssdMetric.value
       : null;
-  final hrvF = nn.length >= 20
-      ? hrvFreq(nn, nnTimes, artifactFraction: artifactFraction)
-      : Metric<HrvFreq>.absent(
-          tier: Tier.high,
-          inputs_used: const ['rr_cleaned'],
-          note: needInputNote('nn_beats', have: nn.length, need: 20),
-        );
+  final hrvF = memo(
+    'hrv_freq',
+    [nn, nnTimes, artifactFraction],
+    () => nn.length >= 20
+        ? hrvFreq(nn, nnTimes, artifactFraction: artifactFraction)
+        : Metric<HrvFreq>.absent(
+            tier: Tier.high,
+            inputs_used: const ['rr_cleaned'],
+            note: needInputNote('nn_beats', have: nn.length, need: 20),
+          ),
+  );
   // Nocturnal RHR over the SLEEP HR. NO SLEEP ⇒ NO RESTING HR.
   //
   // This used to fall back to the whole-day HR when no sleep was scored, and
@@ -441,72 +475,119 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // samples it SHOULD hold at the stream's own measured cadence), and a stream
   // with no measurable cadence yields ABSENCE rather than a guess. The
   // no-sleep-no-RHR branch above is untouched by any of that.
-  final rhr = (hasSleep && sleepHr.isNotEmpty)
-      ? nocturnalRhr(sleepHr, tsSec: sleepTs)
-      : const Metric<NocturnalRhr>.absent(
-          tier: Tier.high,
-          inputs_used: ['hr_1hz', 'sleep_window'],
-          note: 'No sleep was scored for this day. Resting HR is '
+  final rhr = memo(
+    'nocturnal_rhr',
+    [hasSleep, sleepHr, sleepTs],
+    () => (hasSleep && sleepHr.isNotEmpty)
+        ? nocturnalRhr(sleepHr, tsSec: sleepTs)
+        : const Metric<NocturnalRhr>.absent(
+            tier: Tier.high,
+            inputs_used: ['hr_1hz', 'sleep_window'],
+            note:
+                'No sleep was scored for this day. Resting HR is '
                 'measured only over a sleep window.',
-        );
+          ),
+  );
   // HR dip: day-side = waking HR outside the sleep window; night-side = sleep HR.
-  final dayOnly = _dayHrOutsideSleep(d);
-  final dip = hrDip(dayOnly, sleepHr);
-  final dc = decelerationCapacity(nn);
-  final ac = accelerationCapacity(nn);
+  // With a state, the day side and the HR stats below come from running totals
+  // over the appended 1 Hz day (bit-identical to the batch readers).
+  final hrSummary = state?.hrSummary(
+    'pipeline',
+    d.dayTsSec,
+    d.dayHr,
+    sleepOnsetSec: d.sleepOnsetSec,
+    sleepOffsetSec: d.sleepOffsetSec,
+    age: (d.profile['age'] as num?)?.toDouble().round(),
+    mode: mode,
+  );
+  final dip = hrSummary == null
+      ? hrDip(_dayHrOutsideSleep(d), sleepHr)
+      : hrDipFromDayTotals(
+          hrSummary.wakeHr.count,
+          hrSummary.wakeHr.sum,
+          sleepHr,
+        );
+  final dc = memo('prsa_dc', nn, () => decelerationCapacity(nn));
+  final ac = memo('prsa_ac', nn, () => accelerationCapacity(nn));
   // Baevsky Stress Index over the sleep NN — resting autonomic tension (a
   // transparent RR-histogram metric; no ML). Daily resting-stress indicator.
   // nnTimesMs lets it segment at a charging/off-wrist gap instead of letting
   // a sliding window straddle it (same gap-aware pattern as cvhrApneaScreen
   // below).
-  final stress = baevskyStressIndex(nn, nnTimesMs: nnTimes);
+  final stress = memo('stress', [
+    nn,
+    nnTimes,
+  ], () => baevskyStressIndex(nn, nnTimesMs: nnTimes));
 
   // ── RESPIRATION (sleep-windowed) ───────────────────────────────────────────
-  final resp = nn.length >= 30
-      ? rsaRespRate(nn, nnTimes, artifactFraction: artifactFraction)
-      : Metric<RespEstimate>.absent(
-          tier: Tier.estimate,
-          inputs_used: const ['rr_cleaned'],
-          note: needInputNote('nn_beats', have: nn.length, need: 30),
-        );
-  final cvhr = nn.length >= 60
-      ? cvhrApneaScreen(nn, nnTimes, artifactFraction: artifactFraction)
-      : Metric<CvhrResult>.absent(
-          tier: Tier.estimate,
-          inputs_used: const ['rr_cleaned'],
-          note: needInputNote('nn_beats', have: nn.length, need: 60),
-        );
+  final resp = memo(
+    'resp',
+    [nn, nnTimes, artifactFraction],
+    () => nn.length >= 30
+        ? rsaRespRate(nn, nnTimes, artifactFraction: artifactFraction)
+        : Metric<RespEstimate>.absent(
+            tier: Tier.estimate,
+            inputs_used: const ['rr_cleaned'],
+            note: needInputNote('nn_beats', have: nn.length, need: 30),
+          ),
+  );
+  final cvhr = memo(
+    'cvhr',
+    [nn, nnTimes, artifactFraction],
+    () => nn.length >= 60
+        ? cvhrApneaScreen(nn, nnTimes, artifactFraction: artifactFraction)
+        : Metric<CvhrResult>.absent(
+            tier: Tier.estimate,
+            inputs_used: const ['rr_cleaned'],
+            note: needInputNote('nn_beats', have: nn.length, need: 60),
+          ),
+  );
   // ── 24/7 IRREGULAR-RHYTHM SCREEN (day-span RR; not a diagnosis) ────────────
   // Runs over the WHOLE-DAY cleaned RR (not just sleep) so an arrhythmia screen
   // isn't limited to the sleep window. Hard-gated on beat count + artifact inside
   // irregularBeatScreen; returns absent on a thin/noisy day.
-  final dayCorrected = correctRr(d.dayRrMs,
-      rrTsMs: d.dayRrTsMs.isEmpty ? null : d.dayRrTsMs);
-  final irregular24h = irregularBeatScreen(
-    dayCorrected.nn,
-    // Require sustained irregularity in independent short windows, not just
-    // in one ratio blended across sleep+rest+exercise+posture changes — see
-    // irregularBeatScreen's doc. Without this, real data showed the screen
-    // firing on effectively every day regardless of actual cardiac health.
-    nnTimesMs: dayCorrected.nnTimesMs,
-    artifactFraction: (1.0 - dayCorrected.cleanFraction).clamp(0.0, 1.0),
+  final dayCorrected = memo(
+    'day_rr',
+    [d.dayRrMs, d.dayRrTsMs],
+    () =>
+        correctRr(d.dayRrMs, rrTsMs: d.dayRrTsMs.isEmpty ? null : d.dayRrTsMs),
+  );
+  final irregular24h = memo(
+    'irregular_day',
+    [d.dayRrMs, d.dayRrTsMs],
+    () => irregularBeatScreen(
+      dayCorrected.nn,
+      // Require sustained irregularity in independent short windows, not just
+      // in one ratio blended across sleep+rest+exercise+posture changes — see
+      // irregularBeatScreen's doc. Without this, real data showed the screen
+      // firing on effectively every day regardless of actual cardiac health.
+      nnTimesMs: dayCorrected.nnTimesMs,
+      artifactFraction: (1.0 - dayCorrected.cleanFraction).clamp(0.0, 1.0),
+    ),
   );
 
   // ── BREATHING-RATE VARIABILITY (per-window RSA over the sleep NN) ──────────
   // Window the cleaned sleep NN into ~30-min bins, take each bin's RSA resp rate,
   // then BRV = dispersion + Theil-Sen trend of those per-window rates.
-  final respWindows = _respPerWindow(nn, nnTimes);
-  final brv = respWindows.length >= 3
-      ? breathingRateVariability(respWindows)
-      : Metric<BrvResult>.absent(
-          tier: Tier.estimate,
-          inputs_used: const ['resp_rate_series'],
-          note: needInputNote(
-            'resp_windows',
-            have: respWindows.length,
-            need: 3,
+  final respWindows = memo('resp_windows', [
+    nn,
+    nnTimes,
+  ], () => _respPerWindow(nn, nnTimes));
+  final brv = memo(
+    'brv',
+    respWindows,
+    () => respWindows.length >= 3
+        ? breathingRateVariability(respWindows)
+        : Metric<BrvResult>.absent(
+            tier: Tier.estimate,
+            inputs_used: const ['resp_rate_series'],
+            note: needInputNote(
+              'resp_windows',
+              have: respWindows.length,
+              need: 3,
+            ),
           ),
-        );
+  );
 
   // SpO2 is refused PERMANENTLY, not parked. `spo2RedRaw` and `spo2IrRaw` are
   // one signal: `ir - red` is a fixed integer within a capture session (see
@@ -516,9 +597,10 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // oxygenation. No firmware capture and no packet work changes that; it is a
   // property of the bytes. The raw channels stay in the substrate because they
   // ARE the bytes at those offsets.
-  const kSpo2Refusal = 'refused: within a session the IR channel is the red channel '
-                       'plus a fixed offset. A red/IR ratio therefore '
-                       'tracks baseline drift and cannot give blood oxygen';
+  const kSpo2Refusal =
+      'refused: within a session the IR channel is the red channel '
+      'plus a fixed offset. A red/IR ratio therefore '
+      'tracks baseline drift and cannot give blood oxygen';
   const odi = Metric<RelativeOdiResult>.absent(
     tier: Tier.relative,
     inputs_used: ['spo2_red_raw', 'spo2_ir_raw'],
@@ -564,10 +646,14 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // Ts is not read by `nightlySkinTemp` (it is a median + a mean over the
   // night's samples), and `tempValid` has no parallel timestamp series, so 0
   // is passed rather than a fabricated clock.
-  final settledTemp = nightlySkinTemp(
-    [for (final v in tempValid) AdcSample(0, v)],
-    deviceFamily: d.deviceFamily,
-    minSettledFraction: 0.0,
+  final settledTemp = memo(
+    'settled_temp',
+    [tempValid, d.deviceFamily],
+    () => nightlySkinTemp(
+      [for (final v in tempValid) AdcSample(0, v)],
+      deviceFamily: d.deviceFamily,
+      minSettledFraction: 0.0,
+    ),
   );
   final double? skinTempSettledFrac = settledTemp.value?.settledFraction;
   // STEP 2 — z-score today's RAW mean against the RAW-ADC baseline history (NOT
@@ -597,24 +683,34 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // lives in `rhr` itself, so this is the same number the card shows.
   final rhrToday = rhr.present ? rhr.value!.low30Mean : null;
   final respToday = resp.present ? resp.value!.brpm : null;
-  final composite = readinessComposite([
-    hrvInput(lnToday, d.lnRmssdHistory),
-    rhrInput(rhrToday, d.rhrHistory),
-    respInput(respToday, d.respHistory),
-    // Feed the RAW ADC mean + the RAW-ADC baseline so the composite computes its
-    // own oriented robust-z internally (consistent with the other inputs, which
-    // pass raw values + their raw baselines).
-    //
-    // The mean stays RAW — value and baseline have to be the same quantity, and
-    // the stored history is a series of raw nightly means. The settled fraction
-    // is the GATE on using it at all: below 0.80 the driver is refused for this
-    // night, by name, and readiness renormalises over the three that are left.
-    tempInput(
-      skinTempAdc,
+  final composite = memo(
+    'readiness',
+    [
+      lnToday, rhrToday, respToday, skinTempAdc, skinTempSettledFrac,
+      d.lnRmssdHistory,
+      d.rhrHistory,
+      d.respHistory,
       d.skinTempAdcHistory,
-      settledFraction: skinTempSettledFrac,
-    ),
-  ]);
+    ],
+    () => readinessComposite([
+      hrvInput(lnToday, d.lnRmssdHistory),
+      rhrInput(rhrToday, d.rhrHistory),
+      respInput(respToday, d.respHistory),
+      // Feed the RAW ADC mean + the RAW-ADC baseline so the composite computes its
+      // own oriented robust-z internally (consistent with the other inputs, which
+      // pass raw values + their raw baselines).
+      //
+      // The mean stays RAW — value and baseline have to be the same quantity, and
+      // the stored history is a series of raw nightly means. The settled fraction
+      // is the GATE on using it at all: below 0.80 the driver is refused for this
+      // night, by name, and readiness renormalises over the three that are left.
+      tempInput(
+        skinTempAdc,
+        d.skinTempAdcHistory,
+        settledFraction: skinTempSettledFrac,
+      ),
+    ]),
+  );
   // Populated when readiness comes back absent, so the main isolate can log WHY
   // instead of a bare null (this runs inside Isolate.run, so it can't call
   // Firebase directly; it just returns data). TWO consumers now, and the second
@@ -636,18 +732,9 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   Map<String, dynamic>? readinessAbsentDiag;
   if (!composite.present) {
     readinessAbsentDiag = {
-      'hrv': {
-        'value': lnToday != null,
-        'baseline_n': d.lnRmssdHistory.length,
-      },
-      'rhr': {
-        'value': rhrToday != null,
-        'baseline_n': d.rhrHistory.length,
-      },
-      'resp': {
-        'value': respToday != null,
-        'baseline_n': d.respHistory.length,
-      },
+      'hrv': {'value': lnToday != null, 'baseline_n': d.lnRmssdHistory.length},
+      'rhr': {'value': rhrToday != null, 'baseline_n': d.rhrHistory.length},
+      'resp': {'value': respToday != null, 'baseline_n': d.respHistory.length},
       'temp': {
         'value': skinTempAdc != null,
         'baseline_n': d.skinTempAdcHistory.length,
@@ -669,15 +756,19 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // (`_attachHistory` → `_BaselineHistoryCache.valuesBefore`), which is what
   // makes this single append the correct, non-duplicating one.
   final lnHist = [...d.lnRmssdHistory, ?lnToday];
-  final lnReadiness = lnHist.length >= 4
-      ? readinessLnRmssd(lnHist)
-      : Metric<ReadinessLnRmssd>.absent(
-          tier: Tier.high,
-          inputs_used: const ['ln_rmssd_history'],
-          // A BASELINE shortfall, so it gets the baseline grammar the UI
-          // already turns into "Need N more nights".
-          note: needBaselineNote(have: lnHist.length, need: 4),
-        );
+  final lnReadiness = memo(
+    'ln_readiness',
+    lnHist,
+    () => lnHist.length >= 4
+        ? readinessLnRmssd(lnHist)
+        : Metric<ReadinessLnRmssd>.absent(
+            tier: Tier.high,
+            inputs_used: const ['ln_rmssd_history'],
+            // A BASELINE shortfall, so it gets the baseline grammar the UI
+            // already turns into "Need N more nights".
+            note: needBaselineNote(have: lnHist.length, need: 4),
+          ),
+  );
 
   // ── STRAIN: Banister TRIMP over the WAKE span (per-minute day HR) ──────────
   final prof = d.profile;
@@ -760,6 +851,27 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       : (hrMax == null || zoneSet == null)
       ? (ceilingAbsentNote ?? kUnknownAbsenceNote)
       : null;
+  final minuteMetrics = state?.minutes(
+    [for (final p in wakeHr) p.tsSec ~/ 60],
+    perMin,
+    cadence: d.stepSpans.isEmpty
+        ? null
+        : cadenceSpmForMinutes([
+            for (final p in wakeHr) p.tsSec ~/ 60,
+          ], d.stepSpans),
+    restingHr: rhrForTrimp,
+    maxHr: hrMax,
+    sex: workoutSex(sex) == 'female' ? Sex.female : Sex.male,
+    profile: age == null || sex == null || weightKg == null || heightCm == null
+        ? null
+        : WorkoutUserProfile(
+            weightKg: weightKg,
+            heightCm: heightCm,
+            age: age,
+            sex: workoutSex(sex),
+          ),
+    mode: mode,
+  );
   Metric<double> trimp = Metric<double>.absent(
     tier: Tier.estimate,
     inputs_used: const ['hr_1hz', 'profile'],
@@ -769,12 +881,14 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   double? caloriesKcal;
   if (hrMax != null && perMin.isNotEmpty) {
     if (rhrForTrimp != null && sex != null && dayHrValid.isNotEmpty) {
-      trimp = banisterTrimp(
-        perMin,
-        restingHr: rhrForTrimp,
-        maxHr: hrMax,
-        sex: workoutSex(sex) == 'female' ? Sex.female : Sex.male,
-      );
+      trimp = mode == CalculationMode.periodicAwake && minuteMetrics != null
+          ? minuteMetrics.trimp
+          : banisterTrimp(
+              perMin,
+              restingHr: rhrForTrimp,
+              maxHr: hrMax,
+              sex: workoutSex(sex) == 'female' ? Sex.female : Sex.male,
+            );
     }
     if (zoneSet != null) {
       hrZones = _wakeZoneMinutesFromSeries(wakeHr, zoneSet);
@@ -804,30 +918,32 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
         weightKg != null &&
         heightCm != null &&
         rhrForTrimp != null) {
-      caloriesKcal = Calories.dailyEnergy(
-        perMin,
-        profile: WorkoutUserProfile(
-          weightKg: weightKg,
-          heightCm: heightCm,
-          age: age,
-          sex: workoutSex(sex),
-        ),
-        hrmax: hrMax,
-        restingHr: rhrForTrimp,
-        // The SAME minute-aligned cadence the canonical pass uses — one
-        // mapping (`cadenceSpmForMinutes`) fed by the same credited spans, so
-        // this early read and the derived day bill a walk identically instead
-        // of the number growing when the coordinator's pass lands.
-        cadenceSpmPerMin: d.stepSpans.isEmpty
-            ? null
-            : cadenceSpmForMinutes(
-                [for (final p in wakeHr) p.tsSec ~/ 60],
-                d.stepSpans,
+      caloriesKcal =
+          mode == CalculationMode.periodicAwake && minuteMetrics != null
+          ? minuteMetrics.energy?.active
+          : Calories.dailyEnergy(
+              perMin,
+              profile: WorkoutUserProfile(
+                weightKg: weightKg,
+                heightCm: heightCm,
+                age: age,
+                sex: workoutSex(sex),
               ),
-        // `?.` — `dailyEnergy` abstains outright when the anchors cannot
-        // define a gate, rather than billing every waking minute as active.
-        // Absent stays absent here, same as every other input on this seam.
-      )?.active; // active-energy component (Keytel surplus + walking term)
+              hrmax: hrMax,
+              restingHr: rhrForTrimp,
+              // The SAME minute-aligned cadence the canonical pass uses — one
+              // mapping (`cadenceSpmForMinutes`) fed by the same credited spans, so
+              // this early read and the derived day bill a walk identically instead
+              // of the number growing when the coordinator's pass lands.
+              cadenceSpmPerMin: d.stepSpans.isEmpty
+                  ? null
+                  : cadenceSpmForMinutes([
+                      for (final p in wakeHr) p.tsSec ~/ 60,
+                    ], d.stepSpans),
+              // `?.` — `dailyEnergy` abstains outright when the anchors cannot
+              // define a gate, rather than billing every waking minute as active.
+              // Absent stays absent here, same as every other input on this seam.
+            )?.active; // active-energy component (Keytel surplus + walking term)
     }
   }
 
@@ -854,7 +970,10 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
 
   // ── curve series for the UI ────────────────────────────────────────────────
   final hrCurve = _downsampleHr(d.dayTsSec, d.dayHr);
-  final hypnogram = _hypnogramSegments(d);
+  final hypnogram = memo('hypnogram', [
+    d.hypnoStages,
+    d.sleepOnsetSec,
+  ], () => _hypnogramSegments(d));
   // `nnTimes` is re-based to ~0 by `correctRr` (it sums RR intervals from a
   // zero clock), so the timeline needs the wall-clock instant that clock starts
   // at: the START of the first RR interval = its END stamp minus its own
@@ -863,7 +982,11 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   final hrvOriginMs = (d.sleepRrTsMs.isEmpty || d.sleepRrMs.isEmpty)
       ? null
       : d.sleepRrTsMs.first - d.sleepRrMs.first;
-  final hrvTimeline = _hrvTimeline(nn, nnTimes, hrvOriginMs);
+  final hrvTimeline = memo('hrv_timeline', [
+    nn,
+    nnTimes,
+    hrvOriginMs,
+  ], () => _hrvTimeline(nn, nnTimes, hrvOriginMs));
   // CV-06 — the SHAPE of the night: per-bin RMSSD over the same cleaned NN the
   // headline uses, so the curve and the number can never disagree. Bins that
   // fall under the beat floor stay in the series as HOLES on purpose — dropping
@@ -877,7 +1000,10 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // `startSec` is seconds from the FIRST BEAT, not an epoch — `origin_ms` is
   // the wall-clock instant that clock starts at, the same `hrvOriginMs` the
   // timeline above is placed on.
-  final nightShape = nightHrvShape(nn, nnTimes);
+  final nightShape = memo('night_shape', [
+    nn,
+    nnTimes,
+  ], () => nightHrvShape(nn, nnTimes));
   final strainCurve = _strainCurve(
     wakeHr,
     restingHr: rhrForTrimp,
@@ -907,10 +1033,14 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // sdsd → sd1), it published `sd2: 0.0` with `flag: false` on a degenerate
   // series — "perfectly regular" as a measurement of nothing — and its
   // confidence was a hard-coded 0.5 however noisy the night was.
-  final irregularSleep = irregularBeatScreen(
-    nn,
-    nnTimesMs: nnTimes,
-    artifactFraction: artifactFraction,
+  final irregularSleep = memo(
+    'irregular_sleep',
+    [nn, nnTimes, artifactFraction],
+    () => irregularBeatScreen(
+      nn,
+      nnTimesMs: nnTimes,
+      artifactFraction: artifactFraction,
+    ),
   );
   final irrSleep = irregularSleep.present ? irregularSleep.value : null;
 
@@ -1125,7 +1255,8 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
     'confidence': stress.present ? _round(stress.confidence, 4) : 0,
     'tier': Tier.estimate,
     'inputs_used': const ['rr_cleaned'],
-    'note': 'Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV).',
+    'note':
+        'Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV).',
   };
 
   // ── SpO₂ — REFUSED, permanently. See kSpo2Refusal above: the red and IR
@@ -1152,9 +1283,7 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
     'tier': Tier.relative,
     'inputs_used': const ['spo2_red_raw', 'spo2_ir_raw'],
     'note': kSpo2Refusal,
-    'debug': <String, dynamic>{
-      'sleep_samples': d.sleepTsSec.length,
-    },
+    'debug': <String, dynamic>{'sleep_samples': d.sleepTsSec.length},
   };
 
   // ── NOCTURNAL detail: sleeping-HR nadir + waking HR. Both computable today
@@ -1188,12 +1317,16 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // steps over a 1-2 s spike but keeps a genuine brief effort peak). Min is the
   // symmetric case: a 1 s dropout must not define the day's low either.
   final dayHrInt = [for (final h in dayHrValid) h.round()];
-  final hrStats = dayHrValid.isEmpty
+  final hrStats = hrSummary != null
+      ? hrSummary.hrStats()
+      : dayHrValid.isEmpty
       ? null
       : {
-          'max': smoothedMaxHr(dayHrInt, age: age?.round()) ??
+          'max':
+              smoothedMaxHr(dayHrInt, age: age?.round()) ??
               dayHrValid.reduce(math.max).round(),
-          'min': smoothedMinHr(dayHrInt, age: age?.round()) ??
+          'min':
+              smoothedMinHr(dayHrInt, age: age?.round()) ??
               dayHrValid.reduce(math.min).round(),
           'avg': _mean(dayHrValid)!.round(),
         };
@@ -1202,29 +1335,30 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
   // Sleep cycles — Rosenblum 2024 "fractal cycles", HRV-adapted: peak-to-peak of
   // the smoothed per-minute RMSSD series (REM peaks / NREM troughs), NOT
   // categorical REM-episode counting. Over the sleep window's RR.
-  final cyc = detectSleepCycles(
+  final cycleDeps = [d.sleepRrMs, d.sleepRrTsMs, d.sleepOnsetSec, d.sleepOffsetSec];
+  final cyc = memo('sleep_cycles', cycleDeps, () => detectSleepCycles(
     d.sleepRrMs,
     d.sleepRrTsMs,
     d.sleepOnsetSec,
     d.sleepOffsetSec,
-  );
-  sleep['cycles'] = [for (final c in cyc.cycles) c.toJson()];
-  sleep['cycle_count'] = cyc.n;
-  sleep['cycles_mean_min'] = cyc.meanDurationMin;
+  ).toJson());
+  sleep['cycles'] = cyc['cycles'];
+  sleep['cycle_count'] = cyc['cycle_count'];
+  sleep['cycles_mean_min'] = cyc['cycles_mean_min'];
   // The SAME detection, in its published Metric envelope. `detectSleepCycles`
   // is the bare algorithm and returns n=0 both for "no cycles" and for "not
   // enough RR to look" — indistinguishable downstream, and the raw keys above
   // carry no tier or confidence, so the UI had to assert its own. This is the
   // honest wrapper: ESTIMATE tier, HRV-derived, absent with a reason when the
   // window cannot support detection. The raw keys stay for existing readers.
-  sleep['cycles_metric'] = sleepCyclesMetric(
+  sleep['cycles_metric'] = memo('sleep_cycles_metric', cycleDeps, () => sleepCyclesMetric(
     d.sleepRrMs,
     d.sleepRrTsMs,
     d.sleepOnsetSec,
     d.sleepOffsetSec,
-  ).toJson((v) => v.toJson());
+  ).toJson((v) => v.toJson()));
   // The continuous z-RMSSD wave the cycle GRAPH plots ({t: epochSec, z}).
-  sleep['cycle_series'] = cyc.series;
+  sleep['cycle_series'] = cyc['series'];
 
   // ── PERSONAL BASELINES (Winsorized-EWMA) ───────────────────────────────────
   // Robust, recency-weighted personal centers + spread for the metrics whose
@@ -1239,6 +1373,7 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
     double? today,
     MetricCfg cfg,
   ) {
+    return memo('baseline_${cfg.minVal}_${cfg.maxVal}', [history, today, cfg], () {
     final state = Baselines.foldHistory(<double?>[
       for (final v in history) v,
     ], cfg);
@@ -1293,14 +1428,11 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
           ? null
           : _round(dev.delta / m, 2),
     };
+    });
   }
 
   final baselines = <String, dynamic>{
-    'resting_hr': baselineBlock(
-      d.rhrHistory,
-      rhrToday,
-      Baselines.restingHRCfg,
-    ),
+    'resting_hr': baselineBlock(d.rhrHistory, rhrToday, Baselines.restingHRCfg),
     'hrv': baselineBlock(d.rmssdHistory, rmssdScalar, Baselines.hrvCfg),
     'resp': baselineBlock(d.respHistory, respToday, Baselines.respCfg),
     'skin_temp': baselineBlock(
@@ -1310,7 +1442,7 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
     ),
   };
 
-  return <String, dynamic>{
+  final bundle = <String, dynamic>{
     'date': d.date,
     'day_confidence': _round(d.dayConfidence, 4),
     'flags': d.dayFlags,
@@ -1507,6 +1639,19 @@ Map<String, dynamic> deriveDayBundle(Map<String, dynamic> inputJson) {
       ),
     },
   };
+  return state == null ? bundle : _ownedBundleJson(bundle) as Map<String, dynamic>;
+}
+
+
+// Cached domain values may contain lists. The public JSON must never expose
+// those lists, so mutating a returned bundle cannot change the next result.
+Object? _ownedBundleJson(Object? value) {
+  if (value is Map) {
+    return <String, dynamic>{for (final e in value.entries)
+      e.key as String: _ownedBundleJson(e.value)};
+  }
+  if (value is List) return [for (final item in value) _ownedBundleJson(item)];
+  return value;
 }
 
 /// The anchor the two SLP-09 clock series are measured from: 04:00 local.

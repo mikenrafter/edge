@@ -56,6 +56,7 @@ import 'movement_floor_policy.dart' as mfp;
 import 'sleep_profile_policy.dart';
 import 'derive_prepare.dart';
 import 'onehz_pipeline.dart';
+import 'day_calculation_state.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
 import 'substrate.dart';
@@ -2679,17 +2680,56 @@ class DerivationEngine {
   /// by [_derivePreparedDayTimed] to split compute from persist.
   final Map<String, int> _persistMs = {};
 
+  final Map<String, DayCalculationState> _calculationStates = {};
+  static const _retainedCalculationDays = 3;
+
+  void _publishCalculationState(String day, DayCalculationState state) {
+    _calculationStates.remove(day);
+    _calculationStates[day] = state;
+    // Prefer the newest calendar days when a heavy pass also visits history.
+    final labels = _calculationStates.keys.toList()..sort();
+    while (labels.length > _retainedCalculationDays) {
+      _calculationStates.remove(labels.removeAt(0));
+    }
+  }
+
+  @visibleForTesting
+  List<String> get debugCalculationStateDays =>
+      _calculationStates.keys.toList()..sort();
+
+  @visibleForTesting
+  ({int computations, int hits, int minutes, int motionPoints})?
+      debugCalculationState(String day) {
+    final state = _calculationStates[day];
+    return state == null ? null : (computations: state.computations,
+      hits: state.hits,
+      minutes: state.processedMinutes, motionPoints: state.processedMotionPoints);
+  }
+
+  /// Main-isolate failure seam after both workers completed, before their writes.
+  @visibleForTesting
+  Future<void> Function(String day)? debugAfterDayBlocks;
+
+  @visibleForTesting
+  Future<void> debugDerivePreparedDay(PreparedDerivationDay day, Profile profile,
+      int dataNowSec, {ana.CalculationMode calculationMode = ana.CalculationMode.forced}) async {
+    await _derivePreparedDay(day, profile, dataNowSec,
+      await _BaselineHistoryCache.load(), calculationMode: calculationMode);
+  }
+
+
   /// [_derivePreparedDay] with its wall time reported to [perf]: persist as
   /// measured around `putDayResult`, compute as the rest.
   Future<void> _derivePreparedDayTimed(
     PreparedDerivationDay day,
     Profile profile,
     int dataNowSec,
-    _BaselineHistoryCache history,
-  ) async {
+    _BaselineHistoryCache history, {
+    ana.CalculationMode calculationMode = ana.CalculationMode.forced,
+  }) async {
     final sw = Stopwatch()..start();
     try {
-      await _derivePreparedDay(day, profile, dataNowSec, history);
+      await _derivePreparedDay(day, profile, dataNowSec, history, calculationMode: calculationMode);
     } finally {
       final persist = _persistMs.remove(day.date);
       final total = sw.elapsedMilliseconds;
@@ -2730,6 +2770,9 @@ class DerivationEngine {
   /// [force]=true recomputes EVERY non-finalized day regardless of the cursor.
   /// Re-entrant calls are coalesced. Returns the number of days computed.
   ///
+  /// [calculationMode] says whether cached calculations may be reused;
+  /// [force] and [heavy] always override it with a full run.
+  ///
   /// [changedOnly] (a manual sync) narrows the todo set to days whose input
   /// changed since they were last derived — see [selectChangedDays]. [onScope]
   /// is told how many days this pass will compute as soon as that is known
@@ -2743,11 +2786,16 @@ class DerivationEngine {
     bool heavy = false,
     bool force = false,
     bool changedOnly = false,
+    ana.CalculationMode calculationMode = ana.CalculationMode.forced,
     void Function(String day, int index, int total)? onDayDone,
     void Function(int total)? onScope,
     void Function(List<String> days)? onScopeDays,
     void Function(bool active)? onCrossDay,
   }) async {
+    // [changedOnly] only narrows the scope; the automatic light pass uses it,
+    // so it must not turn reuse off.
+    final selectedMode = force ? ana.CalculationMode.forced
+        : heavy ? ana.CalculationMode.heavy : calculationMode;
     if (_running) {
       _setOutcome(const DeriveOutcome(failed: true, error: 'busy'));
       return 0;
@@ -2933,7 +2981,7 @@ class DerivationEngine {
             _log('derive day $dayId skipped: override day, raw pruned — kept');
           } else if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
-            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history);
+            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history, calculationMode: selectedMode);
             done++;
             _diag['done_days'] = done;
             await _recordDerivedFingerprint(dayId, dayFp[dayId]);
@@ -4544,6 +4592,7 @@ class DerivationEngine {
     int dataNowSec,
     _BaselineHistoryCache history, {
     bool forceFinalize = false,
+    ana.CalculationMode calculationMode = ana.CalculationMode.forced,
   }) async {
     final daySub = day.daySub;
     final sleepSub = day.sleepSub;
@@ -4593,11 +4642,11 @@ class DerivationEngine {
 
     // Cancellable: on timeout the isolate is KILLED, not merely abandoned to
     // keep burning a core behind the worker pool's back.
-    final bundle = await _runIsolateCancellable(
-      () => deriveDayBundle(withHistory),
-      _perDayTimeout,
-      label: 'day-bundle ${day.date}',
-    );
+    final first = await _runDayBundleCancellable(withHistory,
+      _calculationStates[day.date], calculationMode, _perDayTimeout,
+      label: 'day-bundle ${day.date}');
+    final bundle = first.bundle;
+    var candidateState = first.state;
     // Readiness came back absent for TODAY specifically (not a historical
     // backfill day, which would just be noise) — log why. This ran inside
     // Isolate.run so it couldn't call Firebase itself; it just returned the
@@ -4911,6 +4960,7 @@ class DerivationEngine {
       ];
 
       final blocksInput = _DayBlocksInput(
+        calculationState: candidateState, calculationMode: calculationMode,
         daySub: daySub,
         napSub: day.napSub,
         napEdits: napEdits,
@@ -4956,6 +5006,8 @@ class DerivationEngine {
       );
       final blocks =
           await _runDayBlocksCancellable(blocksInput, _perDayTimeout);
+      candidateState = blocks.calculationState;
+      await debugAfterDayBlocks?.call(day.date);
 
       // Merge the computed blocks back into the isolate-1 bundle. scMap is the
       // CastMap view over bundle['scalars'], so addAll writes through — nap_min /
@@ -5281,6 +5333,9 @@ class DerivationEngine {
       '(sleep=${day.sleepOffsetSec > day.sleepOnsetSec}, final=$finalized)',
     );
     await _maybeFreezeHeadlineReadiness(day, dataNowSec, sc('readiness'));
+    // A partial, carried-forward result or any failed write must not advance
+    // the reusable checkpoint. Both workers only mutate isolate-owned copies.
+    if (secondHalfOk) _publishCalculationState(day.date, candidateState);
   }
 
   /// Stores the day's intraday calorie series as the artifact
@@ -5583,12 +5638,16 @@ class DerivationEngine {
     for (final sub in const ['scalars', 'series']) {
       final p = prev[sub];
       if (p is! Map) continue;
-      final n = next[sub];
-      if (n is! Map) {
+      final existing = next[sub];
+      if (existing is! Map) {
         next[sub] = Map<String, dynamic>.from(p.cast<String, dynamic>());
         carried = true;
         continue;
       }
+      // JSON-decoded prior curves need a dynamic-valued destination. The
+      // pipeline's inferred series map can otherwise reject List<dynamic>.
+      final n = Map<String, dynamic>.from(existing.cast<String, dynamic>());
+      next[sub] = n;
       for (final e in p.entries) {
         if (n.containsKey(e.key) || e.value == null) continue;
         n[e.key] = e.value;
@@ -6623,6 +6682,7 @@ class DerivationEngine {
     required Profile profile,
     required int sleepOnsetSec,
     required int sleepOffsetSec,
+
     /// Local midnight opening this day, and the start of the NEXT local day —
     /// both from the day LABEL. `_DayBlocksInput.dayEndSec` is NOT this: it is
     /// the data edge (`daySub.lastTs + 1`), which is exactly the span-shaped
@@ -6637,10 +6697,13 @@ class DerivationEngine {
     int liveStepsFromStrap = 0,
     int dynHistoryDays = 0,
     List<List<int>> stepSpans = const [],
+
     /// This day's `sessions` rows (`LocalDb.sessionsInRange`), for the
     /// zero-coverage credit below. Defaults to none — every existing caller
     /// keeps its old behaviour until it is threaded through.
     List<Map<String, dynamic>> sessions = const [],
+    DayCalculationState? state,
+    ana.CalculationMode mode = ana.CalculationMode.forced,
   }) {
     final wake = _buildWakeDayFeatures(
       daySub,
@@ -6653,6 +6716,8 @@ class DerivationEngine {
       restingHr: restingHr,
       dynFloorG: dynFloorG,
       stepSpans: stepSpans,
+      state: state,
+      mode: mode,
     );
     // ACTIVE ENERGY WORKOUT-GAP CREDIT. `wake['calories']` above is built
     // ENTIRELY from `daySub.hr` — the day's own continuous 1 Hz trace — and
@@ -6712,6 +6777,8 @@ class DerivationEngine {
       liveStepsFromStrap,
       dynFloorG,
       dynHistoryDays,
+      state: state,
+      mode: mode,
     );
     // `_stepsAndEnergy` just wrote `steps` — REAL pedometer counts from
     // `live_coverage`, band 100 Hz or phone, never an estimate. `wake` was
@@ -7061,8 +7128,10 @@ class DerivationEngine {
     int liveStepsReal,
     int liveStepsFromStrap,
     double? dynFloorG,
-    int dynHistoryDays,
-  ) {
+    int dynHistoryDays, {
+    DayCalculationState? state,
+    ana.CalculationMode mode = ana.CalculationMode.forced,
+  }) {
     try {
       // STEPS FIRST — they depend on NOTHING from the band substrate.
       //
@@ -7083,13 +7152,15 @@ class DerivationEngine {
         liveStepsFromStrap: liveStepsFromStrap,
         bandSteps: hardwareStepsFromCounter(
           daySub,
-          cumulativeCounterModulus:
-              ana.calibrationFor(_stepCounterModulus, daySub.deviceFamily),
+          cumulativeCounterModulus: ana.calibrationFor(
+            _stepCounterModulus,
+            daySub.deviceFamily,
+          ),
         ),
       );
 
       if (daySub.length < 60) return;
-      final motion = _motionMinutes(daySub);
+      final motion = _motionMinutes(daySub, state: state, mode: mode);
       if (motion.isEmpty) return;
 
       // This day's own contribution to the personal floor, persisted to
@@ -7108,19 +7179,19 @@ class DerivationEngine {
       // minutes now would just silently under-report movement for exactly the
       // periods we know the user was active.
       final est = ana.dailyActiveMinutes(
-        motion,
-        personalDynFloorG: dynFloorG,
-        // DAYS, and the parameter now says so. This used to be
-        // `pooledMinutesAvailable`, a MINUTE count compared against a
-        // 2000-minute floor, while every caller passed a day count — the
-        // cold-start note read "have=3, need=2000" for a user three days in.
-        // Analytics renamed it and now counts it against the 5-day floor it
-        // was always describing.
-        historyDaysAvailable: dynHistoryDays,
-        // A CALENDAR DAY, as `enmoSeries` is given below. Without it the
-        // coverage denominator is the worn SPAN, which excludes the unworn
-        // ends: a day worn 4 h out of 24 published coverage 1.0.
-        expectedMinutes: 1440,
+          motion,
+          personalDynFloorG: dynFloorG,
+          // DAYS, and the parameter now says so. This used to be
+          // `pooledMinutesAvailable`, a MINUTE count compared against a
+          // 2000-minute floor, while every caller passed a day count — the
+          // cold-start note read "have=3, need=2000" for a user three days in.
+          // Analytics renamed it and now counts it against the 5-day floor it
+          // was always describing.
+          historyDaysAvailable: dynHistoryDays,
+          // A CALENDAR DAY, as `enmoSeries` is given below. Without it the
+          // coverage denominator is the worn SPAN, which excludes the unworn
+          // ends: a day worn 4 h out of 24 published coverage 1.0.
+          expectedMinutes: 1440,
       );
       final v = est.present ? est.value : null;
 
@@ -7184,15 +7255,41 @@ class DerivationEngine {
     double? restingHr,
     double? dynFloorG,
     List<List<int>> stepSpans = const [],
+    DayCalculationState? state,
+    ana.CalculationMode mode = ana.CalculationMode.forced,
   }) {
-    final activeMin = _activeMinutes(daySub, sleepOnsetSec, sleepOffsetSec);
+    // With a state these come from running per-second summaries of the day,
+    // appended each pass; each is bit-identical to the batch reader beside it.
+    final motionSummary = state?.motionSummary(
+      daySub.tsSec,
+      daySub.ax,
+      daySub.ay,
+      daySub.az,
+      sleepOnsetSec: sleepOnsetSec,
+      sleepOffsetSec: sleepOffsetSec,
+      mode: mode,
+    );
+    final hrSummary = state?.hrSummary(
+      'activity',
+      daySub.tsSec,
+      daySub.hr,
+      sleepOnsetSec: sleepOnsetSec,
+      sleepOffsetSec: sleepOffsetSec,
+      age: profile.ageYears?.round(),
+      mode: mode,
+    );
+    final activeMin = motionSummary != null
+        ? motionSummary.activeMinutes()
+        : _activeMinutes(daySub, sleepOnsetSec, sleepOffsetSec);
     final wear = _wearBlock(
       daySub,
       dayStartSec: dayStartSec,
       dayCalendarEndSec: dayCalendarEndSec,
       dataNowSec: dataNowSec,
+      runs: motionSummary?.wearRuns(),
     );
     final wakeSeries =
+        hrSummary?.wakeMinutes() ??
         _perMinuteMeanWake(daySub, sleepOnsetSec, sleepOffsetSec);
     final perMin = wakeSeries.hr;
     // The day's MEASURED walking cadence, minute-aligned to the same wake
@@ -7202,7 +7299,7 @@ class DerivationEngine {
     final wakeCadence = stepSpans.isEmpty
         ? null
         : cadenceSpmForMinutes(wakeSeries.keys, stepSpans);
-    final motion = _motionMinutes(daySub);
+    final motion = _motionMinutes(daySub, state: state, mode: mode);
     final dayHrValid = <double>[
       for (final h in daySub.hr)
         if (h > 0) h.toDouble(),
@@ -7223,6 +7320,24 @@ class DerivationEngine {
     // say which strap measured this day.
     final hrMax = estimatedMaxHr(profile.ageYears, daySub.deviceFamily);
     final rhrForTrimp = restingHr ?? profile.restingHrManual?.toDouble();
+    final minuteMetrics = state?.minutes(
+      wakeSeries.keys,
+      perMin,
+      cadence: wakeCadence,
+      restingHr: rhrForTrimp,
+      maxHr: hrMax,
+      sex: _workoutSex(sex) == 'female' ? ana.Sex.female : ana.Sex.male,
+      profile: !profile.hasCalorieAnchors || profile.heightCm == null
+          ? null
+          : ana.WorkoutUserProfile(
+              weightKg: profile.weightKg!,
+              heightCm: profile.heightCm!,
+              age: profile.ageYears!.toDouble(),
+              sex: _workoutSex(sex),
+            ),
+      dayMinutes: motion.length,
+      mode: mode,
+    );
     double? strain;
     // Why each absent activity figure is absent, in the order the gates below
     // apply. Absence is never a bare nothing here: the day carries its own
@@ -7244,11 +7359,11 @@ class DerivationEngine {
         ? needInputNote('wake_hr')
         : hrMax == null
         ? ceilingAbsent
-            : dayHrValid.isEmpty
+        : dayHrValid.isEmpty
         ? needInputNote('hr_samples')
-                : rhrForTrimp == null
+        : rhrForTrimp == null
         ? needInputNote('resting_hr')
-                    : sex == null
+        : sex == null
         ? needInputNote('sex')
         : null;
     // `wakeDayEnergy`'s own gates, named. It returns a bare null, so the reason
@@ -7271,7 +7386,7 @@ class DerivationEngine {
         // term nets out a Mifflin basal minute, which does.
         : profile.heightCm == null
         ? needInputNote('height_cm')
-                        : null;
+        : null;
     final zonesAbsent = perMin.isEmpty
         ? needInputNote('wake_hr')
         : ceilingAbsent;
@@ -7291,17 +7406,22 @@ class DerivationEngine {
       // fired, which shrinks the HR reserve and manufactures strain out of
       // sitting still. No resting HR of either kind now means NO STRAIN.
       if (dayHrValid.isNotEmpty && rhrForTrimp != null && sex != null) {
-        final trimp = ana.banisterTrimp(
-          perMin,
-          restingHr: rhrForTrimp,
-          maxHr: hrMax,
-          // Same sex normalisation the calorie path uses. This read `sex == 'f'`
-          // alone, so a profile stored as 'female' (which the profile screen can
-          // write) got female calorie coefficients and MALE TRIMP off the same
-          // field. Banister publishes only two constants, so `nonbinary` has
-          // nowhere else to go here.
-          sex: _workoutSex(sex) == 'female' ? ana.Sex.female : ana.Sex.male,
-        );
+        final trimp =
+            mode == ana.CalculationMode.periodicAwake && minuteMetrics != null
+            ? minuteMetrics.trimp
+            : ana.banisterTrimp(
+                perMin,
+                restingHr: rhrForTrimp,
+                maxHr: hrMax,
+                // Same sex normalisation the calorie path uses. This read `sex == 'f'`
+                // alone, so a profile stored as 'female' (which the profile screen can
+                // write) got female calorie coefficients and MALE TRIMP off the same
+                // field. Banister publishes only two constants, so `nonbinary` has
+                // nowhere else to go here.
+                sex: _workoutSex(sex) == 'female'
+                    ? ana.Sex.female
+                    : ana.Sex.male,
+              );
         if (trimp.present && trimp.value != null) {
           // `perMin` IS the wake window the TRIMP was accumulated over, so it
           // sets the quiet-waking baseline that gets subtracted. Passing the
@@ -7363,16 +7483,23 @@ class DerivationEngine {
       // 79.5 bpm at age 70, so an older sleeper spends the night above it.
       // `dayMinutes` pro-rates the basal floor over the span actually covered,
       // so a partial day is not billed a full 24 h BMR.
-      final energy = wakeDayEnergy(
-        perMin,
-        profile: profile,
-        // The same anchor the TRIMP above is scored against — a nocturnal RHR
-        // or the one the user entered, never a daytime fallback.
-        restingHr: rhrForTrimp,
-        dayMinutes: motion.length,
-        deviceFamily: daySub.deviceFamily,
-        cadenceSpmPerMin: wakeCadence,
-      );
+      final energy =
+          mode == ana.CalculationMode.periodicAwake &&
+              minuteMetrics != null &&
+              perMin.isNotEmpty &&
+              profile.hasCalorieAnchors &&
+              profile.heightCm != null
+          ? minuteMetrics.energy
+          : wakeDayEnergy(
+              perMin,
+              profile: profile,
+              // The same anchor the TRIMP above is scored against — a nocturnal RHR
+              // or the one the user entered, never a daytime fallback.
+              restingHr: rhrForTrimp,
+              dayMinutes: motion.length,
+              deviceFamily: daySub.deviceFamily,
+              cadenceSpmPerMin: wakeCadence,
+            );
       if (energy != null) {
         calories = energy.active;
         caloriesTotal = energy.total;
@@ -7386,12 +7513,16 @@ class DerivationEngine {
     // (#127).
     final dayHrInt = [for (final h in dayHrValid) h.round()];
     final age = profile.ageYears?.round();
-    final hrStats = dayHrValid.isEmpty
+    final hrStats = hrSummary != null
+        ? hrSummary.hrStats()
+        : dayHrValid.isEmpty
         ? null
         : {
-            'max': smoothedMaxHr(dayHrInt, age: age) ??
+            'max':
+                smoothedMaxHr(dayHrInt, age: age) ??
                 dayHrValid.reduce(math.max).round(),
-            'min': smoothedMinHr(dayHrInt, age: age) ??
+            'min':
+                smoothedMinHr(dayHrInt, age: age) ??
                 dayHrValid.reduce(math.min).round(),
             'avg': _meanWake(dayHrValid)?.round(),
           };
@@ -7437,11 +7568,13 @@ class DerivationEngine {
         'confidence': 0.6,
         'tier': 'ESTIMATE',
         'inputs_used': const ['accel_1hz'],
-        'note': 'Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, '
-                'because at the wrist arm work registers as strongly as walking. '
-                'Step counts come only from the 100 Hz stream or the phone pedometer.',
+        'note':
+            'Minutes of wrist movement over wake (1 Hz). This is activity volume. The app never converts it to steps, '
+            'because at the wrist arm work registers as strongly as walking. '
+            'Step counts come only from the 100 Hz stream or the phone pedometer.',
       },
-      'activity_curve': _activityCurve(daySub),
+      'activity_curve':
+          motionSummary?.activityCurve() ?? _activityCurve(daySub),
       'zones': zones,
       'hr_stats': hrStats,
       'wear': wear,
@@ -7491,7 +7624,21 @@ class DerivationEngine {
     return active;
   }
 
-  static List<ana.MotionMinute> _motionMinutes(Substrate s) {
+  /// The last motion result per day substrate: both readers in one activity
+  /// pass ask for the same day, and the second must not redo the first.
+  static final _motionBySub = Expando<
+      ({DayCalculationState? state, ana.CalculationMode mode,
+        List<ana.MotionMinute> minutes})>();
+
+  static List<ana.MotionMinute> _motionMinutes(
+    Substrate s, {
+    DayCalculationState? state,
+    ana.CalculationMode mode = ana.CalculationMode.forced,
+  }) {
+    final last = _motionBySub[s];
+    if (last != null && identical(last.state, state) && last.mode == mode) {
+      return last.minutes;
+    }
     final samples = <ana.AccelSample>[
       for (var i = 0; i < s.length; i++)
         ana.AccelSample(
@@ -7509,7 +7656,13 @@ class DerivationEngine {
     // sample — so a day worn 4 h out of 24 reported coverage 1.0. Only
     // `.minutes` is read here today; passing it keeps the result honest if
     // coverage is ever surfaced.
-    return ana.enmoSeries(samples, expectedMinutes: 1440).minutes;
+    final minutes = List<ana.MotionMinute>.unmodifiable(
+      state == null
+          ? ana.enmoSeries(samples, expectedMinutes: 1440).minutes
+          : state.motionMinutes(samples, mode),
+    );
+    _motionBySub[s] = (state: state, mode: mode, minutes: minutes);
+    return minutes;
   }
 
   /// See `workoutSex` in profile.dart — the one definition, shared with the
@@ -7598,6 +7751,7 @@ class DerivationEngine {
     required int dayStartSec,
     required int dayCalendarEndSec,
     required int dataNowSec,
+    List<List<int>>? runs,
   }) {
     final observableEnd = math.min(
       math.max(dataNowSec, dayStartSec),
@@ -7625,18 +7779,22 @@ class DerivationEngine {
     // On-runs first: contiguous stretches of record presence. The off-segments
     // are then everything else inside the observable window, which is what puts
     // the leading/trailing holes on the list.
-    final runs = <List<int>>[];
-    var runStart = s.tsSec.first;
-    var prev = s.tsSec.first;
-    for (var i = 1; i < n; i++) {
-      final ts = s.tsSec[i];
-      if (ts - prev > offGapSec) {
-        runs.add([runStart, prev + 1]);
-        runStart = ts;
+    // [runs], when given, are these same runs kept up to date by
+    // `DayMotionSummary` as seconds are appended.
+    if (runs == null) {
+      runs = <List<int>>[];
+      var runStart = s.tsSec.first;
+      var prev = s.tsSec.first;
+      for (var i = 1; i < n; i++) {
+        final ts = s.tsSec[i];
+        if (ts - prev > offGapSec) {
+          runs.add([runStart, prev + 1]);
+          runStart = ts;
+        }
+        prev = ts;
       }
-      prev = ts;
+      runs.add([runStart, prev + 1]);
     }
-    runs.add([runStart, prev + 1]);
 
     final segments = <Map<String, dynamic>>[];
     var longestOff = 0, wornSec = 0;
@@ -7693,7 +7851,11 @@ class DerivationEngine {
   static int debugHrvAttempts = 0;
 
   @visibleForTesting
-  static List<Map<String, num>> dayHrvCurve(Substrate s) {
+  static List<Map<String, num>> dayHrvCurve(
+    Substrate s, {
+    DayCalculationState? state,
+    ana.CalculationMode mode = ana.CalculationMode.forced,
+  }) {
     final ts = <double>[], rr = <double>[];
     for (var i = 0; i < s.rrMs.length; i++) {
       final v = s.rrMs[i];
@@ -7702,7 +7864,16 @@ class DerivationEngine {
         rr.add(v);
       }
     }
-    if (rr.length < 10) return const [];
+    if (rr.length < 10) {
+      return state == null
+          ? const []
+          : state.evaluate(
+              'hrv_day_empty',
+              [ts, rr],
+              () => <Map<String, num>>[],
+              mode,
+            );
+    }
     const winMs = 300000.0; // 5 min
     final out = <Map<String, num>>[];
     var lo = 0;
@@ -7715,32 +7886,32 @@ class DerivationEngine {
       // and running it for every beat only to discard the result on the 60 s
       // check was the whole window's work wasted per sample.
       if (i - lo >= 10 && ts[i] - lastEmit > 60000) {
-        debugHrvAttempts++;
-        var ssd = 0.0;
-        var nd = 0;
-        for (var k = lo + 1; k <= i; k++) {
-          final d = rr[k] - rr[k - 1];
-          // Malik 20% rule: a real beat-to-beat change is small; a successive
-          // jump >20% (or >200 ms) is an ectopic/missed beat — skip that pair so
-          // one artifact doesn't blow RMSSD up to non-physiological 400+ ms.
-          if (d.abs() > 0.20 * rr[k - 1] || d.abs() > 200) continue;
-          ssd += d * d;
-          nd++;
-        }
-        // Advance on the ATTEMPT, before either quality check. The window holds
-        // ~300-600 beats, and leaving the cursor behind when a stretch is too
-        // artifact-heavy to yield 8 usable pairs re-runs that whole sum on every
-        // subsequent beat until one finally does.
-        lastEmit = ts[i];
-        if (nd >= 8) {
-          final rmssd = math.sqrt(ssd / nd);
-          if (rmssd <= 220) {
-            out.add({
-              't': (ts[i] / 1000).round(),
-              'v': double.parse(rmssd.toStringAsFixed(1)),
-            });
+        double? calculate() {
+          debugHrvAttempts++;
+          var ssd = 0.0;
+          var nd = 0;
+          for (var k = lo + 1; k <= i; k++) {
+            final d = rr[k] - rr[k - 1];
+            if (d.abs() > 0.20 * rr[k - 1] || d.abs() > 200) continue;
+            ssd += d * d;
+            nd++;
           }
+          if (nd < 8) return null;
+          final rmssd = math.sqrt(ssd / nd);
+          return rmssd <= 220 ? double.parse(rmssd.toStringAsFixed(1)) : null;
         }
+
+        final value = state == null
+            ? calculate()
+            : state.evaluate(
+                'hrv_day_${ts[i]}',
+                [winMs, ts.sublist(lo, i + 1), rr.sublist(lo, i + 1)],
+                calculate,
+                mode,
+              );
+        // Scan cadence and eligibility on every call, including absent windows.
+        lastEmit = ts[i];
+        if (value != null) out.add({'t': (ts[i] / 1000).round(), 'v': value});
       }
     }
     return out;
@@ -7789,22 +7960,36 @@ class DerivationEngine {
   static int debugRespGateRejects = 0;
 
   @visibleForTesting
-  static List<Map<String, num>> dayRespCurve(Substrate s) {
+  static List<Map<String, num>> dayRespCurve(
+    Substrate s, {
+    DayCalculationState? state,
+    ana.CalculationMode mode = ana.CalculationMode.forced,
+  }) {
     // RESP-05 — the gate is per-FAMILY, and an unknown strap gets no cut rather
     // than gen4's (device.dart contract). Refusing the whole curve is the
     // correct output for every pre-schema-41 day and every import: we cannot
     // say those seconds were still, and an ungated daytime RSA number is the
     // thing this item exists to stop publishing.
     final cut = ana.calibrationFor(_quietEnmoCutG, s.deviceFamily);
-    if (cut == null) return const [];
+    if (cut == null) {
+      return state == null || debugRespEstimator != null
+          ? const []
+          : state.evaluate(
+              'resp_day_no_family',
+              [s.deviceFamily],
+              () => <Map<String, num>>[],
+              mode,
+            );
+    }
     // Running count of still seconds, over substrate index. Prefix-summed so a
     // window's stillness is two array reads instead of a rescan.
     final quietPrefix = List<int>.filled(s.length + 1, 0);
     for (var i = 0; i < s.length; i++) {
       var q = 0;
       if (s.accelPresentAt(i)) {
-        final mag =
-            math.sqrt(s.ax[i] * s.ax[i] + s.ay[i] * s.ay[i] + s.az[i] * s.az[i]);
+        final mag = math.sqrt(
+          s.ax[i] * s.ax[i] + s.ay[i] * s.ay[i] + s.az[i] * s.az[i],
+        );
         if ((mag - 1.0).abs() <= cut) q = 1;
       }
       quietPrefix[i + 1] = quietPrefix[i] + q;
@@ -7818,7 +8003,16 @@ class DerivationEngine {
         rr.add(v);
       }
     }
-    if (rr.length < 60) return const [];
+    if (rr.length < 60) {
+      return state == null || debugRespEstimator != null
+          ? const []
+          : state.evaluate(
+              'resp_day_empty',
+              [ts, rr, cut, s.deviceFamily],
+              () => <Map<String, num>>[],
+              mode,
+            );
+    }
     const winMs = 180000.0; // 3 min
     final out = <Map<String, num>>[];
     var lo = 0;
@@ -7846,26 +8040,42 @@ class DerivationEngine {
         }
         final spanSec = hiSec - loSec;
         final stillSec = quietPrefix[qHi] - quietPrefix[qLo];
-        if (spanSec <= 0 || stillSec < _respQuietFraction * spanSec) {
-          // Advance the cadence cursor on a rejection too — otherwise a moving
-          // stretch re-tests (and re-scans) once per beat, which is the same
-          // shape as the v60 bug this loop already carries a fix for.
-          debugRespGateRejects++;
-          lastEmit = ts[i];
-          continue;
-        }
         final nn = rr.sublist(lo, i + 1);
         final t0 = ts[lo];
         final nnt = [for (var k = lo; k <= i; k++) ts[k] - t0];
-        debugRespAttempts++;
         final seam = debugRespEstimator;
-        final double? brpm;
-        if (seam != null) {
-          brpm = seam(nn, nnt);
-        } else {
+        double? calculate() {
+          if (spanSec <= 0 || stillSec < _respQuietFraction * spanSec) {
+            debugRespGateRejects++;
+            return null;
+          }
+          debugRespAttempts++;
+          if (seam != null) return seam(nn, nnt);
           final est = ana.rsaRespRate(nn, nnt, artifactFraction: 0.15);
-          brpm = est.present ? est.value!.brpm : null;
+          return est.present ? est.value!.brpm : null;
         }
+
+        // An injected estimator can carry mutable state. Never reuse its output.
+        final brpm = state == null || seam != null
+            ? calculate()
+            : state.evaluate(
+                'resp_day_${ts[i]}',
+                [
+                  nn,
+                  ts.sublist(lo, i + 1),
+                  winMs,
+                  s.deviceFamily,
+                  cut,
+                  _respQuietFraction,
+                  spanSec,
+                  s.tsSec.sublist(qLo, qHi),
+                  s.ax.sublist(qLo, qHi),
+                  s.ay.sublist(qLo, qHi),
+                  s.az.sublist(qLo, qHi),
+                ],
+                calculate,
+                mode,
+              );
         // Advance the cadence cursor on every ATTEMPT, not just on a successful
         // estimate. Daytime RSA is movement-confounded (see above), so absent is
         // the common case — and while lastEmit sat inside the success branch a
@@ -8564,6 +8774,15 @@ class DerivationEngine {
   ///
   /// Also wires `onError`/`onExit` so an uncaught throw or a silent death
   /// FAILS the future instead of hanging it.
+  static Future<({Map<String, dynamic> bundle, DayCalculationState state})>
+      _runDayBundleCancellable(Map<String, dynamic> input,
+        DayCalculationState? previous, ana.CalculationMode mode, Duration timeout,
+        {required String label}) => _runIsolateCancellable(() {
+          final state = previous ?? DayCalculationState();
+          final bundle = deriveDayBundle(input, state: state, mode: mode);
+          return (bundle: bundle, state: state);
+        }, timeout, label: label);
+
   static Future<R> _runIsolateCancellable<R>(
     FutureOr<R> Function() compute,
     Duration timeout, {
@@ -8683,11 +8902,12 @@ class DerivationEngine {
       dynHistoryDays: inp.dynHistoryDays,
       stepSpans: inp.stepSpans,
       sessions: inp.savedSessions,
+      state: inp.calculationState, mode: inp.calculationMode,
     );
 
     bundlePatch['daytime_hrv'] = _daytimeHrv(daySub, onset, offset);
-    seriesPatch['hrv_day'] = dayHrvCurve(daySub);
-    seriesPatch['resp_day'] = dayRespCurve(daySub);
+    seriesPatch['hrv_day'] = dayHrvCurve(daySub, state: inp.calculationState, mode: inp.calculationMode);
+    seriesPatch['resp_day'] = dayRespCurve(daySub, state: inp.calculationState, mode: inp.calculationMode);
     seriesPatch['skin_temp_day'] = _daySkinTempCurve(daySub);
     bundlePatch['restlessness'] = _restlessness(sleepSub);
     // napSub extends a few hours past this day's calendar end so a nap/
@@ -8800,6 +9020,7 @@ class DerivationEngine {
     // than no diagnostic.
 
     return _DayBlocksOutput(
+      calculationState: inp.calculationState,
       bundlePatch: bundlePatch,
       seriesPatch: seriesPatch,
       scalarPatch: scMap,
@@ -9389,6 +9610,8 @@ Future<R> runCancellableIsolate<R>(
 /// lists; Profile is a primitive data class). DB reads that the
 /// pure compute needs are performed by the caller and passed in here.
 class _DayBlocksInput {
+  final DayCalculationState calculationState;
+  final ana.CalculationMode calculationMode;
   final Substrate daySub;
   final Substrate napSub;
   final Substrate sleepSub;
@@ -9460,6 +9683,8 @@ class _DayBlocksInput {
   final int dayEndSec;
   final int dataNowSec;
   const _DayBlocksInput({
+    required this.calculationState,
+    required this.calculationMode,
     required this.daySub,
     required this.napSub,
     required this.sleepSub,
@@ -9492,6 +9717,7 @@ class _DayBlocksInput {
 /// isolate; [wake] is persisted; [suggestionsToPersist] / [sessionHrrWrites] /
 /// [notifBout] are the DB writes + notification the caller applies.
 class _DayBlocksOutput {
+  final DayCalculationState calculationState;
   final Map<String, dynamic> bundlePatch;
   final Map<String, dynamic> seriesPatch;
   final Map<String, dynamic> scalarPatch;
@@ -9503,6 +9729,7 @@ class _DayBlocksOutput {
   final List<(String, double)> sessionHrrWrites;
   final ({String id, int durationMin})? notifBout;
   const _DayBlocksOutput({
+    required this.calculationState,
     required this.bundlePatch,
     required this.seriesPatch,
     required this.scalarPatch,
