@@ -1,8 +1,10 @@
 // 8AI G4 (red): the Haptics screen layout, the slot rows and putting a saved
 // pattern on a slot.
 //
-// Spec: three accordions in order, "Your patterns", "Presets", "Where patterns
-// are used", then Safety / Test / Calibration unchanged. The last one lists the
+// Spec (laid out as sub-tabs since Oct 4, see test/haptics/haptics_tabs_test.dart;
+// the groups below are the same, each on its tab): "Your patterns" and "Presets"
+// (Patterns tab), then Safety / Test / Calibration unchanged (Band tab). The
+// "Where patterns are used" slots, now on the Alerts, Activity and Cues tabs, list the
 // haptic SLOTS grouped by section (Alerts, Gestures, Wake/Alarm, Workout, ...)
 // under a header row each, no separator between sections (the accordion already
 // draws a hairline above every row; a second one doubled it, Oct 4), and a link
@@ -25,13 +27,13 @@
 //     builds it (preset name, or "Your: <name>" for a stored pattern of the
 //     wearer's), so the view stays a pure function.
 //   * Accordion titles and ids: "Your patterns" / `haptics_your_patterns`,
-//     "Presets" / `haptics_presets`, "Where patterns are used" /
-//     `haptics_where_used`.
+//     "Presets" / `haptics_presets`; each slot section a group of its own,
+//     `haptics_slots_<sectionId>` ("Where patterns are used" is gone).
 //   * Keys: a slot row `haptic-slot:<slotKey>`; a section header
-//     `haptic-slot-section:<sectionId>`; there is NO
-//     separator between two sections (`haptic-slot-sep:` is gone, Oct 4);
-//     a section's link `haptic-slot-section-link:<sectionId>` calling
-//     `onOpenSlotScreen(sectionId)`. Section ids include `alerts` and
+//     NO in-list header or separator between two sections any more
+//     (`haptic-slot-sep:` is gone, Oct 4; `haptic-slot-section:` went with the
+//     sub-tabs); a section's link `haptic-slot-section-link:<sectionId>`, at the
+//     bottom of its tab, calling `onOpenSlotScreen(sectionId)`. Section ids include `alerts` and
 //     `gestures`; the Alerts section holds the alert rules, the Gestures
 //     section the three gesture cues. Other sections (wake, workout) are free.
 //   * A saved (or preset) pattern's sheet gets `haptic-action-assign` ("Use on
@@ -50,7 +52,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 
 import '../phase8/support/dart_source.dart';
 import '../phase8/support/sections.dart';
@@ -66,7 +67,14 @@ Finder _accordion(String title) => section(title);
 Finder _in(String accordion, Finder f) =>
     find.descendant(of: _accordion(accordion), matching: f);
 
-const _where = 'Where patterns are used';
+/// The tab each slot section is listed on.
+const _tabOfSection = {
+  'alerts': 'alerts',
+  'apps': 'alerts',
+  'activity': 'activity',
+  'gestures': 'cues',
+  'breathing': 'cues',
+};
 
 Future<void> _tapKey(WidgetTester t, String key) async {
   expect(find.byKey(ValueKey(key)), findsOneWidget, reason: 'missing: $key');
@@ -75,25 +83,21 @@ Future<void> _tapKey(WidgetTester t, String key) async {
 }
 
 void main() {
-  group('three accordions, in order', () {
-    testWidgets('Your patterns, Presets, Where patterns are used, then the '
-        'unchanged Safety and Test', (t) async {
+  group('sub-tabs and their accordions', () {
+    testWidgets('Your patterns and Presets on the Patterns tab, the unchanged '
+        'Safety and Test on the Band tab', (t) async {
       await pumpHub(t, HubCalls(), patterns: [_mine, _presetOne]);
-      expect(sectionTitles(t), [
-        'Your patterns',
-        'Presets',
-        _where,
-        'Safety',
-        'Test',
-      ]);
+      expect(sectionTitles(t), ['Your patterns', 'Presets']);
+      await openHapticsTab(t, 'band');
+      expect(sectionTitles(t), ['Safety', 'Test']);
     });
 
     testWidgets('Calibration still comes last, in developer mode only', (t) async {
       await pumpHub(t, HubCalls(), devMode: true);
-      expect(sectionTitles(t).first, 'Your patterns');
+      expect(sectionTitles(t), ['Your patterns', 'Presets']);
+      await openHapticsTab(t, 'band');
+      expect(sectionTitles(t).first, 'Safety');
       expect(sectionTitles(t).last, 'Calibration');
-      expect(sectionTitles(t).take(3).toList(),
-          ['Your patterns', 'Presets', _where]);
     });
 
     testWidgets('the saved patterns are under Your patterns and the presets '
@@ -128,6 +132,7 @@ void main() {
     testWidgets('Safety and Test content is unchanged, Safety before Test',
         (t) async {
       await pumpHub(t, HubCalls());
+      await openHapticsTab(t, 'band');
       expect(_in('Safety', find.byKey(const ValueKey('haptics-allow-long'))),
           findsOneWidget);
       expect(_in('Safety', find.textContaining('band commands left')),
@@ -143,88 +148,116 @@ void main() {
       final ids = {for (final a in accordions(t)) a.title: a.id};
       expect(ids['Your patterns'], 'haptics_your_patterns');
       expect(ids['Presets'], 'haptics_presets');
-      expect(ids[_where], 'haptics_where_used');
+      await openHapticsTab(t, 'band');
+      expect([for (final a in accordions(t)) a.id],
+          ['haptics_safety', 'haptics_test']);
     });
   });
 
-  group('Where patterns are used', () {
+  group('Where patterns are used (the slot tabs)', () {
     final names = {
       'alert.water': 'Three pulses',
       'alert.health': 'Your: Morning nudge',
       'gesture.start': 'SOS',
     };
 
+    // Opens every slot tab in turn and calls [look] on each, with its id.
+    Future<void> eachSlotTab(
+        WidgetTester t, Future<void> Function(String tab) look) async {
+      for (final tab in ['alerts', 'activity', 'cues']) {
+        await openHapticsTab(t, tab);
+        await look(tab);
+      }
+    }
+
     testWidgets('a row for every alert that plays a pattern and for each '
         'gesture cue', (t) async {
       await pumpHub(t, HubCalls(), slotNames: names);
-      for (final k in [...alertSlotKeys(), ...kGestureSlotKeys]) {
-        expect(_in(_where, find.byKey(ValueKey('haptic-slot:$k'))),
-            findsOneWidget,
-            reason: 'slot $k');
-      }
+      final found = <String>{};
+      await eachSlotTab(t, (_) async {
+        for (final k in [...alertSlotKeys(), ...kGestureSlotKeys]) {
+          if (find.byKey(ValueKey('haptic-slot:$k')).evaluate().isNotEmpty) {
+            found.add(k);
+          }
+        }
+      });
+      expect(found, {...alertSlotKeys(), ...kGestureSlotKeys});
     });
 
     testWidgets('a row shows the pattern NAME, never "N buzzes"', (t) async {
       await pumpHub(t, HubCalls(), slotNames: names);
-      for (final e in names.entries) {
-        expect(
-          find.descendant(
-              of: find.byKey(ValueKey('haptic-slot:${e.key}')),
-              matching: find.text(e.value)),
-          findsOneWidget,
-          reason: e.key,
-        );
-      }
-      expect(_in(_where, find.textContaining(RegExp(r'\d+ buzz'))),
-          findsNothing);
-      expect(_in(_where, find.textContaining(RegExp(r'\bbuzzes\b'))),
-          findsNothing);
+      var checked = 0;
+      await eachSlotTab(t, (_) async {
+        for (final e in names.entries) {
+          final row = find.byKey(ValueKey('haptic-slot:${e.key}'));
+          if (row.evaluate().isEmpty) continue;
+          checked++;
+          expect(find.descendant(of: row, matching: find.text(e.value)),
+              findsOneWidget,
+              reason: e.key);
+        }
+        expect(find.textContaining(RegExp(r'\d+ buzz')), findsNothing);
+        expect(find.textContaining(RegExp(r'\bbuzzes\b')), findsNothing);
+      });
+      expect(checked, names.length);
     });
 
     testWidgets('grouped by section, with no separator of its own between '
         'sections', (t) async {
       await pumpHub(t, HubCalls());
-      final headers = withKeyPrefix(t, 'haptic-slot-section:').toList();
-      final seps = withKeyPrefix(t, 'haptic-slot-sep:').toList();
-      expect(headers.length, greaterThanOrEqualTo(2),
-          reason: 'at least Alerts and Gestures');
-      expect(seps, isEmpty,
-          reason: 'the accordion draws a hairline above every row; a hand-made '
-              'divider next to it doubled the line');
-      final drawn = _in(_where, find.byType(Divider)).evaluate().length;
-      expect(drawn, t.widget<SettingsAccordion>(_accordion(_where)).children.length,
-          reason: 'only the accordion\'s own one-per-row hairlines');
-      expect(find.byKey(const ValueKey('haptic-slot-section:alerts')),
+      await eachSlotTab(t, (_) async {
+        expect(withKeyPrefix(t, 'haptic-slot-sep:'), isEmpty,
+            reason: 'the accordion draws a hairline above every row; a '
+                'hand-made divider next to it doubled the line');
+        expect(withKeyPrefix(t, 'haptic-slot-section:'), isEmpty);
+        for (final a in accordions(t)) {
+          final drawn = _in(a.title, find.byType(Divider)).evaluate().length;
+          expect(drawn, a.children.length,
+              reason: '${a.title}: only the accordion\'s own one-per-row '
+                  'hairlines');
+        }
+      });
+      // Each row sits in its own section's group.
+      await openHapticsTab(t, 'alerts');
+      expect(_in('Alerts', find.byKey(const ValueKey('haptic-slot:alert.water'))),
           findsOneWidget);
-      expect(find.byKey(const ValueKey('haptic-slot-section:gestures')),
+      expect(
+          _in('Apps and automation',
+              find.byKey(const ValueKey('haptic-slot:alert.relay'))),
           findsOneWidget);
-      // Each row sits under its own section's header.
-      final alertsY =
-          t.getTopLeft(find.byKey(const ValueKey('haptic-slot-section:alerts'))).dy;
-      final gesturesY = t
-          .getTopLeft(find.byKey(const ValueKey('haptic-slot-section:gestures')))
-          .dy;
-      final waterY =
-          t.getTopLeft(find.byKey(const ValueKey('haptic-slot:alert.water'))).dy;
-      final startY = t
-          .getTopLeft(find.byKey(const ValueKey('haptic-slot:gesture.start')))
-          .dy;
-      if (alertsY < gesturesY) {
-        expect(waterY, inInclusiveRange(alertsY, gesturesY));
-        expect(startY, greaterThan(gesturesY));
-      } else {
-        expect(startY, inInclusiveRange(gesturesY, alertsY));
-        expect(waterY, greaterThan(alertsY));
-      }
+      expect(
+          _in('Alerts', find.byKey(const ValueKey('haptic-slot:alert.relay'))),
+          findsNothing);
+      await openHapticsTab(t, 'cues');
+      expect(
+          _in('Gestures', find.byKey(const ValueKey('haptic-slot:gesture.start'))),
+          findsOneWidget);
+      expect(
+          _in('Breathing', find.byKey(const ValueKey('haptic-slot:breath.inhale'))),
+          findsOneWidget);
     });
 
-    testWidgets('each section links to the screen where its slots are used',
-        (t) async {
+    testWidgets('each section links to the screen where its slots are used, '
+        'at the bottom of its tab', (t) async {
       final c = HubCalls();
       await pumpHub(t, c);
+      await openHapticsTab(t, 'cues');
       await _tapKey(t, 'haptic-slot-section-link:gestures');
+      await openHapticsTab(t, 'alerts');
       await _tapKey(t, 'haptic-slot-section-link:alerts');
       expect(c.openedSections, ['gestures', 'alerts']);
+      for (final e in _tabOfSection.entries) {
+        await openHapticsTab(t, e.value);
+        final link = find.byKey(ValueKey('haptic-slot-section-link:${e.key}'));
+        expect(link, findsOneWidget, reason: e.key);
+        for (final k in alertSlotKeys()) {
+          final row = find.byKey(ValueKey('haptic-slot:$k'));
+          if (row.evaluate().isNotEmpty) {
+            expect(t.getTopLeft(link).dy, greaterThan(t.getBottomLeft(row).dy),
+                reason: '${e.key} link below $k');
+          }
+        }
+      }
     });
 
     testWidgets('tapping a slot opens the picker; choosing a saved pattern '
@@ -232,6 +265,7 @@ void main() {
       final c = HubCalls();
       await pumpHub(t, c,
           patterns: [_mine, _mine2, _presetOne], profile: kMg);
+      await openHapticsTab(t, 'alerts');
       await _tapKey(t, 'haptic-slot:alert.water');
       expect(find.byKey(const ValueKey('pattern-picker')), findsOneWidget);
       await _tapKey(t, 'pattern-picker-row:b');
@@ -242,6 +276,7 @@ void main() {
     testWidgets('the picker can also put a preset on a slot', (t) async {
       final c = HubCalls();
       await pumpHub(t, c, patterns: [_mine, _presetSos], profile: kMg);
+      await openHapticsTab(t, 'cues');
       await _tapKey(t, 'haptic-slot:gesture.confirm');
       await _tapKey(t, 'pattern-picker-row:sys.p2');
       expect(c.assigned, [('gesture.confirm', 'sys.p2')]);

@@ -2,7 +2,7 @@
 // failed".
 //
 // USER: "the failure buzz becomes a named, assignable cue 'Gesture failed' in
-// Haptics > Where patterns are used > Gestures, played through GestureCues like
+// Haptics > Cues > Gestures, played through GestureCues like
 // the other cues; its built-in default = today's failure buzz shape, so nothing
 // changes until the user assigns one."
 //
@@ -205,11 +205,12 @@ void main() {
           isNot([14]));
     });
 
-    testWidgets('Haptics > Where patterns are used > Gestures shows the row '
+    testWidgets('Haptics > Cues > Gestures shows the row '
         'and can assign a pattern to it', (t) async {
       final c = HubCalls();
       await pumpHub(t, c,
           patterns: [userPattern('a', 'Mine')], profile: kMg);
+      await openHapticsTab(t, 'cues');
       final row = find.byKey(const ValueKey('haptic-slot:$_key'));
       expect(row, findsOneWidget);
       expect(find.descendant(of: row, matching: find.text('Gesture failed')),

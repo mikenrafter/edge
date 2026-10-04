@@ -1,13 +1,16 @@
 // HAPTICS (8AD) — Settings > The band > Haptics.
 //
-// Groups, in order: Your patterns (the wearer's saved patterns), Presets (the
-// built-in ones: the ten presets are read-only, the gesture cues can be
-// customised and put back; none can be renamed or deleted), Where patterns are
-// used (every alert and gesture cue that plays a pattern, by the NAME of the
-// pattern, grouped by section with a link to the screen where it is set),
-// Safety (allow long sequences, and what the band's rolling command limit and
-// queue are doing), Test (buzz the band) and, in developer mode only,
-// Calibration (the Device lab).
+// Five sub-tabs (the app's SubTabs), each showing only its own groups: Patterns
+// (Your patterns: the wearer's saved patterns; Presets: the built-in ones, the
+// ten presets are read-only, the gesture and breathing cues can be customised
+// and put back; none can be renamed or deleted), Alerts (the alert slots, and
+// the app and automation ones), Activity (the workout slots), Cues (the gesture
+// and the breathing cues) and Band (Safety: allow long sequences, and what the
+// band's rolling command limit and queue are doing; Test: buzz the band; and,
+// in developer mode only, Calibration: the Device lab). Every slot row plays a
+// pattern, shown by the NAME of the pattern; the link to the screen where a
+// section's slots are set sits at the bottom of the tab that lists them. The
+// tab last used is remembered, and a caller can open one directly.
 //
 // [HapticsSettings] reads one settings snapshot (patterns, alert rules, relay
 // channels): editing or deleting a stored pattern rewrites every snapshot of it
@@ -43,12 +46,33 @@ import 'pattern_picker.dart' show patternDetail, showPatternPicker;
 import 'profile.dart';
 import 'settings.dart' show NotificationSettings;
 
+/// Where the tab last used is kept (a [HapticsTab] id), in the app prefs with
+/// the other UI selections.
+const String kHapticsTabPref = 'ui.haptics_tab';
+
 const String _riskCaption = 'May cause harm to your device. Use at your own risk.';
+
+/// The screen's sub-tabs, in order. [id] is what is remembered and what a
+/// caller passes to open one; never the label.
+enum HapticsTab {
+  patterns('patterns', 'Patterns'),
+  alerts('alerts', 'Alerts'),
+  activity('activity', 'Activity'),
+  cues('cues', 'Cues'),
+  band('band', 'Band');
+
+  const HapticsTab(this.id, this.label);
+  final String id;
+  final String label;
+}
 
 /// The route. Loads the store, the alert rules and the relay channels; hands
 /// [HapticsSettingsView] plain values and the callbacks that change them.
 class HapticsSettings extends StatefulWidget {
-  const HapticsSettings({super.key});
+  const HapticsSettings({super.key, this.tab});
+
+  /// Opens this tab; null opens the one used last.
+  final HapticsTab? tab;
 
   @override
   State<HapticsSettings> createState() => _HapticsSettingsState();
@@ -207,6 +231,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     final app = c.watch<AppState>();
     final caps = c.caps;
     return HapticsSettingsView(
+      initialTab: widget.tab,
       patterns: snap.patterns,
       usageOf: snap.patternUsage,
       profile: caps.hapticProfile,
@@ -274,7 +299,11 @@ class HapticsSettingsView extends StatelessWidget {
     this.onOpenSlotScreen,
     this.onAssignToSlot,
     this.onResetSlot,
+    this.initialTab,
   });
+
+  /// The tab to open on; null opens the one used last (else Patterns).
+  final HapticsTab? initialTab;
 
   /// The stored patterns, in the order to show them.
   final List<SavedHapticPattern> patterns;
@@ -327,60 +356,103 @@ class HapticsSettingsView extends StatelessWidget {
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
-        child: Column(
-          children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: S.x4),
-              child: NavBar('Haptics'),
-            ),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
-                children: [
-                  SettingsAccordion('Your patterns',
-                      id: 'haptics_your_patterns',
-                      children: _yourRows(c, p)),
-                  SettingsAccordion('Presets',
-                      id: 'haptics_presets', children: _presetRows(c, p)),
-                  SettingsAccordion('Where patterns are used',
-                      id: 'haptics_where_used', children: _slotRows(c, p)),
-                  SettingsAccordion('Safety',
-                      id: 'haptics_safety', children: _safetyRows(c, p)),
-                  SettingsAccordion('Test', id: 'haptics_test', children: [
-                    SetRow(
-                      LucideIcons.bellRing,
-                      C.orange,
-                      'Buzz the band',
-                      key: const ValueKey('haptics-buzz'),
-                      enabled: bandConnected,
-                      sub: bandConnected
-                          ? 'Vibrate the band to locate it'
-                          : 'Connect to the band first',
-                      chevron: false,
-                      onTap: onBuzz,
-                    ),
-                  ]),
-                  if (devMode)
-                    SettingsAccordion('Calibration',
-                        id: 'haptics_calibration',
-                        children: [
-                      SetRow(
-                        LucideIcons.flaskConical,
-                        C.purple,
-                        'Device lab',
-                        key: const ValueKey('haptics-device-lab'),
-                        sub: 'Try gestures the band does not report on its own',
-                        onTap: onDeviceLab,
-                      ),
-                    ]),
-                ],
+        child: _TabHost(
+          initial: initialTab,
+          builder: (c, tab, select) => Column(
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: S.x4),
+                child: NavBar('Haptics'),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),
+                child: SubTabs(
+                  [for (final t in HapticsTab.values) t.label],
+                  tab.index,
+                  (i) => select(HapticsTab.values[i]),
+                  color: C.blue,
+                  dense: true,
+                  itemKeys: [
+                    for (final t in HapticsTab.values)
+                      ValueKey('haptics-tab:${t.id}'),
+                  ],
+                  semanticLabels: [
+                    for (final t in HapticsTab.values)
+                      '${t.label}, Haptics settings',
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  // A tab starts at its top, not where the last one was left.
+                  key: ValueKey('haptics-tab-body:${tab.id}'),
+                  padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+                  children: _tabRows(c, p, tab),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  List<Widget> _tabRows(BuildContext c, P p, HapticsTab tab) => switch (tab) {
+    HapticsTab.patterns => [
+      SettingsAccordion('Your patterns',
+          id: 'haptics_your_patterns', children: _yourRows(c, p)),
+      SettingsAccordion('Presets',
+          id: 'haptics_presets', children: _presetRows(c, p)),
+    ],
+    HapticsTab.alerts => [
+      _slotGroup(c, 'alerts'),
+      _slotGroup(c, 'apps'),
+      _sectionLink(p, 'alerts'),
+      _sectionLink(p, 'apps'),
+    ],
+    // One group: no accordion to fold, just the card.
+    HapticsTab.activity => [
+      _slotCard(p, _slotRowsOf(c, 'activity')),
+      _sectionLink(p, 'activity'),
+    ],
+    HapticsTab.cues => [
+      _slotGroup(c, 'gestures'),
+      _slotGroup(c, 'breathing'),
+      _sectionLink(p, 'gestures'),
+      _sectionLink(p, 'breathing'),
+    ],
+    HapticsTab.band => [
+      SettingsAccordion('Safety',
+          id: 'haptics_safety', children: _safetyRows(c, p)),
+      SettingsAccordion('Test', id: 'haptics_test', children: [
+        SetRow(
+          LucideIcons.bellRing,
+          C.orange,
+          'Buzz the band',
+          key: const ValueKey('haptics-buzz'),
+          enabled: bandConnected,
+          sub: bandConnected
+              ? 'Vibrate the band to locate it'
+              : 'Connect to the band first',
+          chevron: false,
+          onTap: onBuzz,
+        ),
+      ]),
+      if (devMode)
+        SettingsAccordion('Calibration',
+            id: 'haptics_calibration',
+            children: [
+          SetRow(
+            LucideIcons.flaskConical,
+            C.purple,
+            'Device lab',
+            key: const ValueKey('haptics-device-lab'),
+            sub: 'Try gestures the band does not report on its own',
+            onTap: onDeviceLab,
+          ),
+        ]),
+    ],
+  };
 
   List<Widget> _yourRows(BuildContext c, P p) {
     final mine = [
@@ -445,58 +517,85 @@ class HapticsSettingsView extends StatelessWidget {
     return [for (final s in builtIn) _patternRow(c, p, s)];
   }
 
-  // Slots by section, each section under its header and a link to its screen.
-  // No divider between two sections: the accordion already draws a hairline
-  // above every row, header rows included, and a second one doubled the line.
-  List<Widget> _slotRows(BuildContext c, P p) {
+  HapticSlotSection _sectionOf(String id) =>
+      kHapticSlotSections.firstWhere((s) => s.id == id);
+
+  // One section's slot rows: the pattern each plays, by NAME.
+  List<Widget> _slotRowsOf(BuildContext c, String sectionId) {
     final name = slotPatternName;
     return [
-      for (var i = 0; i < kHapticSlotSections.length; i++) ...[
-        Padding(
-          key: ValueKey('haptic-slot-section:${kHapticSlotSections[i].id}'),
-          padding: const EdgeInsets.symmetric(vertical: S.x2),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(kHapticSlotSections[i].title,
-                    style: F.cap.copyWith(color: p.ink2)),
-              ),
-              if (onOpenSlotScreen != null)
-                Pressable(
-                  key: ValueKey(
-                      'haptic-slot-section-link:${kHapticSlotSections[i].id}'),
-                  onTap: () => onOpenSlotScreen!(kHapticSlotSections[i].id),
-                  semanticLabel: 'Open ${kHapticSlotSections[i].title}',
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: S.x1),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text('Open',
-                            style: F.cap.copyWith(
-                                color: p.on(C.blue),
-                                fontWeight: FontWeight.w700)),
-                        Icon(LucideIcons.chevronRight,
-                            size: 16, color: p.on(C.blue)),
-                      ],
-                    ),
-                  ),
+      for (final slot in _sectionOf(sectionId).slots)
+        SetRow(
+          LucideIcons.waves,
+          C.purple,
+          slot.label,
+          key: ValueKey('haptic-slot:${slot.key}'),
+          value: name == null ? 'Default' : name(slot.key),
+          chevron: false,
+          onTap: onAssignToSlot == null ? null : () => _pickForSlot(c, slot),
+        ),
+    ];
+  }
+
+  // A tab with two or more groups folds each one under its section's title.
+  Widget _slotGroup(BuildContext c, String sectionId) => SettingsAccordion(
+    _sectionOf(sectionId).title,
+    id: 'haptics_slots_$sectionId',
+    children: _slotRowsOf(c, sectionId),
+  );
+
+  // The card of a tab's only group: the accordion's look without its header.
+  Widget _slotCard(P p, List<Widget> rows) => Padding(
+    padding: const EdgeInsets.only(top: S.x3),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: S.x4),
+      decoration: BoxDecoration(
+        color: p.card,
+        borderRadius: R.rLg,
+        boxShadow: p.el(1),
+      ),
+      child: Column(children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0) Divider(color: p.line, height: 1),
+          rows[i],
+        ],
+      ]),
+    ),
+  );
+
+  // The link to the screen where a section's slots are set, at the bottom of
+  // its tab. A text link on the page, not a row in a card, so no hairline
+  // sits next to it.
+  Widget _sectionLink(P p, String sectionId) {
+    final open = onOpenSlotScreen;
+    if (open == null) return const SizedBox.shrink();
+    final title = _sectionOf(sectionId).title;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(top: S.x2),
+        child: Pressable(
+          key: ValueKey('haptic-slot-section-link:$sectionId'),
+          onTap: () => open(sectionId),
+          semanticLabel: 'Open $title',
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: S.x1),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text('Open $title',
+                      style: F.cap.copyWith(
+                          color: p.on(C.blue), fontWeight: FontWeight.w700)),
                 ),
-            ],
+                Icon(LucideIcons.chevronRight, size: 16, color: p.on(C.blue)),
+              ],
+            ),
           ),
         ),
-        for (final slot in kHapticSlotSections[i].slots)
-          SetRow(
-            LucideIcons.waves,
-            C.purple,
-            slot.label,
-            key: ValueKey('haptic-slot:${slot.key}'),
-            value: name == null ? 'Default' : name(slot.key),
-            chevron: false,
-            onTap: onAssignToSlot == null ? null : () => _pickForSlot(c, slot),
-          ),
-      ],
-    ];
+      ),
+    );
   }
 
   Widget _sectionHeader(P p, String label) => Padding(
@@ -980,4 +1079,44 @@ class HapticsSettingsView extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Holds the selected tab: the one asked for, else the one used last (kept in
+/// the app prefs, read from the start-up cache so the first frame is already
+/// on it), else Patterns.
+class _TabHost extends StatefulWidget {
+  const _TabHost({required this.initial, required this.builder});
+
+  final HapticsTab? initial;
+  final Widget Function(
+    BuildContext context,
+    HapticsTab tab,
+    ValueChanged<HapticsTab> select,
+  )
+  builder;
+
+  @override
+  State<_TabHost> createState() => _TabHostState();
+}
+
+class _TabHostState extends State<_TabHost> {
+  late HapticsTab _tab = widget.initial ?? _remembered();
+
+  static HapticsTab _remembered() {
+    final id = Prefs.getString(kHapticsTabPref, '');
+    for (final t in HapticsTab.values) {
+      if (t.id == id) return t;
+    }
+    return HapticsTab.patterns;
+  }
+
+  void _select(HapticsTab t) {
+    if (t == _tab) return;
+    setState(() => _tab = t);
+    // A UI selection: a write that did not land only costs the memory of it.
+    Prefs.setString(kHapticsTabPref, t.id);
+  }
+
+  @override
+  Widget build(BuildContext c) => widget.builder(c, _tab, _select);
 }

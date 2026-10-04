@@ -48,6 +48,7 @@ import 'package:openstrap_edge/ui2/profile/pattern_picker.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
+import '../fix8ai/support/g45_support.dart' show openHapticsTab;
 import '../phase8/support/dart_source.dart';
 import '../phase8/support/sections.dart';
 
@@ -198,22 +199,26 @@ void main() {
   });
 
   group('the hub: groups', () {
-    testWidgets('Your patterns, Presets, Where patterns are used, Safety and '
+    testWidgets('Patterns tab: Your patterns and Presets; Band tab: Safety and '
         'Test; Calibration only in dev mode', (t) async {
       final c = _Calls();
-      const first = ['Your patterns', 'Presets', 'Where patterns are used'];
       await pumpTall(t, _hub(c, profile: _mg));
-      expect(sectionTitles(t), [...first, 'Safety', 'Test']);
+      expect(sectionTitles(t), ['Your patterns', 'Presets']);
+      await expectAllSectionsExpanded(t, 'Haptics > Patterns');
+      await openHapticsTab(t, 'band');
+      expect(sectionTitles(t), ['Safety', 'Test']);
       expect(find.byKey(const ValueKey('haptics-device-lab')), findsNothing);
       await pumpTall(t, _hub(c, profile: _mg, devMode: true));
-      expect(sectionTitles(t), [...first, 'Safety', 'Test', 'Calibration']);
-      await expectAllSectionsExpanded(t, 'Haptics');
+      await openHapticsTab(t, 'band');
+      expect(sectionTitles(t), ['Safety', 'Test', 'Calibration']);
+      await expectAllSectionsExpanded(t, 'Haptics > Band');
     });
 
     testWidgets('Test: "Buzz the band" is the device page\'s action',
         (t) async {
       final c = _Calls();
       await pumpTall(t, _hub(c, profile: _mg));
+      await openHapticsTab(t, 'band');
       expect(find.text('Buzz the band'), findsOneWidget);
       await _tapKey(t, 'haptics-buzz');
       expect(c.buzzed, 1);
@@ -222,6 +227,7 @@ void main() {
     testWidgets('Calibration: Device lab opens the lab', (t) async {
       final c = _Calls();
       await pumpTall(t, _hub(c, profile: _mg, devMode: true));
+      await openHapticsTab(t, 'band');
       expect(find.text('Device lab'), findsOneWidget);
       await _tapKey(t, 'haptics-device-lab');
       expect(c.lab, 1);
@@ -496,6 +502,7 @@ void main() {
     testWidgets('Allow long sequences is a checkbox with the risk caption',
         (t) async {
       await pumpTall(t, _hub(_Calls(), profile: _mg));
+      await openHapticsTab(t, 'band');
       expect(find.text('Allow long sequences'), findsOneWidget);
       expect(_checked(t, const ValueKey('haptics-allow-long')), isFalse);
       final caption = find.textContaining(_risk);
@@ -503,6 +510,7 @@ void main() {
       // The limits that stay on are said in the same caption.
       expect(t.widget<Text>(caption).data, contains('still apply'));
       await pumpTall(t, _hub(_Calls(), profile: _mg, allowLong: true));
+      await openHapticsTab(t, 'band');
       expect(_checked(t, const ValueKey('haptics-allow-long')), isTrue);
     });
 
@@ -510,6 +518,7 @@ void main() {
         'turns it on', (t) async {
       final c = _Calls();
       await pumpTall(t, _hub(c, profile: _mg));
+      await openHapticsTab(t, 'band');
       await _tapKey(t, 'haptics-allow-long');
       expect(find.byType(AlertDialog), findsOneWidget);
       expect(
@@ -530,6 +539,7 @@ void main() {
     testWidgets('turning it off needs no confirmation', (t) async {
       final c = _Calls();
       await pumpTall(t, _hub(c, profile: _mg, allowLong: true));
+      await openHapticsTab(t, 'band');
       await _tapKey(t, 'haptics-allow-long');
       expect(find.byType(AlertDialog), findsNothing);
       expect(c.allow, [false]);
@@ -538,10 +548,12 @@ void main() {
     testWidgets('the ledger and the queue are read out', (t) async {
       await pumpTall(
           t, _hub(_Calls(), profile: _mg, commandsLeft: 22, queued: 3));
+      await openHapticsTab(t, 'band');
       expect(find.text('22 of 30 band commands left in the last 2 minutes'),
           findsOneWidget);
       expect(find.text('Queue: 3 waiting'), findsOneWidget);
       await pumpTall(t, _hub(_Calls(), profile: _mg));
+      await openHapticsTab(t, 'band');
       expect(find.text('30 of 30 band commands left in the last 2 minutes'),
           findsOneWidget);
       expect(find.text('Queue: empty'), findsOneWidget);

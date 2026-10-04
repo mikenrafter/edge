@@ -16,6 +16,7 @@ import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/ui2/profile/haptics_settings.dart';
+import 'package:openstrap_edge/ui2/ui2.dart' show SubTabs;
 
 import '../../phase8/support/sections.dart';
 
@@ -281,3 +282,19 @@ Iterable<Widget> withKeyPrefix(WidgetTester t, String prefix) =>
     });
 
 Finder byKeyText(String key) => find.byKey(ValueKey(key));
+
+/// Selects the Haptics sub-tab [id] (patterns, alerts, activity, cues, band).
+/// The tab row scrolls when its labels are wider than the screen (the test
+/// font is far wider than a real one), and a tab off the edge is not built
+/// yet, so it is scrolled to first and centred, clear of the edge fade.
+Future<void> openHapticsTab(WidgetTester t, String id) async {
+  final tab = find.byKey(ValueKey('haptics-tab:$id'));
+  for (var i = 0; i < 6 && tab.evaluate().isEmpty; i++) {
+    await t.drag(find.byType(SubTabs), const Offset(-200, 0));
+    await t.pumpAndSettle();
+  }
+  await Scrollable.ensureVisible(t.element(tab), alignment: .5);
+  await t.pumpAndSettle();
+  await t.tap(tab);
+  await t.pumpAndSettle();
+}

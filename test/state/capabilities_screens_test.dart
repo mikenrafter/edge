@@ -29,6 +29,7 @@ import 'package:openstrap_edge/ui2/screens/ecg.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart' show HealthData, HealthScreen;
 import 'package:openstrap_edge/ui2/ui2.dart';
 
+import '../fix8ai/support/g45_support.dart' show openHapticsTab;
 import '../phase8/support/sections.dart';
 
 Capabilities _caps({
@@ -221,17 +222,21 @@ void main() {
           pump(t, const HapticsSettings(), c, ready: loaded);
 
       await hub(_caps());
+      await openHapticsTab(t, 'band');
       expect(find.byKey(const ValueKey('haptics-device-lab')), findsNothing);
       final off = find.text('Buzz the band');
       expect(off, findsOneWidget);
       expect(isDimmed(t, off), isTrue,
           reason: 'present, dimmed and inert without a link');
       expect(find.text('Connect to the band first'), findsWidgets);
+      await openHapticsTab(t, 'patterns');
       expect(find.byKey(const ValueKey('haptics-new-notes')), findsNothing);
 
       await hub(_caps(devMode: true, connected: true, generation: 'gen5'));
+      await openHapticsTab(t, 'band');
       expect(find.byKey(const ValueKey('haptics-device-lab')), findsOneWidget);
       expect(isDimmed(t, find.text('Buzz the band')), isFalse);
+      await openHapticsTab(t, 'patterns');
       expect(find.byKey(const ValueKey('haptics-new-notes')), findsOneWidget);
     });
   });

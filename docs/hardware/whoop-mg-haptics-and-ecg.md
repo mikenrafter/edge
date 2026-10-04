@@ -296,7 +296,7 @@ measured.
 
 **Breathing cues (Oct 4).** Guided breathing cues the wearer at each phase through four
 slots, `breath.inhale`, `breath.exhale`, `breath.hold` and `breath.done`, built-in and
-assignable like the gesture cues (Haptics > Where patterns are used > Breathing). Their
+assignable like the gesture cues (Haptics > Cues > Breathing). Their
 defaults are four phrases from the table above, picked to be felt apart without looking:
 
 | Slot | Phrase | Felt | Length |
@@ -496,7 +496,7 @@ with the same settings, worked).
 - **A failed gesture plays "Gesture failed".** The failure cue is the fourth
   gesture cue (`gesture.failed`, built-in default `pairx2`: the command
   `[47, 152]` looped twice, three medium pulses, what the engine's 600 ms hold
-  used to play), assignable under Haptics > Where patterns are used > Gestures.
+  used to play), assignable under Haptics > Cues > Gestures.
   It goes through the same dispatcher delivery as the other cues. The failure is
   also recorded (Settings > Hardware > Gesture failures, and a Home card).
 

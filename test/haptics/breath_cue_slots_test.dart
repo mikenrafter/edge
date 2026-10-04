@@ -16,6 +16,7 @@ import 'package:openstrap_edge/haptics/haptic_slots.dart';
 import 'package:openstrap_edge/haptics/pattern_store.dart';
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/stress/breath_phases.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SettingsAccordion;
 
 import '../fix8ai/support/g45_support.dart';
 
@@ -25,8 +26,6 @@ const _keys = [
   kBreathHoldKey,
   kBreathDoneKey,
 ];
-
-const _where = 'Where patterns are used';
 
 void main() {
   group('the four slots and their built-in defaults', () {
@@ -209,18 +208,18 @@ void main() {
   });
 
   group('the Haptics screen', () {
-    testWidgets('lists a Breathing section with the four slots and the '
-        'pattern each plays', (t) async {
+    testWidgets('lists a Breathing group on the Cues tab with the four slots '
+        'and the pattern each plays', (t) async {
       await pumpHub(t, HubCalls(), slotNames: {
         kBreathInhaleKey: 'Breathing inhale',
         kBreathExhaleKey: 'Breathing exhale',
         kBreathHoldKey: 'Your: Soft',
         kBreathDoneKey: 'Breathing done',
       });
-      final header = find.byKey(const ValueKey('haptic-slot-section:breathing'));
+      await openHapticsTab(t, 'cues');
+      final header = find.byWidgetPredicate(
+          (w) => w is SettingsAccordion && w.title == 'Breathing');
       expect(header, findsOneWidget);
-      expect(find.descendant(of: header, matching: find.text('Breathing')),
-          findsOneWidget);
       final labels = {
         kBreathInhaleKey: ('Inhale', 'Breathing inhale'),
         kBreathExhaleKey: ('Exhale', 'Breathing exhale'),
@@ -234,12 +233,13 @@ void main() {
             findsOneWidget);
         expect(find.descendant(of: row, matching: find.text(e.value.$2)),
             findsOneWidget);
-        expect(
-            t.getTopLeft(row).dy, greaterThan(t.getTopLeft(header).dy),
-            reason: 'under its header');
+        expect(find.descendant(of: header, matching: row), findsOneWidget,
+            reason: 'in its own group');
       }
       expect(find.byKey(const ValueKey('haptic-slot:alert.breath')), findsNothing);
-      expect(find.text(_where), findsOneWidget);
+      // Not on the Alerts tab.
+      await openHapticsTab(t, 'alerts');
+      expect(find.byKey(const ValueKey('haptic-slot:breath.inhale')), findsNothing);
     });
 
     testWidgets('tapping a breathing slot opens the picker and choosing a '
@@ -247,6 +247,7 @@ void main() {
       final c = HubCalls();
       final mine = userPattern('a', 'Morning nudge');
       await pumpHub(t, c, patterns: [mine]);
+      await openHapticsTab(t, 'cues');
       await t.tap(find.byKey(const ValueKey('haptic-slot:breath.hold')));
       await t.pumpAndSettle();
       expect(find.byKey(const ValueKey('pattern-picker')), findsOneWidget);

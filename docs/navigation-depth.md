@@ -77,8 +77,15 @@ gone.
   show that day: "Alarm and wake" (on or off, wake time, Natural Wake, Gradual
   Wake, and "Apply to full week") and "Timeline and status". The old notes about
   the band's own buzz and measured vocabulary are gone.
-- Haptics, "Where patterns are used": no divider between the section headers;
-  the accordion's own hairline above each row is the only line.
+- Haptics is a row of sub-tabs (the app's sub-tab component), one push from
+  Settings, so the depth is unchanged. Patterns (Your patterns, Presets),
+  Alerts (the alert slots, then App notifications and automation), Activity
+  (the workout slots), Cues (Gestures and Breathing) and Band (Safety, Test,
+  and Calibration in developer mode). A tab with two or more groups folds them
+  in accordions; Activity has one group and shows it as a plain card. The link
+  to the screen where a section's slots are set is a text link at the bottom of
+  its tab. The tab last used is remembered. The accordion's own hairline above
+  each row is the only line; nothing is drawn beside a link.
 - Every settings screen lists its settings as sections that start expanded
   (`SettingsAccordion`). A section can be folded; it keeps a one-line summary
   under its header while folded. Each section remembers whether it was open or

@@ -82,6 +82,12 @@ void main() {
 
     testWidgets('the Haptics screen shows no Gesture alert row', (t) async {
       await pumpHub(t, HubCalls());
+      await openHapticsTab(t, 'alerts');
+      expect(find.text('Gesture alert'), findsNothing);
+      expect(find.byKey(const ValueKey('haptic-slot:alert.gesture')),
+          findsNothing);
+      // The gesture cues are on the Cues tab.
+      await openHapticsTab(t, 'cues');
       expect(find.text('Gesture alert'), findsNothing);
       expect(find.byKey(const ValueKey('haptic-slot:alert.gesture')),
           findsNothing);

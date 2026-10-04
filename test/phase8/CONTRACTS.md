@@ -1745,3 +1745,25 @@ C and D in phase 2).
   `haptics.pending > 0`; the session-complete cue is not skipped and queues behind the last phase
   cue. Tests: `test/haptics/breath_cue_slots_test.dart`, `test/split8aj/seam4_breath_cues_test.dart`,
   and the gen5 pin in `seam4_breathing_test` (was LATENT: every gen5 cue wrote one buzz).
+
+## Haptics in sub-tabs (Oct 4)
+- The Haptics screen (`lib/ui2/profile/haptics_settings.dart`) was one long list of accordions; it
+  is now the app's `SubTabs` row under the nav bar, five tabs (`HapticsTab`: `patterns`, `alerts`,
+  `activity`, `cues`, `band`; keys `haptics-tab:<id>`), each showing only its own groups.
+  Patterns: Your patterns, Presets. Alerts: the `alerts` and `apps` slot sections. Activity: the
+  `activity` slots. Cues: `gestures` and `breathing`. Band: Safety, Test, and Calibration in
+  developer mode. Every slot, preset, pattern and setting that was on the page is on exactly one tab.
+- A tab with two or more groups folds them in `SettingsAccordion`s (ids `haptics_your_patterns`,
+  `haptics_presets`, `haptics_slots_<sectionId>`, `haptics_safety`, `haptics_test`,
+  `haptics_calibration`); Activity has one group and draws it as a plain card. One level only.
+  `haptics_where_used` and the in-list `haptic-slot-section:<id>` headers are gone.
+- Each section's link (`haptic-slot-section-link:<id>`, "Open <section title>") is a text link at
+  the bottom of its tab, with no hairline beside it.
+- The selected tab is remembered under `kHapticsTabPref` (`ui.haptics_tab`, a `HapticsTab` id,
+  never the label), read from the `Prefs` start-up cache on the first frame and written on a tap.
+  `HapticsSettings(tab:)` / `HapticsSettingsView(initialTab:)` open one tab directly and win over
+  the remembered one; no caller passes it yet. An unknown stored id opens Patterns.
+- Tests: `test/haptics/haptics_tabs_test.dart` (tabs, per-tab contents, reachability, links,
+  memory, direct open, 360 pt at 1.3x). `openHapticsTab` in `test/fix8ai/support/g45_support.dart`
+  selects a tab for the older screen tests (g4_haptics_screen, g8_gesture_alert_removed,
+  haptics_settings, breath_cue_slots, d_failed_cue, capabilities_screens).
