@@ -1,5 +1,5 @@
 // The ECG tap mode setting (8AN B): Accurate (reads the signal, waits for it to
-// settle) or Fast (the band's own contact flag vetoes noise; no settle wait).
+// settle) or Fast (skips the band's warm-up packet; no settle wait).
 // Default accurate until the user confirms Fast after the A/B; persisted like
 // the other gesture settings; a two-option selector on the Gestures screen that
 // holds at 360 pt.
@@ -18,9 +18,10 @@
 //    section whose options are keyed ValueKey('ecg-tap-mode:accurate') and
 //    ValueKey('ecg-tap-mode:fast'), the chosen one with a LucideIcons.check.
 //    Option copy (also in lib/l10n/app_en.arb), a title and one plain line each:
-//    "Accurate: reads the signal, waits for it to settle" and "Fast: uses the
-//    band's own contact flag to ignore noise, starts counting at once". Only the
-//    phrases 'waits for it to settle' and 'own contact flag' are pinned.
+//    "Accurate: reads the signal, waits for it to settle" and "Fast: skips the
+//    band's warm-up and starts counting about a second sooner". Only the
+//    phrases 'waits for it to settle' and 'starts counting about a second
+//    sooner' are pinned.
 
 import 'dart:convert';
 import 'dart:io';
@@ -161,7 +162,8 @@ void main() {
         ),
       );
       expect(find.textContaining('waits for it to settle'), findsOneWidget);
-      expect(find.textContaining('own contact flag'), findsOneWidget);
+      expect(find.textContaining('starts counting about a second sooner'),
+          findsOneWidget);
     });
 
     testWidgets('fast chosen: the check follows', (t) async {
@@ -213,6 +215,6 @@ void main() {
     bool has(String s) => values.any((v) => v.toLowerCase().contains(s));
     expect(has('reads the signal'), isTrue);
     expect(has('waits for it to settle'), isTrue);
-    expect(has('own contact flag'), isTrue);
+    expect(has('starts counting about a second sooner'), isTrue);
   });
 }

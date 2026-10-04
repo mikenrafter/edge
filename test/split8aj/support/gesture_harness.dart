@@ -374,14 +374,18 @@ String labText(GestureRig rig) =>
 int labCount(GestureRig rig, String needle) =>
     needle.allMatches(labText(rig)).length;
 
-/// A fast-mode ECG gesture's packets for a count of [n] (2..5): the finger on
-/// the sensor at the first packet, then one lift and one touch per further
+/// A fast-mode ECG gesture's packets for a count of [n] (2..5): the band's
+/// warm-up packet (49 samples, contact at 35..48, never counted), the finger on
+/// the sensor at the next packet, then one lift and one touch per further
 /// count, waiting for each follow-up cue to finish before the next touch, then
 /// quiet packets until the gesture ends. Stops feeding the moment the session
 /// reports its final count.
 Future<void> playEcgCount(GestureRig rig, int n) async {
   bool done() => labCount(rig, 'Final count') > 0;
   var sec = 1000;
+  rig.feedEcg(presencePacket(sec++,
+      presence: true, count: 49, contactFrom: 35, contactTo: 49));
+  await settleMs(20);
   for (var i = 0; i < n - 2 && !done(); i++) {
     rig.feedEcg(presencePacket(sec++, presence: true, contact: true));
     await settleMs(20);

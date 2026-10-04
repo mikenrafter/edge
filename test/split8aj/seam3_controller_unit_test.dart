@@ -201,7 +201,10 @@ void main() {
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       expect(h.controller.ecgTapActive, isTrue);
-      h.controller.onEcgFrame(presencePacket(1000, presence: true, contact: true));
+      // The band's warm-up packet (never counted), then the finger.
+      h.controller.onEcgFrame(presencePacket(1000,
+          presence: true, count: 49, contactFrom: 35, contactTo: 49));
+      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
       final out = await done.timeout(const Duration(seconds: 8));
       expect(out.single.taps, 3);
       expect(h.acted, ['water']);
@@ -222,7 +225,10 @@ void main() {
       await until(() => h.order.contains('ecg:start'));
       expect(h.order.first, 'cue');
       expect(h.order.indexOf('cue'), lessThan(h.order.indexOf('ecg:prepare')));
-      h.controller.onEcgFrame(presencePacket(1000, presence: true, contact: true));
+      // The band's warm-up packet (never counted), then the finger.
+      h.controller.onEcgFrame(presencePacket(1000,
+          presence: true, count: 49, contactFrom: 35, contactTo: 49));
+      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
       await done.timeout(const Duration(seconds: 8));
       // Start, one follow-up (2 to 3) and the confirm.
       await until(() => h.order.where((l) => l == 'cue').length == 3);
@@ -294,7 +300,10 @@ void main() {
       await h.settings.setEcgTapMode(EcgTapMode.fast);
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
-      h.controller.onEcgFrame(presencePacket(1000, presence: true, contact: true));
+      // The band's warm-up packet (never counted), then the finger.
+      h.controller.onEcgFrame(presencePacket(1000,
+          presence: true, count: 49, contactFrom: 35, contactTo: 49));
+      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
       await done.timeout(const Duration(seconds: 8));
       expect(h.order, contains('cue'));
       await until(() => !h.controller.ecgTapActive);
@@ -308,7 +317,10 @@ void main() {
       await h.settings.setEcgTapMode(EcgTapMode.fast);
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
-      h.controller.onEcgFrame(presencePacket(1000, presence: true, contact: true));
+      // The band's warm-up packet (never counted), then the finger.
+      h.controller.onEcgFrame(presencePacket(1000,
+          presence: true, count: 49, contactFrom: 35, contactTo: 49));
+      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
       await done.timeout(const Duration(seconds: 8));
       await until(() => h.order.where((l) => l == 'cue').length == 3);
       expect(h.loads, 3, reason: 'the start, follow-up and confirm cues');
@@ -328,7 +340,10 @@ void main() {
       final second = await h.controller.handle(h.doubleTap());
       expect(second, isEmpty);
       expect(h.controller.ecgTapActive, isTrue);
-      h.controller.onEcgFrame(presencePacket(1000, presence: true, contact: true));
+      // The band's warm-up packet (never counted), then the finger.
+      h.controller.onEcgFrame(presencePacket(1000,
+          presence: true, count: 49, contactFrom: 35, contactTo: 49));
+      h.controller.onEcgFrame(presencePacket(1001, presence: true, contact: true));
       final out = await first.timeout(const Duration(seconds: 8));
       expect(out.single.taps, 3);
       expect(h.acted, ['water']);

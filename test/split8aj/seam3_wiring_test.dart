@@ -94,14 +94,17 @@ void main() {
       await rig.app.gestureSettings.setEcgTapMode(EcgTapMode.fast);
       rig.doubleTap();
       await until(() => order.contains('band:generation'));
-      rig.feedEcg(presencePacket(1000, presence: true, contact: true));
+      // The band's warm-up packet (never counted), then the finger.
+      rig.feedEcg(presencePacket(1000,
+          presence: true, count: 49, contactFrom: 35, contactTo: 49));
+      rig.feedEcg(presencePacket(1001, presence: true, contact: true));
       await until(() => channel.performed.isNotEmpty,
           within: const Duration(seconds: 8));
       expect(channel.performed, ['media_next']);
       expect(labText(rig), contains('Final count 3'));
-      expect(labText(rig), isNot(contains('Packet 2:')),
+      expect(labText(rig), isNot(contains('Packet 3:')),
           reason: 'it stops counting at the most taps anything is set to, '
-              'on the first packet');
+              'on the first packet after the warm-up');
       await sessionRowsWhen((r) => r.isNotEmpty); // its row, before teardown
     });
   });

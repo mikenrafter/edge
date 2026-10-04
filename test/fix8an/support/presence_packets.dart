@@ -21,6 +21,8 @@ StrapEvent tapAt({int ms = 300}) => StrapEvent(
 /// trace (the sample-level contact detector reads it as a finger), otherwise
 /// they are all zero. [contactFrom]..[contactTo] (sample indexes, 10 ms each)
 /// put the moving trace in part of the packet only: 5..25 is a 200 ms touch.
+/// [count] is the number of samples (100 for a normal packet, 49 for the
+/// band's warm-up packet).
 LabradorR17 presencePacket(
   int sec, {
   bool presence = false,
@@ -28,11 +30,12 @@ LabradorR17 presencePacket(
   int? contactFrom,
   int? contactTo,
   int unreadable = 0,
+  int count = 100,
 }) =>
     r17(
       strapSeconds: sec,
       samples: [
-        for (var i = 0; i < 100; i++)
+        for (var i = 0; i < count; i++)
           (contact || contactFrom != null) &&
                   i >= (contactFrom ?? 0) &&
                   i < (contactTo ?? 100)

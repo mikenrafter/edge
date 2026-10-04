@@ -1,6 +1,6 @@
 // How an ECG tap gesture decides the finger is on the band (8AN). Accurate
-// reads the signal and waits for it to settle; fast also trusts the band's own
-// contact flag to ignore noise and starts counting at once.
+// reads the signal and waits for it to settle; fast skips the band's warm-up
+// packet and starts counting about a second sooner.
 
 enum EcgTapMode {
   accurate('accurate'),

@@ -11037,7 +11037,7 @@
   "@ecgTapModeFastTitle": {
     "description": "Title of the ECG tap mode that starts counting at once."
   },
-  "ecgTapModeFastSub": "Uses the band's own contact flag to ignore noise, starts counting at once.",
+  "ecgTapModeFastSub": "Skips the band's warm-up and starts counting about a second sooner.",
   "@ecgTapModeFastSub": {
     "description": "One plain line under the Fast ECG tap mode."
   },

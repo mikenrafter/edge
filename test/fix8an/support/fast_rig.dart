@@ -1,14 +1,9 @@
 // Shared rig for the 8AN fast-path tests: presence packets and an
 // EcgTapSession on a virtual clock whose band queue the test controls.
 //
-// ASSUMED API (new, to be written by the green phases):
-//  * lib/gestures/ecg_tap_mode.dart: `enum EcgTapMode { accurate, fast }`.
-//  * EcgTapSession gains optional ctor params `EcgTapMode Function()? tapMode`
-//    (null = accurate), `Future<bool> Function()? beginFastStream` (called
-//    INSTEAD of `beginStream` in fast mode) and `int? presenceFallbackPackets`
-//    (null = `kEcgPresenceFallbackPackets`).
-//  * EcgGestureRecord gains `bool fellBackToSamples` (default false: the
-//    presence veto was lifted because the band never reported presence).
+// API used: `EcgTapMode`, and the session's `tapMode` / `beginFastStream`
+// ctor params (fast mode starts the stream through `beginFastStream` and never
+// calls `beginStream`).
 
 import 'dart:async';
 
@@ -24,7 +19,6 @@ class FastRig {
     EcgTapThresholds? th,
     this.mode = EcgTapMode.fast,
     this.bandQueue = true,
-    this.fallbackPackets,
     this.beginFast,
     this.throwOnFinish = false,
     Duration beginTimeout = const Duration(seconds: 15),
@@ -68,7 +62,6 @@ class FastRig {
       wait: (_) async {},
       pollEvery: const Duration(hours: 1),
       beginTimeout: beginTimeout,
-      presenceFallbackPackets: fallbackPackets,
     );
   }
 
@@ -76,7 +69,6 @@ class FastRig {
   final EcgTapMode mode;
   final bool bandQueue;
   final bool throwOnFinish;
-  final int? fallbackPackets;
   final Future<bool> Function()? beginFast;
   late final EcgTapSession session;
   bool alive = true;
@@ -117,6 +109,7 @@ class FastRig {
     int? from,
     int? to,
     int unreadable = 0,
+    int count = 100,
   }) async {
     now = t0.add(Duration(milliseconds: 2800 + (sec - 1000) * 1000));
     session.onFrame(presencePacket(sec,
@@ -124,17 +117,29 @@ class FastRig {
         contact: contact,
         contactFrom: from,
         contactTo: to,
-        unreadable: unreadable));
+        unreadable: unreadable,
+        count: count));
     await settle();
   }
 
-  /// Packets for a gesture of [n] taps (2..5) in fast mode: one touch (a whole
-  /// packet of contact with presence) per follow-up, a lift packet after each,
-  /// the follow-up cue played before the next packet, then absent packets until
-  /// the window runs out (the sample counter's reacquire + confirm is about
-  /// 1.7 s after the cue). Returns the next free strap second.
+  /// The band's warm-up packet, as the 2026-10-04 capture shows it: the first
+  /// packet with samples, 49 of them, contact in the last 14 (35..48) and
+  /// presence switching on with it. Fast mode never counts it.
+  Future<void> warmup(int sec, {bool contact = true}) => feed(sec,
+      presence: true,
+      count: 49,
+      from: contact ? 35 : null,
+      to: contact ? 49 : null);
+
+  /// Packets for a gesture of [n] taps (2..5) in fast mode: the warm-up
+  /// packet, then one touch (a whole packet of contact with presence) per
+  /// follow-up, a lift packet after each, the follow-up cue played before the
+  /// next packet, then absent packets until the window runs out (the sample
+  /// counter's reacquire + confirm is about 1.7 s after the cue). Returns the
+  /// next free strap second.
   Future<int> playCount(int n) async {
     var sec = 1000;
+    await warmup(sec++);
     final touches = n - 2;
     for (var i = 0; i < touches; i++) {
       await feed(sec++, presence: true, contact: true);

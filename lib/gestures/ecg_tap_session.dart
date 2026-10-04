@@ -38,6 +38,12 @@
 // log shows the band refusing a start that the very next one accepted. The retry
 // only ever calls the injected [beginStream]/[endStream]; it names no opcode.
 //
+// Fast mode (8AN, [EcgTapMode.fast]) leaves out the raw-save, the steady-stream
+// wait and the settle. It skips the band's warm-up packet (the first one with
+// samples; its contact never counts) and opens the first window at that
+// packet's end. The band's presence bit is only traced: on the MG it latches on
+// with the warm-up packet and never drops, so it cannot veto a touch.
+//
 // Why the wait: a start command being written only means the command left the
 // phone. The band can take many seconds to begin sending, and then its sensor
 // reads zero for a while even with a finger on it. Startup is slow, so
@@ -61,7 +67,6 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
 import '../notify/alert_rule.dart';
 import 'ecg_contact.dart';
-import 'ecg_presence_gate.dart';
 import 'ecg_stream_readiness.dart';
 import 'ecg_tap_counter.dart';
 import 'ecg_tap_mode.dart';
@@ -90,7 +95,6 @@ class EcgGestureRecord {
     required this.strapEnd,
     required this.finalCount,
     required this.reason,
-    this.fellBackToSamples = false,
   });
 
   final int? strapStart;
@@ -102,14 +106,9 @@ class EcgGestureRecord {
   /// Why it was abandoned (null when counted).
   final String? reason;
 
-  /// Fast mode only: the band never reported presence while the samples showed
-  /// contact, so the presence veto was lifted for the rest of the gesture.
-  final bool fellBackToSamples;
-
   @override
   String toString() =>
-      'EcgGestureRecord($strapStart..$strapEnd count=$finalCount reason=$reason'
-      '${fellBackToSamples ? ' fellBackToSamples' : ''})';
+      'EcgGestureRecord($strapStart..$strapEnd count=$finalCount reason=$reason)';
 }
 
 class EcgTapSession {
@@ -133,7 +132,6 @@ class EcgTapSession {
     this.step,
     this.tapMode,
     this.beginFastStream,
-    this.presenceFallbackPackets,
     DateTime Function()? now,
     this.stallAfter = const Duration(seconds: 3),
     this.maxSampleGap = const Duration(milliseconds: 50),
@@ -162,10 +160,6 @@ class EcgTapSession {
   /// stream without the raw-save the readings need. Null: fast mode is not
   /// available and the gesture runs accurate.
   final Future<bool> Function()? beginFastStream;
-
-  /// Packets of sample contact without presence before the presence veto is
-  /// lifted (fast mode). Null: [kEcgPresenceFallbackPackets].
-  final int? presenceFallbackPackets;
 
   /// Stop it and clean up. Never throws.
   final Future<void> Function() endStream;
@@ -310,10 +304,8 @@ class EcgTapSession {
   Duration? _firstSampleAt; // the stream's first sample, on the sample clock
   EcgTapCounter? _counter;
   // 8AN fast mode, fixed when the gesture begins: no readiness or settle wait,
-  // and the band's presence bit vetoes each packet's sample contact ([_gate]).
+  // and the band's warm-up packet is skipped ([_skipWarmup]).
   bool _fast = false;
-  EcgPresenceGate? _gate;
-  bool _fallbackLogged = false;
   // The last presence / sample-contact state the trace reported (8AN A).
   bool _presenceOn = false, _sampleOn = false;
   EcgStreamReadiness _readiness = EcgStreamReadiness();
@@ -388,7 +380,7 @@ class EcgTapSession {
     step?.call('Double tap received. Starting the ECG stream.');
     if (_fast) {
       step?.call('Fast mode: no raw-save, no wait for the stream to settle; '
-          "the band's presence flag vetoes contact it does not confirm.");
+          "the band's first packet with samples is skipped as warm-up.");
     }
     _fireCue(tap, startBuzz);
     await _startStream(gen);
@@ -436,12 +428,6 @@ class EcgTapSession {
     _readiness = EcgStreamReadiness();
     _clock = EcgSampleClock();
     _prevEnd = null;
-    _gate = _fast
-        ? EcgPresenceGate(
-            fallbackPackets:
-                presenceFallbackPackets ?? kEcgPresenceFallbackPackets)
-        : null;
-    _fallbackLogged = false;
     _presenceOn = _sampleOn = false;
   }
 
@@ -542,15 +528,8 @@ class EcgTapSession {
     _packets++;
     final prevWall = _lastFrameWall;
     final n = r.samples.length;
-    final rawMask = ecgContactMask(r.samples);
-    final (raw, rawFirst, rawLast) = _contactOf(rawMask);
-    // Fast mode: the band's presence bit vetoes the samples' contact for this
-    // packet (see EcgPresenceGate); the trace still reports the raw contact.
-    final gate = _gate;
-    final mask = gate == null
-        ? rawMask
-        : gate.filter(rawMask, presence: r.presence);
-    final (_, first, last) = _contactOf(mask);
+    final mask = ecgContactMask(r.samples);
+    final (raw, first, last) = _contactOf(mask);
     final fill = !c.thresholds.extraSensitive;
     bool contactAt(int i) =>
         fill ? first >= 0 && i >= first && i <= last : mask[i];
@@ -577,8 +556,7 @@ class EcgTapSession {
     }
     step?.call(
       'Packet $_packets: $n samples, $raw with contact'
-      '${raw > 0 ? ' (samples $rawFirst–$rawLast)' : ''}'
-      '${raw > 0 && first < 0 ? ', vetoed: the band reports no presence' : ''}, '
+      '${raw > 0 ? ' (samples $first–$last)' : ''}, '
       'strap time ${r.strapTime.toStringAsFixed(3)} (newest sample), $gap, '
       '$continuity, received ${(behind.inMicroseconds / 1000).round()} ms '
       'behind the freshest packet so far; ${_bandStatus(r)}',
@@ -597,12 +575,6 @@ class EcgTapSession {
       _sampleOn = raw > 0;
       step?.call('Sample contact ${_sampleOn ? 'on' : 'off'}, ${_sinceTap()} ms '
           'after the tap.');
-    }
-    if (gate != null && gate.fellBack && !_fallbackLogged) {
-      _fallbackLogged = true;
-      step?.call('Presence fallback: ${gate.fallbackPackets} packets showed '
-          'contact in the samples and the band never reported presence; '
-          'counting on the samples alone for the rest of the gesture.');
     }
     // Interval bookkeeping: whole strap seconds, start floored and end
     // ceiled, in integers (no float drift at a second boundary).
@@ -623,11 +595,13 @@ class EcgTapSession {
     final firstSampled = n > 0 && _firstSampleAt == null;
     if (n > 0) _firstSampleAt ??= base;
     if (_fast) {
-      // No readiness or settle wait: the counter starts at the first sampled
-      // packet and its first window opens at the first packet the presence gate
-      // does not hold.
-      if (n > 0) _openFast(c, gate!, end, base);
-      if (!_active || !_opened) return;
+      // No readiness or settle wait: the first packet with samples is the
+      // band's warm-up, skipped, and the first window opens where it ends.
+      if (n > 0 && !_opened) {
+        _skipWarmup(c, end, raw);
+        return;
+      }
+      if (!_opened) return;
       for (var i = 0; i < n && _active; i++) {
         _handle(c.sample(base + _samplePeriod * i, contact: contactAt(i)));
       }
@@ -716,27 +690,27 @@ class EcgTapSession {
     );
   }
 
-  /// Fast mode's start: the counter begins at the first sampled packet and its
-  /// first window opens at that packet's first sample, unless the gate holds it
-  /// (samples show contact the band has not confirmed): then the window waits,
-  /// so vetoed contact can neither count nor let the first window run out.
-  void _openFast(EcgTapCounter c, EcgPresenceGate gate, Duration end,
-      Duration base) {
+  /// Fast mode's start. The first packet with samples is the band's warm-up
+  /// (49 samples, a burst of "contact" in its last 14, in 6 of 9 sessions of
+  /// the 2026-10-04 capture): its contact never counts. The counter starts and
+  /// its first window opens at the packet's END, its newest sample, so the next
+  /// packet's samples fall inside it. Opening at the packet's first sample left
+  /// the window over, in sample time, before the packet had even arrived.
+  void _skipWarmup(EcgTapCounter c, Duration end, int contact) {
     final tap = _tap;
     if (_opened || tap == null) return;
-    if (!c.started) {
-      _handle(c.start(tap, at: end)); // max 2 ends here
-      if (!_active) return;
-    }
-    if (gate.holdsFirstWindow) return;
+    step?.call('Warm-up packet skipped ($contact samples with contact '
+        'ignored).');
     _opened = true;
+    _handle(c.start(tap, at: end)); // max 2 ends here
+    if (!_active) return;
     step?.call(
-      'Touch window open at sample time ${base.inMilliseconds} ms, at the '
-      'first usable packet, ${_sinceTap()} ms after the tap '
+      'Touch window open at sample time ${end.inMilliseconds} ms, at the end '
+      'of the warm-up packet, ${_sinceTap()} ms after the tap '
       '(${c.thresholds.startMs} ms for the first touch to begin; a finger '
       'already on the sensor counts).',
     );
-    _handle(c.open(base));
+    _handle(c.open(end));
   }
 
   /// Start the counter and open its first window, once, when the stream
@@ -771,8 +745,8 @@ class EcgTapSession {
     }
     final start = _startedAt;
     if (_fast && !_opened) {
-      // Packets flow but the first window is held by the presence gate: the
-      // counter's own stall check does not run before it opens.
+      // The first window opens with the warm-up packet: until then the
+      // counter's own stall check does not run.
       final seen = _lastFrameWall;
       if (seen != null && _now().difference(seen) > stallAfter) {
         _abandon('stalled');
@@ -942,7 +916,6 @@ class EcgTapSession {
     final up = _streamUp;
     final strapStart = _firstStrapSec ?? _strapAtBegin;
     final packetEnd = _lastEndStrapSec;
-    final fellBackToSamples = _gate?.fellBack ?? false;
     try {
       _timer?.cancel();
     } finally {
@@ -966,8 +939,6 @@ class EcgTapSession {
       _retried = false;
       _th = null;
       _fast = false;
-      _gate = null;
-      _fallbackLogged = false;
       _presenceOn = _sampleOn = false;
     }
     // Both are best effort and must not leak an error out of an unawaited
@@ -1016,7 +987,6 @@ class EcgTapSession {
       strapEnd: strapEnd,
       finalCount: count,
       reason: reason,
-      fellBackToSamples: fellBackToSamples,
     );
     // 8N: the interval is written on every exit, and a failure here must not
     // leave anything unfinished.

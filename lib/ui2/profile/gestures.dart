@@ -274,8 +274,8 @@ class BandGesturesView extends StatelessWidget {
                       id: EcgTapMode.fast.id,
                       title: l?.ecgTapModeFastTitle ?? 'Fast',
                       sub: l?.ecgTapModeFastSub ??
-                          "Uses the band's own contact flag to ignore noise, "
-                              'starts counting at once.',
+                          "Skips the band's warm-up and starts counting about "
+                              'a second sooner.',
                       selected: mode == EcgTapMode.fast,
                       enabled: true,
                       onTap: () => onEcgTapMode?.call(EcgTapMode.fast),

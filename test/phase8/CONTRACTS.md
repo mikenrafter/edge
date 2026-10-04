@@ -1594,16 +1594,19 @@ C and D in phase 2).
 - Fast (hybrid): the session starts through `beginFastStream`, with no
   readiness wait and no sensor settle; PREPARE without raw-save
   (`rawSave: false` through `EcgController.begin`, `EcgTransport.prepare`,
-  `BleEngine.ecgPrepare`); cleanup unchanged. Counting stays sample-timed; each
-  packet's mask passes `EcgPresenceGate.filter` first (presence clear ⇒ no
-  contact; sticky fallback after `kEcgPresenceFallbackPackets` = 4
-  contact-without-presence packets when presence was never seen, recorded as
-  `EcgGestureRecord.fellBackToSamples`). The mode is fixed when the gesture
-  starts.
+  `BleEngine.ecgPrepare`); cleanup unchanged (all three OFF). Counting stays
+  sample-timed with the same start/gap/confirm thresholds and the 8AK hold. The
+  first live packet with samples (the band's warm-up) never counts, trace line
+  "Warm-up packet skipped", and the first touch window opens at that packet's
+  END (its newest sample), so the next packet's samples fall inside it. The
+  band's presence bit is not used (on the MG it latches on with the warm-up and
+  never drops); `EcgPresenceGate`, its fallback and
+  `EcgGestureRecord.fellBackToSamples` are gone. The mode is fixed when the
+  gesture starts.
 - Both modes trace "Presence on|off, N ms after the tap" and "Sample contact
   on|off, N ms after the tap" (measurement for the band's debounce).
-- Tests: `test/fix8an/` (gate, session, parity 2..5, measure, prepare,
-  settings). Doc: `docs/hardware/whoop-mg-haptics-and-ecg.md`, "Fast mode (8AN)".
+- Tests: `test/fix8an/` (capture replay, session, parity 2..5, measure,
+  prepare, settings). Doc: `docs/hardware/whoop-mg-haptics-and-ecg.md`, "Fast mode (8AN)".
 
 ## 8AL: logs are saved as files (Oct 4)
 - A big log pasted from the clipboard locked up the user's second device, so no log
