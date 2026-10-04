@@ -7,10 +7,13 @@
 // not. (A "resume" is only the cold-start reconcile, pinned in
 // seam4_reconcile_test.dart.)
 
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository.dart';
 import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/prefs.dart';
 
 import 'support/workout_harness.dart';
 
@@ -44,6 +47,10 @@ void main() {
   late PlatformSpies spies;
   setUp(() async {
     await deriveDbSetUp(_db);
+    // The prefs instance is cached for the whole file: load it, and empty the
+    // pending-stop row an earlier test may have left.
+    await Prefs.ensureLoaded();
+    Prefs.setString(Prefs.workoutStopPending, '');
     spies = PlatformSpies();
   });
   tearDown(() async {
@@ -322,14 +329,26 @@ void main() {
       });
     });
 
-    // The save's own failure and a failure of the strap-stamp read that comes
-    // just before it are different paths today: the read sits OUTSIDE the
-    // try, so the "could not save" log line and the failure notify belong only
-    // to the write.
+    // FIXED (was LATENT). A failed stop used to leave the session live but
+    // frozen: the tick was cancelled and the derive hold released, yet the UI
+    // still showed a running session and the Live Activity kept counting. And
+    // on an unstamped link (the gen4 case: no strap stamp to carry) the
+    // strap-stamp read sat outside the try, so a failed save logged no "could
+    // not save" line and sent no failure notify; gen5 did both.
+    //
+    // Decided behaviour, the same for every link: a failed stop is "stop
+    // pending". Nothing is lost or fabricated: the finished row (tallies, end
+    // stamp) is built once and kept, in memory for a retry and in prefs for a
+    // relaunch. The session is not live: no tick, derive hold and display wake
+    // released, Live Activity ended, and `workoutStopPending` tells the UI to
+    // offer a retry rather than a running session. `activeWorkout` stays only
+    // as the retry handle, so the retry banks the SAME row (the stop time does
+    // not drift to the retry), exports once, and ends nothing twice. A launch
+    // that finds the pending row banks it through the reconcile.
     for (final family in ['gen5', null]) {
-      test('a failed save (link ${family ?? 'unstamped'}) keeps the session '
-          'live, rethrows, leaves the tick cancelled, and the retry banks it',
-          () async {
+      test('a failed save (link ${family ?? 'unstamped'}) leaves the session '
+          'stop-pending: logged, notified, not ticking, Live Activity ended, '
+          'display released; the retry banks it', () async {
         final probe = TimerProbe();
         await probe.run(() async {
           final app = AppState.forTesting();
@@ -340,32 +359,146 @@ void main() {
           await db.execute('ALTER TABLE sessions RENAME TO sessions_hidden');
           final ticks = TickCounter(app);
           await expectLater(app.stopWorkout(), throwsA(anything));
-          expect(app.activeWorkout, isNotNull);
-          // Today's behaviour, pinned: the teardown that ran before the write
-          // is not undone, so the still-"live" session no longer ticks and no
-          // longer holds derivation.
+          expect(app.activeWorkout, isNotNull,
+              reason: 'kept as the retry handle');
+          expect(app.workoutStopPending, isTrue);
           expect(probe.active(kTick), isEmpty);
           expect(app.logLines,
               contains('[derive-scheduler] workout ended — derive may run'));
-          expect(spies.liveActivityMethods, ['start'],
-              reason: 'the Live Activity is not ended by a failed stop');
-          final saveFailed = app.logLines.any(
-              (l) => l.startsWith('[workout] could not save session w4-fail'));
-          expect(saveFailed, family != null,
-              reason: 'only the write failure is logged');
-          // The hold release notifies (and the scheduler's queue re-read after
-          // it); the write failure notifies once more.
+          expect(spies.liveActivityMethods, ['start', 'end']);
+          expect(spies.keepAwake, [true, false]);
+          expect(
+              app.logLines.any((l) =>
+                  l.startsWith('[workout] could not save session w4-fail')),
+              isTrue,
+              reason: 'gen4 and gen5 report a failed save alike');
+          // The hold release notifies; the write failure notifies once more.
           await settleMs(300);
-          expect(ticks.ticks, family != null ? 3 : 2);
+          expect(ticks.ticks, 3);
+          final held = jsonDecode(Prefs.getString(Prefs.workoutStopPending, ''))
+              as Map<String, dynamic>;
+          expect(held['id'], 'w4-fail');
+          expect(held['status'], 'done');
           await db.execute('ALTER TABLE sessions_hidden RENAME TO sessions');
+          await settleMs(1100);
           await app.stopWorkout();
           expect(app.activeWorkout, isNull);
-          expect((await sessionRow('w4-fail'))!['status'], 'done');
+          expect(app.workoutStopPending, isFalse);
+          final row = (await sessionRow('w4-fail'))!;
+          expect(row['status'], 'done');
+          expect(row['end_ts'], held['end_ts'],
+              reason: 'the stop time is the stop, not the retry');
+          expect(Prefs.getString(Prefs.workoutStopPending, ''), isEmpty);
+          expect(spies.liveActivityMethods, ['start', 'end'],
+              reason: 'the retry does not end the Live Activity again');
           ticks.stop();
           await finish(app);
         });
       });
     }
+
+    test('a failed stop keeps the tallies and no later tick bills '
+        'into the retry', () async {
+      final probe = TimerProbe();
+      await probe.run(() async {
+        final app = AppState.forTesting();
+        app.user = {..._user};
+        app.engine.state.generation = 'gen4';
+        app.startWorkout(workoutId: 'w4-keep', type: 'strength');
+        await sessionLanded('w4-keep');
+        setLiveHr(app, 150);
+        final tick = probe.active(kTick).single;
+        for (var i = 0; i < 90; i++) {
+          tick.fire();
+        }
+        final db = await LocalDb.instance;
+        await db.execute('ALTER TABLE sessions RENAME TO sessions_hidden');
+        await expectLater(app.stopWorkout(), throwsA(anything));
+        // A late tick (or a stray timer) must not add to a stopped session.
+        app.debugTickWorkout();
+        expect(app.activeWorkout!.zoneSeconds.reduce((a, b) => a + b), 90);
+        await db.execute('ALTER TABLE sessions_hidden RENAME TO sessions');
+        await app.stopWorkout();
+        final row = (await sessionRow('w4-keep'))!;
+        expect((row['max_hr'] as num) > 0, isTrue);
+        expect(row['zone_min_json'], isNot('[]'));
+        expect(row['calories'], isNotNull);
+        expect(row['strain'], isNotNull);
+        await finish(app);
+      });
+    });
+
+    test('the app dying after a failed stop: the relaunch banks the finished '
+        'row, tallies intact, as a real stop (not a fabricated end), and '
+        'exports it once', () async {
+      final probe = TimerProbe();
+      await probe.run(() async {
+        final app = AppState.forTesting();
+        app.user = {..._user};
+        app.healthSyncEnabled = true;
+        app.engine.state.generation = 'gen4';
+        app.startWorkout(workoutId: 'w4-die', type: 'strength');
+        await sessionLanded('w4-die');
+        setLiveHr(app, 150);
+        final tick = probe.active(kTick).single;
+        for (var i = 0; i < 90; i++) {
+          tick.fire();
+        }
+        await settleMs(1300);
+        final db = await LocalDb.instance;
+        await db.execute('ALTER TABLE sessions RENAME TO sessions_hidden');
+        await expectLater(app.stopWorkout(), throwsA(anything));
+        app.dispose();
+        await db.execute('ALTER TABLE sessions_hidden RENAME TO sessions');
+        expect((await sessionRow('w4-die'))!['status'], 'live');
+        spies.health.clear();
+
+        final relaunch = AppState.forTesting();
+        relaunch.healthSyncEnabled = true;
+        await relaunch.debugReconcileOrphanedLiveWorkout();
+        await settleMs(400);
+        expect(relaunch.activeWorkout, isNull,
+            reason: 'finalized, not resumed as a running session');
+        final row = (await sessionRow('w4-die'))!;
+        expect(row['status'], 'done');
+        expect(row['end_ts_fabricated'], anyOf(isNull, 0));
+        expect((row['max_hr'] as num) > 0, isTrue);
+        expect(row['zone_min_json'], isNot('[]'));
+        expect(row['calories'], isNotNull);
+        expect(row['strain'], isNotNull);
+        expect(row['device_family'], 'gen4');
+        expect(Prefs.getString(Prefs.workoutStopPending, ''), isEmpty);
+        expect([for (final c in spies.health) c.method],
+            ['delete', 'writeWorkoutData']);
+        await finish(relaunch);
+      });
+    });
+
+    test('a held row is banked even when its live row is gone, and an '
+        'unreadable one is left for the next launch', () async {
+      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      Prefs.setString(
+          Prefs.workoutStopPending,
+          jsonEncode({
+            'id': 'w4-gone',
+            'start_ts': now - 600,
+            'end_ts': now - 60,
+            'type': 'strength',
+            'status': 'done',
+            'max_hr': 150,
+            'source': 'manual',
+            'created_at': (now - 600) * 1000,
+          }));
+      final app = AppState.forTesting();
+      await app.debugReconcileOrphanedLiveWorkout();
+      expect((await sessionRow('w4-gone'))!['max_hr'], 150);
+      expect(Prefs.getString(Prefs.workoutStopPending, ''), isEmpty);
+      Prefs.setString(Prefs.workoutStopPending, '{not json');
+      await app.debugReconcileOrphanedLiveWorkout();
+      expect(Prefs.getString(Prefs.workoutStopPending, ''), '{not json');
+      Prefs.setString(Prefs.workoutStopPending, '');
+      await finish(app);
+    });
 
     test('a second stop right after the first is a no-op', () async {
       final app = AppState.forTesting();

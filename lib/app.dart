@@ -641,6 +641,38 @@ class _LiveSessionBar extends StatelessWidget {
     final p = P.of(c);
     final app = c.read<AppState>();
     final a = _activityFor(app);
+    // A finished session whose save failed. It is not running — nothing is
+    // ticking — so say that, and offer the one action that helps: save again.
+    // (The failed stop already raised its error; this is only the way back.)
+    if (c.select<AppState, bool>((s) => s.workoutStopPending)) {
+      return Container(
+        decoration: BoxDecoration(
+          color: p.card,
+          border: Border(top: BorderSide(color: p.line)),
+        ),
+        child: Pressable(
+          semanticLabel: 'Save the session that could not be saved',
+          onTap: () async {
+            try {
+              await app.stopWorkout();
+            } catch (_) {
+              /* logged and announced by the stop itself; still pending */
+            }
+          },
+          child: Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: S.x4, vertical: S.x3),
+            child: Row(children: [
+              Expanded(
+                child: Text('Workout not saved. Tap to try again.',
+                    style: F.body.copyWith(color: p.ink)),
+              ),
+              Icon(LucideIcons.refreshCw, size: 18, color: p.ink3),
+            ]),
+          ),
+        ),
+      );
+    }
     // A session the app is holding but this build cannot draw — an older
     // build's type key, say. Never nothing: the bar is the ONLY control that
     // can end an open session, and hiding it left the workout open forever

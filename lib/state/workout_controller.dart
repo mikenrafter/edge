@@ -54,6 +54,7 @@ import '../notify/notification_event.dart';
 import '../notify/tap_router.dart';
 import '../sync/edge_tracking.dart';
 import '../widget/widget_service.dart';
+import 'prefs.dart';
 import 'workout_idle.dart';
 import 'zone_alert.dart';
 
@@ -177,6 +178,18 @@ class WorkoutController {
   // ── live session coach ───────────────────────────────────────────────────────
   LiveWorkoutState? activeWorkout;
   Timer? _workoutTimer;
+
+  /// The session is stopped but its save failed: [activeWorkout] is kept only
+  /// as the retry handle and carrier of the tallies. Not ticking, not live —
+  /// UI that offers "back to your session" reads this to offer "retry save".
+  bool _stopPending = false;
+  bool get stopPending => _stopPending;
+
+  /// The finished row a stop built, kept across a failed save so every retry
+  /// banks the SAME numbers and stop time: the tick is cancelled but the
+  /// pedometer and the clock keep moving, and a retry minutes later must not
+  /// stretch the workout. Also written to prefs, see [Prefs.workoutStopPending].
+  Map<String, Object?>? _stopRow;
 
   // GPS route tracking for the active run/ride/walk (on-device only). Null when
   // no session is live or the type isn't route-eligible / permission denied.
@@ -501,6 +514,7 @@ class WorkoutController {
       // (CodeRabbit flagged the race). Bail rather than clobber a real,
       // just-started activeWorkout and leak its timer.
       if (activeWorkout != null) return;
+      await _bankHeldStop();
       final rows = await LocalDb.liveSessions();
       // RE-CHECK AFTER THE AWAIT. This is kicked unawaited from _init(), one
       // line before `initialized = true` makes the shell interactive — so the
@@ -657,6 +671,39 @@ class WorkoutController {
     }
   }
 
+  void _clearStopMarker() => Prefs.setString(Prefs.workoutStopPending, '');
+
+  /// A previous run stopped a workout, could not save it, and died before a
+  /// retry landed: bank the finished row it held (see [_stopRow]). This is a
+  /// real stop with real tallies — unlike a stale live row below, its end is not
+  /// fabricated, so it is exported to Health like any other finished session.
+  /// The row is banked even if its live row is gone: the held copy is the only
+  /// one. Best effort and leaves the held row in place on a failure, so the
+  /// next launch tries again; never blocks the live-row reconcile that follows.
+  Future<void> _bankHeldStop() async {
+    final raw = Prefs.getString(Prefs.workoutStopPending, '');
+    if (raw.isEmpty) return;
+    try {
+      final held = Map<String, Object?>.from(jsonDecode(raw) as Map);
+      final id = held['id'] as String;
+      // The live row carries the strap stamp the held row may not (its read
+      // failed); anything the held row does say wins.
+      final row = {...?await LocalDb.session(id), ...held};
+      await LocalDb.putSession(row);
+      _bumpInsights();
+      unawaited(LocalDb.deleteLiveWorkoutTally(id));
+      await _dismissSupersededSuggestions(
+        startSec: row['start_ts'] as int,
+        endSec: row['end_ts'] as int,
+      );
+      _clearStopMarker();
+      _log('[workout] banked a stopped session whose save failed before the relaunch (id=$id).');
+      if (_healthSyncEnabled()) unawaited(_exportToHealth(row));
+    } catch (e) {
+      _log('[workout] could not bank the held stopped session: $e');
+    }
+  }
+
   Future<void> stopWorkout() async {
     if (activeWorkout == null) return;
     _workoutTimer?.cancel();
@@ -701,13 +748,10 @@ class WorkoutController {
     final id = w.workoutId ?? 'w${w.startTime.millisecondsSinceEpoch}';
     final zoneMin = w.zoneMinutes();
     final endTs = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    // Which strap measured this workout. `putSession` is INSERT OR REPLACE, so
-    // an omitted key would blank the stamp startWorkout banked — keep that one
-    // when the link has since dropped rather than downgrading a real answer to
-    // "unknown".
-    final bandFamily = _linkDeviceFamily() ??
-        ((await LocalDb.session(id))?['device_family'] as String?);
-    final sessionRow = {
+    // Built once. A retry after a failed save banks this same row, so the stop
+    // time and tallies are those of the stop, not of the retry.
+    final retry = _stopPending;
+    final sessionRow = _stopRow ??= {
       'id': id,
       'start_ts': w.startTime.millisecondsSinceEpoch ~/ 1000,
       'end_ts': endTs,
@@ -723,17 +767,27 @@ class WorkoutController {
       if (wSteps != null && wSteps > 0) 'steps': wSteps,
       'cadence_spm': ?wCadence,
       'source': 'manual',
-      'device_family': bandFamily,
       'created_at': w.startTime.millisecondsSinceEpoch,
     };
     // AWAITED, and the live state is not cleared until it lands. This was
     // fire-and-forget with `activeWorkout = null` on the next line: the
     // in-memory session is the ONLY other copy, so a failed write silently
     // destroyed the whole workout while the summary screen rendered it in full.
-    // On a throw the session stays live — every teardown above is idempotent,
-    // so calling stopWorkout() again is a clean retry — and the exception
-    // propagates instead of being reported as a finished, saved session.
+    // On a throw the session is "stop pending": every teardown above is
+    // idempotent, so calling stopWorkout() again is a clean retry, and the
+    // exception propagates instead of being reported as a finished, saved
+    // session.
     try {
+      // Which strap measured this workout. `putSession` is INSERT OR REPLACE,
+      // so an omitted key would blank the stamp startWorkout banked — keep
+      // that one when the link has since dropped rather than downgrading a
+      // real answer to "unknown". INSIDE the try, with the write: its failure
+      // is a failed save like any other (log, notify, stop pending), whichever
+      // strap family is linked.
+      if (!sessionRow.containsKey('device_family')) {
+        sessionRow['device_family'] = _linkDeviceFamily() ??
+            ((await LocalDb.session(id))?['device_family'] as String?);
+      }
       await LocalDb.putSession(sessionRow);
       // The session is durable — tell the screens that read sessions. Without
       // this the Workout tab, which loads once and caches, showed no trace of
@@ -751,13 +805,25 @@ class WorkoutController {
       // doesn't keep asking "did you work out?" about a workout already saved.
       await _dismissSupersededSuggestions(
         startSec: sessionRow['start_ts'] as int,
-        endSec: endTs,
+        endSec: sessionRow['end_ts'] as int,
       );
     } catch (e) {
-      _log('[workout] could not save session $id: $e — keeping it live');
+      _log('[workout] could not save session $id: $e — held for retry');
+      _stopPending = true;
+      // Written ahead for a relaunch (see [reconcileOrphanedLiveWorkout]);
+      // best effort, the in-memory copy serves a retry in this process.
+      try {
+        Prefs.setString(Prefs.workoutStopPending, jsonEncode(sessionRow));
+      } catch (_) {}
+      // The session is stopped, so the lock screen stops counting it. Once:
+      // a retry that fails again must not end it a second time.
+      if (!retry) LiveActivity.end();
       _notify();
       rethrow;
     }
+    _stopPending = false;
+    _stopRow = null;
+    _clearStopMarker();
     // Session-triggered Health export (issue #130) — don't wait for the next
     // day_result/derive pass (which may not run at all if the band isn't
     // connected right now); write this workout to Apple Health/Health Connect
@@ -776,7 +842,7 @@ class WorkoutController {
           ? 'Live session ended. No calorie anchors in the profile.'
           : 'Live session ended. Burned $finalKcal kcal.',
     );
-    LiveActivity.end();
+    if (!retry) LiveActivity.end();
     // The workout's ownership ends: a workout stopped while backgrounded used
     // to leave FULL live armed with no consumer, and the keep-alive then
     // re-armed the 100 Hz flood every 30 s until the next lifecycle transition.
@@ -818,6 +884,9 @@ class WorkoutController {
     ScreenWake.releaseOwner('workout');
     _setWorkoutActive(false);
     activeWorkout = null;
+    _stopPending = false;
+    _stopRow = null;
+    _clearStopMarker();
     _nudgeLive(); // the workout's stream ownership ends with it
     _workoutRawBase = null;
     _workoutSawSamples = false;
@@ -896,7 +965,8 @@ class WorkoutController {
 
   void _tickWorkout() {
     final w = activeWorkout;
-    if (w == null) return;
+    // A stop-pending session is stopped: nothing bills into it any more.
+    if (w == null || _stopPending) return;
 
     w.elapsed = DateTime.now().difference(w.startTime);
     // [liveHr], not `device.liveHr`: a reading that is stale or arriving from a

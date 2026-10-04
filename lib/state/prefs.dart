@@ -132,6 +132,11 @@ class Prefs {
   /// personalise it from.
   static const String zoneAlertTargetZone = 'workout.zone_alert_target_zone';
 
+  /// The finished session row of a workout whose save failed (JSON), written
+  /// ahead so a relaunch can bank it instead of losing the tallies. Empty when
+  /// nothing is waiting. Cleared once the row is saved or the workout deleted.
+  static const String workoutStopPending = 'workout.stop_pending';
+
   /// Demo Mode: the app is showing a synthetic ~2-month backfill instead of a
   /// paired band's real data. Checked by `_Gate` (persistent banner) and by
   /// `AppState._persistPaired` (purge before a real pairing ever touches the

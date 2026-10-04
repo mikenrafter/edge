@@ -5674,6 +5674,8 @@ class AppState extends ChangeNotifier {
   // [WorkoutController] (8AJ seam 4); AppState delegates.
   LiveWorkoutState? get activeWorkout => _workout.activeWorkout;
   set activeWorkout(LiveWorkoutState? w) => _workout.activeWorkout = w;
+  /// A stopped workout whose save failed and is waiting for a retry.
+  bool get workoutStopPending => _workout.stopPending;
 
   RouteTracker? get routeTracker => _workout.routeTracker;
 
