@@ -335,7 +335,7 @@ void main() {
       final r = _Rig(begins: const [false]);
       await r.session.start(_tap()); // must not throw
       expect(r.results, [(2, 'fallback: start_failed')]);
-      expect(r.began, 1);
+      expect(r.began, 2, reason: '8AK: a refused start is tried once more');
       expect(r.ended, 0, reason: 'nothing was started, nothing to stop');
       expect(r.session.active, isFalse);
       expect(r.failIds, hasLength(1));
@@ -357,7 +357,9 @@ void main() {
       final r = _Rig(begins: [Completer<bool>()]);
       await r.session.start(_tap());
       expect(r.results, [(2, 'fallback: start_failed')]);
-      expect(r.ended, 1);
+      expect(r.ended, 2,
+          reason: '8AK: each timed-out attempt stops its late stream, the '
+              'retry\'s too');
       expect(r.session.active, isFalse);
     });
 

@@ -91,6 +91,23 @@ class HapticsService {
   /// Jobs waiting for the band, including the one playing.
   int get pending => _queue.pending;
 
+  /// Completes when the band has finished everything queued so far: each job
+  /// delivered, its playback ended and the minimum gap after it passed (see
+  /// [BandHapticQueue.whenIdle]). The moment a gesture's next window may open
+  /// after a cue. Never throws.
+  Future<void> whenIdle() => _queue.whenIdle();
+
+  /// Run [body] alone on the band: after what is playing and ahead of waiting
+  /// alerts, with no haptic write from any other job while it runs. The ECG
+  /// stream start goes through here, so its commands never meet a vibration
+  /// (the band drops or delays a command written while it plays). Null when
+  /// the band could not be had. [body]'s own error is rethrown.
+  Future<T?> runExclusive<T>(Future<T> Function() body) async {
+    T? out;
+    await _queue.runLab(() async => out = await body());
+    return out;
+  }
+
   /// The one door to the queue: a job of [commands] band commands that must
   /// answer within [timeout] once it starts. Every command is written through
   /// the job's token, which counts it when it happens and refuses it once the

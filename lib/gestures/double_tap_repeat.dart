@@ -23,7 +23,16 @@
 // that is within the window by band time but delivered after the timer fired
 // opens the next group.
 //
-// Pure timing: no BLE, no storage. The buzz is injected (AppState routes it
+// CUES (8AK). The same additive cues as the ECG route: the start cue once when
+// the first double tap opens the window, one follow-up per further double tap,
+// the confirm when the gesture ends counted (never when it is stopped early).
+// With [bandIdle] the pause window is armed only after the cue of the tap that
+// opens or extends it was delivered AND the band finished playing it: tap ->
+// confirm -> tap -> confirm. While the cue plays no window is running, so the
+// wearer is not timed out by the cue they are feeling; [cueTimeout] bounds the
+// wait. Without [bandIdle] the window is armed at the tap, as before.
+//
+// Pure timing: no BLE, no storage. The cues are injected (AppState routes them
 // through AlertDispatcher). Every exit goes through [_finish], which resets
 // every flag in `finally`.
 
@@ -52,6 +61,10 @@ class DoubleTapRepeatSession {
     required this.maxTaps,
     required this.window,
     this.buzz,
+    this.startBuzz,
+    this.confirmBuzz,
+    this.bandIdle,
+    this.cueTimeout = const Duration(seconds: 15),
     this.step,
     this.onStarted,
     this.onFinished,
@@ -64,9 +77,26 @@ class DoubleTapRepeatSession {
   /// the setting can change between gestures.
   final Duration Function() window;
 
-  /// Buzz the band once for [eventId]. True when written; failures are logged
-  /// and never stop the count.
+  /// The follow-up cue for [eventId], once per further double tap. True when
+  /// written; failures are logged and never stop the count.
   final Future<bool> Function(String eventId)? buzz;
+
+  /// The start cue, once, in the turn the first double tap opens the window
+  /// (id `<gesture id>:rep:start`).
+  final Future<bool> Function(String eventId)? startBuzz;
+
+  /// The confirm cue, once, when the gesture ends counted (id
+  /// `<gesture id>:rep:confirm`), requested behind the cue before it. Not
+  /// played for a gesture that is stopped early.
+  final Future<bool> Function(String eventId)? confirmBuzz;
+
+  /// Completes once the band finished playing everything queued so far (every
+  /// cue delivered and its plan ended). Null: the window is armed at the tap.
+  final Future<void> Function()? bandIdle;
+
+  /// The longest a cue may hold the window back (its write and its playback),
+  /// so a cue that never ends or never answers cannot freeze the gesture.
+  final Duration cueTimeout;
 
   /// A line for the Device lab's trace.
   final void Function(String line)? step;
@@ -93,6 +123,15 @@ class DoubleTapRepeatSession {
   // believable; null once any member's is not (receipt time then decides).
   List<DateTime>? _bandTimes;
   int _buzzes = 0;
+  // The newest cue's write, so the confirm is requested behind it.
+  Future<void> _lastCue = Future<void>.value();
+  // Window arming that waits for a cue: only the newest wait may arm, and the
+  // window is not running while one waits.
+  int _armEpoch = 0;
+  bool _waitingForCue = false;
+  // How long after the last tap the window was actually armed (the time its
+  // cue took), added to the window when grouping taps by the band's clock.
+  Duration _cueDelay = Duration.zero;
 
   bool get open => _done != null;
   int get count => _count;
@@ -113,6 +152,7 @@ class DoubleTapRepeatSession {
     _bandTimes = first.plausible ? [first.effectiveTime] : null;
     _lastTapAt = clock.now();
     _buzzes = 0;
+    _cueDelay = Duration.zero;
     final w = window();
     try {
       onStarted?.call(first, 'window ${w.inMilliseconds} ms');
@@ -120,7 +160,7 @@ class DoubleTapRepeatSession {
     step?.call(
       'Double tap 1 received. Waiting ${w.inMilliseconds} ms for another.',
     );
-    _arm(w);
+    _armAfter(_requestCue(startBuzz, 'start', 'Start buzz'));
     return done.future;
   }
 
@@ -146,7 +186,9 @@ class DoubleTapRepeatSession {
     }
     final times = _bandTimes;
     if (times != null && e.plausible) {
-      final w = window();
+      // The window runs from the end of the last cue, so a tap can be that much
+      // later by the band's clock and still be inside it.
+      final w = window() + (_waitingForCue ? cueTimeout : _cueDelay);
       final at = e.effectiveTime;
       var nearest = times.first;
       for (final t in times) {
@@ -162,7 +204,7 @@ class DoubleTapRepeatSession {
               'the last one by the band clock, more than the '
               '${w.inMilliseconds} ms window: the group ends at $_count and '
               'this one starts the next.');
-          _finish();
+          _finish(confirm: true);
           return RepeatOffer.newGroup;
         }
         step?.call('Ignored a double tap that happened ${-delta.inMilliseconds} '
@@ -189,12 +231,12 @@ class DoubleTapRepeatSession {
       'Double tap ${_count - 1} received, $since ms after the last one. '
       'Count is $_count.',
     );
-    _requestBuzz();
+    final sent = _requestCue(buzz, '${_buzzes++}', 'Buzz');
     if (_count >= maxTaps()) {
       step?.call('Reached $_count, the most taps anything is set to.');
-      _finish();
+      _finish(confirm: true);
     } else {
-      _arm(window());
+      _armAfter(sent);
     }
     return RepeatOffer.counted;
   }
@@ -207,6 +249,38 @@ class DoubleTapRepeatSession {
     }
   }
 
+  /// Arm the pause window for the tap just counted. With [bandIdle] it waits
+  /// for [sent] (the tap's cue, delivered) and the band to finish playing,
+  /// bounded by [cueTimeout]; the window is not running meanwhile.
+  void _armAfter(Future<void> sent) {
+    final idle = bandIdle;
+    _timer?.cancel();
+    _timer = null;
+    if (idle == null) {
+      _arm(window());
+      return;
+    }
+    final epoch = ++_armEpoch;
+    _waitingForCue = true;
+    unawaited(() async {
+      try {
+        await (() async {
+          await sent;
+          await idle();
+        })()
+            .timeout(cueTimeout);
+      } catch (_) {
+        step?.call('The cue did not finish in time; the window opens anyway.');
+      }
+      if (epoch != _armEpoch || !open) return;
+      _waitingForCue = false;
+      _cueDelay = clock.now().difference(_lastTapAt ?? clock.now());
+      step?.call('Cue played. Waiting ${window().inMilliseconds} ms for '
+          'another.');
+      _arm(window());
+    }());
+  }
+
   void _arm(Duration w) {
     _timer?.cancel();
     _timer = Timer(w, () {
@@ -215,41 +289,56 @@ class DoubleTapRepeatSession {
         'Window ran out ${since.inMilliseconds} ms after the last tap. '
         'Final count $_count.',
       );
-      _finish();
+      _finish(confirm: true);
     });
   }
 
-  void _requestBuzz() {
-    final send = buzz, first = _first;
-    if (send == null || first == null) return;
-    final base = first.plausible
-        ? first.identity
-        : '${first.identity}:${first.receivedAt.microsecondsSinceEpoch}';
-    final id = '$base:rep:${_buzzes++}';
+  /// Ask for one cue with this gesture's id `<base>:rep:<suffix>`, now. The
+  /// future completes when it was written (or could not be): it never throws.
+  Future<void> _requestCue(
+    Future<bool> Function(String eventId)? send,
+    String suffix,
+    String what,
+  ) {
+    final first = _first;
+    if (send == null || first == null) return Future<void>.value();
     final sent = clock.now();
-    step?.call('Buzz requested.');
-    unawaited(() async {
+    step?.call('$what requested.');
+    final f = () async {
       var ok = false;
       try {
-        ok = await send(id);
+        ok = await send(_cueId(first, suffix));
       } catch (_) {}
       step?.call(
         ok
-            ? 'Buzz written, ${clock.now().difference(sent).inMilliseconds} '
+            ? '$what written, ${clock.now().difference(sent).inMilliseconds} '
                 'ms after the request.'
-            : 'Buzz could not be written.',
+            : '$what could not be written.',
       );
-    }());
+    }();
+    return _lastCue = f;
   }
 
-  void _finish() {
+  String _cueId(StrapEvent first, String suffix) {
+    final base = first.plausible
+        ? first.identity
+        : '${first.identity}:${first.receivedAt.microsecondsSinceEpoch}';
+    return '$base:rep:$suffix';
+  }
+
+  void _finish({bool confirm = false}) {
     final done = _done;
     if (done == null) return;
     final count = _count;
+    final first = _first;
+    final behind = _lastCue;
     try {
       _timer?.cancel();
     } finally {
       _timer = null;
+      _armEpoch++;
+      _waitingForCue = false;
+      _lastCue = Future<void>.value();
       _done = null;
       _first = null;
       _count = 0;
@@ -261,6 +350,28 @@ class DoubleTapRepeatSession {
     try {
       onFinished?.call(count);
     } catch (_) {}
+    if (confirm && first != null) _requestConfirm(first, behind);
     if (!done.isCompleted) done.complete(count);
+  }
+
+  /// The confirm, requested once the cue before it was written (bounded), so it
+  /// queues behind that cue. The gesture is already over: this uses only what
+  /// [_finish] captured.
+  void _requestConfirm(StrapEvent first, Future<void> behind) {
+    final send = confirmBuzz;
+    if (send == null) return;
+    unawaited(() async {
+      try {
+        await behind.timeout(cueTimeout);
+      } catch (_) {}
+      step?.call('Confirm buzz requested.');
+      var ok = false;
+      try {
+        ok = await send(_cueId(first, 'confirm'));
+      } catch (_) {}
+      step?.call(ok
+          ? 'Confirm buzz written.'
+          : 'Confirm buzz could not be written.');
+    }());
   }
 }

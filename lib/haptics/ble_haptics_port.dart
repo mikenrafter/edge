@@ -6,8 +6,12 @@ import '../ble/ble_engine.dart';
 import 'haptics_service.dart';
 
 class BleEngineHapticsPort implements BandHapticsPort {
-  BleEngineHapticsPort(this._engine);
-  final BleEngine _engine;
+  /// The engine is read at every use, not when the port is built: the
+  /// gesture sessions hold the service's `whenIdle` from construction, which
+  /// must not need the engine yet (AppState.forTesting has none).
+  BleEngineHapticsPort(this._engineOf);
+  final BleEngine Function() _engineOf;
+  BleEngine get _engine => _engineOf();
 
   @override
   bool get isConnected => _engine.isConnected;

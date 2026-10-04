@@ -63,8 +63,10 @@ import 'dart:async' show TimeoutException;
 
 import 'device_action.dart';
 import 'double_tap_repeat.dart';
+import 'gesture_failures.dart';
 import 'gesture_settings.dart';
 import 'strap_event.dart';
+import 'tap_names.dart';
 import '../data/db.dart';
 import '../platform/device_actions.dart';
 import '../state/feature_flags.dart';
@@ -123,6 +125,15 @@ class GestureDispatcher {
   /// method is unavailable and a double tap always runs at once.
   final DoubleTapRepeatSession? repeatSession;
 
+  /// 8AK: a tap's mapped action FAILED (threw, answered false or timed out):
+  /// called once per tap with the kind of route it took (`ecg` after counting
+  /// touches, `doubleTap` otherwise) and a reason that names the action. Never
+  /// for an action that ran, a stale skip or a duplicate. The ECG route's own
+  /// start failures are the session's to report, so one failure is not
+  /// recorded twice. May throw: it is swallowed.
+  final void Function(StrapEvent e, GestureFailureKind kind, String reason)?
+      onFailed;
+
   /// How long one action may take. A native or in-app action that never answers
   /// is a failed outcome and the next action still runs. Its claim is KEPT: the
   /// action may yet have run, and a re-sent tap must not run it a second time.
@@ -145,6 +156,7 @@ class GestureDispatcher {
     this.onEcgTap,
     this.onCountTaps,
     this.repeatSession,
+    this.onFailed,
     bool Function()? tapClassifiersOn,
     this.actionTimeout = const Duration(seconds: 10),
     Future<bool> Function(String actionId)? performNative,
@@ -199,12 +211,27 @@ class GestureDispatcher {
   }
 
   Future<List<GestureOutcome>> _runActions(StrapEvent e, Set<DeviceAction> actions,
-      {int? taps}) async {
+      {int? taps,
+      GestureFailureKind kind = GestureFailureKind.doubleTap}) async {
     final out = <GestureOutcome>[];
     for (final a in actions) {
       out.add(await _handleOne(e, a, taps: taps));
     }
+    // One report per tap, for the first action that failed.
+    for (final o in out) {
+      if (o.status != GestureStatus.failed) continue;
+      try {
+        onFailed?.call(e, kind, '${o.action.id}: ${_why(o.error)}');
+      } catch (_) {}
+      break;
+    }
     return out;
+  }
+
+  // A short, single-line reason for a failed outcome.
+  static String _why(Object? error) {
+    final t = (error ?? 'failed').toString().replaceAll(RegExp(r'\s+'), ' ');
+    return t.length > 120 ? '${t.substring(0, 120)}...' : t;
   }
 
   /// Take the once-ever claim (or the receipt debounce) for the ECG session of
@@ -281,8 +308,9 @@ class GestureDispatcher {
       log?.call('[gesture] tap counting abandoned; no action');
       return const [];
     }
-    log?.call('[gesture] counted $count taps');
-    return _runActions(e, settings.actionsForTaps(count), taps: count);
+    log?.call('[gesture] counted ${ecgTapCountName(count)}');
+    return _runActions(e, settings.actionsForTaps(count),
+        taps: count, kind: GestureFailureKind.ecg);
   }
 
   /// A member of an open repeated-double-tap group takes its own once-ever claim
@@ -339,10 +367,10 @@ class GestureDispatcher {
     }
     log?.call('[gesture] counted $count double taps');
     if (lab) return const [];
-    // A count of 2 is the plain double tap: unmarked, so the 8H ack still
-    // applies. 3+ already buzzed once per added tap.
-    return _runActions(e, settings.actionsForTaps(count),
-        taps: count > 2 ? count : null);
+    // The session played the start, one follow-up per added tap and the
+    // confirm, a count of 2 included (8AK), so every count is marked: the 8H
+    // ack stays out and the wearer feels the confirm once.
+    return _runActions(e, settings.actionsForTaps(count), taps: count);
   }
 
   Future<GestureOutcome> _handleOne(StrapEvent e, DeviceAction a,

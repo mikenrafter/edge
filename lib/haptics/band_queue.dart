@@ -258,6 +258,10 @@ class _Job {
   bool held = false;
   bool wasHeld = false;
   final Completer<BuzzDelivery> done = Completer<BuzzDelivery>();
+
+  /// Completes when the band is free of this job: dropped, or run, settled and
+  /// spaced. What [BandHapticQueue.whenIdle] waits on.
+  final Completer<void> over = Completer<void>();
   Timer? expiry;
 }
 
@@ -287,6 +291,7 @@ class BandHapticQueue {
   final void Function(String line)? log;
 
   final List<_Job> _waiting = <_Job>[];
+  _Job? _running;
   bool _busy = false;
   int _labs = 0;
   Timer? _wake;
@@ -294,6 +299,20 @@ class BandHapticQueue {
 
   /// Jobs waiting plus the one running (or settling).
   int get pending => _waiting.length + (_busy ? 1 : 0);
+
+  /// Completes when every job queued BEFORE this call is over: delivered, its
+  /// playback ended (the band's event 100, or the job's bounded settle) and the
+  /// minimum gap after it passed; or dropped. Immediately when nothing is
+  /// queued. Jobs queued later are not waited for. Bounded by the queue's own
+  /// bounds (a job's transport timeout, its settle, its start deadline), except
+  /// that a job held by the open lab waits for the lab.
+  Future<void> whenIdle() {
+    final ahead = <Future<void>>[
+      for (final j in _waiting) j.over.future,
+      if (_running != null) _running!.over.future,
+    ];
+    return ahead.isEmpty ? Future<void>.value() : Future.wait(ahead);
+  }
 
   /// Time until the shared ledger frees its oldest command; null when empty.
   Duration? get nextFreeIn => ledger.nextFreeIn(clock.now());
@@ -443,6 +462,7 @@ class BandHapticQueue {
     _waiting.remove(j);
     j.expiry?.cancel();
     if (!j.done.isCompleted) j.done.complete(BuzzDelivery.rejected);
+    if (!j.over.isCompleted) j.over.complete();
     log?.call('Band queue: dropped a job that $why');
   }
 
@@ -479,6 +499,7 @@ class BandHapticQueue {
       _waiting.removeAt(0);
       j.expiry?.cancel();
       _busy = true;
+      _running = j;
       unawaited(_start(j, room));
     }
   }
@@ -527,6 +548,8 @@ class BandHapticQueue {
     } finally {
       room.release();
       _busy = false;
+      _running = null;
+      if (!j.over.isCompleted) j.over.complete();
       _pump();
     }
   }

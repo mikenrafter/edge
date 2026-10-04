@@ -183,18 +183,25 @@ void main() {
   });
 
   group('BandGesturesView rows', () {
-    testWidgets('2–5 taps; 3–5 draft; no 1-tap row', (t) async {
+    testWidgets('Double tap + 0–3 ECG taps; 3–5 draft; no 1-tap row (8AK C)',
+        (t) async {
       await pumpTall(
           t,
           const BandGesturesView(
               chosen: {}, supported: _supported, ecgSupported: true));
-      for (final n in [2, 3, 4, 5]) {
-        expect(find.text('$n taps'), findsOneWidget, reason: '$n taps');
+      const names = {
+        2: 'Double tap',
+        3: 'Double tap + 1 ECG tap',
+        4: 'Double tap + 2 ECG taps',
+        5: 'Double tap + 3 ECG taps',
+      };
+      for (final e in names.entries) {
+        expect(find.text(e.value), findsOneWidget, reason: e.value);
       }
       expect(find.text('1 tap'), findsNothing);
       expect(find.textContaining('Draft'), findsNWidgets(3));
       for (final n in [3, 4, 5]) {
-        expect(isDimmed(t, find.text('$n taps')), isFalse,
+        expect(isDimmed(t, find.text(names[n]!)), isFalse,
             reason: 'enabled on a WHOOP MG');
       }
     });

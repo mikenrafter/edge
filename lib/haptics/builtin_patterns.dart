@@ -1,5 +1,5 @@
-// 8AF.6: the built-in (system) patterns. Three gesture cues (start, follow-up,
-// confirm) and, since 8AI, ten presets (pulses, long pulses, SOS, Hip hip
+// 8AF.6: the built-in (system) patterns. Four gesture cues (start, follow-up,
+// confirm, and since 8AK failed) and, since 8AI, ten presets (pulses, long pulses, SOS, Hip hip
 // hooray) are stored beside the user's patterns under a stable systemKey. They
 // can never be renamed or deleted; the cues can be customised and put back, the
 // presets are read-only. A non-alarm alert rule's default is one of the presets
@@ -17,6 +17,10 @@ import 'tap_notes.dart';
 const String kGestureStartKey = 'gesture.start';
 const String kGestureFollowUpKey = 'gesture.followUp';
 const String kGestureConfirmKey = 'gesture.confirm';
+
+/// 8AK: the failed-gesture cue; its default is the failure buzz the engine
+/// used to play as a fixed call.
+const String kGestureFailedKey = 'gesture.failed';
 
 /// The ten presets (8AI), in the order they are listed: key, name and notes. A
 /// pulse is a quarter note, a long pulse a half, the rest between pulses a
@@ -99,6 +103,7 @@ List<String> builtInKeys() => [
       kGestureStartKey,
       kGestureFollowUpKey,
       kGestureConfirmKey,
+      kGestureFailedKey,
       for (final p in kPresets) p.$1,
     ];
 
@@ -195,6 +200,9 @@ BuiltInSpec? builtInDefault(String systemKey) {
     case kGestureConfirmKey:
       return BuiltInSpec(
           systemKey, 'Gesture confirm', _fromPhrase(_phrase('buzz47'), id));
+    case kGestureFailedKey:
+      return BuiltInSpec(
+          systemKey, 'Gesture failed', _fromPhrase(_phrase('pairx2'), id));
   }
   for (final (key, name, notes) in kPresets) {
     if (key == systemKey) return BuiltInSpec(key, name, _fromNotes(notes, id));

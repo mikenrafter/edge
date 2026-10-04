@@ -102,6 +102,10 @@ class Prefs {
   /// repository; a cue not in it plays its own built-in.
   static const String hapticsCueAssign = 'haptics_gesture_cue_assign';
 
+  /// 8AK: the gestures that failed to activate, one JSON string (see
+  /// gestures/gesture_failures.dart); bounded to the newest 20.
+  static const String gestureFailures = 'gesture_failures';
+
   /// "Pull down to sync": Home's pull-to-refresh. On unless somebody turned it
   /// off, so nobody else sees a change; off leaves syncing to the status line's
   /// Sync now button.

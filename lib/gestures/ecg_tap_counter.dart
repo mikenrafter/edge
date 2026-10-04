@@ -27,6 +27,14 @@
 //    [E + gap, E + gap + reacquire + confirm). [EcgTapCounter.reacquire] is
 //    the sensor's own blind time after a lift (zero by default; the session
 //    sets the measured value), [EcgTapThresholds.confirm] the wearer's.
+//  * HOLD (8AK). The window after a follow-up is not the touch's own timing but
+//    the follow-up cue's: the caller calls [hold] when it asks for the cue and
+//    [release] once the band has finished playing it. While held the counter
+//    tracks the touch it has (so a finger that stays down never counts twice)
+//    but opens no window: no deadline can run out, no new touch is a candidate.
+//    [release] opens the window at that moment on the sample clock:
+//    [release] + [reacquire] + confirm, or from the release of the touch when
+//    that comes later.
 //  * Every output is a request. The caller routes buzzes through
 //    AlertDispatcher and the band queue spaces them; this class sends nothing.
 //
@@ -227,6 +235,8 @@ class EcgTapCounter {
   Duration _contactStart = Duration.zero;
   Duration _noContactStart = Duration.zero;
   Duration? _lastSampleAt;
+  bool _held = false;
+  Duration _notBefore = Duration.zero;
 
   int get count => _count;
   bool get started => _started;
@@ -267,6 +277,27 @@ class EcgTapCounter {
     return const [];
   }
 
+  /// A follow-up cue was asked for: no window opens until [release]. Only
+  /// meaningful once the first window is open.
+  void hold() {
+    if (!_started || _finished || _phase == _Phase.awaitingOpen) return;
+    _held = true;
+  }
+
+  /// The band has finished playing the follow-up: the next window opens at
+  /// [at] (sample time), or at the touch's own release if that is later.
+  void release(Duration at) {
+    if (!_held) return;
+    _held = false;
+    _notBefore = at;
+    if (_phase == _Phase.idle && !_finished) {
+      _deadline = at + reacquire + thresholds.confirm;
+    }
+  }
+
+  /// Whether the next window is waiting for a cue.
+  bool get held => _held;
+
   List<EcgTapOutput> sample(Duration at, {required bool contact}) {
     if (!_started || _finished || _phase == _Phase.awaitingOpen) return const [];
     final last = _lastSampleAt;
@@ -283,8 +314,8 @@ class EcgTapCounter {
     // for this same sample.
     if (_phase == _Phase.releasing) {
       if (at - _noContactStart >= thresholds.gap) {
-        _deadline = _noContactStart +
-            thresholds.gap +
+        final from = _noContactStart + thresholds.gap;
+        _deadline = (from > _notBefore ? from : _notBefore) +
             reacquire +
             thresholds.confirm;
         _phase = _Phase.idle;
@@ -298,6 +329,8 @@ class EcgTapCounter {
 
     switch (_phase) {
       case _Phase.idle:
+        // A window waiting for a follow-up cue is not open.
+        if (_held) return out;
         // Deadlines are checked before the sample's own contact state.
         if (at >= _deadline) return _confirm(at, out);
         if (contact) {
@@ -341,7 +374,7 @@ class EcgTapCounter {
         _phase = _Phase.idle; // contact must be seen again from scratch
         if (at >= _deadline) return _abandon(at, 'sample_gap');
       case _Phase.idle:
-        if (at >= _deadline) return _abandon(at, 'sample_gap');
+        if (!_held && at >= _deadline) return _abandon(at, 'sample_gap');
       case _Phase.releasing:
         _noContactStart = at; // unseen time is not no-contact
       case _Phase.touching:

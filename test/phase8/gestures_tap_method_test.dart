@@ -1,7 +1,7 @@
 // "Count extra taps with": the per-band choice between ECG sensor touches and
 // more double taps, the row labels that follow it, and the pause adjuster
 // (which 8AE moved from Gestures into the Device lab).
-// One mapping store serves both: the 3-tap slot is "3 taps" for ECG and
+// One mapping store serves both: the 3-tap slot is "Double tap + 1 ECG tap" for ECG and
 // "2 double taps" for repeats. ECG is disabled and dimmed (never hidden) on a
 // band without the sensor (8K).
 
@@ -93,13 +93,19 @@ void main() {
   });
 
   group('row labels follow the method', () {
-    testWidgets('ECG: 3 taps / 4 taps / 5 taps', (t) async {
+    testWidgets('ECG: Double tap / + 1 / + 2 / + 3 ECG taps (8AK C)',
+        (t) async {
       await pumpTall(
           t,
           const BandGesturesView(
               chosen: {}, supported: _supported, ecgSupported: true));
-      for (final n in [2, 3, 4, 5]) {
-        expect(find.text('$n taps'), findsOneWidget);
+      for (final name in [
+        'Double tap',
+        'Double tap + 1 ECG tap',
+        'Double tap + 2 ECG taps',
+        'Double tap + 3 ECG taps',
+      ]) {
+        expect(find.text(name), findsOneWidget);
       }
       expect(find.textContaining('double taps'), findsWidgets,
           reason: 'only the option and the note, never as a row title');

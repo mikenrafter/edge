@@ -62,9 +62,9 @@ Widget _view({VoidCallback? onViewAll, List<String>? toggled}) {
 }
 
 Future<void> _openSheet(WidgetTester t) async {
-  await t.tap(find.text('3 taps'));
+  await t.tap(find.text('Double tap + 1 ECG tap'));
   await t.pumpAndSettle();
-  expect(find.text('3 taps does'), findsOneWidget, reason: 'the sheet opened');
+  expect(find.text('Double tap + 1 ECG tap does'), findsOneWidget, reason: 'the sheet opened');
 }
 
 void main() {
@@ -90,7 +90,7 @@ void main() {
     await t.tap(find.byKey(const ValueKey('gesture-sheet-view-all')));
     await t.pumpAndSettle();
     expect(opened, 1);
-    expect(find.text('3 taps does'), findsNothing, reason: 'the sheet closed');
+    expect(find.text('Double tap + 1 ECG tap does'), findsNothing, reason: 'the sheet closed');
   });
 
   testWidgets('it assigns nothing: no action is toggled by the link',

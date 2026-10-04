@@ -137,7 +137,8 @@ void main() {
     testWidgets('Hardware keeps its rows and the persisted id settings_band',
         (t) async {
       await _pump(t, _settings());
-      expect(_rows(t, 'Hardware'), ['My devices', 'Gestures', 'Haptics']);
+      expect(_rows(t, 'Hardware'),
+          ['My devices', 'Gestures', 'Haptics', 'Gesture failures']);
       expect(t.widget<SettingsAccordion>(_section('Hardware')).id,
           'settings_band',
           reason: 'remembered fold state survives the rename (no migration)');

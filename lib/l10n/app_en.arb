@@ -11012,6 +11012,15 @@
   "@gesturesReplaySub": {
     "description": "Subtitle of the replay switch: what a late tap does for Mark a moment (stamped with when it happened) and what it does not do (other actions never run)"
   },
+  "gestureEcgTapName": "{n, plural, =0{Double tap} one{Double tap + {n} ECG tap} other{Double tap + {n} ECG taps}}",
+  "@gestureEcgTapName": {
+    "description": "Name of an ECG tap count on the Gestures screen: the opening double tap plus {n} touches of the ECG sensor (0 is the plain double tap).",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
   "gesturesItDoesTitle": "It does",
   "@gesturesItDoesTitle": {
     "description": "Heading for the group of selectable double-tap actions"

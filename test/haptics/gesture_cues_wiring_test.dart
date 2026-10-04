@@ -142,17 +142,19 @@ void main() {
         'Future<bool> _ecgTapStartBuzz(',
         'Future<bool> _ecgTapBuzz(',
         'Future<bool> _ecgTapConfirmBuzz(',
+        'Future<bool> _ecgTapFailBuzz(',
       ]) {
         expect(codeOnly(bodyOf(src, f)), contains('_gestureCue('), reason: f);
       }
     });
 
-    test('the failure buzz is unchanged: the existing long buzz', () {
+    test('the failure buzz is the "Gesture failed" cue (8AK), not a fixed '
+        'engine buzz', () {
+      // Its built-in default is the long buzz it used to be (pairx2, one
+      // command [47, 152] looped twice); see test/gestures8ak/d_failed_cue_test.
       final body = codeOnly(bodyOf(src, 'Future<bool> _ecgTapFailBuzz('));
-      expect(body, contains('buzzBand(holdMs: 600)'));
-      expect(body, contains('haptics.runJob('));
-      expect(body, isNot(contains('gestureCues')),
-          reason: 'the fail buzz is not a system pattern');
+      expect(body, contains('gestureCues.failed'));
+      expect(body, isNot(contains('buzzBand')));
     });
 
     test('the action-done ack goes through ackTap with the confirm cue', () {

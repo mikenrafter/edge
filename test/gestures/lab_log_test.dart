@@ -68,7 +68,7 @@ void main() {
       expect(
         log.sessionSummaries.single,
         'ECG sensor touches | start 300 ms, gap 200 ms, confirm 200 ms | '
-        '3 taps | 6.4 s in total',
+        'Double tap + 1 ECG tap | 6.4 s in total',
       );
     });
 

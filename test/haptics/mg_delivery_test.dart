@@ -481,7 +481,7 @@ void main() {
       final start = code.indexOf('late final HapticsService haptics');
       final ctor = code.substring(start, code.indexOf(');', start));
       expect(ctor, contains('allowLong: () => Prefs.allowLongHaptics'));
-      expect(ctor, contains('BleEngineHapticsPort(engine)'));
+      expect(ctor, contains('BleEngineHapticsPort(() => engine)'));
     });
 
     test('runJob is the one door to the queue', () {
@@ -501,7 +501,7 @@ void main() {
       expect(cues, contains('haptics.deliver('));
       expect(cues, contains('haptics.runJob('));
       expect(bodyOf(src, 'Future<bool> _ecgTapFailBuzz('),
-          contains('haptics.runJob('));
+          contains('gestureCues.failed'));
       // The user-facing test buzz, pattern test and find-my-strap.
       expect(bodyOf(src, 'Future<bool> _userBuzz('), contains('haptics.runJob('));
       // The alert dispatcher's default band transport (tap ack, water and

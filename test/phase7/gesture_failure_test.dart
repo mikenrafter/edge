@@ -154,7 +154,9 @@ void main() {
       await r.session.start(_tap());
       expect(r.session.active, isFalse);
       expect(r.results, [(2, 'fallback: start_failed')]);
-      expect(r.ended, 1, reason: 'a start that answers late must not stream on');
+      expect(r.ended, 2,
+          reason: 'a start that answers late must not stream on (8AK: each of '
+              'the two attempts is stopped)');
       expect(r.records.single.reason, contains('start_failed'));
       // The latch is clear: another tap begins a new gesture.
       final again = _Rig();

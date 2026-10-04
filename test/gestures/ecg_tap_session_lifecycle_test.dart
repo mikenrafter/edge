@@ -61,7 +61,8 @@ class _Rig {
         began++;
         log.add('begin');
         final g = beginGate;
-        if (g != null && began == 1) await g.future;
+        // 8AK: a timed-out start is retried, so the gate holds every attempt.
+        if (g != null) await g.future;
         return true;
       },
       endStream: () async {
@@ -148,7 +149,8 @@ void main() {
       await r.session.start(_tap());
       expect(r.session.active, isFalse);
       expect(r.session.generation, gen + 1);
-      expect(r.ended, 1, reason: 'the late stream is stopped');
+      expect(r.ended, 2,
+          reason: 'the late stream is stopped, and the retry\'s (8AK)');
       gate.complete();
     });
 
@@ -257,7 +259,10 @@ void main() {
       final gate = Completer<void>();
       final r = _Rig(beginGate: gate);
       await r.session.start(_tap()); // fallback on: ends with count 2, no throw
-      expect(r.log, ['begin', 'finished', 'end', 'record']);
+      // 8AK: the timed-out start is stopped, tried once more, and that one
+      // times out too.
+      expect(r.log,
+          ['begin', 'end', 'begin', 'finished', 'end', 'record']);
       expect(r.records.single.reason, contains('start_failed'));
       gate.complete();
     });

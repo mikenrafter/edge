@@ -63,6 +63,11 @@ gone.
   notifications screen is gone.
 - Gestures no longer carries "Pause between double taps" or "Touch windows".
   Both stay in the Device lab.
+- 8AK added "Gesture failures" as the last row of Settings > Hardware (after
+  Haptics): one push from Settings, so depth 1, and it has no table row because
+  it is new. It lists the last 20 gestures that failed to activate, dismissed
+  ones marked, each with Save log file and Report. Home shows the newest
+  undismissed failure as a card; dismissing it leaves it here.
 - App notifications on the band: each channel (apps, alarms, calls) follows the
   quiet hours set in Alerts unless its "Override quiet hours" switch is on; its
   Starts and Ends rows show only then. In Alerts and notifications the "Band

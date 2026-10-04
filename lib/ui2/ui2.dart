@@ -15,6 +15,7 @@ export 'last_result_cache.dart';
 export 'live_hr.dart';
 export 'metric_labels.dart';
 export 'ecg_widgets.dart';
+export 'gesture_failure_card.dart';
 export 'nudges.dart';
 export 'paint_activity.dart';
 export 'research_refs.dart';

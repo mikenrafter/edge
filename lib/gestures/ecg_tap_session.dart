@@ -11,7 +11,10 @@
 // comes late counts as a double tap, not a triple); then ONE follow-up
 // ([buzz]) per count increment, as soon as it is seen; then the confirm
 // ([confirmBuzz]) when the gesture ends counted. Each is its own call, in
-// order, and the band queue spaces them: the session adds no wait of its own.
+// order, and the band queue spaces them. The one wait the session adds is the
+// window after a follow-up (8AK): the wearer is feeling that cue, so the window
+// for the next touch opens only once the band has finished playing it
+// ([bandIdle]), never from the touch itself.
 // No sample is persisted (invariant 14): the packets are consumed and dropped
 // here. The one thing kept is the session's strap-clock INTERVAL (see
 // [EcgGestureRecord]): turning the stream on makes the band save raw ECG that
@@ -29,6 +32,11 @@
 // policy (see ecg_tap_counter.dart). The trace prints, per packet, where its
 // contact sits, how far it sits behind the freshest packet and whether it
 // continues the previous one.
+//
+// A start that fails (refused, throws, times out) is tried once more inside the
+// same gesture before the double-tap fallback is taken (8AK): the 2026-10-04 lab
+// log shows the band refusing a start that the very next one accepted. The retry
+// only ever calls the injected [beginStream]/[endStream]; it names no opcode.
 //
 // Why the wait: a start command being written only means the command left the
 // phone. The band can take many seconds to begin sending, and then its sensor
@@ -111,6 +119,8 @@ class EcgTapSession {
     this.onStarted,
     this.recordSession,
     this.onPacket,
+    this.bandIdle,
+    this.onFailed,
     this.strapNow,
     this.step,
     DateTime Function()? now,
@@ -186,6 +196,19 @@ class EcgTapSession {
   /// there and exact (from the packets) everywhere else.
   final int? Function()? strapNow;
 
+  /// Completes once the band has finished playing everything queued so far:
+  /// every cue delivered AND its plan ended (the band queue's settle, not the
+  /// write). Awaited after each follow-up cue, bounded by [buzzTimeout], before
+  /// the window for the next touch opens. Null: nothing waits and the window
+  /// follows the touch as before.
+  final Future<void> Function()? bandIdle;
+
+  /// A gesture FAILED (start_failed, no_stream, link_lost, stalled,
+  /// sample_gap): called once, with the abandon reason as such, after the start
+  /// retry (if any) was used up. Never for a gesture that counted and never for
+  /// an attempt that is retried. May throw: it is swallowed.
+  final void Function(StrapEvent tap, String reason)? onFailed;
+
   /// A line for the Device lab's trace.
   final void Function(String line)? step;
 
@@ -255,8 +278,8 @@ class EcgTapSession {
   static const Duration _samplePeriod = Duration(milliseconds: 10); // 100 Hz
 
   bool _active = false;
-  // 8X: whether the one retry (fallback off) was used, and the thresholds this
-  // gesture runs on. Both reset when the gesture ends.
+  // 8X: whether the one retry was used, and the thresholds this gesture runs
+  // on. Both reset when the gesture ends.
   bool _retried = false;
   EcgTapThresholds? _th;
   bool _streamUp = false;
@@ -305,9 +328,9 @@ class EcgTapSession {
   /// Begin the gesture for a live double tap. Returns once the stream command
   /// has gone out (the rest happens as packets arrive). Throws if it could not
   /// start, with every flag already reset, so the caller can give the tap's
-  /// claim back. With the double-tap fallback on (8X) a failed start does not
-  /// throw: the gesture ends with count 2. With it off the start is tried once
-  /// more first. A second tap while one gesture runs is ignored.
+  /// claim back. A failed start is tried once more first (8AK); if that fails
+  /// too, with the double-tap fallback on (8X) it does not throw: the gesture
+  /// ends with count 2. A second tap while one gesture runs is ignored.
   Future<void> start(StrapEvent tap) async {
     // The previous gesture's stop may still be in flight (bounded by
     // [endTimeout]). Starting a stream before it lands would let that stop
@@ -396,7 +419,7 @@ class EcgTapSession {
       // too (see beginEcgForTap).
       if (gen != _generation) rethrow;
       final stop = e is TimeoutException;
-      if (_active && _canRetry()) {
+      if (_active && _canRetry(startFailed: true)) {
         await _retry('start_failed', gen, stopStream: stop);
         return;
       }
@@ -408,11 +431,13 @@ class EcgTapSession {
   }
 
   /// Whether a failure now may be answered by starting the stream once more:
-  /// fallback off, the retry unused, the touch window not yet open and no touch
-  /// counted.
-  bool _canRetry() {
+  /// the retry unused, the touch window not yet open and no touch counted, and
+  /// either the stream START failed (always retried, 8AK) or the fallback is off
+  /// (any failure before the first touch, 8X).
+  bool _canRetry({bool startFailed = false}) {
     final t = _th;
-    if (t == null || t.fallbackToDoubleTap || _retried || _opened) return false;
+    if (t == null || _retried || _opened) return false;
+    if (!startFailed && t.fallbackToDoubleTap) return false;
     return (_counter?.count ?? 0) < 3;
   }
 
@@ -671,11 +696,12 @@ class EcgTapSession {
           step?.call(
             'Follow-up buzz requested at sample time ${at.inMilliseconds} ms.',
           );
-          unawaited(_sendCue(
+          final sent = _sendCue(
             'Follow-up buzz',
             (id) => buzz(1, id),
             '${_buzzes++}',
-          ));
+          );
+          _holdForCue(sent);
         case EcgTapConfirm(:final at):
           step?.call(
             'Confirm buzz requested at sample time ${at.inMilliseconds} ms.',
@@ -693,6 +719,37 @@ class EcgTapSession {
           _abandon(reason);
       }
     }
+  }
+
+  /// The window after a follow-up waits for the cue to be played: the counter
+  /// is told to hold, and once the cue was written (or refused) and the band is
+  /// idle (bounded by [buzzTimeout]) the next window opens at that moment on the
+  /// sample clock. A gesture that ended meanwhile, or a retried attempt, is left
+  /// alone. Nothing here is a flag that outlives the gesture: the hold belongs
+  /// to the counter, which every exit drops.
+  void _holdForCue(Future<void> sent) {
+    final idle = bandIdle, c = _counter;
+    if (idle == null || c == null || c.finished) return;
+    c.hold();
+    step?.call('The next touch window waits for the follow-up cue to finish '
+        'playing.');
+    unawaited(() async {
+      try {
+        await sent;
+        await idle().timeout(buzzTimeout);
+      } catch (_) {
+        step?.call('The band did not report idle in time; the touch window '
+            'opens anyway.');
+      }
+      if (!_active || !identical(_counter, c) || c.finished) return;
+      final at = _stallNow() ?? _lastEnd;
+      if (at == null) return;
+      step?.call('Follow-up cue played. Touch window open at sample time '
+          '${at.inMilliseconds} ms (${c.thresholds.confirmMs} ms for the next '
+          'touch to begin, plus ${sensorReacquire.inMilliseconds} ms for the '
+          'sensor to show it).');
+      c.release(at);
+    }());
   }
 
   /// One cue, in order behind the cues before it: [send] with this gesture's
@@ -739,11 +796,18 @@ class EcgTapSession {
         (_th?.fallbackToDoubleTap ?? true) &&
         (_counter?.count ?? 0) < 3;
     if (failed) {
+      final tap = _tap;
       step?.call('ECG failed ($reason): one long buzz.');
       step?.call(fallback
           ? 'ECG failed ($reason). Fallback: the count is 2 (double-tap '
               'action).'
           : 'Abandoned: $reason. No action.');
+      // After the trace lines, so the failure record's log tells the story.
+      if (tap != null) {
+        try {
+          onFailed?.call(tap, reason);
+        } catch (_) {}
+      }
       _sendFailBuzz();
     }
     final up = _streamUp;

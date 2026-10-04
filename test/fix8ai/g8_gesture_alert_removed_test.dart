@@ -49,11 +49,16 @@ AlertDispatcher _dispatcher() => AlertDispatcher(
 
 void main() {
   group('the slot is gone', () {
-    test('the Gestures section lists the three cues and nothing else', () {
+    test('the Gestures section lists the four cues and nothing else', () {
       final gestures =
           kHapticSlotSections.firstWhere((s) => s.id == 'gestures');
-      expect([for (final s in gestures.slots) s.key],
-          [kGestureStartKey, kGestureFollowUpKey, kGestureConfirmKey]);
+      // 8AK added "Gesture failed" as the fourth cue.
+      expect([for (final s in gestures.slots) s.key], [
+        kGestureStartKey,
+        kGestureFollowUpKey,
+        kGestureConfirmKey,
+        kGestureFailedKey,
+      ]);
     });
 
     test('no slot anywhere is alert.gesture', () {

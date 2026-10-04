@@ -6,6 +6,7 @@
 //                (the touch that makes it 3, then 4, then 5), queued the moment
 //                the increment is seen; never a recount of the pulses so far
 //   confirm()    the confirm cue (gesture.confirm), when the gesture ends
+//   failed()     the failure cue (gesture.failed), when it was abandoned
 //
 // The queue spaces two jobs by the vocabulary's minimum gap
 // (HapticDeviceProfile.minVibrationGapMs, 8AI), so no cue is dropped, merged or
@@ -60,6 +61,9 @@ class GestureCues {
 
   /// The confirm cue: the gesture ended.
   Future<BuzzDelivery> confirm() => _cue(kGestureConfirmKey);
+
+  /// The failure cue: the gesture could not be activated (8AK).
+  Future<BuzzDelivery> failed() => _cue(kGestureFailedKey);
 
   // [key]'s pattern as one queue job, compiled for the band like every other
   // stored pattern (the seeded default when the stored one does not compile).

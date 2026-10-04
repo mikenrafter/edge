@@ -73,7 +73,7 @@ void main() {
         'other rows',
         (t) async {
       await _pump(t, const MoreSettingsView(relaySupported: true));
-      expect(_rowTitles(t, 'Hardware'), ['My devices', 'Gestures', 'Haptics']);
+      expect(_rowTitles(t, 'Hardware'), ['My devices', 'Gestures', 'Haptics', 'Gesture failures']);
     });
 
     testWidgets('one home: Alarm appears exactly once on the screen',

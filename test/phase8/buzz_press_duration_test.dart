@@ -186,7 +186,9 @@ void main() {
       File('lib/notify/notification_relay.dart').readAsStringSync(),
     );
     expect(relay, contains('buzzForDuration:'));
-    expect(codeOnly(app), contains('holdMs:'));
+    // The app hands the service's duration transport to the player (the ECG
+    // failure buzz, which used to carry `holdMs: 600`, is a cue since 8AK).
+    expect(codeOnly(app), contains('buzzForDuration: haptics.buzzForDuration'));
   });
 
   testWidgets('sheet ignores another pointer and discards a cancelled press', (

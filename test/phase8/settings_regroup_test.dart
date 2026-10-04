@@ -94,6 +94,7 @@ const Map<String, List<List<String>>> _rows = {
     ['My devices'],
     ['Gestures'],
     ['Haptics'],
+    ['Gesture failures'],
   ],
   'Alerts': [
     ['Alarm'],

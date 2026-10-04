@@ -24,6 +24,7 @@ import 'package:provider/provider.dart';
 import '../../gestures/device_action.dart';
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
+import '../../gestures/tap_names.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
@@ -251,13 +252,13 @@ class BandGesturesView extends StatelessWidget {
                     id: 'gestures_tap_counts',
                     children: [
                   _TapCountRow(
-                    title: ecg ? '2 taps' : 'Double tap',
+                    title: ecg ? _ecgName(l, 2) : 'Double tap',
                     summary: _summary(chosen),
                     sub: 'The actions above',
                   ),
                   for (final n in const [3, 4, 5])
                     _TapCountRow(
-                      title: ecg ? '$n taps' : '${n - 1} double taps',
+                      title: ecg ? _ecgName(l, n) : '${n - 1} double taps',
                       draft: true,
                       enabled: !ecg || ecgSupported,
                       summary: _summary(tapActions[n] ?? const {}),
@@ -268,7 +269,7 @@ class BandGesturesView extends StatelessWidget {
                           ? () => _pickActions(
                               c,
                               n,
-                              ecg ? '$n taps' : '${n - 1} double taps',
+                              ecg ? _ecgName(l, n) : '${n - 1} double taps',
                               offered,
                               tapActions[n] ?? const {})
                           : null,
@@ -320,6 +321,11 @@ class BandGesturesView extends StatelessWidget {
       ),
     );
   }
+
+  // The ECG count's name (8AK C): the plural message, or the same English
+  // from the plain helper where no localizations are in the tree.
+  static String _ecgName(AppLocalizations? l, int count) =>
+      l?.gestureEcgTapName(count - 2) ?? ecgTapCountName(count);
 
   static String _summary(Set<DeviceAction> a) =>
       a.isEmpty ? 'Off' : '${a.length} on';

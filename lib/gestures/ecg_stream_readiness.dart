@@ -22,6 +22,16 @@
 //  * arrive no more than [pairWindow] apart.
 // One packet is never enough and the same packet twice is not flow.
 //
+// NOISY START (8AK). The band opens a stream with packets that carry no
+// samples at all (the 2026-10-04 lab log: two of them, then a short 49-sample
+// one), which have no sample clock to be contiguous with. A packet with no
+// samples is still evidence of flow when it arrives in step with the wall
+// clock, so a run of at least two such packets that advance in step, followed
+// by a sampled packet that arrives in step and within [pairWindow], makes the
+// stream steady one packet sooner. One empty packet is not a run (a first
+// sampled packet after it is not steady), empty packets alone are never
+// steady, and a burst is not in step whatever it carries.
+//
 // SAMPLE CLOCK. A packet's newest sample was acquired before the phone got it.
 // [EcgSampleClock] maps phone wall time to sample time through the packet that
 // was LEAST delayed, min(receipt - newest sample time) over recent packets. The
@@ -49,6 +59,7 @@ class EcgStreamReadiness {
 
   DateTime? _lastAt;
   int? _lastEndUs;
+  int _emptyRun = 0; // packets with no samples in a row, in step with the wall
   bool _ready = false;
 
   bool get ready => _ready;
@@ -66,20 +77,26 @@ class EcgStreamReadiness {
     final endUs = (strapTime * 1000000).round();
     final startUs = endUs - sampleCount * _samplePeriodUs;
     final prevAt = _lastAt, prevEndUs = _lastEndUs;
+    var flowing = false; // within the window of the last one and in step
     if (prevAt != null && prevEndUs != null) {
       final wallUs = at.difference(prevAt).inMicroseconds;
       final contiguous =
           (startUs - prevEndUs).abs() <= contiguityTolerance.inMicroseconds;
       final inStep = ((endUs - prevEndUs) - wallUs).abs() <=
           stepTolerance.inMicroseconds;
-      if (wallUs >= 0 &&
-          wallUs <= pairWindow.inMicroseconds &&
-          contiguous &&
-          inStep) {
+      flowing = wallUs >= 0 && wallUs <= pairWindow.inMicroseconds && inStep;
+      if (sampleCount > 0 && flowing && (contiguous || _emptyRun >= 2)) {
         _ready = true;
         return true;
       }
     }
+    // No samples: a run of these only counts while each is in step with the
+    // one before. Never steady on its own.
+    _emptyRun = sampleCount > 0
+        ? 0
+        : flowing && _emptyRun > 0
+            ? _emptyRun + 1
+            : 1;
     // Too late to pair with the last one, not contiguous, or a burst: this
     // packet is now the first of a new pair.
     _lastAt = at;
@@ -90,6 +107,7 @@ class EcgStreamReadiness {
   void reset() {
     _lastAt = null;
     _lastEndUs = null;
+    _emptyRun = 0;
     _ready = false;
   }
 }

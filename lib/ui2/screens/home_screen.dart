@@ -40,6 +40,7 @@ import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
 import '../../notify/notification_prefs.dart' show NotificationPrefs;
+import '../../gestures/gesture_failures.dart';
 import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../../state/recalc_state.dart';
@@ -110,6 +111,16 @@ VoidCallback? syncOf(BuildContext c) {
   try {
     final app = c.read<AppState>();
     return app.syncNow;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The failed-gesture store (8AK), or null in a golden. The card
+/// (gesture_failure_card.dart) listens to it itself, so Home only needs to reach it.
+GestureFailureStore? gestureFailuresOf(BuildContext c) {
+  try {
+    return c.read<AppState>().gestureFailures;
   } catch (_) {
     return null;
   }
@@ -1767,7 +1778,10 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
         _homeAsOf(c, d),
 
         // Right under the rings, above everything else — the one spot on
-        // this screen nobody scrolls past without seeing.
+        // this screen nobody scrolls past without seeing. A failed gesture
+        // (8AK) comes first: the newest undismissed one, one card at a time.
+        if (gestureFailuresOf(c) case final failures?)
+          GestureFailureCard(store: failures),
         const CommunityNudge(),
 
         // ── the rollup was withheld, not absent ──

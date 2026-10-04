@@ -425,6 +425,64 @@ limits are shown.
   diff against the table in code. The probe's "Tap what you felt" button fills a rendition
   from a tapped rhythm.
 
+## Timing rules (8AK)
+
+The rule behind all of them: **a window for the next tap opens after the cue
+the wearer is feeling has played, never from the tap.** The wearer cannot touch
+or tap while the band is vibrating, and a command written while it vibrates is
+dropped or answered late (the 2026-10-04 lab log: four of five ECG starts were
+refused at PREPARE with a buzz reply landing in the middle of it, and the fifth,
+with the same settings, worked).
+
+- **Played means delivered and ended.** The band queue's `whenIdle()` completes
+  when every job queued so far was written, its playback ended (the band's
+  event 100, or the job's bounded settle) and the minimum gap after it passed.
+  Everything below waits on it, each wait bounded (`buzzTimeout`, `cueTimeout`,
+  15 s) so a cue that never ends cannot freeze a gesture.
+- **ECG route: the window after a follow-up.** When a touch is counted the
+  session asks for the follow-up cue and tells the counter to hold. While held
+  no deadline can run out and no new touch is a candidate (a finger that stays
+  down never counts twice). Once the cue was written and the band is idle the
+  window opens at that moment on the sample clock: release + sensor reacquire +
+  confirm, or from the release of the touch when that is later. The first
+  window is unchanged (it opens `sensorSettle` after the first sample).
+- **ECG start is exclusive, after the start cue.** The start cue is written
+  first; the stream start (PREPARE, START) then runs as one exclusive job of
+  the band queue (`HapticsService.runExclusive`, the lab lane): after the cue
+  has played, ahead of waiting alerts, with no haptic write from any other job
+  until it is done.
+- **One retry of the start.** A start that is refused, throws or times out is
+  tried once more inside the same gesture, also with the double-tap fallback
+  on. The retry calls only the injected begin/end (it names no opcode, nothing
+  dangerous) and does not repeat the start cue. A second failure ends as
+  before: the failure cue, then count 2 by fallback (or an abandoned gesture
+  with the fallback off). Nothing about a retried attempt is reported as a
+  failure.
+- **Noisy start.** The stream opens with packets that carry no samples. A run
+  of at least two such packets that advance in step with the wall clock,
+  followed by a sampled packet in step and within the pair window, makes the
+  stream steady one packet sooner; one empty packet, empty packets alone, and a
+  burst never do.
+- **Plain double taps (no ECG) have the same cadence.** "More double taps" plays
+  the same additive cues: the start cue once at the first double tap, one
+  follow-up per further double tap, the confirm when the gesture ends counted
+  (not when it is stopped early). The pause window is armed only after the cue
+  of the tap that opens or extends it was delivered and the band is idle: tap,
+  cue, window, tap, cue. While a cue plays no window runs, and taps that arrive
+  later by the band's clock by the cue's duration still count. Equal counts give
+  equal cue sequences on both routes (1 double tap = ECG count 2: start,
+  confirm; 2 = 3: start, follow-up, confirm; and so on).
+- **A failed gesture plays "Gesture failed".** The failure cue is the fourth
+  gesture cue (`gesture.failed`, built-in default `pairx2`: the command
+  `[47, 152]` looped twice, three medium pulses, what the engine's 600 ms hold
+  used to play), assignable under Haptics > Where patterns are used > Gestures.
+  It goes through the same dispatcher delivery as the other cues. The failure is
+  also recorded (Settings > Hardware > Gesture failures, and a Home card).
+
+Replay test: `test/gestures8ak/a_log_replay_test.dart` rebuilds the five
+gestures of the 2026-10-04 log from its own timestamps and packet summaries
+(`support/ak_log_timeline.dart`); it failed before the retry and passes after.
+
 ## Replaying off the band
 
 The lab keeps the last ~6 minutes of ECG packets (raw samples and status

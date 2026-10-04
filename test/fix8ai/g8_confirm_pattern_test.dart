@@ -76,12 +76,17 @@ List<String> _play(
 
 void main() {
   group('the cue keys', () {
-    test('the Gestures slots are exactly the three cue keys GestureCues reads',
+    test('the Gestures slots are exactly the four cue keys GestureCues reads',
         () {
       final gestures =
           kHapticSlotSections.firstWhere((s) => s.id == 'gestures');
-      expect([for (final s in gestures.slots) s.key],
-          [kGestureStartKey, kGestureFollowUpKey, kGestureConfirmKey]);
+      // 8AK added "Gesture failed" as the fourth cue.
+      expect([for (final s in gestures.slots) s.key], [
+        kGestureStartKey,
+        kGestureFollowUpKey,
+        kGestureConfirmKey,
+        kGestureFailedKey,
+      ]);
     });
   });
 
@@ -163,6 +168,7 @@ void main() {
         kGestureStartKey,
         kGestureFollowUpKey,
         kGestureConfirmKey,
+        kGestureFailedKey,
       });
       expect(cues[kGestureConfirmKey]!.patternId,
           systemPatternId(kGestureConfirmKey));

@@ -1473,3 +1473,113 @@ phase-two files in the same folder). Health's sub-tabs are, in order, 0 Last nig
   `kGestureAckRule`, and the dispatcher is handed those constants, so the rule's
   enabled flag gated nothing.
 - Tests: `test/fix8ai/g8_*_test.dart`.
+
+## 8AK: gesture robustness (Oct 4)
+
+User reports on a WHOOP MG: 3+ ECG gestures answered with three medium pulses
+instead of the follow-up; plain double taps gave no start or confirm; the ECG
+counts read "3 taps". Tests: `test/gestures8ak/` (A and B red/green in phase 1,
+C and D in phase 2).
+
+### A. ECG connection
+- ECG timings start off the FOLLOW-UP haptics, not the start haptics: the window
+  for the next touch opens after the follow-up cue was delivered AND its plan
+  ended. `HapticsService.whenIdle()` (`BandHapticQueue.whenIdle`: every job
+  queued before the call is delivered, its playback ended and the minimum gap
+  passed, or dropped) is passed to `EcgTapSession(bandIdle:)`; the session calls
+  `EcgTapCounter.hold()` when it asks for the cue and `release(at)` when idle
+  (bounded by `buzzTimeout`). Held: no deadline, no new candidate touch. The
+  first window is unchanged.
+- The stream start (PREPARE, START) runs exclusive after the start cue was
+  written and played: `HapticsService.runExclusive(body)` on the lab lane of the
+  band queue. The log showed the band ignoring commands written while it
+  vibrates (four of five starts refused at PREPARE).
+- One bounded retry of a refused, thrown or timed-out start inside the gesture,
+  also with the fallback on (`_canRetry(startFailed: true)`); never repeats the
+  start cue; only the injected begin/end are called (no dangerous opcode,
+  invariant 15). Second failure: failure cue, then count 2 (fallback).
+- Steady-stream detection tolerates the empty opening packets: two or more
+  empty packets in step, then a sampled packet in step, is steady one packet
+  sooner (`ecg_stream_readiness.dart`).
+- Every flag is cleared on every exit (hold and retry state belong to the
+  counter and session, which each exit drops; no flag outlives the gesture).
+- `EcgTapSession.onFailed(tap, reason)`: once per failed gesture (start_failed,
+  no_stream, link_lost, stalled, sample_gap), after the trace lines, also when
+  the fallback then runs the double-tap action; not for a counted gesture and
+  not for an attempt the retry cured.
+
+### B. Plain double taps
+- `DoubleTapRepeatSession(startBuzz, buzz, confirmBuzz, bandIdle, cueTimeout)`:
+  start cue once at the first double tap, one follow-up per further double tap,
+  the confirm when it ends counted (not when stopped early). The pause window is
+  armed only after the tap's cue was delivered and the band is idle (bounded by
+  `cueTimeout`); taps are grouped by the band's clock with the cue's duration
+  added. Without `bandIdle` the window is armed at the tap as before.
+- Parity: equal activation counts give identical cue sequences on both routes
+  (1 double tap = ECG 2, 2 = 3, 3 = 4, 4 = 5). The dispatcher's repeat actions
+  carry `taps: count` for every count, so the 8H ack stays out.
+- AppState wires `startBuzz: _ecgTapStartBuzz`, `buzz`, `confirmBuzz:
+  _ecgTapConfirmBuzz`, `bandIdle: haptics.whenIdle`.
+
+### C. Naming
+- ECG counts are "Double tap" (2), "Double tap + 1 ECG tap" (3), "Double tap + 2
+  ECG taps" (4), "Double tap + 3 ECG taps" (5). `ecgTapCountName(count)`
+  (`lib/gestures/tap_names.dart`) for logs and anything outside a widget tree;
+  screens read the ARB plural `gestureEcgTapName(n)` (n = ECG taps = count - 2;
+  `=0`, `one`, `other`) with the plain helper as the fallback when no
+  localizations are in the tree. The other locales fall back to the English text
+  through gen-l10n.
+- Used in: the Gestures tap-count rows and their sheet title ("<name> does"),
+  `DeviceLabLog.endSession` for an "ECG sensor touches" session (a "More double
+  taps" session keeps "N taps": there the count is double taps in a row), the
+  session's "Result:" line and the dispatcher's "counted ..." log line.
+
+### D. Failure cue, record, Home card, Settings list
+- `gesture.failed` is the fourth gesture cue: `kGestureFailedKey`, built-in
+  default "Gesture failed" = the phrase `pairx2` ([47, 152] looped twice, what
+  `engine.buzzBand(holdMs: 600)` played), `GestureCues.failed()`, a fourth slot
+  in Haptics > Where patterns are used > Gestures; `isGestureCueSlot`,
+  `decodeCueAssignments` and `resolveCuePatterns` accept it. `_ecgTapFailBuzz`
+  goes through `_gestureCue(eventId, gestureCues.failed)`: one path for every
+  cue (dispatcher claim and deadline, the lab work wrapper, the wearer's
+  assignment).
+- `GestureFailureStore` (`lib/gestures/gesture_failures.dart`): the newest 20
+  failures (time, kind ecg / doubleTap, reason, gesture id, the log), one record
+  per gesture id, newest first, persisted as one JSON string (`Prefs.
+  gestureFailures`). A log longer than 60 000 characters keeps its end.
+  `dismiss(id)` marks that failure and every older one dismissed: one card at a
+  time, never a pile. Unreadable stored data is an empty store; a failed write
+  leaves the in-memory state.
+- Reporters (both call `AppState._recordGestureFailure`, which keeps
+  `deviceLab.toPlainText(withPackets: false)`): `EcgTapSession.onFailed` (kind
+  ECG) and `GestureDispatcher.onFailed(e, kind, reason)` (a mapped action failed
+  after counting touches: `ecg`; otherwise `doubleTap`; the reason names the
+  action id; once per tap; never for a stale skip or a duplicate; the ECG
+  route's start failure is the session's, so it is not recorded twice). The
+  gesture id is `StrapEvent.identity`, plus the receipt time when the strap
+  clock is implausible (all such taps share one identity).
+- The raw ECG packets stay out of the record: they are about 100 KB and would
+  push the trace out of the 60 000 character cap; "Copy all logs" in the Device
+  lab still has them.
+- Home: `GestureFailureCard` (`lib/ui2/gesture_failure_card.dart`), above the
+  community nudge, styled like it (Surface, 32 pt glyph tile, bold title, soft
+  buttons): "An ECG gesture failed to activate" / "A gesture failed to
+  activate", Save log file, Report, Dismiss; the body says dismissed failures
+  stay in Settings under Gesture failures. It shows the store's newest
+  undismissed failure only. Save is not a dismissal; a failed save says "Could
+  not save the log file." in the card.
+- Save log file: `saveGestureLog` (`lib/gestures/gesture_log_file.dart`) writes
+  `openstrap-gesture-failure-<kind>-<yyyyMMdd-HHmmss>.txt` (a short header, then
+  the log verbatim) to the temporary directory and hands the path to the
+  platform share sheet (`share_plus`, anchored with `shareOrigin` for the iPad
+  popover). Never the clipboard (the source test forbids the word).
+  `GestureLogSaver` is the injectable seam.
+- Report: a bottom sheet (`gesture-report-sheet`): one line asking for a report,
+  and rows for GitHub issues (`kGithubUrl/issues`), Discord and Reddit.
+- Settings > Hardware gains "Gesture failures" as its last row (after Haptics),
+  opening `GestureFailures` (`lib/ui2/profile/gesture_failures.dart`): every
+  recorded failure newest first, dismissed ones marked, each with Save log file
+  and Report; "No gesture failures" when empty. Depth 1 from Settings;
+  `docs/navigation-depth.md` names it.
+- Timing rules and the log analysis: `docs/hardware/whoop-mg-haptics-and-ecg.md`,
+  "Timing rules (8AK)".

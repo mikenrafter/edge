@@ -51,6 +51,7 @@ import 'data.dart';
 import 'device_lab.dart' show DeviceLab;
 import 'devices.dart' show MyDevices;
 import 'gallery.dart';
+import 'gesture_failures.dart';
 import 'gestures.dart';
 import 'haptics_settings.dart';
 import 'live_devices.dart' show LiveDevices;
@@ -232,6 +233,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onBandNotifications: () => goto(c, const BandNotifications()),
       onGestures: () => goto(c, const BandGestures()),
       onHaptics: () => goto(c, const HapticsSettings()),
+      onGestureFailures: () => goto(c, const GestureFailures()),
       onNotifications: () => goto(c, const NotificationSettings()),
       onData: _openData,
       onAutomation: () => goto(c, const AutomationSettings()),
@@ -579,6 +581,7 @@ class MoreSettingsView extends StatelessWidget {
       onBandNotifications,
       onGestures,
       onHaptics,
+      onGestureFailures,
       onNotifications,
       onData,
       onAutomation,
@@ -630,6 +633,7 @@ class MoreSettingsView extends StatelessWidget {
     this.onBandNotifications,
     this.onGestures,
     this.onHaptics,
+    this.onGestureFailures,
     this.onNotifications,
     this.onData,
     this.onAutomation,
@@ -727,6 +731,12 @@ class MoreSettingsView extends StatelessWidget {
                       key: const ValueKey('settings-haptics'),
                       sub: 'Your buzz patterns and band safety',
                       onTap: onHaptics),
+                  // Gestures that failed to activate, with the log to send
+                  // (8AK). Always drawn: an empty list says so.
+                  SetRow(LucideIcons.triangleAlert, C.orange, 'Gesture failures',
+                      key: const ValueKey('settings-gesture-failures'),
+                      sub: 'Saved logs of gestures that did not activate',
+                      onTap: onGestureFailures),
                 ]),
                 SettingsAccordion('Alerts', id: 'settings_alerts', children: [
                   // The alarm's one door (8AF.7): a row here, not a row inside

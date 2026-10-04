@@ -267,6 +267,11 @@ const _notComponents = {
   // band_gestures_test.dart, at a real phone width, in both the has-native and
   // the native-unreachable state.
   'BandGestures', 'BandGesturesView',
+  // The failed-gesture list (8AK): a Scaffold route over AppState's failure
+  // store; `GestureFailuresView` is its pure half, pumped by
+  // test/gestures8ak/d_settings_failures_test.dart. The Home card it mirrors,
+  // `GestureFailureCard`, IS in the gallery.
+  'GestureFailures', 'GestureFailuresView',
   // Live devices and the Device lab (phase 8B/8I). The two routes read
   // AppState; `LiveDevicesView` and `DeviceLabView` are their pure halves and
   // test/phase8/live_devices_test.dart and device_lab_test.dart pump them in

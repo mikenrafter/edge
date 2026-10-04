@@ -25,6 +25,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 import 'device_action.dart';
 import 'gesture_dispatcher.dart';
 import 'strap_event.dart';
+import 'tap_names.dart';
 
 /// One band event as the lab shows it: when it happened (the band's clock when
 /// believable), when the phone got it, and which actions ran.
@@ -272,7 +273,8 @@ class DeviceLabLog extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Close the session with its result: [count] taps, or [reason] when it was
+  /// Close the session with its result: [count] taps (an ECG session names it,
+  /// "Double tap + 2 ECG taps"), or [reason] when it was
   /// abandoned, or [result] verbatim (a hardware probe). Adds the summary and a
   /// final line. A second call, or one with no session, does nothing.
   void endSession({int? count, String? reason, String? result, DateTime? at}) {
@@ -281,8 +283,14 @@ class DeviceLabLog extends ChangeNotifier {
     final tap = _tapAt ?? end;
     final seconds =
         (end.difference(tap).inMilliseconds / 1000).toStringAsFixed(1);
+    // An ECG session's count is named (8AK C); for repeated double taps it is
+    // the number of double taps in a row, still "N taps".
     final outcome = result ??
-        (count != null ? '$count taps' : 'abandoned (${reason ?? 'unknown'})');
+        (count != null
+            ? (_method == 'ECG sensor touches'
+                ? ecgTapCountName(count)
+                : '$count taps')
+            : 'abandoned (${reason ?? 'unknown'})');
     final summary = '$_method | $_settings | $outcome | $seconds s in total';
     _sessions.insert(0, summary);
     if (_sessions.length > maxSessions) _sessions.removeLast();
@@ -309,12 +317,13 @@ class DeviceLabLog extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The whole lab as plain text for the clipboard.
-  String toPlainText({DateTime? at}) => labLogText(
+  /// The whole lab as plain text for the clipboard. [withPackets] false leaves
+  /// the raw ECG packets out (a failure record keeps the trace, not the stream).
+  String toPlainText({DateTime? at, bool withPackets = true}) => labLogText(
         entries: _entries,
         steps: _steps,
         sessions: _sessions,
-        packets: _packets,
+        packets: withPackets ? _packets : const [],
         at: at,
       );
 

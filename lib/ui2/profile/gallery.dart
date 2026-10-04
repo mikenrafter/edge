@@ -37,6 +37,7 @@ import '../../data/day_label.dart';
 import '../../ecg/ecg_controller.dart';
 import '../../ecg/ecg_models.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
+import '../../gestures/gesture_failures.dart';
 import '../../data/journal_fields.dart';
 import '../../data/med_store.dart';
 import '../../data/nutrition_store.dart';
@@ -831,6 +832,14 @@ Map<String, Widget> extraCases() => {
       // an actual first run starts from, since an unset dismissed/last-shown
       // key reads as "eligible, never shown yet".
       'community_nudge': const CommunityNudge(),
+      // A failed gesture's Home card: an in-memory store holding one ECG failure.
+      'gesture_failure_card': GestureFailureCard(
+        store: GestureFailureStore()
+          ..record(
+              kind: GestureFailureKind.ecg,
+              reason: 'start_failed',
+              gestureId: 'gallery'),
+      ),
       // "As of" while newer results are calculated: today's time, another day's
       // date with it, and the hold that keeps it up until the reload lands.
       'as_of_label': AsOfLabel(

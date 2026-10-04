@@ -2,7 +2,7 @@
 // grouped the way the Haptics screen lists them, and what each one plays now.
 //
 // A slot key is the systemKey scheme of 8AF.6: 'alert.<ruleId>' for an alert
-// rule, 'gesture.start|followUp|confirm' for a gesture cue. An alert slot's
+// rule, 'gesture.start|followUp|confirm|failed' for a gesture cue. An alert slot's
 // pattern lives in its rule (a snapshot carrying the pattern's id); a gesture
 // cue's is a pattern id kept in [decodeCueAssignments]'s map. With neither, the
 // slot plays its default (a preset for an alert, the cue's own built-in for a
@@ -61,6 +61,7 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot(kGestureStartKey, 'Gesture start'),
     HapticSlot(kGestureFollowUpKey, 'Gesture follow-up'),
     HapticSlot(kGestureConfirmKey, 'Gesture confirmed'),
+    HapticSlot(kGestureFailedKey, 'Gesture failed'),
   ]),
 ];
 
@@ -70,11 +71,12 @@ const String kRelaySlotKey = 'alert.relay';
 /// The relay channel whose own pattern the relay slot is.
 const String kRelaySlotChannel = 'apps';
 
-/// Whether [slotKey] is one of the three gesture cues.
+/// Whether [slotKey] is one of the four gesture cues.
 bool isGestureCueSlot(String slotKey) =>
     slotKey == kGestureStartKey ||
     slotKey == kGestureFollowUpKey ||
-    slotKey == kGestureConfirmKey;
+    slotKey == kGestureConfirmKey ||
+    slotKey == kGestureFailedKey;
 
 /// The pattern id each gesture cue was given, from its stored JSON (never
 /// throws; anything unreadable is none).
@@ -109,6 +111,7 @@ Map<String, BuzzSequence> resolveCuePatterns(
     kGestureStartKey,
     kGestureFollowUpKey,
     kGestureConfirmKey,
+    kGestureFailedKey,
   ]) {
     final given = assignments[key];
     final p = (given == null ? null : store.byId(given)) ??

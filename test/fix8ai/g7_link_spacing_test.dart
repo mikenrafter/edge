@@ -88,7 +88,7 @@ void main() {
             extraTaps: true,
             tapActions: const {3: {}, 4: {}, 5: {}},
             onTapToggle: (n, a, on) async {}));
-    await t.tap(find.text('3 taps'));
+    await t.tap(find.text('Double tap + 1 ECG tap'));
     await t.pumpAndSettle();
     final row = find.byKey(const ValueKey('gesture-sheet-view-all'));
     expect(row, findsOneWidget);
