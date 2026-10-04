@@ -237,7 +237,7 @@ class EcgTapSession {
 
   /// Every packet this gesture saw (and, during a post-roll, saw after it
   /// ended), with when the phone got it: the Device lab keeps them in RAM for
-  /// "Copy all logs" so a session can be replayed off the band. Never stored.
+  /// "Save lab log file" so a session can be replayed off the band. Never stored.
   final void Function(LabradorR17 r, DateTime receivedAt)? onPacket;
 
   final DateTime Function() _now;

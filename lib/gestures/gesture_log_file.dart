@@ -7,9 +7,8 @@
 import 'dart:io';
 
 import 'package:flutter/painting.dart' show Rect;
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
+import '../util/log_file.dart';
 import 'gesture_failures.dart';
 
 /// How the Home card and the Settings list save a failure's log; injectable so
@@ -53,19 +52,11 @@ Future<bool> saveGestureLog(
   Directory? dir,
   Future<void> Function(String path)? share,
   Rect? origin,
-}) async {
-  try {
-    final d = dir ?? await getTemporaryDirectory();
-    final file = File('${d.path}/${gestureLogFileName(f)}');
-    await file.writeAsString(gestureLogFileText(f), flush: true);
-    await (share ??
-        (p) => Share.shareXFiles(
-              [XFile(p, mimeType: 'text/plain')],
-              subject: 'OpenStrap gesture failure log',
-              sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1),
-            ))(file.path);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
+}) =>
+    saveLogFile(
+      gestureLogFileName(f),
+      gestureLogFileText(f),
+      dir: dir,
+      share: share,
+      origin: origin,
+    );

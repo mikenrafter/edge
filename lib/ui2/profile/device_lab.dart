@@ -10,9 +10,10 @@
 //
 // ECG needs a WHOOP MG. On any other band the switch is shown, disabled, with
 // the reason. While a lab switch is on, normal double-tap actions are suspended
-// and this screen's counter takes over (GestureDispatcher). "Copy all logs" at
-// the bottom copies everything on this screen as plain text, plus the kept ECG
-// packets (raw, for replay off the band).
+// and this screen's counter takes over (GestureDispatcher). "Save lab log file"
+// at the bottom saves everything on this screen as a plain text file through
+// the share sheet, plus the kept ECG packets (raw, for replay off the band).
+// Never the clipboard: a big pasted log locked up a second device (8AL).
 //
 // Hardware probes (8V): a buzz-spacing probe and a cued ECG touch probe, each
 // started only here, bounded and stoppable ([HardwareProbePanel]).
@@ -30,6 +31,8 @@ import '../../gestures/lab_log.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
+import '../../util/log_file.dart';
+import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
 import 'pattern_probe_page.dart';
 import 'profile.dart';
@@ -57,7 +60,7 @@ class DeviceLab extends StatelessWidget {
     final app = c.read<AppState>();
     final caps = c.caps;
     final g = app.gestureSettings;
-    // The text "Copy all logs" copies, read when asked: the lab's own button
+    // The text "Save lab log file" saves, read when asked: the lab's own button
     // and the pattern probe's end screen share it.
     String logText() => labLogText(
       entries: app.deviceLab.entries,
@@ -140,6 +143,7 @@ class DeviceLabView extends StatelessWidget {
     this.packets = const [],
     this.probes,
     this.logText,
+    this.saveLog,
     this.tapTools = true,
   });
 
@@ -169,33 +173,50 @@ class DeviceLabView extends StatelessWidget {
   final EcgTapThresholds? thresholds;
   final ValueChanged<EcgTapThresholds>? onThresholds;
 
-  /// Kept ECG packets, oldest first; copied with the log.
+  /// Kept ECG packets, oldest first; saved with the log.
   final List<LabPacket> packets;
 
   /// The hardware probes section, when the screen has a runner for it.
   final Widget? probes;
 
-  /// What "Copy all logs" copies; built from the fields above when not given.
+  /// What "Save lab log file" saves; built from the fields above when not
+  /// given.
   final String Function()? logText;
+
+  /// How the log is saved; null is [saveLogFile] (the platform share sheet).
+  final LogFileSaver? saveLog;
 
   /// FeatureFlag.tapClassifiers. False hides the ECG, touch-window and
   /// repeated-double-tap tools, which the dispatcher ignores while the flag is
   /// off; the probes and the logs stay.
   final bool tapTools;
 
-  Future<void> _copy(BuildContext c) async {
-    await Clipboard.setData(ClipboardData(
-      text: logText?.call() ??
-          labLogText(
-              entries: entries,
-              steps: steps,
-              sessions: sessions,
-              packets: packets),
-    ));
+  Future<void> _save(BuildContext c) async {
+    // Both read the tree, so both are read before the await.
+    final messenger = ScaffoldMessenger.of(c);
+    final origin = shareOrigin(c);
+    final save = saveLog ?? (n, t) => saveLogFile(n, t, origin: origin);
+    var ok = false;
+    try {
+      ok = await save(
+        logFileName('device-lab', DateTime.now()),
+        logText?.call() ??
+            labLogText(
+                entries: entries,
+                steps: steps,
+                sessions: sessions,
+                packets: packets),
+      );
+    } catch (_) {}
     if (!c.mounted) return;
-    ScaffoldMessenger.of(c).showSnackBar(
-      const SnackBar(content: Text('Log copied')),
-    );
+    // Lifted clear of the pinned button, so a retry is not blocked by it; a
+    // retry replaces the last message instead of queueing behind it.
+    messenger.removeCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, 88),
+      content: Text(ok ? 'Log file saved' : 'Could not save the log file.'),
+    ));
   }
 
   @override
@@ -328,12 +349,12 @@ class DeviceLabView extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x3),
             child: BigButton(
-              'Copy all logs',
+              'Save lab log file',
               key: const ValueKey('lab-copy-all'),
-              icon: LucideIcons.copy,
+              icon: LucideIcons.download,
               soft: true,
               color: C.blue,
-              onTap: () => _copy(c),
+              onTap: () => _save(c),
             ),
           ),
         ]),
@@ -546,12 +567,16 @@ class HardwareProbePanel extends StatefulWidget {
     super.key,
     required this.runner,
     required this.logText,
+    this.saveLog,
   });
   final HardwareProbeRunner runner;
 
-  /// The text of the lab's "Copy all logs", for the pattern probe's end
+  /// The text of the lab's "Save lab log file", for the pattern probe's end
   /// screen.
   final String Function() logText;
+
+  /// Forwarded to the pattern probe page; null is [saveLogFile].
+  final LogFileSaver? saveLog;
 
   @override
   State<HardwareProbePanel> createState() => _HardwareProbePanelState();
@@ -593,7 +618,11 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
     if (!mounted || r.pattern == null) return;
     await goto(
       context,
-      PatternProbePage(runner: r, logText: widget.logText),
+      PatternProbePage(
+        runner: r,
+        logText: widget.logText,
+        saveLog: widget.saveLog,
+      ),
     );
   }
 

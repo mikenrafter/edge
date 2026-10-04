@@ -1,10 +1,10 @@
-// 8V: the Device lab's kept ECG packets and the "Copy all logs" text. Pins the
-// bound (360, oldest dropped), the session tag, that Clear empties the packets,
-// that a probe's own result text lands in the session summary, and that the
-// button copies the packets section (heading, format line, r17v1 lines).
+// 8V: the Device lab's kept ECG packets and the "Save lab log file" text.
+// Pins the bound (360, oldest dropped), the session tag, that Clear empties the
+// packets, that a probe's own result text lands in the session summary, and
+// that the button saves the packets section (heading, format line, r17v1
+// lines).
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
@@ -193,26 +193,11 @@ void main() {
     );
   });
 
-  group('Copy all logs on the screen', () {
-    final copied = <String>[];
+  group('Save lab log file on the screen', () {
+    final saved = <String>[];
 
-    testWidgets('copies the ECG packets section with the packets', (t) async {
-      copied.clear();
-      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') {
-            copied.add((call.arguments as Map)['text'] as String);
-          }
-          return null;
-        },
-      );
-      addTearDown(
-        () => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform,
-          null,
-        ),
-      );
+    testWidgets('saves the ECG packets section with the packets', (t) async {
+      saved.clear();
 
       final lab = DeviceLabLog()
         ..addPacket(_pkt(0), _t0, tag: 'tap 18:17:57.367')
@@ -228,7 +213,14 @@ void main() {
       await t.pumpWidget(
         MaterialApp(
           theme: buildTheme(Brightness.light),
-          home: DeviceLabView(ecgSupported: true, packets: lab.packets),
+          home: DeviceLabView(
+            ecgSupported: true,
+            packets: lab.packets,
+            saveLog: (name, text) async {
+              saved.add(text);
+              return true;
+            },
+          ),
         ),
       );
       await t.pumpAndSettle();
@@ -236,8 +228,8 @@ void main() {
       await t.tap(find.byKey(const ValueKey('lab-copy-all')));
       await t.pump();
 
-      expect(copied, hasLength(1));
-      final text = copied.single;
+      expect(saved, hasLength(1));
+      final text = saved.single;
       expect(text, contains('ECG packets, oldest first'));
       expect(text, contains('  format:'));
       expect(text, contains('r17v1 tag=tap 18:17:57.367 | recv='));

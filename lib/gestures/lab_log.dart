@@ -7,7 +7,7 @@
 // session's tap and the time since the previous line, so a slow stage is visible
 // without arithmetic. A session ends with a one-line summary (method, settings,
 // result, total time). [labLogText] turns the whole lab into plain text for the
-// "Copy all logs" button.
+// "Save lab log file" button.
 //
 // ECG packets (8V). Every live R17 packet a gesture or a hardware probe sees
 // is kept here too, raw samples and the band's status bytes, so a session can

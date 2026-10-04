@@ -471,7 +471,7 @@ light/dark × 1x/2x, goldens `test/proof/goldens/phase8_<case>_<b>_<s>x.png`:
   `GestureSettings.tapMethodFor(ecgSupported:)`, `repeatTapWindowMs` (1000..5000 in
   250 ms, default 2500), `repeatTapsLab`.
 - Device lab lines: `time | tap +N ms | last +N ms | text`; `labLogText` feeds the
-  pinned "Copy all logs" button.
+  pinned "Save lab log file" button (was "Copy all logs"; 8AL).
 
 ## Review fixes: ECG taps, repeated double taps, band buzz (Oct 2, supersede the above where they differ)
 
@@ -903,10 +903,10 @@ Builds on 8AA. Tests: `test/gestures/pattern_transcript_test.dart`,
 - **End screen (C, C2).** `pattern-finish` (header) and back from the transcriber
   close the session (`closePattern` writes the heard lines and tempo line) and show
   `pattern-end`: "k of 40" tests transcribed, plays, "1 sixteenth ≈ N ms (fitted|fixed)",
-  "N ms" Bluetooth lead ("(default)" when unmeasured). `pattern-copy` ("Copy all
-  logs") puts `logText()` on the clipboard (called after the close; the page takes
-  `logText:`, which `DeviceLab` builds with `labLogText` and also uses for its own
-  button) and shows "Copied". `pattern-done` or back from the end screen leaves.
+  "N ms" Bluetooth lead ("(default)" when unmeasured). `pattern-copy` ("Save probe
+  log file", 8AL; was "Copy all logs") hands `logText()` to `saveLog` as a named
+  file (called after the close; the page takes `logText:`, which `DeviceLab` builds
+  with `labLogText` and also uses for its own button) and shows "Saved". `pattern-done` or back from the end screen leaves.
 - **Limit display (E).** `runner.patternCommandsLeft` (30 minus the commands in the
   window, never below 0) and `patternNextFreeIn` (null when the window is empty).
   `pattern-limit`, a small pill floating over the wheel's bottom-right corner (it costs no height; 360 x 640 has none to spare), shows "N of 30 left" and "next in m:ss", counting
@@ -1559,7 +1559,7 @@ C and D in phase 2).
   gesture id is `StrapEvent.identity`, plus the receipt time when the strap
   clock is implausible (all such taps share one identity).
 - The raw ECG packets stay out of the record: they are about 100 KB and would
-  push the trace out of the 60 000 character cap; "Copy all logs" in the Device
+  push the trace out of the 60 000 character cap; "Save lab log file" in the Device
   lab still has them.
 - Home: `GestureFailureCard` (`lib/ui2/gesture_failure_card.dart`), above the
   community nudge, styled like it (Surface, 32 pt glyph tile, bold title, soft
@@ -1604,3 +1604,23 @@ C and D in phase 2).
   on|off, N ms after the tap" (measurement for the band's debounce).
 - Tests: `test/fix8an/` (gate, session, parity 2..5, measure, prepare,
   settings). Doc: `docs/hardware/whoop-mg-haptics-and-ecg.md`, "Fast mode (8AN)".
+
+## 8AL: logs are saved as files (Oct 4)
+- A big log pasted from the clipboard locked up the user's second device, so no log
+  is copied any more. `lib/util/log_file.dart`: `LogFileSaver`, `logFileName(kind,
+  at)` (`openstrap-<kind>-log-<yyyyMMdd-HHmmss>.txt`, local time) and
+  `saveLogFile` (writes the text verbatim to the temp directory, hands the path to
+  the share sheet anchored at `shareOrigin`; false, never a throw, on failure).
+  `saveGestureLog` (8AK) reuses it.
+- Device lab: "Save lab log file" (kind `device-lab`, `DeviceLabView.saveLog`),
+  SnackBar "Log file saved" / "Could not save the log file.". Pattern probe end
+  screen: "Save probe log file" (kind `pattern-probe`, `saveLog` on
+  `PatternProbePage` and `HardwareProbePanel`), "Saved" only after a save that
+  worked, the same SnackBar on failure. No `Clipboard.*` call on either screen.
+- The Automation token copy in `settings.dart` stays: it is a secret the user pastes
+  elsewhere, not a log. `test/fix8al/no_clipboard_guard_test.dart` keeps every other
+  `Clipboard.setData` out of `lib/`.
+- Tests: `test/fix8al/`; the old copy assertions in `phase8/device_lab_test.dart`,
+  `hardware/lab_packets_test.dart`, `hardware/pattern_probe_page_test.dart`,
+  `hardware/pattern_probe_panel_test.dart` and `phase7/feature_flags_test.dart` now
+  use a fake saver.

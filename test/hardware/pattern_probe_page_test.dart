@@ -50,9 +50,10 @@
 //    or system back, closes the session (heard lines and tempo line in the lab
 //    log) and then shows `pattern-end` with the tests transcribed ("k of 40"),
 //    the plays, the tempo line ("1 sixteenth ≈ N ms", "fitted"/"fixed") and the
-//    measured lead ("N ms"); `pattern-copy` puts logText() (called after the
-//    close) on the clipboard and shows "Copied"; `pattern-done` or system back
-//    leaves the page. The page takes `logText:`.
+//    measured lead ("N ms"); `pattern-copy` ("Save probe log file", 8AL) hands
+//    logText() (called after the close) to the page's `saveLog:` as a named
+//    file and shows "Saved"; `pattern-done` or system back leaves the page.
+//    The page takes `logText:`.
 //  - refusals (8AB, D): a refused play shows a `pattern-refused` line under
 //    Play: "Band resting, ready in N s" counting down (runner.patternRestRemaining
 //    is a Duration?), or the probe's reason ("Not connected"). The line clears
@@ -65,7 +66,6 @@ import 'dart:ui' show Tristate;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
@@ -74,6 +74,7 @@ import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/haptics/heard_log.dart';
 import 'package:openstrap_edge/ui2/profile/pattern_probe_page.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+import 'package:openstrap_edge/util/log_file.dart';
 
 /// Flip [up] to false to drop the link after the probe is open.
 class _Link {
@@ -175,11 +176,16 @@ Future<void> _show(
   WidgetTester t,
   HardwareProbeRunner r, {
   String Function()? logText,
+  LogFileSaver? saveLog,
 }) async {
   await t.pumpWidget(
     MaterialApp(
       theme: buildTheme(Brightness.light),
-      home: PatternProbePage(runner: r, logText: logText ?? () => 'log'),
+      home: PatternProbePage(
+        runner: r,
+        logText: logText ?? () => 'log',
+        saveLog: saveLog,
+      ),
     ),
   );
   await t.pump(const Duration(milliseconds: 300));
@@ -195,6 +201,7 @@ Future<HardwareProbeRunner> _open(
   _Link? link,
   bool bandEvents = false,
   String Function()? logText,
+  LogFileSaver? saveLog,
 }) async {
   _view(t, size);
   final r = _runner(
@@ -206,7 +213,7 @@ Future<HardwareProbeRunner> _open(
     bandEvents: bandEvents,
   );
   await r.openPattern();
-  await _show(t, r, logText: logText);
+  await _show(t, r, logText: logText, saveLog: saveLog);
   return r;
 }
 
@@ -2020,27 +2027,6 @@ void main() {
       .map((w) => w.data ?? w.textSpan?.toPlainText() ?? '')
       .join('\n');
 
-  /// Mocks the clipboard; the list fills with what is copied.
-  List<String> mockClipboard(WidgetTester t) {
-    final copied = <String>[];
-    t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          copied.add((call.arguments as Map)['text'] as String);
-        }
-        return null;
-      },
-    );
-    addTearDown(
-      () => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-    return copied;
-  }
-
   testWidgets('Finish closes the session first, then shows the end screen with '
       'the counts, the tempo and the lead', (t) async {
     final lab = DeviceLabLog();
@@ -2073,7 +2059,7 @@ void main() {
     expect(text, contains('1 sixteenth ≈ 125 ms'));
     expect(text, contains('fixed'));
     expect(text, contains('450 ms'), reason: 'the measured Bluetooth lead');
-    expect(find.text('Copied'), findsNothing, reason: 'not before the copy');
+    expect(find.text('Saved'), findsNothing, reason: 'not before the save');
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 1));
   });
@@ -2097,9 +2083,9 @@ void main() {
     await t.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('Copy all logs on the end screen copies logText(), called after '
-      'the session closed, and says Copied', (t) async {
-    final copied = mockClipboard(t);
+  testWidgets('Save probe log file on the end screen saves logText() as a '
+      'named file, called after the session closed, and says Saved', (t) async {
+    final saved = <(String, String)>[];
     final lab = DeviceLabLog();
     final calls = <bool>[];
     late final HardwareProbeRunner r;
@@ -2110,21 +2096,31 @@ void main() {
         calls.add(r.pattern != null);
         return 'LAB LOG\n${lab.steps.reversed.join('\n')}';
       },
+      saveLog: (n, x) async {
+        saved.add((n, x));
+        return true;
+      },
     );
     await _tapKey(t, 'pattern-len-2');
     await _tapKey(t, 'pattern-finish');
-    expect(copied, isEmpty, reason: 'Finish copies nothing by itself');
+    expect(saved, isEmpty, reason: 'Finish saves nothing by itself');
+    expect(find.text('Save probe log file'), findsOneWidget);
     await _tapKey(t, 'pattern-copy');
-    expect(copied, hasLength(1));
+    expect(saved, hasLength(1));
     expect(calls, [false], reason: 'built after closePattern');
-    expect(copied.single, startsWith('LAB LOG'));
     expect(
-      copied.single,
-      contains('Pattern probe heard 1/40'),
-      reason: 'the heard lines are in the copy',
+      saved.single.$1,
+      matches(RegExp(r'^openstrap-pattern-probe-log-\d{8}-\d{6}\.txt$')),
     );
-    expect(copied.single, contains('Pattern probe tempo'));
-    expect(find.text('Copied'), findsWidgets);
+    final text = saved.single.$2;
+    expect(text, startsWith('LAB LOG'));
+    expect(
+      text,
+      contains('Pattern probe heard 1/40'),
+      reason: 'the heard lines are in the file',
+    );
+    expect(text, contains('Pattern probe tempo'));
+    expect(find.text('Saved'), findsWidgets);
     await t.pumpWidget(const SizedBox());
     await t.pump(const Duration(seconds: 1));
   });

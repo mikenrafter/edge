@@ -101,7 +101,7 @@ count of 2 (no finger): about 5–7 s. Where it goes:
 
 Under Devices → your band → Device lab → Hardware probes. All three start only
 from their button, stop at once on Stop or when you leave the screen, and write
-everything into the lab log ("Copy all logs").
+everything into the lab log (saved with "Save lab log file").
 
 - **Buzz probe.** Eight groups of three single buzzes, 200 ms to 1600 ms apart
   (at most 30 buzzes per run, a 2 s rest after each group). After each group
@@ -208,7 +208,7 @@ until enough of the window has passed), each pattern has 1-8 effects with ids 1-
 loop is capped at 3, every play waits for the band to finish the last one, and a
 play where nothing could be written is not counted. The pattern probe is
 refused on a band that is not an MG. The ECG stream is capped and always
-stopped, also on errors. No sample leaves RAM unless you copy the log
+stopped, also on errors. No sample leaves RAM unless you save the log file
 (invariant 14). Dangerous opcodes (invariant 15) are not involved.
 
 ## Vocabulary (L6)
@@ -509,8 +509,9 @@ off). Not yet measured: no capture with real status bytes exists.
 ## Replaying off the band
 
 The lab keeps the last ~6 minutes of ECG packets (raw samples and status
-bytes). "Copy all logs" ends with an `ECG packets` section, one `r17v1` line
-per packet. Save it under `test/fixtures/ecg_traces/` and:
+bytes). "Save lab log file" (a .txt through the share sheet, never the
+clipboard) ends with an `ECG packets` section, one `r17v1` line per packet.
+Put the file under `test/fixtures/ecg_traces/` and:
 
 ```dart
 final trace = Trace.load('test/fixtures/ecg_traces/<file>.txt');

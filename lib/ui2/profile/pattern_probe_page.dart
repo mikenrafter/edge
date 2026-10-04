@@ -40,7 +40,6 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../gestures/hardware_probe_runner.dart';
@@ -48,6 +47,8 @@ import '../../gestures/hardware_probes.dart';
 import '../../gestures/pattern_transcript.dart';
 import '../ui2.dart';
 import '../../haptics/tap_notes.dart';
+import '../../util/log_file.dart';
+import '../activity/share.dart' show shareOrigin;
 import 'pattern_notation.dart';
 import 'tap_take_pad.dart';
 
@@ -62,13 +63,17 @@ class PatternProbePage extends StatefulWidget {
     super.key,
     required this.runner,
     required this.logText,
+    this.saveLog,
   });
   final HardwareProbeRunner runner;
 
-  /// The text of the Device lab's "Copy all logs", read when the end screen's
-  /// copy button is tapped (after the session closed, so the heard lines are
-  /// in it).
+  /// The text of the Device lab's "Save lab log file", read when the end
+  /// screen's save button is tapped (after the session closed, so the heard
+  /// lines are in it).
   final String Function() logText;
+
+  /// How the log is saved; null is [saveLogFile] (the platform share sheet).
+  final LogFileSaver? saveLog;
 
   @override
   State<PatternProbePage> createState() => _PatternProbePageState();
@@ -128,7 +133,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
   // The end screen.
   bool _ended = false;
   _EndSummary? _summary;
-  bool _copied = false;
+  bool _saved = false;
 
   @override
   void initState() {
@@ -187,9 +192,26 @@ class _PatternProbePageState extends State<PatternProbePage> {
     r.closePattern();
   }
 
-  Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: widget.logText()));
-    if (mounted) setState(() => _copied = true);
+  Future<void> _save() async {
+    // Both read the tree, so both are read before the await.
+    final messenger = ScaffoldMessenger.of(context);
+    final origin = shareOrigin(context);
+    final save = widget.saveLog ?? (n, t) => saveLogFile(n, t, origin: origin);
+    var ok = false;
+    try {
+      ok = await save(
+        logFileName('pattern-probe', DateTime.now()),
+        widget.logText(),
+      );
+    } catch (_) {}
+    if (!mounted) return;
+    if (ok) {
+      setState(() => _saved = true);
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not save the log file.')),
+      );
+    }
   }
 
   static String _sig(PatternEntrySession? s) => s == null
@@ -685,8 +707,8 @@ class _PatternProbePageState extends State<PatternProbePage> {
                     ),
                     const SizedBox(height: S.x1),
                     Text(
-                      'What you wrote is in the lab log. Copy the whole log to '
-                      'send it.',
+                      'What you wrote is in the lab log. Save the whole log as a '
+                      'file to send it.',
                       style: F.cap.copyWith(color: p.ink2, height: 1.3),
                     ),
                     const SizedBox(height: S.x3),
@@ -721,7 +743,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (_copied)
+                    if (_saved)
                       Padding(
                         padding: const EdgeInsets.only(bottom: S.x2),
                         child: Semantics(
@@ -732,7 +754,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
                               Icon(LucideIcons.check, size: 16, color: p.ink2),
                               const SizedBox(width: S.x1),
                               Text(
-                                'Copied',
+                                'Saved',
                                 style: F.cap.copyWith(color: p.ink2),
                               ),
                             ],
@@ -740,12 +762,12 @@ class _PatternProbePageState extends State<PatternProbePage> {
                         ),
                       ),
                     BigButton(
-                      'Copy all logs',
+                      'Save probe log file',
                       key: const ValueKey('pattern-copy'),
-                      icon: LucideIcons.copy,
+                      icon: LucideIcons.download,
                       soft: true,
                       color: C.blue,
-                      onTap: _copy,
+                      onTap: _save,
                     ),
                     const SizedBox(height: S.x2),
                     BigButton(

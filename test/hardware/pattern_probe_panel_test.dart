@@ -10,7 +10,6 @@ import 'dart:async';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/hardware_probe_runner.dart';
 import 'package:openstrap_edge/gestures/lab_log.dart';
@@ -1013,26 +1012,11 @@ void main() {
     });
 
     // 8AB C2: the Device lab gives the panel a closure that builds the same
-    // text as its "Copy all logs"; the panel hands it to the page, whose end
-    // screen copies it after the session has closed.
-    testWidgets('the end screen copies the lab\'s log text, read after the '
+    // text as its "Save lab log file"; the panel hands it, and its saver, to
+    // the page, whose end screen saves it after the session has closed.
+    testWidgets('the end screen saves the lab\'s log text, read after the '
         'session closed; Done returns to the panel', (t) async {
-      final copied = <String>[];
-      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') {
-            copied.add((call.arguments as Map)['text'] as String);
-          }
-          return null;
-        },
-      );
-      addTearDown(
-        () => t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform,
-          null,
-        ),
-      );
+      final saved = <String>[];
       final lab = DeviceLabLog();
       final r = _runner(lab);
       var calls = 0;
@@ -1043,6 +1027,10 @@ void main() {
           logText: () {
             calls++;
             return 'LAB LOG\n${lab.steps.reversed.join('\n')}';
+          },
+          saveLog: (n, x) async {
+            saved.add(x);
+            return true;
           },
         ),
       );
@@ -1058,15 +1046,15 @@ void main() {
       await t.pump(const Duration(milliseconds: 500));
       expect(r.pattern, isNull, reason: 'closed before the end screen');
       expect(find.byKey(const ValueKey('pattern-end')), findsOneWidget);
-      expect(calls, 0, reason: 'Finish alone copies nothing');
+      expect(calls, 0, reason: 'Finish alone saves nothing');
 
       await t.tap(find.byKey(const ValueKey('pattern-copy')));
       await t.pump(const Duration(milliseconds: 400));
       expect(calls, 1);
-      expect(copied, hasLength(1));
-      expect(copied.single, startsWith('LAB LOG'));
-      expect(copied.single, contains('Pattern probe heard 1/40'));
-      expect(find.text('Copied'), findsWidgets);
+      expect(saved, hasLength(1));
+      expect(saved.single, startsWith('LAB LOG'));
+      expect(saved.single, contains('Pattern probe heard 1/40'));
+      expect(find.text('Saved'), findsWidgets);
 
       await t.tap(find.byKey(const ValueKey('pattern-done')));
       await t.pump(const Duration(milliseconds: 500));

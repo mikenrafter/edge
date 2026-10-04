@@ -3,7 +3,6 @@
 // See test/phase8/CONTRACTS.md §8I.
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -355,23 +354,20 @@ void main() {
     });
   });
 
-  group('Copy all logs', () {
-    final copied = <String>[];
+  group('Save lab log file', () {
+    final saved = <String>[];
+    final names = <String>[];
 
-    void mockClipboard(WidgetTester t) {
-      copied.clear();
-      t.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') {
-            copied.add((call.arguments as Map)['text'] as String);
-          }
-          return null;
-        },
-      );
-      addTearDown(() => t.binding.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, null));
+    Future<bool> fakeSaver(String name, String text) async {
+      names.add(name);
+      saved.add(text);
+      return true;
     }
+
+    setUp(() {
+      saved.clear();
+      names.clear();
+    });
 
     final lines = [
       '09:15:04.460 | tap +1210 ms | last +1200 ms | ECG stream command written.',
@@ -384,10 +380,12 @@ void main() {
           DeviceLabView(
               ecgSupported: true,
               steps: lines,
-              entries: [DeviceLabEntry.fromEvent(_tap())]));
+              entries: [DeviceLabEntry.fromEvent(_tap())],
+              saveLog: fakeSaver));
       final button = find.byKey(const ValueKey('lab-copy-all'));
       expect(button, findsOneWidget);
-      expect(find.text('Copy all logs'), findsOneWidget);
+      expect(find.text('Save lab log file'), findsOneWidget);
+      expect(find.text('Copy all logs'), findsNothing);
       final y = t.getTopLeft(button).dy;
       for (final heading in ['Band events', 'Step by step']) {
         expect(y, greaterThan(t.getTopLeft(find.text(heading)).dy),
@@ -405,15 +403,14 @@ void main() {
           theme: buildTheme(Brightness.light),
           home: DeviceLabView(
               ecgSupported: true,
+              saveLog: fakeSaver,
               steps: [for (var i = 0; i < 200; i++) 'line $i'])));
       await t.pumpAndSettle();
       expect(find.byKey(const ValueKey('lab-copy-all')).hitTestable(),
           findsOneWidget);
     });
 
-    testWidgets('pressing it puts the whole log on the clipboard as text',
-        (t) async {
-      mockClipboard(t);
+    testWidgets('pressing it saves the whole log as a text file', (t) async {
       await _pump(
           t,
           DeviceLabView(
@@ -424,11 +421,14 @@ void main() {
                   '3 taps | 6.4 s in total'
             ],
             entries: [DeviceLabEntry.fromEvent(_tap())],
+            saveLog: fakeSaver,
           ));
       await t.tap(find.byKey(const ValueKey('lab-copy-all')));
       await t.pump();
-      expect(copied, hasLength(1));
-      final text = copied.single;
+      expect(saved, hasLength(1));
+      expect(names.single,
+          matches(RegExp(r'^openstrap-device-lab-log-\d{8}-\d{6}\.txt$')));
+      final text = saved.single;
       expect(text, contains('OpenStrap Device lab log'));
       expect(text, contains('3 taps | 6.4 s in total'));
       expect(text, contains('Double tap received.'));
@@ -439,13 +439,13 @@ void main() {
           lessThan(text.indexOf('ECG stream command written.')));
     });
 
-    testWidgets('and says it copied', (t) async {
-      mockClipboard(t);
-      await _pump(t, const DeviceLabView(ecgSupported: false));
+    testWidgets('and says it saved', (t) async {
+      await _pump(
+          t, DeviceLabView(ecgSupported: false, saveLog: fakeSaver));
       await t.tap(find.byKey(const ValueKey('lab-copy-all')));
       await t.pump();
-      expect(find.text('Log copied'), findsOneWidget);
-      expect(copied.single, contains('No log lines yet'));
+      expect(find.text('Log file saved'), findsOneWidget);
+      expect(saved.single, contains('No log lines yet'));
     });
   });
 

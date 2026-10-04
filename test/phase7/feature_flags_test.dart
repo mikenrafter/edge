@@ -417,7 +417,7 @@ void main() {
         expect(find.text(title), findsNothing, reason: 'OFF: $title');
       }
       expect(find.text('Band events'), findsOneWidget);
-      expect(find.text('Copy all logs'), findsOneWidget);
+      expect(find.text('Save lab log file'), findsOneWidget);
     });
 
     test('the lab gates its tap tools on the flag; the entry needs dev mode',
