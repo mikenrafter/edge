@@ -38,9 +38,9 @@ Map<String, dynamic> _timeline() => {
         for (var m = 480; m < 540; m++) {'t': _ts(m), 'v': 60 + (m - 480)},
         for (var m = 720; m < 750; m++) {'t': _ts(m), 'v': 90},
       ],
-      // Five-minute HRV samples 08:00-09:00, one missing (08:30).
+      // One-minute HRV samples 08:00-09:00, one missing (08:30).
       'hrv': [
-        for (var m = 480; m < 540; m += 5)
+        for (var m = 480; m < 540; m++)
           if (m != 510) {'t': _ts(m), 'v': 50 + (m - 480) / 5},
       ],
       'resp': const [],
@@ -146,11 +146,31 @@ void main() {
       expect(runLens(plotLine(t, 'hr')), [60, 30]);
     });
 
-    testWidgets("HRV breaks by its own 5-minute step: one missing sample is a hole",
+    testWidgets('HRV is a one-minute lane: one missing minute is a hole',
         (t) async {
       await _openDay(t, _repo(), picks: ['hrv']);
-      // 08:00 .. 08:25 (6 samples) | 08:35 .. 08:55 (5 samples)
-      expect(runLens(plotLine(t, 'hrv')), [6, 5]);
+      // 08:00 .. 08:29 (30 samples) | 08:31 .. 08:59 (29 samples)
+      expect(runLens(plotLine(t, 'hrv')), [30, 29]);
+    });
+
+    testWidgets('a 5-minute lane breaks at a missing sample and not between '
+        'neighbours; sparse readings are never joined', (t) async {
+      final tl = _timeline()
+        ..['resp'] = [
+          for (final m in [480, 485, 490, 500, 505])
+            {'t': _ts(m), 'v': 14.0 + m % 3},
+        ]
+        ..['skin_temp'] = [
+          {'t': _ts(480), 'v': 0.1},
+          {'t': _ts(1200), 'v': 0.2},
+        ];
+      await _openDay(t, _repo(timeline: tl), picks: ['resp', 'skin_temp']);
+      expect(runLens(plotLine(t, 'resp')), [3, 2]);
+      expect(runLens(plotLine(t, 'skin_temp')), [1, 1],
+          reason: 'two readings 12 h apart are two dots, not one line');
+      await scrubAt(t, _at(840)); // 14:00, hours from either reading
+      expect(readoutText(t, kExploreIntraday.singleWhere((s) => s.key == 'skin_temp').label),
+          '—');
     });
 
     testWidgets('a sleep that began yesterday and a workout are bands, clipped',

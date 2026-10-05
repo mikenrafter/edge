@@ -451,7 +451,8 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
                     exploreIntradayPoints(k,
                         timeline: _timelines[_dayLabel], calories: _cals[_dayLabel]),
                     dayStart: start,
-                    dayEnd: end)
+                    dayEnd: end,
+                    cadenceSec: s.cadenceSec)
                 : null,
             exploreZUnavailable(k, const [], intraday: true),
             null));

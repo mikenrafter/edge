@@ -9,7 +9,7 @@
 //   const int    kExploreMinBaselineDays = 7;   // fewest readings a baseline needs
 //   const int    kExploreBaselineDays = 28;     // newest N readings make it
 //   const double kExploreGapFactor = 1.5;       // a gap is a step > 1.5x the
-//                                               // series' own median step
+//                                               // lane's KNOWN cadence
 //   enum ExploreRange { d7, d30, m6, y1, custom }
 //   extension: int? get days  -> 7 / 30 / 180 / 365 / null for custom
 //
@@ -373,7 +373,7 @@ void main() {
     });
   });
 
-  group('ExploreLine.intraday: the series own gap rule', () {
+  group('ExploreLine.intraday: the lane cadence gap rule', () {
     ExploreLine line(List<ExplorePoint> p, {String key = 'hr'}) =>
         ExploreLine.intraday(key, p, dayStart: 0, dayEnd: 86400);
 
@@ -387,18 +387,63 @@ void main() {
       expect(l.runs.last.first.at, closeTo(20 / 1440, 1e-9));
     });
 
-    test('a 5-minute series is NOT broken by its own sampling step', () {
-      // The same 5 min would break a one-minute series; here it is the step.
-      final l = line([for (final m in [0, 5, 10, 15, 20]) _m(m, 40.0)],
-          key: 'hrv');
+    test('a 5-minute lane (cadenceSec: 300) is not broken by its own step', () {
+      final l = ExploreLine.intraday(
+          'resp', [for (final m in [0, 5, 10, 15, 20]) _m(m, 14.0)],
+          dayStart: 0, dayEnd: 86400, cadenceSec: 300);
       expect(_lens(l), [5]);
     });
 
-    test('one missing sample on a 5-minute series breaks it; none is a hole',
-        () {
+    test('one missing sample on a 5-minute lane breaks it', () {
+      final l = ExploreLine.intraday(
+          'resp', [for (final m in [0, 5, 10, 20, 25]) _m(m, 14.0)],
+          dayStart: 0, dayEnd: 86400, cadenceSec: 300);
+      expect(_lens(l), [3, 2], reason: '10 min > 1.5 x the 5 min cadence');
+    });
+
+    test('the cadence is the lane\'s, never the data\'s: 5-minute readings on '
+        'a one-minute lane are separate points', () {
       final l = line([for (final m in [0, 5, 10, 20, 25]) _m(m, 40.0)],
           key: 'hrv');
-      expect(_lens(l), [3, 2], reason: '10 min > 1.5 x the 5 min step');
+      expect(_lens(l), [1, 1, 1, 1, 1]);
+    });
+
+    test('every lane carries the cadence its producer writes', () {
+      expect({for (final s in kExploreIntraday) s.key: s.cadenceSec}, {
+        'hr': 60,
+        'hrv': 60,
+        'resp': 300,
+        'skin_temp': 300,
+        'activity': 300,
+        'calories': 60,
+      });
+    });
+
+    test('two far-apart samples stay separate and do not read through noon',
+        () {
+      final l = line([_m(8 * 60, 60), _m(20 * 60, 80)]);
+      expect(_lens(l), [1, 1]);
+      expect(l.valueAt(14 / 24), isNull,
+          reason: 'no sample was recorded near the scrub position');
+    });
+
+    test('three far-apart samples stay separate and do not widen scrubbing',
+        () {
+      final l = line([_m(2 * 60, 50), _m(12 * 60, 60), _m(22 * 60, 70)]);
+      expect(_lens(l), [1, 1, 1]);
+      expect(l.valueAt(7 / 24), isNull,
+          reason: 'the nearest sample is hours away');
+    });
+
+    test('a sparse 5-minute lane reads only within half a gap of a sample', () {
+      final l = ExploreLine.intraday(
+          'resp', [_m(8 * 60, 14), _m(8 * 60 + 5, 15), _m(20 * 60, 16)],
+          dayStart: 0, dayEnd: 86400, cadenceSec: 300);
+      expect(l.valueAt((8 * 60 + 2) / 1440), 14);
+      expect(l.valueAt((8 * 60 + 7) / 1440), 15);
+      expect(l.valueAt((8 * 60 + 9) / 1440), isNull,
+          reason: '4 min from the nearest reading, past 0.75 x 5 min');
+      expect(l.valueAt(14 / 24), isNull);
     });
 
     test('jitter inside 1.5 steps does not break the line', () {

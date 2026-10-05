@@ -25,9 +25,14 @@ const int kExploreMaxMetrics = 4;
 const int kExploreMinBaselineDays = 7;
 const int kExploreBaselineDays = 28;
 
-/// A step wider than this many times the series' OWN median step is a hole.
-/// One-minute heart rate breaks at 90 s; five-minute HRV at 7.5 min.
+/// A step wider than this many times the lane's KNOWN cadence is a hole. The
+/// cadence is a property of the lane (see [ExploreIntradaySource.cadenceSec]),
+/// never measured from the readings: two points hours apart are two readings,
+/// not a slow lane.
 const double kExploreGapFactor = 1.5;
+
+/// The cadence of a lane that says nothing else: one-minute buckets.
+const int kExploreMinuteCadenceSec = 60;
 
 /// z is clipped to this many standard deviations before it is drawn.
 const double _zClip = 3;
@@ -203,21 +208,17 @@ class ExploreLine {
 
   /// [pts] on the real local day [dayStart, dayEnd) (epoch seconds). The line
   /// breaks wherever the step between readings is more than
-  /// [kExploreGapFactor] times the series' own median step.
+  /// [kExploreGapFactor] times the lane's [cadenceSec], and a scrub reads a
+  /// value only within half of that of a real reading.
   factory ExploreLine.intraday(String key, Iterable<ExplorePoint> pts,
-      {required int dayStart, required int dayEnd}) {
+      {required int dayStart,
+      required int dayEnd,
+      int cadenceSec = kExploreMinuteCadenceSec}) {
     final s = [
       for (final p in pts)
         if (p.v.isFinite && p.t >= dayStart && p.t < dayEnd) p
     ]..sort((a, b) => a.t.compareTo(b.t));
-    // One reading has no step of its own; a minute-ish default keeps it a dot.
-    var gap = 90.0;
-    if (s.length >= 2) {
-      final steps = [
-        for (var i = 1; i < s.length; i++) (s[i].t - s[i - 1].t).toDouble()
-      ]..sort();
-      gap = kExploreGapFactor * steps[steps.length ~/ 2];
-    }
+    final gap = kExploreGapFactor * cadenceSec;
     final span = dayEnd - dayStart;
     final runs = <List<({double at, double v})>>[];
     final flat = <({double at, double v})>[];
@@ -246,7 +247,7 @@ class ExploreLine {
 
   /// The REAL value at [at] (0..1, clamped), or null where nothing was read:
   /// the day under the position for a daily line, the nearest sample within
-  /// half a gap for an intraday one.
+  /// half a gap (so never inside a drawn break) for an intraday one.
   double? valueAt(double at) {
     if (_slots > 0) return _bySlot[(at * _slots).floor().clamp(0, _slots - 1)];
     if (_flat.isEmpty) return null;
@@ -333,20 +334,27 @@ class ExploreIntradaySource {
   /// 0..1 share of time moving and read as a percentage, as the day screen does).
   final double scale;
 
+  /// Seconds between this lane's stored readings, as its producer writes them.
+  final int cadenceSec;
+
   const ExploreIntradaySource(
       this.key, this.timelineKey, this.specKey, this.label, this.unit,
-      {this.scale = 1});
+      {this.scale = 1, this.cadenceSec = kExploreMinuteCadenceSec});
 }
 
-/// The intraday metrics, in picker order.
+/// The intraday metrics, in picker order. Cadences are the producers': heart
+/// rate, the rolling HRV and the calorie curve are per-minute; respiratory
+/// rate, skin temperature and movement are 5-minute buckets.
 const List<ExploreIntradaySource> kExploreIntraday = [
   ExploreIntradaySource('hr', 'hr', 'resting_hr', 'Heart rate', 'bpm'),
   ExploreIntradaySource('hrv', 'hrv', 'hrv', 'HRV', 'ms'),
-  ExploreIntradaySource('resp', 'resp', 'resp_rate', 'Respiratory rate', 'br/min'),
+  ExploreIntradaySource('resp', 'resp', 'resp_rate', 'Respiratory rate', 'br/min',
+      cadenceSec: 300),
   ExploreIntradaySource(
-      'skin_temp', 'skin_temp', 'skin_temp', 'Skin temperature (relative)', ''),
+      'skin_temp', 'skin_temp', 'skin_temp', 'Skin temperature (relative)', '',
+      cadenceSec: 300),
   ExploreIntradaySource('activity', 'activity', 'active_min', 'Movement', '%',
-      scale: 100),
+      scale: 100, cadenceSec: 300),
   ExploreIntradaySource(
       'calories', 'calories', 'calories', 'Active energy', 'kcal/min'),
 ];

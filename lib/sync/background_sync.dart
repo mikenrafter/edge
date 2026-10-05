@@ -1,5 +1,6 @@
 // Headless LOCAL drain — runs the connect → drain → store-locally flow with NO UI,
-// NO Provider, and (since the cloud excision) NO upload. "Comes, does its job, goes."
+// NO Provider, and (since the cloud excision) NO upload. It may add an automatic
+// light derive when the saved calculation-power policy allows it.
 // Invoked by the iOS CoreBluetooth-restoration RECOVERY path (ios_ble_restore.dart)
 // when the band reappears after the live connection dropped.
 //
@@ -49,6 +50,7 @@ import '../ble/withings_steel_hr_link.dart';
 import '../ble/xwatch_link.dart';
 import '../ble/zetime_link.dart';
 import '../compute/derivation_engine.dart';
+import '../compute/calc_power_policy.dart';
 import '../compute/profile.dart';
 import '../data/day_label.dart' show dayLabelOf;
 import '../data/db.dart';
@@ -56,6 +58,8 @@ import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_recovery.dart';
 import '../ecg/ecg_transport.dart';
 import '../state/feature_flags.dart';
+import '../state/power_source.dart';
+import '../state/prefs.dart';
 import '../wake/wake_settings.dart' show gateNaturalWake;
 import '../wake/wake_stores.dart' show loadWakeUpgradeState;
 import '../notify/notification_center.dart';
@@ -89,6 +93,31 @@ Future<Profile> _loadProfile() async {
     return Profile.fromMap((jsonDecode(raw) as Map).cast<String, dynamic>());
   } catch (_) {
     return const Profile();
+  }
+}
+
+/// Whether an automatic derive may run in this headless wake or iOS background
+/// task: the saved Calculations mode against the phone's power now. A platform that
+/// cannot report power leaves the pass allowed, so failed power detection
+/// never blocks a durable raw-data drain or strands pending computation.
+Future<bool> mayRunHeadlessAutomaticDerive({PowerSource? powerSource}) async {
+  BatteryPowerSource? ownedSource;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final rawMode = prefs.getString(Prefs.calcPowerMode);
+    var mode = CalcPowerMode.balanced;
+    for (final candidate in CalcPowerMode.values) {
+      if (candidate.name == rawMode) {
+        mode = candidate;
+        break;
+      }
+    }
+    final source = powerSource ?? (ownedSource = BatteryPowerSource());
+    return CalcPowerPolicy(mode).mayDeriveAutomatically(await source.read());
+  } catch (_) {
+    return true;
+  } finally {
+    ownedSource?.dispose();
   }
 }
 
@@ -325,13 +354,17 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     // window (bounded LIGHT pass — newest affected day only — so we stay inside
     // the short iOS execution budget). Best-effort; if the slot ends first, the
     // light pass on the next drain or the foreground finalize catches up.
-    try {
-      await DerivationEngine(
-        log: (l) => debugPrint('[bgsync-derive] $l'),
-        background: true,
-      ).run(await _loadProfile());
-    } catch (e) {
-      debugPrint('[bgsync] derive skipped: $e');
+    if (await mayRunHeadlessAutomaticDerive()) {
+      try {
+        await DerivationEngine(
+          log: (l) => debugPrint('[bgsync-derive] $l'),
+          background: true,
+        ).run(await _loadProfile());
+      } catch (e) {
+        debugPrint('[bgsync] derive skipped: $e');
+      }
+    } else {
+      debugPrint('[bgsync] automatic derive held by Maximum battery mode.');
     }
     debugPrint('[bgsync] done (local drain + light derive).');
     await checkSyncStaleness();

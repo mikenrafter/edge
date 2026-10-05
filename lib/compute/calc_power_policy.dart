@@ -78,6 +78,16 @@ class CalcPowerPolicy {
   bool mayDeriveAutomatically(PowerState p) =>
       mode != CalcPowerMode.maxBattery || p.charging || !p.powerSaver;
 
+  /// Does a change of the OS power saver change any decision right now? The
+  /// saver has no change stream, so its owner polls only while this is true:
+  /// Maximum battery holds on it only while unplugged; Balanced gates idle and
+  /// plugged-in warming on it; Eager never reads it.
+  bool saverMatters(PowerState p) => switch (mode) {
+        CalcPowerMode.maxBattery => !p.charging,
+        CalcPowerMode.balanced => true,
+        CalcPowerMode.eager => false,
+      };
+
   /// Worker cap for a pass, null = none (today's rule). Feeds DerivePacing.
   int? get maxWorkers => mode == CalcPowerMode.maxBattery ? 1 : null;
 

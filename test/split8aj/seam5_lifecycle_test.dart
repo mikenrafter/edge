@@ -18,12 +18,19 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/paired_device.dart';
 
+import '../p5/support/fake_power_source.dart';
 import 'support/sync_harness.dart';
 
 const _db = 'split8aj_seam5_lifecycle.db';
 
 bool _logged(SyncRig rig, String text) =>
     rig.app.logLines.any((l) => l.contains(text));
+
+/// Init attaches the power source, and the real one (Balanced is the default
+/// mode) polls the OS saver on a one-minute periodic timer: the same period the
+/// supervisor counts below. These cases count the supervisor's timer, so power
+/// is scripted; the poll itself is pinned in review_fixes/job3_power_source_test.
+void _scriptedPower(SyncRig rig) => rig.app.debugPowerSource = FakePowerSource();
 
 /// A connected, drained foreground session.
 Future<void> _open(SyncRig rig) => rig.openAndSettle();
@@ -200,6 +207,7 @@ void main() {
       await pairedCase(rig);
       await rig.app.pauseForBackground();
       rig.engine.events.clear();
+      _scriptedPower(rig);
       await rig.app.debugInit();
       expect(rig.engine.only('connect'), ['connect:$kRemoteId:gen4']);
       expect(rig.engine.count('getBattery'), 0);
@@ -222,6 +230,7 @@ void main() {
       await pairedCase(rig);
       await rig.app.pauseForBackground();
       rig.engine.connectScript.add(false);
+      _scriptedPower(rig);
       await rig.app.debugInit();
       expect(_logged(rig, '[init] bg connect returned false — arming recovery'), isTrue);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);

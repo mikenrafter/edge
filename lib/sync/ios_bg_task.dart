@@ -3,12 +3,12 @@
 // Native (BgSyncScheduler.swift) calls the `openstrap/bg_task` channel method
 // `run` when iOS opportunistically wakes the app for a background task.
 //   - BGProcessingTask (no arguments): FULL profile — runHeadlessSync()
-//     (connect → flash offload → local store → disconnect → light derive)
-//     followed by a heavy DerivationEngine pass (full sleep staging + 24h
-//     spectra).
+//     (connect → flash offload → local store → disconnect, plus an allowed
+//     automatic light derive) followed by a heavy DerivationEngine pass when
+//     the saved calculation-power policy allows it.
 //   - BGAppRefreshTask ({'mode': 'sync'}): LIGHT profile — headless sync only,
 //     NO heavy derivation (a refresh task's ~30 s budget can't fit it; the
-//     light per-drain derive inside runHeadlessSync still runs).
+//     automatic light derive inside runHeadlessSync may run).
 // Returns true to signal completion.
 //
 // iOS gives BGProcessingTask a longer wall-clock budget than BGAppRefreshTask
@@ -99,35 +99,40 @@ class IosBgTask {
             debugPrint('[ios-bgtask] foreground pull failed (ignored): $e');
           }
         }
-        if (!syncOnly) {
-          // Heavy derive pass (full sleep staging + 24h spectra, stale days).
-          try {
-            final profile = await _loadProfile();
-            final engine = DerivationEngine(
-                log: (l) => debugPrint('[ios-bgtask-derive] $l'),
-                background: true);
-            await engine.run(profile, heavy: true);
-            // Baseline-dirty rescan on the iOS BGTask tick: refresh
-            // baseline-dependent scalars on recent finalized days if the
-            // rolling baseline moved. Cheap no-op when unchanged.
-            await engine.rescanRecent(profile);
-            await _refreshWidgetSnapshot(profile);
-          } catch (e) {
-            debugPrint('[ios-bgtask] heavy derive skipped: $e');
+        if (await mayRunHeadlessAutomaticDerive()) {
+          if (!syncOnly) {
+            // Heavy derive pass (full sleep staging + 24h spectra, stale days).
+            try {
+              final profile = await _loadProfile();
+              final engine = DerivationEngine(
+                  log: (l) => debugPrint('[ios-bgtask-derive] $l'),
+                  background: true);
+              await engine.run(profile, heavy: true);
+              // Baseline-dirty rescan on the iOS BGTask tick: refresh
+              // baseline-dependent scalars on recent finalized days if the
+              // rolling baseline moved. Cheap no-op when unchanged.
+              await engine.rescanRecent(profile);
+              await _refreshWidgetSnapshot(profile);
+            } catch (e) {
+              debugPrint('[ios-bgtask] heavy derive skipped: $e');
+            }
+          } else {
+            // Honest best attempt: run a light derive pass during BGAppRefreshTask.
+            // This keeps today's metrics fresh without tripping the CPU watchdog.
+            try {
+              final profile = await _loadProfile();
+              final engine = DerivationEngine(
+                  log: (l) => debugPrint('[ios-bgrefresh-derive] $l'),
+                  background: true);
+              await engine.run(profile, heavy: false);
+              await _refreshWidgetSnapshot(profile);
+            } catch (e) {
+              debugPrint('[ios-bgrefresh] light derive skipped: $e');
+            }
           }
         } else {
-          // Honest best attempt: run a light derive pass during BGAppRefreshTask.
-          // This keeps today's metrics fresh without tripping the CPU watchdog.
-          try {
-            final profile = await _loadProfile();
-            final engine = DerivationEngine(
-                log: (l) => debugPrint('[ios-bgrefresh-derive] $l'),
-                background: true);
-            await engine.run(profile, heavy: false);
-            await _refreshWidgetSnapshot(profile);
-          } catch (e) {
-            debugPrint('[ios-bgrefresh] light derive skipped: $e');
-          }
+          debugPrint(
+              '[ios-bgtask] automatic derive held by Maximum battery mode.');
         }
         debugPrint('[ios-bgtask] done (syncOnly=$syncOnly)');
         return true;
