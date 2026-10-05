@@ -1,8 +1,9 @@
 // 8AF A + D, RED. Health is organised by question, one time scope per tab:
-// Last night · Today · Trends · Labs.
+// Last night · Today · Trends · Explore · Labs (Explore, the Data Explorer, was
+// added in 8AH as the fourth chip; the four-tab row of 8AF is five dense chips).
 //
 // What these pin:
-//   * the four sub-tabs, in that order, all on screen at 360 and 390 pt;
+//   * the five sub-tabs, in that order, all on screen at 360 and 390 pt;
 //   * Last night: one night, labelled with its date, no sparklines, rows in a
 //     fixed order, each one tappable to its own destination, Observations then
 //     Daytime sleep, and the Heart Screener door only when Capabilities allows
@@ -12,7 +13,7 @@
 //   * Trends: Body clock and Consistency first, then one list by family with
 //     Readiness and Stress in it, empty families folded, the SpO2 note, and
 //     MetricDetail opened from here starting on 30 days;
-//   * Labs is the content it was, one tab to the right of where it was;
+//   * Labs is the content it was, now tab 4 (Explore sits before it);
 //   * the stale comments and the navigation-depth doc.
 //
 // The old-index migration lives in health_h2_migration_test.dart so that a
@@ -336,13 +337,15 @@ void main() {
     await _loadType();
   });
 
-  // ───────────────────── the four sub-tabs ─────────────────────
+  // ───────────────────── the five sub-tabs ─────────────────────
   group('sub-tabs', () {
-    testWidgets('are exactly Last night, Today, Trends, Labs, in that order',
+    testWidgets(
+        'are exactly Last night, Today, Trends, Explore, Labs, in that order',
         (t) async {
       await _pump(t, _screen());
-      expect(_tabs(t).items, ['Last night', 'Today', 'Trends', 'Labs']);
-      for (final gone in ['Overview', 'Explore', 'Vitals']) {
+      expect(_tabs(t).items,
+          ['Last night', 'Today', 'Trends', 'Explore', 'Labs']);
+      for (final gone in ['Overview', 'Vitals']) {
         expect(find.text(gone), findsNothing,
             reason: '$gone is no longer a sub-tab');
       }
@@ -359,9 +362,11 @@ void main() {
     });
 
     for (final (name, width) in [('360', 360.0), ('390', 390.0)]) {
-      testWidgets('all four fit on screen at $name pt, none clipped',
+      testWidgets('all five fit on screen at $name pt, none clipped',
           (t) async {
         await _pump(t, _screen(), size: Size(width, 2400));
+        expect(_tabs(t).dense, isTrue,
+            reason: 'five chips fit 360 pt only in the dense form');
         for (final label in _tabs(t).items) {
           final r = t.getRect(find.descendant(
               of: find.byType(SubTabs), matching: find.text(label)));
@@ -385,9 +390,12 @@ void main() {
       await t.tap(find.text('Trends'));
       await t.pump();
       expect(_tabs(t).index, 2);
-      await t.tap(find.text('Labs'));
+      await t.tap(find.text('Explore'));
       await t.pump();
       expect(_tabs(t).index, 3);
+      await t.tap(find.text('Labs'));
+      await t.pump();
+      expect(_tabs(t).index, 4);
       await t.tap(find.text('Last night'));
       await t.pump();
       expect(_tabs(t).index, 0);
@@ -413,7 +421,7 @@ void main() {
     expect(find.text('Body clock'), findsOneWidget);
     expect(find.text('Consistency'), findsOneWidget);
   });
-  screenStructure('Health · Labs', framed(_screen(tab: 3)), () {
+  screenStructure('Health · Labs', framed(_screen(tab: 4)), () {
     expect(find.text('Add a result'), findsOneWidget);
   });
 
@@ -695,7 +703,12 @@ void main() {
     testWidgets('the Body clock card no longer points at an Explore tab',
         (t) async {
       await _pump(t, _screen(tab: 2));
-      expect(find.text('Explore'), findsNothing);
+      // The only "Explore" on the tab is the sub-tab chip itself.
+      expect(find.text('Explore'), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(SubTabs), matching: find.text('Explore')),
+          findsOneWidget);
     });
 
     testWidgets('lists every family, with Readiness and Stress in the list',
@@ -763,10 +776,10 @@ void main() {
 
   // ───────────────────── Labs ─────────────────────
   group('Labs', () {
-    testWidgets('keeps its content, one tab to the right of where it was',
+    testWidgets('keeps its content, now tab 4 (Explore sits before it)',
         (t) async {
-      await _pump(t, _screen(tab: 3));
-      expect(_tabs(t).index, 3);
+      await _pump(t, _screen(tab: 4));
+      expect(_tabs(t).index, 4);
       expect(find.text('Add a result'), findsOneWidget);
       expect(find.textContaining('Last panel 2026-03-12'), findsOneWidget);
       expect(find.text('Ranges differ by lab. Use the one on your report.'),
@@ -774,7 +787,7 @@ void main() {
     });
 
     testWidgets('with no results says so', (t) async {
-      await _pump(t, _screen(tab: 3, labs: const LabsData()));
+      await _pump(t, _screen(tab: 4, labs: const LabsData()));
       expect(find.text('No lab results'), findsOneWidget);
       expect(find.text('Add a result'), findsOneWidget);
     });
@@ -813,7 +826,7 @@ void main() {
           reason: 'a heading naming Health');
       final health = doc.substring(
           RegExp(r'^#{1,3} .*Health', multiLine: true).firstMatch(doc)!.start);
-      for (final w in ['Last night', 'Today', 'Trends', 'Labs']) {
+      for (final w in ['Last night', 'Today', 'Trends', 'Explore', 'Labs']) {
         expect(health.contains(w), isTrue, reason: 'the section names $w');
       }
     });

@@ -4,7 +4,8 @@
 // Rows, not a wall of cards. A card is a claim that something deserves your
 // attention; forty of them side by side is a claim about nothing. Last night is
 // one night and nothing else, Today is the day so far, Trends is where change
-// lives and is a list of every measure that has a history, and Labs is what a
+// lives and is a list of every measure that has a history, Explore lays up to
+// four of them over one time axis (explorer.dart), and Labs is what a
 // laboratory measured — the only numbers in this app that are absolute.
 
 import 'package:flutter/material.dart';
@@ -26,9 +27,11 @@ import 'circadian_detail.dart';
 import 'day_timeline.dart' show DayTimelineScreen;
 import 'day_steps.dart' show DayStepsDetail;
 import 'ecg.dart' show EcgEntryCard;
+import 'explorer.dart';
 import 'findings_log.dart';
 import 'home_screen.dart';
 import 'illness_observation.dart';
+import 'metric_catalogue.dart';
 import 'metric_detail.dart';
 import 'naps.dart';
 import 'readiness_detail.dart';
@@ -344,93 +347,9 @@ class LabsData {
 // number about you. It says what this app can tell you, groups it the way a
 // person would look for it, and says for each one whether it has any history —
 // which is the only honest answer to "is there anything in there".
-
-/// One catalogue entry: the [MetricSpec] key (which is what [MetricDetail]
-/// takes), the `metric_series` key its history is stored under, and the single
-/// line that says what it answers.
-///
-/// Icon, colour and title are NOT here — they come off the spec. A second copy
-/// is how two screens end up disagreeing about what a metric is called.
-class _CatRow {
-  final String key, series, blurb;
-  const _CatRow(this.key, this.series, this.blurb);
-}
-
-class _Cat {
-  final String title;
-  final List<_CatRow> rows;
-  const _Cat(this.title, this.rows);
-}
-
-/// The families, in the order a person looks for them.
-///
-/// What is deliberately NOT here:
-/// - SpO2, ODI and anything apnea-shaped. Refused outright — a capability this
-///   app does not produce has no entry, no card and no key. The one exception
-///   is a single line under Breathing (see `_family`) saying why there is no
-///   SpO2, because people look for it there; it is a sentence, not a row.
-/// - Cycle. It is a Wellness tab with its own door and its own on/off switch;
-///   a second entrance from Health would be a duplicate route, not a feature.
-/// - `rmssd_whole`, `stress_si`, `brv_slope`. Real numbers, but single-night
-///   with no series ever. They had written specs for a while and nothing could
-///   open them; the specs are gone now, so there is nothing to route to either.
-///   `stress` and `brv` below are the charted forms of two of the three.
-/// - Body clock, zones, Nerd stats. Each already has a door at the same depth
-///   as this one; adding a second is navigation debt.
-const _catalogue = <_Cat>[
-  // Readiness and stress both have stored histories and were missing from this
-  // list, so the one place that lists every measure with a history left out the
-  // two most looked-at ones. Each is a composite, not a sensor reading, so they
-  // sit in a family of their own.
-  _Cat('Recovery', [
-    _CatRow('readiness', 'readiness', 'How ready your body looks for strain, against your own usual'),
-    _CatRow('stress', 'stress', 'Beat-interval clustering over your most restful stretch'),
-  ]),
-  _Cat('Heart & rhythm', [
-    _CatRow('resting_hr', 'rhr', 'The lowest sustained rate of the night'),
-    _CatRow('hrv', 'rmssd', 'RMSSD (beat-to-beat variation) over the cleanest stretch of sleep'),
-    _CatRow('hrv_cv', 'hrv_cv', 'How much HRV varies from night to night'),
-    _CatRow('lf_hf', 'lf_hf', 'Beat-to-beat variation split by frequency band'),
-    _CatRow('dip', 'dip_pct', 'How far your heart rate falls while you sleep'),
-    _CatRow('hrr', 'hrr_bpm', 'How fast your heart rate drops in the minute after exercise'),
-  ]),
-  _Cat('Sleep', [
-    _CatRow('sleep', 'tst_min', 'Time asleep, from motion and beat timing'),
-    _CatRow('efficiency', 'efficiency', 'Asleep as a share of time in bed'),
-    _CatRow('deep', 'deep_min', 'Heart-rate steadiness during non-REM sleep'),
-    _CatRow('rem', 'rem_min', 'Sleep stages from beat variability and movement'),
-    _CatRow('nap_min', 'nap_min', 'Sleep detected outside the main night'),
-  ]),
-  _Cat('Breathing', [
-    _CatRow('resp_rate', 'resp_rate', 'Breaths per minute, estimated from beat timing'),
-    _CatRow('brv', 'brv_cv', 'How much that rate varies across the night'),
-  ]),
-  _Cat('Movement & load', [
-    _CatRow('steps', 'steps', 'Counted by a pedometer'),
-    _CatRow('active_min', 'active_min', 'Minutes of body movement, walking or not'),
-    _CatRow('calories', 'calories', 'Active energy from heart rate and your profile'),
-    _CatRow('strain', 'strain', 'Cardiovascular load over the day, on 0–21'),
-    _CatRow('trimp', 'trimp', 'Minutes weighted by heart-rate reserve, harder minutes count more'),
-  ]),
-  _Cat('Body & wear', [
-    _CatRow('skin_temp', 'skin_temp_z', 'Skin temperature vs your recent nights, in standard deviations'),
-    _CatRow('wear', 'worn_min', 'Minutes the band recorded data'),
-  ]),
-];
-
-/// Catalogue category titles and row blurbs are read off a top-level `const`
-/// list, which cannot call `AppLocalizations.of(context)` itself — so the
-/// lookup happens here, at render time, keyed off the same literal English
-/// text/row key the const list already carries as its fallback.
-String _catTitle(AppLocalizations? l, String title) => switch (title) {
-      'Recovery' => l?.healthCatRecovery ?? title,
-      'Heart & rhythm' => l?.healthCatHeartRhythm ?? title,
-      'Sleep' => l?.healthRowSleep ?? title,
-      'Breathing' => l?.healthCatBreathing ?? title,
-      'Movement & load' => l?.healthCatMovementLoad ?? title,
-      'Body & wear' => l?.healthCatBodyWear ?? title,
-      _ => title,
-    };
+//
+// The list itself is `kMetricCatalogue` (metric_catalogue.dart), shared with
+// the Data Explorer; what is local here is the localised one-line blurb.
 
 String _rowBlurb(AppLocalizations? l, String key, String blurb) =>
     switch (key) {
@@ -471,7 +390,7 @@ class ExploreData {
 
   static Future<ExploreData> load() async => ExploreData(
         counts: await LocalDb.metricSeriesCounts([
-          for (final f in _catalogue)
+          for (final f in kMetricCatalogue)
             for (final r in f.rows) r.series,
         ]),
       );
@@ -486,9 +405,9 @@ class HealthScreen extends StatefulWidget {
   final LabsData? labs;
   final ExploreData? explore;
 
-  /// Which sub-tab to open on, in the four-tab order: 0 Last night, 1 Today,
-  /// 2 Trends, 3 Labs. Goldens use it; production starts at 0, which is also
-  /// where a deep link or a notification lands.
+  /// Which sub-tab to open on, in the five-tab order: 0 Last night, 1 Today,
+  /// 2 Trends, 3 Explore, 4 Labs. Goldens use it; production starts at 0,
+  /// which is also where a deep link or a notification lands.
   final int tab;
 
   const HealthScreen(
@@ -499,15 +418,17 @@ class HealthScreen extends StatefulWidget {
       this.explore,
       this.tab = 0});
 
-  /// A sub-tab index remembered from the five-tab Health (Overview, Explore,
-  /// Trends, Vitals, Labs) → the same place in the four-tab one. Overview was
-  /// the night, Explore the catalogue that Trends now lists, Vitals the day so
-  /// far. Anything that was never a valid index lands on Last night.
+  /// A sub-tab index remembered from the first five-tab Health (Overview,
+  /// Explore, Trends, Vitals, Labs) → the same place in this one (Last night,
+  /// Today, Trends, Explore, Labs). Overview was the night, the old Explore the
+  /// catalogue that Trends now lists (the new Explore tab is the Data Explorer,
+  /// not a successor to it), Vitals the day so far. Anything that was never a
+  /// valid index lands on Last night.
   static int tabFromLegacy(int old) => switch (old) {
         0 => 0,
         1 || 2 => 2,
         3 => 1,
-        4 => 3,
+        4 => 4,
         _ => 0,
       };
 
@@ -532,13 +453,16 @@ class HealthScreen extends StatefulWidget {
 }
 
 class _HealthScreenState extends State<HealthScreen> with RevisionReload {
-  // Four chips fit a 360 pt frame at 1× with nothing clipped by the edge. The
-  // order is the order of the questions: the night just gone, the day so far,
-  // how things have been going, and what a laboratory measured.
+  // Five chips fit a 360 pt frame at 1× only in the dense form, with nothing
+  // clipped by the edge (the default padding puts Labs off it). The order is the
+  // order of the questions: the night just gone, the day so far, how things have
+  // been going, what could be compared with what, and what a laboratory
+  // measured.
   List<String> _tabsOf(AppLocalizations? l) => [
         l?.healthTabLastNight ?? 'Last night',
         l?.healthTabToday ?? 'Today',
         l?.healthTabTrends ?? 'Trends',
+        l?.healthTabExplore ?? 'Explore',
         l?.healthTabLabs ?? 'Labs',
       ];
   late int _tab = widget.tab;
@@ -617,7 +541,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     if (!mounted) return;
     if (i == 1) _loadVitals();
     if (i == 2) _loadExplore();
-    if (i == 3) _loadLabs();
+    if (i == 4) _loadLabs();
   }
 
   Future<void> _load() async {
@@ -701,9 +625,12 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final l = AppLocalizations.of(c);
     return ListView(padding: pad, children: [
       ScreenTitle(l?.healthTitle ?? 'Health'),
-      SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
+      SubTabs(_tabsOf(l), _tab, _select, color: C.blue, dense: true),
       const SizedBox(height: S.x5),
-      if (_loading && _d == null)
+      // The Explorer reads nothing the day read holds, so it does not wait for it.
+      if (_tab == 3)
+        const ExplorerView()
+      else if (_loading && _d == null)
         const InlineLoading()
       else
         switch (_tab) {
@@ -1406,7 +1333,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
             l?.healthEachOneOpens ??
                 'Each one opens its chart, your range and how it is calculated.',
             style: F.over.copyWith(color: p.ink3, height: 1.6)),
-        for (final f in _catalogue) _family(c, p, f, e.counts, cards.keys.toSet()),
+        for (final f in kMetricCatalogue) _family(c, p, f, e.counts, cards.keys.toSet()),
       ],
     ]);
   }
@@ -1419,7 +1346,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
 
   /// [covered] is the keys already drawn as a card above the list. They are
   /// left out here entirely, so a measure shows once on the tab.
-  Widget _family(BuildContext c, P p, _Cat f, Map<String, int> counts,
+  Widget _family(BuildContext c, P p, MetricCategory f, Map<String, int> counts,
       Set<String> covered) {
     final l = AppLocalizations.of(c);
     final have = [
@@ -1433,7 +1360,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     if (have.isEmpty && none.isEmpty) return const SizedBox.shrink();
 
     return Section(
-      _catTitle(l, f.title),
+      metricCategoryTitle(l, f.title),
       Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         if (have.isNotEmpty)
           Surface(

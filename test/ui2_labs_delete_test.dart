@@ -85,7 +85,7 @@ Future<void> _pumpLabs(WidgetTester t, LabsData labs, {double scale = 1}) async 
     child: MaterialApp(
       theme: buildTheme(Brightness.light),
       home: Scaffold(
-        body: HealthScreen(data: const HealthData(), labs: labs, tab: 3),
+        body: HealthScreen(data: const HealthData(), labs: labs, tab: 4),
       ),
     ),
   ));

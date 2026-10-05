@@ -12459,5 +12459,100 @@
         "type": "String"
       }
     }
+  },
+  "exploreScaleDaily": "Daily",
+  "@exploreScaleDaily": {
+    "description": "Data Explorer scale switch: one reading per day over a range of days"
+  },
+  "exploreScaleDay": "Day",
+  "@exploreScaleDay": {
+    "description": "Data Explorer scale switch: the readings of one day on a clock axis"
+  },
+  "exploreRange7": "7 d",
+  "@exploreRange7": {
+    "description": "Data Explorer range chip: the last 7 days, kept short to fit five chips on a phone"
+  },
+  "exploreRange30": "30 d",
+  "@exploreRange30": {
+    "description": "Data Explorer range chip: the last 30 days"
+  },
+  "exploreRange6m": "6 mo",
+  "@exploreRange6m": {
+    "description": "Data Explorer range chip: the last 6 months"
+  },
+  "exploreRange1y": "1 y",
+  "@exploreRange1y": {
+    "description": "Data Explorer range chip: the last year"
+  },
+  "exploreRangeCustom": "Custom",
+  "@exploreRangeCustom": {
+    "description": "Data Explorer range chip: opens a date range picker"
+  },
+  "exploreToday": "Today",
+  "@exploreToday": {
+    "description": "Data Explorer day stepper: the label of the current day"
+  },
+  "exploreHint": "Pick up to 4 metrics below. They share one time axis, each on its own scale.",
+  "@exploreHint": {
+    "description": "Data Explorer: shown in place of the chart until a metric is picked"
+  },
+  "exploreLimit": "You can compare up to 4 metrics. Remove one to add another.",
+  "@exploreLimit": {
+    "description": "Data Explorer: shown when a fifth metric is refused"
+  },
+  "exploreUnitNormalised": "Normalised",
+  "@exploreUnitNormalised": {
+    "description": "Data Explorer chart header, where a unit would be: the lines are not in the metrics' own units"
+  },
+  "exploreNormalised": "Normalised: each line spans its own lowest to highest, so shapes compare and values do not. Touch the chart for the real values.",
+  "@exploreNormalised": {
+    "description": "Data Explorer note under the chart while every line is scaled to its own range"
+  },
+  "exploreNormalisedBaseline": "Normalised. Lines in baseline mode show distance from your usual level (the middle is usual, the top and bottom are 3 standard deviations away); the others span their own lowest to highest. Touch the chart for the real values.",
+  "@exploreNormalisedBaseline": {
+    "description": "Data Explorer note under the chart while at least one line is against its baseline"
+  },
+  "exploreNoDataRange": "Nothing recorded for these in this range.",
+  "@exploreNoDataRange": {
+    "description": "Data Explorer: every picked metric is empty over the range"
+  },
+  "exploreNoDataDay": "Nothing recorded for these on this day.",
+  "@exploreNoDataDay": {
+    "description": "Data Explorer: every picked metric is empty on the chosen day"
+  },
+  "exploreNoDataFor": "No data for {metric}",
+  "@exploreNoDataFor": {
+    "description": "Data Explorer: one picked metric has nothing to draw while another does",
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreFailedTitle": "Could not read these metrics",
+  "@exploreFailedTitle": {
+    "description": "Data Explorer read-failure title"
+  },
+  "exploreBaselineToggle": "Baseline",
+  "@exploreBaselineToggle": {
+    "description": "Data Explorer toggle on a picked metric: draw it against your usual level instead of its own range"
+  },
+  "exploreBaselineSemantics": "{metric} against your baseline",
+  "@exploreBaselineSemantics": {
+    "description": "Screen-reader label of the baseline toggle",
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
+  },
+  "exploreRemoveSemantics": "Remove {metric}",
+  "@exploreRemoveSemantics": {
+    "description": "Screen-reader label of a picked metric's chip, which removes it",
+    "placeholders": {
+      "metric": {
+        "type": "String"
+      }
+    }
   }
 }

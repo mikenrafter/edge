@@ -6,7 +6,8 @@
 // survive. Those numbers are the reason `ScrollHint` exists and the reason the
 // alternative (make it fit) was refused, so they are asserted rather than
 // written in a comment nobody re-runs. Health had five tabs and was measured
-// here too; since 8AF it has four and the same measurement says it fits.
+// here too; since 8AF it has four, and since 8AH five again, but in the dense
+// chip form, and the same measurement says that fits.
 //
 // The second is the honesty contract: absent when the content fits, present
 // when it does not, gone at the end of the scroll.
@@ -37,8 +38,9 @@ Future<void> _loadType() async {
 }
 
 /// One `SubTabs` chip: the label at its own weight, plus S.x4 of padding on
-/// each side, floored at the 44 pt tap minimum.
-double _chip(String label, double scale, {required bool active}) {
+/// each side (or [pad]), floored at the 44 pt tap minimum.
+double _chip(String label, double scale,
+    {required bool active, double pad = S.x4}) {
   final t = TextPainter(
     text: TextSpan(
       text: label,
@@ -48,7 +50,7 @@ double _chip(String label, double scale, {required bool active}) {
     textDirection: TextDirection.ltr,
     textScaler: TextScaler.linear(scale),
   )..layout();
-  final w = t.width + 2 * S.x4;
+  final w = t.width + 2 * pad;
   return w < S.tap ? S.tap : w;
 }
 
@@ -63,7 +65,17 @@ double _row(List<String> labels, double scale, {double pad = S.x4}) {
 }
 
 const _wellness = ['Mind', 'Recovery', 'Habits', 'Medication', 'Cycle'];
-const _health = ['Last night', 'Today', 'Trends', 'Labs'];
+const _health = ['Last night', 'Today', 'Trends', 'Explore', 'Labs'];
+
+/// The row of a `SubTabs(dense: true)`: 6 pt of padding a side and 2 pt between
+/// chips, which is what lets Health's five fit.
+double _denseRow(List<String> labels, double scale) {
+  var w = 2.0 * (labels.length - 1);
+  for (var i = 0; i < labels.length; i++) {
+    w += _chip(labels[i], scale, active: i == 0, pad: 6);
+  }
+  return w;
+}
 
 /// Screen width minus the S.x4 gutter each side that every screen holding a
 /// `SubTabs` puts around it.
@@ -128,15 +140,21 @@ void main() {
     });
   });
 
-  group('the four-tab Health row fits', () {
-    // Health went from five tabs to four in 8AF so that nothing is clipped. If
-    // a label or a tab is added and this fails, the row is back to needing an
-    // affordance, and health_h2_tabs_test pins the same fit on the real screen.
+  group('the five-tab Health row fits, in its dense form', () {
+    // Health went from five tabs to four in 8AF so that nothing is clipped, and
+    // back to five in 8AH (Explore), which only fits dense: at the default
+    // padding Labs is off the edge. If a label or a tab is added and this
+    // fails, the row is back to needing an affordance, and health_h2_tabs_test
+    // pins the same fit on the real screen.
     for (final screen in const [360.0, 390.0, 430.0]) {
       test('${screen.toInt()} pt, 1.0x text', () {
-        expect(_row(_health, 1.0), lessThanOrEqualTo(_viewport(screen)));
+        expect(_denseRow(_health, 1.0), lessThanOrEqualTo(_viewport(screen)));
       });
     }
+
+    test('and does not at the default padding: that is why it is dense', () {
+      expect(_row(_health, 1.0), greaterThan(_viewport(360)));
+    });
   });
 
   group('the last tab is invisible without help', () {

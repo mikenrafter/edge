@@ -1397,6 +1397,10 @@ Map<String, Widget> _stateCases() => {
       'sub_tabs_five': SubTabs(
           const ['Today', '7 days', '30 days', '6 months', 'Year'], 0, (_) {},
           color: C.domHealth),
+      // The Data Explorer with nothing picked (no repository above it, so it
+      // reads nothing): its scale and range tabs, the empty chart card and the
+      // whole picker, which is the part that has to survive 3.1x text.
+      'explorer': const ExplorerView(),
       'nav_bar_no_sub': const NavBar('Component gallery'),
       // The oldest day on disk — back is dead, forward is live.
       'day_nav_oldest': DayNav(
