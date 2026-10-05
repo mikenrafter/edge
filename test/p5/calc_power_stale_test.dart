@@ -89,12 +89,23 @@ Future<AppState> _open(WidgetTester t, _Repo repo) async {
   LastResultCache.instance.clear();
   final app = AppState.forTesting()..repo = repo;
   addTearDown(app.dispose);
-  addTearDown(() => t.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 150))));
   (app as dynamic).debugLastRecTs = _sec(_at(8, 50));
   await t.pumpWidget(perfApp(app, SleepDetail(day: yesterdayId)));
   await settle(t, n: 15);
   return app;
+}
+
+/// Lets the database reads a hold release started finish. They begin inside the
+/// test's fake-async zone, so their replies are only delivered by a pump after
+/// real time has passed; a read still in flight when the next test (or
+/// tearDownAll) closes the database holds its lock, and the close never ends.
+/// (A query of our own cannot wait behind it: it would need that pump too.)
+Future<void> _settleDb(WidgetTester t) async {
+  for (var i = 0; i < 3; i++) {
+    await t.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await t.pump();
+  }
 }
 
 void main() {
@@ -190,6 +201,7 @@ void main() {
 
       sched.setPowerHold(false);
       await t.pump();
+      await _settleDb(t);
       expect(_label, findsNothing);
     });
 
@@ -201,6 +213,7 @@ void main() {
       expect(_label, findsNothing);
       (app as dynamic).debugDeriveScheduler.setPowerHold(false);
       await t.pump();
+      await _settleDb(t);
     });
 
     testWidgets('end to end: Maximum battery, unplugged, saver on, newer '

@@ -44,8 +44,9 @@ Future<void> _until(bool Function() ok,
   }
 }
 
-Future<bool> _warm(ArtifactWarmer w, List<String> keys) async =>
-    await (w as dynamic).warmKeys(keys) as bool;
+Future<bool> _warm(ArtifactWarmer w, List<String> keys,
+        {bool keep = false}) async =>
+    await (w as dynamic).warmKeys(keys, keepIfHeld: keep) as bool;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -134,12 +135,33 @@ void main() {
       expect(src.maxRunning, 1);
     });
 
-    test('held: dropped, not queued (skip, don\'t queue)', () async {
+    test('held: an automatic warm is dropped, not queued', () async {
       held = true;
       expect(await _warm(warmer, ['A']), isFalse);
       held = false;
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      expect(await warmer.warmPending(), isFalse);
       expect(src.computeStarted, isEmpty, reason: 'nothing runs on release');
+    });
+
+    test('held: a screen request waits and lands after the hold releases',
+        () async {
+      held = true;
+      expect(await _warm(warmer, ['A'], keep: true), isFalse);
+      expect(await warmer.warmPending(), isFalse, reason: 'still held');
+      expect(src.computeStarted, isEmpty);
+      held = false;
+      expect(await warmer.warmPending(), isTrue);
+      expect(src.computeStarted, ['A']);
+      expect(await warmer.warmPending(), isFalse, reason: 'asked only once');
+    });
+
+    test('dispose drops a held request', () async {
+      held = true;
+      expect(await _warm(warmer, ['A'], keep: true), isFalse);
+      warmer.dispose();
+      held = false;
+      expect(await warmer.warmPending(), isFalse);
+      expect(src.computeStarted, isEmpty);
     });
 
     test('disposed: nothing runs and nothing throws', () async {
@@ -192,6 +214,23 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 40));
       expect(src.computeStarted, isEmpty);
       expect(a.insightsRevision.value, start);
+    });
+
+    test('a request during an offload warms and bumps after release', () async {
+      LastResultCache.instance.clear();
+      final src = source();
+      final a = app(src);
+      final start = a.insightsRevision.value;
+      final scheduler = (a as dynamic).debugDeriveScheduler;
+      scheduler.setOffloadActive(true);
+
+      await request(a, 'beats|2026-10-03');
+      expect(src.computeStarted, isEmpty);
+
+      scheduler.setOffloadActive(false);
+      await _until(() => a.insightsRevision.value > start);
+      expect(src.computeStarted, ['beats|2026-10-03']);
+      expect(LastResultCache.instance.get<Map>('beats|2026-10-03'), isNotNull);
     });
 
     test('no source and no repo: a no-op that does not throw', () async {

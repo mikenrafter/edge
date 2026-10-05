@@ -241,7 +241,7 @@ class CloudImporter {
     };
 
     double? f(num? v) => v?.toDouble();
-    await LocalDb.putDayResult(
+    final committed = await LocalDb.putDayResult(
       dayId: date,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode(bundle),
@@ -271,7 +271,7 @@ class CloudImporter {
         'spo2': f(n(d['spo2_idx'])),
       },
     );
-    return true;
+    return committed;
   }
 
   /// Test seam for [_writeSession] — the malformed-row skip is a data-integrity

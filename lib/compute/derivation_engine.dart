@@ -2233,7 +2233,13 @@ String? deriveFingerprint({
   required String profileSig,
   required String? own,
   required String? previous,
-}) => own == null ? null : '$profileSig|$own|${previous ?? '-'}';
+}) => own == null
+    ? null
+    : DerivedFingerprint.compose(
+        profileSig: profileSig,
+        own: own,
+        previous: previous,
+      );
 
 /// Of [todoDays], the ones a manual sync must derive: those whose input
 /// fingerprint differs from the one recorded when they were last derived, plus
@@ -2808,7 +2814,7 @@ class DerivationEngine {
 
   /// [_derivePreparedDay] with its wall time reported to [perf]: persist as
   /// measured around `putDayResult`, compute as the rest.
-  Future<void> _derivePreparedDayTimed(
+  Future<bool> _derivePreparedDayTimed(
     PreparedDerivationDay day,
     Profile profile,
     int dataNowSec,
@@ -2818,7 +2824,7 @@ class DerivationEngine {
   }) async {
     final sw = Stopwatch()..start();
     try {
-      await _derivePreparedDay(day, profile, dataNowSec, history,
+      return await _derivePreparedDay(day, profile, dataNowSec, history,
           calculationMode: calculationMode, reason: reason);
     } finally {
       final persist = _persistMs.remove(day.date);
@@ -3059,6 +3065,7 @@ class DerivationEngine {
       Future<void> processDay(String dayId) async {
         activeDays.add(dayId);
         _diag['active_days'] = activeDays.toList();
+        var reportDone = true;
         try {
           await debugDayHook?.call(dayId);
           final prepared = await _prepareTargetDayTimed(dayId);
@@ -3074,16 +3081,21 @@ class DerivationEngine {
             _log('derive day $dayId skipped: override day, raw pruned — kept');
           } else if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
-            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history,
+            final committed = await _derivePreparedDayTimed(
+                prepared, profile, dataNowSec, history,
                 calculationMode: selectedMode,
                 // A force pass and a sleep/nap-edit day are the user's own
                 // doing, so they may rewrite a frozen (finalized) row.
                 reason: force || overrideDays.contains(dayId)
                     ? DayResultWrite.userOverride
                     : DayResultWrite.derive);
-            done++;
-            _diag['done_days'] = done;
-            await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+            if (committed) {
+              done++;
+              _diag['done_days'] = done;
+              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+            } else {
+              reportDone = false;
+            }
           } else {
             _log('derive day $dayId skipped: no bounded window payload');
             await _markDaySkipped(
@@ -3121,8 +3133,10 @@ class DerivationEngine {
         }
         activeDays.remove(dayId);
         _diag['active_days'] = activeDays.toList();
-        completed++;
-        onDayDone?.call(dayId, completed, orderedDays.length);
+        if (reportDone) {
+          completed++;
+          onDayDone?.call(dayId, completed, orderedDays.length);
+        }
       }
 
       await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
@@ -3311,6 +3325,18 @@ class DerivationEngine {
       }
       _diag['todo_days'] = todoDays.length;
       onScopeDays?.call(todoDays.reversed.toList());
+      final profileSig = jsonEncode(profile.toMap());
+      final fps = await LocalDb.decodedDayFingerprints({
+        for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
+      });
+      final dayFp = <String, String?>{
+        for (final d in todoDays)
+          d: deriveFingerprint(
+            profileSig: profileSig,
+            own: fps[d],
+            previous: fps[_adjacentDayIds(d).first],
+          ),
+      };
       final history = await _BaselineHistoryCache.load();
       _calcStage('Day calculations');
       // Same bounded worker-pool pattern as run() — see its doc for why this
@@ -3325,19 +3351,26 @@ class DerivationEngine {
       Future<void> processDay(String dayId) async {
         activeDays.add(dayId);
         _diag['active_days'] = activeDays.toList();
+        var reportDone = true;
         try {
           final prepared = await _prepareTargetDayTimed(dayId);
           if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
             // `force` only ever comes from a user action (see callers), so it
             // is the one case allowed to rewrite a frozen (finalized) row.
-            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history,
+            final committed = await _derivePreparedDayTimed(
+                prepared, profile, dataNowSec, history,
                 reason: force
                     ? DayResultWrite.userOverride
                     : DayResultWrite.derive);
-            done++;
-            _diag['done_days'] = done;
-            onDayDerived?.call(dayId);
+            if (committed) {
+              done++;
+              _diag['done_days'] = done;
+              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+              onDayDerived?.call(dayId);
+            } else {
+              reportDone = false;
+            }
           } else {
             _diag['skipped_days'] = (_diag['skipped_days'] as int) + 1;
             _diag['last_error'] = 'no_bounded_window_payload day=$dayId';
@@ -3351,8 +3384,10 @@ class DerivationEngine {
         }
         activeDays.remove(dayId);
         _diag['active_days'] = activeDays.toList();
-        completed++;
-        onDayDone?.call(dayId, completed, orderedDays.length);
+        if (reportDone) {
+          completed++;
+          onDayDone?.call(dayId, completed, orderedDays.length);
+        }
       }
 
       await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
@@ -4508,6 +4543,18 @@ class DerivationEngine {
       perfStarted = true;
       _calcStage('Day calculations');
       onScopeDays?.call(todoDays.reversed.toList());
+      final profileSig = jsonEncode(profile.toMap());
+      final fps = await LocalDb.decodedDayFingerprints({
+        for (final d in todoDays) ...[d, _adjacentDayIds(d).first],
+      });
+      final dayFp = <String, String?>{
+        for (final d in todoDays)
+          d: deriveFingerprint(
+            profileSig: profileSig,
+            own: fps[d],
+            previous: fps[_adjacentDayIds(d).first],
+          ),
+      };
       final history = await _BaselineHistoryCache.load();
       // Same bounded worker-pool pattern as run()/runDays — up to
       // _rescanWindowDays (21) days is exactly the kind of sweep that used
@@ -4518,19 +4565,28 @@ class DerivationEngine {
       var completed = 0;
 
       Future<void> processDay(String dayId) async {
+        var reportDone = true;
         try {
           final prepared = await _prepareTargetDayTimed(dayId);
           if (prepared != null) {
-            await _derivePreparedDayTimed(prepared, profile, dataNowSec, history);
-            done++;
+            final committed = await _derivePreparedDayTimed(
+                prepared, profile, dataNowSec, history);
+            if (committed) {
+              done++;
+              await _recordDerivedFingerprint(dayId, dayFp[dayId]);
+            } else {
+              reportDone = false;
+            }
           }
         } catch (e) {
           _log('rescan day $dayId FAILED/skipped: $e');
           // Do NOT mark-skipped here — a finalized day already has a good row;
           // overwriting it with a skip marker would DISCARD real structure.
         }
-        completed++;
-        onDayDone?.call(dayId, completed, orderedDays.length);
+        if (reportDone) {
+          completed++;
+          onDayDone?.call(dayId, completed, orderedDays.length);
+        }
       }
 
       await runWithConcurrency(orderedDays, _deriveConcurrency, processDay);
@@ -4659,14 +4715,16 @@ class DerivationEngine {
           continue;
         }
         try {
-          await _deriveDay(sub, day, profile, dataNowSec,
+          final committed = await _deriveDay(sub, day, profile, dataNowSec,
               forceFinalize: true,
               // The user's own import; isMeasuredDay above already kept
               // every day the band measured, so what is left (a previous
               // import, a skip marker) is theirs to replace.
               reason: DayResultWrite.userOverride);
-          done++;
-          onDayDone?.call(day.date);
+          if (committed) {
+            done++;
+            onDayDone?.call(day.date);
+          }
         } catch (e) {
           _log('import day ${day.date} FAILED/skipped: $e');
         }
@@ -4689,7 +4747,7 @@ class DerivationEngine {
 
   // ── derive one day ──────────────────────────────────────────────────────────
 
-  Future<void> _deriveDay(
+  Future<bool> _deriveDay(
     Substrate sub,
     PhysioDay day,
     Profile profile,
@@ -4724,7 +4782,7 @@ class DerivationEngine {
         : (win.offsetMs != null
               ? (win.offsetMs! / 1000).round() + 1
               : ((sleepSub.lastTs ?? -1) + 1));
-    await _derivePreparedDay(
+    return _derivePreparedDay(
       PreparedDerivationDay(
         date: day.date,
         endSec: day.endSec,
@@ -4746,7 +4804,11 @@ class DerivationEngine {
     );
   }
 
-  Future<void> _derivePreparedDay(
+  /// False only when a frozen (finalized) row refused the write: nothing was
+  /// stored, so the caller must not count, fingerprint or publish the day.
+  /// True for every other end, including a day that deliberately kept its
+  /// existing result.
+  Future<bool> _derivePreparedDay(
     PreparedDerivationDay day,
     Profile profile,
     int dataNowSec,
@@ -4912,10 +4974,10 @@ class DerivationEngine {
     final blankSource = await _userBlankedNight(day.date, scMap);
     if (blankSource != null) {
       bundle['sleep_source'] = blankSource;
-      await _dropFrozenHeadline(day.date);
       if (producedNothing) {
-        await _blankStoredNight(day, bundle, blankSource, reason);
-        return;
+        final committed = await _blankStoredNight(day, bundle, blankSource, reason);
+        if (committed) await _dropFrozenHeadline(day.date);
+        return committed;
       }
     }
     if (producedNothing && blankSource == null) {
@@ -4923,7 +4985,7 @@ class DerivationEngine {
       if (_isRealDayResult(existing)) {
         _log('derive ${day.date}: no substrate (raw pruned) — kept the '
             'existing result rather than blanking it');
-        return;
+        return true;
       }
     }
 
@@ -4973,7 +5035,7 @@ class DerivationEngine {
             "under a day that already had real night scalars — kept the "
             'existing result rather than nulling the readiness baseline '
             '(edge#305)');
-        return;
+        return true;
       }
     }
 
@@ -5382,7 +5444,7 @@ class DerivationEngine {
         (bundle['scalars'] as Map?)?.cast<String, dynamic>() ?? const {};
     double? sc(String k) => (scalars[k] as num?)?.toDouble();
     final persistWatch = Stopwatch()..start();
-    await LocalDb.putDayResult(
+    final committed = await LocalDb.putDayResult(
       dayId: day.date,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode(bundle),
@@ -5513,7 +5575,12 @@ class DerivationEngine {
       },
       reason: reason,
     );
+    if (!committed) {
+      _log('derive ${day.date}: frozen result refused the write');
+      return false;
+    }
     _persistMs[day.date] = persistWatch.elapsedMilliseconds;
+    if (blankSource != null) await _dropFrozenHeadline(day.date);
     if (secondHalfOk) await _storeKcalMinutes(day, profile, kcalMinutes);
     // NOTE: the sweep's `history` snapshot is deliberately NOT updated here.
     // See _BaselineHistoryCache — mutating the shared snapshot mid-sweep is the
@@ -5527,6 +5594,7 @@ class DerivationEngine {
     // A partial, carried-forward result or any failed write must not advance
     // the reusable checkpoint. Both workers only mutate isolate-owned copies.
     if (secondHalfOk) _publishCalculationState(day.date, candidateState);
+    return true;
   }
 
   /// Stores the day's intraday calorie series as the artifact
@@ -5744,7 +5812,7 @@ class DerivationEngine {
 
   /// Blank a day's stored night when there is no raw left to re-derive from.
   /// Everything that is not the night (strain, steps, naps, curves) stays.
-  Future<void> _blankStoredNight(
+  Future<bool> _blankStoredNight(
     PreparedDerivationDay day,
     Map<String, dynamic> absent,
     String source,
@@ -5762,10 +5830,10 @@ class DerivationEngine {
     if (stored != null &&
         (existing!['algo_version'] as num?)?.toInt() == kAlgoVersion &&
         jsonEncode(stored) == jsonEncode(payload)) {
-      return;
+      return true;
     }
     final window = (absent['sleep'] as Map?)?['window'];
-    await LocalDb.putDayResult(
+    final committed = await LocalDb.putDayResult(
       dayId: day.date,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode(payload),
@@ -5775,8 +5843,11 @@ class DerivationEngine {
       blankKeys: kSleepDerivedMetricKeys,
       reason: reason,
     );
-    _log('derive ${day.date}: night blanked by the user ($source), no raw '
-        'left — stored night replaced, rest of the day kept');
+    if (committed) {
+      _log('derive ${day.date}: night blanked by the user ($source), no raw '
+          'left — stored night replaced, rest of the day kept');
+    }
+    return committed;
   }
 
   /// Whether [row] is a REAL derived day result worth protecting — i.e. not a

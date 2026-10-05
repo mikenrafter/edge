@@ -3825,9 +3825,20 @@ class LocalRepositoryImpl extends LocalRepository {
         // The whole series, not a window (see getWeekdayEffect).
         body = await LocalDb.dayResultRev();
       case 'circadian':
-        // `crossDayStaleReason` reads today, so the day is an input too.
-        body = '${_todayLocalLabel()}'
-            '|${await LocalDb.baselineUpdatedAt('crossday') ?? ''}';
+        // The `circadian-v2` marker retires entries stored before the screen
+        // payload (actogram, latest night, hourly row) existed. The nights it
+        // reads are inputs too: 42 calendar days back from the newest result.
+        final today = _todayLocalLabel();
+        final newest = await LocalDb.recentDayResultsMeta(1);
+        final anchor = newest.isEmpty
+            ? today
+            : newest.first['day_id'] as String? ?? today;
+        final a = DateTime.parse(anchor);
+        final since = dayLabelOf(
+            DateTime(a.year, a.month, a.day - (kCircadianNights - 1)));
+        body = 'circadian-v2|$today|$anchor'
+            '|${await LocalDb.baselineUpdatedAt('crossday') ?? ''}'
+            '|${await LocalDb.dayResultRev(sinceDay: since)}';
       case 'beats':
         final lo = localDayStartSec(arg);
         if (lo == null) return null;

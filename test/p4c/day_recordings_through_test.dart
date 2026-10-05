@@ -20,7 +20,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
-import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
+import 'package:openstrap_edge/compute/derivation_engine.dart'
+    show deriveFingerprint, kAlgoVersion;
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 
@@ -55,6 +56,19 @@ void main() {
     final at = await _through(repo, '2026-10-03');
     expect(at, DateTime.fromMillisecondsSinceEpoch(_sec * 1000));
     expect(at!.isUtc, isFalse, reason: 'shown on the local clock (§3.7)');
+  });
+
+  test('the engine fingerprint exposes its own day MAX through the reader',
+      () async {
+    final fingerprint = deriveFingerprint(
+      profileSig: '{"name":"a|b"}',
+      own: '$_sec:120:7',
+      previous: '${_sec - 86400}:120:6',
+    )!;
+    await LocalDb.putDerivedFingerprint('2026-10-03', kAlgoVersion, fingerprint);
+
+    expect(await _through(repo, '2026-10-03'),
+        DateTime.fromMillisecondsSinceEpoch(_sec * 1000));
   });
 
   test('a legacy two-part fingerprint still gives its MAX', () async {

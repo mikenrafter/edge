@@ -139,6 +139,36 @@ const String kPrimaryBandSourceSql = 'source IS NULL';
 /// [LocalDb.putDayResult].
 enum DayResultWrite { derive, userOverride }
 
+/// The input stamp stored beside a derived day: `profileSig|own|previous`, where
+/// [own] and [previous] are the day's and the previous day's decoded-row
+/// fingerprints (`MAX(rec_ts):COUNT:REVSUM`, or `-` for no previous day). The
+/// engine writes it through [compose] and the "recordings through" read goes
+/// through [maxRecTs], so the two cannot drift apart again.
+abstract final class DerivedFingerprint {
+  static String compose({
+    required String profileSig,
+    required String own,
+    required String? previous,
+  }) => '$profileSig|$own|${previous ?? '-'}';
+
+  /// The day's own MAX(rec_ts) (epoch seconds), or null when the stamp does not
+  /// parse. Counted from the right, since the JSON profile may hold a `|`. A
+  /// legacy stamp that is just the raw `MAX:COUNT[:REVSUM]` still reads.
+  static int? maxRecTs(String fingerprint) {
+    final parts = fingerprint.split('|');
+    final String own;
+    if (parts.length >= 3) {
+      own = parts[parts.length - 2];
+    } else if (parts.length == 1) {
+      own = fingerprint;
+    } else {
+      return null;
+    }
+    final max = int.tryParse(own.split(':').first);
+    return max == null || max <= 0 ? null : max;
+  }
+}
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
@@ -8250,7 +8280,11 @@ class LocalDb {
   /// not measured on this device (a previous import, a skip marker), so a newer
   /// import still replaces an older one. This is the ONE place the rule lives;
   /// every writer funnels through here.
-  static Future<void> putDayResult({
+  ///
+  /// True when the row and its indexed scalars committed. False means a frozen
+  /// same-version row refused the write, so callers must not publish work as
+  /// completed or record derived-input freshness for it.
+  static Future<bool> putDayResult({
     required String dayId,
     required int algoVersion,
     required String payloadJson,
@@ -8307,7 +8341,7 @@ class LocalDb {
     // merging and patching plain [{t,v}] lists in memory. Lossless or no-op:
     // SeriesCodec leaves anything it cannot encode exactly as it found it.
     final encodedPayload = SeriesCodec.encodePayloadJson(payloadJson);
-    await db.transaction((txn) async {
+    return db.transaction((txn) async {
       if (reason != DayResultWrite.userOverride) {
         final cur = await txn.query(
           'day_result',
@@ -8322,7 +8356,7 @@ class LocalDb {
         if (cur.isNotEmpty &&
             !(_isImportedPayload(payloadJson) &&
                 !isMeasuredDayRow(cur.first))) {
-          return;
+          return false;
         }
       }
       await txn.insert('day_result', {
@@ -8386,6 +8420,7 @@ class LocalDb {
           }, conflictAlgorithm: ConflictAlgorithm.replace);
         }
       }
+      return true;
     });
   }
 
@@ -10486,8 +10521,7 @@ class LocalDb {
     try {
       final m = jsonDecode(row['payload_json'] as String);
       if (m is! Map || m['v'] != algoVersion || m['fp'] is! String) return null;
-      final mx = int.tryParse((m['fp'] as String).split(':').first);
-      return mx == null || mx <= 0 ? null : mx;
+      return DerivedFingerprint.maxRecTs(m['fp'] as String);
     } catch (_) {
       return null;
     }

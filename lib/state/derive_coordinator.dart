@@ -143,7 +143,7 @@ class DeriveCoordinator {
   late final DeriveScheduler scheduler = DeriveScheduler(
     run: _runScheduled,
     log: _log,
-    onChanged: _notify,
+    onChanged: _schedulerChanged,
     // Measurement only: queue wait and hold reasons for DerivePerf.
     onQueued: () => _derive.perf.enqueued(),
     onWaiting: ({required settling}) {
@@ -151,6 +151,23 @@ class DeriveCoordinator {
       _derive.perf.noteHolds(scheduler.snapshot());
     },
   );
+
+  void _schedulerChanged() {
+    _notify();
+    _retryHeldWarms();
+  }
+
+  // Screen requests that arrived under a hold wait in the warmer; a hold that
+  // may just have ended (a scheduler edge, or the next foreground activity for
+  // the live sessions the scheduler does not hear about) gives them their go.
+  void _retryHeldWarms() {
+    if (_disposed || _warmBlocked) return;
+    final warmer = _artifactWarmer;
+    if (warmer == null) return;
+    unawaited(() async {
+      if (await warmer.warmPending() && !_disposed) bumpInsights();
+    }());
+  }
 
   /// Bumped whenever stored insights change so listeners can re-query without a
   /// full ChangeNotifier repaint.
@@ -287,11 +304,14 @@ class DeriveCoordinator {
   bool get _warmBlocked => _warmHeld() || scheduler.offloadActive;
 
   /// Warms [key] on demand through the same warmer and queue as a pass, then
-  /// says so if it stored something. Never throws; no warmer is a no-op.
+  /// says so if it stored something. Never throws; no warmer is a no-op. Under
+  /// a hold the request waits for it to end (see [_retryHeldWarms]).
   Future<void> requestWarm(String key) async {
     final w = _warmer;
     if (w == null || _disposed) return;
-    if (await w.warmKeys([key]) && !_disposed) bumpInsights();
+    if (await w.warmKeys([key], keepIfHeld: true) && !_disposed) {
+      bumpInsights();
+    }
   }
 
   // ── the Calculations power mode (P5) ────────────────────────────────────────
@@ -364,6 +384,10 @@ class DeriveCoordinator {
   void _applyPower() {
     if (_disposed) return;
     scheduler.setPowerHold(!_policy.mayDeriveAutomatically(_power));
+    // The battery source polls the OS saver only while a flip would change a
+    // decision.
+    final src = debugPowerSource ?? _ownSource;
+    if (src is BatteryPowerSource) src.watchSaver = _policy.saverMatters(_power);
     _armSweep();
     final warmNow = _policy.mayWarmWhilePlugged(_power);
     if (warmNow && !_plugWarmAllowed) unawaited(_warmAll());
@@ -374,6 +398,7 @@ class DeriveCoordinator {
   /// policy allows it, the Home/Health artifacts are warmed.
   void noteActivity() {
     if (_disposed) return;
+    _retryHeldWarms();
     _idleTimer?.cancel();
     _idleTimer = null;
     if (_policy.mode == CalcPowerMode.maxBattery) return; // never warms idle
@@ -415,6 +440,8 @@ class DeriveCoordinator {
     if (_disposed) return;
     final left = _policy.untilEagerSweep(_power, clock.now());
     if (left == null) return; // unplugged, or no longer Eager
+    final since = _power.chargingSince;
+    if (since != null && since == _sweptSince) return; // this session is done
     if (left > Duration.zero) {
       _sweepTimer = Timer(left, _sweepFire);
       return;
@@ -423,13 +450,36 @@ class DeriveCoordinator {
       _sweepTimer = Timer(_sweepRetry, _sweepFire);
       return;
     }
-    _sweptSince = _power.chargingSince;
-    unawaited(_sweep());
+    final chargingSince = _power.chargingSince;
+    if (chargingSince != null && !_sweeping) unawaited(_sweep(chargingSince));
   }
 
+  // A sweep is in flight. A power event meanwhile re-arms the timer; its fire
+  // leaves the running sweep alone, which settles the session itself.
+  bool _sweeping = false;
+
   // The existing full run, then the existing warm: no new compute path.
-  Future<void> _sweep() async {
-    await afterDrain(heavy: true, changedOnly: false);
+  Future<void> _sweep(DateTime chargingSince) async {
+    _sweeping = true;
+    final DeriveOutcome outcome;
+    try {
+      outcome = await afterDrain(heavy: true, changedOnly: false);
+    } finally {
+      _sweeping = false;
+    }
+    if (_disposed) return;
+    if (_power.chargingSince != chargingSince) {
+      _armSweep(); // a newer plug session may have waited on this sweep
+      return;
+    }
+    // A refused pass (the engine was busy) or a failed one did not sweep: the
+    // session stays open and this looks again. Transient per-day failures are
+    // the scheduler's to retry.
+    if (outcome.failed) {
+      _sweepTimer ??= Timer(_sweepRetry, _sweepFire);
+      return;
+    }
+    _sweptSince = chargingSince;
     await _warmAll();
   }
 

@@ -138,6 +138,17 @@ void main() {
       await expectLater(deriveWrite(kDay, tag: 'late'), completes);
     });
 
+    test('the refusal reports that it did not commit', () async {
+      await seedFinal();
+      final committed = await LocalDb.putDayResult(
+        dayId: kDay,
+        algoVersion: kAlgoVersion,
+        payloadJson: payloadOf('late'),
+        windowJson: '{}',
+      );
+      expect(committed, isFalse);
+    });
+
     test('it is per (day, version): another day is unaffected', () async {
       await seedFinal();
       await seedRow(db, '2026-03-11', finalized: false);

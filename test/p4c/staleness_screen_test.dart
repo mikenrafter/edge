@@ -83,10 +83,6 @@ Future<AppState> _open(WidgetTester t, _Repo repo,
   LastResultCache.instance.clear();
   final app = AppState.forTesting()..repo = repo;
   addTearDown(app.dispose);
-  // Ending a hold lets the scheduler re-read its queue from the database; give
-  // that read time to land before the next test closes and deletes the file.
-  addTearDown(() => t.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 150))));
   if (newestSec != null) (app as dynamic).debugLastRecTs = newestSec;
   arrange?.call(app);
   await t.pumpWidget(perfApp(app, SleepDetail(day: yesterdayId)));
@@ -95,6 +91,19 @@ Future<AppState> _open(WidgetTester t, _Repo repo,
 }
 
 dynamic _sched(AppState a) => (a as dynamic).debugDeriveScheduler;
+
+/// Lets the database reads a hold release started finish. They begin inside the
+/// test's fake-async zone, so their replies are only delivered by a pump after
+/// real time has passed; a read still in flight when the next test (or
+/// tearDownAll) closes the database holds its lock, and the close never ends.
+/// (A query of our own cannot wait behind it: it would need that pump too.)
+Future<void> _settleDb(WidgetTester t) async {
+  for (var i = 0; i < 3; i++) {
+    await t.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await t.pump();
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -121,6 +130,7 @@ void main() {
 
     _sched(app).setWorkoutActive(false); // cancels the hold-cap timer
     await t.pump();
+    await _settleDb(t);
   });
 
   testWidgets('newer recordings + an offload: waiting for sync', (t) async {
@@ -131,6 +141,7 @@ void main() {
     expect(t.widget<Text>(_label).data, '$line · Waiting for sync to finish');
     _sched(app).setOffloadActive(false);
     await t.pump();
+    await _settleDb(t);
   });
 
   testWidgets('the hold clearing removes the line, with no further read',
@@ -144,6 +155,7 @@ void main() {
 
     _sched(app).setWorkoutActive(false);
     await t.pump();
+    await _settleDb(t);
     expect(_label, findsNothing,
         reason: 'nothing is held and nothing recalculates');
     expect(repo.asked.length, reads, reason: 'it listens to the scheduler, '
@@ -164,6 +176,7 @@ void main() {
 
     _sched(app).setOffloadActive(false);
     await t.pump();
+    await _settleDb(t);
   });
 
   testWidgets('a hold but no newer recordings: nothing to explain',
@@ -175,6 +188,7 @@ void main() {
     expect(_label, findsNothing);
     _sched(app).setWorkoutActive(false);
     await t.pump();
+    await _settleDb(t);
   });
 
   testWidgets('recordings-through unknown: no line, whatever is held',
@@ -187,6 +201,7 @@ void main() {
     expect(find.textContaining('Paused during workout'), findsNothing);
     _sched(app).setWorkoutActive(false);
     await t.pump();
+    await _settleDb(t);
   });
 
   testWidgets('idle, nothing held, nothing recalculating: no line (unchanged)',

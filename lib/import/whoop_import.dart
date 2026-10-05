@@ -340,7 +340,7 @@ class WhoopImporter {
     };
 
     double? d(num? v) => v?.toDouble();
-    await LocalDb.putDayResult(
+    final committed = await LocalDb.putDayResult(
       dayId: date,
       algoVersion: kAlgoVersion,
       payloadJson: jsonEncode(bundle),
@@ -373,7 +373,7 @@ class WhoopImporter {
         'efficiency': d(effPct),
       },
     );
-    return _DayWrite.written;
+    return committed ? _DayWrite.written : _DayWrite.keptExisting;
   }
 
   static Future<bool> _writeWorkout(_Row row) async {

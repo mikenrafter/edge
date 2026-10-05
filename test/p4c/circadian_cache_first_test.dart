@@ -249,4 +249,27 @@ void main() {
     expect(find.byKey(const ValueKey('as-of-label')), findsNothing,
         reason: 'the fresh result carries no stale label');
   });
+
+  testWidgets('a rollup-only cache from before the screen payload is stale, '
+      'and a recent night edit changes its signature', (t) async {
+    final repo = await arrange(t);
+    await t.runAsync(() async {
+      final today = dayLabelOf(DateTime.now());
+      final oldShape = '$kAlgoVersion|$today'
+          '|${await LocalDb.baselineUpdatedAt('crossday') ?? ''}';
+      final before = await repo.artifactSignature(_key);
+      expect(before, isNot(oldShape),
+          reason: 'v1 had no screen-payload format marker or day-result rev');
+
+      await LocalDb.putDayResult(
+        dayId: _back(0),
+        algoVersion: kAlgoVersion,
+        payloadJson: _payload(_back(0)),
+        windowJson: '{}',
+        series: const {'rmssd': 56},
+      );
+      expect(await repo.artifactSignature(_key), isNot(before),
+          reason: 'the actogram reads this night');
+    });
+  });
 }

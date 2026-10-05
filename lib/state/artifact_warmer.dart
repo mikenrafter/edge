@@ -120,15 +120,21 @@ class ArtifactWarmer {
   // Keys asked for through [warmKeys] that have not finished: a key asked for
   // again meanwhile joins the first ask instead of computing twice.
   final Map<String, Future<bool>> _requested = {};
+  final Set<String> _pendingKeys = <String>{};
 
   /// Warms exactly [keys] on demand (a screen with nothing stored for one),
   /// through the same serial queue, hold rule and per-key rules as a pass.
   /// Completes when they have finished, been skipped (fresh, or no signature),
   /// dropped (held, disposed) or failed; never throws. True when something new
-  /// was stored. A held request is dropped, not queued: the screen asks again on
-  /// its next read.
-  Future<bool> warmKeys(List<String> keys) async {
-    if (_disposed || _held()) return false;
+  /// was stored. Held, an automatic warm is dropped, not queued; a screen's own
+  /// request ([keepIfHeld]) is kept and runs when its owner calls
+  /// [warmPending] after the hold may have ended.
+  Future<bool> warmKeys(List<String> keys, {bool keepIfHeld = false}) async {
+    if (_disposed) return false;
+    if (_held()) {
+      if (keepIfHeld) _pendingKeys.addAll(keys);
+      return false;
+    }
     final asks = <Future<bool>>[];
     for (final key in {...keys}) {
       final inFlight = _requested[key];
@@ -149,9 +155,21 @@ class ArtifactWarmer {
     return stored.any((b) => b);
   }
 
+  /// Retries the screen requests held earlier. While a hold is on it does
+  /// nothing and keeps them, so nothing computes early.
+  Future<bool> warmPending() async {
+    if (_disposed || _held() || _pendingKeys.isEmpty) return false;
+    final keys = _pendingKeys.toList();
+    _pendingKeys.clear();
+    return warmKeys(keys, keepIfHeld: true);
+  }
+
   /// Cancels: no further key starts, an in-flight compute's result is
   /// discarded, and later passes return at once.
-  void dispose() => _disposed = true;
+  void dispose() {
+    _disposed = true;
+    _pendingKeys.clear();
+  }
 
   // A hold that cannot be read counts as held: the safe answer is to wait.
   bool _held() {
