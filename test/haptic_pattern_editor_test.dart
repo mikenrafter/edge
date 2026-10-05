@@ -1,4 +1,4 @@
-// 8AD, spec C: the advanced notes editor (HapticPatternEditorPage) and the
+// The advanced notes editor (HapticPatternEditorPage) and the
 // extraction of the probe's notation widgets into pattern_notation.dart.
 //
 // Contracts these tests pin that the spec leaves open:
@@ -10,7 +10,7 @@
 //    `pattern-kind` (text Note / Rest), `pattern-delete`. The entries read
 //    back as a code line, a Text keyed `pattern-editor-code` that shows
 //    "N4mf R1 N4mf" and is absent while there are no entries.
-//  - the feedback under the wheel is the 8AC wording, from compile(notes,
+//  - the feedback under the wheel is the compiler's wording, from compile(notes,
 //    profile, maxRuntimeMs: 10 s) with the DEFAULT dynamicWeight
 //    (notes carry dynamics, unlike taps). With allowLong the cap is lifted.
 //  - Play (`pattern-editor-play`) hands onPlay a BuzzSequence with the notes,
@@ -23,9 +23,9 @@
 //    AlertDialog asks first, with buttons Replace and Cancel. Then a pad
 //    (`pattern-editor-tap-pad`, text "Tap your pattern"; press, hold,
 //    release) takes the rhythm; two seconds after the last release the pad
-//    closes and the notes become notesFromTaps(take): any-loudness (*) notes (8AF.6). There is no
-//    `buzz-extended` switch (8AF.6: the full vocabulary is the only mode).
-//  - 8AI: the editor opens in Follow rhythm unless the stored mode says
+//    closes and the notes become notesFromTaps(take): any-loudness (*) notes. There is no
+//    `buzz-extended` switch (the full vocabulary is the only mode).
+//  - The editor opens in Follow rhythm unless the stored mode says
 //    otherwise (see test/haptics_editor_modes_test.dart). These tests were
 //    written for the dynamics bar, so every one of them runs in Allow
 //    dynamics (set in setUp).
@@ -133,7 +133,7 @@ String _notExact(HapticPlan plan) {
       '${lo == hi ? lo : '$lo to $hi'}.';
 }
 
-/// Every feedback line the 8AC wording gives for [plan], present or absent.
+/// Every feedback line the compiler's wording gives for [plan], present or absent.
 void _expectFeedback(HapticPlan plan) {
   expect(find.textContaining(plan.summary), findsOneWidget);
   expect(find.text('Plays as written.'),
@@ -379,7 +379,7 @@ void main() {
       expect(find.textContaining('Too long for the band'), findsNothing);
     });
 
-    testWidgets('shows what the band plays, in the 8AC words', (t) async {
+    testWidgets('shows what the band plays, in the compile wording', (t) async {
       await _show(t, initial: _withNotes('N4mf R1 N4mf'));
       final plan = _plan('N4mf R1 N4mf')!;
       _expectFeedback(plan);
@@ -416,7 +416,7 @@ void main() {
       expect(_code(t), 'N4ff R1 N4ff');
     });
 
-    testWidgets('over the 10 second cap: the 8AC message and no plan lines',
+    testWidgets('over the 10 second cap: the compile message and no plan lines',
         (t) async {
       await _show(t);
       await _enterOverCap(t);
@@ -791,7 +791,7 @@ void main() {
     });
   });
 
-  group('8AF.5: any loudness and the rhythm / dynamics priority', () {
+  group('any loudness and the rhythm / dynamics priority', () {
     const prioKey = ValueKey('pattern-editor-priority');
     const rhythmKey = ValueKey('pattern-editor-priority-rhythm');
     const dynamicsKey = ValueKey('pattern-editor-priority-dynamics');
@@ -883,7 +883,7 @@ void main() {
     testWidgets('changing the toggle recompiles the preview with no edit: '
         'rhythm keeps three cells, dynamics the soft click', (t) async {
       await _show(t, initial: stored('N3mp'));
-      // Rhythm: exactly what the 8AC compile gave before.
+      // Rhythm: exactly what the plain compile gives.
       expect(find.textContaining(_plan('N3mp')!.summary), findsOneWidget);
       expect(find.text('1 command: effect 1'), findsNothing);
       await _tapKey(t, dynamicsKey);
@@ -1059,7 +1059,7 @@ void main() {
     });
   });
 
-  group('8AF.5 E: the editor follows the playback', () {
+  group('the editor follows the playback', () {
     const code = 'N4ff R3 N3mf';
     final head = find.byKey(const ValueKey('pattern-playhead'));
     final wheel = find.byKey(const ValueKey('pattern-wheel'));

@@ -1,4 +1,4 @@
-// 8AI.3 (red): the touch counter asks for ONE follow-up cue per count
+// The touch counter asks for ONE follow-up cue per count
 // increment, and one confirm cue when the gesture ends.
 //
 // The opening of a gesture is the double tap that starts it: count 2 (start()
@@ -55,7 +55,7 @@ class _Run {
           },
       ];
 
-  /// Touches 3, 4 and 5 with a release between (same timeline as the 8L tests).
+  /// Touches 3, 4 and 5 with a release between (same timeline as the draft-taps tests).
   void toThree() {
     start();
     open(500);

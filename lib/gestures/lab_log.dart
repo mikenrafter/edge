@@ -9,7 +9,7 @@
 // result, total time). [labLogText] turns the whole lab into plain text for the
 // "Save lab log file" button.
 //
-// ECG packets (8V). Every live R17 packet a gesture or a hardware probe sees
+// ECG packets. Every live R17 packet a gesture or a hardware probe sees
 // is kept here too, raw samples and the band's status bytes, so a session can
 // be replayed off the band (test/support/ecg_trace.dart) and the sensor's
 // timing studied. They are live high-rate data: RAM only, bounded, gone on
@@ -283,7 +283,7 @@ class DeviceLabLog extends ChangeNotifier {
     final tap = _tapAt ?? end;
     final seconds =
         (end.difference(tap).inMilliseconds / 1000).toStringAsFixed(1);
-    // An ECG session's count is named (8AK C); for repeated double taps it is
+    // An ECG session's count is named; for repeated double taps it is
     // the number of double taps in a row, still "N taps".
     final outcome = result ??
         (count != null

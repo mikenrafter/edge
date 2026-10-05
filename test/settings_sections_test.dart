@@ -1,6 +1,5 @@
-// 8C — every settings list is split into SettingsAccordion sections that start
+// Every settings list is split into SettingsAccordion sections that start
 // EXPANDED. Pumped headless as the pure *View widgets.
-// See test/phase8/CONTRACTS.md §8C (and §8J for the Alarm section names).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -80,7 +79,7 @@ void main() {
               ),
         ));
     // The water interval row lives ABOVE Device, so it may only push Device
-    // down if it was hidden before; 8K keeps it present either way.
+    // down if it was hidden before; it stays present either way.
     expect(t.getTopLeft(find.text('Device')), before);
   });
 }

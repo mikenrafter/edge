@@ -1,4 +1,4 @@
-// 8AI.2 G7 (red first): the Health trend cards (Resting HR / HRV / Sleep, one
+// The Health trend cards (Resting HR / HRV / Sleep, one
 // shared TrendCard).
 //
 // USER REPORT (APK f88d230c), Health tab at ~360 pt:

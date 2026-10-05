@@ -1,10 +1,10 @@
-// P5 (RED): the power modes wired into the scheduler, the coordinator, the
+// The power modes wired into the scheduler, the coordinator, the
 // warmer hand-off and AppState. The pure decisions are in
 // calc_power_policy_test.dart; what stays the same in balanced is recorded in
-// balanced_pin_test.dart (green today) and repeated here under every power
+// derive_pacing_balanced_test.dart and repeated here under every power
 // state.
 //
-// ASSUMED API (new). The pure types are listed in calc_power_policy_test.dart.
+// API (new). The pure types are listed in calc_power_policy_test.dart.
 //
 //   lib/state/power_source.dart
 //     abstract class PowerSource {
@@ -67,8 +67,6 @@
 //     @visibleForTesting Future<void> debugAttachPower(); // policy from the
 //                                                      // saved mode, then
 //                                                      // attachPower()
-//
-// Failure mode today: none of these exist (compile error).
 
 import 'dart:async';
 
@@ -90,7 +88,7 @@ import 'support/app_state_derive_harness.dart';
 import 'support/artifact_source_spy.dart';
 import 'support/fake_power_source.dart';
 
-const _db = 'openstrap_p5_wiring.db';
+const _db = 'openstrap_power_wiring.db';
 
 final _t0 = DateTime.utc(2026, 10, 4, 22, 0, 0);
 Duration _m(int m, [int s = 0]) => Duration(minutes: m, seconds: s);
@@ -820,7 +818,7 @@ void main() {
           reason: 'the change lands at once');
     });
 
-    // What balanced does today (balanced_pin_test.dart): a productive pass
+    // What balanced does today (derive_pacing_balanced_test.dart): a productive pass
     // warms; nothing about the power state changes that, or the pass.
     for (final plugged in [false, true]) {
       for (final saver in [false, true]) {

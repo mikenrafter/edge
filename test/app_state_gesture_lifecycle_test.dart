@@ -1,4 +1,4 @@
-// 8AJ seam 3 characterization: lifetime of the gesture machinery. Identity of
+// Gesture area: lifetime of the gesture machinery. Identity of
 // the exposed objects, what AppState.dispose does and does not touch in this
 // area, timers left behind, listeners, and what a gesture does after dispose.
 // Dispose stops a gesture in flight (the repeat window, the ECG session) and
@@ -18,7 +18,7 @@ bool _hasListeners(Listenable n) =>
     // ignore: invalid_use_of_protected_member
     (n as ChangeNotifier).hasListeners;
 
-const _db = 'split8aj_seam3_lifecycle.db';
+const _db = 'app_state_gesture_lifecycle.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

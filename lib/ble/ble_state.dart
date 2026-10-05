@@ -1257,7 +1257,7 @@ class AlarmPayloads {
   }
 
   /// Gen5 Maverick custom pattern (RUN_HAPTIC_PATTERN_MAVERICK = 0x13), for the
-  /// Device lab's pattern probe (8W): `[0x01, 8 waveform-effect slots (0 =
+  /// Device lab's pattern probe: `[0x01, 8 waveform-effect slots (0 =
   /// idle), u16 per-effect loop control (left 0), u8 overall loop]`. Bounded
   /// for the band's health: 1..8 effects, each 1..255, overall [loop] 1..3.
   /// Anything else is an [ArgumentError], never a clamped guess.

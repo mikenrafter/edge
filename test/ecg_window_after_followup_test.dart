@@ -1,4 +1,4 @@
-// 8AK A (red): the ECG touch windows open AFTER the follow-up cue has played.
+// The ECG touch windows open AFTER the follow-up cue has played.
 //
 // USER RULE: "ECG timings start off the FOLLOW-UP haptics, not the start
 // haptics". The window that waits for the next touch (3 -> 4 -> 5) opens once
@@ -12,10 +12,10 @@
 // The FIRST window (the one that waits for the first touch after the double
 // tap) is NOT anchored to the start cue: it keeps opening off the steady
 // stream and the sensor settle, and a start cue that hangs never holds it
-// (8AI: the start cue is never waited for). Only the windows after a
+// (the start cue is never waited for). Only the windows after a
 // follow-up wait for a cue.
 //
-// ASSUMED API (lib/gestures/ecg_tap_session.dart, EcgTapSession):
+// API (lib/gestures/ecg_tap_session.dart, EcgTapSession):
 //   * New optional `Future<void> Function()? bandIdle` (see
 //     support/ak_ecg_rig.dart): completes when the band has finished playing
 //     everything queued so far. The session awaits it after a follow-up cue
@@ -32,10 +32,6 @@
 // sample clock and reaches the phone at the end of its second, so "the band
 // became idle after frame(N)" is sample time N.0. [steady] opens the first
 // window at 1001.5. touchThree engages at 1001.8 and lifts at 1002.0.
-//
-// Failure mode today: no `bandIdle` is accepted (the rig drops it), so the
-// next window opens at the lift as before: the gesture is ended after packet
-// 1003 and a touch during the follow-up is counted.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -43,7 +39,7 @@ import 'support/ecg_tap_session_failure_rig.dart';
 
 void main() {
   group('the first window is not held by the start cue', () {
-    test('regression guard (passes today): a start cue that never returns '
+    test('regression guard: a start cue that never returns '
         'does not hold the first window', () async {
       final r = AkEcgRig(max: 5, useBandIdle: true, startHangs: true);
       await r.tap();
@@ -54,7 +50,7 @@ void main() {
       expect(r.names, ['start', 'follow']);
     });
 
-    test('regression guard (passes today): the start cue is requested before '
+    test('regression guard: the start cue is requested before '
         'the stream is asked to start', () async {
       final r = AkEcgRig(max: 5, useBandIdle: true);
       await r.tap();
@@ -135,7 +131,7 @@ void main() {
       expect(r.names, ['start', 'follow', 'follow', 'confirm']);
     });
 
-    test('regression guard (passes today): a follow-up plan that never ends '
+    test('regression guard: a follow-up plan that never ends '
         'does not freeze the gesture: the window opens at the timeout',
         () async {
       final r = AkEcgRig(
@@ -156,7 +152,7 @@ void main() {
       expect(r.session.active, isFalse);
     });
 
-    test('regression guard (passes today): the gesture that reaches the max '
+    test('regression guard: the gesture that reaches the max '
         'ends at once with the follow-up and the confirm, in that order',
         () async {
       final r = AkEcgRig(max: 3, useBandIdle: true, holdFollowUps: true);

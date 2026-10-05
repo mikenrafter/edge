@@ -1,11 +1,10 @@
-// 8A — flatter navigation: from the Settings landing, App notifications on the
+// Flatter navigation: from the Settings landing, App notifications on the
 // band, Gestures, Alarm and every other settings screen are at most two pushes
-// away. 8AE moved Live devices (now Developer), Edit profile, AI coach and the
-// rest of Profile's old rows into Settings. 8AF.7 removed the Profile landing
-// screen, so Settings is the start and each of them is ONE push. Walks the
+// away. Live devices (now Developer), Edit profile, AI coach and the
+// rest of Profile's old rows moved into Settings, and the Profile landing
+// screen is gone, so Settings is the start and each of them is ONE push. Walks the
 // pure views by tapping rows and counts pushes.
 // The stateful wrappers' wiring is pinned in nav_depth_guard_test.dart.
-// See test/phase8/CONTRACTS.md §8A.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -130,7 +129,7 @@ void main() {
     t.view.physicalSize = const Size(1170, 24000);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
-    // The Language row (moved in from Profile, 8AE) reads the locale.
+    // The Language row (moved in from Profile) reads the locale.
     await t.pumpWidget(ChangeNotifierProvider<LocaleController>.value(
       value: LocaleController.seed(null),
       child: MaterialApp(

@@ -1,8 +1,8 @@
-// 8AH, RED. The Data Explorer's pure half: the shared time grid, the line a
+// The Data Explorer's pure half: the shared time grid, the line a
 // metric becomes on it, normalisation, baselines, and the memory codec. No
 // widgets, no database, no clock (every date is fixed).
 //
-// ASSUMED API (new file lib/compute/explorer_series.dart; pure Dart, no
+// API (new file lib/compute/explorer_series.dart; pure Dart, no
 // flutter/dart:ui import, so it can run under Isolate.run):
 //
 //   const int    kExploreMaxMetrics = 4;

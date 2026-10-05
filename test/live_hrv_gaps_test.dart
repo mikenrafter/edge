@@ -1,4 +1,4 @@
-// 8AI.2 G7 (red first): the live "Beat intervals (ms)" graph has gaps only
+// The live "Beat intervals (ms)" graph has gaps only
 // where beats really stopped.
 //
 // USER REPORT (APK f88d230c): "the live HRV data had a lot of gaps". The graph

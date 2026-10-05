@@ -1,4 +1,4 @@
-// HAPTICS (8AD) — Settings > The band > Haptics.
+// HAPTICS — Settings > The band > Haptics.
 //
 // Five sub-tabs (the app's SubTabs), each showing only its own groups: Patterns
 // (Your patterns: the wearer's saved patterns; Presets: the built-in ones, the
@@ -154,7 +154,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
   Future<void> _reset(String id) =>
       _run(() => _commit(id, (store) => store.resetToDefault(id)));
 
-  /// Puts [p] on slot [key] (8AI): an alert's rule (or the relay's apps
+  /// Puts [p] on slot [key]: an alert's rule (or the relay's apps
   /// channel) holds a snapshot of it, a gesture cue holds its id. The store
   /// itself is not edited. [p] null puts the slot back on its default.
   Future<void> _assign(String key, SavedHapticPattern? p) async {

@@ -1,4 +1,4 @@
-// P4c: a cache-miss open never awaits a compute in a build path.
+// A cache-miss open never awaits a compute in a build path.
 //
 // With nothing stored for the screen and its read still pending (a
 // Completer-gated repository), the FIRST frame is the page shell plus an
@@ -22,9 +22,6 @@
 //     observed through app.debugArtifactSource. When the warm lands the screen
 //     re-reads (revision bump), finds the stored result fresh and drops the
 //     loading state; the screen still never calls getNightBeats.
-//
-// Failure mode today: Home shows a bare spinner; Beats runs the read inline
-// (beatsCalls == 1) and never asks the warmer.
 
 import 'dart:async';
 
@@ -47,7 +44,7 @@ import 'support/last_result_db.dart';
 import 'support/artifact_fixtures.dart';
 import 'support/scripted_artifact_source.dart';
 
-const _db = 'p4c_cache_miss_first_frame_test.db';
+const _db = 'cache_miss_first_frame_test.db';
 
 final _bars = find.byWidgetPredicate((w) => w is ProgressIndicator,
     description: 'a ProgressIndicator');
@@ -222,8 +219,8 @@ void main() {
         'requested, and its result lands fresh', (t) async {
       _tall(t);
       await fresh(t);
-      final keys = [p3Beats(todayId), p3Beats(yesterdayId)];
-      final repo = P3BeatsRepo()..beatsGate = Completer();
+      final keys = [artBeats(todayId), artBeats(yesterdayId)];
+      final repo = ArtifactBeatsRepo()..beatsGate = Completer();
       for (final k in keys) {
         repo.sigs[k] = 'b1';
       }

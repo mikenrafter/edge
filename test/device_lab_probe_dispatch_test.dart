@@ -1,4 +1,4 @@
-// 8V: the buzz probe's rule through the REAL AlertDispatcher. The 20:17 lab
+// The buzz probe's rule through the REAL AlertDispatcher. The 20:17 lab
 // run sent 24 probe buzzes and the band got none: the rule's kind was not a
 // live kind, so the dispatcher refused every one ('unsupportedRuleKind')
 // before a byte was written. The probe tests used a fake sendBuzz and missed it.

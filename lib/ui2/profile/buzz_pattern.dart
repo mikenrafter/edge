@@ -169,18 +169,18 @@ class BuzzPatternSheet extends StatefulWidget {
   /// null keeps the text-only sheet.
   final HapticDeviceProfile? profile;
 
-  /// 8AD: lift the 10 s runtime cap. Null reads the "Allow long sequences"
+  /// Lift the 10 s runtime cap. Null reads the "Allow long sequences"
   /// setting.
   final bool? allowLong;
 
-  /// 8AD: the names in the pattern store. Non-null offers "Save to my
+  /// The names in the pattern store. Non-null offers "Save to my
   /// patterns" (off) with a name field; only the pattern picker passes it.
   final Iterable<String>? patternNames;
 
   /// Called instead of [onSave] when the take is saved under a name.
   final FutureOr<void> Function(String name, BuzzSequence s)? onSaveNamed;
 
-  /// 8AF.6 F.3: called with the name and notes when the take was opened in the
+  /// Called with the name and notes when the take was opened in the
   /// notes editor ("Edit as notes") and saved there. Without it the editor
   /// saves through [onSaveNamed], else [onSave].
   final FutureOr<void> Function(String name, BuzzSequence s)? onSaveAsNotes;

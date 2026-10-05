@@ -1,9 +1,9 @@
 // "Count extra taps with": the per-band choice between ECG sensor touches and
 // more double taps, the tab names that follow it, and the pause adjuster
-// (which 8AE moved from Gestures into the Device lab).
+// (which lives in the Device lab, not on Gestures).
 // One mapping store serves both: the 3-tap slot is "Double tap + 1 ECG tap" for ECG and
 // "2 double taps" for repeats. ECG is disabled and dimmed (never hidden) on a
-// band without the sensor (8K).
+// band without the sensor.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -95,7 +95,7 @@ void main() {
   });
 
   group('tab names follow the method', () {
-    testWidgets('ECG: Double tap / + 1 / + 2 / + 3 ECG taps (8AK C)',
+    testWidgets('ECG: Double tap / + 1 / + 2 / + 3 ECG taps',
         (t) async {
       await pumpTall(
           t,

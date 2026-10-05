@@ -1,6 +1,6 @@
-// P4c: what recordings a stored day result covers.
+// What recordings a stored day result covers.
 //
-// ASSUMED API:
+// API:
 //   LocalRepository.dayRecordingsThrough(String day) -> Future<DateTime?>
 //       Default null (a fake that does not override it knows nothing).
 //   LocalRepositoryImpl.dayRecordingsThrough(day): the MAX(rec_ts) part of the
@@ -14,8 +14,6 @@
 //       A legacy two-part "MAX:COUNT" fingerprint still yields its MAX.
 //       One keyed read of one row; it never reads or decodes a day_result
 //       payload and never reads another day's fingerprint.
-//
-// Failure mode today: the method does not exist (NoSuchMethodError).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -28,7 +26,7 @@ import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'support/last_result_db.dart';
 import 'support/as_of_recalc_fakes.dart' show HomeRepo, homeBundle;
 
-const _db = 'p4c_day_recordings_through_test.db';
+const _db = 'day_recordings_through_test.db';
 
 // 2026-10-03 08:36:00 local, as epoch seconds.
 final _sec = DateTime(2026, 10, 3, 8, 36).millisecondsSinceEpoch ~/ 1000;

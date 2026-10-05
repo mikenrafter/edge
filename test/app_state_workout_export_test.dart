@@ -1,9 +1,9 @@
-// 8AJ seam 4 characterization: what stopping a workout exports. A saved
+// Workout area: what stopping a workout exports. A saved
 // session goes to Apple Health / Health Connect right away when the health
 // sync switch is on (issue #130), fire-and-forget; nothing is exported when it
 // is off, when the save failed, when the session was torn down by a delete, or
 // (today) when it lasted under a second. Seen through the Health plugin's
-// channel. Must pass before and after the WorkoutController move.
+// channel.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -11,7 +11,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_export.db';
+const _db = 'app_state_workout_export.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

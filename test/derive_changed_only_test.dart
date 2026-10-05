@@ -1,4 +1,4 @@
-// 8M follow-up — a manual sync derives only what changed.
+// A manual sync derives only what changed.
 //
 // Every manual sync used to run a heavy derive over EVERY raw day that was not
 // finalized: today (never finalized), plus any day stuck partial or skipped,

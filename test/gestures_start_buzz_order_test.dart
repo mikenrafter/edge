@@ -1,4 +1,4 @@
-// 8AI G5 (red): the gesture-start buzz goes out the moment the gesture message
+// The gesture-start buzz goes out the moment the gesture message
 // arrives, and ECG monitoring starts right after, without waiting on the buzz.
 //
 // Why (user report): with the delays the wearer's hand has to be on the ECG
@@ -136,7 +136,7 @@ void main() {
 
   group('wiring (source guards)', () {
     test('AppState wires the start buzz into the session it builds', () {
-      // Built in the gesture controller since 8AJ seam 3.
+      // Built in the gesture controller.
       final src = File('lib/state/gesture_controller.dart').readAsStringSync();
       final ctor = codeOnly(bodyOf(src, 'EcgTapSession _newEcgSession()'));
       expect(ctor, contains('startBuzz:'),

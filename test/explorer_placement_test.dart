@@ -1,4 +1,4 @@
-// 8AH. Where the Explorer lives: NOT in Health.
+// Where the Explorer lives: NOT in Health.
 //
 // DECISION (reversed after a first try as a fifth Health tab): the Data
 // Explorer is not ready for everyone, so Health keeps its four sub-tabs (Last

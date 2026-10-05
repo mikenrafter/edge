@@ -1,8 +1,7 @@
-// P4a: the putDayResult guard. A provisional row stays replaceable; a finalized
+// The putDayResult guard. A provisional row stays replaceable; a finalized
 // (day, V) row refuses any further write at the same V and is left byte-for-byte
 // as it was (day_result, metric_series and metric_series_version alike); a new
-// version writes a NEW sibling row. Assumed API: see support.dart (nothing new
-// is referenced here, so this file compiles today and fails on behaviour).
+// version writes a NEW sibling row.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -17,7 +16,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Database db;
 
-  setUp(() async => db = await freshDb('openstrap_p4a_write_guard_test.db'));
+  setUp(() async => db = await freshDb('openstrap_write_guard_test.db'));
   tearDownAll(dropDb);
 
   group('a provisional row stays replaceable', () {

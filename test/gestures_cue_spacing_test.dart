@@ -1,12 +1,12 @@
-// 8AI G5 (red): the gesture queue honours the minimum spacing between two
+// The gesture queue honours the minimum spacing between two
 // vibrations that the wake vocabulary learned, from ONE constant.
 //
 // Spec: "The gesture queue that streams buzzes to the band must honour the
 // minimum inter-vibration spacing learned for the wake vocabulary (find the
-// vocabulary constants from 8AF.6 and reuse the SAME constant; one source,
+// vocabulary constants and reuse the SAME constant; one source,
 // AGENTS.md 3.8)."
 //
-// What exists today (8AF.6): the learned spacing is the profile's FASTEST
+// What exists today: the learned spacing is the profile's FASTEST
 // stable gap, `HapticDeviceProfile.fastestGap()` (0 ms write delay after the
 // band's ended event on the MG). `GestureCues.response` reads it
 // (`p.fastestGap()?.delayMs`) for the follow-ups of ONE response; the wake
@@ -113,7 +113,7 @@ void main() {
     });
   });
 
-  group('within one cue (8AI.3: each cue is its own job)', () {
+  group('within one cue (each cue is its own job)', () {
     test('a cue of two commands writes the second the constant after the '
         'ended event', () {
       fakeAsync((async) {

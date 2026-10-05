@@ -1,8 +1,8 @@
-// 8AG-perf P2-B / AGENTS.md invariant 3.9 -- regression guard (passes today).
+// AGENTS.md invariant 3.9 -- regression guard.
 //
 // A day whose derive failed transiently must never look derived to the prune
-// or to `changedOnly`. P2 changes how outcomes are reported to the scheduler,
-// not this: the pure selectors keep a prune-pending day, or a day whose
+// or to `changedOnly`. How outcomes are reported to the scheduler
+// is separate: the pure selectors keep a prune-pending day, or a day whose
 // fingerprint was never recorded (a transient failure records none), in the
 // todo set even when nothing about its input changed. No new symbol is used.
 

@@ -1,4 +1,4 @@
-// The live-stream seam (8AJ seam 2), moved out of AppState with no behaviour
+// The live-stream seam, moved out of AppState with no behaviour
 // change. It owns: the live-stream owner set the engine reads (who wants HR /
 // IMU right now), the developer's live feed flag, the mounted live-HR view
 // count, the movement-sampling window flag, and the helpers that feed decoded

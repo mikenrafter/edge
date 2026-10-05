@@ -1,4 +1,4 @@
-// 8AK D (red): the Home card for a failed gesture.
+// The Home card for a failed gesture.
 //
 // USER: "The next time Home is opened, show ONE card styled like the Join
 // Discord card: 'An ECG gesture failed to activate' / 'A gesture failed to

@@ -1,4 +1,4 @@
-// 8AC — playing a compiled plan on the band (spec G, the player).
+// Playing a compiled plan on the band (the player).
 //
 // For each step after the first: wait for the band's "ended" event of the
 // step before (timeout = that phrase's longest span + 1500 ms; a timeout just
@@ -181,7 +181,7 @@ void main() {
 
     test('the next write comes after the ended event plus delayMs', () {
       fakeAsync((async) {
-        // A rest of 4 is the 300 ms row's shortest (8AI: rests are never
+        // A rest of 4 is the 300 ms row's shortest (rests are never
         // shortened, so a rest of 6 would take the 700 ms row).
         final plan = _plan('N4ff R4 N4f');
         final delay = plan.steps[1].delayMs;

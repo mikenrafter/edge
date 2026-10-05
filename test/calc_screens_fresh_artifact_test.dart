@@ -1,17 +1,17 @@
-// 8AG-perf P3-A: the screens trust a FRESH stored artifact.
+// The screens trust a FRESH stored artifact.
 //
-// 8AI made every slow screen show its last result under an "As of" label and
-// then recompute ON OPEN, every open. P3: a stored result whose input
+// Every slow screen used to show its last result under an "As of" label and
+// then recompute ON OPEN, every open. Now a stored result whose input
 // signature still equals the current one is fresh, so it is shown as is, with
 // no recompute and no label. A stale or missing one behaves exactly as before
 // (show stored with "As of" + recompute once), and the recompute is stored with
 // the signature the screen read BEFORE it ran.
 //
-// ASSUMED API:
+// API:
 //   * LastResultCache.loadArtifact / put(sig:) / CachedResult.sig and the
-//     `last_result.input_sig` column: see p3_artifact_cache_test.dart.
+//     `last_result.input_sig` column: see calc_artifact_cache_test.dart.
 //   * LocalRepository.artifactSignature(String key) -> Future<String?>
-//     (default null => never fresh): see support/p3_support.dart. The fakes
+//     (default null => never fresh): see support/artifact_fixtures.dart. The fakes
 //     here answer it from a map and record what they were asked.
 //   * The four screens read their slow data through
 //         LastResultCache.instance.loadArtifact(
@@ -28,10 +28,6 @@
 //         Workout detail                 'workout|<id>'           (unchanged)
 //   * A fresh result clears nothing and shows nothing extra: no "As of" label,
 //     no spinner, and the loader is not called.
-//
-// Failure mode today: a stored result is shown under "As of" and recomputed on
-// every open (the loader count is 1, the label is up), and the keys are the old
-// per-screen ones, so a seeded 'journal_insights|90d' is never read.
 
 import 'dart:async';
 import 'dart:io';
@@ -50,7 +46,7 @@ import 'support/last_result_db.dart';
 import 'support/artifact_fixtures.dart';
 import 'support/scripted_artifact_source.dart';
 
-const _db = 'openstrap_p3_screens_fresh_test.db';
+const _db = 'openstrap_screens_fresh_test.db';
 final _label = find.byKey(const ValueKey('as-of-label'));
 final _spinner = find.byType(CircularProgressIndicator);
 
@@ -121,17 +117,17 @@ void main() {
 
   // ── MetricDetail ──────────────────────────────────────────────────────────
   group('MetricDetail (journal_insights|90d)', () {
-    const stored = {'insights': [], 'p3_marker': 'stored'};
+    const stored = {'insights': [], 'marker': 'stored'};
 
     testWidgets('FRESH in memory: shown, loader not called, no label, no '
         'spinner', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3MetricRepo()..sigs[p3Journal] = 'S1';
-      await _seed(t, p3Journal, stored, 'S1');
+      final repo = ArtifactMetricRepo()..sigs[artJournal] = 'S1';
+      await _seed(t, artJournal, stored, 'S1');
       await t.pumpWidget(perfApp(_app(repo), const MetricDetail('resting_hr')));
       await settle(t);
-      expect(repo.sigAsks, contains(p3Journal),
+      expect(repo.sigAsks, contains(artJournal),
           reason: 'the screen asked for the current signature');
       expect(repo.insightsCalls, 0,
           reason: 'a fresh artifact is not recomputed on open');
@@ -142,8 +138,8 @@ void main() {
     testWidgets('FRESH from the table after a restart: same', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3MetricRepo()..sigs[p3Journal] = 'S1';
-      await _seed(t, p3Journal, stored, 'S1');
+      final repo = ArtifactMetricRepo()..sigs[artJournal] = 'S1';
+      await _seed(t, artJournal, stored, 'S1');
       await _restart(t);
       await t.pumpWidget(perfApp(_app(repo), const MetricDetail('resting_hr')));
       await settle(t);
@@ -155,8 +151,8 @@ void main() {
         'clears and the row carries the NEW signature', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3MetricRepo()..sigs[p3Journal] = 'S2';
-      await _seed(t, p3Journal, stored, 'S1');
+      final repo = ArtifactMetricRepo()..sigs[artJournal] = 'S2';
+      await _seed(t, artJournal, stored, 'S1');
       repo.insightsGate = Completer();
       await t.pumpWidget(perfApp(_app(repo), const MetricDetail('resting_hr')));
       await settle(t, n: 20);
@@ -164,32 +160,32 @@ void main() {
       expect(_spinner, findsNothing, reason: 'the stored result renders');
       expect(_label, findsWidgets);
 
-      repo.insightsGate!.complete(const {'insights': [], 'p3_marker': 'new'});
+      repo.insightsGate!.complete(const {'insights': [], 'marker': 'new'});
       await settle(t);
       expect(_label, findsNothing);
-      expect((await _row(t, p3Journal))!['payload_json'], contains('"new"'));
-      expect(await _sigOf(t, p3Journal), 'S2');
+      expect((await _row(t, artJournal))!['payload_json'], contains('"new"'));
+      expect(await _sigOf(t, artJournal), 'S2');
     });
 
     testWidgets('MISSING: loads once, no label, stored with the current '
         'signature', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3MetricRepo()..sigs[p3Journal] = 'S1';
+      final repo = ArtifactMetricRepo()..sigs[artJournal] = 'S1';
       await t.pumpWidget(perfApp(_app(repo), const MetricDetail('resting_hr')));
       await settle(t);
       expect(repo.insightsCalls, 1);
       expect(_label, findsNothing);
-      expect(await _row(t, p3Journal), isNotNull);
-      expect(await _sigOf(t, p3Journal), 'S1');
+      expect(await _row(t, artJournal), isNotNull);
+      expect(await _sigOf(t, artJournal), 'S1');
     });
 
-    testWidgets('regression guard (passes today): a repository with no '
+    testWidgets('regression guard: a repository with no '
         'signature (null) is never fresh: every open recomputes and shows '
         'As-of', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3MetricRepo(); // sigs empty => artifactSignature -> null
+      final repo = ArtifactMetricRepo(); // sigs empty => artifactSignature -> null
       final app = _app(repo);
       await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
       await settle(t);
@@ -209,18 +205,18 @@ void main() {
 
   // ── Wellness ──────────────────────────────────────────────────────────────
   group('Wellness JournalFindings (journal_insights|90d + weekday_effect)', () {
-    const insights = {'numeric_insights': [], 'p3_marker': 'w'};
+    const insights = {'numeric_insights': [], 'marker': 'w'};
     const weekday = {'present': false, 'note': 'stored'};
 
     testWidgets('both FRESH: neither read runs, no label, no spinner',
         (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3WellnessRepo()
-        ..sigs[p3Journal] = 'S1'
-        ..sigs[p3Weekday] = 'W1';
-      await _seed(t, p3Journal, insights, 'S1');
-      await _seed(t, p3Weekday, weekday, 'W1');
+      final repo = ArtifactWellnessRepo()
+        ..sigs[artJournal] = 'S1'
+        ..sigs[artWeekday] = 'W1';
+      await _seed(t, artJournal, insights, 'S1');
+      await _seed(t, artWeekday, weekday, 'W1');
       await t.pumpWidget(perfApp(_app(repo), const JournalFindings()));
       await settle(t);
       expect(repo.insightsCalls, 0);
@@ -234,12 +230,12 @@ void main() {
         'lands', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3WellnessRepo()
-        ..sigs[p3Journal] = 'S1'
-        ..sigs[p3Weekday] = 'W2'
+      final repo = ArtifactWellnessRepo()
+        ..sigs[artJournal] = 'S1'
+        ..sigs[artWeekday] = 'W2'
         ..weekdayGate = Completer();
-      await _seed(t, p3Journal, insights, 'S1');
-      await _seed(t, p3Weekday, weekday, 'W1');
+      await _seed(t, artJournal, insights, 'S1');
+      await _seed(t, artWeekday, weekday, 'W1');
       await t.pumpWidget(perfApp(_app(repo), const JournalFindings()));
       await settle(t, n: 20);
       expect(repo.insightsCalls, 0);
@@ -249,22 +245,22 @@ void main() {
       repo.weekdayGate!.complete(const {'present': false, 'note': 'new'});
       await settle(t);
       expect(_label, findsNothing);
-      expect(await _sigOf(t, p3Weekday), 'W2');
+      expect(await _sigOf(t, artWeekday), 'W2');
     });
 
     testWidgets('ONE SOURCE: the artifact MetricDetail stored is the one '
         'Wellness finds fresh', (t) async {
       _tall(t);
       await _fresh(t);
-      final metric = P3MetricRepo()..sigs[p3Journal] = 'S1';
+      final metric = ArtifactMetricRepo()..sigs[artJournal] = 'S1';
       await t.pumpWidget(perfApp(_app(metric), const MetricDetail('resting_hr')));
       await settle(t);
       expect(metric.insightsCalls, 1);
       await t.pumpWidget(const SizedBox());
 
-      final wellness = P3WellnessRepo()
-        ..sigs[p3Journal] = 'S1'
-        ..sigs[p3Weekday] = 'W1';
+      final wellness = ArtifactWellnessRepo()
+        ..sigs[artJournal] = 'S1'
+        ..sigs[artWeekday] = 'W1';
       await t.pumpWidget(perfApp(_app(wellness), const JournalFindings()));
       await settle(t);
       expect(wellness.insightsCalls, 0,
@@ -275,7 +271,7 @@ void main() {
 
   // ── Beats ─────────────────────────────────────────────────────────────────
   group('Beats (beats|<day>)', () {
-    final key = p3Beats(todayId);
+    final key = artBeats(todayId);
     final stored = {
       'nn': [for (var i = 0; i < 300; i++) 900.0 + (i % 11)],
       'raw_beats': 312,
@@ -286,7 +282,7 @@ void main() {
         (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3BeatsRepo()..sigs[key] = 'B1';
+      final repo = ArtifactBeatsRepo()..sigs[key] = 'B1';
       await _seed(t, key, stored, 'B1');
       await t.pumpWidget(perfApp(_app(repo), const Beats()));
       await settle(t);
@@ -301,7 +297,7 @@ void main() {
         (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3BeatsRepo()..sigs[key] = 'B2';
+      final repo = ArtifactBeatsRepo()..sigs[key] = 'B2';
       await _seed(t, key, stored, 'B1');
       final src = FakeArtifactSource()
         ..sigs[key] = 'B2'
@@ -319,11 +315,11 @@ void main() {
       expect(await _sigOf(t, key), 'B2');
     });
 
-    testWidgets('regression guard (passes today): an error is still never '
+    testWidgets('regression guard: an error is still never '
         'stored (no row, nothing fresh next time)', (t) async {
       _tall(t);
       await _fresh(t);
-      final repo = P3BeatsRepo()
+      final repo = ArtifactBeatsRepo()
         ..sigs[key] = 'B1'
         ..beatsThrow = true;
       await t.pumpWidget(perfApp(_app(repo), const Beats()));

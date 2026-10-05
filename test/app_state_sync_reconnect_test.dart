@@ -1,8 +1,7 @@
-// 8AJ seam 5 characterization: the connected -> disconnected edge, the
+// Sync area: the connected -> disconnected edge, the
 // reconnect loop it starts, the level-triggered supervisor behind it, the
 // bond-refusal give-up as AppState wires it, and the heavy-derive throttle that
 // follows a background reconnect. Through AppState, with a [SyncFakeEngine].
-// Must pass before and after the SyncController move.
 //
 // The policies themselves (ReconnectPolicy, BondRefusalGiveUp, StuckStrap
 // detection, superviseReconnect) are pure or live in the engine and are tested
@@ -21,7 +20,7 @@ import 'package:openstrap_edge/sync/band_ownership.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_reconnect.db';
+const _db = 'app_state_sync_reconnect.db';
 
 bool _logged(SyncRig rig, String text) =>
     rig.app.logLines.any((l) => l.contains(text));
@@ -151,7 +150,7 @@ void main() {
         'attempt: the link is torn down and the loop retries, ending fully up '
         '(drain, backfill timer, intent and lease)',
         syncCase((rig, timers) async {
-      // FIXED (was LATENT): the loop used to see the link up, call itself
+      // the loop used to see the link up, call itself
       // done and stop with no drain and no backfill timer. A failed attempt
       // (issue #208) is connect AND setup, so it leaves the link down. The
       // throw is one-shot so the retry's poll works.
@@ -200,7 +199,7 @@ void main() {
     test('paused at the edge: no loop starts, and BOTH the lease and the '
         'foreground intent are released, so a headless wake is not refused for '
         'as long as the pause stands', syncCase((rig, timers) async {
-      // FIXED (was LATENT): the edge released only the lease and left the
+      // the edge released only the lease and left the
       // intent on, which refuses tryAcquireHeadless until the pause expires.
       // The loop's own finally already clears the intent on this give-up.
       await _open(rig);
@@ -333,7 +332,7 @@ void main() {
         'then answers true, does NOT run the post-connect block (no poll, live '
         'reconcile, band prompt, drain or backfill timer) and leaves no intent '
         'or lease behind', syncCase((rig, timers) async {
-      // FIXED (was LATENT): the generation was only checked at the loop head,
+      // the generation was only checked at the loop head,
       // so the retired loop still ran the whole block with no wish for a link
       // left. (The real engine serialises disconnect behind the in-flight
       // connect, so there it raced the teardown; the fake does not model that

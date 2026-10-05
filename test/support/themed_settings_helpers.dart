@@ -1,4 +1,4 @@
-// Shared helpers for the 8AI G1-G3 tests. References no symbol that does not
+// Shared helpers for the themed settings tests. References no symbol that does not
 // exist today, so every test file that imports it compiles before the
 // implementation lands and fails for its own reason.
 

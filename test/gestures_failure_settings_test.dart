@@ -1,4 +1,4 @@
-// 8AK D (red): Settings > Hardware > "Gesture failures" and its list.
+// Settings > Hardware > "Gesture failures" and its list.
 //
 // USER: "Settings gets a 'Gesture failures' row (in the Hardware accordion)
 // listing them with the same save/report actions." (The Home card says

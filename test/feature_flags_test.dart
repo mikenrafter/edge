@@ -1,4 +1,4 @@
-// Phase 7 — the five rollout switches. Defaults are ON (shipped behaviour);
+// The five rollout switches. Defaults are ON (shipped behaviour);
 // each OFF path falls back to the old behaviour or hides the feature cleanly.
 
 import 'dart:io';
@@ -47,7 +47,7 @@ void main() {
   setUpAll(() {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'phase7_feature_flags_test.db';
+    LocalDb.dbName = 'feature_flags_test.db';
   });
   setUp(() async {
     FeatureFlags.resetForTest();
@@ -378,7 +378,7 @@ void main() {
         expect(find.text(title), findsWidgets, reason: 'ON: $title');
       }
       expect(find.byType(SubTabs), findsOneWidget, reason: 'ON: the count tabs');
-      // The pause and touch-window tuning moved to the Device lab (8AE), so
+      // The pause and touch-window tuning moved to the Device lab, so
       // they are not on this screen with the flag on or off.
       for (final title in const ['Pause between double taps', 'Touch windows']) {
         expect(find.text(title), findsNothing, reason: 'ON: $title');

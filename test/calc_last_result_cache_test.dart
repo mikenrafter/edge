@@ -1,8 +1,8 @@
-// 8AG-perf P1b: LastResultCache — the last good result of a computed-on-open
+// LastResultCache — the last good result of a computed-on-open
 // screen, kept in memory so a re-open shows it at once (with "As of") while the
 // loader recomputes in the background.
 //
-// ASSUMED API (lib/ui2/last_result_cache.dart, new, pure Dart):
+// API (lib/ui2/last_result_cache.dart, new, pure Dart):
 //
 //   class CachedResult<T> {
 //     final T value;
@@ -139,7 +139,7 @@ void main() {
     });
   });
 
-  group('loadWarmed (P4c)', () {
+  group('loadWarmed', () {
     Future<T?> run<T>(LastResultCache c,
             {String? sig = 's1',
             required Future<void> Function() warm,

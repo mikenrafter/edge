@@ -1,4 +1,4 @@
-// 8V: BleEngine.buzzBand(onReply:) tells the Device lab's buzz probe what the
+// BleEngine.buzzBand(onReply:) tells the Device lab's buzz probe what the
 // band said. onReply gets the reply's status name when the band answers and
 // null when nothing came inside buzzReplyLogWindow; it never gates delivery (the
 // buzz is delivered when the write lands either way).

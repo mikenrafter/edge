@@ -1,4 +1,4 @@
-// 8AC: playing compiled band commands. A plan (or the baked copy of one saved
+// Playing compiled band commands. A plan (or the baked copy of one saved
 // with a rule) is a list of commands with a write delay after the previous
 // command's "ended" event. This file turns that into writes, with no BLE and no
 // Flutter: the caller hands in the write, the wait for the band's "ended"

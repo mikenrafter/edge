@@ -55,7 +55,7 @@ LabradorR17 _packet(
       sampleCount: n,
       samples: Int16List.fromList([
         for (var i = 0; i < n; i++)
-          // A moving trace: 8X contact is movement, not a non-zero level.
+          // A moving trace: contact is movement, not a non-zero level.
           i >= contactFrom && (contactTo == null || i < contactTo)
               ? (i.isEven ? 120 : -120)
               : 0,

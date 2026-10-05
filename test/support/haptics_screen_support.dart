@@ -1,5 +1,5 @@
-// Shared helpers for the 8AI G4 (haptics screen, presets, editor, encoder) and
-// G5 (gestures) red tests. Test-only; nothing here is production API.
+// Shared helpers for the haptics screen, presets, editor, encoder and
+// gestures tests. Test-only; nothing here is production API.
 //
 // Everything new in lib/ is reached through strings, widget keys, `dynamic`
 // calls or Function.apply with a plain-view fallback (the zone_alert_test.dart
@@ -38,7 +38,7 @@ const List<String> kPresetNames = [
 ];
 
 /// The alert rules that have no built-in pattern today (alarms and wake play
-/// fixed plans in code; 'gesture' is not an alert slot since 8AI.3, its cues
+/// fixed plans in code; 'gesture' is not an alert slot, its cues
 /// are the gesture slots; 'breath' is not one since Oct 4, its cues are the
 /// four breathing slots); every other rule in the registry is a slot with a
 /// default pattern.
@@ -53,13 +53,13 @@ const Set<String> kRulesWithoutDefault = {
 };
 
 /// The slot key of every alert that plays a pattern, in registry order. The
-/// key is the systemKey scheme 8AF.6 already uses (`alert.<ruleId>`).
+/// key is the systemKey scheme (`alert.<ruleId>`).
 List<String> alertSlotKeys() => [
       for (final id in NotificationPrefs.alertRuleOrder)
         if (!kRulesWithoutDefault.contains(id)) 'alert.$id',
     ];
 
-/// The three gesture cue slots (8AF.6).
+/// The three gesture cue slots.
 const List<String> kGestureSlotKeys = [
   'gesture.start',
   'gesture.followUp',
@@ -190,7 +190,7 @@ SavedHapticPattern presetPattern(String id, String name, String key) =>
       systemKey: key,
     );
 
-/// [HapticsSettingsView] with the 8AF.6 parameters filled in and the 8AI ones
+/// [HapticsSettingsView] with the required parameters filled in and the newer ones
 /// passed by name through Function.apply. A build without them gets the plain
 /// view, so the test fails on what it asserts.
 Widget hubView(
@@ -220,11 +220,11 @@ Widget hubView(
     #onRename: (String id, String n) => c.renamed.add((id, n)),
     #onDelete: c.deleted.add,
     #onDeviceLab: () => c.lab++,
-    // 8AI (assumed): which pattern a slot plays now, by name.
+    // Assumed: which pattern a slot plays now, by name.
     #slotPatternName: (String key) => slotNames[key] ?? 'Two pulses',
-    // 8AI (assumed): a section's link to the screen where its slots are used.
+    // Assumed: a section's link to the screen where its slots are used.
     #onOpenSlotScreen: (String sectionId) => c.openedSections.add(sectionId),
-    // 8AI (assumed): put a stored pattern on a slot.
+    // Assumed: put a stored pattern on a slot.
     #onAssignToSlot: (String key, SavedHapticPattern p) =>
         c.assigned.add((key, p.id)),
   };

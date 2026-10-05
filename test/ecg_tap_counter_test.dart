@@ -1,8 +1,8 @@
-// 8L — EcgTapCounter: draft 3–5 tap gestures counted as touches on the WHOOP MG
+// EcgTapCounter: draft 3–5 tap gestures counted as touches on the WHOOP MG
 // ECG sensor after a live firmware double tap. Pure state machine; every time
 // is ECG SAMPLE time (a Duration on the stream's clock), never phone receipt
 // time. Deadlines are decided by samples; clock ticks only detect a stalled
-// stream. See test/phase8/CONTRACTS.md §8L.
+// stream.
 //
 // Timeline vocabulary used below (ms on the sample clock), default thresholds
 // (start 300, gap 200, confirm 200):
@@ -10,7 +10,7 @@
 //   [500, 500+start). Each touch that engages is one increment (3, 4, 5) and
 //   asks for ONE follow-up buzz; a gesture that ends counted (the deadline, or
 //   the max) asks for one confirm before the done; an abandoned one asks for
-//   neither (8AI.3).
+//   neither.
 //   Engage = `gap` ms continuous contact. Release = `gap` ms
 //   continuous no-contact. After contact ends at E, a next touch must START in
 //   [E+gap, E+gap+confirm); at E+gap+confirm with no new touch it confirms.
@@ -379,7 +379,7 @@ void main() {
       expect(on.summary, endsWith(', extra sensitive'));
     });
 
-    test('8X: tolerant startup and the double-tap fallback are on by default',
+    test('tolerant startup and the double-tap fallback are on by default',
         () {
       final d = EcgTapThresholds();
       expect(d.tolerantStartup, isTrue);
@@ -390,7 +390,7 @@ void main() {
       expect(off.fallbackToDoubleTap, isFalse);
     });
 
-    test('8X: both are part of the value (== and hashCode) and copyWith keeps '
+    test('both are part of the value (== and hashCode) and copyWith keeps '
         'the rest', () {
       final d = EcgTapThresholds();
       final quick = EcgTapThresholds(tolerantStartup: false);
@@ -419,7 +419,7 @@ void main() {
       expect(EcgTapThresholds().copyWith(), EcgTapThresholds());
     });
 
-    test('8X: the summary adds ", quick start" and ", no fallback" only when '
+    test('the summary adds ", quick start" and ", no fallback" only when '
         'those are off', () {
       expect(EcgTapThresholds().summary,
           'start 300 ms, gap 200 ms, confirm 200 ms',
@@ -444,7 +444,7 @@ void main() {
     });
   });
 
-  group('8X: noFinger (the quick start: no contact in the first sampled '
+  group('noFinger (the quick start: no contact in the first sampled '
       'packet)', () {
     test('after start and before the window opens, the count is 2 right '
         'away: the confirm and a final 2', () {

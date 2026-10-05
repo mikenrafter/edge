@@ -1,4 +1,4 @@
-// The sync-session seam (8AJ seam 5), moved out of AppState with no behaviour
+// The sync-session seam, moved out of AppState with no behaviour
 // change. It owns the orchestration around the BLE link, never the engine: the
 // session start (openSession, the headless background start, the resume-link
 // check), the reconnect loop and the level-triggered supervisor that backstops

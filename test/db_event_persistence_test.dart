@@ -1,4 +1,4 @@
-// Event persistence keeps the strap's FULL timestamp (Phase 5A, step 2).
+// Event persistence keeps the strap's FULL timestamp.
 //
 // Today `events` stores whole seconds only (`ts`) plus `captured_at`, the phone's
 // receipt time. The strap's sub-second field is thrown away, so two taps in one

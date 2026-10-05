@@ -1,4 +1,4 @@
-// Packet and tap builders shared by the 8AN tests. Existing API only, so a
+// Packet and tap builders shared by the ECG presence tests. Existing API only, so a
 // test that needs nothing new compiles against today's code.
 
 import 'package:openstrap_edge/gestures/strap_event.dart';

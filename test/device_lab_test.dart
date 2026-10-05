@@ -1,6 +1,5 @@
-// 8I — Device lab: a live band-event log and the ECG-on-double-tap switch.
-// Includes the 8I note (what the extended gestures say).
-// See test/phase8/CONTRACTS.md §8I.
+// Device lab: a live band-event log and the ECG-on-double-tap switch.
+// Includes the note on what the extended gestures say.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -190,7 +189,7 @@ void main() {
           reason: 'the other thresholds are kept');
     });
 
-    testWidgets('8X: tolerant startup and the double-tap fallback: two '
+    testWidgets('tolerant startup and the double-tap fallback: two '
         'switches next to the extra sensitive one, on by default',
         (t) async {
       final changes = <EcgTapThresholds>[];
@@ -241,7 +240,7 @@ void main() {
       expect(t.getTopLeft(fallback).dx, t.getTopLeft(extra).dx);
     });
 
-    testWidgets('8X: toggling each switch saves it and keeps the other '
+    testWidgets('toggling each switch saves it and keeps the other '
         'settings', (t) async {
       final changes = <EcgTapThresholds>[];
       await _pump(
@@ -268,7 +267,7 @@ void main() {
               gapMs: 250, extraSensitive: true, fallbackToDoubleTap: false));
     });
 
-    testWidgets('8X: the switches show the stored state and turn back on',
+    testWidgets('the switches show the stored state and turn back on',
         (t) async {
       final changes = <EcgTapThresholds>[];
       await _pump(
@@ -304,7 +303,7 @@ void main() {
           EcgTapThresholds(tolerantStartup: false, fallbackToDoubleTap: true));
     });
 
-    testWidgets('8X: not a WHOOP MG: the new switches are inert too',
+    testWidgets('not a WHOOP MG: the new switches are inert too',
         (t) async {
       final changes = <EcgTapThresholds>[];
       await _pump(
@@ -343,7 +342,7 @@ void main() {
       expect(changes, isEmpty);
     });
 
-    testWidgets('8I note: says what ECG and extended taps need', (t) async {
+    testWidgets('the note says what ECG and extended taps need', (t) async {
       await _pump(t, const DeviceLabView(ecgSupported: false));
       expect(find.textContaining('WHOOP MG'), findsWidgets);
       expect(find.textContaining('WHOOP 4.0 has no ECG sensor'), findsWidgets);
@@ -488,7 +487,7 @@ void main() {
     });
   });
 
-  group('Settings > Developer links to the lab (8AE: out of Device detail)',
+  group('Settings > Developer links to the lab (not from Device detail)',
       () {
     final band = HealthSource(
       name: 'Synthetic band',

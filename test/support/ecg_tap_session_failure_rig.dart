@@ -1,7 +1,7 @@
-// An EcgTapSession rig for the 8AK red tests: every effect injected, every
+// An EcgTapSession rig for the gesture-failure tests: every effect injected, every
 // call logged in order. Test-only.
 //
-// The 8AK parameters (`bandIdle`, `onFailed`) are passed through
+// The failure parameters (`bandIdle`, `onFailed`) are passed through
 // Function.apply and DROPPED when the session does not have them yet, so a
 // build without them still constructs the session and the test fails on what
 // it asserts, not on a NoSuchMethodError at construction.

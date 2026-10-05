@@ -165,7 +165,7 @@ void main() {
       expect(screenForRoute('/profile'), isA<MoreSettings>(),
           reason: 'the battery notification promises the band, not Home; '
               'Settings > Band > My devices is where it lives (no Profile '
-              'landing screen since 8AF.7)');
+              'landing screen)');
       // A week of sleep, strain and recovery is Health. There is no recap
       // screen; landing on Home was not even close.
       expect(domainForRoute('/recap'), ShellDomain.health);

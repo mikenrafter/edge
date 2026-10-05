@@ -1,4 +1,4 @@
-// 8AC: what a band's haptic commands feel like. A device profile is the
+// What a band's haptic commands feel like. A device profile is the
 // vocabulary measured by the pattern probe: each command the band can be sent
 // (a phrase) with the shortest and longest rendition heard as notes and rests
 // on a 16th grid, and the silence felt between two commands for each write

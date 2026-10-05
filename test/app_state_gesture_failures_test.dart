@@ -1,8 +1,7 @@
-// 8AJ seam 3 characterization: the gesture-failures store and the record
-// AppState keeps when a gesture fails to activate (8AK D): what is persisted,
+// Gesture area: the gesture-failures store and the record
+// AppState keeps when a gesture fails to activate: what is persisted,
 // what Home shows (the newest undismissed one), dismiss, de-duplication per
-// gesture, and that the store object is one for the app's lifetime. Passes
-// before and after the GestureController move.
+// gesture, and that the store object is one for the app's lifetime.
 
 import 'dart:convert';
 
@@ -19,7 +18,7 @@ import 'support/app_state_gesture_harness.dart';
 List<dynamic> _stored() =>
     jsonDecode(Prefs.getString(Prefs.gestureFailures, '[]')) as List<dynamic>;
 
-const _db = 'split8aj_seam3_failures.db';
+const _db = 'app_state_gesture_failures.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

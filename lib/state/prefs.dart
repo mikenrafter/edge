@@ -90,21 +90,21 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
-  /// 8AD: lift the 10 s cap on compiled band haptics. Off by default; the
+  /// Lift the 10 s cap on compiled band haptics. Off by default; the
   /// 8-command plan cap and the band's rolling command limit still apply.
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
   static bool get allowLongHaptics => getBool(hapticsAllowLong, false);
 
-  /// 8AI: the notes editor's mode, 'follow_rhythm' (the default: every note is
+  /// The notes editor's mode, 'follow_rhythm' (the default: every note is
   /// a `*` note and the dynamics bar is hidden) or 'allow_dynamics'.
   static const String hapticsEditorMode = 'haptics_editor_mode';
 
-  /// 8AI: the pattern each gesture cue was given, a JSON map of slot key to
+  /// The pattern each gesture cue was given, a JSON map of slot key to
   /// pattern id (see haptic_slots.dart). Written through the settings
   /// repository; a cue not in it plays its own built-in.
   static const String hapticsCueAssign = 'haptics_gesture_cue_assign';
 
-  /// 8AK: the gestures that failed to activate, one JSON string (see
+  /// The gestures that failed to activate, one JSON string (see
   /// gestures/gesture_failures.dart); bounded to the newest 20.
   static const String gestureFailures = 'gesture_failures';
 

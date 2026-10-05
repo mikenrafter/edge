@@ -29,7 +29,7 @@ class SetRow extends StatelessWidget {
   final String title, sub, value;
   final bool danger, chevron;
 
-  /// 8K: a row that does not apply right now stays in the list, dimmed and
+  /// A row that does not apply right now stays in the list, dimmed and
   /// inert, rather than appearing and disappearing with another setting. Say
   /// why in [sub] when the reason is not obvious.
   final bool enabled;
@@ -115,7 +115,7 @@ class SetRow extends StatelessWidget {
   }
 }
 
-/// How far a disabled settings row is dimmed (8K).
+/// How far a disabled settings row is dimmed.
 const double kDisabledOpacity = .45;
 
 /// A titled card of [SetRow]s, hairline-separated.
@@ -320,7 +320,7 @@ class SwitchRow extends StatelessWidget {
   final bool value;
   final ValueChanged<bool>? onChanged;
 
-  /// 8K: false keeps the row in the list, dimmed, with its switch inert.
+  /// False keeps the row in the list, dimmed, with its switch inert.
   final bool enabled;
 
   /// The switch leads the label instead of trailing it. For a switch that sits
@@ -356,7 +356,7 @@ Future<void> goto(BuildContext c, Widget w) =>
     Navigator.of(c).push(MaterialPageRoute<void>(builder: (_) => w));
 
 /// The one way into Settings from Home's Profile button. There is no profile
-/// landing screen in between (8AF.7): Settings is the landing, and it is a
+/// landing screen in between: Settings is the landing, and it is a
 /// pushed route, never a sixth tab.
 void openProfile(BuildContext c) => goto(c, const MoreSettings());
 

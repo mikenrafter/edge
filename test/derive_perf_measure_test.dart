@@ -1,6 +1,6 @@
-// 8AG-perf P1-A: measure a derive pass.
+// Measure a derive pass.
 //
-// ASSUMED API (lib/compute/derive_perf.dart, new, pure Dart, no Flutter):
+// API (lib/compute/derive_perf.dart, new, pure Dart, no Flutter):
 //
 //   enum DerivePhase { prepare, compute, persist }
 //

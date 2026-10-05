@@ -1,6 +1,6 @@
-// P4c: a cache miss ENQUEUES the warm instead of computing inline.
+// A cache miss ENQUEUES the warm instead of computing inline.
 //
-// ASSUMED API
+// API
 //
 //   ArtifactWarmer.warmKeys(List<String> keys) -> Future<bool>   (artifact_warmer.dart)
 //       The on-demand twin of warmAfterPass: warms exactly [keys] (no
@@ -17,8 +17,6 @@
 //       the revision (the same signal the publish uses), so screens that listen
 //       re-read and find the stored result FRESH. No warmer (no source, no
 //       repo) -> a no-op that does not throw. Nothing stored -> no bump.
-//
-// Failure mode today: neither method exists.
 
 import 'dart:async';
 
@@ -34,7 +32,7 @@ import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'support/last_result_db.dart';
 import 'support/scripted_artifact_source.dart';
 
-const _db = 'p4c_warm_request_test.db';
+const _db = 'warm_request_test.db';
 
 Future<void> _until(bool Function() ok,
     {Duration within = const Duration(seconds: 4)}) async {

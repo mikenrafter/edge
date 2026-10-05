@@ -1,6 +1,6 @@
-// Shared helpers for the 8AJ seam 5 (SyncController) tests. Everything goes
+// Shared helpers for the SyncController tests. Everything goes
 // through AppState's public and @visibleForTesting surface, so the same files
-// serve the characterization tests before the move and after it.
+// serve the AppState-level tests and the controller's own tests.
 //
 // What the area talks to, and how the tests see it:
 //   - the BLE engine is a [SyncFakeEngine]: a BleEngine subclass that records
@@ -48,7 +48,7 @@ export 'app_state_derive_harness.dart'
         deriveHook;
 
 /// The band the rigs pair.
-const String kRemoteId = 'r-seam5';
+const String kRemoteId = 'r-sync';
 const String kSerial = '4C2248092';
 
 /// A timer the test fires by hand. [period] is null for a one-shot.
@@ -354,7 +354,7 @@ class SyncRig {
       app.paired = PairedDevice(kRemoteId, kSerial, generation: 'gen4');
     }
     engine.stamp = () async => (await jobTypes()).join(',');
-    // The pass itself is never the subject of a seam 5 test: a run of the
+    // The pass itself is never the subject of a sync-controller test: a run of the
     // scheduler lands here instead of in the derive engine.
     app.debugDeriveRun = deriveHook(calls: passes);
   }

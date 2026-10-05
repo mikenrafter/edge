@@ -1,10 +1,10 @@
-// 8AJ seam 3 characterization: a strap double tap travels the real path
+// Gesture area: a strap double tap travels the real path
 // (engine event frame -> AppState -> GestureDispatcher -> sessions -> cues) and
 // these tests pin which actions and cues fire, and in what order, for each
-// route. Must pass before and after the GestureController move.
+// route.
 //
 // Routes (decided in GestureDispatcher.handle, wired in AppState):
-//  * immediate: a plain double tap runs the 2-tap actions at once; the 8H ack
+//  * immediate: a plain double tap runs the 2-tap actions at once; the tap ack
 //    (the confirm cue) follows when one RAN;
 //  * repeated double taps (any band without ECG, or by choice): the start cue,
 //    one follow-up per added tap, the confirm; the count picks the actions;
@@ -20,7 +20,7 @@ import 'package:openstrap_edge/gestures/gesture_failures.dart';
 
 import 'support/app_state_gesture_harness.dart';
 
-const _db = 'split8aj_seam3_dispatch.db';
+const _db = 'app_state_gesture_dispatch.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -56,7 +56,7 @@ void main() {
       await settleMs(100);
       expect(channel.performed, ['media_play_pause']);
       expect(order, ['action:media_play_pause', 'cue:confirm'],
-          reason: 'the action first, then the 8H ack (no start / follow-up)');
+          reason: 'the action first, then the tap ack (no start / follow-up)');
       expect(rig.app.gestureFailures.all, isEmpty);
     });
 

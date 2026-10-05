@@ -602,7 +602,7 @@ void main() {
     });
   });
 
-  // 8L: a tap-counting gesture reads the live stream through the same
+  // a tap-counting gesture reads the live stream through the same
   // controller, and a long touch can make it reach a normal terminal. It must
   // never leave a reading behind (invariant 14).
   group('persist: false (the tap-counting gesture)', () {
@@ -658,7 +658,7 @@ void main() {
       expect(r.c.state.phase, EcgCapturePhase.completed);
     });
 
-    // 8V: lifting a finger is the gesture. The reading's own rules (give up
+    // lifting a finger is the gesture. The reading's own rules (give up
     // after three contact losses; send RESTART when the S2 state drops with
     // contact on) would end the stream or blind it mid-gesture.
     test('a dropped S2 state sends no RESTART and every packet is forwarded',

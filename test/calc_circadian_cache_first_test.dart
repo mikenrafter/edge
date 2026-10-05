@@ -1,4 +1,4 @@
-// P4c: Circadian opens from the warmed `circadian` artifact.
+// Circadian opens from the warmed `circadian` artifact.
 //
 // Today CircadianData.load runs on EVERY open: getInsights, then
 // getDaySleepV2 for each of 42 nights and getDayHeart for 7, ~49 day_result
@@ -25,9 +25,6 @@
 //     "As of" label, the warm is enqueued, and the fresh result replaces it.
 //   * Decodes are counted by LocalRepositoryImpl.debugBundleDecodes (see
 //     bundle_memo_test.dart).
-//
-// Failure mode today: the new static does not exist (compile error); once it
-// does, a warm open decodes ~49 bundles.
 
 import 'dart:convert';
 
@@ -48,7 +45,7 @@ import 'package:openstrap_edge/ui2/ui2.dart' show InlineLoading;
 import 'support/last_result_db.dart';
 import 'support/as_of_recalc_fakes.dart' show perfApp, settle;
 
-const _db = 'p4c_circadian_cache_first_test.db';
+const _db = 'circadian_cache_first_test.db';
 const _key = 'circadian';
 
 String _back(int n) {

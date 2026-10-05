@@ -1,4 +1,4 @@
-// 8AD (F) — the multi-log vocabulary builder.
+// The multi-log vocabulary builder.
 //
 // The device profile is read from transcribed probe logs. This builds a
 // profile from SEVERAL logs, so a new log widens the table by a reviewed
@@ -102,7 +102,7 @@ void main() {
     expect(_mg.version, 1);
   });
 
-  group('a test with notes never rated (8AF.6)', () {
+  group('a test with notes never rated', () {
     test('is left out: the profile is the same with or without it', () {
       // Test 10 heard longer, but left at any loudness: not used.
       final unrated = _longer10.replaceAll('N8ff', 'N8*');

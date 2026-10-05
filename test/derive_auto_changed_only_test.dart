@@ -1,15 +1,15 @@
-// 8AG-perf P2-B / P2-D: what the scheduler's pass asks of the engine, and what
+// What the scheduler's pass asks of the engine, and what
 // it reports back.
 //
-// P2-D: the scheduler-driven LIGHT pass used to call
+// Light passes: the scheduler-driven LIGHT pass used to call
 // `_afterDrain(heavy: false)` with `changedOnly` defaulting to false, so every
 // 8 s stored-data tick re-derived today even when nothing it reads had moved.
 // A light pass now passes `changedOnly: true`. Heavy passes keep
 // `changedOnly: false` (they carry the finalize extras and the force paths).
 //
-// P2-B: `_afterDrain` returns a `DeriveOutcome` to the scheduler.
+// Outcome: `_afterDrain` returns a `DeriveOutcome` to the scheduler.
 //
-// ASSUMED API (lib/state/app_state.dart):
+// API (lib/state/app_state.dart):
 //
 //   @visibleForTesting
 //   Future<DeriveOutcome> debugRunScheduled({required DeriveJobKind kind})
@@ -27,7 +27,7 @@
 //   post-derive work, in particular without bumping insightsRevision) keeps
 //   its meaning, and now applies to the automatic light path.
 //
-// The `debugDeriveRun` seam from P1 is unchanged.
+// The `debugDeriveRun` seam is unchanged.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -50,7 +50,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'openstrap_p2_auto_changed_only_test.db';
+    LocalDb.dbName = 'openstrap_auto_changed_only_test.db';
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
@@ -81,7 +81,7 @@ void main() {
     };
   }
 
-  group('P2-D: which passes may skip unchanged days', () {
+  group('light passes: which passes may skip unchanged days', () {
     test('the scheduler\'s LIGHT pass runs the engine with changedOnly: true',
         () async {
       install();
@@ -128,7 +128,7 @@ void main() {
     });
   });
 
-  group('P2-B: what the scheduler gets back', () {
+  group('outcome: what the scheduler gets back', () {
     test('a pass that ran returns a complete outcome with the day count',
         () async {
       install(returns: 2, scope: 2);

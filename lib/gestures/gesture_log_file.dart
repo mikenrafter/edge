@@ -1,4 +1,4 @@
-// gesture_log_file.dart — "Save log file" for a failed gesture (8AK D): the
+// gesture_log_file.dart — "Save log file" for a failed gesture: the
 // failure's session log as a .txt file, handed to the platform share sheet (the
 // same way the app's other exports leave the phone). The log is the Device
 // lab's own plain text, kept on the failure record at the time. Never the

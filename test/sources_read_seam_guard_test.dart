@@ -1,4 +1,4 @@
-// Phase 4 red: integration guard for contract 6. Labelled as a SOURCE GUARD,
+// Integration guard for contract 6. Labelled as a SOURCE GUARD,
 // not runtime proof: it checks that the new read seams stay free of analytics
 // entry points and reuse the existing winner logic. Runtime behavior is
 // covered by resolved_data_test.dart.
@@ -21,7 +21,7 @@ Iterable<File> _dartIn(String dir) => Directory(dir).existsSync()
     : const [];
 
 void main() {
-  test('source guard: every Phase 4 read-seam file exists', () {
+  test('source guard: every read-seam file exists', () {
     final missing = [for (final f in _required) if (!File(f).existsSync()) f];
     expect(missing, isEmpty,
         reason: 'Missing production files named in $kContractDoc');

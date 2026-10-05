@@ -1621,7 +1621,7 @@ Map<String, dynamic> deriveDayBundle(
       // relative to 04:00 local — see [sleepClockOffsetSec] for why they are
       // not a plain second-of-day.
       //
-      // 8E — only for a night that was RECORDED (`tstSec` known). A window the
+      // Only for a night that was RECORDED (`tstSec` known). A window the
       // user asserted over a stretch with no samples is a night not recorded:
       // publishing its bare window's mid-sleep would put an unmeasured point in
       // the clock trend.

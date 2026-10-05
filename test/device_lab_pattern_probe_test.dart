@@ -1,22 +1,22 @@
-// 8W/8Y: the pattern probe. The 20:40 lab log showed one buzz command is felt
+// The pattern probe. The 20:40 lab log showed one buzz command is felt
 // as ONE "bzz-bzz" however it is written, and that the band swallows a command
 // written while it still plays. The probe tries ways of getting a COUNT of
 // buzzes out of it: four waveforms x four ways of sending (separate commands
 // paced by time, separate commands paced by the band's own "ended" event, one
 // command with its loop count raised, one command listing the waveform N
-// times) x counts 2 and 3. 8Y made it play on demand: the wearer presses Play
+// times) x counts 2 and 3. It plays on demand: the wearer presses Play
 // for the test on screen, as often as they like. It is pure Dart with injected
 // effects, so this file runs it on a virtual clock against fake band events.
 //
 // Pinned here: the catalogue (32 tests, how they cycle), what each way of
-// sending writes and when (8Y added a fifth way, "delayed", to measure how
+// sending writes and when (a fifth way, "delayed", measures how
 // long a silence is felt as), how a play ends (the band's 100 or 4 s), the
 // cool-down before the next play, that only LIVE band events count (the 22:29
 // log delivered dozens of old 60/100 events late, and the 22:36 burst released
-// event-paced commands early), the rolling limit (8AB: at most 30 commands in
-// any 2 minutes, replacing the 8Y cap of 160 per session, which refused every
+// event-paced commands early), the rolling limit (at most 30 commands in
+// any 2 minutes, which replaced a cap of 160 per session that refused every
 // play from test 20 on with nothing on screen saying so), the refusals, the
-// per-play log line and (8Z) the measured span of a play.
+// per-play log line and the measured span of a play.
 
 import 'dart:async';
 
@@ -157,7 +157,7 @@ void main() {
       ]);
     });
 
-    test('five ways of sending: the four of 8W, then delayed (8Y)', () {
+    test('five ways of sending: the four basic ways, then delayed', () {
       expect(BuzzStyle.values, [
         BuzzStyle.paced,
         BuzzStyle.eventPaced,
@@ -718,7 +718,7 @@ void main() {
     });
   });
 
-  group('the rolling limit: 30 commands in any 2 minutes (8AB)', () {
+  group('the rolling limit: 30 commands in any 2 minutes', () {
     // One command per play, the band's 100 1.5 s after the write: a play takes
     // 1.5 s on the virtual clock, so 30 plays write at 0, 1.5, ... 43.5 s and
     // end at 45 s. The oldest write leaves the window at 120 s.
@@ -887,7 +887,7 @@ void main() {
     });
   });
 
-  group('the refusal reason and the rest time (8AB)', () {
+  group('the refusal reason and the rest time', () {
     test('a fresh probe has no refusal and no rest', () {
       final g = _Rig(tests: [_repeat()]);
       expect(g.probe.lastRefusal, isNull);
@@ -1173,7 +1173,7 @@ void main() {
     });
   });
 
-  group('the measured span (8Z)', () {
+  group('the measured span', () {
     // The tempo fit needs how long a test took to play: the phone's receive
     // time of the first live 60 to that of the last live 100, in ms.
     test('one command: the first 60 to the 100', () async {
@@ -1241,7 +1241,7 @@ void main() {
     });
   });
 
-  group('the lead (8Z)', () {
+  group('the lead', () {
     // The Bluetooth delay: the first live 60 (phone receive time) minus the
     // moment the first write landed, in ms.
     test('the first live 60 minus the first write landing', () async {

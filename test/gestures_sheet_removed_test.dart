@@ -1,4 +1,4 @@
-// 8AI G5 (retired Oct 4): the gesture-assignment bottom sheet and its "View all
+// Retired Oct 4: the gesture-assignment bottom sheet and its "View all
 // gestures" row are gone.
 //
 // The only assignment sheet was `BandGesturesView._pickActions`, opened from a

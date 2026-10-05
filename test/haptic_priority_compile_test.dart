@@ -1,4 +1,4 @@
-// 8AF.5, spec B: the compiler with an any-loudness cell and the rhythm /
+// The compiler with an any-loudness cell and the rhythm /
 // dynamics priority, and the player's notes fallback that uses it.
 //
 // Targets are pattern codes on the WHOOP MG profile. The scenarios are derived
@@ -93,7 +93,7 @@ void main() {
     test('dynamics still never invents loudness: written mf stays mf when it '
         'can', () {
       // The pair's longer rendition (N3 R1 N3 at mf); its own N2 R2 N2 would
-      // shorten a written rest of 2 in the other rendition (8AI).
+      // shorten a written rest of 2 in the other rendition.
       final d = _plan('N3mf R1 N3mf', priority: HapticPriority.dynamics);
       expect(d.exact, isTrue);
       expect(d.cost, 0);
@@ -227,7 +227,7 @@ void main() {
     });
   });
 
-  group('each step knows where in the target it starts (8AF.5 E)', () {
+  group('each step knows where in the target it starts', () {
     List<int> starts(String code) =>
         [for (final st in _plan(code).steps) st.startUnit];
 

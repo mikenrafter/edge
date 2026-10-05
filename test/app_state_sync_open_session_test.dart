@@ -1,8 +1,7 @@
-// 8AJ seam 5 characterization: openSession, the connect -> drain -> after-drain
+// Sync area: openSession, the connect -> drain -> after-drain
 // derive trigger path, through AppState. What it asks the engine and in what
 // order, what flags and timers it leaves, how many times it notifies, and what
-// each failure path does to the flags (AGENTS 4.3). Must pass before and after
-// the SyncController move.
+// each failure path does to the flags (AGENTS 4.3).
 //
 // The engine is a [SyncFakeEngine]; timers are hand-fired ([SyncTimers]); the
 // derive trigger is read from the durable compute_jobs rows.
@@ -19,7 +18,7 @@ import 'package:openstrap_edge/sync/band_ownership.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_open_session.db';
+const _db = 'app_state_sync_open_session.db';
 
 List<String> _ev(SyncRig rig) => rig.engine.events;
 
@@ -192,7 +191,7 @@ void main() {
           reason: 'we still WANT a link; the supervisor retries it');
       expect(_ev(rig), ['setBackground:false', 'connect:$kRemoteId:gen4']);
       expect(rig.app.logLines, contains('Session start: could not reach the band.'));
-      // FIXED (was LATENT, AGENTS 4.3): the flag is set before the connect, so
+      // the flag is set before the connect, so
       // the exit that leaves no link must clear it, or on iOS the native
       // restore wake no-ops until a connect lands. (Reset directly: the
       // recovery arm is iOS-only, and the flag is a plain static.)
@@ -207,7 +206,7 @@ void main() {
       expect(rig.app.busy, isFalse);
       expect(BandOwnership.foregroundIntent, isFalse);
       expect(BandOwnership.owner, isNull);
-      // FIXED (was LATENT): the throw exit clears the iOS restore flag too.
+      // the throw exit clears the iOS restore flag too.
       expect(IosBleRestore.foregroundActive, isFalse);
       expect(timers.activePeriodic(kBackfillEvery), isEmpty);
       expect(rig.app.logLines, contains('Session start failed: Bad state: gatt 133'));
@@ -217,7 +216,7 @@ void main() {
         'down (link dropped, not left up with no drain) and the reconnect loop '
         'that the drop starts brings it fully up: drain, backfill timer, intent '
         'and lease', syncCase((rig, timers) async {
-      // FIXED (was LATENT): a throw after the connect used to leave the link
+      // a throw after the connect used to leave the link
       // up with the intent and lease held, no drain and no backfill timer. A
       // session is fully up or torn down. One-shot so the retry's poll works.
       rig.engine.batteryThrowsOnce = StateError('no reply');

@@ -1,4 +1,4 @@
-// 8AE sections A and B (red first): Settings is regrouped by task, the rows
+// Settings is regrouped by task, the rows
 // that used to sit on Profile moved into it (one door each), Device lab sits
 // behind dev mode, and the Gestures screen lost its two tuning controls.
 //
@@ -6,24 +6,24 @@
 //
 // Contracts these tests pin that the spec leaves open:
 //  - Row titles are the English fallbacks: "GitHub", "Reddit", "Discord",
-//    "Sponsor" (Community; first group in 8AF.7, directly above Connections
-//    since 8AI G2); "My devices", "Gestures", "Haptics" (Hardware, called
-//    "Band" until 8AI G2; the HR zone alert and its Target zone moved
-//    to Alerts in 8AF.6, see zone_alert_test.dart); "Alarm" (moved from Band to
-//    the first row of Alerts in 8AF.7), "Alerts and
+//    "Sponsor" (Community, directly above Connections);
+//    "My devices", "Gestures", "Haptics" (Hardware, formerly
+//    "Band"; the HR zone alert and its Target zone moved
+//    to Alerts, see zone_alert_test.dart); "Alarm" (moved from Band to
+//    the first row of Alerts), "Alerts and
 //    notifications" and "App notifications on the band" (Alerts); "Edit
 //    profile", "Language", "Units", "Appearance", "Expected sleep schedule",
-//    "Icon", "Cycle tracking" (You & preferences, the first group since 8AI
-//    G2; the "Steps" row is gone, phone steps live only in My devices);
-//    "Storage", "Export, backup, import", "Calculations" (P5), "Write to Apple
+//    "Icon", "Cycle tracking" (You & preferences, the first group;
+//    the "Steps" row is gone, phone steps live only in My devices);
+//    "Storage", "Export, backup, import", "Calculations", "Write to Apple
 //    Health", "Contribute my health data", "Crash reports" (Data & privacy);
 //    "AI coach", "Tasker and Shortcuts", "Check for updates", "Look barcodes up online"
-//    (Connections, moved from Data & privacy in 8AI G2);
+//    (Connections, moved from Data & privacy);
 //    "Version", "Notices and licences" (About); "Component gallery", "Live
 //    devices", "Device lab", "Developer mode" (Developer).
 //  - One title is written loosely in the spec, so either spelling passes: the
 //    Tasker row may keep "Tasker and Shortcuts" or be called "Automation".
-//  - "My devices" is a Settings > Hardware row. Since 8AF.7 there is no Profile
+//  - "My devices" is a Settings > Hardware row. There is no Profile
 //    landing screen, so every moved row has exactly one door.
 //  - The device-lab push through MoreSettingsView(onDeviceLab:) is in
 //    settings_device_lab_entry_test.dart so a missing parameter name fails
@@ -114,7 +114,7 @@ const Map<String, List<List<String>>> _rows = {
   'Data & privacy': [
     ['Storage'],
     ['Export, backup, import'],
-    ['Calculations'], // P5: the power mode (see test/p5)
+    ['Calculations'], // the power mode
     ['Write to Apple Health'],
     ['Contribute my health data'],
     ['Crash reports'],
@@ -134,7 +134,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Live devices'],
     ['Device lab'],
     ['Data Explorer'],
-    // 8AG P1: the read-only timing line for the last derive pass.
+    // The read-only timing line for the last derive pass.
     ['Last calculation'],
     ['Developer mode'],
   ],
@@ -228,7 +228,7 @@ void main() {
     });
 
     testWidgets('Reset all data is not on Settings: it lives in Your data > '
-        'Advanced (8AI.2)', (t) async {
+        'Advanced', (t) async {
       await _pump(t, _settings(dev: true));
       expect(find.text('Reset all data'), findsNothing);
       // Developer, when shown, is the last thing on the page.
@@ -271,7 +271,7 @@ void main() {
       expect(_in('Alerts', 'Units'), findsNothing);
       expect(find.text('This phone'), findsNothing);
       expect(find.text('Steps'), findsNothing,
-          reason: 'My devices is the one door (8AI G2)');
+          reason: 'My devices is the one door');
     });
 
     testWidgets('Contribute my health data is not under a Privacy group',

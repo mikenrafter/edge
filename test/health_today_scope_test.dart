@@ -1,4 +1,4 @@
-// 8AF review finding: Today combined current activity with historical wear and
+// Today combined current activity with historical wear and
 // heart rate. Today may have only interim wake features (strain, steps, wear)
 // and no derived day of its own; VitalsData.load then falls back to an earlier
 // finalized day for the heart rate range and wear, and the tab printed that

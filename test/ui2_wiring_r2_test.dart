@@ -308,7 +308,7 @@ void main() {
         (t) async {
       // "vs your 28-day average" used to print from the SECOND stored value,
       // and the first fix made it say "1-day average" and still drew the delta.
-      // 8AF: an average needs 7 prior days; below that the card says how far
+      // An average needs 7 prior days; below that the card says how far
       // along it is (health_h2_honesty_test covers the whole 1..7 range).
       await pump(
           t,

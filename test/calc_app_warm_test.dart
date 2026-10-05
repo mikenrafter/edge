@@ -1,7 +1,7 @@
-// 8AG-perf P3-B: AppState wires the warmer into `_afterDrain`.
+// AppState wires the warmer into `_afterDrain`.
 //
-// ASSUMED API (lib/state/app_state.dart; the warmer itself is pinned in
-// p3_warmer_test.dart, lib/state/artifact_warmer.dart):
+// API (lib/state/app_state.dart; the warmer itself is pinned in
+// calc_warmer_test.dart, lib/state/artifact_warmer.dart):
 //
 //   @visibleForTesting ArtifactSource? debugArtifactSource;
 //       The source the warmer uses. Read when a pass finishes and the warmer
@@ -21,9 +21,6 @@
 //   NOT started: computed == 0; the `changedOnly` "nothing changed" early
 //   return; a pass that failed (the hook threw). `dispose()` disposes the
 //   warmer.
-//
-// Failure mode today: `debugArtifactSource` does not exist (NoSuchMethodError
-// through `dynamic`, and the file needs ArtifactSource to compile at all).
 
 import 'dart:async';
 
@@ -38,7 +35,7 @@ import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'support/last_result_db.dart';
 import 'support/scripted_artifact_source.dart';
 
-const _db = 'openstrap_p3_app_warm_test.db';
+const _db = 'openstrap_app_warm_test.db';
 
 Future<void> _until(bool Function() ok,
     {Duration within = const Duration(seconds: 4)}) async {

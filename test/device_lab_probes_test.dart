@@ -1,4 +1,4 @@
-// 8V: the Device lab's hardware probes, run against the virtual WHOOP MG on a
+// The Device lab's hardware probes, run against the virtual WHOOP MG on a
 // virtual clock: the buzz-spacing probe (replies, band events, felt counts) and
 // the cued ECG touch probe (cues, packets, analysis), plus their safety bounds.
 

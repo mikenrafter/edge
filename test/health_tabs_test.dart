@@ -1,4 +1,4 @@
-// 8AF A + D, RED. Health is organised by question, one time scope per tab:
+// Health is organised by question, one time scope per tab:
 // Last night · Today · Trends · Labs.
 //
 // What these pin:
@@ -630,7 +630,7 @@ void main() {
       });
     }
 
-    // Phase 1 sent this row to MetricDetail('resting_hr'): the night's lowest
+    // An earlier version sent this row to MetricDetail('resting_hr'): the night's lowest
     // sustained rate, which says nothing about a low-to-high range for the day.
     // It opens that day's own heart rate view instead.
     testWidgets('the heart rate range opens the day\'s heart rate, not the resting-rate screen',

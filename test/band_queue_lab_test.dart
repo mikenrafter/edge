@@ -1,4 +1,4 @@
-// 8AF: lab mode of the band queue. While the Device lab is open, its probes
+// Lab mode of the band queue. While the Device lab is open, its probes
 // (and the touch counter's buzzes) are lab jobs that go first, and every real
 // alert is held, not dropped: its start deadline is suspended, the
 // dispatcher's delivery deadline does not run, and both start over when the lab

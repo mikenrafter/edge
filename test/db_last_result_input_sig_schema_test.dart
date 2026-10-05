@@ -1,4 +1,4 @@
-// 8AG-perf P3-A: `last_result.input_sig`, schema 59 -> 60.
+// `last_result.input_sig`, schema 59 -> 60.
 //
 // ASSUMED (lib/data/db.dart):
 //
@@ -6,7 +6,7 @@
 //   * `last_result` gains ONE column, `input_sig TEXT` (nullable, no default):
 //     the signature of the inputs the stored result was computed from. Rows
 //     written before the column existed read NULL, and a NULL signature is
-//     never "fresh" (see p3_artifact_cache_test.dart).
+//     never "fresh" (see calc_artifact_cache_test.dart).
 //   * Added through the one sanctioned helper (`_addColumnIfMissing`) from
 //     BOTH the new `if (oldV < 60)` rung AND `_repairOpenSchema` (invariant
 //     11: additive, idempotent, cheap, same-version merged builds self-heal).
@@ -16,8 +16,6 @@
 //     and every existing row survive.
 //
 // Real sqflite_ffi, same idiom as test/db_last_result_schema_test.dart.
-// Failure mode today: schemaVersion is 59 and `last_result` has no
-// `input_sig` column.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -101,7 +99,7 @@ void main() {
 
   test('upgrade from v59 reaches 60, adds input_sig, keeps the old row with a '
       'NULL signature', () async {
-    const name = 'openstrap_p3_schema_59.db';
+    const name = 'openstrap_input_sig_schema_59.db';
     created.add(name);
     await _seedV59(name);
     final db = await _openThroughLocalDb(name);
@@ -119,7 +117,7 @@ void main() {
   test('the rung is idempotent: running 59 -> 60 a second time over an '
       'already-60 shape neither throws nor loses the column or the rows',
       () async {
-    const name = 'openstrap_p3_schema_rerun.db';
+    const name = 'openstrap_input_sig_schema_rerun.db';
     created.add(name);
     await _seedV59(name);
     var db = await _openThroughLocalDb(name);
@@ -139,7 +137,7 @@ void main() {
 
   test('self-heal: a v60 database whose last_result lost the column gets it '
       'back on open', () async {
-    const name = 'openstrap_p3_schema_heal.db';
+    const name = 'openstrap_input_sig_schema_heal.db';
     created.add(name);
     await _seedV59(name);
     var db = await _openThroughLocalDb(name);
@@ -157,7 +155,7 @@ void main() {
   });
 
   test('a fresh install has the column too (onCreate path)', () async {
-    const name = 'openstrap_p3_schema_fresh.db';
+    const name = 'openstrap_input_sig_schema_fresh.db';
     created.add(name);
     await databaseFactory.deleteDatabase(await _path(name));
     final db = await _openThroughLocalDb(name);
@@ -166,9 +164,9 @@ void main() {
     expect(await db.query('last_result'), isEmpty);
   });
 
-  test('regression guard (passes today): an insert that omits input_sig is '
+  test('regression guard: an insert that omits input_sig is '
       'still legal (old writers)', () async {
-    const name = 'openstrap_p3_schema_legacy_write.db';
+    const name = 'openstrap_input_sig_schema_legacy_write.db';
     created.add(name);
     await databaseFactory.deleteDatabase(await _path(name));
     final db = await _openThroughLocalDb(name);

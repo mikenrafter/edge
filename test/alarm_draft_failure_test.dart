@@ -1,4 +1,4 @@
-// Phase 7 failure injection — the alarm screen's Save path.
+// Failure injection — the alarm screen's Save path.
 // A database that throws or hangs, a band that never answers, a disconnect in
 // the middle, a duplicate Save and a process restart. Each ends in a failure
 // the header can show with Retry still available, `sending` cleared, and at

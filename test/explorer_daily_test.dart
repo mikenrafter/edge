@@ -1,8 +1,8 @@
-// 8AH, RED. The daily scale: one shared day grid, gaps that stay gaps,
+// The daily scale: one shared day grid, gaps that stay gaps,
 // per-metric normalisation, z against a baseline only where one exists, the
 // scrub readout with REAL values, ranges, loading and failure.
 //
-// ASSUMED API: test/support/explorer_harness.dart, explorer_series_test.dart.
+// API: test/support/explorer_harness.dart, explorer_series_test.dart.
 //   * A daily metric is read with repo.getChart(specOf(key).chartKey) and
 //     aligned by LOCAL day label onto ExploreWindow (default range d30).
 //   * The painter's lines are the NORMALISED runs (ExploreLine.normalised);

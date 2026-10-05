@@ -1,5 +1,4 @@
-// 8E — Settings has an expected-sleep-schedule editor that works with no data.
-// See test/phase8/CONTRACTS.md §8E.
+// Settings has an expected-sleep-schedule editor that works with no data.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

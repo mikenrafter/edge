@@ -1,4 +1,4 @@
-// 8AI G4 (red): the encoder honours rests.
+// The encoder honours rests.
 //
 // Spec: "when compiling a pattern to band buzzes, a rest the user wrote is kept
 // as a rest. If the band's minimum spacing forces it, lengthen the rest rather

@@ -1,16 +1,16 @@
-// 8AI G1 (red first): the last good result of each slow read SURVIVES A
+// The last good result of each slow read SURVIVES A
 // RESTART and renders under the "As of" label on the next open.
 //
 // "Restart" here is `LastResultCache.instance.clearMemory()`: the in-memory
-// LRU (all the 8AG-P1b cache was) is gone, the sqflite file is not.
+// LRU (all the cache used to be) is gone, the sqflite file is not.
 //
-// ASSUMED API: LastResultCache.clearMemory(), flush() and the table as in
+// API: LastResultCache.clearMemory(), flush() and the table as in
 // g1_last_result_cache_persist_test.dart. What each screen persists is the
 // REPOSITORY-level JSON it builds from, not a widget object:
 //   MetricDetail      key 'journal_insights|90d'      getJournalInsights('90d')
 //   Wellness findings key 'journal_insights|90d'      getJournalInsights('90d')
 //                     + 'weekday_effect'              + getWeekdayEffect()
-// (8AG-perf P3: one key per artifact, shared by the screens that read it; was
+// (One key per artifact, shared by the screens that read it; was
 // 'metric_insights|<metric>', 'wellness_insights' and 'wellness_weekday'.)
 //   Beats             key 'beats|<day>...'            the corrected-RR read
 //                                                     (nn, rawBeats, cleanFraction)
@@ -50,7 +50,7 @@ import 'support/artifact_fixtures.dart';
 import 'support/scripted_artifact_source.dart';
 import 'support/last_result_db.dart';
 
-const _db = 'openstrap_fix8ai_g1_persisted.db';
+const _db = 'openstrap_screens_persisted_result.db';
 final _label = find.byKey(const ValueKey('as-of-label'));
 final _spinner = find.byType(CircularProgressIndicator);
 
@@ -97,8 +97,8 @@ void main() {
 
   // ── MetricDetail ──────────────────────────────────────────────────────────
   group('MetricDetail journal insights', () {
-    const first = {'insights': [], 'fix8ai_marker': 'first-run'};
-    const second = {'insights': [], 'fix8ai_marker': 'second-run'};
+    const first = {'insights': [], 'marker': 'first-run'};
+    const second = {'insights': [], 'marker': 'second-run'};
 
     testWidgets('persisted, shown after a restart under As-of, then replaced',
         (t) async {
@@ -170,7 +170,7 @@ void main() {
       _tall(t);
       await _fresh(t);
       final repo = WellnessRepo()
-        ..insights = const {'numeric_insights': [], 'fix8ai_marker': 'w-first'};
+        ..insights = const {'numeric_insights': [], 'marker': 'w-first'};
       final app = _app(repo);
       await t.pumpWidget(perfApp(app, const JournalFindings()));
       await settle(t);
@@ -188,7 +188,7 @@ void main() {
       expect(_label, findsWidgets);
 
       repo.insightsGate!
-          .complete(const {'numeric_insights': [], 'fix8ai_marker': 'w-second'});
+          .complete(const {'numeric_insights': [], 'marker': 'w-second'});
       await settle(t);
       expect(_label, findsNothing);
       await t.runAsync(() => LastResultCache.instance.flush());
@@ -227,13 +227,13 @@ void main() {
       await _fresh(t);
       // The corrected-RR read is the warmer's: the screen asks for it, and what
       // the warmer stores is what persists.
-      final key = p3Beats(todayId);
+      final key = artBeats(todayId);
       Map<String, dynamic> night(double base, int mod) => {
             'nn': [for (var i = 0; i < 400; i++) base + (i % mod)],
             'raw_beats': 412,
             'clean_fraction': .97,
           };
-      final repo = P3BeatsRepo()..sigs[key] = 'B1';
+      final repo = ArtifactBeatsRepo()..sigs[key] = 'B1';
       final src = FakeArtifactSource()
         ..sigs[key] = 'B1'
         ..results[key] = night(913.25, 11);
@@ -275,8 +275,8 @@ void main() {
     testWidgets('an error is never persisted', (t) async {
       _tall(t);
       await _fresh(t);
-      final key = p3Beats(todayId);
-      final repo = P3BeatsRepo()..sigs[key] = 'B1';
+      final key = artBeats(todayId);
+      final repo = ArtifactBeatsRepo()..sigs[key] = 'B1';
       final src = FakeArtifactSource()
         ..sigs[key] = 'B1'
         ..computeThrows.add(key);

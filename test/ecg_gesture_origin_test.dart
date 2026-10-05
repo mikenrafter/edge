@@ -1,4 +1,4 @@
-// 8N: raw ECG recorded for a tap gesture later arrives through ordinary
+// Raw ECG recorded for a tap gesture later arrives through ordinary
 // history sync. It must be labelled (`ecg_raw_packet.origin = 'gesture'`) and
 // never read as an ECG reading. Real LocalDb over sqflite_ffi.
 //

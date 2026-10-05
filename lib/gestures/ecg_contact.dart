@@ -1,4 +1,4 @@
-// Contact from 50 ms blocks (8X). Pure; no Flutter.
+// Contact from 50 ms blocks. Pure; no Flutter.
 //
 // The sensor reads exactly zero with no finger, but a finger can also read a
 // flat non-zero value, and a lone zero crossing inside a touch is not a lift.

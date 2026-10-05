@@ -19,7 +19,7 @@
 //  • Receipt debounce — an unset or wild RTC makes every tap share one identity,
 //    so a persistent claim would lock the feature out forever. For those the only
 //    guard is a 2 s in-memory window on RECEIPT time.
-// ECG on double tap (8I/8L, WHOOP MG only): while GestureSettings.ecgOnDoubleTap
+// ECG on double tap (WHOOP MG only): while GestureSettings.ecgOnDoubleTap
 // is on, a live double tap starts the ECG capture through [onEcgTap] instead of
 // its actions, which are suspended (the Device lab owns that mode). It takes the
 // same once-ever claim / receipt debounce as an action, under `...:ecg`.
@@ -28,7 +28,7 @@
 // final count (2-5) then run through the path above, claimed per tap identity
 // and count (`gesture:<identity>:t<count>:<action>`; a count of 2 keeps the plain
 // key). An abandoned count runs nothing; its outcomes carry `taps`, which keeps
-// the 8H tap-ack quiet (the counter's own buzzes are the acknowledgement).
+// the tap-ack quiet (the counter's own buzzes are the acknowledgement).
 //
 // Two ways to count the taps beyond the firmware's double tap, chosen per band
 // (GestureSettings.tapMethodFor): MORE DOUBLE TAPS, the default, which any band
@@ -92,8 +92,8 @@ class GestureOutcome {
   /// Non-null iff [status] is [GestureStatus.failed].
   final Object? error;
 
-  /// The touch counter's final count when this ran because of a counted tap
-  /// (8L); null for an immediate double tap.
+  /// The touch counter's final count when this ran because of a counted tap;
+  /// null for an immediate double tap.
   final int? taps;
 }
 
@@ -109,14 +109,14 @@ class GestureDispatcher {
   final GestureHandler? onWorkoutToggle;
   final GestureHandler? onLogWater;
 
-  /// 8I: true only on a positively identified WHOOP MG.
+  /// True only on a positively identified WHOOP MG.
   final bool Function()? ecgSupported;
 
-  /// 8I: start the ECG capture for this live double tap. A throw gives the
+  /// Start the ECG capture for this live double tap. A throw gives the
   /// claim back so a retry can run.
   final GestureHandler? onEcgTap;
 
-  /// 8L: count the taps of this live double tap (the ECG touch counter) and
+  /// Count the taps of this live double tap (the ECG touch counter) and
   /// complete with the final count, or null when the gesture was abandoned (a
   /// link drop or stall). Throws when it could not start; the claim is then
   /// given back and the double-tap actions run at once, as without counting.
@@ -126,7 +126,7 @@ class GestureDispatcher {
   /// method is unavailable and a double tap always runs at once.
   final DoubleTapRepeatSession? repeatSession;
 
-  /// 8AK: a tap's mapped action FAILED (threw, answered false or timed out):
+  /// A tap's mapped action FAILED (threw, answered false or timed out):
   /// called once per tap with the kind of route it took (`ecg` after counting
   /// touches, `doubleTap` otherwise) and a reason that names the action. Never
   /// for an action that ran, a stale skip or a duplicate. The ECG route's own
@@ -202,7 +202,7 @@ class GestureDispatcher {
     }
     final mg = ecgSupported?.call() == true;
     final method = settings.tapMethodFor(ecgSupported: mg);
-    // 8L: with a 3-5 tap mapping, a live double tap is counted and its actions
+    // With a 3-5 tap mapping, a live double tap is counted and its actions
     // wait for the final count. A late tap is never counted (the touch would be
     // for a tap from the past) and runs as before.
     if (e.isLive && settings.maxMappedTaps > 2) {
@@ -306,7 +306,7 @@ class GestureDispatcher {
     }
   }
 
-  /// 8L: count the taps, then run the final count's actions. An abandoned
+  /// Count the taps, then run the final count's actions. An abandoned
   /// gesture runs nothing and keeps its claim (a re-send is the same tap). One
   /// that could not START never counted anything, so it gives the claim back
   /// and the tap does what it always did.
@@ -390,7 +390,7 @@ class GestureDispatcher {
     log?.call('[gesture] counted $count double taps');
     if (lab) return const [];
     // The session played the start, one follow-up per added tap and the
-    // confirm, a count of 2 included (8AK), so every count is marked: the 8H
+    // confirm, a count of 2 included, so every count is marked: the tap
     // ack stays out and the wearer feels the confirm once.
     return _runActions(e, settings.actionsForTaps(count), taps: count);
   }

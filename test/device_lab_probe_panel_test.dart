@@ -1,4 +1,4 @@
-// 8V: the Device lab's "Hardware probes" panel over a runner with fake band
+// The Device lab's "Hardware probes" panel over a runner with fake band
 // effects (fake async time: the probe's waits are pumped, not slept).
 
 import 'package:flutter/material.dart';

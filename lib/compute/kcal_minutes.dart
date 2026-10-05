@@ -1,4 +1,4 @@
-// The intraday calorie series (8AG-perf P3-C): `Calories.minuteEnergy` over one
+// The intraday calorie series: `Calories.minuteEnergy` over one
 // day, in the shape the `kcal_minutes|<day>` artifact stores.
 //
 // It is `dailyEnergy`'s computation, one record per minute, fed EXACTLY the way

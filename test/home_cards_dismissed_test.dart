@@ -1,5 +1,5 @@
-// 8AM (red): the Home community cards (Join Discord / Support OpenStrap) and
-// the 8AK gesture-failure card must stay dismissed through a burst of
+// The Home community cards (Join Discord / Support OpenStrap) and
+// the gesture-failure card must stay dismissed through a burst of
 // insightsRevision bumps, a reload in flight, and a Home list that changes
 // shape while a big recalculation publishes day by day.
 //

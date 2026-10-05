@@ -1,6 +1,5 @@
-// P4a: imports keep their current semantics but never clobber a LOCAL finalized
-// row of the same version. Assumed API: see support.dart (nothing new is
-// referenced; compiles today, fails on behaviour).
+// Imports keep their current semantics but never clobber a LOCAL finalized
+// row of the same version.
 //
 // Two surfaces:
 //   * the three writers that go through `putDayResult` (whoop / cloud / demo),
@@ -79,7 +78,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Database db;
 
-  setUp(() async => db = await freshDb('openstrap_p4a_import_guard_test.db'));
+  setUp(() async => db = await freshDb('openstrap_import_guard_test.db'));
   tearDownAll(dropDb);
 
   final importers = <String, Future<void> Function(String)>{
@@ -138,7 +137,7 @@ void main() {
 
   group('backup restore (importFromDbFile)', () {
     late Directory tmp;
-    setUp(() => tmp = Directory.systemTemp.createTempSync('openstrap_p4a_'));
+    setUp(() => tmp = Directory.systemTemp.createTempSync('openstrap_frozen_import_'));
     tearDown(() {
       try {
         tmp.deleteSync(recursive: true);

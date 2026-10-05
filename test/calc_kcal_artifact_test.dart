@@ -1,7 +1,7 @@
-// 8AG-perf P3-C: the intraday calorie artifact `kcal_minutes|<day>`, end to end.
+// The intraday calorie artifact `kcal_minutes|<day>`, end to end.
 //
-// ASSUMED API (see p3_kcal_builder_test.dart for the pure builder and the exact
-// payload; support/p3_support.dart for the repository surface):
+// API (see calc_kcal_builder_test.dart for the pure builder and the exact
+// payload; support/artifact_fixtures.dart for the repository surface):
 //
 //   * The per-day derive (the offloaded second half of `_derivePreparedDay`,
 //     i.e. inside the isolate) calls `buildKcalMinutes` with the SAME inputs it
@@ -12,7 +12,7 @@
 //         payload_json  jsonEncode(payload)
 //         input_sig     == LocalRepositoryImpl.artifactSignature(key) for the
 //                       state the derive saw (one shared signature function, so
-//                       a day derived by P3 reads FRESH to the warmer).
+//                       a freshly derived day reads FRESH to the warmer).
 //     A day whose builder answers null (no raw, no anchors) stores NO row. A
 //     re-derive of the same inputs REPLACES the row with an equal payload.
 //     No existing stored output changes (calories, calories_total, ...).
@@ -25,7 +25,7 @@
 //       (`source` is stored but not served.) Gaps stay null.
 //
 //   * LocalRepositoryImpl.computeArtifact('kcal_minutes|<day>') (what the warmer
-//     calls for a recent day derived before P3): rebuilds the payload from the
+//     calls for a recent day derived before the artifact existed): rebuilds the payload from the
 //     decoded substrate with the stored day's own sleep window / resting HR and
 //     the repository profile, and returns EXACTLY what the derive stored (same
 //     payload). Null when the day has no decoded raw (past retention) or the
@@ -35,9 +35,6 @@
 //     and a changelog note next to `kAnalyticsPin` says edge now persists
 //     Calories.minuteEnergy (the exact phrase 'edge now persists
 //     Calories.minuteEnergy', so it can be found).
-//
-// Failure mode today: no `kcal_minutes|...` row is ever written and the reader
-// does not exist.
 
 import 'dart:convert';
 
@@ -125,13 +122,13 @@ double _sumActive(Map<String, dynamic> p) => [
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  final repo = p3Repo();
-  final profile = Profile.fromMap(p3ProfileMap);
+  final repo = artRepo();
+  final profile = Profile.fromMap(artProfileMap);
 
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'openstrap_p3_kcal_artifact_test.db';
+    LocalDb.dbName = 'openstrap_kcal_artifact_test.db';
     await databaseFactory.deleteDatabase(
         p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName));
     await LocalDb.instance;
@@ -140,7 +137,7 @@ void main() {
     await DerivationEngine().runDays(profile, {_day}, force: true);
     // A profile with no height: the day derives, calories abstain.
     await DerivationEngine().runDays(
-        Profile.fromMap({...p3ProfileMap}..remove('height_cm')), {_noHeightDay},
+        Profile.fromMap({...artProfileMap}..remove('height_cm')), {_noHeightDay},
         force: true);
   });
   tearDownAll(() async {
@@ -158,7 +155,7 @@ void main() {
 
   test('the derive stored kcal_minutes|<day>, and the minutes fold back to '
       'the day\'s stored active calories', () async {
-    final row = await _row(p3Kcal(_day));
+    final row = await _row(artKcal(_day));
     expect(row, isNotNull, reason: 'a day derived from here on gets the curve');
     final payload = _payload(row!);
     expect(payload['v'], 1);
@@ -172,7 +169,7 @@ void main() {
 
   test('gaps in the data are null minutes, never interpolated; covered_minutes '
       'counts the rest', () async {
-    final payload = _payload((await _row(p3Kcal(_day)))!);
+    final payload = _payload((await _row(artKcal(_day)))!);
     final ms = _minutes(payload);
     final from = _sec(10, 10, 0);
     // Minute 5 and 22 and 39 ... of the window are missing from the seed.
@@ -191,10 +188,10 @@ void main() {
 
   test('the stored row carries the signature the repository computes now',
       () async {
-    expect(await _row(p3Kcal(_day)), isNotNull);
-    final sig = await p3Sig(repo, p3Kcal(_day));
+    expect(await _row(artKcal(_day)), isNotNull);
+    final sig = await artSig(repo, artKcal(_day));
     expect(sig, isNotNull);
-    expect(await _sigOf(p3Kcal(_day)), sig,
+    expect(await _sigOf(artKcal(_day)), sig,
         reason: 'one signature function: the warmer then finds it fresh');
   });
 
@@ -203,7 +200,7 @@ void main() {
         () async {
       final curve = await (repo as dynamic).getDayCalorieCurve(_day) as Map?;
       expect(curve, isNotNull);
-      final row = (await _row(p3Kcal(_day)))!;
+      final row = (await _row(artKcal(_day)))!;
       final stored = _payload(row);
       expect(curve!['computed_at'], row['computed_at']);
       expect(curve['basal_kcal_per_min'], stored['basal_kcal_per_min']);
@@ -225,34 +222,34 @@ void main() {
     });
   });
 
-  test('regression guard (passes today): a profile that cannot price calories '
+  test('regression guard: a profile that cannot price calories '
       '(no height) stores no curve although the day derived', () async {
     expect(await LocalDb.dayResult(_noHeightDay), isNotNull);
     expect((await _scalars(_noHeightDay))['calories'], isNull);
-    expect(await _row(p3Kcal(_noHeightDay)), isNull);
+    expect(await _row(artKcal(_noHeightDay)), isNull);
   });
 
   test('re-deriving the same inputs is idempotent: one row, equal payload',
       () async {
-    final before = _payload((await _row(p3Kcal(_day)))!);
-    await p3Tick();
+    final before = _payload((await _row(artKcal(_day)))!);
+    await artTick();
     await DerivationEngine().runDays(profile, {_day}, force: true);
-    expect(await _rowCount(p3Kcal(_day)), 1);
-    final after = _payload((await _row(p3Kcal(_day)))!);
+    expect(await _rowCount(artKcal(_day)), 1);
+    final after = _payload((await _row(artKcal(_day)))!);
     expect(jsonEncode(after), jsonEncode(before));
   });
 
   test('the warmer\'s producer rebuilds the SAME payload from the substrate '
       'for a day derived without the artifact', () async {
-    final stored = _payload((await _row(p3Kcal(_day)))!);
+    final stored = _payload((await _row(artKcal(_day)))!);
     final db = await LocalDb.instance;
     await db.delete('last_result',
-        where: 'key = ?', whereArgs: [p3Kcal(_day)]); // "derived before P3"
-    final built = await p3Compute(repo, p3Kcal(_day));
+        where: 'key = ?', whereArgs: [artKcal(_day)]); // "derived before the artifact existed"
+    final built = await artCompute(repo, artKcal(_day));
     expect(built, isNotNull);
     expect(jsonEncode(built), jsonEncode(stored));
-    expect(await p3Compute(p3Repo(profile: {...p3ProfileMap}..remove('height_cm')),
-            p3Kcal(_day)),
+    expect(await artCompute(artRepo(profile: {...artProfileMap}..remove('height_cm')),
+            artKcal(_day)),
         isNull,
         reason: 'the producer abstains exactly where the builder does');
   });
@@ -261,18 +258,18 @@ void main() {
       'absent, never fabricated)', () async {
     final db = await LocalDb.instance;
     await db.delete('last_result',
-        where: 'key = ?', whereArgs: [p3Kcal(_day)]);
+        where: 'key = ?', whereArgs: [artKcal(_day)]);
     await db.delete('decoded_onehz',
         where: 'rec_ts >= ? AND rec_ts < ?',
         whereArgs: [_sec(10, 0, 0), _sec(11, 0, 0)]);
-    expect(await p3Compute(repo, p3Kcal(_day)), isNull);
-    expect(await p3Sig(repo, p3Kcal(_day)), isNull);
+    expect(await artCompute(repo, artKcal(_day)), isNull);
+    expect(await artSig(repo, artKcal(_day)), isNull);
     expect(await (repo as dynamic).getDayCalorieCurve(_day), isNull);
-    expect(await _row(p3Kcal(_day)), isNull);
+    expect(await _row(artKcal(_day)), isNull);
   });
 
   group('no output change', () {
-    test('P3 itself bumps nothing: 101 is the incremental repin\'s bump '
+    test('the artifact itself bumps nothing: 101 is the incremental repin\'s bump '
         '(lombScargle first-sample shift), not this artifact\'s', () {
       expect(kAlgoVersion, 101);
     });

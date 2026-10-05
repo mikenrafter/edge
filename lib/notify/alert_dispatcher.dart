@@ -78,8 +78,8 @@ class AlertDispatcher {
   final AlertDeliveryLedger ledger;
   final Duration transportTimeout;
 
-  /// How long a band delivery may wait in the band queue before it starts
-  /// (8AC). Added to every band deadline, so the transport still has its own
+  /// How long a band delivery may wait in the band queue before it starts.
+  /// Added to every band deadline, so the transport still has its own
   /// time once the job gets its turn.
   final Duration bandQueueWait;
 

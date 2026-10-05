@@ -1,4 +1,4 @@
-// 8AI.3 (red): the cue the wearer ASSIGNED is the cue that plays.
+// The cue the wearer ASSIGNED is the cue that plays.
 //
 // User report: the confirm cue was assigned a "__" pattern and the band played
 // a different one. Two causes:
@@ -80,7 +80,7 @@ void main() {
         () {
       final gestures =
           kHapticSlotSections.firstWhere((s) => s.id == 'gestures');
-      // 8AK added "Gesture failed" as the fourth cue.
+      // "Gesture failed" is the fourth cue.
       expect([for (final s in gestures.slots) s.key], [
         kGestureStartKey,
         kGestureFollowUpKey,
@@ -181,7 +181,7 @@ void main() {
   });
 
   group('wiring (source guards)', () {
-    // The cue loading moved to the gesture controller (8AJ seam 3); the ack
+    // The cue loading lives in the gesture controller; the ack
     // path in AppState._onLiveEvent calls it.
     final src = File('lib/state/gesture_controller.dart').readAsStringSync();
     final appSrc = File('lib/state/app_state.dart').readAsStringSync();

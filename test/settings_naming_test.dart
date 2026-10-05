@@ -1,8 +1,7 @@
-// 8AE D — one name per feature. The phone-notification relay is "App
+// One name per feature. The phone-notification relay is "App
 // notifications on the band" wherever its title shows; the battery alerts
 // group is "Band battery"; the Alarm screen has no Haptics group (the alarm
-// buzz is the band's own) and says so once, in Wake. RED until renamed.
-// See test/phase8/CONTRACTS.md §8AE.
+// buzz is the band's own) and says so once, in Wake.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';

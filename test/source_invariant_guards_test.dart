@@ -1,4 +1,4 @@
-// Phase 7 audit — source guards for the rules the new code must keep:
+// Source guards for the rules the new code must keep:
 // local day labels, no 86400 s days, one notification emitter, one band-buzz
 // path, and flags that touch no network. Structural tests: they read lib/.
 
@@ -150,7 +150,7 @@ void main() {
       final offenders = <String>[];
       for (final f in dartFilesIn('lib')) {
         // lib/haptics/ble_haptics_port.dart is the thin adapter that hands the
-        // engine to HapticsService (8AE.5); the service reaches it only through
+        // engine to HapticsService; the service reaches it only through
         // the BandHapticsPort, from inside a queued delivery.
         if (f.path.endsWith('lib/ble/ble_engine.dart') ||
             f.path.endsWith('lib/haptics/ble_haptics_port.dart') ||

@@ -1,4 +1,4 @@
-// 8AF.6 section A (red first): the fastest-phrase selection on a device
+// The fastest-phrase selection on a device
 // profile. The gesture built-ins (start, follow-up, confirm) are seeded from
 // it, so these tests pin the picks against the measured table: when the
 // vocabulary changes, the pick changes deliberately and this file says so.

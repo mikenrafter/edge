@@ -1,4 +1,4 @@
-// Advanced notes editor (8AD): write a haptic pattern as notes and rests.
+// Advanced notes editor: write a haptic pattern as notes and rests.
 //
 // The entry model is the pattern probe's: a wheel of entries, a Note/Rest
 // toggle that alternates after every tap and can be overridden, the four
@@ -6,14 +6,14 @@
 // that stick until changed, and Delete. There is one rendition, no tests, no
 // metronome and no limit pill. The tempo is the band profile's unit.
 //
-// Two modes (8AI, remembered in Prefs.hapticsEditorMode): Follow rhythm, the
+// Two modes (remembered in Prefs.hapticsEditorMode): Follow rhythm, the
 // default, hides the dynamics bar and writes every new note as a `*` note
 // (length only); Allow dynamics shows the bar and writes new notes at the sticky
 // dynamic. Switching never rewrites an entry, it only governs the next ones and
 // what is shown.
 //
 // Under the wheel the editor says what the band plays for the notes as they
-// are now (the 8AC wording, recomputed on every edit). Play sends exactly what is on the page to the band.
+// are now (the same wording, recomputed on every edit). Play sends exactly what is on the page to the band.
 // "Start from taps" fills the notes from a tapped rhythm. Save asks for a name
 // when the pattern is new, bakes the plan and hands the result to [onSave]; the
 // caller closes the page once the pattern is stored, and a failed save leaves

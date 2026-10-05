@@ -1,11 +1,10 @@
-// 8AJ seam 3: every AppState member in the gesture area is still there with
+// Gesture area: every AppState member in the gesture area is still there with
 // its original type, and the shared collaborators the gesture machinery is
 // built on keep the identity and behaviour the controller will be handed. The
 // annotations are compile-time checks of the public surface. There is no
 // @visibleForTesting member in this area: the sessions, the dispatcher, the cue
 // helpers and the failure recorder are private, so the tests in this folder
 // drive them through a real engine event (see support/gesture_harness.dart).
-// Passes before and after the GestureController move.
 //
 // Public AppState members in scope today:
 //   gestureSettings  final GestureSettings          (screens: gestures.dart, device_lab.dart)
@@ -28,7 +27,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_gesture_harness.dart';
 
-const _db = 'split8aj_seam3_delegation.db';
+const _db = 'app_state_gesture_delegation.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -1,10 +1,10 @@
-// 8AF.6 C: the gesture response vocabulary on a WHOOP MG, driven through the
+// The gesture response vocabulary on a WHOOP MG, driven through the
 // virtual MG band and the real HapticsService (as test/haptics/
 // haptics_service_test.dart and haptic_play_start_test.dart wire it).
 //
-// Spec C: start() is gesture.start (today's pair), followUp() is
+// start() is gesture.start (today's pair), followUp() is
 // gesture.followUp (one fastest single, buzz14), and the final "action done"
-// ack is gesture.confirm (buzz47). Since 8AI.3 each is its own queue job and a
+// ack is gesture.confirm (buzz47). Each is its own queue job and a
 // gesture is the additive sequence start, follow-up per increment, confirm
 // (test/gestures_cue_sequence_test.dart pins the sequence). A user-customised
 // built-in is what plays. gen4 (no profile) plays one plain pulse per cue.

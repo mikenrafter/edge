@@ -1,4 +1,4 @@
-// 8AI G4 (red): the built-in presets and where the slot defaults point.
+// The built-in presets and where the slot defaults point.
 //
 // Spec: new built-in presets One pulse, Two pulses, Three pulses, Four pulses,
 // Five pulses, One long pulse, Two long pulses, Three long pulses, SOS
@@ -13,7 +13,7 @@
 //     spec name is one of the ten names above (so no preset key is assumed).
 //   * `builtInDefault('alert.<ruleId>')` / `builtInDefault('gesture.start')`
 //     keep meaning "the default pattern of that slot" (the slot key scheme
-//     8AF.6 already uses). For an alert slot the default is now a PRESET: its
+//     already in use). For an alert slot the default is now a PRESET: its
 //     spec name is one of the ten names (today it is a per-rule name such as
 //     "Health alert"). The three gesture cues keep their own built-ins (the
 //     start pair, the follow-up single, the confirm), not presets.

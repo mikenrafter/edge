@@ -1,4 +1,4 @@
-// 8AF.6 addendum F.2 (red first): there is no "extended" mode any more. The
+// There is no "extended" mode any more. The
 // full vocabulary, unstable phrases and gaps included, is the only mode, and
 // stable parts stay preferred through a small cost per unstable one.
 //

@@ -1,9 +1,9 @@
-// 8AG-perf P3-B: the artifact warmer. After a derive pass that computed days,
+// The artifact warmer. After a derive pass that computed days,
 // ONE bounded serial warmer recomputes the artifacts whose signature changed and
 // stores them in `last_result` (the rows the screens read), so the next open
 // finds them fresh.
 //
-// ASSUMED API (new file lib/state/artifact_warmer.dart):
+// API (new file lib/state/artifact_warmer.dart):
 //
 //   abstract class ArtifactSource {
 //     /// The artifact keys that may need warming after a pass that changed
@@ -52,8 +52,6 @@
 //   * A compute that throws is logged (the message names the key), stores
 //     NOTHING (never cache an error; an older entry stays), does not stop the
 //     other keys and is not retried within the pass.
-//
-// Failure mode today: the library does not exist (the file fails to load).
 
 import 'dart:async';
 import 'dart:convert';
@@ -68,7 +66,7 @@ import 'package:openstrap_edge/ui2/last_result_cache.dart';
 import 'support/last_result_db.dart';
 import 'support/scripted_artifact_source.dart';
 
-const _db = 'openstrap_p3_warmer_test.db';
+const _db = 'openstrap_warmer_test.db';
 
 Future<Map<String, Object?>?> _row(String key) async {
   final db = await LocalDb.instance;

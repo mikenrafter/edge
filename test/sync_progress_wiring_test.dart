@@ -1,5 +1,5 @@
-// 8M — the sync panel's progress plumbing, driven through AppState with the
-// split8aj sync harness. The ACK ordering itself is pinned by ble_safe_trim_test
+// The sync panel's progress plumbing, driven through AppState with the
+// sync harness. The ACK ordering itself is pinned by ble_safe_trim_test
 // and ack_commit_sync_full_test; these pin that the progress plumbing stays
 // AFTER the commit and can never throw into the drain.
 //

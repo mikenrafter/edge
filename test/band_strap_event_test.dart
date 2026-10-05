@@ -1,5 +1,5 @@
 // StrapEvent — the value object that replaces the positional
-// `EventSink(int eventId, int tsEpoch, String hex)` callback (Phase 5A, step 1).
+// `EventSink(int eventId, int tsEpoch, String hex)` callback.
 //
 // (The roadmap calls it `BandEvent`; that name is already taken by the sealed
 // adapter-event class in lib/ble/adapters/adapter.dart, so the contract uses

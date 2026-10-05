@@ -1,6 +1,6 @@
-// 8O/6B-UI — the Wake settings are live: Natural Wake window, Gradual Wake window
+// The Wake settings are live: Natural Wake window, Gradual Wake window
 // / pattern / cadence, the exact timeline, and the upgrade explanation. Rows
-// that do not apply are present and dimmed, never hidden (8K). Everything here
+// that do not apply are present and dimmed, never hidden. Everything here
 // edits the draft; nothing reaches the DB or the band until Save.
 
 import 'package:flutter/material.dart';

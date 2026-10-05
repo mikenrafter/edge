@@ -1,4 +1,4 @@
-// Shared fixtures for the 8AG-perf P1/P1b tests.
+// Shared fixtures for the as-of recalc tests.
 //
 // This file references NO new symbol on purpose: it must compile before any
 // implementation exists, so the screen tests that import it fail for the

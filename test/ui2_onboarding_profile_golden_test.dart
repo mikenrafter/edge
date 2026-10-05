@@ -125,7 +125,7 @@ Map<String, Widget> _cases() => {
           schedule: _alarmSchedule,
           onTest: () async {},
           onCancelAlarm: () async {}),
-      // The Wake section (8O): Gradual on, Natural dimmed with its reason.
+      // The Wake section: Gradual on, Natural dimmed with its reason.
       'alarm_wake_no_sleep_schedule': AlarmScreenView(
           connected: true,
           now: _alarmNow,

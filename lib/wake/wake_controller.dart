@@ -1,5 +1,5 @@
 // wake_controller.dart — the view-model for the Natural Wake / Gradual Wake
-// settings. THE UI PHASE BINDS TO THIS FILE; AppState owns one instance as
+// settings. SCREENS BIND TO THIS FILE; AppState owns one instance as
 // `app.wake` (a ChangeNotifier — listen to it, or read it through Provider).
 //
 // Reading (all synchronous, after the first `await wake.reload()`; weekday is

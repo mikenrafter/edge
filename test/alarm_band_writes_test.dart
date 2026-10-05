@@ -1,4 +1,4 @@
-// 8O — the band-write budget of a Save, counted at the engine seam. Uses the
+// The band-write budget of a Save, counted at the engine seam. Uses the
 // REAL arm logic (armNextScheduledOccurrence + armReportOf) over a counting
 // fake band, so a regression that arms per row, or writes Natural/Gradual to
 // the band, shows up as a number.

@@ -1,15 +1,14 @@
-// 8AJ seam 3 characterization: the ECG start path of a gesture
+// Gesture area: the ECG start path of a gesture
 // (AppState._beginEcgForTap), through AppState with an ECG controller that
 // records how it is asked to begin and a transport that logs PREPARE / START /
 // CLEANUP into the same ordered trace as the band's haptic writes.
 //
 // Pinned: begin() is called with persist: false (a gesture never leaves an ECG
 // reading behind, invariant 14) and PREPARE always carries the raw-save member
-// (the ECG method has one path, 8AN's Fast mode is retired); the start cue is the first
+// (the ECG method has one path, the Fast mode is retired); the start cue is the first
 // thing the band gets, PREPARE and START then run back to back with no haptic
 // write between them; a capture the gesture did not start is left alone; an
 // abandoned gesture buzzes the failure cue and keeps one failure record.
-// Passes before and after the GestureController move.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
@@ -18,7 +17,7 @@ import 'package:openstrap_edge/gestures/gesture_failures.dart';
 
 import 'support/app_state_gesture_harness.dart';
 
-const _db = 'split8aj_seam3_ecg_start.db';
+const _db = 'app_state_gesture_ecg_start.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

@@ -1,4 +1,4 @@
-// 8AE.5 P3: each migrated screen asks the Capabilities it is given and nothing
+// Each migrated screen asks the Capabilities it is given and nothing
 // else. These pump the real screens over an AppState that has NO band, then
 // hand them a Capabilities built directly: if a screen still derived its own
 // gate from AppState, Prefs, or the platform, the Capabilities would not win.

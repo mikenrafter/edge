@@ -1,8 +1,8 @@
-// 8AH, RED. The Explorer remembers the last picks and range, the way the
+// The Explorer remembers the last picks and range, the way the
 // Haptics / Gestures tabs remember theirs (Prefs, a `ui.explore_*` key,
 // restored in initState with no flash of the default).
 //
-// ASSUMED API: support.dart.
+// API: support.dart.
 //   kExploreMetricsPref  'ui.explore_metrics'   daily picks, 'hrv,resting_hr'
 //   kExploreIntradayPref 'ui.explore_intraday'  day picks, 'hr,hrv'
 //   kExploreRangePref    'ui.explore_range'     'd7' | 'd30' | 'm6' | 'y1' |

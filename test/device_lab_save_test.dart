@@ -1,6 +1,6 @@
-// 8AL (red): the Device lab's "Copy all logs" becomes "Save lab log file".
+// The Device lab's "Copy all logs" becomes "Save lab log file".
 //
-// ASSUMED API (see log_file_test.dart for lib/util/log_file.dart):
+// API (see log_file_test.dart for lib/util/log_file.dart):
 //   * `DeviceLabView({..., LogFileSaver? saveLog})` in
 //     lib/ui2/profile/device_lab.dart; null means the real `saveLogFile`.
 //   * The bottom button reads "Save lab log file" (the key `lab-copy-all` may

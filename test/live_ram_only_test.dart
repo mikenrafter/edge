@@ -1,4 +1,4 @@
-// 8AI G6 / AGENTS.md §3.14: live high-rate streams (0x28 / 0x2B / 0x33) are
+// AGENTS.md §3.14: live high-rate streams (0x28 / 0x2B / 0x33) are
 // RAM only. Starting the feed, receiving a flood of frames and stopping it
 // must not write a single row anywhere.
 //

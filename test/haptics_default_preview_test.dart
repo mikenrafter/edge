@@ -1,4 +1,4 @@
-// 8AF.6 F.1: default rhythms are previewable.
+// Default rhythms are previewable.
 //
 // In the pattern picker the "Default" row (the rule's built-in pattern) shows
 // its notes code and a plan summary, and has a Play button (key

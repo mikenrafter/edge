@@ -232,7 +232,7 @@ void main() {
       testWidgets('recovery paints its cards — $where', (t) async {
         await _openRecovery(t, dark: dark, scale: scale, repo: _Repo());
 
-        // 8AF: Recovery is one link into Health > Last night. The readiness
+        // Recovery is one link into Health > Last night. The readiness
         // drivers and the sleep need it used to rebuild live in Health now.
         expect(find.text('Last night in Health'), findsOneWidget);
         expect(find.text('What raised and lowered your readiness'), findsNothing);
@@ -286,8 +286,8 @@ void main() {
           ),
         );
 
-        // Recovery reads none of those leaves any more (8AF moved the drivers
-        // and the sleep need to Health), so hostile ones cannot cost it
+        // Recovery reads none of those leaves any more (the drivers
+        // and the sleep need moved to Health), so hostile ones cannot cost it
         // anything: the link is still here and the page still paints.
         expect(find.text('Last night in Health'), findsOneWidget);
         expect(find.text('No sleep need yet'), findsNothing);

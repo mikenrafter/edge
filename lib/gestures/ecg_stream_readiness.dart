@@ -22,7 +22,7 @@
 //  * arrive no more than [pairWindow] apart.
 // One packet is never enough and the same packet twice is not flow.
 //
-// NOISY START (8AK). The band opens a stream with packets that carry no
+// NOISY START. The band opens a stream with packets that carry no
 // samples at all (the 2026-10-04 lab log: two of them, then a short 49-sample
 // one), which have no sample clock to be contiguous with. A packet with no
 // samples is still evidence of flow when it arrives in step with the wall

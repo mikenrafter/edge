@@ -1,9 +1,8 @@
-// 8AJ seam 4 characterization: the GPS route recorder a workout owns. Which
+// Workout area: the GPS route recorder a workout owns. Which
 // types start one, what a permission refusal looks like, the retry, the live
 // distance, the zone colouring (a callback into the workout's current HR),
 // the points persisted, and what stop / delete / dispose do to it. The
-// location plugin is a channel pair answered by PlatformSpies. Must pass
-// before and after the WorkoutController move.
+// location plugin is a channel pair answered by PlatformSpies.
 
 import 'dart:async';
 
@@ -15,7 +14,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_route.db';
+const _db = 'app_state_workout_route.db';
 const _denied = 0;
 const _deniedForever = 1;
 

@@ -1,4 +1,4 @@
-// ECG trace replay (8V): run EcgTapSession over recorded packets, off the band.
+// ECG trace replay: run EcgTapSession over recorded packets, off the band.
 //
 // A trace is the Device lab's "ECG packets" export (lib/gestures/lab_log.dart,
 // `labPacketFormat`): one `r17v1` line per live R17 packet with the phone's
@@ -78,7 +78,7 @@ class Trace {
 
   /// Read a fixture file. A RECONSTRUCTED fixture (the 18:17 one: its log gave
   /// only where each packet had signal, so its samples are a constant 120
-  /// there and 0 elsewhere) must be loaded with [reconstructed]: since 8X
+  /// there and 0 elsewhere) must be loaded with [reconstructed]: since
   /// contact is a signal that MOVES, a constant plateau is no contact, so each
   /// run of signal samples becomes a +120/-120 alternation (the same samples
   /// are non-zero, the packets keep their shape). A real Device lab export

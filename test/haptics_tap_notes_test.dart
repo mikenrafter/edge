@@ -1,4 +1,4 @@
-// 8AC — taps -> notes -> commands (spec E).
+// Taps -> notes -> commands.
 //
 // A BuzzSequence is press starts, hold durations and release gaps in ms. The
 // transcriber's grid is one sixteenth = 125 ms; a hold becomes the nearest

@@ -1,4 +1,4 @@
-// 8AF B (red): Wellness > Recovery stops being a second readiness/sleep hub and
+// Wellness > Recovery stops being a second readiness/sleep hub and
 // becomes one LINK row, "Last night in Health". Wellness-only content (Mind,
 // Habits, Medication, Cycle) stays. What the row asks Health for is pinned in
 // health_h2_tab_request_test.dart, which is the only file that needs the new

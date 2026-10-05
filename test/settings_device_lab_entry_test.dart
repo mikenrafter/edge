@@ -1,4 +1,4 @@
-// 8AE B: Settings > Developer > Device lab (dev mode only) is the lab's
+// Settings > Developer > Device lab (dev mode only) is the lab's
 // entrance. The view is pure, so the push is a callback, like onGallery.
 //
 // Contract pinned here: MoreSettingsView gets `VoidCallback? onDeviceLab`

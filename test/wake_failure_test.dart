@@ -1,4 +1,4 @@
-// Phase 7 failure injection — the wake orchestrator.
+// Failure injection — the wake orchestrator.
 // BLE disconnect, a haptic that never answers, a duplicate tick, a skewed or
 // jumping clock, a corrupt observation, a failing database, a process restart
 // and a lost permission. The invariant throughout: the native alarm at T stays

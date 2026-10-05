@@ -1,4 +1,4 @@
-// 8AC — delivery on a WHOOP 5.0 MG band (spec G, app_state). Since 8AE.5 the
+// Delivery on a WHOOP 5.0 MG band (app_state). The
 // delivery helper lives in HapticsService (haptics_service_test.dart drives it
 // against a fake and a virtual band); this file keeps the seam's own tests and
 // the guards on which AppState call sites hand their delivery to the service.
@@ -482,7 +482,7 @@ void main() {
     });
   });
 
-  // 8AE.5: the delivery helper, the queue, the ledger and the ended signal
+  // The delivery helper, the queue, the ledger and the ended signal
   // moved from AppState into HapticsService (lib/haptics/haptics_service.dart).
   // What those guards pinned inside the helper is now a behaviour test in
   // haptics_service_test.dart; what stays here is which AppState call sites
@@ -623,7 +623,7 @@ void main() {
       final last = plan.steps.last.phrase;
       expect(bandSequenceSettle(_twoHolds, _mg),
           Duration(milliseconds: last.unitsMax * _mg.unitMs + 1500));
-      // The per-tap path holds the band through one buzz's playback (8AF).
+      // The per-tap path holds the band through one buzz's playback.
       expect(bandSequenceSettle(_twoHolds, null), kBandBuzzPlayback);
     });
 
@@ -643,7 +643,7 @@ void main() {
     final src = File('lib/state/app_state.dart').readAsStringSync();
     final code = codeOnly(src);
     final svc = codeOnly(File('lib/haptics/haptics_service.dart').readAsStringSync());
-    // The gesture cues live in the gesture controller (8AJ seam 3).
+    // The gesture cues live in the gesture controller.
     final gestures = File('lib/state/gesture_controller.dart').readAsStringSync();
 
     test('AppState builds one service, which owns the one queue and ledger',
@@ -668,7 +668,7 @@ void main() {
 
     test('the paths no test above reaches run inside a queue job', () {
       // The ECG touch counter and its failure buzz.
-      // 8AF.6: the count buzz is the gesture cues', whose delivery is a queue
+      // The count buzz is the gesture cues', whose delivery is a queue
       // job (compiled: haptics.deliver; no profile: haptics.runJob).
       expect(bodyOf(gestures, 'Future<bool> _ecgTapBuzz('),
           contains('cues.followUp'));
@@ -725,7 +725,7 @@ void main() {
       expect(offenders, isEmpty, reason: offenders.join('\n'));
     });
 
-    // 8AD: both rows open the pattern picker, which hands the profile on to
+    // Both rows open the pattern picker, which hands the profile on to
     // the tap sheet and the notes editor.
     test('both pattern editors are given the band\'s profile', () {
       for (final f in [
@@ -737,7 +737,7 @@ void main() {
         expect(at, greaterThanOrEqualTo(0), reason: f);
         final call = text.substring(at, text.indexOf(');', at));
         expect(call, contains('profile:'), reason: f);
-        // The generation-to-profile mapping lives in Capabilities (8AE.5 P3);
+        // The generation-to-profile mapping lives in Capabilities;
         // its behaviour is pinned in test/capabilities_test.dart.
         expect(call, contains('caps.hapticProfile'), reason: f);
       }

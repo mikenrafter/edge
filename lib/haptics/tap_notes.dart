@@ -1,7 +1,7 @@
-// 8AC: a tapped rhythm as notes. Each press becomes a note whose length is the
+// A tapped rhythm as notes. Each press becomes a note whose length is the
 // allowed length nearest its hold (a quick tap is a sixteenth), and each
 // release gap becomes rests. Taps carry no pressure, so the notes are "any
-// loudness" (`*`, 8AF.6): length is all a tap says. Pure Dart.
+// loudness" (`*`): length is all a tap says. Pure Dart.
 
 import '../gestures/pattern_transcript.dart';
 import '../notify/buzz_sequence.dart';

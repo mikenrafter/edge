@@ -1,4 +1,4 @@
-// A DoubleTapRepeatSession rig for the 8AK red tests (the plain double-tap
+// A DoubleTapRepeatSession rig for the double-tap tests (the plain double-tap
 // route): every cue and every step logged, a small virtual band behind the
 // cues. Test-only. Build it INSIDE fakeAsync (it reads the virtual clock).
 //

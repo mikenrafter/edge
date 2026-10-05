@@ -1,7 +1,6 @@
-// 8AJ seam 5 characterization: "Delete everything" (ResetGate / AppState's
+// Sync area: "Delete everything" (ResetGate / AppState's
 // _resetting) quiescing the ingest paths, and what the foreground side of the
-// headless exclusion (BandOwnership, AGENTS 3.12) does. Through AppState. Must
-// pass before and after the SyncController move.
+// headless exclusion (BandOwnership, AGENTS 3.12) does. Through AppState.
 //
 // resetAllData itself needs the whole plugin stack (preferences, notifications,
 // widget, telemetry, keychain), so its ordering stays source-pinned in
@@ -26,7 +25,7 @@ import 'package:openstrap_edge/sync/reset_gate.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_reset.db';
+const _db = 'app_state_sync_reset.db';
 
 StrapEvent _event(int id) => StrapEvent(
       eventId: id,
@@ -164,7 +163,7 @@ void main() {
     test('AppState neither takes nor consults HeadlessSyncGate: a held gate '
         'does not stop a foreground session', syncCase((rig, timers) async {
       final hold = Completer<void>();
-      final running = HeadlessSyncGate.tryRun<void>('seam5_probe', () => hold.future);
+      final running = HeadlessSyncGate.tryRun<void>('reset_probe', () => hold.future);
       expect(HeadlessSyncGate.busy, isTrue);
       await rig.app.openSession();
       expect(rig.engine.count('connect'), 1);

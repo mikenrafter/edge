@@ -1,4 +1,4 @@
-// 8AF A, RED. A sub-tab index remembered from the five-tab Health (Overview,
+// A sub-tab index remembered from the five-tab Health (Overview,
 // Explore, Trends, Vitals, Labs) has to land on the right one of the four-tab
 // Health (Last night, Today, Trends, Labs).
 //

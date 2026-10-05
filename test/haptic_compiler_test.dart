@@ -1,4 +1,4 @@
-// 8AC — the notes -> device commands compiler (spec D).
+// The notes -> device commands compiler.
 //
 // Targets are written as pattern codes ("N4ff R6 N4f"); the compiler picks
 // WHOOP MG commands and the write delays between them so the felt pattern
@@ -6,7 +6,7 @@
 // here derives its expectation from the profile table or from the spec's
 // worked examples; none pins a tie-break the spec does not state.
 //
-// 8AI: a rest the author wrote is kept, and never shortened in either rendition
+// A rest the author wrote is kept, and never shortened in either rendition
 // (see test/haptics_encoder_rests_test.dart). Where a phrase's rests vary
 // (the pair feels R2 or R1), it serves a target only if its shortest rest
 // reaches the written one, so the examples below that used to take the pair, or
@@ -409,7 +409,7 @@ void main() {
     });
 
     test('a heavy penalty never makes one command beat a written rest', () {
-      // Before 8AI one approximate command won here and dropped the rest.
+      // An approximate command used to win here and drop the rest.
       final plan = compile(_c('N4ff R6 N4f'), _mg, commandPenalty: 100)!;
       expect(plan.steps, hasLength(2));
       expect(plan.exact, isTrue);

@@ -1,4 +1,4 @@
-// 8AI G6: "Start live feed" / "Stop" for the connected band — what goes on the
+// "Start live feed" / "Stop" for the connected band — what goes on the
 // wire, per family, and that nothing is left running.
 //
 // WHY THIS IS NEEDED. On gen5 an ordinary foreground connection owns no live

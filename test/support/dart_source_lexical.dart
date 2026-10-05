@@ -1,4 +1,4 @@
-// Lexical helpers for the phase 8 source guards. Not a parser: just enough to
+// Lexical helpers for the source guards. Not a parser: just enough to
 // make parentheses and brackets in Dart source mean code, not prose.
 
 import 'dart:io';

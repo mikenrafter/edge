@@ -1,10 +1,9 @@
-// 8AJ seam 4 characterization: the cold-start reconcile of a session row left
+// Workout area: the cold-start reconcile of a session row left
 // `status='live'` by a killed run. A recent one is RESUMED (the only "resume"
 // in this area); a stale or surplus one is finalized with a fabricated end
 // stamp. What it arms, holds and notifies is pinned here; the cases the older
 // regression file already covers (a race with a fresh start, a 6 h stale row
-// never exported, tally restore) are not repeated. Must pass before and after
-// the WorkoutController move.
+// never exported, tally restore) are not repeated.
 
 import 'dart:convert';
 
@@ -14,7 +13,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_reconcile.db';
+const _db = 'app_state_workout_reconcile.db';
 
 Future<void> _live(String id, {required int ageSec, String type = 'strength', int? endTs}) =>
     LocalDb.putSession({

@@ -1,4 +1,4 @@
-// The live-workout seam (8AJ seam 4), moved out of AppState with no behaviour
+// The live-workout seam, moved out of AppState with no behaviour
 // change. It owns the active workout and its lifecycle: start / stop / delete,
 // the 1 Hz tick that bills heart rate into the session's tallies, the 30 s
 // tally snapshot and the cold-start reconcile that resumes or finalizes an
@@ -26,7 +26,7 @@
 // AppState.dispose cancels the tick timer through [dispose] and nothing else:
 // it does not finalize a live workout, release the display hold, end the Live
 // Activity or stop the route recorder. That is today's behaviour, pinned by the
-// seam 4 tests, and is tracked as a follow-up rather than changed in a move.
+// workout controller tests, and is tracked as a follow-up rather than changed in a move.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;

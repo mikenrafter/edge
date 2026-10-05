@@ -1,4 +1,4 @@
-// 8AK D (red): the failure buzz becomes a named, assignable cue, "Gesture
+// The failure buzz becomes a named, assignable cue, "Gesture
 // failed".
 //
 // USER: "the failure buzz becomes a named, assignable cue 'Gesture failed' in

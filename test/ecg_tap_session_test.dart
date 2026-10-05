@@ -1,9 +1,9 @@
-// The glue between the live ECG stream and EcgTapCounter (8L). The counter's
+// The glue between the live ECG stream and EcgTapCounter. The counter's
 // timing is pinned in test/ecg_tap_counter_test.dart; this pins what the
 // session adds: the stream must be really flowing and the sensor settled before
 // the first window opens, sample times from R17 packets (strap time = the
 // NEWEST sample), contact from first to last signal in a packet unless extra
-// sensitive, one follow-up buzz per count increment and a confirm (8AI.3), the
+// sensitive, one follow-up buzz per count increment and a confirm, the
 // step-by-step trace, and the latch discipline (every exit resets every flag,
 // so a failed or abandoned gesture never swallows the next tap).
 //
@@ -59,7 +59,7 @@ LabradorR17 _packet(
   sampleCount: n,
   samples: Int16List.fromList([
     for (var i = 0; i < n; i++)
-      // A moving trace: 8X contact is movement, not a non-zero level.
+      // A moving trace: contact is movement, not a non-zero level.
       i >= contactFrom && (contactTo == null || i < contactTo)
           ? (i.isEven ? 120 : -120)
           : 0,
@@ -548,7 +548,7 @@ void main() {
     });
 
     test('off: a flat stretch inside a touch cannot restart the hold time; '
-        'on: the 8X mask sees it (a zero crossing does not count)', () async {
+        'on: the contact mask sees it (a zero crossing does not count)', () async {
       Future<List<String>> run(EcgTapThresholds th,
           {required bool flatBlock}) async {
         final r = _Rig(max: 3, th: th);

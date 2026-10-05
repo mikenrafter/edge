@@ -1,4 +1,4 @@
-// 8AI G1 (red first): the `last_result` table, schema 58 -> 59.
+// The `last_result` table, schema 58 -> 59.
 //
 // ASSUMED (lib/data/db.dart):
 //   LocalDb.schemaVersion == 59
@@ -12,14 +12,12 @@
 //     self-heals);
 //   * no existing table is touched.
 //
-// 8AG-perf P3 moves this to schema 60: `last_result` gains the nullable
+// Schema 60 follows: `last_result` gains the nullable
 // `input_sig` column (see test/db_last_result_input_sig_schema_test.dart); the other columns and
 // the ladder below are unchanged, so this file now expects 60 and the extra
 // column.
 //
 // Real sqflite_ffi, same idiom as test/db_alarm_schedule_migration_test.dart.
-// Failure mode today: schemaVersion is 58 and `last_result` does not exist
-// ("no such table" / a column list that is empty).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -74,7 +72,7 @@ void main() {
 
   test('upgrade from v58 reaches 60 and creates last_result with the agreed '
       'columns', () async {
-    const name = 'openstrap_fix8ai_g1_schema_58.db';
+    const name = 'openstrap_last_result_schema_58.db';
     created.add(name);
     await _seedEmptyV58(name);
     final db = await _openThroughLocalDb(name);
@@ -96,7 +94,7 @@ void main() {
 
   test('a row survives a reopen (the rung and onOpen are idempotent)',
       () async {
-    const name = 'openstrap_fix8ai_g1_schema_reopen.db';
+    const name = 'openstrap_last_result_schema_reopen.db';
     created.add(name);
     await _seedEmptyV58(name);
     var db = await _openThroughLocalDb(name);
@@ -111,7 +109,7 @@ void main() {
 
   test('self-heal: a current-version database missing the table gets it back on open',
       () async {
-    const name = 'openstrap_fix8ai_g1_schema_heal.db';
+    const name = 'openstrap_last_result_schema_heal.db';
     created.add(name);
     await _seedEmptyV58(name);
     var db = await _openThroughLocalDb(name);
@@ -123,7 +121,7 @@ void main() {
   });
 
   test('a fresh install has the table too (onCreate path)', () async {
-    const name = 'openstrap_fix8ai_g1_schema_fresh.db';
+    const name = 'openstrap_last_result_schema_fresh.db';
     created.add(name);
     await databaseFactory.deleteDatabase(await _path(name));
     final db = await _openThroughLocalDb(name);

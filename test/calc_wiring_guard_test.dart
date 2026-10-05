@@ -1,4 +1,4 @@
-// 8AG-perf P1/P1b: wiring that is a statement about where code lives, in the
+// Wiring that is a statement about where code lives, in the
 // repo's usual source-grep style. Every check here fails today on behaviour
 // (the symbol or call is not in the file yet), not on a missing import.
 //

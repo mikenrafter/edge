@@ -1,4 +1,4 @@
-// The Home card for a gesture that failed to activate (8AK D), and the report
+// The Home card for a gesture that failed to activate, and the report
 // sheet the Settings list shares. Styled like the community nudges (a Surface,
 // a 32 pt tinted glyph, a bold title, a body line, soft buttons), but it never
 // snoozes on its own: it stays until Dismiss, and only the newest undismissed

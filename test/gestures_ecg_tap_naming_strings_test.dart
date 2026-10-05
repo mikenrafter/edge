@@ -1,4 +1,4 @@
-// 8AK C (red): the ECG counts are named "Double tap + N ECG tap(s)".
+// The ECG counts are named "Double tap + N ECG tap(s)".
 //
 // USER: count 3 = "Double tap + 1 ECG tap", 4 = "Double tap + 2 ECG taps", ...,
 // count 2 = "Double tap".

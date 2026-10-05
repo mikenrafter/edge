@@ -1,11 +1,11 @@
-// 8AI.2 G7 (red first): the Health tab's waiting sections use the inline
+// The Health tab's waiting sections use the inline
 // loading card, never a bare full-width spinner.
 //
 // USER REPORT (APK f88d230c, Health > Trends): the three trend cards, then a
 // bare CircularProgressIndicator floating under them. The sub-tab bodies that
 // wait on their own read (Today's vitals, Trends' measure counts, Labs) and the
 // first page read each returned
-// `Center(child: CircularProgressIndicator())`, the pattern 8AI G1 removed from
+// `Center(child: CircularProgressIndicator())`, the pattern removed from
 // every calculation screen but did not list health_screen.dart.
 //
 // ASSUMED: while a sub-tab's own read is pending, what shows is InlineLoading (a

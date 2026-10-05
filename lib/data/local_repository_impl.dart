@@ -3793,7 +3793,7 @@ class LocalRepositoryImpl extends LocalRepository {
     return out;
   }
 
-  // ── persisted artifacts (8AG-perf P3) ───────────────────────────────────────
+  // ── persisted artifacts ───────────────────────────────────────
   //
   // A slow screen read is an ARTIFACT: stored in `last_result` under its key
   // with the signature of the inputs it read. The screens and the warmer both go

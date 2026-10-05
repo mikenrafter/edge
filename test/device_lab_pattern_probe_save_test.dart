@@ -1,7 +1,7 @@
-// 8AL (red): the pattern probe's end screen "Copy all logs" becomes "Save probe
+// The pattern probe's end screen "Copy all logs" becomes "Save probe
 // log file".
 //
-// ASSUMED API (see log_file_test.dart for lib/util/log_file.dart):
+// API (see log_file_test.dart for lib/util/log_file.dart):
 //   * `PatternProbePage({required runner, required logText, LogFileSaver?
 //     saveLog})` and `HardwareProbePanel({..., LogFileSaver? saveLog})`, which
 //     forwards it to the page it pushes. null means the real `saveLogFile`.

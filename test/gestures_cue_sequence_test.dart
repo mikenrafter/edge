@@ -1,4 +1,4 @@
-// 8AI.3 (red): the gesture cues on the virtual MG band, as an ADDITIVE
+// The gesture cues on the virtual MG band, as an ADDITIVE
 // sequence. Each cue is its own band-queue job:
 //
 //   start()      the start cue, once, when the gesture begins
@@ -7,7 +7,7 @@
 //
 // There is no response(n) that builds start + (n - 1) follow-ups in one job.
 // Jobs are spaced by the queue's minimum gap (previous plan end +
-// minVibrationGapMs, 8AI), never dropped or merged, and played in the order
+// minVibrationGapMs), never dropped or merged, and played in the order
 // they were asked for.
 //
 // ASSUMED API (lib/haptics/gesture_cues.dart, GestureCues):

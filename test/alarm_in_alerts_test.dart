@@ -1,4 +1,4 @@
-// 8AF.7 section D (red first): the Alarm row moves from Settings > Band to
+// The Alarm row moves from Settings > Band to
 // Settings > Alerts, as the first row of that accordion. Same Settings screen,
 // same depth; it is NOT a row inside the Alerts-and-notifications screen. It
 // leaves Band entirely (one home).

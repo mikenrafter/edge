@@ -1,4 +1,4 @@
-// PATTERN PICKER (8AD) — the sheet the Buzz pattern rows in Notifications and
+// PATTERN PICKER — the sheet the Buzz pattern rows in Notifications and
 // Band notifications open before the tap sheet.
 //
 // Default clears the rule to the registry default (its built-in pattern); a

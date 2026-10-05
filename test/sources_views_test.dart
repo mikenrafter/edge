@@ -1,4 +1,4 @@
-// Phase 4 red: the pure Source catalog and Resolved data views (contracts 7
+// The pure Source catalog and Resolved data views (contracts 7
 // and 8, widget half). Inputs are the JSON shapes in sources_contract.md.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

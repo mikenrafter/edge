@@ -1,10 +1,10 @@
-# Phase 4 red-phase contracts: sources
+# Sources: data shapes the tests pin
 
-Tests live in `test/sources/`. They compile today. `sourcesContract()` /
+Tests live in `test/` (`sources_*_test.dart`). `sourcesContract()` /
 `sourcesAsync()` (in `support/sources_support.dart`) catch only a missing
 dynamically invoked member and fail naming it; they never supply policy. Every
 owner, reason, agreement, suffix and consequence string comes from production
-objects. Run: `nix develop --command edge-fhs flutter test test/sources`.
+objects. Run: `nix develop --command edge-fhs flutter test test/sources_*_test.dart`.
 
 Reuse, do not duplicate: `HealthSource`, `SourceTier`, `declaredSignals`,
 `signalWinners`, `bandLabelFor`, `LocalDb.signalPriority*`,
@@ -159,7 +159,7 @@ Inputs are the JSON shapes above.
 
 ## Source guard (integration, not runtime proof)
 
-`read_seam_guard_test.dart` checks that these files exist and that nothing under
+`sources_read_seam_guard_test.dart` checks that these files exist and that nothing under
 `lib/sources/` or `lib/ui2/sources/` imports `compute/`, `openstrap_analytics`,
 `derivation_engine`, `onehz_pipeline`, `crossday_pipeline` or `substrate.dart`:
 
@@ -173,7 +173,6 @@ The rebuild lives in `DerivationEngine`, outside those directories, by design.
 
 ## Proof views
 
-`proof_views_test.dart` renders `catalog` and `resolvedData` at 390 px width in
-light/dark at 1x/2x text scale against `test/sources/goldens/<name>.png`
-(`source_catalog_*`, `resolved_data_*`). Goldens are generated in the green
-phase (`--update-goldens`); not in `test/proof/`.
+`test/sources_structure_views_test.dart` renders `catalog` and `resolvedData`
+at phone widths in light and dark and checks their content and that nothing
+overflows. They are screens without a painter, so there are no golden pictures.

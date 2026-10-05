@@ -1,4 +1,4 @@
-// 8AI G3 (red first): an accordion's open/closed state belongs to ITS section,
+// An accordion's open/closed state belongs to ITS section,
 // never to a neighbour, whatever appears or disappears around it.
 //
 // USER REPORT: "when collapsing or expanding different accordions, sometimes it

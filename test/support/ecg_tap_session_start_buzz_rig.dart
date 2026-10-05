@@ -1,4 +1,4 @@
-// A minimal EcgTapSession rig for the 8AI G5 red tests: every effect injected,
+// A minimal EcgTapSession rig for the start-buzz tests: every effect injected,
 // every call logged in order. Test-only.
 //
 // The new `startBuzz` parameter is passed through Function.apply, so a build

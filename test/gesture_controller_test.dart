@@ -1,5 +1,5 @@
-// 8AJ seam 3: GestureController in isolation, with fake collaborators. The same
-// behaviours are pinned through AppState in the characterization tests; these
+// GestureController in isolation, with fake collaborators. The same
+// behaviours are also pinned through AppState in the other gesture tests; these
 // prove the controller stands on its own and never reaches for AppState. The
 // dispatcher's claim ledger is still the real LocalDb (it is not injectable),
 // so the tests share the temporary database the AppState tests use.
@@ -22,7 +22,7 @@ import 'package:openstrap_edge/sync/sync_policy.dart' show ClockRef;
 
 import 'support/app_state_gesture_harness.dart';
 
-const _db = 'split8aj_seam3_controller_unit.db';
+const _db = 'gesture_controller_unit.db';
 
 /// A band with no haptic profile: every cue is one plain pulse, written into
 /// [order] as `cue`, and answered with the band's "ended" event 2 ms later so

@@ -1,4 +1,4 @@
-// 8AI G4: the Alerts screen's Buzz pattern row names the pattern ("Three
+// The Alerts screen's Buzz pattern row names the pattern ("Three
 // pulses", "Your: Morning nudge"); it never says how many buzzes. A row whose
 // pattern the screen cannot name says "Custom".
 

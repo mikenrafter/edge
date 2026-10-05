@@ -1,4 +1,4 @@
-// 8AF.5 E: when does a compiled command start playing on the band? The service
+// When does a compiled command start playing on the band? The service
 // reports one HapticPlayStart per command: the band's live event 60 when it
 // comes within a second of the write, else the write time plus the default
 // Bluetooth lead. Driven against the virtual MG band like AppState wires it.

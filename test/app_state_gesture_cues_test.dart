@@ -1,9 +1,8 @@
-// 8AJ seam 3 characterization: the wearer's gesture cues. AppState reads the
+// Gesture area: the wearer's gesture cues. AppState reads the
 // stored cue patterns (_loadGestureCues) just before a cue plays, so a change
 // made on the Haptics screen takes effect at the next gesture without a
 // restart; a cue that cannot be read plays its built-in. Observed on the
-// band's own writes (the fake link), through a real double tap. Passes before
-// and after the GestureController move.
+// band's own writes (the fake link), through a real double tap.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
@@ -45,7 +44,7 @@ String _hex(List<int> b) =>
 List<String> _bodies(GestureRig rig) =>
     [for (final w in rig.writes) _hex(w.body)];
 
-const _db = 'split8aj_seam3_cues.db';
+const _db = 'app_state_gesture_cues.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -90,7 +89,7 @@ void main() {
           reason: 'nothing has re-read the store yet');
       rig.writes.clear();
 
-      rig.doubleTap(); // the 8H ack plays the confirm cue
+      rig.doubleTap(); // the tap ack plays the confirm cue
       await until(() => rig.writes.isNotEmpty);
       await settleMs(600);
       final ack = _bodies(rig);

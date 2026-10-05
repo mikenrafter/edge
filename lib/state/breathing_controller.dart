@@ -1,4 +1,4 @@
-// The guided-breathing half of the workout seam (8AJ seam 4), moved out of
+// The guided-breathing half of the workout seam, moved out of
 // AppState with no behaviour change. It owns the breathing session and the
 // quiet windows either side of it: the flags, the pattern / target / start
 // time, the last coherence result and error, the RR frame buffer the live
@@ -408,7 +408,7 @@ class BreathingController {
   }
 
   /// Cancel the recompute timer. The session itself is not ended: that is
-  /// today's AppState.dispose behaviour, pinned by the seam 4 tests and
+  /// today's AppState.dispose behaviour, pinned by the breathing controller tests and
   /// tracked as a follow-up.
   void dispose() {
     _breathingRecomputeTimer?.cancel();

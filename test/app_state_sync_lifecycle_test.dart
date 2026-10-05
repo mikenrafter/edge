@@ -1,14 +1,13 @@
-// 8AJ seam 5 characterization: the foreground / background transitions
+// Sync area: the foreground / background transitions
 // (pauseForBackground, the foreground reclaim), what each starts and stops, the
 // cold-start session (foreground and the headless background one), endSession,
-// unpair, and the 10 minute backfill timer's tick. Through AppState. Must pass
-// before and after the SyncController move.
+// unpair, and the 10 minute backfill timer's tick. Through AppState.
 //
 // Platform branches (Android Edge Tracking, the iOS restore central, the
 // scheduler's iOS-only background hold, the OS autoConnect fallback) cannot be
 // taken on the Linux host; pauseForBackground on Linux is the engine step-down,
 // the live-owner re-evaluation and nothing else. The wiring of the rest is
-// pinned by source in seam5_delegation_test.dart.
+// pinned by source in app_state_sync_delegation_test.dart.
 
 import 'dart:async';
 
@@ -21,7 +20,7 @@ import 'package:openstrap_edge/sync/paired_device.dart';
 import 'support/fake_power_source.dart';
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_lifecycle.db';
+const _db = 'app_state_sync_lifecycle.db';
 
 bool _logged(SyncRig rig, String text) =>
     rig.app.logLines.any((l) => l.contains(text));
@@ -29,7 +28,7 @@ bool _logged(SyncRig rig, String text) =>
 /// Init attaches the power source, and the real one (Balanced is the default
 /// mode) polls the OS saver on a one-minute periodic timer: the same period the
 /// supervisor counts below. These cases count the supervisor's timer, so power
-/// is scripted; the poll itself is pinned in review_fixes/job3_power_source_test.
+/// is scripted; the poll itself is pinned in calc_power_source_poll_test.dart.
 void _scriptedPower(SyncRig rig) => rig.app.debugPowerSource = FakePowerSource();
 
 /// A connected, drained foreground session.
@@ -224,7 +223,7 @@ void main() {
     }, paired: false));
 
     test('headless background, connect refused: logged, no backfill timer, '
-        'and the lease and intent are released (FIXED, was LATENT: a headless '
+        'and the lease and intent are released (a headless '
         'wake stayed blocked until a reconnect landed); the supervisor stays',
         syncCase((rig, timers) async {
       await pairedCase(rig);

@@ -1,4 +1,4 @@
-// 8AG-perf P1-C: a hidden tab does not re-read on every revision.
+// A hidden tab does not re-read on every revision.
 //
 // No NEW symbol is needed to compile this file: it pins behaviour of the
 // existing RevisionReload mixin and AppShell, so it fails on behaviour.

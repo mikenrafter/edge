@@ -1,4 +1,4 @@
-// 8AC — the heard-lines reader (spec C2): the OUTPUT side of the pattern
+// The heard-lines reader: the OUTPUT side of the pattern
 // probe. parseHeardLines turns the "Pattern probe heard N/40, ..." lines of a
 // lab log back into transcripts, so the WHOOP MG profile table can be checked
 // against what was actually written down. The real fixture is the L6 log,

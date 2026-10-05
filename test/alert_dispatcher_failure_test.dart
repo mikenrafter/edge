@@ -1,4 +1,4 @@
-// Phase 7 failure injection — AlertDispatcher and the buzz-sequence player.
+// Failure injection — AlertDispatcher and the buzz-sequence player.
 // Every case ends in a defined give-up state: no throw out of dispatch, claims
 // not leaked, and never a second buzz for the same event.
 

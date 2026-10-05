@@ -1,4 +1,4 @@
-// Mark moment is stamped with EVENT time (Phase 5A, step 4).
+// Mark moment is stamped with EVENT time.
 //
 // AppState._markMomentFromGesture used to call DateTime.now(): a tap that sat on
 // the strap for an hour (or crossed midnight on the way) was filed under the

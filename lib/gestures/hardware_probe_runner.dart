@@ -1,7 +1,7 @@
 // hardware_probe_runner.dart — runs one hardware probe at a time for the
 // Device lab and holds what the screen shows: which probe runs, the current
-// ECG cue, the buzz probe's "how many did you feel?" question (8V) and the
-// pattern probe's transcriber (8Y/8Z: the wearer plays a test, taps what they
+// ECG cue, the buzz probe's "how many did you feel?" question and the
+// pattern probe's transcriber (the wearer plays a test, taps what they
 // felt as note and rest lengths, may play it again).
 //
 // Everything a probe learns goes into the lab log as a session (so "Copy all
@@ -54,7 +54,7 @@ class HardwareProbeRunner extends ChangeNotifier {
     this.endLab,
   }) : ledger = ledger ?? BandCommandLedger();
 
-  /// Runs a probe play as a lab job in the band queue (8AF): alone on the
+  /// Runs a probe play as a lab job in the band queue: alone on the
   /// band and ahead of waiting alerts. Null: probes write at once.
   final Future<bool> Function(Future<void> Function() body)? runLab;
 
@@ -82,14 +82,14 @@ class HardwareProbeRunner extends ChangeNotifier {
   final DeviceLabLog lab;
 
   /// The band's rolling command limit (30 in 2 minutes), shared with the alert
-  /// queue (8AC): the probe's writes count in it and alert commands count
+  /// queue: the probe's writes count in it and alert commands count
   /// against the probe's limit. Kept here so closing and reopening the screen
   /// does not reset it.
   final BandCommandLedger ledger;
   final Future<bool> Function(void Function(String? status, int ms) onReply)
       sendBuzz;
 
-  /// One custom Maverick pattern (the pattern probe, 8W).
+  /// One custom Maverick pattern (the pattern probe).
   final Future<bool> Function(List<int> effects, int loop,
       void Function(String? status, int ms) onReply) sendPattern;
   final bool Function() isConnected;
@@ -297,7 +297,7 @@ class HardwareProbeRunner extends ChangeNotifier {
   void patternTest(int delta) =>
       _edit((s) => s.goToTest(s.testIndex + delta));
 
-  /// Put a transcription made from taps (8AD) into the active rendition of
+  /// Put a transcription made from taps into the active rendition of
   /// the open test, and say so in the log.
   void patternSetRendition(List<PatternEntry> entries) => _edit((s) {
         s.setActive(entries);

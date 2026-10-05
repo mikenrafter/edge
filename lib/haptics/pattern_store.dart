@@ -1,4 +1,4 @@
-// 8AD: the named pattern store.
+// The named pattern store.
 //
 // A saved pattern is a BuzzSequence with a name and a stable id. A rule that
 // picked one holds a SNAPSHOT of it with BuzzSequence.patternId set, so
@@ -49,7 +49,7 @@ class SavedHapticPattern {
   final String name;
   final BuzzSequence sequence;
 
-  /// 8AF.6: the stable key of a built-in pattern ('gesture.start',
+  /// The stable key of a built-in pattern ('gesture.start',
   /// 'alert.water' ...); null for one the user made.
   final String? systemKey;
 
@@ -136,7 +136,7 @@ class HapticPatternStore {
       }
     }
     if (!seed) return HapticPatternStore._(good);
-    // The per-alert built-ins of before the presets (8AI): one that still holds
+    // The per-alert built-ins of before the presets: one that still holds
     // its old seeded rhythm was never the wearer's choice, so the slot's preset
     // takes over; one the wearer changed stays as it is.
     good.removeWhere((p) {

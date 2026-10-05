@@ -1,5 +1,5 @@
-// log_file.dart — "Save log file" for every screen that used to copy a log
-// (8AL). A big log pasted from the clipboard locked up a second device, so a
+// log_file.dart — "Save log file" for every screen that used to copy a log.
+// A big log pasted from the clipboard locked up a second device, so a
 // log leaves the phone as a .txt handed to the platform share sheet, the way
 // the app's other exports do. Never the clipboard.
 

@@ -1,6 +1,6 @@
-// 8C — Data and Automation get pure *View widgets (like every other settings
+// Data and Automation get pure *View widgets (like every other settings
 // screen) so they can be pumped headless, and both are split into sections
-// that start expanded. See test/phase8/CONTRACTS.md §8C.
+// that start expanded.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/profile/data.dart';

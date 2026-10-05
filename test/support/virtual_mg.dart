@@ -1,4 +1,4 @@
-// A virtual WHOOP MG (8V): just enough of the band's ECG stream and haptic
+// A virtual WHOOP MG: just enough of the band's ECG stream and haptic
 // queue to try a gesture idea in a test before trying it on a wrist.
 //
 // It is a MODEL fitted to the Device lab logs of 2026-10-02 (16:53, 18:17 and
@@ -64,7 +64,7 @@ class VirtualMgEcg {
   final double zeroRate;
   final int seed;
 
-  /// 8X: added to EVERY sample, touching or not. A band with a DC level on its
+  /// Added to EVERY sample, touching or not. A band with a DC level on its
   /// electrode reads a constant non-zero value with no finger on it, which is
   /// no contact once contact means "the signal moves" (ecgContactMask).
   final int dcOffset;

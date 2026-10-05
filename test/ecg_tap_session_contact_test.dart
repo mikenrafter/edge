@@ -1,4 +1,4 @@
-// 8X — what the session does with the contact mask, and the quick start.
+// What the session does with the contact mask, and the quick start.
 //
 // A: EcgTapSession turns each R17 packet into contact with ecgContactMask (50 ms
 // blocks, a moving signal), not "the sample is non-zero". A constant non-zero

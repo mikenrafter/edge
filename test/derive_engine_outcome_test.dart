@@ -1,10 +1,10 @@
-// 8AG-perf P2-B: the engine records HOW a pass ended.
+// The engine records HOW a pass ended.
 //
 // The bug: `DerivationEngine.run` caught everything and returned 0, so the
 // scheduler could not tell "nothing to do" from "the pass blew up", and
 // deleted the job either way.
 //
-// ASSUMED API (lib/compute/derivation_engine.dart + lib/compute/derive_outcome.dart):
+// API (lib/compute/derivation_engine.dart + lib/compute/derive_outcome.dart):
 //
 //   DeriveOutcome? get lastOutcome;           // null before any run() call
 //   snapshot()['last_outcome']                // == lastOutcome?.toMap()
@@ -84,7 +84,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'openstrap_p2_engine_outcome_test.db';
+    LocalDb.dbName = 'openstrap_engine_outcome_test.db';
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
     await _seedToday();

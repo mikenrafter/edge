@@ -1,8 +1,8 @@
-// 8AJ seam 4: every AppState member in the workout / breathing area is still
+// Workout area: every AppState member in the workout / breathing area is still
 // there with its original type, the helper types other code reaches through
 // app_state.dart are still exported from it, and the collaborators the area is
 // wired to keep their shape. The annotations are compile-time checks of the
-// public surface. Passes before and after the WorkoutController move.
+// public surface.
 //
 // Public AppState members in scope today (name -> kind):
 //   activeWorkout            LiveWorkoutState?  mutable field (screens + tests assign)

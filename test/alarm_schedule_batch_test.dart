@@ -1,4 +1,4 @@
-// 8O — the whole week goes to the DB in ONE transaction (real sqflite_ffi).
+// The whole week goes to the DB in ONE transaction (real sqflite_ffi).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;

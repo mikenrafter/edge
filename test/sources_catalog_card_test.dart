@@ -1,4 +1,4 @@
-// Phase 4 red: the source catalog card model (contract 8).
+// The source catalog card model (contract 8).
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/signals.dart';

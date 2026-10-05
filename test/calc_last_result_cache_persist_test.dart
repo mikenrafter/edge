@@ -1,8 +1,8 @@
-// 8AI G1 (red first): LastResultCache is memory (LRU 32) IN FRONT OF the
+// LastResultCache is memory (LRU 32) IN FRONT OF the
 // `last_result` table, so the last good result of a slow read survives a
-// restart (the 8AG-P1b cache was memory only and was lost on every launch).
+// restart (the cache used to be memory only and was lost on every launch).
 //
-// ASSUMED API (lib/ui2/last_result_cache.dart; everything not listed is as
+// API (lib/ui2/last_result_cache.dart; everything not listed is as
 // today, test/calc_last_result_cache_test.dart keeps its meaning):
 //
 //   LastResultCache({int capacity = 32, DateTime Function()? now,
@@ -30,9 +30,6 @@
 //
 // A "restart" in these tests is a NEW LastResultCache over the same LocalDb
 // (the memory is gone, the file is not).
-//
-// Failure mode today: `read`, `flush`, `clearMemory` and the `maxRows` named
-// argument do not exist (compile errors), and the table does not exist.
 
 import 'dart:convert';
 
@@ -43,7 +40,7 @@ import 'package:openstrap_edge/ui2/last_result_cache.dart';
 
 import 'support/last_result_db.dart';
 
-const _db = 'openstrap_fix8ai_g1_cache.db';
+const _db = 'openstrap_last_result_cache_persist.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

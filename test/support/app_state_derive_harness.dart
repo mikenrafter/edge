@@ -1,6 +1,6 @@
-// Shared helpers for the 8AJ seam 1 (DeriveCoordinator) tests. Everything here
+// Shared helpers for the DeriveCoordinator tests. Everything here
 // goes through AppState's public and @visibleForTesting surface, so the same
-// file serves the characterization tests before the move and after it.
+// file serves the AppState-level tests and the coordinator's own tests.
 
 import 'dart:async';
 

@@ -1,4 +1,4 @@
-// feature_flags.dart — five independent rollout switches (phase 7).
+// feature_flags.dart — five independent rollout switches.
 //
 // Every flag is ON by default, so shipping this file changes nothing. A flag is
 // LOCAL: a compile-time default (`--dart-define=OS_FF_<NAME>=false`) that a

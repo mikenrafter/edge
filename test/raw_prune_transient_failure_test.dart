@@ -1,8 +1,8 @@
-// 8AG-perf P2-B / AGENTS.md invariant 3.9: a day whose derive FAILED
+// AGENTS.md invariant 3.9: a day whose derive FAILED
 // transiently must never look derived to the prune or to `changedOnly`.
 //
-// The pure-selector regression guard lives in p2_prune_pending_guard_test.dart
-// (it must compile and pass today). This file is the INTEGRATION layer: a real
+// The pure-selector regression guard lives in raw_prune_pending_guard_test.dart.
+// This file is the INTEGRATION layer: a real
 // heavy pass where an old day times out leaves NO recorded fingerprint and no
 // complete result for it, so the next `changedOnly` pass derives it again.
 //

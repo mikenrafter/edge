@@ -1,4 +1,4 @@
-// 8AK D (red): the dispatcher reports a failed action, so the failure record
+// The dispatcher reports a failed action, so the failure record
 // has something to store for the plain double-tap and ECG-counted routes. (The
 // ECG session's own reporter is in d_failure_hooks_session_test.dart.)
 //

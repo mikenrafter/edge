@@ -1,4 +1,4 @@
-// 8AF.7 section F (red first): "Pull down to sync", a preference.
+// "Pull down to sync", a preference.
 //
 //   key `pull_to_sync`, default ON (nobody else sees a change), in
 //   Settings > You & preferences next to Units / Appearance.

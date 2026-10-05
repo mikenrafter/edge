@@ -1,4 +1,4 @@
-// 8AF B (red): the Wellness link lands on Health > Last night.
+// The Wellness link lands on Health > Last night.
 //
 // API assumed, mirroring `WellnessScreen.tabRequest`: `HealthScreen.tabRequest`,
 // a static ValueNotifier<int> (-1 = none). The Wellness row writes 0 to it;

@@ -1,8 +1,8 @@
-// 8AG-perf P1-B: at most one insightsRevision bump per 1500 ms while a pass
+// At most one insightsRevision bump per 1500 ms while a pass
 // commits days, with a trailing flush so the LAST committed day always
 // publishes.
 //
-// ASSUMED API (lib/state/revision_coalescer.dart, new, pure Dart):
+// API (lib/state/revision_coalescer.dart, new, pure Dart):
 //
 //   class RevisionCoalescer {
 //     RevisionCoalescer({

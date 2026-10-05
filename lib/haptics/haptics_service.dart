@@ -1,4 +1,4 @@
-// 8AE.5 P1: the one owner of band haptic delivery.
+// The one owner of band haptic delivery.
 //
 // AppState used to hold the band queue, its command ledger, the band's "ended"
 // signal and the delivery helpers, which made them testable only by reading
@@ -196,7 +196,7 @@ class HapticsService {
     }
   }
 
-  // Lab mode (8AF): the Device lab's probes play alone, ahead of waiting
+  // Lab mode: the Device lab's probes play alone, ahead of waiting
   // alerts, and while the lab screen is open real alerts are held.
 
   bool get labOpen => _queue.labOpen;

@@ -1,4 +1,4 @@
-// 8AK C (red): the ECG counts are named "Double tap + N ECG tap(s)" on every
+// The ECG counts are named "Double tap + N ECG tap(s)" on every
 // screen that shows one.
 //
 // ASSUMED BEHAVIOUR (no new public symbol: every failure is an assertion):

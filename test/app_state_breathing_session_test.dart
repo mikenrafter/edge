@@ -1,13 +1,12 @@
-// 8AJ seam 4 characterization: the guided-breathing session and its quiet
+// Workout area: the guided-breathing session and its quiet
 // windows through AppState: start / stop / window transitions, the frame
 // buffer (only R-R-bearing frames, only while a session or window is open,
 // capped at 8000), the 20 s coherence recompute, the Live Activity, history,
-// and the notify counts. Must pass before and after the WorkoutController
-// move.
+// and the notify counts.
 //
 // The buffer is private; what it holds is read through what the recompute
 // hands the repo. A session shorter than 60 s is never banked (a wall-clock
-// rule, so the banked path has its own file: seam4_breathing_banked_test.dart).
+// rule, so the banked path has its own file: app_state_breathing_banked_test.dart).
 
 import 'dart:async';
 
@@ -21,7 +20,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' show BandProfile;
 import 'support/app_state_live_harness.dart';
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_breathing.db';
+const _db = 'app_state_workout_breathing.db';
 
 // Fixed strap timestamp: the builders default to the wall-clock second, so a
 // frame built twice (once to feed, once to compare) differs when the second
@@ -563,7 +562,7 @@ void main() {
           reason: 'four distinguishable cues');
     });
 
-    test('FIXED (was LATENT): on a gen5 link the four cues write four '
+    test('on a gen5 link the four cues write four '
         'different buzzes, and the paired kinds still match', () async {
       Future<String> g5(void Function(AppState) cue) =>
           bodyOf(cue, band: BandProfile.gen5);

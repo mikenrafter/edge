@@ -1,4 +1,4 @@
-// Phase 8 proof views. Synthetic fixtures; no device or personal data.
+// Proof views. Synthetic fixtures; no device or personal data.
 // Same capture rules as affected_views_test.dart: bundled fonts, committed
 // baselines under fixtures/proof_goldens/. Pictures are kept for the PAINTER
 // fixtures (1x and 2x text) and one showcase screen (1x); the other screens

@@ -1,11 +1,10 @@
-// 8AJ seam 4 characterization: the live workout's start / stop / delete
+// Workout area: the live workout's start / stop / delete
 // transitions through AppState, what each persists, releases and announces, and
-// how many times it notifies. Must pass before and after the WorkoutController
-// move.
+// how many times it notifies.
 //
 // There is no pause or resume in this area today: a workout is live or it is
 // not. (A "resume" is only the cold-start reconcile, pinned in
-// seam4_reconcile_test.dart.)
+// app_state_workout_reconcile_test.dart.)
 
 import 'dart:convert';
 
@@ -17,7 +16,7 @@ import 'package:openstrap_edge/state/prefs.dart';
 
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_lifecycle.db';
+const _db = 'app_state_workout_lifecycle.db';
 
 /// A repo that records the workout calls AppState forwards to it.
 class _WorkoutRepo extends LocalRepository {
@@ -329,7 +328,7 @@ void main() {
       });
     });
 
-    // FIXED (was LATENT). A failed stop used to leave the session live but
+    // A failed stop used to leave the session live but
     // frozen: the tick was cancelled and the derive hold released, yet the UI
     // still showed a running session and the Live Activity kept counting. And
     // on an unstamped link (the gen4 case: no strap stamp to carry) the

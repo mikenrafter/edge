@@ -446,7 +446,7 @@ Widget? screenForRoute(String route) => switch (routePath(route)) {
       kRouteWorkoutSuggestion =>
         WorkoutSuggestionScreen(focusId: routeId(route)),
       // Battery, band and sources live behind Settings > Hardware > My devices;
-      // there is no profile landing screen in between (8AF.7).
+      // there is no profile landing screen in between.
       kRouteProfile => const MoreSettings(),
       // The alarm safety notifications land where either can actually be
       // fixed — the schedule itself.

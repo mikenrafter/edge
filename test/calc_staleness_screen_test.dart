@@ -1,7 +1,7 @@
-// P4c: the staleness line on a screen (Sleep detail stands for the nine that
+// The staleness line on a screen (Sleep detail stands for the nine that
 // place AsOfLabel).
 //
-// ASSUMED API (see staleness_text_test.dart for the formatter):
+// API (see staleness_text_test.dart for the formatter):
 //
 //   LocalRepository.dayRecordingsThrough(String day) -> Future<DateTime?>
 //       (day_recordings_through_test.dart). The screen asks it for the day it
@@ -31,9 +31,6 @@
 //   * while a pass recalculates the shown day the line uses the SAME format
 //     ("Updated 08:42 · recordings through 08:36"), not the bare "As of 08:42",
 //     when the recordings-through is known; it stays "As of 08:42" when not.
-//
-// Failure mode today: the new AppState members and dayRecordingsThrough do not
-// exist (NoSuchMethodError through dynamic); with them the line is never drawn.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,7 +45,7 @@ import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'support/last_result_db.dart';
 import 'support/as_of_recalc_fakes.dart';
 
-const _db = 'p4c_staleness_screen_test.db';
+const _db = 'staleness_screen_test.db';
 final _label = find.byKey(const ValueKey('as-of-label'));
 
 class _Repo extends SleepRepo {

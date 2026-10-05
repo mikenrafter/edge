@@ -1,4 +1,4 @@
-// 8AI.2 G7 (red first): the Haptics link rows keep the page's section gap.
+// The Haptics link rows keep the page's section gap.
 //
 // USER REPORT (APK f88d230c): "The haptics link buttons are also missing
 // requisite top-margin/parent gap". The Gestures screen's `gestures-open-haptics`

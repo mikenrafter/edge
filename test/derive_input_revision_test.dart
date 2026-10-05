@@ -1,4 +1,4 @@
-// 8AG-perf P2-A: trustworthy input revisions.
+// Trustworthy input revisions.
 //
 // The bug: `LocalDb.decodedDayFingerprints` was `MAX(rec_ts):COUNT(*)` over a
 // day's decoded 1 Hz rows. It cannot see (1) a row REPLACED in place (same
@@ -6,7 +6,7 @@
 // `run(changedOnly:)` would call a day "unchanged" after the very data it
 // reads changed.
 //
-// ASSUMED API (lib/data/db.dart):
+// API (lib/data/db.dart):
 //
 //   * `LocalDb.schemaVersion == 58`.
 //   * New table `input_rev(bucket INTEGER PRIMARY KEY, rev INTEGER NOT NULL)`;
@@ -115,7 +115,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'openstrap_p2_input_rev_test.db';
+    LocalDb.dbName = 'openstrap_input_rev_test.db';
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });

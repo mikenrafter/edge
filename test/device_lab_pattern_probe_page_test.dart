@@ -1,4 +1,4 @@
-// 8Y/8Z/8AA/8AB: the pattern probe page, the transcriber the wearer taps. A
+// The pattern probe page, the transcriber the wearer taps. A
 // header with the test, Play, a metronome dot, a Finish button and the A / B
 // renditions, a wheel of note and rest entries with the cursor in the middle,
 // and a footer (dynamics row, four length buttons plus a Dot toggle, Note/Rest
@@ -8,18 +8,18 @@
 // Contracts these tests rely on that the spec leaves open:
 //  - the length buttons are keyed `pattern-len-1`, `-2`, `-4`, `-8` by their
 //    16th count (16th, eighth, quarter, half); next to them in the same row is
-//    the Dot toggle `pattern-dot` (8AB, A), whose Semantics carry the
+//    the Dot toggle `pattern-dot`, whose Semantics carry the
 //    "selected" flag while it is on. While it is on the buttons write 3, 6 and
 //    12 sixteenths (dotted eighth, quarter, half), their symbols read "dotted
 //    eighth note" and so on with 3, 6 and 12 dashes, and the 16th button does
 //    nothing (it is disabled). One tap on a length button clears the dot. The
-//    dynamics buttons (8AC: six) are `pattern-dyn-ff`, `-f`, `-mf`, `-mp`,
+//    dynamics buttons (six) are `pattern-dyn-ff`, `-f`, `-mf`, `-mp`,
 //    `-p`, `-pp`, loudest to softest. A dynamics button shows its name in a Text (bold, italic); the
 //    selected one has the semantics "selected" flag. Only that flag and the
 //    text style are tested, not how a disabled-looking button is drawn.
 //  - a note row in the wheel shows its dynamic as a Text with the same name,
 //    bold and italic; rest rows and the empty next slot show none.
-//  - `pattern-metronome` (8AB, B) is idle until Play: its Semantics label is
+//  - `pattern-metronome` is idle until Play: its Semantics label is
 //    "metronome idle" and the dot is an outline. Play starts a one-measure
 //    count-in (step 1 at the press, 16 steps of one unit) and calls
 //    runner.playPattern() at the count-in's end minus the measured lead (at
@@ -34,7 +34,7 @@
 //    13, the same colour at a third of the saturation on steps 3, 7, 11, 15
 //    and null/transparent on the even steps. The colour does not animate.
 //  - `pattern-dynamic-tempo` is a Switch, or holds one.
-//  - note/rest symbols (8Z, F): inside each length button and wheel row there
+//  - note/rest symbols: inside each length button and wheel row there
 //    is one widget keyed `pattern-symbol` (a CustomPaint at its root) with a
 //    Semantics label such as "quarter note" or "dotted quarter rest" (the row
 //    label is swallowed by the row's own Semantics, so only the buttons are
@@ -42,19 +42,19 @@
 //    hold a DecoratedBox whose BoxDecoration.color is the dash colour: beat
 //    colour ((k - 1) ~/ 4) % 4 of the dot, a third of the saturation for rests.
 //  - `pattern-kind` shows the text "Note" or "Rest".
-//  - the march (8Z, G): the playhead is the widget keyed `pattern-playhead` on
+//  - the march: the playhead is the widget keyed `pattern-playhead` on
 //    the playing wheel row; the row's Semantics label says "playing entry N".
 //    These tests sample the middle of each entry's window rather than its
 //    edges. Times are measured from the Play press on the fake clock.
-//  - the end screen (8AB, C): `pattern-finish` in the header, or the back arrow
+//  - the end screen: `pattern-finish` in the header, or the back arrow
 //    or system back, closes the session (heard lines and tempo line in the lab
 //    log) and then shows `pattern-end` with the tests transcribed ("k of 40"),
 //    the plays, the tempo line ("1 sixteenth ≈ N ms", "fitted"/"fixed") and the
-//    measured lead ("N ms"); `pattern-copy` ("Save probe log file", 8AL) hands
+//    measured lead ("N ms"); `pattern-copy` ("Save probe log file") hands
 //    logText() (called after the close) to the page's `saveLog:` as a named
 //    file and shows "Saved"; `pattern-done` or system back leaves the page.
 //    The page takes `logText:`.
-//  - refusals (8AB, D): a refused play shows a `pattern-refused` line under
+//  - refusals: a refused play shows a `pattern-refused` line under
 //    Play: "Band resting, ready in N s" counting down (runner.patternRestRemaining
 //    is a Duration?), or the probe's reason ("Not connected"). The line clears
 //    on the next successful play. The page never edits while a count-in or
@@ -154,8 +154,7 @@ HardwareProbeRunner _runner(
 
 const _tall = Size(390, 844);
 
-/// Whether test [i] is flagged unstable (8AC); read dynamically so the rest
-/// of this file compiles before the session has the flag.
+/// Whether test [i] is flagged unstable.
 bool _unstable(HardwareProbeRunner r, int i) =>
     (r.pattern as dynamic).unstable(i) as bool;
 
@@ -607,7 +606,7 @@ void main() {
     r.closePattern();
   });
 
-  // ---- 8AA: dynamics ---------------------------------------------------------
+  // ---- dynamics ---------------------------------------------------------
 
   /// Whether the dynamics button [d] is announced as selected.
   bool dynSelected(WidgetTester t, String d) => t
@@ -647,10 +646,10 @@ void main() {
     h.dispose();
   });
 
-  // ---- 8AC: f and p, and the unstable toggle ---------------------------------
+  // ---- f and p, and the unstable toggle ---------------------------------
 
   testWidgets('the dynamics row has six buttons in a row, ff, f, mf, mp, p, '
-      'pp, and they fit at 360 px (8AC)', (t) async {
+      'pp, and they fit at 360 px', (t) async {
     final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
     expect(_dyns, ['ff', 'f', 'mf', 'mp', 'p', 'pp']);
     final rects = [
@@ -677,8 +676,7 @@ void main() {
     r.closePattern();
   });
 
-  testWidgets('the footer is fully visible at 360x640 with six dynamics '
-      '(8AC)', (t) async {
+  testWidgets('the footer is fully visible at 360x640 with six dynamics', (t) async {
     final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
     final screen = Offset.zero & const Size(360, 640);
     for (final k in [
@@ -699,8 +697,7 @@ void main() {
     r.closePattern();
   });
 
-  testWidgets('f and p buttons are bold italic, select, and write notes '
-      '(8AC)', (t) async {
+  testWidgets('f and p buttons are bold italic, select, and write notes', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     for (final d in ['f', 'p']) {
@@ -731,8 +728,7 @@ void main() {
     h.dispose();
   });
 
-  testWidgets('a note row shows f and p as its dynamic, bold and italic '
-      '(8AC)', (t) async {
+  testWidgets('a note row shows f and p as its dynamic, bold and italic', (t) async {
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-dyn-f');
     await _tapKey(t, 'pattern-len-4');
@@ -755,7 +751,7 @@ void main() {
   });
 
   testWidgets('changing the note under the cursor to f or p works from the '
-      'button (8AC)', (t) async {
+      'button', (t) async {
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-len-4');
     await _tapKey(t, 'pattern-len-2');
@@ -781,8 +777,7 @@ void main() {
         matching: find.text(text),
       );
 
-  testWidgets('the Unstable toggle starts off and the chips read A and B '
-      '(8AC)', (t) async {
+  testWidgets('the Unstable toggle starts off and the chips read A and B', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     final toggle = find.byKey(const ValueKey('pattern-unstable'));
@@ -803,7 +798,7 @@ void main() {
 
   testWidgets('tapping Unstable flags the test, selects the toggle and '
       'relabels the chips "A · shortest" and "B · longest"; tapping again '
-      'undoes it (8AC)', (t) async {
+      'undoes it', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-unstable');
@@ -822,7 +817,7 @@ void main() {
   });
 
   testWidgets('Unstable is per test: the next test shows plain A and B, and '
-      'the flag is still there when the wearer comes back (8AC)', (t) async {
+      'the flag is still there when the wearer comes back', (t) async {
     final h = t.ensureSemantics();
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-unstable');
@@ -840,8 +835,7 @@ void main() {
   });
 
   testWidgets('the A and B chips still switch the rendition while Unstable '
-      'is on, and the data does not depend on which holds the shortest '
-      '(8AC)', (t) async {
+      'is on, and the data does not depend on which holds the shortest', (t) async {
     final r = await _open(t, DeviceLabLog());
     await _tapKey(t, 'pattern-unstable');
     await _tapKey(t, 'pattern-len-4');
@@ -857,7 +851,7 @@ void main() {
   });
 
   testWidgets('Unstable sits in the same header as the renditions and the '
-      'longer chip labels still fit at 360 px (8AC)', (t) async {
+      'longer chip labels still fit at 360 px', (t) async {
     final r = await _open(t, DeviceLabLog(), size: const Size(360, 640));
     await _tapKey(t, 'pattern-unstable');
     final screen = Offset.zero & const Size(360, 640);
@@ -1196,7 +1190,7 @@ void main() {
     h.dispose();
   });
 
-  // ---- 8AB B: the metronome is a count-in for Play ---------------------------
+  // ---- the metronome is a count-in for Play ---------------------------
 
   final metro = find.byKey(const ValueKey('pattern-metronome'));
 
@@ -1566,7 +1560,7 @@ void main() {
     await _finish(t, r);
   });
 
-  // ---- 8Z G: a replay marches through the recorded sequence ----------------
+  // ---- a replay marches through the recorded sequence ----------------
 
   /// Fake time in small steps, so timers, the wheel animation and the frames
   /// between them all run (a metronome keeps frames coming, so pumpAndSettle
@@ -1804,7 +1798,7 @@ void main() {
     );
   });
 
-  // ---- 8AB A: dotted notes ---------------------------------------------------
+  // ---- dotted notes ---------------------------------------------------
 
   /// Whether the widget at [key] is announced as selected. Needs semantics.
   bool selectedOf(WidgetTester t, String key) =>
@@ -1979,7 +1973,7 @@ void main() {
     r.closePattern();
   });
 
-  // ---- 8AB C: the end screen -------------------------------------------------
+  // ---- the end screen -------------------------------------------------
 
   /// The page behind a launcher button, so Done and back can pop to it.
   Future<HardwareProbeRunner> openNav(
@@ -2199,7 +2193,7 @@ void main() {
     await t.pump(const Duration(seconds: 1));
   });
 
-  // ---- 8AB D: refusals are visible --------------------------------------------
+  // ---- refusals are visible --------------------------------------------
 
   testWidgets('after 30 commands in two minutes the next play is refused: the '
       'page says the band is resting and counts down, then a play clears it', (
@@ -2273,7 +2267,7 @@ void main() {
     h.dispose();
   });
 
-  // ---- 8AB E: the limit display, blurred until tapped -------------------------
+  // ---- the limit display, blurred until tapped -------------------------
 
   final limit = find.byKey(const ValueKey('pattern-limit'));
 
@@ -2404,7 +2398,7 @@ void main() {
     await _finish(t, r);
   });
 
-  // 8AD, spec E: "Tap what you felt" fills the active rendition from taps.
+  // "Tap what you felt" fills the active rendition from taps.
   // Contracts: the button is keyed `pattern-tap-baseline` and is part of the
   // footer area (it must not push any footer control off a 360x640 screen); its
   // semantics label contains "Tap what you felt". With entries in the active
@@ -2412,10 +2406,10 @@ void main() {
   // `pattern-tap-pad` (text "Tap your pattern"; press, hold, release) takes the
   // rhythm, closes 2 s after the last release and the active rendition becomes
   // notesFromTaps(take), with the cursor on the empty slot after it. Taps carry
-  // no pressure, so the notes are `*` (8AF.6): unrated, and the page waits for
+  // no pressure, so the notes are `*`: unrated, and the page waits for
   // a dynamic per note before leaving the test.
   // The runner logs "Pattern probe: test N rendition A from taps: <code>".
-  group('8AD tap a baseline', () {
+  group('tap a baseline', () {
     const baseline = ValueKey('pattern-tap-baseline');
     const pad = ValueKey('pattern-tap-pad');
 
@@ -2598,7 +2592,7 @@ void main() {
     });
   });
 
-  // ---- 8AF.5: the probe records what is felt, never "any" ---------------------
+  // ---- the probe records what is felt, never "any" ---------------------
 
   testWidgets('the probe offers six dynamics and no * button', (t) async {
     final r = await _open(t, DeviceLabLog());

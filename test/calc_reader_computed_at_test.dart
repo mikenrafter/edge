@@ -1,4 +1,4 @@
-// 8AG-perf P1b: the reader shapes carry the computed time of the row they
+// The reader shapes carry the computed time of the row they
 // actually read (epoch ms), so "As of" never names a time that was not read.
 //
 // Through the production repository over a real database, the way the other

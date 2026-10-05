@@ -1,4 +1,4 @@
-// 8AI G6: every stream a WHOOP sends while live lands in LiveStreamBuffer
+// Every stream a WHOOP sends while live lands in LiveStreamBuffer
 // under a stable key, in the unit its label states.
 //
 // Frames travel the real engine path (support/g6_support.dart: engine

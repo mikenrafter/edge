@@ -1,4 +1,4 @@
-// 8AC: the one queue every band haptic job goes through. A band plays one
+// The one queue every band haptic job goes through. A band plays one
 // thing at a time and drops a command written while it plays, and the band's
 // haptic motor must not be driven past 30 commands in any 2 minutes. Two alerts
 // at once, a tap ack during a rule's rhythm, or the pattern probe next to a
@@ -14,10 +14,10 @@
 // transport timeout counts from the start.
 //
 // Between two jobs the band is also left the vocabulary's minimum gap after the
-// last vibration ended (8AI, [BandHapticQueue.minGap]), so a second gesture job
+// last vibration ended ([BandHapticQueue.minGap]), so a second gesture job
 // is not written the instant the first one stops. Lab jobs are not spaced.
 //
-// Lab mode (8AF): while the Device lab is open ([BandHapticQueue.beginLab]),
+// Lab mode: while the Device lab is open ([BandHapticQueue.beginLab]),
 // lab jobs (the probes, the touch counter's buzzes) go first and every other
 // job is HELD: not started, its start deadline suspended, restarted when the
 // lab closes. A job already playing is never preempted.

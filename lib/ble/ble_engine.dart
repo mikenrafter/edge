@@ -7797,7 +7797,7 @@ class BleEngine implements AlarmBandWriter {
   ///
   /// [onReply] hears this buzz's own reply (its status name, or null when none
   /// came within [buzzReplyLogWindow]) and the ms since the call: the Device
-  /// lab's buzz probe uses it to see which commands the band took (8V). Like
+  /// lab's buzz probe uses it to see which commands the band took. Like
   /// the log line, it never gates delivery.
   Future<bool> buzzBand({
     int holdMs = 0,
@@ -7836,7 +7836,7 @@ class BleEngine implements AlarmBandWriter {
     return true;
   }
 
-  /// Write one custom Maverick haptic pattern (8W, the Device lab's pattern
+  /// Write one custom Maverick haptic pattern (the Device lab's pattern
   /// probe): [effects] (1..8, each 1..255) played [loop] (1..3) times. Like
   /// [buzzBand]: true when the write landed, the reply is only logged and
   /// handed to [onReply], never gating delivery. False (nothing written) when

@@ -1,4 +1,4 @@
-// alarm_draft.dart — 8O: the alarm screen edits an in-memory DRAFT of the whole
+// alarm_draft.dart — the alarm screen edits an in-memory DRAFT of the whole
 // week, and Save is the only thing that persists it or touches the band.
 //
 // Before this, every row called AppState.setScheduleDay, which saved and re-armed

@@ -1,4 +1,4 @@
-// 8AG-perf P1-A: Home records the time from an insightsRevision bump to the
+// Home records the time from an insightsRevision bump to the
 // first Home commit (setState) that consumed it.
 //
 // ASSUMED API: `int? AppState.lastHomeRenderMs` (null until measured) and

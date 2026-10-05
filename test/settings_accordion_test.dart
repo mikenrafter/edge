@@ -1,6 +1,5 @@
-// 8C/8J — the SettingsAccordion API: expanded by default, and a one-line
+// The SettingsAccordion API: expanded by default, and a one-line
 // summary that stays visible under the header while collapsed.
-// See test/phase8/CONTRACTS.md §8C.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

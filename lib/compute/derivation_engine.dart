@@ -1727,7 +1727,7 @@ import 'substrate.dart';
 // PR #75's merge SHA).
 // v98: Manual sleep candidate loading unions the asserted interval with the
 // automatic search range, retaining daytime and atypical cross-midnight input.
-// v99 (8E, sleep window without data): a window the user set over a stretch
+// v99 (sleep window without data): a window the user set over a stretch
 // the band did not record (`tst_min` null) is a night NOT RECORDED. The
 // cross-day rollup no longer counts it in social jetlag / chronotype (n and
 // free-day mid-sleep), sleep debt, or the bedtime/wake guidance; sleep
@@ -1951,12 +1951,12 @@ const int kAlgoVersion = 101;
 // entry above.
 // REPIN @ 7fe67a7 — user's fork mikenrafter/openstrap-analytics, branch
 // feat/causal-stage-api: 0441ef9 plus the additive causal stage API for
-// Natural Wake (phase 6B). No existing analytics output changed, so no
+// Natural Wake. No existing analytics output changed, so no
 // kAlgoVersion bump comes from the pin itself.
 // REPIN @ 7334289 — same fork, branch feat/minute-energy (child of 7fe67a7):
 // adds Calories.minuteEnergy + hourlyRollup. dailyEnergy outputs are
 // bit-for-bit unchanged (golden == tests in the analytics repo).
-// 8AG-perf P3: edge now persists Calories.minuteEnergy, as the `last_result`
+// Edge now persists Calories.minuteEnergy, as the `last_result`
 // artifact `kcal_minutes|<day>` (the day's minutes sum to its stored active
 // calories). It is a new stored output, not a change to an existing one:
 // `calories`, `calories_total` and every `day_result` row are untouched, so no
@@ -2628,7 +2628,7 @@ class DerivationEngine {
   static bool _running = false;
   bool get running => _running;
 
-  // The one step the status line shows for this pass (P4b). Static for the same
+  // The one step the status line shows for this pass. Static for the same
   // reason as [_running]: one pass at a time, however many engines exist.
   static CalcToken? _stageToken;
   static String? _stageLabel;
@@ -4004,7 +4004,7 @@ class DerivationEngine {
   _storedSleepHistory({int days = 60, String? excludeDay}) async {
     final out = <({int startSec, int endSec, String dayKey})>[];
     try {
-      // 8E — a window the user asserted over a stretch with no samples is a
+      // A window the user asserted over a stretch with no samples is a
       // night NOT RECORDED: it has a window but no total sleep time. Keep only
       // nights that have one, or the habitual-midsleep prior is fed a time
       // nobody slept at. (`metric_series` stores a null as NULL and
@@ -5632,7 +5632,7 @@ class DerivationEngine {
 
   /// The intraday calorie series of an already-derived day, rebuilt from its
   /// decoded raw while that lives: what the warmer stores for a day derived
-  /// before P3 stored it. The inputs are the stored day's own (its sleep window
+  /// before artifact signatures were stored. The inputs are the stored day's own (its sleep window
   /// and nocturnal resting HR from `day_result`) and the same credited step
   /// spans, over the same substrate loader, so the answer is the series the
   /// derive would have stored. Null when the day has no raw, was never derived,

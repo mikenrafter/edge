@@ -1,13 +1,13 @@
-// 8AJ seam 5 characterization: the sync status AppState shows the UI (status
+// Sync area: the sync status AppState shows the UI (status
 // string, busy, last-data timestamps, the sync panel's presentation, the
 // deriving / pending flags) and how many times each transition notifies.
-// Through AppState. Must pass before and after the SyncController move.
+// Through AppState.
 //
 // Not reachable without the real AppState constructor (and so not driven here):
 // `syncingNow` and the quiet timer behind it are fed only by the engine's
 // onDataStored callback, and the panel's live record counts only by the
 // engine's onCommitBatch callback. forTesting does not wire either. Both are
-// pinned by source in seam5_delegation_test.dart.
+// pinned by source in app_state_sync_delegation_test.dart.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/models.dart';
@@ -15,7 +15,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_status.db';
+const _db = 'app_state_sync_status.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

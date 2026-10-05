@@ -1,7 +1,7 @@
-// P4b: the artifact warmer and a compute-on-open read report what they are
+// The artifact warmer and a compute-on-open read report what they are
 // doing, then clear.
 //
-// ASSUMED API: lib/compute/calc_status.dart (see calc_status_test.dart).
+// API: lib/compute/calc_status.dart (see calc_status_test.dart).
 //
 //   * ArtifactWarmer opens ONE step on CalcStatus.instance around each key's
 //     `source.compute(key)`, labelled "Preparing <screen>" (the label starts
@@ -13,8 +13,6 @@
 //     which runs under Isolate.run) opens a step around that call, with a
 //     non-empty plain label, and closes it. A night with nothing to correct
 //     (no beats) opens nothing.
-//
-// Failure mode today: the library does not exist (the file fails to load).
 
 import 'dart:async';
 import 'dart:convert';
@@ -30,7 +28,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'support/last_result_db.dart';
 import 'support/scripted_artifact_source.dart';
 
-const _db = 'p4b_calc_status_warmer_test.db';
+const _db = 'calc_status_warmer_test.db';
 
 Future<void> _until(bool Function() ok) async {
   for (var i = 0; i < 1000 && !ok(); i++) {

@@ -1,4 +1,4 @@
-// Phase 4 red: priority is per signal, present without contention, and shows
+// Priority is per signal, present without contention, and shows
 // its consequence before saving (contract 9). Service model + pure view.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

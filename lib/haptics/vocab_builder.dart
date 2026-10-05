@@ -1,4 +1,4 @@
-// 8AD: building a device's haptic vocabulary from SEVERAL probe logs.
+// Building a device's haptic vocabulary from SEVERAL probe logs.
 //
 // HapticDeviceProfile.whoopMg was read by hand from the L6 log. This does the
 // same reading in code, over any number of logs, so a new log widens the

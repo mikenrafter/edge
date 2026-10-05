@@ -1,4 +1,4 @@
-// 8AK D (red): "Save log file" writes a .txt through the platform save/share
+// "Save log file" writes a .txt through the platform save/share
 // flow, never the clipboard.
 //
 // USER: "Save log file (writes a .txt of the relevant session/gesture log via

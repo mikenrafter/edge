@@ -1,6 +1,6 @@
-// P4b: a derivation pass reports where it is, in plain words, and clears.
+// A derivation pass reports where it is, in plain words, and clears.
 //
-// ASSUMED API: lib/compute/calc_status.dart (see calc_status_test.dart). The
+// API: lib/compute/calc_status.dart (see calc_status_test.dart). The
 // engine reports on CalcStatus.instance, on the MAIN isolate, around its
 // existing `_diag['stage']` transitions, with these EXACT labels:
 //
@@ -24,8 +24,6 @@
 //
 // Every exit clears: a pass that throws, or finds nothing to do, ends with
 // CalcStatus.instance.value == null (AGENTS.md 4.3).
-//
-// Failure mode today: the library does not exist (the file fails to load).
 
 import 'dart:math' as math;
 
@@ -48,7 +46,7 @@ const _profile = Profile(
   restingHrManual: 54,
 );
 
-const _db = 'p4b_calc_status_engine_test.db';
+const _db = 'calc_status_engine_test.db';
 int _counter = 1;
 
 Future<void> _record(int ts) async {
@@ -57,7 +55,7 @@ Future<void> _record(int ts) async {
     RawRecord(
       counter: c,
       packetType: 47,
-      hex: 'p4b$c',
+      hex: 'status$c',
       capturedAt: ts * 1000,
       recTs: ts,
     ),

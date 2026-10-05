@@ -1,4 +1,4 @@
-// 8AI.3 (red): the "Gesture alert" setting is gone.
+// The "Gesture alert" setting is gone.
 //
 // It was a haptic slot ('alert.gesture') that held a pattern (default: Four
 // pulses) in the stored 'gesture' alert rule. Nothing ever played it: gesture
@@ -52,7 +52,7 @@ void main() {
     test('the Gestures section lists the four cues and nothing else', () {
       final gestures =
           kHapticSlotSections.firstWhere((s) => s.id == 'gestures');
-      // 8AK added "Gesture failed" as the fourth cue.
+      // "Gesture failed" is the fourth cue.
       expect([for (final s in gestures.slots) s.key], [
         kGestureStartKey,
         kGestureFollowUpKey,

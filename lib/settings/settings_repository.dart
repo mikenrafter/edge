@@ -1,4 +1,4 @@
-// 8AE.5 P2: the one place settings are read and written.
+// The one place settings are read and written.
 //
 // Four sections over SharedPreferences, each still stored under the key and in
 // the JSON it always was (nothing migrates):

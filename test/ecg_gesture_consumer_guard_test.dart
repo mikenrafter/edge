@@ -1,4 +1,4 @@
-// 8N source guard: nothing in lib/ reads `ecg_raw_packet` without excluding
+// Source guard: nothing in lib/ reads `ecg_raw_packet` without excluding
 // gesture contact (`origin = 'gesture'`), and the coach cannot reach either the
 // raw packet table or the gesture-session table.
 //

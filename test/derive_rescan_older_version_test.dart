@@ -1,7 +1,6 @@
-// P4a at the engine, rescanRecent and versions: a day that is finalized only at
+// At the engine, rescanRecent and versions: a day that is finalized only at
 // an OLDER version has no frozen (day, V) row, so the rescan still reaches it and
-// the older sibling is never touched. Assumed API: see support.dart (nothing new
-// is referenced). Passes today; pinned so the GREEN skip filter keys on
+// the older sibling is never touched. The skip filter keys on
 // kAlgoVersion (`finalizedDayIds(kAlgoVersion)`) and not on "any finalized row".
 // Own file: one derive pass per process (this environment's flutter_tester
 // intermittently segfaults after several; see engine_rescan_test.dart).
@@ -72,7 +71,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    _db = await freshDb('openstrap_p4a_engine_rescan_older_version_test.db');
+    _db = await freshDb('openstrap_engine_rescan_older_version_test.db');
     await _seedRaw();
   });
   tearDownAll(dropDb);

@@ -1,4 +1,4 @@
-// 8AI G6 test support: a connected-looking band whose live frames travel the
+// Test support: a connected-looking band whose live frames travel the
 // REAL engine path (BleEngine._processImmediateFrame -> onLiveFrame ->
 // AppState -> LiveStreamBuffer), and whose outgoing commands are recorded.
 //

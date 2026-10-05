@@ -1,4 +1,4 @@
-// 8AC (spec I.5): the global band queue. Every band haptic job (a rule's
+// The global band queue. Every band haptic job (a rule's
 // rhythm, a single buzz, a tap ack, a preview) runs one at a time, first in
 // first out, and only while the rolling safety limit (30 commands per 2
 // minutes, one ledger shared with the pattern probe) allows its commands.

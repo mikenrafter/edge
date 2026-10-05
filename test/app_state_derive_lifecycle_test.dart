@@ -1,4 +1,4 @@
-// 8AJ seam 1 characterization: what AppState.dispose leaves behind from the
+// Derive area: what AppState.dispose leaves behind from the
 // derive machinery (timers, listeners, in-flight passes). Must pass before and
 // after the DeriveCoordinator move.
 
@@ -12,7 +12,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'support/scripted_artifact_source.dart';
 import 'support/app_state_derive_harness.dart';
 
-const _db = 'openstrap_split8aj_derive_lifecycle.db';
+const _db = 'openstrap_app_state_derive_lifecycle.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

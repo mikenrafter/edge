@@ -42,7 +42,7 @@ class GestureSettings extends ChangeNotifier {
   static const _kLegacyDoubleTap = 'gesture_double_tap';
   static const _kReplayPrefix = 'gesture_replay_';
 
-  /// 3–5 taps (8L draft): one bitmask per count, same layout as [_kActions].
+  /// 3–5 taps: one bitmask per count, same layout as [_kActions].
   /// 2 taps stays on [_kActions].
   static const _kTapActionsPrefix = 'gesture_tap_actions_';
   static const _kEcgOnDoubleTap = 'gesture_ecg_on_double_tap';
@@ -84,7 +84,7 @@ class GestureSettings extends ChangeNotifier {
 
   Set<DeviceAction> _actions = const {};
 
-  /// Actions for 3, 4 and 5 taps (8L draft). Absent key = no actions.
+  /// Actions for 3, 4 and 5 taps. Absent key = no actions.
   final Map<int, Set<DeviceAction>> _tapActions = {};
 
   bool _ecgOnDoubleTap = false;
@@ -122,7 +122,7 @@ class GestureSettings extends ChangeNotifier {
   /// waiting for.
   int get ecgTapMax => _ecgOnDoubleTap ? 5 : maxMappedTaps;
 
-  /// 8I: a live double tap starts an ECG capture instead of its actions
+  /// A live double tap starts an ECG capture instead of its actions
   /// (WHOOP MG only; the Device lab owns the switch). Off by default.
   bool get ecgOnDoubleTap => _ecgOnDoubleTap;
 
@@ -148,7 +148,7 @@ class GestureSettings extends ChangeNotifier {
   /// otherwise the highest mapped count.
   int get repeatTapMax => _repeatLab ? 5 : maxMappedTaps;
 
-  /// 8L: the three adjustable ECG-touch windows.
+  /// The three adjustable ECG-touch windows.
   EcgTapThresholds get ecgTapThresholds => _ecgThresholds;
 
   /// Actions offerable on THIS platform: `none` always, plus whatever native says

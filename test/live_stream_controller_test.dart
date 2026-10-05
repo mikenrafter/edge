@@ -1,5 +1,5 @@
-// 8AJ seam 2: LiveStreamController in isolation, with fake collaborators. The
-// same behaviours are pinned through AppState in the characterization tests;
+// LiveStreamController in isolation, with fake collaborators. The
+// same behaviours are also pinned through AppState in the other live-stream tests;
 // these prove the controller stands on its own and never reaches for AppState.
 
 import 'dart:async';

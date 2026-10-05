@@ -1,4 +1,4 @@
-// 8AI G3 (red first): "on the notification management screen sometimes it will
+// "on the notification management screen sometimes it will
 // lock you to the bottom area of the screen and trying to scroll up
 // continually resets you down to the bottom."
 //

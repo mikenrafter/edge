@@ -1,4 +1,4 @@
-// 8AF.6 D: wake buzzes on the band's measured vocabulary.
+// Wake buzzes on the band's measured vocabulary.
 //
 // Gradual wake and Natural / Smart wake play fixed plans of phrases from the
 // MG's vocabulary instead of per-tap buzzes or RUN_ALARM. The plans live here

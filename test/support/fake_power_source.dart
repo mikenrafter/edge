@@ -1,7 +1,6 @@
-// Shared fakes for the P5 (power modes for calculations) tests. See
-// calc_power_policy_test.dart for the assumed API; this file references the new
-// symbols (PowerSource, PowerState), so every file importing it fails to
-// compile until they exist. That is the intended red for the wiring.
+// Shared fakes for the power-mode (calculations) tests. See
+// calc_power_policy_test.dart for the API; this file references PowerSource and
+// PowerState.
 
 import 'dart:async';
 

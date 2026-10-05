@@ -1,5 +1,5 @@
-// An ArtifactSource spy for the P5 tests. References only symbols that exist
-// today, so the "balanced == today" pin compiles and passes before P5.
+// An ArtifactSource spy for the warmer tests. References only symbols that
+// exist, so the "balanced == today" pin needs nothing new.
 
 import 'package:openstrap_edge/state/artifact_warmer.dart';
 

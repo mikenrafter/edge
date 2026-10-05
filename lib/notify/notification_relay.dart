@@ -275,7 +275,7 @@ class RelayController {
   final AlertDispatcher dispatcher;
   final Future<bool> Function(List<int> pattern) buzz;
 
-  /// The relay's built-in pattern (alert.relay, 8AF.6), played for a channel or
+  /// The relay's built-in pattern (alert.relay), played for a channel or
   /// app with no rhythm of its own. Null, or null from it: the registry default.
   final Future<BuzzSequence?> Function()? defaultSequence;
 
@@ -287,7 +287,7 @@ class RelayController {
   /// the dispatcher then keeps its claim after a partial or unanswered delivery.
   final Future<BuzzDelivery> Function(BuzzSequence)? deliverSequence;
 
-  /// How long [sequence] needs to play on the connected band (8AC: a compiled
+  /// How long [sequence] needs to play on the connected band (a compiled
   /// plan outlasts the taps' estimate). Null: its own transport timeout.
   final Duration Function(BuzzSequence)? sequenceTimeout;
   final Future<bool> Function() phone;
@@ -574,7 +574,7 @@ class NotificationRelay extends ChangeNotifier with WidgetsBindingObserver {
   final Future<void> Function() buzz;
   final Future<bool> Function(int holdMs)? buzzForDuration;
 
-  /// The app's one band delivery for a rhythm (8AC): the global band queue and
+  /// The app's one band delivery for a rhythm: the global band queue and
   /// the compiled commands of a WHOOP MG. When set, every rhythm of the relay
   /// goes through it instead of [buzz] and [buzzForDuration].
   final Future<BuzzDelivery> Function(BuzzSequence)? deliverSequence;

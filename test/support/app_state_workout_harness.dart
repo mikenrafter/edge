@@ -1,6 +1,6 @@
-// Shared helpers for the 8AJ seam 4 (WorkoutController) tests. Everything goes
+// Shared helpers for the WorkoutController tests. Everything goes
 // through AppState's public and @visibleForTesting surface, so the same files
-// serve the characterization tests before the move and after it.
+// serve the AppState-level tests and the controller's own tests.
 //
 // What the area talks to, and how the tests see it:
 //   - the lock-screen / Dynamic Island activities, the display wake hold, the

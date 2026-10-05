@@ -1,4 +1,4 @@
-// 8AK B (red): the plain double-tap windows start AFTER the haptics went
+// The plain double-tap windows start AFTER the haptics went
 // through and were confirmed.
 //
 // USER: "for normal double taps, the timings should start after the haptics go
@@ -20,7 +20,7 @@
 //   * Everything the window does once armed is as today (a further tap inside
 //     it counts and re-arms it after ITS cue).
 //   * WITHOUT `bandIdle` (every existing caller and test) nothing changes: the
-//     window is armed at the tap, whatever a cue does (the phase7 test "a buzz
+//     window is armed at the tap, whatever a cue does (the failure-injection test "a buzz
 //     that never answers cannot hold the window open" stands, and is repeated
 //     here as a guard).
 // The ECG route keeps its own (altered) timing, see a_ecg_window_*.
@@ -172,7 +172,7 @@ void main() {
   });
 
   test('regression guard (passes today): without bandIdle a buzz that never '
-      'answers cannot hold the window open (the phase7 rule)', () {
+      'answers cannot hold the window open (the failure-injection rule)', () {
     fakeAsync((async) {
       final session = DoubleTapRepeatSession(
         maxTaps: () => 5,

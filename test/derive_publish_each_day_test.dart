@@ -1,10 +1,10 @@
-// 8AG-perf P1-B: publish each day as it commits.
+// Publish each day as it commits.
 //
 // The bug: `_afterDrain` advanced insightsRevision only after `run()` returned,
 // so Home/Health (which reload on that revision, not on notifyListeners) showed
 // nothing of a multi-day pass until the whole pass finished.
 //
-// ASSUMED API: the AppState test seams listed in recalc_state_test.dart
+// API: the AppState test seams listed in recalc_state_test.dart
 // (`debugDeriveRun`, `debugAfterDrain`), plus lib/state/revision_coalescer.dart
 // (see revision_coalescer_test.dart). In `onDayDone`, AFTER the day's row is
 // committed: `await LocalDb.refreshComputeFreshness(); bumpInsights()`, through

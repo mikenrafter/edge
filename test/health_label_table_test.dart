@@ -1,4 +1,4 @@
-// 8AF B (red): ONE name per metric. The table lives in lib/ui2/metric_labels.dart
+// ONE name per metric. The table lives in lib/ui2/metric_labels.dart
 // and Home and Health both read it, so "Resting heart rate" cannot be "Heart
 // rate · Resting" on one screen and something else on the next (AGENTS.md
 // 4.10). This file is separate from the screen tests on purpose: it is the only

@@ -1,10 +1,10 @@
-// 8J — the Alarm screen as sections. Now two (Oct 4): "Alarm and wake" for the
-// day picked in the day tabs, and "Timeline and status". (8AE dropped the
-// Haptics group; the footnotes about the band's own buzz are gone too.)
+// The Alarm screen as sections. Now two (Oct 4): "Alarm and wake" for the
+// day picked in the day tabs, and "Timeline and status". (The
+// Haptics group was dropped; the footnotes about the band's own buzz are gone too.)
 // All expanded by default; a collapsed section still shows a one-line summary
-// under its header; disconnected means disabled rows, not missing ones (8K).
+// under its header; disconnected means disabled rows, not missing ones.
 // Compile-safe on purpose: reads SettingsAccordion only through its existing
-// `title`/`children` fields. See test/phase8/CONTRACTS.md §8J.
+// `title`/`children` fields.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -84,7 +84,7 @@ void main() {
         reason: 'the reason is stated once');
     expect(find.text('Wake time'), findsOneWidget,
         reason: 'the selected day only; the tabs pick the others');
-    // 8O: edits are a draft, so a missing band does not block them. Only a day
+    // edits are a draft, so a missing band does not block them. Only a day
     // that is off dims its time row, connected or not.
     expect(isDimmed(t, find.text('Wake time')), isFalse,
         reason: 'the first day that is on is selected');

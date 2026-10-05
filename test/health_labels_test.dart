@@ -1,4 +1,4 @@
-// 8AF B (red): one value once per scope, one name per metric, one illness card,
+// One value once per scope, one name per metric, one illness card,
 // one HRV detail (AGENTS.md 4.10).
 //
 // Every assertion here reads the rendered widgets, not the source, so it holds

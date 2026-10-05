@@ -1,8 +1,7 @@
-// P4a: P3 keeps working. `dayResultRev` and the artifact signatures built on it
+// `dayResultRev` and the artifact signatures built on it
 // move when a provisional row is replaced and do NOT move when a frozen write is
-// refused; `dayResultComputedAt` gains the served-version ceiling (the same
-// MAX(algo_version) <= kAlgoVersion that `dayResult` applies). Assumed API: see
-// support.dart (nothing new is referenced; compiles today, fails on behaviour).
+// refused; `dayResultComputedAt` has the served-version ceiling (the same
+// MAX(algo_version) <= kAlgoVersion that `dayResult` applies).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -20,7 +19,7 @@ void main() {
   late LocalRepositoryImpl repo;
 
   setUp(() async {
-    db = await freshDb('openstrap_p4a_rev_and_served_test.db');
+    db = await freshDb('openstrap_rev_and_served_test.db');
     repo = LocalRepositoryImpl(getProfileMap: () => const {});
   });
   tearDownAll(dropDb);

@@ -1,6 +1,6 @@
-# Calculation timing and "As of" (8AG-perf P1 / P1b)
+# Calculation timing and "As of"
 
-## What P1 measures
+## What the timing measures
 
 Each derive pass records, in `lib/compute/derive_perf.dart`:
 
@@ -63,7 +63,7 @@ lifetime). A re-open shows it at once with `AsOfLabel(cachedAt)`, recomputes in
 the background, and swaps in the fresh result, which clears the label. An error
 is never cached.
 
-## P2 scheduling
+## Scheduling
 
 How a day is judged "changed". `input_rev(bucket, rev)` counts writes per 15-minute
 bucket of `rec_ts / 900`. SQLite triggers on `decoded_onehz` and `decoded_rr` (insert,
@@ -106,13 +106,13 @@ that finds nothing to do stops before the post-derive work, as a manual sync doe
 that are not decoded input (sleep override, nap edit, phone steps) recompute through
 `_reanalyzeForOverride` (`force: true`), which `changedOnly` never skips.
 
-## P3 artifacts
+## Artifacts
 
 A slow screen read is an artifact: its result is stored in `last_result` under a key,
 together with `input_sig`, the signature of the inputs it was computed from (schema 60,
 nullable, NULL for every older row). A stored row whose signature equals the current one is
 fresh: the screen shows it with no recompute and no "As of" label. A stale or missing
-signature behaves as in P1b: show the stored result under "As of", recompute once, store
+signature behaves as described under How "As of" works: show the stored result under "As of", recompute once, store
 the new result under the signature that was read first.
 
 Keys and what moves their signature (`LocalRepositoryImpl.artifactSignature`, a few indexed
@@ -168,7 +168,7 @@ derive (`_computeDayBlocks`, in the isolate), and stored after the day's own row
 under the signature of the fingerprint read before the substrate was. A failure is logged
 and never fails the derive. A re-derive replaces the row; a day whose raw exists but whose
 curve is now null (say the height was removed) loses its row, so a curve never outlives the
-figure it explains. For a recent day derived before P3, the warmer builds it from the
+figure it explains. For a recent day derived before artifact signatures were stored, the warmer builds it from the
 substrate (`DerivationEngine.kcalMinutesForStoredDay`: the stored day's sleep window and
 resting HR, the same loader, `Isolate.run`) while raw lives, about `rawRetentionDays`. A day
 past retention has no raw, no signature and no curve.

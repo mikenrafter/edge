@@ -1,4 +1,4 @@
-// 8AK A (red): the lab-trace replay built from the 2026-10-04 device log.
+// The lab-trace replay built from the 2026-10-04 device log.
 //
 // The log (edge.research/ecg-bad-connection-2026-10-04.log) has five ECG
 // gestures on a WHOOP MG. Four ended in the failure buzz ("ECG failed
@@ -17,10 +17,6 @@
 //     again; it does not repeat the start cue. A second refusal ends as
 //     today: one failure cue, count 2 (fallback), flags reset.
 //   * Everything after the stream is up is unchanged (the good run).
-//
-// Failure mode today: with the fallback on a refused start ends the gesture
-// at once ("began 1"), so the replay that then lets the second start succeed
-// ends in the failure cue and a count of 2 instead of 5.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -79,7 +75,7 @@ void main() {
     });
   });
 
-  group('the log\'s good run (regression guard: passes today)', () {
+  group('the log\'s good run (regression guard)', () {
     test('its packets count 5: window at ...229499, follow-ups at the log\'s '
         'sample times, one confirm', () async {
       final r = logRig();

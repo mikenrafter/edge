@@ -1,4 +1,4 @@
-// 8M — Home shows exactly ONE sync control. It used to show two: the persistent
+// Home shows exactly ONE sync control. It used to show two: the persistent
 // "Sync now" panel and, on a bare or stale day, a status card with its own
 // "Sync the band" button reading a different busy flag (`syncingNow` plus a
 // local tap latch). Both buttons now come from the one SyncCoordinator state.

@@ -1,5 +1,5 @@
-// 8M follow-up — the manual sync's hold on the derive scheduler, driven through
-// AppState with the split8aj sync harness. Each test records the order of what
+// The manual sync's hold on the derive scheduler, driven through
+// AppState with the sync harness. Each test records the order of what
 // happened (scheduler hold, download, derive, release) and asserts on that
 // trace. The behaviour behind each piece is also tested directly:
 // DeriveScheduler (derive_scheduler_manual_sync_test), the engine's changedOnly

@@ -1,4 +1,4 @@
-// 8AD (A) — the named pattern store.
+// The named pattern store.
 //
 // A saved pattern is a BuzzSequence with a name and a stable id. A rule that
 // picked one holds a SNAPSHOT of it with BuzzSequence.patternId set, so
@@ -104,7 +104,7 @@ Map<String, ChannelConfig> _channels({
   'calls': ChannelConfig(buzzSequence: calls),
 };
 
-/// The user-made patterns: the built-ins (8AF.6) are seeded beside them.
+/// The user-made patterns: the built-ins are seeded beside them.
 List<SavedHapticPattern> _mine(HapticPatternStore s) => [
   for (final p in s.list)
     if (!p.system) p,

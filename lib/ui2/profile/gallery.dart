@@ -1637,7 +1637,7 @@ Map<String, Widget> _listCases() => {
               sub: 'Off respects Do Not Disturb. Edge never changes your '
                   'Do Not Disturb setting.'),
           SwitchRow('Only while worn', false, (_) {}),
-          // 8K: present, dimmed and inert, with its reason.
+          // Present, dimmed and inert, with its reason.
           const SwitchRow('Also run for taps replayed from history', false, null,
               enabled: false, sub: 'Turn on Mark a moment first'),
           const SetRow(LucideIcons.target, C.red, 'Target zone',

@@ -1,10 +1,10 @@
-// 8Y/8Z/8AA: the pattern probe's transcriber. The wearer taps buttons of
+// The pattern probe's transcriber. The wearer taps buttons of
 // length 1, 2, 4, 6 or 8 sixteenths (16th, eighth, quarter, dotted quarter,
-// half); 8AB adds the dotted eighth (3) and dotted half (12), written with a
-// one-shot Dot toggle. 8Z types every entry explicitly as a note or a rest (two notes or two
-// rests may sit next to each other) and adds a Note/Rest toggle that flips
-// after every tap and can be overridden. 8AA makes the unit a sixteenth and
-// gives every note a dynamic (ff, mf, mp, pp; rests have none). This file pins
+// half); the dotted eighth (3) and dotted half (12) are written with a
+// one-shot Dot toggle. Every entry is typed explicitly as a note or a rest (two notes or two
+// rests may sit next to each other) and a Note/Rest toggle flips
+// after every tap and can be overridden. The unit is a sixteenth and
+// every note has a dynamic (ff, mf, mp, pp; rests have none). This file pins
 // the pure model: PatternEntry, PatternTranscript (an immutable list of typed
 // entries) and PatternEntrySession (which test, which of two renditions, the
 // cursor, the toggle, the sticky dynamic, how often the test was played, the
@@ -57,13 +57,12 @@ void _measured(PatternEntrySession s, int test, String code, int ms) {
 
 void main() {
   group('the lengths and dynamics', () {
-    test('a length is 1, 2, 3, 4, 6, 8 or 12 sixteenths (8AB adds the dotted '
+    test('a length is 1, 2, 3, 4, 6, 8 or 12 sixteenths (includes the dotted '
         'eighth and the dotted half)', () {
       expect(kPatternLengths, [1, 2, 3, 4, 6, 8, 12]);
     });
 
-    test('the dynamics run from loudest to softest: ff, f, mf, mp, p, pp '
-        '(8AC)', () {
+    test('the dynamics run from loudest to softest: ff, f, mf, mp, p, pp', () {
       expect(PatternDynamic.scale, [
         PatternDynamic.ff,
         PatternDynamic.f,
@@ -156,7 +155,7 @@ void main() {
     });
   });
 
-  group('f and p (8AC)', () {
+  group('f and p', () {
     const f = PatternEntry(note: true, length: 4, dynamic: PatternDynamic.f);
     const p = PatternEntry(note: true, length: 2, dynamic: PatternDynamic.p);
 
@@ -196,7 +195,7 @@ void main() {
     });
   });
 
-  group('parsing a code (8AC)', () {
+  group('parsing a code', () {
     bool isJunk(Object? e) => e is ArgumentError || e is FormatException;
     Matcher junk() => throwsA(predicate(isJunk, 'an ArgumentError or a '
         'FormatException'));
@@ -903,7 +902,7 @@ void main() {
     });
   });
 
-  group('PatternEntrySession: f and p (8AC)', () {
+  group('PatternEntrySession: f and p', () {
     test('a tap writes a note with the sticky f or p', () {
       final s = _session();
       s.setDynamic(PatternDynamic.f);
@@ -945,7 +944,7 @@ void main() {
     });
   });
 
-  group('PatternEntrySession: unstable tests (8AC)', () {
+  group('PatternEntrySession: unstable tests', () {
     test('a test starts stable', () {
       final s = _session();
       for (var i = 0; i < 3; i++) {
@@ -1231,7 +1230,7 @@ void main() {
     });
   });
 
-  group('PatternEntrySession: the dot (8AB)', () {
+  group('PatternEntrySession: the dot', () {
     test('the dot starts off', () {
       expect(_session().dotNext, isFalse);
     });

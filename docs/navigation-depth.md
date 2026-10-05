@@ -6,8 +6,8 @@ setting is at most two pushes from Settings. A push is one screen opened on top
 of another; each arrow below is one push. Paths start at Settings, so they are
 one shorter than a count made from Home.
 
-Row names are the labels on screen. "Before" is 8AE, when Settings sat one push
-below a Profile home (paths start there). "After" is 8AF.7, with Profile home
+Row names are the labels on screen. "Before" is when Settings sat one push
+below a Profile home (paths start there). "After" is now, with Profile home
 gone.
 
 | Screen | Before | After |
@@ -32,30 +32,30 @@ gone.
 ## What changed
 
 - There is no Profile home. Its Quick access area is gone: Settings is the
-  landing, and My devices stays in Settings > Hardware (called Band until 8AI),
+  landing, and My devices stays in Settings > Hardware (it used to be called Band),
   its one door. The Community links (GitHub, Reddit, Discord, Sponsor) are a
-  Settings group, directly above Connections since 8AI.
+  Settings group, directly above Connections.
   Nothing else lived only on the old screen: it never drew the profile name, and
   the Storage size was already in Settings > Data & privacy.
 - Settings is grouped by task, in this order: You & preferences, Hardware,
   Alerts, Data & privacy, Community, Connections, About, and Developer
-  (developer mode only). (8AI: You & preferences
+  (developer mode only). (You & preferences
   moved first, Community moved down to sit above Connections, and Band became
   Hardware. Hardware keeps the saved fold id `settings_band`, so nobody's
   remembered state is lost.)
-- 8AI.2 moved Reset all data out of Settings (it was the last row) into Your data >
+- Reset all data moved out of Settings (it was the last row) into Your data >
   Advanced, after Rebuild all history. One home; the confirmation is unchanged.
   Settings now ends with its last group.
-- 8AI also moved "Look barcodes up online" from Data & privacy into Connections,
-  and removed the Steps row from Settings: counting steps from the phone has one
+- "Look barcodes up online" moved from Data & privacy into Connections,
+  and the Steps row was removed from Settings: counting steps from the phone has one
   door, the phone's row in My devices.
 - Alarm moved from Band to Alerts. It is the first row of the Alerts group on
   the Settings screen itself, not a row inside Alerts and notifications, so its
   depth did not change and it has one door.
-- Settings keeps what 8AE moved into it: Live devices, Edit profile, AI coach,
+- Settings keeps what moved into it from the old Profile home: Live devices, Edit profile, AI coach,
   Language and Storage, and the whole "Your data" group. Each moved row has one
   door. Storage is a display row, not a screen.
-- Settings > Developer also lists the Data Explorer (8AH), developer mode only.
+- Settings > Developer also lists the Data Explorer, developer mode only.
   One push from Settings, so it is inside the two-push limit.
 - Device lab left the band's Device detail Tools. It opens from Settings >
   Developer (developer mode) and from Haptics > Calibration (developer mode).
@@ -68,7 +68,7 @@ gone.
 - Gestures is sub-tabs (one per gesture), with the Haptics link at the bottom of
   every tab. In developer mode a Device lab link sits directly under it: one more
   entrance to the lab, one push from Gestures, so Settings > Gestures > Device lab.
-- 8AK added "Gesture failures" as the last row of Settings > Hardware (after
+- "Gesture failures" is the last row of Settings > Hardware (after
   Haptics): one push from Settings, so depth 1, and it has no table row because
   it is new. It lists the last 20 gestures that failed to activate, dismissed
   ones marked, each with Save log file and Report. Home shows the newest
@@ -141,14 +141,14 @@ so this section does not use one):
 
 The only second push listed here is Investigate, from a measure's own detail.
 
-### What changed in 8AH
+### Data Explorer
 
 - The Data Explorer (up to four metrics on one time axis) is not a Health tab:
   it is not ready for everyone, so Health stays at four. It is a developer
   entry: Settings → Developer → Data Explorer, one push, full screen under a
   "Data Explorer" bar. The row shows only in developer mode.
 
-### What changed in 8AF
+### Health tabs
 
 - The five sub-tabs (Overview, Explore, Trends, Vitals, Labs) became four. A
   sub-tab index remembered from the old order maps through

@@ -1,4 +1,4 @@
-// 8AF review finding: Active minutes were permanently absent in production.
+// Active minutes were permanently absent in production.
 // `LocalRepositoryImpl.getToday()` never put `active_min` in `daily`, so Health
 // → Today always said "No active minutes", and the widget fixtures that hand
 // `daily.active_min` to the screen directly hid it.

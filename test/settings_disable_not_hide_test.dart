@@ -1,7 +1,6 @@
-// 8K — dependent setting rows are never hidden. While their parent is off they
+// Dependent setting rows are never hidden. While their parent is off they
 // are present, disabled (taps do nothing) and dimmed (an Opacity < 1 at or
-// above the row). Platform-irrelevant rows are still omitted (phase 3).
-// See test/phase8/CONTRACTS.md §8K.
+// above the row). Platform-irrelevant rows are still omitted.
 
 import 'dart:io';
 
@@ -105,7 +104,7 @@ void main() {
       expect(taps, isEmpty);
     });
 
-    // 8AE: Starts/Ends belong to a channel's own override and are not drawn
+    // Starts/Ends belong to a channel's own override and are not drawn
     // while it follows the global quiet hours (the one deliberate exception to
     // disable-not-hide: a time with no setting behind it would mislead).
     testWidgets('override off: Starts/Ends are hidden, the switch is present',
@@ -159,7 +158,7 @@ void main() {
   });
 
   group('Alerts', () {
-    // The HR zone alert moved from Settings > Band to Alerts (8AF.6).
+    // The HR zone alert moved from Settings > Band to Alerts.
     testWidgets('HR zone alert off: Target zone present, dimmed', (t) async {
       await pumpTall(t, const NotificationSettingsView());
       final row = find.text('Target zone');
@@ -175,14 +174,14 @@ void main() {
     // `..._xxxRows(` helper, is flagged unless EVERY `&&`/`||` term of its
     // condition is on the allow-list below.
     //
-    // ALLOW-LIST (documented in CONTRACTS.md §8K):
+    // ALLOW-LIST:
     //   platform/OS capability: Platform.isX, defaultTargetPlatform, android,
     //     ios, *supported / *Supported, .supportsX, appIcon != null
     //   build capability: showHealthShare, showUpdateChecks, devMode,
     //     version.isNotEmpty
     //   load state: loaded
     //   structural identity: name == ... (which channel this row list is for)
-    //   8AE: cfg.overrideQuietHours (a channel's own Starts/Ends exist only
+    //   per-channel override: cfg.overrideQuietHours (a channel's own Starts/Ends exist only
     //     while it overrides the global quiet hours)
     // Permission/status CARDS are StatusCard, not rows, so they never match.
     const files = [

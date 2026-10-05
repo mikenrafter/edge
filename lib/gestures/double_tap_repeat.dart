@@ -23,7 +23,7 @@
 // that is within the window by band time but delivered after the timer fired
 // opens the next group.
 //
-// CUES (8AK). The same additive cues as the ECG route: the start cue once when
+// CUES. The same additive cues as the ECG route: the start cue once when
 // the first double tap opens the window, one follow-up per further double tap,
 // the confirm when the gesture ends counted (never when it is stopped early).
 // With [bandIdle] the pause window is armed only after the cue of the tap that

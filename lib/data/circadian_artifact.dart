@@ -49,7 +49,7 @@ Future<Map<String, dynamic>> buildCircadianArtifact(
         continue;
       }
       final n = await repo.getDaySleepV2(day);
-      // A window with no total sleep time is a night NOT RECORDED (8E): the
+      // A window with no total sleep time is a night NOT RECORDED: the
       // user's asserted times are not a measured asleep stretch to draw.
       cols.add(n['duration_min'] == null
           ? null

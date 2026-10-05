@@ -1,4 +1,4 @@
-// 8AK B (red): PARITY across the two gesture categories.
+// PARITY across the two gesture categories.
 //
 // USER: equal activation counts produce identical cue sequences, whichever way
 // they were made:

@@ -13,9 +13,9 @@
 // and this screen's counter takes over (GestureDispatcher). "Save lab log file"
 // at the bottom saves everything on this screen as a plain text file through
 // the share sheet, plus the kept ECG packets (raw, for replay off the band).
-// Never the clipboard: a big pasted log locked up a second device (8AL).
+// Never the clipboard: a big pasted log locked up a second device.
 //
-// Hardware probes (8V): a buzz-spacing probe and a cued ECG touch probe, each
+// Hardware probes: a buzz-spacing probe and a cued ECG touch probe, each
 // started only here, bounded and stoppable ([HardwareProbePanel]).
 
 import 'package:flutter/material.dart';
@@ -39,7 +39,7 @@ import 'profile.dart';
 
 export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 
-/// The 8I note, said on this screen and on Gestures: what extended gestures
+/// The note said on this screen and on Gestures: what extended gestures
 /// need, and that the extra-tap rows are a draft to try here first. Never names
 /// a single tap.
 const String kExtendedGesturesNote =
@@ -86,7 +86,7 @@ class DeviceLab extends StatelessWidget {
         onThresholds: g.setEcgTapThresholds,
         logText: logText,
         // The lab is now reached from Settings > Developer, so the entry no
-        // longer carries the flag: the tap tools inside do (8AE).
+        // longer carries the flag: the tap tools inside do.
         tapTools: caps.has(Feature.deviceLabTapTools),
         probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
       ),
@@ -95,7 +95,7 @@ class DeviceLab extends StatelessWidget {
 }
 
 /// Marks the Device lab as open for as long as it is on screen: the band queue
-/// holds real alerts while it is, and lets them go when it closes (8AF).
+/// holds real alerts while it is, and lets them go when it closes.
 class LabSession extends StatefulWidget {
   const LabSession({super.key, required this.runner, required this.child});
   final HardwareProbeRunner runner;
@@ -408,7 +408,7 @@ class RepeatWindowAdjuster extends StatelessWidget {
       );
 }
 
-/// The three touch windows (8L), 50 ms steps within their ranges. Shared by the
+/// The three touch windows, 50 ms steps within their ranges. Shared by the
 /// Device lab and the Gestures screen. With [onChanged] null every button is
 /// inert (no ECG sensor).
 class EcgThresholdAdjusters extends StatelessWidget {
@@ -559,7 +559,7 @@ class _Adjuster extends StatelessWidget {
 }
 
 
-/// The Device lab's hardware probes (8V). Reads [HardwareProbeRunner]; the
+/// The Device lab's hardware probes. Reads [HardwareProbeRunner]; the
 /// phone vibrates on every ECG cue so the wearer can watch the band, not the
 /// screen. Leaving the screen stops a running probe.
 class HardwareProbePanel extends StatefulWidget {

@@ -1,5 +1,5 @@
 // What the band plays for a compiled haptic plan, as the calm lines under a
-// pattern (8AC): the command summary, whether it plays as written, the
+// pattern: the command summary, whether it plays as written, the
 // timing-variation and pause warnings. Shared by the tap sheet and the notes
 // editor so the two cannot word it differently.
 

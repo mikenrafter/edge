@@ -1,4 +1,4 @@
-// 8M follow-up — a manual sync absorbs the debounced light derive.
+// A manual sync absorbs the debounced light derive.
 //
 // Committed chunks arm `onDataStored`, which queues a durable light derive on an
 // 8 s settle. The manual sync then runs its own derive over the same data, so

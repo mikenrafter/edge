@@ -1,11 +1,11 @@
-// 8AG-perf P3-C: the intraday calorie series, pure half.
+// The intraday calorie series, pure half.
 //
 // The analytics pin 7334289 has `Calories.minuteEnergy`: `dailyEnergy`'s
-// computation, one record per minute. P3 persists it per day. This file pins
-// the pure builder; p3_kcal_artifact_test.dart pins what the derive stores and
+// computation, one record per minute. The derive persists it per day. This file pins
+// the pure builder; calc_kcal_artifact_test.dart pins what the derive stores and
 // the reader serves.
 //
-// ASSUMED API (new file lib/compute/kcal_minutes.dart, pure, isolate-safe: no
+// API (new file lib/compute/kcal_minutes.dart, pure, isolate-safe: no
 // I/O, no clock, plain maps in and out):
 //
 //   Map<String, dynamic>? buildKcalMinutes({
@@ -56,8 +56,6 @@
 // An abstained minute has all four fields null (gaps stay gaps, never
 // interpolated). A covered minute has total == basal + active, basal ==
 // basal_kcal_per_min.
-//
-// Failure mode today: the library does not exist (the file fails to load).
 
 import 'dart:convert';
 

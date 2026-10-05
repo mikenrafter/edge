@@ -1,6 +1,6 @@
-// P5 (RED): the "Calculations" setting.
+// The "Calculations" setting.
 //
-// ASSUMED API (new)
+// API (new)
 //
 //   lib/state/prefs.dart (Prefs)
 //     static const String calcPowerMode = 'calc_power_mode';     // the pref key
@@ -31,8 +31,6 @@
 //         dismissing pops null.
 //     MoreSettings (the stateful screen) wires the row to the picker and
 //         AppState.setCalcPowerMode, and shows the saved mode.
-//
-// Failure mode today: none of these exist (compile error).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,7 +95,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'openstrap_p5_settings_test.db';
+    LocalDb.dbName = 'openstrap_power_settings_test.db';
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
   });

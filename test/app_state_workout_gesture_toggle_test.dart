@@ -1,10 +1,9 @@
-// 8AJ seam 4 characterization: the band double tap mapped to "workout toggle"
+// Workout area: the band double tap mapped to "workout toggle"
 // (the GestureController's onWorkoutToggle callback into this area). With no
 // workout live it starts a type 'other' one, otherwise it ends the active one;
 // the repo seam is asked first (start) / after (end) and its failures are
 // swallowed; a medium haptic closes a clean toggle. Driven by a real strap
-// event through the engine, like the seam 3 dispatch tests. Must pass before
-// and after the WorkoutController move.
+// event through the engine, like the gesture dispatch tests.
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,7 +15,7 @@ import 'package:openstrap_edge/gestures/device_action.dart';
 import 'support/app_state_gesture_harness.dart';
 import 'support/app_state_workout_harness.dart' show PlatformSpies, sessionRow, sessionLanded;
 
-const _db = 'split8aj_seam4_gesture_toggle.db';
+const _db = 'app_state_workout_gesture_toggle.db';
 
 class _Repo extends LocalRepository {
   final calls = <String>[];

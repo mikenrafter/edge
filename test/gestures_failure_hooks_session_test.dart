@@ -1,4 +1,4 @@
-// 8AK D (red): the ECG session reports a failed gesture, so the failure
+// The ECG session reports a failed gesture, so the failure
 // record has something to store. (The dispatcher half is in
 // d_failure_hooks_dispatcher_test.dart.)
 //

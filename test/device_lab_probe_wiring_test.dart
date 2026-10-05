@@ -1,5 +1,5 @@
-// 8V — the hardware probes' wiring in AppState, driven through the real
-// AppState over the split8aj gesture rig (a real engine on a fake MG link, a
+// The hardware probes' wiring in AppState, driven through the real
+// AppState over the gesture rig (a real engine on a fake MG link, a
 // real LocalDb). A probe that is not fed live band events or live ECG packets
 // measures nothing, and a probe buzz that skips the dispatcher breaks the
 // one-band-buzz-path rule (test/source_invariant_guards_test.dart covers the
@@ -165,7 +165,7 @@ void main() {
     await until(() => labCount(rig, 'Final count') > 0);
   });
 
-  // 8X, then 8AK: the ECG failure buzz is the "Gesture failed" cue (default:
+  // The ECG failure buzz is the "Gesture failed" cue (default:
   // one long command looped twice), played through the same dispatcher
   // delivery as every other gesture cue.
   test('a failed ECG tap session plays the Gesture failed cue through the '

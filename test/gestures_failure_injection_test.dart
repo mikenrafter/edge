@@ -1,4 +1,4 @@
-// Phase 7 failure injection — gesture sessions and the gesture dispatcher.
+// Failure injection — gesture sessions and the gesture dispatcher.
 // BLE disconnect mid-gesture, write timeouts, duplicate taps, a skewed strap
 // clock, corrupt frames, a failing database and a process restart. Each ends
 // with the latch cleared (the next double tap works), no stream left running,
@@ -149,13 +149,13 @@ void main() {
     test('a stream-start write that never answers fails the start, clears the '
         'latch, stops a late stream, and the next tap works', () async {
       final r = _Rig(beginHangs: true);
-      // 8X: the fallback is on by default, so a failed start does not throw: it
+      // The fallback is on by default, so a failed start does not throw: it
       // ends the gesture with count 2 (the double-tap action).
       await r.session.start(_tap());
       expect(r.session.active, isFalse);
       expect(r.results, [(2, 'fallback: start_failed')]);
       expect(r.ended, 2,
-          reason: 'a start that answers late must not stream on (8AK: each of '
+          reason: 'a start that answers late must not stream on (each of '
               'the two attempts is stopped)');
       expect(r.records.single.reason, contains('start_failed'));
       // The latch is clear: another tap begins a new gesture.

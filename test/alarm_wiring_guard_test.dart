@@ -1,4 +1,4 @@
-// 8O — wiring guards. The write budget is proven by alarm_band_writes_test.dart
+// Wiring guards. The write budget is proven by alarm_band_writes_test.dart
 // on the pure Save path; these pin that the REAL screen and AppState reach it
 // the one way they should, and that the WakeController setters cannot write the
 // band.

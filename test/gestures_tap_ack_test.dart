@@ -1,9 +1,9 @@
-// 8H — Tap acknowledgement buzz.
+// Tap acknowledgement buzz.
 //
 // A LIVE double tap where at least one action ran gets exactly one band buzz,
 // delivered through AlertDispatcher as a band-only, live-only rule. Late taps,
 // duplicates and taps where nothing ran get none. The ack is claimed once per
-// tap identity. See test/phase8/CONTRACTS.md §8H.
+// tap identity.
 
 import 'dart:io';
 

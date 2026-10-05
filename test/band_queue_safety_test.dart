@@ -1,4 +1,4 @@
-// 8AF (review of the band haptic queue): the safety behaviour of the global
+// The safety behaviour of the global
 // band queue, pinned with fake time and no source reading.
 //
 //   1. A job that times out is cancelled: it writes nothing more, and the band

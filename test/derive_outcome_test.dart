@@ -1,6 +1,6 @@
-// 8AG-perf P2-B: the pure part of structured run outcomes.
+// The pure part of structured run outcomes.
 //
-// ASSUMED API (lib/compute/derive_outcome.dart, new, pure Dart, no imports from
+// API (lib/compute/derive_outcome.dart, new, pure Dart, no imports from
 // db/engine):
 //
 //   class DeriveOutcome {

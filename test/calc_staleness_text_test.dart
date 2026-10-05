@@ -1,10 +1,10 @@
-// P4c: the staleness line. "Updated 08:42 · recordings through 08:36", and
+// The staleness line. "Updated 08:42 · recordings through 08:36", and
 // when newer recordings exist and work is held, why.
 //
-// ASSUMED API (lib/ui2/as_of.dart; AsOfLabel is EXTENDED, not forked):
+// API (lib/ui2/as_of.dart; AsOfLabel is EXTENDED, not forked):
 //
 //   enum StaleHold { workout, sync, background, power }
-//       Why derive work is held. `power` (P5, "Waiting for power") came with the
+//       Why derive work is held. `power` ("Waiting for power") belongs to the
 //       power hold; its own cases are in test/calc_power_stale_test.dart.
 //
 //   StaleHold? staleHoldOf(Map<String, dynamic> schedulerSnapshot)
@@ -40,8 +40,6 @@
 //   AsOfLabel gains optional `recordingsThrough`, `newestRecording`, `hold`.
 //       With recordingsThrough or hold it renders stalenessText(...) (Text key
 //       'as-of-label'); with neither it is today's "As of 08:42", unchanged.
-//
-// Failure mode today: stalenessText / StaleHold / staleHoldOf do not exist.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -133,7 +131,7 @@ void main() {
           'Updated 08:42 · recordings through 08:36');
     });
 
-    test('only the power hold mentions power (P5: "Waiting for power")', () {
+    test('only the power hold mentions power ("Waiting for power")', () {
       for (final h in [null, ...StaleHold.values]) {
         final s = _text(
             updatedAt: _upd,

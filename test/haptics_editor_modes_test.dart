@@ -1,4 +1,4 @@
-// 8AI G4 (red): the notes editor's two modes, "Follow rhythm" (the default) and
+// The notes editor's two modes, "Follow rhythm" (the default) and
 // "Allow dynamics".
 //
 // Spec: in Follow rhythm the dynamics bar is hidden and every entered note is a

@@ -1,4 +1,4 @@
-// 8N: every gesture session writes its interval (strap start/end, final count
+// Every gesture session writes its interval (strap start/end, final count
 // or abandoned) on EVERY exit path, and a failing writer never wedges the
 // latch. The interval is the only thing kept: no samples (invariant 14).
 
@@ -38,7 +38,7 @@ LabradorR17 _packet(int sec, {int sub = 0, int contactFrom = 100, int n = 100}) 
       variabilityRaw: null,
       reserved: 0,
       sampleCount: n,
-      // A moving trace: 8X contact is movement, not a non-zero level.
+      // A moving trace: contact is movement, not a non-zero level.
       samples: Int16List.fromList([
         for (var i = 0; i < n; i++)
           i >= contactFrom ? (i.isEven ? 120 : -120) : 0,

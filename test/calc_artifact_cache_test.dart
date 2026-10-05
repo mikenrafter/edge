@@ -1,12 +1,12 @@
-// 8AG-perf P3-A: a stored result carries the signature of the inputs it was
+// A stored result carries the signature of the inputs it was
 // computed from, and a result whose signature still matches is FRESH: shown as
 // is, never recomputed on open.
 //
-// ASSUMED API (lib/ui2/last_result_cache.dart, schema 60 `last_result.input_sig`):
+// API (lib/ui2/last_result_cache.dart, schema 60 `last_result.input_sig`):
 //
 //   class CachedResult<T> { ...; final String? sig; }
 //       The signature stored with the value; null for a row written without one
-//       (every pre-P3 row, and any put() that passes none).
+//       (every row written before signatures existed, and any put() that passes none).
 //
 //   void put<T>(String key, T value, {String? sig})
 //       Same as today, plus: [sig] is kept in memory AND written through to
@@ -37,8 +37,7 @@
 //        returned. A loader error propagates, stores nothing and leaves the
 //        earlier entry (and its sig) in place.
 //
-// Real sqflite_ffi (the cache writes through to the table). Everything new is
-// reached through `dynamic`, so a missing method fails ITS test, not the file.
+// Real sqflite_ffi (the cache writes through to the table).
 
 import 'dart:async';
 import 'dart:convert';
@@ -50,7 +49,7 @@ import 'package:openstrap_edge/ui2/last_result_cache.dart';
 
 import 'support/last_result_db.dart';
 
-const _db = 'openstrap_p3_artifact_cache_test.db';
+const _db = 'openstrap_artifact_cache_test.db';
 
 Future<Map<String, Object?>?> _row(String key) async {
   final db = await LocalDb.instance;
@@ -221,7 +220,7 @@ void main() {
         loads++;
         return {'v': 'new'};
       }, signature: () async => 'S1', onLast: (_) {});
-      expect(loads, 1, reason: 'a pre-P3 row (NULL sig) recomputes once');
+      expect(loads, 1, reason: 'a row written before signatures existed (NULL sig) recomputes once');
     });
 
     test('a signature that throws is a null signature (never fresh, no '

@@ -1,4 +1,4 @@
-// A tap pad in a dialog (8AD): press, hold and release the rhythm, and
+// A tap pad in a dialog: press, hold and release the rhythm, and
 // two seconds after the last release (or at the eighth tap) the dialog closes
 // with the take. Used by the notes editor's "Start from taps" and the pattern
 // probe's "Tap what you felt". The recording is [BuzzRecorder]'s, the same as

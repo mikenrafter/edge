@@ -1,4 +1,4 @@
-// 8O — the in-memory draft of the whole week. Pure: no widgets, no DB, no band.
+// The in-memory draft of the whole week. Pure: no widgets, no DB, no band.
 
 import 'dart:async';
 

@@ -1,10 +1,8 @@
-// 8L — the Gestures screen and settings for 2–5 taps. 3–5 are DRAFT, counted
+// The Gestures screen and settings for 2–5 taps. 3–5 are DRAFT, counted
 // as ECG-sensor touches after a double tap (WHOOP MG only). No 1-tap row.
-// See test/phase8/CONTRACTS.md §8L.
 //
-// NOTE: test/band_gestures_view_test.dart's "Phase 5B stays out of
-// this screen" text guard forbids "3 tap"/"4 tap" and must be narrowed by the
-// 8L implementation (keep forbidding one/single/1 tap). The `tapCount` symbol
+// NOTE: the text guard in test/band_gestures_view_test.dart keeps forbidding
+// one/single/1 tap but allows "3 tap"/"4 tap". The `tapCount` symbol
 // ban there stays: nothing pinned here uses that identifier.
 
 import 'package:flutter/material.dart' show ValueKey;
@@ -117,7 +115,7 @@ void main() {
           EcgTapThresholds(startMs: 500, extraSensitive: true));
     });
 
-    test('8X: tolerant startup and the double-tap fallback: on until changed, '
+    test('tolerant startup and the double-tap fallback: on until changed, '
         'persisted under their own keys, restored', () async {
       final s = await _boot({});
       expect(s.ecgTapThresholds.tolerantStartup, isTrue);
@@ -138,7 +136,7 @@ void main() {
           EcgTapThresholds(tolerantStartup: false, fallbackToDoubleTap: false));
     });
 
-    test('8X: the two switches are stored independently', () async {
+    test('the two switches are stored independently', () async {
       final s = await _boot({});
       await s.setEcgTapThresholds(EcgTapThresholds(tolerantStartup: false));
       var prefs = await SharedPreferences.getInstance();
@@ -150,7 +148,7 @@ void main() {
       expect(prefs.getBool('gesture_ecg_fallback'), isFalse);
     });
 
-    test('8X: a user from before 8X (the keys are missing) gets both on, '
+    test('a user from before these switches (the keys are missing) gets both on, '
         'whatever else was stored', () async {
       final s = await _boot({
         'gesture_ecg_start_ms': 500,
@@ -162,7 +160,7 @@ void main() {
           EcgTapThresholds(startMs: 500, extraSensitive: true));
     });
 
-    test('8X: a stored false for one key does not touch the other', () async {
+    test('a stored false for one key does not touch the other', () async {
       final a = await _boot({'gesture_ecg_tolerant_startup': false});
       expect(a.ecgTapThresholds.tolerantStartup, isFalse);
       expect(a.ecgTapThresholds.fallbackToDoubleTap, isTrue);
@@ -184,7 +182,7 @@ void main() {
   });
 
   group('BandGesturesView tabs', () {
-    testWidgets('Double tap + 0–3 ECG taps; 3–5 draft; no 1-tap tab (8AK C)',
+    testWidgets('Double tap + 0–3 ECG taps; 3–5 draft; no 1-tap tab',
         (t) async {
       await pumpTall(
           t,

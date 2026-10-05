@@ -1,10 +1,9 @@
-// 8AJ seam 4 characterization: lifetime of the workout / breathing state.
+// Workout area: lifetime of the workout / breathing state.
 // What AppState.dispose cancels in this area (the 1 Hz tick, the 20 s
 // breathing recompute), what it leaves alone (the live state itself, the
 // display hold, the Live Activity, a running route recorder: today's
 // behaviour, pinned so a move cannot change it by accident), identities, and
-// what a dispose does to calls that arrive after it. Must pass before and
-// after the WorkoutController move.
+// what a dispose does to calls that arrive after it.
 //
 // Not pinned here on purpose: what dispose does to gesture sessions (another
 // change owns that).
@@ -20,7 +19,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'support/app_state_live_harness.dart' show hexOf, hr28Inner;
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_dispose.db';
+const _db = 'app_state_workout_dispose.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

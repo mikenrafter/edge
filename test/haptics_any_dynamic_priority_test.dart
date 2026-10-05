@@ -1,4 +1,4 @@
-// 8AF.5: the "any loudness" note (code "*") and the rhythm / dynamics
+// The "any loudness" note (code "*") and the rhythm / dynamics
 // priority. This file holds the model, the heard-log guard and the stored
 // BuzzSequence side; the compiler side is haptic_priority_compile_test.dart and
 // the editor side is in haptic_pattern_editor_test.dart.
@@ -110,7 +110,7 @@ void main() {
     });
   });
 
-  // 8AF.6: a take from taps in the lab probe is `*` notes until each is rated.
+  // A take from taps in the lab probe is `*` notes until each is rated.
   // A probe line left with one still parses, as an unrated test.
   group('the heard log reads an any as "not rated"', () {
     String line(String a) =>

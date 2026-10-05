@@ -1,5 +1,5 @@
-// GestureSettings — double-tap mapping as an ordered SET of actions (Phase 5A,
-// step 3) with a per-action "replay from history" flag (step 5).
+// GestureSettings — double-tap mapping as an ordered SET of actions
+// with a per-action "replay from history" flag.
 //
 // Persistence contract:
 //   * `gesture_double_tap_actions` — int bitmask, bit i = DeviceAction.values[i].

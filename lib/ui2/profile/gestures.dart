@@ -106,13 +106,13 @@ class BandGesturesView extends StatelessWidget {
   final TapCountMethod? tapMethod;
   final ValueChanged<TapCountMethod>? onTapMethod;
 
-  /// The pause and touch-window tuning controls moved to the Device lab (8AE),
+  /// The pause and touch-window tuning controls moved to the Device lab,
   /// where they were already shared widgets; this screen draws neither. The
   /// four fields stay so existing construction sites keep compiling.
   final int? repeatWindowMs;
   final ValueChanged<int>? onRepeatWindowMs;
 
-  /// Actions mapped to 3, 4 and 5 taps (8L draft). 2 taps is [chosen].
+  /// Actions mapped to 3, 4 and 5 taps. 2 taps is [chosen].
   final Map<int, Set<DeviceAction>> tapActions;
 
   /// Flip one action for an n-tap count. Null leaves the rows read-only.
@@ -127,7 +127,7 @@ class BandGesturesView extends StatelessWidget {
   final bool extraTaps;
 
   /// Opens the Haptics screen, where the buzzes these gestures play are
-  /// chosen (8AI). The row is always drawn; without a callback it is inert.
+  /// chosen. The row is always drawn; without a callback it is inert.
   final VoidCallback? onHaptics;
 
   /// Developer mode: a Device lab link under the Haptics one in every tab.
@@ -316,7 +316,7 @@ class BandGesturesView extends StatelessWidget {
                 // Directly under the one action that can be replayed safely,
                 // on the plain double tap alone: a counted tap is always live.
                 // Always drawn; inert and dimmed while the action itself is
-                // off (8K).
+                // off.
                 if (taps == 2 && a.supportsHistoricalReplay) ...[
                   Divider(color: p.line, height: 1),
                   SwitchRow(
@@ -385,7 +385,7 @@ class BandGesturesView extends StatelessWidget {
   }
 
   // The gesture's name: the plain double tap, then the count's own name. The
-  // ECG count's name (8AK C) is the plural message, or the same English from
+  // ECG count's name is the plural message, or the same English from
   // the plain helper where no localizations are in the tree.
   static String _name(AppLocalizations? l, int n, bool ecg) => n == 2
       ? 'Double tap'

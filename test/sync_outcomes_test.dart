@@ -1,4 +1,4 @@
-// 8M follow-up — the manual sync's outcomes and its cancellation.
+// The manual sync's outcomes and its cancellation.
 //
 //  * a download that stopped at the time cap AFTER making progress is a
 //    partial sync, not a failure: Download is done with a note, Calculate runs

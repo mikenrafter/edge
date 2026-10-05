@@ -1,8 +1,7 @@
-// 8AJ seam 2 characterization: live frame -> LiveStreamBuffer mapping through
+// Live-stream area: live frame -> LiveStreamBuffer mapping through
 // AppState (keys, values, units, timestamps) and the notify count per frame.
-// Frames travel the real engine path (G6 rig) except where a test calls
-// debugOnLiveFrame / debugAppendLiveHr directly. Must pass before and after
-// the LiveStreamController move.
+// Frames travel the real engine path (the live rig) except where a test calls
+// debugOnLiveFrame / debugAppendLiveHr directly.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
@@ -13,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/app_state_derive_harness.dart' show TickCounter, deriveDbSetUp, deriveDbTearDown, settleMs;
 import 'support/app_state_live_harness.dart';
 
-const _db = 'openstrap_split8aj_seam2_frames.db';
+const _db = 'openstrap_app_state_live_frames.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

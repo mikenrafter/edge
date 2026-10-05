@@ -1,10 +1,10 @@
-// P4c: a bounded memo of decoded day_result bundles in the read seam.
+// A bounded memo of decoded day_result bundles in the read seam.
 //
 // Today every read decodes the payload again (SeriesCodec.decodePayloadJson on
 // the main isolate): `_latestBundleAt` up to 14, Sleep detail twice for one
 // night (getDaySleepV2 + getDayTimeline), Circadian ~49 per open.
 //
-// ASSUMED API (lib/data/local_repository_impl.dart; static, because `_decode`
+// API (lib/data/local_repository_impl.dart; static, because `_decode`
 // is static and the memo is shared by every LocalRepositoryImpl in the process:
 // the warmer's, the background task's, the screens'):
 //
@@ -28,11 +28,9 @@
 //   read gets (the memo hands out a deep copy, or the readers copy what they
 //   expose).
 //
-//   A write the P4a guard REFUSES (a frozen finalized row) changes nothing, so
+//   A write the frozen-row guard REFUSES (a frozen finalized row) changes nothing, so
 //   it must not invalidate: the memo keeps its entries and the next read is a
 //   hit.
-//
-// Failure mode today: the new statics do not exist (compile error).
 
 import 'dart:convert';
 import 'dart:io';
@@ -47,7 +45,7 @@ import 'package:openstrap_edge/data/local_repository_impl.dart';
 
 import 'support/last_result_db.dart';
 
-const _db = 'p4c_bundle_memo_test.db';
+const _db = 'bundle_memo_test.db';
 
 /// Fixed so "new computed_at" is decided without a clock or a sleep.
 const _seedAt = 1000;
@@ -232,7 +230,7 @@ void main() {
     expect(await _rmssd(repo, _day(0)), 55);
     expect(LocalRepositoryImpl.debugBundleMemoLength, 1);
 
-    // P4a: a derive over a finalized (day, version) row is refused, no throw.
+    // Frozen-row guard: a derive over a finalized (day, version) row is refused, no throw.
     await LocalDb.putDayResult(
       dayId: _day(0),
       algoVersion: kAlgoVersion,

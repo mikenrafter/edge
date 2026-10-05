@@ -1,18 +1,17 @@
-// 8AJ seam 4 characterization: the workout's steps. `workoutStepsMeasured` is
+// Workout area: the workout's steps. `workoutStepsMeasured` is
 // the live pedometer's count FOR THIS WORKOUT (null = never measured, which is
 // not the same as zero), and the stop banks `steps` / `cadence_spm` from it.
 // The pedometer itself (the minute chunks, the rate gate) stays in AppState;
 // what these pin is the workout-scoped bookkeeping around it: the base
 // snapshot at start, the "saw samples" latch, the rebase across a pedometer
-// reset, the per-minute cadence list, and the gait gate. Must pass before and
-// after the WorkoutController move.
+// reset, the per-minute cadence list, and the gait gate.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_steps.db';
+const _db = 'app_state_workout_steps.db';
 const _t0 = 1790000000000; // ms; any instant, the frames carry their own clock
 
 void main() {

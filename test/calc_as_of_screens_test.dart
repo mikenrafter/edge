@@ -1,7 +1,7 @@
-// 8AG-perf P1b: "Show the last calculated data everywhere while new data is
+// "Show the last calculated data everywhere while new data is
 // being calculated, with an 'As of <time>' label."
 //
-// ASSUMED API (all new; see recalc_state_test.dart / as_of_label_test.dart /
+// API (all new; see recalc_state_test.dart / as_of_label_test.dart /
 // last_result_cache_test.dart for their shapes):
 //   AppState.recalc, AppState.debugSetRecalc(RecalcState), RecalcState,
 //   AsOfLabel (key 'as-of-label' on its Text), LastResultCache.instance.
@@ -413,7 +413,7 @@ void main() {
       await t.pump();
     });
 
-    final key = p3Beats(todayId);
+    final key = artBeats(todayId);
     final night = {
       'nn': [for (var i = 0; i < 400; i++) 880 + (i % 37) * 3.0],
       'raw_beats': 412,
@@ -423,7 +423,7 @@ void main() {
     testWidgets('corrected RR: re-open renders the stored night at once, the '
         'warm is requested in the background, then it swaps', (t) async {
       _tall(t);
-      final repo = P3BeatsRepo()..sigs[key] = 'B2';
+      final repo = ArtifactBeatsRepo()..sigs[key] = 'B2';
       LastResultCache.instance.put<Map<String, dynamic>>(key, night, sig: 'B1');
       final src = FakeArtifactSource()
         ..sigs[key] = 'B2'
@@ -446,7 +446,7 @@ void main() {
         (t) async {
       _tall(t);
       await t.runAsync(LastResultCache.instance.clear);
-      final repo = P3BeatsRepo()..sigs[key] = 'B1';
+      final repo = ArtifactBeatsRepo()..sigs[key] = 'B1';
       final src = FakeArtifactSource()
         ..sigs[key] = 'B1'
         ..computeThrows.add(key);

@@ -1,7 +1,6 @@
 // The engine hands the app a StrapEvent, not three positional values
-// (Phase 5A, step 1: "Replace the positional EventSink callback with an event
-// value object that includes eventId, tsEpoch, tsSubsec, receive time, and raw
-// diagnostics").
+// (an event value object with eventId, tsEpoch, tsSubsec, receive time, and
+// raw diagnostics replaces the positional EventSink callback).
 //
 // BleEngine CAN be driven headlessly: `debugInstallFakeLink` +
 // `debugProcessImmediateFrame` push a real EVENT frame through the real
@@ -138,7 +137,7 @@ void main() {
           reason: 'the positional closures must be gone');
       expect(src.contains('_gestureDispatcher.onEvent('), isFalse);
       expect(src.contains('_gestures.onEvent('), isFalse);
-      // The dispatcher is owned by the gesture controller (8AJ seam 3).
+      // The dispatcher is owned by the gesture controller.
       expect(src, contains('_gestures.handle('));
     });
 

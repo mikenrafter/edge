@@ -1,4 +1,4 @@
-// Phase 7 audit — absent and malformed inputs to the sleep-blanking patch.
+// Absent and malformed inputs to the sleep-blanking patch.
 // It runs over stored rows (some written by older builds), so a missing or odd
 // section must blank cleanly, never throw and never invent a value.
 

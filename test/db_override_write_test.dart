@@ -1,12 +1,11 @@
-// P4a: the only way back into a finalized (day, V) row is an explicit user
-// override re-derive. ASSUMED API (the one new symbol in the P4a suite):
+// The only way back into a finalized (day, V) row is an explicit user
+// override re-derive. API (the one symbol the frozen-row guard adds):
 //
 //   enum DayResultWrite { derive, userOverride }       // lib/data/db.dart
 //   LocalDb.putDayResult(..., DayResultWrite reason = DayResultWrite.derive)
 //
 // `userOverride` writes exactly as putDayResult does today; `derive` (default)
-// is refused on a finalized same-version row (see write_guard_test.dart). This
-// file does not compile until the enum exists; that is the whole red here.
+// is refused on a finalized same-version row (see db_put_day_result_guard_test.dart).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -45,7 +44,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Database db;
 
-  setUp(() async => db = await freshDb('openstrap_p4a_override_write_test.db'));
+  setUp(() async => db = await freshDb('openstrap_override_write_test.db'));
   tearDownAll(dropDb);
 
   test('an override writes a finalized same-version row', () async {

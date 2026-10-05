@@ -1,13 +1,13 @@
-// Shared helpers for the 8AJ seam 3 (GestureController) tests. Everything goes
+// Shared helpers for the GestureController tests. Everything goes
 // through AppState's public and @visibleForTesting surface, so the same files
-// serve the characterization tests before the move and after it.
+// serve the AppState-level tests and the controller's own tests.
 //
 // A strap double tap travels the real path: an EVENT frame handed to the
 // engine's immediate-frame handler (the engine's onEvent is AppState._onLiveEvent
 // in AppState.forTesting), through the GestureDispatcher, the claim ledger (a
 // real LocalDb over sqflite_ffi), the native-action channel (mocked here), the
 // cue deliveries (AlertDispatcher -> haptics queue -> the fake link's writes)
-// and the 8H ack. Nothing is replaced inside the gesture area.
+// and the tap ack. Nothing is replaced inside the gesture area.
 //
 // The band is a gen5 fake link. Every command it receives is recorded and
 // acknowledged from inside the write (like test/ecg_ble_engine_test.dart). A

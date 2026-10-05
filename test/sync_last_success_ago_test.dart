@@ -11,7 +11,7 @@ import 'package:openstrap_edge/state/control_operations.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_background_success.db';
+const _db = 'sync_background_success.db';
 
 /// A connected, drained foreground session. Its own opening drain already
 /// counts, so tests read the value it left and compare against that.

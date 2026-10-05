@@ -1,4 +1,4 @@
-// 8AF.6 D: the wiring and the words around wake on the vocabulary (the plans
+// The wiring and the words around wake on the vocabulary (the plans
 // themselves are in wake_vocabulary_test.dart).
 //
 //  - Alarm no longer prints a caption about it (dropped Oct 4): wake buzzes

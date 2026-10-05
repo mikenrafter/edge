@@ -29,7 +29,7 @@ const AlertRule kGestureAckRule = AlertRule(
 
 /// True iff [e] is a live double tap and at least one of its actions ran.
 ///
-/// Not for a COUNTED tap (8L, `GestureOutcome.taps` set): the touch counter has
+/// Not for a COUNTED tap (`GestureOutcome.taps` set): the touch counter has
 /// already buzzed the count and confirmed the final one, so a further buzz when
 /// its actions run would double up.
 bool shouldAckTap(StrapEvent e, List<GestureOutcome> outcomes) =>
@@ -39,7 +39,7 @@ bool shouldAckTap(StrapEvent e, List<GestureOutcome> outcomes) =>
     outcomes.any((o) => o.status == GestureStatus.ran);
 
 /// Buzz the band once for this tap, through [d]'s default band transport, or
-/// through [bandDelivery] (the gesture confirm cue, 8AF.6) when given. Returns
+/// through [bandDelivery] (the gesture confirm cue) when given. Returns
 /// whether a buzz was delivered. Never throws.
 Future<bool> ackTap(
   AlertDispatcher d,

@@ -12,7 +12,7 @@
 //               hide" rule for rows whose precondition can change while the
 //               screen is open: no live link, no ECG sensor)
 //
-// Inventory of the gates this file replaced (8AE.5 P3). Line numbers are as of
+// Inventory of the gates this file replaced. Line numbers are as of
 // the migration and drift; the symbol is what to search for.
 //
 //   Gate (before)                                        Where                           Feature

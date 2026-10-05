@@ -5,21 +5,21 @@
 // flowing ([EcgStreamReadiness]) and the sensor has settled ([sensorSettle]),
 // opens the first touch window there, turns each R17 packet into 100 Hz samples
 // on the stream's own clock, asks for one cue per decision, and stops the stream
-// when the gesture ends. The cues are additive: the start cue ([startBuzz],
-// 8AI) goes out the moment the tap is accepted and is never waited for, so the
+// when the gesture ends. The cues are additive: the start cue ([startBuzz])
+// goes out the moment the tap is accepted and is never waited for, so the
 // wearer's hand is on the sensor by the time the stream runs (a touch that
 // comes late counts as a double tap, not a triple); then ONE follow-up
 // ([buzz]) per count increment, as soon as it is seen; then the confirm
 // ([confirmBuzz]) when the gesture ends counted. Each is its own call, in
 // order, and the band queue spaces them. The one wait the session adds is the
-// window after a follow-up (8AK): the wearer is feeling that cue, so the window
+// window after a follow-up: the wearer is feeling that cue, so the window
 // for the next touch opens only once the band has finished playing it
 // ([bandIdle]), never from the touch itself.
 // No sample is persisted (invariant 14): the packets are consumed and dropped
 // here. The one thing kept is the session's strap-clock INTERVAL (see
 // [EcgGestureRecord]): turning the stream on makes the band save raw ECG that
 // ordinary history sync delivers later, and the receiving side needs the
-// interval to label those packets as gesture contact (8N), never a reading.
+// interval to label those packets as gesture contact, never a reading.
 //
 // Time. Every touch decision is on the stream's own (strap) sample clock, and
 // only on it: a packet's strap time is its NEWEST sample and its samples run
@@ -34,7 +34,7 @@
 // continues the previous one.
 //
 // A start that fails (refused, throws, times out) is tried once more inside the
-// same gesture before the double-tap fallback is taken (8AK): the 2026-10-04 lab
+// same gesture before the double-tap fallback is taken: the 2026-10-04 lab
 // log shows the band refusing a start that the very next one accepted. The retry
 // only ever calls the injected [beginStream]/[endStream]; it names no opcode.
 //
@@ -168,12 +168,12 @@ class EcgTapSession {
   /// The gesture ended: [count] taps, or null when abandoned (with [reason]).
   final void Function(int? count, String? reason) onFinished;
 
-  /// One long buzz for a failed ECG (8X), through AlertDispatcher: called once
+  /// One long buzz for a failed ECG, through AlertDispatcher: called once
   /// per failed gesture with the event id `<gesture id>:failed`, queued behind
   /// any count buzz. True when it was written to the band.
   final Future<bool> Function(String eventId)? failBuzz;
 
-  /// The gesture-start cue (8AI), through AlertDispatcher: called once, in the
+  /// The gesture-start cue, through AlertDispatcher: called once, in the
   /// same turn the tap is accepted and BEFORE the stream is asked to start,
   /// with the event id `<gesture id>:ecg:start`. [start] never waits for it:
   /// ECG monitoring begins at once and the buzz plays beside it. A buzz that
@@ -184,7 +184,7 @@ class EcgTapSession {
   /// force, for the Device lab's session summary.
   final void Function(StrapEvent tap, String settings)? onStarted;
 
-  /// Write the finished gesture's interval (8N). Called once on EVERY exit
+  /// Write the finished gesture's interval. Called once on EVERY exit
   /// (counted, abandoned, link lost, start failed), after [onFinished] and AFTER
   /// the stream has been stopped, with an end that covers the stop. May throw:
   /// the failure is swallowed, so a storage error can never wedge the latch.
@@ -239,7 +239,7 @@ class EcgTapSession {
   //    start fails and a late-starting stream is stopped.
   //  * [endTimeout] — stopping the stream.
   //  * [recordTimeout] — writing the gesture interval. It runs AFTER the stream
-  //    is stopped (8N), so a stuck database can neither keep the stream running
+  //    is stopped, so a stuck database can neither keep the stream running
   //    nor leave the end of the recording outside the stored interval.
   //  * [buzzTimeout] — one band buzz. A buzz that never answers counts as not
   //    written (logged; the count stands), and the buzzes after it, this
@@ -278,7 +278,7 @@ class EcgTapSession {
   static const Duration _samplePeriod = Duration(milliseconds: 10); // 100 Hz
 
   bool _active = false;
-  // 8X: whether the one retry was used, and the thresholds this gesture runs
+  // Whether the one retry was used, and the thresholds this gesture runs
   // on. Both reset when the gesture ends.
   bool _retried = false;
   EcgTapThresholds? _th;
@@ -286,7 +286,7 @@ class EcgTapSession {
   bool _opened = false; // the counter has started and its first window is open
   Duration? _firstSampleAt; // the stream's first sample, on the sample clock
   EcgTapCounter? _counter;
-  // The last presence / sample-contact state the trace reported (8AN A).
+  // The last presence / sample-contact state the trace reported.
   bool _presenceOn = false, _sampleOn = false;
   EcgStreamReadiness _readiness = EcgStreamReadiness();
   EcgSampleClock _clock = EcgSampleClock();
@@ -313,7 +313,7 @@ class EcgTapSession {
   int _postPackets = 0;
   int? _postEndStrapSec;
 
-  // The strap-clock interval seen on the wire this session (8N).
+  // The strap-clock interval seen on the wire this session.
   int? _firstStrapSec, _lastEndStrapSec, _strapAtBegin;
 
   bool get active => _active;
@@ -335,8 +335,8 @@ class EcgTapSession {
   /// Begin the gesture for a live double tap. Returns once the stream command
   /// has gone out (the rest happens as packets arrive). Throws if it could not
   /// start, with every flag already reset, so the caller can give the tap's
-  /// claim back. A failed start is tried once more first (8AK); if that fails
-  /// too, with the double-tap fallback on (8X) it does not throw: the gesture
+  /// claim back. A failed start is tried once more first; if that fails
+  /// too, with the double-tap fallback on it does not throw: the gesture
   /// ends with count 2. A second tap while one gesture runs is ignored.
   Future<void> start(StrapEvent tap) async {
     // The previous gesture's stop may still be in flight (bounded by
@@ -441,8 +441,8 @@ class EcgTapSession {
 
   /// Whether a failure now may be answered by starting the stream once more:
   /// the retry unused, the touch window not yet open and no touch counted, and
-  /// either the stream START failed (always retried, 8AK) or the fallback is off
-  /// (any failure before the first touch, 8X).
+  /// either the stream START failed (always retried) or the fallback is off
+  /// (any failure before the first touch).
   bool _canRetry({bool startFailed = false}) {
     final t = _th;
     if (t == null || _retried || _opened) return false;
@@ -532,7 +532,7 @@ class EcgTapSession {
     if (_packets == 1) {
       step?.call('First packet arrived ${_sinceTap()} ms after the tap.');
     }
-    // 8AN A: each transition of the band's presence and of the samples' own
+    // Each transition of the band's presence and of the samples' own
     // contact, so one capture gives the band's debounce.
     if (r.presence != _presenceOn) {
       _presenceOn = r.presence;
@@ -815,13 +815,13 @@ class EcgTapSession {
     return _buzzTail;
   }
 
-  /// End the gesture. Order matters (8N): the flags reset first (the next tap
+  /// End the gesture. Order matters: the flags reset first (the next tap
   /// is not swallowed), the listener is told, THEN the stream is stopped, and
   /// only then is the tagging interval written, with an end that covers the time
   /// the band kept recording until the stop. The reverse order let a slow
   /// database leave seconds of gesture ECG outside the stored interval.
   ///
-  /// 8X: a failed ECG (abandoned with a reason) buzzes the failure once. With
+  /// A failed ECG (abandoned with a reason) buzzes the failure once. With
   /// the fallback on and no touch counted yet it ends with count 2 instead of
   /// null, so the double-tap action runs; returns true then.
   Future<bool> _finish(int? count, String? reason,
@@ -922,7 +922,7 @@ class EcgTapSession {
       finalCount: count,
       reason: reason,
     );
-    // 8N: the interval is written on every exit, and a failure here must not
+    // The interval is written on every exit, and a failure here must not
     // leave anything unfinished.
     try {
       await recordSession?.call(record).timeout(recordTimeout);

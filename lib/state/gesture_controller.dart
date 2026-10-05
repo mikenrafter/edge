@@ -1,4 +1,4 @@
-// The band-gesture seam (8AJ seam 3), moved out of AppState with no behaviour
+// The band-gesture seam, moved out of AppState with no behaviour
 // change. It owns: the gesture dispatcher and the two tap-counting sessions it
 // routes a double tap to (ECG sensor touches, repeated double taps), the
 // gesture cues (their start / follow-up / confirm / failure deliveries and the
@@ -147,7 +147,7 @@ class GestureController {
   /// A gesture holds the ECG stream (the Device lab's "ECG is busy" test).
   bool get ecgTapActive => _ecgTapSession.active;
 
-  /// 8AK: the gestures that failed to activate, newest first, kept across
+  /// The gestures that failed to activate, newest first, kept across
   /// restarts. Home shows the newest undismissed one; Settings lists them all.
   /// Built on first use, after Prefs is loaded.
   late final GestureFailureStore failures = GestureFailureStore(
@@ -175,7 +175,7 @@ class GestureController {
   DoubleTapRepeatSession _newRepeatSession() => DoubleTapRepeatSession(
         maxTaps: () => _settings.repeatTapMax,
         window: () => _settings.repeatTapWindow,
-        // The same cues as the ECG route (8AK): the start cue once, one
+        // The same cues as the ECG route: the start cue once, one
         // follow-up per further double tap, the confirm at the end; each window
         // opens only after its cue was played.
         startBuzz: _ecgTapStartBuzz,
@@ -196,7 +196,7 @@ class GestureController {
         },
       );
 
-  /// 8L: counts ECG-sensor touches after a live double tap.
+  /// Counts ECG-sensor touches after a live double tap.
   EcgTapSession _newEcgSession() => EcgTapSession(
         beginStream: _beginEcgForTap,
         startBuzz: _ecgTapStartBuzz,
@@ -231,13 +231,13 @@ class GestureController {
           _deviceLab.endSession(count: count, reason: reason);
         },
         step: _deviceLab.addStep,
-        // 8V: every packet, raw, for the lab's replay export (RAM only).
+        // Every packet, raw, for the lab's replay export (RAM only).
         onPacket: _deviceLab.addPacket,
-        // 8V: in the lab, watch the sensor for 3 s after the count is decided.
+        // In the lab, watch the sensor for 3 s after the count is decided.
         postRoll: () => _settings.ecgOnDoubleTap
             ? const Duration(seconds: 3)
             : Duration.zero,
-        // 8N: the stream makes the band save raw ECG that history sync delivers
+        // The stream makes the band save raw ECG that history sync delivers
         // later; keep the interval (no samples) so it is labelled gesture
         // contact.
         recordSession: (r) async {
@@ -279,7 +279,7 @@ class GestureController {
   /// does not cancel this work, so a late start would otherwise switch the
   /// band's ECG on for a gesture that is gone.
   ///
-  /// 8AK: the band seems to answer a command written while it vibrates late or
+  /// The band seems to answer a command written while it vibrates late or
   /// not at all (the 2026-10-04 lab log: four of five starts refused at
   /// PREPARE, a second buzz reply landing in the middle of it). So the start cue
   /// is written first, the start waits for that write, and then PREPARE and
@@ -330,7 +330,7 @@ class GestureController {
   /// One gesture cue as a dispatcher delivery (live-only band alert, own event
   /// id, never a straight engine write): [play] is the cue, in its own job of
   /// the band queue. The wearer's cue assignments are read inside the delivery,
-  /// beside the dispatcher's own claim steps rather than ahead of them (8AI), so
+  /// beside the dispatcher's own claim steps rather than ahead of them, so
   /// a cue is not held up reading them.
   Future<bool> _gestureCue(
     String eventId,
@@ -354,7 +354,7 @@ class GestureController {
     return r.targets.contains('band');
   }
 
-  /// 8AI: the gesture-start cue, sent the moment the double tap is accepted;
+  /// The gesture-start cue, sent the moment the double tap is accepted;
   /// the session fires it without waiting and starts the ECG stream at once.
   Future<bool> _ecgTapStartBuzz(String eventId) =>
       _startCueSent = _gestureCue(eventId, cues.start);
@@ -369,7 +369,7 @@ class GestureController {
   Future<bool> _ecgTapConfirmBuzz(String eventId) =>
       _gestureCue(eventId, cues.confirm);
 
-  /// The failure cue of an abandoned gesture, "Gesture failed" (8AK): the
+  /// The failure cue of an abandoned gesture, "Gesture failed": the
   /// wearer's assigned pattern, else the built-in (today's long failure buzz).
   /// One path with the other cues, so the dispatcher's claim and deadline steps
   /// apply.
@@ -393,7 +393,7 @@ class GestureController {
   Future<void> loadCues() async {
     try {
       final store = await _loadPatterns();
-      // A pattern the wearer put on a cue (8AI) wins over the cue's built-in.
+      // A pattern the wearer put on a cue wins over the cue's built-in.
       final given = decodeCueAssignments(_readCueAssignments());
       _cuePatterns = resolveCuePatterns(store, given);
       _cueAssigned = {

@@ -1,15 +1,15 @@
-// 8AG-perf P2-B / P2-C: the scheduler acts on how a pass ended.
+// The scheduler acts on how a pass ended.
 //
 // The bug: `_drain` called `LocalDb.completeComputeJob` (delete) whenever
 // `run(kind:)` returned, and a pass that blew up, was refused because another
 // pass held the engine, or skipped days transiently was reported as done. The
 // durable job that should have been retried was gone.
 //
-// ASSUMED API:
+// API:
 //
 //   lib/compute/derive_outcome.dart   DeriveOutcome, deriveRetryBackoff,
 //                                     kDeriveMaxAttempts (see
-//                                     p2_derive_outcome_test.dart)
+//                                     derive_outcome_test.dart)
 //
 //   DeriveScheduler(
 //     run: Future<DeriveOutcome> Function({required DeriveJobKind kind}),
@@ -36,7 +36,7 @@
 //   other trigger needed), and `pendingLight` / `pendingHeavy` do NOT count a
 //   not-yet-due job as drain-now work.
 //
-// P2-C, with the new enqueue semantics: stored data that arrives while a pass
+// Enqueue semantics: stored data that arrives while a pass
 // is running (`markStoredData` mid-run) gets its own follow-up pass.
 
 import 'dart:async';
@@ -94,7 +94,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'openstrap_p2_scheduler_retry_test.db';
+    LocalDb.dbName = 'openstrap_scheduler_retry_test.db';
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
@@ -359,7 +359,7 @@ void main() {
     });
   });
 
-  group('P2-C: data stored mid-run gets its own follow-up pass', () {
+  group('enqueue: data stored mid-run gets its own follow-up pass', () {
     test('markStoredData while a light pass runs => a second pass afterwards',
         () async {
       final kinds = <DeriveJobKind>[];

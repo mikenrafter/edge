@@ -1,8 +1,7 @@
-// 8AJ seam 2 characterization: what AppState.dispose leaves behind from the
+// Live-stream area: what AppState.dispose leaves behind from the
 // live-stream machinery (timers, listeners, in-flight owner changes), the
 // identity of the liveStreams buffer across the app's lifetime, and what the
-// live entry points do after dispose. Must pass before and after the
-// LiveStreamController move.
+// live entry points do after dispose.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';

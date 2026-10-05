@@ -1,4 +1,4 @@
-// 8F — source guard: every chart painter site outside the gallery sits inside
+// Source guard: every chart painter site outside the gallery sits inside
 // a ChartScrub (or a raw Scrubber).
 //
 // HEURISTIC (lexical containment). In each scanned file, comments and string
@@ -7,7 +7,6 @@
 // file — i.e. the wrapper's `(` opens before the site and its matching `)`
 // closes after it. A painter built in a helper and wrapped at the call site
 // does NOT pass: put the ChartScrub inside the helper that builds the painter.
-// See test/phase8/CONTRACTS.md §8F.
 
 import 'dart:io';
 

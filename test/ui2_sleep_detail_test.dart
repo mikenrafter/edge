@@ -369,7 +369,7 @@ void main() {
     expect(find.textContaining('22m down'), findsOneWidget);
   });
 
-  // 8AF B: need, debt and bedtime left the Wellness Recovery tab and live in
+  // Need, debt and bedtime left the Wellness Recovery tab and live in
   // this section only. Each one is absent-safe: no value, no sentence, no zero.
   testWidgets('tonight: no debt means no "down" clause, never "0m down"',
       (t) async {

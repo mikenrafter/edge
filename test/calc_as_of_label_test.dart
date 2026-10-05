@@ -1,6 +1,6 @@
-// 8AG-perf P1b: the "As of <time>" decision and the label widget.
+// The "As of <time>" decision and the label widget.
 //
-// ASSUMED API
+// API
 //
 //   lib/state/recalc_state.dart (pure Dart; see recalc_state_test.dart for
 //   RecalcState):

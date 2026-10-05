@@ -1,5 +1,5 @@
-// 8AJ seam 5: SyncController in isolation, with fake collaborators. The same
-// behaviour is pinned through AppState in the characterization tests; these
+// SyncController in isolation, with fake collaborators. The same
+// behaviour is also pinned through AppState in the other sync tests; these
 // prove the controller stands on its own and never reaches for AppState.
 //
 // The engine is the harness's [SyncFakeEngine] (no radio); every other
@@ -21,7 +21,7 @@ import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_controller_unit.db';
+const _db = 'sync_controller_unit.db';
 
 /// The host of the controller: every collaborator is a recorder.
 class _Host {

@@ -1,9 +1,8 @@
-// 8E — a sleep window the samples do not cover is a NIGHT NOT RECORDED.
+// A sleep window the samples do not cover is a NIGHT NOT RECORDED.
 //
 // Saving never depends on samples; every sleep metric for that night is blank;
 // every calculation that depends on sleep skips the night instead of counting
-// it (as 0 h, or as a mid-sleep time taken from the bare window). See
-// test/phase8/CONTRACTS.md §8E.
+// it (as 0 h, or as a mid-sleep time taken from the bare window).
 //
 // The cross-day half is pure (buildCrossDayBundle). A "blank night" there is a
 // day record whose window is known (onset_sec / wake_sec, from the user's
@@ -133,7 +132,7 @@ void main() {
     setUpAll(() async {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
-      LocalDb.dbName = 'phase8_sleep_window_blank_test.db';
+      LocalDb.dbName = 'sleep_window_blank_test.db';
       await databaseFactory.deleteDatabase(
         p.join(await databaseFactory.getDatabasesPath(), LocalDb.dbName),
       );

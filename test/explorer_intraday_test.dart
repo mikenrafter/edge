@@ -1,7 +1,7 @@
-// 8AH, RED. The day scale: several lanes of one local day on one clock axis,
+// The day scale: several lanes of one local day on one clock axis,
 // sleep / nap / workout bands behind them, gaps that stay gaps, a day picker.
 //
-// ASSUMED API: test/support/explorer_harness.dart, explorer_series_test.dart.
+// API: test/support/explorer_harness.dart, explorer_series_test.dart.
 //   * explore-scale:day switches to intraday; the chosen day starts at today
 //     (ExplorerView(today:)) and is NOT remembered across opens.
 //   * One repo.getDayTimeline(day) read serves every lane for that day;

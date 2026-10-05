@@ -337,7 +337,7 @@ void main() {
       c.setChannel(
         'apps',
         enabled: true,
-        // 8AE: the channel's own window only counts when it overrides.
+        // The channel's own window only counts when it overrides.
         overrideQuietHours: true,
         quietStartMinute: 22 * 60,
         quietEndMinute: 7 * 60,

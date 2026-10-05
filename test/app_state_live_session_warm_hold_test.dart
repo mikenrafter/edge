@@ -1,8 +1,8 @@
-// 8AJ seam 2 characterization: AppState's live-session predicate (workout,
+// Live-stream area: AppState's live-session predicate (workout,
 // breathing session or window, ECG capture) is the derive coordinator's
 // "warm held" input. Observed through the artifact warmer: while a live
 // session is active a productive pass warms nothing; once it ends, the next
-// pass warms. Must pass before and after the LiveStreamController move
+// pass warms.
 // (`_liveSessionActive` stays a callback into the coordinator).
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,7 +13,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'support/scripted_artifact_source.dart';
 import 'support/app_state_derive_harness.dart';
 
-const _db = 'openstrap_split8aj_seam2_warm_hold.db';
+const _db = 'openstrap_app_state_live_warm_hold.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

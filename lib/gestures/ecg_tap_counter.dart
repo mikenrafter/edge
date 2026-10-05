@@ -1,5 +1,5 @@
 // ecg_tap_counter.dart — draft 3–5 tap gestures, counted as touches on the
-// WHOOP MG ECG sensor after a live firmware double tap (phase 8L).
+// WHOOP MG ECG sensor after a live firmware double tap.
 //
 // The firmware only ever reports a double tap, so further taps are touches of
 // the ECG electrode. This is a pure state machine: no Flutter, no wall clock,
@@ -27,7 +27,7 @@
 //    [E + gap, E + gap + reacquire + confirm). [EcgTapCounter.reacquire] is
 //    the sensor's own blind time after a lift (zero by default; the session
 //    sets the measured value), [EcgTapThresholds.confirm] the wearer's.
-//  * HOLD (8AK). The window after a follow-up is not the touch's own timing but
+//  * HOLD. The window after a follow-up is not the touch's own timing but
 //    the follow-up cue's: the caller calls [hold] when it asks for the cue and
 //    [release] once the band has finished playing it. While held the counter
 //    tracks the touch it has (so a finger that stays down never counts twice)

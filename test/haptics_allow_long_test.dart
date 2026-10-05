@@ -1,6 +1,6 @@
-// 8AD (B) — the "allow long sequences" setting.
+// The "allow long sequences" setting.
 //
-// Off (the default) the 10 s runtime cap of 8AC holds; on, it is lifted
+// Off (the default) the 10 s runtime cap holds; on, it is lifted
 // everywhere it applies: the tap editor, the notes editor, and the compile at
 // delivery (HapticsService.deliver). What still holds either way: the
 // 8-command plan cap, the band queue and the 30-per-2-min ledger.
@@ -292,7 +292,7 @@ void main() {
   });
 
   group('wiring (source)', () {
-    // 8AE.5: the delivery moved into HapticsService. That a delivery and its
+    // The delivery moved into HapticsService. That a delivery and its
     // timeout follow the setting is pinned by behaviour in
     // haptics_service_test.dart ('allow-long is read when a delivery
     // happens'); what stays here is that no second path computes a plan's

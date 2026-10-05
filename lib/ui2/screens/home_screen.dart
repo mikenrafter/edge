@@ -129,7 +129,7 @@ VoidCallback? syncOf(BuildContext c) {
   }
 }
 
-/// The failed-gesture store (8AK), or null in a golden. The card
+/// The failed-gesture store, or null in a golden. The card
 /// (gesture_failure_card.dart) listens to it itself, so Home only needs to reach it.
 GestureFailureStore? gestureFailuresOf(BuildContext c) {
   try {
@@ -1929,7 +1929,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
 
         // Right under the rings, above everything else — the one spot on
         // this screen nobody scrolls past without seeing. A failed gesture
-        // (8AK) comes first: the newest undismissed one, one card at a time.
+        // comes first: the newest undismissed one, one card at a time.
         if (gestureFailuresOf(c) case final failures?)
           GestureFailureCard(store: failures),
         const CommunityNudge(),

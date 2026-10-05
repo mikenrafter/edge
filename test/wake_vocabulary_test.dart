@@ -1,4 +1,4 @@
-// 8AF.6 D: wake on the band's measured vocabulary (not configurable, not in the
+// Wake on the band's measured vocabulary (not configurable, not in the
 // pattern store), driven through the virtual MG band and the real
 // HapticsService.
 //

@@ -1,4 +1,4 @@
-// 8AK A: no haptic write ever overlaps the ECG stream start (PREPARE).
+// No haptic write ever overlaps the ECG stream start (PREPARE).
 //
 // The 2026-10-04 lab log: four of five gestures failed at PREPARE, the stream
 // start refused after the engine's 5 s timeout. In every one the band had
@@ -13,8 +13,6 @@
 // The mechanism is one source, the band queue: AppState runs the stream start
 // as an exclusive job (HapticsService.runExclusive) behind the start cue, ahead
 // of waiting alerts, and the queue writes nothing else until it is done.
-//
-// Failure mode before: the start ran beside the cue (nothing held either back).
 
 import 'dart:io';
 

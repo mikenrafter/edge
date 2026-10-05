@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 
-/// Allows the red phase to compile before the new production seams exist.
+/// Lets a test reach a production seam that may not exist, failing with a clear message.
 /// This does not emulate policy: every decision comes from the production object.
 T contract<T>(String behavior, T Function() invoke) {
   try {

@@ -6,7 +6,7 @@
 // survive. Those numbers are the reason `ScrollHint` exists and the reason the
 // alternative (make it fit) was refused, so they are asserted rather than
 // written in a comment nobody re-runs. Health had five tabs and was measured
-// here too; since 8AF it has four and the same measurement says it fits.
+// here too; it now has four and the same measurement says it fits.
 //
 // The second is the honesty contract: absent when the content fits, present
 // when it does not, gone at the end of the scroll.
@@ -129,9 +129,9 @@ void main() {
   });
 
   group('the four-tab Health row fits', () {
-    // Health went from five tabs to four in 8AF so that nothing is clipped. If
+    // Health went from five tabs to four so that nothing is clipped. If
     // a label or a tab is added and this fails, the row is back to needing an
-    // affordance, and health_h2_tabs_test pins the same fit on the real screen.
+    // affordance, and health_tabs_test pins the same fit on the real screen.
     for (final screen in const [360.0, 390.0, 430.0]) {
       test('${screen.toInt()} pt, 1.0x text', () {
         expect(_row(_health, 1.0), lessThanOrEqualTo(_viewport(screen)));

@@ -1,4 +1,4 @@
-// 8AD, spec D: the Haptics hub (Settings > Band > Haptics) and the pattern
+// The Haptics hub (Settings > Band > Haptics) and the pattern
 // pickers that Notifications and Band notifications open before the tap sheet.
 // Pumped headless as the pure views, like the other settings tests.
 //
@@ -184,7 +184,7 @@ void main() {
       final gestures = t.getTopLeft(find.text('Gestures')).dy;
       final haptics = t.getTopLeft(find.text('Haptics')).dy;
       expect(haptics, greaterThan(gestures));
-      // The HR zone alert left Settings > Band for Alerts (8AF.6).
+      // The HR zone alert left Settings > Band for Alerts.
       expect(find.text('HR zone alert'), findsNothing);
       await t.tap(row);
       expect(opened, 1);
@@ -458,7 +458,7 @@ void main() {
       await t.pumpAndSettle();
       expect(c.added, hasLength(1));
       expect(c.added.single.$1, 'Short');
-      // The editor opens in Follow rhythm (8AI): every note is a `*` note.
+      // The editor opens in Follow rhythm: every note is a `*` note.
       expect(c.added.single.$2.notes, 'N4*');
       expect(c.replaced, isEmpty);
     });
@@ -741,7 +741,7 @@ void main() {
       await t.pumpAndSettle();
       expect(saved, hasLength(1));
       expect(saved.single.$1, 'Written');
-      expect(saved.single.$2.notes, 'N4*'); // Follow rhythm (8AI)
+      expect(saved.single.$2.notes, 'N4*'); // Follow rhythm
       expect(chosen, hasLength(1));
       expect(chosen.single.patternId, 'n1');
     });

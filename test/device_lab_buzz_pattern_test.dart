@@ -1,10 +1,10 @@
-// 8W: a custom haptic pattern for the Device lab's pattern probe.
+// A custom haptic pattern for the Device lab's pattern probe.
 // AlarmPayloads.gen5MaverickPattern builds the RUN_HAPTIC_PATTERN_MAVERICK
 // (0x13) body: [0x01, 8 waveform-effect slots (0 = idle), u16 per-effect loop
 // control, u8 overall loop]. BleEngine.buzzMaverickPattern writes it like
 // buzzBand does (same reply logging and onReply), on a gen5 link only. Every
-// band buzz still goes through AlertDispatcher (test/phase7/
-// audit_guards_test.dart, test/device_lab_probe_wiring_test.dart).
+// band buzz still goes through AlertDispatcher (test/source_invariant_guards_test.dart,
+// test/device_lab_probe_wiring_test.dart).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';

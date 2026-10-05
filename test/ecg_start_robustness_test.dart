@@ -1,4 +1,4 @@
-// 8AK A (red): making the ECG connection as robust as possible.
+// Making the ECG connection as robust as possible.
 //
 // The log (see a_log_replay_test.dart) shows the stream START being refused
 // in four of five gestures. This file pins the robustness rules the session
@@ -31,10 +31,6 @@
 //     sampled packet after ONE empty one is not yet "steady"). Never from
 //     empty packets alone, never from a burst (a second of strap time
 //     delivered in tens of milliseconds).
-//
-// Failure mode today: a refused/throwing/timed-out start ends the gesture at
-// once (began == 1); the readiness detector needs two sampled packets that are
-// contiguous.
 
 import 'dart:async';
 import 'dart:io';
@@ -120,7 +116,7 @@ void main() {
       expect(r.session.active, isTrue);
     });
 
-    test('regression guard (passes today): a failure after the stream was up '
+    test('regression guard: a failure after the stream was up '
         'is not retried with the fallback on', () async {
       final r = AkEcgRig(max: 5);
       await r.tap();
@@ -132,7 +128,7 @@ void main() {
       expect(r.session.active, isFalse);
     });
 
-    test('regression guard (passes today): a failure after a touch was '
+    test('regression guard: a failure after a touch was '
         'counted is abandoned, never retried', () async {
       final r = AkEcgRig(max: 5);
       await r.tap();
@@ -147,7 +143,7 @@ void main() {
   });
 
   group('the retry sends no command of its own', () {
-    test('regression guard (passes today): the session names no opcode, so '
+    test('regression guard: the session names no opcode, so '
         'no dangerous one can be sent from it', () {
       final src = codeOnly(
           File('lib/gestures/ecg_tap_session.dart').readAsStringSync());
@@ -183,7 +179,7 @@ void main() {
       expect(r.ready, isTrue);
     });
 
-    test('regression guard (passes today): ONE empty packet then the sampled '
+    test('regression guard: ONE empty packet then the sampled '
         'one is not steady yet (what the quick start relies on)', () {
       final r = EcgStreamReadiness();
       expect(r.offer(at: at(0), strapTime: 1790990000.0, sampleCount: 0),
@@ -192,7 +188,7 @@ void main() {
           isFalse);
     });
 
-    test('regression guard (passes today): the log\'s packet 4 completes it '
+    test('regression guard: the log\'s packet 4 completes it '
         'for sure', () {
       final r = EcgStreamReadiness();
       r.offer(at: at(2838), strapTime: 1791101225.480, sampleCount: 0);
@@ -202,14 +198,14 @@ void main() {
           isTrue);
     });
 
-    test('regression guard (passes today): two contiguous sampled packets a '
+    test('regression guard: two contiguous sampled packets a '
         'second apart are steady, as before', () {
       final r = EcgStreamReadiness();
       expect(r.offer(at: at(0), strapTime: 1000.0), isFalse);
       expect(r.offer(at: at(1000), strapTime: 1001.0), isTrue);
     });
 
-    test('regression guard (passes today): empty packets alone are never '
+    test('regression guard: empty packets alone are never '
         'steady', () {
       final r = EcgStreamReadiness();
       for (var i = 0; i < 6; i++) {
@@ -220,7 +216,7 @@ void main() {
       }
     });
 
-    test('regression guard (passes today): a burst is not steady, empty '
+    test('regression guard: a burst is not steady, empty '
         'packets or not (a second of strap time in tens of ms)', () {
       final r = EcgStreamReadiness();
       expect(r.offer(at: at(0), strapTime: 100.0, sampleCount: 0), isFalse);
@@ -228,7 +224,7 @@ void main() {
       expect(r.offer(at: at(40), strapTime: 102.0, sampleCount: 49), isFalse);
     });
 
-    test('regression guard (passes today): the sampled packet must still '
+    test('regression guard: the sampled packet must still '
         'arrive within the pair window of the empty one', () {
       final r = EcgStreamReadiness();
       expect(r.offer(at: at(0), strapTime: 1000.0, sampleCount: 0), isFalse);

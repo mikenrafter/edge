@@ -1,8 +1,7 @@
-// A scriptable ArtifactSource for the warmer tests. See p3_warmer_test.dart for
-// the assumed API (lib/state/artifact_warmer.dart). This file DOES reference
-// the new class, so a test file that imports it fails to compile until it
-// exists: that is the intended red for the warmer, which cannot be reached
-// through `dynamic` (it is a class the tests construct and AppState owns).
+// A scriptable ArtifactSource for the warmer tests. See calc_warmer_test.dart for
+// the API (lib/state/artifact_warmer.dart). This file references the class
+// directly: it cannot be reached through `dynamic` (it is a class the tests
+// construct and AppState owns).
 
 import 'dart:async';
 

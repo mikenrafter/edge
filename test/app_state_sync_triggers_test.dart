@@ -1,13 +1,12 @@
-// 8AJ seam 5 characterization: the ways a sync is started over a live link
+// Sync area: the ways a sync is started over a live link
 // (forceResync, foregroundCatchUp, the manual / pull-to-sync path, the burst
 // loop they share), the single-flight rule, and what each leaves behind: the
 // derive trigger, the data edge, the log and the notify count. Through
-// AppState with a [SyncFakeEngine]. Must pass before and after the
-// SyncController move.
+// AppState with a [SyncFakeEngine].
 //
 // IosBgTask.foregroundPull is assigned only by the real AppState constructor
 // (forTesting does not), so the BGTask -> foregroundCatchUp hook is pinned by
-// source in seam5_delegation_test.dart.
+// source in app_state_sync_delegation_test.dart.
 
 import 'dart:async';
 
@@ -17,7 +16,7 @@ import 'package:openstrap_edge/sync/ios_bg_task.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_triggers.db';
+const _db = 'app_state_sync_triggers.db';
 
 bool _logged(SyncRig rig, String text) =>
     rig.app.logLines.any((l) => l.contains(text));
@@ -107,7 +106,7 @@ void main() {
     test('if the burst it waits on fails, that failure is not its own: it '
         'goes on to run its own offload and the light derive',
         syncCase((rig, timers) async {
-      // FIXED (was LATENT): the awaited burst's throw used to surface as
+      // the awaited burst's throw used to surface as
       // "Resync failed" and skip the caller's own offload, so a workout
       // window the failed burst never pulled stayed unpulled until the next
       // periodic tick. The code's own comment is "wait out the burst, THEN

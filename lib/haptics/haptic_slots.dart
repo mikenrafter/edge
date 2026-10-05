@@ -1,7 +1,7 @@
-// 8AI: the haptic SLOTS, every alert or feature that plays a stored pattern,
+// The haptic SLOTS, every alert or feature that plays a stored pattern,
 // grouped the way the Haptics screen lists them, and what each one plays now.
 //
-// A slot key is the systemKey scheme of 8AF.6: 'alert.<ruleId>' for an alert
+// A slot key is the systemKey scheme: 'alert.<ruleId>' for an alert
 // rule, 'gesture.start|followUp|confirm|failed' for a gesture cue,
 // 'breath.inhale|exhale|hold|done' for a breathing cue. An alert slot's
 // pattern lives in its rule (a snapshot carrying the pattern's id); a cue's
@@ -117,7 +117,7 @@ Map<String, String> decodeCueAssignments(String? raw) {
 String encodeCueAssignments(Map<String, String> m) => jsonEncode(m);
 
 /// The sequence each cue (gesture or breathing) plays: the pattern
-/// [assignments] put on it (8AI) if the store still has it, else the cue's own built-in as stored (and
+/// [assignments] put on it if the store still has it, else the cue's own built-in as stored (and
 /// as the wearer may have changed it). A cue with neither is absent, and
 /// GestureCues plays its seeded default. The one place this is decided, so
 /// what plays is what the Haptics screen shows on the slot.

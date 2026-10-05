@@ -1,4 +1,4 @@
-// 8AF.7 section B (red first): every SettingsAccordion remembers whether it was
+// Every SettingsAccordion remembers whether it was
 // open or folded, per stable key (screen id + section id, never the translated
 // title), through the SettingsRepository app-prefs section.
 //

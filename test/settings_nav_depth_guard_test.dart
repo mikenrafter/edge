@@ -1,11 +1,10 @@
-// 8A — the navigation-depth table, and the stateful wrappers' wiring.
-// See test/phase8/CONTRACTS.md §8A.
+// The navigation-depth table, and the stateful wrappers' wiring.
 //
 // docs/navigation-depth.md holds ONE markdown table with a header row whose
 // cells include "Screen", "Before" and "After". Each body row names a settings
 // screen and its push path before and after, written as "Settings → A → B"
-// (→, U+2192). "Before" is 8AE (paths start at a Profile home); "After" is
-// 8AF.7, when Settings became the landing. Depth = number of arrows.
+// (→, U+2192). "Before" is the old layout (paths start at a Profile home); "After" is
+// the layout where Settings is the landing. Depth = number of arrows.
 
 import 'dart:io';
 
@@ -66,7 +65,7 @@ void main() {
       for (final r in body) {
         expect(r[after], startsWith('Settings'), reason: r[screen]);
         expect(_depth(r[after]), lessThanOrEqualTo(2),
-            reason: '${r[screen]} after 8AF.7: ${r[after]}');
+            reason: '${r[screen]} in the new layout: ${r[after]}');
         // My devices was already one push from the old Profile home (a Quick
         // access row), so Device detail keeps its depth; nothing gets deeper.
         expect(_depth(r[before]),

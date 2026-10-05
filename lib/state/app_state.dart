@@ -290,7 +290,7 @@ class AppState extends ChangeNotifier {
   // constructors have already set by the time anything touches `_derive`.
   late final DerivationEngine _derive =
       DerivationEngine(log: _log, background: _background);
-  /// The derive orchestration (8AJ seam 1): scheduler wiring, the pass itself,
+  /// The derive orchestration: scheduler wiring, the pass itself,
   /// recalc state, per-day publish, warmer hand-off. Everything it needs from
   /// here arrives as a callback; it never sees AppState.
   late final DeriveCoordinator _deriveCoordinator = DeriveCoordinator(
@@ -324,7 +324,7 @@ class AppState extends ChangeNotifier {
   /// Band-gesture → action mapping (double-tap, etc.). Exposed for the settings UI.
   final GestureSettings gestureSettings = GestureSettings();
 
-  /// The band-gesture seam (8AJ seam 3): the dispatcher, the two tap-counting
+  /// The band-gesture seam: the dispatcher, the two tap-counting
   /// sessions, the cues and the failure store. Assigned in both constructors,
   /// before the engine, as the dispatcher was.
   late final GestureController _gestures;
@@ -341,7 +341,7 @@ class AppState extends ChangeNotifier {
         onMarkMoment: _markMomentFromGesture,
         onWorkoutToggle: _toggleWorkoutFromGesture,
         onLogWater: _logWaterFromGesture,
-        // 8N: the stream makes the band save raw ECG that history sync delivers
+        // The stream makes the band save raw ECG that history sync delivers
         // later; keep the interval (no samples) so it is labelled gesture
         // contact.
         recordEcgSession: (r) async {
@@ -360,19 +360,19 @@ class AppState extends ChangeNotifier {
         writeFailures: (json) async => Prefs.setString(Prefs.gestureFailures, json),
       );
 
-  /// 8AK: the gestures that failed to activate, newest first, kept across
+  /// The gestures that failed to activate, newest first, kept across
   /// restarts. Home shows the newest undismissed one; Settings lists them all.
   GestureFailureStore get gestureFailures => _gestures.failures;
 
   /// The gesture cues (start, follow-up, confirm, failed) over [haptics].
   GestureCues get gestureCues => _gestures.cues;
 
-  /// The last 30 s of every live stream, per device (8B). RAM only: live
+  /// The last 30 s of every live stream, per device. RAM only: live
   /// high-rate streams are never persisted (invariant 14). Fed from the live
   /// callbacks below; read by the Live devices screen.
   final LiveStreamBuffer liveStreams = LiveStreamBuffer();
 
-  /// The live-stream seam (8AJ seam 2): the owner set the engine reads, the
+  /// The live-stream seam: the owner set the engine reads, the
   /// developer live feed, mounted live-HR views, and the buffer-feeding helpers.
   /// AppState keeps the buffer, the HR trace and the frame router.
   late final LiveStreamController _live = LiveStreamController(
@@ -386,7 +386,7 @@ class AppState extends ChangeNotifier {
     notify: notifyListeners,
   );
 
-  /// The workout seam (8AJ seam 4): the live workout lifecycle, tick, route
+  /// The workout seam: the live workout lifecycle, tick, route
   /// recorder, Live Activity, zone-crossing alert and the live-workout step
   /// state. The pedometer, the resting-HR anchors and the band-alert dispatcher
   /// stay here and are handed in.
@@ -416,7 +416,7 @@ class AppState extends ChangeNotifier {
     repo: () => repo,
   );
 
-  /// The guided-breathing seam (8AJ seam 4): the session, its quiet windows,
+  /// The guided-breathing seam: the session, its quiet windows,
   /// the RR buffer and the coherence recompute. AppState keeps the live-frame
   /// router that feeds it and the alert dispatcher it buzzes through.
   late final BreathingController _breathing = BreathingController(
@@ -429,7 +429,7 @@ class AppState extends ChangeNotifier {
     notify: notifyListeners,
   );
 
-  /// The sync-session seam (8AJ seam 5): session start, reconnect loop and
+  /// The sync-session seam: session start, reconnect loop and
   /// supervisor, backfill timer and history burst, the foreground / background
   /// flag, the foreground lease, the manual sync and the data edge. The engine
   /// and its policies, the record ingest paths, pairing and the alarm / band
@@ -458,10 +458,10 @@ class AppState extends ChangeNotifier {
     bumpInsights: bumpInsights,
   );
 
-  /// The Device lab's rolling log (8I/8L). RAM only.
+  /// The Device lab's rolling log. RAM only.
   final DeviceLabLog deviceLab = DeviceLabLog();
 
-  /// The Device lab's hardware probes (8V): buzz spacing and ECG touch timing,
+  /// The Device lab's hardware probes: buzz spacing and ECG touch timing,
   /// one at a time, started only from the lab.
   late final HardwareProbeRunner hardwareProbes = HardwareProbeRunner(
     lab: deviceLab,
@@ -479,7 +479,7 @@ class AppState extends ChangeNotifier {
     isEcgAlive: () => ecg.isCapturing,
     ledger: haptics.ledger,
     // The lab's probes play alone on the band, ahead of waiting alerts, and
-    // while the lab screen is open real alerts are held (8AF).
+    // while the lab screen is open real alerts are held.
     runLab: haptics.runLab,
     beginLab: haptics.beginLab,
     endLab: haptics.endLab,
@@ -508,7 +508,7 @@ class AppState extends ChangeNotifier {
     return sent;
   }
 
-  /// One custom pattern for the pattern probe (8W): the same dispatcher
+  /// One custom pattern for the pattern probe: the same dispatcher
   /// delivery as [_probeBuzz], one command.
   Future<bool> _probePattern(List<int> effects, int loop,
       void Function(String? status, int ms) onReply) async {
@@ -599,7 +599,7 @@ class AppState extends ChangeNotifier {
   );
 
   /// The band's haptics: the queue, its ledger, the ended signal and the
-  /// delivery of every rhythm (8AE.5). Only entered from inside an
+  /// delivery of every rhythm. Only entered from inside an
   /// [alertDispatcher] delivery.
   late final HapticsService haptics = _hapticsForTesting ??
       HapticsService(
@@ -2746,8 +2746,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Save the expected sleep schedule on its own — no night, no samples needed
-  /// (8E). The same pref `setOverride(useSchedule: true)` writes.
+  /// Save the expected sleep schedule on its own — no night, no samples needed.
+  /// The same pref `setOverride(useSchedule: true)` writes.
   Future<void> setExpectedSleepSchedule(ExpectedSleepSchedule next) async {
     await sleepOperations.saveSchedule(next.toJson());
     sleepOperations.schedule = next;
@@ -4581,7 +4581,7 @@ class AppState extends ChangeNotifier {
   // ── alarm + strap name (require a live connection) ──────────────────────────
   bool get isConnected => device.connection == 'connected';
 
-  // ── capabilities (8AE.5 P3) ─────────────────────────────────────────────────
+  // ── capabilities ─────────────────────────────────────────────────
   /// What the screens may show, hide or disable right now: the one place the
   /// band, platform, flags and dev mode are read for that purpose. main.dart
   /// provides it to the tree; a new value is built on every call and compares
@@ -4923,7 +4923,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ── alarm screen: draft Save (8O) ────────────────────────────────────────
+  // ── alarm screen: draft Save ────────────────────────────────────────
   // The alarm screen edits an AlarmDraft (lib/state/alarm_draft.dart) and calls
   // this ONCE per Save. It is the only entry the screen has: setScheduleDay
   // (immediate save + arm) stays for programmatic callers such as the Siri
@@ -4981,7 +4981,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // ── Natural Wake / Gradual Wake (phase 6B) ─────────────────────────────────
+  // ── Natural Wake / Gradual Wake ─────────────────────────────────
   // The view-model the UI binds to is [wake] (see lib/wake/wake_controller.dart
   // for its API). The orchestration lives in lib/wake/wake_orchestrator.dart;
   // this section only supplies its environment.
@@ -5543,7 +5543,7 @@ class AppState extends ChangeNotifier {
 
   // ── session: drain history, go live, stay connected ──────────────────────────
   // The session, the reconnect loop and its supervisor, the backfill timer and the
-  // history burst live in [SyncController] (8AJ seam 5); AppState delegates.
+  // history burst live in [SyncController]; AppState delegates.
   Future<void> openSession() => _sync.openSession();
 
   /// Pull anything the band flashed that we don't have yet, over the CURRENT
@@ -5730,7 +5730,7 @@ class AppState extends ChangeNotifier {
 
   // ── guided-breathing cardiac coherence ──────────────────────────────────────
   // The session, its quiet windows, the RR frame buffer and the coherence
-  // recompute live in [BreathingController] (8AJ seam 4); AppState delegates.
+  // recompute live in [BreathingController]; AppState delegates.
   bool get breathingActive => _breathing.breathingActive;
   set breathingActive(bool v) => _breathing.breathingActive = v;
 
@@ -5796,7 +5796,7 @@ class AppState extends ChangeNotifier {
 
   // ── live session coach ───────────────────────────────────────────────────────
   // The workout lifecycle, tick, route recorder and Live Activity live in
-  // [WorkoutController] (8AJ seam 4); AppState delegates.
+  // [WorkoutController]; AppState delegates.
   LiveWorkoutState? get activeWorkout => _workout.activeWorkout;
   set activeWorkout(LiveWorkoutState? w) => _workout.activeWorkout = w;
   /// A stopped workout whose save failed and is waiting for a retry.

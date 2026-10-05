@@ -1,5 +1,5 @@
-// Phase 7 failure injection — the sync presentation and the derive scheduler
-// (8M). A callback that throws, a derive that throws and a database that fails
+// Failure injection — the sync presentation and the derive scheduler.
+// A callback that throws, a derive that throws and a database that fails
 // must end with every latch cleared and nobody left awaiting forever.
 
 import 'dart:async';
@@ -65,7 +65,7 @@ void main() {
     setUpAll(() {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
-      LocalDb.dbName = 'phase7_derive_scheduler_test.db';
+      LocalDb.dbName = 'sync_latches_test.db';
     });
     setUp(() async {
       await LocalDb.close();

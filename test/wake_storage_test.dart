@@ -1,4 +1,4 @@
-// Storage for Phase 6B against REAL sqflite_ffi: the additive v56 rung, its
+// Storage for the wake feature against REAL sqflite_ffi: the additive v56 rung, its
 // idempotence, the same-version self-heal, and the trace/state stores.
 
 import 'package:flutter_test/flutter_test.dart';

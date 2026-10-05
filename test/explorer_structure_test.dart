@@ -1,8 +1,8 @@
-// 8AH, RED. Structure: the painter is isolated behind a RepaintBoundary, the
+// Structure: the painter is isolated behind a RepaintBoundary, the
 // screen does not overflow at 360 pt and 1.3x text, and absent data draws
 // nothing at all.
 //
-// ASSUMED API: support.dart. ExplorerView.plotKey is the RepaintBoundary
+// API: support.dart. ExplorerView.plotKey is the RepaintBoundary
 // ITSELF; the scrub cursor (ChartScrub.cursorKey) is outside it, so moving a
 // finger repaints the cursor and not the plot. Chosen chips and the picker
 // wrap instead of overflowing.

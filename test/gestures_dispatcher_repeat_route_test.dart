@@ -1,8 +1,8 @@
-// 8AK B (red): the dispatcher's repeated-double-tap route and the tap
+// The dispatcher's repeated-double-tap route and the tap
 // acknowledgement.
 //
 // With the session itself playing the confirm cue at the end of a counted
-// gesture (b_double_tap_cues_test.dart), the 8H tap acknowledgement
+// gesture (b_double_tap_cues_test.dart), the tap acknowledgement
 // (`ackTap`, a confirm cue after an action ran) must stay out of that route,
 // or the wearer would feel the confirm twice. The ECG route already does
 // this: its outcomes carry `taps` (even for a count of 2), which makes
@@ -16,7 +16,7 @@
 //   * the claim keys stay as they are (a count of 2 keeps the plain
 //     `gesture:<identity>:<action>` key, 3-5 their `t<count>` scope).
 //   * a single double tap with NO 3-5 slot mapped is not a gesture at all (no
-//     window, runs at once): it keeps `taps: null` and the 8H ack (regression
+//     window, runs at once): it keeps `taps: null` and the tap ack (regression
 //     guard).
 //
 // Failure mode today: the count of 2 outcome has `taps == null`, so the ack
@@ -84,7 +84,7 @@ void main() {
   tearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
       .setMockMethodCallHandler(_channel, null));
 
-  test('a count of 2 through the window carries taps: 2, so the 8H ack stays '
+  test('a count of 2 through the window carries taps: 2, so the tap ack stays '
       'quiet and the session\'s confirm is the only one', () async {
     final s = await _boot();
     fakeAsync((async) {
@@ -114,7 +114,7 @@ void main() {
   });
 
   test('regression guard (passes today): with NO 3-5 slot mapped a double '
-      'tap runs at once, taps null, and the 8H ack applies', () async {
+      'tap runs at once, taps null, and the tap ack applies', () async {
     final s = await _boot(three: false);
     fakeAsync((async) {
       final r = _Rig(s)..tap(repTap());

@@ -1,9 +1,8 @@
-// 8I note — the Gestures screen states plainly that ECG on double tap needs a
+// The Gestures screen states plainly that ECG on double tap needs a
 // WHOOP MG, that WHOOP 4.0 has no ECG sensor, and that the 3–5 ECG-touch
-// rows (8L) are a draft to try in the Device lab first. Tap 1 is never offered
+// rows are a draft to try in the Device lab first. Tap 1 is never offered
 // or named. (An earlier note said other counts were "not available until
-// measured"; that described the dropped IMU tap classifier, not 8L.)
-// See test/phase8/CONTRACTS.md §8I and §8L.
+// measured"; that described the dropped IMU tap classifier, not the ECG-touch rows.)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,8 +11,8 @@ import 'package:openstrap_edge/ui2/profile/gestures.dart';
 
 import 'support/settings_sections.dart';
 
-/// The part of band_gestures_view_test.dart's Phase 5B guard that survives
-/// 8L: nothing names or offers a single tap.
+/// The part of band_gestures_view_test.dart's single-tap guard that survives
+/// the draft rows: nothing names or offers a single tap.
 final _forbidden =
     RegExp(r'one tap|single tap|\b1 tap', caseSensitive: false);
 

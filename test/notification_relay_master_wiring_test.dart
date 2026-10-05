@@ -101,7 +101,7 @@ void main() {
       ),
     ));
     await t.pumpAndSettle();
-    // 8C: all three channel sections start open, so the switch is drawn once
+    // All three channel sections start open, so the switch is drawn once
     // per channel, and every one of them reads Off while the relay is off.
     final rows = find.widgetWithText(SwitchRow, 'Relay to the band');
     expect(rows, findsNWidgets(3));

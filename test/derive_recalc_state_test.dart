@@ -1,6 +1,6 @@
-// 8AG-perf P1b: RecalcState — which days a running pass has not finished.
+// RecalcState — which days a running pass has not finished.
 //
-// ASSUMED API
+// API
 //
 //   lib/state/recalc_state.dart (new, pure Dart):
 //     class RecalcState {

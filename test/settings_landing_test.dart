@@ -1,8 +1,8 @@
-// 8AF.7 section A (red first): no Profile landing screen. Whatever opened
+// No Profile landing screen. Whatever opened
 // Profile home opens Settings (MoreSettings) directly; Quick access is gone;
 // Community (GitHub, Reddit, Discord, Sponsor) is an accordion in Settings;
-// everything else keeps its 8AE grouping; depths shrink by one.
-// 8AI G2 later reordered it: "You & preferences" first, Community directly
+// everything else keeps its grouping; depths shrink by one.
+// It was later reordered: "You & preferences" first, Community directly
 // above Connections, and "Band" is called "Hardware" (same persisted id).
 //
 // What lived only on Profile home today (checked against ProfileHomeView):
@@ -132,7 +132,7 @@ void main() {
   });
 
   group('Community sits directly above Connections in Settings', () {
-    testWidgets('group order: the 8AE groups, Community moved above Connections (8AI G2)',
+    testWidgets('group order: Community sits above Connections',
         (t) async {
       await _pump(t, const MoreSettingsView(version: '1'));
       expect(sectionTitles(t), _groups);

@@ -1,10 +1,10 @@
-// 8AF.7 section C (red first): the phone is always a device.
+// The phone is always a device.
 //
 // My devices lists "This phone" whether or not phone step counting is on.
 // When it is off the row is present but disabled (dimmed) with the honest
 // reason "Step counting from this phone is off". The phone's row or detail
 // carries the "Count steps from this phone" toggle, bound to the SAME
-// AppState preference the (removed, 8AI G2) Settings row used; My devices is
+// AppState preference the (removed) Settings row used; My devices is
 // now the only door, and it follows the preference live.
 //
 // Contracts these tests pin that the spec leaves open:
@@ -17,7 +17,7 @@
 //  - Turning it on/off goes through AppState.requestPhoneSteps /
 //    disablePhoneSteps (the existing methods Settings already calls); the spy
 //    below replaces their platform work.
-//  - 8AI G2: Settings no longer has a steps row under any name.
+//  - Settings no longer has a steps row under any name.
 //  - The "this platform cannot count steps" gate (Capabilities) is not pinned
 //    here: it needs a new Feature whose name this spec does not give. Add a
 //    test for it with the implementation if the gate is introduced.
@@ -265,7 +265,7 @@ void main() {
     });
   });
 
-  group('one door: Settings has no steps row (8AI G2)', () {
+  group('one door: Settings has no steps row', () {
     Future<NavigatorState> openSettings(WidgetTester t, AppState app) async {
       await _pump(t, app, const MoreSettings());
       return t.state<NavigatorState>(find.byType(Navigator));

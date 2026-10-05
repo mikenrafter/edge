@@ -1,4 +1,4 @@
-// What the app is calculating right now (P4b): one process-wide stack of open
+// What the app is calculating right now: one process-wide stack of open
 // steps that the status line reads. The derivation engine, the artifact warmer
 // and compute-on-open reads report here on the MAIN isolate, around their own
 // awaits; nothing crosses an isolate boundary. A step is closed in `finally`

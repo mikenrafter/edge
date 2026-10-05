@@ -1,13 +1,10 @@
-# Phase 7 hardening: flags, failure injection, latch audit
+# Hardening: flags, failure injection, latch audit
 
-Scope: the code the controls, alerts and wake roadmap added. This is the code
-part of phase 7 only. Anything that needs a band, a phone or a Mac is listed at
-the end under "Blocked".
+Scope: the code the controls, alerts and wake roadmap added. Anything that
+needs a band, a phone or a Mac is listed at the end under "Blocked".
 
-Tests for everything below live in `test/phase7/` (144 tests). Run with
-`flutter test --concurrency=2 test/phase7`. With `test/controls`, `test/gestures`,
-`test/wake`, `test/alarm` and `test/phase8`, 1,206 tests pass. The full suite
-was not run here.
+The tests for everything below are flat files under `test/`, named for their
+topic (listed per section). Run one with `flutter test test/<file>`.
 
 ## 1. Rollout flags
 
@@ -51,9 +48,9 @@ or hang.
 | Native relay | yes | yes | yes | yes | n/a (metadata only) | n/a (no DB) | yes | yes |
 | Sync presentation, derive scheduler | n/a | yes | n/a | n/a | n/a | yes | n/a | n/a |
 
-Files: `dispatcher_failure_test.dart`, `gesture_failure_test.dart`,
+Files: `alert_dispatcher_failure_test.dart`, `gestures_failure_injection_test.dart`,
 `wake_failure_test.dart`, `alarm_draft_failure_test.dart`,
-`relay_failure_test.dart`, `sync_latches_test.dart`,
+`notification_relay_failure_test.dart`, `sync_latches_test.dart`,
 `sleep_blank_inputs_test.dart`.
 
 ### Bugs found and fixed
@@ -120,7 +117,7 @@ It now uses `dayLabelOf`.
 - Typed `SharedPreferences` getters throw on a value of the wrong type
   (`GestureSettings.bootstrap`, `NotificationPrefs`). Only a foreign writer can
   produce one, and it is the app-wide pattern. Left alone.
-- 8N: if the gesture interval write fails (database down), that gesture's raw
+- If the gesture interval write fails (database down), that gesture's raw
   packets stay untagged. They are still not linked to any reading, but a raw-ECG
   consumer that lists unlinked packets would see them. A down database also stops
   sync, so this is a narrow case.
@@ -183,7 +180,7 @@ interval write, the alarm persist, and the wake stores.
 | Day labels | One style fix (`background_sync.dart`). A guard now fails on any `toUtc()...substring(0, 10)` or `toIso8601String().substring(0, 10)` in `lib/`, string interpolations included. |
 | DST / 86400 s | No `86400`, `Duration(days:)` or 24 h arithmetic in any of the 22 files the roadmap added (guard per file). Wake windows are elapsed minutes before an absolute T; the water timer and `natural_wake` build local calendar times with `DateTime(y, m, d + n)`. |
 | Absent inputs | `blankNightInBundle` handles empty and odd-typed stored results, never invents a value, and is idempotent. `wake_trace_text` says nothing for no trace. `LiveStreamBuffer` returns no samples rather than a line at zero. |
-| Repeated derivation | Sleep blanking idempotent (existing 8E tests plus `sleep_blank_inputs_test`). Wake run state is keyed to the wake epoch. |
+| Repeated derivation | Sleep blanking idempotent (existing sleep-window tests plus `sleep_blank_inputs_test`). Wake run state is keyed to the wake epoch. |
 | Notification dedupe | `presentEvent` is called only from `NotificationCenter`. The one other direct `NotificationService` post is the OS-scheduled two-hour stillness slot, gated on its `movement` rule (guarded by a test). |
 | Band buzz bypass | Three found and fixed (item 11). A guard now requires every `engine.buzz*`/`runAlarm` call to sit inside a dispatcher delivery or a constructor that hands it to one, and forbids them in any other file. |
 | Isolate boundaries | The causal stager runs only in `Isolate.run`. No `Isolate.run` closure in the new code reads a flag. Flags are read on the isolate that acts on them. |
@@ -202,7 +199,7 @@ and every candidate is either a rollback path or now the fallback for a flag.
 | Legacy Smart Wake heuristic, `smart_wake.dart`, `smart_window_minutes` | Kept | It is the `natural_wake` OFF path and still serves users whose upgrade explanation is pending. |
 | `AppState.setScheduleDay` (save and arm at once) | Kept | Programmatic callers (the Siri shortcut) still use it; the alarm screen does not. |
 | Single-action key `gesture_double_tap` | Kept | Read once when the mask key is absent, and by the `gesture` rule migration. |
-| `notification_listener_service` plugin | Already gone | Replaced by the app-owned listener before this phase. |
+| `notification_listener_service` plugin | Already gone | Replaced by the app-owned listener before this hardening pass. |
 
 ## 6. Blocked without hardware or macOS
 

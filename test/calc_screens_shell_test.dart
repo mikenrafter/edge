@@ -1,11 +1,11 @@
-// 8AI G1 (red first): no calculation screen hides its page behind a spinner.
+// No calculation screen hides its page behind a spinner.
 //
 // USER REPORT (APK a613d8d8): "the different calculation screens are not
 // showing 'As of' and instead are not displaying anything and showing me a
 // pinwheel. It resolves every time and the entire screen aside from the
 // spinner is hidden ... it's slow every time."
 //
-// REPRODUCED against today's code (these tests fail today for these reasons):
+// What these tests pin, each a reason the page used to sit behind a spinner:
 //   * MetricDetail: `MetricData.load` awaits the cheap series (getChart) AND the
 //     slow 90-day journal insights, then setState once. Until both land the page
 //     is the title, the range chips and a bare `Center(CircularProgressIndicator)`:
@@ -62,7 +62,7 @@ import 'support/scripted_artifact_source.dart';
 import 'support/dart_source_lexical.dart';
 import 'support/last_result_db.dart';
 
-const _db = 'openstrap_fix8ai_g1_shell.db';
+const _db = 'openstrap_screens_shell.db';
 
 AppState _app(LocalRepository repo) {
   final a = AppState.forTesting();
@@ -167,8 +167,8 @@ void main() {
       _tall(t);
       await _fresh(t);
       // The read is the warmer's now: the screen asks for it and waits.
-      final key = p3Beats(todayId);
-      final repo = P3BeatsRepo()..sigs[key] = 'b1';
+      final key = artBeats(todayId);
+      final repo = ArtifactBeatsRepo()..sigs[key] = 'b1';
       final src = FakeArtifactSource()
         ..sigs[key] = 'b1'
         ..results[key] = {

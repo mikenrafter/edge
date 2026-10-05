@@ -1,4 +1,4 @@
-// hardware_probes.dart — scripted hardware measurements for the Device lab (8V, 8W).
+// hardware_probes.dart — scripted hardware measurements for the Device lab.
 //
 // The touch counter and the band buzz both depend on things the band does that
 // no spec describes: how it takes haptic commands, how long its electrode takes
@@ -12,10 +12,10 @@
 //    none). Per trial: the band events that arrived during it and how many
 //    "bzz-bzz" plays the wearer FELT (asked after each trial; one command is
 //    one bzz-bzz, and one written while the band still plays is swallowed).
-//  * [PatternProbe] (8W) — ways of getting a COUNT of buzzes out of the band:
+//  * [PatternProbe] — ways of getting a COUNT of buzzes out of the band:
 //    four waveforms × four ways of sending (separate commands paced by time or
 //    by the band's "ended" event, one command with its loop raised, one command
-//    listing the waveform several times; 8Y adds a "delayed" way for gap
+//    listing the waveform several times; a "delayed" way is added for gap
 //    tests). Played on demand, one test at a time: per play, the payloads,
 //    write times, replies, live band events and the measured silences and
 //    buzzes. What the wearer felt is transcribed elsewhere.
@@ -359,7 +359,7 @@ enum BuzzStyle {
   listed,
 
   /// Separate commands, each [PatternTest.delayMs] after the band says the
-  /// last one ended (8Y: how long a silence is felt as).
+  /// last one ended (how long a silence is felt as).
   delayed,
 }
 
@@ -425,7 +425,7 @@ class PatternTestResult {
   final List<PatternCommandResult> commands = [];
   final List<HapticBandEvent> events = [];
 
-  /// 8Z: phone receive time (ms) of the first live 60.
+  /// Phone receive time (ms) of the first live 60.
   int? get _firstStartMs {
     for (final e in events) {
       if (e.eventId == 60) return e.receivedMs;
@@ -433,7 +433,7 @@ class PatternTestResult {
     return null;
   }
 
-  /// 8Z: how long the play took, the first live 60 to the last live 100 after
+  /// How long the play took, the first live 60 to the last live 100 after
   /// it (phone receive times, ms); null when either is missing.
   int? get spanMs {
     final first = _firstStartMs;
@@ -445,7 +445,7 @@ class PatternTestResult {
     return last == null ? null : last - first;
   }
 
-  /// 8Z: the Bluetooth delay, the first live 60 minus the moment the first
+  /// The Bluetooth delay, the first live 60 minus the moment the first
   /// command's write landed (ms); null without a live 60 or a landed write.
   int? get leadMs {
     final first = _firstStartMs;
@@ -458,14 +458,14 @@ class PatternTestResult {
   }
 }
 
-/// Plays one pattern test at a time, on demand (8Y): the wearer presses Play
+/// Plays one pattern test at a time, on demand: the wearer presses Play
 /// for the test on screen, as often as they like, and transcribes what they
 /// felt elsewhere. The probe only sends, waits for the band and logs.
 /// The id of [kWhoopMgPatternProbeSet], written to the lab log when a pattern
 /// session opens so a transcribed log says which input set it answers.
 const String kWhoopMgPatternProbeSetId = 'whoop-mg-pattern-v1';
 
-/// The stable probe input set (8AC): 4 waveforms × 4 ways of sending × counts
+/// The stable probe input set: 4 waveforms × 4 ways of sending × counts
 /// 2 and 3, cycling so an early stop still has seen every waveform and every
 /// way; then 8 gap tests: two delayed commands, effect 14 then 47
 /// alternating, a delay of 0, 300, 700, 1200 ms for each. Test number N is
@@ -487,7 +487,7 @@ final List<PatternTest> kWhoopMgPatternProbeSet = List.unmodifiable([
     ),
 ]);
 
-/// Why [PatternProbe.play] refused a play (8AB).
+/// Why [PatternProbe.play] refused a play.
 enum PatternRefusal { busy, notConnected, resting }
 
 class PatternProbe {
@@ -525,7 +525,7 @@ class PatternProbe {
   static const Duration _liveBefore = Duration(milliseconds: 500);
   static const Duration _liveWithin = Duration(seconds: 2);
 
-  /// The stable probe input set (8AC), [kWhoopMgPatternProbeSet]: 4 waveforms
+  /// The stable probe input set, [kWhoopMgPatternProbeSet]: 4 waveforms
   /// × 4 ways of sending × counts 2 and 3, then 8 gap tests.
   static final List<PatternTest> defaultTests = kWhoopMgPatternProbeSet;
 

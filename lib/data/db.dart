@@ -228,7 +228,7 @@ class LocalDb {
     'ecg_reading',
     'ecg_reading_packet',
     'ecg_raw_packet',
-    // 8N: the gesture intervals that label the raw packets above.
+    // The gesture intervals that label the raw packets above.
     'ecg_gesture_session',
     // Derived once, from raw that no longer exists.
     'day_result',
@@ -1127,7 +1127,7 @@ class LocalDb {
           );
         }
         if (oldV < 56) {
-          // Natural Wake / Gradual Wake split (phase 6B). Additive only: four
+          // Natural Wake / Gradual Wake split. Additive only: four
           // columns on alarm_schedule, two new tables, and a once-only copy of
           // the legacy Smart Wake window into natural_window_minutes guarded
           // by a wake_meta marker. smart_window_minutes is kept, never
@@ -1137,7 +1137,7 @@ class LocalDb {
           await _ensureWakeSchema(db);
         }
         if (oldV < 57) {
-          // 8N: gesture ECG is never an ECG reading. One additive column
+          // Gesture ECG is never an ECG reading. One additive column
           // (ecg_raw_packet.origin, NULL = unknown/normal) and one tiny
           // interval table, both through _createEcgTables so there is exactly
           // one definition. No backfill, no rewrite, nothing read: cheap under
@@ -1146,7 +1146,7 @@ class LocalDb {
           await _createEcgTables(db);
         }
         if (oldV < 58) {
-          // 8AG-perf P2: input revisions behind the "did this day's inputs
+          // Input revisions behind the "did this day's inputs
           // change" fingerprint. Last in the ladder on purpose: a rebuilt or
           // renamed decoded_* table above loses its triggers, so they are
           // attached only once every table is in its final shape. Table and
@@ -1157,7 +1157,7 @@ class LocalDb {
           await _createInputRev(db);
         }
         if (oldV < 59) {
-          // 8AI G1: the last good result of each slow screen read, kept across
+          // The last good result of each slow screen read, kept across
           // restarts. One small additive table, no backfill (an empty table is
           // a screen's first-open state), so it is cheap under iOS's CPU
           // watchdog (invariant 11). No kAlgoVersion bump: nothing derived
@@ -1165,7 +1165,7 @@ class LocalDb {
           await _createLastResult(db);
         }
         if (oldV < 60) {
-          // 8AG-perf P3: the signature of the inputs a stored result was
+          // The signature of the inputs a stored result was
           // computed from, so a result whose inputs have not moved is fresh.
           // One nullable column through the one helper, no backfill (a NULL
           // signature is never fresh, so an old row recomputes once): cheap
@@ -1279,7 +1279,7 @@ class LocalDb {
   /// its last good view from, one row per key. `computed_at` is when that result
   /// was computed (epoch ms), never when it was written or read back.
   /// `input_sig` is the signature of the inputs it was computed from (NULL when
-  /// none was given, and for every row written before P3).
+  /// none was given, and for every row written before signatures were stored).
   static Future<void> _createLastResult(Database db) => db.execute(
         'CREATE TABLE IF NOT EXISTS last_result ('
         'key TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, '
@@ -1983,7 +1983,7 @@ class LocalDb {
     ''');
   }
 
-  // ── Natural Wake / Gradual Wake (phase 6B) ──────────────────────────────
+  // ── Natural Wake / Gradual Wake ──────────────────────────────
 
   /// Creates the wake tables, adds the per-weekday columns, and runs the
   /// once-only Smart Wake split. Idempotent and cheap; called from the v56
@@ -2245,7 +2245,7 @@ class LocalDb {
       'CREATE INDEX IF NOT EXISTS idx_ecg_raw_packet_strap '
       'ON ecg_raw_packet(strap_seconds)',
     );
-    // v57 (8N). NULL = unknown/normal, 'gesture' = recorded while a tap
+    // v57. NULL = unknown/normal, 'gesture' = recorded while a tap
     // gesture held the ECG stream open. Added by ALTER so a table created by
     // an older build gains it; the CREATE above deliberately keeps the old
     // shape so a fresh install and an upgrade run the same code.
@@ -4164,7 +4164,7 @@ class LocalDb {
         // SAFE-TRIM INVARIANT, same rule: the raw ECG records land in this
         // transaction, before the ACK that lets the band trim them.
         if (ecgRawPackets != null && ecgRawPackets.isNotEmpty) {
-          // 8N: a packet inside a known gesture interval is stored as gesture
+          // A packet inside a known gesture interval is stored as gesture
           // contact, never linked to a reading. One tiny SELECT per device in
           // this batch, inside the same transaction; it changes neither the
           // rows nor the order the commit-before-ACK contract depends on.
@@ -9431,7 +9431,7 @@ class LocalDb {
       'ecg_reading',
       'ecg_reading_packet',
       'ecg_raw_packet',
-      // 8N: gesture intervals (no samples). The retag pass after the merge
+      // Gesture intervals (no samples). The retag pass after the merge
       // re-applies them to the restored packets.
       'ecg_gesture_session',
       'sync_cursor',
@@ -9731,7 +9731,7 @@ class LocalDb {
     if ((counts['day_result'] ?? 0) > 0) {
       await putComputeFreshness(kReencodeCursorKey, jsonEncode({}));
     }
-    // 8N: a restored ecg_raw_packet row from an older export has no `origin`
+    // A restored ecg_raw_packet row from an older export has no `origin`
     // and REPLACEs any tagged local copy; re-apply every known gesture
     // interval so gesture contact is never demoted to an ECG packet.
     if ((counts['ecg_raw_packet'] ?? 0) > 0 ||
@@ -10367,7 +10367,7 @@ class LocalDb {
     return '$mx:${(rows.first['n'] as num?)?.toInt() ?? 0}:$r';
   }
 
-  // ── artifact input signatures (8AG-perf P3) ─────────────────────────────────
+  // ── artifact input signatures ─────────────────────────────────
   //
   // The cheap reads an artifact's signature is built from: counts, maxima and
   // single narrow rows, never a payload decode. `last_result` is deliberately

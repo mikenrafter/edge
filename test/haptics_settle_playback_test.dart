@@ -1,4 +1,4 @@
-// 8AM (red): the band is held after a delivered pattern for its estimated
+// The band is held after a delivered pattern for its estimated
 // playback when the band's ended event (100) does not come, not just the
 // default 1.5 s.
 //

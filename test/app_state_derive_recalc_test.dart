@@ -1,6 +1,5 @@
-// 8AJ seam 1 characterization: the RecalcState notifier and its owner
-// bookkeeping, observed through AppState.recalc. Must pass before and after the
-// DeriveCoordinator move.
+// Derive area: the RecalcState notifier and its owner
+// bookkeeping, observed through AppState.recalc.
 
 import 'dart:async';
 
@@ -13,7 +12,7 @@ import 'package:openstrap_edge/state/recalc_state.dart';
 
 import 'support/app_state_derive_harness.dart';
 
-const _db = 'openstrap_split8aj_derive_recalc.db';
+const _db = 'openstrap_app_state_derive_recalc.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

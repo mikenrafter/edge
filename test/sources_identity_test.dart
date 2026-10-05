@@ -1,4 +1,4 @@
-// Phase 4 red: stable identity for same-model devices (contract 1).
+// Stable identity for same-model devices (contract 1).
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/sources_support.dart';

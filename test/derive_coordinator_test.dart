@@ -1,5 +1,5 @@
-// 8AJ seam 1: DeriveCoordinator in isolation, with fake collaborators. The
-// same behaviours are pinned through AppState in the characterization tests;
+// Derive area: DeriveCoordinator in isolation, with fake collaborators. The
+// same behaviours are pinned through AppState in the app_state_derive_* tests;
 // these prove the coordinator stands on its own and never reaches for AppState.
 
 import 'dart:async';
@@ -19,7 +19,7 @@ import 'package:openstrap_edge/wake/wake_orchestrator.dart' show WakeSamples;
 import 'support/scripted_artifact_source.dart';
 import 'support/app_state_derive_harness.dart';
 
-const _db = 'openstrap_split8aj_derive_coordinator.db';
+const _db = 'openstrap_app_state_derive_coordinator.db';
 
 /// A host for the coordinator: every collaborator is a recorder.
 class FakeHost {

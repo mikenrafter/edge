@@ -1,9 +1,9 @@
-// 8M — the sync control reports a sync, not a spinner: a step list with each
+// The sync control reports a sync, not a spinner: a step list with each
 // step's state and time, live counts, a ticking elapsed time while busy, and
 // Retry after a failure. No percentage is ever drawn: the band does not say how
 // much it holds, so there is nothing true to divide by.
 //
-// 8AF.7: the control is one status line and the step list sits behind a tap on
+// The control is one status line and the step list sits behind a tap on
 // that line (collapsed by default), so these tests open it first. The elapsed
 // time is shown only while a sync runs, there is no button while one does, and
 // the "last successful sync" caption is the sentence itself ("Synced just now").

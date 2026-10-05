@@ -1,4 +1,4 @@
-// 8AJ seam 4 characterization: a breathing session that IS banked. The rule
+// Workout area: a breathing session that IS banked. The rule
 // is "at least 60 s of wall clock" (DateTime.now, no clock seam), so this file
 // waits out a real minute once and checks everything that depends on it:
 //
@@ -12,8 +12,7 @@
 //      score exists but is not banked for this pattern), insert off the stop
 //      path.
 //
-// Both run side by side on two AppStates during the one wait. Must pass before
-// and after the WorkoutController move.
+// Both run side by side on two AppStates during the one wait.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
@@ -24,7 +23,7 @@ import 'package:openstrap_edge/stress/breath_phases.dart';
 import 'support/app_state_live_harness.dart';
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_breathing_banked.db';
+const _db = 'app_state_workout_breathing_banked.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

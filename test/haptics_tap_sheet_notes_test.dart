@@ -1,12 +1,12 @@
-// 8AF.6 F.3 and F.4: tap recording -> edit as notes, from the same bottom sheet,
+// Tap recording -> edit as notes, from the same bottom sheet,
 // and taps carry no pressure so they are length-priority only.
 //
-//  F.3  After a take on an MG the tap sheet shows "Edit as notes" (key
+//  -  After a take on an MG the tap sheet shows "Edit as notes" (key
 //       `buzz-edit-notes`). It opens the advanced editor seeded with the
 //       take's notes; saving there returns to the same flow the sheet was
 //       opened from (the picker or the hub) as a notes pattern. Without a
 //       profile (a 4.0) there are no notes, so no such row.
-//  F.4  Tap-derived notes use the "any loudness" dynamic (code "*"), not mf;
+//  -  Tap-derived notes use the "any loudness" dynamic (code "*"), not mf;
 //       the tap sheet has no priority toggle; when the take is opened in the
 //       editor it starts as "*" notes on "Prioritize rhythm" (the wearer may
 //       then change notes, dynamics and priority there).
@@ -105,7 +105,7 @@ Widget _sheet({
     );
 
 void main() {
-  group('F.4: tap-derived notes are any-loudness, length priority only', () {
+  group('tap-derived notes are any-loudness, length priority only', () {
     test('notesFromTaps writes every note as "*", never mf', () {
       final s = BuzzSequence(const [0, 625], durationsMs: const [500, 500]);
       final notes = notesFromTaps(s, unitMs: _mg.unitMs);
@@ -151,7 +151,7 @@ void main() {
     });
   });
 
-  group('F.3: Edit as notes, from the tap sheet', () {
+  group('Edit as notes, from the tap sheet', () {
     testWidgets('no "Edit as notes" before a take', (t) async {
       await _pump(t, _sheet());
       expect(find.byKey(_editKey), findsNothing);
@@ -219,7 +219,7 @@ void main() {
     });
   });
 
-  group('F.3 through the real flows', () {
+  group('Edit as notes through the real flows', () {
     testWidgets('picker > Record new > take > Edit as notes > Save: the '
         'pattern is stored as notes and chosen', (t) async {
       final stored = <(String, BuzzSequence)>[];

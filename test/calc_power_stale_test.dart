@@ -1,6 +1,6 @@
-// P5 (RED): the staleness line learns the "Waiting for power" reason.
+// The staleness line learns the "Waiting for power" reason.
 //
-// ASSUMED API (new; see calc_power_wiring_test.dart for the rest)
+// API (new; see calc_power_wiring_test.dart for the rest)
 //
 //   StaleHold gains `power` (lib/state/recalc_state.dart):
 //       enum StaleHold { workout, sync, background, power }
@@ -13,11 +13,9 @@
 //   DeriveScheduler.setPowerHold(bool)       (calc_power_wiring_test.dart)
 //   AppState.setCalcPowerMode / debugPowerSource / debugAttachPower
 //
-// The existing p4c test 'no text, in any state, ever mentions power (P5 owns
-// that)' in test/calc_staleness_text_test.dart is superseded by this file and
+// The earlier test 'no text, in any state, ever mentions power (the power
+// hold owns that)' in test/calc_staleness_text_test.dart is superseded by this file and
 // has to be updated alongside the implementation.
-//
-// Failure mode today: StaleHold.power does not exist (compile error).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,7 +33,7 @@ import 'support/last_result_db.dart';
 import 'support/as_of_recalc_fakes.dart';
 import 'support/fake_power_source.dart';
 
-const _db = 'p5_staleness_test.db';
+const _db = 'power_staleness_test.db';
 final _label = find.byKey(const ValueKey('as-of-label'));
 
 final _upd = DateTime(2026, 10, 3, 8, 42);

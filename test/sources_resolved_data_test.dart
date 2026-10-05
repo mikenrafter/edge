@@ -1,4 +1,4 @@
-// Phase 4 red: per-interval ownership, abstention and resolved-data rows
+// Per-interval ownership, abstention and resolved-data rows
 // (contracts 2, 3 and 7). Real LocalDb, two-device fixtures.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/adapters/signals.dart';

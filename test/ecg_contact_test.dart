@@ -1,4 +1,4 @@
-// 8X — contact from 50 ms blocks (lib/gestures/ecg_contact.dart).
+// Contact from 50 ms blocks (lib/gestures/ecg_contact.dart).
 //
 // The sensor reads a constant value (zeros, or any DC level) when no finger is
 // on it and a moving trace when one is. So contact is "the signal moves", not

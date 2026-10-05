@@ -1,14 +1,14 @@
-// THE DOUBLE-TAP SCREEN, as a multi-select (Phase 5A, steps 3 and 5).
+// THE DOUBLE-TAP SCREEN, as a multi-select.
 //
 // Pure view, headless, no goldens. What it must get right:
 //   * actions are switches you can have several of on at once (not a radio);
 //   * the empty set IS "off" — there is no "Do nothing" row, and the copy says so;
 //   * "Also run for taps replayed from history" sits under Mark moment, is
-//     present but disabled (8K) while Mark moment is not selected, and never
+//     present but disabled while Mark moment is not selected, and never
 //     sits under an action that cannot be replayed safely;
 //   * only what this phone can do is offered;
 //   * it never names, mentions or offers a one-tap gesture. Two taps is the
-//     firmware's double tap; 3–5 taps are the draft ECG-touch counts of 8L
+//     firmware's double tap; 3–5 taps are the draft ECG-touch counts
 //     (WHOOP MG only, test/gestures_draft_taps_test.dart), so those
 //     words are allowed now; single-tap wording stays banned;
 //   * nothing overflows at 2x text.
@@ -92,7 +92,7 @@ void main() {
       ]) {
         expect(_row(label), findsOneWidget, reason: label);
       }
-      // Five actions plus the replay row, which is always drawn (8K).
+      // Five actions plus the replay row, which is always drawn.
       expect(find.byType(SwitchRow), findsNWidgets(6));
       expect(find.byType(Radio<DeviceAction>), findsNothing);
       expect(find.text('Do nothing'), findsNothing);
@@ -258,7 +258,7 @@ void main() {
     });
   });
 
-  group('Phase 5B stays out of this screen', () {
+  group('one-tap gestures stay out of this screen', () {
     testWidgets('no text names or offers a one-tap gesture', (t) async {
       await _pump(t,
           supported: _supported({
@@ -269,7 +269,7 @@ void main() {
           }),
           chosen: {DeviceAction.markMoment},
           replay: {DeviceAction.markMoment});
-      // 8L adds the draft "3 taps"/"4 taps"/"5 taps" rows (ECG touches on a
+      // The draft "3 taps"/"4 taps"/"5 taps" rows (ECG touches on a
       // WHOOP MG), so only one-tap wording is forbidden here.
       final forbidden =
           RegExp(r'one tap|single tap|\b1 tap', caseSensitive: false);

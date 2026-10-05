@@ -1,5 +1,5 @@
-// Phase 4 headless proof: Source catalog and Resolved data pure views.
-// Synthetic fixtures only. Not in test/proof/ by design.
+// Headless proof: Source catalog and Resolved data pure views.
+// Synthetic fixtures only.
 //
 // Both views are screens without a painter, so they have structural tests
 // (content plus no overflow at phone sizes) instead of golden pictures.

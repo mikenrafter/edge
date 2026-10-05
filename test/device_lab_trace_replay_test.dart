@@ -1,4 +1,4 @@
-// 8V: the Device lab's ECG packet export replays off the band. The fixture is
+// The Device lab's ECG packet export replays off the band. The fixture is
 // the 2026-10-02 18:17 lab run (five gestures on a WHOOP MG), reconstructed
 // from that log; see its header and test/support/ecg_trace.dart.
 //
@@ -14,7 +14,7 @@ const _fixture = 'test/fixtures/ecg_traces/2026-10-02_1817_lab.txt';
 
 void main() {
   // The fixture's samples are reconstructed (a constant 120 where the log said
-  // there was signal); 8X contact is movement, so they are loaded as a moving
+  // there was signal); contact is movement, so they are loaded as a moving
   // trace over the same samples (see Trace.load).
   final trace = Trace.load(_fixture, reconstructed: true);
 

@@ -1,8 +1,8 @@
-// Shared helpers for the 8AJ seam 2 (LiveStreamController) tests. Everything
+// Shared helpers for the LiveStreamController tests. Everything
 // goes through AppState's public and @visibleForTesting surface, so the same
-// files serve the characterization tests before the move and after it.
+// files serve the AppState-level tests and the controller's own tests.
 //
-// Frames travel the real engine path through the 8AI G6 rig (a gen5 or gen4
+// Frames travel the real engine path through the live-stream band rig (a gen5 or gen4
 // fake link whose onLiveFrame / onState / liveOwners are wired the way the
 // production AppState constructor wires them).
 

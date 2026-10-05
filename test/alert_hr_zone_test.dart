@@ -1,4 +1,4 @@
-// 8AF.6 G.3 (red first): the HR zone alert is a full alert, in Alerts.
+// The HR zone alert is a full alert, in Alerts.
 //
 // It gets what every other alert has (a destination picker, Off / Phone / Band
 // / Phone + Band, and a Buzz pattern row that opens the picker), plus its own
@@ -14,7 +14,7 @@
 //    `buzz-pattern:zone` on the Buzz pattern row, destination labels as every
 //    other row).
 //  - The target zone control is a row titled "Target zone" with the value
-//    "Zone N", drawn always and dimmed while the alert is off (8K). The view
+//    "Zone N", drawn always and dimmed while the alert is off. The view
 //    takes `zoneAlertZone` (int, default 3) and `onCycleZoneAlertZone`
 //    (VoidCallback), the names MoreSettingsView used. They are passed through
 //    Function.apply so a wrong name fails that test, not the file.
@@ -28,7 +28,7 @@
 //  - AppState no longer reads the pref itself to decide whether to watch the
 //    zone (no `zoneAlertEnabled ?` arming ternary, no getter over the pref).
 //
-// Not covered here, for the green phase: a live session's tick dispatching
+// Not covered here: a live session's tick dispatching
 // 'zone' through AppState._dispatchBandAlert needs a test seam (there is none
 // today); the delivery tests below use the production dispatcher with the
 // zone rule the migration produces.
@@ -167,8 +167,7 @@ void main() {
       expect(picked, ['zone']);
     });
 
-    testWidgets('with the alert off the Buzz pattern row is drawn and inert '
-        '(8K)', (t) async {
+    testWidgets('with the alert off the Buzz pattern row is drawn and inert', (t) async {
       final picked = <String>[];
       await pumpTall(t, _view(_withZone(0), onBuzzPattern: picked.add));
       final row = find.byKey(const ValueKey('buzz-pattern:zone'));
@@ -222,7 +221,7 @@ void main() {
       );
     });
 
-    testWidgets('the button is drawn with the alert off too (8K)', (t) async {
+    testWidgets('the button is drawn with the alert off too', (t) async {
       await pumpTall(t, _view(_withZone(0)));
       expect(find.byKey(const ValueKey('zone-alert-open-zones')),
           findsOneWidget);

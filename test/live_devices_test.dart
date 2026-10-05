@@ -1,6 +1,5 @@
-// 8B — Live devices: a RAM-only 30 s ring buffer per (device, stream) and a
+// Live devices: a RAM-only 30 s ring buffer per (device, stream) and a
 // screen that draws one graph per stream per connected device.
-// See test/phase8/CONTRACTS.md §8B.
 
 import 'dart:io';
 
@@ -165,7 +164,7 @@ void main() {
       await pump(t);
       // band: hr, accel_x, novel_stream have data; skin_temp does not.
       expect(find.byType(LiveStreamChart), findsNWidgets(3));
-      // The sensors list (8AI G6) names every stream too, so look in the graph.
+      // The sensors list names every stream too, so look in the graph.
       expect(
           find.descendant(
               of: find.byType(LiveStreamChart),
@@ -179,7 +178,7 @@ void main() {
 
     testWidgets('an empty stream says so instead of a flat line', (t) async {
       await pump(t);
-      // Named once in the sensors list (8AI G6) and once over its empty note.
+      // Named once in the sensors list and once over its empty note.
       expect(find.text(liveStreamLabel('skin_temp')), findsNWidgets(2));
       expect(find.text('No data in the last 30 s'), findsOneWidget);
     });
@@ -194,7 +193,7 @@ void main() {
           reason: 'a disconnected device is not an empty stream either');
     });
 
-    testWidgets('every graph is scrubbable (8F)', (t) async {
+    testWidgets('every graph is scrubbable', (t) async {
       await pump(t);
       for (final chart in find.byType(LiveStreamChart).evaluate()) {
         expect(

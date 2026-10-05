@@ -1,5 +1,5 @@
 // gesture_failures.dart — the persisted record of gestures that failed to
-// activate (8AK D). One entry per failed gesture (an ECG count that could not
+// activate. One entry per failed gesture (an ECG count that could not
 // start or lost the stream, or a double-tap action that failed), newest first,
 // bounded. Home shows the newest undismissed one as a card; Settings lists them
 // all. The record carries the Device lab's log as it was at the time, so a

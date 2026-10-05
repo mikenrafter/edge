@@ -173,7 +173,7 @@ void main() {
       'Future<bool> previewBuzzSequence(',
       'Future<AlertDeliveryOutcome> _dispatchBandAlert(',
     ]) {
-      // 8AC: both reach the one delivery helper (now HapticsService.deliver).
+      // Both reach the one delivery helper (now HapticsService.deliver).
       expect(
         codeOnly(bodyOf(app, signature)),
         contains('haptics.deliver('),
@@ -187,7 +187,7 @@ void main() {
     );
     expect(relay, contains('buzzForDuration:'));
     // The app hands the service's duration transport to the player (the ECG
-    // failure buzz, which used to carry `holdMs: 600`, is a cue since 8AK).
+    // failure buzz, which used to carry `holdMs: 600`, is now a cue).
     expect(codeOnly(app), contains('buzzForDuration: haptics.buzzForDuration'));
   });
 

@@ -1,11 +1,11 @@
-// 8AI.3 (red): the gesture session plays an ADDITIVE sequence of cues:
+// The gesture session plays an ADDITIVE sequence of cues:
 //
 //   start (once, at the tap) . follow-up per increment (3, 4, 5) . confirm
 //
 // Never a recount, never the start cue again, never an N-pulse call. Each cue
 // is its own call, requested as soon as it is decided: the session adds no
 // quiet wait of its own (the band queue spaces jobs by the vocabulary's
-// minimum gap, 8AI), and a cue that could not be written never swallows the
+// minimum gap), and a cue that could not be written never swallows the
 // ones after it.
 //
 // ASSUMED API (lib/gestures/ecg_tap_session.dart, EcgTapSession):

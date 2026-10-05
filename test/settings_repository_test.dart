@@ -1,4 +1,4 @@
-// 8AE.5 P2: the settings repository (lib/settings/settings_repository.dart).
+// The settings repository (lib/settings/settings_repository.dart).
 //
 // One typed seam over SharedPreferences with four sections: the alert prefs
 // (NotificationPrefs), the relay channels (ChannelConfig per channel, with
@@ -15,7 +15,7 @@
 //     refused, leaves nothing half-written;
 //   - concurrent updates are serialized, so a read-modify-write never loses
 //     the other one's change;
-//   - the pattern propagation of 8AD is one update over alerts, channels and
+//   - the pattern propagation is one update over alerts, channels and
 //     patterns;
 //   - the relay hears the change stream (quiet hours, channels) without any
 //     screen telling it.
@@ -36,7 +36,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // ignore: depend_on_referenced_packages
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
-/// The user-made patterns: a read also holds the built-ins (8AF.6).
+/// The user-made patterns: a read also holds the built-ins.
 List<SavedHapticPattern> _own(List<SavedHapticPattern> all) => [
   for (final p in all)
     if (!p.system) p,

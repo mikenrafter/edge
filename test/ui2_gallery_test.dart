@@ -24,7 +24,7 @@ Widget _wrap(Widget child) => MaterialApp(
 /// builds what fits, so on the default 800 pt view every assertion about the
 /// bottom of the screen passes whether the row is there or not — including
 /// the one that has to fail if the gallery ever ships visible. (4000 pt since
-/// 8AE: Settings now holds the rows that used to be on Profile.)
+/// settings now holds the rows that used to be on Profile.)
 void _tallPhone(WidgetTester tester) {
   tester.view.physicalSize = const Size(390 * 3, 4000 * 3);
   tester.view.devicePixelRatio = 3;

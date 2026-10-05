@@ -1,4 +1,4 @@
-// 8AI G4 (red): the Gestures screen and the Alerts screen each link to Haptics.
+// The Gestures screen and the Alerts screen each link to Haptics.
 //
 // Spec: "Links: Gestures screen and Alerts screen each get a row linking to
 // Haptics."

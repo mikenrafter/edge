@@ -408,7 +408,7 @@ void main() {
   // Structural cover for every SCREEN fixture that has no picture. Each entry
   // names what the screen must show; the harness adds the overflow sweep.
   //
-  // 8AF.7: the sync control is one status line with the four steps behind a tap
+  // The sync control is one status line with the four steps behind a tap
   // on it. The structural blocks pin the line; `expandedSyncStructure` below
   // opens the steps and pins those, with the same overflow sweep.
   const syncSteps = ['Connect', 'Download', 'Calculate', 'Done'];

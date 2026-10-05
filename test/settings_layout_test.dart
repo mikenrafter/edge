@@ -1,4 +1,4 @@
-// 8AI G2 (red first): the Settings landing screen's layout.
+// The Settings landing screen's layout.
 //
 // ASSUMED BEHAVIOUR (MoreSettingsView, lib/ui2/profile/settings.dart; no new
 // public symbol is needed, so every failure below is an assertion):
@@ -199,7 +199,7 @@ void main() {
       expect(_rows(t, 'Data & privacy'), [
         'Storage',
         'Export, backup, import',
-        'Calculations', // P5: the power mode (see test/p5)
+        'Calculations', // the power mode
         'Write to Apple Health',
         'Contribute my health data',
         'Crash reports',

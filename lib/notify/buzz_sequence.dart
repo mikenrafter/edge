@@ -107,7 +107,7 @@ class BuzzSequence {
   final List<int> offsetsMs;
   final List<int> durationsMs;
 
-  /// 8AC: the rhythm as notes (a PatternTranscript code such as
+  /// The rhythm as notes (a PatternTranscript code such as
   /// "N4mf R2 N1mf"), the device profile they were made for, and the plan
   /// compiled from them when the rule was saved. All absent for a rule saved
   /// before this existed, or on a band with no measured profile.
@@ -126,12 +126,12 @@ class BuzzSequence {
   /// profile) and whenever there is no baked plan.
   final int? bakedRuntimeMs;
 
-  /// 8AD: the stored pattern (HapticPatternStore) this rhythm is a snapshot of,
+  /// The stored pattern (HapticPatternStore) this rhythm is a snapshot of,
   /// or null when it was made by hand. Delivery never reads it; editing or
   /// deleting the stored pattern rewrites the snapshots that carry it.
   final String? patternId;
 
-  /// 8AF.5: what the compiler gives up first when the notes cannot be played as
+  /// What the compiler gives up first when the notes cannot be played as
   /// written. Rhythm is the default and is not written to JSON.
   final HapticPriority priority;
 

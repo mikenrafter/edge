@@ -1,7 +1,7 @@
-// P5: "balanced == today", recorded against the code as it is BEFORE P5.
+// "Balanced == the default pacing", recorded against the code as it was before power modes.
 //
 // Uses ONLY symbols that exist today, so it compiles and PASSES now and must
-// stay green through the P5 implementation: a green that changes any value
+// stay green with power modes in place: a green that changes any value
 // below has drifted today's behaviour. It records what the scheduler, the
 // debouncer, the pacing and the artifact warmer decide in each relevant state.
 // The same observations are repeated under CalcPowerMode.balanced and every
@@ -9,7 +9,7 @@
 //
 // Not pinned here, because it is private to SyncController with no seam (a
 // `DateTime.now()` inside the reconnect callback): the 30-minute background
-// heavy throttle (`_lastBackgroundHeavyAt`). P5 must leave that code alone.
+// heavy throttle (`_lastBackgroundHeavyAt`). power modes must leave that code alone.
 //
 // Notes recorded from reading the code:
 //  * DeriveScheduler.setBackground only holds on iOS (`Platform.isIOS`); on
@@ -30,7 +30,7 @@ import 'package:openstrap_edge/state/recalc_state.dart';
 import 'support/app_state_derive_harness.dart';
 import 'support/artifact_source_spy.dart';
 
-const _db = 'openstrap_p5_balanced_pin.db';
+const _db = 'openstrap_pacing_balanced_pin.db';
 
 Duration _s(int s) => Duration(seconds: s);
 Duration _m(int m) => Duration(minutes: m);

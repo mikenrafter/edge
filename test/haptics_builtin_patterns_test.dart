@@ -1,8 +1,8 @@
-// 8AF.6 sections B, G.1 and G.2 (red first): the built-in (system) patterns.
+// The built-in (system) patterns.
 //
-// Three gesture cues (start, follow-up, confirm) and, since 8AI, the ten
+// Three gesture cues (start, follow-up, confirm) and the ten
 // presets are stored beside the user's patterns (the per-alert built-ins of
-// 8AF.6 are gone: an alert slot's default is one of the presets, see
+// the earlier design are gone: an alert slot's default is one of the presets, see
 // test/haptics_presets_test.dart). They cannot be renamed or deleted; the
 // cues can be customised and put back (Reset to default), the presets are
 // read-only. The hub lists them under "Your patterns" and "Presets"; the
@@ -65,7 +65,7 @@ final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
 bool _sys(SavedHapticPattern p) => (p as dynamic).system as bool;
 String? _key(SavedHapticPattern p) => (p as dynamic).systemKey as String?;
 
-// 'gesture' plays nothing of its own (8AI.3): the three gesture cues do.
+// 'gesture' plays nothing of its own: the three gesture cues do.
 const _alarmish = {'alarm', 'nativeAlarm', 'wake', 'gesture'};
 const _open = {'alarmLatchFailed', 'alarmNightCheck'};
 
@@ -201,7 +201,7 @@ void main() {
       expect(snap.patterns.where((p) => !_sys(p)), hasLength(1));
     });
 
-    test('a store written before 8AF.6 (no system fields) reads with its '
+    test('a store written before built-ins existed (no system fields) reads with its '
         'user patterns intact and the built-ins added', () async {
       SharedPreferences.setMockInitialValues({
         HapticPatternStore.prefsKey: jsonEncode([
@@ -317,8 +317,7 @@ void main() {
       expect(store.bySystemKey('alert.wake'), isNull);
     });
 
-    test('the zone alert has a default (the HR zone alert is a full alert, '
-        '8AF.6 G.3)', () {
+    test('the zone alert has a default (the HR zone alert is a full alert)', () {
       expect(builtInDefault('alert.zone'), isNotNull);
     });
 

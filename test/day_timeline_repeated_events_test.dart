@@ -1,9 +1,9 @@
-// 8G — Day breakdown: collapse repeated band events.
+// Day breakdown: collapse repeated band events.
 //
 // A run of consecutive identical band events (same event id, nothing else
 // between them in time order) becomes ONE row reading
 // "<title> · N times", which expands to the individual times. A single event
-// stays a plain row. See test/phase8/CONTRACTS.md §8G.
+// stays a plain row.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

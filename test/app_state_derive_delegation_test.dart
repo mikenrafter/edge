@@ -1,4 +1,4 @@
-// 8AJ seam 1: every AppState member that moved into the DeriveCoordinator is
+// Derive area: every AppState member that moved into the DeriveCoordinator is
 // still there and forwards, with the same notify semantics. The type
 // annotations below are compile-time checks of the public surface.
 
@@ -14,7 +14,7 @@ import 'package:openstrap_edge/state/recalc_state.dart';
 
 import 'support/app_state_derive_harness.dart';
 
-const _db = 'openstrap_split8aj_derive_delegation.db';
+const _db = 'openstrap_app_state_derive_delegation.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

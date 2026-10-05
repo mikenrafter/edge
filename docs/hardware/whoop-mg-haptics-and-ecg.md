@@ -13,12 +13,12 @@ Logs referred to:
 - **L2**: 2026-10-02 18:17–18:20, 5 ECG-touch sessions on the new flow (count
   buzz first, one clock). Reconstructed as
   `test/fixtures/ecg_traces/2026-10-02_1817_lab.txt`.
-- **L3**: 2026-10-02 20:40, the 8V hardware probes (buzz probe and ECG touch
+- **L3**: 2026-10-02 20:40, the hardware probes (buzz probe and ECG touch
   probe) plus count-buzz gestures, with the band's replies and events, the
   wearer's counts of what they felt, and the cue-to-contact latencies. It
   replaces two L1/L2 readings below (marked "superseded"). Not stored as a
   fixture; the numbers below are read from it.
-- **L4**: 2026-10-02 22:27–22:36, the 8W pattern probe (32 tests) with the band's
+- **L4**: 2026-10-02 22:27–22:36, the first pattern probe (32 tests) with the band's
   events, replies and the wearer's counts. The counts were the old coarse input
   (how many buzzes, how many groups), so findings that rest on them are marked
   "rough". Not stored as a fixture; the numbers below are read from it.
@@ -45,9 +45,9 @@ Logs referred to:
 | 300 ms taps never showed; a touch that lifts before the ~1.9 s check is invisible. | High | L3 probe, last three cues, every time. |
 | The band's presence bit is **useless for taps**: on before any touch and never off. | High | L3: every packet line. |
 | **Superseded (L2 reading):** "the band checks once per packet and holds a returning finger back for `hold` after a lift, 1.16–1.96 s (1.5 s in the model)." L3 lifts of 0.4 s and 2.5 s showed with the same ~1.9 s delay from landing, so there is no hold that depends on the lift. The L2 cases were a touch latency seen right after a short lift. | Superseded | L3 vs L2 18:19:10, 18:19:41. |
-| Code today: `sensorReacquire` (1.5 s) is still added to the window after a lift. It stays as a lower bound; with the touch latency it is the wearer's landing time, not the lift, that the sensor needs ~1.9 s after. Not re-tuned in 8W (see open questions). | Rule | `ecg_tap_session.dart`; replay of L2 18:19:10 counts tap 4 with it, 3 without. |
+| Code today: `sensorReacquire` (1.5 s) is still added to the window after a lift. It stays as a lower bound; with the touch latency it is the wearer's landing time, not the lift, that the sensor needs ~1.9 s after. Not re-tuned after the pattern probe (see open questions). | Rule | `ecg_tap_session.dart`; replay of L2 18:19:10 counts tap 4 with it, 3 without. |
 | While touching, 96–100 of 100 samples are non-zero (the trace crosses zero). | High | L1, L2. |
-| Each packet also carries the band's own electrode **presence** bit (flags bit 3, debounced by the band), the HeartKey S2 state, progress, quality and an unreadable mask. These were not logged before 8V; every packet line now shows them. | Protocol | `openstrap_protocol` `labrador.dart` |
+| Each packet also carries the band's own electrode **presence** bit (flags bit 3, debounced by the band), the HeartKey S2 state, progress, quality and an unreadable mask. These were not logged before the hardware probes; every packet line now shows them. | Protocol | `openstrap_protocol` `labrador.dart` |
 | The ECG **reading** state machine ends a capture after 3 contact losses, and sends an explicit RESTART when the S2 state drops with presence on (and drops packets while the restart runs). A gesture lifts its finger by design, so with `persist: false` neither happens; both are logged instead. | Rule | `ecg_controller.dart`, `ecg_policy.dart` |
 
 ## Haptics
@@ -70,7 +70,7 @@ layout is the protocol notes' reading; what the loop bytes mean is not confirmed
 | **Superseded (L1/L2):** "each pulse of a multi-pulse buzz is its own command, two pulses 300 ms apart are felt as two." L1 and L2 took the replies and the wearer's counts as two pulses played; L3, with the 60 and 100 events beside each command, shows that a second command inside the play was swallowed. | Superseded | L3 shows the second command's reply is "pending" with no event 60. |
 | **Superseded (L1/L2):** "the band takes one more command while busy and drops the rest; busy time ~1.25-2.0 s from the first write." Replaced by the play window plus ignore window above; the missing reply of the 3rd command in L2 fits the ignore window after a swallowed 2nd. | Superseded | L3. |
 | 113 is the stream start (time equal to the first packet's strap time); 114 follows the stream stop. | Medium | L1, L2. |
-| Consequence: no command is written while the band plays. Until 8AI.3 the session enforced it with a 1.8 s `buzzQuietGap` between one-pulse commands; since 8AI.3 each gesture cue is its own band-queue job, written after the band's event 100 plus `minVibrationGapMs`, and the session waits for nothing. | Rule | `band_queue.dart`, `gesture_cues.dart`; the virtual band swallows and ignores as above. |
+| Consequence: no command is written while the band plays. The session used to enforce it with a 1.8 s `buzzQuietGap` between one-pulse commands; now each gesture cue is its own band-queue job, written after the band's event 100 plus `minVibrationGapMs`, and the session waits for nothing. | Rule | `band_queue.dart`, `gesture_cues.dart`; the virtual band swallows and ignores as above. |
 
 ### Pattern probe findings (L4)
 
@@ -116,8 +116,8 @@ everything into the lab log (saved with "Save lab log file").
   sensor showed the change. Cue times are mapped onto the strap clock through
   the least-delayed packet, so each latency includes your reaction time and the
   best packet's own latency (~0.15 s).
-- **Pattern probe** (8W, MG only; a transcriber since 8Y). The button opens a
-  screen. 40 tests: 32 in the 8W cycle (4 waveforms x 4 ways of sending x 2
+- **Pattern probe** (MG only; a transcriber). The button opens a
+  screen. 40 tests: 32 in the first cycle (4 waveforms x 4 ways of sending x 2
   counts, 2 and 3, cycling so an early stop has still tried every waveform and
   way), then 8 gap tests.
   - Waveforms (effect ids in the command's slots): the band's pair 47 + 152,
@@ -153,7 +153,7 @@ everything into the lab log (saved with "Save lab log file").
     each effect is felt, and the data to build an encoder from a tapped rhythm
     to a band command (felt buzz and gap units against real envelopes and
     delays).
-  - **Notes, rests and tempo (8Z).** Entries are now typed: a note (the band
+  - **Notes, rests and tempo.** Entries are now typed: a note (the band
     buzzed) or a rest, each 1–4 units, with a Note/Rest toggle that flips after
     every tap (override it for two notes or two rests in a row). One unit is an
     eighth, so lengths 1–4 are an eighth, quarter, dotted quarter and half, and a
@@ -168,7 +168,7 @@ everything into the lab log (saved with "Save lab log file").
     march's start. A replay marches a playhead through your entries at that tempo from the first
     write plus the lead, so a mismatch between what you wrote and what the band
     plays shows up as the playhead drifting from what you feel.
-  - **16th notes and dynamics (8AA).** The unit is now a sixteenth, so the lengths
+  - **16th notes and dynamics.** The unit is now a sixteenth, so the lengths
     are 1, 2, 4, 6 and 8 units (16th, eighth, quarter, dotted quarter, half), a 4/4
     bar is 16 units, and the page starts at 125 ms per unit (the old 250 ms eighth;
     the fit is clamped to 50–400 ms and the log says `1 sixteenth ≈ N ms`). Every
@@ -178,7 +178,7 @@ everything into the lab log (saved with "Save lab log file").
     different places. Notes in the log read `N<length><dynamic>` and rests
     `R<length>`: `N4mf R2 N1ff` is a quarter note at mf, an eighth rest, then a 16th
     note at ff.
-  - **Dotted lengths, count-in, end screen, rolling limit (8AB).** A Dot button
+  - **Dotted lengths, count-in, end screen, rolling limit.** A Dot button
     beside the 16th, eighth, quarter and half buttons makes the next entry 3/2 as
     long (one shot; a 16th cannot be dotted), so the lengths are now 1, 2, 3, 4, 6,
     8 and 12 units and the log reads `N3mf`, `R6`, `N12ff` (dotted eighth, dotted
@@ -194,7 +194,7 @@ everything into the lab log (saved with "Save lab log file").
     session. The band now gets at most 30 commands in any 2 minutes, counted over all
     plays and kept when the screen is closed and reopened; a play that would go over
     is refused with `Pattern probe: resting the band; ready in N s (30 commands per
-    2 minutes).` and the page says "Band resting, ready in N s" under Play. (In 8Y-8AA
+    2 minutes).` and the page says "Band resting, ready in N s" under Play. (In the earlier versions
     the old cap refused every play from test 20 on, with nothing on screen to say
     so.) A small display shows "N of 30 left" and "next in m:ss", red under 5 left;
     it is blurred until tapped so its countdown does not compete with the metronome.
@@ -288,7 +288,7 @@ not matter to the data) or, in a legacy log, when a rendition ends with `R1 R2 R
 (a sixteenth, an eighth and a quarter rest) as a flag; those three rests are
 stripped before use. Unstable rows (`click1soft`, the 100 ms gap with the 1 to 6
 spread) cost a little more in the compiler, so they are used only when they fit
-meaningfully better (8AF.6 removed the old "Extended haptics opset" toggle: the
+meaningfully better (there is no "Extended haptics opset" toggle any more: the
 whole vocabulary is the only mode, stable preferred). The log line reads `Pattern probe heard 24/40,
 ..., unstable (A and B are the shortest and longest): A = ...; B = ...; played N×.`
 The probe is meant to grow to other devices; the WHOOP 5.0 MG is the only one
@@ -339,7 +339,7 @@ commands, never as a guessed timing.
    that uses one says "timings may vary".
 3. **The 10 s cap.** A plan whose longest felt length is over `kMaxHapticRuntime`
    (10 s) is not produced; the editor says "Too long for the band: keep it under 10
-   seconds." and disables Save. (8AD adds an override.)
+   seconds." and disables Save. (An override is available.)
 4. **Pre-bake.** On Save the editor stores the compiled plan with the rule
    (`bakedSteps`: effects, loop, delay, JSON key `plan`), from the same plan it
    showed. Delivery plays the baked commands when the profile id matches, so a
@@ -363,7 +363,7 @@ commands, never as a guessed timing.
 
 ## Patterns and safety
 
-Settings > The band > Haptics (8AD) is where buzz patterns are kept and where the band's
+Settings > The band > Haptics is where buzz patterns are kept and where the band's
 limits are shown.
 
 - **Named patterns.** A pattern is a saved rhythm with a name (1 to 40 characters, unique
@@ -372,7 +372,7 @@ limits are shown.
   looks the store up. Replacing, renaming or deleting a pattern goes through
   `propagatePattern`, which rewrites the copies in the alert rules, the relay channels and
   the per-app sequences; a deleted pattern's copies keep their rhythm and lose the id.
-- **Built-in patterns (8AF.6).** Three gesture cues and one default per non-alarm alert
+- **Built-in patterns.** Three gesture cues and one default per non-alarm alert
   rule are stored beside the wearer's patterns under a stable `systemKey`
   (`gesture.start`, `gesture.followUp`, `gesture.confirm`, `alert.<ruleId>`, including
   `alert.relay`, the relay's default). They are seeded when missing, never duplicated, and
@@ -446,7 +446,7 @@ limits are shown.
   diff against the table in code. The probe's "Tap what you felt" button fills a rendition
   from a tapped rhythm.
 
-## Timing rules (8AK)
+## Timing rules
 
 The rule behind all of them: **a window for the next tap opens after the cue
 the wearer is feeling has played, never from the tap.** The wearer cannot touch
@@ -506,7 +506,7 @@ gestures of the 2026-10-04 log from its own timestamps and packet summaries
 
 ## Fast mode (retired)
 
-8AN added a Fast option under Settings > Hardware > Gestures ("How ECG touches
+A Fast option was added under Settings > Hardware > Gestures ("How ECG touches
 are read"): no wait for a steady stream, no 2.5 s sensor settle, PREPARE without
 raw-save, the band's warm-up packet skipped and the first touch window opened at
 that packet's end. It is gone (Oct 4), with `EcgTapMode`, the
@@ -565,7 +565,7 @@ final r = await replayTrace(trace.of('tap 18:19:10.695'),
     thresholds: thresholdsOf('start 500 ms, gap 200 ms, confirm 1000 ms'));
 ```
 
-### Contact rule (8X)
+### Contact rule
 
 A gesture no longer reads "contact" as "sample is not zero". The session asks
 `ecgContactMask` (`lib/gestures/ecg_contact.dart`): it cuts each packet into 50 ms
@@ -599,9 +599,9 @@ as L3 shows.
    Where does one effect end and the next begin in the band's own pair?
 4. Can one command play two or three bzz-bzz? If *listed* or *repeat* does it,
    one cue can carry more of a count (the gesture cues are one job per cue
-   since 8AI.3). (Pattern probe.)
+   now). (Pattern probe.)
 5. Does pacing on event 100 (100 ms after it) always play? (Pattern probe:
-   *event-paced*; the band queue paces gesture cues on event 100 since 8AI.3.)
+   *event-paced*; the band queue paces gesture cues on event 100 now.)
 6. The touch window after a lift: the sensor needs ~1.9 s after the finger
    lands, and the code still adds a fixed 1.5 s after the lift. Should the
    window open on the lift and close ~1.9 s + confirm after the *earliest

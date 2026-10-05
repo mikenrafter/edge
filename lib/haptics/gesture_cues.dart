@@ -1,4 +1,4 @@
-// 8AF.6 C: the gesture cue vocabulary. A gesture is answered by an ADDITIVE
+// The gesture cue vocabulary. A gesture is answered by an ADDITIVE
 // sequence of cues, each its own job of the band queue:
 //
 //   start()      the start cue (gesture.start), once, when the gesture begins
@@ -9,7 +9,7 @@
 //   failed()     the failure cue (gesture.failed), when it was abandoned
 //
 // The queue spaces two jobs by the vocabulary's minimum gap
-// (HapticDeviceProfile.minVibrationGapMs, 8AI), so no cue is dropped, merged or
+// (HapticDeviceProfile.minVibrationGapMs), so no cue is dropped, merged or
 // reordered. Each cue plays the pattern the wearer assigned to it, else the
 // built-in; a customised one is what plays. A band with no haptic profile (a
 // 4.0) plays one plain pulse per cue.
@@ -62,7 +62,7 @@ class GestureCues {
   /// The confirm cue: the gesture ended.
   Future<BuzzDelivery> confirm() => _cue(kGestureConfirmKey);
 
-  /// The failure cue: the gesture could not be activated (8AK).
+  /// The failure cue: the gesture could not be activated.
   Future<BuzzDelivery> failed() => _cue(kGestureFailedKey);
 
   /// A breathing cue slot (Oct 4: `breath.inhale|exhale|hold|done`), played the

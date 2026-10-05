@@ -1,4 +1,4 @@
-// Shared fixtures for the P4a tests (finalized day_result rows are frozen).
+// Shared fixtures for the frozen-day-result tests (finalized day_result rows are frozen).
 //
 // RULE UNDER TEST. A provisional row (finalized = 0) stays replaceable on
 // re-derive. Once (day, V) is finalized it is never rewritten for the same V,
@@ -6,8 +6,8 @@
 // that keeps every value bit-identical. A new kAlgoVersion writes a NEW sibling
 // row (day, V+1), as today. The guard lives in ONE place: LocalDb.putDayResult.
 //
-// ASSUMED NEW API (the only new symbol the P4a tests reference, and only from
-// `override_write_test.dart`):
+// ASSUMED NEW API (the only new symbol these tests reference, and only from
+// `db_override_write_test.dart`):
 //
 //   enum DayResultWrite { derive, userOverride }       // in lib/data/db.dart
 //   LocalDb.putDayResult(..., DayResultWrite reason = DayResultWrite.derive)

@@ -1,4 +1,4 @@
-// 8AF.6 addendum F.2, compile level (red first). compile() no longer takes
+// compile() no longer takes
 // `extended:`: it always considers the profile's unstable phrases and gaps,
 // and prefers stable ones through a small cost per unstable part, so an
 // unstable choice wins only when it fits meaningfully better.
@@ -53,7 +53,7 @@ void main() {
         for (final target in [p.min, p.max]) {
           final plan = compile(target, _mg)!;
           expect(plan.usesUnstable, isFalse, reason: p.id);
-          // 8AI: the pair's N2 R2 N2 rendition would shorten the rest in its
+          // The pair's N2 R2 N2 rendition would shorten the rest in its
           // other rendition, so it takes two commands (stable ones).
           if (p.id == 'pair' && target == p.min) {
             expect(plan.steps.length, greaterThan(1));
@@ -71,7 +71,7 @@ void main() {
     });
 
     test('N4ff R6 N4f stays on the stable 700 ms row (cost 2)', () {
-      // The 300 ms row feels 4..6 and would shorten a written rest of 6 (8AI).
+      // The 300 ms row feels 4..6 and would shorten a written rest of 6.
       final plan = compile(_c('N4ff R6 N4f'), _mg)!;
       expect(_ids(plan), ['buzz47', 'buzz14']);
       expect(plan.steps[1].delayMs, 700);

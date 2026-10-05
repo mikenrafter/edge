@@ -1,4 +1,4 @@
-// 8F proof views — the scrubbed values live in a row under the chart, in the
+// The scrubbed values live in a row under the chart, in the
 // chart's own key. Synthetic fixtures; no device or personal data.
 //
 //   • day_hr_gaps      the day heart-rate chart with a hole in it: Movement,

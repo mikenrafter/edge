@@ -1,4 +1,4 @@
-// 8AE.5 P1: HapticsService, the one owner of band haptic delivery.
+// HapticsService, the one owner of band haptic delivery.
 //
 // AppState used to hold the band queue, its ledger, the ended signal and the
 // delivery helpers, so their wiring could only be checked by reading

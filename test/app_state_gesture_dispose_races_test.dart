@@ -1,4 +1,4 @@
-// 8AJ seam 3: what is still in flight when AppState is disposed. A gesture's
+// Gesture area: what is still in flight when AppState is disposed. A gesture's
 // slow parts (a native action that answers late, the cue load, the ECG
 // post-roll) must not act for an app that is gone: no confirm buzz, and the
 // ECG stream is stopped and its lease released at once, not after the lab's
@@ -13,7 +13,7 @@ import 'package:openstrap_edge/gestures/device_action.dart';
 
 import 'support/app_state_gesture_harness.dart';
 
-const _db = 'split8aj_seam3_dispose_races.db';
+const _db = 'app_state_gesture_dispose_races.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

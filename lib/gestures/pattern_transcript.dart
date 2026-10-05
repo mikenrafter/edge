@@ -1,4 +1,4 @@
-// 8Y/8Z/8AA/8AB/8AC: the pattern probe's transcriber. The wearer taps buttons of
+// The pattern probe's transcriber. The wearer taps buttons of
 // length 1, 2, 4 or 8 sixteenths, and a one-shot Dot makes the next tap 3/2 as
 // long (3, 6 or 12); every note also carries a dynamic (ff, f, mf,
 // mp, p, pp) from a sticky selector; every entry is typed explicitly as a note or a rest (two notes or two
@@ -341,7 +341,7 @@ class PatternEntrySession {
     _followCursor();
   }
 
-  /// Replace the active rendition with [entries] (from taps, 8AD), cut to
+  /// Replace the active rendition with [entries] (from taps), cut to
   /// [PatternTranscript.maxEntries]. The cursor goes to the empty slot after
   /// them and the toggle follows the last entry; the dot clears.
   void setActive(List<PatternEntry> entries) {

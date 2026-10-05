@@ -1,6 +1,6 @@
-// 8AJ seam 4: WorkoutController and BreathingController in isolation, with
-// fake collaborators. The same behaviours are pinned through AppState in the
-// characterization tests; these prove the controllers stand on their own and
+// WorkoutController and BreathingController in isolation, with
+// fake collaborators. The same behaviours are also pinned through AppState in the
+// other workout tests; these prove the controllers stand on their own and
 // never reach for AppState. The session rows, the tally row and the breathing
 // history are still the real LocalDb (static), and the Live Activity, display
 // wake and Health plugin are the platform channels PlatformSpies answers, so
@@ -18,7 +18,7 @@ import 'package:openstrap_edge/stress/breath_phases.dart';
 
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_controller_unit.db';
+const _db = 'workout_breathing_controllers_unit.db';
 
 /// A repo that records the row deletes the workout controller asks for.
 class DeleteRepo extends BreathRepo {

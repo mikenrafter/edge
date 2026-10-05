@@ -1,5 +1,5 @@
-// The notation widgets of the pattern probe (8Y to 8AB), shared with the
-// haptic pattern editor (8AD): a length drawn as a note or rest symbol above
+// The notation widgets of the pattern probe, shared with the
+// haptic pattern editor: a length drawn as a note or rest symbol above
 // one coloured dash per sixteenth, the entry row of the wheel, and the length,
 // Dot and dynamics buttons.
 

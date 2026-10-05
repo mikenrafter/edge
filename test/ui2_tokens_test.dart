@@ -69,7 +69,7 @@ final _rules = <_Rule>[
         'motion(context, …) so reduced motion collapses them to zero.',
     // home_screen used to be allowed here for `_tapGrace`, a tap latch that
     // existed only because Home had a second sync control with its own busy
-    // flag (8M). The latch is gone, so the exemption is too.
+    // flag. The latch is gone, so the exemption is too.
     allow: {_tokenFile},
   ),
   _Rule(
@@ -230,7 +230,7 @@ const _notComponents = {
   // permission on tap — a gallery case would either mock all of that or
   // trigger a real health-store prompt from a screenshot sweep.
   'PhoneImport', 'AutomationSettings',
-  // The pure halves of Data and Automation (8C), pumped headless by
+  // The pure halves of Data and Automation, pumped headless by
   // settings_sections_new_views_test.dart. Scaffold screens, like
   // MoreSettingsView above.
   'DataScreenView', 'AutomationSettingsView',
@@ -257,7 +257,7 @@ const _notComponents = {
   // (there is nothing today to hand it — every install has one device); add
   // one and a gallery case together if that changes.
   'SignalPriorityScreen',
-  // The Sources area (Phase 4). The two Scaffold routes read AppState; their
+  // The Sources area. The two Scaffold routes read AppState; their
   // three pure views are drawn by test/sources_structure_views_test.dart (goldens at
   // 390 px, light/dark, 1x/2x) and pumped by source_views_test.dart, which is
   // where their keys and copy are pinned.
@@ -269,12 +269,12 @@ const _notComponents = {
   // band_gestures_test.dart, at a real phone width, in both the has-native and
   // the native-unreachable state.
   'BandGestures', 'BandGesturesView',
-  // The failed-gesture list (8AK): a Scaffold route over AppState's failure
+  // The failed-gesture list: a Scaffold route over AppState's failure
   // store; `GestureFailuresView` is its pure half, pumped by
   // test/gestures_failure_settings_test.dart. The Home card it mirrors,
   // `GestureFailureCard`, IS in the gallery.
   'GestureFailures', 'GestureFailuresView',
-  // Live devices and the Device lab (phase 8B/8I). The two routes read
+  // Live devices and the Device lab. The two routes read
   // AppState; `LiveDevicesView` and `DeviceLabView` are their pure halves and
   // test/live_devices_test.dart and device_lab_test.dart pump them in
   // each state, with `LiveStreamChart` (one stream's graph, which needs a
@@ -282,10 +282,10 @@ const _notComponents = {
   // steppers) inside them.
   'LiveDevices', 'LiveDevicesView', 'LiveStreamChart', 'DeviceLab',
   'DeviceLabView', 'EcgThresholdAdjusters',
-  // The Device lab's hardware probes (8V): it drives a live probe runner (a
+  // The Device lab's hardware probes: it drives a live probe runner (a
   // band buzz or an ECG stream) and stops it when it leaves the screen, so a
   // gallery case would start hardware. hardware_probe_panel_test.dart pumps it
-  // over a runner with fake effects. The pattern probe's page (8Y) is a
+  // over a runner with fake effects. The pattern probe's page is a
   // pushed route over the same runner, pumped by pattern_probe_page_test.dart.
   'HardwareProbePanel', 'PatternProbePage',
   // FULL-BLEED, so it is a screen element rather than a component: it takes
@@ -337,7 +337,7 @@ const _notComponents = {
   // time picker on tap. Covered by `log_workout_test.dart`, which pumps each
   // at a real phone width against injected rows.
   'WorkoutSuggestionScreen', 'LogWorkout',
-  // 8AD: the haptic pattern editor is a Scaffold route over a live band
+  // The haptic pattern editor is a Scaffold route over a live band
   // player. The five widgets are the notation parts the pattern probe and the
   // editor share (extracted from the probe page unchanged); they fill the
   // width of the wheel or footer row they sit in and are pumped inside those
@@ -345,7 +345,7 @@ const _notComponents = {
   'HapticPatternEditorPage',
   'PatternNotation', 'PatternEntryRow', 'PatternLengthButton',
   'PatternDotButton', 'PatternDynamicButton',
-  // 8AD: the Haptics screen is a Scaffold route over the pattern store, the
+  // The Haptics screen is a Scaffold route over the pattern store, the
   // alert rules and the live relay; `HapticsSettingsView` is its pure half and
   // is what haptics_settings_test.dart pumps. The name dialog is an
   // AlertDialog opened over a route.

@@ -1,4 +1,4 @@
-// 8O — the alarm screen edits a draft. Save / Cancel sit at the top, nothing is
+// The alarm screen edits a draft. Save / Cancel sit at the top, nothing is
 // saved or sent while editing, and leaving with unsaved work asks first.
 
 import 'dart:async';

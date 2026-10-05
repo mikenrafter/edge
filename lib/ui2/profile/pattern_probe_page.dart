@@ -1,4 +1,4 @@
-// Pattern probe page (8Y/8Z/8AA/8AB) — the transcriber the wearer taps.
+// Pattern probe page — the transcriber the wearer taps.
 //
 // The band plays one test on demand. The wearer writes down what they felt in
 // music terms: notes and rests. One unit is a sixteenth, so a length of 1, 2,
@@ -451,7 +451,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 8AD: fill the active rendition from taps. It sits
+                      // Fill the active rendition from taps. It sits
                       // here because the footer has no width or height to
                       // spare at 360 x 640.
                       _TapBaselineButton(

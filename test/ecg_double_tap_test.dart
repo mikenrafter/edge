@@ -1,6 +1,5 @@
-// 8I — "Toggle ECG recording on double tap": the persisted switch, and the
+// "Toggle ECG recording on double tap": the persisted switch, and the
 // dispatcher starting exactly one capture for a live tap on a WHOOP MG.
-// See test/phase8/CONTRACTS.md §8I.
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,7 +127,7 @@ void main() {
       expect(rig.started, isEmpty);
     });
 
-    test('8L: switch on suspends every normal double-tap action', () async {
+    test('switch on suspends every normal double-tap action', () async {
       final s = await _boot({
         _key: true,
         // Mark moment mapped (bit 8).

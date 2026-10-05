@@ -1,8 +1,7 @@
-// 8AJ seam 5 delegation guard: every public AppState member in the sync area is
+// Sync area delegation guard: every public AppState member in the sync area is
 // still there with the same shape, the collaborators the area is handed or
 // hands out are still wired, and the source-level wiring that cannot be driven
-// without the real AppState constructor stays put. Must pass before and after
-// the SyncController move.
+// without the real AppState constructor stays put.
 //
 // Sync-owned in this seam (what moves): the session / reconnect / backfill
 // orchestration (openSession, _reconnect, the supervisor, the 10 minute
@@ -30,7 +29,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_delegation.db';
+const _db = 'app_state_sync_delegation.db';
 
 String _src() {
   final app = File('lib/state/app_state.dart').readAsStringSync();
@@ -172,10 +171,7 @@ void main() {
       expect(body, contains('afterDrain('));
       expect(body, contains('heavy: true'));
       expect(body, contains('changedOnly: true'));
-      // LATENT GUARD: test/sync_derive_hold_wiring_test.dart:30 searches the
-      // body for "_afterDrain(" (the pre-seam-1 name), finds nothing (-1), and
-      // its assertion `flag > run` passes vacuously. It must be repointed to
-      // "afterDrain(" with the move.
+      // The old private `_afterDrain(` name is gone from AppState.
       expect(body.contains('_afterDrain('), isFalse);
     });
   });

@@ -1,4 +1,4 @@
-// P4a: the two things the freeze must NOT disturb.
+// The two things the freeze must NOT disturb.
 //
 //   * `reencodeLegacyDayResults` (payload re-encoding that keeps every value
 //     bit-identical) still rewrites FINALIZED rows. It is encoding, not a
@@ -10,7 +10,6 @@
 //     `rawPruneCutoffSec`. A refused write must neither promote a partial
 //     finalized row to "derived" nor demote a complete finalized one.
 //
-// Assumed API: see support.dart (nothing new is referenced; compiles today).
 
 import 'dart:convert';
 
@@ -46,7 +45,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Database db;
 
-  setUp(() async => db = await freshDb('openstrap_p4a_reencode_prune_test.db'));
+  setUp(() async => db = await freshDb('openstrap_reencode_prune_test.db'));
   tearDownAll(dropDb);
 
   group('re-encode of a finalized legacy row', () {

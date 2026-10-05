@@ -1,8 +1,7 @@
-// 8AF.6 C: the wiring behind the gesture cues (see gesture_cues_test.dart for
+// The wiring behind the gesture cues (see gesture_cues_test.dart for
 // the cues themselves, played against the virtual MG band).
 //
-//  - The ECG tap session asks for ONE follow-up cue per count increment (8AI.3:
-//    additive, one call each, never a recount of the pulses so far).
+//  - The ECG tap session asks for ONE follow-up cue per count increment (additive, one call each, never a recount of the pulses so far).
 //  - AppState._ecgTapBuzz stops building the fixed 300 ms per-tap BuzzSequence
 //    for a profiled band and hands the cue to GestureCues; the failure buzz is
 //    still the existing long buzz (not a system pattern); the action-done ack
@@ -122,7 +121,7 @@ void main() {
   });
 
   group('AppState wiring (source guards)', () {
-    // The cue methods live in the gesture controller (8AJ seam 3); the ack in
+    // The cue methods live in the gesture controller; the ack in
     // _onLiveEvent stays in AppState.
     final src = File('lib/state/gesture_controller.dart').readAsStringSync();
     final appSrc = File('lib/state/app_state.dart').readAsStringSync();
@@ -141,7 +140,7 @@ void main() {
       }
     });
 
-    test('the failure buzz is the "Gesture failed" cue (8AK), not a fixed '
+    test('the failure buzz is the "Gesture failed" cue, not a fixed '
         'engine buzz', () {
       // Its built-in default is the long buzz it used to be (pairx2, one
       // command [47, 152] looped twice); see test/gestures8ak/d_failed_cue_test.

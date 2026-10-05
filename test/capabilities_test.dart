@@ -1,4 +1,4 @@
-// 8AE.5 P3: one place decides what is shown, hidden or disabled. Every Feature
+// One place decides what is shown, hidden or disabled. Every Feature
 // is checked against every input that can move it, so a screen that asks
 // `caps.of(Feature.x)` cannot disagree with a sibling that asks the same.
 

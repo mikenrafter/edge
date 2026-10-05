@@ -1,4 +1,4 @@
-// 8Y/8Z/8AA: the pattern probe as a transcriber, runner half and entry point. The
+// The pattern probe as a transcriber, runner half and entry point. The
 // runner opens a session (refusals, the session line), plays the current test
 // on demand, passes edits through to the entry session, and writes what was
 // transcribed into the lab log when it closes (or when Stop is pressed). The
@@ -21,8 +21,7 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 typedef _Sent = ({List<int> effects, int loop});
 
-/// Whether test [i] is flagged unstable (8AC); read dynamically so the rest
-/// of this file compiles before the session has the flag.
+/// Whether test [i] is flagged unstable.
 bool _unstable(PatternEntrySession s, int i) => (s as dynamic).unstable(i) as bool;
 
 /// Flip [up] to false to drop the link after the probe is open.
@@ -409,7 +408,7 @@ void main() {
     });
 
     testWidgets('patternToggleUnstable passes through, notifies and flags '
-        'the open test only (8AC)', (t) async {
+        'the open test only', (t) async {
       final r = _runner(DeviceLabLog());
       await r.openPattern();
       final s = r.pattern!;
@@ -439,7 +438,7 @@ void main() {
     });
 
     testWidgets('an unstable test reaches the lab log with the unstable '
-        'wording (8AC)', (t) async {
+        'wording', (t) async {
       final lab = DeviceLabLog();
       final r = _runner(lab);
       await r.openPattern();
@@ -456,7 +455,7 @@ void main() {
       );
     });
 
-    testWidgets('opening a session writes the probe set id once (8AC)', (
+    testWidgets('opening a session writes the probe set id once', (
       t,
     ) async {
       final lab = DeviceLabLog();
@@ -759,7 +758,7 @@ void main() {
       _runner(DeviceLabLog()).patternToggleDot();
     });
 
-    group('the rolling command limit (8AB)', () {
+    group('the rolling command limit', () {
       // Every play's band 100 arrives inside its write, so a play takes no
       // fake time and 30 plays write 30 commands at the same instant; the
       // window of 2 minutes then moves only when the test pumps. Test 8 is the
@@ -1011,7 +1010,7 @@ void main() {
       expect(find.text('Run pattern probe'), findsOneWidget);
     });
 
-    // 8AB C2: the Device lab gives the panel a closure that builds the same
+    // The Device lab gives the panel a closure that builds the same
     // text as its "Save lab log file"; the panel hands it, and its saver, to
     // the page, whose end screen saves it after the session has closed.
     testWidgets('the end screen saves the lab\'s log text, read after the '
@@ -1066,10 +1065,9 @@ void main() {
     });
   });
 
-  // 8AD, spec E (runner half): patternSetRendition(List<PatternEntry>) puts a
+  // patternSetRendition(List<PatternEntry>) puts a
   // transcription made from taps into the ACTIVE rendition of the open test.
-  // Read through `dynamic` so this file compiles before the method exists.
-  group('8AD patternSetRendition', () {
+  group('patternSetRendition', () {
     List<PatternEntry> notes(String code) =>
         PatternTranscript.parseCode(code).entries;
     void set(HardwareProbeRunner r, List<PatternEntry> e) =>

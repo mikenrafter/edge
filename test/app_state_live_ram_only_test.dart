@@ -1,7 +1,7 @@
-// 8AJ seam 2 characterization of AGENTS §3.14: live frames, the developer feed
+// Live-stream area, AGENTS §3.14: live frames, the developer feed
 // and the live-HR viewers are RAM only. Measured with SQLite's total_changes()
 // on the app's own connection (any INSERT / UPDATE / DELETE moves it) and with
-// the preference keys. Must pass before and after the LiveStreamController move.
+// the preference keys.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
@@ -14,7 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'support/app_state_derive_harness.dart' show deriveDbSetUp, deriveDbTearDown, settleMs;
 import 'support/app_state_live_harness.dart';
 
-const _db = 'openstrap_split8aj_seam2_ram_only.db';
+const _db = 'openstrap_app_state_live_ram_only.db';
 
 Future<int> _changes() async {
   final db = await LocalDb.instance;

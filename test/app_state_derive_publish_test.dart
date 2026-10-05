@@ -1,4 +1,4 @@
-// 8AJ seam 1 characterization: the per-day publish coalescer, the end-of-pass
+// Derive area: the per-day publish coalescer, the end-of-pass
 // publish, bumpInsights, and the artifact warmer hand-off. Must pass before and
 // after the DeriveCoordinator move.
 
@@ -13,7 +13,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'support/scripted_artifact_source.dart';
 import 'support/app_state_derive_harness.dart';
 
-const _db = 'openstrap_split8aj_derive_publish.db';
+const _db = 'openstrap_app_state_derive_publish.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

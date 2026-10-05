@@ -1,7 +1,6 @@
-// 8AJ seam 4 characterization: the 1 Hz workout tick. What one tick bills from
+// Workout area: the 1 Hz workout tick. What one tick bills from
 // the live heart rate, what it pushes to the lock-screen activity and the tally
-// table, and how many times it notifies. Must pass before and after the
-// WorkoutController move.
+// table, and how many times it notifies.
 //
 // The tick is fired two ways, both through AppState: by hand through the
 // periodic timer the app armed (TimerProbe), or through debugTickWorkout.
@@ -14,7 +13,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_tick.db';
+const _db = 'app_state_workout_tick.db';
 
 const _user = {
   'age': 30,

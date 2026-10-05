@@ -1,4 +1,4 @@
-// 8AC: the output side of the pattern probe. The probe writes one "Pattern
+// The output side of the pattern probe. The probe writes one "Pattern
 // probe heard N/M, <description>: A = <prose> (<code>); B = ...; played K×."
 // line per transcribed test into the lab log; this reads those lines back into
 // transcripts so a device profile can be checked against what was written

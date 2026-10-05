@@ -1,4 +1,4 @@
-// 8AK B (red): the plain double-tap route plays the same additive cues as the
+// The plain double-tap route plays the same additive cues as the
 // ECG route.
 //
 // USER: "non ECG gestures don't have the same haptics call/response cadence.

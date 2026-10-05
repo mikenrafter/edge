@@ -1,4 +1,4 @@
-// 8AC — the device haptic profile (spec C1): how the WHOOP 5.0 MG band feels
+// The device haptic profile: how the WHOOP 5.0 MG band feels
 // each command it can be sent (measured in the L6 pattern probe, fixed tempo,
 // 1 sixteenth = 125 ms), the rests it adds between two commands, the stable
 // probe input set those numbers came from, and the registry the callers look

@@ -268,7 +268,7 @@ class SleepData {
     final tstChart = await repo.getChart('sleep');
     final tst = _trailing(tstChart, cut);
     // Nights with a total sleep time. A window the user set over a stretch the
-    // band did not record is NOT RECORDED (8E): it is not a bedtime to compare to.
+    // band did not record is NOT RECORDED: it is not a bedtime to compare to.
     final recordedNoons = {for (final p in pointsOf(tstChart)) p.t};
     final deep = _trailing(await repo.getChart('deep'), cut);
     // Stored as whole percent; the night's own `efficiency` is 0…1.

@@ -198,7 +198,7 @@ class _MoreSettingsState extends State<MoreSettings> {
     return MoreSettingsView(
       version: _version,
       devMode: caps.has(Feature.developerMode),
-      // The engine's `last_pass_perf` (8AG P1): measured values only.
+      // The engine's `last_pass_perf`: measured values only.
       lastCalculation: DerivePerf.describe(app.lastPassPerf),
       onVersionTap: _tapVersion,
       onToggleDev: () => _setDev(false),
@@ -574,7 +574,7 @@ class MoreSettingsView extends StatelessWidget {
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
   /// The expected sleep schedule (local clock times), or null when never set.
-  /// The row is always drawn: it needs no data (8E).
+  /// The row is always drawn: it needs no data.
   final ExpectedSleepSchedule? expectedSleepSchedule;
   final VoidCallback? onEditSleepSchedule;
 
@@ -684,9 +684,9 @@ class MoreSettingsView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
-                // Grouped by task (8AE). This is the landing screen (8AF.7):
+                // Grouped by task. This is the landing screen:
                 // every row has exactly one door here. Your own preferences
-                // come first and Community sits just above Connections (8AI).
+                // come first and Community sits just above Connections.
                 // Hardware keeps the id `settings_band` it was saved under as
                 // "Band", so a section somebody folded stays folded.
                 SettingsAccordion('You & preferences',
@@ -745,20 +745,20 @@ class MoreSettingsView extends StatelessWidget {
                       sub: l?.settingsDoubleTapRowSub ??
                           'What a double-tap on the band does',
                       onTap: onGestures),
-                  // The named buzz patterns and the band's safety limits (8AD).
+                  // The named buzz patterns and the band's safety limits.
                   SetRow(LucideIcons.vibrate, C.purple, 'Haptics',
                       key: const ValueKey('settings-haptics'),
                       sub: 'Your buzz patterns and band safety',
                       onTap: onHaptics),
-                  // Gestures that failed to activate, with the log to send
-                  // (8AK). Always drawn: an empty list says so.
+                  // Gestures that failed to activate, with the log to send.
+                  // Always drawn: an empty list says so.
                   SetRow(LucideIcons.triangleAlert, C.orange, 'Gesture failures',
                       key: const ValueKey('settings-gesture-failures'),
                       sub: 'Saved logs of gestures that did not activate',
                       onTap: onGestureFailures),
                 ]),
                 SettingsAccordion('Alerts', id: 'settings_alerts', children: [
-                  // The alarm's one door (8AF.7): a row here, not a row inside
+                  // The alarm's one door: a row here, not a row inside
                   // the Alerts and notifications screen.
                   SetRow(LucideIcons.alarmClock, C.orange,
                       l?.settingsAlarmRowTitle ?? 'Alarm',
@@ -772,7 +772,7 @@ class MoreSettingsView extends StatelessWidget {
                           'Turn alerts on or off and set '
                           'quiet hours',
                       onTap: onNotifications),
-                  // The one door to the relay screen (8AE). Android-only and
+                  // The one door to the relay screen. Android-only and
                   // omitted elsewhere rather than shown against nothing.
                   if (relaySupported)
                     SetRow(LucideIcons.bellRing, C.purple,
@@ -1078,7 +1078,7 @@ class _NotificationSettingsState extends State<NotificationSettings> {
     );
   }
 
-  /// The picker first (8AD): Default, the stored patterns, a new tap take, or
+  /// The picker first: Default, the stored patterns, a new tap take, or
   /// notes. A stored pattern is saved into the rule as a snapshot of itself.
   void _pickPattern(String id) {
     final p = _prefs;
@@ -1217,7 +1217,7 @@ class NotificationSettingsView extends StatelessWidget {
   final bool loaded, granted;
 
   /// No longer drawn: the relay's one entrance is Settings > Alerts > App
-  /// notifications on the band (8AE). Kept so existing construction sites
+  /// notifications on the band. Kept so existing construction sites
   /// compile.
   final bool relaySupported;
 
@@ -1232,7 +1232,7 @@ class NotificationSettingsView extends StatelessWidget {
   final String Function(String ruleId)? patternNameFor;
 
   /// Opens the Haptics screen, where the patterns are made and every slot is
-  /// listed (8AI).
+  /// listed.
   final VoidCallback? onOpenHaptics;
 
   /// The HR zone alert's own settings: the zone (1..5) it watches, the step
@@ -1367,7 +1367,7 @@ class NotificationSettingsView extends StatelessWidget {
                                 'reach your goal'),
                         // A live-workout alert: the band buzzes when the heart
                         // rate crosses into or out of the target zone. The
-                        // zone row is always drawn, dimmed while it is off (8K).
+                        // zone row is always drawn, dimmed while it is off.
                         row('zone', LucideIcons.heartPulse, C.red,
                             l?.settingsZoneAlertRowTitle ?? 'HR zone alert',
                             l?.settingsZoneAlertRowSub ??
@@ -1421,7 +1421,7 @@ class NotificationSettingsView extends StatelessWidget {
                             l?.settingsWaterReminderRowTitle ?? 'Water reminder',
                             'Reminds you during your waking hours to log a '
                             'drink'),
-                        // Always drawn; dimmed while the reminder is off (8K).
+                        // Always drawn; dimmed while the reminder is off.
                         SetRow(LucideIcons.timer, C.teal,
                               l?.settingsRemindMeEveryRowTitle ??
                                   'Remind me every',

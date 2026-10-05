@@ -1,6 +1,6 @@
 // A row that scrolls, and admits it.
 //
-// (Health used to be one of the rows measured below, with five tabs. Since 8AF
+// (Health used to be one of the rows measured below, with five tabs. Since then
 // it has four and fits at 360 pt, so the hint draws nothing there. The Health
 // figures below are the five-tab ones, kept because they are why the affordance exists.)
 //

@@ -280,7 +280,7 @@ abstract class LocalRepository {
   Future<Map<String, dynamic>> getWeekdayEffect({String key = 'readiness'}) =>
       throw UnimplementedError('re-layer: getWeekdayEffect');
 
-  // ── persisted artifacts (8AG-perf P3) ─────────────────────────────────────────
+  // ── persisted artifacts ─────────────────────────────────────────
 
   /// The CURRENT signature of the inputs the artifact [key] is computed from
   /// (`journal_insights|90d`, `weekday_effect`, `beats|<day>`,

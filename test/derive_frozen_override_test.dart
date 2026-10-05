@@ -1,14 +1,14 @@
-// P4a at the engine, override and skip-marker writers. A user override
+// At the engine, override and skip-marker writers. A user override
 // re-derive still writes a finalized (day, V) row (`run(force: true)` is what
 // `_reanalyzeForOverride` calls; "Not sleep" on a finalized night whose raw is
 // pruned still blanks it via `rederiveAfterSleepEdit`), a finalized day with no
 // override is not rewritten, and `_markDaySkipped` never replaces a finalized
-// row. Assumed API: see support.dart (nothing new is referenced; compiles today).
+// row.
 //
 // Real LocalDb + real DerivationEngine, fixed local-time fixtures. Raw fixture as
 // in sleep_override_blanks_night_test (two quiet nights + a lone data-edge
-// reading on 2025-09-06). The override and "Not sleep" tests pass today; they
-// pin that the GREEN guard threads the override reason through every writer.
+// reading on 2025-09-06). The override and "Not sleep" tests pin that the
+// guard threads the override reason through every writer.
 //
 // OPEN (not pinned): `runDays(force: true)` from the Advanced "Re-analyze" and
 // "Rebuild history with this priority" screens re-derives finalized days today.
@@ -98,7 +98,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    _db = await freshDb('openstrap_p4a_engine_override_test.db');
+    _db = await freshDb('openstrap_engine_override_test.db');
     await _seedRaw();
   });
   tearDownAll(dropDb);

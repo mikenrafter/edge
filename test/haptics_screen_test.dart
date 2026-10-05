@@ -1,4 +1,4 @@
-// 8AI G4 (red): the Haptics screen layout, the slot rows and putting a saved
+// The Haptics screen layout, the slot rows and putting a saved
 // pattern on a slot.
 //
 // Spec (laid out as sub-tabs since Oct 4, see test/haptics_tabs_test.dart;
@@ -21,7 +21,7 @@
 //     void Function(String sectionId) onOpenSlotScreen,
 //     FutureOr<void> Function(String slotKey, SavedHapticPattern pattern)
 //         onAssignToSlot})
-//   * Slot keys are the systemKey scheme 8AF.6 uses: `alert.<ruleId>` for the
+//   * Slot keys are the systemKey scheme: `alert.<ruleId>` for the
 //     alert rules that play a pattern, `gesture.start|followUp|confirm`.
 //     `slotPatternName(key)` is what the row says; the stateful HapticsSettings
 //     builds it (preset name, or "Your: <name>" for a stored pattern of the

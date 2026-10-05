@@ -1,7 +1,6 @@
-// 8AJ seam 1 characterization: what one derive pass asks of the engine, how it
-// ends, and what it notifies. Pins today's AppState behaviour through the
-// public / @visibleForTesting surface; it must pass before and after the
-// DeriveCoordinator move.
+// Derive area: what one derive pass asks of the engine, how it
+// ends, and what it notifies. Pins AppState behaviour through the
+// public / @visibleForTesting surface.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,7 +10,7 @@ import 'package:openstrap_edge/state/app_state.dart';
 
 import 'support/app_state_derive_harness.dart';
 
-const _db = 'openstrap_split8aj_derive_passes.db';
+const _db = 'openstrap_app_state_derive_passes.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

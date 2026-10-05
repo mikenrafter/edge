@@ -1,6 +1,5 @@
 // GestureDispatcher.handle(StrapEvent) — the production event dispatcher, driven
-// headlessly with delayed, duplicate, fractional-time and out-of-order events
-// (Phase 5A, steps 3-5 and the "Proof to retain" paragraph).
+// headlessly with delayed, duplicate, fractional-time and out-of-order events.
 //
 // No real clock anywhere: every decision uses the event's own `receivedAt`.
 // No sleeps: only `Future.delayed(Duration.zero)` to turn the microtask queue.

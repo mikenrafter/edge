@@ -1,4 +1,4 @@
-// 8AF.7 section E (red first): the sync panel collapses to ONE status line.
+// The sync panel collapses to ONE status line.
 //
 //   [elapsed]  icon / spinner  ·  one sentence  ·  at most one action
 //

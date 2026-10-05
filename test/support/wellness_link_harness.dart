@@ -1,4 +1,4 @@
-// Shared harness for the 8AF Wellness link tests: the real WellnessScreen over a
+// Shared harness for the Wellness link tests: the real WellnessScreen over a
 // fake repository that holds a day which would have filled the OLD Recovery tab.
 
 import 'package:flutter/material.dart';

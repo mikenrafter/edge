@@ -1,4 +1,4 @@
-// 8AK B (red): "delivered AND its plan ended" as one awaitable moment.
+// "delivered AND its plan ended" as one awaitable moment.
 //
 // Both sessions wait for a cue to be delivered AND played before the next
 // window opens (a_ecg_window_after_followup_test.dart, b_double_tap_timing_

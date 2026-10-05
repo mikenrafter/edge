@@ -1,11 +1,10 @@
-// 8AJ seam 3 characterization: notifyListeners counts. A gesture today never
+// Gesture area: notifyListeners counts. A gesture today never
 // ticks AppState itself, whatever route it takes and however it ends: the
 // screens that care listen to the settings object, the failures store, the
 // Device lab log and the ECG controller instead. These tests count the ticks
 // of AppState, GestureSettings and GestureFailureStore around each kind of
 // gesture, so a controller that starts calling AppState's notify callback (or
-// stops notifying its own store) fails here. Passes before and after the
-// GestureController move.
+// stops notifying its own store) fails here.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
@@ -37,7 +36,7 @@ class _Ticks {
   }
 }
 
-const _db = 'split8aj_seam3_notify.db';
+const _db = 'app_state_gesture_notify.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

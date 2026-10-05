@@ -1,4 +1,4 @@
-// The artifact warmer (8AG-perf P3-B). After a derive pass that computed days,
+// The artifact warmer. After a derive pass that computed days,
 // the slow screen reads (journal insights, weekday effect, the night's beats, a
 // workout, the circadian rollup) are recomputed in the background and stored in
 // `last_result` under their current input signature, so the next open finds them
@@ -61,7 +61,7 @@ class RepoArtifactSource implements ArtifactSource {
     }
     // The intraday calorie curve: every changed day that has raw, and every day
     // still inside the raw window that has raw but no curve yet (days derived
-    // before P3 get theirs from the substrate while it lives).
+    // before artifact signatures get theirs from the substrate while it lives).
     final now = DateTime.now();
     final recent = [
       for (var i = 0; i < rawRetentionDays; i++)

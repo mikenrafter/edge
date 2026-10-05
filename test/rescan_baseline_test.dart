@@ -9,7 +9,7 @@
 //      (day_id, algo_version), so re-deriving a PROVISIONAL recent day overwrites
 //      its row in place (refreshed readiness/recovery), not a duplicate. A
 //      FINALIZED day is frozen: the rescan skips it and putDayResult refuses a
-//      second derive write (P4a).
+//      second derive write.
 
 import 'dart:convert';
 

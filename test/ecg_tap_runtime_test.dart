@@ -1,12 +1,12 @@
-// 8L runtime — what a counted tap DOES once the counter has a result.
+// Runtime — what a counted tap DOES once the counter has a result.
 //
 // Lab switch OFF, WHOOP MG, at least one 3-5 tap mapping: a LIVE double tap
 // starts the counter session and, when it finishes, the final count's actions
 // run through the ordinary GestureDispatcher path (same once-ever claim,
 // isolation and stale rules, keyed per tap identity AND count). No 3-5 mapping,
 // a non-MG band, or a late tap behaves exactly as before. An abandoned session
-// runs nothing. The counter's own buzzes are the acknowledgement, so the 8H
-// tap-ack stays silent for a counted tap. See test/phase8/CONTRACTS.md §8L.
+// runs nothing. The counter's own buzzes are the acknowledgement, so the
+// tap ack stays silent for a counted tap.
 
 import 'dart:async';
 import 'dart:io';
@@ -299,7 +299,7 @@ void main() {
     });
   });
 
-  group("acknowledgement: the counter's buzzes replace the 8H tap ack", () {
+  group("acknowledgement: the counter's buzzes replace the tap ack", () {
     AlertDispatcher alerts(void Function() onBuzz) => AlertDispatcher(
           phone: () async => false,
           band: () async {

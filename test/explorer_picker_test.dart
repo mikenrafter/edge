@@ -1,7 +1,7 @@
-// 8AH, RED. The Explorer's picker: up to four metrics, one scale at a time,
+// The Explorer's picker: up to four metrics, one scale at a time,
 // chips to remove, colours from the metric's own MetricSpec.
 //
-// ASSUMED API: see test/support/explorer_harness.dart (ExplorerView, its keys,
+// API: see test/support/explorer_harness.dart (ExplorerView, its keys,
 // ExplorePlotPainter) and test/explorer_series_test.dart
 // (kExploreMaxMetrics, kExploreIntraday), plus
 // lib/ui2/screens/metric_catalogue.dart: kMetricCatalogue, the Trends

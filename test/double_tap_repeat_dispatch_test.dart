@@ -127,8 +127,8 @@ void main() {
         expect(r.ran, ['water']);
         expect(r.first!.single.status, GestureStatus.ran);
         expect(r.first!.single.taps, 2,
-            reason: '8AK: the session confirms a count of 2 itself, so the '
-                '8H ack stays out');
+            reason: 'the session confirms a count of 2 itself, so the '
+                'tap ack stays out');
         expect(r.ecgCounted, isEmpty);
         expect(r.buzzes, isEmpty);
       });

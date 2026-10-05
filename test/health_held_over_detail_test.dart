@@ -1,4 +1,4 @@
-// 8AF review finding: held-over night rows opened details for a different time
+// Held-over night rows opened details for a different time
 // scope. After days without a sync, Health → Last night labels the older night
 // and shows its readiness, HRV, resting heart rate, respiratory rate and stress.
 // Tapping Readiness opened a detail that refused a held-over night, and tapping

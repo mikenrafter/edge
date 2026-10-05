@@ -1,4 +1,4 @@
-// Shared harness for the 8AH Data Explorer widget tests (not a test itself).
+// Shared harness for the Data Explorer widget tests (not a test itself).
 //
 // ASSUMED API used here, besides what explorer_series_test.dart lists:
 //

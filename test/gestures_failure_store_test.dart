@@ -1,4 +1,4 @@
-// 8AK D (red): the persisted failure record behind the Home card and the
+// The persisted failure record behind the Home card and the
 // Settings list.
 //
 // USER: "On a failed activation (ECG or non-ECG), persist a failure record

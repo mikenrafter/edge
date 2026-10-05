@@ -21,7 +21,7 @@
 // independent "set one alarm" affordance would just be a second source of
 // truth that the schedule engine silently overwrites on the next sync.
 //
-// EDITING IS A DRAFT (8O). Every row edits an in-memory [AlarmDraft] of the
+// EDITING IS A DRAFT. Every row edits an in-memory [AlarmDraft] of the
 // whole week, Natural and Gradual settings included. Nothing is saved or sent
 // until Save at the top: one DB transaction, then ONE write of the fixed alarm
 // at T to the band (skipped when the band already holds it). Natural Wake and

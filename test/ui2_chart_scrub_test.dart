@@ -1,9 +1,9 @@
-// 8F — ChartScrub: the one scrubbable wrapper for every chart.
+// ChartScrub: the one scrubbable wrapper for every chart.
 //
 // Tap or drag places a vertical cursor that tracks the finger; the values at
 // that point are shown in a row under the chart (see chart_key_readout_test.dart
 // for the row itself). Scatter/grid charts use the nearest mode (no line).
-// Built on Scrubber. See test/phase8/CONTRACTS.md §8F.
+// Built on Scrubber.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,4 +1,4 @@
-// tap_names.dart — the plain-English name of an ECG gesture count (8AK C): the
+// tap_names.dart — the plain-English name of an ECG gesture count: the
 // opening double tap, then one ECG sensor touch per further count. For logs,
 // cards and anything outside a widget tree; screens use the same text through
 // AppLocalizations.gestureEcgTapName (a plural over the number of ECG taps).

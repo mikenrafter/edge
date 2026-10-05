@@ -1820,8 +1820,8 @@ class DeepDiveCard extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final semantic = '$label, $value $unit. $cta';
-    // A card with a preview chart holds a scrubber, and a scrubber owns the tap
-    // (8F). The card then opens through its header and its call to action
+    // A card with a preview chart holds a scrubber, and a scrubber owns the tap.
+    // The card then opens through its header and its call to action
     // instead of as a whole, so one tap never both scrubs and navigates.
     final whole = preview == null;
     Widget tappable(Widget child) => whole

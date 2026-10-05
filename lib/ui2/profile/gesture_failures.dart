@@ -1,4 +1,4 @@
-// Settings > Hardware > Gesture failures (8AK D): every gesture that failed to
+// Settings > Hardware > Gesture failures: every gesture that failed to
 // activate, newest first, dismissed ones too (marked), each with the same Save
 // log file and Report actions as the Home card. [GestureFailures] is the route
 // (it listens to the store on AppState); [GestureFailuresView] is the pure half

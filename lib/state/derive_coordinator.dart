@@ -1,4 +1,4 @@
-// The derive orchestration seam (8AJ seam 1), moved out of AppState with no
+// The derive orchestration seam, moved out of AppState with no
 // behaviour change. It owns: the scheduler that decides WHEN a pass runs, the
 // pass itself (`afterDrain`) and the post-derive work around it, the RecalcState
 // notifier and its owner bookkeeping, the per-day publish coalescer, the
@@ -280,7 +280,7 @@ class DeriveCoordinator {
   Future<void> debugAfterDrain({bool heavy = false, bool changedOnly = false}) =>
       afterDrain(heavy: heavy, changedOnly: changedOnly);
 
-  // The ONE background warmer of the slow screen artifacts (8AG-perf P3). Built
+  // The ONE background warmer of the slow screen artifacts. Built
   // when first needed, after a pass that computed days; never while a workout,
   // breathing session or ECG capture is live, while the band is offloading or
   // while this is a headless run.
@@ -314,7 +314,7 @@ class DeriveCoordinator {
     }
   }
 
-  // ── the Calculations power mode (P5) ────────────────────────────────────────
+  // ── the Calculations power mode ────────────────────────────────────────
   // The policy decides; this class owns the timers and the subscription. Only
   // AUTOMATIC work asks it (the scheduler's passes, the post-pass warm, idle and
   // plugged-in warming, the Eager sweep). A re-analyze, a manual sync, and a

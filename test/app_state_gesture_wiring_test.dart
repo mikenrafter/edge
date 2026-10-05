@@ -1,7 +1,7 @@
-// 8AJ seam 3 characterization: the plumbing between the gesture sessions and
+// Gesture area: the plumbing between the gesture sessions and
 // the rest of the app, read through behaviour: settings the sessions read
 // live (thresholds, repeat window), the session's strap-clock interval written
-// to the database (8N), the ECG controller's frame fan-out, and the Device
+// to the database, the ECG controller's frame fan-out, and the Device
 // lab's "ECG is busy" test that asks the gesture session. These are the
 // callbacks a GestureController will need from AppState. Passes before and
 // after the move.
@@ -14,7 +14,7 @@ import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 
 import 'support/app_state_gesture_harness.dart';
 
-const _db = 'split8aj_seam3_wiring.db';
+const _db = 'app_state_gesture_wiring.db';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -105,7 +105,7 @@ void main() {
     });
   });
 
-  group('the strap-clock interval of a gesture is written (8N)', () {
+  group('the strap-clock interval of a gesture is written', () {
     test('a counted ECG gesture leaves a counted row', () async {
       final rig = await newRig();
       await rig.app.ecg.guard.setWrist(kSerial, EcgWrist.left);

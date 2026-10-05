@@ -1,4 +1,4 @@
-// 8V: the Device lab's kept ECG packets and the "Save lab log file" text.
+// The Device lab's kept ECG packets and the "Save lab log file" text.
 // Pins the bound (360, oldest dropped), the session tag, that Clear empties the
 // packets, that a probe's own result text lands in the session summary, and
 // that the button saves the packets section (heading, format line, r17v1

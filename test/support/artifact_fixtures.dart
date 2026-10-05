@@ -1,11 +1,11 @@
-// Shared fixtures for the 8AG-perf P3 tests (analytics out of readers ->
+// Shared fixtures for the artifact tests (analytics out of readers ->
 // persisted artifacts, plus the intraday calorie artifact).
 //
 // This file references NO symbol that does not exist today, so every test file
 // that imports it compiles before the implementation lands and fails for its
 // own reason. Every brand-new method is reached through `dynamic`.
 //
-// ARTIFACT KEYS (the single vocabulary all P3 files use; also the
+// ARTIFACT KEYS (the single vocabulary all artifact files use; also the
 // `last_result.key` the screens, the warmer and the reader share):
 //
 //   journal_insights|90d     getJournalInsights(range: '90d')
@@ -49,17 +49,17 @@ export 'as_of_recalc_fakes.dart';
 
 // ── keys ────────────────────────────────────────────────────────────────────
 
-const p3Journal = 'journal_insights|90d';
-const p3Weekday = 'weekday_effect';
-const p3Circadian = 'circadian';
-String p3Beats(String day) => 'beats|$day';
-String p3Workout(String id) => 'workout|$id';
-String p3Kcal(String day) => 'kcal_minutes|$day';
+const artJournal = 'journal_insights|90d';
+const artWeekday = 'weekday_effect';
+const artCircadian = 'circadian';
+String artBeats(String day) => 'beats|$day';
+String artWorkout(String id) => 'workout|$id';
+String artKcal(String day) => 'kcal_minutes|$day';
 
 // ── profile ─────────────────────────────────────────────────────────────────
 
 /// A complete calorie profile (age 34, 72 kg, 178 cm, male, resting HR 55).
-const p3ProfileMap = <String, dynamic>{
+const artProfileMap = <String, dynamic>{
   'age': 34,
   'weight_kg': 72.0,
   'height_cm': 178.0,
@@ -67,15 +67,15 @@ const p3ProfileMap = <String, dynamic>{
   'resting_hr': 55,
 };
 
-LocalRepositoryImpl p3Repo({Map<String, dynamic> profile = p3ProfileMap}) =>
+LocalRepositoryImpl artRepo({Map<String, dynamic> profile = artProfileMap}) =>
     LocalRepositoryImpl(getProfileMap: () => profile);
 
 // ── reaching the new repository API ─────────────────────────────────────────
 
-Future<String?> p3Sig(Object repo, String key) async =>
+Future<String?> artSig(Object repo, String key) async =>
     await (repo as dynamic).artifactSignature(key) as String?;
 
-Future<Map<String, dynamic>?> p3Compute(Object repo, String key) async {
+Future<Map<String, dynamic>?> artCompute(Object repo, String key) async {
   final m = await (repo as dynamic).computeArtifact(key);
   return (m as Map?)?.cast<String, dynamic>();
 }
@@ -83,10 +83,10 @@ Future<Map<String, dynamic>?> p3Compute(Object repo, String key) async {
 // ── time / days ─────────────────────────────────────────────────────────────
 
 /// Long enough that two `DateTime.now().millisecondsSinceEpoch` stamps differ.
-Future<void> p3Tick() => Future<void>.delayed(const Duration(milliseconds: 6));
+Future<void> artTick() => Future<void>.delayed(const Duration(milliseconds: 6));
 
 /// The local day label [back] days before today.
-String p3Day(int back) {
+String artDay(int back) {
   final n = DateTime.now();
   return dayLabelOf(DateTime(n.year, n.month, n.day - back));
 }
@@ -95,7 +95,7 @@ String p3Day(int back) {
 
 /// A `day_result` row for [day] (its `computed_at` is "now"). One readiness
 /// scalar so `metric_series` has a row too.
-Future<void> p3PutDay(String day,
+Future<void> artPutDay(String day,
     {int version = kAlgoVersion, double readiness = 60}) {
   return LocalDb.putDayResult(
     dayId: day,
@@ -111,7 +111,7 @@ int _counter = 5000;
 
 /// One decoded 1 Hz row through the real write path (so the `input_rev`
 /// triggers fire). REPLACE-in-place when [ts] already exists.
-Future<void> p3Record(int ts, {int hr = 62}) async {
+Future<void> artRecord(int ts, {int hr = 62}) async {
   final c = _counter++;
   await LocalDb.insertRecord(
     RawRecord(
@@ -137,7 +137,7 @@ Future<void> p3Record(int ts, {int hr = 62}) async {
 }
 
 /// One decoded RR beat (touches `decoded_rr` only).
-Future<void> p3Rr(int ts, {int beat = 0, int ms = 900}) async {
+Future<void> artRr(int ts, {int beat = 0, int ms = 900}) async {
   final db = await LocalDb.instance;
   await db.execute(
     'INSERT OR REPLACE INTO decoded_rr '
@@ -148,7 +148,7 @@ Future<void> p3Rr(int ts, {int beat = 0, int ms = 900}) async {
 }
 
 /// A `sessions` row, finished, over `[startTs, endTs]`.
-Map<String, dynamic> p3Session(String id, int startTs, int endTs,
+Map<String, dynamic> artSession(String id, int startTs, int endTs,
         {double calories = 200, double strain = 8, int? rpe}) =>
     {
       'id': id,
@@ -166,7 +166,7 @@ Map<String, dynamic> p3Session(String id, int startTs, int endTs,
     };
 
 /// Noon local of the day [back] days ago, epoch seconds.
-int p3NoonSec(int back) {
+int artNoonSec(int back) {
   final n = DateTime.now();
   return DateTime(n.year, n.month, n.day - back, 12).millisecondsSinceEpoch ~/
       1000;
@@ -176,22 +176,22 @@ int p3NoonSec(int back) {
 
 /// A repository that answers [artifactSignature] from a map and remembers what
 /// it was asked. A key with no entry (or a null entry) answers null.
-mixin P3Sigs {
+mixin ArtifactSigs {
   final Map<String, String?> sigs = {};
   final List<String> sigAsks = [];
 
-  // No @override: LocalRepository has no such method until P3 lands.
+  // No @override: LocalRepository has no such method.
   Future<String?> artifactSignature(String key) async {
     sigAsks.add(key);
     return sigs[key];
   }
 }
 
-class P3MetricRepo extends MetricRepo with P3Sigs {}
+class ArtifactMetricRepo extends MetricRepo with ArtifactSigs {}
 
-class P3BeatsRepo extends BeatsRepo with P3Sigs {}
+class ArtifactBeatsRepo extends BeatsRepo with ArtifactSigs {}
 
-class P3WellnessRepo extends WellnessRepo with P3Sigs {
+class ArtifactWellnessRepo extends WellnessRepo with ArtifactSigs {
   int weekdayCalls = 0;
   Completer<Map<String, dynamic>>? weekdayGate;
   Map<String, dynamic> weekday = const {};

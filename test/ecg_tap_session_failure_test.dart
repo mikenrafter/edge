@@ -1,4 +1,4 @@
-// 8X — when the ECG fails: the failure buzz, the double-tap fallback, the retry.
+// When the ECG fails: the failure buzz, the double-tap fallback, the retry.
 //
 // "ECG failed" means the gesture would end abandoned: start_failed (the stream
 // start refused, threw or timed out), no_stream, stalled, link_lost or
@@ -335,7 +335,7 @@ void main() {
       final r = _Rig(begins: const [false]);
       await r.session.start(_tap()); // must not throw
       expect(r.results, [(2, 'fallback: start_failed')]);
-      expect(r.began, 2, reason: '8AK: a refused start is tried once more');
+      expect(r.began, 2, reason: 'a refused start is tried once more');
       expect(r.ended, 0, reason: 'nothing was started, nothing to stop');
       expect(r.session.active, isFalse);
       expect(r.failIds, hasLength(1));
@@ -358,7 +358,7 @@ void main() {
       await r.session.start(_tap());
       expect(r.results, [(2, 'fallback: start_failed')]);
       expect(r.ended, 2,
-          reason: '8AK: each timed-out attempt stops its late stream, the '
+          reason: 'each timed-out attempt stops its late stream, the '
               'retry\'s too');
       expect(r.session.active, isFalse);
     });

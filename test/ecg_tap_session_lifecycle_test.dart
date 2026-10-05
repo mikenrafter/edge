@@ -3,7 +3,7 @@
 // G: each gesture has a generation; a new gesture never starts its stream while
 //    the previous one's stop is still in flight (a late stop would otherwise
 //    switch the NEW gesture's stream off).
-// R: the 8N tagging interval must cover the time the band actually kept
+// R: the tagging interval must cover the time the band actually kept
 //    recording. The stream is stopped FIRST, then the interval is written with
 //    an end that covers the stop; a slow database can neither lengthen the
 //    recording nor leave it outside the interval.
@@ -61,7 +61,7 @@ class _Rig {
         began++;
         log.add('begin');
         final g = beginGate;
-        // 8AK: a timed-out start is retried, so the gate holds every attempt.
+        // a timed-out start is retried, so the gate holds every attempt.
         if (g != null) await g.future;
         return true;
       },
@@ -145,12 +145,12 @@ void main() {
       final gate = Completer<void>();
       final r = _Rig(beginGate: gate);
       final gen = r.session.generation;
-      // 8X: fallback on (the default): a failed start does not throw.
+      // fallback on (the default): a failed start does not throw.
       await r.session.start(_tap());
       expect(r.session.active, isFalse);
       expect(r.session.generation, gen + 1);
       expect(r.ended, 2,
-          reason: 'the late stream is stopped, and the retry\'s (8AK)');
+          reason: 'the late stream is stopped, and the retry\'s');
       gate.complete();
     });
 
@@ -259,7 +259,7 @@ void main() {
       final gate = Completer<void>();
       final r = _Rig(beginGate: gate);
       await r.session.start(_tap()); // fallback on: ends with count 2, no throw
-      // 8AK: the timed-out start is stopped, tried once more, and that one
+      // the timed-out start is stopped, tried once more, and that one
       // times out too.
       expect(r.log,
           ['begin', 'end', 'begin', 'finished', 'end', 'record']);

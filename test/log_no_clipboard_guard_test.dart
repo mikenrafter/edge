@@ -1,4 +1,4 @@
-// 8AL (red): source guard. No log leaves the app through the clipboard.
+// Source guard. No log leaves the app through the clipboard.
 //
 //   * Across lib/, `Clipboard.setData` appears in no file but settings.dart
 //     (the automation TOKEN, a secret the user pastes elsewhere; not a log), so

@@ -1,8 +1,8 @@
-// 8AK B (red): AppState wires the plain double-tap route like the ECG route
+// AppState wires the plain double-tap route like the ECG route
 // (source guards, the repo's way of pinning wiring that needs a whole AppState
 // to run).
 //
-// ASSUMED WIRING (lib/state/gesture_controller.dart since 8AJ seam 3):
+// ASSUMED WIRING (lib/state/gesture_controller.dart):
 //   * `_repeatTapSession` (DoubleTapRepeatSession) gets `startBuzz:` (the same
 //     start cue as the ECG route, `_ecgTapStartBuzz`), `buzz:` (the follow-up,
 //     `_ecgTapBuzz`, as today), `confirmBuzz:` (`_ecgTapConfirmBuzz`) and
@@ -10,7 +10,7 @@
 //     (AGENTS.md 3.8: a second path is the bug).
 //   * `_ecgTapSession` (EcgTapSession) gets `bandIdle:` too.
 //   * Nothing else plays a confirm for a counted repeated-double-tap gesture:
-//     the 8H ack in `_onLiveEvent` stays (it is silent for an outcome with
+//     the tap ack in `_onLiveEvent` stays (it is silent for an outcome with
 //     `taps`, see b_dispatcher_repeat_test.dart).
 //
 // Failure mode today: the repeat session is built with `buzz:` only.

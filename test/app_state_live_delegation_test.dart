@@ -1,9 +1,8 @@
-// 8AJ seam 2: every AppState member in the live-stream area is still there with
+// Live-stream area: every AppState member in the live-stream area is still there with
 // its original type and forwards. The annotations are compile-time checks of
 // the public surface; the behaviour checks pin that what the engine reads
 // through its liveOwners callback is what AppState reports, and that the
-// buffer AppState exposes is the one the frame path feeds. Passes before and
-// after the LiveStreamController move.
+// buffer AppState exposes is the one the frame path feeds.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';

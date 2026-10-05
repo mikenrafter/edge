@@ -1,4 +1,4 @@
-// 8M — the sync coordinator publishes REAL step status: which step is running,
+// The sync coordinator publishes REAL step status: which step is running,
 // how long each took, what the download has banked so far and which day the
 // calculation is on. Every clock is injected; nothing here sleeps for a step.
 import 'dart:async';
@@ -294,7 +294,7 @@ void main() {
       expect(p.step(SyncStepId.done).status, SyncStepStatus.skipped);
       expect(p.finishedAt, isNotNull);
       // The sentence a person reads is pinned in
-      // test/sync_status_line_test.dart (8AF.7 removed `description`).
+      // test/sync_status_line_test.dart (`description` is gone).
     });
 
     test('a failure partway keeps the finished steps finished', () async {

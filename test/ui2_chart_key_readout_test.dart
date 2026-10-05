@@ -1,4 +1,4 @@
-// 8F (revised) — the scrubbed values live in a row UNDER the chart, in the
+// The scrubbed values live in a row UNDER the chart, in the
 // chart's own key, not in a floating tooltip a thumb would cover.
 //
 // ChartScrub keeps the cursor. The values go to a ChartKeyReadout: a fixed-

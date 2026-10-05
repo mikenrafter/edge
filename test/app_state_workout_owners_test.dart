@@ -1,8 +1,7 @@
-// 8AJ seam 4 characterization: the workout and the breathing session / window
+// Workout area: the workout and the breathing session / window
 // as live-stream OWNERS, what each asks of the engine, and what they hold or
 // block elsewhere (the derive warmer, an ECG capture). Driven by the real
-// start / stop calls on a fake link, not by assigning the fields. Must pass
-// before and after the WorkoutController move.
+// start / stop calls on a fake link, not by assigning the fields.
 //
 // The callbacks other code takes from this area, as the tests see them:
 //   - LiveStreamController: activeWorkoutType() and breathing()
@@ -24,7 +23,7 @@ import 'support/app_state_gesture_harness.dart' show GestureRig;
 import 'support/app_state_live_harness.dart';
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_owners.db';
+const _db = 'app_state_workout_owners.db';
 const _hr = Cmd.toggleRealtimeHr;
 const _imu = Cmd.toggleImuMode;
 

@@ -1,4 +1,4 @@
-// Shared widget-test helpers for the phase 8 settings-screen tests.
+// Shared widget-test helpers for the settings-screen tests.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

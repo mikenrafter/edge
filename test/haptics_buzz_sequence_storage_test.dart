@@ -1,9 +1,8 @@
-// 8D — where a BuzzSequence is stored and how delivery picks it up.
+// Where a BuzzSequence is stored and how delivery picks it up.
 //
 // AlertRule carries an optional sequence (absent = registry default);
 // NotificationPrefs resolves the effective one by stable registry order; the
 // relay's App notifications channel and each per-app entry carry one too.
-// See test/phase8/CONTRACTS.md §8D.
 
 import 'dart:convert';
 import 'dart:io';
@@ -142,7 +141,7 @@ void main() {
           .toJson()), jsonEncode(back.toJson()));
     });
 
-    test('a blob saved before 8D (no sequence anywhere) still loads', () {
+    test('a blob saved before sequences existed (no sequence anywhere) still loads', () {
       final old = jsonDecode(jsonEncode(const NotificationPrefs().toJson()))
           as Map<String, dynamic>;
       for (final r in (old['rules'] as Map).values) {
@@ -189,7 +188,7 @@ void main() {
       expect(back.appSequences, {'com.a': BuzzSequence(const [0, 300, 600])});
     });
 
-    test('channel JSON saved before 8D loads with no sequences', () {
+    test('channel JSON saved before sequences existed loads with no sequences', () {
       final back = ChannelConfig.fromJson(
           {'enabled': true}, ChannelConfig.forChannel('apps'));
       expect(back.buzzSequence, isNull);
@@ -238,7 +237,7 @@ void main() {
     });
   });
 
-  group('BuzzSequence: the retired extended flag (8AC, removed in 8AF.6)', () {
+  group('BuzzSequence: the retired extended flag', () {
     Map<String, Object?> old({bool? extended}) => {
           'offsetsMs': [0, 900],
           'durationsMs': [750, 80],
@@ -309,7 +308,7 @@ void main() {
     });
   });
 
-  group('BuzzSequence notes, profile and baked plan (8AC)', () {
+  group('BuzzSequence notes, profile and baked plan', () {
     final baked = [
       BakedStep(effects: const [47], loop: 1, delayMs: 0),
       BakedStep(effects: const [14], loop: 2, delayMs: 300),
@@ -554,7 +553,7 @@ void main() {
           codeOnly(body),
           anyOf(contains('deliverBuzzSequence('),
               contains('haptics.deliver(')),
-          reason: '8AC: on a MG band the same tri-state delivery is the '
+          reason: 'on a MG band the same tri-state delivery is the '
               'compiled-plan helper');
       expect(codeOnly(body), contains('buzzSequenceFor('));
     });

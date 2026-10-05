@@ -1,4 +1,4 @@
-// 8V: the virtual WHOOP MG (test/support/virtual_mg.dart). First, that the
+// The virtual WHOOP MG (test/support/virtual_mg.dart). First, that the
 // model shows what the lab logs showed; then gesture ideas tried on it.
 
 import 'package:flutter_test/flutter_test.dart';
@@ -21,7 +21,7 @@ import 'support/virtual_mg.dart';
 }
 
 void main() {
-  group('8X: a DC offset on the electrode', () {
+  group('a DC offset on the electrode', () {
     test('the default is none: an untouched stream is all zeros', () {
       final p = VirtualMgEcg(touches: const []).packets(4);
       expect(p.expand((x) => x.r.samples), everyElement(0));
@@ -260,18 +260,18 @@ void main() {
       expect(g.results, [(3, null)]);
     });
 
-    test('8X: a flat DC level is no contact: with no finger the count is 2, '
+    test('a flat DC level is no contact: with no finger the count is 2, '
         'not a finger that never lets go', () async {
       final g = await gesture(const [], dcOffset: 300);
       expect(g.results, [(2, null)]);
     });
 
-    test('8X: a DC level under a real touch does not hide the lifts', () async {
+    test('a DC level under a real touch does not hide the lifts', () async {
       final g = await gesture(fourTaps, dcOffset: 300);
       expect(g.results, [(4, null)]);
     });
 
-    test('8X: quick start with no finger: the count is 2 from the first '
+    test('quick start with no finger: the count is 2 from the first '
         'sampled packet', () async {
       final g = await gesture(const [],
           th: EcgTapThresholds(
@@ -285,7 +285,7 @@ void main() {
           reason: 'decided before the window opened');
     });
 
-    test('8X: quick start with the finger already on carries on like '
+    test('quick start with the finger already on carries on like '
         'tolerant startup', () async {
       final g = await gesture(fourTaps,
           th: EcgTapThresholds(

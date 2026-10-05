@@ -1,7 +1,7 @@
-// 8AC — the rule editor on a WHOOP MG band: after a take it shows the notes it
-// heard and what the band will play (one calm line, spec I.2), and Save
-// stores the notes, the profile and the baked plan (spec I.1, I.6). The
-// full vocabulary is the only mode (8AF.6), so there is no switch. The
+// The rule editor on a WHOOP MG band: after a take it shows the notes it
+// heard and what the band will play (one calm line), and Save
+// stores the notes, the profile and the baked plan. The
+// full vocabulary is the only mode, so there is no switch. The
 // no-profile text is in test/haptics_buzz_pattern_controls_test.dart.
 
 import 'package:flutter/material.dart';

@@ -1,7 +1,7 @@
-// P5 (RED): the pure power-mode policy. No clock, timer, database or platform:
+// The pure power-mode policy. No clock, timer, database or platform:
 // the time is an argument, so every case is exact.
 //
-// ASSUMED API (new; nothing below exists today)
+// API (new; nothing below exists today)
 //
 //   lib/compute/calc_power_policy.dart
 //     enum CalcPowerMode { maxBattery, balanced, eager }
@@ -55,9 +55,6 @@
 //   lib/compute/derive_pacing.dart
 //     DerivePacing({required bool background, int? maxWorkers})
 //         concurrency(cores) never exceeds maxWorkers (null = today's rule).
-//
-// Failure mode today: lib/compute/calc_power_policy.dart does not exist, so
-// this file does not compile.
 
 import 'package:flutter_test/flutter_test.dart';
 

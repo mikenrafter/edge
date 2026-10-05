@@ -1,4 +1,4 @@
-// 8AG-perf P2-C: keep dirty intent that arrives while a job is running.
+// Keep dirty intent that arrives while a job is running.
 //
 // The bug: `LocalDb.enqueueDeriveJob` deduped against queued OR running jobs.
 // Data stored after the running job read its inputs therefore had no
@@ -49,7 +49,7 @@ void main() {
   setUpAll(() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    LocalDb.dbName = 'openstrap_p2_enqueue_test.db';
+    LocalDb.dbName = 'openstrap_enqueue_test.db';
     final dir = await databaseFactory.getDatabasesPath();
     await databaseFactory.deleteDatabase(p.join(dir, LocalDb.dbName));
   });
@@ -180,7 +180,7 @@ void main() {
     test('heavy with a running light and a queued light: the queued light '
         'goes, the running one stays', () async {
       await _startRunning(_light);
-      await _enqueue(_light); // follow-up (P2) or dropped (today)
+      await _enqueue(_light); // kept as a follow-up, not dropped
       await _enqueue(_heavy);
       expect(await _count(_light, 'queued'), 0);
       expect(await _count(_light, 'running'), 1);
@@ -190,7 +190,7 @@ void main() {
     test('cancelQueuedLightDerive drops queued lights, not running or heavy',
         () async {
       await _startRunning(_light);
-      await _enqueue(_light); // queued follow-up under P2
+      await _enqueue(_light); // queued follow-up
       await _enqueue(_heavy); // deletes that light; keep a heavy queued
       await _enqueue(_light); // absorbed by the queued heavy
       final dropped = await LocalDb.cancelQueuedLightDerive();

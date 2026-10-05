@@ -1,4 +1,4 @@
-// 8AI.2 G7 (red first): "Reset all data" lives on the Your data screen, in its
+// "Reset all data" lives on the Your data screen, in its
 // Advanced section, and nowhere else.
 //
 // USER REPORT (APK f88d230c): "Move the delete all data button into the import

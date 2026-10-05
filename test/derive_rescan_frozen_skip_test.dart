@@ -1,10 +1,8 @@
-// P4a at the engine, rescanRecent: a baseline-dirty rescan skips every day
+// At the engine, rescanRecent: a baseline-dirty rescan skips every day
 // finalized at kAlgoVersion (it used to rewrite them to refresh readiness /
 // stress against the moving baseline; that is exactly what the freeze ends),
 // and still re-derives provisional days (the older-version case is in
 // engine_rescan_older_version_test.dart).
-// Assumed API: see support.dart (nothing new is referenced; compiles today and
-// fails on behaviour).
 //
 // Real LocalDb + real DerivationEngine, fixed local-time fixtures (never
 // DateTime.now()). Raw fixture as in sleep_override_blanks_night_test: two quiet
@@ -88,7 +86,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    _db = await freshDb('openstrap_p4a_engine_rescan_test.db');
+    _db = await freshDb('openstrap_engine_rescan_test.db');
     await _seedRaw();
   });
   tearDownAll(dropDb);

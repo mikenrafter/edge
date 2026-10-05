@@ -1,4 +1,4 @@
-// 8AI G6: Developer > Live streaming (lib/ui2/profile/live_devices.dart, the
+// Developer > Live streaming (lib/ui2/profile/live_devices.dart, the
 // `LiveDevices` route over a real AppState) on a connected WHOOP 5/MG and a
 // 4.0.
 //

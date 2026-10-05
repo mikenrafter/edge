@@ -1,7 +1,6 @@
-// 8AJ seam 2 characterization: live-stream owner bookkeeping through AppState
+// Live-stream area: live-stream owner bookkeeping through AppState
 // (developer live feed, mounted live-HR views, movement-sampling window,
-// background) and what each change asks of the engine. Must pass before and
-// after the LiveStreamController move.
+// background) and what each change asks of the engine.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';

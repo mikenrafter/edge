@@ -1,9 +1,7 @@
-// P4a: the strain rescale backfill writes a kAlgoVersion row from an OLDER
+// The strain rescale backfill writes a kAlgoVersion row from an OLDER
 // served row only when no finalized kAlgoVersion row exists for the day, and
-// never touches one that does. Assumed API: see support.dart (nothing new is
-// referenced). This pins behaviour that is already true today by a different
-// route (the served row IS the kAlgoVersion row), so it must stay green once the
-// putDayResult guard lands rather than turn red.
+// never touches one that does. The served row IS the kAlgoVersion row, so the
+// putDayResult guard leaves this path alone.
 
 import 'dart:convert';
 
@@ -52,7 +50,7 @@ void main() {
   late Database db;
 
   setUp(() async {
-    db = await freshDb('openstrap_p4a_strain_rescale_test.db');
+    db = await freshDb('openstrap_strain_rescale_test.db');
     // The newest day only sets the retention cutoff; it is never rescaled.
     await _seed(db, _newest, version: kAlgoVersion, strain: 5.0, finalized: false);
   });

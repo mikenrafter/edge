@@ -1,8 +1,8 @@
-// 8D — BuzzSequence: encoding, defaults, recorder and playback.
+// BuzzSequence: encoding, defaults, recorder and playback.
 //
 // Pure model + timing in lib/notify/buzz_sequence.dart. Time is fake
 // (package:fake_async), and the recorder reads package:clock, which fake_async
-// drives. See test/phase8/CONTRACTS.md §8D.
+// drives.
 
 import 'dart:convert';
 

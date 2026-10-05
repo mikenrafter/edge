@@ -1,7 +1,5 @@
-// 8AE C — per-channel "Override quiet hours". A relay channel follows the
+// Per-channel "Override quiet hours". A relay channel follows the
 // global quiet hours (Alerts) unless it overrides them with its own window.
-// RED until ChannelConfig.overrideQuietHours, the relay decision and the
-// Band notifications rows exist. See test/phase8/CONTRACTS.md §8AE.
 //
 // Contract the tests fix where the spec is silent:
 //  - The global quiet hours reach the relay decision through the policy map

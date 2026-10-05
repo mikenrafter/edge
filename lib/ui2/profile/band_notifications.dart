@@ -140,7 +140,7 @@ class _BandNotificationsState extends State<BandNotifications>
 
   /// Opens the picker for a channel's own rhythm, or for [pkg]'s when given,
   /// and writes the choice back into [cfg]. A stored pattern is saved as a
-  /// snapshot of itself, with its patternId (8AD).
+  /// snapshot of itself, with its patternId.
   void _pick(
     ChannelConfig cfg,
     void Function(ChannelConfig next) put, {
@@ -243,7 +243,7 @@ class BandNotificationsView extends StatelessWidget {
 
   /// The app list is always drawn. While the relay is off, or Android has not
   /// granted notification access, it is dimmed and inert, and the first row
-  /// says which of the two it is waiting for (8K).
+  /// says which of the two it is waiting for.
   List<Widget> _appRows(BuildContext c, AppLocalizations? l) => [
     SetRow(LucideIcons.listChecks, C.teal,
         l?.bandNotifAppsArmed ?? 'Apps that can buzz',
@@ -345,7 +345,7 @@ class BandNotificationsView extends StatelessWidget {
           (v) => put(cfg.copyWith(phoneFallback: v)),
           sub: 'A generic notice on this phone when the band is not '
               'connected. It follows the Do Not Disturb choice above.'),
-      // 8AE: a channel follows the global quiet hours in Alerts unless it
+      // A channel follows the global quiet hours in Alerts unless it
       // overrides them; its own Starts and Ends only exist while it does.
       SwitchRow(
           'Override quiet hours',

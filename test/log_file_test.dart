@@ -1,7 +1,7 @@
-// 8AL (red): the general "Save log file" seam that replaces every "Copy log"
+// The general "Save log file" seam that replaces every "Copy log"
 // button. A big log pasted from the clipboard locked up a second device, so the
 // log leaves the phone as a .txt through the platform share sheet, the way the
-// 8AK gesture-failure saver already does.
+// gesture-failure saver already does.
 //
 // ASSUMED API (NEW lib/util/log_file.dart):
 //   * `typedef LogFileSaver = Future<bool> Function(String fileName, String text)`
@@ -14,7 +14,7 @@
 //     directory) and hands the path to [share] (default share_plus, anchored at
 //     [origin]). True when both worked; false, never a throw, otherwise. Never
 //     the clipboard.
-//   * `saveGestureLog` (lib/gestures/gesture_log_file.dart) keeps its 8AK
+//   * `saveGestureLog` (lib/gestures/gesture_log_file.dart) keeps its
 //     behaviour (test/log_save_file_test.dart still passes).
 
 import 'dart:io';

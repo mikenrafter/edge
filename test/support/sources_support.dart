@@ -1,4 +1,4 @@
-// Shared seams and fixtures for the Phase 4 (sources) red tests.
+// Shared seams and fixtures for the sources tests.
 //
 // Everything here either compiles against code that exists today or reaches a
 // not-yet-written production seam by DYNAMIC invocation, so a missing seam
@@ -21,7 +21,7 @@ import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
 
 const kContractDoc = 'docs/sources-data-shapes.md';
 
-/// Allows the red phase to compile before the new production seams exist.
+/// Lets a test reach a production seam that may not exist, failing with a clear message.
 T sourcesContract<T>(String behavior, T Function() invoke) {
   try {
     return invoke();

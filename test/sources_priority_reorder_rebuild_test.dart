@@ -1,4 +1,4 @@
-// Phase 4 red: reordering is current/future only; the explicit historical
+// Reordering is current/future only; the explicit historical
 // rebuild uses the new order and is idempotent (contracts 4 and 5).
 //
 // Fixture: the two-device night of multidevice_coverage_derive_test.dart,

@@ -25,7 +25,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' show BandProfile;
 import 'support/app_state_live_harness.dart';
 import 'support/app_state_workout_harness.dart';
 
-const _db = 'split8aj_seam4_breath_cues.db';
+const _db = 'app_state_workout_breath_cues.db';
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
 

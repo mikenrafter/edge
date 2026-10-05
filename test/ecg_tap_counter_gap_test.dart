@@ -1,4 +1,4 @@
-// Sample-gap policy for EcgTapCounter (phase 8L, review finding E).
+// Sample-gap policy for EcgTapCounter.
 //
 // Contact and no-contact must be OBSERVED to count. A hole in the sample clock
 // (a lost or late-dropped packet) is not evidence of either, so it can neither

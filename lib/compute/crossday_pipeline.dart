@@ -134,7 +134,7 @@ Map<String, dynamic> buildCrossDayBundle(
     final onset = (d['onset_sec'] as num?)?.toDouble();
     final wake = (d['wake_sec'] as num?)?.toDouble();
     final tstMin = (d['tst_min'] as num?)?.toDouble();
-    // 8E — a night with a window but no total sleep time is NOT RECORDED (the
+    // A night with a window but no total sleep time is NOT RECORDED (the
     // user asserted the window; nothing covered it). Its bare window is not a
     // mid-sleep: counting it paired a free-day mid-sleep with no duration
     // (chronotype n 8 vs 7) and moved social jetlag. Skip it entirely.
@@ -379,7 +379,7 @@ Map<String, dynamic> buildCrossDayBundle(
       ? null
       : ((need.value!.needSec - needNoStrain.value!.needSec) / 60).round();
   // last night's TST (sec) for performance.
-  // LAST night only. `_lastNum` reached back past a blank night (8E) to an
+  // LAST night only. `_lastNum` reached back past a blank night to an
   // earlier night's sleep time and scored THAT against tonight's need.
   final lastTstMin = days.isEmpty ? null : _numOrNull(days.last['tst_min']);
   final perf = (need.present && lastTstMin != null)
@@ -397,7 +397,7 @@ Map<String, dynamic> buildCrossDayBundle(
   final wakeMins = <double>[
     for (final d in days)
       // A blank night's wake is the user's asserted window, not a measured
-      // wake time (8E): it must not move the bedtime guidance.
+      // wake time: it must not move the bedtime guidance.
       if (d['wake_sec'] != null && d['tst_min'] != null)
         _localTodMin((d['wake_sec'] as num).toInt()),
   ];

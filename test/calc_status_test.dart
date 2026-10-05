@@ -1,6 +1,6 @@
-// P4b: the process-wide calculation status (stack semantics).
+// The process-wide calculation status (stack semantics).
 //
-// ASSUMED API (new file lib/compute/calc_status.dart):
+// API (new file lib/compute/calc_status.dart):
 //
 //   class CalcStep {
 //     final String label;        // plain words: "Sleep stages"
@@ -29,8 +29,6 @@
 //     visible one alone; the visible step is always the most recent one that
 //     is still open.
 //   * a listener sees every change of the visible step and nothing else.
-//
-// Failure mode today: the library does not exist (the file fails to load).
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/calc_status.dart';

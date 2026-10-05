@@ -1,11 +1,11 @@
-// 8AJ seam 5, sticky latches (AGENTS 4.3). The principle each case pins: every
+// Sync area, sticky latches (AGENTS 4.3). The principle each case pins: every
 // flag, lease and intent a path sets is released on success, error and give-up;
 // a session is fully up (drain + backfill) or torn down; nothing new starts
 // after dispose or after the loop was retired.
 //
-// The cases that flipped a LATENT characterization live next to it
-// (seam5_open_session, seam5_reconnect, seam5_dispose, seam5_triggers, marked
-// FIXED (was LATENT)). This file adds the exits those did not cover: every
+// Related cases live next to the code they exercise
+// (app_state_sync_open_session, _reconnect, _dispose and _triggers). This file
+// adds the exits those do not cover: every
 // failure exit of openSession, the headless background start, and a bond-
 // refusal pause that later expires.
 //
@@ -26,7 +26,7 @@ import 'package:openstrap_edge/sync/reset_gate.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_latch_fixes.db';
+const _db = 'app_state_sync_latch_fixes.db';
 
 /// A later headless wake would be accepted: no foreground intent, no owner.
 void _expectBandFree() {

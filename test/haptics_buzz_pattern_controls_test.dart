@@ -1,5 +1,4 @@
-// 8D — the "Buzz pattern" controls and the "Tap your pattern" recorder sheet.
-// See test/phase8/CONTRACTS.md §8D (UI).
+// The "Buzz pattern" controls and the "Tap your pattern" recorder sheet.
 
 import 'dart:convert';
 
@@ -88,7 +87,7 @@ void main() {
             onBuzzPattern: picked.add,
           ));
       final control = find.byKey(const ValueKey('buzz-pattern:water'));
-      expect(control, findsOneWidget, reason: '8K: disabled, not hidden');
+      expect(control, findsOneWidget, reason: 'disabled, not hidden');
       await t.tap(control, warnIfMissed: false);
       expect(picked, isEmpty);
     });
@@ -214,7 +213,7 @@ void main() {
     });
   });
 
-  // 8AF.6: the extended haptics opset switch is gone (the full vocabulary is
+  // The extended haptics opset switch is gone (the full vocabulary is
   // the only mode); the take is played and saved as the taps it is.
   group('BuzzPatternSheet: no extended haptics opset switch', () {
     testWidgets('there is no switch, and no label or caption for one',

@@ -1,4 +1,4 @@
-// Phase 7 failure injection — the native Android relay.
+// Failure injection — the native Android relay.
 // A write that never answers, a disconnect mid-rhythm, a duplicate post, a
 // skewed post time, a process restart, a lost Notification-access grant and a
 // bridge that does not answer. Each ends with the latches cleared and no

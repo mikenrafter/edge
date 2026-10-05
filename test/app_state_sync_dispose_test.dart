@@ -1,11 +1,9 @@
-// 8AJ seam 5 characterization: what AppState.dispose does to the sync area
-// (timers, the foreground claim, the live session) and what calls that arrive
-// AFTER it still do. Through AppState with a [SyncFakeEngine]. Must pass before
-// and after the SyncController move.
+// Sync area: what AppState.dispose does to the timers, the foreground
+// claim and the live session, and what calls that arrive
+// AFTER it still do. Through AppState with a [SyncFakeEngine].
 //
-// The calls that arrive after dispose used to be pinned as they were (work and
-// ownership that outlived the object, marked LATENT). They are now asserted as
-// they should be, marked FIXED (was LATENT): nothing new starts after dispose.
+// Calls that arrive after dispose must start nothing new: no work and no
+// ownership outlives the object.
 
 import 'dart:async';
 
@@ -16,7 +14,7 @@ import 'package:openstrap_edge/sync/band_ownership.dart';
 
 import 'support/app_state_sync_harness.dart';
 
-const _db = 'split8aj_seam5_dispose.db';
+const _db = 'app_state_sync_dispose.db';
 
 Future<void> _open(SyncRig rig) => rig.openAndSettle();
 
@@ -87,7 +85,7 @@ void main() {
     test('a drain finishing after dispose does nothing more: no throw, no '
         'band prompt re-read, no heavy derive queued',
         syncCase((rig, timers) async {
-      // FIXED (was LATENT): the bookkeeping behind a drain used to run on the
+      // the bookkeeping behind a drain used to run on the
       // disposed object and queue the heavy derive.
       rig.engine.syncGate = Completer<void>();
       await rig.app.openSession();
@@ -107,7 +105,7 @@ void main() {
     test('an openSession parked in connect at dispose does nothing after it '
         'resumes: no poll, no drain, no backfill timer, and it leaves no '
         'intent or lease behind', syncCase((rig, timers) async {
-      // FIXED (was LATENT): it used to poll, start the drain and arm a fresh
+      // it used to poll, start the drain and arm a fresh
       // backfill timer on the disposed object. The link it just won is dropped.
       final gate = rig.holdConnect();
       final open = rig.app.openSession();
@@ -135,7 +133,7 @@ void main() {
 
     test('a link drop reported after dispose starts no reconnect and takes no '
         'foreground lease', syncCase((rig, timers) async {
-      // FIXED (was LATENT): dispose did not stop wanting a link, so the drop
+      // dispose did not stop wanting a link, so the drop
       // started a reconnect that took a lease the disposed object never
       // released.
       await _open(rig);

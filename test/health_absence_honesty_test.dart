@@ -1,4 +1,4 @@
-// 8AF C (red): three honesty bugs, each test named for the bug it pins
+// Three honesty bugs, each test named for the bug it pins
 // (AGENTS.md 3.3, 4.1).
 //
 //   1. a night held over from an earlier date drew sparklines (trend arrows read

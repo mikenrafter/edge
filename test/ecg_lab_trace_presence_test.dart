@@ -1,4 +1,4 @@
-// 8AN phase A (measure; no behaviour change): one lab capture must give the
+// Measurement only, no behaviour change: one lab capture must give the
 // band's presence debounce. So the session's trace
 //  * says presence and the unreadable reasons on every packet line (already
 //    true; pinned here), and

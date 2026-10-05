@@ -1,4 +1,4 @@
-// 8AC: notes -> device commands. Given a pattern written as notes and rests
+// Notes -> device commands. Given a pattern written as notes and rests
 // on the 16th grid, pick the band commands (phrases) and the write delays
 // between them (gaps) from a measured device profile so that what is felt
 // lands as close to the pattern as the vocabulary allows. Pure Dart, no
@@ -17,7 +17,7 @@
 // delay; ties inside that are settled by the fixed order of the profile's
 // rows.
 //
-// A rest the pattern's author wrote is kept (8AI). The search above scores
+// A rest the pattern's author wrote is kept. The search above scores
 // cells in place, so it can win by merging two pulses over a short rest or by
 // dropping the rest. A plan is accepted only if, in both its shortest and its
 // longest rendition, it has as many rests between pulses as were written and

@@ -1,4 +1,4 @@
-// 8B — the Live devices buffer is fed from the live callbacks and from nothing
+// The Live devices buffer is fed from the live callbacks and from nothing
 // else, in RAM only. The buffer's own rules are pinned in
 // test/live_devices_test.dart; this pins the AppState taps.
 
