@@ -289,7 +289,7 @@ void main() {
     expect(find.text('ECG sensor touches'), findsOneWidget);
     expect(find.text('This band has no ECG sensor'), findsOneWidget);
     expect(find.text('More double taps'), findsOneWidget);
-    expect(find.text('Tap counts'), findsOneWidget);
+    expect(find.text('×2'), findsOneWidget, reason: 'the count tabs');
     expect(find.text('What needs a WHOOP MG'), findsOneWidget);
   });
   screenStructure(
@@ -298,7 +298,7 @@ void main() {
     expect(find.text('Count extra taps with'), findsOneWidget);
     expect(find.text('ECG sensor touches'), findsOneWidget);
     expect(find.text('This band has no ECG sensor'), findsNothing);
-    expect(find.text('Tap counts'), findsOneWidget);
+    expect(find.text('×2'), findsOneWidget, reason: 'the count tabs');
     expect(find.text('What needs a WHOOP MG'), findsOneWidget);
   });
 }

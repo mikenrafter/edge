@@ -181,9 +181,9 @@ void main() {
           reason: 'the stored answers map to the right sections after reopen');
     });
 
-    testWidgets('Gestures: the extra-taps sections appearing does not move '
-        'the first section\'s state', (t) async {
-      final flag = ValueNotifier<bool>(false);
+    testWidgets('Gestures: the extra-taps choice going and coming back keeps '
+        'its own answer', (t) async {
+      final flag = ValueNotifier<bool>(true);
       addTearDown(flag.dispose);
       g123View(t, height: 30000);
       await t.pumpWidget(g123App(ValueListenableBuilder<bool>(
@@ -199,14 +199,16 @@ void main() {
         ),
       )));
       await g123Settle(t);
-      await toggleAccordion(t, 'gestures_it_does');
-      expect(openStates(t)['gestures_it_does'], isFalse);
+      expect(openStates(t), {'gestures_extra_taps': true});
+      await toggleAccordion(t, 'gestures_extra_taps');
+      expect(openStates(t)['gestures_extra_taps'], isFalse);
+      flag.value = false; // the only accordion on the screen goes
+      await g123Settle(t);
+      expect(openStates(t), isEmpty);
       flag.value = true;
       await g123Settle(t);
-      final s = openStates(t);
-      expect(s['gestures_it_does'], isFalse);
-      expect(s['gestures_extra_taps'], isTrue);
-      expect(s['gestures_tap_counts'], isTrue);
+      expect(openStates(t), {'gestures_extra_taps': false},
+          reason: 'still folded: the answer belongs to the section');
     });
   });
 

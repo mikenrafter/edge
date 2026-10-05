@@ -63,6 +63,9 @@ gone.
   notifications screen is gone.
 - Gestures no longer carries "Pause between double taps" or "Touch windows".
   Both stay in the Device lab.
+- Gestures is sub-tabs (one per gesture), with the Haptics link at the bottom of
+  every tab. In developer mode a Device lab link sits directly under it: one more
+  entrance to the lab, one push from Gestures, so Settings > Gestures > Device lab.
 - 8AK added "Gesture failures" as the last row of Settings > Hardware (after
   Haptics): one push from Settings, so depth 1, and it has no table row because
   it is new. It lists the last 20 gestures that failed to activate, dismissed

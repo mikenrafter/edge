@@ -7,6 +7,7 @@
 // 8L implementation (keep forbidding one/single/1 tap). The `tapCount` symbol
 // ban there stays: nothing pinned here uses that identifier.
 
+import 'package:flutter/material.dart' show ValueKey;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -182,8 +183,8 @@ void main() {
     });
   });
 
-  group('BandGesturesView rows', () {
-    testWidgets('Double tap + 0–3 ECG taps; 3–5 draft; no 1-tap row (8AK C)',
+  group('BandGesturesView tabs', () {
+    testWidgets('Double tap + 0–3 ECG taps; 3–5 draft; no 1-tap tab (8AK C)',
         (t) async {
       await pumpTall(
           t,
@@ -200,25 +201,34 @@ void main() {
         5: 'Double tap + 3 ECG taps',
       };
       for (final e in names.entries) {
-        expect(find.text(e.value), findsOneWidget, reason: e.value);
-      }
-      expect(find.text('1 tap'), findsNothing);
-      expect(find.textContaining('Draft'), findsNWidgets(3));
-      for (final n in [3, 4, 5]) {
-        expect(isDimmed(t, find.text(names[n]!)), isFalse,
+        await openGesturesTab(t, e.key);
+        expect(gesturesTabName(t), e.value);
+        expect(find.textContaining('Draft'), e.key == 2 ? findsNothing : findsOneWidget,
+            reason: e.value);
+        expect(isDimmed(t, find.byKey(const ValueKey('gestures-tab-name'))),
+            isFalse,
             reason: 'enabled on a WHOOP MG');
       }
+      expect(find.text('1 tap'), findsNothing);
+      expect(find.byKey(const ValueKey('gestures-tab:1')), findsNothing);
     });
 
-    testWidgets('not a WHOOP MG: the rows count double taps and are enabled; '
+    testWidgets('not a WHOOP MG: the tabs count double taps and are enabled; '
         'only the ECG option is disabled, with the reason', (t) async {
       await pumpTall(
           t,
           const BandGesturesView(
               chosen: {}, supported: _supported, ecgSupported: false));
-      for (final label in ['2 double taps', '3 double taps', '4 double taps']) {
-        expect(find.text(label), findsOneWidget);
-        expect(isDimmed(t, find.text(label)), isFalse, reason: label);
+      for (final (n, label) in const [
+        (3, '2 double taps'),
+        (4, '3 double taps'),
+        (5, '4 double taps'),
+      ]) {
+        await openGesturesTab(t, n);
+        expect(gesturesTabName(t), label);
+        expect(isDimmed(t, find.byKey(const ValueKey('gestures-tab-name'))),
+            isFalse,
+            reason: label);
       }
       expect(isDimmed(t, find.text('ECG sensor touches')), isTrue);
       expect(find.text('This band has no ECG sensor'), findsWidgets);

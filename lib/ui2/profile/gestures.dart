@@ -16,6 +16,11 @@
 //
 // Several actions can be on at once. There is no "do nothing" row: every action
 // off IS the off state, and the copy says so.
+//
+// Laid out as sub-tabs (Oct 4): what applies to every gesture (the intro, how
+// extra taps are counted) is above the tab row; each gesture is a tab, and
+// every tab has the same shape: its name and how to do it, the actions as
+// switches, then the links (Haptics, and the Device lab in developer mode).
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -29,10 +34,15 @@ import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
+import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'device_lab.dart';
 import 'haptics_settings.dart' show HapticsSettings;
 import 'profile.dart';
+
+/// Where the tab last used is kept: the tap count of the gesture (2 is the
+/// plain double tap), in the app prefs with the other UI selections.
+const String kGesturesTabPref = 'ui.gestures_tab';
 
 class BandGestures extends StatelessWidget {
   const BandGestures({super.key});
@@ -65,10 +75,8 @@ class BandGestures extends StatelessWidget {
         },
         extraTaps: caps.has(Feature.extraTapCounting),
         onHaptics: () => goto(c, const HapticsSettings()),
-        // The assignment sheet is opened from this very screen: leave the
-        // sheet and land on it, never a second copy stacked on top.
-        onViewAllGestures: () =>
-            Navigator.of(c).popUntil((r) => r == ModalRoute.of(c)),
+        devMode: caps.has(Feature.developerMode),
+        onDeviceLab: () => goto(c, const DeviceLab()),
       ),
     );
   }
@@ -122,9 +130,9 @@ class BandGesturesView extends StatelessWidget {
   /// chosen (8AI). The row is always drawn; without a callback it is inert.
   final VoidCallback? onHaptics;
 
-  /// "View all gestures" in the tap-count sheet: called after the sheet has
-  /// closed, to take the wearer to this screen.
-  final VoidCallback? onViewAllGestures;
+  /// Developer mode: a Device lab link under the Haptics one in every tab.
+  final bool devMode;
+  final VoidCallback? onDeviceLab;
 
   const BandGesturesView({
     super.key,
@@ -144,7 +152,8 @@ class BandGesturesView extends StatelessWidget {
     this.onThresholds,
     this.extraTaps = true,
     this.onHaptics,
-    this.onViewAllGestures,
+    this.devMode = false,
+    this.onDeviceLab,
   });
 
   @override
@@ -189,131 +198,57 @@ class BandGesturesView extends StatelessWidget {
                     ),
                   ),
                 ),
-                SettingsAccordion(l?.gesturesItDoesTitle ?? 'It does',
-                    id: 'gestures_it_does',
-                    children: [
-                  for (final a in offered) ...[
-                    SwitchRow(
-                      a.localizedLabel(c),
-                      chosen.contains(a),
-                      onToggle == null ? null : (v) => onToggle!(a, v),
-                      sub: a.localizedBlurb(c),
-                    ),
-                    // Directly under the one action that can be replayed
-                    // safely. Always drawn; inert and dimmed while the action
-                    // itself is off (8K).
-                    if (a.supportsHistoricalReplay)
-                      SwitchRow(
-                        l?.gesturesReplayTitle ??
-                            'Also run for taps replayed from history',
-                        replay.contains(a),
-                        onReplay == null ? null : (v) => onReplay!(a, v),
-                        enabled: chosen.contains(a),
-                        sub: !chosen.contains(a)
-                            ? 'Turn on ${a.localizedLabel(c)} first'
-                            : l?.gesturesReplaySub ??
-                                'A tap the band delivers late is still stamped with the '
-                                    'minute and day it happened. Other actions never run for '
-                                    'a late tap.',
-                      ),
-                  ],
-                ]),
                 // How taps beyond the double tap are counted. ECG is dimmed and
                 // inert (never hidden) on a band without the sensor.
-                if (extraTaps)
-                SettingsAccordion('Count extra taps with',
-                    id: 'gestures_extra_taps',
-                    children: [
-                  _MethodRow(
-                    id: 'ecg',
-                    title: 'ECG sensor touches',
-                    sub: 'Touch the ECG sensor on the band after the double '
-                        'tap. WHOOP MG only.',
-                    selected: ecg,
-                    enabled: ecgSupported,
-                    onTap: () => onTapMethod?.call(TapCountMethod.ecg),
-                  ),
-                  _MethodRow(
-                    id: 'repeat',
-                    title: 'More double taps',
-                    sub: 'Double tap again before the pause ends. Works on '
-                        'every band.',
-                    selected: !ecg,
-                    enabled: true,
-                    onTap: () => onTapMethod?.call(TapCountMethod.repeat),
-                  ),
-                ]),
-                // 2 taps is the switches above; there is no 1-tap row. The
-                // rest are a DRAFT: touches of the ECG sensor after the double
-                // tap, or more double taps in a row. One mapping serves both:
-                // the slot for 3 taps is the slot for 2 double taps.
-                if (extraTaps)
-                SettingsAccordion('Tap counts',
-                    id: 'gestures_tap_counts',
-                    children: [
-                  _TapCountRow(
-                    title: ecg ? _ecgName(l, 2) : 'Double tap',
-                    summary: _summary(chosen),
-                    sub: 'The actions above',
-                  ),
-                  for (final n in const [3, 4, 5])
-                    _TapCountRow(
-                      title: ecg ? _ecgName(l, n) : '${n - 1} double taps',
-                      draft: true,
-                      enabled: !ecg || ecgSupported,
-                      summary: _summary(tapActions[n] ?? const {}),
-                      sub: ecg
-                          ? 'Touch the ECG sensor after the double tap'
-                          : 'Double tap again before the pause ends',
-                      onTap: (!ecg || ecgSupported) && onTapToggle != null
-                          ? () => _pickActions(
-                              c,
-                              n,
-                              ecg ? _ecgName(l, n) : '${n - 1} double taps',
-                              offered,
-                              tapActions[n] ?? const {})
-                          : null,
+                if (extraTaps) ...[
+                  SettingsAccordion('Count extra taps with',
+                      id: 'gestures_extra_taps',
+                      children: [
+                    _MethodRow(
+                      id: 'ecg',
+                      title: 'ECG sensor touches',
+                      sub: 'Touch the ECG sensor on the band after the double '
+                          'tap. WHOOP MG only.',
+                      selected: ecg,
+                      enabled: ecgSupported,
+                      onTap: () => onTapMethod?.call(TapCountMethod.ecg),
                     ),
-                ]),
-                // The accordions draw their own gap above themselves; a link card
-                // has to bring the same one or it sits flush on the card above.
-                Padding(
-                  padding: const EdgeInsets.only(top: S.x3),
-                  child: Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: SetRow(
-                      LucideIcons.vibrate,
-                      C.purple,
-                      'Haptics',
-                      key: const ValueKey('gestures-open-haptics'),
-                      sub: 'The buzzes these gestures play',
-                      onTap: onHaptics,
+                    _MethodRow(
+                      id: 'repeat',
+                      title: 'More double taps',
+                      sub: 'Double tap again before the pause ends. Works on '
+                          'every band.',
+                      selected: !ecg,
+                      enabled: true,
+                      onTap: () => onTapMethod?.call(TapCountMethod.repeat),
                     ),
-                  ),
-                ),
-                if (extraTaps)
-                Section(
-                  'What needs a WHOOP MG',
-                  Surface(
-                    child: Text(kExtendedGesturesNote,
-                        style: F.body.copyWith(color: p.ink2, height: 1.4)),
-                  ),
-                ),
-                if (noPhoneActions) ...[
-                  const SizedBox(height: S.x5),
+                  ]),
                   Section(
-                    l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
+                    'What needs a WHOOP MG',
                     Surface(
-                      child: Text(
-                        l?.gesturesNoPhoneActionsBody ??
-                            'Ringing your phone and the flashlight are missing because the app could '
-                                'not ask the system what this device allows. Reopen the app to try '
-                                'again. The in-app actions above still work.',
-                        style: F.body.copyWith(color: p.ink2, height: 1.4),
-                      ),
+                      child: Text(kExtendedGesturesNote,
+                          style: F.body.copyWith(color: p.ink2, height: 1.4)),
                     ),
                   ),
                 ],
+                // 2 taps is the plain double tap; there is no 1-tap tab. The
+                // rest are a DRAFT: touches of the ECG sensor after the double
+                // tap, or more double taps in a row. One mapping serves both:
+                // the slot for 3 taps is the slot for 2 double taps. Without
+                // extra taps there is one gesture, so no tab row.
+                if (extraTaps)
+                  _GestureTabs(
+                    items: [
+                      for (var n = 2; n <= 5; n++) _tabLabel(n, ecg),
+                    ],
+                    semanticLabels: [
+                      for (var n = 2; n <= 5; n++)
+                        '${_name(l, n, ecg)}, gesture',
+                    ],
+                    body: (c, n) => _tabBody(c, n, ecg, offered, noPhoneActions),
+                  )
+                else
+                  _tabBody(c, 2, ecg, offered, noPhoneActions),
               ],
             ),
           ),
@@ -322,67 +257,207 @@ class BandGesturesView extends StatelessWidget {
     );
   }
 
-  // The ECG count's name (8AK C): the plural message, or the same English
-  // from the plain helper where no localizations are in the tree.
-  static String _ecgName(AppLocalizations? l, int count) =>
-      l?.gestureEcgTapName(count - 2) ?? ecgTapCountName(count);
-
-  static String _summary(Set<DeviceAction> a) =>
-      a.isEmpty ? 'Off' : '${a.length} on';
-
-  /// A sheet of the offered actions as check boxes for one tap count. Keeps its
-  /// own copy of the set so a tick shows at once; [onTapToggle] persists it.
-  Future<void> _pickActions(BuildContext c, int taps, String label,
-      List<DeviceAction> offered, Set<DeviceAction> current) {
+  /// One gesture's tab. Every tab has this shape: the name and how to do it,
+  /// the actions as switches, then the links at the bottom.
+  Widget _tabBody(BuildContext c, int taps, bool ecg, List<DeviceAction> offered,
+      bool noPhoneActions) {
     final p = P.of(c);
-    return showModalBottomSheet<void>(
-      context: c,
-      backgroundColor: p.card,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (sheet) {
-        var on = {...current};
-        return StatefulBuilder(
-          builder: (sheet, setSheet) => SafeArea(
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(S.x5, 0, S.x5, S.x2),
-                  child: Text('$label does',
-                      style: F.head.copyWith(color: p.ink)),
+    final l = AppLocalizations.of(c);
+    final on = taps == 2 ? chosen : (tapActions[taps] ?? const <DeviceAction>{});
+    return Column(
+      key: ValueKey('gestures-tab-body:$taps'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: S.x3),
+          child: Surface(
+            pad: const EdgeInsets.symmetric(horizontal: S.x4),
+            child: Column(children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: S.x3),
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text(_name(l, taps, ecg),
+                              key: const ValueKey('gestures-tab-name'),
+                              style: F.body.copyWith(
+                                  color: p.ink, fontWeight: FontWeight.w600)),
+                        ),
+                        if (taps > 2) ...[
+                          const SizedBox(width: S.x2),
+                          Text('Draft',
+                              style: F.over.copyWith(
+                                  color: p.on(C.orange),
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ]),
+                      Text(_how(taps, ecg),
+                          key: const ValueKey('gestures-tab-how'),
+                          style: F.over.copyWith(color: p.ink3)),
+                    ]),
+              ),
+              for (final a in offered) ...[
+                Divider(color: p.line, height: 1),
+                SwitchRow(
+                  a.localizedLabel(c),
+                  on.contains(a),
+                  taps == 2
+                      ? (onToggle == null ? null : (v) => onToggle!(a, v))
+                      : (onTapToggle == null
+                          ? null
+                          : (v) => onTapToggle!(taps, a, v)),
+                  sub: a.localizedBlurb(c),
                 ),
-                for (final a in offered)
-                  CheckboxListTile(
-                    value: on.contains(a),
-                    title: Text(a.localizedLabel(sheet),
-                        style: F.body.copyWith(color: p.ink)),
-                    onChanged: (v) {
-                      final next = v ?? false;
-                      setSheet(() => on = next ? {...on, a} : on.difference({a}));
-                      onTapToggle!(taps, a, next);
-                    },
+                // Directly under the one action that can be replayed safely,
+                // on the plain double tap alone: a counted tap is always live.
+                // Always drawn; inert and dimmed while the action itself is
+                // off (8K).
+                if (taps == 2 && a.supportsHistoricalReplay) ...[
+                  Divider(color: p.line, height: 1),
+                  SwitchRow(
+                    l?.gesturesReplayTitle ??
+                        'Also run for taps replayed from history',
+                    replay.contains(a),
+                    onReplay == null ? null : (v) => onReplay!(a, v),
+                    enabled: chosen.contains(a),
+                    sub: !chosen.contains(a)
+                        ? 'Turn on ${a.localizedLabel(c)} first'
+                        : l?.gesturesReplaySub ??
+                            'A tap the band delivers late is still stamped with the '
+                                'minute and day it happened. Other actions never run for '
+                                'a late tap.',
                   ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(S.x5, S.x3, S.x5, 0),
-                  child: SetRow(
-                    LucideIcons.layoutList,
-                    C.blue,
-                    'View all gestures',
-                    key: const ValueKey('gesture-sheet-view-all'),
-                    onTap: () {
-                      Navigator.of(sheet).pop();
-                      onViewAllGestures?.call();
-                    },
-                  ),
-                ),
+                ],
               ],
+            ]),
+          ),
+        ),
+        if (noPhoneActions)
+          Section(
+            l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
+            Surface(
+              child: Text(
+                l?.gesturesNoPhoneActionsBody ??
+                    'Ringing your phone and the flashlight are missing because the app could '
+                        'not ask the system what this device allows. Reopen the app to try '
+                        'again. The in-app actions above still work.',
+                style: F.body.copyWith(color: p.ink2, height: 1.4),
+              ),
             ),
           ),
-        );
-      },
+        // The links, each its own card with the page's section gap above it.
+        Padding(
+          padding: const EdgeInsets.only(top: S.x3),
+          child: Surface(
+            pad: const EdgeInsets.symmetric(horizontal: S.x4),
+            child: SetRow(
+              LucideIcons.vibrate,
+              C.purple,
+              'Haptics',
+              key: const ValueKey('gestures-open-haptics'),
+              sub: 'The buzzes these gestures play',
+              onTap: onHaptics,
+            ),
+          ),
+        ),
+        if (devMode)
+          Padding(
+            padding: const EdgeInsets.only(top: S.x3),
+            child: Surface(
+              pad: const EdgeInsets.symmetric(horizontal: S.x4),
+              child: SetRow(
+                LucideIcons.flaskConical,
+                C.purple,
+                'Device lab',
+                key: const ValueKey('gestures-open-device-lab'),
+                sub: 'Try gestures the band does not report on its own',
+                onTap: onDeviceLab,
+              ),
+            ),
+          ),
+      ],
     );
   }
+
+  // The gesture's name: the plain double tap, then the count's own name. The
+  // ECG count's name (8AK C) is the plural message, or the same English from
+  // the plain helper where no localizations are in the tree.
+  static String _name(AppLocalizations? l, int n, bool ecg) => n == 2
+      ? 'Double tap'
+      : ecg
+          ? (l?.gestureEcgTapName(n - 2) ?? ecgTapCountName(n))
+          : '${n - 1} double taps';
+
+  // What fits a 360 pt tab; the full name is the screen reader's label.
+  static String _tabLabel(int n, bool ecg) => n == 2
+      ? 'Double tap'
+      : ecg
+          ? '+${n - 2} ECG'
+          : '×${n - 1}';
+
+  static String _how(int n, bool ecg) {
+    if (n == 2) return 'Tap the band twice.';
+    if (ecg) {
+      final k = n - 2;
+      return 'Double tap, then touch the ECG sensor '
+          '${k == 1 ? 'once' : '$k times'}.';
+    }
+    return 'Double tap ${n - 1} times in a row before the pause ends.';
+  }
+}
+
+/// The tab row and the body of the selected tab. The tab is remembered across
+/// visits; one that is not offered (or never stored) opens the double tap.
+class _GestureTabs extends StatefulWidget {
+  const _GestureTabs(
+      {required this.items, required this.semanticLabels, required this.body});
+
+  final List<String> items, semanticLabels;
+  final Widget Function(BuildContext context, int taps) body;
+
+  @override
+  State<_GestureTabs> createState() => _GestureTabsState();
+}
+
+class _GestureTabsState extends State<_GestureTabs> {
+  late int _n = _remembered();
+
+  int _remembered() {
+    final n = int.tryParse(Prefs.getString(kGesturesTabPref, ''));
+    return n != null && n >= 2 && n < 2 + widget.items.length ? n : 2;
+  }
+
+  void _select(int n) {
+    if (n == _n) return;
+    setState(() => _n = n);
+    // A UI selection: a write that did not land only costs the memory of it.
+    Prefs.setString(kGesturesTabPref, '$n');
+  }
+
+  @override
+  Widget build(BuildContext c) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: S.x4),
+            child: SubTabs(
+              widget.items,
+              _n - 2,
+              (i) => _select(i + 2),
+              color: C.blue,
+              dense: true,
+              itemKeys: [
+                for (var n = 2; n < 2 + widget.items.length; n++)
+                  ValueKey('gestures-tab:$n'),
+              ],
+              semanticLabels: widget.semanticLabels,
+            ),
+          ),
+          widget.body(c, _n),
+        ],
+      );
 }
 
 /// One choice in "Count extra taps with". Deliberately not a [SwitchRow]: it is
@@ -426,60 +501,6 @@ class _MethodRow extends StatelessWidget {
             Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
           else
             const SizedBox(width: 18),
-        ]),
-      ),
-    );
-    return enabled ? row : Opacity(opacity: kDisabledOpacity, child: row);
-  }
-}
-
-/// One row of the tap-count list. Deliberately not a [SwitchRow]: it opens a
-/// picker, and a disabled draft row stays visible and dimmed with its reason.
-class _TapCountRow extends StatelessWidget {
-  const _TapCountRow({
-    required this.title,
-    required this.summary,
-    required this.sub,
-    this.draft = false,
-    this.enabled = true,
-    this.onTap,
-  });
-
-  final bool draft, enabled;
-  final String title, summary, sub;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext c) {
-    final p = P.of(c);
-    final row = Pressable(
-      onTap: enabled ? onTap : null,
-      semanticLabel: '$title. $sub',
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
-        child: Row(children: [
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                  child: Text(title, style: F.body.copyWith(color: p.ink)),
-                ),
-                if (draft) ...[
-                  const SizedBox(width: S.x2),
-                  Text('Draft',
-                      style: F.over.copyWith(
-                          color: p.on(C.orange), fontWeight: FontWeight.w600)),
-                ],
-              ]),
-              Text(sub, style: F.over.copyWith(color: p.ink3)),
-              if (!enabled)
-                Text('This band has no ECG sensor',
-                    style: F.over.copyWith(color: p.ink3)),
-            ]),
-          ),
-          const SizedBox(width: S.x2),
-          Text(summary, style: F.cap.copyWith(color: p.ink3)),
         ]),
       ),
     );

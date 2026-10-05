@@ -1,5 +1,5 @@
 // "Count extra taps with": the per-band choice between ECG sensor touches and
-// more double taps, the row labels that follow it, and the pause adjuster
+// more double taps, the tab names that follow it, and the pause adjuster
 // (which 8AE moved from Gestures into the Device lab).
 // One mapping store serves both: the 3-tap slot is "Double tap + 1 ECG tap" for ECG and
 // "2 double taps" for repeats. ECG is disabled and dimmed (never hidden) on a
@@ -12,6 +12,7 @@ import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart';
 import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SwitchRow;
 
 import 'support/sections.dart';
 
@@ -93,7 +94,7 @@ void main() {
     expect(picked, [TapCountMethod.repeat, TapCountMethod.ecg]);
   });
 
-  group('row labels follow the method', () {
+  group('tab names follow the method', () {
     testWidgets('ECG: Double tap / + 1 / + 2 / + 3 ECG taps (8AK C)',
         (t) async {
       await pumpTall(
@@ -104,20 +105,21 @@ void main() {
             ecgSupported: true,
             tapMethod: TapCountMethod.ecg,
           ));
-      for (final name in [
-        'Double tap',
-        'Double tap + 1 ECG tap',
-        'Double tap + 2 ECG taps',
-        'Double tap + 3 ECG taps',
+      for (final (n, name) in const [
+        (2, 'Double tap'),
+        (3, 'Double tap + 1 ECG tap'),
+        (4, 'Double tap + 2 ECG taps'),
+        (5, 'Double tap + 3 ECG taps'),
       ]) {
-        expect(find.text(name), findsOneWidget);
+        await openGesturesTab(t, n);
+        expect(gesturesTabName(t), name);
       }
       expect(find.textContaining('double taps'), findsWidgets,
-          reason: 'only the option and the note, never as a row title');
+          reason: 'only the option and the note, never as a tab name');
       expect(find.text('2 double taps'), findsNothing);
     });
 
-    testWidgets('double taps: 2 / 3 / 4 double taps, no "N taps" rows',
+    testWidgets('double taps: 2 / 3 / 4 double taps, no "N taps" names',
         (t) async {
       await pumpTall(
           t,
@@ -127,19 +129,24 @@ void main() {
             ecgSupported: true,
             tapMethod: TapCountMethod.repeat,
           ));
-      for (final label in ['2 double taps', '3 double taps', '4 double taps']) {
-        expect(find.text(label), findsOneWidget, reason: label);
+      for (final (n, label) in const [
+        (2, 'Double tap'),
+        (3, '2 double taps'),
+        (4, '3 double taps'),
+        (5, '4 double taps'),
+      ]) {
+        await openGesturesTab(t, n);
+        expect(gesturesTabName(t), label);
+        expect(find.textContaining('Draft'), n == 2 ? findsNothing : findsOneWidget);
+        for (final k in [3, 4, 5]) {
+          expect(find.text('$k taps'), findsNothing, reason: '$k taps');
+        }
       }
-      for (final n in [3, 4, 5]) {
-        expect(find.text('$n taps'), findsNothing, reason: '$n taps');
-      }
-      expect(find.text('Double tap'), findsOneWidget);
-      expect(find.textContaining('Draft'), findsNWidgets(3));
     });
 
-    testWidgets('double taps rows are enabled on a band without ECG',
-        (t) async {
-      final opened = <int>[];
+    testWidgets('double taps tabs are enabled on a band without ECG, and '
+        'toggle their own count', (t) async {
+      final toggled = <(int, DeviceAction, bool)>[];
       await pumpTall(
           t,
           BandGesturesView(
@@ -149,16 +156,18 @@ void main() {
             tapActions: const {
               3: {DeviceAction.logWater}
             },
-            onTapToggle: (n, a, on) async => opened.add(n),
+            onTapToggle: (n, a, on) async => toggled.add((n, a, on)),
           ));
-      for (final label in ['2 double taps', '3 double taps', '4 double taps']) {
-        expect(isDimmed(t, find.text(label)), isFalse, reason: label);
-      }
-      expect(find.text('1 on'), findsOneWidget, reason: 'the shared store');
-      await t.tap(find.text('2 double taps'));
+      await openGesturesTab(t, 3);
+      final water = find.descendant(
+          of: find.widgetWithText(SwitchRow, 'Log water'),
+          matching: find.byType(Switch));
+      expect(t.widget<Switch>(water).value, isTrue, reason: 'the shared store');
+      await t.tap(water);
       await t.pumpAndSettle();
+      expect(toggled, [(3, DeviceAction.logWater, false)]);
       expect(find.text('3 taps does'), findsNothing);
-      expect(find.text('2 double taps does'), findsOneWidget);
+      expect(find.byType(BottomSheet), findsNothing);
     });
   });
 

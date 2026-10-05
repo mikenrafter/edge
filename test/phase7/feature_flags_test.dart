@@ -3,7 +3,7 @@
 
 import 'dart:io';
 
-import 'package:flutter/material.dart' show Widget;
+import 'package:flutter/material.dart' show ValueKey, Widget;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -31,6 +31,7 @@ import 'package:openstrap_edge/ui2/profile/device_lab.dart' show DeviceLabView;
 import 'package:openstrap_edge/ui2/profile/devices.dart'
     show showSignalPriorityEntry, showSourceCatalogEntry;
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
+import 'package:openstrap_edge/ui2/ui2.dart' show SubTabs;
 import 'package:openstrap_edge/wake/wake_controller.dart';
 import 'package:openstrap_edge/wake/wake_orchestrator.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
@@ -372,11 +373,11 @@ void main() {
       await pumpTall(t, view(true));
       for (final title in const [
         'Count extra taps with',
-        'Tap counts',
         'What needs a WHOOP MG',
       ]) {
         expect(find.text(title), findsWidgets, reason: 'ON: $title');
       }
+      expect(find.byType(SubTabs), findsOneWidget, reason: 'ON: the count tabs');
       // The pause and touch-window tuning moved to the Device lab (8AE), so
       // they are not on this screen with the flag on or off.
       for (final title in const ['Pause between double taps', 'Touch windows']) {
@@ -385,14 +386,17 @@ void main() {
       await pumpTall(t, view(false));
       for (final title in const [
         'Count extra taps with',
-        'Tap counts',
         'Pause between double taps',
         'Touch windows',
         'What needs a WHOOP MG',
       ]) {
         expect(find.text(title), findsNothing, reason: 'OFF: $title');
       }
-      expect(find.text('It does'), findsOneWidget);
+      expect(find.byType(SubTabs), findsNothing, reason: 'OFF: no count tabs');
+      expect(find.byKey(const ValueKey('gestures-tab:3')), findsNothing);
+      // The double tap's own actions stay.
+      expect(find.byKey(const ValueKey('gestures-tab-name')), findsOneWidget);
+      expect(find.text('Log water'), findsOneWidget);
     });
 
     testWidgets('OFF hides the lab\'s tap tools; the logs and probes stay',

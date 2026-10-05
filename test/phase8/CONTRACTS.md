@@ -267,7 +267,7 @@ a collection-`if` whose body is a row (`SetRow`, `SetRow.brand`, `SwitchRow`,
 `Platform.isX`, `defaultTargetPlatform…`, `android|ios|isAndroid|isIOS`,
 `…supported`/`…Supported`, `x.supportsY`, `appIcon != null`,
 `showHealthShare|showUpdateChecks|devMode|loaded`, `version.isNotEmpty`,
-`name == …`, and (8AE) `cfg.overrideQuietHours`: a channel's own Starts and Ends exist
+`name == …`, `taps == N` (Oct 4: which Gestures tab a row is in), and (8AE) `cfg.overrideQuietHours`: a channel's own Starts and Ends exist
 only while it overrides the global quiet hours. Status/permission cards are `StatusCard`,
 never matched. 8 sites
 fail today: settings.dart (zone alert, water, device), band_notifications.dart
@@ -1808,3 +1808,31 @@ C and D in phase 2).
   ECG method on an MG rig (`GestureRig.measureCues`) and feed the Accurate path through
   `feedEcgOpening` / `playEcgCount` in `test/split8aj/support/gesture_harness.dart`.
 - Doc: `docs/hardware/whoop-mg-haptics-and-ecg.md`, "Fast mode (retired)".
+
+## Gestures in sub-tabs (Oct 4)
+
+- `BandGesturesView` (`lib/ui2/profile/gestures.dart`) keeps what applies to every gesture above
+  a `SubTabs` row: the intro ("Tap the band twice"), the "Count extra taps with" accordion
+  (`gestures_extra_taps`; ECG dimmed without the sensor) and, with extra taps, the "What needs a
+  WHOOP MG" note. The "It does" and "Tap counts" accordions and the `_pickActions` bottom sheet (with
+  its "View all gestures" row and `onViewAllGestures`) are gone.
+- One tab per gesture, keys `gestures-tab:<tap count>` (2 plain double tap, 3-5 the counts): labels
+  `Double tap | ×2 | ×3 | ×4` (More double taps) or `Double tap | +1 ECG | +2 ECG | +3 ECG` (ECG),
+  semantic labels the full name plus ", gesture". The count tabs exist only when `extraTaps`;
+  without it there is no tab row, just the double tap's content.
+- Every tab has one shape: the full name (`gestures-tab-name`: "Double tap", "2 double taps", or
+  "Double tap + N ECG tap(s)") with a Draft mark on 3-5, how to do it (`gestures-tab-how`), the
+  offered actions as `SwitchRow`s, the "Nothing on the phone?" note when native actions are missing,
+  then the links at the bottom, each in its own card: Haptics (`gestures-open-haptics`) and, in
+  developer mode (`devMode` / `onDeviceLab`, from `Feature.developerMode`), Device lab
+  (`gestures-open-device-lab`) directly under it. No hairline in or between the link cards.
+- Persistence is unchanged: tab 2 reports `onToggle`, tabs 3-5 `onTapToggle(count, action, on)`. The
+  replay-from-history switch is the double tap tab's alone (a counted tap is always live).
+- The selected tab is remembered under `kGesturesTabPref` (`ui.gestures_tab`, the tap count as a
+  string), read from `Prefs` on the first frame and written on a tap; a stored value that is not
+  offered opens the double tap and is left alone. The disable-not-hide source guard allows
+  `taps == N` terms.
+- Tests: `test/gestures/gestures_tabs_test.dart` (settings block, tabs and names in both methods,
+  same layout in every tab, persistence, no sheet, links, memory, 360 pt at 1.3x);
+  `openGesturesTab` / `gesturesTabName` in `test/phase8/support/sections.dart` select a tab for the
+  older screen tests. `test/fix8ai/g5_gesture_sheet_test.dart` now only guards that the sheet is gone.

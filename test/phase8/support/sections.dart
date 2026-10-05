@@ -50,3 +50,16 @@ bool isDimmed(WidgetTester t, Finder rowText) => find
                 (w is AnimatedOpacity && w.opacity < 1)))
     .evaluate()
     .isNotEmpty;
+
+/// Open the Gestures tab for a tap count (2 is the plain double tap, 3-5 the
+/// counted gestures); the tab row is scrolled to it first.
+Future<void> openGesturesTab(WidgetTester t, int taps) async {
+  final tab = find.byKey(ValueKey('gestures-tab:$taps'));
+  await t.ensureVisible(tab);
+  await t.tap(tab);
+  await t.pumpAndSettle();
+}
+
+/// The gesture name line in the open Gestures tab.
+String gesturesTabName(WidgetTester t) =>
+    t.widget<Text>(find.byKey(const ValueKey('gestures-tab-name'))).data!;

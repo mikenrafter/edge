@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show SwitchRow;
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 
 import '../phase8/support/dart_source.dart';
@@ -73,14 +74,14 @@ void main() {
       expect(opened, 1);
     });
 
-    testWidgets('it is a link row: not inside the "It does" switches',
+    testWidgets('it is a link row: not one of the action switches',
         (t) async {
       await pumpTall(t, _gestures(onHaptics: () {}));
       final row = find.byKey(const ValueKey('gestures-open-haptics'));
       expect(row, findsOneWidget);
       expect(
           find.descendant(of: row, matching: find.byType(Switch)), findsNothing);
-      expect(find.descendant(of: section('It does'), matching: row),
+      expect(find.ancestor(of: row, matching: find.byType(SwitchRow)),
           findsNothing);
     });
 

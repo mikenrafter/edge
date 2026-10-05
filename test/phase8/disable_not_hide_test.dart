@@ -205,6 +205,8 @@ void main() {
       RegExp(r'^(showHealthShare|showUpdateChecks|devMode|loaded)$'),
       RegExp(r'^version\.isNotEmpty$'),
       RegExp(r'^name == '),
+      // Gestures: which tab this is (the replay switch is the double tap\'s).
+      RegExp(r'^taps == \d$'),
       RegExp(r'^cfg\.overrideQuietHours$'),
     ];
 

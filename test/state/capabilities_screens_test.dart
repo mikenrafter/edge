@@ -182,7 +182,15 @@ void main() {
       await pump(
           t, const BandGestures(), _caps(flagsOff: {FeatureFlag.tapClassifiers}));
       expect(find.text('Count extra taps with'), findsNothing);
-      expect(find.text('Tap counts'), findsNothing);
+      expect(find.byKey(const ValueKey('gestures-tab:3')), findsNothing);
+    });
+    testWidgets('the Device lab link under Haptics follows developer mode',
+        (t) async {
+      await pump(t, const BandGestures(), _caps());
+      expect(find.byKey(const ValueKey('gestures-open-haptics')), findsOneWidget);
+      expect(find.byKey(const ValueKey('gestures-open-device-lab')), findsNothing);
+      await pump(t, const BandGestures(), _caps(devMode: true));
+      expect(find.byKey(const ValueKey('gestures-open-device-lab')), findsOneWidget);
     });
     testWidgets('ECG method is dimmed and inert without the ECG feature, '
         'live without it from AppState', (t) async {

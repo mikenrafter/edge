@@ -2,13 +2,15 @@
 // screen that shows one.
 //
 // ASSUMED BEHAVIOUR (no new public symbol: every failure is an assertion):
-//   * lib/ui2/profile/gestures.dart, BandGesturesView, ECG method: the tap-count
-//     rows are titled "Double tap" (count 2), "Double tap + 1 ECG tap" (3),
-//     "Double tap + 2 ECG taps" (4), "Double tap + 3 ECG taps" (5), and the
-//     assignment sheet each opens is headed "<that name> does". Today they
-//     read "2 taps" ... "5 taps" and "3 taps does". With AppLocalizations in
-//     the tree the text comes from the plural message (same English); with
-//     none (these plain pumps) the English fallback is the same text.
+//   * lib/ui2/profile/gestures.dart, BandGesturesView, ECG method: the gesture
+//     tabs are named "Double tap" (count 2), "Double tap + 1 ECG tap" (3),
+//     "Double tap + 2 ECG taps" (4), "Double tap + 3 ECG taps" (5): the name
+//     line in each tab, and the tab's screen-reader label (the tab itself is
+//     the short "+1 ECG"). They once read "2 taps" ... "5 taps" (rows, with a
+//     sheet headed "3 taps does"; the sheet went with the sub-tabs). With
+//     AppLocalizations in the tree the text comes from the plural message
+//     (same English); with none (these plain pumps) the English fallback is
+//     the same text.
 //   * The "More double taps" method keeps its own names ("Double tap", "2
 //     double taps", "3 double taps", "4 double taps"): only the ECG counts
 //     are renamed (regression guard).
@@ -20,7 +22,7 @@
 //   * lib/state/app_state.dart no longer writes a bare "Result: N taps." for
 //     the ECG session (source guard: it imports the name helper).
 //
-// Failure mode today: the rows read "2 taps" ... "5 taps".
+// Failure mode before: the rows read "2 taps" ... "5 taps".
 
 import 'dart:io';
 
@@ -77,12 +79,19 @@ const _ecgRows = [
 
 void main() {
   group('Gestures screen, ECG method', () {
-    testWidgets('the tap-count rows carry the new names (English fallback)',
-        (t) async {
-      await pumpTall(t, _view());
-      for (final name in _ecgRows) {
-        expect(find.text(name), findsOneWidget, reason: name);
+    Future<void> expectNames(WidgetTester t) async {
+      for (var n = 2; n <= 5; n++) {
+        await openGesturesTab(t, n);
+        expect(gesturesTabName(t), _ecgRows[n - 2], reason: 'tab $n');
       }
+    }
+
+    testWidgets('the tabs carry the new names (English fallback)', (t) async {
+      await pumpTall(t, _view());
+      await expectNames(t);
+      expect(
+          t.widget<SubTabs>(find.byType(SubTabs)).semanticLabels,
+          [for (final name in _ecgRows) '$name, gesture']);
       for (final old in const ['2 taps', '3 taps', '4 taps', '5 taps']) {
         expect(find.text(old), findsNothing, reason: old);
       }
@@ -91,38 +100,31 @@ void main() {
     testWidgets('the same names through AppLocalizations (the plural)',
         (t) async {
       await _pumpLocalized(t, _view());
-      for (final name in _ecgRows) {
-        expect(find.text(name), findsOneWidget, reason: name);
-      }
+      await expectNames(t);
       expect(find.text('3 taps'), findsNothing);
     });
 
-    testWidgets('the assignment sheet is headed with the name', (t) async {
+    testWidgets('there is no sheet to name: a tab opens no bottom sheet',
+        (t) async {
       await pumpTall(t, _view());
-      await t.tap(find.text('Double tap + 1 ECG tap'));
-      await t.pumpAndSettle();
-      expect(find.text('Double tap + 1 ECG tap does'), findsOneWidget);
+      await openGesturesTab(t, 3);
+      expect(find.text('Double tap + 1 ECG tap does'), findsNothing);
       expect(find.text('3 taps does'), findsNothing);
-    });
-
-    testWidgets('and the plural form for 2 ECG taps', (t) async {
-      await pumpTall(t, _view());
-      await t.tap(find.text('Double tap + 2 ECG taps'));
-      await t.pumpAndSettle();
-      expect(find.text('Double tap + 2 ECG taps does'), findsOneWidget);
+      expect(find.byType(BottomSheet), findsNothing);
     });
   });
 
   group('Gestures screen, More double taps method (regression guard)', () {
-    testWidgets('its rows keep their own names', (t) async {
+    testWidgets('its tabs keep their own names', (t) async {
       await pumpTall(t, _view(ecg: false));
-      for (final name in const [
-        'Double tap',
-        '2 double taps',
-        '3 double taps',
-        '4 double taps',
+      for (final (n, name) in const [
+        (2, 'Double tap'),
+        (3, '2 double taps'),
+        (4, '3 double taps'),
+        (5, '4 double taps'),
       ]) {
-        expect(find.text(name), findsOneWidget, reason: name);
+        await openGesturesTab(t, n);
+        expect(gesturesTabName(t), name, reason: 'tab $n');
       }
       expect(find.textContaining('ECG tap'), findsNothing);
     });

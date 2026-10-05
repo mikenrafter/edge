@@ -5,11 +5,12 @@
 // and the Alerts screen's `alerts-open-haptics` are a bare Surface placed
 // straight after a SettingsAccordion. The accordion draws its own gap above
 // itself (Padding(top: S.x3)), so a sibling that is not an accordion sits flush
-// against the card above. The "View all gestures" row in the tap-count sheet
-// sat flush against the last check box the same way.
+// against the card above. (The "View all gestures" row of the tap-count sheet
+// had the same fault; the sheet is gone, see g5_gesture_sheet_test.dart.)
 //
 // ASSUMED: the vertical gap between the link's card and the card above it is at
-// least S.x3, the gap SettingsAccordion keeps above itself.
+// least S.x3, the gap SettingsAccordion keeps above itself. On Gestures the
+// card above the link is the tab's switch card.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,59 +45,33 @@ double _gapAboveAccordion(WidgetTester t, Rect link) {
   return link.top - best;
 }
 
-void main() {
-  testWidgets('Gestures: the Haptics link has a gap above it', (t) async {
-    await pumpTall(
-        t,
-        const BandGesturesView(
-            chosen: {},
-            supported: _supported,
-            ecgSupported: true,
-            tapMethod: TapCountMethod.ecg,
-            extraTaps: false));
-    final row = find.byKey(const ValueKey('gestures-open-haptics'));
-    expect(row, findsOneWidget);
-    expect(_gapAboveAccordion(t, _cardOf(t, row)), greaterThanOrEqualTo(S.x3));
-  });
+/// The gap from the card holding [above] to [link].
+double _gapBelow(WidgetTester t, Finder above, Rect link) =>
+    link.top - t.getRect(find.ancestor(of: above, matching: find.byType(Surface)).first).bottom;
 
-  testWidgets('Gestures with the draft tap rows: same gap', (t) async {
-    await pumpTall(
-        t,
-        const BandGesturesView(
-            chosen: {},
-            supported: _supported,
-            ecgSupported: true,
-            tapMethod: TapCountMethod.ecg,
-            extraTaps: true));
-    final row = find.byKey(const ValueKey('gestures-open-haptics'));
-    expect(row, findsOneWidget);
-    expect(_gapAboveAccordion(t, _cardOf(t, row)), greaterThanOrEqualTo(S.x3));
-  });
+void main() {
+  for (final extra in [false, true]) {
+    testWidgets('Gestures${extra ? ' with the tap tabs' : ''}: the Haptics '
+        'link has a gap above it', (t) async {
+      await pumpTall(
+          t,
+          BandGesturesView(
+              chosen: const {},
+              supported: _supported,
+              ecgSupported: true,
+              tapMethod: TapCountMethod.ecg,
+              extraTaps: extra));
+      final row = find.byKey(const ValueKey('gestures-open-haptics'));
+      expect(row, findsOneWidget);
+      expect(_gapBelow(t, find.text('Log water'), _cardOf(t, row)),
+          greaterThanOrEqualTo(S.x3));
+    });
+  }
 
   testWidgets('Alerts: the Haptics link has a gap above it', (t) async {
     await pumpTall(t, const NotificationSettingsView());
     final row = find.byKey(const ValueKey('alerts-open-haptics'));
     expect(row, findsOneWidget);
     expect(_gapAboveAccordion(t, _cardOf(t, row)), greaterThanOrEqualTo(S.x3));
-  });
-
-  testWidgets('the tap-count sheet: "View all gestures" is set off from the '
-      'last check box', (t) async {
-    await pumpTall(
-        t,
-        BandGesturesView(
-            chosen: const {},
-            supported: _supported,
-            ecgSupported: true,
-            tapMethod: TapCountMethod.ecg,
-            extraTaps: true,
-            tapActions: const {3: {}, 4: {}, 5: {}},
-            onTapToggle: (n, a, on) async {}));
-    await t.tap(find.text('Double tap + 1 ECG tap'));
-    await t.pumpAndSettle();
-    final row = find.byKey(const ValueKey('gesture-sheet-view-all'));
-    expect(row, findsOneWidget);
-    final gap = t.getRect(row).top - t.getRect(find.byType(CheckboxListTile).last).bottom;
-    expect(gap, greaterThanOrEqualTo(S.x3));
   });
 }

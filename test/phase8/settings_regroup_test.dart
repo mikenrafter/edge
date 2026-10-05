@@ -411,11 +411,11 @@ void main() {
       });
     }
 
-    testWidgets('"Count extra taps with" and "Tap counts" stay',
+    testWidgets('"Count extra taps with" and the count tabs stay',
         (t) async {
       await _pump(t, view());
       expect(section('Count extra taps with'), findsOneWidget);
-      expect(section('Tap counts'), findsOneWidget);
+      expect(find.byKey(const ValueKey('gestures-tab:3')), findsOneWidget);
       expect(find.text('What needs a WHOOP MG'), findsOneWidget);
     });
 
