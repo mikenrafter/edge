@@ -230,6 +230,11 @@ class DeviceLabLog extends ChangeNotifier {
   /// Kept ECG packets, oldest first.
   List<LabPacket> get packets => List.unmodifiable(_packets);
 
+  /// True only while a deliberate lab session is open. Timing instrumentation
+  /// uses this rather than the reply-trace grace period so it cannot add a
+  /// fresh measurement after the user has ended the session.
+  bool get isSessionActive => _open;
+
   /// The tag for packets of the current (or last) session.
   String get sessionTag {
     final tap = _tapAt;

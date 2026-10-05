@@ -94,6 +94,7 @@ import '../ecg/ecg_controller.dart';
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_models.dart';
 import '../ecg/ecg_recovery.dart';
+import '../gestures/imu_timing.dart';
 import '../data/live_coverage_policy.dart';
 import '../data/local_repository.dart';
 import '../gps/gps_source.dart';
@@ -131,6 +132,7 @@ import '../haptics/haptic_player.dart' show HapticPlayStart;
 import 'live_stream_buffer.dart';
 import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
+import 'imu_packet.dart';
 import 'breathing_controller.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
@@ -372,6 +374,22 @@ class AppState extends ChangeNotifier {
   /// callbacks below; read by the Live devices screen.
   final LiveStreamBuffer liveStreams = LiveStreamBuffer();
 
+  /// Startup measurements for the next IMU gesture session. There is no
+  /// session or ownership change in this phase; this only receives packets
+  /// that the existing live path already delivered.
+  late final ImuTimingRecorder _imuTiming = ImuTimingRecorder(
+    onLine: (line) {
+      if (deviceLab.isSessionActive) deviceLab.addStep(line);
+    },
+  );
+
+  ImuTimingRecorder get imuTiming => _imuTiming;
+  Stream<ImuPacket> get imuPackets => _live.imuPackets;
+  Duration get imuMonotonicNow => _live.monotonicNow;
+
+  @visibleForTesting
+  int get debugImuDecodeCount => _live.imuDecodeCount;
+
   /// The live-stream seam: the owner set the engine reads, the
   /// developer live feed, mounted live-HR views, and the buffer-feeding helpers.
   /// AppState keeps the buffer, the HR trace and the frame router.
@@ -384,6 +402,7 @@ class AppState extends ChangeNotifier {
     clearRadioFallbackAndReconcile: () =>
         engine.clearRadioFallbackAndReconcile(),
     notify: notifyListeners,
+    onImuPacket: _imuTiming.packet,
   );
 
   /// The workout seam: the live workout lifecycle, tick, route
@@ -2185,6 +2204,7 @@ class AppState extends ChangeNotifier {
     // Before the ECG controller goes: a gesture in flight stops its stream
     // through it.
     _gestures.dispose();
+    _live.dispose();
     _ecg?.dispose();
     _ecgTransport?.dispose();
     // EVERY timer this object owns, not just three of them.
@@ -3531,10 +3551,21 @@ class AppState extends ChangeNotifier {
     final isRrBearing = pt == 0x28 || (pt == 0x2B && _isR10Record(hex));
     if (isRrBearing) _live.bufferLiveRr(hex);
     if (isRrBearing) _breathing.tapFrame(hex);
+    final sixAxis = pt == 0x2B
+        ? _live.decodeAndFanoutImu(
+            packetType: pt,
+            hex: hex,
+            deviceId: paired?.serial ??
+                engine.state.serial ??
+                LocalDb.kPrimaryDeviceId,
+            connectionGeneration: engine.linkGeneration,
+            includeAccel: !_imuStreamSeen,
+          )
+        : null;
     // LIVE STEP COUNTER. Gen4: dedicated 0x33 IMU (~10 frames/s × 10 samples)
     // is preferred; full R10 (0x2B) is only a fallback when 0x33 isn't flowing.
-    // Gen5 Maverick: live IMU is 0x2B (rec 0x15, 100 Hz planar) — see
-    // protocol's frameAccelForBand. Once gen4 0x33 is seen we ignore 0x2B to avoid
+    // Gen5 live IMU is the 0x2B six-axis packet the adapter decoded above.
+    // Once gen4 0x33 is seen we ignore 0x2B for pedometer input to avoid
     // double-counting the same motion from two stream formats.
     if (pt == 0x33) {
       _imuStreamSeen = true;
@@ -3546,9 +3577,13 @@ class AppState extends ChangeNotifier {
       }
     } else if (pt == 0x2B && !_imuStreamSeen) {
       // Gen5 Maverick live IMU is 0x2B (100 Hz planar), not top-level 0x33.
-      final f = _safeFrameAccel(hex);
+      // A frame the six-axis adapter rejected (a short gen4 R10 has accel but
+      // no gyro block) still feeds accel consumers exactly as it did before.
+      final f = sixAxis == null
+          ? _safeFrameAccel(hex)
+          : (sixAxis.feedsAccelConsumers ? sixAxis.toAccelFrame() : null);
       if (f != null) {
-        _live.bufferLiveImu(f);
+        if (sixAxis == null) _live.bufferLiveImu(f);
         _ingestLiveMags(f);
         _trackCoverage(recTs);
       }
@@ -3569,9 +3604,10 @@ class AppState extends ChangeNotifier {
 
   proto.ImuFrame? _safeFrameAccel(String hex) {
     try {
-      // Gen5 Maverick live IMU is 0x2B; gen4 stays on frameAccel (0x33 / R10).
-      // protocol's gen5 path abstains unless the record is the IMU buffer.
-      return proto.frameAccelForBand(hex);
+      // The dedicated accel-only 0x33 path, and the fallback for a 0x2B frame
+      // the six-axis adapter did not accept. Full 0x2B packets are decoded
+      // once by ImuPacketAdapter above.
+      return proto.frameAccel(hex);
     } catch (_) {
       return null;
     }

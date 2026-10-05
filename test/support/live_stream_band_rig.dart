@@ -78,16 +78,19 @@ Uint8List r21LiveInner({
   int gy = -8192, // -500 deg/s
   int gz = 0,
   int? unix,
+  int recordIndex = 1,
+  int accelCount = 100,
+  int gyroCount = 100,
 }) {
   final b = Uint8List(kGen5V21InnerLen);
   final v = ByteData.sublistView(b);
   b[0] = 0x2B;
   b[1] = 21;
   b[2] = 0x80;
-  v.setUint32(3, 1, Endian.little);
+  v.setUint32(3, recordIndex, Endian.little);
   v.setUint32(7, unix ?? nowSec(), Endian.little);
-  v.setUint16(16, 100, Endian.little);
-  v.setUint16(622, 100, Endian.little);
+  v.setUint16(16, accelCount, Endian.little);
+  v.setUint16(622, gyroCount, Endian.little);
   for (var i = 0; i < 100; i++) {
     v.setInt16(20 + 2 * i, ax, Endian.little);
     v.setInt16(220 + 2 * i, ay, Endian.little);
