@@ -17,6 +17,14 @@
 //
 // Hardware probes: a buzz-spacing probe and a cued ECG touch probe, each
 // started only here, bounded and stoppable ([HardwareProbePanel]).
+//
+// Laid out as sub-tabs like Haptics and Gestures, each tab a set of
+// accordions: Taps (the tap tools, behind FeatureFlag.tapClassifiers), Probes,
+// Live (the live streams of each connected device) and Logs (sessions, steps,
+// band events, and the save button). The tab used last is remembered
+// ([kDeviceLabTabPref]); a tab with nothing to show is not offered. A future
+// Motion tab (the gyroscope recorder) is one more [LabTab] value, one more
+// content argument of [DeviceLabView] and one more case in its rows.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -31,9 +39,11 @@ import '../../gestures/lab_log.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
+import '../../state/prefs.dart';
 import '../../util/log_file.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
+import 'live_devices.dart' show LiveDevices;
 import 'pattern_probe_page.dart';
 import 'profile.dart';
 
@@ -47,6 +57,23 @@ const String kExtendedGesturesNote =
     'WHOOP 4.0 has no ECG sensor, so it counts extra double taps instead. '
     'The Device lab, in Settings under Developer mode, logs every step with '
     'its timing.';
+
+/// Where the tab last used is kept (a [LabTab] id), in the app prefs with the
+/// other UI selections.
+const String kDeviceLabTabPref = 'ui.device_lab_tab';
+
+/// The lab's sub-tabs, in order. [id] is what is remembered and what a caller
+/// passes to open one; never the label.
+enum LabTab {
+  taps('taps', 'Taps'),
+  probes('probes', 'Probes'),
+  live('live', 'Live'),
+  logs('logs', 'Logs');
+
+  const LabTab(this.id, this.label);
+  final String id;
+  final String label;
+}
 
 class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});
@@ -88,6 +115,7 @@ class DeviceLab extends StatelessWidget {
         // longer carries the flag: the tap tools inside do.
         tapTools: caps.has(Feature.deviceLabTapTools),
         probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
+        live: const LiveDevices(embedded: true),
       ),
     );
   }
@@ -144,6 +172,8 @@ class DeviceLabView extends StatelessWidget {
     this.logText,
     this.saveLog,
     this.tapTools = true,
+    this.live,
+    this.initialTab,
   });
 
   final bool ecgSupported;
@@ -190,6 +220,21 @@ class DeviceLabView extends StatelessWidget {
   /// off; the probes and the logs stay.
   final bool tapTools;
 
+  /// The Live tab's content (the live devices, without a screen of their
+  /// own); the tab is offered only when it is given.
+  final Widget? live;
+
+  /// Opens this tab over the remembered one, when it is offered.
+  final LabTab? initialTab;
+
+  /// The tabs this lab offers: one with nothing to show is left out.
+  List<LabTab> get _tabs => [
+    if (tapTools) LabTab.taps,
+    if (probes != null) LabTab.probes,
+    if (live != null) LabTab.live,
+    LabTab.logs,
+  ];
+
   Future<void> _save(BuildContext c) async {
     // Both read the tree, so both are read before the await.
     final messenger = ScaffoldMessenger.of(c);
@@ -221,144 +266,222 @@ class DeviceLabView extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final tabs = _tabs;
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
-        child: Column(children: [
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: S.x4),
-            child: NavBar('Device lab'),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
-              children: [
-                Surface(
-                  child: Text(kExtendedGesturesNote,
-                      style: F.body.copyWith(color: p.ink2, height: 1.4)),
-                ),
-                if (tapTools)
-                Section(
-                  'ECG on double tap',
-                  Surface(
-                    pad: const EdgeInsets.symmetric(horizontal: S.x4),
-                    child: SwitchRow(
-                      'Toggle ECG recording on double tap',
-                      ecgOnDoubleTap && ecgSupported,
-                      onEcgOnDoubleTap,
-                      enabled: ecgSupported,
-                      sub: ecgSupported
-                          ? 'A live double tap starts an ECG recording. Once '
-                              'the sensor is ready the band buzzes three times '
-                              'if a finger is on it, or twice to stop at two '
-                              'taps. Normal double-tap actions are paused '
-                              'while this is on.'
-                          : 'This band has no ECG sensor',
-                    ),
-                  ),
-                ),
-                if (tapTools)
-                Section(
-                  'Touch windows',
-                  Surface(
-                    child: EcgThresholdAdjusters(
-                      thresholds: thresholds ?? EcgTapThresholds(),
-                      onChanged: ecgSupported ? onThresholds : null,
-                    ),
-                  ),
-                ),
-                if (tapTools)
-                Section(
-                  'Repeated double taps',
-                  Surface(
-                    child: Column(children: [
-                      SwitchRow(
-                        'Try repeated double taps',
-                        repeatLab,
-                        onRepeatLab,
-                        sub: 'Works on every band, no ECG needed. Double tap '
-                            'again before the pause ends; each one buzzes '
-                            'once. Up to 5 are counted and no action runs '
-                            'while this is on.',
-                      ),
-                      if (onRepeatWindowMs != null)
-                        RepeatWindowAdjuster(
-                          windowMs: repeatWindowMs ??
-                              GestureSettings.defaultRepeatWindowMs,
-                          onChanged: onRepeatWindowMs,
-                        ),
-                    ]),
-                  ),
-                ),
-                if (probes != null) Section('Hardware probes', probes!),
-                if (sessions.isNotEmpty)
-                  Section(
-                    'Sessions',
-                    Surface(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final s in sessions)
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: S.x1),
-                              child:
-                                  Text(s, style: F.cap.copyWith(color: p.ink)),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                if (steps.isNotEmpty)
-                  Section(
-                    'Step by step',
-                    Surface(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          for (final s in steps)
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: S.x1),
-                              child: Text(s,
-                                  style: F.cap.copyWith(color: p.ink2)),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                Section(
-                  'Band events',
-                  Surface(
-                    child: entries.isEmpty
-                        ? Text('No band events yet.',
-                            style: F.body.copyWith(color: p.ink3))
-                        : Column(children: [
-                            for (var i = 0; i < entries.length; i++) ...[
-                              if (i > 0) Divider(color: p.line, height: 1),
-                              _EntryRow(entries[i]),
-                            ],
-                          ]),
-                  ),
-                ),
-              ],
+        child: _TabHost(
+          tabs: tabs,
+          initial: initialTab,
+          builder: (c, tab, select) => Column(children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: S.x4),
+              child: NavBar('Device lab'),
             ),
-          ),
-          // Pinned to the bottom, so it is one tap away however long the log is.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x3),
-            child: BigButton(
-              'Save lab log file',
-              key: const ValueKey('lab-copy-all'),
-              icon: LucideIcons.download,
-              soft: true,
-              color: C.blue,
-              onTap: () => _save(c),
+            // One tab left (the logs) needs no row to choose between.
+            if (tabs.length > 1)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),
+                child: SubTabs(
+                  [for (final t in tabs) t.label],
+                  tabs.indexOf(tab),
+                  (i) => select(tabs[i]),
+                  color: C.blue,
+                  dense: true,
+                  itemKeys: [
+                    for (final t in tabs) ValueKey('device-lab-tab:${t.id}'),
+                  ],
+                  semanticLabels: [
+                    for (final t in tabs) '${t.label}, Device lab',
+                  ],
+                ),
+              ),
+            Expanded(
+              child: ListView(
+                // A tab starts at its top, not where the last one was left.
+                key: ValueKey('device-lab-tab-body:${tab.id}'),
+                padding: EdgeInsets.fromLTRB(
+                    S.x4, 0, S.x4, tab == LabTab.logs ? S.x4 : S.x10),
+                children: _rows(c, p, tab),
+              ),
             ),
-          ),
-        ]),
+            // Pinned to the bottom of the logs, so it is one tap away however
+            // long they are.
+            if (tab == LabTab.logs)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x3),
+                child: BigButton(
+                  'Save lab log file',
+                  key: const ValueKey('lab-copy-all'),
+                  icon: LucideIcons.download,
+                  soft: true,
+                  color: C.blue,
+                  onTap: () => _save(c),
+                ),
+              ),
+          ]),
+        ),
       ),
     );
+  }
+
+  List<Widget> _rows(BuildContext c, P p, LabTab tab) => switch (tab) {
+    LabTab.taps => [
+      Padding(
+        padding: const EdgeInsets.only(top: S.x3),
+        child: Surface(
+          child: Text(kExtendedGesturesNote,
+              style: F.body.copyWith(color: p.ink2, height: 1.4)),
+        ),
+      ),
+      SettingsAccordion('ECG on double tap',
+          id: 'device_lab_ecg_double_tap',
+          children: [
+            SwitchRow(
+              'Toggle ECG recording on double tap',
+              ecgOnDoubleTap && ecgSupported,
+              onEcgOnDoubleTap,
+              enabled: ecgSupported,
+              sub: ecgSupported
+                  ? 'A live double tap starts an ECG recording. Once '
+                      'the sensor is ready the band buzzes three times '
+                      'if a finger is on it, or twice to stop at two '
+                      'taps. Normal double-tap actions are paused '
+                      'while this is on.'
+                  : 'This band has no ECG sensor',
+            ),
+          ]),
+      SettingsAccordion('Touch windows',
+          id: 'device_lab_touch_windows',
+          children: [
+            EcgThresholdAdjusters(
+              thresholds: thresholds ?? EcgTapThresholds(),
+              onChanged: ecgSupported ? onThresholds : null,
+            ),
+          ]),
+      SettingsAccordion('Repeated double taps',
+          id: 'device_lab_repeated_taps',
+          children: [
+            SwitchRow(
+              'Try repeated double taps',
+              repeatLab,
+              onRepeatLab,
+              sub: 'Works on every band, no ECG needed. Double tap '
+                  'again before the pause ends; each one buzzes '
+                  'once. Up to 5 are counted and no action runs '
+                  'while this is on.',
+            ),
+            if (onRepeatWindowMs != null)
+              RepeatWindowAdjuster(
+                windowMs:
+                    repeatWindowMs ?? GestureSettings.defaultRepeatWindowMs,
+                onChanged: onRepeatWindowMs,
+              ),
+          ]),
+    ],
+    // The panel is the accordion: folding it must not stop a running probe.
+    LabTab.probes => [
+      Padding(padding: const EdgeInsets.only(top: S.x3), child: probes!),
+    ],
+    LabTab.live => [
+      Padding(padding: const EdgeInsets.only(top: S.x3), child: live!),
+    ],
+    LabTab.logs => [
+      if (sessions.isNotEmpty)
+        SettingsAccordion('Sessions',
+            id: 'device_lab_sessions',
+            summary: _count(sessions.length, 'session'),
+            children: [_lines(p, sessions, p.ink)]),
+      if (steps.isNotEmpty)
+        SettingsAccordion('Step by step',
+            id: 'device_lab_steps',
+            summary: _count(steps.length, 'step'),
+            children: [_lines(p, steps, p.ink2)]),
+      SettingsAccordion('Band events',
+          id: 'device_lab_band_events',
+          summary: entries.isEmpty ? null : _count(entries.length, 'event'),
+          children: [
+            entries.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
+                    child: Text('No band events yet.',
+                        style: F.body.copyWith(color: p.ink3)),
+                  )
+                : Column(children: [
+                    for (var i = 0; i < entries.length; i++) ...[
+                      if (i > 0) Divider(color: p.line, height: 1),
+                      _EntryRow(entries[i]),
+                    ],
+                  ]),
+          ]),
+    ],
+  };
+
+  static String _count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
+
+  /// The log lines as one block, so the accordion draws no hairline between
+  /// them.
+  static Widget _lines(P p, List<String> lines, Color color) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: S.x2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final s in lines)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: S.x1),
+                child: Text(s, style: F.cap.copyWith(color: color)),
+              ),
+          ],
+        ),
+      );
+}
+
+/// Holds the selected tab: the one asked for, else the one used last (kept in
+/// the app prefs, read from the start-up cache so the first frame is already
+/// on it), else the first offered. A remembered tab that is not offered now
+/// shows the first, and the memory is left alone.
+class _TabHost extends StatefulWidget {
+  const _TabHost({
+    required this.tabs,
+    required this.initial,
+    required this.builder,
+  });
+
+  final List<LabTab> tabs;
+  final LabTab? initial;
+  final Widget Function(
+    BuildContext context,
+    LabTab tab,
+    ValueChanged<LabTab> select,
+  )
+  builder;
+
+  @override
+  State<_TabHost> createState() => _TabHostState();
+}
+
+class _TabHostState extends State<_TabHost> {
+  late LabTab? _tab = widget.initial ?? _remembered();
+
+  static LabTab? _remembered() {
+    final id = Prefs.getString(kDeviceLabTabPref, '');
+    for (final t in LabTab.values) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
+
+  void _select(LabTab t) {
+    if (t == _tab) return;
+    setState(() => _tab = t);
+    // A UI selection: a write that did not land only costs the memory of it.
+    Prefs.setString(kDeviceLabTabPref, t.id);
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final tab = widget.tabs.contains(_tab) ? _tab! : widget.tabs.first;
+    return widget.builder(c, tab, _select);
   }
 }
 
@@ -567,7 +690,7 @@ class _Adjuster extends StatelessWidget {
 
 /// The Device lab's hardware probes. Reads [HardwareProbeRunner]; the
 /// phone vibrates on every ECG cue so the wearer can watch the band, not the
-/// screen. Leaving the screen stops a running probe.
+/// screen. Leaving the screen, or the Probes tab, stops a running probe.
 class HardwareProbePanel extends StatefulWidget {
   const HardwareProbePanel({
     super.key,
@@ -640,125 +763,152 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
     final cue = r.cue;
     final q = r.question;
     final note = r.note;
-    return Surface(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Measure what the band can do. The buzz probe sends up to '
-            '${HapticProbe.maxCommands} short buzzes in groups of three, '
-            'with a rest after each group, and asks how many you felt. The '
-            'ECG probe streams for at most '
-            '${EcgTouchProbe.maxStream.inSeconds} s and tells you when to '
-            'touch and lift the sensor (the phone vibrates on each cue). '
-            'Stop ends either at once. Results go into the log below.',
-            style: F.cap.copyWith(color: p.ink2, height: 1.4),
-          ),
-          const SizedBox(height: S.x3),
-          if (running == null) ...[
-            BigButton(
-              'Run buzz probe',
-              key: const ValueKey('probe-buzz'),
-              icon: LucideIcons.vibrate,
-              soft: true,
-              color: C.blue,
-              onTap: r.canRunBuzz ? r.runBuzz : null,
-            ),
-            const SizedBox(height: S.x2),
-            BigButton(
-              'Run ECG touch probe',
-              key: const ValueKey('probe-ecg'),
-              icon: LucideIcons.heartPulse,
-              soft: true,
-              color: C.blue,
-              onTap: r.canRunEcg ? r.runEcg : null,
-            ),
-            const SizedBox(height: S.x2),
-            BigButton(
-              'Run pattern probe',
-              key: const ValueKey('probe-pattern'),
-              icon: LucideIcons.audioWaveform,
-              soft: true,
-              color: C.blue,
-              onTap: r.canRunPattern ? _openPattern : null,
-            ),
-            const SizedBox(height: S.x1),
-            Text(
-              'MG only. Opens a screen where you play custom buzz patterns and '
-              'tap out what you felt as buzz and gap lengths, at most '
-              '${PatternProbe.maxCommandsPerWindow} commands in any 2 '
-              'minutes. Leaving the screen ends it.',
-              style: F.cap.copyWith(color: p.ink2, height: 1.4),
-            ),
-          ] else ...[
-            if (running == ProbeKind.ecg)
-              Container(
-                key: const ValueKey('probe-cue'),
-                padding: const EdgeInsets.symmetric(vertical: S.x5),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: p.wash(cue?.kind == EcgCueKind.touch ? C.green : C.blue),
-                  borderRadius: R.rLg,
-                ),
-                child: Text(
-                  cue?.text ?? 'Starting the ECG stream…',
-                  textAlign: TextAlign.center,
-                  style: F.t1.copyWith(color: p.ink),
-                ),
-              ),
-            if (running == ProbeKind.buzz && q == null)
-              Text('Buzzing… keep the band on and count the buzzes.',
-                  style: F.body.copyWith(color: p.ink)),
-            if (q != null) ...[
-              Text(
-                'Group ${r.questionIndex + 1} of ${r.trialCount}: '
-                '${q.commands} buzzes sent ${q.spacingMs} ms apart. '
-                'How many bzz-bzz did you feel? (One buzz command is one '
-                'bzz-bzz.)',
-                style: F.body.copyWith(color: p.ink),
-              ),
-              const SizedBox(height: S.x2),
-              Row(children: [
-                for (var n = 0; n <= q.commands; n++) ...[
-                  Expanded(
-                    child: BigButton(
-                      '$n',
-                      key: ValueKey('probe-felt-$n'),
-                      soft: true,
-                      color: C.blue,
-                      onTap: () => r.answer(n),
+    // The idle part (what the probes are, and the buttons) folds. A running
+    // probe's cue, question and Stop sit outside it, so folding the section
+    // can never hide the control that ends the probe.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SettingsAccordion('Hardware probes',
+            id: 'device_lab_probes',
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: S.x3),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Measure what the band can do. The buzz probe sends up to '
+                      '${HapticProbe.maxCommands} short buzzes in groups of '
+                      'three, with a rest after each group, and asks how many '
+                      'you felt. The ECG probe streams for at most '
+                      '${EcgTouchProbe.maxStream.inSeconds} s and tells you '
+                      'when to touch and lift the sensor (the phone vibrates '
+                      'on each cue). Stop ends either at once. Results go into '
+                      'the log, on the Logs tab.',
+                      style: F.cap.copyWith(color: p.ink2, height: 1.4),
                     ),
-                  ),
-                  const SizedBox(width: S.x2),
-                ],
-                Expanded(
-                  flex: 2,
-                  child: BigButton(
-                    'Not sure',
-                    key: const ValueKey('probe-felt-skip'),
-                    soft: true,
-                    color: C.blue,
-                    onTap: () => r.answer(null),
-                  ),
+                    if (running == null) ...[
+                      const SizedBox(height: S.x3),
+                      BigButton(
+                        'Run buzz probe',
+                        key: const ValueKey('probe-buzz'),
+                        icon: LucideIcons.vibrate,
+                        soft: true,
+                        color: C.blue,
+                        onTap: r.canRunBuzz ? r.runBuzz : null,
+                      ),
+                      const SizedBox(height: S.x2),
+                      BigButton(
+                        'Run ECG touch probe',
+                        key: const ValueKey('probe-ecg'),
+                        icon: LucideIcons.heartPulse,
+                        soft: true,
+                        color: C.blue,
+                        onTap: r.canRunEcg ? r.runEcg : null,
+                      ),
+                      const SizedBox(height: S.x2),
+                      BigButton(
+                        'Run pattern probe',
+                        key: const ValueKey('probe-pattern'),
+                        icon: LucideIcons.audioWaveform,
+                        soft: true,
+                        color: C.blue,
+                        onTap: r.canRunPattern ? _openPattern : null,
+                      ),
+                      const SizedBox(height: S.x1),
+                      Text(
+                        'MG only. Opens a screen where you play custom buzz '
+                        'patterns and tap out what you felt as buzz and gap '
+                        'lengths, at most ${PatternProbe.maxCommandsPerWindow} '
+                        'commands in any 2 minutes. Leaving the screen ends '
+                        'it.',
+                        style: F.cap.copyWith(color: p.ink2, height: 1.4),
+                      ),
+                    ],
+                  ],
                 ),
-              ]),
-            ],
-            const SizedBox(height: S.x3),
-            BigButton(
-              'Stop',
-              key: const ValueKey('probe-stop'),
-              icon: LucideIcons.square,
-              soft: true,
-              color: C.red,
-              onTap: r.stop,
+              ),
+            ]),
+        if (running != null)
+          Padding(
+            padding: const EdgeInsets.only(top: S.x3),
+            child: Surface(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (running == ProbeKind.ecg)
+                    Container(
+                      key: const ValueKey('probe-cue'),
+                      padding: const EdgeInsets.symmetric(vertical: S.x5),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: p.wash(
+                            cue?.kind == EcgCueKind.touch ? C.green : C.blue),
+                        borderRadius: R.rLg,
+                      ),
+                      child: Text(
+                        cue?.text ?? 'Starting the ECG stream…',
+                        textAlign: TextAlign.center,
+                        style: F.t1.copyWith(color: p.ink),
+                      ),
+                    ),
+                  if (running == ProbeKind.buzz && q == null)
+                    Text('Buzzing… keep the band on and count the buzzes.',
+                        style: F.body.copyWith(color: p.ink)),
+                  if (q != null) ...[
+                    Text(
+                      'Group ${r.questionIndex + 1} of ${r.trialCount}: '
+                      '${q.commands} buzzes sent ${q.spacingMs} ms apart. '
+                      'How many bzz-bzz did you feel? (One buzz command is one '
+                      'bzz-bzz.)',
+                      style: F.body.copyWith(color: p.ink),
+                    ),
+                    const SizedBox(height: S.x2),
+                    Row(children: [
+                      for (var n = 0; n <= q.commands; n++) ...[
+                        Expanded(
+                          child: BigButton(
+                            '$n',
+                            key: ValueKey('probe-felt-$n'),
+                            soft: true,
+                            color: C.blue,
+                            onTap: () => r.answer(n),
+                          ),
+                        ),
+                        const SizedBox(width: S.x2),
+                      ],
+                      Expanded(
+                        flex: 2,
+                        child: BigButton(
+                          'Not sure',
+                          key: const ValueKey('probe-felt-skip'),
+                          soft: true,
+                          color: C.blue,
+                          onTap: () => r.answer(null),
+                        ),
+                      ),
+                    ]),
+                  ],
+                  const SizedBox(height: S.x3),
+                  BigButton(
+                    'Stop',
+                    key: const ValueKey('probe-stop'),
+                    icon: LucideIcons.square,
+                    soft: true,
+                    color: C.red,
+                    onTap: r.stop,
+                  ),
+                ],
+              ),
             ),
-          ],
-          if (note != null) ...[
-            const SizedBox(height: S.x2),
-            Text(note, style: F.cap.copyWith(color: p.ink2)),
-          ],
-        ],
-      ),
+          ),
+        if (note != null)
+          Padding(
+            padding: const EdgeInsets.only(top: S.x2),
+            child: Text(note, style: F.cap.copyWith(color: p.ink2)),
+          ),
+      ],
     );
   }
 }

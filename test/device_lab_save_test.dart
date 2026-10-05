@@ -1,7 +1,7 @@
 // The Device lab's "Copy all logs" becomes "Save lab log file".
 //
 // API (see log_file_test.dart for lib/util/log_file.dart):
-//   * `DeviceLabView({..., LogFileSaver? saveLog})` in
+//   * `DeviceLabView(initialTab: LabTab.logs, {..., LogFileSaver? saveLog})` in
 //     lib/ui2/profile/device_lab.dart; null means the real `saveLogFile`.
 //   * The bottom button reads "Save lab log file" (the key `lab-copy-all` may
 //     stay; these tests find it by its text). "Copy all logs" is gone.
@@ -67,7 +67,7 @@ void main() {
 
   testWidgets('the button says Save lab log file, not Copy all logs',
       (t) async {
-    await _pump(t, DeviceLabView(ecgSupported: false, saveLog: (n, x) async => true));
+    await _pump(t, DeviceLabView(initialTab: LabTab.logs, ecgSupported: false, saveLog: (n, x) async => true));
     expect(saveButton, findsOneWidget);
     expect(find.text('Copy all logs'), findsNothing);
   });
@@ -76,6 +76,7 @@ void main() {
     await _pump(
         t,
         DeviceLabView(
+          initialTab: LabTab.logs,
           ecgSupported: true,
           steps: const ['09:15:03.260 | tap +10 ms | last +10 ms | Double tap.'],
           entries: [DeviceLabEntry.fromEvent(_tap())],
@@ -107,6 +108,7 @@ void main() {
     await _pump(
         t,
         DeviceLabView(
+          initialTab: LabTab.logs,
           ecgSupported: true,
           steps: const [
             '09:15:04.460 | tap +1210 ms | last +1200 ms | ECG stream command written.',
@@ -143,6 +145,7 @@ void main() {
     await _pump(
         t,
         DeviceLabView(
+          initialTab: LabTab.logs,
           ecgSupported: false,
           logText: () {
             calls++;
@@ -164,7 +167,7 @@ void main() {
   testWidgets('says "Log file saved" when it worked, not "Log copied"',
       (t) async {
     await _pump(
-        t, DeviceLabView(ecgSupported: false, saveLog: (n, x) async => true));
+        t, DeviceLabView(initialTab: LabTab.logs, ecgSupported: false, saveLog: (n, x) async => true));
     await t.tap(saveButton);
     await t.pump();
     expect(find.text('Log file saved'), findsOneWidget);
@@ -175,7 +178,7 @@ void main() {
   testWidgets('says it could not save when the saver returns false',
       (t) async {
     await _pump(
-        t, DeviceLabView(ecgSupported: false, saveLog: (n, x) async => false));
+        t, DeviceLabView(initialTab: LabTab.logs, ecgSupported: false, saveLog: (n, x) async => false));
     await t.tap(saveButton);
     await t.pump();
     expect(find.text('Could not save the log file.'), findsOneWidget);
@@ -188,6 +191,7 @@ void main() {
     await _pump(
         t,
         DeviceLabView(
+            initialTab: LabTab.logs,
             ecgSupported: false,
             saveLog: (n, x) async => throw StateError('no disk')));
     await t.tap(saveButton);
@@ -203,6 +207,7 @@ void main() {
     await _pump(
         t,
         DeviceLabView(
+            initialTab: LabTab.logs,
             ecgSupported: false,
             saveLog: (n, x) async => results[calls++]));
     await t.tap(saveButton);
@@ -217,7 +222,7 @@ void main() {
   testWidgets('no Clipboard call on any outcome', (t) async {
     for (final r in [true, false]) {
       await _pump(
-          t, DeviceLabView(ecgSupported: false, saveLog: (n, x) async => r));
+          t, DeviceLabView(initialTab: LabTab.logs, ecgSupported: false, saveLog: (n, x) async => r));
       await t.tap(saveButton);
       await t.pump();
       await t.pump(const Duration(seconds: 5));

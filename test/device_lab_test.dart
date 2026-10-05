@@ -114,7 +114,11 @@ void main() {
       final late =
           DeviceLabEntry.fromEvent(_tap(late: const Duration(seconds: 40)));
       await _pump(
-          t, DeviceLabView(ecgSupported: true, entries: [live, late]));
+          t,
+          DeviceLabView(
+              ecgSupported: true,
+              initialTab: LabTab.logs,
+              entries: [live, late]));
       for (final e in [live, late]) {
         expect(find.textContaining(labClock(e.eventTime.toLocal())),
             findsWidgets);
@@ -376,6 +380,7 @@ void main() {
       await _pump(
           t,
           DeviceLabView(
+              initialTab: LabTab.logs,
               ecgSupported: true,
               steps: lines,
               entries: [DeviceLabEntry.fromEvent(_tap())],
@@ -400,6 +405,7 @@ void main() {
       await t.pumpWidget(MaterialApp(
           theme: buildTheme(Brightness.light),
           home: DeviceLabView(
+              initialTab: LabTab.logs,
               ecgSupported: true,
               saveLog: fakeSaver,
               steps: [for (var i = 0; i < 200; i++) 'line $i'])));
@@ -412,6 +418,7 @@ void main() {
       await _pump(
           t,
           DeviceLabView(
+            initialTab: LabTab.logs,
             ecgSupported: true,
             steps: lines,
             sessions: const [
@@ -439,7 +446,7 @@ void main() {
 
     testWidgets('and says it saved', (t) async {
       await _pump(
-          t, DeviceLabView(ecgSupported: false, saveLog: fakeSaver));
+          t, DeviceLabView(initialTab: LabTab.logs, ecgSupported: false, saveLog: fakeSaver));
       await t.tap(find.byKey(const ValueKey('lab-copy-all')));
       await t.pump();
       expect(find.text('Log file saved'), findsOneWidget);
@@ -479,9 +486,12 @@ void main() {
     testWidgets('session summaries are shown', (t) async {
       await _pump(
           t,
-          const DeviceLabView(ecgSupported: true, sessions: [
-            'More double taps | window 2500 ms | 3 taps | 4.1 s in total'
-          ]));
+          const DeviceLabView(
+              ecgSupported: true,
+              initialTab: LabTab.logs,
+              sessions: [
+                'More double taps | window 2500 ms | 3 taps | 4.1 s in total'
+              ]));
       expect(find.textContaining('window 2500 ms | 3 taps'), findsOneWidget);
     });
   });

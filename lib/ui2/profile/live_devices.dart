@@ -164,7 +164,11 @@ String liveSlotWidth(Duration window, int slots) {
 }
 
 class LiveDevices extends StatefulWidget {
-  const LiveDevices({super.key});
+  const LiveDevices({super.key, this.embedded = false});
+
+  /// Drawn without a screen of its own, for a tab of the Device lab: the feed
+  /// then stops when the tab is left.
+  final bool embedded;
 
   @override
   State<LiveDevices> createState() => _LiveDevicesState();
@@ -190,9 +194,12 @@ class _LiveDevicesState extends State<LiveDevices> {
   @override
   void dispose() {
     _tick?.cancel();
-    // Nothing streams behind a closed screen. Stop clears the owner before its
-    // first await, so not awaiting it here cannot leave the feed on.
-    unawaited(_app.stopLiveFeed(LocalDb.kPrimaryDeviceId));
+    // Nothing streams behind a closed screen or a left tab. Stop notifies its
+    // listeners at once, which the tree being torn down cannot take, so it runs
+    // one microtask later; it clears the owner before its first await, so not
+    // awaiting it here cannot leave the feed on.
+    unawaited(Future.microtask(
+        () => _app.stopLiveFeed(LocalDb.kPrimaryDeviceId)));
     super.dispose();
   }
 
@@ -223,6 +230,7 @@ class _LiveDevicesState extends State<LiveDevices> {
       devices: devices,
       buffer: app.liveStreams,
       now: now,
+      embedded: widget.embedded,
       feedOn: app.isLiveFeedOn,
       onFeed: (id, on) =>
           unawaited(on ? app.startLiveFeed(id) : app.stopLiveFeed(id)),
@@ -249,7 +257,11 @@ class LiveDevicesView extends StatelessWidget {
     required this.now,
     this.feedOn,
     this.onFeed,
+    this.embedded = false,
   });
+
+  /// Only the cards, with no screen or title: the Device lab's Live tab.
+  final bool embedded;
 
   final List<LiveDevice> devices;
   final LiveStreamBuffer buffer;
@@ -263,6 +275,35 @@ class LiveDevicesView extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final rows = <Widget>[
+      if (devices.isEmpty)
+        Surface(
+          child: Text('No device is connected.',
+              style: F.body.copyWith(color: p.ink2)),
+        )
+      else ...[
+        Text(
+            'The last ${buffer.window.inSeconds} seconds of every '
+            'stream. Kept in memory only.',
+            style: F.cap.copyWith(color: p.ink3)),
+        for (final d in devices) ...[
+          const SizedBox(height: S.x4),
+          _DeviceCard(
+            device: d,
+            buffer: buffer,
+            now: now,
+            feedOn: feedOn?.call(d.id) ?? false,
+            onFeed: feedOn == null || onFeed == null || d.id != _kBandId
+                ? null
+                : (on) => onFeed!(d.id, on),
+          ),
+        ],
+      ],
+    ];
+    if (embedded) {
+      return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
+    }
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -274,31 +315,7 @@ class LiveDevicesView extends StatelessWidget {
           Expanded(
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
-              children: [
-                if (devices.isEmpty)
-                  Surface(
-                    child: Text('No device is connected.',
-                        style: F.body.copyWith(color: p.ink2)),
-                  )
-                else ...[
-                  Text(
-                      'The last ${buffer.window.inSeconds} seconds of every '
-                      'stream. Kept in memory only.',
-                      style: F.cap.copyWith(color: p.ink3)),
-                  for (final d in devices) ...[
-                    const SizedBox(height: S.x4),
-                    _DeviceCard(
-                      device: d,
-                      buffer: buffer,
-                      now: now,
-                      feedOn: feedOn?.call(d.id) ?? false,
-                      onFeed: feedOn == null || onFeed == null || d.id != _kBandId
-                          ? null
-                          : (on) => onFeed!(d.id, on),
-                    ),
-                  ],
-                ],
-              ],
+              children: rows,
             ),
           ),
         ]),

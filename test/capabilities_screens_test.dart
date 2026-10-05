@@ -220,6 +220,16 @@ void main() {
           t, const DeviceLab(), _caps(flagsOff: {FeatureFlag.tapClassifiers}));
       expect(find.text('ECG on double tap'), findsNothing);
     });
+    testWidgets('the real screen offers Taps, Probes, Live and Logs; the '
+        'flag off takes Taps away', (t) async {
+      await pump(t, const DeviceLab(), _caps());
+      expect(t.widget<SubTabs>(find.byType(SubTabs)).items,
+          ['Taps', 'Probes', 'Live', 'Logs']);
+      await pump(
+          t, const DeviceLab(), _caps(flagsOff: {FeatureFlag.tapClassifiers}));
+      expect(t.widget<SubTabs>(find.byType(SubTabs)).items,
+          ['Probes', 'Live', 'Logs']);
+    });
     testWidgets('the ECG switch says why it is off', (t) async {
       await pump(t, const DeviceLab(), _caps());
       expect(find.text('This band has no ECG sensor'), findsOneWidget);
