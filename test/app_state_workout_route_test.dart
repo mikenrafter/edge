@@ -219,7 +219,9 @@ void main() {
         expect(zone, isNotNull);
         spies.emitFix(51.0, 0.0);
         spies.emitFix(51.001, 0.0);
-        await until(() => app.routeTracker!.path.value.length >= 2);
+        // The path is emitted at most once a second, so the second fix is not
+        // in it yet; the first fix's vertex is what carries the zone.
+        await until(() => app.routeTracker!.path.value.isNotEmpty);
         final vertices = app.routeTracker!.path.value;
         expect(vertices, isNotEmpty);
         expect(vertices.first.zone, zone);

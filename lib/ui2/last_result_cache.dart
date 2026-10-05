@@ -23,6 +23,8 @@ import 'dart:async' show Completer, Zone;
 import 'dart:collection';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../data/db.dart';
 
 class CachedResult<T> {
@@ -58,7 +60,11 @@ class LastResultCache {
 
   /// The table's bound.
   final int maxRows;
-  final DateTime Function() _now;
+  DateTime Function() _now;
+
+  /// Tests only: the clock puts are stamped with. Null is the system clock.
+  @visibleForTesting
+  set clock(DateTime Function()? now) => _now = now ?? DateTime.now;
 
   // Insertion order is recency order: the first key is the oldest.
   final LinkedHashMap<String, _Entry> _m = LinkedHashMap<String, _Entry>();

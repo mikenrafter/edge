@@ -344,7 +344,6 @@ void main() {
     testWidgets('Mind tab: label while today recalculates (stress computed_at)',
         (t) async {
       _tall(t);
-      ignoreFrameworkNoise();
       final app = _app(WellnessRepo(computedAt: todayAtMs(8, 42)));
       await t.pumpWidget(perfApp(app, const WellnessScreen()));
       await settle(t);

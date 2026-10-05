@@ -13,6 +13,8 @@ import 'package:openstrap_edge/ui2/grammar.dart';
 import 'package:openstrap_edge/ui2/screens/rough_night.dart';
 import 'package:openstrap_edge/ui2/theme.dart';
 
+import 'support/flutter_errors.dart';
+
 /// The longest state the card can reach: every sign fired, every knowable
 /// known, the full chip vocabulary. The fixtures here are deliberately the
 /// longest realistic value, never the tidiest — the same rule the gallery runs.
@@ -191,9 +193,7 @@ void main() {
         t.view.physicalSize = const Size(390 * 3, 6000 * 3);
         t.view.devicePixelRatio = 3;
         addTearDown(t.view.reset);
-        final errors = <String>[];
-        final previous = FlutterError.onError;
-        FlutterError.onError = (d) => errors.add(d.exceptionAsString());
+        final errors = captureFlutterErrors();
         await t.pumpWidget(MediaQuery(
           data: MediaQueryData(textScaler: TextScaler.linear(scale)),
           child: MaterialApp(
@@ -209,8 +209,7 @@ void main() {
           ),
         ));
         await t.pump();
-        FlutterError.onError = previous;
-        expect(errors.where((e) => e.contains('overflowed')), isEmpty);
+        expect(errors, isEmpty);
       });
     }
 

@@ -31,10 +31,15 @@ Future<void> deriveDbTearDown(String name) async {
       p.join(await databaseFactory.getDatabasesPath(), name));
 }
 
+/// Polls until [ok]; fails the test, naming [what], if [within] runs out.
 Future<void> until(bool Function() ok,
-    {Duration within = const Duration(seconds: 4)}) async {
+    {Duration within = const Duration(seconds: 4), String? what}) async {
   final end = DateTime.now().add(within);
-  while (!ok() && DateTime.now().isBefore(end)) {
+  while (!ok()) {
+    if (!DateTime.now().isBefore(end)) {
+      throw TestFailure('until(${what ?? 'condition'}) was not met within '
+          '${within.inMilliseconds} ms');
+    }
     await Future<void>.delayed(const Duration(milliseconds: 5));
   }
 }

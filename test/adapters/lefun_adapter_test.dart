@@ -83,14 +83,18 @@ void main() {
       () async {
     final link = ReplayBandLink()..writeSucceeds = false;
     final events = <BandEvent>[];
-    final done = Completer<void>();
-    final sw = Stopwatch()..start();
+    var done = false;
     final sub = LefunAdapter(replyTimeout: const Duration(seconds: 30))
         .run(link)
-        .listen(events.add, onDone: done.complete);
-    await done.future;
+        .listen(events.add, onDone: () => done = true);
+    // A few event-loop turns, not a clock: the session ends on the refusal
+    // alone, while a wait on the 30 s reply timer would still be pending.
+    for (var i = 0; i < 20 && !done; i++) {
+      await Future<void>.delayed(Duration.zero);
+    }
+    expect(done, isTrue);
     await sub.cancel();
-    expect(sw.elapsed, lessThan(const Duration(seconds: 1)));
     expect(events, isEmpty);
+    expect(link.logs, ['lefun: battery request refused.']);
   });
 }

@@ -108,9 +108,11 @@ void main() {
 
   late DeriveScheduler s;
   DeriveScheduler? made;
+  final systemNowMs = LocalDb.nowMs;
   tearDown(() {
     made?.dispose();
     made = null;
+    LocalDb.nowMs = systemNowMs;
   });
 
   /// A scheduler whose run callback answers from [answers] in order (the last
@@ -147,10 +149,10 @@ void main() {
       final taken = (await LocalDb.takeNextComputeJob())!;
       expect(taken['attempts'], 1);
 
-      final before = DateTime.now().millisecondsSinceEpoch;
+      final at = DateTime.now().millisecondsSinceEpoch;
+      LocalDb.nowMs = () => at;
       await LocalDb.retryComputeJob(
           taken['id'] as String, 'busy', const Duration(seconds: 30));
-      final after = DateTime.now().millisecondsSinceEpoch;
 
       final row = (await _job())!;
       expect(row['state'], 'queued');
@@ -158,7 +160,7 @@ void main() {
       expect(row['attempts'], 1, reason: 'a retry is still an attempt');
       expect(row['type'], 'derive_light');
       final due = row['next_run_at'] as int;
-      expect(due, inInclusiveRange(before + 30000, after + 30000));
+      expect(due, at + 30000);
     });
 
     test('a job that is not due is not claimed; once due, it is, and the '
@@ -192,7 +194,8 @@ void main() {
         'reason from the outcome', () async {
       final kinds = <DeriveJobKind>[];
       build([_busy], kinds: kinds);
-      final before = DateTime.now().millisecondsSinceEpoch;
+      final at = DateTime.now().millisecondsSinceEpoch;
+      LocalDb.nowMs = () => at;
       s.markStoredData();
       await _until(() => kinds.length == 1);
       await _until(() => !s.running);
@@ -203,8 +206,7 @@ void main() {
       expect(row['reason'], 'busy');
       expect(row['type'], 'derive_light');
       final due = row['next_run_at'] as int;
-      expect(due - before, inInclusiveRange(30000, 30000 + 5000),
-          reason: '30 s * 2^(1-1), measured from when the pass ended');
+      expect(due, at + 30000, reason: '30 s * 2^(1-1) from the queue clock');
       expect(kinds, hasLength(1), reason: 'no tight loop: not due yet');
     });
 

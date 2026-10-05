@@ -96,10 +96,14 @@ void main() {
   });
 
   test('getChart: the newest computed time of the days it draws', () async {
+    var clock = DateTime.utc(2026, 10, 5, 8).millisecondsSinceEpoch;
+    final systemNowMs = LocalDb.nowMs;
+    addTearDown(() => LocalDb.nowMs = systemNowMs);
+    LocalDb.nowMs = () => clock;
     final a = await _put(yesterdayId, series: {'rmssd': 50.0});
-    await Future<void>.delayed(const Duration(milliseconds: 5));
+    clock += 5;
     final b = await _put(todayLabel(), series: {'rmssd': 55.0});
-    expect(b, greaterThan(a));
+    expect([a, b], [clock - 5, clock]);
     expect((await repo.getChart('hrv'))['computed_at'], b);
   });
 

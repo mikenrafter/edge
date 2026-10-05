@@ -25,6 +25,7 @@
 
 import 'dart:async';
 
+import 'package:flutter_test/flutter_test.dart' show TestFailure;
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 import 'package:openstrap_edge/data/db.dart';
@@ -388,11 +389,17 @@ class SyncRig {
     await db.delete('compute_jobs');
   }
 
-  /// Wait (polling) until a derive job of [type] is queued.
+  /// Wait (polling) until a derive job of [type] is queued; fails the test,
+  /// listing the jobs that were queued, if it never is.
   Future<void> jobQueued(String type) async {
     final end = DateTime.now().add(const Duration(seconds: 6));
-    while (DateTime.now().isBefore(end)) {
-      if ((await jobTypes()).contains(type)) return;
+    while (true) {
+      final queued = await jobTypes();
+      if (queued.contains(type)) return;
+      if (!DateTime.now().isBefore(end)) {
+        throw TestFailure('derive job "$type" was never queued '
+            '(queued: $queued)');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
   }

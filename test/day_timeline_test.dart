@@ -12,6 +12,8 @@ import 'package:openstrap_edge/data/nutrition_store.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
+import 'support/flutter_errors.dart';
+
 final int _day = DateTime(2026, 8, 14).millisecondsSinceEpoch ~/ 1000;
 int _at(int h, [int m = 0]) => _day + h * 3600 + m * 60;
 
@@ -497,13 +499,10 @@ void _graphTests() {
       t.view.physicalSize = const Size(390 * 3, 4000 * 3);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
-      final errors = <String>[];
-      final previous = FlutterError.onError;
-      FlutterError.onError = (d) => errors.add(d.exceptionAsString());
+      final errors = captureFlutterErrors();
       await t.pumpWidget(frame(full(), scale: 3.1));
       await t.pump();
-      FlutterError.onError = previous;
-      expect(errors.where((e) => e.contains('overflowed')), isEmpty);
+      expect(errors, isEmpty);
     });
   });
 }

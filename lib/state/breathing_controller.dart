@@ -41,7 +41,9 @@ class BreathingController {
         dispatchBandAlert,
     required void Function() notify,
     Future<bool> Function(String slotKey, {required bool skipIfBusy})? playCue,
+    DateTime Function()? now,
   })  : _playCue = playCue,
+        _now = now ?? DateTime.now,
         _isConnected = isConnected,
         _reconcileLiveStreams = reconcileLiveStreams,
         _nudgeLive = nudgeLive,
@@ -56,6 +58,9 @@ class BreathingController {
   final Future<AlertDeliveryOutcome> Function(String ruleId, {int? pattern})
       _dispatchBandAlert;
   final void Function() _notify;
+
+  /// The wall clock the session's start, end and banked length are read from.
+  final DateTime Function() _now;
 
   /// Plays breathing cue slot [slotKey] (see haptic_slots.dart) as one
   /// dispatcher delivery and answers true, or answers false when the slot has
@@ -221,9 +226,10 @@ class BreathingController {
       _preWindowFrames = List<String>.from(_breathingFrames);
     }
     _breathingFrames.clear();
-    _breathingStartedAt = DateTime.now();
+    final startedAt = _now();
+    _breathingStartedAt = startedAt;
     _notify();
-    unawaited(BreathingLiveActivity.start(startedAt: DateTime.now()));
+    unawaited(BreathingLiveActivity.start(startedAt: startedAt));
     try {
       // The session is an HR owner (see [LiveStreamController.owners]); the engine's
       // reconciler serialises this against any in-flight transition, e.g. a
@@ -258,7 +264,7 @@ class BreathingController {
     _breathingStartedAt = null;
     _breathingTarget = null;
     if (started != null) {
-      final ended = DateTime.now();
+      final ended = _now();
       var seconds = ended.difference(started).inSeconds;
       // Clamped to what was asked for. Overshoot is always suspension, never
       // extra breathing — the pacer stops the moment the app leaves the

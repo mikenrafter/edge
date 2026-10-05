@@ -12,9 +12,10 @@
 //   OPENSTRAP_TEST_DBS=~/Documents/openstrap/openstrap_export_1786730410696.db \
 //     flutter test test/cadence_group_c_nocturnal_rig_test.dart --concurrency=1
 //
-// Skips cleanly with no export, and reads the night window the rig already
-// picked out of `build/cadence_baseline.json` rather than re-deriving it —
-// same window, no second copy of the picker.
+// Skips cleanly with no export. The night window comes from the picker the
+// decimation rig uses (`support/cadence_night_window.dart`), run here over the
+// same export, so the two files measure the same night without either one
+// needing the other to have run first.
 
 import 'dart:convert';
 import 'dart:io';
@@ -24,6 +25,8 @@ import 'package:openstrap_analytics/onehz.dart';
 import 'package:openstrap_edge/compute/substrate.dart' show plausibleHrOrNull;
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+import 'support/cadence_night_window.dart';
 
 const _cadences = <int>[1, 5, 15, 60, 300, 301];
 
@@ -43,21 +46,20 @@ void main() {
 
   for (final path in src) {
     test('C1 nocturnalRhr with a clock, over ${p.basename(path)}', () async {
-      final baseline =
-          File(p.join(Directory.current.path, 'build', 'cadence_baseline.json'));
-      if (!baseline.existsSync()) {
-        markTestSkipped('run cadence_decimation_rig_test.dart first');
-        return;
-      }
-      final meta = jsonDecode(await baseline.readAsString()) as Map;
-      final win = (meta['night_window'] as List).cast<int>();
-
       final db = await databaseFactory
           .openDatabase(path, options: OpenDatabaseOptions(readOnly: true));
+      final every = await db.query('decoded_onehz',
+          columns: ['rec_ts', 'hr'], orderBy: 'rec_ts');
+      expect(every, isNotEmpty, reason: 'the export has no 1 Hz record');
+      final (winA, winB) = extremeHrWindow(
+          [for (final r in every) r['rec_ts'] as int],
+          [for (final r in every) r['hr'] as int],
+          8 * 3600,
+          lowest: true);
       final rows = await db.query('decoded_onehz',
           columns: ['rec_ts', 'hr'],
           where: 'rec_ts >= ? AND rec_ts < ?',
-          whereArgs: [win[0], win[1]],
+          whereArgs: [winA, winB],
           orderBy: 'rec_ts');
       await db.close();
 
@@ -88,13 +90,11 @@ void main() {
             'conf ${timed.confidence.toStringAsFixed(2)}');
 
         if (n == 1) {
-          // THE GATE: 1 Hz is bit-identical with and without the clock, and
-          // identical to the rig's recorded truth.
+          // THE GATE: 1 Hz is bit-identical with and without the clock. The
+          // blind call is the one the decimation rig records as its 1 Hz
+          // truth, over the same window.
           expect(timed.value!.low30Mean, blind.value!.low30Mean);
           expect(timed.confidence, blind.confidence);
-          final cell = (meta['cells'] as List).firstWhere((c) =>
-              c['metric'] == 'nocturnalRhr' && c['cadence_s'] == 1) as Map;
-          expect(timed.value!.low30Mean, cell['value']);
         } else if (n <= 300) {
           // Every cadence a real band ships lands on the 1 Hz trough, or says
           // nothing. A number within 2% is the bar; 15 s was +11.2% before.

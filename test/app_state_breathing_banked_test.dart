@@ -1,6 +1,7 @@
 // Workout area: a breathing session that IS banked. The rule
-// is "at least 60 s of wall clock" (DateTime.now, no clock seam), so this file
-// waits out a real minute once and checks everything that depends on it:
+// is "at least 60 s of wall clock", read from the controller's injected clock,
+// so this file moves a virtual clock past the minute and checks everything
+// that depends on it:
 //
 //   A  a resonance session in a pre / post quiet window, with a target:
 //      seconds clamped to the target, coherence + confidence taken from the
@@ -12,7 +13,8 @@
 //      score exists but is not banked for this pattern), insert off the stop
 //      path.
 //
-// Both run side by side on two AppStates during the one wait.
+// Both run side by side on two AppStates over the one stretch of virtual time,
+// and a third and fourth pin the 59 s / 60 s boundary.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
@@ -41,6 +43,8 @@ void main() {
 
   test('a session of a minute or more is banked, clamped to its target, '
       'scored only for a rated pattern, with the windows attached', () async {
+    var clock = DateTime.utc(2026, 10, 5, 8);
+    DateTime now() => clock;
     final probe = TimerProbe();
     await probe.run(() async {
       final hr = hexOf(hr28Inner(rr: const [800, 810]));
@@ -54,7 +58,7 @@ void main() {
       final unrated = kBreathPatterns.firstWhere((p) => !p.coherenceRated);
 
       // A: window, then a rated session with a one-minute target.
-      final a = AppState.forTesting();
+      final a = AppState.forTesting(breathingNow: now);
       final repoA = BreathRepo();
       a.repo = repoA;
       a.device.connection = 'connected';
@@ -69,10 +73,10 @@ void main() {
       await settleMs(50);
       expect(a.breathingResult!['ok'], isTrue);
 
-      await Future<void>.delayed(const Duration(milliseconds: 5));
+      clock = clock.add(const Duration(milliseconds: 5));
 
       // B: no window, an unrated pattern, no target.
-      final b = AppState.forTesting();
+      final b = AppState.forTesting(breathingNow: now);
       final repoB = BreathRepo();
       b.repo = repoB;
       b.device.connection = 'connected';
@@ -83,7 +87,8 @@ void main() {
       await settleMs(50);
       expect(b.breathingResult!['ok'], isTrue);
 
-      await Future<void>.delayed(const Duration(milliseconds: 60500));
+      // Well past A's target, so the clamp is what holds its seconds at 60.
+      clock = clock.add(const Duration(milliseconds: 90500));
 
       await a.stopBreathingSession();
       await b.stopBreathingSession();
@@ -95,7 +100,8 @@ void main() {
           reason: 'clamped to the target: any overshoot is suspension');
       expect(rowA['coherence'], 72.0);
       expect(rowA['confidence'], 0.8);
-      expect(rowA['ended_at'] - rowA['started_at'], greaterThanOrEqualTo(60000));
+      expect(rowA['ended_at'] - rowA['started_at'], 90505,
+          reason: 'the clamp changes the banked seconds, not the end stamp');
       expect(rowA['pre_rmssd'], isNull, reason: 'the windows land on close');
       expect(rowA['post_rmssd'], isNull);
 
@@ -103,7 +109,7 @@ void main() {
       final rowB = (await LocalDb.breathingSessions())
           .singleWhere((r) => r['started_at'] == bStarted);
       expect(rowB['pattern'], unrated.key);
-      expect(rowB['seconds'], inInclusiveRange(60, 63));
+      expect(rowB['seconds'], 90, reason: 'no target: the full elapsed seconds');
       expect(rowB['coherence'], isNull,
           reason: 'a pattern the score is not rated for banks none');
       expect(rowB['confidence'], isNull);
@@ -120,8 +126,35 @@ void main() {
           reason: 'the paced block\'s own 5 frames are not in either window');
       expect(afterClose['seconds'], 60);
 
+      // The boundary: 59.999 s is not a session, 60 s exactly is.
+      final c = AppState.forTesting(breathingNow: now);
+      c.repo = BreathRepo();
+      c.device.connection = 'connected';
+      await c.startBreathingSession(pattern: unrated);
+      final cStarted = c.breathingStartedAt!.millisecondsSinceEpoch;
+      clock = clock.add(const Duration(milliseconds: 59999));
+      await c.stopBreathingSession();
+
+      clock = clock.add(const Duration(seconds: 1));
+      final d = AppState.forTesting(breathingNow: now);
+      d.repo = BreathRepo();
+      d.device.connection = 'connected';
+      await d.startBreathingSession(pattern: unrated);
+      final dStarted = d.breathingStartedAt!.millisecondsSinceEpoch;
+      clock = clock.add(const Duration(seconds: 60));
+      await d.stopBreathingSession();
+
+      await settleMs(100);
+      final rows = await LocalDb.breathingSessions();
+      expect(rows.where((r) => r['started_at'] == cStarted), isEmpty,
+          reason: 'one millisecond short of a minute banks nothing');
+      expect(
+          rows.singleWhere((r) => r['started_at'] == dStarted)['seconds'], 60);
+
       await finish(a);
       await finish(b);
+      await finish(c);
+      await finish(d);
     });
-  }, timeout: const Timeout(Duration(seconds: 120)));
+  });
 }

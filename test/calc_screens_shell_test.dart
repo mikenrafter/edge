@@ -86,6 +86,8 @@ Future<void> _fresh(WidgetTester t) async {
 final _bars = find.byWidgetPredicate((w) => w is ProgressIndicator,
     description: 'a ProgressIndicator');
 
+bool _shown(Finder f) => f.evaluate().isNotEmpty;
+
 /// The inline loading state: at least one indicator, and every one of them sits
 /// inside a Section or a Surface card (never the page's bare body).
 void _expectInlineLoading(WidgetTester t, String screen) {
@@ -121,7 +123,12 @@ void main() {
       final repo = MetricRepo()..insightsGate = Completer();
       final app = _app(repo);
       await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
-      await settle(t, n: 20);
+      await settle(t,
+          until: () =>
+              repo.insightsCalls == 1 &&
+              _shown(find.text('Your normal range')) &&
+              _shown(_bars),
+          what: 'MetricDetail: slow read requested, series drawn, spinner up');
       expect(repo.insightsCalls, 1, reason: 'the slow read is in flight');
 
       expect(find.text('Your normal range'), findsOneWidget,
@@ -130,7 +137,8 @@ void main() {
       _expectInlineLoading(t, 'MetricDetail');
 
       repo.insightsGate!.complete(const {'insights': []});
-      await settle(t);
+      await settle(t,
+          until: () => !_shown(_bars), what: 'MetricDetail: spinner cleared');
       expect(_bars, findsNothing, reason: 'the fresh result clears it');
       expect(find.text('Your normal range'), findsOneWidget);
     });
@@ -145,7 +153,12 @@ void main() {
       final repo = WellnessRepo()..insightsGate = Completer();
       final app = _app(repo);
       await t.pumpWidget(perfApp(app, const JournalFindings()));
-      await settle(t, n: 20);
+      await settle(t,
+          until: () =>
+              repo.insightsCalls == 1 &&
+              _shown(find.text('Which day of the week')) &&
+              _shown(_bars),
+          what: 'JournalFindings: slow read requested, shell drawn, spinner up');
       expect(repo.insightsCalls, 1);
 
       expect(find.text('What you log'), findsOneWidget);
@@ -155,7 +168,9 @@ void main() {
       _expectInlineLoading(t, 'JournalFindings');
 
       repo.insightsGate!.complete(const {'numeric_insights': []});
-      await settle(t);
+      await settle(t,
+          until: () => !_shown(_bars),
+          what: 'JournalFindings: spinner cleared');
       expect(_bars, findsNothing);
     });
   });
@@ -179,7 +194,13 @@ void main() {
         ..gates[key] = Completer<void>();
       final app = _app(repo)..debugArtifactSource = src;
       await t.pumpWidget(perfApp(app, const Beats()));
-      await settle(t, n: 20);
+      await settle(t,
+          until: () =>
+              src.computes(key) == 1 &&
+              _shown(find.textContaining('Night of')) &&
+              _shown(find.text('Every beat against the one before it')) &&
+              _shown(_bars),
+          what: 'Beats: warm requested, shell drawn, spinner up');
       expect(src.computes(key), 1, reason: 'the warm is requested once');
       expect(repo.beatsCalls, 0, reason: 'the screen computes nothing');
 
@@ -193,7 +214,8 @@ void main() {
       _expectInlineLoading(t, 'Beats');
 
       src.gates[key]!.complete();
-      await settle(t);
+      await settle(t,
+          until: () => !_shown(_bars), what: 'Beats: spinner cleared');
       expect(_bars, findsNothing);
     });
   });

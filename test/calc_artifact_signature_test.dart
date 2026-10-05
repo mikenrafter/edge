@@ -44,6 +44,8 @@
 // Writes are separated by `artTick()` (6 ms) because the inputs are stamped in
 // epoch milliseconds.
 
+import 'dart:io' show Platform;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -414,12 +416,12 @@ void main() {
   });
 
   group('cheap: a 90-day database', () {
-    test('every kind signs in well under ~20 ms and never decodes a payload',
-        () async {
+    late List<String> kinds;
+
+    setUp(() async {
       final db = await LocalDb.instance;
       final batch = db.batch();
-      // Not JSON on purpose: a signature that decoded payloads would throw (or
-      // take far longer than the budget below).
+      // Not JSON on purpose: a signature that decoded payloads would throw.
       final junk = '{' * 60000;
       for (var back = 0; back < 90; back++) {
         batch.insert('day_result', {
@@ -445,15 +447,26 @@ void main() {
       await artRecord(_lo(d) + 3600);
       final noon = artNoonSec(65);
       await LocalDb.putSession(artSession('w-cheap', noon, noon + 1800));
-
-      for (final k in [
+      kinds = [
         artJournal,
         artWeekday,
         artCircadian,
         artBeats(d),
         artWorkout('w-cheap'),
         artKcal(d),
-      ]) {
+      ];
+    });
+
+    test('every kind signs over malformed payloads without decoding them',
+        () async {
+      for (final k in kinds) {
+        expect(await artSig(repo, k), isNotNull, reason: k);
+      }
+    });
+
+    // Latency is a host measurement, so it runs on request: EDGE_BENCH=1.
+    test('every kind signs in well under ~20 ms (median of seven)', () async {
+      for (final k in kinds) {
         await artSig(repo, k); // warm the connection / statement caches
         final times = <int>[];
         for (var i = 0; i < 7; i++) {
@@ -468,6 +481,6 @@ void main() {
         expect(median, lessThan(20.0),
             reason: '$k median ${median.toStringAsFixed(1)} ms');
       }
-    });
+    }, skip: Platform.environment['EDGE_BENCH'] != '1');
   });
 }

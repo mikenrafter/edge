@@ -173,6 +173,12 @@ class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
 
+  /// The wall clock, in epoch ms, that the compute-job queue, [putDayResult]
+  /// and the baseline writes stamp rows and compare due times with. Tests
+  /// substitute it.
+  @visibleForTesting
+  static int Function() nowMs = () => DateTime.now().millisecondsSinceEpoch;
+
   static Future<Database> get instance async {
     final db = _db;
     // `_db != null` is NOT enough: Android can close the underlying
@@ -8334,7 +8340,7 @@ class LocalDb {
     DayResultWrite reason = DayResultWrite.derive,
   }) async {
     final db = await instance;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = nowMs();
     // THE write seam for the compact curve format. All four callers
     // (DerivationEngine x2, cloud_import, whoop_import) funnel through here, so
     // no producer needs to know the wire format exists — upstream code keeps
@@ -10226,7 +10232,7 @@ class LocalDb {
     await db.insert('baselines', {
       'key': key,
       'payload_json': payloadJson,
-      'updated_at': DateTime.now().millisecondsSinceEpoch,
+      'updated_at': nowMs(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
@@ -10271,7 +10277,7 @@ class LocalDb {
       await txn.insert('baselines', {
         'key': key,
         'payload_json': next,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'updated_at': nowMs(),
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }, exclusive: true);
   }
@@ -10903,7 +10909,7 @@ class LocalDb {
     required String reason,
   }) async {
     final db = await instance;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = nowMs();
     await db.transaction((txn) async {
       // Dedupe against QUEUED jobs only. A running job already read its
       // inputs, so data that lands after that must queue a follow-up rather
@@ -10948,7 +10954,7 @@ class LocalDb {
   static Future<Map<String, dynamic>?> takeNextComputeJob() async {
     final db = await instance;
     return db.transaction((txn) async {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = nowMs();
       final rows = await txn.rawQuery(
         'SELECT * FROM compute_jobs '
         'WHERE state = ? AND (next_run_at IS NULL OR next_run_at <= ?) '
@@ -10986,7 +10992,7 @@ class LocalDb {
     Duration backoff,
   ) async {
     final db = await instance;
-    final now = DateTime.now().millisecondsSinceEpoch;
+    final now = nowMs();
     await db.update(
       'compute_jobs',
       {
@@ -11012,7 +11018,7 @@ class LocalDb {
     await db.rawUpdate(
       'UPDATE compute_jobs SET state = ?, '
       'attempts = MAX(attempts - 1, 0), updated_at = ? WHERE id = ?',
-      ['queued', DateTime.now().millisecondsSinceEpoch, id],
+      ['queued', nowMs(), id],
     );
   }
 
@@ -11041,7 +11047,7 @@ class LocalDb {
       {
         'state': 'failed',
         'reason': error,
-        'updated_at': DateTime.now().millisecondsSinceEpoch,
+        'updated_at': nowMs(),
       },
       where: 'id = ?',
       whereArgs: [id],

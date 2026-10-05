@@ -31,6 +31,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ui2/profile/gallery.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
+import 'support/flutter_errors.dart';
+
 /// The golden is the component, not the page: capturing this boundary means a
 /// PNG the size of the thing under test, and a diff that points at the card
 /// that changed rather than at a screenshot of everything.
@@ -181,20 +183,21 @@ void main() {
         tester.view.devicePixelRatio = 3;
         addTearDown(tester.view.reset);
         final broke = <String>[];
+        final errors = captureFlutterErrors();
         for (final e in all.entries) {
-          final errors = <String>[];
-          final previous = FlutterError.onError;
-          FlutterError.onError = (d) => errors.add(d.exceptionAsString());
+          errors.clear();
           await tester.pumpWidget(_frame(e.value, Brightness.light, scale));
           await tester.pump();
-          FlutterError.onError = previous;
+          // Any framework error counts, not only an overflow: a case that
+          // throws something else is not "nothing overflows".
           for (final err in errors) {
-            if (err.contains('overflowed')) broke.add('${e.key}: $err');
+            broke.add('${e.key}: $err');
           }
         }
         expect(broke, isEmpty,
             reason: 'a card that overflows at an accessibility text size is a '
-                'measurement pushed off the screen:\n${broke.join('\n')}');
+                'measurement pushed off the screen (anything else listed '
+                'here is an unexpected framework error):\n${broke.join('\n')}');
       });
     }
 

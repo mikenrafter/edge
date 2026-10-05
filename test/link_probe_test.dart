@@ -4,6 +4,7 @@
 
 import 'dart:typed_data';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
@@ -61,13 +62,21 @@ void main() {
     expect(link.engine.state.batteryPct, 61.0);
   });
 
-  test('unanswered → false after the timeout', () async {
-    final link = _Link(answerBattery: false);
-    final sw = Stopwatch()..start();
-    expect(await link.engine.probeLink(timeout: fast), isFalse);
-    expect(sw.elapsed, greaterThanOrEqualTo(fast));
-    expect(link.engine.pendingCommandCount, 0,
-        reason: 'the awaiter must not leak a pending entry');
+  test('unanswered → false after the timeout', () {
+    fakeAsync((async) {
+      final link = _Link(answerBattery: false);
+      bool? result;
+      link.engine.probeLink(timeout: fast).then((v) => result = v);
+
+      async.elapse(fast - const Duration(milliseconds: 1));
+      expect(result, isNull, reason: 'still waiting for the reply');
+      expect(link.engine.pendingCommandCount, 1);
+
+      async.elapse(const Duration(milliseconds: 1));
+      expect(result, isFalse);
+      expect(link.engine.pendingCommandCount, 0,
+          reason: 'the awaiter must not leak a pending entry');
+    });
   });
 
   test('write failed → false immediately', () async {

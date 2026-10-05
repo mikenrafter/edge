@@ -70,12 +70,19 @@ class _Repo extends LocalRepository {
   Future<List<JournalFieldSpec>> getJournalFields() async => const [];
 }
 
+/// Pumps (with real delays between frames) until the screen's spinner is gone;
+/// fails the test if it is still showing after the budget.
 Future<void> settle(WidgetTester t) async {
-  for (var i = 0; i < 40; i++) {
+  var loaded = false;
+  for (var i = 0; i < 40 && !loaded; i++) {
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)));
     await t.pump(const Duration(milliseconds: 16));
-    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+    loaded = find.byType(CircularProgressIndicator).evaluate().isEmpty;
+  }
+  if (!loaded) {
+    throw TestFailure('the Wellness screen still shows a '
+        'CircularProgressIndicator after settling');
   }
   for (var i = 0; i < 8; i++) {
     await t.pump(const Duration(milliseconds: 32));

@@ -561,12 +561,13 @@ void main() {
         () async {
       final link = _Link(); // writes succeed, nothing ever answers
 
-      final sw = Stopwatch()..start();
+      // Nothing answers, so a poll that waited on the reply could only end by
+      // the command timeout, which clears the observer asserted on below.
       await link.engine.getBattery();
-      sw.stop();
-      expect(sw.elapsed, lessThan(const Duration(seconds: 1)),
-          reason: 'a display value must never hold the session-open path for '
-              'the full command timeout');
+      expect(link.written.map((w) => w.opcode), [Cmd.getBatteryLevel],
+          reason: 'the poll returned once the request was written; a display '
+              'value must never hold the session-open path for the full '
+              'command timeout');
       expect(link.engine.pendingCommandCount, 1,
           reason: 'the observer is still there waiting for the reply');
 

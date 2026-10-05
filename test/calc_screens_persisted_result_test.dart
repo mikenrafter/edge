@@ -108,7 +108,9 @@ void main() {
       final app = _app(repo);
       // Make the first run's insights carry the marker.
       repo.insightsGate = Completer()..complete(first);
-      final before = DateTime.now().millisecondsSinceEpoch;
+      final computedAt = DateTime.utc(2026, 10, 5, 7, 30);
+      LastResultCache.instance.clock = () => computedAt;
+      addTearDown(() => LastResultCache.instance.clock = null);
       await t.pumpWidget(perfApp(app, const MetricDetail('resting_hr')));
       await settle(t);
       await _restart(t);
@@ -117,8 +119,7 @@ void main() {
       expect(rows, hasLength(1), reason: 'one row for this metric');
       expect(_anyPayloadHas(rows, 'first-run'), isTrue,
           reason: 'the repository map itself is what is stored');
-      expect(rows.single['computed_at'] as int,
-          inInclusiveRange(before - 1000, DateTime.now().millisecondsSinceEpoch),
+      expect(rows.single['computed_at'], computedAt.millisecondsSinceEpoch,
           reason: 'computed_at is when it was computed');
 
       await t.pumpWidget(const SizedBox());

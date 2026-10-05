@@ -299,13 +299,17 @@ class GestureRig {
 
   Future<void> _deviceRowLanded() async {
     final end = DateTime.now().add(const Duration(seconds: 10));
-    while (DateTime.now().isBefore(end)) {
+    while (true) {
       final db = await LocalDb.instance;
       final rows = await db.query('device',
           columns: ['adapter_id'],
           where: 'id = ?',
           whereArgs: [LocalDb.kPrimaryDeviceId]);
       if (rows.isNotEmpty && rows.first['adapter_id'] != null) return;
+      if (!DateTime.now().isBefore(end)) {
+        throw TestFailure('the primary device row never got an adapter_id '
+            '(rows: $rows)');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
   }

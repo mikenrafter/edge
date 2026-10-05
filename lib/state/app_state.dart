@@ -427,7 +427,9 @@ class AppState extends ChangeNotifier {
     dispatchBandAlert: _dispatchBandAlert,
     playCue: _playBreathCue,
     notify: notifyListeners,
+    now: () => (_breathingNowForTesting ?? DateTime.now)(),
   );
+  DateTime Function()? _breathingNowForTesting;
 
   /// The sync-session seam: session start, reconnect loop and
   /// supervisor, backfill timer and history burst, the foreground / background
@@ -2090,10 +2092,15 @@ class AppState extends ChangeNotifier {
   /// stream arming throws). When supplied it is used AS GIVEN — its callbacks
   /// are the test's responsibility, not wired back into this AppState.
   /// [haptics] replaces the band haptics service every producer is handed.
+  /// [breathingNow] replaces the wall clock the breathing session is timed by.
   @visibleForTesting
   AppState.forTesting(
-      {BleEngine? engine, EcgController? ecg, HapticsService? haptics}) {
+      {BleEngine? engine,
+      EcgController? ecg,
+      HapticsService? haptics,
+      DateTime Function()? breathingNow}) {
     _background = false;
+    _breathingNowForTesting = breathingNow;
     _hapticsForTesting = haptics;
     _ecg = ecg;
     _gestures = _newGestureController();

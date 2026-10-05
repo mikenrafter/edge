@@ -63,27 +63,38 @@ Widget perfApp(AppState app, Widget child, {LocaleController? locale}) =>
       ),
     );
 
-/// Drop framework layout/semantics complaints for the rest of the test.
-///
-/// The Wellness Mind tab has a pre-existing `Spacer`-in-unbounded-`Column`
-/// layout error (see ui2_wellness_recovery_paint_test.dart) and a settle loop
-/// that interleaves real delays with pumps trips a debug-only semantics
-/// assert. Neither is what these tests are about; every OTHER failure still
-/// fails through `expect`.
-void ignoreFrameworkNoise() {
-  final previous = FlutterError.onError;
-  FlutterError.onError = (_) {};
-  addTearDown(() => FlutterError.onError = previous);
-}
-
 /// Real-time poll + pump, for screens whose load goes to sqflite or to a fake
 /// repo through several awaits.
-Future<void> settle(WidgetTester t, {int n = 40}) async {
-  for (var i = 0; i < n; i++) {
+///
+/// With [until], polls (real time, [within]) until it holds, pumps one more
+/// frame, and fails the test naming [what] if it never does. Prefer it over a
+/// bare count whenever the test has something it can observe: the count is
+/// only a lower bound on real time, so a busy machine can run it out before
+/// the load lands.
+Future<void> settle(WidgetTester t,
+    {int n = 40,
+    bool Function()? until,
+    String? what,
+    Duration within = const Duration(seconds: 10)}) async {
+  if (until == null) {
+    for (var i = 0; i < n; i++) {
+      await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 15)));
+      await t.pump(const Duration(milliseconds: 16));
+    }
+    return;
+  }
+  final end = DateTime.now().add(within);
+  while (!until()) {
+    if (!DateTime.now().isBefore(end)) {
+      throw TestFailure('settle(${what ?? 'condition'}) was not met within '
+          '${within.inMilliseconds} ms');
+    }
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 15)));
     await t.pump(const Duration(milliseconds: 16));
   }
+  await t.pump(const Duration(milliseconds: 16));
 }
 
 // ── Home ────────────────────────────────────────────────────────────────────
