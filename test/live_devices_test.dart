@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/live_stream_buffer.dart';
+import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/live_devices.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 
@@ -150,6 +151,35 @@ void main() {
       ));
       await t.pumpAndSettle();
     }
+
+    testWidgets('embedded: the cards only, no screen or second title, and '
+        'no overflow in the Device lab at 360 pt and 1.3x text', (t) async {
+      t.view.physicalSize = const Size(360 * 3, 4000 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
+        child: MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: DeviceLabView(
+            ecgSupported: false,
+            initialTab: LabTab.live,
+            live: LiveDevicesView(
+                devices: devices,
+                buffer: buffer(),
+                now: now,
+                embedded: true),
+          ),
+        ),
+      ));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+      expect(find.text('Device lab'), findsOneWidget);
+      expect(find.text('Live devices'), findsNothing);
+      expect(find.text('Synthetic band'), findsOneWidget);
+      expect(find.text('Polar H10'), findsOneWidget);
+      expect(find.byType(Scaffold), findsOneWidget);
+    });
 
     testWidgets('one card per device with name and kind', (t) async {
       await pump(t);

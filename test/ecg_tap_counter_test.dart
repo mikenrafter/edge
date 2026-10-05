@@ -1,11 +1,12 @@
-// EcgTapCounter: draft 3–5 tap gestures counted as touches on the WHOOP MG
+// EcgTapCounter: 3–5 tap gestures counted as touches on the WHOOP MG
 // ECG sensor after a live firmware double tap. Pure state machine; every time
 // is ECG SAMPLE time (a Duration on the stream's clock), never phone receipt
 // time. Deadlines are decided by samples; clock ticks only detect a stalled
 // stream.
 //
-// Timeline vocabulary used below (ms on the sample clock), default thresholds
-// (start 300, gap 200, confirm 200):
+// Timeline vocabulary used below (ms on the sample clock), thresholds
+// (start 300, gap 200, confirm 200: [LegacyEcgThresholds], not the app's
+// defaults):
 //   start(tap) at 0 -> count 2, nothing buzzes yet; open(500) -> first window
 //   [500, 500+start). Each touch that engages is one increment (3, 4, 5) and
 //   asks for ONE follow-up buzz; a gesture that ends counted (the deadline, or
@@ -18,6 +19,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
+
+import 'support/legacy_ecg_thresholds.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 2, 8);
 
@@ -35,9 +38,7 @@ Duration _ms(int v) => Duration(milliseconds: v);
 /// keeps every output in order.
 class _Run {
   _Run(int max, {EcgTapThresholds? th})
-      : c = th == null
-            ? EcgTapCounter(max: max)
-            : EcgTapCounter(max: max, thresholds: th);
+      : c = EcgTapCounter(max: max, thresholds: th ?? LegacyEcgThresholds());
   final EcgTapCounter c;
   final List<EcgTapOutput> out = [];
 
@@ -88,9 +89,10 @@ void main() {
     test('default thresholds and stall timeout', () {
       final c = EcgTapCounter(max: 5);
       expect(c.thresholds, EcgTapThresholds());
-      expect(c.thresholds.startMs, 300);
-      expect(c.thresholds.gapMs, 200);
-      expect(c.thresholds.confirmMs, 200);
+      expect(c.thresholds.startMs, 200);
+      expect(c.thresholds.gapMs, 150);
+      expect(c.thresholds.confirmMs, 750);
+      expect(c.thresholds.extraSensitive, isTrue);
       expect(c.stallAfter, _ms(500));
     });
 
@@ -329,13 +331,27 @@ void main() {
   group('EcgTapThresholds: range and step', () {
     test('ranges and step are named constants', () {
       expect(EcgTapThresholds.stepMs, 50);
-      expect(EcgTapThresholds.startRange, (200, 1100));
-      expect(EcgTapThresholds.gapRange, (100, 1000));
-      expect(EcgTapThresholds.confirmRange, (100, 1000));
+      expect(EcgTapThresholds.startRange, (100, 1000));
+      expect(EcgTapThresholds.gapRange, (50, 950));
+      expect(EcgTapThresholds.confirmRange, (650, 1550));
+    });
+
+    test('the defaults sit 100 ms above the bottom of their ranges, or '
+        '800 ms below the top', () {
+      final d = EcgTapThresholds();
+      expect((d.startMs, d.gapMs, d.confirmMs), (200, 150, 750));
+      for (final (v, r) in [
+        (d.startMs, EcgTapThresholds.startRange),
+        (d.gapMs, EcgTapThresholds.gapRange),
+        (d.confirmMs, EcgTapThresholds.confirmRange),
+      ]) {
+        expect(v - r.$1, 100);
+        expect(r.$2 - v, 800);
+      }
     });
 
     test('accepts every edge of every range', () {
-      for (final (s, g, c) in [(200, 100, 100), (1100, 1000, 1000)]) {
+      for (final (s, g, c) in [(100, 50, 650), (1000, 950, 1550)]) {
         final th = EcgTapThresholds(startMs: s, gapMs: g, confirmMs: c);
         expect((th.startMs, th.gapMs, th.confirmMs), (s, g, c));
         expect(th.start, _ms(s));
@@ -345,15 +361,15 @@ void main() {
     });
 
     for (final (name, make) in <(String, EcgTapThresholds Function())>[
-      ('start below range', () => EcgTapThresholds(startMs: 150)),
-      ('start above range', () => EcgTapThresholds(startMs: 1150)),
+      ('start below range', () => EcgTapThresholds(startMs: 50)),
+      ('start above range', () => EcgTapThresholds(startMs: 1050)),
       ('start off step', () => EcgTapThresholds(startMs: 325)),
-      ('gap below range', () => EcgTapThresholds(gapMs: 50)),
-      ('gap above range', () => EcgTapThresholds(gapMs: 1050)),
+      ('gap below range', () => EcgTapThresholds(gapMs: 0)),
+      ('gap above range', () => EcgTapThresholds(gapMs: 1000)),
       ('gap off step', () => EcgTapThresholds(gapMs: 210)),
-      ('confirm below range', () => EcgTapThresholds(confirmMs: 50)),
-      ('confirm above range', () => EcgTapThresholds(confirmMs: 1050)),
-      ('confirm off step', () => EcgTapThresholds(confirmMs: 199)),
+      ('confirm below range', () => EcgTapThresholds(confirmMs: 600)),
+      ('confirm above range', () => EcgTapThresholds(confirmMs: 1600)),
+      ('confirm off step', () => EcgTapThresholds(confirmMs: 799)),
     ]) {
       test('rejects $name (ArgumentError, never clamped)', () {
         expect(make, throwsArgumentError);
@@ -363,20 +379,20 @@ void main() {
     test('value equality and copyWith', () {
       expect(EcgTapThresholds(startMs: 500), EcgTapThresholds(startMs: 500));
       expect(EcgTapThresholds().copyWith(gapMs: 300).gapMs, 300);
-      expect(EcgTapThresholds().copyWith(gapMs: 300).startMs, 300);
+      expect(EcgTapThresholds().copyWith(gapMs: 300).startMs, 200);
       expect(() => EcgTapThresholds().copyWith(confirmMs: 5),
           throwsArgumentError);
     });
 
-    test('extra sensitive: off by default, part of the value, in the summary',
+    test('extra sensitive: on by default, part of the value, in the summary',
         () {
-      expect(EcgTapThresholds().extraSensitive, isFalse);
-      final on = EcgTapThresholds().copyWith(extraSensitive: true);
-      expect(on.extraSensitive, isTrue);
-      expect(on, isNot(EcgTapThresholds()));
-      expect(on.copyWith(gapMs: 300).extraSensitive, isTrue);
-      expect(EcgTapThresholds().summary, isNot(contains('extra sensitive')));
-      expect(on.summary, endsWith(', extra sensitive'));
+      expect(EcgTapThresholds().extraSensitive, isTrue);
+      final off = EcgTapThresholds().copyWith(extraSensitive: false);
+      expect(off.extraSensitive, isFalse);
+      expect(off, isNot(EcgTapThresholds()));
+      expect(off.copyWith(gapMs: 300).extraSensitive, isFalse);
+      expect(off.summary, isNot(contains('extra sensitive')));
+      expect(EcgTapThresholds().summary, endsWith(', extra sensitive'));
     });
 
     test('tolerant startup and the double-tap fallback are on by default',
@@ -421,25 +437,22 @@ void main() {
 
     test('the summary adds ", quick start" and ", no fallback" only when '
         'those are off', () {
-      expect(EcgTapThresholds().summary,
-          'start 300 ms, gap 200 ms, confirm 200 ms',
-          reason: 'the defaults add nothing');
-      expect(EcgTapThresholds(tolerantStartup: false).summary,
-          'start 300 ms, gap 200 ms, confirm 200 ms, quick start');
-      expect(EcgTapThresholds(fallbackToDoubleTap: false).summary,
-          'start 300 ms, gap 200 ms, confirm 200 ms, no fallback');
+      const base = 'start 200 ms, gap 150 ms, confirm 750 ms';
+      expect(EcgTapThresholds().summary, '$base, extra sensitive',
+          reason: 'the defaults: extra sensitive is on');
+      expect(EcgTapThresholds(extraSensitive: false).summary, base);
       expect(
-          EcgTapThresholds(extraSensitive: true).summary,
-          'start 300 ms, gap 200 ms, confirm 200 ms, extra sensitive',
-          reason: 'unchanged');
-      expect(
-          EcgTapThresholds(
-                  extraSensitive: true,
-                  tolerantStartup: false,
-                  fallbackToDoubleTap: false)
+          EcgTapThresholds(extraSensitive: false, tolerantStartup: false)
               .summary,
-          'start 300 ms, gap 200 ms, confirm 200 ms, extra sensitive, '
-          'quick start, no fallback',
+          '$base, quick start');
+      expect(
+          EcgTapThresholds(extraSensitive: false, fallbackToDoubleTap: false)
+              .summary,
+          '$base, no fallback');
+      expect(
+          EcgTapThresholds(tolerantStartup: false, fallbackToDoubleTap: false)
+              .summary,
+          '$base, extra sensitive, quick start, no fallback',
           reason: 'appended after the existing suffix, in that order');
     });
   });
@@ -528,7 +541,7 @@ void main() {
     test('start 500: a touch 450 ms after the window opens counts (default '
         'rejects it)',
         () {
-      final moved = _begin(5, th: EcgTapThresholds(startMs: 500));
+      final moved = _begin(5, th: LegacyEcgThresholds(startMs: 500));
       moved.span(500, 950, false);
       moved.span(950, 1160, true); // engages at 1150
       expect(moved.c.count, 3);
@@ -541,7 +554,7 @@ void main() {
     });
 
     test('start 500: with no touch, confirms at open + 500', () {
-      final r = _begin(5, th: EcgTapThresholds(startMs: 500));
+      final r = _begin(5, th: LegacyEcgThresholds(startMs: 500));
       r.span(500, 1000, false);
       expect(r.done, isNull);
       r.at(1000, false);
@@ -550,7 +563,7 @@ void main() {
     });
 
     test('gap 300: 250 ms of contact no longer engages', () {
-      final r = _begin(5, th: EcgTapThresholds(gapMs: 300));
+      final r = _begin(5, th: LegacyEcgThresholds(gapMs: 300));
       r.span(500, 600, false);
       r.span(600, 850, true); // 250 ms
       r.span(850, 1000, false);
@@ -559,7 +572,7 @@ void main() {
     });
 
     test('gap 300: engage at start + 300', () {
-      final r = _begin(5, th: EcgTapThresholds(gapMs: 300));
+      final r = _begin(5, th: LegacyEcgThresholds(gapMs: 300));
       r.span(500, 600, false);
       r.span(600, 910, true);
       expect(r.c.count, 3);
@@ -567,7 +580,7 @@ void main() {
     });
 
     test('gap 300: a 250 ms no-contact gap is still the same touch', () {
-      final r = _begin(5, th: EcgTapThresholds(gapMs: 300));
+      final r = _begin(5, th: LegacyEcgThresholds(gapMs: 300));
       r.span(500, 600, false);
       r.span(600, 1000, true); // engaged at 900 -> 3
       r.span(1000, 1250, false); // 250 ms < gap
@@ -583,7 +596,7 @@ void main() {
     test('confirm 400: a next touch 500 ms after contact ended counts', () {
       final r = _toThree(5); // contact ended at 1200 (default gap 200)
       // ...but with confirm 400 the window is [1400, 1800).
-      final moved = _Run(5, th: EcgTapThresholds(confirmMs: 400))..start();
+      final moved = _Run(5, th: LegacyEcgThresholds(confirmMs: 400))..start();
       moved.open(500);
       moved.span(500, 600, false);
       moved.span(600, 1200, true);

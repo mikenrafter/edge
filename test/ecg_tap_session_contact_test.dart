@@ -24,6 +24,7 @@ import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import 'support/ecg_trace.dart' show r17;
+import 'support/legacy_ecg_thresholds.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 2, 8);
 
@@ -87,7 +88,7 @@ class _Rig {
         return true;
       },
       maxTaps: () => max,
-      thresholds: () => th ?? EcgTapThresholds(),
+      thresholds: () => th ?? LegacyEcgThresholds(),
       onFinished: (count, reason) => results.add((count, reason)),
       step: steps.add,
       now: () => now,
@@ -242,7 +243,7 @@ void main() {
 
     test('the packet line is the mask, filled or not', () async {
       for (final x in [false, true]) {
-        final r = await run(EcgTapThresholds(extraSensitive: x));
+        final r = await run(LegacyEcgThresholds(extraSensitive: x));
         expect(r.line(3), contains('25 with contact (samples 50–99)'),
             reason: 'extraSensitive $x');
       }
@@ -250,7 +251,7 @@ void main() {
 
     test('off: first to last contact sample is one touch, so the flat stretch '
         'in the middle does not break it', () async {
-      final r = await run(EcgTapThresholds());
+      final r = await run(LegacyEcgThresholds());
       expect(r.steps, contains('Follow-up buzz requested at sample time 1001700 ms.'),
           reason: 'filled: contact from 1001.5 holds 200 ms');
       expect(r.results, [(3, null)]);
@@ -258,7 +259,7 @@ void main() {
 
     test('on: the mask as is, so the first 100 ms touch is too short to engage '
         'and the window closes at 2', () async {
-      final r = await run(EcgTapThresholds(extraSensitive: true));
+      final r = await run(LegacyEcgThresholds(extraSensitive: true));
       expect(r.results, [(2, null)]);
       expect(r.steps, contains('Final count 2 at sample time 1001800 ms.'));
     });
@@ -266,7 +267,7 @@ void main() {
     test('on: a single zero reading inside a moving trace does not restart the '
         'hold (the mask sees movement)', () async {
       Future<List<String>> held(List<int> samples) async {
-        final r = _Rig(max: 3, th: EcgTapThresholds(extraSensitive: true));
+        final r = _Rig(max: 3, th: LegacyEcgThresholds(extraSensitive: true));
         await r.session.start(_tap());
         await r.steady();
         r.deliver1002(samples);
@@ -309,7 +310,7 @@ void main() {
   });
 
   group('quick start (tolerant startup off)', () {
-    final quick = EcgTapThresholds(tolerantStartup: false);
+    final quick = LegacyEcgThresholds(tolerantStartup: false);
     const quickLine = 'Quick start: no finger in the first sampled packet; '
         'the count is 2.';
 
@@ -357,7 +358,7 @@ void main() {
     test('the extra-sensitive fill does not hide the quick start: the mask is '
         'read before it', () async {
       final r = await firstPackets(
-          EcgTapThresholds(tolerantStartup: false, extraSensitive: true),
+          LegacyEcgThresholds(tolerantStartup: false, extraSensitive: true),
           List.filled(49, 0));
       expect(r.results, [(2, null)]);
     });
@@ -423,7 +424,7 @@ void main() {
       test('the same packets with tolerant startup give the same result',
           () async {
         final quickRun = await run(quick);
-        final tolerantRun = await run(EcgTapThresholds());
+        final tolerantRun = await run(LegacyEcgThresholds());
         expect(tolerantRun.results, quickRun.results);
         expect(tolerantRun.buzzes.map((b) => b.$1),
             quickRun.buzzes.map((b) => b.$1));

@@ -9,6 +9,7 @@ import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_session.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
+import 'support/legacy_ecg_thresholds.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 2, 8);
 
@@ -65,7 +66,7 @@ class _Rig {
       isStreamAlive: () => alive,
       buzz: (pulses, id) async => true,
       maxTaps: () => max,
-      thresholds: () => thresholds ?? EcgTapThresholds(),
+      thresholds: () => thresholds ?? LegacyEcgThresholds(),
       onFinished: (count, reason) => results.add((count, reason)),
       recordSession: (r) async {
         recorded.add(r);
@@ -123,7 +124,7 @@ void main() {
 
   // A long quiet window (1.1 s to start + 1 s to confirm) so a few packets
   // arrive before the counter decides on its own.
-  final slow = EcgTapThresholds(
+  final slow = LegacyEcgThresholds(
       startMs: 1100, confirmMs: 1000, fallbackToDoubleTap: false);
 
   test('several packets widen the interval to the first start and last end',
@@ -163,7 +164,7 @@ void main() {
     final r = _Rig(
         startOk: false,
         strapClock: () => now++,
-        thresholds: EcgTapThresholds(fallbackToDoubleTap: false));
+        thresholds: LegacyEcgThresholds(fallbackToDoubleTap: false));
     await expectLater(r.session.start(_tap()), throwsStateError);
     final g = r.recorded.single;
     expect(g.finalCount, isNull);
@@ -177,7 +178,7 @@ void main() {
       () async {
     final r = _Rig(
         throwOnStart: true,
-        thresholds: EcgTapThresholds(fallbackToDoubleTap: false));
+        thresholds: LegacyEcgThresholds(fallbackToDoubleTap: false));
     await expectLater(r.session.start(_tap()), throwsStateError);
     final g = r.recorded.single;
     expect(g.reason, 'start_failed');

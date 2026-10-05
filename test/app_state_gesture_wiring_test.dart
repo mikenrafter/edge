@@ -63,11 +63,11 @@ void main() {
       final rig = await newRig();
       await mapActions(rig.app, [2, 3]);
       await rig.app.gestureSettings.setEcgTapThresholds(
-          EcgTapThresholds(startMs: 500, gapMs: 300, confirmMs: 400));
+          EcgTapThresholds(startMs: 500, gapMs: 300, confirmMs: 800));
       rig.doubleTap(); // no wrist remembered: fails to start, session ends
       await until(() => channel.performed.isNotEmpty);
       const line =
-          'ECG sensor touches | start 500 ms, gap 300 ms, confirm 400 ms';
+          'ECG sensor touches | start 500 ms, gap 300 ms, confirm 800 ms';
       await until(() => labText(rig).contains(line));
       expect(labText(rig), contains(line));
       await sessionRowsWhen((r) => r.isNotEmpty); // its row, before teardown

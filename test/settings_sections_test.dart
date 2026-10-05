@@ -34,9 +34,15 @@ final Map<String, Widget> views = {
   'App notifications on the band':
       const BandNotificationsView(enabled: true, granted: true),
   'Alarm': AlarmScreenView(connected: true, schedule: _schedule),
-  'Gestures': const BandGesturesView(
-    chosen: {DeviceAction.markMoment},
-    supported: {DeviceAction.none, DeviceAction.markMoment, DeviceAction.torch},
+  'Gestures': BandGesturesView(
+    chosen: const {DeviceAction.markMoment},
+    supported: const {
+      DeviceAction.none,
+      DeviceAction.markMoment,
+      DeviceAction.torch
+    },
+    repeatWindowMs: 2500,
+    onRepeatWindowMs: (_) {},
   ),
   'Device detail': DeviceDetailView(_band),
   'Edit profile': EditProfileView(onSave: (_) async {}),

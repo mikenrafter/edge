@@ -1,6 +1,6 @@
 // "Count extra taps with": the per-band choice between ECG sensor touches and
-// more double taps, the tab names that follow it, and the pause adjuster
-// (which lives in the Device lab, not on Gestures).
+// more double taps (developer mode only, since ECG touches are), the tab names
+// that follow it, and the pause adjuster (on Gestures and in the Device lab).
 // One mapping store serves both: the 3-tap slot is "Double tap + 1 ECG tap" for ECG and
 // "2 double taps" for repeats. ECG is disabled and dimmed (never hidden) on a
 // band without the sensor.
@@ -33,7 +33,10 @@ void main() {
     await pumpTall(
         t,
         const BandGesturesView(
-            chosen: {}, supported: _supported, ecgSupported: true));
+            chosen: {},
+            supported: _supported,
+            ecgSupported: true,
+            devMode: true));
     expect(section('Count extra taps with'), findsOneWidget);
     expect(find.text('ECG sensor touches'), findsOneWidget);
     expect(find.text('More double taps'), findsOneWidget);
@@ -44,7 +47,10 @@ void main() {
     await pumpTall(
         t,
         const BandGesturesView(
-            chosen: {}, supported: _supported, ecgSupported: true));
+            chosen: {},
+            supported: _supported,
+            ecgSupported: true,
+            devMode: true));
     expect(isDimmed(t, find.text('ECG sensor touches')), isFalse);
     expect(isDimmed(t, find.text('More double taps')), isFalse);
     expect(
@@ -66,6 +72,7 @@ void main() {
           chosen: const {},
           supported: _supported,
           ecgSupported: false,
+          devMode: true,
           onTapMethod: picked.add,
         ));
     expect(isDimmed(t, find.text('ECG sensor touches')), isTrue);
@@ -87,6 +94,7 @@ void main() {
           chosen: const {},
           supported: _supported,
           ecgSupported: true,
+          devMode: true,
           onTapMethod: picked.add,
         ));
     await t.tap(find.text('More double taps'));
@@ -103,6 +111,7 @@ void main() {
             chosen: {},
             supported: _supported,
             ecgSupported: true,
+            devMode: true,
             tapMethod: TapCountMethod.ecg,
           ));
       for (final (n, name) in const [
@@ -127,6 +136,7 @@ void main() {
             chosen: {},
             supported: _supported,
             ecgSupported: true,
+            devMode: true,
             tapMethod: TapCountMethod.repeat,
           ));
       for (final (n, label) in const [
@@ -137,7 +147,7 @@ void main() {
       ]) {
         await openGesturesTab(t, n);
         expect(gesturesTabName(t), label);
-        expect(find.textContaining('Draft'), n == 2 ? findsNothing : findsOneWidget);
+        expect(find.textContaining('Draft'), findsNothing);
         for (final k in [3, 4, 5]) {
           expect(find.text('$k taps'), findsNothing, reason: '$k taps');
         }
@@ -153,6 +163,7 @@ void main() {
             chosen: const {},
             supported: _supported,
             ecgSupported: false,
+            devMode: true,
             tapActions: const {
               3: {DeviceAction.logWater}
             },
@@ -171,7 +182,7 @@ void main() {
     });
   });
 
-  group('the pause between double taps (lives in the Device lab)', () {
+  group('the pause between double taps', () {
     testWidgets('adjusts in 250 ms steps and stays inside 1000..5000',
         (t) async {
       final values = <int>[];
@@ -204,7 +215,7 @@ void main() {
       expect(values, isEmpty);
     });
 
-    testWidgets('Gestures no longer draws the adjuster', (t) async {
+    testWidgets('Gestures draws the same adjuster', (t) async {
       await pumpTall(
           t,
           BandGesturesView(
@@ -214,8 +225,8 @@ void main() {
             repeatWindowMs: 2500,
             onRepeatWindowMs: (_) {},
           ));
-      expect(find.byKey(const ValueKey('repeat-window:+')), findsNothing);
-      expect(find.text('Pause between double taps'), findsNothing);
+      expect(find.byKey(const ValueKey('repeat-window:+')), findsOneWidget);
+      expect(find.text('Pause between double taps'), findsOneWidget);
     });
   });
 
@@ -223,7 +234,7 @@ void main() {
     expect(kExtendedGesturesNote, contains('WHOOP MG'));
     expect(kExtendedGesturesNote, contains('WHOOP 4.0 has no ECG sensor'));
     expect(kExtendedGesturesNote, contains('double taps'));
-    expect(kExtendedGesturesNote, contains('3–5 tap rows are a draft'));
+    expect(kExtendedGesturesNote.toLowerCase(), isNot(contains('draft')));
     for (final ecg in [true, false]) {
       await pumpTall(
           t,
@@ -231,6 +242,7 @@ void main() {
             chosen: const {},
             supported: _supported,
             ecgSupported: ecg,
+            devMode: true,
             repeatWindowMs: 2500,
             onRepeatWindowMs: (_) {},
           ));

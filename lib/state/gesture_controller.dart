@@ -190,8 +190,7 @@ class GestureController {
         onFinished: (count) {
           _deviceLab.endSession(count: count);
           if (_settings.repeatTapsLab) {
-            _deviceLab.addStep('Result: $count taps. This is a draft; no '
-                'action was run.');
+            _deviceLab.addStep('Result: $count taps. No action was run.');
           }
         },
       );
@@ -226,7 +225,7 @@ class GestureController {
           if (waiting != null && !waiting.isCompleted) waiting.complete(count);
           final lab = _settings.ecgOnDoubleTap;
           _deviceLab.addStep(count != null
-              ? 'Result: ${ecgTapCountName(count)}.${lab ? ' This is a draft; no action was run.' : ''}'
+              ? 'Result: ${ecgTapCountName(count)}.${lab ? ' No action was run.' : ''}'
               : 'Result: abandoned ($reason). No action was run.');
           _deviceLab.endSession(count: count, reason: reason);
         },

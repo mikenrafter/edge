@@ -8,8 +8,8 @@
 //     sits under an action that cannot be replayed safely;
 //   * only what this phone can do is offered;
 //   * it never names, mentions or offers a one-tap gesture. Two taps is the
-//     firmware's double tap; 3–5 taps are the draft ECG-touch counts
-//     (WHOOP MG only, test/gestures_draft_taps_test.dart), so those
+//     firmware's double tap; 3–5 taps are the ECG-touch counts
+//     (WHOOP MG only, test/gestures_extended_taps_test.dart), so those
 //     words are allowed now; single-tap wording stays banned;
 //   * nothing overflows at 2x text.
 
@@ -269,7 +269,7 @@ void main() {
           }),
           chosen: {DeviceAction.markMoment},
           replay: {DeviceAction.markMoment});
-      // The draft "3 taps"/"4 taps"/"5 taps" rows (ECG touches on a
+      // The "3 taps"/"4 taps"/"5 taps" rows (ECG touches on a
       // WHOOP MG), so only one-tap wording is forbidden here.
       final forbidden =
           RegExp(r'one tap|single tap|\b1 tap', caseSensitive: false);

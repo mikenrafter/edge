@@ -337,7 +337,11 @@ class AppState extends ChangeNotifier {
         deviceLab: deviceLab,
         alertDispatcher: () => alertDispatcher,
         ecg: () => ecg,
-        ecgSupported: () => engine.isMaverick,
+        // ECG gestures (the capture on a double tap, counting touches) are a
+        // developer-mode option on a band with the sensor. Without developer
+        // mode the dispatcher sees no ECG: a stored ECG choice falls back to
+        // the double-tap chain for the same actions, none is dropped.
+        ecgSupported: () => engine.isMaverick && devMode,
         clockRef: () => engine.clockRef,
         log: _log,
         onMarkMoment: _markMomentFromGesture,

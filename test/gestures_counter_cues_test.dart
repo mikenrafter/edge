@@ -17,6 +17,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
+import 'support/legacy_ecg_thresholds.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 3, 8);
 
@@ -32,7 +33,7 @@ Duration _ms(int v) => Duration(milliseconds: v);
 
 /// The outputs in order, as short names.
 class _Run {
-  _Run(int max) : c = EcgTapCounter(max: max);
+  _Run(int max) : c = EcgTapCounter(max: max, thresholds: LegacyEcgThresholds());
   final EcgTapCounter c;
   final List<EcgTapOutput> out = [];
 
@@ -77,7 +78,7 @@ class _Run {
 
 void main() {
   test('the opening is count 2: the double tap that starts the gesture', () {
-    final c = EcgTapCounter(max: 5);
+    final c = EcgTapCounter(max: 5, thresholds: LegacyEcgThresholds());
     c.start(_tap(), at: Duration.zero);
     expect(c.count, 2);
   });

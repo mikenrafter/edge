@@ -30,6 +30,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
+import 'package:openstrap_edge/ui2/profile/device_lab.dart';
 import 'package:openstrap_edge/ui2/profile/live_devices.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
@@ -265,6 +266,55 @@ void main() {
       await t.tap(find.text(_start));
       await _settle(t);
       expect(find.byType(LiveStreamChart), findsNothing);
+      await _unmount(t);
+    });
+  });
+
+  // The same live devices as a tab of the Device lab (no screen of their own).
+  group('as the Device lab\'s Live tab', () {
+    Future<void> pumpLab(WidgetTester t, G6Rig rig) async {
+      t.view.physicalSize = const Size(1170, 15000);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(ChangeNotifierProvider<AppState>.value(
+        value: rig.app,
+        child: MaterialApp(
+          theme: buildTheme(Brightness.light),
+          home: const DeviceLabView(
+            ecgSupported: false,
+            initialTab: LabTab.live,
+            live: LiveDevices(embedded: true),
+          ),
+        ),
+      ));
+      await t.pump();
+    }
+
+    testWidgets('the control is there, under the lab\'s title, with no '
+        'second title', (t) async {
+      final rig = G6Rig();
+      addTearDown(rig.dispose);
+      await pumpLab(t, rig);
+      expect(find.text(_start), findsOneWidget);
+      expect(find.text('Device lab'), findsOneWidget);
+      expect(find.text('Live devices'), findsNothing);
+      await _unmount(t);
+    });
+
+    testWidgets('leaving the Live tab while streaming stops the feed',
+        (t) async {
+      final rig = G6Rig();
+      addTearDown(rig.dispose);
+      await pumpLab(t, rig);
+      await t.tap(find.text(_start));
+      await _settle(t);
+      expect(feedOn(rig.app), isTrue);
+      rig.writes.clear();
+      await t.tap(find.byKey(const ValueKey('device-lab-tab:logs')));
+      await _settle(t);
+      expect(feedOn(rig.app), isFalse);
+      expect(rig.ops, [(Cmd.toggleImuMode, 0), (Cmd.toggleRealtimeHr, 0)],
+          reason: 'no stream left running behind another tab');
       await _unmount(t);
     });
   });

@@ -300,9 +300,11 @@ void main() {
     // What an iPhone offers: every in-app action plus ring and flashlight.
     'gestures_none_selected': (
       1800,
-      const BandGesturesView(
-        chosen: {},
+      BandGesturesView(
+        chosen: const {},
         supported: _gesturesSupported,
+        repeatWindowMs: 2500,
+        onRepeatWindowMs: (_) {},
       ),
     ),
     'gestures_mark_moment_and_flashlight': (
@@ -599,7 +601,11 @@ void main() {
     }
     // Nothing chosen: the replay option is explained, not offered.
     expect(find.text('Turn on Mark a moment first'), findsOneWidget);
-    expect(find.text('Count extra taps with'), findsOneWidget);
+    // No developer mode: no choice of method (it is only ECG touches), and
+    // the timing of the double-tap count is on the screen.
+    expect(find.text('Count extra taps with'), findsNothing);
+    expect(find.text('Timing'), findsOneWidget);
+    expect(find.text('Pause between double taps'), findsOneWidget);
   });
   screenStructure('gestures_mark_moment_and_flashlight',
       fixtures['gestures_mark_moment_and_flashlight']!.$2, () {
