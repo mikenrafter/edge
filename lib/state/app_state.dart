@@ -601,11 +601,13 @@ class AppState extends ChangeNotifier {
   /// The band's haptics: the queue, its ledger, the ended signal and the
   /// delivery of every rhythm (8AE.5). Only entered from inside an
   /// [alertDispatcher] delivery.
-  late final HapticsService haptics = HapticsService(
-    port: BleEngineHapticsPort(() => engine),
-    allowLong: () => Prefs.allowLongHaptics,
-    log: _log,
-  );
+  late final HapticsService haptics = _hapticsForTesting ??
+      HapticsService(
+        port: BleEngineHapticsPort(() => engine),
+        allowLong: () => Prefs.allowLongHaptics,
+        log: _log,
+      );
+  HapticsService? _hapticsForTesting;
 
   /// A rhythm the user just tapped out, played back for them. Still one
   /// dispatcher delivery (own rule, unique event), so it can neither bypass the
@@ -1925,6 +1927,43 @@ class AppState extends ChangeNotifier {
     navRequest.value = t.tab;
   }
 
+  /// The engine's `onCommitBatch` (the ACK gate). See the comments inside.
+  Future<void> _commitSyncBatch(List<RawRecord> raws, List<Sample?> samples,
+      String? trimTokenHex,
+      {List<ArchiveRecord>? archives,
+      List<EcgRawPacket>? ecgRawPackets,
+      String? deviceFamily}) async {
+    // THROWS, never silently succeeds. This is the ACK gate: only
+    // `onCommit` can bank raws + archives + trim cursor in one
+    // transaction, and DrainController reads durability FROM A THROW
+    // (see its safe-trim invariant). Returning quietly here would tell
+    // the drain the chunk was banked, it would ACK, and the band would
+    // trim flash that this reset refused to store — turning a race into
+    // real data loss on a band the user may not be deleting after all if
+    // the reset then fails. A throw blocks the ACK and the records stay
+    // on the strap.
+    if (ResetGate.active) {
+      throw StateError('data reset in progress — refusing to commit');
+    }
+    await (debugNativeCommit ?? _bandHost.commitNativeBatch)(
+        raws, samples, trimTokenHex,
+        archives: archives,
+        ecgRawPackets: ecgRawPackets,
+        deviceFamily: deviceFamily);
+    // The chunk is durable. PROGRESS ONLY from here: the sync panel's
+    // counts. It runs after the commit and can never throw (see
+    // [_reportSyncCommit]), so it cannot fail, delay or reorder the ACK.
+    _reportSyncCommit(raws.length + (archives?.length ?? 0),
+        raws.map((r) => r.recTs));
+  }
+
+  /// Replaces [BandHost.commitNativeBatch] inside [debugCommitSyncBatch];
+  /// [AppState.forTesting] has no band host. Tests only.
+  @visibleForTesting
+  CommitSyncBatchSink? debugNativeCommit;
+  @visibleForTesting
+  CommitSyncBatchSink get debugCommitSyncBatch => _commitSyncBatch;
+
   AppState() {
     final views = WidgetsBinding.instance.platformDispatcher.views;
     final lifecycle = WidgetsBinding.instance.lifecycleState;
@@ -1958,30 +1997,7 @@ class AppState extends ChangeNotifier {
       // durable commit, same arguments, one extra await frame, and the SAME
       // failure contract: `commitNativeBatch` rethrows so
       // `DrainController.commit` still reads durability from a throw.
-      onCommitBatch: (raws, samples, trimTokenHex,
-          {archives, ecgRawPackets, deviceFamily}) async {
-        // THROWS, never silently succeeds. This is the ACK gate: only
-        // `onCommit` can bank raws + archives + trim cursor in one
-        // transaction, and DrainController reads durability FROM A THROW
-        // (see its safe-trim invariant). Returning quietly here would tell
-        // the drain the chunk was banked, it would ACK, and the band would
-        // trim flash that this reset refused to store — turning a race into
-        // real data loss on a band the user may not be deleting after all if
-        // the reset then fails. A throw blocks the ACK and the records stay
-        // on the strap.
-        if (ResetGate.active) {
-          throw StateError('data reset in progress — refusing to commit');
-        }
-        await _bandHost.commitNativeBatch(raws, samples, trimTokenHex,
-            archives: archives,
-            ecgRawPackets: ecgRawPackets,
-            deviceFamily: deviceFamily);
-        // The chunk is durable. PROGRESS ONLY from here: the sync panel's
-        // counts. It runs after the commit and can never throw (see
-        // [_reportSyncCommit]), so it cannot fail, delay or reorder the ACK.
-        _reportSyncCommit(raws.length + (archives?.length ?? 0),
-            raws.map((r) => r.recTs));
-      },
+      onCommitBatch: _commitSyncBatch,
       // Pre-setup fallback only: the drain path archives inside commitSyncBatch.
       onArchiveRecord: (raw) async {
         if (_resetting) return; // see [_resetting]
@@ -2073,9 +2089,12 @@ class AppState extends ChangeNotifier {
   /// [engine] lets a test substitute a BleEngine subclass (e.g. one whose
   /// stream arming throws). When supplied it is used AS GIVEN — its callbacks
   /// are the test's responsibility, not wired back into this AppState.
+  /// [haptics] replaces the band haptics service every producer is handed.
   @visibleForTesting
-  AppState.forTesting({BleEngine? engine, EcgController? ecg}) {
+  AppState.forTesting(
+      {BleEngine? engine, EcgController? ecg, HapticsService? haptics}) {
     _background = false;
+    _hapticsForTesting = haptics;
     _ecg = ecg;
     _gestures = _newGestureController();
     this.engine = engine ??

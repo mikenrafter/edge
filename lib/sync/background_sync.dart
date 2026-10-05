@@ -96,6 +96,19 @@ Future<Profile> _loadProfile() async {
   }
 }
 
+/// Test seams for the headless entries: the phone's power the gate reads, and
+/// how the entries build their [DerivationEngine]. Null = production.
+@visibleForTesting
+PowerSource? debugHeadlessPowerSource;
+@visibleForTesting
+DerivationEngine Function({void Function(String)? log, bool background})?
+    debugHeadlessEngineFactory;
+
+/// The one place a headless entry builds its [DerivationEngine].
+DerivationEngine newHeadlessDerivationEngine(void Function(String) log) =>
+    (debugHeadlessEngineFactory ?? DerivationEngine.new)(
+        log: log, background: true);
+
 /// Whether an automatic derive may run in this headless wake or iOS background
 /// task: the saved Calculations mode against the phone's power now. A platform that
 /// cannot report power leaves the pass allowed, so failed power detection
@@ -112,12 +125,30 @@ Future<bool> mayRunHeadlessAutomaticDerive({PowerSource? powerSource}) async {
         break;
       }
     }
-    final source = powerSource ?? (ownedSource = BatteryPowerSource());
+    final source = powerSource ??
+        debugHeadlessPowerSource ??
+        (ownedSource = BatteryPowerSource());
     return CalcPowerPolicy(mode).mayDeriveAutomatically(await source.read());
   } catch (_) {
     return true;
   } finally {
     ownedSource?.dispose();
+  }
+}
+
+/// The post-drain light derive of [runHeadlessSync], behind the power gate.
+@visibleForTesting
+Future<void> headlessDeriveAfterSync() async {
+  if (await mayRunHeadlessAutomaticDerive()) {
+    try {
+      await newHeadlessDerivationEngine(
+        (l) => debugPrint('[bgsync-derive] $l'),
+      ).run(await _loadProfile());
+    } catch (e) {
+      debugPrint('[bgsync] derive skipped: $e');
+    }
+  } else {
+    debugPrint('[bgsync] automatic derive held by Maximum battery mode.');
   }
 }
 
@@ -354,18 +385,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     // window (bounded LIGHT pass — newest affected day only — so we stay inside
     // the short iOS execution budget). Best-effort; if the slot ends first, the
     // light pass on the next drain or the foreground finalize catches up.
-    if (await mayRunHeadlessAutomaticDerive()) {
-      try {
-        await DerivationEngine(
-          log: (l) => debugPrint('[bgsync-derive] $l'),
-          background: true,
-        ).run(await _loadProfile());
-      } catch (e) {
-        debugPrint('[bgsync] derive skipped: $e');
-      }
-    } else {
-      debugPrint('[bgsync] automatic derive held by Maximum battery mode.');
-    }
+    await headlessDeriveAfterSync();
     debugPrint('[bgsync] done (local drain + light derive).');
     await checkSyncStaleness();
     return true;

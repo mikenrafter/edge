@@ -157,8 +157,14 @@ void main() {
     // transaction, and DrainController reads durability from a throw. A quiet
     // return would ACK and let the band trim flash that was never stored —
     // a race turned into real data loss.
-    for (final f in [src, bg]) {
-      final at = f.indexOf('onCommitBatch:');
+    // AppState's callback is the `_commitSyncBatch` method the constructor
+    // hands over; the headless entry still writes it inline.
+    for (final (f, anchor) in [
+      (src, 'Future<void> _commitSyncBatch('),
+      (bg, 'onCommitBatch:'),
+    ]) {
+      final at = f.indexOf(anchor);
+      expect(at, greaterThanOrEqualTo(0), reason: '$anchor not found');
       final window = f.substring(at, at + 900);
       expect(window.contains('ResetGate.active'), isTrue);
       expect(window.contains('throw StateError'), isTrue,

@@ -1,12 +1,16 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 import 'package:openstrap_edge/compute/calc_power_policy.dart';
+import 'package:openstrap_edge/compute/derivation_engine.dart';
+import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/state/power_source.dart';
 import 'package:openstrap_edge/sync/background_sync.dart';
+import 'package:openstrap_edge/sync/ios_bg_task.dart';
 
 import '../p5/support/fake_power_source.dart';
 
@@ -45,26 +49,100 @@ void main() {
   });
 
   // Both entries build their own DerivationEngine, so the gate has to sit in
-  // front of every one of them (AGENTS 4.7). Pinned by source, as the other
-  // entry-point wiring is: the entries need a band and a platform to run.
-  test('every headless DerivationEngine is built behind the power gate', () {
-    for (final entry in {
-      'lib/sync/background_sync.dart': 'mayRunHeadlessAutomaticDerive()',
-      'lib/sync/ios_bg_task.dart': 'mayRunHeadlessAutomaticDerive()',
-    }.entries) {
-      final src = File(entry.key).readAsStringSync();
-      final gate = src.indexOf(entry.value);
-      expect(gate, greaterThan(0), reason: '${entry.key} asks the gate');
-      var from = 0, engines = 0;
-      while (true) {
-        final at = src.indexOf('DerivationEngine(', from);
-        if (at < 0) break;
-        engines++;
-        expect(at, greaterThan(gate),
-            reason: '${entry.key}: an engine built before the gate');
-        from = at + 1;
-      }
-      expect(engines, greaterThan(0));
+  // front of every one of them (AGENTS 4.7). Each entry is driven with a
+  // recording engine factory and a scripted power source: a blocked mode must
+  // construct and run nothing, an allowed one must run.
+  group('headless entries behind the power gate', () {
+    late List<String> built;
+    late List<String> ran;
+
+    setUp(() {
+      built = [];
+      ran = [];
+      debugHeadlessEngineFactory = ({log, background = false}) {
+        built.add('background=$background');
+        return _RecordingEngine(ran, background: background);
+      };
+      IosBleRestore.foregroundActive = true; // no headless BLE in the test
+    });
+
+    tearDown(() {
+      debugHeadlessEngineFactory = null;
+      debugHeadlessPowerSource = null;
+      IosBleRestore.foregroundActive = false;
+    });
+
+    final blocked = FakePowerSource(charging: false, powerSaver: true);
+    final free = FakePowerSource(charging: true, powerSaver: false);
+
+    test('the post-drain derive of background_sync builds and runs nothing '
+        'when blocked', () async {
+      await saveMode(CalcPowerMode.maxBattery);
+      debugHeadlessPowerSource = blocked;
+      await headlessDeriveAfterSync();
+      expect(built, isEmpty);
+      expect(ran, isEmpty);
+    });
+
+    test('...and runs one light pass when the mode allows it', () async {
+      await saveMode(CalcPowerMode.maxBattery);
+      debugHeadlessPowerSource = free;
+      await headlessDeriveAfterSync();
+      expect(built, ['background=true']);
+      expect(ran, ['run']);
+    });
+
+    for (final syncOnly in [false, true]) {
+      final entry = syncOnly ? 'the iOS refresh task' : 'the iOS processing task';
+
+      test('$entry builds and runs nothing when blocked', () async {
+        await saveMode(CalcPowerMode.maxBattery);
+        debugHeadlessPowerSource = blocked;
+        expect(await IosBgTask.runForTest(syncOnly: syncOnly), isTrue);
+        expect(built, isEmpty);
+        expect(ran, isEmpty);
+      });
+
+      test('$entry runs its derive when the mode allows it', () async {
+        await saveMode(CalcPowerMode.maxBattery);
+        debugHeadlessPowerSource = free;
+        expect(await IosBgTask.runForTest(syncOnly: syncOnly), isTrue);
+        expect(built, ['background=true']);
+        expect(ran, syncOnly ? ['run'] : ['run', 'rescanRecent']);
+      });
     }
   });
+}
+
+/// A [DerivationEngine] that records the passes it is asked for and computes
+/// nothing.
+class _RecordingEngine extends DerivationEngine {
+  _RecordingEngine(this.calls, {required super.background});
+  final List<String> calls;
+
+  @override
+  Future<int> run(
+    Profile profile, {
+    bool heavy = false,
+    bool force = false,
+    bool changedOnly = false,
+    ana.CalculationMode calculationMode = ana.CalculationMode.forced,
+    void Function(String day, int index, int total)? onDayDone,
+    void Function(int total)? onScope,
+    void Function(List<String> days)? onScopeDays,
+    void Function(bool active)? onCrossDay,
+  }) async {
+    calls.add('run');
+    return 0;
+  }
+
+  @override
+  Future<int> rescanRecent(
+    Profile profile, {
+    void Function(String day, int index, int total)? onDayDone,
+    void Function(List<String> days)? onScopeDays,
+  }) async {
+    calls.add('rescanRecent');
+    return 0;
+  }
 }

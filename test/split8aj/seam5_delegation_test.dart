@@ -150,13 +150,10 @@ void main() {
       expect(stored, greaterThan(notify));
     });
 
-    test('the drain callbacks: ACK gate first, progress report after, never '
-        'before', () {
+    test('the drain callbacks: the ACK gate refuses a commit during a reset',
+        () {
       final s = _src();
-      final commit = s.indexOf('await _bandHost.commitNativeBatch(');
-      final report = s.indexOf('_reportSyncCommit(raws.length');
-      expect(commit, greaterThan(0));
-      expect(report, greaterThan(commit));
+      // The commit-then-report order is run in controls/sync_wiring_guard_test.
       expect(s.contains("throw StateError('data reset in progress — refusing to commit');"), isTrue);
     });
 

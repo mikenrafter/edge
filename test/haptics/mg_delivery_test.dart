@@ -3,10 +3,10 @@
 // against a fake and a virtual band); this file keeps the seam's own tests and
 // the guards on which AppState call sites hand their delivery to the service.
 //
-// AppState is too heavy to drive here (its engine is a concrete BleEngine and
-// the gen5 check lives in a live GATT session), so the behaviour sits in a
-// seam in lib/haptics/haptic_player.dart that app_state hands its band
-// primitives to, and the wiring is pinned by reading app_state.dart:
+// The behaviour sits in a seam in lib/haptics/haptic_player.dart that the
+// service hands its band primitives to. Which AppState call sites hand their
+// delivery to the service is run against a recording service (AppState
+// .forTesting(haptics:)); a few paths that need a live session are still read:
 //
 //   Future<BuzzDelivery> deliverBandSequence(BuzzSequence s, {
 //     required HapticDeviceProfile? profile,   // null = gen4 / no profile
@@ -22,20 +22,137 @@
 // none (gen4), or when no plan compiles, it plays today's per-tap buzz.
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
-import 'package:openstrap_edge/haptics/band_queue.dart' show kBandBuzzPlayback;
+import 'package:openstrap_edge/gestures/strap_event.dart';
+import 'package:openstrap_edge/haptics/band_queue.dart'
+    show BandCommandLedger, BandJobToken, kBandBuzzPlayback;
 import 'package:openstrap_edge/haptics/haptic_compiler.dart';
 import 'package:openstrap_edge/haptics/haptic_player.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
+import 'package:openstrap_edge/haptics/haptics_service.dart';
 import 'package:openstrap_edge/haptics/tap_notes.dart';
+import 'package:openstrap_edge/notify/alert_rule.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
+import 'package:openstrap_edge/notify/notification_prefs.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/sync/paired_device.dart' show PairedDevice;
+import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import '../phase8/support/dart_source.dart';
+import '../split8aj/support/derive_harness.dart' show deriveDbSetUp, deriveDbTearDown;
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
+
+const _db = 'haptics_mg_delivery.db';
+
+/// A band that is always there and speaks gen5.
+class _Port implements BandHapticsPort {
+  @override
+  bool get isConnected => true;
+  @override
+  String? get generation => 'gen5';
+  @override
+  Future<bool> buzzBand({int holdMs = 0}) async => true;
+  @override
+  Future<bool> buzzMaverickPattern(List<int> effects, int loop) async => true;
+}
+
+/// The service every producer is handed. It records what it was asked and
+/// answers `complete`; the real queue, ledger and port stay behind it.
+class _RecordingHaptics extends HapticsService {
+  _RecordingHaptics() : super(port: _Port(), allowLong: () => false);
+  final events = <String>[];
+  final delivered = <BuzzSequence>[];
+  final timeoutFor = <BuzzSequence>[];
+  final heard = <(int, bool)>[];
+
+  @override
+  Future<BuzzDelivery> deliver(BuzzSequence s,
+      {void Function(HapticPlayStart)? onStart}) async {
+    events.add('deliver');
+    delivered.add(s);
+    return BuzzDelivery.complete;
+  }
+
+  @override
+  Future<BuzzDelivery> runJob(
+    int commands,
+    Future<BuzzDelivery> Function(BandJobToken job) job, {
+    Duration? timeout,
+    Duration settle = kBandBuzzPlayback,
+  }) async {
+    events.add('runJob:$commands');
+    return BuzzDelivery.complete;
+  }
+
+  @override
+  Duration sequenceTimeout(BuzzSequence s) {
+    timeoutFor.add(s);
+    return const Duration(seconds: 12);
+  }
+
+  @override
+  Future<bool> buzzForDuration(int holdMs) async {
+    events.add('hold:$holdMs');
+    return true;
+  }
+
+  @override
+  void onBandEvent(StrapEvent e) => heard.add((e.eventId, e.isLive));
+
+  @override
+  void beginLab() => events.add('beginLab');
+  @override
+  void endLab() => events.add('endLab');
+  @override
+  Future<bool> runLab(Future<void> Function() body) async {
+    events.add('runLab');
+    await body();
+    return true;
+  }
+}
+
+/// A real AppState on an engine with a fake link, handed the recording
+/// service. Anything a producer writes to the link itself is counted.
+class _Wired {
+  _Wired() {
+    app = AppState.forTesting(haptics: svc);
+    app.engine.debugInstallFakeLink(
+      band: BandProfile.gen5,
+      listening: true,
+      onWrite: (Uint8List frame) async {
+        linkWrites++;
+        return true;
+      },
+    );
+    app.paired = PairedDevice('AA:BB:CC:DD:EE:FF', '4C2248092');
+    app.engine.state.generation = 'gen5';
+    app.engine.state.connection = 'connected';
+  }
+
+  final svc = _RecordingHaptics();
+  late final AppState app;
+  int linkWrites = 0;
+
+  /// A band event [id] stamped [at] on the strap clock, through the engine's
+  /// live event path.
+  void event(int id, DateTime at) {
+    final ms = at.millisecondsSinceEpoch;
+    final inner = Uint8List(12);
+    final v = ByteData.sublistView(inner);
+    inner[0] = PacketType.event;
+    inner[1] = 0x09;
+    v.setUint16(2, id, Endian.little);
+    v.setUint32(4, ms ~/ 1000, Endian.little);
+    v.setUint16(8, (ms % 1000) * 32768 ~/ 1000, Endian.little);
+    app.engine.debugProcessImmediateFrame(Frame(inner, true, true));
+  }
+}
 
 /// Records which band primitive each delivery used.
 class _Rig {
@@ -83,6 +200,7 @@ class _Rig {
 final _twoHolds = BuzzSequence([0, 875], durationsMs: [500, 500]);
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   group('gen5 with a profile: the compiled plan is written', () {
     test('Maverick commands from planForTaps, never per-tap buzzes', () {
       fakeAsync((async) {
@@ -369,65 +487,127 @@ void main() {
   // What those guards pinned inside the helper is now a behaviour test in
   // haptics_service_test.dart; what stays here is which AppState call sites
   // hand their delivery to the service.
-  group('app_state wiring', () {
-    final src = File('lib/state/app_state.dart').readAsStringSync();
-    final code = codeOnly(src);
-
-    test('one helper, haptics.deliver, serves all the call sites', () {
-      // alertDispatcher.bandSequence and .bandSequenceDelivery
-      final start = code.indexOf('late final AlertDispatcher alertDispatcher =');
-      final end = code.indexOf('AlertDispatcher debugAlertDispatcher', start);
-      final dispatcher = code.substring(start, end);
-      for (final param in ['bandSequence:', 'bandSequenceDelivery:']) {
-        final at = dispatcher.indexOf(param);
-        expect(at, greaterThanOrEqualTo(0), reason: param);
-        final rest = dispatcher.substring(at + param.length);
-        final next = rest.indexOf(RegExp(r'\n\s+\w+:'));
-        final arg = next < 0 ? rest : rest.substring(0, next);
-        expect(arg, contains('haptics.deliver'), reason: param);
-      }
-
-      // previewBuzzSequence
-      final preview = bodyOf(src, 'Future<bool> previewBuzzSequence(');
-      expect(preview, contains('haptics.deliver('));
+  // Every producer of a band haptic, driven through the real AppState against
+  // one recording HapticsService (AppState.forTesting(haptics:)). The service
+  // records instead of playing, so a producer that writes to the band by itself
+  // shows up as a link write the service never saw.
+  group('every producer hands its delivery to the one service', () {
+    late _Wired w;
+    setUp(() async {
+      BleEngine.resetBandClaimForTest();
+      await deriveDbSetUp(_db);
+      w = _Wired();
+    });
+    tearDown(() async {
+      w.app.dispose();
+      BleEngine.resetBandClaimForTest();
+      await deriveDbTearDown(_db);
     });
 
-    test('the rule-alert path (_dispatchBandAlert) uses it too (a fourth site '
-        'the spec list of three misses)', () {
-      final body =
-          codeOnly(bodyOf(src, 'Future<AlertDeliveryOutcome> _dispatchBandAlert('));
-      expect(body, isNotEmpty);
-      expect(body, contains('haptics.deliver('));
-      expect(body, isNot(contains('deliverBuzzSequence(')));
-      expect(body, contains('haptics.sequenceTimeout('));
+    final seq = BuzzSequence([0, 875], durationsMs: [500, 500]);
+    AlertRule rule({BuzzSequence? saved}) => AlertRule(
+          id: 'mg_probe',
+          kind: 'buzzPreview',
+          destinations: AlertRule.band,
+          executionMode: AlertExecutionMode.phoneLive,
+          staleAfter: const Duration(seconds: 10),
+          channelPolicyId: 'buzz_preview',
+          buzzSequence: saved,
+        );
+
+    test('the preview delivers through the service and takes its deadline '
+        'from it', () async {
+      expect(await w.app.previewBuzzSequence(seq), isTrue);
+      expect(w.svc.delivered, [seq]);
+      expect(w.svc.timeoutFor, contains(seq));
+      expect(w.linkWrites, 0);
     });
 
-    test('no call site still plays the per-tap sequence itself', () {
-      final start = code.indexOf('late final AlertDispatcher alertDispatcher =');
-      final end = code.indexOf('AlertDispatcher debugAlertDispatcher', start);
-      final dispatcher = code.substring(start, end);
-      expect(dispatcher, isNot(contains('playBuzzSequence(')));
-      expect(dispatcher, isNot(contains('deliverBuzzSequence(')));
-      final preview = bodyOf(src, 'Future<bool> previewBuzzSequence(');
-      expect(preview, isNot(contains('deliverBuzzSequence(')));
+    test('a rule\'s saved rhythm goes through the dispatcher\'s sequence '
+        'transport into the service, with the service\'s deadline', () async {
+      final now = DateTime.now();
+      final out = await w.app.alertDispatcher.dispatch(
+        rule(saved: seq),
+        eventId: 'saved:${now.microsecondsSinceEpoch}',
+        sourceTime: now,
+        historical: false,
+      );
+      expect(out.targets, ['band']);
+      expect(w.svc.delivered, [seq]);
+      expect(w.svc.timeoutFor, contains(seq));
+      expect(w.linkWrites, 0);
     });
 
-    test('the preview delivery\'s deadline comes from the service\'s '
-        'sequenceTimeout', () {
-      final preview = bodyOf(src, 'Future<bool> previewBuzzSequence(');
-      expect(preview, contains('bandTimeout:'));
-      expect(preview, contains('haptics.sequenceTimeout('));
-      expect(preview, isNot(contains('bandTimeout: s.transportTimeout')));
+    test('a rule with no rhythm plays the dispatcher\'s default band buzz as '
+        'one queue job', () async {
+      final now = DateTime.now();
+      final out = await w.app.alertDispatcher.dispatch(
+        rule(),
+        eventId: 'plain:${now.microsecondsSinceEpoch}',
+        sourceTime: now,
+        historical: false,
+      );
+      expect(out.targets, ['band']);
+      expect(w.svc.events, ['runJob:1']);
+      expect(w.linkWrites, 0);
     });
 
-    test('the strap\'s events reach the service from _onLiveEvent', () {
-      final live = bodyOf(src, 'void _onLiveEvent(');
-      expect(live, contains('hardwareProbes.onBandEvent(e)'));
-      expect(codeOnly(live), contains('haptics.onBandEvent(e)'),
-          reason: '_onLiveEvent must feed the live ended event to the '
-              'service (what it does with it: haptics_service_test.dart)');
+    test('a numbered pattern (Tasker) is one queue job', () async {
+      // Quiet hours would hold it at night; the clock is not the subject.
+      await (await NotificationPrefs.load()).copyWith(quietEnabled: false).save();
+      await w.app.taskerBridge.buzzPattern(1);
+      expect(w.svc.events, ['runJob:1']);
+      expect(w.linkWrites, 0);
+    });
+
+    test('the user-facing test buzz is one queue job', () async {
+      await w.app.testBuzzPattern(1);
+      expect(w.svc.events, ['runJob:1']);
+      expect(w.linkWrites, 0);
+    });
+
+    test('a gesture cue is delivered by the service', () async {
+      await w.app.gestureCues.confirm();
+      expect(w.svc.events, contains('deliver'));
+      expect(w.linkWrites, 0);
+    });
+
+    test('the notification relay is handed the queue, the delivery and its '
+        'deadline', () async {
+      final relay = w.app.notificationRelay;
+      expect(await relay.deliverSequence!(seq), BuzzDelivery.complete);
+      expect(relay.sequenceTimeout!(seq), const Duration(seconds: 12));
+      expect(await relay.runBand!(2, (_) async => BuzzDelivery.complete),
+          BuzzDelivery.complete);
+      expect(await relay.buzzForDuration!(300), isTrue);
+      expect(w.svc.events, ['deliver', 'runJob:2', 'hold:300']);
+      expect(w.svc.timeoutFor, [seq]);
+    });
+
+    test('the probes count into the service\'s ledger and take its lab slot',
+        () async {
+      final probes = w.app.hardwareProbes;
+      expect(identical(probes.ledger, w.svc.ledger), isTrue);
+      probes.openLab();
+      probes.closeLab();
+      expect(await probes.runLab!(() async {}), isTrue);
+      expect(w.svc.events, ['beginLab', 'endLab', 'runLab']);
+      // The buzz probe reserves its own commands; a second record here would
+      // count each buzz twice against the band's limit.
+      expect(await probes.sendBuzz((_, _) {}), isTrue);
+      expect(w.svc.commandsLeft, BandCommandLedger.maxCommands);
+    });
+
+    test('the strap\'s live events reach the service, late ones included '
+        '(the service decides what they release)', () async {
+      final now = DateTime.now();
+      w.event(100, now);
+      w.event(60, now);
+      w.event(100, now.subtract(const Duration(minutes: 5)));
+      expect(w.svc.heard, [(100, true), (60, true), (100, false)]);
     });
   });
+
   group('what a delivery costs the queue', () {
     test('bandSequenceCommands: the plan\'s commands on a profile, the taps '
         'without one', () {
@@ -466,17 +646,12 @@ void main() {
     // The gesture cues live in the gesture controller (8AJ seam 3).
     final gestures = File('lib/state/gesture_controller.dart').readAsStringSync();
 
-    test('AppState builds one service, which owns the one queue and ledger; '
-        'the probes count into that ledger', () {
+    test('AppState builds one service, which owns the one queue and ledger',
+        () {
       expect(RegExp(r'HapticsService\(').allMatches(code), hasLength(1));
       expect(code, isNot(contains('BandCommandLedger(')));
       expect(code, isNot(contains('BandHapticQueue(')));
       expect(RegExp(r'BandHapticQueue\(').allMatches(svc), hasLength(1));
-      final start = code.indexOf('late final HardwareProbeRunner hardwareProbes');
-      final probes =
-          code.substring(start, code.indexOf('Future<bool> _probeBuzz(', start));
-      expect(probes, contains('ledger: haptics.ledger'));
-      expect(probes, contains('runLab: haptics.runLab'));
     });
 
     test('the setting reaches the service from Prefs, once', () {
@@ -491,9 +666,7 @@ void main() {
       expect(code, isNot(contains('.run(\n        job')));
     });
 
-    test('every band haptic path runs inside a queue job', () {
-      // The helper for the four rhythm call sites.
-      expect(code, contains('haptics.deliver('));
+    test('the paths no test above reaches run inside a queue job', () {
       // The ECG touch counter and its failure buzz.
       // 8AF.6: the count buzz is the gesture cues', whose delivery is a queue
       // job (compiled: haptics.deliver; no profile: haptics.runJob).
@@ -504,20 +677,15 @@ void main() {
       expect(cues, contains('haptics.runJob('));
       expect(bodyOf(gestures, 'Future<bool> _ecgTapFailBuzz('),
           contains('cues.failed'));
-      // The user-facing test buzz, pattern test and find-my-strap.
-      expect(bodyOf(src, 'Future<bool> _userBuzz('), contains('haptics.runJob('));
-      // The alert dispatcher's default band transport (tap ack, water and
-      // medication buzzes without a saved rhythm).
-      final start = code.indexOf('late final AlertDispatcher alertDispatcher =');
-      final dispatcher =
-          code.substring(start, code.indexOf('AlertDispatcher debugAlertDispatcher', start));
-      final band = dispatcher.substring(
-          dispatcher.indexOf('band:'), dispatcher.indexOf('bandSequence:'));
-      expect(band, contains('haptics.runJob('));
-      // The alarm and fixed pattern of _dispatchBandAlert.
+      // The alarm and fixed pattern of _dispatchBandAlert, and the rule
+      // rhythm it plays: only reachable from a workout, a breathing session or
+      // a wake, which need a live band session.
       final alert = codeOnly(
           bodyOf(src, 'Future<AlertDeliveryOutcome> _dispatchBandAlert('));
       expect(alert, contains('haptics.runJob('));
+      expect(alert, contains('haptics.deliver('));
+      expect(alert, isNot(contains('deliverBuzzSequence(')));
+      expect(alert, contains('haptics.sequenceTimeout('));
     });
 
     test('the dispatcher gives the queue its time', () {
@@ -525,8 +693,6 @@ void main() {
       final dispatcher =
           code.substring(start, code.indexOf('AlertDispatcher debugAlertDispatcher', start));
       expect(dispatcher, contains('bandQueueWait: kBandQueueWait'));
-      expect(dispatcher, contains('sequenceTimeout:'));
-      expect(dispatcher, contains('haptics.sequenceTimeout'));
     });
 
     test('every engine buzz left in AppState sits inside a queue job (or is a '
@@ -557,22 +723,6 @@ void main() {
         }
       }
       expect(offenders, isEmpty, reason: offenders.join('\n'));
-    });
-
-    test('the buzz probe counts its writes through the probe\'s own '
-        'reservation, not a second record here', () {
-      expect(bodyOf(src, 'Future<bool> _probeBuzz('),
-          isNot(contains('haptics.ledger.record(')));
-    });
-
-    test('the notification relay is handed the queue, the delivery and its '
-        'deadline', () {
-      final start = code.indexOf('late final NotificationRelay notificationRelay');
-      final relay =
-          code.substring(start, code.indexOf('late final WaterBuzzer', start));
-      expect(relay, contains('deliverSequence: haptics.deliver'));
-      expect(relay, contains('runBand: haptics.runJob'));
-      expect(relay, contains('sequenceTimeout:'));
     });
 
     // 8AD: both rows open the pattern picker, which hands the profile on to

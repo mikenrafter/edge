@@ -30,7 +30,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../compute/derivation_engine.dart';
 import '../compute/profile.dart';
 import '../ble/ios_ble_restore.dart';
 import '../data/local_repository_impl.dart';
@@ -76,6 +75,10 @@ class IosBgTask {
     });
   }
 
+  @visibleForTesting
+  static Future<bool> runForTest({required bool syncOnly}) =>
+      _run(syncOnly: syncOnly);
+
   static Future<bool> _run({required bool syncOnly}) async {
     // ONE shared gate across every headless entry point (BGProcessingTask,
     // BGAppRefreshTask, the BLE-restore wake) — see HeadlessSyncGate. A busy
@@ -104,9 +107,8 @@ class IosBgTask {
             // Heavy derive pass (full sleep staging + 24h spectra, stale days).
             try {
               final profile = await _loadProfile();
-              final engine = DerivationEngine(
-                  log: (l) => debugPrint('[ios-bgtask-derive] $l'),
-                  background: true);
+              final engine = newHeadlessDerivationEngine(
+                  (l) => debugPrint('[ios-bgtask-derive] $l'));
               await engine.run(profile, heavy: true);
               // Baseline-dirty rescan on the iOS BGTask tick: refresh
               // baseline-dependent scalars on recent finalized days if the
@@ -121,9 +123,8 @@ class IosBgTask {
             // This keeps today's metrics fresh without tripping the CPU watchdog.
             try {
               final profile = await _loadProfile();
-              final engine = DerivationEngine(
-                  log: (l) => debugPrint('[ios-bgrefresh-derive] $l'),
-                  background: true);
+              final engine = newHeadlessDerivationEngine(
+                  (l) => debugPrint('[ios-bgrefresh-derive] $l'));
               await engine.run(profile, heavy: false);
               await _refreshWidgetSnapshot(profile);
             } catch (e) {
