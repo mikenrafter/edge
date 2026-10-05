@@ -8,7 +8,7 @@
 //   3. a trend delta was drawn against a "1-day average".
 //
 // Health is pumped with `HealthScreen(data:, tab:)` and no AppState, the way the
-// existing goldens do. Sub-tab order: Last night 0, Today 1, Trends 2, Explore 3, Labs 4.
+// existing goldens do. Sub-tab order: Last night 0, Today 1, Trends 2, Labs 3.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

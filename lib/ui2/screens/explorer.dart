@@ -166,6 +166,32 @@ class _Pick {
   bool get hasData => line != null && !line!.isEmpty;
 }
 
+/// The Explorer as a pushed screen: a NavBar over [ExplorerView], scrolling.
+/// It is not a Health tab (it is not ready for everyone); the only way in is
+/// the Developer group in Settings.
+class ExplorerScreen extends StatelessWidget {
+  const ExplorerScreen({super.key});
+
+  @override
+  Widget build(BuildContext c) => Scaffold(
+        backgroundColor: P.of(c).bg,
+        body: SafeArea(
+          child: Column(children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: S.x4),
+              child: NavBar('Data Explorer'),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x4),
+                children: const [ExplorerView()],
+              ),
+            ),
+          ]),
+        ),
+      );
+}
+
 class ExplorerView extends StatefulWidget {
   /// [today] ('YYYY-MM-DD', local) is injectable for tests; null is the real one.
   const ExplorerView({super.key, this.today});

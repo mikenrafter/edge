@@ -1,20 +1,23 @@
 // Oct 4: Home's sync UI lives in the greeting header, not in a card above it.
 //
 //   Good afternoon
-//   Sunday, 4 October
-//   Synced through 15:33          1 h ago [Sync now] (gear)   <- center line
+//   Sunday, 4 October             1 h ago [Sync now] (gear)   <- row 1
+//   Synced through 15:33
 //   59% · Connected
 //
-// While syncing the center line LEADS with the status sentence ("Downloading…"),
-// then the timer, then "Show details"; "Synced through" is hidden while a status
-// shows (it is one tap away in the sheet). The spinner replaces the settings
+// Row 1 is the first row under the greeting and its centre is level with the
+// settings button's centre. The date stays left; the timer and the clickable
+// (Show details while syncing, Sync now when idle) are right-aligned, just left
+// of the button. While syncing, row 1 LEADS with the status sentence
+// ("Downloading…") in place of the date. The spinner replaces the settings
 // button's gear icon (same button, same tap); Sync now is hidden meanwhile. A
-// problem sentence leads "Show details". "Show details" opens a bottom sheet
-// with the four steps. No percentages, no estimates: absent means nothing.
+// problem sentence takes the status slot. "Synced through" is always row 2.
+// "Show details" opens a bottom sheet with the four steps. No percentages, no
+// estimates: absent means nothing.
 //
 // The four lines keep the tight rhythm they had before the sync UI moved in:
-// the center line's 44 pt hit target overhangs its neighbours, it does not
-// grow the layout.
+// row 1's 44 pt hit targets overhang their neighbours, they do not grow the
+// layout.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -116,8 +119,8 @@ Widget _home(AppState app, {double scale = 1}) => MultiProvider(
       data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
       child: child!,
     ),
-    home: const Scaffold(
-      body: HomeScreen(data: HomeData(dayId: '2026-10-04'), hour: 15),
+    home: Scaffold(
+      body: HomeScreen(data: const HomeData(dayId: '2026-10-04'), hour: 15),
     ),
   ),
 );
@@ -147,12 +150,11 @@ Finder _text(Pattern p) => find.byWidgetPredicate(
           (p is RegExp ? p.hasMatch(w.data!) : w.data == p)),
 );
 
-/// The data-edge text, whichever width it was given.
-Finder get _through => find.byWidgetPredicate(
-  (w) =>
-      w is Text &&
-      (w.data == 'Synced through 15:33' || w.data == 'Through 15:33'),
-);
+/// Row 2, the data edge.
+Finder get _through => find.text('Synced through 15:33');
+
+/// Row 1 when idle.
+Finder get _date => find.text('Sunday, 4 October');
 
 Finder get _gear => find.byIcon(LucideIcons.settings);
 Finder get _spinner => find.byType(CircularProgressIndicator);
@@ -174,6 +176,30 @@ final _clockRe = RegExp(r'^\d+:\d\d$');
 double _x(WidgetTester t, Finder f) => t.getCenter(f.first).dx;
 double _y(WidgetTester t, Finder f) => t.getCenter(f.first).dy;
 
+/// The coloured disc of the settings button (40 x 40, inside its 44 pt target).
+Finder get _disc => find.descendant(
+  of: _settingsButton,
+  matching: find.byWidgetPredicate(
+    (w) => w is Container && w.decoration is BoxDecoration,
+  ),
+);
+
+/// Row 1's centre must be level with the button's, whichever text is on it.
+void _expectLevel(WidgetTester t, Finder row1Text) {
+  expect(
+    (t.getCenter(row1Text.first).dy - t.getCenter(_disc).dy).abs(),
+    lessThanOrEqualTo(2),
+    reason: 'row 1 centre vs settings button centre',
+  );
+}
+
+/// The gap from the right-aligned cluster's last text to the button's disc:
+/// tight, but not touching.
+void _expectButtonGap(WidgetTester t, Finder lastRight) {
+  final gap = t.getTopLeft(_disc).dx - t.getTopRight(lastRight.first).dx;
+  expect(gap, inInclusiveRange(6, 16), reason: 'text to button gap');
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   // The real type: the test font is a full em wide per glyph, which would force
@@ -182,39 +208,54 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('idle', () {
-    testWidgets('center line: through, time since sync, Sync now, then the gear',
-        (t) async {
+    testWidgets('row 1: the date, then time since sync and Sync now '
+        'right-aligned against the gear, level with it', (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
 
-      expect(_text('Synced through 15:33'), findsOneWidget);
+      expect(_date, findsOneWidget);
       expect(find.text('1 h ago'), findsOneWidget);
       expect(find.text('Sync now'), findsOneWidget);
       expect(find.text('Show details'), findsNothing);
       expect(_spinner, findsNothing);
 
       // Left to right, all on the one line.
-      final through = _text('Synced through 15:33');
-      expect(_x(t, through), lessThan(_x(t, find.text('1 h ago'))));
+      expect(_x(t, _date), lessThan(_x(t, find.text('1 h ago'))));
       expect(_x(t, find.text('1 h ago')), lessThan(_x(t, find.text('Sync now'))));
       expect(t.getTopRight(find.text('Sync now')).dx,
           lessThan(t.getTopLeft(_gear).dx),
           reason: 'the button sits just left of the settings gear');
-      expect((_y(t, through) - _y(t, find.text('1 h ago'))).abs(), lessThan(2));
-      expect((_y(t, through) - _y(t, find.text('Sync now'))).abs(), lessThan(2));
+      expect((_y(t, _date) - _y(t, find.text('1 h ago'))).abs(), lessThan(2));
+      expect((_y(t, _date) - _y(t, find.text('Sync now'))).abs(), lessThan(2));
+
+      // Row 1 is level with the button, and the cluster hugs it.
+      _expectLevel(t, _date);
+      _expectLevel(t, find.text('1 h ago'));
+      _expectLevel(t, find.text('Sync now'));
+      _expectButtonGap(t, find.text('Sync now'));
+      // Right-aligned: the date is far left, the cluster far right.
+      expect(t.getTopLeft(_date).dx, lessThan(40));
+      expect(t.getTopLeft(find.text('1 h ago')).dx, greaterThan(180));
+
+      // "Synced through" is row 2, under the date; the battery line is last.
+      expect(_y(t, _through), greaterThan(_y(t, _date)));
+      expect(t.getTopLeft(_through).dx, lessThan(40));
+      expect(_y(t, find.text('59% · Connected')), greaterThan(_y(t, _through)));
+      expect(_y(t, find.textContaining('Good afternoon')), lessThan(_y(t, _date)));
       await _end(t);
     });
 
-    testWidgets('the battery line keeps the connection, under the center line',
+    testWidgets('the battery line keeps the connection, under the sync rows',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
       expect(find.text('59% · Connected'), findsOneWidget);
-      expect(_y(t, find.text('59% · Connected')),
-          greaterThan(_y(t, _text('Synced through 15:33'))));
-      // Connection is said once: not in the center line.
+      expect(_y(t, find.text('59% · Connected')), greaterThan(_y(t, _through)),
+          reason: 'the battery line is last');
+      expect(_y(t, find.text('59% · Connected')), greaterThan(_y(t, _date)));
+      // Connection is said once: not in row 1.
       expect(find.textContaining('Band not connected'), findsNothing);
       await _end(t);
     });
@@ -237,29 +278,35 @@ void main() {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
-      final date = find.text('Sunday, 4 October');
-      final center = _text('Synced through 15:33');
+      final row1 = _date;
+      final row2 = _through;
       final battery = find.text('59% · Connected');
-      final line = t.getSize(center).height;
-      // Before the sync UI moved in: date, center line, 2 pt, battery. The
-      // center line's 44 pt hit target must not add its own height.
-      expect(t.getTopLeft(center).dy - t.getBottomLeft(date).dy, lessThan(2));
+      final line = t.getSize(row1).height;
+      // Row 1, row 2, 2 pt, battery. Row 1's 44 pt hit targets must not add
+      // their own height.
+      expect(t.getTopLeft(row2).dy - t.getBottomLeft(row1).dy, lessThan(2));
       expect(
-        t.getTopLeft(battery).dy - t.getBottomLeft(date).dy,
+        t.getTopLeft(battery).dy - t.getBottomLeft(row1).dy,
         lessThanOrEqualTo(line + 2 + 1),
-        reason: 'date bottom to battery top is one text line and a 2 pt gap',
+        reason: 'row 1 bottom to battery top is one text line and a 2 pt gap',
+      );
+      expect(
+        t.getTopLeft(row1).dy -
+            t.getBottomLeft(find.textContaining('Good afternoon')).dy,
+        lessThan(line + 8),
+        reason: 'row 1 follows the greeting with no extra padding',
       );
       await _end(t);
     });
 
-    testWidgets('the settings button stays centred on the header block',
+    testWidgets('the settings button is level with row 1, not the block',
         (t) async {
       final app = _App(pres: _idle(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
-      final top = t.getTopLeft(find.textContaining('Good afternoon')).dy;
-      final bottom = t.getBottomLeft(find.text('59% · Connected')).dy;
-      expect(t.getCenter(_gear).dy, closeTo((top + bottom) / 2, 2));
+      _expectLevel(t, _date);
+      expect(t.getSize(_disc), const Size(40, 40),
+          reason: 'the button keeps its size');
       await _end(t);
     });
 
@@ -301,9 +348,9 @@ void main() {
         expect(t.getCenter(find.byWidget(card.widget)).dy, greaterThan(greetingY),
             reason: 'nothing above the greeting is a card any more');
       }
-      // The status is below the greeting now, not above it.
+      // The sync row is below the greeting now, not above it.
       expect(_y(t, find.textContaining('Good afternoon')),
-          lessThan(_y(t, _text('Synced through 15:33'))));
+          lessThan(_y(t, _date)));
       await _end(t);
     });
 
@@ -323,8 +370,8 @@ void main() {
   });
 
   group('syncing', () {
-    testWidgets('the status sentence leads, then the timer, then Show details',
-        (t) async {
+    testWidgets('the status sentence leads on the left; the timer and Show '
+        'details are right-aligned against the button', (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
@@ -338,15 +385,28 @@ void main() {
       expect(_x(t, timer), lessThan(_x(t, details)));
       expect((_y(t, _status) - _y(t, timer)).abs(), lessThan(2));
       expect((_y(t, _status) - _y(t, details)).abs(), lessThan(2));
+
+      // Level with the button; the cluster hugs it, the status stays left.
+      _expectLevel(t, _status);
+      _expectLevel(t, timer);
+      _expectLevel(t, details);
+      _expectButtonGap(t, details);
+      expect(t.getTopLeft(_status).dx, lessThan(40));
+      expect(t.getTopLeft(timer).dx, greaterThan(180));
+      // The timer sits just before the clickable, as it did on one line.
+      expect(t.getTopLeft(details).dx - t.getTopRight(timer).dx,
+          inInclusiveRange(0, 12));
+
+      // The status takes the date's row.
+      expect(_date, findsNothing);
+      expect(_y(t, _through), greaterThan(_y(t, _status)));
       // No percentage, no estimate on the line.
       expect(find.textContaining('%'), findsOneWidget,
           reason: 'only the battery level');
       expect(find.textContaining('to go'), findsNothing);
 
-      // "Synced through" takes a back seat by getting out of the way: it is in
-      // the sheet, not on the line, while a status shows.
-      expect(_through, findsNothing);
-      expect(find.textContaining('Synced through'), findsNothing);
+      // "Synced through" stays on row 2 while a status shows.
+      expect(_through, findsOneWidget);
 
       // Sync now and the old trailing spinner are gone; the connection line
       // is unchanged.
@@ -369,10 +429,9 @@ void main() {
           findsOneWidget);
       expect(_gear, findsNothing);
 
-      // Same place as the gear was: far right, centred on the header block.
-      final top = t.getTopLeft(find.textContaining('Good afternoon')).dy;
-      final bottom = t.getBottomLeft(find.text('59% · Connected')).dy;
-      expect(t.getCenter(_spinner).dy, closeTo((top + bottom) / 2, 2));
+      // Same place as the gear was: far right, level with row 1.
+      expect((t.getCenter(_spinner).dy - _y(t, _status)).abs(),
+          lessThanOrEqualTo(2));
       expect(t.getTopRight(_settingsButton).dx, lessThanOrEqualTo(390));
       expect(t.getTopLeft(_settingsButton).dx, greaterThan(300));
 
@@ -411,19 +470,38 @@ void main() {
       await _end(t);
     });
 
-    testWidgets('the center line is not taller while syncing', (t) async {
+    testWidgets('the status takes the date\'s place: same row, same height',
+        (t) async {
+      final idle = _App(pres: _idle(), through: _edge);
+      addTearDown(idle.dispose);
+      await _pump(t, idle);
+      final idleY = _y(t, _date);
+      final idleThroughY = _y(t, _through);
+      final idleButtonY = t.getCenter(_disc).dy;
+      await _end(t);
+
+      final app = _App(pres: _syncing(), through: _edge);
+      addTearDown(app.dispose);
+      await _pump(t, app);
+      expect(_y(t, _status), closeTo(idleY, 1));
+      expect(_y(t, _through), closeTo(idleThroughY, 1));
+      expect(t.getCenter(_disc).dy, closeTo(idleButtonY, 1));
+      await _end(t);
+    });
+
+    testWidgets('the sync row is not taller while syncing', (t) async {
       final idle = _App(pres: _idle(), through: _edge);
       addTearDown(idle.dispose);
       await _pump(t, idle);
       final idleGap = t.getTopLeft(find.text('59% · Connected')).dy -
-          t.getBottomLeft(find.text('Sunday, 4 October')).dy;
+          t.getBottomLeft(_through).dy;
       await _end(t);
 
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
       final gap = t.getTopLeft(find.text('59% · Connected')).dy -
-          t.getBottomLeft(find.text('Sunday, 4 October')).dy;
+          t.getBottomLeft(_through).dy;
       expect(gap, closeTo(idleGap, 2));
       await _end(t);
     });
@@ -483,23 +561,28 @@ void main() {
   });
 
   group('a problem', () {
-    testWidgets('a failed sync leads the line, with Retry in the button slot',
-        (t) async {
+    testWidgets('a failed sync leads row 1; Show details and Retry are '
+        'right-aligned against the button', (t) async {
       final app = _App(pres: _failed(), through: _edge);
       addTearDown(app.dispose);
       await _pump(t, app);
       expect(find.text('Sync failed'), findsOneWidget);
-      // The problem is the status: "Synced through" gives way to it.
-      expect(_through, findsNothing);
+      // The problem is the status: the date gives way to it; "Synced through"
+      // stays on row 2.
+      expect(_date, findsNothing);
+      expect(_y(t, _through), greaterThan(_y(t, find.text('Sync failed'))));
       expect(find.text('Show details'), findsOneWidget);
       expect(_x(t, find.text('Sync failed')),
           lessThan(_x(t, find.text('Show details'))));
+      expect(_x(t, find.text('Show details')),
+          lessThan(_x(t, find.text('Retry'))));
       expect((_y(t, find.text('Sync failed')) - _y(t, find.text('Show details'))).abs(),
           lessThan(2));
-      // Retry is in the slot, on the center line's block, left of the gear.
-      expect(_y(t, find.text('Retry')),
-          inInclusiveRange(t.getTopLeft(find.text('Sync failed')).dy,
-              t.getBottomLeft(find.text('Show details')).dy));
+      // All on row 1, level with the button; Retry is last, against it.
+      expect((_y(t, find.text('Retry')) - _y(t, find.text('Sync failed'))).abs(),
+          lessThan(2));
+      _expectLevel(t, find.text('Sync failed'));
+      _expectButtonGap(t, find.text('Retry'));
       expect(t.getTopRight(find.text('Retry')).dx,
           lessThan(t.getTopLeft(_gear).dx));
       expect(find.text('Retry'), findsOneWidget);
@@ -543,7 +626,7 @@ void main() {
   });
 
   group('not connected', () {
-    testWidgets('the battery line says so; the center line is unchanged',
+    testWidgets('the battery line says so; the sync row is unchanged',
         (t) async {
       final app = _App(
         pres: SyncPresentationState(
@@ -557,7 +640,8 @@ void main() {
       await _pump(t, app);
       expect(find.text('Not connected'), findsOneWidget);
       expect(find.textContaining('Connected'), findsNothing);
-      expect(_text('Synced through 15:33'), findsOneWidget);
+      expect(_through, findsOneWidget);
+      expect(_date, findsOneWidget);
       expect(find.text('1 h ago'), findsOneWidget);
       expect(find.text('Sync now'), findsOneWidget);
       expect(find.text('Show details'), findsNothing);
@@ -571,19 +655,24 @@ void main() {
       ('syncing', _syncing),
       ('failed', _failed),
     ]) {
-      testWidgets('$name: nothing overflows, the label shortens', (t) async {
+      testWidgets('$name: nothing overflows, row 1 is level with the button',
+          (t) async {
         final app = _App(pres: make(), through: _edge);
         addTearDown(app.dispose);
         await _pump(t, app, width: 360, scale: 1.3);
         expect(t.takeException(), isNull);
-        if (name == 'idle') {
-          expect(_text('Through 15:33'), findsOneWidget,
-              reason: '"Synced through" gives way before anything overflows');
-          expect(_text('Synced through 15:33'), findsNothing);
-        } else {
-          expect(_through, findsNothing, reason: 'a status leads instead');
-        }
-        // Everything on the center line is inside the screen.
+        // Row 1 is the date, or the status that displaces it; row 2 is still
+        // "Synced through".
+        final row1 = switch (name) {
+          'idle' => _date,
+          'syncing' => _status,
+          _ => find.text('Sync failed'),
+        };
+        expect(_date, name == 'idle' ? findsOneWidget : findsNothing);
+        _expectLevel(t, row1);
+        expect(_through, findsOneWidget);
+        expect(_y(t, _through), greaterThan(_y(t, row1)));
+        // Everything on the sync row is inside the screen.
         for (final f in [
           find.text('Sync now'),
           find.text('Retry'),
@@ -599,6 +688,31 @@ void main() {
       });
     }
 
+    testWidgets('a problem omits "N h ago" when the row is cramped; the problem, '
+        'Show details and Retry stay', (t) async {
+      final app = _App(pres: _failed(), through: _edge);
+      addTearDown(app.dispose);
+      await _pump(t, app, width: 360, scale: 1.3);
+      expect(t.takeException(), isNull);
+      expect(find.textContaining(' ago'), findsNothing);
+      expect(find.text('Sync failed'), findsOneWidget);
+      expect(find.text('Show details'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+      expect(t.widget<Text>(find.text('Sync failed')).overflow,
+          TextOverflow.ellipsis);
+      expect(t.getSize(find.text('Sync failed')).width,
+          greaterThan(60), reason: 'the problem is not squeezed to nothing');
+      await _end(t);
+    });
+
+    testWidgets('and keeps it where there is room (390 pt, 1x)', (t) async {
+      final app = _App(pres: _failed(), through: _edge);
+      addTearDown(app.dispose);
+      await _pump(t, app);
+      expect(find.text('1 h ago'), findsOneWidget);
+      await _end(t);
+    });
+
     testWidgets('the sheet fits too', (t) async {
       final app = _App(pres: _syncing(), through: _edge);
       addTearDown(app.dispose);
@@ -608,6 +722,26 @@ void main() {
       await t.pump(const Duration(milliseconds: 400));
       expect(t.takeException(), isNull);
       expect(find.byType(BottomSheet), findsOneWidget);
+      await _end(t);
+    });
+  });
+
+  group('narrow', () {
+    testWidgets('the status ellipsizes first; the right cluster stays whole',
+        (t) async {
+      final app = _App(pres: _syncing(), through: _edge);
+      addTearDown(app.dispose);
+      await _pump(t, app, width: 300, scale: 1.3);
+      expect(t.takeException(), isNull);
+      final status = t.widget<Text>(_status);
+      expect(status.overflow, TextOverflow.ellipsis);
+      expect(status.maxLines, 1);
+      expect(find.text('Show details'), findsOneWidget);
+      expect(_text(_clockRe), findsOneWidget);
+      expect(t.getTopRight(find.text('Show details')).dx,
+          lessThan(t.getTopLeft(_disc).dx));
+      expect(t.getTopRight(_status).dx,
+          lessThan(t.getTopLeft(_text(_clockRe)).dx));
       await _end(t);
     });
   });

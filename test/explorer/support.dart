@@ -176,7 +176,7 @@ Widget providers(AppState app, Widget home, {double scale = 1}) =>
       ),
     );
 
-/// Pumps [ExplorerView] inside a list (as Health does), over [repo].
+/// Pumps [ExplorerView] inside a list (as a screen does), over [repo].
 Future<void> pumpExplorer(
   WidgetTester t,
   ExplorerRepo repo, {

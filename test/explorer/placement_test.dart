@@ -1,70 +1,26 @@
-// 8AH, RED. Where the Explorer lives.
+// 8AH. Where the Explorer lives: NOT in Health.
 //
-// DECISION, measured with the real SubTabs at 360 pt (Manrope loaded):
-//   Last night | Today | Trends | Explore | Labs
-//     default (non-dense) SubTabs : does NOT fit, Labs is off the edge
-//     dense: true                 : fits at 1x, right edge ~306 pt, no scrolling
-//                                   (at text 1.3x it scrolls ~35 pt, which the
-//                                   widget is built to do)
-//   So Explore is a FIFTH Health sub-tab, drawn with `dense: true`. There is no
-//   "Explore toggle inside Trends".
-//
-// ASSUMED API:
-//   * HealthScreen's sub-tabs become, in order, Last night, Today, Trends,
-//     Explore, Labs (indices 0..4) and its SubTabs is `dense`. Tab 3 shows
-//     ExplorerView (lib/ui2/screens/explorer.dart); Labs moves to index 4.
-//   * lib/ui2/screens/metric_catalogue.dart (and explorer.dart; both exported
-//     from screens.dart) exports the Trends catalogue as
-//       class MetricCatalogueRow { final String key, series, blurb; }
-//       class MetricCategory { final String title; final List<MetricCatalogueRow> rows; }
-//       const List<MetricCategory> kMetricCatalogue;
-//     health_screen.dart and explorer.dart both read it; neither keeps a copy.
-//   * Entering the Explore tab starts no read by itself: with nothing picked,
-//     the repository is not touched.
-//
-// Existing tests this changes (they are the implementer's to update, not
-// edited here): test/health/health_h2_tabs_test.dart ('exactly Last night,
-// Today, Trends, Labs'; 'all four fit ... without scrolling' must become five
-// dense tabs), test/health/health_h2_migration_test.dart (tabFromLegacy and
-// the Labs index), and any golden that pins four tabs.
+// DECISION (reversed after a first try as a fifth Health tab): the Data
+// Explorer is not ready for everyone, so Health keeps its four sub-tabs (Last
+// night, Today, Trends, Labs) and the Explorer is reached from Settings >
+// Developer > "Data Explorer", developer mode only. It opens full screen,
+// under a NavBar titled "Data Explorer".
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/lab_catalogue.dart';
+import 'package:openstrap_edge/state/app_state.dart';
+import 'package:openstrap_edge/state/locale_controller.dart';
+import 'package:openstrap_edge/ui2/profile/profile.dart' show goto;
+import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
-import 'package:openstrap_edge/state/app_state.dart';
+import 'package:provider/provider.dart';
 
 import 'support.dart';
 
-const _five = ['Last night', 'Today', 'Trends', 'Explore', 'Labs'];
-
-Future<void> _bare(WidgetTester t, double width, double scale,
-    {required bool dense}) async {
-  t.view.devicePixelRatio = 1;
-  t.view.physicalSize = Size(width, 800);
-  addTearDown(t.view.reset);
-  await t.pumpWidget(MediaQuery(
-    data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-    child: MaterialApp(
-      theme: buildTheme(Brightness.light),
-      home: Scaffold(
-        body: ListView(padding: const EdgeInsets.all(16), children: [
-          SubTabs(_five, 0, (_) {}, color: C.blue, dense: dense),
-        ]),
-      ),
-    ),
-  ));
-  await t.pump();
-}
-
-double _maxScroll(WidgetTester t) => t
-    .state<ScrollableState>(find
-        .descendant(of: find.byType(SubTabs), matching: find.byType(Scrollable))
-        .first)
-    .position
-    .maxScrollExtent;
+const _four = ['Last night', 'Today', 'Trends', 'Labs'];
 
 Future<void> _health(WidgetTester t, int tab,
     {double width = 360, double scale = 1}) async {
@@ -89,6 +45,32 @@ Future<void> _health(WidgetTester t, int tab,
 
 SubTabs _tabs(WidgetTester t) => t.widget<SubTabs>(find.byType(SubTabs).first);
 
+/// Settings' view, with the Data Explorer row pushing the real screen the way
+/// MoreSettings does.
+Future<void> _settings(WidgetTester t, {required bool dev}) async {
+  t.view.physicalSize = const Size(1170, 30000);
+  t.view.devicePixelRatio = 3;
+  addTearDown(t.view.reset);
+  final app = AppState.forTesting()..repo = ExplorerRepo();
+  addTearDown(app.dispose);
+  await t.pumpWidget(MultiProvider(
+    providers: [
+      ChangeNotifierProvider<AppState>.value(value: app),
+      ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
+    ],
+    child: MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: Builder(
+        builder: (c) => MoreSettingsView(
+          devMode: dev,
+          onDataExplorer: () => goto(c, const ExplorerScreen()),
+        ),
+      ),
+    ),
+  ));
+  await settle(t);
+}
+
 void main() {
   setUpAll(() async {
     await initPrefs();
@@ -96,98 +78,62 @@ void main() {
   });
   setUp(clearPrefs);
 
-  group('the measurement behind the decision (real SubTabs)', () {
-    testWidgets('five dense tabs fit 360 pt at 1x without scrolling', (t) async {
-      await _bare(t, 360, 1, dense: true);
-      expect(_maxScroll(t), 0);
-      final labs = t.getRect(find.descendant(
-          of: find.byType(SubTabs), matching: find.text('Labs')));
-      expect(labs.right, lessThanOrEqualTo(360));
-    });
-
-    testWidgets('five default tabs do not: that is why the tab must be dense',
+  group('Health has four sub-tabs again', () {
+    testWidgets('the tabs are Last night, Today, Trends, Labs; not dense',
         (t) async {
-      await _bare(t, 360, 1, dense: false);
-      final labs = find.descendant(
-          of: find.byType(SubTabs), matching: find.text('Labs'));
-      final fits = labs.evaluate().isNotEmpty &&
-          t.getRect(labs).right <= 360 &&
-          _maxScroll(t) == 0;
-      expect(fits, isFalse);
-    });
-
-    testWidgets('at 1.3x text the dense row scrolls rather than overflowing',
-        (t) async {
-      await _bare(t, 360, 1.3, dense: true);
-      expect(t.takeException(), isNull);
-      expect(_maxScroll(t), greaterThanOrEqualTo(0));
-    });
-  });
-
-  group('Health has an Explore sub-tab', () {
-    testWidgets('the tabs are Last night, Today, Trends, Explore, Labs', (t) async {
       await _health(t, 0);
-      expect(_tabs(t).items, _five);
-    });
-
-    testWidgets('the Health tab row is dense and fits 360 and 390 pt at 1x',
-        (t) async {
-      for (final w in [360.0, 390.0]) {
-        await _health(t, 0, width: w);
-        expect(_tabs(t).dense, isTrue);
-        for (final label in _five) {
-          final r = t.getRect(find.descendant(
-              of: find.byType(SubTabs), matching: find.text(label)));
-          expect(r.left, greaterThanOrEqualTo(0), reason: '$label at $w');
-          expect(r.right, lessThanOrEqualTo(w), reason: '$label at $w');
-        }
-        expect(_maxScroll(t), 0, reason: 'no scrolling at $w pt');
-      }
-    });
-
-    testWidgets('Explore is the fourth chip and opens the Explorer', (t) async {
-      await _health(t, 0);
+      expect(_tabs(t).items, _four);
+      expect(_tabs(t).dense, isFalse);
+      expect(find.text('Explore'), findsNothing);
       expect(find.byType(ExplorerView), findsNothing);
-      await t.tap(find.descendant(
-          of: find.byType(SubTabs), matching: find.text('Explore')));
-      await settle(t);
-      expect(_tabs(t).index, 3);
-      expect(find.byType(ExplorerView), findsOneWidget);
     });
 
-    testWidgets('tab: 3 opens straight on it; Labs is now tab 4', (t) async {
+    testWidgets('Labs is tab 3 and the Explorer is nowhere in Health', (t) async {
       await _health(t, 3);
       expect(_tabs(t).index, 3);
-      expect(find.byType(ExplorerView), findsOneWidget);
-      await t.pumpWidget(const SizedBox()); // a fresh Health, not a rebuilt one
-      await _health(t, 4);
-      expect(_tabs(t).index, 4);
       expect(find.text('Add a result'), findsOneWidget);
       expect(find.byType(ExplorerView), findsNothing);
-    });
-
-    testWidgets('Trends has no Explore toggle: the Explorer is not in two places',
-        (t) async {
+      await t.pumpWidget(const SizedBox());
       await _health(t, 2);
       expect(find.byType(ExplorerView), findsNothing);
       expect(find.byKey(const ValueKey('explore-scale:daily')), findsNothing);
     });
 
-    testWidgets('switching away and back keeps the Explorer usable at 360 pt, 1.3x',
+    test('an old five-tab index still lands on the right one of the four', () {
+      expect(HealthScreen.tabFromLegacy(4), 3);
+      expect(HealthScreen.tabFromLegacy(3), 1);
+    });
+  });
+
+  group('Settings > Developer > Data Explorer', () {
+    testWidgets('is there in developer mode', (t) async {
+      await _settings(t, dev: true);
+      expect(find.text('Data Explorer'), findsOneWidget);
+    });
+
+    testWidgets('is not there without developer mode', (t) async {
+      await _settings(t, dev: false);
+      expect(find.text('Data Explorer'), findsNothing);
+    });
+
+    testWidgets('opens the Explorer full screen under a NavBar of that name',
         (t) async {
-      await _health(t, 3, scale: 1.3);
-      expect(t.takeException(), isNull);
-      await t.tap(find.descendant(
-          of: find.byType(SubTabs), matching: find.text('Today')));
+      await _settings(t, dev: true);
+      await t.tap(find.text('Data Explorer'));
       await settle(t);
-      expect(find.byType(ExplorerView), findsNothing);
-      await t.ensureVisible(find.descendant(
-          of: find.byType(SubTabs), matching: find.text('Explore')));
-      await t.tap(find.descendant(
-          of: find.byType(SubTabs), matching: find.text('Explore')));
-      await settle(t);
+      expect(find.byType(ExplorerScreen), findsOneWidget);
       expect(find.byType(ExplorerView), findsOneWidget);
+      expect(
+          find.descendant(
+              of: find.byType(NavBar), matching: find.text('Data Explorer')),
+          findsOneWidget);
       expect(t.takeException(), isNull);
+    });
+
+    test('MoreSettings wires the row to ExplorerScreen', () {
+      final src = File('lib/ui2/profile/settings.dart').readAsStringSync();
+      expect(src,
+          contains('onDataExplorer: () => goto(c, const ExplorerScreen())'));
     });
   });
 

@@ -4,8 +4,7 @@
 // Rows, not a wall of cards. A card is a claim that something deserves your
 // attention; forty of them side by side is a claim about nothing. Last night is
 // one night and nothing else, Today is the day so far, Trends is where change
-// lives and is a list of every measure that has a history, Explore lays up to
-// four of them over one time axis (explorer.dart), and Labs is what a
+// lives and is a list of every measure that has a history, and Labs is what a
 // laboratory measured — the only numbers in this app that are absolute.
 
 import 'package:flutter/material.dart';
@@ -27,7 +26,6 @@ import 'circadian_detail.dart';
 import 'day_timeline.dart' show DayTimelineScreen;
 import 'day_steps.dart' show DayStepsDetail;
 import 'ecg.dart' show EcgEntryCard;
-import 'explorer.dart';
 import 'findings_log.dart';
 import 'home_screen.dart';
 import 'illness_observation.dart';
@@ -405,9 +403,9 @@ class HealthScreen extends StatefulWidget {
   final LabsData? labs;
   final ExploreData? explore;
 
-  /// Which sub-tab to open on, in the five-tab order: 0 Last night, 1 Today,
-  /// 2 Trends, 3 Explore, 4 Labs. Goldens use it; production starts at 0,
-  /// which is also where a deep link or a notification lands.
+  /// Which sub-tab to open on, in the four-tab order: 0 Last night, 1 Today,
+  /// 2 Trends, 3 Labs. Goldens use it; production starts at 0, which is also
+  /// where a deep link or a notification lands.
   final int tab;
 
   const HealthScreen(
@@ -418,17 +416,15 @@ class HealthScreen extends StatefulWidget {
       this.explore,
       this.tab = 0});
 
-  /// A sub-tab index remembered from the first five-tab Health (Overview,
-  /// Explore, Trends, Vitals, Labs) → the same place in this one (Last night,
-  /// Today, Trends, Explore, Labs). Overview was the night, the old Explore the
-  /// catalogue that Trends now lists (the new Explore tab is the Data Explorer,
-  /// not a successor to it), Vitals the day so far. Anything that was never a
-  /// valid index lands on Last night.
+  /// A sub-tab index remembered from the five-tab Health (Overview, Explore,
+  /// Trends, Vitals, Labs) → the same place in the four-tab one. Overview was
+  /// the night, Explore the catalogue that Trends now lists, Vitals the day so
+  /// far. Anything that was never a valid index lands on Last night.
   static int tabFromLegacy(int old) => switch (old) {
         0 => 0,
         1 || 2 => 2,
         3 => 1,
-        4 => 4,
+        4 => 3,
         _ => 0,
       };
 
@@ -453,16 +449,13 @@ class HealthScreen extends StatefulWidget {
 }
 
 class _HealthScreenState extends State<HealthScreen> with RevisionReload {
-  // Five chips fit a 360 pt frame at 1× only in the dense form, with nothing
-  // clipped by the edge (the default padding puts Labs off it). The order is the
-  // order of the questions: the night just gone, the day so far, how things have
-  // been going, what could be compared with what, and what a laboratory
-  // measured.
+  // Four chips fit a 360 pt frame at 1× with nothing clipped by the edge. The
+  // order is the order of the questions: the night just gone, the day so far,
+  // how things have been going, and what a laboratory measured.
   List<String> _tabsOf(AppLocalizations? l) => [
         l?.healthTabLastNight ?? 'Last night',
         l?.healthTabToday ?? 'Today',
         l?.healthTabTrends ?? 'Trends',
-        l?.healthTabExplore ?? 'Explore',
         l?.healthTabLabs ?? 'Labs',
       ];
   late int _tab = widget.tab;
@@ -541,7 +534,7 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     if (!mounted) return;
     if (i == 1) _loadVitals();
     if (i == 2) _loadExplore();
-    if (i == 4) _loadLabs();
+    if (i == 3) _loadLabs();
   }
 
   Future<void> _load() async {
@@ -625,12 +618,9 @@ class _HealthScreenState extends State<HealthScreen> with RevisionReload {
     final l = AppLocalizations.of(c);
     return ListView(padding: pad, children: [
       ScreenTitle(l?.healthTitle ?? 'Health'),
-      SubTabs(_tabsOf(l), _tab, _select, color: C.blue, dense: true),
+      SubTabs(_tabsOf(l), _tab, _select, color: C.blue),
       const SizedBox(height: S.x5),
-      // The Explorer reads nothing the day read holds, so it does not wait for it.
-      if (_tab == 3)
-        const ExplorerView()
-      else if (_loading && _d == null)
+      if (_loading && _d == null)
         const InlineLoading()
       else
         switch (_tab) {

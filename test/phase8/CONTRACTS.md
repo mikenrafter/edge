@@ -1346,10 +1346,14 @@ Tests: `test/perf/p3_schema_test.dart`, `p3_signature_test.dart`, `p3_artifact_c
 
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 
-> Changed by 8AH: Explore (the Data Explorer, `ExplorerView`) is now the fourth
-> chip, so the order is 0 Last night, 1 Today, 2 Trends, 3 Explore, 4 Labs, the row is
-> `SubTabs(dense: true)`, and `tabFromLegacy` sends old Labs (4) to 4. The text below is
-> the 8AF decision as it was written.
+> Changed by 8AH: the Data Explorer (`ExplorerView`) was tried as a fifth Health chip and taken
+> out again before release: Health is still these four tabs, non-dense, with Labs at index 3 and
+> `tabFromLegacy` as written below. The Explorer is a developer-only screen instead:
+> `ExplorerScreen` (`lib/ui2/screens/explorer.dart`, a NavBar "Data Explorer" over
+> `ExplorerView`), pushed from Settings > Developer > "Data Explorer"
+> (`MoreSettingsView.onDataExplorer`, shown only when `devMode`). Tests:
+> `test/explorer/placement_test.dart` (Health four tabs; the link only in developer mode; it opens
+> the Explorer); `docs/navigation-depth.md` has the path.
 
 Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the
 phase-two files in the same folder). Health's sub-tabs are, in order, 0 Last night, 1 Today,
@@ -1686,29 +1690,40 @@ C and D in phase 2).
 
 ## Home: sync in the greeting header (Oct 4)
 - The card above the greeting ("Synced 1 h ago ... Sync now") is gone. Home's sync UI is
-  `HomeSyncStatus` (`lib/ui2/sync_control.dart`), the "Synced through 15:33" line of the
-  greeting header, from the same `SyncPresentationState` as `SyncControl` (which the band
-  detail page still renders, unchanged). The no-day path (first run, failed load) uses the
-  same line, so Sync now is still there.
-- Center line, idle: the data edge ("Synced through 15:33", Home's own text), then right-aligned
-  just left of the gear the time since the last good sync ("1 h ago", absent if never) and
-  Sync now (Retry after a failure). Nothing is estimated and nothing is a percentage.
-- While syncing the status leads: the first clause of `syncStatusLine` ("Downloading…",
-  "Calculating", via `syncStatusHeadline`), then the running time, then "Show details". "Synced
-  through" is hidden while a status shows (it stays in the details sheet): it is a back-seat fact
-  and would wrap the line at 360 pt. Sync now and "N h ago" are hidden too. A problem
-  (`syncProblem`: "Sync failed", "Needs another pass") is the status then: "Sync failed · Show
-  details", with "1 h ago" and Retry on the right and "Synced through" hidden.
+  `HomeSyncStatus` (`lib/ui2/sync_control.dart`), row 1 of the greeting header, from the same
+  `SyncPresentationState` as `SyncControl` (which the band detail page still renders,
+  unchanged). The no-day path (first run, failed load) uses the same row without the buttons, so
+  Sync now is still there.
+- Row 1 is the FIRST row under the greeting and its vertical centre is the settings button's
+  centre (within 2 px, at every text scale). The button keeps its 40 pt size; the row is built
+  as `[left status text | right cluster | button]` inside one `HitOverhang`, so the centring is
+  structural, not padding arithmetic. The greeting and row 2 are inset on the right by the
+  button's width so they never run under its overhang.
+- Row 1 left is one line that ellipsizes first at narrow widths. Idle: the DATE ("Sunday, 4
+  October"). Syncing: the status, the first clause of `syncStatusLine` ("Downloading…",
+  "Calculating…", via `syncStatusHeadline`), which displaces the date. Problem (`syncProblem`:
+  "Sync failed", "Needs another pass"): the problem sentence, also in the date's place.
+- Row 1 right is right-aligned, just left of the button (`HomeSyncStatus.endGap` plus the
+  clickables' own 4 pt padding, about 10 pt from the text to the disc). Idle: "1 h ago" (absent
+  if never) and Sync now (Retry after a failure). Syncing: the running time, " ·", then "Show
+  details" (4 pt apart); Sync now and "N h ago" are hidden. Problem: "1 h ago", Show details,
+  Retry. "N h ago" is the first thing dropped, in every state the problem state included, when
+  the cluster would exceed 60% of the row: at 360 pt and 1.3x text the failed header is "Sync
+  failed · Show details · Retry" with no time since. Nothing is estimated and nothing is a
+  percentage.
+- Row 2 is always "Synced through 15:33" (plain text, inset on the right by the button's width),
+  whatever row 1 shows; row 3 the battery/connection line (always last). There is one layout, no
+  variant switch and no setting. Screenshots for review:
+  `HOME_HEADER_SHOTS=1 flutter test test/ui2/home_header_shots_test.dart`.
 - The spinner is not on the line. While syncing the gear icon of the green settings button
   (Profile and settings) is replaced by a spinner in `P.inkOnFill`, the colour the gear uses
   (4.5:1 on the fill). Same button, size, position and tap (it still opens Settings); the
   semantics label is "Profile and settings, syncing". It is not a sync button.
-- Spacing is the pre-sync-UI rhythm: greeting, date, center line, 2 pt, battery line, all
-  one text line tall. The center line's two kinds of 44 pt targets (Show details, Sync now/Retry)
-  keep their 44 pt hit area without 44 pt of layout: `HitOverhang` (`lib/ui2/grammar.dart`)
-  reports the text height and lets the target overhang the lines above and below. It must stay a
-  direct child of the header Column (an ancestor only one line tall would reject the overhang).
-  The gear stays vertically centred on the header block.
+- Spacing is the pre-sync-UI rhythm: greeting, row 1, row 2, 2 pt, battery line, all one text
+  line tall. Row 1's 44 pt targets (Show details, Sync now/Retry, and the buttons) keep their
+  44 pt hit area without 44 pt of layout: `HitOverhang` (`lib/ui2/grammar.dart`) reports the text
+  height and lets the targets overhang the lines above and below. It must stay a direct child of
+  the header Column (an ancestor only one line tall would reject the overhang).
 - "Show details" opens a modal bottom sheet (`showSyncDetails`): the running time, the one
   sentence (with the failure reason) and the four steps (`syncStepRows`, shared with
   `SyncControl`). It reads `AppState` live. Home no longer expands steps inline; the
@@ -1880,3 +1895,7 @@ C and D in phase 2).
   handles it). TODO: native flag + handler, needs a device.
 - Tests: `test/p5/` (policy, wiring, staleness, settings, the balanced pin); the p4c staleness test
   and the two Data & privacy row lists gained the new reason / row.
+
+## Last sync counts automatic drains (Oct 4)
+
+Home's "N ago" is `SyncCoordinator.presentation.lastSuccess`, which only a coordinator-run sync (Sync now, pull-to-sync) used to set, while "Synced through" follows every drain, so the header could say it had synced through now and also "40 m ago". `SyncController._runSyncBurst` is the one place every drain (connect, reconnect, the 10-minute backfill, foreground catch-up, resync, Sync now) passes through; when its last session ended on a clean HISTORY_END with no backlog behind it (records committed, or the band confirmed nothing new) it calls `SyncCoordinator.noteBackgroundSuccess(now)`. That moves only `lastSuccess` (never backwards), leaves the phase, steps and busy flag of a run in progress alone, and notifies once. A failed, partial or link-dropped drain never reaches it, and it is a no-op after dispose. `lastSuccess` was never persisted and still is not, so a restart shows no "N ago" until the first sync. The engine's drain and the commit-before-ACK ordering are untouched. Test: `test/split8aj/seam5_background_success_test.dart`.

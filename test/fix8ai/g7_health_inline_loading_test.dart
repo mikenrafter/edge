@@ -59,7 +59,7 @@ Future<void> _pump(WidgetTester t, int tab) async {
 }
 
 void main() {
-  for (final (tab, name) in [(1, 'Today'), (2, 'Trends'), (4, 'Labs')]) {
+  for (final (tab, name) in [(1, 'Today'), (2, 'Trends'), (3, 'Labs')]) {
     testWidgets('$name while its read is pending: an inline card, and the '
         'title and tabs stay', (t) async {
       await _pump(t, tab);

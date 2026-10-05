@@ -296,6 +296,20 @@ void main() {
       }
     });
 
+    testWidgets('the tab content has room under the tab row: the gap Health '
+        'and Workout leave under theirs (S.x5), in every tab', (t) async {
+      await _pump(t, ecg: true);
+      for (var n = 2; n <= 5; n++) {
+        await _select(t, n);
+        final rowBottom = t.getBottomLeft(find.byType(SubTabs)).dy;
+        final body = find.byKey(ValueKey('gestures-tab-body:$n'));
+        final first = find.descendant(of: body, matching: find.byType(Surface));
+        expect(t.getTopLeft(first.first).dy - rowBottom,
+            greaterThanOrEqualTo(S.x5),
+            reason: 'tab $n: the first card sits S.x5 under the tab row');
+      }
+    });
+
     testWidgets('the replay-from-history switch is the double tap tab\'s alone',
         (t) async {
       await _pump(t,

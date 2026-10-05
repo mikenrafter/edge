@@ -86,7 +86,7 @@ Future<void> _settle(WidgetTester t) async {
 void main() {
   testWidgets('a read in flight when the revision lands does not win',
       (t) async {
-    // Wide enough that all five sub-tab chips are on screen to be tapped.
+    // Wide enough that all four sub-tab chips are on screen to be tapped.
     t.view.physicalSize = const Size(800 * 3, 2400 * 3);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);

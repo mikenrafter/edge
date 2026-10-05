@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -518,33 +519,44 @@ String _count(int n) {
   return out.toString();
 }
 
-/// Home's sync status: the center line of the greeting header, with the sync UI
-/// on it. Same `SyncCoordinator` state as [SyncControl], so there is still one
-/// idea of whether a sync is running.
+/// Home's sync status: row 1 of the greeting header, with the sync UI on it.
+/// Same `SyncCoordinator` state as [SyncControl], so there is still one idea of
+/// whether a sync is running.
 ///
-///     Synced through 15:33          1 h ago [Sync now]      idle
-///     Downloading… · 0:42 · Show details                    syncing
-///     Sync failed · Show details         1 h ago [Retry]    problem
+///     Sunday, 4 October             1 h ago [Sync now]  (gear)   idle
+///     Downloading…              0:42 · Show details     (gear)   syncing
+///     Sync failed     1 h ago [Show details] [Retry]    (gear)   problem
 ///
-/// [through] is the data edge ("how far are we?") and stays Home's own text;
-/// [throughShort] ("Through 15:33") replaces it when the line would not fit.
-/// While a status shows (a running sync, or a problem) the status leads and
-/// "Synced through" is left off the line entirely: it is a back-seat fact, it
-/// is in the details sheet, and keeping it would wrap this line at 360 pt. The
-/// status is the first clause of [syncStatusLine] (no backlog, no day count);
-/// the timer is the running time; "Show details" opens [showSyncDetails]. The
-/// spinner is not here: Home puts it in the settings button. Never a
-/// percentage or an estimate. With no AppState above it (a golden) it is just
-/// the data edge.
+/// The left is one line of text that ellipsizes first when the width runs out:
+/// [through] (Home passes the date; the no-day path the data edge) when idle,
+/// the status while a sync runs (the first clause of [syncStatusLine], no
+/// backlog or day count) and the problem sentence after a failure.
+/// [throughShort] ("Through 15:33") replaces [through] when it would not fit.
+/// The right is right-aligned, just left of [end] (the settings button): the
+/// time since the last good sync (the first thing dropped when the row
+/// crowds), the running time, "Show details" (opens
+/// [showSyncDetails]) and Sync now / Retry. The row is as tall as [end], so
+/// the text is centred on the button. Never a percentage or an estimate. The
+/// spinner is not here: Home puts it in the settings button. With no AppState
+/// above (a golden) the left is just [through].
 ///
-/// The line is a [HitOverhang], so its 44 pt targets do not add height to the
-/// header.
+/// The row is a [HitOverhang], so its 44 pt targets (and the button's) do not
+/// add height to the header. It must be a direct child of the header Column.
 class HomeSyncStatus extends StatefulWidget {
   final String through, throughShort;
+
+  /// The buttons at the right end of the row, centred on it. Null for the
+  /// no-day path, which has no settings button.
+  final Widget? end;
+
+  /// The space between the right-aligned cluster and [end].
+  static const endGap = S.x1;
+
   const HomeSyncStatus({
     super.key,
     required this.through,
     required this.throughShort,
+    this.end,
   });
 
   @override
@@ -579,11 +591,23 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final base = F.cap.copyWith(color: p.ink3);
+    final end = widget.end;
+    final visual = _measure(c, 'Ag', base).height;
     final SyncPresentationState s;
     try {
       s = c.watch<AppState>().syncPresentation;
     } on ProviderNotFoundException {
-      return Text(widget.through, style: base);
+      final text = Text(widget.through, style: base,
+          maxLines: 1, overflow: TextOverflow.ellipsis);
+      if (end == null) return text;
+      return HitOverhang(
+        visual: visual,
+        child: Row(children: [
+          Expanded(child: text),
+          const SizedBox(width: S.x2),
+          end,
+        ]),
+      );
     }
     final now = DateTime.now();
     _ticker.update(
@@ -602,96 +626,104 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
     final timerText = elapsed == null ? null : _clock(elapsed);
     final status = s.busy ? syncStatusHeadline(s, now) : null;
     final link = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
-    final button = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
     final hasStatus = status != null || problem != null;
 
-    return HitOverhang(
-      visual: _measure(c, 'Ag', base).height,
-      child: LayoutBuilder(builder: (c, box) {
-        // What the right-hand end needs, so the left can decide between the
-        // full label and the short one before anything has to wrap or clip.
-        final right = s.busy
-            ? 0.0
-            : (ago == null ? 0.0 : _width(c, ago, base) + S.x2) +
-                (_width(c, action, button) + 2 * S.x2).clamp(S.tap, double.infinity);
-        final room = box.maxWidth - right - S.x2;
-        // A few px of slack: a measured width can differ from the laid-out one
-        // by a fraction.
-        final through = _width(c, widget.through, base) + 4 <= room
-            ? widget.through
-            : widget.throughShort;
+    final row = LayoutBuilder(builder: (c, box) {
+      // The right-hand end first, so the left can decide between the full
+      // label and the short one before anything has to wrap or clip.
+      // Pressables are at least S.tap wide.
+      final details = hasStatus ? _width(c, 'Show details', link) + S.x1 : 0.0;
+      final act = s.busy
+          ? 0.0
+          : math.max(_width(c, action, link) + 2 * S.x1, S.tap);
+      final timerW = timerText == null ? 0.0 : _width(c, '$timerText ·', base);
+      final fixed = [timerW, details, act].where((w) => w > 0).toList();
+      double sum(List<double> ws) =>
+          ws.fold(0.0, (a, w) => a + w) + math.max(0, ws.length - 1) * S.x1;
+      final maxRight = box.maxWidth * .6;
+      // "N h ago" is the first thing to go when even the clickables crowd the
+      // row, in every state (a problem included): the status and the
+      // clickables matter more.
+      final agoW = ago == null ? 0.0 : _width(c, ago, base);
+      final showAgo = ago != null && sum([agoW, ...fixed]) <= maxRight;
+      final right = sum([if (showAgo) agoW, ...fixed]);
+      final room = box.maxWidth - right - S.x2;
+      // A few px of slack: a measured width can differ from the laid-out one
+      // by a fraction.
+      final through = _width(c, widget.through, base) + 4 <= room
+          ? widget.through
+          : widget.throughShort;
 
-        Widget seg(String text, TextStyle style, {bool dot = true}) => Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(child: Text(text, style: style)),
-            if (dot) Text(' ·', style: base),
-          ],
-        );
+      final left = status != null
+          ? Text(status, style: F.cap.copyWith(color: p.ink2),
+              maxLines: 1, overflow: TextOverflow.ellipsis)
+          : problem != null
+              ? Text(problem.text,
+                  style: F.cap.copyWith(
+                      color: p.on(problem.failed ? C.red : C.orange)),
+                  maxLines: 1, overflow: TextOverflow.ellipsis)
+              : Text(through, style: base,
+                  maxLines: 1, overflow: TextOverflow.ellipsis);
 
-        final lead = <Widget>[
-          if (!hasStatus) seg(through, base, dot: false),
-          if (status != null)
-            seg(status, F.cap.copyWith(color: p.ink2)),
-          if (timerText != null)
-            Semantics(
-              label: 'Elapsed ${_spoken(elapsed!)}',
-              child: ExcludeSemantics(child: seg(timerText, base)),
-            ),
-          if (hasStatus)
-            Pressable(
-              onTap: () => showSyncDetails(c, c.read<AppState>()),
-              // A Wrap, not a Row: at large text it breaks between the problem
-              // and the link instead of overflowing.
-              child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-                if (problem != null) ...[
-                  Text(problem.text,
-                      style: F.cap.copyWith(
-                          color: p.on(problem.failed ? C.red : C.orange))),
-                  Text(' · ', style: base),
-                ],
-                Text('Show details', style: link),
+      // Nothing while syncing but the timer and Show details: the spinner is in
+      // the settings button, and a second Sync now beside a running sync is
+      // what this header replaced.
+      final trail = <Widget>[
+        if (showAgo) Text(ago, style: base),
+        if (timerText != null)
+          Semantics(
+            label: 'Elapsed ${_spoken(elapsed!)}',
+            child: ExcludeSemantics(
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(timerText, style: base),
+                Text(' ·', style: base),
               ]),
             ),
-        ];
-
-        // Nothing while syncing: the spinner is in the settings button, and a
-        // second Sync now beside a running sync is what this header replaced.
-        final trail = <Widget>[
-          if (!s.busy) ...[
-            if (ago != null) Text(ago, style: base),
-            Pressable(
-              onTap: () => c.read<AppState>().syncNow(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: S.x2),
-                child: Text(action, style: button),
-              ),
-            ),
-          ],
-        ];
-
-        return Row(children: [
-          Expanded(
-            child: Wrap(
-              spacing: S.x1,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: lead,
+          ),
+        if (hasStatus)
+          Pressable(
+            onTap: () => showSyncDetails(c, c.read<AppState>()),
+            child: Padding(
+              padding: const EdgeInsets.only(right: S.x1),
+              child: Text('Show details', style: link),
             ),
           ),
-          if (trail.isNotEmpty) ...[
-            const SizedBox(width: S.x2),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: box.maxWidth * .6),
-              child: Wrap(
-                alignment: WrapAlignment.end,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: S.x2,
-                children: trail,
-              ),
+        if (!s.busy)
+          Pressable(
+            onTap: () => c.read<AppState>().syncNow(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: S.x1),
+              child: Text(action, style: link),
             ),
-          ],
-        ]);
-      }),
+          ),
+      ];
+
+      return Row(children: [
+        Expanded(child: left),
+        if (trail.isNotEmpty) ...[
+          const SizedBox(width: S.x2),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxRight),
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: S.x1,
+              children: trail,
+            ),
+          ),
+        ],
+      ]);
+    });
+
+    return HitOverhang(
+      visual: visual,
+      child: end == null
+          ? row
+          : Row(children: [
+              Expanded(child: row),
+              const SizedBox(width: HomeSyncStatus.endGap),
+              end,
+            ]),
     );
   }
 }

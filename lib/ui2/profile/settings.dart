@@ -44,6 +44,7 @@ import '../../telemetry/health_uploader.dart';
 import '../../theme/theme_controller.dart';
 import '../activity/zones.dart' show ZonesDetail;
 import '../screens/coach.dart' show CoachSetup, coachSubtitle;
+import '../screens/explorer.dart' show ExplorerScreen;
 import '../ui2.dart';
 import 'alarm.dart';
 import 'band_notifications.dart';
@@ -234,6 +235,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       onDevices: () => goto(c, const MyDevices()),
       onLiveDevices: () => goto(c, const LiveDevices()),
       onDeviceLab: () => goto(c, const DeviceLab()),
+      onDataExplorer: () => goto(c, const ExplorerScreen()),
       onCoach: () => goto(c, const CoachSetup()),
       relaySupported: caps.has(Feature.relayEntry),
       onAlarm: () => goto(c, const AlarmScreen()),
@@ -589,6 +591,7 @@ class MoreSettingsView extends StatelessWidget {
       onDevices,
       onLiveDevices,
       onDeviceLab,
+      onDataExplorer,
       onCoach,
       onAlarm,
       onBandNotifications,
@@ -643,6 +646,7 @@ class MoreSettingsView extends StatelessWidget {
     this.onDevices,
     this.onLiveDevices,
     this.onDeviceLab,
+    this.onDataExplorer,
     this.onCoach,
     this.onAlarm,
     this.onBandNotifications,
@@ -939,6 +943,10 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.flaskConical, C.purple, 'Device lab',
                         sub: 'Try gestures the band does not report on its own',
                         onTap: onDeviceLab),
+                    // Not a Health tab yet: up to four metrics on one time axis.
+                    SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
+                        sub: 'Compare up to four metrics on one time axis',
+                        onTap: onDataExplorer),
                     SetRow(LucideIcons.timer, C.n500, 'Last calculation',
                         sub: lastCalculation, chevron: false),
                     SetRow(LucideIcons.code, C.n500,

@@ -9,7 +9,7 @@
 //
 // Health is pumped the way the existing goldens and ui2_wiring_r2_test do it:
 // `HealthScreen(data:, vitals:, tab:)` with no AppState, so nothing here waits
-// on a database. The sub-tab order is Last night 0, Today 1, Trends 2, Explore 3, Labs 4.
+// on a database. The sub-tab order is Last night 0, Today 1, Trends 2, Labs 3.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

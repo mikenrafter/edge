@@ -245,10 +245,11 @@ class BandGesturesView extends StatelessWidget {
                       for (var n = 2; n <= 5; n++)
                         '${_name(l, n, ecg)}, gesture',
                     ],
-                    body: (c, n) => _tabBody(c, n, ecg, offered, noPhoneActions),
+                    body: (c, n) =>
+                        _tabBody(c, n, ecg, offered, noPhoneActions, S.x5),
                   )
                 else
-                  _tabBody(c, 2, ecg, offered, noPhoneActions),
+                  _tabBody(c, 2, ecg, offered, noPhoneActions, S.x3),
               ],
             ),
           ),
@@ -258,9 +259,11 @@ class BandGesturesView extends StatelessWidget {
   }
 
   /// One gesture's tab. Every tab has this shape: the name and how to do it,
-  /// the actions as switches, then the links at the bottom.
+  /// the actions as switches, then the links at the bottom. [top] is the gap
+  /// above the first card: under a tab row it is S.x5, what Health and Workout
+  /// leave under theirs.
   Widget _tabBody(BuildContext c, int taps, bool ecg, List<DeviceAction> offered,
-      bool noPhoneActions) {
+      bool noPhoneActions, double top) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final on = taps == 2 ? chosen : (tapActions[taps] ?? const <DeviceAction>{});
@@ -269,7 +272,7 @@ class BandGesturesView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(top: S.x3),
+          padding: EdgeInsets.only(top: top),
           child: Surface(
             pad: const EdgeInsets.symmetric(horizontal: S.x4),
             child: Column(children: [

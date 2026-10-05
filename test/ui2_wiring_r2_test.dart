@@ -276,7 +276,7 @@ void main() {
       addTearDown(t.view.reset);
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
-        // Trends is index 2: Last night, Today, Trends, Explore, Labs.
+        // Trends is index 2: Last night, Today, Trends, Labs.
         home: Scaffold(body: HealthScreen(data: d, tab: 2)),
       ));
       await t.pumpAndSettle();

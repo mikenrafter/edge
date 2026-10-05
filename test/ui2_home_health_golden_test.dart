@@ -678,9 +678,8 @@ final _investigate = InvestigateData(
 Map<String, Widget> _cases() => {
   'home': HomeScreen(data: _home, hour: 20),
   'home_cold': const HomeScreen(data: _homeCold, hour: 20),
-  // Sub-tab order: Last night 0, Today 1, Trends 2, Explore 3, Labs 4. The old
-  // Explore catalogue is the lower half of Trends now, so it has no case of
-  // its own; the Data Explorer (3) reads the database and is not a golden.
+  // Sub-tab order: Last night 0, Today 1, Trends 2, Labs 3. The old Explore
+  // catalogue is the lower half of Trends now, so it has no case of its own.
   'health_last_night': HealthScreen(data: _health, tab: 0),
   'health_last_night_cold': const HealthScreen(data: _healthCold, tab: 0),
   'health_today': HealthScreen(data: _health, vitals: _vitals, tab: 1),
@@ -690,11 +689,11 @@ Map<String, Widget> _cases() => {
     explore: ExploreData(),
     tab: 2,
   ),
-  'health_labs': HealthScreen(data: _health, labs: _labs, tab: 4),
+  'health_labs': HealthScreen(data: _health, labs: _labs, tab: 3),
   'health_labs_cold': HealthScreen(
     data: _health,
     labs: const LabsData(),
-    tab: 4,
+    tab: 3,
   ),
   'metric_detail': MetricDetail('resting_hr', data: _metricDetail),
   'metric_detail_cold': const MetricDetail('resting_hr', data: MetricData()),
@@ -912,7 +911,7 @@ void main() {
       const Investigate('steps', data: InvestigateData()),
       const HealthScreen(data: _healthCold, vitals: VitalsData(), tab: 1),
       const HealthScreen(data: _healthCold, explore: ExploreData(), tab: 2),
-      const HealthScreen(data: _healthCold, labs: LabsData(), tab: 4),
+      const HealthScreen(data: _healthCold, labs: LabsData(), tab: 3),
       _scroll(const CycleTab(data: CycleData())),
       _scroll(const CycleTab(data: _cycleEmpty)),
       const JournalFindings(rows: [], weekday: {}),

@@ -193,6 +193,8 @@ void main() {
 const _notComponents = {
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
+  // The developer-only route around ExplorerView, which is in the gallery.
+  'ExplorerScreen',
   // Lifecycle only (opens the band queue's lab mode), draws nothing.
   'LabSession',
   // A spinner animates forever, so a gallery case would keep the sweeps and

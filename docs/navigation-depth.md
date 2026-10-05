@@ -55,6 +55,8 @@ gone.
 - Settings keeps what 8AE moved into it: Live devices, Edit profile, AI coach,
   Language and Storage, and the whole "Your data" group. Each moved row has one
   door. Storage is a display row, not a screen.
+- Settings > Developer also lists the Data Explorer (8AH), developer mode only.
+  One push from Settings, so it is inside the two-push limit.
 - Device lab left the band's Device detail Tools. It opens from Settings >
   Developer (developer mode) and from Haptics > Calibration (developer mode).
   The tapClassifiers feature flag still gates its tap tools inside.
@@ -110,10 +112,8 @@ gone.
 
 ## Health
 
-Health has five sub-tabs: Last night, Today, Trends, Explore and Labs. The first
-three and Labs are one time scope each; Explore lays up to four metrics over
-one time axis. They are drawn dense so all five fit at 360 pt. Paths start at the
-Health tab. A sub-tab is a chip, not a push, so the
+Health has four sub-tabs, one time scope each: Last night, Today, Trends and
+Labs. Paths start at the Health tab. A sub-tab is a chip, not a push, so the
 first push is the first arrow. Deep links and notifications that land on Health
 open on Last night.
 
@@ -137,18 +137,16 @@ so this section does not use one):
 - Trends, any measure with a history: Health → Trends → the measure's detail,
   opened on 30 days
 - Trends, Investigate: Health → Trends → the measure's detail → Investigate
-- Explore, a metric to compare: Health → Explore → pick a metric (a chip, not a push)
 - Labs, Add a result: a sheet on Labs, not counted
 
 The only second push listed here is Investigate, from a measure's own detail.
 
 ### What changed in 8AH
 
-- Explore is back as the fourth Health sub-tab, and it is the Data Explorer, not
-  the old catalogue (that stays in Trends). Labs is now tab 4.
-  `HealthScreen.tabFromLegacy` still sends the old Explore to Trends.
-- Explore opens no screen of its own: picking metrics, the range, the scale and
-  the day are all chips on the tab.
+- The Data Explorer (up to four metrics on one time axis) is not a Health tab:
+  it is not ready for everyone, so Health stays at four. It is a developer
+  entry: Settings → Developer → Data Explorer, one push, full screen under a
+  "Data Explorer" bar. The row shows only in developer mode.
 
 ### What changed in 8AF
 

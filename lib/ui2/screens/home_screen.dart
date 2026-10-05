@@ -308,6 +308,32 @@ Widget syncedThroughLine(BuildContext c, String? todayId,
   );
 }
 
+/// Rows 1 and 2 of the greeting header. Row 1 is the sync row
+/// ([HomeSyncStatus], with [end], the settings button, at its right end): the
+/// date when idle, replaced by the progress status or the problem while one
+/// shows. Row 2 is always "Synced through 15:33", plain text, inset on the
+/// right so it never runs under the button's overhang.
+List<Widget> homeHeaderRows(
+  BuildContext c, {
+  required String? todayId,
+  required String date,
+  required Widget end,
+  required double endInset,
+  AppLocalizations? l,
+}) {
+  final through = syncedThroughLabel(lastDataAtOf(c), todayId, l);
+  return [
+    HomeSyncStatus(through: date, throughShort: date, end: end),
+    Padding(
+      padding: EdgeInsets.only(right: endInset),
+      child: Text(through,
+          style: F.cap.copyWith(color: P.of(c).ink3),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis),
+    ),
+  ];
+}
+
 /// Whether a sync is running, from the same presentation state the sync line
 /// reads. False with no AppState above (a golden).
 bool syncBusyOf(BuildContext c) {
@@ -1698,6 +1724,11 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     // to start, that outranks anything else this screen has to say today.
     final rebuilt = dbRebuiltCard(dbRebuildOf(c), l);
 
+    // The width the buttons take at row 1's right end (each Pressable is S.tap
+    // wide), and the text above and below stops short of it.
+    final hasCoach = coachReady(c);
+    final endInset = (hasCoach ? 2 * S.tap + S.x2 : S.tap) + HomeSyncStatus.endGap;
+
     return _refreshable(ListView(padding: pad, children: [
       ?rebuilt,
 
@@ -1714,93 +1745,102 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       // ── greeting ──
       Padding(
         padding: const EdgeInsets.only(top: S.x3, bottom: S.x5),
-        child: Row(children: [
-          Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Flexible(
-                  child: Text(
-                    d.name == null || d.name!.isEmpty
-                        ? g.word
-                        : '${g.word}, ${d.name}',
-                    style: F.t2.copyWith(color: p.ink),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // The greeting stops short of the buttons: they are centred on row 1,
+          // so their top overlaps the greeting's lower edge.
+          Padding(
+            padding: EdgeInsets.only(right: endInset),
+            child: Row(children: [
+              Flexible(
+                child: Text(
+                  d.name == null || d.name!.isEmpty
+                      ? g.word
+                      : '${g.word}, ${d.name}',
+                  style: F.t2.copyWith(color: p.ink),
+                ),
+              ),
+              const SizedBox(width: S.x2),
+              Icon(g.icon, size: 17, color: p.on(g.color)),
+            ]),
+          ),
+          const SizedBox(height: 2),
+          // The first row under the greeting is the sync row, and its centre
+          // is the buttons' centre: the date when idle, the status or problem
+          // while one shows. How far the band's data reaches is always said, on
+          // the row below — "am I looking at today, or at last night?" used to
+          // be answerable only by opening Profile > Devices. Time since the
+          // last sync and Sync now are right-aligned on the sync row, just left
+          // of the gear. The row is a direct child of this Column: its tap
+          // targets overhang the lines around it (see [HitOverhang]), and no
+          // tighter ancestor may clip them.
+          ...homeHeaderRows(
+            c,
+            todayId: d.dayId,
+            date: prettyDay(d.dayId, l),
+            endInset: endInset,
+            l: l,
+            end: Row(mainAxisSize: MainAxisSize.min, children: [
+              // The coach reads across all five domains, so it is not a tab and
+              // it is not any one domain's. It sits beside the avatar because
+              // that is where "things about you" already live.
+              //
+              // ONLY WHEN THERE IS A COACH. It used to render unconditionally,
+              // so on an install with no model configured it was a permanent
+              // button onto a setup form nobody had asked for — one of two
+              // things competing for the corner of a screen rebuilt around
+              // three rings. Setting the coach up is a setting, and it lives in
+              // Profile now.
+              if (hasCoach) ...[
+                Pressable(
+                  semanticLabel: l?.homeAskCoach ?? 'Ask the coach',
+                  onTap: () => go(c, const CoachScreen()),
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                        shape: BoxShape.circle, color: p.wash(kCoachAccent)),
+                    child: Icon(LucideIcons.sparkles,
+                        size: 18, color: p.on(kCoachAccent)),
                   ),
                 ),
                 const SizedBox(width: S.x2),
-                Icon(g.icon, size: 17, color: p.on(g.color)),
-              ]),
-              const SizedBox(height: 2),
-              Text(prettyDay(d.dayId, l), style: F.cap.copyWith(color: p.ink3)),
-              // How far the band's data reaches, always — the question "am I
-              // looking at today, or at last night?" used to be answerable
-              // only by opening Profile > Devices. Time since the last sync and
-              // Sync now sit on this same line (right-aligned, just left of
-              // the gear), so the status has one home. While a sync runs the
-              // line leads with its status instead. It must stay a direct child
-              // of this Column: its tap targets overhang the lines around it
-              // (see [HitOverhang]), and no tighter ancestor may clip them.
-              syncedThroughLine(c, d.dayId, l),
-              // Its own line, not squeezed into the sync line's row: at
-              // accessibility text sizes that row has no slack left, and
-              // `Expanded` would only shrink the sync text into extra wrapped
-              // lines to make room rather than ever actually overflow.
-              if (connectionLine(c, l) case final conn?) ...[
-                const SizedBox(height: 2),
-                conn,
               ],
+              // While a sync runs the gear gives way to a spinner: same button,
+              // same size, same tap, same on-colour. It is where the eye
+              // already is, and it leaves the sync row to the status text.
+              Pressable(
+                semanticLabel: syncBusyOf(c)
+                    ? '${l?.homeProfileSettings ?? 'Profile and settings'}, syncing'
+                    : l?.homeProfileSettings ?? 'Profile and settings',
+                onTap: () => go(c, const MoreSettings()),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                      shape: BoxShape.circle, color: p.fill(C.domHome)),
+                  child: syncBusyOf(c)
+                      ? Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: p.inkOnFill),
+                          ),
+                        )
+                      : Icon(LucideIcons.settings,
+                          size: 18, color: p.inkOnFill),
+                ),
+              ),
             ]),
           ),
-          const SizedBox(width: S.x3),
-          // The coach reads across all five domains, so it is not a tab and it
-          // is not any one domain's. It sits beside the avatar because that is
-          // where "things about you" already live.
-          //
-          // ONLY WHEN THERE IS A COACH. It used to render unconditionally, so
-          // on an install with no model configured it was a permanent button
-          // onto a setup form nobody had asked for — one of two things
-          // competing for the corner of a screen rebuilt around three rings.
-          // Setting the coach up is a setting, and it lives in Profile now.
-          if (coachReady(c)) ...[
-            Pressable(
-              semanticLabel: l?.homeAskCoach ?? 'Ask the coach',
-              onTap: () => go(c, const CoachScreen()),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                    shape: BoxShape.circle, color: p.wash(kCoachAccent)),
-                child: Icon(LucideIcons.sparkles,
-                    size: 18, color: p.on(kCoachAccent)),
-              ),
-            ),
-            const SizedBox(width: S.x2),
+          // Its own line, not squeezed into the sync row: at accessibility text
+          // sizes that row has no slack left, and `Expanded` would only shrink
+          // the sync text into extra wrapped lines to make room rather than
+          // ever actually overflow.
+          if (connectionLine(c, l) case final conn?) ...[
+            const SizedBox(height: 2),
+            conn,
           ],
-          // While a sync runs the gear gives way to a spinner: same button, same
-          // size, same tap, same on-colour. It is where the eye already is, and
-          // it leaves the sync line to the status text.
-          Pressable(
-            semanticLabel: syncBusyOf(c)
-                ? '${l?.homeProfileSettings ?? 'Profile and settings'}, syncing'
-                : l?.homeProfileSettings ?? 'Profile and settings',
-            onTap: () => go(c, const MoreSettings()),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                  shape: BoxShape.circle, color: p.fill(C.domHome)),
-              child: syncBusyOf(c)
-                  ? Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: p.inkOnFill),
-                      ),
-                    )
-                  : Icon(LucideIcons.settings, size: 18, color: p.inkOnFill),
-            ),
-          ),
         ]),
       ),
 
