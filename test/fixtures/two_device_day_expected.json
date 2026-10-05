@@ -1901,7 +1901,7 @@
           "spo2_red_raw",
           "spo2_ir_raw"
         ],
-        "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation"
+        "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen"
       }
     },
     "hrv_night_shape": {
@@ -2042,7 +2042,7 @@
           "skin_temp_raw",
           "skin_temp_c"
         ],
-        "note": "relative deviation (z) vs your baseline; raw sensor units, never an absolute °C"
+        "note": "Deviation (z-score) from your baseline, in raw sensor units. Absolute °C is not available."
       }
     },
     "stress": {
@@ -2057,7 +2057,7 @@
       "inputs_used": [
         "rr_cleaned"
       ],
-      "note": "Baevsky Stress Index → 0–100; resting autonomic tension (PRV)."
+      "note": "Baevsky Stress Index scaled to 0–100, from resting pulse rate variability (PRV)."
     },
     "spo2": {
       "disabled": true,
@@ -2079,7 +2079,7 @@
         "spo2_red_raw",
         "spo2_ir_raw"
       ],
-      "note": "refused: the red and IR channels are one signal — ir − red is a fixed offset within a session, so any ratio built from them measures baseline drift, not oxygenation",
+      "note": "refused: within a session the IR channel is the red channel plus a fixed offset. A red/IR ratio therefore tracks baseline drift and cannot give blood oxygen",
       "debug": {
         "sleep_samples": 21597
       }
