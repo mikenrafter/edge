@@ -86,7 +86,8 @@ class LiveStreamController {
   //         HIGH_FREQ_SYNC prompt is the wake source now — see
   //         BandPromptPolicy and _refreshHighFreqWakeWindow.
   //   IMU ← a gait workout in the FOREGROUND, a bounded movement-sampling
-  //         window, or the passive strap-step opt-in (off).
+  //         window, the Device lab's bounded IMU recording, or the passive
+  //         strap-step opt-in (off).
   //   An ordinary foreground connection owns nothing on gen5: the on-chip daily
   //   counter is the step fallback and the phone can supply windowed steps.
   //   Backgrounded with no owner is fully OFF on both platforms — on Android
@@ -130,6 +131,19 @@ class LiveStreamController {
   }
 
   bool _movementSampling = false;
+
+  /// The Device lab's IMU recorder holds a bounded recording (IMU-only owner).
+  /// The recorder is the only caller: it sets this when a double tap begins a
+  /// recording and clears it, in a `finally`, when the recording ends for any
+  /// reason. Not tied to the app's foreground, so a recording that is already
+  /// running is not cut short by a screen lock; its own duration bounds it.
+  void setImuLab(bool active) {
+    if (_imuLab == active) return;
+    _imuLab = active;
+    nudge();
+  }
+
+  bool _imuLab = false;
 
   /// The developer's "Start live feed" on the Live devices screen is on.
   /// RAM only: never a preference, so a restart never re-arms the flood.
@@ -187,6 +201,7 @@ class LiveStreamController {
       foreground: !background,
       // Like a mounted live-HR view, not held behind a locked screen.
       developerLiveFeed: !background && _developerLiveFeed,
+      imuLab: _imuLab,
     );
   }
 

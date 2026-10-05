@@ -180,6 +180,28 @@ void main() {
       expect(rig.engine.liveEnabled, isFalse);
     });
 
+    test('IMU lab recorder: IMU ON only, no HR, no optical; released with IMU OFF',
+        () async {
+      final rig = _Rig();
+      await rig.setOwners(const LiveStreamOwners(imuLab: true));
+      expect(rig.ops, [(_imu, 1)]);
+      expect(rig.link[0].body.sublist(0, 2), [revision1, 0x01]);
+      expect(rig.engine.debugLiveApplied,
+          const LiveStreamIntent(hr: false, imu: true));
+      await rig.setOwners(LiveStreamOwners.none);
+      expect(rig.ops, [(_imu, 1), (_imu, 0)]);
+      expect(rig.engine.liveEnabled, isFalse);
+    });
+
+    test('IMU lab recorder released while another IMU owner holds: stays on',
+        () async {
+      final rig = _Rig();
+      await rig.setOwners(
+          const LiveStreamOwners(imuLab: true, movementSampling: true));
+      await rig.setOwners(const LiveStreamOwners(movementSampling: true));
+      expect(rig.ops, [(_imu, 1)], reason: 'no OFF while movement sampling owns it');
+    });
+
     test('background gait workout: HR requested, IMU off', () async {
       final rig = _Rig();
       await rig.setOwners(const LiveStreamOwners(activeWorkout: true));
@@ -561,6 +583,18 @@ void main() {
     // A background workout is the surviving HR-only owner on gen4 (the iOS
     // background keep-alive owner is gone); it pins the same wire order.
     const bgWorkout = LiveStreamOwners(activeWorkout: true);
+
+    test('IMU lab recorder alone: R10/R11, IMU, optical bundle ON with no HR; '
+        'OFF when released', () async {
+      final rig = _Rig(band: BandProfile.gen4);
+      await rig.setOwners(const LiveStreamOwners(imuLab: true));
+      expect(rig.ops, [(_r10, 1), (_imu, 1), (_optSave, 1)]);
+      expect(rig.engine.debugLiveApplied,
+          const LiveStreamIntent(hr: false, imu: true));
+      await rig.setOwners(LiveStreamOwners.none);
+      expect(rig.ops.sublist(3),
+          [(_optMode, 0), (_optSave, 0), (_r10, 0), (_imu, 0)]);
+    });
 
     test('foreground on a fresh link: HR, R10/R11, IMU, optical ON', () async {
       final rig = _Rig(band: BandProfile.gen4);

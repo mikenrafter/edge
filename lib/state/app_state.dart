@@ -94,6 +94,7 @@ import '../ecg/ecg_controller.dart';
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_models.dart';
 import '../ecg/ecg_recovery.dart';
+import '../gestures/imu_recorder.dart';
 import '../gestures/imu_timing.dart';
 import '../data/live_coverage_policy.dart';
 import '../data/local_repository.dart';
@@ -364,6 +365,8 @@ class AppState extends ChangeNotifier {
         readCueAssignments: () => Prefs.getString(Prefs.hapticsCueAssign, ''),
         readFailures: () => Prefs.getString(Prefs.gestureFailures, ''),
         writeFailures: (json) async => Prefs.setString(Prefs.gestureFailures, json),
+        // A Device lab IMU recording owns the tap while it is armed or running.
+        labHold: () => _imuLab?.holdsActions ?? false,
       );
 
   /// The gestures that failed to activate, newest first, kept across
@@ -388,6 +391,44 @@ class AppState extends ChangeNotifier {
   );
 
   ImuTimingRecorder get imuTiming => _imuTiming;
+
+  /// The Device lab's bounded IMU recorder. Created on first use. It owns the
+  /// IMU stream only through the `imuLab` owner ([LiveStreamController.setImuLab])
+  /// and keeps its capture in RAM until the wearer saves it.
+  ImuLabRecorder get imuLab => _imuLab ??= ImuLabRecorder(
+        packets: _live.imuPackets,
+        setStreamOwner: _live.setImuLab,
+        monotonicNow: () => _live.monotonicNow,
+        isConnected: () => engine.isConnected,
+        context: _imuLabContext,
+        lab: deviceLab,
+      );
+  ImuLabRecorder? _imuLab;
+
+  /// `<version>+<build>` of this app, once package info has been read.
+  String _appVersionLabel = '';
+
+  /// The id live IMU packets carry for the band (also what the recorder keeps
+  /// packets of).
+  String get _liveImuDeviceId =>
+      paired?.serial ?? engine.state.serial ?? LocalDb.kPrimaryDeviceId;
+
+  ImuLabContext _imuLabContext() {
+    final generation = engine.state.generation;
+    return ImuLabContext(
+      bandModel: engine.isMaverick
+          ? 'WHOOP MG'
+          : switch (generation) {
+              'gen5' => 'WHOOP 5.0',
+              'gen4' => 'WHOOP 4.0',
+              _ => 'WHOOP (generation unknown)',
+            },
+      bandFirmware: engine.bandFirmware,
+      deviceId: _liveImuDeviceId,
+      appVersion: _appVersionLabel,
+      protocolVersion: kProtocolPin,
+    );
+  }
   Stream<ImuPacket> get imuPackets => _live.imuPackets;
   Duration get imuMonotonicNow => _live.monotonicNow;
 
@@ -1763,6 +1804,7 @@ class AppState extends ChangeNotifier {
     try {
       final info = await PackageInfo.fromPlatform();
       _currentBuild = int.tryParse(info.buildNumber) ?? 0;
+      _appVersionLabel = '${info.version}+${info.buildNumber}';
     } catch (_) {
       /* keep 0 → update prompts simply won't fire */
     }
@@ -2208,6 +2250,8 @@ class AppState extends ChangeNotifier {
     // Before the ECG controller goes: a gesture in flight stops its stream
     // through it.
     _gestures.dispose();
+    // Before the live controller goes: it releases the IMU owner.
+    _imuLab?.dispose();
     _live.dispose();
     _ecg?.dispose();
     _ecgTransport?.dispose();
@@ -3012,6 +3056,14 @@ class AppState extends ChangeNotifier {
     // dispatcher. They also decide the acknowledgement buzz, which goes through
     // alertDispatcher (live-only, short deadline) and never straight to the
     // engine.
+    // The Device lab's IMU recorder sees the tap first: an armed one takes it
+    // (and the dispatcher, told by its hold, runs nothing).
+    try {
+      _imuLab?.onBandEvent(e);
+    } catch (err) {
+      // A lab tool must never stop the tap reaching the dispatcher.
+      _log('[imu-lab] tap handling failed: $err');
+    }
     final handled = _gestures.handle(e);
     hardwareProbes.onBandEvent(e);
     // The band's "ended" event releases the next compiled command and the
@@ -3559,9 +3611,7 @@ class AppState extends ChangeNotifier {
         ? _live.decodeAndFanoutImu(
             packetType: pt,
             hex: hex,
-            deviceId: paired?.serial ??
-                engine.state.serial ??
-                LocalDb.kPrimaryDeviceId,
+            deviceId: _liveImuDeviceId,
             connectionGeneration: engine.linkGeneration,
             includeAccel: !_imuStreamSeen,
           )
@@ -4502,6 +4552,8 @@ class AppState extends ChangeNotifier {
       // THIS device only — a second device's trace is a separate session.
       _clearLiveHrTrace(deviceId);
       _sync.onLinkDropped();
+      // A lab recording on the dropped link ends with what it has.
+      _imuLab?.onDisconnected();
     }
     if (_prevConn != 'connected' && s.connection == 'connected') {
       // A Tasker BUZZ_STRAP that arrived while disconnected/dead only gets a

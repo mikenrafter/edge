@@ -49,3 +49,36 @@ Future<bool> saveLogFile(
     return false;
   }
 }
+
+/// The MIME type of a lab recording (JSON Lines), for the share sheet.
+const String kJsonFileMime = 'application/json';
+
+/// Hand a copy of the file at [path] to [share] (default the platform share
+/// sheet, anchored at [origin] for the iPad popover). The copy goes to [tempDir]
+/// (default the temporary directory), so the share sheet never holds the saved
+/// file itself. True when the share ran; false, never a throw, when the copy or
+/// the share failed. The file at [path] is the same either way: a failed share
+/// is not a failed save.
+Future<bool> shareFileCopy(
+  String path, {
+  String mimeType = kJsonFileMime,
+  String subject = 'OpenStrap recording',
+  Rect? origin,
+  Directory? tempDir,
+  Future<void> Function(String path)? share,
+}) async {
+  try {
+    final d = tempDir ?? await getTemporaryDirectory();
+    final name = path.split(Platform.pathSeparator).last;
+    final copy = await File(path).copy('${d.path}/$name');
+    await (share ??
+        (p) => Share.shareXFiles(
+              [XFile(p, mimeType: mimeType)],
+              subject: subject,
+              sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1),
+            ))(copy.path);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}

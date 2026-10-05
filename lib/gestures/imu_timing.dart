@@ -64,7 +64,9 @@ class ImuTimingRecorder {
         tapToAction: _between(_tapAt, _actionAt),
       );
 
-  void begin({required Duration receivedAt, required Duration bandEventAge}) {
+  /// [bandEventAge] is null when the band's clock does not say how old the tap
+  /// was; no event-age line is then reported.
+  void begin({required Duration receivedAt, Duration? bandEventAge}) {
     _tapAt = receivedAt;
     _bandEventAge = bandEventAge;
     _imuOnAt = _firstPacketAt = _usableAt = _actionAt = null;

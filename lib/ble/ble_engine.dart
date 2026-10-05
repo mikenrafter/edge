@@ -1079,6 +1079,10 @@ class BleEngine implements AlarmBandWriter {
   /// name or command acceptance.
   bool get isMaverick => _gen5Hello?.isMaverick ?? false;
 
+  /// The firmware version the gen5 HELLO reported; null on gen4 (which does
+  /// not report one here) and before hello.
+  String? get bandFirmware => _gen5Hello?.firmwareVersion;
+
   /// The link generation — bumped once per teardown. ECG work captures it
   /// and ignores anything from an older link.
   int get linkGeneration => _linkGeneration;

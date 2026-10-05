@@ -60,6 +60,7 @@ class GestureController {
     required String Function() readCueAssignments,
     required String Function() readFailures,
     required Future<void> Function(String json) writeFailures,
+    bool Function()? labHold,
   })  : _settings = settings,
         _haptics = haptics,
         _deviceLab = deviceLab,
@@ -91,6 +92,7 @@ class GestureController {
         deviceLab.addStep('Gesture failed ($reason).');
         _recordGestureFailure(e, kind, reason);
       },
+      labHold: labHold,
     );
   }
 

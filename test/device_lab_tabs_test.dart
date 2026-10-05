@@ -128,8 +128,10 @@ void main() {
     testWidgets('Taps, Probes, Live, Logs, in that order, on Taps first',
         (t) async {
       await _pump(t, _lab());
+      // Motion sits between Probes and Live when the screen has a recorder;
+      // this lab has none (see device_lab_motion_test.dart).
       expect([for (final x in LabTab.values) x.id],
-          ['taps', 'probes', 'live', 'logs']);
+          ['taps', 'probes', 'motion', 'live', 'logs']);
       expect(_tabs(t).items, ['Taps', 'Probes', 'Live', 'Logs']);
       expect(_tabs(t).index, 0);
       expect(find.text('ECG on double tap'), findsOneWidget);
@@ -341,7 +343,8 @@ void main() {
       for (final id in const ['taps', 'probes', 'live', 'logs', 'taps']) {
         await _select(t, id);
         expect(t.takeException(), isNull, reason: id);
-        expect(_tabs(t).index, LabTab.values.indexWhere((x) => x.id == id),
+        expect(_tabs(t).index,
+            _tabs(t).items.indexOf(LabTab.values.firstWhere((x) => x.id == id).label),
             reason: id);
       }
       await _select(t, 'logs');
