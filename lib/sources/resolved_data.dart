@@ -30,7 +30,7 @@ const int kThinCoverageSeconds =
 const double kAgreementToleranceBpm = 5;
 
 /// One stretch of one signal. `winner` is null for a gap. See
-/// test/sources/sources_contract.md for the field meanings.
+/// docs/sources-data-shapes.md for the field meanings.
 class ResolvedInterval {
   final String signal;
   final int start, end;

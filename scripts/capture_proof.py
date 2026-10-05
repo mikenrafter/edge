@@ -48,9 +48,11 @@ def main():
         ('localization', ['flutter', 'gen-l10n']),
         ('analyze', ['flutter', 'analyze']),
         ('dst', ['env', 'TZ=America/Denver', 'flutter', 'test', '--concurrency=1',
-                 'test/controls/schedule_dst_test.dart', '--reporter=json']),
+                 'test/sleep_schedule_dst_test.dart', '--reporter=json']),
         ('tests', ['flutter', 'test', '--concurrency=1', '--reporter=json']),
-        ('screenshots', ['flutter', 'test', '--concurrency=1', 'test/proof', '--reporter=json']),
+        ('screenshots', ['flutter', 'test', '--concurrency=1', 'test/ui2_sync_alerts_views_test.dart',
+                         'test/ui2_buzz_chart_live_views_test.dart', 'test/ui2_chart_key_views_test.dart',
+                         '--reporter=json']),
     ]
     if args.native:
         commands.append(('android-jvm', ['bash', '-c', 'cd android && ./gradlew testDebugUnitTest']))

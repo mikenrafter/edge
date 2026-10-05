@@ -207,7 +207,7 @@ class MgPlayback {
 /// A virtual WHOOP MG's haptics: the band side of [BandHapticsPort], so the
 /// real [HapticsService] can be driven against it. Behaviour is parameterised
 /// here in code (nothing is read from the logs at run time); the lab logs only
-/// VALIDATE it (test/haptics/virtual_mg_haptics_test.dart). Evidence:
+/// VALIDATE it (test/virtual_mg_haptics_test.dart). Evidence:
 /// docs/hardware/whoop-mg-haptics-and-ecg.md (L3, L4, L6).
 ///
 /// What it does, by the clock package (so fake_async drives it):

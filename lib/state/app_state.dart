@@ -2192,7 +2192,7 @@ class AppState extends ChangeNotifier {
     // Both controllers cancel their timer and nothing else: a live workout is
     // not finalized, the display hold and Live Activity are not released, the
     // route recorder is not stopped and a breathing session is not ended.
-    // That is today's behaviour, pinned by test/split8aj/seam4_dispose_test.dart
+    // That is today's behaviour, pinned by test/app_state_workout_dispose_test.dart
     // and tracked as a follow-up rather than changed by the move.
     _breathing.dispose();
     _workout.dispose();

@@ -1,6 +1,6 @@
 // 8B — the Live devices buffer is fed from the live callbacks and from nothing
 // else, in RAM only. The buffer's own rules are pinned in
-// test/phase8/live_devices_test.dart; this pins the AppState taps.
+// test/live_devices_test.dart; this pins the AppState taps.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/app_state.dart';

@@ -16,7 +16,7 @@ implementation. Relay policy tests replay native metadata through the same
 controller used by the app. Source guards check wiring and forbidden bypasses.
 They do not establish native lifecycle behavior by themselves.
 
-`test/proof` and `test/sources` keep golden pictures only where pixels are the
+The proof view tests (`test/ui2_*_views_test.dart`) keep golden pictures only where pixels are the
 point (see "Golden fixtures" below). Other screens are covered by structural
 tests: what the screen must contain, and no overflow at phone sizes. Keep
 fixtures synthetic and label them as such. Image comparisons use committed
@@ -49,30 +49,30 @@ Every fixture is one of two kinds.
   screen has structural tests in place of a picture: key finders for what it
   must show, and no overflow (`tester.takeException()` is null) at 360x640,
   390x844, and 360x640 at 2x text, scrolled to the bottom. The harness is
-  `test/proof/structure_harness.dart` (`screenStructure`).
+  `test/support/structure_harness.dart` (`screenStructure`).
 
 Why: a SCREEN picture records every pixel of text, so any copy edit or font
 change shows up as a diff. Reviewers stop looking, and the baseline records
 the bug. A finder fails on the thing that matters and names it.
 
-Committed fixtures (`test/proof/goldens`, `test/sources/goldens`):
+Committed fixtures (`test/fixtures/proof_goldens`):
 
 | fixture | file | kind | pictures kept |
 |---|---|---|---|
-| chart_key_day_hr_gaps, _no_gaps, _on_gap, _scrubbed | test/proof/chart_key_views_test.dart | PAINTER | light/dark x 1x/2x |
-| chart_key_two_series, chart_key_row | test/proof/chart_key_views_test.dart | PAINTER | light/dark x 1x/2x |
-| phase8_chart_scrub_readout | test/proof/phase8_views_test.dart | PAINTER | light/dark x 1x/2x |
-| phase8_live_devices (line charts) | test/proof/phase8_views_test.dart | PAINTER | light/dark x 1x/2x |
-| alerts_android (Settings, alerts) | test/proof/affected_views_test.dart | SCREEN, showcase | light/dark 1x |
-| primary_band_sync (device page) | test/proof/affected_views_test.dart | SCREEN, showcase | light/dark 1x |
-| phase8_buzz_pattern (pattern editor) | test/proof/phase8_views_test.dart | SCREEN, showcase | light/dark 1x |
-| sync_offline, _downloading, _calculating, _waiting, _failed, _completed | test/proof/affected_views_test.dart | SCREEN | none, structural |
-| sleep_empty, sleep_asserted_without_metrics, sleep_inferred_window | test/proof/affected_views_test.dart | SCREEN | none, structural |
-| alerts_other_platform, relay_disabled, relay_enabled | test/proof/affected_views_test.dart | SCREEN | none, structural |
-| gestures_none_selected, gestures_mark_moment_and_flashlight, demo_disclosure | test/proof/affected_views_test.dart | SCREEN | none, structural |
-| phase8_device_lab_mg, _device_lab_no_ecg, _collapsed_taps | test/proof/phase8_views_test.dart | SCREEN | none, structural |
-| phase8_gestures_draft_taps_no_ecg, _gestures_tap_method_mg | test/proof/phase8_views_test.dart | SCREEN | none, structural |
-| source_catalog, resolved_data | test/sources/proof_views_test.dart | SCREEN | none, structural |
+| chart_key_day_hr_gaps, _no_gaps, _on_gap, _scrubbed | test/ui2_chart_key_views_test.dart | PAINTER | light/dark x 1x/2x |
+| chart_key_two_series, chart_key_row | test/ui2_chart_key_views_test.dart | PAINTER | light/dark x 1x/2x |
+| chart_scrub_readout | test/ui2_buzz_chart_live_views_test.dart | PAINTER | light/dark x 1x/2x |
+| live_devices (line charts) | test/ui2_buzz_chart_live_views_test.dart | PAINTER | light/dark x 1x/2x |
+| alerts_android (Settings, alerts) | test/ui2_sync_alerts_views_test.dart | SCREEN, showcase | light/dark 1x |
+| primary_band_sync (device page) | test/ui2_sync_alerts_views_test.dart | SCREEN, showcase | light/dark 1x |
+| buzz_pattern (pattern editor) | test/ui2_buzz_chart_live_views_test.dart | SCREEN, showcase | light/dark 1x |
+| sync_offline, _downloading, _calculating, _waiting, _failed, _completed | test/ui2_sync_alerts_views_test.dart | SCREEN | none, structural |
+| sleep_empty, sleep_asserted_without_metrics, sleep_inferred_window | test/ui2_sync_alerts_views_test.dart | SCREEN | none, structural |
+| alerts_other_platform, relay_disabled, relay_enabled | test/ui2_sync_alerts_views_test.dart | SCREEN | none, structural |
+| gestures_none_selected, gestures_mark_moment_and_flashlight, demo_disclosure | test/ui2_sync_alerts_views_test.dart | SCREEN | none, structural |
+| device_lab_mg, _device_lab_no_ecg, _collapsed_taps | test/ui2_buzz_chart_live_views_test.dart | SCREEN | none, structural |
+| gestures_draft_taps_no_ecg, _gestures_tap_method_mg | test/ui2_buzz_chart_live_views_test.dart | SCREEN | none, structural |
+| source_catalog, resolved_data | test/sources_structure_views_test.dart | SCREEN | none, structural |
 
 Showcase screens that exist only as local goldens (Home, Health overview,
 Settings pages in `test/ui2_home_health_golden_test.dart` and
@@ -96,7 +96,7 @@ diff you cannot explain.
    is readable (not block glyphs), nothing is clipped, and both themes look
    right.
 3. Regenerate only the affected file:
-   `nix develop -c flutter test --update-goldens test/proof/<file>_test.dart`.
+   `nix develop -c flutter test --update-goldens test/<file>_test.dart`.
    Use `--plain-name` to narrow it to the fixture.
 4. In the commit message list the fixtures you regenerated and why each one
    changed. "Update goldens" alone is not an explanation.

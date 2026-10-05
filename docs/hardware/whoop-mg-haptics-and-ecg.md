@@ -500,7 +500,7 @@ with the same settings, worked).
   It goes through the same dispatcher delivery as the other cues. The failure is
   also recorded (Settings > Hardware > Gesture failures, and a Home card).
 
-Replay test: `test/gestures8ak/a_log_replay_test.dart` rebuilds the five
+Replay test: `test/ecg_lab_log_replay_test.dart` rebuilds the five
 gestures of the 2026-10-04 log from its own timestamps and packet summaries
 (`support/ak_log_timeline.dart`); it failed before the retry and passes after.
 
@@ -549,7 +549,7 @@ an opt-in method on an MG and run only the Accurate path (steady stream, then
 the 2.5 s settle, then the windows). A stored explicit choice of ECG on an MG
 still wins; a band without ECG always counts double taps.
 
-Test: `test/fix8an/ecg_fast_measure_test.dart` pins the Presence / Sample
+Test: `test/ecg_lab_trace_presence_test.dart` pins the Presence / Sample
 contact trace lines on the one remaining path.
 
 ## Replaying off the band
@@ -581,9 +581,9 @@ constant offset) has no movement, so this rule reads it as no contact, where the
 old non-zero rule read it as contact. No logged session shows one; if a lab
 run does, the rule needs another test.
 
-`test/hardware/lab_trace_replay_test.dart` replays L2 both ways. To try an
+`test/device_lab_trace_replay_test.dart` replays L2 both ways. To try an
 idea without any recording, script a wearer on the virtual band
-(`test/hardware/virtual_mg_test.dart`): finger-on intervals in, packets with
+(`test/virtual_mg_test.dart`): finger-on intervals in, packets with
 receipt times out, and a haptic model that plays, swallows and ignores commands
 as L3 shows.
 

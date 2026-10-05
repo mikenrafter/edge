@@ -19,7 +19,7 @@
 // backfill timer and the supervisor, stops wanting a link, and marks the
 // object disposed; releasing the foreground lease is the host's separate call.
 // After that nothing new starts here (pinned by
-// test/split8aj/seam5_dispose_test.dart).
+// test/app_state_sync_dispose_test.dart).
 import 'dart:async';
 import 'dart:io';
 

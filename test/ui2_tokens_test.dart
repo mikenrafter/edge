@@ -200,7 +200,7 @@ const _notComponents = {
   // A spinner animates forever, so a gallery case would keep the sweeps and
   // goldens that settle the frame from ever settling. It is a Surface around a
   // CircularProgressIndicator and is asserted structurally in
-  // test/fix8ai/g1_calc_screens_shell_test.dart.
+  // test/calc_screens_shell_test.dart.
   'InlineLoading',
   // Reads AppState from Provider; `SyncControl` is its pure half and is in
   // the gallery.
@@ -258,7 +258,7 @@ const _notComponents = {
   // one and a gallery case together if that changes.
   'SignalPriorityScreen',
   // The Sources area (Phase 4). The two Scaffold routes read AppState; their
-  // three pure views are drawn by test/sources/proof_views_test.dart (goldens at
+  // three pure views are drawn by test/sources_structure_views_test.dart (goldens at
   // 390 px, light/dark, 1x/2x) and pumped by source_views_test.dart, which is
   // where their keys and copy are pinned.
   'SourceCatalogScreen', 'ResolvedDataScreen', 'SourceCatalogView',
@@ -271,12 +271,12 @@ const _notComponents = {
   'BandGestures', 'BandGesturesView',
   // The failed-gesture list (8AK): a Scaffold route over AppState's failure
   // store; `GestureFailuresView` is its pure half, pumped by
-  // test/gestures8ak/d_settings_failures_test.dart. The Home card it mirrors,
+  // test/gestures_failure_settings_test.dart. The Home card it mirrors,
   // `GestureFailureCard`, IS in the gallery.
   'GestureFailures', 'GestureFailuresView',
   // Live devices and the Device lab (phase 8B/8I). The two routes read
   // AppState; `LiveDevicesView` and `DeviceLabView` are their pure halves and
-  // test/phase8/live_devices_test.dart and device_lab_test.dart pump them in
+  // test/live_devices_test.dart and device_lab_test.dart pump them in
   // each state, with `LiveStreamChart` (one stream's graph, which needs a
   // buffer of samples) and `EcgThresholdAdjusters` (the three touch-window
   // steppers) inside them.

@@ -31,13 +31,13 @@ One tiny mechanism, `lib/state/feature_flags.dart`. No flag mechanism existed.
 | `tap_classifiers` | A double tap is only a double tap. No ECG touch counting, no repeated-double-tap window, no lab modes; the mapped 2-tap actions run at once. The 3-5 tap rows, the extra-tap sections and the Device lab entry are hidden. | `gesture_dispatcher.dart`, `ui2/profile/gestures.dart`, `devices.dart` |
 | `natural_wake` | Natural Wake is hidden and gets no window. The legacy Smart Wake heuristic and its collection window run, exactly as while an upgrade explanation is pending (`gateNaturalWake`). Gradual Wake and the native alarm at T are untouched. | `wake_controller.dart`, `wake_settings.dart`, `app_state.dart`, `background_sync.dart`, `ui2/profile/alarm.dart` |
 
-Tests: `test/phase7/feature_flags_test.dart` (each flag ON and OFF, 27 tests).
+Tests: `test/feature_flags_test.dart` (each flag ON and OFF, 27 tests).
 There is no settings UI for the flags. They are set by a build define or by
 writing the preference; a UI switch is a product decision.
 
 ## 2. Failure injection
 
-Existing fakes were reused (`test/wake/support/wake_fakes.dart`, the
+Existing fakes were reused (`test/support/wake_fakes.dart`, the
 `EcgTapSession` rig pattern, `MemoryAlertDeliveryLedger`). New fakes are small
 test-local classes: a ledger, a wake state store and a trace store that can throw
 or hang.

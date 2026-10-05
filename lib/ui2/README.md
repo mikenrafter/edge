@@ -181,7 +181,7 @@ readings, or before the first, is a gap; nothing at all is no data, and holes
 after the last reading are not a gap unless `trailing: true` (a finished
 window). Scatter and grid charts (Poincaré, `HeatMap`, month grid) pass
 `mode: ChartScrubMode.nearest`: the row only, no line through the picture.
-`test/phase8/chart_scrub_guard_test.dart` fails any `painter: LineChart(…)` (or
+`test/ui2_chart_scrub_guard_test.dart` fails any `painter: LineChart(…)` (or
 other chart painter) in `screens/`, `activity/` or `live_hr.dart` that is not
 inside a `ChartScrub` or `Scrubber`.
 

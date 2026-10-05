@@ -11,7 +11,7 @@
 // inspecting a widget tree does not find.
 //
 // Multi-select, replay-row and 2x-text coverage lives in
-// test/gestures/band_gestures_view_test.dart; this file keeps the cases that
+// test/band_gestures_view_test.dart; this file keeps the cases that
 // are about the screen's contract with the phone (what it offers, what it says
 // when native is silent, 3.1x text) and the water action end to end. Dropped as
 // superseded by the 5A rewrite: the "Do nothing" row (the empty set is the off
