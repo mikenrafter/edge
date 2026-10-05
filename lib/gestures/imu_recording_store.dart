@@ -12,6 +12,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'imu_recording.dart';
@@ -126,6 +127,36 @@ class ImuRecordingStore {
   Future<void> delete(String id) async {
     final f = await _file(id);
     if (await f.exists()) await f.delete();
+  }
+
+  /// Copy every saved JSONL recording into one ZIP for explicit export.
+  /// Unreadable files are included byte-for-byte so export does not discard
+  /// anything the wearer saved.
+  Future<File> exportAll() async {
+    final dir = await directory();
+    final files = <File>[];
+    await for (final entry in dir.list()) {
+      if (entry is File && entry.path.endsWith('.jsonl')) files.add(entry);
+    }
+    files.sort((a, b) => a.path.compareTo(b.path));
+    if (files.isEmpty) throw StateError('No saved IMU recordings to export.');
+
+    final archive = Archive();
+    for (final file in files) {
+      final bytes = await file.readAsBytes();
+      archive.addFile(
+        ArchiveFile(file.uri.pathSegments.last, bytes.length, bytes),
+      );
+    }
+    final encoded = ZipEncoder().encode(archive);
+    final temp = await getTemporaryDirectory();
+    final name =
+        'openstrap-motion-${DateTime.now().toUtc().microsecondsSinceEpoch}.zip';
+    final output = File(
+      '${temp.path}${Platform.pathSeparator}$name',
+    );
+    await output.writeAsBytes(encoded, flush: true);
+    return output;
   }
 
   Future<SavedImuRecording> _summary(File f, String id) async {

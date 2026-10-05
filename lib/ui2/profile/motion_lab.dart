@@ -63,6 +63,7 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
   // The saved list.
   List<SavedImuRecording>? _saved;
   String? _listError;
+  bool _exporting = false;
 
   static const _postures = [
     ('sitting', 'Sitting'),
@@ -180,6 +181,36 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
     if (!mounted) return;
     setState(() => _message =
         ok ? null : 'Could not open the share sheet. The file is still saved.');
+  }
+
+  Future<void> _exportAll(BuildContext c) async {
+    if (_exporting) return;
+    setState(() {
+      _exporting = true;
+      _message = null;
+    });
+    try {
+      final archive = await widget.store.exportAll();
+      if (!mounted) return;
+      final origin = shareOrigin(c);
+      var ok = false;
+      try {
+        ok = await (widget.share?.call(archive.path, origin) ??
+            shareFileCopy(archive.path,
+                mimeType: 'application/zip',
+                subject: 'OpenStrap motion recordings',
+                origin: origin));
+      } catch (_) {}
+      if (!mounted) return;
+      setState(() => _message = ok
+          ? null
+          : 'Could not open the share sheet for the export.');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _message = 'Could not prepare the recordings export.');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
   Future<void> _delete(BuildContext c, SavedImuRecording s) async {
@@ -519,6 +550,12 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
             _empty(p, 'No saved recordings yet.')
           else
             Column(children: [
+              BigButton(_exporting ? 'Preparing export' : 'Export all',
+                  key: const ValueKey('motion-export-all'),
+                  icon: LucideIcons.archive,
+                  color: C.blue,
+                  onTap: _exporting ? null : () => _exportAll(c)),
+              const SizedBox(height: S.x2),
               for (var i = 0; i < list.length; i++) ...[
                 if (i > 0) Divider(color: p.line, height: 1),
                 _SavedRow(
