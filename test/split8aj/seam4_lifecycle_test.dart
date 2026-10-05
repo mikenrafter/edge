@@ -362,6 +362,8 @@ void main() {
           expect(app.activeWorkout, isNotNull,
               reason: 'kept as the retry handle');
           expect(app.workoutStopPending, isTrue);
+          expect(app.debugLiveOwners.activeWorkout, isFalse,
+              reason: 'a stopped workout held for retry no longer owns streams');
           expect(probe.active(kTick), isEmpty);
           expect(app.logLines,
               contains('[derive-scheduler] workout ended — derive may run'));
@@ -472,6 +474,86 @@ void main() {
             ['delete', 'writeWorkoutData']);
         await finish(relaunch);
       });
+    });
+
+    test('a held stop whose cold-start bank fails is restored for retry, never '
+        'resumed live, and exports exactly once once the retry lands', () async {
+      final app = AppState.forTesting();
+      app.healthSyncEnabled = true;
+      app.startWorkout(workoutId: 'w4-cold-retry', type: 'strength');
+      await sessionLanded('w4-cold-retry');
+      // Long enough to be a Health sample (end after start, in seconds).
+      await settleMs(1300);
+      final db = await LocalDb.instance;
+      await db.execute('ALTER TABLE sessions RENAME TO sessions_hidden');
+      await expectLater(app.stopWorkout(), throwsA(anything));
+      final held = jsonDecode(Prefs.getString(Prefs.workoutStopPending, ''))
+          as Map<String, dynamic>;
+      app.dispose();
+      await db.execute('ALTER TABLE sessions_hidden RENAME TO sessions');
+      await db.execute("CREATE TRIGGER fail_held_stop_bank "
+          "BEFORE INSERT ON sessions WHEN NEW.id = 'w4-cold-retry' "
+          "BEGIN SELECT RAISE(FAIL, 'held stop write failed'); END");
+
+      spies.health.clear();
+      spies.tracking.clear();
+      spies.liveActivity.clear();
+      final relaunch = AppState.forTesting();
+      relaunch.healthSyncEnabled = true;
+      final ticks = TickCounter(relaunch);
+      await relaunch.debugReconcileOrphanedLiveWorkout();
+
+      expect(relaunch.activeWorkout?.workoutId, 'w4-cold-retry',
+          reason: 'the stopped session is kept only as the retry handle');
+      expect(relaunch.workoutStopPending, isTrue);
+      expect(relaunch.debugLiveOwners.activeWorkout, isFalse);
+      expect(ticks.ticks, 1, reason: 'one notify for the restored retry handle');
+      expect(spies.keepAwake, isEmpty,
+          reason: 'a stopped session does not hold the display again');
+      expect(spies.liveActivity, isEmpty,
+          reason: 'nor start a Live Activity for it');
+      expect(Prefs.getString(Prefs.workoutStopPending, ''), isNotEmpty);
+      expect(spies.health, isEmpty, reason: 'a failed bank exports nothing');
+
+      await db.execute('DROP TRIGGER fail_held_stop_bank');
+      await relaunch.stopWorkout();
+      await relaunch.stopWorkout();
+      await settleMs(300);
+      final row = (await sessionRow('w4-cold-retry'))!;
+      expect(row['status'], 'done');
+      expect(row['end_ts'], held['end_ts'],
+          reason: 'a retry banks the original stop, not a later finish');
+      expect(Prefs.getString(Prefs.workoutStopPending, ''), isEmpty);
+      expect([for (final c in spies.health) c.method],
+          ['delete', 'writeWorkoutData']);
+      ticks.stop();
+      await finish(relaunch);
+    });
+
+    test('deleting a held stop restored after a failed cold-start bank clears '
+        'its persistent retry marker', () async {
+      final app = AppState.forTesting();
+      app.startWorkout(workoutId: 'w4-cold-delete', type: 'strength');
+      await sessionLanded('w4-cold-delete');
+      final db = await LocalDb.instance;
+      await db.execute('ALTER TABLE sessions RENAME TO sessions_hidden');
+      await expectLater(app.stopWorkout(), throwsA(anything));
+      app.dispose();
+      await db.execute('ALTER TABLE sessions_hidden RENAME TO sessions');
+      await db.execute("CREATE TRIGGER fail_held_stop_delete "
+          "BEFORE INSERT ON sessions WHEN NEW.id = 'w4-cold-delete' "
+          "BEGIN SELECT RAISE(FAIL, 'held stop write failed'); END");
+
+      final relaunch = AppState.forTesting();
+      relaunch.repo = _WorkoutRepo();
+      await relaunch.debugReconcileOrphanedLiveWorkout();
+      expect(relaunch.workoutStopPending, isTrue);
+      await relaunch.deleteWorkout('w4-cold-delete');
+      expect(relaunch.activeWorkout, isNull);
+      expect(relaunch.workoutStopPending, isFalse);
+      expect(Prefs.getString(Prefs.workoutStopPending, ''), isEmpty);
+      await db.execute('DROP TRIGGER fail_held_stop_delete');
+      await finish(relaunch);
     });
 
     test('a held row is banked even when its live row is gone, and an '

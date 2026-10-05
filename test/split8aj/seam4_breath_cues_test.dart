@@ -208,6 +208,36 @@ void main() {
   });
 
   group('the band queue\'s spacing', () {
+    test('a phase cue is rejected immediately when the command budget is full',
+        () async {
+      final rig = G6Rig();
+      addTearDown(() async {
+        await finish(rig.app);
+        BleEngine.resetBandClaimForTest();
+      });
+      rig.app.haptics.ledger.record(30, DateTime.now());
+      rig.app.buzzBreathPhase(BreathPhaseKind.inhale);
+      await settleMs(300);
+      expect(rig.writes, isEmpty);
+      expect(rig.app.haptics.pending, 0,
+          reason: 'a phase cue must not wait for budget to free');
+    });
+
+    test('a phase cue is rejected while the device lab is open', () async {
+      final rig = G6Rig();
+      addTearDown(() async {
+        rig.app.haptics.endLab();
+        await finish(rig.app);
+        BleEngine.resetBandClaimForTest();
+      });
+      rig.app.haptics.beginLab();
+      rig.app.buzzBreathPhase(BreathPhaseKind.exhale);
+      await settleMs(300);
+      expect(rig.writes, isEmpty);
+      expect(rig.app.haptics.pending, 0,
+          reason: 'a phase cue must not be held behind the lab');
+    });
+
     test('a phase cue that arrives while the last one still plays is '
         'skipped, not stacked behind it', () async {
       final rig = G6Rig();
@@ -251,6 +281,22 @@ void main() {
           within: const Duration(seconds: 8));
       expect(rig.writes, hasLength(2));
       expect(_body(rig.writes.first), isNot(_body(rig.writes.last)));
+    });
+
+    test('an unassigned gen4 phase cue is also rejected while the band is busy',
+        () async {
+      final rig = G6Rig(band: BandProfile.gen4);
+      addTearDown(() async {
+        await finish(rig.app);
+        BleEngine.resetBandClaimForTest();
+      });
+      rig.app.buzzBreathPhase(BreathPhaseKind.inhale);
+      await until(() => rig.writes.isNotEmpty);
+      rig.app.buzzBreathPhase(BreathPhaseKind.exhale);
+      await rig.app.haptics.whenIdle();
+      await settleMs(300);
+      expect(rig.writes, hasLength(1),
+          reason: 'the fallback per-tap path cannot queue a late phase cue');
     });
   });
 

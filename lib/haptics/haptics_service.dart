@@ -97,6 +97,10 @@ class HapticsService {
   /// after a cue. Never throws.
   Future<void> whenIdle() => _queue.whenIdle();
 
+  /// Run [work] with jobs that start now or are rejected. Used for phase cues,
+  /// where a late vibration would describe the wrong phase.
+  T asImmediate<T>(T Function() work) => _queue.asImmediate(work);
+
   /// Run [body] alone on the band: after what is playing and ahead of waiting
   /// alerts, with no haptic write from any other job while it runs. The ECG
   /// stream start goes through here, so its commands never meet a vibration

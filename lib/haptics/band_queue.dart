@@ -243,6 +243,10 @@ const Symbol kBandHoldKey = #openstrapBandHold;
 /// Zone key marking work whose band jobs are lab jobs.
 const Symbol kBandLabKey = #openstrapBandLab;
 
+/// Zone key marking work that must start now or be rejected. Phase cues use it
+/// so a delayed buzz cannot land in the next breathing phase.
+const Symbol kBandImmediateKey = #openstrapBandImmediate;
+
 class _Job {
   _Job(this.run, this.commands, this.timeout, this.settle, this.startBy,
       this.deadline,
@@ -366,6 +370,14 @@ class BandHapticQueue {
   T asLab<T>(T Function() work) =>
       runZoned(work, zoneValues: <Object?, Object?>{kBandLabKey: true});
 
+  /// Run [work] so every job it queues either starts immediately or is
+  /// rejected. Immediate jobs never wait behind another job, the Device lab,
+  /// or the command ledger's rolling budget.
+  T asImmediate<T>(T Function() work) => runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandImmediateKey: true},
+      );
+
   /// Run [body] alone on the band as a lab job (a probe's whole play): ahead
   /// of waiting alerts, never before one already playing, no timeout, no
   /// settle (the probe paces itself) and no ledger count (the probe reserves
@@ -415,7 +427,8 @@ class BandHapticQueue {
           timeout: timeout,
           startBy: startBy,
           settle: settle,
-          lab: lab || Zone.current[kBandLabKey] == true);
+          lab: lab || Zone.current[kBandLabKey] == true,
+          immediate: Zone.current[kBandImmediateKey] == true);
 
   Future<BuzzDelivery> _enqueue(
     Future<BuzzDelivery> Function(BandJobToken job) job, {
@@ -424,10 +437,19 @@ class BandHapticQueue {
     required Duration startBy,
     required Duration settle,
     required bool lab,
+    bool immediate = false,
   }) {
     if (commands > BandCommandLedger.maxCommands) {
       log?.call('Band queue: dropped a job of $commands commands '
           '(the limit is ${BandCommandLedger.maxCommands})');
+      return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
+    }
+    if (immediate &&
+        !lab &&
+        (pending > 0 ||
+            labOpen ||
+            ledger.commandsLeft(clock.now()) < commands)) {
+      log?.call('Band queue: rejected a job that could not start immediately');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
     final hold = Zone.current[kBandHoldKey];

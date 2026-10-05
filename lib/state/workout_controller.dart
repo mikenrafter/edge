@@ -58,6 +58,8 @@ import 'prefs.dart';
 import 'workout_idle.dart';
 import 'zone_alert.dart';
 
+enum _HeldStopBankOutcome { none, banked, failed }
+
 class WorkoutController {
   WorkoutController({
     required Map<String, dynamic>? Function() user,
@@ -514,7 +516,10 @@ class WorkoutController {
       // (CodeRabbit flagged the race). Bail rather than clobber a real,
       // just-started activeWorkout and leak its timer.
       if (activeWorkout != null) return;
-      await _bankHeldStop();
+      final heldStop = await _bankHeldStop();
+      // A held stop is already over. Do not let its still-live durable row
+      // restart the timer, GPS, or streams when its bank needs another try.
+      if (heldStop == _HeldStopBankOutcome.failed) return;
       final rows = await LocalDb.liveSessions();
       // RE-CHECK AFTER THE AWAIT. This is kicked unawaited from _init(), one
       // line before `initialized = true` makes the shell interactive — so the
@@ -679,13 +684,26 @@ class WorkoutController {
   /// fabricated, so it is exported to Health like any other finished session.
   /// The row is banked even if its live row is gone: the held copy is the only
   /// one. Best effort and leaves the held row in place on a failure, so the
-  /// next launch tries again; never blocks the live-row reconcile that follows.
-  Future<void> _bankHeldStop() async {
+  /// next launch tries again. A failed bank restores only a stopped retry
+  /// handle, and the caller must not go on to resume the session's live row.
+  Future<_HeldStopBankOutcome> _bankHeldStop() async {
     final raw = Prefs.getString(Prefs.workoutStopPending, '');
-    if (raw.isEmpty) return;
+    if (raw.isEmpty) return _HeldStopBankOutcome.none;
+    final Map<String, Object?> held;
+    final String id;
     try {
-      final held = Map<String, Object?>.from(jsonDecode(raw) as Map);
-      final id = held['id'] as String;
+      held = Map<String, Object?>.from(jsonDecode(raw) as Map);
+      id = held['id'] as String;
+      if (held['start_ts'] is! num || held['end_ts'] is! num) {
+        throw const FormatException('no start or end time');
+      }
+    } catch (e) {
+      // Nothing to bank and no id to keep a live row away from: left in place,
+      // as before, so it cannot also wedge the live-row reconcile.
+      _log('[workout] the held stopped session is unreadable: $e');
+      return _HeldStopBankOutcome.none;
+    }
+    try {
       // The live row carries the strap stamp the held row may not (its read
       // failed); anything the held row does say wins.
       final row = {...?await LocalDb.session(id), ...held};
@@ -699,9 +717,33 @@ class WorkoutController {
       _clearStopMarker();
       _log('[workout] banked a stopped session whose save failed before the relaunch (id=$id).');
       if (_healthSyncEnabled()) unawaited(_exportToHealth(row));
+      return _HeldStopBankOutcome.banked;
     } catch (e) {
       _log('[workout] could not bank the held stopped session: $e');
+      _restoreHeldStop(held);
+      return _HeldStopBankOutcome.failed;
     }
+  }
+
+  /// Rebuild only the retry handle after a relaunch. The workout already
+  /// stopped, so this deliberately does not arm a timer, GPS, display wake or
+  /// live-stream ownership.
+  void _restoreHeldStop(Map<String, Object?> held) {
+    final id = held['id'] as String;
+    final startSec = (held['start_ts'] as num).toInt();
+    activeWorkout = LiveWorkoutState(
+      startTime: DateTime.fromMillisecondsSinceEpoch(startSec * 1000),
+      targetKcal: 300,
+      workoutId: id,
+      type: (held['type'] as String?) ?? 'other',
+      age: (_user()?['age'] as num?)?.round(),
+      profile: Profile.fromMap(_user()),
+      hrMax: estimatedMaxHr((_user()?['age'] as num?), _linkDeviceFamily()),
+      restingHr: _liveRestingHr(),
+    );
+    _stopRow = held;
+    _stopPending = true;
+    _notify();
   }
 
   Future<void> stopWorkout() async {
@@ -810,6 +852,9 @@ class WorkoutController {
     } catch (e) {
       _log('[workout] could not save session $id: $e — held for retry');
       _stopPending = true;
+      // The retry handle stays in memory, but the finished workout must stop
+      // owning high-rate streams immediately.
+      _nudgeLive();
       // Written ahead for a relaunch (see [reconcileOrphanedLiveWorkout]);
       // best effort, the in-memory copy serves a retry in this process.
       try {

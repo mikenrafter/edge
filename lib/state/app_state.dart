@@ -378,7 +378,7 @@ class AppState extends ChangeNotifier {
   late final LiveStreamController _live = LiveStreamController(
     buffer: liveStreams,
     isBackground: () => _background,
-    activeWorkoutType: () => activeWorkout?.type,
+    activeWorkoutType: () => workoutStopPending ? null : activeWorkout?.type,
     breathing: () => breathingActive || breathingWindowOpen,
     reconcile: () => engine.reconcileLiveStreams(),
     clearRadioFallbackAndReconcile: () =>
@@ -664,6 +664,7 @@ class AppState extends ChangeNotifier {
       Future<BuzzDelivery> Function() runAlarm,
     )? deliver,
     Duration? deliverTimeout,
+    bool immediate = false,
   }) async {
     final time = sourceTime ?? DateTime.now();
     final prefs = await NotificationPrefs.load();
@@ -705,16 +706,18 @@ class AppState extends ChangeNotifier {
           ? null
           : deliverTimeout ?? haptics.sequenceTimeout(rhythm!),
       bandTransport: pattern != null
-          ? () async =>
-              await haptics.runJob(1, (job) async {
-                return await job.write(() async {
-                  await engine.buzzPattern(pattern);
-                  return true;
-                })
-                    ? BuzzDelivery.complete
-                    : BuzzDelivery.rejected;
-              }) ==
-              BuzzDelivery.complete
+          ? () async {
+              Future<BuzzDelivery> run() => haptics.runJob(1, (job) async {
+                    return await job.write(() async {
+                      await engine.buzzPattern(pattern);
+                      return true;
+                    })
+                        ? BuzzDelivery.complete
+                        : BuzzDelivery.rejected;
+                  });
+              final delivery = immediate ? haptics.asImmediate(run) : run();
+              return await delivery == BuzzDelivery.complete;
+            }
           : null,
       // The rule's own rhythm (or its registry default), played as one
       // delivery: the dispatcher's claim covers every step, and survives a
@@ -738,23 +741,40 @@ class AppState extends ChangeNotifier {
   }
 
   /// A breathing cue slot (`breath.inhale|exhale|hold|done`) as one dispatcher
-  /// delivery, or false when the slot has nothing of its own to play on this
-  /// band: a 4.0 keeps its per-phase buzz unless the wearer assigned the slot.
+  /// delivery, or false for a slot this does not know. A 4.0 whose wearer
+  /// assigned nothing to the slot plays its per-phase buzz (a pattern number)
+  /// through the same dispatcher and queue, so the same rules cover it.
   /// The wearer's assignments are read here, just before the cue, as the
   /// gesture cues' are, so a change on the Haptics screen applies at the next
-  /// phase. With [skipIfBusy] the band's queue is looked at inside the
-  /// delivery, as late as possible: a band still playing earlier work rejects
-  /// the cue (nothing written, the dispatcher gives the claim back), so a cue
-  /// is never stacked behind the last one to arrive late.
+  /// phase. A phase cue starts immediately or is rejected, so it cannot wait
+  /// for command budget, the Device lab, or another haptic job and arrive in a
+  /// later phase. The session-complete cue may still wait for the band.
   Future<bool> _playBreathCue(String slot, {required bool skipIfBusy}) async {
     await _gestures.loadCues();
     if (_disposed) return true;
-    if (haptics.profile == null && !_gestures.cueAssigned(slot)) return false;
+    if (haptics.profile == null && !_gestures.cueAssigned(slot)) {
+      final pattern = switch (slot) {
+        'breath.inhale' => 1,
+        'breath.exhale' => 0,
+        'breath.hold' => 2,
+        'breath.done' => 4,
+        _ => null,
+      };
+      if (pattern == null) return false;
+      await _dispatchBandAlert(
+        'breath',
+        pattern: pattern,
+        immediate: skipIfBusy,
+      );
+      return true;
+    }
     await _dispatchBandAlert(
       'breath',
-      deliver: (_, _) async => _disposed || (skipIfBusy && haptics.pending > 0)
+      deliver: (_, _) async => _disposed
           ? BuzzDelivery.rejected
-          : gestureCues.slot(slot),
+          : skipIfBusy
+              ? haptics.asImmediate(() => gestureCues.slot(slot))
+              : gestureCues.slot(slot),
       deliverTimeout: const Duration(seconds: 10),
     );
     return true;
@@ -3422,7 +3442,7 @@ class AppState extends ChangeNotifier {
   /// whole file, and an ECG capture in progress is actively writing captured
   /// packets — the two must never overlap.
   bool get _liveSessionActive =>
-      activeWorkout != null ||
+      (activeWorkout != null && !workoutStopPending) ||
       breathingActive ||
       breathingWindowOpen ||
       (_ecg?.isCapturing ?? false);
