@@ -12,8 +12,10 @@
 import 'dart:async';
 
 import 'package:battery_plus/battery_plus.dart';
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
+import '../compute/calc_power_policy.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
@@ -27,6 +29,7 @@ import '../telemetry/telemetry_service.dart';
 import '../wake/wake_stores.dart';
 import '../widget/widget_service.dart';
 import 'artifact_warmer.dart';
+import 'power_source.dart';
 import 'recalc_state.dart';
 import 'revision_coalescer.dart';
 
@@ -275,10 +278,13 @@ class DeriveCoordinator {
     if (source == null) return null;
     return _artifactWarmer = ArtifactWarmer(
       source: source,
-      hold: () => _warmHeld() || scheduler.offloadActive,
+      hold: () => _warmBlocked,
       log: _log,
     );
   }
+
+  // A live capture, the background or an offload: nothing is warmed.
+  bool get _warmBlocked => _warmHeld() || scheduler.offloadActive;
 
   /// Warms [key] on demand through the same warmer and queue as a pass, then
   /// says so if it stored something. Never throws; no warmer is a no-op.
@@ -288,11 +294,158 @@ class DeriveCoordinator {
     if (await w.warmKeys([key]) && !_disposed) bumpInsights();
   }
 
+  // ── the Calculations power mode (P5) ────────────────────────────────────────
+  // The policy decides; this class owns the timers and the subscription. Only
+  // AUTOMATIC work asks it (the scheduler's passes, the post-pass warm, idle and
+  // plugged-in warming, the Eager sweep). A re-analyze, a manual sync, and a
+  // screen's requestWarm never do. Every timer here is cancelled in [dispose].
+
+  CalcPowerPolicy _policy = const CalcPowerPolicy(CalcPowerMode.balanced);
+  CalcPowerPolicy get policy => _policy;
+
+  /// A mode change lands at once, from the last power state seen.
+  set policy(CalcPowerPolicy p) {
+    _policy = p;
+    if (_disposed) return;
+    _derive.maxWorkers = p.maxWorkers;
+    _applyPower();
+  }
+
+  /// Null in production: the battery one.
+  PowerSource? debugPowerSource;
+
+  BatteryPowerSource? _ownSource;
+  StreamSubscription<PowerState>? _powerSub;
+  // Calm until the first read: unplugged, no saver holds nothing back.
+  PowerState _power = PowerState.unplugged;
+  int _powerEvents = 0;
+
+  Timer? _idleTimer;
+  Timer? _sweepTimer;
+
+  // The plug session (its chargingSince) the Eager sweep already ran for: at
+  // most one per session. Cleared on unplug.
+  DateTime? _sweptSince;
+
+  // Whether plugged-in warming was allowed at the last look, so it fires on
+  // the edge to allowed (a plug-in, the saver going off, a mode change), once.
+  bool _plugWarmAllowed = false;
+
+  // A held Eager sweep looks again after this. Skip, don't queue.
+  static const Duration _sweepRetry = Duration(minutes: 1);
+
+  /// Reads the power state once, follows its changes, applies the power hold,
+  /// and arms the Eager sweep and the plugged-in warm. Idempotent.
+  Future<void> attachPower() async {
+    if (_disposed || _powerSub != null) return;
+    final src = debugPowerSource ?? (_ownSource ??= BatteryPowerSource());
+    _powerSub = src.changes.listen(
+      _onPower,
+      onError: (Object e) => _log('[power] state stream failed: $e'),
+    );
+    final seen = _powerEvents;
+    try {
+      final s = await src.read();
+      // An edge that arrived while reading is newer than the read.
+      if (_powerEvents == seen) _onPower(s);
+    } catch (e) {
+      _log('[power] read failed: $e');
+    }
+  }
+
+  void _onPower(PowerState s) {
+    if (_disposed) return;
+    _powerEvents++;
+    _power = s;
+    if (!s.charging) _sweptSince = null;
+    _applyPower();
+  }
+
+  void _applyPower() {
+    if (_disposed) return;
+    scheduler.setPowerHold(!_policy.mayDeriveAutomatically(_power));
+    _armSweep();
+    final warmNow = _policy.mayWarmWhilePlugged(_power);
+    if (warmNow && !_plugWarmAllowed) unawaited(_warmAll());
+    _plugWarmAllowed = warmNow;
+  }
+
+  /// Foreground activity: (re)starts the idle timer. When it fires and the
+  /// policy allows it, the Home/Health artifacts are warmed.
+  void noteActivity() {
+    if (_disposed) return;
+    _idleTimer?.cancel();
+    _idleTimer = null;
+    if (_policy.mode == CalcPowerMode.maxBattery) return; // never warms idle
+    _idleTimer = Timer(_policy.idleWarmDelay, () {
+      _idleTimer = null;
+      if (_disposed || !_policy.mayWarmIdle(_power)) return;
+      unawaited(_warmAll());
+    });
+  }
+
+  /// Warms every candidate artifact the repository knows of, through the one
+  /// warmer (so its hold and per-key rules apply).
+  Future<void> _warmAll() async {
+    final w = _warmer;
+    if (w == null || _disposed || _warmBlocked) return;
+    try {
+      final keys = await w.source.candidateKeys(const []);
+      if (await w.warmKeys(keys) && !_disposed) bumpInsights();
+    } catch (e) {
+      _log('[warm] candidate keys failed: $e');
+    }
+  }
+
+  // The Eager sweep timer runs for what is left of the plug delay, and is
+  // re-armed on every power or mode change; the policy returns null (so nothing
+  // is armed) unless Eager is on external power with a known start.
+  void _armSweep() {
+    _sweepTimer?.cancel();
+    _sweepTimer = null;
+    if (_disposed) return;
+    final since = _power.chargingSince;
+    if (since != null && since == _sweptSince) return;
+    final left = _policy.untilEagerSweep(_power, clock.now());
+    if (left != null) _sweepTimer = Timer(left, _sweepFire);
+  }
+
+  void _sweepFire() {
+    _sweepTimer = null;
+    if (_disposed) return;
+    final left = _policy.untilEagerSweep(_power, clock.now());
+    if (left == null) return; // unplugged, or no longer Eager
+    if (left > Duration.zero) {
+      _sweepTimer = Timer(left, _sweepFire);
+      return;
+    }
+    if (_warmBlocked || scheduler.heldBesidesPower) {
+      _sweepTimer = Timer(_sweepRetry, _sweepFire);
+      return;
+    }
+    _sweptSince = _power.chargingSince;
+    unawaited(_sweep());
+  }
+
+  // The existing full run, then the existing warm: no new compute path.
+  Future<void> _sweep() async {
+    await afterDrain(heavy: true, changedOnly: false);
+    await _warmAll();
+  }
+
   /// Cancels everything this coordinator owns: the scheduler's timers, the
-  /// warmer, the trailing publish, and the two notifiers. Safe to call twice.
+  /// warmer, the power subscription and timers, the trailing publish, and the
+  /// two notifiers. Safe to call twice.
   void dispose() {
     if (_closed) return;
     _closed = true;
+    _powerSub?.cancel();
+    _powerSub = null;
+    _ownSource?.dispose();
+    _idleTimer?.cancel();
+    _idleTimer = null;
+    _sweepTimer?.cancel();
+    _sweepTimer = null;
     scheduler.dispose();
     _artifactWarmer?.dispose();
     _dayPublisher.dispose();
@@ -408,7 +561,10 @@ class DeriveCoordinator {
       // publish: one serial warmer, off the UI isolate, never awaited here and
       // never throwing into the derive path. A pass that computed nothing has
       // nothing new to sign.
-      if (outcome.computed >= 1 && computedDays.isNotEmpty && !_disposed) {
+      if (outcome.computed >= 1 &&
+          computedDays.isNotEmpty &&
+          !_disposed &&
+          _policy.mayWarmAfterPass(_power)) {
         unawaited(_warmer?.warmAfterPass(changedDays: computedDays));
       }
       // Same signal, for the surfaces that can't listen: home/lock-screen

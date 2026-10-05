@@ -3,9 +3,9 @@
 //
 // ASSUMED API (lib/ui2/as_of.dart; AsOfLabel is EXTENDED, not forked):
 //
-//   enum StaleHold { workout, sync, background }
-//       Why derive work is held. There is deliberately NO power member: "Waiting
-//       for power" belongs to P5 (no power hold exists yet), so no text for it.
+//   enum StaleHold { workout, sync, background, power }
+//       Why derive work is held. `power` (P5, "Waiting for power") came with the
+//       power hold; its own cases are in test/p5/calc_power_stale_test.dart.
 //
 //   StaleHold? staleHoldOf(Map<String, dynamic> schedulerSnapshot)
 //       Pure read of DeriveScheduler.snapshot():
@@ -111,6 +111,7 @@ void main() {
         StaleHold.workout: 'Paused during workout',
         StaleHold.sync: 'Waiting for sync to finish',
         StaleHold.background: 'Paused in the background',
+        StaleHold.power: 'Waiting for power',
       };
       for (final e in want.entries) {
         expect(
@@ -132,14 +133,15 @@ void main() {
           'Updated 08:42 · recordings through 08:36');
     });
 
-    test('no text, in any state, ever mentions power (P5 owns that)', () {
+    test('only the power hold mentions power (P5: "Waiting for power")', () {
       for (final h in [null, ...StaleHold.values]) {
         final s = _text(
             updatedAt: _upd,
             recordingsThrough: _thr,
             newestRecording: _newer,
             hold: h);
-        expect(s!.toLowerCase(), isNot(contains('power')), reason: '$h');
+        expect(s!.toLowerCase().contains('power'), h == StaleHold.power,
+            reason: '$h');
       }
     });
 

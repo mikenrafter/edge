@@ -83,6 +83,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // to latch for the whole process, silencing every notification and
       // scheduled reminder until a full app restart.
       NotificationService.instance.invalidatePermissionCache();
+      app.noteForegroundActivity();
       // A background relaunch while the phone was locked cannot read the
       // keychain, so the BYOK key can be missing from an otherwise healthy
       // process. Coming to the foreground means the phone is unlocked — take
@@ -153,8 +154,13 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
         }
         return const Locale('en');
       },
-      builder: (context, child) =>
-          ThemeSwitchOverlay(key: themeSwitchKey, child: child!),
+      // Any touch is foreground activity: it restarts the 30 s idle wait before
+      // Home/Health artifacts are warmed (Calculations power mode).
+      builder: (context, child) => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => context.read<AppState>().noteForegroundActivity(),
+        child: ThemeSwitchOverlay(key: themeSwitchKey, child: child!),
+      ),
       navigatorObservers: [TelemetryNavigatorObserver()],
       home: const _Gate(),
     );

@@ -1346,6 +1346,11 @@ Tests: `test/perf/p3_schema_test.dart`, `p3_signature_test.dart`, `p3_artifact_c
 
 ## 8AF: Health by question (Last night, Today, Trends, Labs)
 
+> Changed by 8AH: Explore (the Data Explorer, `ExplorerView`) is now the fourth
+> chip, so the order is 0 Last night, 1 Today, 2 Trends, 3 Explore, 4 Labs, the row is
+> `SubTabs(dense: true)`, and `tabFromLegacy` sends old Labs (4) to 4. The text below is
+> the 8AF decision as it was written.
+
 Tests: `test/health/health_h2_tabs_test.dart`, `health_h2_migration_test.dart` (plus the
 phase-two files in the same folder). Health's sub-tabs are, in order, 0 Last night, 1 Today,
 2 Trends, 3 Labs; `HealthScreen(tab:)` takes that order.
@@ -1836,3 +1841,42 @@ C and D in phase 2).
   same layout in every tab, persistence, no sheet, links, memory, 360 pt at 1.3x);
   `openGesturesTab` / `gesturesTabName` in `test/phase8/support/sections.dart` select a tab for the
   older screen tests. `test/fix8ai/g5_gesture_sheet_test.dart` now only guards that the sheet is gone.
+
+## P5: power modes for calculations (Oct 4)
+
+- `CalcPowerMode { maxBattery, balanced, eager }` (`lib/compute/calc_power_policy.dart`), saved by
+  name under `Prefs.calcPowerMode` (`calc_power_mode`), balanced when unset or unknown. Settings >
+  Data & privacy > Calculations (`calc-power-row`) opens `pickCalcPowerMode` (options
+  `calc-power-option-<mode.name>`, one plain sentence each, no numbers). The mode only decides WHEN
+  derive work and warming run: no output changes, so no `kAlgoVersion` bump, and switching
+  recomputes nothing.
+- `CalcPowerPolicy` is pure (mode + `PowerState{charging, chargingSince, powerSaver}` + a time).
+  Balanced is today exactly (pinned by `test/p5/balanced_pin_test.dart`): it always derives, keeps
+  the post-pass warm even under the saver, and only the NEW idle (30 s) and plugged-in warming stop
+  under the saver. Maximum battery holds automatic derives only when unplugged AND under the saver,
+  drops the post-pass, idle and plugged-in warming, caps a pass at one worker (`DerivePacing
+  maxWorkers`) and takes the slowest debounce tiers. Eager ignores the saver, takes faster tiers and
+  sweeps after 5:00 of continuous external power.
+- `DeriveCoordinator` owns the timers and the subscription: `policy` (settable, lands at once),
+  `attachPower()` (`PowerSource` read + `changes`), `noteActivity()` (idle timer; `app.dart` calls it
+  on every pointer-down and on resume). The hold is `DeriveScheduler.setPowerHold`, shown in
+  `snapshot()['power_hold']` and as `StaleHold.power` ("Waiting for power", after workout, sync and
+  background). Only AUTOMATIC work asks the policy: `afterDrain` from a manual sync or re-analyze,
+  `requestWarm` from a screen and the headless gate (`HeadlessSyncGate.tryRun`) never do.
+- Eager sweep: one timer for what is left of the 5:00 (re-armed on every power or mode change,
+  cancelled on unplug, a mode away from Eager and `dispose`), at most one per plug session
+  (`chargingSince`). On fire, unless a capture / the background (`warmHeld`), an offload, a workout
+  or a manual sync holds (then it looks again a minute later; skip, don't queue): one
+  `afterDrain(heavy: true, changedOnly: false)` then `warmKeys(candidateKeys([]))`, nothing new.
+- `BatteryPowerSource` (`lib/state/power_source.dart`, battery_plus 6.2.3): plug from
+  `batteryState` / `onBatteryStateChanged` (charging, full and connectedNotCharging are external
+  power; unknown is not), the saver from `isInBatterySaveMode` (a Future, no change stream), re-read
+  on every battery event and every `kPowerSaverPoll` (1 min) while someone listens. It stamps
+  `chargingSince` with `clock.now()` on the unplugged to plugged edge (so the 5:00 restarts at launch
+  when already plugged) and a platform that cannot answer reads as unplugged, saver off.
+- iOS: `BgSyncScheduler.swift` already submits a BGProcessingTask, but hard-codes
+  `requiresExternalPower = false`. Only the Dart half exists (`IosBgTask.requestExternalPower`,
+  channel call `setRequiresExternalPower`, a swallowed MissingPluginException until the native side
+  handles it). TODO: native flag + handler, needs a device.
+- Tests: `test/p5/` (policy, wiring, staleness, settings, the balanced pin); the p4c staleness test
+  and the two Data & privacy row lists gained the new reason / row.

@@ -11,6 +11,8 @@
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../compute/calc_power_policy.dart' show CalcPowerMode;
+
 class Prefs {
   Prefs._();
 
@@ -111,6 +113,19 @@ class Prefs {
   /// Sync now button.
   static const String pullToSync = 'pull_to_sync';
   static bool get pullToSyncOn => getBool(pullToSync, true);
+
+  /// Settings > Data & privacy > Calculations: when derive work and warming run
+  /// (see CalcPowerPolicy). The enum's name; balanced when unset or unknown.
+  static const String calcPowerMode = 'calc_power_mode';
+  static CalcPowerMode get calcPowerModeValue {
+    final name = getString(calcPowerMode, '');
+    for (final m in CalcPowerMode.values) {
+      if (m.name == name) return m;
+    }
+    return CalcPowerMode.balanced;
+  }
+
+  static void setCalcPowerMode(CalcPowerMode m) => setString(calcPowerMode, m.name);
 
   /// Per-metric range toggle on the shared MetricScreen (Today/Week/Month/3M).
   /// Keyed by the metric id so Sleep / Heart / Body each remember independently.

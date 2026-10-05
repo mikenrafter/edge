@@ -48,6 +48,21 @@ class IosBgTask {
   /// here (see AppState.foregroundCatchUp); null until an AppState exists.
   static Future<void> Function()? foregroundPull;
 
+  /// Asks iOS to run the BGProcessingTask only on external power (the Eager
+  /// Calculations mode) or lifts that. Dart half only: the native request in
+  /// ios/Runner/BgSyncScheduler.swift still hard-codes
+  /// `requiresExternalPower = false` and has no handler for this call, so until
+  /// it does (TODO, needs a device to verify) the call is a swallowed
+  /// MissingPluginException. No-op off iOS; never throws.
+  static Future<void> requestExternalPower(bool required) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _ch.invokeMethod<void>('setRequiresExternalPower', required);
+    } catch (e) {
+      debugPrint('[ios-bgtask] external power request not applied: $e');
+    }
+  }
+
   /// Register the method call handler. Call once at startup from main().
   /// No-op on Android.
   static Future<void> init() async {

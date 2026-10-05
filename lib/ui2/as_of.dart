@@ -65,6 +65,7 @@ String? stalenessText({
         StaleHold.workout => 'Paused during workout',
         StaleHold.sync => 'Waiting for sync to finish',
         StaleHold.background => 'Paused in the background',
+        StaleHold.power => 'Waiting for power',
       },
   ].join(' · ');
 }

@@ -4585,7 +4585,12 @@ class DerivationEngine {
 
   /// Foreground vs background pacing — lane count and per-day wall-clock
   /// budget. See [DerivePacing] for why the background numbers differ.
-  DerivePacing get _pacing => DerivePacing(background: background);
+  DerivePacing get _pacing =>
+      DerivePacing(background: background, maxWorkers: maxWorkers);
+
+  /// Worker cap from the Calculations power mode (Maximum battery = 1); null =
+  /// none. Read at the start of each run, so a change lands on the next pass.
+  int? maxWorkers;
 
   /// Max wall-clock for ONE day's off-isolate compute. On timeout the day is
   /// skipped so the sweep always makes progress.

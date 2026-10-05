@@ -15,9 +15,9 @@
 //    profile", "Language", "Units", "Appearance", "Expected sleep schedule",
 //    "Icon", "Cycle tracking" (You & preferences, the first group since 8AI
 //    G2; the "Steps" row is gone, phone steps live only in My devices);
-//    "Storage", "Export, backup, import", "Write to Apple Health", "Contribute
-//    my health data", "Crash reports" (Data & privacy); "AI coach", "Tasker
-//    and Shortcuts", "Check for updates", "Look barcodes up online"
+//    "Storage", "Export, backup, import", "Calculations" (P5), "Write to Apple
+//    Health", "Contribute my health data", "Crash reports" (Data & privacy);
+//    "AI coach", "Tasker and Shortcuts", "Check for updates", "Look barcodes up online"
 //    (Connections, moved from Data & privacy in 8AI G2);
 //    "Version", "Notices and licences" (About); "Component gallery", "Live
 //    devices", "Device lab", "Developer mode" (Developer).
@@ -114,6 +114,7 @@ const Map<String, List<List<String>>> _rows = {
   'Data & privacy': [
     ['Storage'],
     ['Export, backup, import'],
+    ['Calculations'], // P5: the power mode (see test/p5)
     ['Write to Apple Health'],
     ['Contribute my health data'],
     ['Crash reports'],

@@ -971,7 +971,9 @@ class BleEngine implements AlarmBandWriter {
   /// stream goes quiet. The debouncer can run in a fast stale mode or a calmer
   /// fresh mode depending on [deriveDataStaleness] — or a fast foreground mode
   /// depending on [isForegroundActive], which takes priority over both.
-  final DeriveDebouncer deriveDebouncer;
+  /// The Calculations power mode replaces the tiers (see CalcPowerPolicy); they
+  /// are read on every check, so a change lands on the next one.
+  DeriveDebouncer deriveDebouncer;
   final Duration Function() deriveDataStaleness;
   final bool Function() isForegroundActive;
 

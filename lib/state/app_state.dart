@@ -54,6 +54,7 @@ import '../ble/ble_state.dart'
         LiveStreamOwners;
 import '../ble/ios_ble_restore.dart';
 import '../cloud/companion_client.dart';
+import '../compute/calc_power_policy.dart';
 import '../compute/derivation_engine.dart';
 import '../compute/derive_perf.dart';
 import '../compute/derive_outcome.dart';
@@ -81,6 +82,7 @@ import '../wake/wake_stores.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, defaultTargetPlatform;
 import 'capabilities.dart';
 import 'feature_flags.dart';
+import 'power_source.dart';
 import 'prefs.dart';
 import '../ble/adapters/signals.dart' show InputSignal;
 import '../sources/source_catalog.dart' show SourceService;
@@ -1841,6 +1843,41 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   void debugSetRecalc(RecalcState s) => _deriveCoordinator.debugSetRecalc(s);
 
+  /// The saved Calculations power mode (Settings > Data & privacy).
+  CalcPowerMode get calcPowerMode => Prefs.calcPowerModeValue;
+
+  /// Saves [m] and applies it now: the coordinator's policy (derive hold,
+  /// worker cap, warming, the Eager sweep), the BLE engine's debounce tiers and
+  /// the iOS background-task power request. Switching recomputes nothing.
+  Future<void> setCalcPowerMode(CalcPowerMode m) async {
+    Prefs.setCalcPowerMode(m);
+    _applyCalcPowerMode();
+    notifyListeners();
+  }
+
+  void _applyCalcPowerMode() {
+    final policy = CalcPowerPolicy(calcPowerMode);
+    _deriveCoordinator.policy = policy;
+    engine.deriveDebouncer = policy.debouncer;
+    unawaited(IosBgTask.requestExternalPower(policy.mode == CalcPowerMode.eager));
+  }
+
+  @visibleForTesting
+  set debugPowerSource(PowerSource? v) =>
+      _deriveCoordinator.debugPowerSource = v;
+
+  /// The policy from the saved mode, then the power subscription. Tests only;
+  /// `_initSteps` does the same.
+  @visibleForTesting
+  Future<void> debugAttachPower() async {
+    _applyCalcPowerMode();
+    await _deriveCoordinator.attachPower();
+  }
+
+  /// Foreground activity (a touch, coming back to the app): restarts the idle
+  /// timer that warms Home/Health artifacts after 30 s of quiet.
+  void noteForegroundActivity() => _deriveCoordinator.noteActivity();
+
   /// Why derive work is held right now, for the staleness line; null when
   /// nothing is. Read off the scheduler, which already notifies on every hold
   /// change, so a screen following it needs no database read.
@@ -2998,6 +3035,14 @@ class AppState extends ChangeNotifier {
     await _loadProfile();
     await _refreshNightlyRhr();
     await _deriveScheduler.init();
+    // After the scheduler: the power hold re-arms it on release. A failure here
+    // leaves the calm default (balanced, nothing held) and must not fail init.
+    try {
+      _applyCalcPowerMode();
+      await _deriveCoordinator.attachPower();
+    } catch (e) {
+      _log('[init] power mode not applied: $e');
+    }
     lastSynced = await LocalDb.latestSample();
     // The true data-edge frontier is the `rec_ts_hw` sync cursor, NOT
     // lastDecodedRecTs() (MAX(rec_ts) FROM decoded_onehz). decoded_onehz only

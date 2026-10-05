@@ -97,6 +97,12 @@ class DeriveScheduler {
   // tier, not blocked here.) Held exactly like _offloadActive.
   bool _background = false;
 
+  /// True while the Calculations power mode defers AUTOMATIC passes (Maximum
+  /// battery, unplugged, under the OS power saver). Held exactly like
+  /// [_offloadActive]: the settle timer is cancelled, queued jobs stay durable,
+  /// releasing re-arms. A pass a user asked for does not come through here.
+  bool _powerHold = false;
+
   /// Manual syncs currently holding the scheduler, keyed by the id
   /// [beginManualSync] returned; the value is the [_storedSeq] seen when that
   /// sync's own derive started (null until then). More than one can exist for a
@@ -150,6 +156,7 @@ class DeriveScheduler {
         'pending_light': _pendingLight,
         'pending_heavy': _pendingHeavy,
         'manual_sync_hold': _manualHeld,
+        'power_hold': _powerHold,
       };
 
   /// A manual sync takes charge of derivation. Returns the handle to pass to
@@ -269,6 +276,27 @@ class DeriveScheduler {
     _arm();
   }
 
+  /// Hold or release automatic passes for the power mode (see [_powerHold]).
+  void setPowerHold(bool held) {
+    if (_powerHold == held) return;
+    _powerHold = held;
+    if (held) {
+      _timer?.cancel();
+      _timer = null;
+      log('[derive-scheduler] power mode defers derive work — holding');
+      onChanged();
+      return;
+    }
+    log('[derive-scheduler] power hold released — derive may run');
+    onChanged();
+    _arm();
+  }
+
+  /// Anything that keeps a pass from starting, bar the power hold: what the
+  /// Eager plug-in sweep (which is not the scheduler's own pass) also waits on.
+  bool get heldBesidesPower =>
+      _offloadActive || _background || _workoutHeld || _manualHeld;
+
   void dispose() {
     _timer?.cancel();
     _timer = null;
@@ -297,7 +325,7 @@ class DeriveScheduler {
   }
 
   void _arm() {
-    if (_running || _offloadActive || _background || _workoutHeld || _manualHeld) {
+    if (_running || heldBesidesPower || _powerHold) {
       if (_pendingLight || _pendingHeavy) onWaiting?.call(settling: false);
       return;
     }
@@ -314,7 +342,7 @@ class DeriveScheduler {
   }
 
   Future<void> _drain() async {
-    if (_running || _offloadActive || _background || _workoutHeld || _manualHeld) {
+    if (_running || heldBesidesPower || _powerHold) {
       return;
     }
     _timer?.cancel();
@@ -336,7 +364,7 @@ class DeriveScheduler {
     // land) inside it — at which point running the pass is exactly what the
     // gate exists to prevent. The job is already marked `running` by
     // takeNextComputeJob, so hand it back rather than leaving it claimed.
-    if (_offloadActive || _background || _workoutHeld || _manualHeld) {
+    if (heldBesidesPower || _powerHold) {
       if (id != null && id.isNotEmpty) {
         await LocalDb.requeueComputeJob(id);
       }

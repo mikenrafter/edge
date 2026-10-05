@@ -202,6 +202,7 @@ void main() {
       expect(_rows(t, 'Data & privacy'), [
         'Storage',
         'Export, backup, import',
+        'Calculations', // P5: the power mode (see test/p5)
         'Write to Apple Health',
         'Contribute my health data',
         'Crash reports',

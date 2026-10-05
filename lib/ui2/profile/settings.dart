@@ -17,6 +17,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../compute/calc_power_policy.dart' show CalcPowerMode;
 import '../../compute/derive_perf.dart' show DerivePerf;
 import '../../data/off_lookup.dart';
 import '../../health/health_export.dart' show HealthLinkState;
@@ -139,6 +140,12 @@ class _MoreSettingsState extends State<MoreSettings> {
     if (mounted) setState(() => _icon = now);
   }
 
+  /// Applied even if the screen was left meanwhile: the user chose it.
+  Future<void> _pickCalcPower(AppState app) async {
+    final m = await pickCalcPowerMode(context, app.calcPowerMode);
+    if (m != null && m != app.calcPowerMode) await app.setCalcPowerMode(m);
+  }
+
   Future<void> _editSleepSchedule(AppState app) =>
       editExpectedSleepSchedule(context, app);
 
@@ -236,6 +243,8 @@ class _MoreSettingsState extends State<MoreSettings> {
       onGestureFailures: () => goto(c, const GestureFailures()),
       onNotifications: () => goto(c, const NotificationSettings()),
       onData: _openData,
+      calcPowerMode: app.calcPowerMode,
+      onPickCalcPowerMode: () => _pickCalcPower(app),
       onAutomation: () => goto(c, const AutomationSettings()),
       onCycleUnits: () => units.setSystem(units.isImperial
           ? UnitSystem.metric
@@ -525,6 +534,10 @@ class MoreSettingsView extends StatelessWidget {
   final AppIconChoice? appIcon;
   final ValueChanged<AppIconChoice>? onPickIcon;
 
+  /// Settings > Data & privacy > Calculations: when derive work and warming run.
+  final CalcPowerMode calcPowerMode;
+  final VoidCallback? onPickCalcPowerMode;
+
   /// The health-contribution row appears only where it means something: a
   /// build that has the feature, or an install that already said yes to it.
   final bool showHealthShare, healthShare;
@@ -602,6 +615,8 @@ class MoreSettingsView extends StatelessWidget {
     this.onPickIcon,
     this.pullToSync = true,
     this.onTogglePullToSync,
+    this.calcPowerMode = CalcPowerMode.balanced,
+    this.onPickCalcPowerMode,
     this.healthSync = false,
     this.healthState = HealthLinkState.unknown,
     this.healthStore = 'Apple Health',
@@ -776,6 +791,10 @@ class MoreSettingsView extends StatelessWidget {
                       sub: l?.settingsExportBackupImportRowSub ??
                           'Export spreadsheets or a full copy, and import history',
                       onTap: onData),
+                  SetRow(LucideIcons.batteryCharging, C.green, 'Calculations',
+                      key: const ValueKey('calc-power-row'),
+                      value: calcPowerLabels[calcPowerMode]!,
+                      onTap: onPickCalcPowerMode),
                   // The row P1 was missing. Everything behind it — the
                   // permission request, the retry/backoff, the four gates —
                   // was already written and simply had no way to be switched
@@ -1551,6 +1570,61 @@ class NotificationSettingsView extends StatelessWidget {
     );
     return picked == null ? null : picked.hour * 60 + picked.minute;
   }
+}
+
+// ══════════════════ CALCULATIONS ══════════════════
+
+/// The three Calculations modes as the settings row and the picker word them.
+/// No numbers: nothing here promises a time or a battery saving.
+const calcPowerLabels = {
+  CalcPowerMode.maxBattery: 'Maximum battery',
+  CalcPowerMode.balanced: 'Balanced',
+  CalcPowerMode.eager: 'Eager',
+};
+
+const _calcPowerSentences = {
+  CalcPowerMode.maxBattery:
+      'Calculates after a sync or when you ask, one day at a time, and '
+          'prepares nothing in the background.',
+  CalcPowerMode.balanced:
+      'Also prepares your screens while the app is idle or charging; your '
+          "phone's battery saver pauses that.",
+  CalcPowerMode.eager:
+      'On a charger it calculates every day and screen it can, even when '
+          "your phone's battery saver is on.",
+};
+
+/// A sheet with the three modes, each with one plain sentence. Tapping one
+/// closes it with that mode; dismissing returns null.
+Future<CalcPowerMode?> pickCalcPowerMode(BuildContext c, CalcPowerMode current) {
+  final p = P.of(c);
+  return showModalBottomSheet<CalcPowerMode>(
+    context: c,
+    backgroundColor: p.card,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (sheet) => SafeArea(
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final m in CalcPowerMode.values)
+              ListTile(
+                key: ValueKey('calc-power-option-${m.name}'),
+                title: Text(calcPowerLabels[m]!,
+                    style: F.body.copyWith(color: p.ink)),
+                subtitle: Text(_calcPowerSentences[m]!,
+                    style: F.cap.copyWith(color: p.ink3)),
+                trailing: m == current
+                    ? Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(m),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 // ══════════════════ EDIT PROFILE ══════════════════
