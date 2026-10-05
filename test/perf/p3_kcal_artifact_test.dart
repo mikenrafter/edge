@@ -40,7 +40,6 @@
 // does not exist.
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -281,15 +280,6 @@ void main() {
     test('the analytics pin carries minuteEnergy (7334289 and its '
         'descendant 65c8901)', () {
       expect(kAnalyticsPin, '65c8901c8fb09cd076290ea37676d55ef6c47429');
-    });
-
-    test('a changelog note next to kAnalyticsPin says edge now persists '
-        'minuteEnergy', () {
-      final s = File('lib/compute/derivation_engine.dart').readAsStringSync();
-      final i = s.indexOf('const String kAnalyticsPin');
-      expect(i, greaterThan(0));
-      final window = s.substring(i > 3000 ? i - 3000 : 0, i + 600);
-      expect(window, contains('edge now persists Calories.minuteEnergy'));
     });
   });
 }

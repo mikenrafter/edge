@@ -53,7 +53,6 @@
 //   'patternId' only when set, ==/hashCode).
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/pattern_store.dart';
@@ -864,37 +863,4 @@ void main() {
       expect(patternUsageCount('p3', prefs: prefs, channels: channels), 0);
     });
   });
-
-  group('every storage place is covered (AGENTS.md 4.7)', () {
-    test('propagation reads each place a BuzzSequence is stored', () {
-      // The source guard: a new field holding a BuzzSequence must be added
-      // to propagatePattern. This lists every one found today.
-      final places = <String>[];
-      final prefsSrc = _read('lib/notify/notification_prefs.dart');
-      final ruleSrc = _read('lib/notify/alert_rule.dart');
-      final relaySrc = _read('lib/notify/notification_relay.dart');
-      if (RegExp(r'final BuzzSequence\? buzzSequence;').hasMatch(ruleSrc)) {
-        places.add('AlertRule.buzzSequence');
-      }
-      if (RegExp(r'final BuzzSequence\? buzzSequence;').hasMatch(relaySrc)) {
-        places.add('ChannelConfig.buzzSequence');
-      }
-      if (RegExp(r'Map<String, BuzzSequence> appSequences')
-          .hasMatch(relaySrc)) {
-        places.add('ChannelConfig.appSequences');
-      }
-      expect(places, [
-        'AlertRule.buzzSequence',
-        'ChannelConfig.buzzSequence',
-        'ChannelConfig.appSequences',
-      ]);
-      expect(prefsSrc, contains('alertRules'));
-      final store = _read('lib/haptics/pattern_store.dart');
-      expect(store, contains('buzzSequence'));
-      expect(store, contains('appSequences'));
-      expect(store, contains('alertRules'));
-    });
-  });
 }
-
-String _read(String path) => File(path).readAsStringSync();

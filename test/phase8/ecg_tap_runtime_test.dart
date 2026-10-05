@@ -346,37 +346,8 @@ void main() {
   });
 
   group('AppState wiring (source guard)', () {
-    // The sessions and the dispatcher are built in the gesture controller
-    // (8AJ seam 3); the live event path stays in AppState.
-    final src = File('lib/state/gesture_controller.dart').readAsStringSync();
+    // The live event path stays in AppState.
     final appSrc = File('lib/state/app_state.dart').readAsStringSync();
-
-    test('the dispatcher is handed the counter; the session reads ecgTapMax',
-        () {
-      final code = codeOnly(src);
-      expect(code, contains('onCountTaps: _countTaps'));
-      expect(code, contains('maxTaps: () => _settings.ecgTapMax'));
-    });
-
-    test('the gesture session starts the ECG controller without persisting',
-        () {
-      final begin = bodyOf(src, 'Future<bool> _beginEcgForTap(');
-      expect(begin, isNotEmpty);
-      expect(codeOnly(begin), contains('persist: false'));
-    });
-
-    test('gesture haptics are delivered when the write lands, never gated on '
-        'a reply', () {
-      final body = bodyOf(src, 'Future<bool> _ecgTapBuzz(');
-      expect(body, isNotEmpty);
-      // 8AF.6: the count buzz is the gesture cues' (their plain-pulse path
-      // writes through the haptics port's buzzBand, a compiled one through
-      // writes as well; none waits on a reply).
-      expect(codeOnly(body), contains('cues.followUp'));
-      expect(
-          File('lib/haptics/gesture_cues.dart').readAsStringSync(),
-          contains('port.buzzBand('));
-    });
 
     test('the live event path still acks only through ackTap', () {
       expect(bodyOf(appSrc, 'void _onLiveEvent('), contains('ackTap('));

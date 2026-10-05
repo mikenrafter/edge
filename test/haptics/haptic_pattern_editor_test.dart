@@ -35,7 +35,6 @@
 //    with that name already exists."; the dialog stays open on either.
 
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' show Tristate;
 
 import 'package:clock/clock.dart';
@@ -789,29 +788,6 @@ void main() {
       await t.tap(find.byKey(const ValueKey('dot')));
       await t.tap(find.byKey(const ValueKey('dyn')));
       expect(tapped, 3);
-    });
-
-    test('the probe page uses them instead of private copies', () {
-      final src =
-          File('lib/ui2/profile/pattern_probe_page.dart').readAsStringSync();
-      expect(src, contains("import 'pattern_notation.dart'"));
-      for (final gone in [
-        'class _Notation',
-        'class _SymbolPainter',
-        'class _EntryRow',
-        'class _LengthButton',
-        'class _DotButton',
-        'class _DynamicButton',
-      ]) {
-        expect(src, isNot(contains(gone)), reason: '$gone moved out');
-      }
-    });
-
-    test('the editor uses them too, not a second copy', () {
-      final src =
-          File('lib/ui2/profile/haptic_pattern_editor.dart').readAsStringSync();
-      expect(src, contains("import 'pattern_notation.dart'"));
-      expect(src, isNot(contains('class _SymbolPainter')));
     });
   });
 

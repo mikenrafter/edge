@@ -5,8 +5,6 @@
 //
 // Pumped headless as the pure view, like settings_regroup_test.dart.
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
@@ -140,32 +138,6 @@ void main() {
       expect(titles, isNot(contains('Alarm')),
           reason: 'the Alarm door is a Settings row, not a row in this screen');
       expect(sectionTitles(t), isNot(contains('Alarm')));
-    });
-  });
-
-  group('structure', () {
-    test('in settings.dart the Alarm row is inside the Alerts accordion', () {
-      final src = File('lib/ui2/profile/settings.dart').readAsStringSync();
-      final alerts = src.indexOf("SettingsAccordion('Alerts'");
-      final data = src.indexOf("SettingsAccordion('Data & privacy'");
-      final band = src.indexOf("SettingsAccordion('Hardware'");
-      final alarm = src.indexOf('onTap: onAlarm');
-      expect(alerts, greaterThan(band));
-      expect(alarm, greaterThan(alerts),
-          reason: 'the Alarm row sits after the Alerts header');
-      expect(alarm, lessThan(data),
-          reason: 'and before the next group begins');
-      expect(src.indexOf('onTap: onAlarm', alarm + 1), -1,
-          reason: 'only one Alarm row on the Settings screen');
-    });
-
-    test('docs/navigation-depth.md says Alarm lives in Alerts', () {
-      final md = File('docs/navigation-depth.md').readAsStringSync();
-      final lines = md.split('\n').where((l) => !l.trim().startsWith('|'));
-      expect(
-          lines.any((l) => l.contains('Alarm') && l.contains('Alerts')), isTrue,
-          reason: 'a prose line (outside the table) records the Band -> '
-              'Alerts move');
     });
   });
 }

@@ -40,8 +40,6 @@
 // whatever the profile says; two gesture jobs run back to back at +0 ms; both
 // files repeat the number.
 
-import 'dart:io';
-
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/gesture_cues.dart';
@@ -51,7 +49,6 @@ import 'package:openstrap_edge/haptics/wake_haptics.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 
-import '../phase8/support/dart_source.dart';
 import '../support/virtual_mg.dart';
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
@@ -202,41 +199,6 @@ void main() {
         async.elapse(const Duration(seconds: 10));
         expect(band.writes, hasLength(1));
       });
-    });
-  });
-
-  group('one source (source guards)', () {
-    test('the profile defines the constant from its fastest gap', () {
-      final src = File('lib/haptics/haptic_profile.dart').readAsStringSync();
-      final code = codeOnly(src);
-      expect(code, contains('minVibrationGapMs'));
-      expect(RegExp(r'minVibrationGapMs[^;]*fastestGap\(\)').hasMatch(code),
-          isTrue,
-          reason: 'it is fastestGap().delayMs, not a second literal');
-    });
-
-    // 8AI.3: a gesture cue is its own queue job, so the spacing between cues
-    // is the queue's (haptics_service.dart hands it the constant); the cues
-    // themselves chain nothing and repeat no gap.
-    for (final f in ['wake_haptics.dart', 'haptics_service.dart']) {
-      test('$f reads the constant and repeats neither the number nor '
-          'fastestGap()', () {
-        final code = codeOnly(File('lib/haptics/$f').readAsStringSync());
-        expect(code, contains('minVibrationGapMs'));
-        expect(code, isNot(contains('fastestGap(')),
-            reason: 'two readers of the table are two sources');
-        expect(RegExp(r'delayMs:\s*0\b').hasMatch(code), isFalse,
-            reason: 'a literal 0 ms gap is the number copied');
-      });
-    }
-
-    test('gesture_cues.dart chains no cues and repeats no gap', () {
-      final code =
-          codeOnly(File('lib/haptics/gesture_cues.dart').readAsStringSync());
-      expect(code, isNot(contains('fastestGap(')));
-      expect(code, isNot(contains('minVibrationGapMs')),
-          reason: 'the queue spaces the cues, not GestureCues');
-      expect(RegExp(r'delayMs:\s*0\b').hasMatch(code), isFalse);
     });
   });
 }

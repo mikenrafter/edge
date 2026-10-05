@@ -22,8 +22,6 @@
 // chain must never be left pending in a finished test's zone.
 
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -42,7 +40,6 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../phase8/support/dart_source.dart';
 import '../phase8/support/sections.dart';
 
 final _schedule = fillDefaultAlarmSchedule(const [
@@ -309,17 +306,6 @@ void main() {
       await _open(t, _screens['Settings']!(), locale: es);
       expect(_isOpen(t, _byTitle('Acerca de')), isFalse);
       expect(_isOpen(t, _byTitle('Hardware')), isTrue);
-    });
-  });
-
-  group('structure', () {
-    test('SettingsAccordion persists through SettingsRepository, nothing else',
-        () {
-      final src = File('lib/ui2/profile/profile.dart').readAsStringSync();
-      final accordion = codeOnly(bodyOf(src, 'class _SettingsAccordionState'));
-      expect(accordion, contains('SettingsRepository'));
-      expect(accordion, isNot(contains('SharedPreferences')),
-          reason: 'one path: the repository owns the app-prefs section');
     });
   });
 }

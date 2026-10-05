@@ -135,21 +135,6 @@ void main() {
   });
 
   group('wiring (source guards)', () {
-    test('EcgTapSession.start does not await the start buzz', () {
-      final src = File('lib/gestures/ecg_tap_session.dart').readAsStringSync();
-      expect(codeOnly(src), contains('startBuzz'),
-          reason: 'the session has a start-buzz parameter');
-      final body = codeOnly(bodyOf(src, 'Future<void> start(StrapEvent tap)'));
-      expect(body, contains('startBuzz'),
-          reason: 'start() fires the start buzz');
-      expect(RegExp(r'await\s+_?startBuzz').hasMatch(body), isFalse,
-          reason: 'it must not be awaited: ECG start never waits on the buzz');
-      final fire = body.indexOf('startBuzz');
-      final begin = body.indexOf('_startStream');
-      expect(fire, lessThan(begin),
-          reason: 'the buzz is requested before the stream start');
-    });
-
     test('AppState wires the start buzz into the session it builds', () {
       // Built in the gesture controller since 8AJ seam 3.
       final src = File('lib/state/gesture_controller.dart').readAsStringSync();

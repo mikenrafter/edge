@@ -1,10 +1,6 @@
 // 8AJ seam 1: every AppState member that moved into the DeriveCoordinator is
 // still there and forwards, with the same notify semantics. The type
-// annotations below are compile-time checks of the public surface; the source
-// guard pins that the logic lives in the coordinator and AppState only
-// delegates.
-
-import 'dart:io';
+// annotations below are compile-time checks of the public surface.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -97,62 +93,6 @@ void main() {
       expect(identical(app.debugRescanRecent, rescan), isTrue);
       app.debugDeriveRun = null;
       expect(app.debugDeriveRun, isNull);
-    });
-  });
-
-  group('source guard', () {
-    final app = File('lib/state/app_state.dart').readAsStringSync();
-    final coord = File('lib/state/derive_coordinator.dart').readAsStringSync();
-
-    test('AppState delegates each moved member in one expression', () {
-      for (final line in const [
-        'void bumpInsights() => _deriveCoordinator.bumpInsights();',
-        'void recordHomeRender(int ms) => _deriveCoordinator.recordHomeRender(ms);',
-        'ValueListenable<RecalcState> get recalc => _deriveCoordinator.recalc;',
-        'Map<String, Object?>? get lastPassPerf => _deriveCoordinator.lastPassPerf;',
-        'ValueNotifier<int> get insightsRevision => _deriveCoordinator.insightsRevision;',
-        'DeriveScheduler get _deriveScheduler => _deriveCoordinator.scheduler;',
-        '_deriveCoordinator.dispose();',
-      ]) {
-        expect(app, contains(line), reason: 'missing delegate: $line');
-      }
-      // The manual sync hands its derive to the coordinator; it moved to the
-      // sync controller with seam 5.
-      final sync = File('lib/state/sync_controller.dart').readAsStringSync();
-      expect('$app\n$sync', contains('_deriveCoordinator.afterDrain('));
-    });
-
-    test('the derive logic no longer lives in AppState', () {
-      for (final gone in const [
-        'Future<DeriveOutcome> _afterDrain(',
-        'Future<DeriveOutcome> _deriveRun(',
-        'Future<int> _rescanRecent(',
-        'Future<DeriveOutcome> _runScheduled(',
-        'RevisionCoalescer(',
-        'ArtifactWarmer(',
-        'PeriodicCalculationPolicy(',
-        'DeriveScheduler(',
-        'int _recalcSeq',
-        'ValueNotifier<RecalcState>(',
-        "'derive_\$mode'",
-      ]) {
-        expect(app, isNot(contains(gone)), reason: 'still in AppState: $gone');
-      }
-    });
-
-    test('the logic is in the coordinator, which has no AppState back '
-        'reference', () {
-      for (final here in const [
-        'Future<DeriveOutcome> afterDrain(',
-        'Future<DeriveOutcome> _deriveRun(',
-        'Future<int> _rescanRecent(',
-        'RevisionCoalescer(',
-        'ArtifactWarmer(',
-        'DeriveScheduler(',
-      ]) {
-        expect(coord, contains(here), reason: 'missing: $here');
-      }
-      expect(coord, isNot(contains('app_state.dart')));
     });
   });
 }

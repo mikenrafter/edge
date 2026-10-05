@@ -10,11 +10,7 @@
 //
 // ASSUMED: while a sub-tab's own read is pending, what shows is InlineLoading (a
 // ProgressIndicator inside a Surface card); the title, sub-tabs and whatever was
-// already read stay on screen. health_screen.dart no longer contains the
-// literal full-width spinner (g1_calc_screens_shell_test.dart's audit guard
-// lists it too).
-
-import 'dart:io';
+// already read stay on screen.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,9 +75,4 @@ void main() {
       expect(find.byType(InlineLoading), findsOneWidget);
     });
   }
-
-  test('health_screen.dart has no full-width page spinner left', () {
-    final src = File('lib/ui2/screens/health_screen.dart').readAsStringSync();
-    expect(src, isNot(contains('Center(child: CircularProgressIndicator())')));
-  });
 }

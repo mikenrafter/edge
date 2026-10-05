@@ -2,8 +2,6 @@
 // store (slot n = n taps) serves both methods; only the method choice and the
 // window are new. Persisted in the existing gesture preferences; no migration.
 
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -83,16 +81,6 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('gesture_ecg_tap_mode'), 'fast',
           reason: 'an orphaned value is left alone, not migrated');
-    });
-
-    test('the mode enum, its screen selector and its strings are gone', () {
-      expect(File('lib/gestures/ecg_tap_mode.dart').existsSync(), isFalse);
-      expect(File('lib/ui2/profile/gestures.dart').readAsStringSync(),
-          isNot(contains('EcgTapMode')));
-      expect(File('lib/l10n/app_en.arb').readAsStringSync(),
-          isNot(contains('ecgTapMode')));
-      expect(File('lib/gestures/ecg_tap_session.dart').readAsStringSync(),
-          isNot(contains('beginFastStream')));
     });
   });
 

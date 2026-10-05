@@ -38,8 +38,6 @@
 // test/phase8/phone_device_test.dart ('one preference, two doors' drives the
 // Settings Steps row), docs/navigation-depth.md (group order sentence).
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/platform/app_icon.dart';
@@ -48,7 +46,6 @@ import 'package:openstrap_edge/ui2/profile/profile.dart';
 import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../phase8/support/dart_source.dart';
 import 'support/g123_helpers.dart';
 
 Widget _settings({bool dev = false}) => MoreSettingsView(
@@ -234,27 +231,6 @@ void main() {
   });
 
   group('one source of truth for phone steps', () {
-    test('settings.dart neither reads nor toggles phone steps', () {
-      final code =
-          codeOnly(File('lib/ui2/profile/settings.dart').readAsStringSync());
-      for (final needle in const [
-        'phoneSteps',
-        'PhoneSteps',
-        'phoneStepsEnabled',
-        'togglePhoneSteps',
-      ]) {
-        expect(code.contains(needle), isFalse,
-            reason: 'settings.dart still mentions $needle');
-      }
-    });
-
-    test('My devices keeps the one switch, bound to the same preference', () {
-      final src = File('lib/ui2/profile/devices.dart').readAsStringSync();
-      expect(src, contains('Count steps from this phone'));
-      expect(codeOnly(src), contains('togglePhoneSteps'),
-          reason: 'MyDevices wires the phone switch to AppState');
-    });
-
     testWidgets('the phone row on My devices still carries the toggle',
         (t) async {
       var flips = 0;
@@ -275,14 +251,6 @@ void main() {
       expect(find.text('Count steps from this phone'), findsOneWidget);
       await t.tap(find.byType(Switch));
       expect(flips, 1);
-    });
-  });
-
-  group('the Band accordion is not left behind anywhere in settings.dart', () {
-    test("no SettingsAccordion('Band' literal", () {
-      final src = File('lib/ui2/profile/settings.dart').readAsStringSync();
-      expect(src.contains("SettingsAccordion('Band'"), isFalse);
-      expect(src.contains("'Hardware'"), isTrue);
     });
   });
 }

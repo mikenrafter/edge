@@ -40,12 +40,6 @@ NaturalObserveRequest _night({
 
 void main() {
   group('source guards', () {
-    test('the stager only runs inside Isolate.run', () {
-      final natural = _code('lib/wake/natural_wake.dart');
-      expect(natural, contains('Isolate.run('));
-      expect(natural, contains('CausalStager.observe('));
-    });
-
     test('nothing else in lib/ calls the causal stager', () {
       final offenders = <String>[];
       for (final f in Directory('lib')

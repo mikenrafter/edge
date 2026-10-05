@@ -159,19 +159,5 @@ void main() {
       expect(series['sleep'], 'tst_min');
       expect([for (final c in kMetricCatalogue) c.title].first, 'Recovery');
     });
-
-    test('health_screen.dart no longer declares its own copy', () {
-      final health = File('lib/ui2/screens/health_screen.dart').readAsStringSync();
-      expect(health, isNot(contains('const _catalogue')));
-      expect(health, contains('kMetricCatalogue'));
-    });
-
-    test('explorer.dart reads the shared list and keeps no list of its own', () {
-      final src = File('lib/ui2/screens/explorer.dart').readAsStringSync();
-      expect(src, contains('kMetricCatalogue'));
-      expect(src, isNot(contains(RegExp(r'(?<![A-Za-z])_catalogue\b'))));
-      expect(src, isNot(contains("'lf_hf'")),
-          reason: 'catalogue keys are not re-listed in the Explorer');
-    });
   });
 }

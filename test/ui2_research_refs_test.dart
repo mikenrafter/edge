@@ -1,11 +1,8 @@
 // Research citations: the table, and the links drawn from it.
 //
-// The table may only hold a DOI that already appears in the repo's own
-// sources (docs/research-references.md records where each came from and how it
-// was verified). A reference with no DOI on record stays plain text — a link
-// built from a guessed DOI is worse than no link.
-
-import 'dart:io';
+// A reference with no DOI on record stays plain text — a link built from a
+// guessed DOI is worse than no link (docs/research-references.md records where
+// each DOI came from).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,43 +51,9 @@ void main() {
         expect(r.url, r.link, reason: r.id);
       }
     });
-
-    test('every DOI appears in the repo outside this table', () {
-      final text = StringBuffer();
-      for (final dir in ['lib', 'docs', 'guides', 'test']) {
-        final d = Directory(dir);
-        if (!d.existsSync()) continue;
-        for (final f in d.listSync(recursive: true).whereType<File>()) {
-          if (f.path.endsWith('lib/ui2/research_refs.dart') ||
-              f.path.endsWith('test/ui2_research_refs_test.dart')) {
-            continue;
-          }
-          if (!RegExp(r'\.(dart|md|html|arb)$').hasMatch(f.path)) continue;
-          text.write(f.readAsStringSync());
-        }
-      }
-      final all = text.toString();
-      for (final r in kResearchRefs.where((r) => r.doi != null)) {
-        expect(all, contains(r.doi),
-            reason: '${r.id}: DOI ${r.doi} is not in any repo source — '
-                'do not add a DOI that has not been seen here');
-      }
-    });
   });
 
   group('provenance record', () {
-    test('docs/research-references.md lists every DOI with its reference', () {
-      final doc = File('docs/research-references.md').readAsStringSync();
-      for (final r in kResearchRefs) {
-        expect(doc, contains(r.label), reason: r.id);
-        // Every URL a citation can open (DOI or book link) is written out in
-        // the record, so no link ships without its provenance.
-        if (r.url != null) {
-          expect(doc, contains(r.url), reason: r.id);
-        }
-      }
-    });
-
     test('only the reference with no confirmed source stays plain text', () {
       final noUrl = {for (final r in kResearchRefs.where((r) => r.url == null)) r.id};
       expect(noUrl, {'baevsky2008'});

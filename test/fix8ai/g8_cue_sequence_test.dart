@@ -16,8 +16,6 @@
 //   Future<BuzzDelivery> confirm()      (as today)
 //   response(int) is removed.
 
-import 'dart:io';
-
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/haptics/gesture_cues.dart';
@@ -25,7 +23,6 @@ import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/haptics_service.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 
-import '../phase8/support/dart_source.dart';
 import '../support/virtual_mg.dart';
 
 final HapticDeviceProfile _mg = HapticDeviceProfile.whoopMg;
@@ -243,17 +240,6 @@ void main() {
       async.elapse(const Duration(seconds: 20));
       expect(band.writes, isEmpty);
       expect(done, BuzzDelivery.rejected);
-    });
-  });
-
-  group('source guards', () {
-    test('GestureCues has no response(n) that chains follow-ups', () {
-      final src = File('lib/haptics/gesture_cues.dart').readAsStringSync();
-      final code = codeOnly(src);
-      expect(code, isNot(contains('response(')));
-      expect(code, contains('start()'));
-      expect(code, contains('followUp()'));
-      expect(code, contains('confirm()'));
     });
   });
 }

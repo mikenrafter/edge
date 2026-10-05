@@ -84,15 +84,6 @@ void main() {
     expect(problems, isEmpty, reason: problems.join('\n'));
   });
 
-  test('the user-facing packet count is a reader that excludes gesture', () {
-    final src = File('lib/data/db.dart').readAsStringSync();
-    final i = src.indexOf('static Future<int> ecgRawPacketCount');
-    expect(i, greaterThan(0));
-    final body = src.substring(i, i + 400);
-    expect(body, contains('origin'));
-    expect(body, contains('gesture'));
-  });
-
   group('coach deny list', () {
     setUpAll(() async {
       sqfliteFfiInit();

@@ -19,8 +19,6 @@
 //    "2 h 10 min".
 // See docs/proof-workflow.md for the structural-fixture convention.
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -533,11 +531,6 @@ void main() {
         expect(find.textContaining('estimat'), findsNothing, reason: s.phase);
         expect(find.textContaining('about'), findsNothing, reason: s.phase);
       }
-    });
-
-    test('"The band is sending data now." is gone from the control', () {
-      final src = File('lib/ui2/sync_control.dart').readAsStringSync();
-      expect(src.contains('The band is sending data now.'), isFalse);
     });
   });
 

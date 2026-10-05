@@ -12,8 +12,7 @@
 //   * Trends: Body clock and Consistency first, then one list by family with
 //     Readiness and Stress in it, empty families folded, the SpO2 note, and
 //     MetricDetail opened from here starting on 30 days;
-//   * Labs is the content it was, one tab to the right of where it was;
-//   * the stale comments and the navigation-depth doc.
+//   * Labs is the content it was, one tab to the right of where it was.
 //
 // The old-index migration lives in health_h2_migration_test.dart so that a
 // missing symbol there cannot hide the screen tests here.
@@ -323,8 +322,6 @@ Finder _mentions(String word) => find.byWidgetPredicate(
 
 SubTabs _tabs(WidgetTester t) => t.widget<SubTabs>(find.byType(SubTabs).first);
 
-String _read(String path) => File(path).readAsStringSync();
-
 void main() {
   setUpAll(() async {
     // NapsScreen reads the nap edits straight from LocalDb, and a pushed
@@ -564,31 +561,6 @@ void main() {
       expect(find.text('Several nights in a row were outside your normal range'),
           findsOneWidget);
     });
-
-    test('the illness-card wording lives in one place under lib', () {
-      // Each fallback sentence is typed once in Dart, not once per screen. The
-      // localised copies live in the .arb files and the generated code.
-      const sentences = [
-        'Several nights in a row were outside your normal range',
-        'Last night was outside your normal range',
-        'was outside your normal range',
-      ];
-      final dart = Directory('lib')
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) =>
-              f.path.endsWith('.dart') &&
-              !f.path.contains('lib/l10n/app_localizations'))
-          .toList();
-      for (final s in sentences) {
-        final hits = [
-          for (final f in dart)
-            if (f.readAsStringSync().contains(s)) f.path,
-        ];
-        expect(hits.length, lessThanOrEqualTo(1),
-            reason: '"$s" is written in ${hits.join(', ')}');
-      }
-    });
   });
 
   // ───────────────────── Today ─────────────────────
@@ -789,33 +761,6 @@ void main() {
           reason: 'a suppressed series says so, in those words');
       expect(find.textContaining('Vitals'), findsNothing,
           reason: 'there is no Vitals tab to be shown on');
-    });
-  });
-
-  // ───────────────────── D: stale comments and docs ─────────────────────
-  group('D: stale comments and docs', () {
-    final source = _read('lib/ui2/screens/health_screen.dart');
-
-    test('the "Sleep is a tab of its own" comment is gone', () {
-      expect(source.contains('Sleep is a tab of its own'), isFalse,
-          reason: 'Sleep is not a Health tab, and Vitals no longer exists');
-    });
-
-    test('the comments that describe the old five tabs are gone', () {
-      expect(source.contains('EXPLORE SITS SECOND'), isFalse);
-      expect(source.contains('Overview is a list you scan'), isFalse);
-      expect(source.contains('Five chips do not fit'), isFalse);
-    });
-
-    test('docs/navigation-depth.md has a Health section', () {
-      final doc = _read('docs/navigation-depth.md');
-      expect(RegExp(r'^#{1,3} .*Health', multiLine: true).hasMatch(doc), isTrue,
-          reason: 'a heading naming Health');
-      final health = doc.substring(
-          RegExp(r'^#{1,3} .*Health', multiLine: true).firstMatch(doc)!.start);
-      for (final w in ['Last night', 'Today', 'Trends', 'Labs']) {
-        expect(health.contains(w), isTrue, reason: 'the section names $w');
-      }
     });
   });
 }

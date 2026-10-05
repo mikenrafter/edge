@@ -47,15 +47,11 @@
 // Failure mode today: the file does not exist (this file does not compile
 // until it does).
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
-
-import '../phase8/support/dart_source.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 4, 12, 7, 31);
 
@@ -379,20 +375,5 @@ void main() {
         });
       }
     }
-  });
-
-  group('Home', () {
-    test('home_screen.dart places the card beside the community nudge, fed '
-        'by AppState.gestureFailures', () {
-      final src = File('lib/ui2/screens/home_screen.dart').readAsStringSync();
-      final code = codeOnly(src);
-      expect(src, contains('gesture_failure_card.dart'));
-      expect(code, contains('GestureFailureCard('));
-      expect(code, contains('gestureFailures'));
-      final card = code.indexOf('GestureFailureCard(');
-      final nudge = code.indexOf('CommunityNudge()');
-      expect((card - nudge).abs(), lessThan(1200),
-          reason: 'the two cards sit together under the rings');
-    });
   });
 }

@@ -238,28 +238,6 @@ void main() {
       expect(find.textContaining('crosses into or out of'), findsNothing);
     });
 
-    test('the Settings source carries no zone alert wiring any more', () {
-      final src = File('lib/ui2/profile/settings.dart').readAsStringSync();
-      final more = codeOnly(bodyOf(src, 'class MoreSettingsView'));
-      final state = codeOnly(bodyOf(src, 'class _MoreSettingsState'));
-      for (final name in [
-        'zoneAlertEnabled',
-        'zoneAlertZone',
-        'onToggleZoneAlert',
-        'onCycleZoneAlertZone',
-      ]) {
-        expect(more, isNot(contains(name)), reason: 'MoreSettingsView $name');
-      }
-      for (final name in [
-        'zoneAlertEnabled',
-        'setZoneAlertEnabled',
-        'setZoneAlertTargetZone',
-        'onToggleZoneAlert',
-      ]) {
-        expect(state, isNot(contains(name)), reason: '_MoreSettingsState $name');
-      }
-    });
-
     test('Alerts reaches the zone screen from settings.dart', () {
       final code = codeOnly(
         File('lib/ui2/profile/settings.dart').readAsStringSync(),

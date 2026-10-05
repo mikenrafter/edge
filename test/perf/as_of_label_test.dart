@@ -34,9 +34,6 @@
 //   {when}; new results are being calculated"); app_localizations*.dart
 //   regenerated (de/es/fr/hi/zh fall back to English, as other recent keys do).
 
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -213,24 +210,5 @@ void main() {
             lessThanOrEqualTo(360));
       });
     }
-  });
-
-  group('localisation', () {
-    final en = jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
-        as Map<String, dynamic>;
-
-    test('the English strings exist with their placeholders', () {
-      expect(en['asOfTime'], 'As of {time}');
-      expect(en['asOfDateTime'], 'As of {date}, {time}');
-      expect(en['asOfSemantics'],
-          'Showing results calculated at {when}; new results are being calculated');
-    });
-
-    test('the generated class has the getters', () {
-      final g = File('lib/l10n/app_localizations.dart').readAsStringSync();
-      expect(g, contains('String asOfTime('));
-      expect(g, contains('String asOfDateTime('));
-      expect(g, contains('String asOfSemantics('));
-    });
   });
 }

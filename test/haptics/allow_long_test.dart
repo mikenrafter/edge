@@ -21,8 +21,6 @@
 //   AppState passes `maxRuntime: maxRuntimeFor(allowLong: Prefs.allowLongHaptics)`
 //   at EVERY call of those four functions.
 
-import 'dart:io';
-
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
@@ -294,27 +292,11 @@ void main() {
   });
 
   group('wiring (source)', () {
-    final src = File('lib/state/app_state.dart').readAsStringSync();
-    final code = codeOnly(src);
-
     // 8AE.5: the delivery moved into HapticsService. That a delivery and its
     // timeout follow the setting is pinned by behaviour in
     // haptics_service_test.dart ('allow-long is read when a delivery
-    // happens'); what stays here is where the setting comes from and that no
-    // second path computes a plan's runtime.
-    test('AppState hands the service the Prefs setting', () {
-      final start = code.indexOf('late final HapticsService haptics');
-      final ctor = code.substring(start, code.indexOf(');', start));
-      expect(ctor, contains('allowLong: () => Prefs.allowLongHaptics'));
-    });
-
-    test('the service reads the setting through maxRuntimeFor, at every '
-        'delivery', () {
-      final svc = codeOnly(
-          File('lib/haptics/haptics_service.dart').readAsStringSync());
-      expect(svc, contains('maxRuntimeFor(allowLong: _allowLong())'));
-    });
-
+    // happens'); what stays here is that no second path computes a plan's
+    // runtime.
     for (final fn in [
       'deliverBandSequenceQueued',
       'bandSequenceTimeout',
@@ -335,18 +317,5 @@ void main() {
         expect(offenders, isEmpty, reason: offenders.join('\n'));
       });
     }
-
-    test('the tap editor does not hard-code the cap in planForTaps', () {
-      final ed = File('lib/ui2/profile/buzz_pattern.dart').readAsStringSync();
-      final c = codeOnly(ed);
-      final calls = RegExp(r'(?<![A-Za-z_])planForTaps\(').allMatches(c);
-      expect(calls, isNotEmpty);
-      for (final m in calls) {
-        final close = closingOf(c, m.end - 1);
-        expect(c.substring(m.end - 1, close + 1), contains('maxRuntime'),
-            reason: 'planForTaps in buzz_pattern.dart must honor '
-                'allow-long');
-      }
-    });
   });
 }

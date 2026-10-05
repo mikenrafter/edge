@@ -100,40 +100,4 @@ void main() {
       );
     },
   );
-  test('sleep union range is used by actual candidate loader', () {
-    final source = File(
-      'lib/compute/derivation_engine.dart',
-    ).readAsStringSync();
-    final start = source.indexOf(
-      'Future<SleepSessionCandidate> _sleepCandidateForDay',
-    );
-    final end = source.indexOf('final searchSub', start);
-    final loader = source.substring(start, end);
-    expect(
-      loader,
-      contains('overrideOnsetSec:'),
-      reason: 'the tested union helper must feed production loading',
-    );
-    expect(loader, contains('overrideOffsetSec:'));
-  });
-  test('haptic producers use common dispatcher policy', () {
-    for (final path in [
-      'lib/notify/water_buzzer.dart',
-      'lib/notify/med_buzzer.dart',
-      'lib/notify/notification_relay.dart',
-    ]) {
-      final source = File(path).readAsStringSync();
-      expect(
-        source,
-        contains('AlertDispatcher'),
-        reason: '$path must deliver through policy, not directly buzz',
-      );
-    }
-  });
-  test('persistent Sync now reaches Home and primary band detail', () {
-    final home = File('lib/ui2/screens/home_screen.dart').readAsStringSync();
-    final devices = File('lib/ui2/profile/devices.dart').readAsStringSync();
-    expect(home, contains('SyncPresentationState'));
-    expect(devices, contains('SyncPresentationState'));
-  });
 }

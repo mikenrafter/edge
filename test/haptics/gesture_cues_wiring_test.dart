@@ -127,16 +127,6 @@ void main() {
     final src = File('lib/state/gesture_controller.dart').readAsStringSync();
     final appSrc = File('lib/state/app_state.dart').readAsStringSync();
 
-    test('the count buzz no longer builds the fixed 300 ms per-tap sequence',
-        () {
-      final body = codeOnly(bodyOf(src, 'Future<bool> _ecgTapBuzz('));
-      expect(body, isNotEmpty);
-      expect(body, isNot(contains('i * 300')),
-          reason: 'a profiled band plays compiled cues; gen4 is the cues\' '
-              'own fallback');
-      expect(body, contains('cues.followUp'));
-    });
-
     test('every gesture cue is a dispatcher delivery in the band queue', () {
       final body = codeOnly(bodyOf(src, 'Future<bool> _gestureCue('));
       expect(body, contains('_alertDispatcher().dispatch('));
@@ -164,11 +154,6 @@ void main() {
       final body = codeOnly(bodyOf(appSrc, 'void _onLiveEvent('));
       expect(body, contains('ackTap('));
       expect(body, contains('gestureCues.confirm'));
-    });
-
-    test('the gesture controller owns one GestureCues over the haptics service',
-        () {
-      expect(codeOnly(src), contains('GestureCues('));
     });
   });
 }

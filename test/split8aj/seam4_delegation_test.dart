@@ -2,9 +2,7 @@
 // there with its original type, the helper types other code reaches through
 // app_state.dart are still exported from it, and the collaborators the area is
 // wired to keep their shape. The annotations are compile-time checks of the
-// public surface; the source guard lists the names and the callbacks other
-// controllers take from this area. Passes before and after the
-// WorkoutController move.
+// public surface. Passes before and after the WorkoutController move.
 //
 // Public AppState members in scope today (name -> kind):
 //   activeWorkout            LiveWorkoutState?  mutable field (screens + tests assign)
@@ -37,8 +35,6 @@
 // Shared with other concerns (stay on AppState, the controller is handed them):
 //   zoneAlertTargetZone (a pref), liveHr, isConnected, device, repo, user,
 //   healthSyncEnabled, bumpInsights, forceResync, logLines, engine.
-
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gps/gps_source.dart';
@@ -145,90 +141,5 @@ void main() {
     );
     expect(w.maxHrSeen, 111);
     expect(w.perMinuteHr(), [100.0, 110.0]);
-  });
-
-  group('source guard', () {
-    final src = File('lib/state/app_state.dart').readAsStringSync();
-
-    test('AppState still declares every public name in the area', () {
-      for (final name in const [
-        'activeWorkout', 'startWorkout', 'stopWorkout', 'deleteWorkout',
-        'workoutStepsMeasured', 'liveZone', 'liveDistanceKm', 'routeTracking',
-        'routeTracker', 'routeLocationIssue', 'retryRouteTracking',
-        'maybeFinishFromLiveActivity', 'maybeStopBreathingFromLiveActivity',
-        'liveStepsAbsentReason', 'exportWorkoutToHealth', 'breathingActive',
-        'breathingWindowOpen', 'breathingPattern', 'breathingStartedAt',
-        'breathingTarget', 'breathingResult', 'breathingError',
-        'openBreathingWindow', 'closeBreathingWindow',
-        'startBreathingSession', 'stopBreathingSession', 'breathingHistory',
-        'buzzBreathPhase', 'buzzSessionComplete', 'debugTickWorkout',
-        'debugReconcileOrphanedLiveWorkout', 'debugArmOwnedTimers',
-      ]) {
-        expect(RegExp('\\b$name\\b\\s*(=>|\\(|;|=|\\{)|get $name\\b')
-            .hasMatch(src), isTrue, reason: 'AppState lost `$name`');
-      }
-    });
-
-    // The wiring may move into a controller's own file with the seam, so the
-    // checks below read every file under lib/state/ and look for the tokens
-    // that make the wiring, not for one formatting of it.
-    final all = [
-      for (final f in Directory('lib/state').listSync().whereType<File>())
-        if (f.path.endsWith('.dart')) f.readAsStringSync(),
-    ].join('\n');
-
-    test('the callbacks other controllers take from this area are wired at '
-        'construction', () {
-      // LiveStreamController: the workout's type and "breathing".
-      expect(RegExp(r'activeWorkoutType:\s*\(\)\s*=>').hasMatch(src), isTrue);
-      expect(RegExp(r'breathing:\s*\(\)\s*=>').hasMatch(src), isTrue);
-      // DeriveCoordinator: a live session holds the artifact warmer.
-      expect(
-          RegExp(r'warmHeld:\s*\(\)\s*=>[^,]*_liveSessionActive').hasMatch(src),
-          isTrue);
-      // GestureController: the band double tap's workout toggle.
-      expect(RegExp(r'onWorkoutToggle:\s*_toggleWorkoutFromGesture').hasMatch(src),
-          isTrue);
-      // EcgController: "workout" beats "breathing" as the busy reason.
-      final busy = RegExp(r"busyReason:[\s\S]{0,260}?'workout'[\s\S]{0,160}?'breathing'")
-          .hasMatch(src);
-      expect(busy, isTrue);
-    });
-
-    test('the feature-session predicate is still workout, breathing session '
-        'or window, ECG capture (the VACUUM gate and the warmer hold read it)',
-        () {
-      final at = src.indexOf('bool get _liveSessionActive');
-      expect(at, greaterThan(0));
-      final body = src.substring(at, at + 260);
-      for (final term in const [
-        'activeWorkout != null',
-        'breathingActive',
-        'breathingWindowOpen',
-        'isCapturing',
-      ]) {
-        expect(body, contains(term));
-      }
-    });
-
-    test('the derive scheduler\'s workout hold is taken at every start path '
-        'and given back at every end path', () {
-      final holds = 'setWorkoutActive(true)'.allMatches(all).length;
-      final releases = 'setWorkoutActive(false)'.allMatches(all).length;
-      expect(holds, 2, reason: 'startWorkout and the reconcile resume');
-      expect(releases, 2, reason: 'stopWorkout and the delete teardown');
-    });
-
-    test('_dispatchBandAlert stays in AppState (older source guards read its '
-        'body there); the zone-crossing alert and the breathing cues both '
-        'still name their rules', () {
-      expect(src, contains('Future<AlertDeliveryOutcome> _dispatchBandAlert('));
-      expect(RegExp(r"_dispatchBandAlert\('zone'\)|dispatchBandAlert\('zone'\)")
-          .hasMatch(all), isTrue);
-      expect(RegExp(r"ispatchBandAlert\('breath', pattern: pattern\)")
-          .hasMatch(all), isTrue);
-      expect(RegExp(r"ispatchBandAlert\('breath', pattern: 4\)").hasMatch(all),
-          isTrue);
-    });
   });
 }

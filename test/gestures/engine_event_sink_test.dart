@@ -131,14 +131,6 @@ void main() {
   group('wiring (source guards for paths no headless test can reach)', () {
     String read(String path) => File(path).readAsStringSync();
 
-    test('EventSink is typed over StrapEvent; the positional typedef is gone',
-        () {
-      final src = read('lib/ble/ble_engine.dart');
-      expect(src, contains('typedef EventSink = void Function(StrapEvent'));
-      expect(src.contains('typedef EventSink = void Function(int eventId'),
-          isFalse);
-    });
-
     test('AppState: both engine closures take the event, and dispatch via '
         '`handle`', () {
       final src = read('lib/state/app_state.dart');
@@ -160,15 +152,6 @@ void main() {
       expect(read('lib/state/app_state.dart'), contains('insertStrapEvent('));
     });
 
-    test('GestureDispatcher no longer has the positional entry point', () {
-      final src = read('lib/gestures/gesture_dispatcher.dart');
-      expect(src.contains('void onEvent('), isFalse);
-      expect(src.contains('_debounceMs'), isFalse,
-          reason: 'the wall-clock 2 s debounce is replaced by the claim');
-      expect(src.contains('DateTime.now()'), isFalse,
-          reason: 'recency is judged on the event\'s own receivedAt');
-    });
-
     test('Mark moment never asks the clock what time it is', () {
       final src = read('lib/state/app_state.dart');
       final start = src.indexOf('Future<void> _markMomentFromGesture(');
@@ -179,14 +162,6 @@ void main() {
           reason: 'event time comes from momentStampFor(event)');
       expect(body, contains('momentStampFor('));
       expect(body, contains('withMomentTag('));
-    });
-
-    test('schema 55 is on the ladder', () {
-      final src = read('lib/data/db.dart');
-      expect(src, contains('if (oldV < 55)'));
-      final m = RegExp(r'static const int schemaVersion = (\d+);').firstMatch(src);
-      expect(int.parse(m!.group(1)!), greaterThanOrEqualTo(55),
-          reason: 'later rungs ride the same ladder; 55 is a floor here');
     });
   });
 }

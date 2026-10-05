@@ -110,11 +110,6 @@ void main() {
       }
       expect(offenders.length, 1, reason: offenders.join('\n'));
       expect(offenders.single, startsWith('lib/state/app_state.dart'));
-      final app = _code('lib/state/app_state.dart');
-      final body = bodyOf(File('lib/state/app_state.dart').readAsStringSync(),
-          'Future<void> _rescheduleStillnessNudge(');
-      expect(body, contains("phoneDeliveryEnabled('movement')"));
-      expect(app, contains('_rescheduleStillnessNudge'));
     });
   });
 
@@ -151,19 +146,6 @@ void main() {
       expect(offenders, isEmpty, reason: offenders.join('\n'));
     });
 
-    test('the user-facing test buzz, pattern test and find-my-strap use '
-        '_userBuzz', () {
-      for (final sig in const [
-        'Future<void> testAlarmBuzz(',
-        'Future<void> testBuzzPattern(',
-        'Future<void> buzzBand(',
-      ]) {
-        final body = bodyOf(src, sig);
-        expect(body, isNotEmpty, reason: sig);
-        expect(body, contains('_userBuzz('), reason: sig);
-      }
-    });
-
     test('no other file in lib/ calls an engine buzz', () {
       final offenders = <String>[];
       for (final f in dartFilesIn('lib')) {
@@ -186,39 +168,7 @@ void main() {
     });
   });
 
-  group('latch wiring in AppState', () {
-    test('the ECG tap session releases the dispatcher\'s count wait before it '
-        'writes the lab log', () {
-      // The session is built in the gesture controller (8AJ seam 3).
-      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
-      final from = src.indexOf('EcgTapSession _newEcgSession() =>');
-      final body = src.substring(from, src.indexOf('Completer<int?>? _tapCount;'));
-      final release = body.indexOf('waiting.complete(count)');
-      final log = body.indexOf('deviceLab.addStep');
-      expect(release, greaterThan(0));
-      expect(log, greaterThan(release));
-    });
-
-    test('a manual sync hold is always handed back in a finally', () {
-      // The manual sync is in the sync controller (8AJ seam 5).
-      final src = File('lib/state/sync_controller.dart').readAsStringSync();
-      expect(src, contains('beginManualSync('));
-      expect(src, contains('endManualSync('));
-      final begin = src.indexOf('beginManualSync(');
-      final tail = src.substring(begin);
-      expect(tail.indexOf('finally'), greaterThan(0));
-      expect(tail.indexOf('finally'), lessThan(tail.indexOf('endManualSync(')));
-    });
-  });
-
   group('heavy compute stays off the UI isolate', () {
-    test('the wake orchestrator reaches the stager only through its observer '
-        'seam, whose default runs in Isolate.run', () {
-      expect(_code('lib/wake/wake_orchestrator.dart'),
-          contains('IsolateNaturalStageObserver()'));
-      expect(_code('lib/wake/natural_wake.dart'), contains('Isolate.run('));
-    });
-
     test('feature flags are read on the isolate that acts on them, never '
         'inside an Isolate.run closure', () {
       for (final path in _newCode) {

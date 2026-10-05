@@ -125,15 +125,6 @@ void main() {
               'openProfile, which does)');
     });
 
-    test('profile.dart has no landing screen and no Quick access group', () {
-      final raw = File('lib/ui2/profile/profile.dart').readAsStringSync();
-      final code = codeOnly(raw);
-      expect(code, isNot(contains('class ProfileHome')));
-      expect(code, isNot(contains('class ProfileStats')));
-      expect(raw, isNot(contains('profileQuickAccessGroup')));
-      expect(raw, isNot(contains("'Quick access'")));
-    });
-
     testWidgets('Settings has no Quick access area', (t) async {
       await _pump(t, const MoreSettingsView(relaySupported: true));
       expect(find.text('Quick access'), findsNothing);

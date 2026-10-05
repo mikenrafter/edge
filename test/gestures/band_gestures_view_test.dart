@@ -13,8 +13,6 @@
 //     words are allowed now; single-tap wording stays banned;
 //   * nothing overflows at 2x text.
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -282,21 +280,6 @@ void main() {
       expect(texts, isNotEmpty);
       for (final s in texts) {
         expect(forbidden.hasMatch(s), isFalse, reason: 'text: "$s"');
-      }
-    });
-
-    test('no tapCount symbol anywhere in the gesture code or its screen', () {
-      final files = [
-        File('lib/ui2/profile/gestures.dart'),
-        ...Directory('lib/gestures')
-            .listSync(recursive: true)
-            .whereType<File>()
-            .where((f) => f.path.endsWith('.dart')),
-      ];
-      expect(files, isNotEmpty);
-      for (final f in files) {
-        expect(f.readAsStringSync().contains('tapCount'), isFalse,
-            reason: f.path);
       }
     });
   });

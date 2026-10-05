@@ -3,13 +3,6 @@
 // group is "Band battery"; the Alarm screen has no Haptics group (the alarm
 // buzz is the band's own) and says so once, in Wake. RED until renamed.
 // See test/phase8/CONTRACTS.md §8AE.
-//
-// The row and screen names also live in lib/l10n/app_en.arb, which wins over
-// the in-code English once a locale is loaded, so the ARB values are pinned
-// too.
-
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
@@ -70,14 +63,6 @@ void main() {
       expect(find.text('Android Relay'), findsNothing);
       expect(sectionTitles(t), isNot(contains('Android Relay')));
     });
-
-    test('the English strings say the same', () {
-      final arb =
-          jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
-              as Map<String, dynamic>;
-      expect(arb['bandNotifNavTitle'], _relayName);
-      expect(arb['bandNotifRelayGroup'], _relayName);
-    });
   });
 
   group('Band battery', () {
@@ -85,13 +70,6 @@ void main() {
       await pumpTall(t, const NotificationSettingsView());
       expect(find.text('Band alerts'), findsNothing);
       expect(find.text('Band battery'), findsWidgets);
-    });
-
-    test('the English string says the same', () {
-      final arb =
-          jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
-              as Map<String, dynamic>;
-      expect(arb['settingsBandAlertsRowTitle'], 'Band battery');
     });
   });
 

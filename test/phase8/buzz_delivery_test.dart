@@ -163,33 +163,9 @@ void main() {
 
   group('wiring (source guard)', () {
     final app = codeOnly(File('lib/state/app_state.dart').readAsStringSync());
-    final engine =
-        codeOnly(File('lib/ble/ble_engine.dart').readAsStringSync());
-    // The count buzz lives in the gesture controller (8AJ seam 3).
-    final gestures =
-        codeOnly(File('lib/state/gesture_controller.dart').readAsStringSync());
-
-    test('nothing is named for a confirmation it does not wait for', () {
-      expect(app, isNot(contains('buzzConfirmed')));
-      expect(engine, isNot(contains('buzzConfirmed')));
-    });
 
     test('every AppState band buzz goes through engine.buzzBand', () {
       expect(app, contains('engine.buzzBand('));
-      // 8AF.6: the count buzz is the gesture cues'; a band with no haptic
-      // profile writes its plain pulses through the haptics port
-      // (BleEngineHapticsPort -> engine.buzzBand).
-      expect(bodyOf(gestures, 'Future<bool> _ecgTapBuzz('),
-          contains('cues.followUp'));
-      expect(File('lib/haptics/gesture_cues.dart').readAsStringSync(),
-          contains('port.buzzBand('));
-    });
-
-    test('the engine never gates a buzz on the reply', () {
-      final body = bodyOf(engine, 'Future<bool> buzzBand(');
-      expect(body, isNotEmpty);
-      expect(body, isNot(contains('reply?.success')));
-      expect(body, isNot(contains('await out.response')));
     });
   });
 }

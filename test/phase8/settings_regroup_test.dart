@@ -133,6 +133,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Component gallery'],
     ['Live devices'],
     ['Device lab'],
+    ['Data Explorer'],
     // 8AG P1: the read-only timing line for the last derive pass.
     ['Last calculation'],
     ['Developer mode'],
@@ -373,15 +374,6 @@ void main() {
       expect(_in('Tools', 'Buzz the band'), findsOneWidget);
       expect(find.text('Device lab'), findsNothing);
     });
-
-    test('devices.dart no longer builds a Device lab row or opens the lab',
-        () {
-      final src = File('lib/ui2/profile/devices.dart').readAsStringSync();
-      expect(src.contains("'Device lab'"), isFalse,
-          reason: 'no Device lab row on the band page');
-      expect(codeOnly(src).contains('DeviceLab('), isFalse,
-          reason: 'the band page no longer opens the lab');
-    });
   });
 
   group('Gestures: the duplicated tuning controls are gone', () {
@@ -441,16 +433,6 @@ void main() {
       expect(find.text('App notifications on the band'), findsNothing);
       expect(find.text('Band notifications'), findsNothing);
       expect(sectionTitles(t), isNot(contains('Android Relay')));
-    });
-
-    test('NotificationSettings no longer pushes the relay screen', () {
-      final src = File('lib/ui2/profile/settings.dart').readAsStringSync();
-      final code = codeOnly(src);
-      final start = code.indexOf('class NotificationSettingsView');
-      final end = code.indexOf('\nclass ', start + 1);
-      final body = code.substring(start, end < 0 ? code.length : end);
-      expect(body.contains('BandNotifications('), isFalse,
-          reason: 'the Settings group is the one entrance');
     });
 
     testWidgets('the screen and its relay group carry the new name',

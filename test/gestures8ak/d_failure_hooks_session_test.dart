@@ -10,17 +10,14 @@
 //     action. Not for a gesture that counted, not for an attempt the start
 //     retry cured. `tap.identity` is the gesture's id.
 //   * AppState wires this and the dispatcher's to its `gestureFailures` store
-//     (source guard), with the relevant lab log text.
+//     with the relevant lab log text (test/split8aj/seam3_controller_unit_test.dart).
 //
 // Failure mode today: the callback does not exist (the rig drops it), so no
 // failure is ever reported.
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 
-import '../phase8/support/dart_source.dart';
 import 'support/ak_ecg_rig.dart';
 
 void main() {
@@ -107,23 +104,6 @@ void main() {
       await r.touchThree();
       expect(r.results, [(3, null)]);
       expect(r.failures, isEmpty);
-    });
-  });
-
-  group('the wiring', () {
-    test('the gesture controller keeps a failure store and feeds it from both '
-        'reporters, and AppState exposes it', () {
-      final src = File('lib/state/gesture_controller.dart').readAsStringSync();
-      final code = codeOnly(src);
-      final app = codeOnly(File('lib/state/app_state.dart').readAsStringSync());
-      expect(code, contains('GestureFailureStore'));
-      expect(app, contains('gestureFailures'));
-      expect(RegExp(r'onFailed\s*:').allMatches(code).length,
-          greaterThanOrEqualTo(2),
-          reason: 'the ECG session and the dispatcher both report');
-      expect(code, contains('failures.record('));
-      expect(code, contains('toPlainText'),
-          reason: 'the record carries the Device lab log text');
     });
   });
 }

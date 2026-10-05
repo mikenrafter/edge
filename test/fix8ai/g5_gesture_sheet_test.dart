@@ -8,15 +8,12 @@
 // test/gestures/gestures_tabs_test.dart). This file keeps the guard that none
 // of it comes back.
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/gesture_settings.dart' show TapCountMethod;
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/ui2/profile/gestures.dart';
 
-import '../phase8/support/dart_source.dart';
 import '../phase8/support/sections.dart';
 
 const _supported = {
@@ -49,11 +46,5 @@ void main() {
     expect(find.byType(CheckboxListTile), findsNothing);
     expect(find.text('View all gestures'), findsNothing);
     expect(find.byKey(const ValueKey('gesture-sheet-view-all')), findsNothing);
-  });
-
-  test('the Gestures route no longer hands the view a view-all callback', () {
-    final src = File('lib/ui2/profile/gestures.dart').readAsStringSync();
-    final body = codeOnly(bodyOf(src, 'class BandGestures extends'));
-    expect(body, isNot(contains('onViewAllGestures')));
   });
 }

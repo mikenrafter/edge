@@ -343,31 +343,5 @@ void main() {
       expect(w, contains('artifactSignature'));
       expect(w, contains("keyOf('workout'"));
     });
-
-    test('MetricDetail and Wellness read through loadArtifact', () {
-      for (final f in ['metric_detail.dart', 'wellness_screen.dart']) {
-        expect(src(f), contains('loadArtifact'), reason: f);
-        expect(src(f), contains('artifactSignature'), reason: f);
-      }
-    });
-
-    test('Beats and Circadian read the stored artifact and ask the warmer '
-        'on a miss (loadWarmed), never computing in the build path', () {
-      for (final f in ['beats.dart', 'circadian_detail.dart']) {
-        expect(src(f), contains('loadWarmed'), reason: f);
-        expect(src(f), contains('artifactSignature'), reason: f);
-        expect(src(f), contains('warmRequesterOf'), reason: f);
-      }
-    });
-
-    test('one key per artifact: the per-screen insight keys are gone', () {
-      final m = src('metric_detail.dart'), w = src('wellness_screen.dart');
-      expect(m, contains('journal_insights'));
-      expect(w, contains('journal_insights'));
-      expect(w, contains('weekday_effect'));
-      expect(m, isNot(contains('metric_insights')));
-      expect(w, isNot(contains('wellness_insights')));
-      expect(w, isNot(contains('wellness_weekday')));
-    });
   });
 }

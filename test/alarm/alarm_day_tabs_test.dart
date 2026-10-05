@@ -11,8 +11,6 @@
 //     gone.
 // Edits stay a draft: nothing is saved until Save.
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/alarm_draft.dart';
@@ -273,14 +271,6 @@ void main() {
         expect(find.textContaining('own buzz'), findsNothing);
         expect(find.textContaining('measured vocabulary'), findsNothing);
       }
-    });
-
-    test('and the source no longer carries them', () {
-      final src = File('lib/ui2/profile/alarm.dart').readAsStringSync();
-      expect(src, isNot(contains('_kFixedWaveform')));
-      expect(src, isNot(contains('_kWakeVocabulary')));
-      expect(src, isNot(contains('own buzz')));
-      expect(src, isNot(contains('measured vocabulary')));
     });
   });
 

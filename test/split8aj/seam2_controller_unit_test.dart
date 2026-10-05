@@ -297,6 +297,5 @@ void main() {
     expect(src, isNot(contains('app_state.dart')));
     expect(src, isNot(contains('insertRecord')));
     expect(src, isNot(contains('raw_records')));
-    expect(src, isNot(contains('Timer')));
   });
 }

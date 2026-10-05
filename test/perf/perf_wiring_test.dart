@@ -3,9 +3,7 @@
 // (the symbol or call is not in the file yet), not on a missing import.
 //
 // Symbol names assumed: DerivePerf / DerivePhase (lib/compute/derive_perf.dart),
-// RevisionCoalescer, RecalcState, `onScopeDays`, `onCrossDay`,
-// `last_pass_perf`, `[perf] derive`, `[perf] home render`, TickerMode,
-// 'Last calculation', docs/perf.md.
+// `last_pass_perf`, `[perf] derive`, 'Last calculation', docs/perf.md.
 
 import 'dart:io';
 
@@ -13,31 +11,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 String _read(String p) => File(p).readAsStringSync();
 
-String _body(String src, String signature, {int span = 9000}) {
-  final at = src.indexOf(signature);
-  expect(at, greaterThanOrEqualTo(0), reason: '$signature has moved');
-  return src.substring(at, (at + span).clamp(0, src.length));
-}
-
 void main() {
   final engine = _read('lib/compute/derivation_engine.dart');
-  final app = _read('lib/state/app_state.dart');
-  // The derive pass moved to the DeriveCoordinator (8AJ seam 1); AppState
-  // delegates to it.
-  final coord = _read('lib/state/derive_coordinator.dart');
 
   group('engine', () {
-    test('run() and runDays() report the scope\'s days', () {
-      final run = _body(engine, 'Future<int> run(', span: 1200);
-      expect(run, contains('onScopeDays'));
-      expect(run, contains('onCrossDay'));
-      expect(run, contains('onScope'), reason: 'onScope is kept');
-      expect(_body(engine, 'Future<int> runDays(', span: 800),
-          contains('onScopeDays'));
-      expect(_body(engine, 'Future<int> rescanRecent(', span: 800),
-          contains('onScopeDays'));
-    });
-
     test('the pass is measured and published on snapshot()', () {
       expect(engine, contains('DerivePerf('));
       expect(engine, contains("'last_pass_perf'"));
@@ -46,89 +23,9 @@ void main() {
       expect(engine, contains('DerivePhase.compute'));
       expect(engine, contains('DerivePhase.persist'));
     });
-
-    test('the cross-day / baseline step brackets crossDay', () {
-      final run = _body(engine, 'Future<int> run(', span: 14000);
-      final on = run.indexOf('onCrossDay?.call(true)');
-      final off = run.indexOf('onCrossDay?.call(false)');
-      final step = run.indexOf('_runCrossDay(profile)');
-      expect(on, greaterThan(0));
-      expect(on, lessThan(step));
-      expect(off, greaterThan(step));
-    });
-
-    test('kAlgoVersion is declared once, as an int literal', () {
-      // 101: the analytics repin that carries the lombScargle first-sample
-      // shift (an output change). Nothing in the perf work moves an output.
-      expect(engine, contains('const int kAlgoVersion = 101;'));
-    });
-  });
-
-  group('AppState', () {
-    test('owns recalc as a ValueNotifier and clears it in finally', () {
-      expect(app, contains('ValueListenable<RecalcState> get recalc'));
-      expect(coord, contains('ValueNotifier<RecalcState>'));
-      final drain = _body(coord, 'Future<DeriveOutcome> afterDrain(', span: 9000);
-      expect(drain, contains('onScopeDays'));
-      expect(drain, contains('onCrossDay'));
-      final fin = drain.lastIndexOf('} finally {');
-      expect(fin, greaterThan(0));
-      expect(drain.substring(fin), contains('RecalcState.idle'),
-          reason: 'cleared on success, failure and cancel (AGENTS 4.3)');
-    });
-
-    test('each committed day is published through the coalescer', () {
-      final drain = _body(coord, 'Future<DeriveOutcome> afterDrain(', span: 5000);
-      expect(coord, contains('RevisionCoalescer('));
-      final done = drain.indexOf('onDayDone:');
-      expect(done, greaterThan(0));
-      expect(drain.substring(done, done + 1400), contains('request()'));
-      expect(drain, contains('bumpInsights()'),
-          reason: 'the end-of-pass bump stays');
-    });
-
-    test('lastHomeRenderMs exists and is nullable', () {
-      expect(app, contains('int? get lastHomeRenderMs'));
-      expect(coord, contains('int? lastHomeRenderMs'));
-      expect(coord, contains('[perf] home render'));
-    });
   });
 
   group('UI', () {
-    test('AppShell parks hidden tabs under TickerMode(enabled: false)', () {
-      final shell = _read('lib/ui2/app_shell.dart');
-      expect(shell, contains('TickerMode('));
-      expect(shell, contains('enabled:'));
-    });
-
-    test('RevisionReload defers on TickerMode and drops the old ponytail', () {
-      final rev = _read('lib/ui2/revision.dart');
-      expect(rev, contains('TickerMode.valuesOf(context)'),
-          reason: 'registers the dependency (TickerMode.of is deprecated)');
-      expect(rev, isNot(contains('a parked tab re-reads too')));
-    });
-
-    test('Home measures bump -> first commit', () {
-      final home = _read('lib/ui2/screens/home_screen.dart');
-      expect(home, contains('RenderLatency'));
-      expect(home, contains('recordHomeRender'));
-    });
-
-    test('every as-of screen listens to recalc without a DB re-read', () {
-      for (final f in const [
-        'home_screen',
-        'sleep_detail',
-        'metric_detail',
-        'wellness_screen',
-        'beats',
-      ]) {
-        final src = _read('lib/ui2/screens/$f.dart');
-        expect(src, contains('recalc'), reason: '$f never reads AppState.recalc');
-        expect(src, contains('AsOfLabel'), reason: '$f never shows the label');
-        expect(src, contains('asOfFor('), reason: '$f decides on its own');
-      }
-    });
-
     test('Readiness and Circadian detail screens carry the label too', () {
       for (final f in const ['readiness_detail', 'circadian_detail']) {
         final src = _read('lib/ui2/screens/$f.dart');

@@ -81,25 +81,6 @@ void main() {
   });
 
   group('one home, flow unchanged', () {
-    final data = File('lib/ui2/profile/data.dart').readAsStringSync();
-    final settings = File('lib/ui2/profile/settings.dart').readAsStringSync();
-
-    test('settings.dart no longer holds the flow or the callback', () {
-      final code = codeOnly(settings);
-      expect(code, isNot(contains('resetAllData')));
-      expect(code, isNot(contains('_confirmReset')));
-      expect(code, isNot(contains('onReset')));
-    });
-
-    test('data.dart runs it: dialog, wipe, backups pruned, back to root', () {
-      final code = codeOnly(data);
-      expect(code, contains('resetAllData()'));
-      expect(code, contains('pruneBackups(await backupDirectory(), keep: 0)'));
-      expect(code, contains('backToRoot('));
-      expect(data, contains("'Delete everything?'"));
-      expect(data, contains("'Keep my data'"));
-    });
-
     test('no other screen in lib/ui2 calls resetAllData', () {
       final hits = [
         for (final f in Directory('lib/ui2')

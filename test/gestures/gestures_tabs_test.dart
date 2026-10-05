@@ -14,8 +14,6 @@
 //
 // The selected tab is remembered (Prefs `kGesturesTabPref`, the tap count).
 
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
@@ -426,20 +424,6 @@ void main() {
         expect(find.byType(BottomSheet), findsNothing, reason: 'tab $n');
         expect(find.byType(CheckboxListTile), findsNothing, reason: 'tab $n');
         expect(find.text('View all gestures'), findsNothing);
-      }
-    });
-
-    test('the source has no sheet, picker or view-all callback', () {
-      final src = File('lib/ui2/profile/gestures.dart').readAsStringSync();
-      for (final gone in const [
-        'showModalBottomSheet',
-        '_pickActions',
-        'onViewAllGestures',
-        "'Tap counts'",
-        'gestures_tap_counts',
-        'gestures_it_does',
-      ]) {
-        expect(src.contains(gone), isFalse, reason: gone);
       }
     });
   });

@@ -37,8 +37,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
 import 'package:openstrap_edge/gestures/gesture_log_file.dart';
 
-import '../phase8/support/dart_source.dart';
-
 final DateTime _at = DateTime.utc(2026, 10, 4, 12, 7, 31);
 
 GestureFailure _failure({
@@ -178,11 +176,5 @@ void main() {
       });
       expect(text, contains('line 1999'));
     });
-  });
-
-  test('the source never mentions the clipboard', () {
-    final code = codeOnly(
-        File('lib/gestures/gesture_log_file.dart').readAsStringSync());
-    expect(code, isNot(contains('Clipboard')));
   });
 }

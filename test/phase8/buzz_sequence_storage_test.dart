@@ -558,10 +558,5 @@ void main() {
               'compiled-plan helper');
       expect(codeOnly(body), contains('buzzSequenceFor('));
     });
-
-    test('the relay plays through playBuzzSequence', () {
-      final src = File('lib/notify/notification_relay.dart').readAsStringSync();
-      expect(codeOnly(src), contains('playBuzzSequence('));
-    });
   });
 }

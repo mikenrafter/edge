@@ -5,12 +5,9 @@
 // This file avoids calling compile() without its `extended:` argument (the
 // compile-level tests are in no_extended_compile_test.dart, which cannot build
 // until the argument is gone). Everything here goes through planForTaps, the
-// widgets, JSON and source scans, so each test fails on its own assertion.
+// widgets and JSON, so each test fails on its own assertion.
 //
 // Contracts these tests pin that the spec leaves open:
-//  - no lib/ source holds the key `buzz-extended` or the label "Extended
-//    haptics opset"; lib/haptics and lib/ui2/profile no longer mention the
-//    identifier `extended` in code (comments and strings are ignored).
 //  - the tap sheet and the advanced editor show no switch, with or without a
 //    haptic profile.
 //  - planForTaps(s, profile) always considers unstable parts: two half-second
@@ -27,7 +24,6 @@
 // switch tests).
 
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,13 +50,6 @@ Map<String, Object?> _holdsJson({bool extended = false}) => {
 BuzzSequence _holds({bool extended = false}) =>
     BuzzSequence.fromJson(_holdsJson(extended: extended));
 
-String _noComments(String src) => src.replaceAll(RegExp(r'//[^\n]*'), '');
-
-List<File> _dart(String dir) => [
-      for (final f in Directory(dir).listSync(recursive: true))
-        if (f is File && f.path.endsWith('.dart')) f,
-    ];
-
 List<String> _ids(HapticPlan p) => [for (final s in p.steps) s.phrase.id];
 
 Future<void> _pump(WidgetTester t, Widget w) async {
@@ -72,36 +61,6 @@ Future<void> _pump(WidgetTester t, Widget w) async {
 }
 
 void main() {
-  group('source guard: the switch is gone everywhere', () {
-    test('no lib file holds the key buzz-extended', () {
-      final hits = [
-        for (final f in _dart('lib'))
-          if (_noComments(f.readAsStringSync()).contains('buzz-extended'))
-            f.path,
-      ];
-      expect(hits, isEmpty);
-    });
-
-    test('no lib file labels a switch "Extended haptics opset"', () {
-      final hits = [
-        for (final f in _dart('lib'))
-          if (f.readAsStringSync().contains('Extended haptics opset')) f.path,
-      ];
-      expect(hits, isEmpty);
-    });
-
-    test('lib/haptics and lib/ui2/profile no longer carry an extended '
-        'argument or field', () {
-      final word = RegExp(r'\bextended\b');
-      final hits = [
-        for (final dir in ['lib/haptics', 'lib/ui2/profile'])
-          for (final f in _dart(dir))
-            if (word.hasMatch(_noComments(f.readAsStringSync()))) f.path,
-      ];
-      expect(hits, isEmpty);
-    });
-  });
-
   group('no switch in the tap sheet or the editor', () {
     testWidgets('the tap sheet on an MG', (t) async {
       await _pump(

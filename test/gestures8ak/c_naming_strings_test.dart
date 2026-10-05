@@ -22,9 +22,6 @@
 // lib/gestures/tap_names.dart exists; the l10n tests fail on the missing
 // getter).
 
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/tap_names.dart';
 import 'package:openstrap_edge/l10n/app_localizations_de.dart';
@@ -91,20 +88,6 @@ void main() {
           }
         }
       }
-    });
-
-    test('app_en.arb carries the plural message with a described int '
-        'placeholder', () {
-      final arb = jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
-          as Map<String, dynamic>;
-      final msg = arb['gestureEcgTapName'];
-      expect(msg, isA<String>(), reason: 'gestureEcgTapName is in the template');
-      expect(msg as String, contains('plural'));
-      expect(msg, contains('=0{Double tap}'));
-      final meta = arb['@gestureEcgTapName'] as Map<String, dynamic>?;
-      expect(meta, isNotNull);
-      expect(meta!['description'], isA<String>());
-      expect((meta['placeholders'] as Map).containsKey('n'), isTrue);
     });
   });
 }

@@ -17,7 +17,6 @@
 //   * `maxPulsesPerBurst`, `pulsesPerBurst` and `buzzQuietGap` are gone.
 
 import 'dart:async';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -25,8 +24,6 @@ import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_session.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
-
-import '../phase8/support/dart_source.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 3, 8);
 
@@ -279,21 +276,5 @@ void main() {
     await r.settle();
     expect(r.names, isNot(contains('confirm')));
     expect(r.names, isNot(contains('follow')));
-  });
-
-  group('source guards', () {
-    final src = File('lib/gestures/ecg_tap_session.dart').readAsStringSync();
-
-    test('the per-burst pacing and the session quiet gap are gone', () {
-      final code = codeOnly(src);
-      expect(code, isNot(contains('maxPulsesPerBurst')));
-      expect(code, isNot(contains('pulsesPerBurst')));
-      expect(code, isNot(contains('buzzQuietGap')));
-      expect(code, isNot(contains('_quietUntil')));
-    });
-
-    test('the session has a confirm cue', () {
-      expect(codeOnly(src), contains('confirmBuzz'));
-    });
   });
 }

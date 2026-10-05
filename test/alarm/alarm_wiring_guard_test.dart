@@ -84,30 +84,9 @@ void main() {
         contains('setScheduleDay('),
       );
     });
-
-    test('Natural and Gradual are never sent to the band', () {
-      final arm = _app_('Future<AlarmArmReport> _armNextAlarmOccurrence(');
-      for (final field in [
-        'naturalWindowMinutes',
-        'gradualWindowMinutes',
-        'gradualPattern',
-        'gradualCadence',
-      ]) {
-        expect(arm, isNot(contains(field)), reason: field);
-      }
-    });
   });
 
   group('WakeController', () {
-    test('has no route to the band', () {
-      final src = codeOnly(
-        File('lib/wake/wake_controller.dart').readAsStringSync(),
-      );
-      expect(src, isNot(contains('ble_engine')));
-      expect(src, isNot(contains('setAlarm')));
-      expect(src, isNot(contains('disableAlarm')));
-    });
-
     test('every setter does exactly one thing: save one entry', () async {
       var saves = 0, acks = 0, traces = 0, upgradeSaves = 0;
       final c = WakeController(

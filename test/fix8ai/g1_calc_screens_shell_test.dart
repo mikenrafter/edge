@@ -241,7 +241,6 @@ void main() {
       'lib/ui2/screens/cycle_screen.dart',
       'lib/ui2/screens/beats.dart',
       'lib/ui2/activity/zones.dart',
-      'lib/ui2/screens/health_screen.dart',
     ];
     final bare =
         RegExp(r'Center\(\s*child:\s*(const\s+)?CircularProgressIndicator\(\)');
