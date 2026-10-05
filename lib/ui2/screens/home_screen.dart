@@ -321,17 +321,46 @@ List<Widget> homeHeaderRows(
   required double endInset,
   AppLocalizations? l,
 }) {
-  final through = syncedThroughLabel(lastDataAtOf(c), todayId, l);
   return [
     HomeSyncStatus(through: date, throughShort: date, end: end),
     Padding(
       padding: EdgeInsets.only(right: endInset),
-      child: Text(through,
-          style: F.cap.copyWith(color: P.of(c).ink3),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis),
+      child: _HeldSyncedThrough(
+        at: lastDataAtOf(c),
+        busy: syncBusyOf(c),
+        todayId: todayId,
+        l: l,
+      ),
     ),
   ];
+}
+
+/// "Synced through …" that holds its last value while a sync runs: records
+/// land in batches mid-sync, and the line only moves once the sync is done.
+class _HeldSyncedThrough extends StatefulWidget {
+  const _HeldSyncedThrough(
+      {required this.at, required this.busy, required this.todayId, this.l});
+
+  final DateTime? at;
+  final bool busy;
+  final String? todayId;
+  final AppLocalizations? l;
+
+  @override
+  State<_HeldSyncedThrough> createState() => _HeldSyncedThroughState();
+}
+
+class _HeldSyncedThroughState extends State<_HeldSyncedThrough> {
+  late DateTime? _shown = widget.at;
+
+  @override
+  Widget build(BuildContext c) {
+    if (!widget.busy) _shown = widget.at;
+    return Text(syncedThroughLabel(_shown, widget.todayId, widget.l),
+        style: F.cap.copyWith(color: P.of(c).ink3),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis);
+  }
 }
 
 /// Whether a sync is running, from the same presentation state the sync line
