@@ -47,6 +47,7 @@ BandGesturesView _view({bool ecg = true}) => BandGesturesView(
       chosen: const <DeviceAction>{},
       supported: _supported,
       ecgSupported: ecg,
+      devMode: true,
       tapMethod: ecg ? TapCountMethod.ecg : null,
       tapActions: const {
         3: <DeviceAction>{},

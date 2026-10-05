@@ -20,6 +20,7 @@ import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_session.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
+import 'support/legacy_ecg_thresholds.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 2, 8);
 
@@ -95,7 +96,7 @@ class _Rig {
         return true;
       },
       maxTaps: () => max,
-      thresholds: () => th ?? EcgTapThresholds(),
+      thresholds: () => th ?? LegacyEcgThresholds(),
       onFinished: (count, reason) => results.add((count, reason)),
       onStarted: (tap, settings) => started.add(settings),
       step: steps.add,
@@ -443,7 +444,7 @@ void main() {
 
     test('every buzz has its own event id (the dispatcher claims each once)',
         () async {
-      final r = _Rig(max: 5, th: EcgTapThresholds(extraSensitive: true));
+      final r = _Rig(max: 5, th: LegacyEcgThresholds(extraSensitive: true));
       await r.session.start(_tap());
       await r.steady();
       r.now = _t0.add(const Duration(seconds: 3));
@@ -464,7 +465,7 @@ void main() {
 
     test('a stream that goes away abandons with no action, and resets '
         '(fallback off, window open: no retry)', () async {
-      final r = _Rig(max: 5, th: EcgTapThresholds(fallbackToDoubleTap: false));
+      final r = _Rig(max: 5, th: LegacyEcgThresholds(fallbackToDoubleTap: false));
       await r.session.start(_tap());
       await r.steady();
       r.alive = false;
@@ -482,7 +483,7 @@ void main() {
 
     test('a stalled stream (no packets for a while) abandons (fallback off)',
         () async {
-      final r = _Rig(max: 5, th: EcgTapThresholds(fallbackToDoubleTap: false));
+      final r = _Rig(max: 5, th: LegacyEcgThresholds(fallbackToDoubleTap: false));
       await r.session.start(_tap());
       await r.steady(); // window open; no packet after it
       r.now = r.now.add(const Duration(seconds: 4));
@@ -496,7 +497,7 @@ void main() {
     test('a stream that will not start throws, resets and ends nothing '
         '(fallback off: one retry, then the throw)', () async {
       final r = _Rig(
-          startOk: false, th: EcgTapThresholds(fallbackToDoubleTap: false));
+          startOk: false, th: LegacyEcgThresholds(fallbackToDoubleTap: false));
       await expectLater(r.session.start(_tap()), throwsStateError);
       expect(r.session.active, isFalse);
       expect(r.began, 2, reason: 'fallback off: tried once more');
@@ -533,7 +534,7 @@ void main() {
 
     test('off: first to last signal in a packet is one touch, so a lift '
         'inside one packet is not a new tap', () async {
-      final r = await liftInsideAPacket(EcgTapThresholds());
+      final r = await liftInsideAPacket(LegacyEcgThresholds());
       expect(r.results, [(3, null)]);
       expect(r.buzzes.map((b) => b.$1), [1]);
       expect(r.confirms, hasLength(1));
@@ -541,7 +542,7 @@ void main() {
 
     test('on: every reading counts, so the same lift is a fourth tap',
         () async {
-      final r = await liftInsideAPacket(EcgTapThresholds(extraSensitive: true));
+      final r = await liftInsideAPacket(LegacyEcgThresholds(extraSensitive: true));
       expect(r.results, [(4, null)]);
       expect(r.buzzes.map((b) => b.$1), [1, 1]);
       expect(r.confirms, hasLength(1));
@@ -570,12 +571,12 @@ void main() {
       }
 
       const held = ['Follow-up buzz requested at sample time 1001700 ms.'];
-      expect(await run(EcgTapThresholds(), flatBlock: true), held,
+      expect(await run(LegacyEcgThresholds(), flatBlock: true), held,
           reason: 'filled: the flat block is inside the touch');
-      expect(await run(EcgTapThresholds(extraSensitive: true), flatBlock: false),
+      expect(await run(LegacyEcgThresholds(extraSensitive: true), flatBlock: false),
           held,
           reason: 'a zero between moving samples is still movement');
-      expect(await run(EcgTapThresholds(extraSensitive: true), flatBlock: true),
+      expect(await run(LegacyEcgThresholds(extraSensitive: true), flatBlock: true),
           ['Follow-up buzz requested at sample time 1001950 ms.'],
           reason: 'extra sensitive: the flat block restarts the 200 ms hold '
               '(contact again from 1001.75)');
@@ -620,7 +621,7 @@ void main() {
       var delivered = 0;
       final r = _Rig(
         max: 4,
-        th: EcgTapThresholds(extraSensitive: true),
+        th: LegacyEcgThresholds(extraSensitive: true),
         sendBuzz: (_, _) => feedback[delivered++].future,
       );
       await r.session.start(_tap());
@@ -684,7 +685,7 @@ void main() {
       final r = _Rig(
           max: 5,
           reacquire: reacquire,
-          th: EcgTapThresholds(confirmMs: 1000));
+          th: LegacyEcgThresholds(confirmMs: 1000));
       await r.session.start(_tap());
       await r.steady(); // window [1001.5, 1001.8)
       r.now = _t0.add(const Duration(seconds: 2));

@@ -17,6 +17,7 @@ import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
 import 'package:openstrap_edge/gestures/device_action.dart';
 import 'package:openstrap_edge/gestures/gesture_failures.dart';
+import 'package:openstrap_edge/gestures/gesture_settings.dart';
 
 import 'support/app_state_gesture_harness.dart';
 
@@ -36,11 +37,11 @@ void main() {
 
   late ActionChannel channel;
   late List<String> order;
-  Future<GestureRig> newRig({bool mg = false}) async {
+  Future<GestureRig> newRig({bool mg = false, bool? dev}) async {
     order = <String>[];
     channel = ActionChannel(order: order);
     addTearDown(channel.dispose);
-    final rig = GestureRig(mg: mg, order: order);
+    final rig = GestureRig(mg: mg, dev: dev, order: order);
     addTearDown(rig.dispose);
     await rig.measureCues();
     return rig;
@@ -195,7 +196,7 @@ void main() {
       await settleMs(300);
       expect(rig.cues, ['start', 'followUp', 'confirm']);
       expect(channel.performed, isEmpty);
-      expect(labText(rig), contains('This is a draft; no action was run.'));
+      expect(labText(rig), contains('Result: 3 taps. No action was run.'));
     });
   });
 
@@ -269,6 +270,59 @@ void main() {
       expect(order.where((e) => e == 'band:rawSave').length, 2,
           reason: 'raw-save ON in PREPARE and OFF in CLEANUP');
     }, timeout: const Timeout(Duration(seconds: 40)));
+  });
+
+  group('ECG gestures are developer mode only', () {
+    // A WHOOP MG rig stores the ECG counting method (measureCues). Without
+    // developer mode the dispatcher sees no ECG, so the same stored choice
+    // counts double taps and every mapped action still runs.
+    test('a stored ECG choice without developer mode: the count is made with '
+        'double taps, the n-tap action runs, no ECG stream is touched',
+        () async {
+      final rig = await newRig(mg: true, dev: false);
+      expect(rig.app.gestureSettings.tapMethodChoice, TapCountMethod.ecg);
+      await mapActions(rig.app, [2, 3]);
+      await rig.app.gestureSettings.setRepeatTapWindowMs(1000);
+      rig.doubleTap();
+      await until(() => rig.cues.isNotEmpty);
+      rig.doubleTap();
+      await until(() => rig.cues.length >= 2);
+      await until(
+          () => channel.performed.isNotEmpty && rig.cues.contains('confirm'),
+          within: const Duration(seconds: 8));
+      await settleMs(200);
+      expect(channel.performed, [kActionFor[3]!.id]);
+      expect(rig.cues, ['start', 'followUp', 'confirm']);
+      expect(order.contains('band:selectWrist'), isFalse);
+      expect(order.contains('band:generation'), isFalse,
+          reason: 'no ECG stream was started');
+      expect(labText(rig), contains('More double taps'));
+      expect(rig.app.gestureFailures.all, isEmpty);
+    });
+
+    test('the lab\'s ECG-on-double-tap switch without developer mode does '
+        'not suspend the mapped action: it runs', () async {
+      final rig = await newRig(mg: true, dev: false);
+      await rig.app.gestureSettings
+          .setDoubleTapActions({DeviceAction.mediaPlayPause});
+      await rig.app.gestureSettings.setEcgOnDoubleTap(true);
+      rig.doubleTap();
+      await until(() => channel.performed.isNotEmpty);
+      await settleMs(200);
+      expect(channel.performed, ['media_play_pause']);
+      expect(order.contains('band:generation'), isFalse);
+    });
+
+    test('with developer mode on the same stored choice takes the ECG route',
+        () async {
+      final rig = await newRig(mg: true, dev: true);
+      await mapActions(rig.app, [2, 3]);
+      rig.doubleTap();
+      await until(() => rig.cues.contains('failed'));
+      await settleMs(200);
+      expect(rig.app.gestureFailures.all.single.kind, GestureFailureKind.ecg,
+          reason: 'no wrist remembered: the ECG route tried and failed');
+    });
   });
 
   group('ECG route when the stream cannot start', () {

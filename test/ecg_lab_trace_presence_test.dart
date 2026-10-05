@@ -23,6 +23,7 @@ import 'package:openstrap_edge/gestures/lab_log.dart';
 
 import 'support/ecg_trace.dart';
 import 'support/ecg_presence_packets.dart';
+import 'support/legacy_ecg_thresholds.dart';
 
 final _presence = RegExp(r'^Presence (on|off), (\d+) ms after the tap');
 final _contact = RegExp(r'^Sample contact (on|off), (\d+) ms after the tap');
@@ -78,7 +79,7 @@ class _Rig {
 void main() {
   group('the session trace', () {
     // Wide windows so the gesture is still running on the last packet.
-    final wide = EcgTapThresholds(startMs: 1100, confirmMs: 1000);
+    final wide = LegacyEcgThresholds(startMs: 1100, confirmMs: 1000);
 
     test('presence and sample-contact transitions carry the ms since the '
         'tap', () async {

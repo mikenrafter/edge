@@ -222,7 +222,11 @@ class _SpyTransport implements EcgTransport {
 
 /// An AppState on a gen5 fake link, plus everything a gesture test reads.
 class GestureRig {
-  GestureRig({this.mg = true, EcgController? ecg, List<String>? order}) {
+  /// [dev] is developer mode, which the ECG gestures need on top of an MG; it
+  /// follows [mg] unless a test says otherwise.
+  GestureRig(
+      {this.mg = true, bool? dev, EcgController? ecg, List<String>? order}) {
+    Prefs.setBool(Prefs.devMode, dev ?? mg);
     final trace = this.order = order ?? <String>[];
     app = AppState.forTesting(ecg: ecg);
     engine = app.engine;

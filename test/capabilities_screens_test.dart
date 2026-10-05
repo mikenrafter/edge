@@ -177,10 +177,10 @@ void main() {
 
   group('Band gestures', () {
     testWidgets('tap rows are hidden when tapClassifiers is off', (t) async {
-      await pump(t, const BandGestures(), _caps());
+      await pump(t, const BandGestures(), _caps(devMode: true));
       expect(find.text('Count extra taps with'), findsOneWidget);
-      await pump(
-          t, const BandGestures(), _caps(flagsOff: {FeatureFlag.tapClassifiers}));
+      await pump(t, const BandGestures(),
+          _caps(devMode: true, flagsOff: {FeatureFlag.tapClassifiers}));
       expect(find.text('Count extra taps with'), findsNothing);
       expect(find.byKey(const ValueKey('gestures-tab:3')), findsNothing);
     });
@@ -192,13 +192,22 @@ void main() {
       await pump(t, const BandGestures(), _caps(devMode: true));
       expect(find.byKey(const ValueKey('gestures-open-device-lab')), findsOneWidget);
     });
+    testWidgets('the ECG options follow developerMode: absent without it',
+        (t) async {
+      await pump(t, const BandGestures(), _caps(ecgPaired: true));
+      expect(find.text('ECG sensor touches'), findsNothing);
+      expect(find.text('Count extra taps with'), findsNothing);
+      expect(find.textContaining('ECG'), findsNothing);
+      expect(find.byKey(const ValueKey('gestures-tab:3')), findsOneWidget,
+          reason: 'the double-tap counts stay for everyone');
+    });
     testWidgets('ECG method is dimmed and inert without the ECG feature, '
         'live without it from AppState', (t) async {
-      await pump(t, const BandGestures(), _caps());
+      await pump(t, const BandGestures(), _caps(devMode: true));
       final off = find.text('ECG sensor touches');
       expect(off, findsOneWidget);
       expect(isDimmed(t, off), isTrue);
-      await pump(t, const BandGestures(), _caps(ecgPaired: true));
+      await pump(t, const BandGestures(), _caps(devMode: true, ecgPaired: true));
       expect(isDimmed(t, find.text('ECG sensor touches')), isFalse);
     });
   });

@@ -15,6 +15,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/ecg_tap_counter.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
+import 'support/legacy_ecg_thresholds.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 2, 8);
 
@@ -30,7 +31,7 @@ Duration _ms(int v) => Duration(milliseconds: v);
 
 class _Run {
   _Run(int max, {EcgTapThresholds? th})
-      : c = EcgTapCounter(max: max, thresholds: th);
+      : c = EcgTapCounter(max: max, thresholds: th ?? LegacyEcgThresholds());
   final EcgTapCounter c;
   final List<EcgTapOutput> out = [];
 
@@ -59,7 +60,7 @@ void main() {
 
   group('engage needs OBSERVED contact', () {
     test('contact either side of a 900 ms hole does not engage', () {
-      final r = _Run(3, th: EcgTapThresholds(startMs: 1100))..begin(1000);
+      final r = _Run(3, th: LegacyEcgThresholds(startMs: 1100))..begin(1000);
       r.span(1000, 1100, true); // 100 ms seen
       r.span(2000, 2100, true); // 900 ms unseen, then 100 ms more
       expect(r.done, isNull);
@@ -81,7 +82,7 @@ void main() {
         () {
       // Window [1000, 1600). Candidate 1020..1050, hole, contact again 1100:
       // a NEW candidate from 1100, engaged at 1300 (not at 1220).
-      final r = _Run(3, th: EcgTapThresholds(startMs: 600))..begin(1000);
+      final r = _Run(3, th: LegacyEcgThresholds(startMs: 600))..begin(1000);
       r.span(1000, 1020, false);
       r.span(1020, 1050, true);
       r.span(1100, 1290, true);
@@ -100,7 +101,7 @@ void main() {
     });
 
     test('samples 60 ms apart are a gap', () {
-      final r = _Run(3, th: EcgTapThresholds(startMs: 600))..begin(1000);
+      final r = _Run(3, th: LegacyEcgThresholds(startMs: 600))..begin(1000);
       for (var t = 1000; t <= 1240; t += 60) {
         r.at(t, true); // would engage at 1240 if bridged
       }
@@ -160,7 +161,7 @@ void main() {
     });
 
     test('a hole shorter than the remaining window changes nothing', () {
-      final r = _Run(5, th: EcgTapThresholds(startMs: 600))..begin(1000);
+      final r = _Run(5, th: LegacyEcgThresholds(startMs: 600))..begin(1000);
       r.span(1000, 1100, false);
       r.span(1300, 1700, false); // hole 1100..1300, deadline at 1600
       expect(r.done?.count, 2, reason: 'confirmed by a sample at/after 1600');
@@ -177,7 +178,10 @@ void main() {
 
   group('the tolerance is configurable', () {
     test('a wider maxSampleGap bridges what the default would not', () {
-      final c = EcgTapCounter(max: 3, maxSampleGap: _ms(300));
+      final c = EcgTapCounter(
+          max: 3,
+          thresholds: LegacyEcgThresholds(),
+          maxSampleGap: _ms(300));
       c.start(_tap(), at: Duration.zero);
       c.open(_ms(1000));
       final out = <EcgTapOutput>[];

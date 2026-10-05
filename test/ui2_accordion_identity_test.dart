@@ -196,6 +196,7 @@ void main() {
             DeviceAction.torch
           },
           extraTaps: extra,
+          devMode: true,
         ),
       )));
       await g123Settle(t);

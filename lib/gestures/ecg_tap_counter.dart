@@ -1,4 +1,4 @@
-// ecg_tap_counter.dart — draft 3–5 tap gestures, counted as touches on the
+// ecg_tap_counter.dart — 3–5 tap gestures, counted as touches on the
 // WHOOP MG ECG sensor after a live firmware double tap.
 //
 // The firmware only ever reports a double tap, so further taps are touches of
@@ -56,10 +56,10 @@ import 'strap_event.dart';
 
 class EcgTapThresholds {
   EcgTapThresholds({
-    int startMs = 300,
-    int gapMs = 200,
-    int confirmMs = 200,
-    this.extraSensitive = false,
+    int startMs = 200,
+    int gapMs = 150,
+    int confirmMs = 750,
+    this.extraSensitive = true,
     this.tolerantStartup = true,
     this.fallbackToDoubleTap = true,
   })  : startMs = _check('start', startMs, startRange),
@@ -67,9 +67,9 @@ class EcgTapThresholds {
         confirmMs = _check('confirm', confirmMs, confirmRange);
 
   static const int stepMs = 50;
-  static const (int, int) startRange = (200, 1100);
-  static const (int, int) gapRange = (100, 1000);
-  static const (int, int) confirmRange = (100, 1000);
+  static const (int, int) startRange = (100, 1000);
+  static const (int, int) gapRange = (50, 950);
+  static const (int, int) confirmRange = (650, 1550);
 
   /// True when [v] is inside [range] and on the 50 ms grid. Used to validate
   /// stored values without throwing.
@@ -97,12 +97,12 @@ class EcgTapThresholds {
   /// Extra window after a release for the next touch to start.
   final int confirmMs;
 
-  /// "Extra sensitive subsequent tap detection". Off (the default): within one
-  /// packet, everything from the first to the last reading with signal is
-  /// contact, so an ECG trace crossing zero cannot break a touch, but a lift
-  /// and re-touch inside the same packet (about a second) is one tap. On: every
-  /// reading counts on its own. Applied by the session, which sees packets;
-  /// the counter only ever sees samples.
+  /// "Extra sensitive subsequent tap detection". On (the default): every
+  /// reading counts on its own. Off: within one packet, everything from the
+  /// first to the last reading with signal is contact, so an ECG trace
+  /// crossing zero cannot break a touch, but a lift and re-touch inside the
+  /// same packet (about a second) is one tap. Applied by the session, which
+  /// sees packets; the counter only ever sees samples.
   final bool extraSensitive;
 
   /// On (the default): the gesture waits for the steady stream and the sensor
@@ -136,7 +136,7 @@ class EcgTapThresholds {
         fallbackToDoubleTap: fallbackToDoubleTap ?? this.fallbackToDoubleTap,
       );
 
-  /// One plain line for the Device lab: "start 300 ms, gap 200 ms, confirm 200 ms"
+  /// One plain line for the Device lab: "start 200 ms, gap 150 ms, confirm 750 ms"
   /// (plus ", extra sensitive" when that is on, ", quick start" when the
   /// tolerant startup is off, ", no fallback" when the fallback is off).
   String get summary =>

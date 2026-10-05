@@ -39,15 +39,14 @@ import 'profile.dart';
 
 export '../../gestures/lab_log.dart' show DeviceLabEntry, labClock;
 
-/// The note said on this screen and on Gestures: what extended gestures
-/// need, and that the extra-tap rows are a draft to try here first. Never names
-/// a single tap.
+/// The note said on this screen and on Gestures (developer mode): what
+/// extended gestures need, and where to see every step of them. Never names a
+/// single tap.
 const String kExtendedGesturesNote =
     'ECG on double tap and counting touches on the ECG sensor need a WHOOP MG. '
     'WHOOP 4.0 has no ECG sensor, so it counts extra double taps instead. '
-    'The 3–5 tap rows are a draft, and so are the 2–4 double taps rows. '
-    'Try them first in the Device lab, in Settings under Developer mode: it '
-    'logs every step with its timing.';
+    'The Device lab, in Settings under Developer mode, logs every step with '
+    'its timing.';
 
 class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});
@@ -410,13 +409,18 @@ class RepeatWindowAdjuster extends StatelessWidget {
 
 /// The three touch windows, 50 ms steps within their ranges. Shared by the
 /// Device lab and the Gestures screen. With [onChanged] null every button is
-/// inert (no ECG sensor).
+/// inert (no ECG sensor). [timingsOnly] leaves out the three switches under
+/// the windows (the Gestures screen draws only the timings).
 class EcgThresholdAdjusters extends StatelessWidget {
   const EcgThresholdAdjusters(
-      {super.key, required this.thresholds, this.onChanged});
+      {super.key,
+      required this.thresholds,
+      this.onChanged,
+      this.timingsOnly = false});
 
   final EcgTapThresholds thresholds;
   final ValueChanged<EcgTapThresholds>? onChanged;
+  final bool timingsOnly;
 
   @override
   Widget build(BuildContext c) {
@@ -457,49 +461,51 @@ class EcgThresholdAdjusters extends StatelessWidget {
             ? null
             : (v) => onChanged!(thresholds.copyWith(confirmMs: v)),
       ),
-      SwitchRow(
-        key: const ValueKey('ecg-threshold:extra-sensitive'),
-        'Extra sensitive subsequent tap detection',
-        thresholds.extraSensitive,
-        onChanged == null
-            ? null
-            : (v) => onChanged!(thresholds.copyWith(extraSensitive: v)),
-        enabled: onChanged != null,
-        sub: 'Off: the band sends its sensor readings about once a second, '
-            'and within each batch everything from the first to the last '
-            'reading with contact counts as one touch. A lift and re-touch '
-            'inside the same second counts as one tap. '
-            'On: every reading counts on its own, so quicker taps can be '
-            'told apart. But the heart signal crosses zero now and then, and '
-            'a single zero reading while a touch is starting restarts its '
-            'hold time, so taps can be missed, counted late, or split in two.',
-      ),
-      SwitchRow(
-        key: const ValueKey('ecg-threshold:tolerant-startup'),
-        'Tolerant startup',
-        thresholds.tolerantStartup,
-        onChanged == null
-            ? null
-            : (v) => onChanged!(thresholds.copyWith(tolerantStartup: v)),
-        enabled: onChanged != null,
-        sub: 'On: waits for the sensor to settle (about 2.5 s), so a finger '
-            'placed during startup still counts. Off: decides a plain double '
-            'tap from the first ECG packet, about 2 s sooner, but a finger '
-            'placed after that packet is missed.',
-      ),
-      SwitchRow(
-        key: const ValueKey('ecg-threshold:fallback'),
-        'Fall back to the double-tap action',
-        thresholds.fallbackToDoubleTap,
-        onChanged == null
-            ? null
-            : (v) => onChanged!(thresholds.copyWith(fallbackToDoubleTap: v)),
-        enabled: onChanged != null,
-        sub: 'On: if the ECG cannot start or stops before any touch is '
-            'counted, the double-tap action runs. Off: the ECG is tried once '
-            'more instead. Either way the band gives one long buzz when the '
-            'ECG fails.',
-      ),
+      if (!timingsOnly) ...[
+        SwitchRow(
+          key: const ValueKey('ecg-threshold:extra-sensitive'),
+          'Extra sensitive subsequent tap detection',
+          thresholds.extraSensitive,
+          onChanged == null
+              ? null
+              : (v) => onChanged!(thresholds.copyWith(extraSensitive: v)),
+          enabled: onChanged != null,
+          sub: 'Off: the band sends its sensor readings about once a second, '
+              'and within each batch everything from the first to the last '
+              'reading with contact counts as one touch. A lift and re-touch '
+              'inside the same second counts as one tap. '
+              'On: every reading counts on its own, so quicker taps can be '
+              'told apart. But the heart signal crosses zero now and then, and '
+              'a single zero reading while a touch is starting restarts its '
+              'hold time, so taps can be missed, counted late, or split in two.',
+        ),
+        SwitchRow(
+          key: const ValueKey('ecg-threshold:tolerant-startup'),
+          'Tolerant startup',
+          thresholds.tolerantStartup,
+          onChanged == null
+              ? null
+              : (v) => onChanged!(thresholds.copyWith(tolerantStartup: v)),
+          enabled: onChanged != null,
+          sub: 'On: waits for the sensor to settle (about 2.5 s), so a finger '
+              'placed during startup still counts. Off: decides a plain double '
+              'tap from the first ECG packet, about 2 s sooner, but a finger '
+              'placed after that packet is missed.',
+        ),
+        SwitchRow(
+          key: const ValueKey('ecg-threshold:fallback'),
+          'Fall back to the double-tap action',
+          thresholds.fallbackToDoubleTap,
+          onChanged == null
+              ? null
+              : (v) => onChanged!(thresholds.copyWith(fallbackToDoubleTap: v)),
+          enabled: onChanged != null,
+          sub: 'On: if the ECG cannot start or stops before any touch is '
+              'counted, the double-tap action runs. Off: the ECG is tried once '
+              'more instead. Either way the band gives one long buzz when the '
+              'ECG fails.',
+        ),
+      ],
     ]);
   }
 }

@@ -32,6 +32,7 @@ void main() {
           chosen: const {},
           supported: _supported,
           ecgSupported: true,
+          devMode: true,
           tapMethod: TapCountMethod.ecg,
           tapActions: const {3: {}, 4: {}, 5: {}},
           onTapToggle: (n, a, on) async => toggled.add('$n:${a.name}:$on'),

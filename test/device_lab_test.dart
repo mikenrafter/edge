@@ -133,7 +133,7 @@ void main() {
           t,
           DeviceLabView(
             ecgSupported: true,
-            thresholds: EcgTapThresholds(startMs: 1100),
+            thresholds: EcgTapThresholds(startMs: 1000),
             onThresholds: changes.add,
           ));
       for (final label in [
@@ -149,23 +149,24 @@ void main() {
               r'touch.*let go|let go.*touch',
               caseSensitive: false)),
           findsWidgets);
-      expect(find.text('1100 ms'), findsOneWidget);
-      expect(find.text('200 ms'), findsNWidgets(2));
+      expect(find.text('1000 ms'), findsOneWidget);
+      expect(find.text('150 ms'), findsOneWidget);
+      expect(find.text('750 ms'), findsOneWidget);
 
       await t.tap(find.byKey(const ValueKey('ecg-threshold:gap:+')));
-      expect(changes.last, EcgTapThresholds(startMs: 1100, gapMs: 250));
+      expect(changes.last, EcgTapThresholds(startMs: 1000, gapMs: 200));
       await t.tap(find.byKey(const ValueKey('ecg-threshold:confirm:-')));
-      expect(changes.last, EcgTapThresholds(startMs: 1100, confirmMs: 150));
+      expect(changes.last, EcgTapThresholds(startMs: 1000, confirmMs: 700));
       final before = changes.length;
       await t.tap(find.byKey(const ValueKey('ecg-threshold:start:+')),
           warnIfMissed: false);
-      expect(changes.length, before, reason: 'start is at its 1100 ms max');
+      expect(changes.length, before, reason: 'start is at its 1000 ms max');
       await t.tap(find.byKey(const ValueKey('ecg-threshold:start:-')));
-      expect(changes.last, EcgTapThresholds(startMs: 1050));
+      expect(changes.last, EcgTapThresholds(startMs: 950));
     });
 
     testWidgets('extra sensitive subsequent tap detection: a switch with its '
-        'caveats, off by default', (t) async {
+        'caveats, on by default', (t) async {
       final changes = <EcgTapThresholds>[];
       await _pump(
           t,
@@ -185,7 +186,7 @@ void main() {
       await t.ensureVisible(key);
       await t.tap(find.descendant(of: key, matching: find.byType(Switch)));
       expect(changes.last,
-          EcgTapThresholds(gapMs: 250, extraSensitive: true),
+          EcgTapThresholds(gapMs: 250, extraSensitive: false),
           reason: 'the other thresholds are kept');
     });
 
@@ -346,10 +347,8 @@ void main() {
       await _pump(t, const DeviceLabView(ecgSupported: false));
       expect(find.textContaining('WHOOP MG'), findsWidgets);
       expect(find.textContaining('WHOOP 4.0 has no ECG sensor'), findsWidgets);
-      expect(
-          find.textContaining(
-              RegExp(r'3–5 tap rows are a draft', caseSensitive: false)),
-          findsWidgets);
+      expect(find.textContaining(RegExp('draft', caseSensitive: false)),
+          findsNothing);
     });
   });
 

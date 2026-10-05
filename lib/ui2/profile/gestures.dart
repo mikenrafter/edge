@@ -18,9 +18,15 @@
 // off IS the off state, and the copy says so.
 //
 // Laid out as sub-tabs (Oct 4): what applies to every gesture (the intro, how
-// extra taps are counted) is above the tab row; each gesture is a tab, and
-// every tab has the same shape: its name and how to do it, the actions as
-// switches, then the links (Haptics, and the Device lab in developer mode).
+// extra taps are counted, and the timing of the counting method in force) is
+// above the tab row; each gesture is a tab, and every tab has the same shape:
+// its name and how to do it, the actions as switches, then the links (Haptics,
+// and the Device lab in developer mode).
+//
+// ECG touches are a developer-mode option: the method choice, the ECG tab
+// names and the ECG timings are drawn only with developer mode on. Without it
+// a stored ECG choice reads as the double-tap chain here, which is also what
+// the dispatcher does with it (AppState's ecgSupported callback).
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -62,12 +68,16 @@ class BandGestures extends StatelessWidget {
         onToggle: g.toggleDoubleTapAction,
         replay: g.replayActions,
         onReplay: g.setReplayHistorical,
-        // The row for 2 taps is the switches above; 3–5 are the draft extra-tap
+        // The row for 2 taps is the switches above; 3–5 are the extra-tap
         // counts. More double taps by default on any band; ECG touches are an
-        // opt-in on a WHOOP MG.
+        // opt-in on a WHOOP MG, in developer mode.
         ecgSupported: caps.has(Feature.ecgTouchTaps),
         tapMethod: g.tapMethodFor(ecgSupported: caps.has(Feature.ecgTouchTaps)),
         onTapMethod: g.setTapMethod,
+        repeatWindowMs: g.repeatTapWindowMs,
+        onRepeatWindowMs: g.setRepeatTapWindowMs,
+        thresholds: g.ecgTapThresholds,
+        onThresholds: g.setEcgTapThresholds,
         tapActions: {for (var n = 3; n <= 5; n++) n: g.actionsForTaps(n)},
         onTapToggle: (n, a, on) {
           final cur = g.actionsForTaps(n);
@@ -99,6 +109,7 @@ class BandGesturesView extends StatelessWidget {
   final void Function(DeviceAction, bool)? onReplay;
 
   /// A WHOOP MG: the only band whose ECG sensor can be touched to count taps.
+  /// The ECG options are drawn only when [devMode] is on as well.
   final bool ecgSupported;
 
   /// How extra taps are counted for this band. Null follows the default
@@ -106,9 +117,10 @@ class BandGesturesView extends StatelessWidget {
   final TapCountMethod? tapMethod;
   final ValueChanged<TapCountMethod>? onTapMethod;
 
-  /// The pause and touch-window tuning controls moved to the Device lab,
-  /// where they were already shared widgets; this screen draws neither. The
-  /// four fields stay so existing construction sites keep compiling.
+  /// The timing of the method in force, the same adjusters (and the same
+  /// stored values) as the Device lab: the pause between double taps for
+  /// repeated double taps, start / gap / confirm for ECG touches. The pause is
+  /// drawn only when [onRepeatWindowMs] is given.
   final int? repeatWindowMs;
   final ValueChanged<int>? onRepeatWindowMs;
 
@@ -122,7 +134,7 @@ class BandGesturesView extends StatelessWidget {
   final ValueChanged<EcgTapThresholds>? onThresholds;
 
   /// FeatureFlag.tapClassifiers. False hides every extra-tap control (method,
-  /// tap counts and the MG note): the screen is then the
+  /// timing, tap counts and the MG note): the screen is then the
   /// plain double-tap action list.
   final bool extraTaps;
 
@@ -130,7 +142,8 @@ class BandGesturesView extends StatelessWidget {
   /// chosen. The row is always drawn; without a callback it is inert.
   final VoidCallback? onHaptics;
 
-  /// Developer mode: a Device lab link under the Haptics one in every tab.
+  /// Developer mode: a Device lab link under the Haptics one in every tab, and
+  /// the ECG touch options.
   final bool devMode;
   final VoidCallback? onDeviceLab;
 
@@ -167,7 +180,9 @@ class BandGesturesView extends StatelessWidget {
       ...DeviceAction.values.where((a) => a.isNative && supported.contains(a)),
     ];
     final noPhoneActions = !offered.any((a) => a.isNative);
-    final method = ecgSupported
+    // ECG touches count only in developer mode on a band with the sensor;
+    // anything else is the double-tap chain.
+    final method = ecgSupported && devMode
         ? (tapMethod ?? TapCountMethod.repeat)
         : TapCountMethod.repeat;
     final ecg = method == TapCountMethod.ecg;
@@ -198,9 +213,10 @@ class BandGesturesView extends StatelessWidget {
                     ),
                   ),
                 ),
-                // How taps beyond the double tap are counted. ECG is dimmed and
-                // inert (never hidden) on a band without the sensor.
-                if (extraTaps) ...[
+                // How taps beyond the double tap are counted. Only developer
+                // mode has a choice (ECG touches); ECG is dimmed and inert
+                // (never hidden) there on a band without the sensor.
+                if (extraTaps && devMode) ...[
                   SettingsAccordion('Count extra taps with',
                       id: 'gestures_extra_taps',
                       children: [
@@ -231,11 +247,27 @@ class BandGesturesView extends StatelessWidget {
                     ),
                   ),
                 ],
+                // The timing of the method in force, and only that one.
+                if (extraTaps && (ecg || onRepeatWindowMs != null))
+                  SettingsAccordion('Timing', id: 'gestures_timing', children: [
+                    if (ecg)
+                      EcgThresholdAdjusters(
+                        thresholds: thresholds ?? EcgTapThresholds(),
+                        onChanged: onThresholds,
+                        timingsOnly: true,
+                      )
+                    else
+                      RepeatWindowAdjuster(
+                        windowMs: repeatWindowMs ??
+                            GestureSettings.defaultRepeatWindowMs,
+                        onChanged: onRepeatWindowMs,
+                      ),
+                  ]),
                 // 2 taps is the plain double tap; there is no 1-tap tab. The
-                // rest are a DRAFT: touches of the ECG sensor after the double
-                // tap, or more double taps in a row. One mapping serves both:
-                // the slot for 3 taps is the slot for 2 double taps. Without
-                // extra taps there is one gesture, so no tab row.
+                // rest are touches of the ECG sensor after the double tap, or
+                // more double taps in a row. One mapping serves both: the slot
+                // for 3 taps is the slot for 2 double taps. Without extra taps
+                // there is one gesture, so no tab row.
                 if (extraTaps)
                   _GestureTabs(
                     items: [
@@ -288,13 +320,6 @@ class BandGesturesView extends StatelessWidget {
                               style: F.body.copyWith(
                                   color: p.ink, fontWeight: FontWeight.w600)),
                         ),
-                        if (taps > 2) ...[
-                          const SizedBox(width: S.x2),
-                          Text('Draft',
-                              style: F.over.copyWith(
-                                  color: p.on(C.orange),
-                                  fontWeight: FontWeight.w600)),
-                        ],
                       ]),
                       Text(_how(taps, ecg),
                           key: const ValueKey('gestures-tab-how'),

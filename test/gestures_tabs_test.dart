@@ -54,7 +54,7 @@ Future<void> _pump(
   bool ecg = false,
   TapCountMethod? method,
   bool extraTaps = true,
-  bool devMode = false,
+  bool? devMode,
   Map<int, Set<DeviceAction>> tapActions = const {},
   void Function(DeviceAction, bool)? onToggle,
   Future<void> Function(int, DeviceAction, bool)? onTapToggle,
@@ -79,7 +79,9 @@ Future<void> _pump(
         ecgSupported: ecg,
         tapMethod: method,
         extraTaps: extraTaps,
-        devMode: devMode,
+        // ECG options are developer mode only: an ECG band here is in it,
+        // unless a test says otherwise.
+        devMode: devMode ?? ecg,
         tapActions: tapActions,
         onToggle: onToggle,
         onTapToggle: onTapToggle,
@@ -94,9 +96,18 @@ Future<void> _pump(
 }
 
 Future<void> _select(WidgetTester t, int n) async {
+  await _reach(t, _tab(n));
   await t.ensureVisible(_tab(n));
   await t.tap(_tab(n));
   await t.pumpAndSettle();
+}
+
+/// The list builds lazily: with the ECG timings above the tab row at a large
+/// text scale the row can start below what is built, so scroll to it first.
+Future<void> _reach(WidgetTester t, Finder f) async {
+  if (f.evaluate().isNotEmpty) return;
+  await t.scrollUntilVisible(f, 300,
+      scrollable: find.byType(Scrollable).first);
 }
 
 List<Object> _faults() {
@@ -224,16 +235,13 @@ void main() {
       expect(_tabs(t).items, ['Double tap', '×2', '×3', '×4']);
     });
 
-    testWidgets('the count tabs are marked Draft inside their tabs; the '
-        'double tap is not', (t) async {
+    testWidgets('no tab is marked Draft: the count gestures are finished',
+        (t) async {
       await _pump(t);
-      expect(find.text('Draft'), findsNothing);
-      for (final n in [3, 4, 5]) {
+      for (final n in [2, 3, 4, 5]) {
         await _select(t, n);
-        expect(find.text('Draft'), findsOneWidget, reason: 'tab $n');
+        expect(find.text('Draft'), findsNothing, reason: 'tab $n');
       }
-      await _select(t, 2);
-      expect(find.text('Draft'), findsNothing);
     });
 
     testWidgets('how to do it: the line under the name follows the method',

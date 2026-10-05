@@ -366,6 +366,7 @@ void main() {
             chosen: const {},
             supported: {DeviceAction.none, DeviceAction.logWater},
             ecgSupported: true,
+            devMode: true,
             onRepeatWindowMs: (_) {},
             onThresholds: (_) {},
             extraTaps: counting,
@@ -374,18 +375,19 @@ void main() {
       for (final title in const [
         'Count extra taps with',
         'What needs a WHOOP MG',
+        'Timing',
+        'Pause between double taps',
       ]) {
         expect(find.text(title), findsWidgets, reason: 'ON: $title');
       }
       expect(find.byType(SubTabs), findsOneWidget, reason: 'ON: the count tabs');
-      // The pause and touch-window tuning moved to the Device lab, so
-      // they are not on this screen with the flag on or off.
-      for (final title in const ['Pause between double taps', 'Touch windows']) {
-        expect(find.text(title), findsNothing, reason: 'ON: $title');
-      }
+      // Only the timing of the method in force: no touch windows while
+      // double taps are counted.
+      expect(find.text('Touch windows'), findsNothing);
       await pumpTall(t, view(false));
       for (final title in const [
         'Count extra taps with',
+        'Timing',
         'Pause between double taps',
         'Touch windows',
         'What needs a WHOOP MG',

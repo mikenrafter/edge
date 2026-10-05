@@ -55,6 +55,11 @@ bool isDimmed(WidgetTester t, Finder rowText) => find
 /// counted gestures); the tab row is scrolled to it first.
 Future<void> openGesturesTab(WidgetTester t, int taps) async {
   final tab = find.byKey(ValueKey('gestures-tab:$taps'));
+  // The list builds lazily; a tall block above the tab row can leave it unbuilt.
+  if (tab.evaluate().isEmpty) {
+    await t.scrollUntilVisible(tab, 300,
+        scrollable: find.byType(Scrollable).first);
+  }
   await t.ensureVisible(tab);
   await t.tap(tab);
   await t.pumpAndSettle();

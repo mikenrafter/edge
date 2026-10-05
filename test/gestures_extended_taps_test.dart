@@ -1,4 +1,4 @@
-// The Gestures screen and settings for 2–5 taps. 3–5 are DRAFT, counted
+// The Gestures screen and settings for 2–5 taps. 3–5 are counted
 // as ECG-sensor touches after a double tap (WHOOP MG only). No 1-tap row.
 //
 // NOTE: the text guard in test/band_gestures_view_test.dart keeps forbidding
@@ -79,9 +79,35 @@ void main() {
   });
 
   group('GestureSettings: ECG tap thresholds', () {
-    test('defaults until changed', () async {
+    test('defaults until changed: the values from the owner\'s device log',
+        () async {
       final s = await _boot({});
       expect(s.ecgTapThresholds, EcgTapThresholds());
+      expect(s.ecgTapThresholds.startMs, 200);
+      expect(s.ecgTapThresholds.gapMs, 150);
+      expect(s.ecgTapThresholds.confirmMs, 750);
+      expect(s.ecgTapThresholds.extraSensitive, isTrue);
+      expect(s.ecgTapThresholds.tolerantStartup, isTrue);
+      expect(s.ecgTapThresholds.fallbackToDoubleTap, isTrue);
+      expect(s.repeatTapWindowMs, 2500);
+    });
+
+    test('a stored user value still wins over the new defaults', () async {
+      final s = await _boot({
+        'gesture_ecg_start_ms': 300,
+        'gesture_ecg_gap_ms': 250,
+        'gesture_ecg_confirm_ms': 900,
+        'gesture_ecg_extra_sensitive': false,
+        'gesture_repeat_window_ms': 1500,
+      });
+      expect(s.ecgTapThresholds,
+          EcgTapThresholds(
+              startMs: 300,
+              gapMs: 250,
+              confirmMs: 900,
+              extraSensitive: false));
+      expect(s.ecgTapThresholds.extraSensitive, isFalse);
+      expect(s.repeatTapWindowMs, 1500);
     });
 
     test('persisted as three ints and restored', () async {
@@ -89,30 +115,30 @@ void main() {
       var notified = 0;
       s.addListener(() => notified++);
       await s.setEcgTapThresholds(
-          EcgTapThresholds(startMs: 500, gapMs: 250, confirmMs: 400));
+          EcgTapThresholds(startMs: 500, gapMs: 250, confirmMs: 800));
       expect(notified, 1);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getInt('gesture_ecg_start_ms'), 500);
       expect(prefs.getInt('gesture_ecg_gap_ms'), 250);
-      expect(prefs.getInt('gesture_ecg_confirm_ms'), 400);
+      expect(prefs.getInt('gesture_ecg_confirm_ms'), 800);
       final again = GestureSettings();
       await again.bootstrap();
       expect(again.ecgTapThresholds,
-          EcgTapThresholds(startMs: 500, gapMs: 250, confirmMs: 400));
+          EcgTapThresholds(startMs: 500, gapMs: 250, confirmMs: 800));
     });
 
-    test('extra sensitive detection: off until changed, persisted, restored',
+    test('extra sensitive detection: on until changed, persisted, restored',
         () async {
       final s = await _boot({});
-      expect(s.ecgTapThresholds.extraSensitive, isFalse);
+      expect(s.ecgTapThresholds.extraSensitive, isTrue);
       await s.setEcgTapThresholds(
-          EcgTapThresholds(startMs: 500, extraSensitive: true));
+          EcgTapThresholds(startMs: 500, extraSensitive: false));
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('gesture_ecg_extra_sensitive'), isTrue);
+      expect(prefs.getBool('gesture_ecg_extra_sensitive'), isFalse);
       final again = GestureSettings();
       await again.bootstrap();
       expect(again.ecgTapThresholds,
-          EcgTapThresholds(startMs: 500, extraSensitive: true));
+          EcgTapThresholds(startMs: 500, extraSensitive: false));
     });
 
     test('tolerant startup and the double-tap fallback: on until changed, '
@@ -169,27 +195,39 @@ void main() {
       expect(b.ecgTapThresholds.fallbackToDoubleTap, isFalse);
     });
 
+    test('a stored value outside its new range falls back to the new default',
+        () async {
+      final s = await _boot({
+        'gesture_ecg_start_ms': 1100, // above the new start range
+        'gesture_ecg_gap_ms': 1000, // above the new gap range
+        'gesture_ecg_confirm_ms': 200, // below the new confirm range
+      });
+      expect(s.ecgTapThresholds.startMs, 200);
+      expect(s.ecgTapThresholds.gapMs, 150);
+      expect(s.ecgTapThresholds.confirmMs, 750);
+    });
+
     test('an invalid stored value falls back to that field\'s default',
         () async {
       final s = await _boot({
         'gesture_ecg_start_ms': 5000, // out of range
         'gesture_ecg_gap_ms': 333, // off step
-        'gesture_ecg_confirm_ms': 450, // valid
+        'gesture_ecg_confirm_ms': 850, // valid
       });
       expect(s.ecgTapThresholds,
-          EcgTapThresholds(startMs: 300, gapMs: 200, confirmMs: 450));
+          EcgTapThresholds(startMs: 200, gapMs: 150, confirmMs: 850));
     });
   });
 
   group('BandGesturesView tabs', () {
-    testWidgets('Double tap + 0–3 ECG taps; 3–5 draft; no 1-tap tab',
-        (t) async {
+    testWidgets('Double tap + 0–3 ECG taps; no 1-tap tab', (t) async {
       await pumpTall(
           t,
           const BandGesturesView(
             chosen: {},
             supported: _supported,
             ecgSupported: true,
+            devMode: true,
             tapMethod: TapCountMethod.ecg,
           ));
       const names = {
@@ -201,8 +239,7 @@ void main() {
       for (final e in names.entries) {
         await openGesturesTab(t, e.key);
         expect(gesturesTabName(t), e.value);
-        expect(find.textContaining('Draft'), e.key == 2 ? findsNothing : findsOneWidget,
-            reason: e.value);
+        expect(find.textContaining('Draft'), findsNothing, reason: e.value);
         expect(isDimmed(t, find.byKey(const ValueKey('gestures-tab-name'))),
             isFalse,
             reason: 'enabled on a WHOOP MG');
@@ -216,7 +253,10 @@ void main() {
       await pumpTall(
           t,
           const BandGesturesView(
-              chosen: {}, supported: _supported, ecgSupported: false));
+              chosen: {},
+              supported: _supported,
+              ecgSupported: false,
+              devMode: true));
       for (final (n, label) in const [
         (3, '2 double taps'),
         (4, '3 double taps'),

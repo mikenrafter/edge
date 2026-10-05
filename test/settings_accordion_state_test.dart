@@ -64,13 +64,15 @@ Map<String, Widget Function()> get _screens => {
       'App notifications on the band': () =>
           const BandNotificationsView(enabled: true, granted: true),
       'Alarm': () => AlarmScreenView(connected: true, schedule: _schedule),
-      'Gestures': () => const BandGesturesView(
-            chosen: {DeviceAction.markMoment},
-            supported: {
+      'Gestures': () => BandGesturesView(
+            chosen: const {DeviceAction.markMoment},
+            supported: const {
               DeviceAction.none,
               DeviceAction.markMoment,
               DeviceAction.torch
             },
+            repeatWindowMs: 2500,
+            onRepeatWindowMs: (_) {},
           ),
       'Device detail': () => DeviceDetailView(_band),
       'Edit profile': () => EditProfileView(onSave: (_) async {}),
