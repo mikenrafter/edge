@@ -32,6 +32,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/journal_fields.dart' show formatMinuteOfDay;
@@ -162,6 +163,62 @@ class _PressableState extends State<Pressable> {
         ),
       ),
     );
+  }
+}
+
+/// A [Pressable] line that keeps its 44 pt hit target without its 44 pt of
+/// layout. [child] is laid out at its natural height (a [Pressable] makes that
+/// at least [S.tap]); when it is no taller than that, this box reports only
+/// [visual] and centres the child, so the target overhangs the lines above and
+/// below instead of pushing them apart. A tap anywhere on the whole child lands.
+///
+/// It must be a direct child of the Column/ListView that stacks the lines: an
+/// ancestor that is only [visual] tall would reject a tap on the overhang
+/// before it got here. Taller content (wrapped at large text) is left alone.
+class HitOverhang extends SingleChildRenderObjectWidget {
+  final double visual;
+  const HitOverhang({super.key, required this.visual, required super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderHitOverhang(visual);
+
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) =>
+      (renderObject as _RenderHitOverhang).visual = visual;
+}
+
+class _RenderHitOverhang extends RenderShiftedBox {
+  _RenderHitOverhang(this._visual) : super(null);
+
+  double _visual;
+  set visual(double v) {
+    if (v == _visual) return;
+    _visual = v;
+    markNeedsLayout();
+  }
+
+  @override
+  void performLayout() {
+    final c = child;
+    if (c == null) {
+      size = constraints.smallest;
+      return;
+    }
+    c.layout(constraints.loosen(), parentUsesSize: true);
+    final h = c.size.height <= S.tap ? math.min(_visual, c.size.height) : c.size.height;
+    size = constraints.constrain(Size(c.size.width, h));
+    (c.parentData! as BoxParentData).offset = Offset(0, (size.height - c.size.height) / 2);
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final c = child;
+    if (c == null) return false;
+    final off = (c.parentData! as BoxParentData).offset;
+    // The child's own box, not this one's: that is the overhang.
+    if (!(off & c.size).contains(position)) return false;
+    return hitTestChildren(result, position: position);
   }
 }
 

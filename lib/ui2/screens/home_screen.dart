@@ -308,6 +308,16 @@ Widget syncedThroughLine(BuildContext c, String? todayId,
   );
 }
 
+/// Whether a sync is running, from the same presentation state the sync line
+/// reads. False with no AppState above (a golden).
+bool syncBusyOf(BuildContext c) {
+  try {
+    return c.select<AppState, bool>((a) => a.syncPresentation.busy);
+  } catch (_) {
+    return false;
+  }
+}
+
 bool derivingOf(BuildContext c) {
   try {
     return c.select<AppState, bool>((a) => a.deriving || a.derivePending);
@@ -1726,7 +1736,10 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
               // looking at today, or at last night?" used to be answerable
               // only by opening Profile > Devices. Time since the last sync and
               // Sync now sit on this same line (right-aligned, just left of
-              // the gear), so the status has one home.
+              // the gear), so the status has one home. While a sync runs the
+              // line leads with its status instead. It must stay a direct child
+              // of this Column: its tap targets overhang the lines around it
+              // (see [HitOverhang]), and no tighter ancestor may clip them.
               syncedThroughLine(c, d.dayId, l),
               // Its own line, not squeezed into the sync line's row: at
               // accessibility text sizes that row has no slack left, and
@@ -1763,15 +1776,29 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
             ),
             const SizedBox(width: S.x2),
           ],
+          // While a sync runs the gear gives way to a spinner: same button, same
+          // size, same tap, same on-colour. It is where the eye already is, and
+          // it leaves the sync line to the status text.
           Pressable(
-            semanticLabel: l?.homeProfileSettings ?? 'Profile and settings',
+            semanticLabel: syncBusyOf(c)
+                ? '${l?.homeProfileSettings ?? 'Profile and settings'}, syncing'
+                : l?.homeProfileSettings ?? 'Profile and settings',
             onTap: () => go(c, const MoreSettings()),
             child: Container(
               width: 40,
               height: 40,
               decoration: BoxDecoration(
                   shape: BoxShape.circle, color: p.fill(C.domHome)),
-              child: Icon(LucideIcons.settings, size: 18, color: p.inkOnFill),
+              child: syncBusyOf(c)
+                  ? Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: p.inkOnFill),
+                      ),
+                    )
+                  : Icon(LucideIcons.settings, size: 18, color: p.inkOnFill),
             ),
           ),
         ]),

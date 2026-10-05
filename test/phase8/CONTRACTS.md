@@ -1685,13 +1685,25 @@ C and D in phase 2).
   greeting header, from the same `SyncPresentationState` as `SyncControl` (which the band
   detail page still renders, unchanged). The no-day path (first run, failed load) uses the
   same line, so Sync now is still there.
-- Center line, left to right: data edge ("Synced through 15:33", Home's own text), then
-  while syncing the running time and "Show details"; right-aligned just left of the gear,
-  when idle, the time since the last good sync ("1 h ago", absent if never) and Sync now
-  (Retry after a failure). While syncing a spinner takes the button's place and nothing
-  else is tappable there. Nothing is estimated and nothing is a percentage.
-- A problem (`syncProblem`: "Sync failed", "Needs another pass") leads the link:
-  "Sync failed · Show details". "Show details" shows only while syncing or on a problem.
+- Center line, idle: the data edge ("Synced through 15:33", Home's own text), then right-aligned
+  just left of the gear the time since the last good sync ("1 h ago", absent if never) and
+  Sync now (Retry after a failure). Nothing is estimated and nothing is a percentage.
+- While syncing the status leads: the first clause of `syncStatusLine` ("Downloading…",
+  "Calculating", via `syncStatusHeadline`), then the running time, then "Show details". "Synced
+  through" is hidden while a status shows (it stays in the details sheet): it is a back-seat fact
+  and would wrap the line at 360 pt. Sync now and "N h ago" are hidden too. A problem
+  (`syncProblem`: "Sync failed", "Needs another pass") is the status then: "Sync failed · Show
+  details", with "1 h ago" and Retry on the right and "Synced through" hidden.
+- The spinner is not on the line. While syncing the gear icon of the green settings button
+  (Profile and settings) is replaced by a spinner in `P.inkOnFill`, the colour the gear uses
+  (4.5:1 on the fill). Same button, size, position and tap (it still opens Settings); the
+  semantics label is "Profile and settings, syncing". It is not a sync button.
+- Spacing is the pre-sync-UI rhythm: greeting, date, center line, 2 pt, battery line, all
+  one text line tall. The center line's two kinds of 44 pt targets (Show details, Sync now/Retry)
+  keep their 44 pt hit area without 44 pt of layout: `HitOverhang` (`lib/ui2/grammar.dart`)
+  reports the text height and lets the target overhang the lines above and below. It must stay a
+  direct child of the header Column (an ancestor only one line tall would reject the overhang).
+  The gear stays vertically centred on the header block.
 - "Show details" opens a modal bottom sheet (`showSyncDetails`): the running time, the one
   sentence (with the failure reason) and the four steps (`syncStepRows`, shared with
   `SyncControl`). It reads `AppState` live. Home no longer expands steps inline; the
@@ -1699,10 +1711,12 @@ C and D in phase 2).
 - The battery line is the connection line: "59% · Connected" or "Not connected". The
   battery level shows only while connected and when the strap has reported one; there is
   no placeholder. Connection is said only there.
-- Narrow widths: the label shortens ("Through 15:33") when the line would not fit, then
-  the link wraps to a second line. Nothing overflows at 360 pt with text scale 1.3.
+- Narrow widths: the idle label shortens ("Through 15:33") when the line would not fit; the
+  syncing line has no data edge to shorten and wraps its link to a second line only at extreme
+  text sizes. Nothing overflows at 360 pt with text scale 1.3.
 - Tests: `test/ui2/home_sync_header_test.dart` (idle / syncing / problem / not connected,
-  order and alignment, spinner, sheet, old card gone, 360 pt at 1.3x); updated
+  order and alignment, status-first, spinner in the settings button and its contrast, tight
+  spacing and kept hit targets, sheet, old card gone, 360 pt at 1.3x); updated
   `home_one_sync_control_test`, `phase8/pull_to_sync_test`, `phase8/sync_status_line_test`,
   `ui2_tokens_test` (exemption renamed). No Home golden changed (the golden images are
   not committed, so that group is skipped here).

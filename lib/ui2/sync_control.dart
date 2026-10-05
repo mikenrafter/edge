@@ -289,6 +289,15 @@ String syncStatusLine(SyncPresentationState s, DateTime now) {
   }
 }
 
+/// The first clause of [syncStatusLine]: "Downloading…", "Calculating", "Sync
+/// failed". The header says it without the backlog or the day count, which the
+/// details sheet carries.
+String syncStatusHeadline(SyncPresentationState s, DateTime now) {
+  final line = syncStatusLine(s, now);
+  final i = line.indexOf(' · ');
+  return i < 0 ? line : line.substring(0, i);
+}
+
 /// What the download did, for the line shown while the calculation waits its
 /// turn. Null when the download left no detail.
 String? _downloadLine(SyncPresentationState s) {
@@ -509,20 +518,27 @@ String _count(int n) {
   return out.toString();
 }
 
-/// Home's sync status: the "Synced through 15:33" line of the greeting header,
-/// with the sync UI on the same line. Same `SyncCoordinator` state as
-/// [SyncControl], so there is still one idea of whether a sync is running.
+/// Home's sync status: the center line of the greeting header, with the sync UI
+/// on it. Same `SyncCoordinator` state as [SyncControl], so there is still one
+/// idea of whether a sync is running.
 ///
 ///     Synced through 15:33          1 h ago [Sync now]      idle
-///     Synced through 15:33 · 0:42 · Show details   [ ◌ ]    syncing
-///     Synced through 15:33 · Sync failed · Show details     problem
+///     Downloading… · 0:42 · Show details                    syncing
+///     Sync failed · Show details         1 h ago [Retry]    problem
 ///
 /// [through] is the data edge ("how far are we?") and stays Home's own text;
 /// [throughShort] ("Through 15:33") replaces it when the line would not fit.
-/// The timer is the running time while syncing and the time since the last
-/// good sync otherwise; "Show details" (only while syncing or on a problem)
-/// opens [showSyncDetails]. Never a percentage or an estimate. With no
-/// AppState above it (a golden) it is just the data edge.
+/// While a status shows (a running sync, or a problem) the status leads and
+/// "Synced through" is left off the line entirely: it is a back-seat fact, it
+/// is in the details sheet, and keeping it would wrap this line at 360 pt. The
+/// status is the first clause of [syncStatusLine] (no backlog, no day count);
+/// the timer is the running time; "Show details" opens [showSyncDetails]. The
+/// spinner is not here: Home puts it in the settings button. Never a
+/// percentage or an estimate. With no AppState above it (a golden) it is just
+/// the data edge.
+///
+/// The line is a [HitOverhang], so its 44 pt targets do not add height to the
+/// header.
 class HomeSyncStatus extends StatefulWidget {
   final String through, throughShort;
   const HomeSyncStatus({
@@ -544,17 +560,20 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
     super.dispose();
   }
 
-  static double _width(BuildContext c, String text, TextStyle style) {
+  static Size _measure(BuildContext c, String text, TextStyle style) {
     final tp = TextPainter(
       text: TextSpan(text: text, style: DefaultTextStyle.of(c).style.merge(style)),
       textDirection: Directionality.of(c),
       textScaler: MediaQuery.textScalerOf(c),
       maxLines: 1,
     )..layout();
-    final w = tp.width;
+    final size = tp.size;
     tp.dispose();
-    return w;
+    return size;
   }
+
+  static double _width(BuildContext c, String text, TextStyle style) =>
+      _measure(c, text, style).width;
 
   @override
   Widget build(BuildContext c) {
@@ -581,113 +600,99 @@ class _HomeSyncStatusState extends State<HomeSyncStatus> {
     final failed = s.phase == 'failed';
     final action = failed ? 'Retry' : 'Sync now';
     final timerText = elapsed == null ? null : _clock(elapsed);
+    final status = s.busy ? syncStatusHeadline(s, now) : null;
     final link = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
     final button = F.cap.copyWith(color: p.on(C.blue), fontWeight: FontWeight.w600);
-    final hasLink = s.busy || problem != null;
+    final hasStatus = status != null || problem != null;
 
-    return LayoutBuilder(builder: (c, box) {
-      // What the right-hand end needs, so the left can decide between the full
-      // label and the short one before anything has to wrap or clip.
-      final right = s.busy
-          ? S.tap
-          : (ago == null ? 0.0 : _width(c, ago, base) + S.x2) +
-              (_width(c, action, button) + 2 * S.x2).clamp(S.tap, double.infinity);
-      var left = 0.0;
-      if (timerText != null) left += _width(c, timerText, base) + _width(c, ' ·', base) + S.x1;
-      if (hasLink) {
-        left += _width(c, 'Show details', link) +
-            (problem == null ? 0 : _width(c, '${problem.text} · ', link)) +
-            S.x1;
-      }
-      final dot = hasLink || timerText != null ? _width(c, ' ·', base) : 0;
-      final room = box.maxWidth - right - S.x2;
-      // A few px of slack: a measured width can differ from the laid-out one by
-      // a fraction.
-      final through = _width(c, widget.through, base) + dot + left + 4 <= room
-          ? widget.through
-          : widget.throughShort;
+    return HitOverhang(
+      visual: _measure(c, 'Ag', base).height,
+      child: LayoutBuilder(builder: (c, box) {
+        // What the right-hand end needs, so the left can decide between the
+        // full label and the short one before anything has to wrap or clip.
+        final right = s.busy
+            ? 0.0
+            : (ago == null ? 0.0 : _width(c, ago, base) + S.x2) +
+                (_width(c, action, button) + 2 * S.x2).clamp(S.tap, double.infinity);
+        final room = box.maxWidth - right - S.x2;
+        // A few px of slack: a measured width can differ from the laid-out one
+        // by a fraction.
+        final through = _width(c, widget.through, base) + 4 <= room
+            ? widget.through
+            : widget.throughShort;
 
-      Widget seg(String text, {bool dot = true}) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(child: Text(text, style: base)),
-          if (dot) Text(' ·', style: base),
-        ],
-      );
+        Widget seg(String text, TextStyle style, {bool dot = true}) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(child: Text(text, style: style)),
+            if (dot) Text(' ·', style: base),
+          ],
+        );
 
-      final lead = <Widget>[
-        seg(through, dot: timerText != null || hasLink),
-        if (timerText != null)
-          Semantics(
-            label: 'Elapsed ${_spoken(elapsed!)}',
-            child: ExcludeSemantics(child: seg(timerText, dot: hasLink)),
-          ),
-        if (hasLink)
-          Pressable(
-            onTap: () => showSyncDetails(c, c.read<AppState>()),
-            // A Wrap, not a Row: at large text it breaks between the problem
-            // and the link instead of overflowing.
-            child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
-              if (problem != null) ...[
-                Text(problem.text,
-                    style: F.cap.copyWith(
-                        color: p.on(problem.failed ? C.red : C.orange))),
-                Text(' · ', style: base),
-              ],
-              Text('Show details', style: link),
-            ]),
-          ),
-      ];
+        final lead = <Widget>[
+          if (!hasStatus) seg(through, base, dot: false),
+          if (status != null)
+            seg(status, F.cap.copyWith(color: p.ink2)),
+          if (timerText != null)
+            Semantics(
+              label: 'Elapsed ${_spoken(elapsed!)}',
+              child: ExcludeSemantics(child: seg(timerText, base)),
+            ),
+          if (hasStatus)
+            Pressable(
+              onTap: () => showSyncDetails(c, c.read<AppState>()),
+              // A Wrap, not a Row: at large text it breaks between the problem
+              // and the link instead of overflowing.
+              child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
+                if (problem != null) ...[
+                  Text(problem.text,
+                      style: F.cap.copyWith(
+                          color: p.on(problem.failed ? C.red : C.orange))),
+                  Text(' · ', style: base),
+                ],
+                Text('Show details', style: link),
+              ]),
+            ),
+        ];
 
-      final trail = <Widget>[
-        if (s.busy)
-          Semantics(
-            label: 'Syncing',
-            child: SizedBox(
-              width: S.tap,
-              height: S.tap,
-              child: Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: p.on(C.blue)),
-                ),
+        // Nothing while syncing: the spinner is in the settings button, and a
+        // second Sync now beside a running sync is what this header replaced.
+        final trail = <Widget>[
+          if (!s.busy) ...[
+            if (ago != null) Text(ago, style: base),
+            Pressable(
+              onTap: () => c.read<AppState>().syncNow(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: S.x2),
+                child: Text(action, style: button),
               ),
             ),
-          )
-        else ...[
-          if (ago != null) Text(ago, style: base),
-          Pressable(
-            onTap: () => c.read<AppState>().syncNow(),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: S.x2),
-              child: Text(action, style: button),
+          ],
+        ];
+
+        return Row(children: [
+          Expanded(
+            child: Wrap(
+              spacing: S.x1,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: lead,
             ),
           ),
-        ],
-      ];
-
-      return Row(children: [
-        Expanded(
-          child: Wrap(
-            spacing: S.x1,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: lead,
-          ),
-        ),
-        const SizedBox(width: S.x2),
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: box.maxWidth * .6),
-          child: Wrap(
-            alignment: WrapAlignment.end,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: S.x2,
-            children: trail,
-          ),
-        ),
-      ]);
-    });
+          if (trail.isNotEmpty) ...[
+            const SizedBox(width: S.x2),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: box.maxWidth * .6),
+              child: Wrap(
+                alignment: WrapAlignment.end,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: S.x2,
+                children: trail,
+              ),
+            ),
+          ],
+        ]);
+      }),
+    );
   }
 }
 
