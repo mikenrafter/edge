@@ -58,7 +58,7 @@ void main() {
       await rig.settleDerive(const Duration(seconds: 8));
       await rig.quiesce();
       expect(await rig.jobTypes(), ['derive_light']);
-      expect(ticks.ticks, 3, reason: 'its own notify, plus two from the scheduler queueing the job');
+      expect(ticks.ticks, 4, reason: 'its own notify, the clean drain\'s last-sync stamp, and two from the scheduler queueing the job');
       ticks.stop();
     }));
 
@@ -159,11 +159,12 @@ void main() {
       await rig.jobQueued('derive_light');
       await rig.settleDerive(const Duration(seconds: 8));
       await rig.quiesce();
-      expect(ticks.ticks, 3, reason: 'its own notify, plus two from the scheduler queueing the job');
+      expect(ticks.ticks, 4, reason: 'its own notify, the clean drain\'s last-sync stamp, and two from the scheduler queueing the job');
       ticks.stop();
     }));
 
-    test('a catch-up that brought nothing queues nothing and does not notify',
+    test('a catch-up that brought nothing queues nothing; its only notify is '
+        'the clean drain\'s last-sync stamp',
         syncCase((rig, timers) async {
       await _open(rig);
       rig.engine.syncScript.add(SyncReport(0, 1, true));
@@ -171,7 +172,7 @@ void main() {
       await rig.app.foregroundCatchUp();
       await rig.quiesce();
       expect(await rig.jobTypes(), isEmpty);
-      expect(ticks.ticks, 0);
+      expect(ticks.ticks, 1);
       expect(_logged(rig, 'Foreground catch-up: 0 records pulled.'), isTrue);
       ticks.stop();
     }));

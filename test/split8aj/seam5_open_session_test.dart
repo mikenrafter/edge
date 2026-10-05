@@ -150,8 +150,9 @@ void main() {
       expect(rig.app.logLines.any((l) => l.contains('Backlog drained: 40 records in 2 batches (stopped early)')), isTrue);
     }));
 
-    test('notifies 3 times to open (busy, connected state, idle) and 3 more '
-        'when the drain lands (derive queued, settle armed, completion)',
+    test('notifies 3 times to open (busy, connected state, idle) and 4 more '
+        'when the drain lands (derive queued, settle armed, completion, the '
+        'last-sync stamp)',
         syncCase((rig, timers) async {
       rig.engine.syncGate = Completer<void>();
       final ticks = TickCounter(rig.app);
@@ -163,7 +164,7 @@ void main() {
       await rig.waitFor(() => rig.engine.count('prompt') == 2);
       await rig.settleDerive();
       await rig.quiesce();
-      expect(ticks.ticks, 6);
+      expect(ticks.ticks, 7);
       ticks.stop();
     }));
 

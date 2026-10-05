@@ -105,7 +105,8 @@ void main() {
     }));
 
     test('notifies once per state it passes through (disconnected, '
-        'reconnecting, connected) and 3 more when the drain lands',
+        'reconnecting, connected) and 4 more when the drain lands (the last is '
+        'the clean drain\'s last-sync stamp)',
         syncCase((rig, timers) async {
       await _open(rig);
       rig.engine.syncGate = Completer<void>();
@@ -119,7 +120,7 @@ void main() {
       await rig.settleDerive();
       await rig.quiesce();
       expect(before, 3);
-      expect(ticks.ticks - before, 3);
+      expect(ticks.ticks - before, 4);
       ticks.stop();
     }));
 

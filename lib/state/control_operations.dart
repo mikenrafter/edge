@@ -210,6 +210,20 @@ class SyncPresentationState {
         partial: partial,
       );
 
+  /// The same state with only [lastSuccess] moved.
+  SyncPresentationState withLastSuccess(DateTime at) => SyncPresentationState(
+        phase: phase,
+        busy: busy,
+        contactedBand: contactedBand,
+        lastSuccess: at,
+        error: error,
+        steps: steps,
+        startedAt: startedAt,
+        finishedAt: finishedAt,
+        failureReason: failureReason,
+        partial: partial,
+      );
+
   /// The same state under another settled [phase] ('offline' seen as 'idle').
   SyncPresentationState withPhase(String next) => SyncPresentationState(
         phase: next,
@@ -527,6 +541,20 @@ class SyncCoordinator extends ChangeNotifier {
       for (final s in presentation.steps) s.id == id ? change(s) : s,
     ]);
     _emit(immediate: immediate);
+  }
+
+  /// A history drain nobody asked for (connect, reconnect, the backfill timer)
+  /// finished cleanly at [at]: that is a sync success too, so "N ago" means the
+  /// last good sync of any kind. Moves only [SyncPresentationState.lastSuccess]
+  /// (never later than a time already recorded), leaving the phase, steps and
+  /// busy flag of a run in progress alone, and notifies once. Never called for
+  /// a failed, partial or dropped drain; a no-op after dispose.
+  void noteBackgroundSuccess(DateTime at) {
+    if (_disposed) return;
+    final prior = presentation.lastSuccess;
+    if (prior != null && !at.isAfter(prior)) return;
+    presentation = presentation.withLastSuccess(at);
+    _emit(immediate: true);
   }
 
   Future<SyncOperationResult> syncNow() {

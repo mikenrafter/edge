@@ -430,6 +430,8 @@ class SyncController {
   }) async {
     var last = SyncReport(0, 0, false);
     _lastBurstAdvanced = false;
+    // The burst ended on a clean HISTORY_END with nothing left behind it.
+    var clean = false;
     for (var i = 0; i < maxSessions && engine.isConnected; i++) {
       // Terminal `Stuck`: a burst failed validation
       // 15 times and the abort went out, so this connection's history is over.
@@ -479,6 +481,7 @@ class SyncController {
           frontierAfter != null &&
           (strapNewest - frontierAfter) > 300;
       last = report;
+      clean = report.complete && !backlogRemains;
       if (frontierAdvanced) _lastBurstAdvanced = true;
       await LocalDb.upsertSyncLedgerEntry(
         status: report.complete ? 'complete' : 'session_end',
@@ -529,6 +532,13 @@ class SyncController {
         'Backfill continuation ${i + 1}/$maxSessions — '
         'frontier still behind strap newest ($strapNewest > $frontierAfter).',
       );
+    }
+    // Every caller of the burst (connect, reconnect, the backfill timer, a
+    // foreground catch-up, Sync now) lands here, so a drain the user never asked
+    // for still counts as the last sync. A failed, partial or dropped drain is
+    // not `clean`; a throw above never reaches this line.
+    if (clean && !_disposed && !_isDisposed()) {
+      syncOperations.noteBackgroundSuccess(DateTime.now());
     }
     return last;
   }
