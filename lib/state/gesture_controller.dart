@@ -366,6 +366,11 @@ class GestureController {
   Future<bool> _ecgTapBuzz(int pulses, String eventId) =>
       _gestureCue(eventId, cues.followUp);
 
+  /// The "gyro ready" cue, once, when the IMU stream turns usable. The same
+  /// dispatcher delivery as the other cues (live-only, own event id), so a
+  /// Device lab recording and the future motion gestures buzz the same way.
+  Future<bool> readyCue(String eventId) => _gestureCue(eventId, cues.ready);
+
   /// The confirm cue of a counted gesture, once, when it ends.
   Future<bool> _ecgTapConfirmBuzz(String eventId) =>
       _gestureCue(eventId, cues.confirm);

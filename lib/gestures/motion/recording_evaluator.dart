@@ -7,6 +7,11 @@
 // unintended-tap recording are accidental activations that must come out as
 // "none" or "unknown", never as a gesture.
 //
+// A recording is read from its gyro-ready marker on (`motionPackets`): before
+// it the wearer had not been told to move and the stream was not usable. No
+// recording is excluded or marked low quality for starting or ending in
+// motion; accidental ones naturally do.
+//
 // Pure Dart, isolate-safe.
 import '../../state/imu_packet.dart';
 import '../imu_recording.dart';
@@ -115,7 +120,8 @@ ImuEvaluation evaluateRecordings(
           r.meta.id,
           r.meta.label,
           (truthOf ?? defaultTruthOf)(r),
-          recognizeMotion(r.packets, config: config, calibration: calibration),
+          recognizeMotion(r.motionPackets,
+              config: config, calibration: calibration),
         ),
     ]);
 

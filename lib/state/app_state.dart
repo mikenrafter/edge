@@ -402,6 +402,12 @@ class AppState extends ChangeNotifier {
         isConnected: () => engine.isConnected,
         context: _imuLabContext,
         lab: deviceLab,
+        // The band buzzes once when motion data is usable: the wearer's cue
+        // to start moving.
+        playReadyCue: () async {
+          await _gestures.readyCue(
+              'imu_ready:${DateTime.now().microsecondsSinceEpoch}');
+        },
       );
   ImuLabRecorder? _imuLab;
 

@@ -69,6 +69,10 @@ class _FakeStore implements ImuRecordingStore {
 
   @override
   Future<Directory> directory() => throw UnimplementedError();
+
+  // Not used by these tests (the export has its own).
+  @override
+  Future<File> exportAll() => throw UnimplementedError();
 }
 
 StrapEvent _tap() => StrapEvent(
@@ -84,6 +88,7 @@ class _Rig {
     recorder = ImuLabRecorder(
       packets: packets.stream,
       setStreamOwner: owner.add,
+      playReadyCue: () => cues++,
       monotonicNow: () => mono,
       isConnected: () => connected,
       context: () => const ImuLabContext(
@@ -97,6 +102,7 @@ class _Rig {
   final store = _FakeStore();
   final shared = <String>[];
   bool shareOk = true;
+  int cues = 0;
   bool connected;
   int ids = 0;
   Duration mono = Duration.zero;
@@ -107,9 +113,11 @@ class _Rig {
     return shareOk;
   }
 
-  void packet(int ms, {int accel = 3, int gyro = 3, bool gap = false}) {
+  void packet(int ms,
+      {int accel = 3, int gyro = 3, bool gap = false, int invalidGyro = 0}) {
     mono = Duration(milliseconds: ms);
-    packets.add(labPacket(ms, accel: accel, gyro: gyro, gap: gap));
+    packets.add(labPacket(ms,
+        accel: accel, gyro: gyro, gap: gap, invalidGyro: invalidGyro));
   }
 
   Widget lab({bool withMotion = true}) => DeviceLabView(
@@ -348,13 +356,59 @@ void main() {
       await _tapKey(t, 'motion-arm');
       rig.recorder.onBandEvent(_tap());
       await t.pump();
-      expect(find.text('Starting the IMU stream…'), findsOneWidget);
+      expect(find.text('Waiting for motion data…'), findsOneWidget);
       expect(find.text('Double tap to begin'), findsNothing);
       rig.packet(1000);
       rig.packet(3500);
       await t.pump();
       expect(find.text('Recording 2 of 5 s'), findsOneWidget);
       expect(find.text('2 packets'), findsOneWidget);
+      await _end(t, rig);
+    });
+
+    testWidgets('waits on "Waiting for motion data…" while the gyro is '
+        'invalid, then says "Go — move now" with one buzz', (t) async {
+      final rig = _Rig();
+      await _pump(t, rig.lab());
+      await _fill(t);
+      await _tapKey(t, 'motion-arm');
+      rig.recorder.onBandEvent(_tap());
+      await t.pump();
+      expect(find.text('Waiting for motion data…'), findsOneWidget);
+      expect(find.text('Go — move now'), findsNothing);
+      rig.packet(1300, invalidGyro: 3); // data is flowing but not usable
+      await t.pump();
+      expect(find.text('Waiting for motion data…'), findsOneWidget);
+      expect(find.text('Go — move now'), findsNothing);
+      expect(_key('motion-cancel'), findsOneWidget);
+      expect(_key('motion-mark'), findsNothing,
+          reason: 'there is nothing to mark motion against yet');
+      expect(rig.cues, 0);
+      rig.packet(2300);
+      await t.pump();
+      expect(find.text('Go — move now'), findsOneWidget);
+      expect(find.text('Waiting for motion data…'), findsNothing);
+      expect(rig.cues, 1);
+      expect(_key('motion-mark'), findsOneWidget);
+      await _end(t, rig);
+    });
+
+    testWidgets('data that never becomes valid: no Go, no buzz, a clear '
+        'message, and nothing saved', (t) async {
+      final rig = _Rig();
+      await _pump(t, rig.lab());
+      await _fill(t);
+      await _tapKey(t, 'motion-arm');
+      rig.recorder.onBandEvent(_tap());
+      rig.packet(1300, invalidGyro: 3);
+      await t.pump();
+      await t.pump(const Duration(seconds: 11));
+      expect(find.text('Go — move now'), findsNothing);
+      expect(rig.cues, 0);
+      expect(find.text('Gyro never became valid'), findsOneWidget);
+      expect(find.textContaining('invalid'), findsWidgets);
+      expect(rig.store.saves, 0);
+      expect(rig.store.saved, isEmpty);
       await _end(t, rig);
     });
 

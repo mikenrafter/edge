@@ -245,4 +245,69 @@ void main() {
       expect(r.motionLeftOpen, isTrue);
     });
   });
+
+  group('the gyro-ready marker', () {
+    ImuRecording withReady() => _recording(
+          packets: [
+            labPacket(1000, invalidGyro: 3),
+            labPacket(2000, invalidGyro: 1),
+            labPacket(3000),
+          ],
+          markers: [
+            labMarker(ImuMarkerKind.tapReceived, 100),
+            labMarker(ImuMarkerKind.streamRequested, 105),
+            labMarker(ImuMarkerKind.firstPacket, 1000),
+            labMarker(ImuMarkerKind.gyroReady, 2000,
+                note: 'skipped 4 invalid gyro samples'),
+          ],
+        );
+
+    test('round-trips: kind, time and note survive, and so do the invalid '
+        'samples before it', () {
+      final r = withReady();
+      final text = r.toJsonLines();
+      expect(text, contains('"kind":"gyroReady"'));
+      final back = ImuRecording.parse(text);
+      _expectSame(r, back);
+      expect(back.toJsonLines(), text);
+      expect(back.readyMarker!.mono, const Duration(milliseconds: 2000));
+      expect(back.packets.first.gyroSamples.first.x, -2000);
+    });
+
+    test('the ready marker sorts before the packet that made it ready', () {
+      final lines = const LineSplitter().convert(withReady().toJsonLines());
+      final types = [
+        for (final l in lines.skip(1))
+          '${(jsonDecode(l) as Map)['type']}:${(jsonDecode(l) as Map)['kind']}',
+      ];
+      expect(types.indexOf('marker:gyroReady'), 4);
+      expect(types[5], startsWith('packet'));
+    });
+
+    test('a file written before the marker existed still loads; with no marker '
+        'every packet is motion data', () {
+      final old = _recording(); // the default markers have no gyroReady
+      final back = ImuRecording.parse(old.toJsonLines());
+      expect(back.readyMarker, isNull);
+      expect(back.motionPackets, hasLength(back.packets.length));
+      expect(back.tapToReady, isNull);
+    });
+
+    test('motionPackets start at the ready packet; tapToReady says how long '
+        'the wait was', () {
+      final back = ImuRecording.parse(withReady().toJsonLines());
+      expect(back.motionPackets.map((p) => p.monotonicReceipt.inMilliseconds),
+          [2000, 3000]);
+      expect(back.tapToReady, const Duration(milliseconds: 1900));
+      expect(back.packets, hasLength(3), reason: 'nothing is dropped');
+    });
+
+    test('the never-ready status round-trips and is not complete', () {
+      final r = _recording(status: ImuRecordingStatus.gyroNeverReady);
+      final back = ImuRecording.parse(r.toJsonLines());
+      expect(back.status, ImuRecordingStatus.gyroNeverReady);
+      expect(back.isComplete, isFalse);
+      expect(back.status.label, contains('Gyro'));
+    });
+  });
 }

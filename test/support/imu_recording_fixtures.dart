@@ -18,6 +18,11 @@ ImuPacket labPacket(
   int? recordIndex,
   int? unix = 1790000000,
   int? subsec,
+
+  /// The first this-many gyro samples read the band's invalid marker
+  /// (-2000 dps on all three axes, raw -32768), as the first four of every
+  /// stream do.
+  int invalidGyro = 0,
 }) =>
     ImuPacket(
       deviceId: deviceId,
@@ -35,7 +40,9 @@ ImuPacket labPacket(
       ],
       gyroSamples: [
         for (var i = 0; i < gyro; i++)
-          ImuVector(12.5 * i - ms / 3, 0.001 * i, -2000.0 / 32768 * (i + 1)),
+          i < invalidGyro
+              ? const ImuVector(-2000, -2000, -2000)
+              : ImuVector(12.5 * i - ms / 3, 0.001 * i, -2000.0 / 32768 * (i + 1)),
       ],
       accelSampleCount: accel,
       gyroSampleCount: gyro,

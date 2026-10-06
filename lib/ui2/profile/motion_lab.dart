@@ -262,7 +262,8 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
                     Text(
                       'Records what the band\'s motion sensors send, as it '
                       'sends it, for a few seconds. Fill this in, press Arm, '
-                      'then double tap the band to begin. The recording is '
+                      'then double tap the band to begin and wait for the '
+                      'band to buzz: that is the signal to move. The recording is '
                       'kept in memory until you save it as a file. Normal '
                       'double-tap actions are paused while it is armed or '
                       'recording.',
@@ -379,8 +380,9 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
             _banner(p, 'Double tap to begin', C.blue),
             const SizedBox(height: S.x2),
             Text(
-              'Double tap the band once. Recording starts when the phone '
-              'hears it. Normal double-tap actions are paused until you stop '
+              'Double tap the band once, then keep still until it buzzes. '
+              'Recording starts when the phone hears the tap. Normal '
+              'double-tap actions are paused until you stop '
               'or cancel.',
               style: F.cap.copyWith(color: p.ink2, height: 1.4),
             ),
@@ -397,11 +399,12 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _banner(p, 'Starting the IMU stream…', C.blue),
+            _banner(p, 'Waiting for motion data…', C.blue),
             const SizedBox(height: S.x2),
             Text(
-              'Waiting for the first packet from the band. Keep the band '
-              'where it is.',
+              'Do not move yet. The band buzzes once when its motion sensors '
+              'are sending usable data; that is the signal to start. Keep '
+              'the band where it is until then.',
               style: F.cap.copyWith(color: p.ink2, height: 1.4),
             ),
             const SizedBox(height: S.x3),
@@ -418,12 +421,12 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _banner(
-                p,
+            _banner(p, 'Go — move now', C.green),
+            const SizedBox(height: S.x2),
+            Text(
                 'Recording ${_recorder.elapsed.inSeconds} of '
                 '${_recorder.setup!.duration.inSeconds} s',
-                C.green),
-            const SizedBox(height: S.x2),
+                style: F.body.copyWith(color: p.ink)),
             Text('$n packet${n == 1 ? '' : 's'}',
                 style: F.body.copyWith(color: p.ink)),
             const SizedBox(height: S.x3),
@@ -465,6 +468,8 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
       'Packets: ${r.packetCount}',
       if (span != null) 'Length: ${_secs(span)}',
       if (startup != null) 'Start-up: tap to first packet ${_secs(startup)}',
+      if (r.tapToReady != null)
+        'Start-up: tap to gyro ready ${_secs(r.tapToReady!)}',
       'Gaps: ${r.gapCount}',
       'Clipped packets: ${r.clippedCount}',
       'Partial blocks: ${r.partialCount}',
@@ -482,6 +487,15 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Text(l, style: F.cap.copyWith(color: p.ink2)),
+          ),
+        if (_recorder.note != null && r.readyMarker == null && r.packetCount > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: S.x2),
+            child: Text(
+              '${_recorder.note} The band did not buzz. Nothing is saved '
+              'unless you save it.',
+              style: F.cap.copyWith(color: p.ink2, height: 1.4),
+            ),
           ),
         if (r.packetCount == 0)
           Padding(

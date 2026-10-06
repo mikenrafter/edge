@@ -99,6 +99,8 @@ void main() {
         0x2B, hexOf(r21LiveInner(accelCount: 3, gyroCount: 2)), null);
     await settleMs(5); // the packet stream delivers on a microtask
     expect(rig.app.imuLab.phase, ImuLabPhase.recording);
+    // The ready buzz goes out on its own; let it land before the test ends.
+    await until(() => rig.cues.isNotEmpty);
     expect(rig.app.imuLab.packetCount, 1);
     rig.app.imuLab.stop();
     expect(rig.app.imuLab.phase, ImuLabPhase.review);
@@ -107,6 +109,35 @@ void main() {
     expect(rig.app.debugLiveOwners.imuLab, isFalse);
     await until(() => imuWrites(rig).length == 2);
     expect(imuWrites(rig), [1, 0]);
+  });
+
+  test('the ready cue goes to the band: nothing for an invalid-gyro packet, '
+      'one short buzz when valid data arrives, never a second', () async {
+    final rig = await newRig();
+    rig.app.imuLab.arm(_setup);
+    rig.doubleTap();
+    await until(() => imuWrites(rig).isNotEmpty);
+    // The band's invalid marker: raw -32768 on all three gyro axes.
+    rig.app.debugOnLiveFrame(
+        0x2B,
+        hexOf(r21LiveInner(gx: -32768, gy: -32768, gz: -32768)),
+        null);
+    await settleMs(200);
+    expect(rig.cues, isEmpty, reason: 'data is flowing but not usable');
+    expect(rig.app.imuLab.phase, ImuLabPhase.starting);
+
+    rig.app.debugOnLiveFrame(0x2B, hexOf(r21LiveInner(recordIndex: 2)), null);
+    await until(() => rig.cues.isNotEmpty);
+    expect(rig.cues, ['followUp'],
+        reason: 'the short single buzz, not the double of the gesture start');
+    rig.app.debugOnLiveFrame(0x2B, hexOf(r21LiveInner(recordIndex: 3)), null);
+    await settleMs(300);
+    expect(rig.cues, ['followUp']);
+    expect(rig.app.imuLab.phase, ImuLabPhase.recording);
+    rig.app.imuLab.stop();
+    expect(
+        rig.app.imuLab.recording!.markers.map((m) => m.kind),
+        contains(ImuMarkerKind.gyroReady));
   });
 
   test('the recording is described: band model, firmware slot, versions',
@@ -144,6 +175,7 @@ void main() {
     await until(() => imuWrites(rig).isNotEmpty);
     rig.app.debugOnLiveFrame(0x2B, hexOf(r21LiveInner()), null);
     await settleMs(5);
+    await until(() => rig.cues.isNotEmpty); // the ready buzz, let it land
     linkDropped(rig);
     expect(rig.app.imuLab.phase, ImuLabPhase.review);
     expect(rig.app.imuLab.recording!.status, ImuRecordingStatus.disconnected);

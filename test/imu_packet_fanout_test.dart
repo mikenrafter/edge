@@ -1,5 +1,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/gestures/imu_readiness.dart';
 import 'package:openstrap_edge/state/live_stream_buffer.dart';
 import 'package:openstrap_edge/state/live_stream_controller.dart';
 
@@ -62,5 +63,79 @@ void main() {
       ),
       isNull,
     );
+  });
+
+  group('the ready seam on the IMU stream', () {
+    LiveStreamController make() {
+      final c = LiveStreamController(
+        buffer: LiveStreamBuffer(),
+        isBackground: () => false,
+        activeWorkoutType: () => null,
+        breathing: () => false,
+        reconcile: () async {},
+        clearRadioFallbackAndReconcile: () async {},
+        notify: () {},
+      );
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    void feed(LiveStreamController c, {bool invalid = false, int gen = 1}) =>
+        c.decodeAndFanoutImu(
+          packetType: 0x2B,
+          hex: hexOf(invalid
+              ? r21LiveInner(gx: -32768, gy: -32768, gz: -32768)
+              : r21LiveInner()),
+          deviceId: '',
+          connectionGeneration: gen,
+          includeAccel: true,
+          monotonicReceipt: const Duration(milliseconds: 5),
+        );
+
+    test('not armed: the detector stays idle and no callback runs', () {
+      final c = make();
+      feed(c);
+      expect(c.imuReadiness.state, ImuReadyState.idle);
+    });
+
+    test('armed: an invalid-gyro packet is not ready; the first valid one '
+        'calls back once with the detector', () {
+      final c = make();
+      final calls = <ImuReadiness>[];
+      c.awaitImuReady(calls.add);
+      expect(c.imuReadiness.state, ImuReadyState.waiting);
+      feed(c, invalid: true);
+      expect(calls, isEmpty);
+      feed(c);
+      expect(calls, [same(c.imuReadiness)]);
+      expect(c.imuReadiness.isReady, isTrue);
+      expect(c.imuReadiness.skippedSamples, 100);
+      feed(c);
+      expect(calls, hasLength(1));
+    });
+
+    test('a new connection generation is a new wait and calls back again', () {
+      final c = make();
+      var calls = 0;
+      c.awaitImuReady((_) => calls++);
+      feed(c, gen: 1);
+      feed(c, gen: 2);
+      expect(calls, 2);
+    });
+
+    test('cancelled: no callback, and a throwing callback does not stop the '
+        'packet stream', () {
+      final c = make();
+      var calls = 0;
+      c.awaitImuReady((_) => calls++);
+      c.cancelImuReady();
+      feed(c);
+      expect(calls, 0);
+      final seen = <Object>[];
+      final sub = c.imuPackets.listen(seen.add);
+      addTearDown(sub.cancel);
+      c.awaitImuReady((_) => throw StateError('boom'));
+      expect(() => feed(c), returnsNormally);
+    });
   });
 }

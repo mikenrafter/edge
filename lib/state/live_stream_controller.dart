@@ -18,6 +18,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import '../ble/ble_state.dart' show LiveStreamOwners;
 import '../ble/live_step_runs.dart';
 import '../data/db.dart';
+import '../gestures/imu_readiness.dart';
 import 'imu_packet.dart';
 import 'live_stream_buffer.dart';
 
@@ -58,6 +59,29 @@ class LiveStreamController {
   /// Full six-axis packets, decoded once per live 0x2B frame. This is RAM-only
   /// telemetry; subscribing here neither owns nor starts a band stream.
   Stream<ImuPacket> get imuPackets => _imuPackets.stream;
+
+  /// Whether the IMU stream is carrying valid motion data yet. Idle until
+  /// [awaitImuReady]; judged on every decoded packet after that.
+  final ImuReadiness imuReadiness = ImuReadiness();
+  void Function(ImuReadiness readiness)? _onImuReady;
+
+  /// Start waiting for usable motion data: call it when a gesture-owned IMU
+  /// request is made. [onReady] runs each time the stream turns ready (once
+  /// per connection generation; a new link starts the wait over) with the
+  /// detector, which says when and how many samples were skipped. A timeout is
+  /// the caller's: poll [imuReadiness] on its own timer. One waiter at a time;
+  /// a later call replaces the earlier one. It neither owns nor starts the
+  /// stream: that stays with the owner flags.
+  void awaitImuReady(void Function(ImuReadiness readiness) onReady) {
+    _onImuReady = onReady;
+    imuReadiness.begin(monotonicNow);
+  }
+
+  /// Stop waiting; no callback runs after this. Safe to call any time.
+  void cancelImuReady() {
+    _onImuReady = null;
+    imuReadiness.reset();
+  }
 
   /// The packet receipt clock for a future session's tap/write markers.
   Duration get monotonicNow => _imuAdapter.monotonicNow;
@@ -350,6 +374,11 @@ class LiveStreamController {
       onImuPacket?.call(packet);
     } catch (_) {}
     if (!_imuPackets.isClosed) _imuPackets.add(packet);
+    if (imuReadiness.packet(packet)) {
+      try {
+        _onImuReady?.call(imuReadiness);
+      } catch (_) {}
+    }
     return packet;
   }
 

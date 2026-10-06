@@ -5,10 +5,20 @@
 // live IMU packet stream, then asks for the stream through the one ownership
 // seam ([setStreamOwner], the `imuLab` owner of LiveStreamOwners). It never
 // writes a band command itself. It records packets as received, the tap and
-// stream-request markers, the first packet, and the wearer's own motion marks,
-// and it ends when the duration after the first packet runs out, the packet
-// limit is hit, the wearer stops it, the band disconnects, or the lab closes.
-// However it ends, it lets go of the stream first.
+// stream-request markers, the first packet, and the wearer's own motion marks.
+//
+// A packet is not yet motion data: the first four gyro samples of a stream are
+// the band's invalid marker. So the recorder waits for the gyro-ready moment
+// (ImuReadiness: the first packet with a valid gyro sample and accel), then
+// buzzes the band once ([playReadyCue]), writes the `gyroReady` marker, and
+// counts the requested duration from there, so a 5 s take is 5 s of usable
+// data. Packets before it stay in the file. If the stream never becomes valid
+// within [startTimeout] there is no buzz, a note says why, and the capture ends
+// with what arrived (never saved on its own).
+//
+// It ends when the duration after ready runs out, the packet limit is hit, the
+// wearer stops it, the band disconnects, or the lab closes. However it ends, it
+// lets go of the stream first.
 //
 // While armed, starting or recording, normal double-tap actions are suspended
 // ([holdsActions], read by the gesture dispatcher), so the opening tap and any
@@ -24,6 +34,7 @@ import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
 import '../state/imu_packet.dart';
+import 'imu_readiness.dart';
 import 'imu_recording.dart';
 import 'imu_timing.dart';
 import 'lab_log.dart';
@@ -108,10 +119,11 @@ enum ImuLabPhase {
   /// Waiting for the double tap that begins the recording.
   armed,
 
-  /// The tap came, the stream was asked for, no packet yet.
+  /// The tap came, the stream was asked for, no usable motion data yet.
   starting,
 
-  /// Packets are being kept.
+  /// The gyro is ready (the wearer was told to move) and packets are being
+  /// kept.
   recording,
 
   /// Finished: [ImuLabRecorder.recording] waits to be saved or discarded.
@@ -130,7 +142,9 @@ class ImuLabRecorder extends ChangeNotifier {
     DateTime Function()? now,
     this.maxPackets = 1200,
     this.startTimeout = const Duration(seconds: 10),
+    FutureOr<void> Function()? playReadyCue,
   })  : _packets = packets,
+        _playReadyCue = playReadyCue,
         _setStreamOwner = setStreamOwner,
         _monotonicNow = monotonicNow,
         _isConnected = isConnected,
@@ -151,10 +165,13 @@ class ImuLabRecorder extends ChangeNotifier {
   final String Function()? _newId;
   final DateTime Function() _now;
 
+  /// The band haptic that says "go": played once, when the gyro is ready.
+  final FutureOr<void> Function()? _playReadyCue;
+
   /// Packets kept at most; reaching it ends the recording.
   final int maxPackets;
 
-  /// How long to wait for the first packet after asking for the stream.
+  /// How long to wait for usable motion data after asking for the stream.
   final Duration startTimeout;
 
   ImuLabPhase _phase = ImuLabPhase.idle;
@@ -175,8 +192,9 @@ class ImuLabRecorder extends ChangeNotifier {
   DateTime? _createdAt;
   String? _id;
   int? _generation;
-  Duration? _firstPacketAt;
+  Duration? _readyAt;
   Duration? _lastPacketAt;
+  ImuReadiness? _readiness;
   bool _motionOpen = false;
   ImuTimingRecorder? _timing;
 
@@ -203,10 +221,10 @@ class ImuLabRecorder extends ChangeNotifier {
 
   int get packetCount => _kept.length;
 
-  /// Time from the first packet to the latest one; zero before there is one.
+  /// Time from the gyro-ready packet to the latest one; zero before ready.
   Duration get elapsed {
-    final first = _firstPacketAt, last = _lastPacketAt;
-    return first == null || last == null ? Duration.zero : last - first;
+    final ready = _readyAt, last = _lastPacketAt;
+    return ready == null || last == null ? Duration.zero : last - ready;
   }
 
   /// A motion start the wearer has not yet closed.
@@ -328,7 +346,7 @@ class ImuLabRecorder extends ChangeNotifier {
     final ctx = _ctx = _context();
     _kept.clear();
     _markers.clear();
-    _firstPacketAt = _lastPacketAt = _generation = null;
+    _readyAt = _lastPacketAt = _generation = null;
     _motionOpen = false;
     _createdAt = _now().toUtc();
     _id = _newId?.call() ?? _defaultId(_createdAt!);
@@ -341,6 +359,7 @@ class ImuLabRecorder extends ChangeNotifier {
           '${ctx.bandModel}',
       tapAt: e.receivedAt,
     );
+    _readiness = ImuReadiness(timeout: startTimeout)..begin(tapMono);
     _timing = ImuTimingRecorder(
       usableSampleTarget: 100,
       onLine: (line) => _lab?.addStep(line),
@@ -354,9 +373,9 @@ class ImuLabRecorder extends ChangeNotifier {
     _holdStream();
     _mark(ImuMarkerKind.streamRequested);
     _startTimer = Timer(startTimeout, () {
-      if (_phase == ImuLabPhase.starting) {
-        _finish(ImuRecordingStatus.streamTimeout);
-      }
+      if (_phase != ImuLabPhase.starting) return;
+      _readiness!.poll(_readiness!.deadline);
+      _finishNotReady();
     });
     _notify();
   }
@@ -371,32 +390,78 @@ class ImuLabRecorder extends ChangeNotifier {
       _finish(ImuRecordingStatus.disconnected);
       return;
     }
+    final first = _generation == null;
     _generation ??= p.connectionGeneration;
     _kept.add(p);
     _timing?.packet(p);
     _lastPacketAt = p.monotonicReceipt;
-    if (_phase == ImuLabPhase.starting) {
-      _phase = ImuLabPhase.recording;
-      _firstPacketAt = p.monotonicReceipt;
-      _startTimer?.cancel();
-      _startTimer = null;
+    if (first) {
       _markers.add(ImuMarker(
         kind: ImuMarkerKind.firstPacket,
         mono: p.monotonicReceipt,
         at: p.receivedAt.toUtc(),
       ));
       _lab?.addStep('IMU recording: first packet.');
-      _durationTimer = Timer(_setup!.duration, () {
-        if (_phase == ImuLabPhase.recording) {
-          _finish(ImuRecordingStatus.completed);
-        }
-      });
+    }
+    if (_phase == ImuLabPhase.starting) {
+      final readiness = _readiness!;
+      if (readiness.packet(p)) {
+        _becomeReady(p, readiness.skippedSamples);
+      } else if (readiness.state == ImuReadyState.timedOut) {
+        _finishNotReady();
+        return;
+      }
     }
     if (_kept.length >= maxPackets) {
       _finish(ImuRecordingStatus.packetLimit);
       return;
     }
     _notify();
+  }
+
+  /// The gyro is ready: the cue, the marker, and the duration starts here.
+  void _becomeReady(ImuPacket p, int skipped) {
+    _phase = ImuLabPhase.recording;
+    _readyAt = p.monotonicReceipt;
+    _startTimer?.cancel();
+    _startTimer = null;
+    _markers.add(ImuMarker(
+      kind: ImuMarkerKind.gyroReady,
+      mono: p.monotonicReceipt,
+      at: p.receivedAt.toUtc(),
+      note: 'skipped $skipped invalid gyro sample${skipped == 1 ? '' : 's'}',
+    ));
+    _lab?.addStep('IMU recording: gyro ready (skipped $skipped invalid '
+        'sample${skipped == 1 ? '' : 's'}), go.');
+    _durationTimer = Timer(_setup!.duration, () {
+      if (_phase == ImuLabPhase.recording) {
+        _finish(ImuRecordingStatus.completed);
+      }
+    });
+    _sendReadyCue();
+  }
+
+  /// One buzz, fire and forget: a band that is busy or a write that fails must
+  /// not stop the recording, and the buzz is never retried.
+  void _sendReadyCue() {
+    final play = _playReadyCue;
+    if (play == null) return;
+    void failed(Object e) => _lab?.addStep('IMU recording: ready cue failed ($e).');
+    try {
+      final r = play();
+      if (r is Future<void>) unawaited(r.catchError(failed));
+    } catch (e) {
+      failed(e);
+    }
+  }
+
+  /// The deadline passed with no usable motion data: no cue, a note saying why,
+  /// and what arrived is kept for the wearer to look at or throw away.
+  void _finishNotReady() {
+    _note = _readiness?.reason;
+    _finish(_kept.isEmpty
+        ? ImuRecordingStatus.streamTimeout
+        : ImuRecordingStatus.gyroNeverReady);
   }
 
   void _finish(ImuRecordingStatus status) {
@@ -461,6 +526,7 @@ class ImuLabRecorder extends ChangeNotifier {
     unawaited(_sub?.cancel());
     _sub = null;
     _timing = null;
+    _readiness = null;
   }
 
   void _holdStream() {

@@ -90,6 +90,54 @@ void main() {
     });
   });
 
+  group('starts at the gyro-ready marker', () {
+    // 2 s of sustained turning, then 3 s still. The turning is before the
+    // cue: the wearer was not yet told to move.
+    final packets = Scene().spin(outAxis, 300, 2).quiet(3).packets();
+
+    ImuRecording recordingWith(List<ImuMarker> markers) => ImuRecording(
+          meta: labMeta(label: 'still', kind: ImuRecordingKind.action),
+          status: ImuRecordingStatus.completed,
+          packets: packets,
+          markers: markers,
+        );
+
+    test('motion before the marker is not the attempt', () {
+      final readyAt = packets[2].monotonicReceipt.inMilliseconds;
+      final without = recordingWith(const []);
+      final cued = recordingWith([labMarker(ImuMarkerKind.gyroReady, readyAt)]);
+      expect(cued.motionPackets.length, packets.length - 2);
+      final before = evaluateRecordings([without]).cases.single.decision;
+      final after = evaluateRecordings([cued]).cases.single.decision;
+      expect(before.kind, isNot(MotionKind.none),
+          reason: 'with no marker the whole file is read, motion included');
+      expect(after.kind, MotionKind.none);
+      expect(after.reason, MotionReason.noMotion);
+    });
+
+    test('a marker at the first packet changes nothing', () {
+      final first = packets.first.monotonicReceipt.inMilliseconds;
+      final a = evaluateRecordings([recordingWith(const [])]).cases.single.decision;
+      final b = evaluateRecordings([
+        recordingWith([labMarker(ImuMarkerKind.gyroReady, first)])
+      ]).cases.single.decision;
+      expect([b.kind, b.reason], [a.kind, a.reason]);
+    });
+
+    test('an accidental recording is read the same way: no quality exclusion '
+        'for starting or ending mid-motion', () {
+      final r = ImuRecording(
+        meta: labMeta(label: 'jogging', kind: ImuRecordingKind.unintendedTap),
+        status: ImuRecordingStatus.completed,
+        packets: Scene().sine(unit(0, 1, 0.3), 300, 2, 8).packets(),
+        markers: const [],
+      );
+      final e = evaluateRecordings([r]);
+      expect(e.cases, hasLength(1));
+      expect(e.cases.single.truth, 'accidental');
+    });
+  });
+
   test('slices of a long recording are 5-packet windows, hopping by one', () {
     final packets = Scene().quiet(10).packets();
     final slices = packetSlices(packets, packets: 5, hop: 1);

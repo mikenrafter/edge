@@ -41,6 +41,7 @@ class _Rig {
     int maxPackets = 600,
     Duration startTimeout = const Duration(seconds: 10),
     this.onOwner,
+    this.readyCueFails = false,
   }) {
     recorder = ImuLabRecorder(
       packets: packets.stream,
@@ -61,6 +62,10 @@ class _Rig {
       newId: () => 'imu-test-1',
       maxPackets: maxPackets,
       startTimeout: startTimeout,
+      playReadyCue: () {
+        cues++;
+        if (readyCueFails) throw StateError('band busy');
+      },
     );
   }
 
@@ -68,6 +73,10 @@ class _Rig {
   final lab = DeviceLabLog();
   final owner = <bool>[];
   final void Function(bool held)? onOwner;
+  final bool readyCueFails;
+
+  /// Times the recorder asked for the ready haptic.
+  int cues = 0;
   bool connected;
   Duration mono = Duration.zero;
   late final ImuLabRecorder recorder;
@@ -88,9 +97,11 @@ class _Rig {
         duration: duration ?? const Duration(seconds: 5),
       ));
 
-  void packet(int ms, {int gen = 1, String device = 'band-a'}) {
+  void packet(int ms,
+      {int gen = 1, String device = 'band-a', int invalidGyro = 0}) {
     mono = Duration(milliseconds: ms);
-    packets.add(labPacket(ms, generation: gen, deviceId: device));
+    packets.add(labPacket(ms,
+        generation: gen, deviceId: device, invalidGyro: invalidGyro));
   }
 }
 
@@ -211,11 +222,13 @@ void main() {
           ImuMarkerKind.tapReceived,
           ImuMarkerKind.streamRequested,
           ImuMarkerKind.firstPacket,
+          ImuMarkerKind.gyroReady,
         ]);
         expect(m[0].mono, const Duration(milliseconds: 250));
         expect(m[0].bandEventAge, const Duration(milliseconds: 90));
         expect(m[0].at.isUtc, isTrue);
         expect(m[2].mono, const Duration(milliseconds: 900));
+        expect(m[3].mono, const Duration(milliseconds: 900));
       });
     });
 
@@ -630,6 +643,216 @@ void main() {
         r.packet(100);
         r.recorder.stop();
         expect(n, greaterThan(afterArm + 2));
+      });
+    });
+  });
+
+  group('gyro ready', () {
+    // 3 gyro samples per fixture packet, so invalidGyro: 3 is "all invalid".
+    test('the first valid gyro packet buzzes once, writes the marker, and '
+        'moves to recording; packets before it stay in the file', () {
+      fakeAsync((fa) {
+        final r = _Rig()..arm();
+        r.recorder.onBandEvent(_tap());
+        r.packet(1300, invalidGyro: 3);
+        expect(r.recorder.phase, ImuLabPhase.starting,
+            reason: 'data is flowing but is not usable yet');
+        expect(r.cues, 0);
+        r.packet(2300, invalidGyro: 1);
+        expect(r.recorder.phase, ImuLabPhase.recording);
+        expect(r.cues, 1);
+        r.recorder.stop();
+        final rec = r.recorder.recording!;
+        expect(rec.packetCount, 2);
+        final ready =
+            rec.markers.singleWhere((m) => m.kind == ImuMarkerKind.gyroReady);
+        expect(ready.mono, const Duration(milliseconds: 2300));
+        expect(ready.note, contains('skipped 4'),
+            reason: '3 from the first packet and 1 from the ready one');
+        expect(rec.markers.singleWhere((m) => m.kind == ImuMarkerKind.firstPacket).mono,
+            const Duration(milliseconds: 1300));
+        expect(r.lab.toPlainText(), contains('gyro ready'));
+      });
+    });
+
+    test('the haptic fires exactly once however many packets follow', () {
+      fakeAsync((_) {
+        final r = _Rig()..arm(duration: const Duration(seconds: 30));
+        r.recorder.onBandEvent(_tap());
+        r.packet(1000, invalidGyro: 2);
+        r.packet(2000);
+        r.packet(3000, invalidGyro: 3); // a later bad packet is not a new start
+        r.packet(4000);
+        expect(r.cues, 1);
+        r.recorder.stop();
+        expect(
+            r.recorder.recording!.markers
+                .where((m) => m.kind == ImuMarkerKind.gyroReady),
+            hasLength(1));
+      });
+    });
+
+    test('the duration counts from ready, not from the request or the first '
+        'packet', () {
+      fakeAsync((fa) {
+        final r = _Rig()..arm(duration: const Duration(seconds: 5));
+        r.recorder.onBandEvent(_tap());
+        fa.elapse(const Duration(seconds: 1));
+        r.packet(1000, invalidGyro: 3);
+        fa.elapse(const Duration(seconds: 2));
+        r.packet(3000); // ready at 3 s
+        fa.elapse(const Duration(milliseconds: 4900));
+        expect(r.recorder.phase, ImuLabPhase.recording,
+            reason: '5 s from the first packet would have ended it');
+        fa.elapse(const Duration(milliseconds: 200));
+        expect(r.recorder.phase, ImuLabPhase.review);
+        expect(r.recorder.recording!.status, ImuRecordingStatus.completed);
+        expect(r.cues, 1);
+      });
+    });
+
+    test('elapsed is counted from ready', () {
+      fakeAsync((_) {
+        final r = _Rig()..arm(duration: const Duration(seconds: 30));
+        r.recorder.onBandEvent(_tap());
+        r.packet(1000, invalidGyro: 3);
+        expect(r.recorder.elapsed, Duration.zero);
+        r.packet(2000);
+        r.packet(4000);
+        expect(r.recorder.elapsed, const Duration(seconds: 2));
+      });
+    });
+
+    test('the packet limit still holds, ready or not', () {
+      fakeAsync((_) {
+        final r = _Rig(maxPackets: 3)..arm(duration: const Duration(seconds: 30));
+        r.recorder.onBandEvent(_tap());
+        for (var i = 1; i <= 4; i++) {
+          r.packet(i * 1000, invalidGyro: 3);
+        }
+        expect(r.recorder.phase, ImuLabPhase.review);
+        expect(r.recorder.recording!.status, ImuRecordingStatus.packetLimit);
+        expect(r.cues, 0);
+        expect(r.held, isFalse);
+      });
+    });
+
+    test('never ready: no buzz, no ready marker, a clear note, the stream '
+        'released', () {
+      fakeAsync((fa) {
+        final r = _Rig(startTimeout: const Duration(seconds: 4))..arm();
+        r.recorder.onBandEvent(_tap());
+        r.packet(1300, invalidGyro: 3);
+        fa.elapse(const Duration(seconds: 3));
+        r.packet(2300, invalidGyro: 3);
+        expect(r.recorder.phase, ImuLabPhase.starting);
+        fa.elapse(const Duration(seconds: 2));
+        expect(r.recorder.phase, ImuLabPhase.review);
+        final rec = r.recorder.recording!;
+        expect(rec.status, ImuRecordingStatus.gyroNeverReady);
+        expect(rec.isComplete, isFalse);
+        expect(r.cues, 0);
+        expect(rec.markers.map((m) => m.kind),
+            isNot(contains(ImuMarkerKind.gyroReady)));
+        expect(rec.packetCount, 2, reason: 'what arrived is kept for analysis');
+        expect(r.recorder.note, contains('invalid'));
+        expect(r.held, isFalse);
+        expect(r.recorder.holdsActions, isFalse);
+      });
+    });
+
+    test('no packet at all: timed out, no buzz, the note says no data came', () {
+      fakeAsync((fa) {
+        final r = _Rig(startTimeout: const Duration(seconds: 4))..arm();
+        r.recorder.onBandEvent(_tap());
+        fa.elapse(const Duration(seconds: 5));
+        expect(r.recorder.recording!.status, ImuRecordingStatus.streamTimeout);
+        expect(r.cues, 0);
+        expect(r.recorder.note, contains('No motion data'));
+      });
+    });
+
+    test('a valid packet after the deadline starts nothing', () {
+      fakeAsync((fa) {
+        final r = _Rig(startTimeout: const Duration(seconds: 4))..arm();
+        r.recorder.onBandEvent(_tap());
+        fa.elapse(const Duration(seconds: 5));
+        r.packet(5200);
+        expect(r.cues, 0);
+        expect(r.recorder.recording!.packetCount, 0);
+      });
+    });
+
+    test('cancel before ready: nothing kept, no buzz, the stream released, a '
+        'later valid packet does nothing', () {
+      fakeAsync((_) {
+        final r = _Rig()..arm();
+        r.recorder.onBandEvent(_tap());
+        r.packet(1300, invalidGyro: 3);
+        r.recorder.cancel();
+        expect(r.recorder.phase, ImuLabPhase.idle);
+        expect(r.recorder.recording, isNull);
+        expect(r.owner, [true, false]);
+        r.packet(2300);
+        expect(r.cues, 0);
+        expect(r.recorder.phase, ImuLabPhase.idle);
+      });
+    });
+
+    test('a stop before ready ends with what arrived and no buzz', () {
+      fakeAsync((_) {
+        final r = _Rig()..arm();
+        r.recorder.onBandEvent(_tap());
+        r.packet(1300, invalidGyro: 3);
+        r.recorder.stop();
+        expect(r.recorder.recording!.status, ImuRecordingStatus.stopped);
+        expect(r.cues, 0);
+      });
+    });
+
+    test('a failing buzz does not stop the recording; the lab says so', () {
+      fakeAsync((_) {
+        final r = _Rig(readyCueFails: true)..arm();
+        r.recorder.onBandEvent(_tap());
+        r.packet(1000);
+        expect(r.cues, 1);
+        expect(r.recorder.phase, ImuLabPhase.recording);
+        expect(r.recorder.recording, isNull);
+        r.packet(2000);
+        expect(r.recorder.packetCount, 2);
+        expect(r.lab.toPlainText(), contains('ready cue'));
+      });
+    });
+
+    test('a new link before ready ends the capture as a disconnect, no buzz',
+        () {
+      fakeAsync((_) {
+        final r = _Rig()..arm();
+        r.recorder.onBandEvent(_tap());
+        r.packet(1000, gen: 1, invalidGyro: 3);
+        r.packet(2000, gen: 2);
+        expect(r.recorder.recording!.status, ImuRecordingStatus.disconnected);
+        expect(r.cues, 0);
+      });
+    });
+
+    test('a recorder with no cue wired still records and marks ready', () {
+      fakeAsync((_) {
+        final packets = StreamController<ImuPacket>.broadcast(sync: true);
+        final rec = ImuLabRecorder(
+          packets: packets.stream,
+          setStreamOwner: (_) {},
+          monotonicNow: () => Duration.zero,
+          isConnected: () => true,
+          context: () =>
+              const ImuLabContext(bandModel: 'WHOOP MG', deviceId: 'band-a'),
+          newId: () => 'x',
+        )..arm(ImuLabSetup.seconds(kind: ImuRecordingKind.action, seconds: 5));
+        rec.onBandEvent(_tap());
+        packets.add(labPacket(500));
+        rec.stop();
+        expect(rec.recording!.markers.map((m) => m.kind),
+            contains(ImuMarkerKind.gyroReady));
       });
     });
   });

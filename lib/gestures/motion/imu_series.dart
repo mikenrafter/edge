@@ -8,7 +8,8 @@
 //   one sample short.
 // - The first four gyro samples of every stream read -2000 dps on all three
 //   axes at once. That is the band's invalid marker (raw -32768), not motion.
-//   Accel is real there.
+//   Accel is real there. (`isValidGyroSample` is the one definition, shared
+//   with the stream's gyro-ready detector; NaN is invalid too.)
 // - Gyro and accel clip at +-2000 dps and +-8 g.
 // - A packet flagged as following a gap, or a short packet after the first,
 //   ends the run: samples are never joined across lost time or stretched.
@@ -17,6 +18,7 @@
 import 'dart:typed_data';
 
 import '../../state/imu_packet.dart';
+import '../imu_readiness.dart';
 
 /// Samples [start, end) with unbroken time.
 class MotionRun {
@@ -104,7 +106,7 @@ class ImuSeries {
       }
       for (var i = 0; i < n; i++) {
         final a = p.accelSamples[i], g = p.gyroSamples[i];
-        final marker = g.x <= -_rail && g.y <= -_rail && g.z <= -_rail;
+        final marker = !isValidGyroSample(g); // the -2000 triple, or NaN
         var f = marker ? _invalid : 0;
         if (!marker &&
             (g.x.abs() >= _rail || g.y.abs() >= _rail || g.z.abs() >= _rail)) {

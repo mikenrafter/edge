@@ -5,7 +5,11 @@
 // valid counts for the two sensors, so they are never zipped into rows), the
 // device's own timestamp fields, and when the phone received each packet. Next
 // to the packets sit markers: the tap that began it, the request for the
-// stream, the first packet, a cue, and the wearer's own motion start and end.
+// stream, the first packet, the gyro-ready moment, a cue, and the wearer's own
+// motion start and end. Packets before the gyro-ready marker stay in the file
+// (the first four gyro samples of a stream are invalid, and the early packets
+// say how long the band took), but the motion processing starts at it
+// ([ImuRecording.motionPackets]). A file with no such marker is read whole.
 //
 // The file is versioned JSON Lines, one JSON object per line, written only when
 // the wearer saves (the lab never persists a stream on its own):
@@ -69,6 +73,10 @@ enum ImuRecordingStatus {
   /// No packet arrived in time after the stream was requested.
   streamTimeout,
 
+  /// Packets arrived but none held a valid gyro sample in time (see
+  /// ImuReadiness): the recording has no gyro-ready marker.
+  gyroNeverReady,
+
   /// The lab closed while it ran.
   interrupted;
 
@@ -80,6 +88,7 @@ enum ImuRecordingStatus {
         stopped => 'Stopped early',
         disconnected => 'Band disconnected',
         streamTimeout => 'No packets arrived',
+        gyroNeverReady => 'Gyro never became valid',
         interrupted => 'Interrupted',
       };
 }
@@ -93,6 +102,12 @@ enum ImuMarkerKind {
 
   /// The first packet reached the phone.
   firstPacket,
+
+  /// The first packet with a valid gyro sample and accel reached the phone: the
+  /// moment the wearer was told to move (the band buzzed). Written once, only
+  /// when it happened; files from before it existed have none. The note says
+  /// how many invalid gyro samples came first.
+  gyroReady,
 
   /// A cue the band or phone played.
   cue,
@@ -198,6 +213,28 @@ class ImuRecording {
     final tap = _firstMarker(ImuMarkerKind.tapReceived);
     final first = packets.isEmpty ? null : packets.first.monotonicReceipt;
     return tap == null || first == null ? null : first - tap.mono;
+  }
+
+  /// The moment the wearer was told to move; null when it never happened or the
+  /// file predates it.
+  ImuMarker? get readyMarker => _firstMarker(ImuMarkerKind.gyroReady);
+
+  /// Tap receipt to the gyro-ready moment; null without both.
+  Duration? get tapToReady {
+    final tap = _firstMarker(ImuMarkerKind.tapReceived), ready = readyMarker;
+    return tap == null || ready == null ? null : ready.mono - tap.mono;
+  }
+
+  /// What the motion processing reads: the packets from the gyro-ready marker
+  /// on (the ready packet included, it is the first usable one), or all of
+  /// them when there is no marker.
+  List<ImuPacket> get motionPackets {
+    final ready = readyMarker;
+    if (ready == null) return packets;
+    return [
+      for (final p in packets)
+        if (p.monotonicReceipt >= ready.mono) p,
+    ];
   }
 
   /// Packets the adapter flagged as following a gap.
