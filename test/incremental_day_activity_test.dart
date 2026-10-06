@@ -273,6 +273,31 @@ void main() {
       expect(_work(state), greaterThan(work));
     });
   }
+  // The engine no longer recomputes the batch curve over the incremental one
+  // (`_computeDayBlocks` used to overwrite it). The curve the summary hands out
+  // is therefore the persisted value, so it must be the batch value for every
+  // mode, on gappy and absent-accel days too.
+  for (final mode in ana.CalculationMode.values) {
+    for (final fixture in <String>['canonical', 'gaps', 'absent']) {
+      test('activity_curve from state equals the stateless one mode=$mode '
+          '$fixture', () {
+        final s = switch (fixture) {
+          'gaps' => incrementalActivity(seed: 7, seconds: 900, gaps: true),
+          'absent' => incrementalActivity(missingAccel: true),
+          _ => incrementalActivity(),
+        };
+        final oracle = _run(s);
+        final state = DayCalculationState();
+        // Seed an awake state first so periodic modes take their reuse path.
+        _run(s.sliceIdx(0, s.length ~/ 2),
+            state: state, mode: ana.CalculationMode.periodicAwake);
+        final actual = _run(s, state: state, mode: mode);
+        _same(actual.bundle['activity_curve'], oracle.bundle['activity_curve']);
+        expect(jsonEncode(actual.bundle['activity_curve']),
+            jsonEncode(oracle.bundle['activity_curve']));
+      });
+    }
+  }
   test('canonical omitted mode retains forced behavior', () {
     final s = incrementalActivity();
     final state = DayCalculationState();

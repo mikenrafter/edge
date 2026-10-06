@@ -27,6 +27,7 @@ import 'dart:math' as math;
 
 import 'strain_backfill.dart' show backfillStrainScale;
 
+import 'package:crypto/crypto.dart' show sha256;
 import 'package:flutter/foundation.dart';
 import 'findings.dart';
 import 'nap_edits.dart';
@@ -45,6 +46,7 @@ import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show workoutSuggestionRoute;
 import '../telemetry/telemetry_service.dart';
 import 'calc_status.dart';
+import 'crossday_input.dart';
 import 'crossday_pipeline.dart';
 import 'kcal_minutes.dart';
 import 'sleep_blank.dart';
@@ -3553,7 +3555,8 @@ class DerivationEngine {
     final stats = _PrepareStats();
     // The day's raw as it stands BEFORE anything below reads it: the input
     // signature of the calorie artifact this derive stores.
-    final inputFp = (await LocalDb.decodedDayFingerprints([dayId]))[dayId];
+    final inputFp = (await perf.stage(
+        'fingerprints', () => LocalDb.decodedDayFingerprints([dayId])))[dayId];
     final candidate = await _sleepCandidateForDay(dayId, stats: stats);
     final dayStart = _localDayLabelToSec(dayId);
     final dayEnd = _localNextDayLabelToSec(dayId);
@@ -3591,6 +3594,7 @@ class DerivationEngine {
       dayEnd - 1 + napBoundaryBufferSec,
       dayId: dayId,
       stats: stats,
+      label: 'load_day',
       ownership: ownership,
     );
     final daySub = napSub.slice(dayStart, dayEnd);
@@ -3602,6 +3606,7 @@ class DerivationEngine {
         candidate.sleepOffsetSec - 1,
         dayId: dayId,
         stats: stats,
+        label: 'load_sleep',
         ownership: ownership,
       );
     }
@@ -3709,6 +3714,7 @@ class DerivationEngine {
       range.$2,
       dayId: dayId,
       stats: stats,
+      label: 'load_search',
       ownership: searchOwnership,
     );
     // PERSONALIZED STAGER (v42): stage on a WORKER isolate, NOT the main/UI
@@ -3750,6 +3756,7 @@ class DerivationEngine {
     // `this` into the context the worker closure below shares, and the engine
     // (and its _diag map) cannot be sent to the isolate.
     final stagesStep = CalcStatus.instance.begin('Sleep stages');
+    final stagingStartedAt = DateTime.now().millisecondsSinceEpoch;
     final (String, String?) staged;
     try {
       staged = await _runIsolateCancellable(() {
@@ -3823,6 +3830,8 @@ class DerivationEngine {
       }, _perDayTimeout, label: 'sleep-staging $dayId');
     } finally {
       CalcStatus.instance.end(stagesStep);
+      perf.addStage('stage_candidate',
+          DateTime.now().millisecondsSinceEpoch - stagingStartedAt);
     }
     final (candidateJson, observationJson) = staged;
     final candidate = SleepSessionCandidate.fromJson(
@@ -4093,6 +4102,8 @@ class DerivationEngine {
     int toRecTs, {
     required String dayId,
     _PrepareStats? stats,
+    // Which of a day's loads this is, for the `[perf]` stage line only.
+    String label = 'load',
     // M5: the resolved ownership spans for this call's window, keyed by
     // anchor signal. Every production caller supplies them (see
     // [_resolveOwnership]); the empty default is unfiltered, which is what a
@@ -4101,6 +4112,8 @@ class DerivationEngine {
     Map<InputSignal, List<OwnedSpan>> ownership = const {},
   }) async {
     if (toRecTs < fromRecTs) return Substrate.empty;
+    final loadStartedAt = DateTime.now().millisecondsSinceEpoch;
+    var loadedRows = 0;
     final port = ReceivePort();
     // onError/onExit are LOAD-BEARING. Without them, an uncaught throw inside
     // the worker (a malformed SQLite row reaching one of the numeric reads in
@@ -4207,6 +4220,7 @@ class DerivationEngine {
           _trackPrepareBatch(decodedRows.length);
           rangePages += 1;
           rangeRows += decodedRows.length;
+          loadedRows = rangeRows;
           if (stats != null) {
             stats.pages += 1;
             stats.rows += decodedRows.length;
@@ -4315,6 +4329,8 @@ class DerivationEngine {
       await sub.cancel();
       port.close();
       isolate.kill(priority: Isolate.immediate);
+      perf.addStage(label, DateTime.now().millisecondsSinceEpoch - loadStartedAt);
+      perf.addCount('rows_$label', loadedRows);
     }
   }
 
@@ -4916,9 +4932,10 @@ class DerivationEngine {
 
     // Cancellable: on timeout the isolate is KILLED, not merely abandoned to
     // keep burning a core behind the worker pool's back.
-    final first = await _runDayBundleCancellable(withHistory,
+    final first = await perf.stage('bundle_isolate', () =>
+      _runDayBundleCancellable(withHistory,
       _calculationStates[day.date], calculationMode, _perDayTimeout,
-      label: 'day-bundle ${day.date}');
+      label: 'day-bundle ${day.date}'));
     final bundle = first.bundle;
     var candidateState = first.state;
     // Readiness came back absent for TODAY specifically (not a historical
@@ -5294,8 +5311,8 @@ class DerivationEngine {
         dayEndSec: day.endSec,
         dataNowSec: dataNowSec,
       );
-      final blocks =
-          await _runDayBlocksCancellable(blocksInput, _perDayTimeout);
+      final blocks = await perf.stage('blocks_isolate',
+          () => _runDayBlocksCancellable(blocksInput, _perDayTimeout));
       candidateState = blocks.calculationState;
       // Keep what was computed. An entry is a pure function of its signature,
       // so it is safe to keep even if a later step of this day fails.
@@ -5716,6 +5733,7 @@ class DerivationEngine {
       lo,
       hi - 1,
       dayId: day,
+      label: 'load_kcal',
       ownership: ownership,
     );
     if (daySub.isEmpty) return null;
@@ -6165,7 +6183,10 @@ class DerivationEngine {
     return builtFor is String && builtFor.isNotEmpty && builtFor == today;
   }
 
-  Future<void> _runCrossDay(Profile profile) async {
+  Future<void> _runCrossDay(Profile profile) =>
+      perf.stage('crossday', () => _runCrossDayUntimed(profile));
+
+  Future<void> _runCrossDayUntimed(Profile profile) async {
     try {
       final days = await _crossDayInputDays();
       if (days.length < 3) {
@@ -6199,6 +6220,26 @@ class DerivationEngine {
       // one layer up on the output.
       final builtForDay = LocalDb.localDayLabelNow();
       final builtAtEpoch = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      // The bundle is a pure function of exactly these. When the stored one was
+      // built from the same, recomputing it would write the same bundle: keep
+      // it, and only restamp it as written now (the "as of" label reads that).
+      // A false mismatch is harmless (it recomputes); a false match is not
+      // possible short of a SHA-256 collision.
+      final inputSig = _crossDayInputSig(
+        days: days,
+        profile: profileMap,
+        cycleStarts: cycleStarts,
+        sessionTypes: sessionTypes,
+        builtForDay: builtForDay,
+      );
+      if (inputSig != null &&
+          await LocalDb.baselineJsonString('crossday', r'$.input_sig') ==
+              inputSig) {
+        await LocalDb.touchBaseline('crossday');
+        _log('crossday: inputs unchanged — kept the stored bundle');
+        return;
+      }
+      _crossDayComputed++;
       final (bundleJson, dropped) = await _runIsolateCancellable(
         () {
           final bundle =
@@ -6211,6 +6252,7 @@ class DerivationEngine {
                 ..['algo_version'] = kAlgoVersion
                 ..['built_for_day'] = builtForDay
                 ..['built_at_epoch'] = builtAtEpoch;
+          if (inputSig != null) bundle['input_sig'] = inputSig;
           // Encode-safety BEFORE jsonEncode, never a try/catch around it: one
           // non-finite leaf must cost that leaf, not the whole artifact.
           final paths = <String>[];
@@ -6237,6 +6279,47 @@ class DerivationEngine {
       debugPrint('[derive] crossday BUNDLE DROPPED — the stored artifact is '
           'now stale and every cross-day metric will read absent: $e\n$st');
       _log('crossday FAILED/skipped: $e');
+    }
+  }
+
+  /// How many times the cross-day bundle was actually computed (not reused).
+  int _crossDayComputed = 0;
+
+  @visibleForTesting
+  int get debugCrossDayComputed => _crossDayComputed;
+
+  @visibleForTesting
+  Future<void> runCrossDayForTest(Profile profile) => _runCrossDayUntimed(profile);
+
+  @visibleForTesting
+  Future<List<Map<String, dynamic>>> refreshCrossDayInputForTest() =>
+      _refreshCrossDayInputArtifact();
+
+  /// SHA-256 over everything [buildCrossDayBundle] is computed from, plus the
+  /// algo version, the local day and the time-zone offset (it reads local
+  /// clock times). Null when the inputs cannot be encoded: then nothing is
+  /// ever reused.
+  static String? _crossDayInputSig({
+    required List<Map<String, dynamic>> days,
+    required Map<String, dynamic> profile,
+    required List<String> cycleStarts,
+    required Map<String, List<String>> sessionTypes,
+    required String builtForDay,
+  }) {
+    try {
+      return sha256
+          .convert(utf8.encode(jsonEncode([
+            kAlgoVersion,
+            builtForDay,
+            DateTime.now().timeZoneOffset.inMinutes,
+            profile,
+            cycleStarts,
+            sessionTypes,
+            days,
+          ])))
+          .toString();
+    } catch (_) {
+      return null;
     }
   }
 
@@ -6302,53 +6385,65 @@ class DerivationEngine {
   }
 
   Future<List<Map<String, dynamic>>> _refreshCrossDayInputArtifact() async {
-    // The DB read itself must stay on the main isolate (sqflite), but
-    // decoding up to _crossDayWindow (90) full day payloads + re-encoding
-    // them was previously ALL synchronous main-isolate work with zero
-    // offloading — this is the confirmed source of the ~3.5-4.7s production
-    // hang (Crashlytics jank_watchdog), since _refreshBaselines calls this
-    // unconditionally on every heavy pass. _decodeBundle/_crossDayRecord are
-    // both static, so this whole transform+encode step is isolate-safe.
-    final rows = await LocalDb.recentDayResults(_crossDayWindow);
+    // Per-day records are kept between passes (see crossday_input.dart): the
+    // payload-free read says which days' stored result changed, and only those
+    // payloads are read and decoded. Before, every pass read and decoded all of
+    // the 90 (~8 MB), although only today's row moves during the day. The DB
+    // reads stay on the main isolate (sqflite); decoding and encoding still
+    // happen in a worker, which is where the ~3.5-4.7 s jank_watchdog hang came
+    // from when all 90 were decoded on this one.
+    final meta = await LocalDb.recentDayResultsMeta(_crossDayWindow);
     final today = LocalDb.localDayLabelNow();
-    final (days, json) = await _runIsolateCancellable(() {
-      final days = <Map<String, dynamic>>[];
-      for (final row in rows.reversed) {
-        final payload = _decodeBundle(row['payload_json']);
-        if (payload == null) continue;
-        if (payload['skipped'] == true) continue;
-        final rec = _crossDayRecord(row, payload);
-        if (rec == null) continue;
-        // Today's own row updates on every derive pass while the night is
-        // still syncing/settling — feeding that partial reading into the
-        // illness/anomaly CUSUM can fire a false "possible illness onset" on
-        // data that's really just a truncated/mid-drain night. Only exclude
-        // TODAY specifically; older days already had their 48h to settle.
-        //
-        // FLAG it rather than DROP it: `days` is the single input list for the
-        // whole cross-day bundle, so dropping today also silently removed it
-        // from readiness/glass-box, the resting-HR trend-shift CUSUM, load,
-        // sleep debt and `recent` (whose last row dates every notification).
-        // buildCrossDayBundle nulls only the alert inputs for a flagged day.
-        if (row['day_id'] == today && (row['finalized'] as num?) != 1) {
-          rec['unsettled'] = true;
-        }
-        // Explicit identity for TODAY-scoped reads. `unsettled` cannot serve
-        // this purpose — it is only set while today is unfinalized. Without a
-        // flag, a today-scoped consumer can only take the LAST record
-        // positionally, which on a day with no derived row is YESTERDAY's.
-        if (row['day_id'] == today) rec['is_today'] = true;
-        days.add(rec);
+    Object? previous;
+    final stored = (await LocalDb.baseline('crossday_input'))?['payload_json'];
+    if (stored is String && stored.isNotEmpty) {
+      try {
+        previous = jsonDecode(stored);
+      } catch (_) {
+        // Rebuild from the stored results.
       }
+    }
+    // Only an artifact of THIS version has the record shape this build writes.
+    final sameVersion =
+        previous is Map && (previous['algo_version'] as num?)?.toInt() == kAlgoVersion;
+    if (sameVersion &&
+        crossDayArtifactUsableToday(previous, today) &&
+        crossDayInputCurrent(previous, meta)) {
+      perf.addCount('crossday_payload_rows', 0);
+      return [
+        for (final row in previous['days'] as List)
+          if (row is Map) row.cast<String, dynamic>(),
+      ];
+    }
+    final kept = sameVersion
+        ? keptCrossDayInput(previous)
+        : const <String, CrossDayKept>{};
+    final fullRows = await LocalDb.dayResultsByIds(crossDayDaysToRead(meta, kept));
+    perf.addCount('crossday_payload_rows', fullRows.length);
+    perf.addCount('crossday_payload_chars', fullRows.fold(0, (n, r) {
+      final p = r['payload_json'];
+      return n + (p is String ? p.length : 0);
+    }));
+    final full = {for (final r in fullRows) r['day_id'] as String: r};
+    final (days, json) = await _runIsolateCancellable(() {
+      final out = assembleCrossDayInput(
+        meta: meta,
+        today: today,
+        kept: kept,
+        full: full,
+        makeRecord: _crossDayRecord,
+      );
       // `built_for_day` is what makes the `is_today` stamps inside `days`
       // interpretable later. Without it the envelope carries day-relative facts
       // with no day attached, and any reader has to assume freshness.
+      // `row_keys` names the stored result each record came from.
       return (
-        days,
+        out.days,
         jsonEncode({
           'algo_version': kAlgoVersion,
           'built_for_day': today,
-          'days': days,
+          'days': out.days,
+          'row_keys': out.keys,
         })
       );
     }, _crossDayTimeout, label: 'crossday-input');
@@ -6358,7 +6453,10 @@ class DerivationEngine {
 
   // ── notifications generator ─────────────────────────────────────────────────
 
-  Future<void> _runNotifications() async {
+  Future<void> _runNotifications() =>
+      perf.stage('notifications', _runNotificationsUntimed);
+
+  Future<void> _runNotificationsUntimed() async {
     try {
       final cdRow = await LocalDb.baseline('crossday');
       final cd = _decodeBundle(cdRow?['payload_json']);
@@ -6636,7 +6734,10 @@ class DerivationEngine {
   /// today into the window (the blank-readiness root cause). The read path
   /// ([_BaselineHistoryCache.load]) no longer trusts this artifact for history,
   /// but it still backs the cheap `signature` rescan gate, so keep it fresh.
-  Future<void> _refreshBaselines() async {
+  Future<void> _refreshBaselines() =>
+      perf.stage('baselines', _refreshBaselinesUntimed);
+
+  Future<void> _refreshBaselinesUntimed() async {
     final history = await _BaselineHistoryCache.load();
     final artifact = history.toArtifactJson();
     final rolling = ((artifact['rolling'] as Map?) ?? const {})
@@ -9164,7 +9265,11 @@ class DerivationEngine {
   ) async {
     final (sendPort, compute) = args;
     try {
-      sendPort.send(_IsolateValue(await compute()));
+      // `Isolate.exit` hands the result graph to the parent without copying
+      // it (the day state alone is a 10-15 MB graph). Nothing after it runs;
+      // the parent still receives the `onExit` null, which it ignores once the
+      // result is in.
+      Isolate.exit(sendPort, _IsolateValue(await compute()));
     } catch (e, st) {
       sendPort.send([e.toString(), st.toString()]);
     }
@@ -9175,7 +9280,8 @@ class DerivationEngine {
   static void _dayBlocksIsolateEntry((SendPort, _DayBlocksInput) args) {
     final (sendPort, input) = args;
     try {
-      sendPort.send(_computeDayBlocks(input));
+      // Ownership move, not a copy: see [_cancellableIsolateEntry].
+      Isolate.exit(sendPort, _computeDayBlocks(input));
     } catch (e, st) {
       sendPort.send([e.toString(), st.toString()]);
     }
@@ -9263,8 +9369,8 @@ class DerivationEngine {
       onset,
       offset,
     );
-    // Overrides wake's activity_curve (same value, computed once here).
-    bundlePatch['activity_curve'] = _activityCurve(daySub);
+    // `activity_curve` is already in bundlePatch from `applyDayActivity` (the
+    // incremental summary's curve, or `_activityCurve` when it has no state).
     // `detected_workouts` is NOT written. It was a permanently-empty stub kept
     // for a WorkoutDetector pass that was going to be re-homed here; analytics
     // has since deleted `workout_detect.dart`, so there is no pass to re-home

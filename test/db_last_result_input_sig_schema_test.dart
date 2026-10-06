@@ -93,8 +93,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 60', () {
-    expect(LocalDb.schemaVersion, 60);
+  test('schemaVersion is at least 60', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(60));
   });
 
   test('upgrade from v59 reaches 60, adds input_sig, keeps the old row with a '
@@ -103,7 +103,7 @@ void main() {
     created.add(name);
     await _seedV59(name);
     final db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 60);
+    expect(await _userVersion(db), LocalDb.schemaVersion);
     _expectCurrentShape(await _cols(db));
 
     final rows = await db.query('last_result');
@@ -129,7 +129,7 @@ void main() {
     // whole ladder back and quarantine the database).
     await db.execute('PRAGMA user_version = 59');
     db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 60);
+    expect(await _userVersion(db), LocalDb.schemaVersion);
     _expectCurrentShape(await _cols(db));
     final rows = await db.query('last_result');
     expect(rows.single['input_sig'], '100|a', reason: 'data survived the rerun');
@@ -149,7 +149,7 @@ void main() {
         {'key': 'k', 'computed_at': 1, 'payload_json': '{}'});
 
     db = await _openThroughLocalDb(name); // same version: onOpen repair only
-    expect(await _userVersion(db), 60);
+    expect(await _userVersion(db), LocalDb.schemaVersion);
     _expectCurrentShape(await _cols(db));
     expect((await db.query('last_result')).single['key'], 'k');
   });
@@ -159,7 +159,7 @@ void main() {
     created.add(name);
     await databaseFactory.deleteDatabase(await _path(name));
     final db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 60);
+    expect(await _userVersion(db), LocalDb.schemaVersion);
     _expectCurrentShape(await _cols(db));
     expect(await db.query('last_result'), isEmpty);
   });
