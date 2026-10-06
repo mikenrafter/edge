@@ -98,6 +98,20 @@ class DerivePerf {
         'pass=${s['pass_ms'] ?? '-'}ms';
   }
 
+  /// One `[perf] mem …` log line: the process's resident size next to what the
+  /// derivation engine retains between passes, so a device log shows whether
+  /// background passes grow or shrink the footprint.
+  static String memLine({
+    required int rssBytes,
+    required int states,
+    required int retainedSamples,
+    required int cacheComputations,
+    required int cacheHits,
+  }) =>
+      'rss=${(rssBytes / (1024 * 1024)).toStringAsFixed(1)}MB '
+      'dayStates=$states retainedSamples=$retainedSamples '
+      'cacheComputed=$cacheComputations cacheHits=$cacheHits';
+
   /// The Settings > Developer "Last calculation" text. Only what was
   /// measured; nothing measured is an em dash, never a zero.
   static String describe(Map<String, Object?>? summary) {

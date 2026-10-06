@@ -21,7 +21,7 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, ProcessInfo;
 import 'dart:isolate';
 import 'dart:math' as math;
 
@@ -2607,8 +2607,14 @@ class _AsyncLock {
 }
 
 class DerivationEngine {
-  DerivationEngine({this.log, this.background = false});
+  DerivationEngine({this.log, this.background = false, this.isBackgrounded});
   final void Function(String)? log;
+
+  /// Whether the app is in the background right now, asked when a pass ends.
+  /// [background] is fixed at construction and picks the pacing; this follows a
+  /// long-lived engine across lifecycle changes and picks what stays in memory.
+  final bool Function()? isBackgrounded;
+  bool get _lowMemory => background || (isBackgrounded?.call() ?? false);
 
   /// True when this engine was constructed inside a headless/background entry
   /// (iOS BGProcessingTask / BGAppRefreshTask, Android WorkManager, the
@@ -2777,15 +2783,59 @@ class DerivationEngine {
     return out;
   }
 
-  void _publishCalculationState(String day, DayCalculationState state) {
+  /// Keeps [state] as [day]'s checkpoint for the next periodic pass.
+  ///
+  /// A [finalized] day is frozen and never recomputed incrementally, so it
+  /// keeps none. In the background only the newest day keeps one, and its
+  /// motion series is released ([trimForBackground]). Dropping a state never
+  /// changes a result; the next pass for that day recomputes in full.
+  void _publishCalculationState(String day, DayCalculationState state,
+      {bool finalized = false}) {
     _calculationStates.remove(day);
-    _calculationStates[day] = state;
+    if (!finalized) _calculationStates[day] = state;
     // Prefer the newest calendar days when a heavy pass also visits history.
     final labels = _calculationStates.keys.toList()..sort();
-    while (labels.length > _retainedCalculationDays) {
+    final keep = _lowMemory ? 1 : _retainedCalculationDays;
+    while (labels.length > keep) {
       _calculationStates.remove(labels.removeAt(0));
     }
+    if (_lowMemory) {
+      for (final s in _calculationStates.values) {
+        s.compact();
+      }
+    }
   }
+
+  /// The app went to the background: keep only the newest day's checkpoint and
+  /// drop the samples it holds. Called from the lifecycle handler; costs
+  /// nothing when there is nothing to drop.
+  void trimForBackground() {
+    final before = _calculationStates.length;
+    final labels = _calculationStates.keys.toList()..sort();
+    while (labels.length > 1) {
+      _calculationStates.remove(labels.removeAt(0));
+    }
+    for (final s in _calculationStates.values) {
+      s.compact();
+    }
+    _log('[perf] mem trim states=$before->${_calculationStates.length} '
+        '${_memLine()}');
+  }
+
+  /// RSS and what this engine holds, for the `[perf] mem` log lines.
+  String _memLine() => DerivePerf.memLine(
+        rssBytes: ProcessInfo.currentRss,
+        states: _calculationStates.length,
+        retainedSamples: debugRetainedSamples,
+        cacheComputations: _calculationStates.values
+            .fold(0, (n, s) => n + s.computations),
+        cacheHits:
+            _calculationStates.values.fold(0, (n, s) => n + s.hits),
+      );
+
+  @visibleForTesting
+  int get debugRetainedSamples => _calculationStates.values
+      .fold(0, (n, s) => n + s.retainedSamples);
 
   @visibleForTesting
   List<String> get debugCalculationStateDays =>
@@ -2858,6 +2908,7 @@ class DerivationEngine {
     if (((s['days'] as int?) ?? 0) == 0) return;
     _diag['last_pass_perf'] = s;
     _log(perf.logLine());
+    _log('[perf] mem bg=$_lowMemory ${_memLine()}');
   }
 
   /// Run a derivation pass. [heavy]=false runs a bounded light pass over the
@@ -5593,7 +5644,9 @@ class DerivationEngine {
     await _maybeFreezeHeadlineReadiness(day, dataNowSec, sc('readiness'));
     // A partial, carried-forward result or any failed write must not advance
     // the reusable checkpoint. Both workers only mutate isolate-owned copies.
-    if (secondHalfOk) _publishCalculationState(day.date, candidateState);
+    if (secondHalfOk) {
+      _publishCalculationState(day.date, candidateState, finalized: finalized);
+    }
     return true;
   }
 
