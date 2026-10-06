@@ -9,8 +9,10 @@
 //      phone lost track (reboot, restart). This happens in EVERY
 //      configuration, including "neither".
 //   2. Natural: feeds the causal stager (off the UI isolate) and, only for the
-//      main sleep, fires ONE early haptic when estimated REM has held
-//      `runSec >= 120` inside [T-N, T) — otherwise records why it abstained.
+//      main sleep, fires ONE early haptic when the sleeper is NOT in light or
+//      deep sleep (estimated REM or awake, held `runSec >= 120`) inside
+//      [T-N, T), or when the user is actively using the app and the band moved
+//      with it — otherwise records why it abstained.
 //   3. Gradual: sends the next due step of its own cadence from T-G. It never
 //      reads the stager and is not borrowed from Natural's window.
 //   4. persists its run state (so an app death, restart or reboot resumes
@@ -121,6 +123,10 @@ abstract interface class WakeEnv {
   /// Live phone-to-band link.
   bool get connected;
 
+  /// Instants of a touch in the FOREGROUND app, oldest first. Empty when the
+  /// app was not in use (backgrounded, locked): then only the stager decides.
+  List<DateTime> get recentInteractions;
+
   /// Samples in [from, to), oldest first. May be empty.
   Future<WakeSamples> samples(DateTime from, DateTime to);
 
@@ -147,9 +153,12 @@ class CallbackWakeEnv implements WakeEnv {
     required this.arm,
     required this.cancel,
     required this.sendHaptic,
-  }) : _isConnected = isConnected;
+    List<DateTime> Function()? interactions,
+  })  : _isConnected = isConnected,
+        _interactions = interactions ?? (() => const []);
 
   final bool Function() _isConnected;
+  final List<DateTime> Function() _interactions;
   final Future<WakeSamples> Function(DateTime from, DateTime to) loadSamples;
   final Future<FallbackStatus> Function(DateTime wakeAt) status;
   final Future<FallbackStatus> Function(DateTime wakeAt) arm;
@@ -158,6 +167,8 @@ class CallbackWakeEnv implements WakeEnv {
 
   @override
   bool get connected => _isConnected();
+  @override
+  List<DateTime> get recentInteractions => _interactions();
   @override
   Future<WakeSamples> samples(DateTime from, DateTime to) => loadSamples(from, to);
   @override
@@ -717,14 +728,19 @@ class WakeOrchestrator {
       }
     }
 
+    // Awake because they are using the phone and the wrist moved with it.
+    final userActive = await _userActive(sec, now);
+
     // "I'm up" may have landed while the samples and the observer were awaited.
     if (_acked(run)) return (NaturalReason.acknowledged, false);
 
-    final decision = samplesFailed
+    final decision = samplesFailed && !userActive
         ? const NaturalDecision(NaturalReason.samplesUnavailable)
-        : NaturalWakePlanner.decide(
-            _input(plan, run, now, eligibility, obs, lateness));
+        : NaturalWakePlanner.decide(_input(
+            plan, run, now, eligibility, obs, lateness,
+            userActive: userActive));
     final detail = <String, Object?>{
+      if (decision.viaUserActivity) 'basis': 'userActive',
       'samples': decision.samplesCurrent == null
           ? null
           : (decision.samplesCurrent! ? 'current' : 'stale'),
@@ -751,6 +767,7 @@ class WakeOrchestrator {
       'stage': obs?.stage,
       'confidence': obs?.confidence,
       'runSec': obs?.runSec,
+      if (decision.viaUserActivity) 'basis': 'userActive',
     });
     final attempted = await _haptic(
       sec,
@@ -767,8 +784,36 @@ class WakeOrchestrator {
         : (NaturalReason.acknowledged, false);
   }
 
+  /// Whether a recent foreground touch and band motion line up. Reads only the
+  /// accel rows around each of the newest touches; no rows, no touches or any
+  /// failure is simply false (never a guess).
+  Future<bool> _userActive(int sec, DateTime now) async {
+    try {
+      final touches = [
+        for (final t in env.recentInteractions)
+          if (!t.isAfter(now) && now.difference(t) <= kUserInteractionFreshness) t
+      ];
+      if (touches.isEmpty) return false;
+      final newest = touches.reversed.take(3).toList();
+      final from = newest.last.subtract(kUserMotionHalfWindow);
+      final to = newest.first.add(kUserMotionHalfWindow);
+      final samples = await env
+          .samples(from, to.isAfter(now) ? now : to)
+          .timeout(opTimeout);
+      return NaturalWakePlanner.userAwakeFromInteraction(
+        now: now,
+        interactions: newest,
+        accel: samples.accel,
+      );
+    } catch (e) {
+      await _trace(sec, 'error', {'where': 'userActive', 'error': '$e'});
+      return false;
+    }
+  }
+
   NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
-          SleepEligibility eligibility, NaturalObservation? obs, Duration lateness) =>
+          SleepEligibility eligibility, NaturalObservation? obs, Duration lateness,
+          {bool userActive = false}) =>
       NaturalDecisionInput(
         now: now,
         wakeAt: plan.wakeAt,
@@ -779,6 +824,7 @@ class WakeOrchestrator {
         alreadyFired: run.naturalFired,
         acknowledged: run.acknowledged,
         lateness: lateness,
+        userActive: userActive,
       );
 
   Future<int?> _gradual(WakePlanInput plan, _Run run, DateTime now) async {

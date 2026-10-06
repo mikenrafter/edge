@@ -47,7 +47,8 @@
 //
 // Rules the UI should honour (see the design spec, "Wake model"):
 //   * Setting a window never changes the alarm's hour/minute/enabled.
-//   * Natural Wake is estimated REM, an autonomic estimate from the band's
+//   * Natural Wake buzzes when the sleeper is NOT in light or deep sleep
+//     (estimated REM, or awake), an autonomic estimate from the band's
 //     heart-rate/motion data, not sleep staging; say "estimated".
 //   * Natural Wake needs a connected phone and only applies to the main
 //     sleep; naps never use it. Say which parts are band-native (the alarm at

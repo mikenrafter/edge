@@ -36,8 +36,8 @@ String naturalReasonText(String reason) => switch (reason) {
   'noEvidence' => 'there was not enough data to estimate a sleep stage',
   'clockRegressed' => 'the band clock went backwards, so it stayed quiet',
   'samplesStale' => 'the newest band data was too old to trust',
-  'noRemCandidate' => 'it did not see a REM stage',
-  'remNotStable' => 'a REM stage had not lasted long enough yet',
+  'noRemCandidate' => 'you looked to be in light or deep sleep',
+  'remNotStable' => 'a REM or awake stage had not lasted long enough yet',
   'lowConfidence' => 'the REM estimate was not confident enough',
   _ => 'it stayed quiet for a reason this version cannot describe',
 };

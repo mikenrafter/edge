@@ -612,6 +612,10 @@ class SyncController {
         // step checkpoint exists for, so recovery has to run on this path
         // too or those steps sit in prefs forever. Counters are fresh on a
         // cold launch, so there is nothing to double-count.
+        // The alarm first, as in every other connect flow. A relaunch here used
+        // to arm nothing at all: tonight's alarm waited for somebody to open
+        // the app.
+        await _armNextAlarmOccurrence();
         await _recoverOrphanedLiveSession();
         _resetLivePedometer();
         // Apply the owners' intent to the fresh link: backgrounded owns
@@ -740,6 +744,9 @@ class SyncController {
         // `background` flipped: the foreground owners (gen4 bundle, a gait
         // workout's IMU) apply again.
         _nudgeLive();
+        // The alarm first: the fast path skips the connect flow's arm, and an
+        // occurrence that fired while backgrounded is otherwise unarmed.
+        unawaited(_armNextAlarmOccurrence());
         // …and the background band prompt is dropped (the smart-wake window,
         // if open, keeps its own).
         unawaited(_refreshHighFreqWakeWindow());
@@ -809,10 +816,11 @@ class SyncController {
       // the GET_ALARM readback is parked (unconfirmed format) — see ble_engine.
       // Arm the strap's high-frequency sync window when a wake alarm is near
       // (denser flushes → fresher overnight data ahead of the alarm).
-      await _refreshHighFreqWakeWindow();
-      // Compute + arm the next weekly-schedule occurrence on every successful
-      // connect (Feature 1's arming engine) — see _armNextAlarmOccurrence.
+      // The alarm FIRST: nothing it needs depends on the wake window, and the
+      // window's plan reads the database and writes to the band, either of
+      // which can stall. The wake alarm must never wait behind them.
       await _armNextAlarmOccurrence();
+      await _refreshHighFreqWakeWindow();
       _log('Listening — live streams per owners, historical burst runs concurrently.');
       // Enable live streams PROMPTLY, then let the historical burst run
       // CONCURRENTLY (unawaited, single-flight via _kickSyncBurst). History and
@@ -837,11 +845,11 @@ class SyncController {
             'Backlog drained: ${report.records} records in ${report.batches} '
             'batches (${report.complete ? "complete" : "stopped early"}).',
           );
-          // Re-evaluate the high-frequency wake window now the backlog landed.
-          await _refreshHighFreqWakeWindow();
           // Re-arm the weekly schedule now the sync completed (Feature 1: "on
-          // every successful connect AND after each sync").
+          // every successful connect AND after each sync"), then re-evaluate
+          // the high-frequency wake window now the backlog landed. Alarm first.
           await _armNextAlarmOccurrence();
+          await _refreshHighFreqWakeWindow();
           // The whole backlog landed → heavy foreground finalize (full sleep
           // staging + 24-h spectra over every stale day).
           _deriveScheduler.requestHeavy();
@@ -959,10 +967,10 @@ class SyncController {
           EdgeTracking.start(); // ensure the Android foreground service is up too
           // Arm the strap's high-frequency sync window when a wake alarm is
           // near (denser flushes ahead of the alarm).
-          await _refreshHighFreqWakeWindow();
-          // Compute + arm the next weekly-schedule occurrence on every
-          // successful (re)connect — see _armNextAlarmOccurrence.
+          // The alarm FIRST (see openSession): the wake window's database read
+          // and band write must never delay it.
           await _armNextAlarmOccurrence();
+          await _refreshHighFreqWakeWindow();
           // Live streams come up per the current owners (see LiveStreamController.owners:
           // backgrounded with no owner is OFF on both platforms);
           // the FULL drain (no short timeout — the ENTIRE offline backlog the
@@ -981,12 +989,12 @@ class SyncController {
             _kickSyncBurst(kickFirst: false).then((report) async {
               if (_disposed) return;
               _log('Reconnect backlog drained: ${report.records} records.');
-              // Re-evaluate the high-frequency wake window now the backlog
-              // landed.
-              await _refreshHighFreqWakeWindow();
               // Re-arm the weekly schedule now the sync completed (Feature 1:
-              // "on every successful connect AND after each sync").
+              // "on every successful connect AND after each sync"), then
+              // re-evaluate the high-frequency wake window now the backlog
+              // landed. Alarm first.
               await _armNextAlarmOccurrence();
+              await _refreshHighFreqWakeWindow();
               // Backlog (often an overnight gap) just landed → derive it.
               // Backgrounded, a flappy link (routine arm-swing dropouts)
               // reconnects many times an hour; each heavy pass spawns an

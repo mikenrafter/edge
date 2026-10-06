@@ -75,6 +75,8 @@ import '../data/auto_backup.dart' as backup show runBackupIfDue;
 import 'alarm_draft.dart';
 import 'alarm_schedule.dart';
 import 'smart_wake.dart';
+import '../wake/natural_wake.dart'
+    show NaturalStageObserver, kUserInteractionFreshness;
 import '../wake/wake_controller.dart';
 import '../wake/wake_orchestrator.dart';
 import '../wake/wake_settings.dart';
@@ -1904,7 +1906,45 @@ class AppState extends ChangeNotifier {
 
   /// Foreground activity (a touch, coming back to the app): restarts the idle
   /// timer that warms Home/Health artifacts after 30 s of quiet.
-  void noteForegroundActivity() => _deriveCoordinator.noteActivity();
+  void noteForegroundActivity() {
+    _deriveCoordinator.noteActivity();
+    _noteInteraction();
+  }
+
+  // Touches in the foreground app, for Natural Wake: a touch plus band motion
+  // at the same moment is a user who is awake. RAM only, thinned to one per
+  // 10 s and capped, so a drag does not fill it. Only a FOREGROUND app records
+  // one: a backgrounded or locked app has no touches to report.
+  final List<DateTime> _interactions = [];
+  static const Duration _interactionGap = Duration(seconds: 10);
+  static const int _interactionCap = 30;
+
+  void _noteInteraction({DateTime? at}) {
+    if (_background) return;
+    final now = at ?? DateTime.now();
+    if (_interactions.isNotEmpty &&
+        now.difference(_interactions.last) < _interactionGap) {
+      return;
+    }
+    _interactions.add(now);
+    if (_interactions.length > _interactionCap) {
+      _interactions.removeAt(0);
+    }
+  }
+
+  /// Touches within the freshness bound, oldest first.
+  List<DateTime> _recentInteractions() {
+    final now = DateTime.now();
+    _interactions.removeWhere(
+        (t) => now.difference(t) > kUserInteractionFreshness);
+    return List.unmodifiable(_interactions);
+  }
+
+  @visibleForTesting
+  void debugNoteInteraction(DateTime at) => _noteInteraction(at: at);
+
+  @visibleForTesting
+  List<DateTime> get debugInteractions => _recentInteractions();
 
   /// Why derive work is held right now, for the staleness line; null when
   /// nothing is. Read off the scheduler, which already notifies on every hold
@@ -2298,8 +2338,8 @@ class AppState extends ChangeNotifier {
   /// Feed a strap alarm-lifecycle event (56 set / 57–58 fired / 59 cleared)
   /// without going through the BLE event path. Tests only.
   @visibleForTesting
-  void debugHandleAlarmEvent(int id) =>
-      _handleAlarmEvent(id, DateTime.now().millisecondsSinceEpoch ~/ 1000);
+  void debugHandleAlarmEvent(int id, {int? ts}) => _handleAlarmEvent(
+      id, ts ?? DateTime.now().millisecondsSinceEpoch ~/ 1000);
 
   /// Feed one `DeviceState` through [_onEngineState] for [deviceId], exactly
   /// as `BleEngine`'s `onState` callback does. Tests only — lets a test drive
@@ -5015,7 +5055,13 @@ class AppState extends ChangeNotifier {
         .forWake(t.millisecondsSinceEpoch ~/ 1000),
   )..addListener(notifyListeners);
 
+  /// Replaces the isolate stager in the wake orchestrator. Tests only; must be
+  /// set before the first wake tick builds the orchestrator.
+  @visibleForTesting
+  NaturalStageObserver? debugWakeObserver;
+
   late final WakeOrchestrator _wakeOrchestrator = WakeOrchestrator(
+    observer: debugWakeObserver,
     env: CallbackWakeEnv(
       isConnected: () => isConnected,
       loadSamples: loadWakeSamples,
@@ -5026,6 +5072,7 @@ class AppState extends ChangeNotifier {
       },
       cancel: _cancelNativeAlarmForWake,
       sendHaptic: _sendWakeHaptic,
+      interactions: _recentInteractions,
     ),
     stateStore: const DbWakeStateStore(),
     traceStore: const DbWakeTraceStore(),
@@ -5106,8 +5153,30 @@ class AppState extends ChangeNotifier {
       return const WakeAckOutcome(
           nativeCancelRequested: false, nativeCancelled: false, fallbackArmed: false);
     }
-    return _wakeOrchestrator.acknowledge(plan, cancelNative: cancelNative);
+    final out =
+        await _wakeOrchestrator.acknowledge(plan, cancelNative: cancelNative);
+    _releaseWakeCollection(plan.wakeSec);
+    return out;
   }
+
+  /// The early wake fired or the user said they are up: nothing more to
+  /// collect for this occurrence, so the band's prompt is released now rather
+  /// than at T. The native alarm at T is untouched.
+  void _releaseWakeCollection(int wakeSec) {
+    _wakeCollectionDoneEpoch = wakeSec;
+    unawaited(_refreshHighFreqWakeWindow());
+  }
+
+  /// Tick the wake side the way the 30 s keep-alive does. Tests only.
+  @visibleForTesting
+  Future<void> debugKeepAliveTick() => _checkSmartWake();
+
+  /// One pass of the band-prompt decision. Tests only.
+  @visibleForTesting
+  Future<void> debugRefreshHighFreqWakeWindow() => _refreshHighFreqWakeWindow();
+
+  @visibleForTesting
+  set debugBackground(bool v) => _background = v;
 
   /// The armed epoch (unix sec) the LEGACY Smart Wake Window early-fire already
   /// ran for, so a re-arm of the SAME occurrence on every 30 s tick does not
@@ -5121,6 +5190,8 @@ class AppState extends ChangeNotifier {
   Future<void> _checkSmartWake() async {
     try {
       if (!isConnected) return;
+      _ensureNextAlarmArmed();
+      _ensureWakeCollection();
       final plan = _currentWakePlan();
       if (plan == null) return;
       if (wake.legacySmartWakeActive) await _checkLegacySmartWake(plan.wakeAt);
@@ -5130,11 +5201,75 @@ class AppState extends ChangeNotifier {
           !wake.legacySmartWakeActive) {
         return;
       }
-      await _wakeOrchestrator.tick(plan);
+      final out = await _wakeOrchestrator.tick(plan);
+      if (out.naturalFired) _releaseWakeCollection(plan.wakeSec);
     } catch (e) {
       _log('[wake] tick failed (fallback alarm is unaffected): $e');
     }
   }
+
+  // ── the alarm must not wait for a connect ──────────────────────────────────
+  // The schedule is armed on a connect, a sync burst, a foreground resume and a
+  // Save. Once an occurrence has fired (or was missed), a link that simply
+  // stays up in the background produces none of those, so tomorrow's alarm
+  // would stay unarmed until someone opens the app. The 30 s keep-alive tick
+  // runs exactly then, so it closes the gap: with nothing armed in the future
+  // and a day switched on, it asks for the next occurrence through the same
+  // single flight as every other arm. No derive, power mode or foreground state
+  // is involved. Throttled so a band that keeps refusing is not hammered.
+  DateTime? _lastTickArmCheckAt;
+  static const Duration _tickArmCheckGap = Duration(minutes: 2);
+
+  void _ensureNextAlarmArmed() {
+    final now = DateTime.now();
+    final epoch = alarmEpoch;
+    if (epoch != null && epoch * 1000 > now.millisecondsSinceEpoch) return;
+    if (!_schedule.any((e) => e.enabled)) return;
+    final last = _lastTickArmCheckAt;
+    if (last != null && now.difference(last) < _tickArmCheckGap) return;
+    _lastTickArmCheckAt = now;
+    _log('[alarm] keep-alive: no future alarm is armed — arming the next '
+        'scheduled occurrence.');
+    unawaited(_armNextAlarmOccurrence());
+  }
+
+  /// Keep the band's high-frequency prompt running for the whole span in which
+  /// Natural Wake needs fresh 1 Hz rows: from [naturalCollectionLead] before T
+  /// to T. The plan is normally refreshed on connect and every 25-30 min in the
+  /// background, so a window that ended early (a habitual wake time before the
+  /// alarm) or a lease that lapsed would leave a gap in exactly the data the
+  /// stager reads. Here a tick in that span with no prompt running, or one
+  /// about to lapse, refreshes the plan (coalesced; an unchanged plan writes
+  /// nothing). Never reads the power mode: the window is the user's request.
+  DateTime? _lastWakeCollectionCheckAt;
+
+  void _ensureWakeCollection() {
+    final epoch = alarmEpoch;
+    if (epoch == null || _wakeCollectionDoneEpoch == epoch) return;
+    final wakeAt = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+    final entry =
+        _schedule.where((e) => e.weekday == wakeAt.weekday - 1).firstOrNull;
+    if (entry == null || !wake.naturalEnabled || entry.naturalWindowMinutes <= 0) {
+      return;
+    }
+    final now = DateTime.now();
+    final from = wakeAt.subtract(naturalCollectionLead(entry.naturalWindowMinutes));
+    if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
+    final until = engine.highFreqUntil;
+    final covered = until != null &&
+        until.isAfter(now.add(const Duration(minutes: 3))) &&
+        !until.isBefore(wakeAt);
+    if (covered) return;
+    final last = _lastWakeCollectionCheckAt;
+    if (last != null && now.difference(last) < const Duration(minutes: 2)) return;
+    _lastWakeCollectionCheckAt = now;
+    unawaited(_refreshHighFreqWakeWindow());
+  }
+
+  /// The occurrence (unix s) whose Natural Wake has fired or been acknowledged:
+  /// its collection is finished and the prompt is released, see
+  /// [_refreshHighFreqWakeWindowOnce].
+  int? _wakeCollectionDoneEpoch;
 
   /// The pre-split Smart Wake heuristic (state/smart_wake.dart), kept ONLY for
   /// users whose upgrade explanation is pending. Same safety argument as
@@ -5468,6 +5603,11 @@ class AppState extends ChangeNotifier {
   /// the protocol EventId names (strapDrivenAlarmSet == 56, …); the pure state
   /// machine matches the raw ids so it stays dependency-free.
   void _handleAlarmEvent(int id, int ts) {
+    if (_alarm.predatesArm(id, ts)) {
+      _log('[alarm] ignoring event $id stamped $ts — it predates the current '
+          'arm (an earlier alarm replayed from history).');
+      return;
+    }
     final effect = _alarm.onEvent(id, DateTime.now().millisecondsSinceEpoch);
     if (effect == null) return;
     switch (effect) {
@@ -5634,11 +5774,24 @@ class AppState extends ChangeNotifier {
         schedule: _schedule,
         upgrade: wake.runningUpgradeState,
       );
-      final plan = await HighFreqWakeWindow.planNow(
-        scheduledWindowEnd: armed?.windowEnd,
-        scheduledWindowMinutes: armed?.minutes ?? 0,
-        expectedSchedule: sleepOperations.schedule,
-      );
+      // Natural Wake fired or was acknowledged for this very occurrence: its
+      // collection is over, so no plan runs until the next one (the band's
+      // prompt is released below, as for any plan that is not enabled).
+      final collectionDone = armed != null &&
+          _wakeCollectionDoneEpoch ==
+              armed.windowEnd.millisecondsSinceEpoch ~/ 1000 &&
+          DateTime.now().isBefore(armed.windowEnd);
+      final plan = collectionDone
+          ? const HighFreqWakePlan(
+              shouldEnable: false,
+              targetWake: null,
+              source: 'wake_collection_done',
+              sampleCount: 0)
+          : await HighFreqWakeWindow.planNow(
+              scheduledWindowEnd: armed?.windowEnd,
+              scheduledWindowMinutes: armed?.minutes ?? 0,
+              expectedSchedule: sleepOperations.schedule,
+            );
       final target = plan.targetWake;
       final iosBackgrounded = _background && Platform.isIOS;
       final req = BandPromptPolicy.plan(

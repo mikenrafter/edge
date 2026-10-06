@@ -1,8 +1,8 @@
 // natural_wake.dart — Natural Wake's decision and its off-UI-isolate observer.
 //
-// Natural Wake tries to send ONE early haptic during estimated REM, inside the
-// window [T-N, T) before the must-be-up-by time T, and otherwise abstains with
-// a named reason. It can only ever add an early buzz: the fixed native band
+// Natural Wake tries to send ONE early haptic while the sleeper is NOT in light
+// or deep sleep (estimated REM, or awake), inside the window [T-N, T) before
+// the must-be-up-by time T, and otherwise abstains with a named reason. It can only ever add an early buzz: the fixed native band
 // alarm at T is untouched by anything in this file.
 //
 // Two halves, kept apart on purpose:
@@ -17,11 +17,23 @@
 //
 // What the trigger means. The stager reports the stage of the newest closed
 // 30 s epoch, trailing, so it lags real REM onset by about two minutes, and
-// `runSec` is how long that stage has held. The validated rule on one recorded
-// night was `stage == rem && runSec >= 120`: 11 of 16 REM bouts caught, a
-// median 1.5 min late, and it fired in 38% of 15-minute windows, 56% of
-// 30-minute and 80% of 60-minute ones. That is an estimate from one night, not
-// polysomnography, and the UI must not present it as sleep staging.
+// `runSec` is how long that stage has held. The stager has three real stages:
+// wake, nrem (light and deep together, it cannot tell them apart) and rem. The
+// owner's rule is "wake early as long as they are NOT in light or deep sleep",
+// so REM and wake both qualify and nrem never does; absent (no data, an
+// abstention) is never a stage and never qualifies.
+//
+// The rule first validated on one recorded night was `stage == rem &&
+// runSec >= 120`: 11 of 16 REM bouts caught, a median 1.5 min late, and it
+// fired in 38% of 15-minute windows, 56% of 30-minute and 80% of 60-minute
+// ones. That figure is for REM alone; admitting wake only adds firing
+// opportunities and is not separately validated. It is an estimate from one
+// night, not polysomnography, and the UI must not present it as sleep staging.
+//
+// A second, independent way to be awake: the user is actively using the app
+// (a touch in the foreground) AND the band shows movement that correlates in
+// time with that touch. Either signal alone never counts. See
+// [NaturalWakePlanner.userAwakeFromInteraction].
 
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -32,9 +44,28 @@ import '../state/control_operations.dart' show ExpectedSleepSchedule;
 
 // ── constants ───────────────────────────────────────────────────────────────
 
-/// REM must have held this long (seconds) before the haptic may fire. The
-/// validated default.
+/// The stage (REM, or awake) must have held this long (seconds) before the
+/// haptic may fire. The validated default for REM; the causal stager does not
+/// bridge a wake the way the offline one does, so wake is held to the same bar.
 const int kNaturalRemTriggerRunSec = 120;
+
+/// Stager stages that may trigger the early haptic: anything that is not light
+/// or deep sleep. `nrem` and `absent` are deliberately missing.
+const Set<String> kNaturalEligibleStages = {'rem', 'wake'};
+
+/// A touch older than this no longer says anything about now.
+const Duration kUserInteractionFreshness = Duration(minutes: 5);
+
+/// Band motion counts when it falls within this of the touch, either side.
+const Duration kUserMotionHalfWindow = Duration(seconds: 45);
+
+/// A 1 Hz step in the gravity vector (g) that counts as the wrist moving. A
+/// still wrist, on a nightstand or asleep, steps by about 0.005 g. CALIBRATION
+/// KNOB, not validated against labelled data.
+const double kUserMotionStepG = 0.05;
+
+/// Moving steps needed inside the window for the touch to correlate.
+const int kUserMotionMinSteps = 3;
 
 /// Evidence-quality floor. The stager's confidence is bounded to [0.15, 0.6];
 /// it is NOT a probability of being right. Not calibrated against outcomes
@@ -146,6 +177,7 @@ class NaturalDecisionInput {
     required this.alreadyFired,
     required this.acknowledged,
     required this.lateness,
+    this.userActive = false,
   });
 
   final DateTime now;
@@ -160,11 +192,19 @@ class NaturalDecisionInput {
   /// How much later than scheduled this tick actually ran (zero if unknown or
   /// on time).
   final Duration lateness;
+
+  /// The user is using the app now AND the band moved with it (see
+  /// [NaturalWakePlanner.userAwakeFromInteraction]). Counts as awake.
+  final bool userActive;
 }
 
 class NaturalDecision {
-  const NaturalDecision(this.reason, {this.samplesCurrent});
+  const NaturalDecision(this.reason,
+      {this.samplesCurrent, this.viaUserActivity = false});
   final NaturalReason reason;
+
+  /// The fire came from the user's own activity, not from a stage.
+  final bool viaUserActivity;
 
   /// Whether the evidence behind the observation is fresh; null when there is
   /// no observation to judge.
@@ -235,6 +275,11 @@ abstract final class NaturalWakePlanner {
     if (i.lateness > kNaturalMaxTickLateness) {
       return no(NaturalReason.lateExecution);
     }
+    // Awake because they are using the phone and the wrist moved with it. This
+    // needs no stage, so an observer that abstained or failed cannot hide it.
+    if (i.userActive) {
+      return const NaturalDecision(NaturalReason.fire, viaUserActivity: true);
+    }
     final o = i.observation;
     if (o == null) return no(NaturalReason.observerFailed);
 
@@ -261,7 +306,12 @@ abstract final class NaturalWakePlanner {
       );
     }
     if (!current) return no(NaturalReason.samplesStale, current: false);
-    if (o.stage != 'rem') return no(NaturalReason.noRemCandidate, current: true);
+    // Light or deep sleep (the stager's nrem) is the only thing that holds the
+    // haptic back; REM and awake both qualify. (The enum value keeps its old
+    // name: stored traces carry it.)
+    if (!kNaturalEligibleStages.contains(o.stage)) {
+      return no(NaturalReason.noRemCandidate, current: true);
+    }
     if (o.runSec < kNaturalRemTriggerRunSec) {
       return no(NaturalReason.remNotStable, current: true);
     }
@@ -269,6 +319,43 @@ abstract final class NaturalWakePlanner {
       return no(NaturalReason.lowConfidence, current: true);
     }
     return const NaturalDecision(NaturalReason.fire, samplesCurrent: true);
+  }
+
+  /// Whether the user is awake because they are actively using the app AND the
+  /// band moved at the same time. BOTH are required:
+  ///   * a touch alone proves nothing (the phone may sit on a nightstand with
+  ///     the screen on) and
+  ///   * band motion alone is the stager's business, not this function's.
+  ///
+  /// [interactions] are instants of a touch in the foreground app; [accel] is
+  /// the band's 1 Hz accelerometer rows `[tsMs, x, y, z]` (g) around them. A
+  /// touch counts when, within [kUserMotionHalfWindow] either side of it, at
+  /// least [kUserMotionMinSteps] consecutive-second steps of the gravity vector
+  /// reach [kUserMotionStepG]. A touch older than [kUserInteractionFreshness]
+  /// is ignored. No accel rows (none stored yet, a null axis) means no
+  /// inference: the answer is false, never a guess.
+  static bool userAwakeFromInteraction({
+    required DateTime now,
+    required Iterable<DateTime> interactions,
+    required List<List<double>> accel,
+  }) {
+    if (accel.length < 2) return false;
+    final rows = [...accel]..sort((a, b) => a[0].compareTo(b[0]));
+    final half = kUserMotionHalfWindow.inMilliseconds;
+    for (final t in interactions) {
+      if (t.isAfter(now) || now.difference(t) > kUserInteractionFreshness) continue;
+      final at = t.millisecondsSinceEpoch;
+      var steps = 0;
+      for (var k = 1; k < rows.length; k++) {
+        final a = rows[k - 1], b = rows[k];
+        if (b[0] < at - half || b[0] > at + half) continue;
+        if (b[0] - a[0] > 2000) continue; // a gap is not a step
+        final dx = b[1] - a[1], dy = b[2] - a[2], dz = b[3] - a[3];
+        if (math.sqrt(dx * dx + dy * dy + dz * dz) >= kUserMotionStepG) steps++;
+      }
+      if (steps >= kUserMotionMinSteps) return true;
+    }
+    return false;
   }
 }
 

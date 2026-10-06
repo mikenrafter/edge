@@ -82,6 +82,10 @@ class FakeWakeEnv implements WakeEnv {
   @override
   bool connected = true;
 
+  /// Foreground touches the app reports (oldest first).
+  @override
+  List<DateTime> recentInteractions = [];
+
   /// The epoch (unix s) the fake band currently holds, or null.
   int? armedEpochSec;
   bool confirmed = true;
@@ -103,9 +107,10 @@ class FakeWakeEnv implements WakeEnv {
   final List<List<double>> storedHr = [], storedAccel = [], storedRr = [];
 
   /// Add one second of 1 Hz data at [tsMs] (absolute epoch ms).
-  void store(double tsMs, {double hr = 55, bool accel = true, double? rr = 1000}) {
+  void store(double tsMs,
+      {double hr = 55, bool accel = true, double? rr = 1000, double ax = 0}) {
     storedHr.add([tsMs, hr]);
-    if (accel) storedAccel.add([tsMs, 0, 0, 1]);
+    if (accel) storedAccel.add([tsMs, ax, 0, 1]);
     if (rr != null) storedRr.add([tsMs, rr]);
   }
 

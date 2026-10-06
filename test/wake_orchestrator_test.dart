@@ -5,6 +5,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/sync/headless_gate.dart';
+import 'package:openstrap_edge/wake/natural_wake.dart';
 import 'package:openstrap_edge/wake/wake_orchestrator.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 
@@ -124,7 +125,7 @@ void main() {
       return (r, n.isEmpty ? null : n.last.data['reason'] as String?);
     }
 
-    test('no REM candidate', () async {
+    test('light or deep sleep', () async {
       final (r, reason) = await run((r) => r.observer.next = stageObs('nrem'));
       expect(r.env.haptics, isEmpty);
       expect(reason, 'noRemCandidate');
@@ -221,6 +222,179 @@ void main() {
       await r.tick(plan);
       expect(r.env.sampleRanges.last.$1.millisecondsSinceEpoch, newest.round());
       expect(r.observer.requests.last.priorState, {'v': 1, 'calls': 1});
+    });
+  });
+
+  group('the early trigger is "not light and not deep sleep"', () {
+    final plan = planFor(_t, natural: 60);
+
+    Future<Rig> tickWith(NaturalObservation obs, {Duration before = const Duration(minutes: 30)}) async {
+      final r = Rig(at: _t.subtract(before));
+      r.observer.next = obs;
+      await r.tick(plan);
+      return r;
+    }
+
+    test('REM inside the window wakes early', () async {
+      final r = await tickWith(stageObs('rem'));
+      expect(r.env.haptics.single.kind, WakeHapticKind.natural);
+    });
+
+    test('awake inside the window wakes early', () async {
+      final r = await tickWith(stageObs('wake'));
+      expect(r.env.haptics.single.kind, WakeHapticKind.natural);
+      final fire = (await r.entries('natural')).last.data;
+      expect(fire['reason'], 'fire');
+      expect(fire['stage'], 'wake');
+    });
+
+    test('light or deep sleep does not', () async {
+      final r = await tickWith(stageObs('nrem', runSec: 3600));
+      expect(r.env.haptics, isEmpty);
+    });
+
+    test('unknown never does: every abstention, and no observation', () async {
+      for (final raw in ['staleEvidence', 'noEvidence', 'warmup', 'offWrist',
+          'missingHr', 'missingAccel', 'lowCoverage', 'clockRegressed']) {
+        final r = await tickWith(absentObs(raw));
+        expect(r.env.haptics, isEmpty, reason: raw);
+      }
+      final r = Rig(at: _t.subtract(const Duration(minutes: 30)));
+      r.observer.failWith = StateError('boom');
+      await r.tick(plan);
+      expect(r.env.haptics, isEmpty);
+    });
+
+    test('outside the window nothing fires, however awake', () async {
+      final r = await tickWith(stageObs('wake'),
+          before: const Duration(minutes: 65)); // inside warm-up, before T-N
+      expect(r.env.haptics, isEmpty);
+    });
+
+    test('once only: a later tick never re-fires, awake or REM', () async {
+      final r = await tickWith(stageObs('wake'));
+      for (final o in [stageObs('wake'), stageObs('rem'), stageObs('wake')]) {
+        r.clock.advance(const Duration(seconds: 30));
+        r.observer.next = o;
+        await r.tick(plan);
+      }
+      expect(r.env.haptics, hasLength(1));
+    });
+
+    test('a restart in the same night does not re-fire it either', () async {
+      final r = await tickWith(stageObs('wake'));
+      r.restart();
+      r.clock.advance(const Duration(seconds: 30));
+      await r.tick(plan);
+      expect(r.env.haptics, hasLength(1));
+    });
+
+    test('the end-of-window alarm is untouched: T stays armed and a tick at T '
+        'closes without a second buzz', () async {
+      final r = await tickWith(stageObs('wake'));
+      expect(r.env.cancelCalls, isEmpty);
+      expect(r.env.armedEpochSec, _tSec);
+      r.clock.at(_t);
+      final out = await r.tick(plan);
+      expect(out.closed, isTrue);
+      expect(r.env.haptics, hasLength(1));
+      expect(r.env.armedEpochSec, _tSec);
+    });
+
+    test('Gradual Wake is unchanged: it still steps on its own schedule when '
+        'the stager says light sleep all the way', () async {
+      final r = Rig(at: _t.subtract(const Duration(minutes: 20)));
+      r.observer.next = stageObs('nrem');
+      final both = planFor(_t, natural: 60, gradual: 30, cadenceSec: 300);
+      for (var i = 0; i < 40; i++) {
+        await r.tick(both);
+        r.clock.advance(const Duration(seconds: 30));
+      }
+      final kinds = r.env.haptics.map((h) => h.kind).toSet();
+      expect(kinds, {WakeHapticKind.gradual});
+      expect(r.env.haptics, isNotEmpty);
+    });
+  });
+
+  group('the user is in the app and the band moves with it', () {
+    final plan = planFor(_t, natural: 60);
+
+    /// One tick at T-30min with 1 Hz accel around "now - 20 s" and a touch at
+    /// that moment. [swing] is how far the wrist swings each second.
+    Future<Rig> run({
+      required NaturalObservation obs,
+      bool touch = true,
+      double swing = 0.3,
+      bool accel = true,
+      Duration before = const Duration(minutes: 30),
+    }) async {
+      final r = Rig(at: _t.subtract(before));
+      r.observer.next = obs;
+      final touchAt = r.clock.now.subtract(const Duration(seconds: 20));
+      if (touch) r.env.recentInteractions = [touchAt];
+      final base = touchAt.millisecondsSinceEpoch.toDouble();
+      for (var k = -30; k <= 19; k++) {
+        r.env.store(base + k * 1000, accel: accel, ax: k.isEven ? swing : 0);
+      }
+      await r.tick(plan);
+      return r;
+    }
+
+    test('foreground plus movement is awake: early wake even in light sleep',
+        () async {
+      final r = await run(obs: stageObs('nrem'));
+      expect(r.env.haptics.single.kind, WakeHapticKind.natural);
+      final fire = (await r.entries('natural')).last.data;
+      expect(fire['reason'], 'fire');
+      expect(fire['basis'], 'userActive');
+      final req = (await r.entries('natural_haptic')).first.data;
+      expect(req['basis'], 'userActive');
+    });
+
+    test('foreground without movement is not: the stager decides', () async {
+      final r = await run(obs: stageObs('nrem'), swing: 0);
+      expect(r.env.haptics, isEmpty);
+    });
+
+    test('movement without foreground is the stager only', () async {
+      final r = await run(obs: stageObs('nrem'), touch: false);
+      expect(r.env.haptics, isEmpty);
+      final awake = await run(obs: stageObs('wake'), touch: false);
+      expect(awake.env.haptics, hasLength(1));
+    });
+
+    test('no movement data is never inferred as awake', () async {
+      final r = await run(obs: stageObs('nrem'), accel: false);
+      expect(r.env.haptics, isEmpty);
+    });
+
+    test('outside the window, nothing', () async {
+      final r = await run(
+          obs: stageObs('nrem'), before: const Duration(minutes: 65));
+      expect(r.env.haptics, isEmpty);
+    });
+
+    test('fire once: more touches and movement never buzz twice', () async {
+      final r = await run(obs: stageObs('nrem'));
+      for (var i = 0; i < 3; i++) {
+        r.clock.advance(const Duration(seconds: 30));
+        r.env.recentInteractions = [r.clock.now];
+        await r.tick(plan);
+      }
+      expect(r.env.haptics, hasLength(1));
+    });
+
+    test('a disconnected link sends nothing', () async {
+      final r = Rig(at: _t.subtract(const Duration(minutes: 30)));
+      r.env.connected = false;
+      final touchAt = r.clock.now.subtract(const Duration(seconds: 20));
+      r.env.recentInteractions = [touchAt];
+      final base = touchAt.millisecondsSinceEpoch.toDouble();
+      for (var k = -30; k <= 19; k++) {
+        r.env.store(base + k * 1000, ax: k.isEven ? 0.3 : 0);
+      }
+      await r.tick(plan);
+      expect(r.env.haptics, isEmpty);
     });
   });
 

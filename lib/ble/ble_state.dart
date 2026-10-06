@@ -1395,6 +1395,24 @@ class AlarmConfirmation {
   bool isUnconfirmed(int nowMs) =>
       targetEpoch != null && !confirmed && !isPending(nowMs);
 
+  /// How far before the current SET an event may be stamped and still count as
+  /// about this arm (the strap's clock and ours are not perfectly aligned).
+  static const int staleSlackMs = 5 * 60 * 1000;
+
+  /// A fired/disabled event ([kEvtStrapExecuted], [kEvtAppExecuted],
+  /// [kEvtDisabled]) stamped well before the current SET describes an EARLIER
+  /// alarm. The band delivers old events in bursts at the next sync, and
+  /// acting on last night's "executed" would drop tonight's freshly armed alarm
+  /// from the app's books. ALARM_SET ([kEvtSet]) is not judged here: an earlier
+  /// confirmation of the same occurrence is still a confirmation.
+  bool predatesArm(int id, int eventTsSec) {
+    if (id != kEvtStrapExecuted && id != kEvtAppExecuted && id != kEvtDisabled) {
+      return false;
+    }
+    final at = setAtMs;
+    return at != null && eventTsSec * 1000 < at - staleSlackMs;
+  }
+
   /// Feed a strap event. Returns the resulting [AlarmEffect] the caller acts on,
   /// or null when the event is unrelated to the alarm.
   AlarmEffect? onEvent(int id, int nowMs) {

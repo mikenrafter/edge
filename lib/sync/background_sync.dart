@@ -66,6 +66,7 @@ import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../state/alarm_schedule.dart';
 import 'band_ownership.dart';
+import 'file_log.dart';
 import 'high_freq_wake_window.dart';
 import 'reset_gate.dart';
 import 'paired_device.dart';
@@ -152,6 +153,63 @@ Future<void> headlessDeriveAfterSync() async {
   }
 }
 
+/// One headless arm pass: no AppState here, so the schedule read and the
+/// `alarm_epoch` persistence go straight through LocalDb/SharedPreferences —
+/// the same store the foreground path uses, so whichever side runs next sees a
+/// consistent value. The schedule is read fresh each time (not reused from the
+/// window check) in case the user changed it while the link was busy. Never
+/// throws; the outcome goes to the debug log AND the sync log file.
+Future<void> _headlessArm(BleEngine engine, String phase) async {
+  void note(String line) {
+    debugPrint('[bgsync] $line');
+    FileLog.write('[bgsync] $line');
+  }
+
+  try {
+    final schedule = fillDefaultAlarmSchedule([
+      for (final r in await LocalDb.alarmScheduleRows())
+        AlarmScheduleEntry.fromRow(r),
+    ]);
+    final prefs = await SharedPreferences.getInstance();
+    final result = await armNextScheduledOccurrence(
+      engine: engine,
+      schedule: schedule,
+      currentArmedEpoch: prefs.getInt('alarm_epoch'),
+      // An occurrence the user acknowledged and cancelled must not be
+      // re-armed by a background sync.
+      ackedThroughEpochSec: prefs.getInt('wake_acked_epoch'),
+    );
+    if (result.disabled) {
+      await prefs.remove('alarm_epoch');
+      await prefs.remove('alarm_epoch_confirmed');
+      note('[alarm] headless arm ($phase): schedule empty, band alarm disabled.');
+    } else if (result.epoch != null) {
+      final epoch = result.epoch!;
+      // No live AppState here to catch a late ALARM_SET (event 56) the way
+      // the foreground grace timer does, so wait for it inline — same
+      // grace window as AlarmConfirmation's default (6s) — before this
+      // headless connection closes. Not confirmed within that window still
+      // persists the epoch (optimistic, matching the foreground write) but
+      // as unconfirmed, so the 7pm safety check (AppState._alarmArmedTonight)
+      // won't wrongly treat an un-latched headless arm as covering tonight.
+      final armedAtMs = DateTime.now().millisecondsSinceEpoch;
+      var confirmed = false;
+      for (var i = 0; i < 6 && !confirmed; i++) {
+        await Future.delayed(const Duration(milliseconds: 1000));
+        confirmed = await LocalDb.alarmSetConfirmedSince(armedAtMs);
+      }
+      await prefs.setInt('alarm_epoch', epoch);
+      await prefs.setBool('alarm_epoch_confirmed', confirmed);
+      note('[alarm] headless arm ($phase): wrote epoch=$epoch '
+          'confirmed=$confirmed.');
+    } else if (result.refused) {
+      note('[alarm] headless arm ($phase): the band did not take the alarm.');
+    }
+  } catch (e) {
+    note('[alarm] headless arm ($phase) skipped: $e');
+  }
+}
+
 /// One headless LOCAL drain pass. Safe to call from a background isolate. Never
 /// throws. Connects-by-id if reachable, drains whatever the band buffered to
 /// flash into local storage (non-destructive cursor — catches up everything since
@@ -211,7 +269,13 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
         await LocalDb.insertStrapEvent(e);
         await handleHeadlessAlarmEvent(e.eventId);
       },
-      log: (l) => debugPrint('[bgsync] $l'),
+      log: (l) {
+        debugPrint('[bgsync] $l');
+        // A headless run has no AppState and so no sync log: the alarm lines
+        // (SET_ALARM_TIME, arm accepted/rejected, events) are the evidence of
+        // whether tonight's alarm latched, so they go to the file too.
+        if (l.toLowerCase().contains('alarm')) FileLog.write('[bgsync] $l');
+      },
       onRecordsBatch: (raws, samples) async {
         if (ResetGate.active) return;
         await LocalDb.insertRecordsBatch(raws, samples);
@@ -327,56 +391,24 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
         'samples=${plan.sampleCount} enabled=${plan.shouldEnable} '
         'target=${plan.targetWake?.toIso8601String()}',
       );
+      // THE ALARM BEFORE THE DRAIN. The foreground path arms on connect, ahead
+      // of its burst; this one used to arm only after `runSync()`, so a drain
+      // that threw, or an OS that ended the background slot mid-drain (both
+      // routine on a large backlog), left tonight's alarm unarmed. Arm now, and
+      // again after the drain (the second pass is deduped to nothing unless the
+      // schedule changed meanwhile).
+      await _headlessArm(engine, 'before the drain');
       // Await the full backlog (default timeout): a phone-free run/sleep can leave a
       // large offline backlog on the band's flash. We never abort — if iOS cuts the
       // background window short, the offload persists what it got (flush-before-ACK)
       // and the next wake resumes from the (now-advanced) cursor. No live streams
       // (battery): connect → listen → store → ACK → derive → disconnect.
-      await engine.runSync();
-      // Feature 1's arming engine, headless half: "on every successful
-      // connect AND after each headless sync". No AppState here, so the
-      // schedule read and the `alarm_epoch` persistence go straight through
-      // LocalDb/SharedPreferences — the same store the foreground path uses,
-      // so whichever side runs next sees a consistent value. Re-read fresh
-      // here (not the pre-sync copies above) in case the user changed the
-      // schedule while `runSync()` was draining.
       try {
-        final schedule = fillDefaultAlarmSchedule([
-          for (final r in await LocalDb.alarmScheduleRows())
-            AlarmScheduleEntry.fromRow(r),
-        ]);
-        final prefs = await SharedPreferences.getInstance();
-        final result = await armNextScheduledOccurrence(
-          engine: engine,
-          schedule: schedule,
-          currentArmedEpoch: prefs.getInt('alarm_epoch'),
-          // An occurrence the user acknowledged and cancelled must not be
-          // re-armed by a background sync.
-          ackedThroughEpochSec: prefs.getInt('wake_acked_epoch'),
-        );
-        if (result.disabled) {
-          await prefs.remove('alarm_epoch');
-          await prefs.remove('alarm_epoch_confirmed');
-        } else if (result.epoch != null) {
-          final epoch = result.epoch!;
-          // No live AppState here to catch a late ALARM_SET (event 56) the way
-          // the foreground grace timer does, so wait for it inline — same
-          // grace window as AlarmConfirmation's default (6s) — before this
-          // headless connection closes. Not confirmed within that window still
-          // persists the epoch (optimistic, matching the foreground write) but
-          // as unconfirmed, so the 7pm safety check (AppState._alarmArmedTonight)
-          // won't wrongly treat an un-latched headless arm as covering tonight.
-          final armedAtMs = DateTime.now().millisecondsSinceEpoch;
-          var confirmed = false;
-          for (var i = 0; i < 6 && !confirmed; i++) {
-            await Future.delayed(const Duration(milliseconds: 1000));
-            confirmed = await LocalDb.alarmSetConfirmedSince(armedAtMs);
-          }
-          await prefs.setInt('alarm_epoch', epoch);
-          await prefs.setBool('alarm_epoch_confirmed', confirmed);
-        }
-      } catch (e) {
-        debugPrint('[bgsync] alarm re-arm skipped: $e');
+        await engine.runSync();
+      } finally {
+        // Feature 1's arming engine, headless half: "on every successful
+        // connect AND after each headless sync". Also when the drain threw.
+        await _headlessArm(engine, 'after the drain');
       }
     } finally {
       await engine.disconnect();

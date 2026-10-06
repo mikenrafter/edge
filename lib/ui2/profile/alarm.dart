@@ -793,8 +793,8 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
       naturalSub = 'Turn this day on first';
     } else {
       naturalSub =
-          'Buzzes during estimated REM sleep before your alarm. '
-          'Needs the phone connected.';
+          'Buzzes once before your alarm when you are not in light or '
+          'deep sleep (REM or awake). Needs the phone connected.';
     }
 
     return [
@@ -991,9 +991,10 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
           const SizedBox(height: S.x1),
           Text(
             'It no longer looks for light sleep. Natural Wake estimates '
-            'REM sleep from the band\'s heart rate and movement, which is '
-            'an estimate and not sleep staging, and buzzes during REM '
-            'inside your window. Your old window carries over. It needs '
+            'your stage from the band\'s heart rate and movement, which is '
+            'an estimate and not sleep staging, and buzzes once inside '
+            'your window when you are in REM or awake, never in light or '
+            'deep sleep. Your old window carries over. It needs '
             'the phone connected. The band alarm at your wake time still '
             'always rings.',
             style: F.cap.copyWith(color: p.ink2),

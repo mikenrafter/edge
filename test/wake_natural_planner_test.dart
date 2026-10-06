@@ -21,6 +21,7 @@ NaturalDecision _decide({
   bool fired = false,
   bool acked = false,
   Duration lateness = Duration.zero,
+  bool userActive = false,
 }) =>
     NaturalWakePlanner.decide(NaturalDecisionInput(
       now: now ?? _t.subtract(const Duration(minutes: 30)),
@@ -32,6 +33,7 @@ NaturalDecision _decide({
       alreadyFired: fired,
       acknowledged: acked,
       lateness: lateness,
+      userActive: userActive,
     ));
 
 void main() {
@@ -39,6 +41,180 @@ void main() {
     expect(kNaturalRemTriggerRunSec, 120);
     expect(_decide(obs: remObs(runSec: 119)).reason, NaturalReason.remNotStable);
     expect(_decide(obs: remObs(runSec: 120)).fire, isTrue);
+  });
+
+  group('the rule is "not light and not deep sleep"', () {
+    test('REM fires', () => expect(_decide(obs: stageObs('rem')).fire, isTrue));
+
+    test('awake fires', () {
+      final d = _decide(obs: stageObs('wake'));
+      expect(d.fire, isTrue);
+      expect(d.viaUserActivity, isFalse);
+    });
+
+    test('light or deep (nrem) does not', () {
+      expect(_decide(obs: stageObs('nrem')).fire, isFalse);
+    });
+
+    test('unknown or absent never counts, whatever the abstention, and an '
+        'unrecognised stage name is not eligible', () {
+      for (final raw in ['staleEvidence', 'noEvidence', 'warmup', 'offWrist',
+          'missingHr', 'missingAccel', 'lowCoverage', 'clockRegressed', 'x']) {
+        expect(_decide(obs: absentObs(raw)).fire, isFalse, reason: raw);
+      }
+      expect(_decide(obs: stageObs('unknown')).fire, isFalse);
+      expect(_decide(obs: stageObs('light')).fire, isFalse);
+      expect(_decide(obs: stageObs('deep')).fire, isFalse);
+      expect(kNaturalEligibleStages, {'rem', 'wake'});
+    });
+
+    test('awake is held to the same stability and confidence bar as REM', () {
+      expect(_decide(obs: stageObs('wake', runSec: 119)).reason,
+          NaturalReason.remNotStable);
+      expect(
+          _decide(obs: stageObs('wake', confidence: kNaturalMinConfidence - 0.01))
+              .reason,
+          NaturalReason.lowConfidence);
+    });
+
+    test('awake outside the window, once fired, after an acknowledgement, '
+        'disconnected: nothing', () {
+      expect(
+          _decide(
+                  obs: stageObs('wake'),
+                  now: _t.subtract(const Duration(minutes: 61)))
+              .reason,
+          NaturalReason.beforeWindow);
+      expect(_decide(obs: stageObs('wake'), now: _t).reason,
+          NaturalReason.windowClosed);
+      expect(_decide(obs: stageObs('wake'), fired: true).reason,
+          NaturalReason.alreadyFired);
+      expect(_decide(obs: stageObs('wake'), acked: true).reason,
+          NaturalReason.acknowledged);
+      expect(_decide(obs: stageObs('wake'), connected: false).reason,
+          NaturalReason.disconnected);
+    });
+  });
+
+  group('the user is in the app and the band moves with it', () {
+    test('counts as awake even when the stager says light sleep', () {
+      final d = _decide(obs: stageObs('nrem'), userActive: true);
+      expect(d.fire, isTrue);
+      expect(d.viaUserActivity, isTrue);
+    });
+
+    test('still counts when the stager abstained or failed', () {
+      expect(_decide(obs: absentObs('warmup'), userActive: true).fire, isTrue);
+      expect(
+          NaturalWakePlanner.decide(NaturalDecisionInput(
+            now: _t.subtract(const Duration(minutes: 30)),
+            wakeAt: _t,
+            windowMinutes: 60,
+            eligibility: SleepEligibility.mainSleep,
+            observation: null,
+            connected: true,
+            alreadyFired: false,
+            acknowledged: false,
+            lateness: Duration.zero,
+            userActive: true,
+          )).fire,
+          isTrue);
+    });
+
+    test('never outside the window, for a nap, once fired, acknowledged, '
+        'disconnected or late', () {
+      expect(
+          _decide(
+                  userActive: true,
+                  now: _t.subtract(const Duration(minutes: 61)))
+              .fire,
+          isFalse);
+      expect(_decide(userActive: true, now: _t).fire, isFalse);
+      expect(
+          _decide(userActive: true, eligibility: SleepEligibility.nap).fire,
+          isFalse);
+      expect(
+          _decide(userActive: true, eligibility: SleepEligibility.unknown).fire,
+          isFalse);
+      expect(_decide(userActive: true, fired: true).fire, isFalse);
+      expect(_decide(userActive: true, acked: true).fire, isFalse);
+      expect(_decide(userActive: true, connected: false).fire, isFalse);
+      expect(
+          _decide(userActive: true, lateness: const Duration(minutes: 4)).fire,
+          isFalse);
+    });
+
+    group('the correlation', () {
+      final now = DateTime(2026, 10, 5, 6, 30);
+      final touch = now.subtract(const Duration(seconds: 20));
+      final t0 = touch.millisecondsSinceEpoch.toDouble();
+
+      /// 1 Hz rows from -30 s to +20 s around the touch; [moveEvery] > 0 makes
+      /// the wrist swing every n-th second.
+      List<List<double>> rows({int moveEvery = 0, double step = 0.2}) => [
+            for (var k = -30; k <= 20; k++)
+              [
+                t0 + k * 1000,
+                moveEvery > 0 && k % moveEvery == 0 ? step : 0.0,
+                0.0,
+                1.0,
+              ],
+          ];
+
+      bool awake(List<List<double>> accel,
+              {Iterable<DateTime>? touches, DateTime? at}) =>
+          NaturalWakePlanner.userAwakeFromInteraction(
+            now: at ?? now,
+            interactions: touches ?? [touch],
+            accel: accel,
+          );
+
+      test('a touch with a moving wrist is awake', () {
+        expect(awake(rows(moveEvery: 2)), isTrue);
+      });
+
+      test('a touch with a still wrist (phone on the nightstand) is not', () {
+        expect(awake(rows()), isFalse);
+        expect(awake(rows(moveEvery: 2, step: 0.005)), isFalse);
+      });
+
+      test('a moving wrist with no touch is not this function\'s business', () {
+        expect(awake(rows(moveEvery: 2), touches: const []), isFalse);
+      });
+
+      test('no movement data is never an inference', () {
+        expect(awake(const []), isFalse);
+        expect(awake([rows()[0]]), isFalse);
+      });
+
+      test('the motion has to be near the touch in time', () {
+        // Moving, but only a long time before the touch.
+        final far = [
+          for (var k = -300; k <= -200; k++)
+            [t0 + k * 1000, k.isEven ? 0.3 : 0.0, 0.0, 1.0],
+          ...rows(),
+        ];
+        expect(awake(far), isFalse);
+      });
+
+      test('a stale touch says nothing about now', () {
+        expect(awake(rows(moveEvery: 2),
+                at: touch.add(kUserInteractionFreshness +
+                    const Duration(seconds: 1))),
+            isFalse);
+        expect(awake(rows(moveEvery: 2),
+                at: touch.add(kUserInteractionFreshness)),
+            isTrue);
+      });
+
+      test('a gap in the rows is not a step', () {
+        final gappy = [
+          for (var k = -30; k <= 20; k += 5)
+            [t0 + k * 1000, (k ~/ 5).isEven ? 0.4 : 0.0, 0.0, 1.0],
+        ];
+        expect(awake(gappy), isFalse);
+      });
+    });
   });
 
   group('every Natural window from 15 to 120 minutes', () {
@@ -69,9 +245,9 @@ void main() {
   });
 
   group('abstentions are named and never fire', () {
-    test('no REM candidate: wake and nrem', () {
+    test('light or deep sleep (the stager\'s nrem) never fires', () {
       expect(_decide(obs: stageObs('nrem')).reason, NaturalReason.noRemCandidate);
-      expect(_decide(obs: stageObs('wake')).reason, NaturalReason.noRemCandidate);
+      expect(_decide(obs: stageObs('nrem', runSec: 3600)).fire, isFalse);
     });
 
     test('low confidence', () {

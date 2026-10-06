@@ -260,13 +260,17 @@ void main() {
       final window = run.indexOf('HighFreqWakeWindow.planNow(');
       final apply = run.indexOf('engine.applyHighFreqWakeWindow(');
       final drain = run.indexOf('await engine.runSync();');
-      final rearm = run.indexOf('armNextScheduledOccurrence(');
+      final armBefore = run.indexOf("_headlessArm(engine, 'before the drain')");
+      final rearm = run.indexOf("_headlessArm(engine, 'after the drain')");
       final derive = run.indexOf('await headlessDeriveAfterSync();');
       expect(window, greaterThan(0));
       expect(apply, greaterThan(window));
-      expect(drain, greaterThan(apply));
+      expect(armBefore, greaterThan(apply),
+          reason: 'the alarm is armed before the long drain');
+      expect(drain, greaterThan(armBefore));
       expect(rearm, greaterThan(drain));
       expect(derive, greaterThan(rearm));
+      expect(src, contains('armNextScheduledOccurrence('));
 
       // The gate: defined once, used once, and its else branch only logs.
       expect('mayRunHeadlessAutomaticDerive'.allMatches(code).length, 2,

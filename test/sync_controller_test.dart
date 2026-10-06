@@ -156,9 +156,9 @@ void main() {
 
   group('openSession', () {
     test('engine calls and host work in order: background off, connect, poll, '
-        'band prompt, alarm arm, orphan recovery, pedometer reset, live '
+        'alarm arm, band prompt, orphan recovery, pedometer reset, live '
         'reconcile, then the burst (no history request of its own), then the '
-        'prompt and the alarm again once the backlog landed',
+        'alarm and the prompt again once the backlog landed',
         _case((h, timers) async {
       await h.sync.openSession();
       await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
@@ -167,19 +167,34 @@ void main() {
         'connect:$kRemoteId:gen4',
         'getBattery',
         'getStrapName',
-        'host:prompt',
         'host:armAlarm',
+        'host:prompt',
         'host:recover',
         'host:resetPedometer',
         'reconcile',
         'runSync:180',
-        'host:prompt',
         'host:armAlarm',
+        'host:prompt',
       ]);
       expect(h.sync.busy, isFalse);
       expect(BandOwnership.owner, BandOwnerKind.foreground);
       expect(timers.activePeriodic(kSuperviseEvery), hasLength(1));
       expect(timers.activePeriodic(kBackfillEvery), hasLength(1));
+    }));
+
+    test('a foreground resume over a link that stayed up arms the alarm '
+        'before the prompt (the fast path skips the connect flow)',
+        _case((h, timers) async {
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 2);
+      await h.sync.pauseForBackground();
+      h.engine.events.clear();
+      await h.sync.openSession();
+      await h.waitFor(() => h.engine.count('host:armAlarm') == 1);
+      final arm = h.engine.events.indexOf('host:armAlarm');
+      final prompt = h.engine.events.indexOf('host:prompt');
+      expect(arm, greaterThanOrEqualTo(0));
+      expect(prompt, greaterThan(arm));
     }));
 
     test('busy is held for the session start and lowered in the finally, '
@@ -441,13 +456,15 @@ void main() {
   });
 
   group('the headless background start', () {
-    test('wants a link, supervises, takes the lease, connects, recovers and '
-        'arms the backfill timer; it polls nothing and starts no drain',
+    test('wants a link, supervises, takes the lease, connects, arms the alarm, '
+        'recovers and arms the backfill timer; it polls nothing and starts no '
+        'drain',
         _case((h, timers) async {
       h.sync.background = true;
       await h.sync.startBackgroundSession();
       expect(h.engine.events, [
         'connect:$kRemoteId:gen4',
+        'host:armAlarm',
         'host:recover',
         'host:resetPedometer',
         'reconcile',

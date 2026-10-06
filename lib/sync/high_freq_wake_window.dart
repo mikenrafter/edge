@@ -128,9 +128,18 @@ class HighFreqWakeWindow {
     // The scheduled-alarm window only takes over when the habitual window
     // isn't already covering `now` — habitual stays the reported source
     // whenever it alone would enable, matching pre-existing behaviour.
+    //
+    // "Covering" includes the END: a habitual/expected wake time earlier than
+    // the alarm's window stops the band's prompt before the Natural Wake window
+    // does, leaving the last stretch (where the early wake can fire) without
+    // fresh rows until some later refresh. Then the alarm's window wins.
+    final habitualCovers = habitualPlan != null &&
+        habitualPlan.shouldEnable &&
+        scheduledWindowEnd != null &&
+        !(habitualPlan.targetWake?.isBefore(scheduledWindowEnd) ?? true);
     if (scheduledWindowEnd != null &&
         scheduledWindowMinutes > 0 &&
-        habitualPlan?.shouldEnable != true) {
+        !habitualCovers) {
       final scheduledStart = scheduledWindowEnd.subtract(lease);
       if (!now.isBefore(scheduledStart) && now.isBefore(scheduledWindowEnd)) {
         return HighFreqWakePlan(
