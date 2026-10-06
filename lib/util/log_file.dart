@@ -56,7 +56,7 @@ const String kJsonFileMime = 'application/json';
 /// Hand a copy of the file at [path] to [share] (default the platform share
 /// sheet, anchored at [origin] for the iPad popover). The copy goes to [tempDir]
 /// (default the temporary directory), so the share sheet never holds the saved
-/// file itself. True when the share ran; false, never a throw, when the copy or
+/// file itself (a file already there is shared as is). True when the share ran; false, never a throw, when the copy or
 /// the share failed. The file at [path] is the same either way: a failed share
 /// is not a failed save.
 Future<bool> shareFileCopy(
@@ -70,7 +70,12 @@ Future<bool> shareFileCopy(
   try {
     final d = tempDir ?? await getTemporaryDirectory();
     final name = path.split(Platform.pathSeparator).last;
-    final copy = await File(path).copy('${d.path}/$name');
+    final target = '${d.path}/$name';
+    // A file already in [tempDir] is shared as is: copying it onto itself
+    // truncates it to 0 bytes.
+    final copy = File(path).absolute.path == File(target).absolute.path
+        ? File(path)
+        : await File(path).copy(target);
     await (share ??
         (p) => Share.shareXFiles(
               [XFile(p, mimeType: mimeType)],

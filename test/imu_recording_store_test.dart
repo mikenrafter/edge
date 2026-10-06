@@ -148,6 +148,19 @@ void main() {
       expect(File(saved.path).existsSync(), isTrue);
     });
 
+    test('a file already in the temp directory keeps its bytes', () async {
+      // The motion export writes its ZIP to the temp directory; copying it
+      // onto itself used to share a 0-byte file.
+      final zip = File('${tmp.path}/export.zip')
+        ..writeAsBytesSync(List.generate(64, (i) => i));
+      String? shared;
+      final ok = await shareFileCopy(zip.path,
+          tempDir: tmp, share: (p) async => shared = p);
+      expect(ok, isTrue);
+      expect(shared, zip.path);
+      expect(File(shared!).lengthSync(), 64);
+    });
+
     test('a missing file is false, not a throw', () async {
       expect(
           await shareFileCopy('${docs.path}/nope.jsonl',

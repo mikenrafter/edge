@@ -53,6 +53,8 @@ check: pins analyze test
 
 build apk:
 	$(RUN) flutter build apk --release
+build profile:
+	$(RUN) flutter build apk --profile
 
 bundle:
 	$(RUN) flutter build appbundle --release
