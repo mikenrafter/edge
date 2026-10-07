@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../platform/device_actions.dart';
 import 'device_action.dart';
 import 'ecg_tap_counter.dart';
+import 'time_buzz.dart';
 
 /// How taps beyond the firmware's double tap are counted. One mapping store
 /// (slot n = n taps, 2..5) serves both; only the way the count is made differs.
@@ -259,6 +260,14 @@ class GestureSettings extends ChangeNotifier {
     await prefs.setInt('$_kTapActionsPrefix$n', maskOf(next));
     notifyListeners();
   }
+
+  /// How Tell the time encodes the time. [TimeBuzzMode.count] until changed;
+  /// an unreadable stored value is count. Stored under the SharedPreferences
+  /// key `gesture_time_buzz_mode` as the mode's name ('count', 'binary',
+  /// 'morse').
+  TimeBuzzMode get timeBuzzMode => throw UnimplementedError();
+
+  Future<void> setTimeBuzzMode(TimeBuzzMode mode) => throw UnimplementedError();
 
   Future<void> setEcgOnDoubleTap(bool on) async {
     if (_ecgOnDoubleTap == on) return;

@@ -68,6 +68,7 @@ import 'gesture_failures.dart';
 import 'gesture_settings.dart';
 import 'strap_event.dart';
 import 'tap_names.dart';
+import 'time_buzz.dart';
 import '../data/db.dart';
 import '../platform/device_actions.dart';
 import '../state/feature_flags.dart';
@@ -99,6 +100,13 @@ class GestureOutcome {
 
 typedef GestureHandler = Future<void> Function(StrapEvent event);
 
+/// Plays the time as a gesture: [elements] is [encodeTime] of the injected
+/// local clock in the wearer's [GestureSettings.timeBuzzMode], read when the
+/// action runs. Complete once the band has the gesture (it need not wait for
+/// the last buzz to finish: a 12 PM time is ~20 s, past [actionTimeout]).
+typedef TellTimeHandler = Future<void> Function(
+    StrapEvent event, List<TimeBuzzElement> elements);
+
 class GestureDispatcher {
   final GestureSettings settings;
   final void Function(String line)? log;
@@ -108,6 +116,14 @@ class GestureDispatcher {
   final GestureHandler? onMarkMoment;
   final GestureHandler? onWorkoutToggle;
   final GestureHandler? onLogWater;
+
+  /// Plays [DeviceAction.tellTime]. Missing: the action fails (an in-app action
+  /// with no handler), like the others.
+  final TellTimeHandler? onTellTime;
+
+  /// The local wall clock [DeviceAction.tellTime] reads, on every run. Null:
+  /// package:clock's `clock.now()`.
+  final DateTime Function()? now;
 
   /// True only on a positively identified WHOOP MG.
   final bool Function()? ecgSupported;
@@ -165,6 +181,8 @@ class GestureDispatcher {
     this.onMarkMoment,
     this.onWorkoutToggle,
     this.onLogWater,
+    this.onTellTime,
+    this.now,
     this.ecgSupported,
     this.onEcgTap,
     this.onCountTaps,

@@ -36,6 +36,7 @@ import '../../gestures/device_action.dart';
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/tap_names.dart';
+import '../../gestures/time_buzz.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
@@ -138,6 +139,17 @@ class BandGesturesView extends StatelessWidget {
   /// plain double-tap action list.
   final bool extraTaps;
 
+  /// Tell the time: the encoding in force, and its change callback. The mode
+  /// picker is drawn, in the tab of every gesture that has
+  /// [DeviceAction.tellTime] on, only then: one row per [TimeBuzzMode]
+  /// (key `time-buzz-example:<mode name>`) with its worked example for 3:08 PM
+  /// from the same encoder the band uses, plus a `time-buzz-now` row for
+  /// [timeBuzzNow] (null: the real local time). The picker is the rows' check
+  /// mark and the tap that calls [onTimeBuzzMode].
+  final TimeBuzzMode timeBuzzMode;
+  final ValueChanged<TimeBuzzMode>? onTimeBuzzMode;
+  final DateTime Function()? timeBuzzNow;
+
   /// Opens the Haptics screen, where the buzzes these gestures play are
   /// chosen. The row is always drawn; without a callback it is inert.
   final VoidCallback? onHaptics;
@@ -164,6 +176,9 @@ class BandGesturesView extends StatelessWidget {
     this.thresholds,
     this.onThresholds,
     this.extraTaps = true,
+    this.timeBuzzMode = TimeBuzzMode.count,
+    this.onTimeBuzzMode,
+    this.timeBuzzNow,
     this.onHaptics,
     this.devMode = false,
     this.onDeviceLab,

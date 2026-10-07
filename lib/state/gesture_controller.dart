@@ -61,6 +61,7 @@ class GestureController {
     required String Function() readFailures,
     required Future<void> Function(String json) writeFailures,
     bool Function()? labHold,
+    DateTime Function()? now,
   })  : _settings = settings,
         _haptics = haptics,
         _deviceLab = deviceLab,
@@ -80,6 +81,7 @@ class GestureController {
       onMarkMoment: onMarkMoment,
       onWorkoutToggle: onWorkoutToggle,
       onLogWater: onLogWater,
+      now: now,
       ecgSupported: ecgSupported,
       onEcgTap: (e) async {
         if (!_disposed) await _ecgTapSession.start(e);

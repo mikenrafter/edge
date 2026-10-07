@@ -36,6 +36,9 @@ enum DeviceAction {
   // Native broadcast — sends an Android broadcast intent for Tasker to subscribe
   // to (see NativeChannels.kt). Only offered on Android.
   broadcastToTasker,
+  // In-app: buzzes the current local time on the band (see time_buzz.dart).
+  // APPENDED LAST: the enum order is the persisted bitmask, never reorder.
+  tellTime,
 }
 
 extension DeviceActionX on DeviceAction {
@@ -67,6 +70,8 @@ extension DeviceActionX on DeviceAction {
         return 'log_water';
       case DeviceAction.broadcastToTasker:
         return 'broadcast_to_tasker';
+      case DeviceAction.tellTime:
+        return 'tell_time';
     }
   }
 
@@ -97,6 +102,8 @@ extension DeviceActionX on DeviceAction {
         return 'Log water';
       case DeviceAction.broadcastToTasker:
         return 'Broadcast to Tasker';
+      case DeviceAction.tellTime:
+        return 'Tell the time';
     }
   }
 
@@ -128,6 +135,8 @@ extension DeviceActionX on DeviceAction {
                'nutrition screen.';
       case DeviceAction.broadcastToTasker:
         return 'Send an Android broadcast message that a Tasker task can listen for.';
+      case DeviceAction.tellTime:
+        return 'Buzz the current time on the band.';
     }
   }
 
@@ -162,6 +171,8 @@ extension DeviceActionX on DeviceAction {
         return l?.deviceActionLogWaterLabel ?? label;
       case DeviceAction.broadcastToTasker:
         return l?.deviceActionBroadcastToTaskerLabel ?? label;
+      case DeviceAction.tellTime:
+        return label; // TODO(phase 2): localized string
     }
   }
 
@@ -193,6 +204,8 @@ extension DeviceActionX on DeviceAction {
         return l?.deviceActionLogWaterBlurb ?? blurb;
       case DeviceAction.broadcastToTasker:
         return l?.deviceActionBroadcastToTaskerBlurb ?? blurb;
+      case DeviceAction.tellTime:
+        return blurb; // TODO(phase 2): localized string
     }
   }
 
