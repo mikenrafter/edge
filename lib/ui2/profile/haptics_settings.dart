@@ -39,6 +39,7 @@ import '../screens/calm_breathing.dart' show CalmBreathing;
 import '../ui2.dart';
 import 'buzz_pattern.dart';
 import 'device_lab.dart' show DeviceLab;
+import 'alarm.dart' show AlarmScreen;
 import 'band_notifications.dart' show BandNotifications;
 import 'gestures.dart' show BandGestures;
 import 'haptic_pattern_editor.dart';
@@ -205,6 +206,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
           'apps' => const BandNotifications(),
           'gestures' => const BandGestures(),
           'breathing' => const CalmBreathing(),
+          'alarm' => const AlarmScreen(),
           _ => const NotificationSettings(),
         },
       );
@@ -424,8 +426,10 @@ class HapticsSettingsView extends StatelessWidget {
     HapticsTab.cues => [
       _slotGroup(c, 'gestures'),
       _slotGroup(c, 'breathing'),
+      _slotGroup(c, 'alarm'),
       _sectionLink(p, 'gestures'),
       _sectionLink(p, 'breathing'),
+      _sectionLink(p, 'alarm'),
     ],
     HapticsTab.band => [
       SettingsAccordion('Safety',

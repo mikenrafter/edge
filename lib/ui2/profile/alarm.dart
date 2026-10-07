@@ -46,6 +46,7 @@ import '../../state/capabilities_scope.dart';
 import '../../wake/wake_settings.dart';
 import '../../wake/wake_trace_text.dart';
 import '../screens/home_screen.dart' show weekdayShortName;
+import 'snooze_settings_rows.dart';
 import '../ui2.dart';
 import 'profile.dart' show SetRow, SettingsAccordion, kDisabledOpacity;
 import 'settings.dart' show editExpectedSleepSchedule;
@@ -144,6 +145,8 @@ class _AlarmScreenState extends State<AlarmScreen> {
             timelineFor: (at, entry) => app.wake.timelineAt(at, entry: entry),
             wakeTrace: trace.data ?? const [],
             resent: app.alarmResentUnconfirmed,
+            snoozeSettings: app.snoozeSettings,
+            onSnoozeSettings: app.setSnoozeSettings,
           ),
         );
       },
@@ -207,7 +210,6 @@ class AlarmScreenView extends StatefulWidget {
 
   /// The main alarm's dismiss/snooze settings and their change callback (applied
   /// at once, not part of the Save draft). Null settings omit the rows.
-  /// STUB (red phase): accepted, not yet rendered.
   final SnoozeSettings? snoozeSettings;
   final ValueChanged<SnoozeSettings>? onSnoozeSettings;
 
@@ -626,6 +628,17 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                           ),
                           children: _timelineChildren(c, p, week),
                         ),
+                        // The main alarm's dismiss / snooze: applied at once,
+                        // not part of the Save draft. Not an accordion, so the
+                        // screen's sections stay the two they are.
+                        if (w.snoozeSettings != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: S.x3),
+                            child: SnoozeSettingsRows(
+                              settings: w.snoozeSettings!,
+                              onChanged: w.onSnoozeSettings,
+                            ),
+                          ),
                         const SizedBox(height: S.x4),
                         // Present always; inert and dimmed when there is nothing
                         // to test or cancel, or no band to tell.

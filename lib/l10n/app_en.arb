@@ -12554,5 +12554,87 @@
         "type": "String"
       }
     }
+  },
+  "snoozeCardUntil": "Snoozed until {time}",
+  "@snoozeCardUntil": {
+    "description": "Home card while a main-alarm snooze is pending; {time} is HH:MM.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "snoozeCardBuzzing": "Your alarm is buzzing again",
+  "@snoozeCardBuzzing": {
+    "description": "Home card while the snooze re-alarm is buzzing."
+  },
+  "snoozeCardHint": "or double-tap the band",
+  "@snoozeCardHint": {
+    "description": "Home card caption: double-tapping the band also dismisses."
+  },
+  "snoozeImUp": "I'm up",
+  "@snoozeImUp": {
+    "description": "Button that dismisses the snooze."
+  },
+  "snoozeDismissCopy": "{taps, plural, =1{1 double tap to dismiss — fewer is a snooze} other{{taps} double taps to dismiss — fewer is a snooze}}",
+  "@snoozeDismissCopy": {
+    "description": "Alarm settings: how many double taps dismiss the alarm; fewer is a snooze.",
+    "placeholders": {
+      "taps": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeRowTaps": "Double taps to dismiss",
+  "@snoozeRowTaps": {
+    "description": "Alarm settings row: double taps that dismiss."
+  },
+  "snoozeRowWindow": "Dismiss window",
+  "@snoozeRowWindow": {
+    "description": "Alarm settings row: how long the taps are counted."
+  },
+  "snoozeRowMinutes": "Snooze for",
+  "@snoozeRowMinutes": {
+    "description": "Alarm settings row: snooze length."
+  },
+  "snoozeRowCap": "Stop escalating after",
+  "@snoozeRowCap": {
+    "description": "Alarm settings row: after how many snoozes the re-alarm stops getting stronger."
+  },
+  "snoozeValueTaps": "{n, plural, =1{1 double tap} other{{n} double taps}}",
+  "@snoozeValueTaps": {
+    "description": "Row value: number of double taps.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueSeconds": "{s} s",
+  "@snoozeValueSeconds": {
+    "description": "Row value: seconds.",
+    "placeholders": {
+      "s": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueMinutes": "{m} min",
+  "@snoozeValueMinutes": {
+    "description": "Row value: minutes.",
+    "placeholders": {
+      "m": {
+        "type": "int"
+      }
+    }
+  },
+  "snoozeValueCap": "{n, plural, =1{1 snooze} other{{n} snoozes}}",
+  "@snoozeValueCap": {
+    "description": "Row value: number of snoozes.",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
   }
 }

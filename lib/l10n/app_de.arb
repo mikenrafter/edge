@@ -2356,5 +2356,18 @@
   "ecgProgress": "{pct} % abgeschlossen",
   "ecgWaveformEmpty": "Zu dieser Aufzeichnung wurde keine Kurve gespeichert.",
   "ecgWaveformLabel": "Akzeptierte Kurve in Mikrovolt, wie vom Band gesendet. Lücken sind fehlende Sekunden.",
-  "ecgSampleNote": "{count} Messwerte bei {rate} Hz, gefiltert, eingangsbezogene µV. Keine Ableitung oder Polarität wird behauptet."
+  "ecgSampleNote": "{count} Messwerte bei {rate} Hz, gefiltert, eingangsbezogene µV. Keine Ableitung oder Polarität wird behauptet.",
+  "snoozeCardUntil": "Schlummern bis {time}",
+  "snoozeCardBuzzing": "Dein Wecker summt wieder",
+  "snoozeCardHint": "oder tippe zweimal auf das Band",
+  "snoozeImUp": "Ich bin wach",
+  "snoozeDismissCopy": "{taps, plural, =1{1 Doppeltipp zum Beenden – weniger ist Schlummern} other{{taps} Doppeltipps zum Beenden – weniger ist Schlummern}}",
+  "snoozeRowTaps": "Doppeltipps zum Beenden",
+  "snoozeRowWindow": "Zeitfenster zum Beenden",
+  "snoozeRowMinutes": "Schlummern für",
+  "snoozeRowCap": "Steigerung endet nach",
+  "snoozeValueTaps": "{n, plural, =1{1 Doppeltipp} other{{n} Doppeltipps}}",
+  "snoozeValueSeconds": "{s} s",
+  "snoozeValueMinutes": "{m} Min.",
+  "snoozeValueCap": "{n, plural, =1{1 Schlummerrunde} other{{n} Schlummerrunden}}"
 }

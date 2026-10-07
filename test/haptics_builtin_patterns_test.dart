@@ -124,8 +124,8 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('seeding', () {
-    test('a fresh store holds the gesture and breathing cue built-ins and '
-        'the ten presets, and none per alert rule', () async {
+    test('a fresh store holds the gesture, breathing and alarm snooze built-ins '
+        'and the ten presets, and none per alert rule', () async {
       final all = await _builtIns();
       final keys = [for (final p in all) _key(p)];
       expect(keys.toSet(), hasLength(keys.length), reason: 'no duplicates');
@@ -137,6 +137,10 @@ void main() {
         'breath.exhale',
         'breath.hold',
         'breath.done',
+        'alarm.snooze.confirm',
+        'alarm.dismiss.confirm',
+        'alarm.snooze.cancelled',
+        'alarm.snooze.realarm',
       ]) {
         expect(keys, contains(k));
       }
@@ -149,7 +153,8 @@ void main() {
         expect(
             k!.startsWith('preset.') ||
                 k.startsWith('gesture.') ||
-                k.startsWith('breath.'),
+                k.startsWith('breath.') ||
+                k.startsWith('alarm.'),
             isTrue,
             reason: 'unexpected systemKey $k');
       }

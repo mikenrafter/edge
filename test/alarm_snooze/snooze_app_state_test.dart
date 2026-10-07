@@ -372,12 +372,14 @@ void main() {
     test('_onLiveEvent consumes a double tap for the snooze AFTER Natural '
         'Wake\'s own repeat check', () {
       final body = codeOnly(bodyOf(src, 'void _onLiveEvent('));
-      final natural = body.indexOf('isNaturalRepeating');
+      final natural = body.indexOf('_naturalRepeating()');
       final snooze = body.indexOf('consumesDoubleTaps');
       expect(natural, isNonNegative);
       expect(snooze, greaterThan(natural));
-      expect(body, contains('debugNaturalRepeating'),
+      final helper = codeOnly(bodyOf(src, 'bool _naturalRepeating('));
+      expect(helper, contains('debugNaturalRepeating'),
           reason: 'the Natural check reads the same seam the tests use');
+      expect(helper, contains('isNaturalRepeating'));
     });
 
     test('the keep-alive ticks the snooze before anything that can return '

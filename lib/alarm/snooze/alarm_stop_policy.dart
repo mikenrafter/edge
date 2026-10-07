@@ -1,9 +1,8 @@
 // alarm_stop_policy.dart — the pure rule for what a stopped main alarm becomes.
 //
-// STUB (red phase): every body throws. The behaviour is pinned by
-// test/alarm_snooze/alarm_stop_policy_test.dart.
+// Pinned by test/alarm_snooze/alarm_stop_policy_test.dart.
 //
-// Intended rule (owner spec 2026-10-07):
+// The rule (owner spec 2026-10-07):
 //   * error                      -> [AlarmStopDecision.error] (log only).
 //   * a confirmed wake exists    -> [AlarmStopDecision.confirmedAwake].
 //   * userDoubleTap: the tap that stopped the alarm is tap #1. Taps in
@@ -27,7 +26,11 @@ enum AlarmStopCause {
   /// The engine's termination string ('user_double_tap', 'expired', 'error').
   /// Anything else, including null and 'unknown', is [error]: no snooze is
   /// invented from a cause nobody understands.
-  static AlarmStopCause parse(String? band) => throw UnimplementedError();
+  static AlarmStopCause parse(String? band) => switch (band) {
+        'user_double_tap' => userDoubleTap,
+        'expired' => expired,
+        _ => error,
+      };
 }
 
 enum AlarmStopDecision { pending, dismissed, snooze, confirmedAwake, error }
@@ -51,6 +54,19 @@ class AlarmStopPolicy {
     required Iterable<DateTime> taps,
     required bool confirmedWake,
     required DateTime now,
-  }) =>
-      throw UnimplementedError();
+  }) {
+    if (cause == AlarmStopCause.error) return AlarmStopDecision.error;
+    if (confirmedWake) return AlarmStopDecision.confirmedAwake;
+    if (cause == AlarmStopCause.expired) return AlarmStopDecision.snooze;
+    final end = stoppedAt.add(window);
+    var counted = cause == AlarmStopCause.userDoubleTap ? 1 : 0;
+    for (final t in taps) {
+      if (t.isBefore(stoppedAt) || t.isAfter(end) || t.isAfter(now)) continue;
+      counted++;
+    }
+    if (counted >= requiredTaps) return AlarmStopDecision.dismissed;
+    return now.isBefore(end)
+        ? AlarmStopDecision.pending
+        : AlarmStopDecision.snooze;
+  }
 }

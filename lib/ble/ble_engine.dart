@@ -2049,8 +2049,8 @@ class BleEngine implements AlarmBandWriter {
 
   /// Called for every HAPTICS_TERMINATED(100) with its cause string
   /// ('user_double_tap' | 'expired' | 'error' | 'unknown') and the phone-clock
-  /// receipt time. AppState hangs the main-alarm snooze on it. Never throws
-  /// into the engine. STUB (red phase): declared, not yet called.
+  /// receipt time. AppState hangs the main-alarm snooze on it. A throw from it
+  /// is logged and goes no further.
   void Function(String cause, DateTime at)? onHapticsTerminated;
 
   // ── reconnect/offload policy ────────────────────────────────────────────────
@@ -5712,6 +5712,13 @@ class BleEngine implements AlarmBandWriter {
         }
         _log('[ALARM] haptics terminated: cause=$_lastHapticsTermination '
             'code=${f['haptics_termination_code']} ts=${event.tsEpoch}');
+        // The main alarm's snooze hangs on this. A throw from it must never
+        // reach the frame path.
+        try {
+          onHapticsTerminated?.call(_lastHapticsTermination!, clock());
+        } catch (e) {
+          _log('[ALARM] haptics-terminated hook failed: $e');
+        }
         return;
       case EventId.highFreqSyncPrompt:
         _log(

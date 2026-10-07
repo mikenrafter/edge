@@ -2356,5 +2356,18 @@
   "ecgProgress": "{pct} % terminé",
   "ecgWaveformEmpty": "Aucun tracé n’a été enregistré avec cette lecture.",
   "ecgWaveformLabel": "Tracé accepté en microvolts tel qu’envoyé par le bracelet. Les trous sont des secondes manquantes.",
-  "ecgSampleNote": "{count} échantillons à {rate} Hz, filtrés, µV rapportés à l’entrée. Aucune dérivation ni polarité n’est revendiquée."
+  "ecgSampleNote": "{count} échantillons à {rate} Hz, filtrés, µV rapportés à l’entrée. Aucune dérivation ni polarité n’est revendiquée.",
+  "snoozeCardUntil": "Reportée jusqu'à {time}",
+  "snoozeCardBuzzing": "Votre alarme vibre de nouveau",
+  "snoozeCardHint": "ou touchez deux fois le bracelet",
+  "snoozeImUp": "Je suis réveillé",
+  "snoozeDismissCopy": "{taps, plural, =1{1 double tape pour arrêter : moins, c'est un report} other{{taps} doubles tapes pour arrêter : moins, c'est un report}}",
+  "snoozeRowTaps": "Doubles tapes pour arrêter",
+  "snoozeRowWindow": "Fenêtre d'arrêt",
+  "snoozeRowMinutes": "Reporter de",
+  "snoozeRowCap": "Arrêter l'escalade après",
+  "snoozeValueTaps": "{n, plural, =1{1 double tape} other{{n} doubles tapes}}",
+  "snoozeValueSeconds": "{s} s",
+  "snoozeValueMinutes": "{m} min",
+  "snoozeValueCap": "{n, plural, =1{1 report} other{{n} reports}}"
 }

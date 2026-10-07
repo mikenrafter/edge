@@ -56,6 +56,7 @@ import 'day_timeline.dart' show DayTimelineScreen;
 import 'illness_observation.dart';
 import 'metric_detail.dart';
 import 'natural_wake_card.dart';
+import 'snooze_card.dart';
 import 'readiness_detail.dart';
 import 'sleep_detail.dart';
 
@@ -1693,6 +1694,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       return _refreshable(ListView(padding: pad, children: [
         const SizedBox(height: S.x4),
         ?_naturalWakeCard(c),
+        ?snoozeCardFor(c),
         // No day on screen ⇒ no `todayId`, so this renders the dated form.
         // Shown here TOO: a first run, a failed read and a sync in flight are
         // exactly when "how far are we?" is worth answering, and the header
@@ -1773,6 +1775,8 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       ?rebuilt,
       // Natural Wake is buzzing and waiting for "I'm up": above everything.
       ?_naturalWakeCard(c),
+      // A pending main-alarm snooze, with the same "I'm up".
+      ?snoozeCardFor(c),
 
       // ── the one observation Home is allowed to make ──
       //

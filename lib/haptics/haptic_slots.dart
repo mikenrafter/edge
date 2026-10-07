@@ -69,6 +69,12 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot(kBreathHoldKey, 'Hold'),
     HapticSlot(kBreathDoneKey, 'Session complete'),
   ]),
+  HapticSlotSection('alarm', 'Alarm snooze', [
+    HapticSlot(kAlarmSnoozeConfirmKey, 'Snooze set'),
+    HapticSlot(kAlarmDismissConfirmKey, 'Alarm dismissed'),
+    HapticSlot(kAlarmSnoozeCancelledKey, 'Snooze cancelled (you are up)'),
+    HapticSlot(kAlarmReAlarmKey, 'Snooze re-alarm'),
+  ]),
 ];
 
 /// The relay's alert slot, which is a relay channel's pattern, not a rule's.
@@ -91,11 +97,14 @@ bool isBreathCueSlot(String slotKey) =>
     slotKey == kBreathHoldKey ||
     slotKey == kBreathDoneKey;
 
-/// Whether [slotKey] is a cue slot: a gesture cue or a breathing cue. Its
+/// Whether [slotKey] is a cue slot: a gesture cue, a breathing cue or one of the
+/// four alarm snooze slots (they are kept the same way). Its
 /// assigned pattern is a pattern id in [decodeCueAssignments]'s map, and it
 /// plays the cue's own built-in with none.
 bool isCueSlot(String slotKey) =>
-    isGestureCueSlot(slotKey) || isBreathCueSlot(slotKey);
+    isGestureCueSlot(slotKey) ||
+    isBreathCueSlot(slotKey) ||
+    isAlarmSlot(slotKey);
 
 /// The pattern id each cue was given, from its stored JSON (never
 /// throws; anything unreadable is none).
@@ -135,6 +144,7 @@ Map<String, BuzzSequence> resolveCuePatterns(
     kBreathExhaleKey,
     kBreathHoldKey,
     kBreathDoneKey,
+    ...kAlarmSlotKeys,
   ]) {
     final given = assignments[key];
     final p = (given == null ? null : store.byId(given)) ??
