@@ -122,6 +122,16 @@ class HapticsService {
   /// [BandHapticQueue.asAlarm].
   T asAlarm<T>(T Function() work) => _queue.asAlarm(work);
 
+  /// Run [work] so its band jobs are dropped when [wanted] turns false before
+  /// they start. See [BandHapticQueue.asWanted].
+  T asWanted<T>(bool Function() wanted, T Function() work) =>
+      _queue.asWanted(wanted, work);
+
+  /// Run [work], handing [onQueued] the "band is free of it" future of every
+  /// job it queues. See [BandHapticQueue.asObserved].
+  T asObserved<T>(void Function(Future<void> over) onQueued, T Function() work) =>
+      _queue.asObserved(onQueued, work);
+
   /// Run [work] with jobs that start now or are rejected. Used for phase cues,
   /// where a late vibration would describe the wrong phase.
   T asImmediate<T>(T Function() work) => _queue.asImmediate(work);

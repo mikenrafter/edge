@@ -17,6 +17,7 @@
 // point at which the band queue frees the band. The window runs from there.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/alarm/snooze/snooze_controller.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_schedule.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_settings.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';
@@ -160,9 +161,12 @@ void main() {
       await rig.tap();
       rig.clock.advance(const Duration(milliseconds: 500));
       await rig.tap();
-      expect(rig.count(Played.dismissConfirm), greaterThanOrEqualTo(1),
+      // (The cue itself is not read off the writes: on this rig a band that
+      // never reports "ended" keeps the cue's later commands waiting.)
+      expect(rig.app.snooze.status.value.phase, SnoozePhase.idle,
           reason: 'the window ran out 0.5 s into the last phrase: the taps '
               'after the playback finished were rejected');
+      expect(await storedState(), isNull);
     });
 
     test('control: taps later than the window after the playback ended do '
@@ -190,7 +194,8 @@ void main() {
       await rig.tap();
       rig.clock.advance(kSec * 1);
       await rig.tap();
-      expect(rig.count(Played.dismissConfirm), 0);
+      expect(rig.app.snooze.status.value.phase, isNot(SnoozePhase.idle),
+          reason: 'not dismissed: it snoozes again');
     });
   });
 }

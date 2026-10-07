@@ -349,6 +349,15 @@ const Symbol kBandGestureStartedKey = #openstrapBandGestureStarted;
 /// [BandHapticQueue.asAlarm]).
 const Symbol kBandAlarmKey = #openstrapBandAlarm;
 
+/// Zone key carrying a `bool Function()` "this job is still wanted", asked every
+/// time the queue considers starting the job (see [BandHapticQueue.asWanted]).
+const Symbol kBandWantedKey = #openstrapBandWanted;
+
+/// Zone key carrying a `void Function(Future<void> over)`: told, for every job
+/// queued in the zone, the future that completes when the band is free of it
+/// (see [BandHapticQueue.asObserved]).
+const Symbol kBandObserveKey = #openstrapBandObserve;
+
 /// Zone key marking work that must start now or be rejected. Phase cues use it
 /// so a delayed buzz cannot land in the next breathing phase.
 const Symbol kBandImmediateKey = #openstrapBandImmediate;
@@ -358,6 +367,7 @@ class _Job {
       this.deadline,
       {this.lab = false,
       this.hold,
+      this.wanted,
       this.gesture,
       this.exempt = false,
       this.alarm = false});
@@ -371,6 +381,10 @@ class _Job {
   DateTime deadline;
   final bool lab;
   final BandHold? hold;
+
+  /// Asked before the job would start (also while the lab holds it): false
+  /// drops it as rejected. Null: always wanted.
+  final bool Function()? wanted;
 
   /// The gesture this job's haptic belongs to ([BandHapticQueue.asGesture]).
   final String? gesture;
@@ -565,6 +579,27 @@ class BandHapticQueue {
         zoneValues: <Object?, Object?>{kBandAlarmKey: true},
       );
 
+  /// Run [work] so every job it queues is dropped (rejected, never written)
+  /// when [wanted] says false by the time the queue would start it. The queue
+  /// asks whenever it looks at its waiting jobs (a job ahead finished, the lab
+  /// closed), so a job queued for something that has ended meanwhile never
+  /// plays. [wanted] must not throw.
+  T asWanted<T>(bool Function() wanted, T Function() work) => runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandWantedKey: wanted},
+      );
+
+  /// Run [work] so [onQueued] is handed, for every band job it queues, the
+  /// future that completes when the band is free of THAT job: delivered, its
+  /// playback ended (or its settle time ran out), the gap after it passed; or
+  /// dropped. Unlike [whenIdle] it waits for nothing else.
+  T asObserved<T>(
+          void Function(Future<void> over) onQueued, T Function() work) =>
+      runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandObserveKey: onQueued},
+      );
+
   /// Run [work] so every job it queues either starts immediately or is
   /// rejected. Immediate jobs never wait behind another job, the Device lab,
   /// or the command ledger's rolling budget.
@@ -659,13 +694,17 @@ class BandHapticQueue {
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
     final hold = Zone.current[kBandHoldKey];
+    final wanted = Zone.current[kBandWantedKey];
     final j = _Job(job, commands, timeout, settle, startBy,
         clock.now().add(startBy),
         lab: lab,
         hold: hold is BandHold ? hold : null,
+        wanted: wanted is bool Function() ? wanted : null,
         gesture: gesture,
         alarm: alarm,
         exempt: gesture != null && Zone.current[kBandGestureStartedKey] == true);
+    final observe = Zone.current[kBandObserveKey];
+    if (observe is void Function(Future<void>)) observe(j.over.future);
     _forgetGestures(clock.now());
     if (gesture != null && _startedGestures.containsKey(gesture)) {
       _startedGestures[gesture] = clock.now();
@@ -718,6 +757,10 @@ class BandHapticQueue {
     var i = 0;
     while (!_busy && i < _waiting.length) {
       final j = _waiting[i];
+      if (j.wanted != null && !j.wanted!()) {
+        _drop(j, why: 'was no longer wanted');
+        continue;
+      }
       // Lab jobs sit first; a held job means the lab is open and no lab job is
       // waiting: the band stays idle for the lab.
       if (j.held) break;

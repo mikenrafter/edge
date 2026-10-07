@@ -5678,7 +5678,15 @@ class AppState extends ChangeNotifier {
   SnoozeController? _snooze;
   SnoozeSettings _snoozeSettings = const SnoozeSettings();
 
-  bool get _snoozeOn => _snoozeSettings.enabled;
+  /// Snooze runs only when the wearer switched it on AND the paired band can
+  /// drive it (it reports how an alarm stopped: [Feature.alarmSnooze]). A
+  /// preference kept from another band is inert on one that cannot.
+  bool get _snoozeOn =>
+      _snoozeSettings.enabled && capabilities.has(Feature.alarmSnooze);
+
+  /// Bumped whenever a snooze chain ends; a band job queued for an earlier
+  /// chain is no longer wanted.
+  int _snoozeChain = 0;
 
   /// The newest native alarm firing (events 57 and 58) in PHONE time, when it
   /// was received, and whether its strap clock was unset.
@@ -5699,8 +5707,35 @@ class AppState extends ChangeNotifier {
   /// whether it is playing: terminations then are our own pattern ending.
   DateTime? _appPlaybackEndedAt;
 
+  /// The app's recent band playbacks (start, end), in the app's wake clock:
+  /// the newest few. A termination is attributed to them by its EVENT time.
+  final List<(DateTime, DateTime)> _appPlaybacks = [];
+  DateTime? _appPlaybackStartedAt;
+
   void _onHapticsBusy(bool busy) {
-    if (!busy) _appPlaybackEndedAt = _wakeNow();
+    final now = _wakeNow();
+    if (busy) {
+      _appPlaybackStartedAt ??= now;
+      return;
+    }
+    _appPlaybackEndedAt = now;
+    _appPlaybacks.add((_appPlaybackStartedAt ?? now, now));
+    _appPlaybackStartedAt = null;
+    if (_appPlaybacks.length > 32) _appPlaybacks.removeAt(0);
+  }
+
+  /// Whether [phoneTime] lies in one of the app's playbacks (or within
+  /// [kAppPlaybackTail] after it ended).
+  bool _insideAppPlayback(DateTime phoneTime) {
+    final open = _appPlaybackStartedAt;
+    if (open != null && !phoneTime.isBefore(open)) return true;
+    for (final (start, end) in _appPlaybacks) {
+      if (!phoneTime.isBefore(start) &&
+          !phoneTime.isAfter(end.add(kAppPlaybackTail))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   bool _appPlaying() {
@@ -5732,15 +5767,15 @@ class AppState extends ChangeNotifier {
   /// unset strap clock (here, or on the alarm it answers) is receipt time.
   ({DateTime at, bool live}) _snoozeTapTime(StrapEvent e) {
     final received = e.receivedAt;
-    if (_alarmClockUnset || e.tsEpoch < kMinPlausibleStrapEpoch) {
-      return (at: received, live: true);
-    }
+    if (e.tsEpoch < kMinPlausibleStrapEpoch) return (at: received, live: true);
+    // A believable stamp says how old the tap is, also in receipt-time mode
+    // (no ClockRef: drift 0): a tap from the band's flash is history and never
+    // counts, however new its identity.
     final phone = _strapToPhone(e.strapTime);
     final age = received.difference(phone);
-    return (
-      at: age.isNegative ? received : phone,
-      live: age <= kLiveEventWindow,
-    );
+    final live = age <= kLiveEventWindow;
+    if (_alarmClockUnset) return (at: received, live: live);
+    return (at: age.isNegative ? received : phone, live: live);
   }
 
   /// A native alarm fired (EXECUTED 57 / 58): [stamp] is its phone time (receipt
@@ -5867,6 +5902,7 @@ class AppState extends ChangeNotifier {
   /// lease and cancels the backstop. Does not depend on the status (a fire the
   /// snooze never saw has a lease and a backstop too).
   Future<void> _endSnooze(String why) async {
+    _snoozeChain++; // a re-alarm still queued for the band is dropped
     final had = _snooze != null ||
         _fireGuardDue != null ||
         _snoozeBackstopFor != null;
@@ -5906,10 +5942,22 @@ class AppState extends ChangeNotifier {
       store: _snoozeStore,
       settings: () => _snoozeSettings,
       knownFire: () => _nativeAlarmFiredAt,
+      onRestoredChainOver: _dropDeadProcessBackstop,
       log: _log,
     );
     c.status.addListener(_onSnoozeStatus);
     return c;
+  }
+
+  /// A restored chain was found over: this process does not know the backstop
+  /// the dead one scheduled (its id is fixed), so it is cancelled outright.
+  void _dropDeadProcessBackstop() {
+    if (_disposed) return;
+    _fireGuardDue = null;
+    _snoozeBackstopFor = null;
+    _snoozeNotifTail = _snoozeNotifTail
+        .then((_) => NotificationCenter.instance.cancelSnoozeBackstop());
+    unawaited(_refreshHighFreqWakeWindow());
   }
 
   SnoozeSettings get snoozeSettings => _snoozeSettings;
@@ -6052,6 +6100,13 @@ class AppState extends ChangeNotifier {
     final unset = bandAt == null || _nativeFireClockUnset;
     final fire = unset ? (_nativeFireReceivedAt ?? fired) : fired;
     final stop = unset ? receivedAt : _strapToPhone(bandAt);
+    if (!unset && _insideAppPlayback(stop)) {
+      // Attributed by EVENT time: this ended our own playback, however late
+      // it was heard (receipt-time mode is attributed by receipt, above).
+      _log('[snooze] stop ($cause) stamped inside the app\'s own playback '
+          '(heard late): that is our pattern ending, not the alarm.');
+      return;
+    }
     final since = stop.difference(fire);
     if (since > kSnoozeAlarmWindow || since < const Duration(minutes: -1)) {
       _log('[snooze] stop ($cause) ${since.inSeconds} s from the native alarm: '
@@ -6088,6 +6143,11 @@ class AppState extends ChangeNotifier {
     }
     final now = DateTime.now();
     final reAlarm = slot == kAlarmReAlarmKey;
+    // The chain this belongs to: once it ends (switched off, Cancel-all,
+    // unpaired) a job still waiting in the band queue is dropped, never written.
+    final chain = _snoozeChain;
+    bool wanted() => !_disposed && _snoozeOn && chain == _snoozeChain;
+    final overs = <Future<void>>[];
     Future<BuzzDelivery> deliver() => seq != null
         ? haptics.deliver(seq, onFirstWrite: onFirstWrite)
         : gestureCues.slot(slot, onFirstWrite: onFirstWrite);
@@ -6096,9 +6156,10 @@ class AppState extends ChangeNotifier {
       transportTargets: const {'band'},
       deliver: (_, _) async => _disposed
           ? BuzzDelivery.rejected
-          : reAlarm
-              ? haptics.asAlarm(deliver)
-              : deliver(),
+          : haptics.asObserved(
+              overs.add,
+              () => haptics.asWanted(wanted,
+                  () => reAlarm ? haptics.asAlarm(deliver) : deliver())),
       deliverTimeout: seq != null
           ? haptics.sequenceTimeout(seq)
           : const Duration(seconds: 30),
@@ -6106,7 +6167,12 @@ class AppState extends ChangeNotifier {
       eventId: 'snooze:$slot:${now.microsecondsSinceEpoch}',
       sourceTime: now,
     );
-    return o.targets.contains('band');
+    final taken = o.targets.contains('band');
+    // The re-alarm is over when the band is done with it (its ended event or
+    // the settle time): the controller's tap window runs from then, not from
+    // the last write.
+    if (taken && reAlarm && !_disposed) await Future.wait(overs);
+    return taken;
   }
 
   /// Replace what plays a slot. Tests only; set before [snooze] is first read.

@@ -105,7 +105,10 @@ class SnoozeSettingsRows extends StatelessWidget {
           switchTitle,
           settings.enabled,
           (v) => onChanged?.call(settings.copyWith(enabled: v)),
-          enabled: unsupported == null && onChanged != null,
+          // A preference kept from another band can always be switched OFF;
+          // switching ON stays disabled where the band cannot drive a snooze.
+          enabled: (unsupported == null || settings.enabled) &&
+              onChanged != null,
         ),
         if (settings.enabled && exactTimingUnavailable)
           Padding(

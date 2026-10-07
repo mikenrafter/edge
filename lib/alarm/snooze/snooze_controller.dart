@@ -35,6 +35,12 @@
 //   * [endSilently] ends everything with no cue (Cancel-all, unpair, the switch
 //     turned off).
 //
+// Round 4 (Sol's third review, 2026-10-07):
+//   * a snooze that would fall due at or past fire + [kSnoozeMaxAge] is not set:
+//     the chain ends silently (nothing is scheduled beyond the bound);
+//   * [onRestoredChainOver]: a resume that finds the persisted chain over tells
+//     the caller, which drops the OS backstop the dead process left.
+//
 // Behaviour:
 //   [onAlarmStopped]  the native wake alarm stopped. error: log only. Probe
 //                     [confirmedWake] (a probe that throws reads "not
@@ -178,6 +184,7 @@ class SnoozeController {
     this.scheduler = defaultSnoozeScheduler,
     this.log,
     this.knownFire,
+    this.onRestoredChainOver,
   });
 
   final DateTime Function() now;
@@ -196,6 +203,12 @@ class SnoozeController {
   /// when it knows none. A persisted chain whose fire is a different
   /// occurrence is stale.
   final DateTime? Function()? knownFire;
+
+  /// Called when [resume] found the persisted chain already over (answered by a
+  /// wake confirmation, dismissed, or too old / another alarm's) and ended it
+  /// without a status change: whatever the dead process left outside the
+  /// store (the OS backstop notification) is the caller's to drop.
+  final void Function()? onRestoredChainOver;
 
   final ValueNotifier<SnoozeStatus> _status =
       ValueNotifier<SnoozeStatus>(SnoozeStatus.idle);
@@ -543,6 +556,16 @@ class SnoozeController {
     _cancelTimers();
     _listen = null;
     final s = settings();
+    final fire = _fireAt;
+    if (fire != null &&
+        !anchor.add(s.snoozeFor).isBefore(fire.add(kSnoozeMaxAge))) {
+      // Nothing may be scheduled (a timer, a stored due time, an OS
+      // notification) at or past the bound: the chain ends here.
+      _log('the next snooze would fall due $kSnoozeMaxAge or more after the '
+          'alarm fired: the chain ends.');
+      await endSilently();
+      return;
+    }
     final st = SnoozeState(
         count: (_state?.count ?? 0) + 1,
         reAlarmAt: anchor.add(s.snoozeFor),
@@ -700,6 +723,7 @@ class SnoozeController {
         _windowStored = true;
         await _saveWindow(null);
       }
+      _restoredChainOver();
       return;
     }
     if (st == null) {
@@ -720,6 +744,14 @@ class SnoozeController {
     _snoozeTimer?.cancel();
     _snoozeTimer = scheduler(
         left.isNegative ? Duration.zero : left, () => _fire(_snoozedStep));
+  }
+
+  void _restoredChainOver() {
+    try {
+      onRestoredChainOver?.call();
+    } catch (e) {
+      _log('dropping what the dead process left failed: $e');
+    }
   }
 
   bool _tooOld(DateTime ref) => now().difference(ref) > kSnoozeMaxAge;
@@ -743,6 +775,7 @@ class SnoozeController {
       if (!_alive(g)) return;
       _fireAt = null;
       await _saveWindow(null);
+      _restoredChainOver();
       return;
     }
     if (!_alive(g) || _listen != null || _state != null) return;
@@ -759,6 +792,7 @@ class SnoozeController {
     switch (d) {
       case AlarmStopDecision.dismissed:
         await _dismiss(w.taps.isEmpty ? now() : w.taps.last);
+        _restoredChainOver();
       case AlarmStopDecision.snooze:
       case AlarmStopDecision.confirmedAwake:
       case AlarmStopDecision.error:
