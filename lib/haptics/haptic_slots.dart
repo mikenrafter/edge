@@ -124,6 +124,11 @@ bool isBreathCueSlot(String slotKey) =>
     slotKey == kBreathHoldKey ||
     slotKey == kBreathDoneKey;
 
+/// Whether [slotKey] is one of the six ECG cues (`ecg.*`, see [kEcgCueKeys]).
+// RED stub (ecg-features): to be implemented in the green phase.
+bool isEcgCueSlot(String slotKey) =>
+    throw UnimplementedError('isEcgCueSlot: ECG haptic slots not built yet');
+
 /// Whether [slotKey] is a cue slot: a gesture cue, a breathing cue or a Tasker
 /// slot. Its assigned pattern is a pattern id in [decodeCueAssignments]'s map,
 /// and it plays the cue's own built-in with none.

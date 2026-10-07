@@ -2545,6 +2545,24 @@ class LocalDb {
     });
   }
 
+  /// Persist a finished result (ecg-features) and report which inconclusive
+  /// reading it replaced. [reading] is an [EcgReading.toRow]; [packets] are
+  /// the codec rows to keep (empty unless the wearer keeps the waveform, and
+  /// then they are ONLY the accepted window; raw live frames are never stored).
+  ///
+  /// In ONE transaction: look up the latest reading by end_ts, ask
+  /// `ecgReplaceTargetId` whether the incoming one replaces it, delete that
+  /// reading and its packets (manual cascade, like [deleteEcgReading]) and
+  /// insert the new one. All or nothing: if the insert fails the old
+  /// inconclusive reading is still there. Returns the replaced id or null.
+  ///
+  /// RED stub: throws until the green phase. [insertEcgReading] stays as the
+  /// plain insert (it refuses a duplicate id and never replaces).
+  static Future<String?> saveEcgResult(
+    Map<String, Object?> reading,
+    List<Map<String, Object?>> packets,
+  ) => throw UnimplementedError('saveEcgResult');
+
   /// Saved readings, newest first, WITHOUT packets.
   static Future<List<Map<String, Object?>>> listEcgReadings({
     int limit = 200,

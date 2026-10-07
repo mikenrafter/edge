@@ -36,6 +36,31 @@ const String kBreathExhaleKey = 'breath.exhale';
 const String kBreathHoldKey = 'breath.hold';
 const String kBreathDoneKey = 'breath.done';
 
+/// The six ECG cues (ecg-features): a reading started, ended well, ended
+/// inconclusive, ended inconclusive with another reading asked for, failed, and
+/// "look at the phone". They play on the band like the gesture cues; see
+/// `lib/ecg/ecg_result.dart` (EcgCueTracker) for which end state plays which.
+/// `ecg.attention` is the one that defaults to the SOS rhythm. It is for a
+/// band that may still be recording (a cleanup that did not finish, a retained
+/// guard that could not be cleared), never for a result: ECG here is a screen,
+/// not a diagnostic device, and no outcome of a reading is an alarm.
+const String kEcgStartedKey = 'ecg.started';
+const String kEcgCompleteKey = 'ecg.complete';
+const String kEcgInconclusiveKey = 'ecg.inconclusive';
+const String kEcgInconclusiveRetryKey = 'ecg.inconclusiveRetry';
+const String kEcgFailedKey = 'ecg.failed';
+const String kEcgAttentionKey = 'ecg.attention';
+
+/// The six ECG cue keys in the order the Haptics screen lists them.
+const List<String> kEcgCueKeys = [
+  kEcgStartedKey,
+  kEcgCompleteKey,
+  kEcgInconclusiveKey,
+  kEcgInconclusiveRetryKey,
+  kEcgFailedKey,
+  kEcgAttentionKey,
+];
+
 /// The ten presets, in the order they are listed: key, name and notes. A
 /// pulse is a quarter note, a long pulse a half, the rest between pulses a
 /// quarter. SOS is three short, three long, three short; Hip hip hooray is two

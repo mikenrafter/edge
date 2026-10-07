@@ -21,6 +21,7 @@ import 'ecg_guard_store.dart';
 import 'ecg_models.dart';
 import 'ecg_policy.dart';
 import 'ecg_recovery.dart';
+import 'ecg_result.dart';
 import 'ecg_transport.dart';
 import 'ecg_waveform_buffer.dart';
 
@@ -67,6 +68,15 @@ class EcgCaptureState {
   /// the next connection retries the cleanup triplet.
   final bool cleanupIncomplete;
 
+  /// What was saved, once something was: complete, a final inconclusive, or a
+  /// partial (stopped by background/timeout). Null while capturing and when
+  /// nothing was saved. RED stub (ecg-features): the controller never sets it.
+  final EcgReadingStatus? result;
+
+  /// The saved result's real metrics (see ecgMetricsOf), empty until saved.
+  /// RED stub: never set.
+  final List<EcgMetric> metrics;
+
   const EcgCaptureState({
     this.phase = EcgCapturePhase.idle,
     this.wrist,
@@ -78,6 +88,8 @@ class EcgCaptureState {
     this.readingId,
     this.unreadableMask = 0,
     this.cleanupIncomplete = false,
+    this.result,
+    this.metrics = const [],
   });
 
   EcgCaptureState copyWith({
@@ -92,6 +104,8 @@ class EcgCaptureState {
     String? readingId,
     int? unreadableMask,
     bool? cleanupIncomplete,
+    EcgReadingStatus? result,
+    List<EcgMetric>? metrics,
   }) => EcgCaptureState(
     phase: phase ?? this.phase,
     wrist: wrist ?? this.wrist,
@@ -103,6 +117,8 @@ class EcgCaptureState {
     readingId: readingId ?? this.readingId,
     unreadableMask: unreadableMask ?? this.unreadableMask,
     cleanupIncomplete: cleanupIncomplete ?? this.cleanupIncomplete,
+    result: result ?? this.result,
+    metrics: metrics ?? this.metrics,
   );
 
   /// The phases in which the band may be generating: from the first ON
@@ -138,6 +154,17 @@ class EcgController extends ChangeNotifier {
   final Duration captureTimeout;
   final int Function() nowMs;
 
+  /// Whether the accepted waveform is kept with a saved reading (the wearer's
+  /// "Keep waveform" choice; default false). When false the controller hands
+  /// [save] NO packets: only the derived metrics and quality are stored. RED
+  /// stub (ecg-features): declared, not yet honoured.
+  final bool Function() keepWaveform;
+
+  /// Plays the ECG haptic cue [slotKey] (`ecg.*`, see EcgCueTracker). Never
+  /// called for a gesture-owned (`persist: false`) capture, whose cues are the
+  /// gesture ones. RED stub: declared, never called.
+  final void Function(String slotKey)? onCue;
+
   static const String screenOwner = 'ecg';
 
   /// Every live packet that passes the armed gate, before the reducer sees it.
@@ -155,7 +182,10 @@ class EcgController extends ChangeNotifier {
     void Function(String)? log,
     this.captureTimeout = const Duration(seconds: 120),
     int Function()? nowMs,
-  }) : log = log ?? ((_) {}),
+    bool Function()? keepWaveform,
+    this.onCue,
+  }) : keepWaveform = keepWaveform ?? (() => false),
+       log = log ?? ((_) {}),
        nowMs = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);
 
   EcgCaptureState _state = const EcgCaptureState();

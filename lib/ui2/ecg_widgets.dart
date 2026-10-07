@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../ecg/ecg_models.dart';
+import '../ecg/ecg_result.dart';
 import '../ecg/ecg_waveform_buffer.dart';
 import 'grammar.dart';
 import 'theme.dart';
@@ -494,4 +495,17 @@ class EcgWaveformPainter extends CustomPainter {
   @override
   bool shouldRepaint(EcgWaveformPainter o) =>
       o.packets != packets || o.pxPerSecond != pxPerSecond || o.color != color;
+}
+
+/// A result's metrics, one row each: the metric's NAME and its value with the
+/// unit ("RMSSD", "42 ms"), or "—" when the value is absent. Never "0" for an
+/// absent value, never a row for a metric the result does not have. Each row is
+/// keyed `ecg-metric:<key>`. RED stub (ecg-features): throws until built.
+class EcgMetricsList extends StatelessWidget {
+  final List<EcgMetric> metrics;
+  const EcgMetricsList({super.key, required this.metrics});
+
+  @override
+  Widget build(BuildContext context) =>
+      throw UnimplementedError('EcgMetricsList');
 }
