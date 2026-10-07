@@ -274,22 +274,30 @@ void main() {
       });
     });
 
-    test('a job that cannot start before its deadline is rejected at once, '
-        'nothing written and nothing recorded', () {
+    // Owner rule (haptic budget): a plain (non-gesture) job is never dropped
+    // for the window or for waiting its turn. It waits as long as it must, so
+    // `startBy` no longer drops it; it only applies to gesture and lab jobs.
+    test('a plain job with no room in the window is not dropped at its '
+        'deadline: nothing is written or recorded while it waits, and it '
+        'plays when the window has room', () {
       fakeAsync((async) {
         final l = BandCommandLedger()..record(30, clock.now());
         final q = newQueue(l);
         final j = _Jobs(async)..run(q, 'a', startBy: const Duration(seconds: 15));
-        async.flushMicrotasks();
-        expect(j.results['a'], BuzzDelivery.rejected);
-        expect(j.started, isEmpty, reason: 'the job body never ran');
+        async.elapse(const Duration(seconds: 119));
+        expect(j.results, isEmpty, reason: 'still waiting at 119 s, not '
+            'rejected at its 15 s deadline');
+        expect(j.started, isEmpty, reason: 'the job body has not run');
         expect(l.commandsLeft(clock.now()), 0, reason: 'nothing recorded');
-        expect(q.pending, 0);
+        expect(q.pending, 1);
+        async.elapse(_s);
+        expect(j.started['a'], 120000);
+        expect(j.results['a'], BuzzDelivery.complete);
       });
     });
 
-    test('a job waiting behind a long one is rejected at its own deadline; '
-        'the ones after it carry on', () {
+    test('a plain job waiting behind a long one is not dropped at its own '
+        'deadline; it and the ones after it carry on in order', () {
       fakeAsync((async) {
         final q = newQueue(BandCommandLedger());
         final j = _Jobs(async)
@@ -298,12 +306,12 @@ void main() {
               timeout: const Duration(seconds: 30))
           ..run(q, 'b', startBy: const Duration(seconds: 15))
           ..run(q, 'c', startBy: const Duration(seconds: 40));
-        async.elapse(const Duration(seconds: 14));
-        expect(j.results.containsKey('b'), isFalse);
-        async.elapse(_s);
-        expect(j.results['b'], BuzzDelivery.rejected);
-        expect(j.started.containsKey('b'), isFalse);
+        async.elapse(const Duration(seconds: 16));
+        expect(j.results.containsKey('b'), isFalse,
+            reason: 'past its 15 s deadline and still waiting');
         async.elapse(const Duration(seconds: 5));
+        expect(j.started['b'], 20000);
+        expect(j.results['b'], BuzzDelivery.complete);
         expect(j.started['c'], 20000);
         expect(j.results['c'], BuzzDelivery.complete);
       });
@@ -600,30 +608,29 @@ void main() {
       });
     });
 
-    test('with the ledger full beyond its deadline the second is rejected: '
-        'nothing written, and it can be sent again later', () {
+    test('with the ledger full the second waits for the window, its '
+        'dispatcher does not give up on it, and it plays then', () {
       fakeAsync((async) {
         final r = rig(async);
         // 27 recorded now stay for 2 minutes: the first plan (2 commands)
-        // fits, the second would have to wait far past its 15 s deadline.
+        // fits, the second has to wait for the window (owner rule: a plain job
+        // is never dropped for the limit).
         r.ledger.record(27, clock.now());
         final out = <String, AlertDeliveryOutcome>{};
         r.send('a').then((o) => out['a'] = o);
         r.send('b').then((o) => out['b'] = o);
-        async.elapse(const Duration(seconds: 30));
+        async.elapse(const Duration(seconds: 100));
         expect(out['a']!.targets, ['band']);
-        expect(out['b']!.targets, isEmpty);
-        expect(out['b']!.suppressionReason, 'deliveryFailed');
+        expect(out.containsKey('b'), isFalse,
+            reason: 'still waiting well past 15 s of queue wait');
         expect([for (final w in r.writes) w.$1].every((who) => who == 'a'),
             isTrue,
-            reason: 'nothing of b was written');
-        expect(r.queue.pending, 0);
-        // The claim was given back: the same alert may try again once the
-        // band has rested.
-        async.elapse(const Duration(minutes: 2));
-        r.send('b').then((o) => out['b2'] = o);
-        async.elapse(const Duration(seconds: 10));
-        expect(out['b2']!.targets, ['band']);
+            reason: 'nothing of b is written while it waits');
+        expect(r.queue.pending, 1);
+        async.elapse(const Duration(seconds: 40));
+        expect(out['b']!.targets, ['band']);
+        final b = [for (final w in r.writes) if (w.$1 == 'b') w.$2];
+        expect(b.first, greaterThanOrEqualTo(120000));
       });
     });
   });

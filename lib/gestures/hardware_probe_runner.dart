@@ -81,8 +81,9 @@ class HardwareProbeRunner extends ChangeNotifier {
 
   final DeviceLabLog lab;
 
-  /// The band's rolling command limit (30 in 2 minutes), shared with the alert
-  /// queue: the probe's writes count in it and alert commands count
+  /// The rolling command limit we hold the band to (30 in 2 minutes unless the
+  /// developer changed it; our own precaution, not a band limit), shared with
+  /// the alert queue: the probe's writes count in it and alert commands count
   /// against the probe's limit. Kept here so closing and reopening the screen
   /// does not reset it.
   final BandCommandLedger ledger;
@@ -136,9 +137,12 @@ class HardwareProbeRunner extends ChangeNotifier {
   /// resting or ready.
   Duration? get patternRestRemaining => _probe?.restRemaining(clock.now());
 
-  /// Commands the band may still be sent now (30 minus those in the rolling
-  /// window, never below 0). Holds while the screen is closed.
+  /// Commands the band may still be sent now (the limit minus those in the
+  /// rolling window, never below 0). Holds while the screen is closed.
   int get patternCommandsLeft => ledger.commandsLeft(clock.now());
+
+  /// The command limit per 2 minutes in force.
+  int get patternCommandLimit => ledger.limitNow;
 
   /// Time until the oldest command leaves the window; null when it is empty.
   Duration? get patternNextFreeIn => ledger.nextFreeIn(clock.now());
@@ -187,8 +191,8 @@ class HardwareProbeRunner extends ChangeNotifier {
       final results = await probe.run();
       if (probe.refused) {
         // No room in the rolling command limit: nothing was sent.
-        _say('The band is resting (30 commands per 2 minutes). '
-            'Try the buzz probe again in a moment.');
+        _say('The band is resting (${ledger.limitNow} commands per 2 minutes, '
+            'a limit we set). Try the buzz probe again in a moment.');
         lab.endSession(result: 'resting');
       } else {
         lab.endSession(result: '${results.length} trials');

@@ -50,9 +50,10 @@ class HapticsService {
     DateTime Function()? now,
     void Function(String line)? log,
     BandCommandLedger? ledger,
+    int Function()? commandLimit,
   })  : _allowLong = allowLong,
         _now = now ?? (() => clock.now()),
-        ledger = ledger ?? BandCommandLedger() {
+        ledger = ledger ?? BandCommandLedger(limit: commandLimit) {
     _queue = BandHapticQueue(
       ledger: this.ledger,
       waitEnded: _ended.wait,
@@ -66,8 +67,9 @@ class HapticsService {
   final bool Function() _allowLong;
   final DateTime Function() _now;
 
-  /// The band's rolling command limit (30 in 2 minutes), one for every band
-  /// haptic job and the lab's probes.
+  /// The rolling command limit we hold the band to (30 in 2 minutes unless the
+  /// developer changed it; our own precaution, see [BandCommandLedger]), one
+  /// for every band haptic job and the lab's probes.
   final BandCommandLedger ledger;
 
   // The band's live "ended" event (100), fed from [onBandEvent].
@@ -96,6 +98,14 @@ class HapticsService {
   /// [BandHapticQueue.whenIdle]). The moment a gesture's next window may open
   /// after a cue. Never throws.
   Future<void> whenIdle() => _queue.whenIdle();
+
+  /// Run [work] so every band job it queues belongs to gesture [gestureId]: a
+  /// gesture's haptics are never played late, and once its first one has
+  /// started the rest play whatever the command limit holds (see
+  /// [BandHapticQueue.asGesture]).
+  T asGesture<T>(String gestureId, T Function() work,
+          {bool started = false}) =>
+      _queue.asGesture(gestureId, work, started: started);
 
   /// Run [work] with jobs that start now or are rejected. Used for phase cues,
   /// where a late vibration would describe the wrong phase.

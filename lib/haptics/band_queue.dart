@@ -1,17 +1,29 @@
 // The one queue every band haptic job goes through. A band plays one
-// thing at a time and drops a command written while it plays, and the band's
-// haptic motor must not be driven past 30 commands in any 2 minutes. Two alerts
-// at once, a tap ack during a rule's rhythm, or the pattern probe next to a
-// real alert would break one or both. So every job (a rule's rhythm, a single
-// buzz, a tap ack, a preview, the ECG count buzzes) waits its turn here.
+// thing at a time and drops a command written while it plays, and we hold the
+// band's haptic motor to a rolling command limit (30 in any 2 minutes unless
+// the developer changed it; a precaution we chose, not a known band limit, see
+// [BandCommandLedger]). Two alerts at once, a tap ack during a rule's rhythm, or
+// the pattern probe next to a real alert would break one or both. So every job
+// (a rule's rhythm, a single buzz, a tap ack, a preview, the ECG count buzzes)
+// waits its turn here.
 //
 // A job starts when the previous one has finished (its last write landed and
 // the band's "ended" event 100 came, or a bounded playback timeout) AND the
-// shared [BandCommandLedger] has room to reserve its whole command count. A
-// job that cannot start before its deadline (measured from when it was queued)
-// is dropped as [BuzzDelivery.rejected] with nothing written, which the alert
-// dispatcher reads as "give the claim back". Once a job has started, its
+// shared [BandCommandLedger] has room for it. Once a job has started, its
 // transport timeout counts from the start.
+//
+// Two kinds of job meet the limit differently:
+//  * A NON-GESTURE job (an alert, a preview, breathing cues, the relay) is
+//    never dropped for the limit or for waiting its turn. It waits for room, in
+//    order, and plays with a gap of at least the vocabulary's minimum gap and
+//    one second after the job before it.
+//  * A GESTURE job (queued inside [BandHapticQueue.asGesture]) is never played
+//    late. A gesture's first haptic needs room when its turn comes, else it is
+//    rejected on the spot, nothing written. Once a gesture's first haptic has
+//    started, all of that gesture's later haptics play even if the window runs
+//    out; the ledger counts no more than the limit (see
+//    [BandCommandLedger.reserveUpTo]). A gesture job that cannot start within
+//    its own [BandHapticQueue.run] `startBy` is also rejected.
 //
 // Between two jobs the band is also left the vocabulary's minimum gap after the
 // last vibration ended ([BandHapticQueue.minGap]), so a second gesture job
@@ -19,8 +31,9 @@
 //
 // Lab mode: while the Device lab is open ([BandHapticQueue.beginLab]),
 // lab jobs (the probes, the touch counter's buzzes) go first and every other
-// job is HELD: not started, its start deadline suspended, restarted when the
-// lab closes. A job already playing is never preempted.
+// job is HELD: not started, its alert deadline suspended. A gesture job still
+// waiting when the lab opens is rejected (it must not play late). A job
+// already playing is never preempted.
 //
 // No Flutter, no BLE. Time comes from package:clock, so tests drive it with
 // fake_async.
@@ -31,9 +44,9 @@ import 'package:clock/clock.dart';
 
 import '../notify/buzz_sequence.dart';
 
-/// How long a queued job may wait to START. The alert dispatcher adds this to
-/// a band delivery's deadline so waiting in the queue does not eat the
-/// transport time.
+/// How long a queued gesture or lab job may wait to START (a plain job waits as
+/// long as it must). The alert dispatcher adds this to a band delivery's
+/// deadline so waiting in the queue does not eat the transport time.
 const Duration kBandQueueWait = Duration(seconds: 15);
 
 /// How long a band is held after a haptic write when its ended event (100) does
@@ -53,14 +66,34 @@ const Duration kBandWriteGrace = Duration(seconds: 3);
 // looks again; a reservation has no expiry time to wait for.
 const Duration _kReservedRetry = Duration(seconds: 1);
 
+// How often a job waiting for room looks again, so a limit raised meanwhile
+// (a developer setting, read at every use) lets it go on promptly.
+const Duration _kBudgetPoll = Duration(seconds: 1);
+
+// The least gap left before the next job when a job had to wait for room.
+const Duration _kBudgetGap = Duration(seconds: 1);
+
+// How long the queue remembers that a gesture's first haptic started.
+const Duration _kGestureMemory = Duration(minutes: 5);
+
+/// The developer-set band command limit (per [BandCommandLedger.window]):
+/// least, most and default.
+const int kBandCommandLimitMin = 10;
+const int kBandCommandLimitMax = 60;
+const int kBandCommandLimitDefault = 30;
+
 /// Room for commands taken out of a [BandCommandLedger] before they are
 /// written. Each real write turns one of them into a write stamped when it
 /// happened ([take]); what is left when the owner is done goes back with
 /// [release].
 class BandReservation {
-  BandReservation._(this._ledger, this._left);
+  BandReservation._(this._ledger, this._left, this._held);
   final BandCommandLedger _ledger;
   int _left;
+
+  // How many of the reserved commands are counted in the ledger. Fewer than
+  // [_left] only for a gesture that is allowed past the limit.
+  int _held;
 
   /// Commands still reserved.
   int get remaining => _left;
@@ -70,29 +103,59 @@ class BandReservation {
   bool take(DateTime at) {
     if (_left <= 0) return false;
     _left--;
-    _ledger._reserved--;
-    _ledger._addWrite(at);
+    if (_held > 0) {
+      _held--;
+      _ledger._reserved--;
+      _ledger._addWrite(at);
+    }
     return true;
   }
 
   /// Give back what was not written. Safe to call twice.
   void release() {
-    _ledger._reserved -= _left;
+    _ledger._reserved -= _held;
+    _held = 0;
     _left = 0;
   }
 }
 
-/// The rolling safety limit: at most [maxCommands] band haptic commands in any
-/// [window]. One instance is shared by the alert queue and both lab probes, so
-/// the lab and real alerts cannot exceed it together.
+/// The rolling command limit: at most [limitNow] band haptic commands in any
+/// [window] (30 unless the developer set another, 10 to 60). One instance is
+/// shared by the alert queue and both lab probes, so the lab and real alerts
+/// cannot exceed it together.
+///
+/// Why a limit at all. No published report or teardown shows a WHOOP motor
+/// damaged by vibration commands. General motor literature: linear resonant
+/// actuators (likely the 5.0/MG) wear mainly through the spring, which is
+/// designed below fatigue; the documented risk is overdrive beyond the
+/// datasheet, and resonance drifts with age (Precision Microdrives LRA; TI
+/// SLOA207). Brushed ERM motors (possibly the 4.0) wear their brushes and heat
+/// under continuous running, about 100,000 cycles typical (Precision
+/// Microdrives). The 30 per 2 minutes default is our own precaution, not a
+/// WHOOP figure; battery drain is the known cost.
+///   https://www.precisionmicrodrives.com/product-catalogue/linear-resonant-actuator
+///   https://ti.com/lit/pdf/sloa207
+///   https://www.precisionmicrodrives.com/?p=1190
+///   https://support.whoop.com/hc/en-us/articles/4407117388955-Haptic-Alarm-Overview
 ///
 /// Two kinds of entry: WRITES (a timestamp per command actually sent, which
 /// leave the window two minutes after they were written) and RESERVATIONS
 /// (room held by a job or probe for commands it is about to write; they count
 /// until released or written).
 class BandCommandLedger {
-  static const int maxCommands = 30;
+  /// [limit] is the developer-set limit, read at every use and clamped to
+  /// [kBandCommandLimitMin]..[kBandCommandLimitMax]; null is the default.
+  BandCommandLedger({this.limit});
+  final int Function()? limit;
+
+  /// The default limit (what [limitNow] is with no setting).
+  static const int maxCommands = kBandCommandLimitDefault;
   static const Duration window = Duration(minutes: 2);
+
+  /// The limit in force now, within [kBandCommandLimitMin]..
+  /// [kBandCommandLimitMax].
+  int get limitNow => (limit?.call() ?? kBandCommandLimitDefault)
+      .clamp(kBandCommandLimitMin, kBandCommandLimitMax);
 
   // One entry per written command, oldest first.
   final List<DateTime> _at = <DateTime>[];
@@ -114,18 +177,30 @@ class BandCommandLedger {
   }
 
   /// Hold room for [n] commands, all or nothing: null when writes and live
-  /// reservations in the window plus [n] would pass [maxCommands].
+  /// reservations in the window plus [n] would pass [limitNow].
   BandReservation? reserve(int n, DateTime at) {
     _prune(at);
-    if (n < 0 || _at.length + _reserved + n > maxCommands) return null;
+    if (n < 0 || _at.length + _reserved + n > limitNow) return null;
     _reserved += n;
-    return BandReservation._(this, n);
+    return BandReservation._(this, n, n);
+  }
+
+  /// A reservation for [n] commands that never fails: it holds what room there
+  /// is (up to [n]) and the rest of its commands are written without being
+  /// counted, so the ledger never counts more than [limitNow]. For a gesture,
+  /// which must play to its end. Null only for a negative [n].
+  BandReservation? reserveUpTo(int n, DateTime at) {
+    if (n < 0) return null;
+    final held = n < commandsLeft(at) ? n : commandsLeft(at);
+    _reserved += held;
+    return BandReservation._(this, n, held);
   }
 
   /// Commands that may still be reserved or sent at [now], never below 0.
   int commandsLeft(DateTime now) {
     _prune(now);
-    return (maxCommands - _at.length - _reserved).clamp(0, maxCommands);
+    final limit = limitNow;
+    return (limit - _at.length - _reserved).clamp(0, limit);
   }
 
   /// Time until the oldest written command leaves the window; null when no
@@ -137,16 +212,17 @@ class BandCommandLedger {
   }
 
   /// How long until [n] more commands fit (zero when they fit now). Throws
-  /// [ArgumentError] for more than [maxCommands]: such a job never fits and
+  /// [ArgumentError] for more than [limitNow]: such a job never fits and
   /// must be rejected, not made to wait for an empty window. When live
   /// reservations alone leave too little room, expiry cannot help: the answer
   /// is a short retry time.
   Duration waitFor(int n, DateTime now) {
-    if (n > maxCommands) {
-      throw ArgumentError.value(n, 'n', 'at most $maxCommands commands');
+    final limit = limitNow;
+    if (n > limit) {
+      throw ArgumentError.value(n, 'n', 'at most $limit commands');
     }
     _prune(now);
-    final over = _at.length + _reserved + n - maxCommands;
+    final over = _at.length + _reserved + n - limit;
     if (over <= 0) return Duration.zero;
     if (over > _at.length) return _kReservedRetry;
     return _at[over - 1].add(window).difference(now);
@@ -243,6 +319,12 @@ const Symbol kBandHoldKey = #openstrapBandHold;
 /// Zone key marking work whose band jobs are lab jobs.
 const Symbol kBandLabKey = #openstrapBandLab;
 
+/// Zone key carrying the id of the gesture whose haptics the work queues.
+const Symbol kBandGestureKey = #openstrapBandGesture;
+
+/// Zone key: the gesture in [kBandGestureKey] is already started.
+const Symbol kBandGestureStartedKey = #openstrapBandGestureStarted;
+
 /// Zone key marking work that must start now or be rejected. Phase cues use it
 /// so a delayed buzz cannot land in the next breathing phase.
 const Symbol kBandImmediateKey = #openstrapBandImmediate;
@@ -250,7 +332,7 @@ const Symbol kBandImmediateKey = #openstrapBandImmediate;
 class _Job {
   _Job(this.run, this.commands, this.timeout, this.settle, this.startBy,
       this.deadline,
-      {this.lab = false, this.hold});
+      {this.lab = false, this.hold, this.gesture, this.exempt = false});
   final Future<BuzzDelivery> Function(BandJobToken job) run;
   final int commands;
 
@@ -262,9 +344,26 @@ class _Job {
   final bool lab;
   final BandHold? hold;
 
+  /// The gesture this job's haptic belongs to ([BandHapticQueue.asGesture]).
+  final String? gesture;
+
+  /// A gesture job whose gesture already started when it was queued.
+  final bool exempt;
+
+  /// Only a lab or gesture job has a start deadline: it is dropped when it
+  /// cannot start within [startBy]. Every other job waits as long as it must.
+  bool get expires => lab || gesture != null;
+
   /// True while the open lab keeps this job from starting.
   bool held = false;
   bool wasHeld = false;
+
+  /// True once the job found no room in the window and had to wait for it.
+  bool waitedBudget = false;
+
+  /// True while the dispatcher's own deadline is paused for this job (held by
+  /// the lab, or waiting for room).
+  bool paused = false;
   final Completer<BuzzDelivery> done = Completer<BuzzDelivery>();
 
   /// Completes when the band is free of this job: dropped, or run, settled and
@@ -305,6 +404,11 @@ class BandHapticQueue {
   Timer? _wake;
   _Job? _restLogged;
 
+  // Gestures whose first haptic has started, with when it last had a job: the
+  // rest of their haptics play whatever the window holds. Forgotten after
+  // [_kGestureMemory] without a job, so the map stays small.
+  final Map<String, DateTime> _startedGestures = <String, DateTime>{};
+
   /// Jobs waiting plus the one running (or settling).
   int get pending => _waiting.length + (_busy ? 1 : 0);
 
@@ -337,7 +441,11 @@ class BandHapticQueue {
     final held = _waiting.where((j) => !j.lab).toList();
     log?.call('Band queue: lab open, holding ${held.length} alerts');
     for (final j in held) {
-      _hold(j);
+      if (j.gesture != null) {
+        _drop(j, why: 'could not play now (the lab opened)');
+      } else {
+        _hold(j);
+      }
     }
   }
 
@@ -352,8 +460,8 @@ class BandHapticQueue {
     for (final j in held) {
       j.held = false;
       j.deadline = clock.now().add(j.startBy);
-      j.expiry = Timer(j.startBy, () => _expire(j));
-      j.hold?.onRelease?.call();
+      if (j.expires) j.expiry = Timer(j.startBy, () => _expire(j));
+      _resume(j);
     }
     _pump();
   }
@@ -363,12 +471,43 @@ class BandHapticQueue {
     j.wasHeld = true;
     j.expiry?.cancel();
     j.expiry = null;
+    _pause(j);
+  }
+
+  // The dispatcher's own delivery deadline must not run while a job waits for
+  // the lab or for room in the window; it restarts (in full) when the job goes.
+  void _pause(_Job j) {
+    if (j.paused) return;
+    j.paused = true;
     j.hold?.onHold?.call();
+  }
+
+  void _resume(_Job j) {
+    if (!j.paused) return;
+    j.paused = false;
+    j.hold?.onRelease?.call();
   }
 
   /// Run [work] so that band jobs queued inside it are lab jobs.
   T asLab<T>(T Function() work) =>
       runZoned(work, zoneValues: <Object?, Object?>{kBandLabKey: true});
+
+  /// Run [work] so every job it queues belongs to gesture [gestureId] (any
+  /// string that is the same for every haptic of one gesture and different
+  /// between gestures). A gesture's haptics are never played late, and once its
+  /// first one has started the rest play whatever the window holds (see the
+  /// file header). The id is forgotten five minutes after the gesture's last
+  /// job. With [started] the gesture counts as already started (its action
+  /// has run, as for the tap ack): its haptics always play, never rejected for
+  /// the window, and are counted only up to the limit.
+  T asGesture<T>(String gestureId, T Function() work, {bool started = false}) =>
+      runZoned(
+        work,
+        zoneValues: <Object?, Object?>{
+          kBandGestureKey: gestureId,
+          kBandGestureStartedKey: started,
+        },
+      );
 
   /// Run [work] so every job it queues either starts immediately or is
   /// rejected. Immediate jobs never wait behind another job, the Device lab,
@@ -403,9 +542,12 @@ class BandHapticQueue {
     return ran && r == BuzzDelivery.complete;
   }
 
-  /// Queue [job], which writes [commands] band commands through its token. It
-  /// starts within [startBy] or is dropped as [BuzzDelivery.rejected] (never
-  /// called); so is a job of more than [BandCommandLedger.maxCommands]. Once
+  /// Queue [job], which writes [commands] band commands through its token. A
+  /// job of more than the ledger's limit is dropped as [BuzzDelivery.rejected]
+  /// (never called). A plain job then waits as long as it must (for the band
+  /// and for room in the window). A gesture job ([asGesture]) or lab job starts
+  /// within [startBy] or is dropped as rejected, and a gesture job with no room
+  /// when its gesture starts is dropped at once. Once
   /// started it has [timeout] to answer (else [BuzzDelivery.unknown], and its
   /// token is cancelled); the band is then held until the job's last write has
   /// landed (a bounded grace) and, for a job that wrote, until the band's
@@ -413,7 +555,7 @@ class BandHapticQueue {
   /// already has the result. A job that throws hands the error to its caller.
   /// A [lab] job (also any job queued inside [asLab]) goes ahead of waiting
   /// non-lab jobs; with the lab open a non-lab job is held until [endLab], and
-  /// its [startBy] counts again from then.
+  /// a held lab or gesture job's [startBy] counts again from then.
   Future<BuzzDelivery> run(
     Future<BuzzDelivery> Function(BandJobToken job) job, {
     required int commands,
@@ -439,9 +581,16 @@ class BandHapticQueue {
     required bool lab,
     bool immediate = false,
   }) {
-    if (commands > BandCommandLedger.maxCommands) {
+    final limit = ledger.limitNow;
+    if (commands > limit) {
       log?.call('Band queue: dropped a job of $commands commands '
-          '(the limit is ${BandCommandLedger.maxCommands})');
+          '(the limit is $limit)');
+      return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
+    }
+    final zoned = Zone.current[kBandGestureKey];
+    final gesture = zoned is String && !lab ? zoned : null;
+    if (gesture != null && labOpen) {
+      log?.call('Band queue: rejected a gesture job (the lab is open)');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
     if (immediate &&
@@ -455,7 +604,14 @@ class BandHapticQueue {
     final hold = Zone.current[kBandHoldKey];
     final j = _Job(job, commands, timeout, settle, startBy,
         clock.now().add(startBy),
-        lab: lab, hold: hold is BandHold ? hold : null);
+        lab: lab,
+        hold: hold is BandHold ? hold : null,
+        gesture: gesture,
+        exempt: gesture != null && Zone.current[kBandGestureStartedKey] == true);
+    _forgetGestures(clock.now());
+    if (gesture != null && _startedGestures.containsKey(gesture)) {
+      _startedGestures[gesture] = clock.now();
+    }
     if (pending > 0) {
       log?.call('Band queue: waiting for the band ($pending ahead)');
     }
@@ -471,12 +627,15 @@ class BandHapticQueue {
     }
     if (labOpen && !lab) {
       _hold(j);
-    } else {
+    } else if (j.expires) {
       j.expiry = Timer(startBy, () => _expire(j));
     }
     _pump();
     return j.done.future;
   }
+
+  void _forgetGestures(DateTime now) => _startedGestures
+      .removeWhere((_, t) => now.difference(t) > _kGestureMemory);
 
   void _expire(_Job j) {
     if (!_waiting.contains(j)) return;
@@ -495,11 +654,15 @@ class BandHapticQueue {
   void _pump() {
     _wake?.cancel();
     _wake = null;
-    while (!_busy && _waiting.isNotEmpty) {
-      final j = _waiting.first;
-      // Lab jobs sit first; a held job at the front means the lab is open and
-      // no lab job is waiting: the band stays idle for the lab.
-      if (j.held) return;
+    _forgetGestures(clock.now());
+    var blockedPlain = false; // a plain job is waiting for room: FIFO behind it
+    Duration? soonest;
+    var i = 0;
+    while (!_busy && i < _waiting.length) {
+      final j = _waiting[i];
+      // Lab jobs sit first; a held job means the lab is open and no lab job is
+      // waiting: the band stays idle for the lab.
+      if (j.held) break;
       if (j.wasHeld && (j.hold?.isStale?.call() ?? false)) {
         // Held through the lab and out of date by now: the alert's own rule
         // says it is no longer worth playing.
@@ -507,26 +670,64 @@ class BandHapticQueue {
         continue;
       }
       final now = clock.now();
-      final room = ledger.reserve(j.commands, now);
-      if (room == null) {
-        final wait = ledger.waitFor(j.commands, now);
-        if (now.add(wait).isAfter(j.deadline)) {
-          _drop(j);
+      if (j.commands > ledger.limitNow) {
+        // The limit was lowered under a waiting job: it can never fit.
+        _drop(j, why: 'no longer fits the limit');
+        continue;
+      }
+      BandReservation? room;
+      if (j.gesture != null) {
+        // Never late: a gesture's first haptic needs room now, else it is
+        // dropped; the rest of a started gesture plays regardless.
+        final started = j.exempt || _startedGestures.containsKey(j.gesture);
+        if (!started && ledger.commandsLeft(now) <= 0) {
+          _drop(j, why: 'had no room when its gesture started');
           continue;
         }
-        if (!identical(_restLogged, j)) {
-          _restLogged = j;
-          log?.call('Band queue: resting, ready in '
-              '${(wait.inMilliseconds / 1000).ceil()} s');
+        room = ledger.reserveUpTo(j.commands, now);
+      } else {
+        // A plain job queues behind a plain job that is waiting for room.
+        if (blockedPlain && !j.lab) {
+          j.waitedBudget = true; // it waits for room too, in line
+          i++;
+          continue;
         }
-        _wake = Timer(wait, _pump);
-        return;
+        room = ledger.reserve(j.commands, now);
+        if (room == null) {
+          final wait = ledger.waitFor(j.commands, now);
+          if (j.expires && now.add(wait).isAfter(j.deadline)) {
+            _drop(j);
+            continue;
+          }
+          if (!identical(_restLogged, j)) {
+            _restLogged = j;
+            log?.call('Band queue: resting, ready in '
+                '${(wait.inMilliseconds / 1000).ceil()} s');
+          }
+          j.waitedBudget = true;
+          _pause(j);
+          if (soonest == null || wait < soonest) soonest = wait;
+          if (j.lab) break; // a lab job waiting for room holds everything
+          blockedPlain = true;
+          i++;
+          continue;
+        }
       }
-      _waiting.removeAt(0);
+      _waiting.removeAt(i);
       j.expiry?.cancel();
+      _resume(j);
+      final id = j.gesture;
+      if (id != null) {
+        _startedGestures[id] = now;
+      }
       _busy = true;
       _running = j;
-      unawaited(_start(j, room));
+      unawaited(_start(j, room!));
+    }
+    if (!_busy && soonest != null) {
+      // Look again when room frees, or in a second: a limit raised meanwhile
+      // lets the job go on promptly.
+      _wake = Timer(soonest < _kBudgetPoll ? soonest : _kBudgetPoll, _pump);
     }
   }
 
@@ -565,7 +766,14 @@ class BandHapticQueue {
               (result == BuzzDelivery.unknown && token.writes > 0))) {
         await w(j.settle);
       }
-      final gap = j.lab ? Duration.zero : (minGap?.call() ?? Duration.zero);
+      var gap = j.lab ? Duration.zero : (minGap?.call() ?? Duration.zero);
+      if (!j.lab &&
+          gap < _kBudgetGap &&
+          (j.waitedBudget || _waiting.any((w) => w.waitedBudget))) {
+        // Jobs that had to wait for room play a second apart at least, whatever
+        // the band's vocabulary says (a band with no profile has no gap).
+        gap = _kBudgetGap;
+      }
       if (gap > Duration.zero && token.writes > 0) {
         await Future<void>.delayed(gap);
       }

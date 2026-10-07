@@ -25,6 +25,8 @@ import '../../health/health_import_state.dart';
 import '../../health/health_profile_import.dart';
 import '../../l10n/app_localizations.dart';
 import '../../platform/tasker_bridge.dart';
+import '../../haptics/band_queue.dart'
+    show kBandCommandLimitMax, kBandCommandLimitMin;
 import '../../haptics/builtin_patterns.dart' show alertSystemKey;
 import '../../haptics/haptic_slots.dart' show slotPatternLabel;
 import '../../haptics/pattern_store.dart' show SavedHapticPattern;
@@ -92,6 +94,9 @@ class _MoreSettingsState extends State<MoreSettings> {
 
   /// Home's pull-to-sync, read straight off Prefs like [_barcode].
   bool _pullToSync = Prefs.pullToSyncOn;
+
+  /// The developer's band haptic command limit, mirrored from Prefs.
+  int _hapticLimit = Prefs.hapticCommandLimit;
   String _version = '';
   int _taps = 0;
 
@@ -198,6 +203,12 @@ class _MoreSettingsState extends State<MoreSettings> {
     return MoreSettingsView(
       version: _version,
       devMode: caps.has(Feature.developerMode),
+      hapticCommandLimit: _hapticLimit,
+      onHapticCommandLimit: (v) {
+        // Read at every use by the band's ledger: it takes effect at once.
+        Prefs.setHapticCommandLimit(v);
+        setState(() => _hapticLimit = Prefs.hapticCommandLimit);
+      },
       // The engine's `last_pass_perf`: measured values only.
       lastCalculation: DerivePerf.describe(app.lastPassPerf),
       onVersionTap: _tapVersion,
@@ -567,6 +578,11 @@ class MoreSettingsView extends StatelessWidget {
   /// a feature: nothing in it is for anyone who has not deliberately asked.
   final bool devMode;
 
+  /// Developer group: the band haptic command limit per 2 minutes (10..60) and
+  /// the change callback.
+  final int hapticCommandLimit;
+  final ValueChanged<int>? onHapticCommandLimit;
+
   /// The Developer group's "Last calculation" line, already worded; an em dash
   /// until a pass has been measured.
   final String lastCalculation;
@@ -634,6 +650,8 @@ class MoreSettingsView extends StatelessWidget {
     this.updateMandatory = false,
     this.version = '',
     this.devMode = false,
+    this.hapticCommandLimit = 30,
+    this.onHapticCommandLimit,
     this.lastCalculation = '—',
     this.onVersionTap,
     this.onToggleDev,
@@ -947,6 +965,9 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',
                         onTap: onDataExplorer),
+                    _HapticLimitRow(
+                        limit: hapticCommandLimit,
+                        onChanged: onHapticCommandLimit),
                     SetRow(LucideIcons.timer, C.n500, 'Last calculation',
                         sub: lastCalculation, chevron: false),
                     SetRow(LucideIcons.code, C.n500,
@@ -958,6 +979,42 @@ class MoreSettingsView extends StatelessWidget {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// Developer group: how many haptic commands the band may be sent in any 2
+/// minutes. A precaution we chose (motor wear, battery), not a limit of the
+/// band's hardware, so it says the number in force and why.
+class _HapticLimitRow extends StatelessWidget {
+  const _HapticLimitRow({required this.limit, this.onChanged});
+  final int limit;
+  final ValueChanged<int>? onChanged;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Padding(
+      key: const ValueKey('developer-haptic-limit'),
+      padding: const EdgeInsets.symmetric(vertical: S.x3),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Band haptic limit', style: F.body.copyWith(color: p.ink)),
+        Text(
+            '$limit commands in any 2 minutes. A precaution we chose to spare '
+            'the motor and the battery, not a limit of the band. Alerts wait '
+            'for room; a gesture without room is not acted on.',
+            style: F.over.copyWith(color: p.ink3)),
+        Slider(
+          min: kBandCommandLimitMin.toDouble(),
+          max: kBandCommandLimitMax.toDouble(),
+          divisions: kBandCommandLimitMax - kBandCommandLimitMin,
+          value: limit
+              .clamp(kBandCommandLimitMin, kBandCommandLimitMax)
+              .toDouble(),
+          label: '$limit',
+          onChanged: onChanged == null ? null : (v) => onChanged!(v.round()),
+        ),
+      ]),
     );
   }
 }
