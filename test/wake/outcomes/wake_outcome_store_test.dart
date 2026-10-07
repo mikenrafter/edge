@@ -82,6 +82,44 @@ void main() {
   });
 
   group('rate', () {
+    // RED (round 3, P2): rate() rebuilt the outcome field by field and dropped
+    // configuredWindowMinutes. Every field is non-null and distinct here, so a
+    // dropped or swapped field changes the JSON; the key list guards the test
+    // itself against a field added to toJson that this outcome does not set.
+    test('rating round-trips EVERY field: only grogginess changes', () async {
+      final full = WakeOutcome(
+        wakeSec: kT,
+        firedBy: WakeFiredBy.natural,
+        firedAtSec: kT - 1230,
+        stageAtFire: 'awake',
+        stageAgeSec: 41,
+        delivered: true,
+        latencySec: const {
+          WakeResponseKind.deliberateAck: 95,
+          WakeResponseKind.appInteraction: 130,
+          WakeResponseKind.movement: 20,
+        },
+        grogginess: 2,
+        minutesBeforeT: 20.5,
+        configuredWindowMinutes: 45,
+        exclusions: const [WakeExclusion.staleStage, WakeExclusion.crossedEpisode],
+      );
+      final before = full.toJson();
+      expect(before.keys.toSet(), {
+        'wakeSec', 'firedBy', 'firedAtSec', 'stageAtFire', 'stageAgeSec',
+        'delivered', 'latencySec', 'grogginess', 'minutesBeforeT',
+        'configuredWindowMinutes', 'exclusions',
+      }, reason: 'a new field: extend this outcome and this list');
+      expect(before.values.where((v) => v == null), isEmpty);
+
+      final d = Disk();
+      await d.store.upsert(full);
+      await d.store.rate(kT, 5);
+      final back = (await d.store.load()).single;
+      expect(back.toJson(), {...before, 'grogginess': 5});
+      expect(back.configuredWindowMinutes, 45);
+    });
+
     test('sets the rating on the stored outcome only', () async {
       final d = Disk();
       await d.store.upsert(outcome(kT));

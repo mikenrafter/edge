@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/wake/outcomes/wake_outcome.dart';
 import 'package:openstrap_edge/wake/outcomes/wake_outcome_assembler.dart';
+import 'package:openstrap_edge/wake/wake_orchestrator.dart' show WakeTraceEntry;
 
 import 'outcome_rig.dart';
 
@@ -388,8 +389,13 @@ void main() {
       expect(o.exclusions, isEmpty);
     });
 
-    test('a phone-only first fire, then a band-only repeat: the repeat is the '
-        'fire', () {
+    // RED-EDIT (round 3, P2): this test used to expect NO exclusion. Wrong: the
+    // phone sounded at `fire`, a minute before the band repeat, so the wearer's
+    // response cannot be told apart from the phone's wake stimulus. Delivery
+    // stands (the repeat did reach the band); the morning is not comparable.
+    test('a phone-only first fire, then a band-only repeat a minute later: the '
+        'repeat is the fire, but the earlier phone stimulus contaminates it',
+        () {
       final repeatFire = fire + 60;
       final o = run(trace: [
         naturalFire(kT, fire, targets: const ['phone']),
@@ -407,7 +413,8 @@ void main() {
       ]);
       expect(o.delivered, isTrue);
       expect(o.firedAtSec, repeatFire);
-      expect(o.exclusions, isEmpty);
+      expect(o.exclusions, [WakeExclusion.competingAlarm]);
+      expect(o.usable, isFalse);
     });
 
     test('Gradual step sent to the PHONE only is no band delivery', () {
@@ -486,6 +493,117 @@ void main() {
         naturalFire(kT, naturalAt),
       ]);
       expect(o.exclusions, isNot(contains(WakeExclusion.competingAlarm)));
+    });
+  });
+
+  group('phone-only stimuli before the band fire are competing (round 3, P2)',
+      () {
+    List<WakeTraceEntry> bandRepeat(int sec) => [
+          row(kT, sec, 'natural_repeat', {
+            'phase': 'result',
+            'index': 1,
+            'result': 'sent',
+            'suppression': null,
+            'error': null,
+          }),
+        ];
+
+    test('phone at T-10 min, band repeat a minute later, response after: '
+        'excluded', () {
+      final phoneAt = kT - 600;
+      final o = run(trace: [
+        naturalFire(kT, phoneAt, targets: const ['phone']),
+        bandRepeat(phoneAt + 60),
+      ], move: [phoneAt + 90]);
+      expect(o.exclusions, [WakeExclusion.competingAlarm]);
+    });
+
+    test('exactly 15 min before the band fire is inside, one second more is '
+        'not', () {
+      final bandAt = kT - 600;
+      final inside = run(trace: [
+        naturalFire(kT, bandAt - 900, targets: const ['phone']),
+        bandRepeat(bandAt),
+      ]);
+      expect(inside.exclusions, [WakeExclusion.competingAlarm]);
+      final outside = run(trace: [
+        naturalFire(kT, bandAt - 901, targets: const ['phone']),
+        bandRepeat(bandAt),
+      ]);
+      expect(outside.exclusions, isEmpty);
+    });
+
+    test('a phone-only attempt that did not sound anywhere is not a stimulus',
+        () {
+      final o = run(trace: [
+        naturalNotDelivered(kT, kT - 660),
+        bandRepeat(kT - 600),
+      ]);
+      expect(o.delivered, isTrue);
+      expect(o.exclusions, isEmpty);
+    });
+
+    test('a phone-only Gradual step before the first band Gradual step is '
+        'competing', () {
+      final o = run(trace: [
+        [
+          gradualRow(kT, kT - 600, 0, 'sent', targets: const ['phone']),
+          gradualRow(kT, kT - 540, 1, 'sent'),
+        ],
+      ]);
+      expect(o.firedBy, WakeFiredBy.gradual);
+      expect(o.firedAtSec, kT - 540);
+      expect(o.exclusions, [WakeExclusion.competingAlarm]);
+    });
+
+    test('a phone-only Natural stimulus before the native alarm at T is '
+        'competing', () {
+      final o = run(trace: [
+        naturalFire(kT, kT - 300, targets: const ['phone']),
+        [fallbackRow(kT, kT - 7200), closedRow(kT, kT + 60)],
+      ]);
+      expect(o.firedBy, WakeFiredBy.native);
+      expect(o.exclusions, [WakeExclusion.competingAlarm]);
+    });
+
+    test('guard: a single band+phone fire is not its own competitor', () {
+      final o = run(trace: [
+        naturalFire(kT, fire, targets: const ['phone', 'band']),
+      ]);
+      expect(o.exclusions, isEmpty);
+    });
+  });
+
+  group("this wake's own native alarm is not another alarm (round 3, P3)", () {
+    List<WakeTraceEntry> nativeWake() =>
+        [fallbackRow(kT, kT - 7200), closedRow(kT, kT + 60)];
+
+    test('a band alarm-fired stamp a few seconds before T, native fire: kept',
+        () {
+      final o = run(trace: [nativeWake()], others: [kT - 3]);
+      expect(o.firedBy, WakeFiredBy.native);
+      expect(o.exclusions, isEmpty);
+    });
+
+    test('an alarm-fired stamp at T or just after, any fire: no exclusion', () {
+      for (final other in [kT, kT + 2, kT + 60]) {
+        expect(run(trace: [naturalFire(kT, fire)], others: [other]).exclusions,
+            isEmpty);
+        expect(run(trace: [nativeWake()], others: [other]).exclusions, isEmpty);
+      }
+    });
+
+    test('a different alarm 10 min before the native alarm at T still '
+        'excludes', () {
+      final o = run(trace: [nativeWake()], others: [kT - 600]);
+      expect(o.exclusions, [WakeExclusion.competingAlarm]);
+    });
+
+    test('the slack is exactly 120 s around T', () {
+      expect(run(trace: [nativeWake()], others: [kT - 120]).exclusions,
+          isEmpty);
+      expect(run(trace: [nativeWake()], others: [kT - 121]).exclusions,
+          [WakeExclusion.competingAlarm]);
     });
   });
 

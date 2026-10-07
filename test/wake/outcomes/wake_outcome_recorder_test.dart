@@ -43,7 +43,7 @@ class _Rig {
   final kv = <String, String>{};
   final trace = <WakeTraceEntry>[];
   final touches = <int>[];
-  WakeEvidenceSecs evidence = (appOpened: <int>[], movement: <int>[]);
+  WakeEvidenceSecs evidence = (appOpened: <int>[], movement: <int>[], alarmFired: <int>[]);
   late final WakeOutcomeStore store;
   late final WakeOutcomeRecorder recorder;
 }
@@ -72,7 +72,7 @@ void main() {
     test('a closed wake becomes one stored outcome', () async {
       final rig = _Rig()
         ..trace.addAll(_closedNaturalWake(kT))
-        ..evidence = (appOpened: [kT - 20 * 60 + 90], movement: <int>[]);
+        ..evidence = (appOpened: [kT - 20 * 60 + 90], movement: <int>[], alarmFired: <int>[]);
       final outcome = await rig.recorder.record(kT);
       expect(outcome, isNotNull);
       expect(outcome!.firedBy, WakeFiredBy.natural);
@@ -90,7 +90,7 @@ void main() {
       final rig = _Rig()..trace.addAll(_closedNaturalWake(kT));
       await rig.recorder.record(kT);
       expect(await rig.recorder.rate(kT, 4), isTrue);
-      rig.evidence = (appOpened: <int>[], movement: [kT - 20 * 60 + 60]);
+      rig.evidence = (appOpened: <int>[], movement: [kT - 20 * 60 + 60], alarmFired: <int>[]);
       await rig.recorder.record(kT);
       final stored = await rig.store.load();
       expect(stored, hasLength(1));
@@ -164,15 +164,15 @@ void main() {
 
     test('the earliest observed latency wins, in either order', () async {
       final rig = _Rig()..trace.addAll(_closedNaturalWake(kT));
-      rig.evidence = (appOpened: <int>[], movement: [fire + 300]);
+      rig.evidence = (appOpened: <int>[], movement: [fire + 300], alarmFired: <int>[]);
       await rig.recorder.record(kT);
-      rig.evidence = (appOpened: <int>[], movement: [fire + 120]);
+      rig.evidence = (appOpened: <int>[], movement: [fire + 120], alarmFired: <int>[]);
       await rig.recorder.record(kT);
       expect((await rig.store.load()).single
               .latencySec[WakeResponseKind.movement],
           120);
       // A later run that only sees a later movement must not push it back.
-      rig.evidence = (appOpened: <int>[], movement: [fire + 500]);
+      rig.evidence = (appOpened: <int>[], movement: [fire + 500], alarmFired: <int>[]);
       await rig.recorder.record(kT);
       expect((await rig.store.load()).single
               .latencySec[WakeResponseKind.movement],
@@ -203,6 +203,96 @@ void main() {
       expect(outcome!.toJson()['configuredWindowMinutes'], 45);
       expect((await rig.store.load()).single.toJson()['configuredWindowMinutes'],
           45);
+    });
+  });
+
+  group('round 3: rating keeps the window; alarm evidence censors', () {
+    const fire = kT - 20 * 60; // _closedNaturalWake fires 20 min before T
+
+    // RED (P2): record -> rate -> load.
+    test('record, rate, load: the configured window survives the rating',
+        () async {
+      final rig = _Rig()
+        ..trace.addAll([
+          planRow(kT, kT - 3 * 3600, naturalMinutes: 45),
+          ..._closedNaturalWake(kT),
+        ]);
+      await rig.recorder.record(kT);
+      expect(await rig.recorder.rate(kT, 4), isTrue);
+      final stored = (await rig.recorder.outcomes()).single;
+      expect(stored.grogginess, 4);
+      expect(stored.configuredWindowMinutes, 45);
+    });
+
+    // RED (P2): band alarm-fired evidence (WakeEvidenceKind.alarmFired) is the
+    // one real source of OTHER alarm evidence the app has.
+    test('a band alarm fired 5 min before the fire excludes the morning',
+        () async {
+      final rig = _Rig()
+        ..trace.addAll(_closedNaturalWake(kT))
+        ..evidence = (
+          appOpened: <int>[],
+          movement: <int>[],
+          alarmFired: [fire - 300],
+        );
+      final outcome = await rig.recorder.record(kT);
+      expect(outcome!.exclusions, [WakeExclusion.competingAlarm]);
+      expect((await rig.store.load()).single.usable, isFalse);
+    });
+
+    test("this wake's own native alarm stamp (about T) is not a competitor",
+        () async {
+      // Natural fired 20 min early; the native alarm at T goes off later and
+      // is noted as alarmFired at T. Neither is before the fire.
+      final rig = _Rig()
+        ..trace.addAll(_closedNaturalWake(kT))
+        ..evidence = (
+          appOpened: <int>[],
+          movement: <int>[],
+          alarmFired: [kT + 2],
+        );
+      final outcome = await rig.recorder.record(kT);
+      expect(outcome!.exclusions, isEmpty);
+    });
+
+    test('a native-only wake does not exclude itself on its own alarm stamp',
+        () async {
+      final rig = _Rig()
+        ..trace.addAll([
+          fallbackRow(kT, kT - 7200),
+          closedRow(kT, kT + 1),
+        ])
+        ..evidence = (
+          appOpened: <int>[],
+          movement: <int>[],
+          alarmFired: [kT - 3], // the strap stamps the event a hair early
+        );
+      final outcome = await rig.recorder.record(kT);
+      expect(outcome!.firedBy, WakeFiredBy.native);
+      expect(outcome.exclusions, isEmpty);
+    });
+
+    test('competingAlarm from alarm evidence is kept when a later catch-up '
+        'can no longer read it', () async {
+      // The evidence reader only follows the newest sleep block, so a catch-up
+      // after the next night starts sees none. Like alreadyAwake, an exclusion
+      // that rests on an observation must not lapse.
+      final rig = _Rig()
+        ..trace.addAll(_closedNaturalWake(kT))
+        ..nowSec = kT + 60
+        ..evidence = (
+          appOpened: <int>[],
+          movement: <int>[],
+          alarmFired: [fire - 300],
+        );
+      expect((await rig.recorder.record(kT))!.exclusions,
+          [WakeExclusion.competingAlarm]);
+      rig.evidence =
+          (appOpened: <int>[], movement: <int>[], alarmFired: <int>[]);
+      rig.nowSec = kT + 3 * 3600;
+      await rig.recorder.catchUp();
+      expect((await rig.store.load()).single.exclusions,
+          [WakeExclusion.competingAlarm]);
     });
   });
 

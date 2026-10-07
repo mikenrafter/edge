@@ -5638,7 +5638,7 @@ class AppState extends ChangeNotifier {
   /// when that block began before the wake; otherwise nothing was seen (empty,
   /// never a guess).
   Future<WakeEvidenceSecs> _wakeOutcomeEvidence(int wakeSec) async {
-    const none = (appOpened: <int>[], movement: <int>[]);
+    const none = (appOpened: <int>[], movement: <int>[], alarmFired: <int>[]);
     final onset = await _wakeStore.sleepOnsetSec();
     if (onset == null ||
         onset > wakeSec ||
@@ -5655,6 +5655,7 @@ class AppState extends ChangeNotifier {
         for (final e in events)
           if (e.kind == WakeEvidenceKind.bandMovement) e.sec,
       ],
+      alarmFired: const <int>[], // RED-SCAFFOLD: filled in by the fix
     );
   }
 

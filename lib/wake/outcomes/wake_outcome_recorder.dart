@@ -29,7 +29,13 @@ const Duration kGrogginessPromptMaxAge = Duration(hours: 12);
 
 /// App opens and band movement noted for a wake, epoch seconds. Empty means
 /// none were seen, which the assembler reports as "not seen", never 0.
-typedef WakeEvidenceSecs = ({List<int> appOpened, List<int> movement});
+typedef WakeEvidenceSecs = ({
+  List<int> appOpened,
+  List<int> movement,
+  // RED-SCAFFOLD (round 3): band alarm-fired stamps (WakeEvidenceKind.alarmFired)
+  // noted for the night; read but not yet used.
+  List<int> alarmFired,
+});
 
 class WakeOutcomeRecorder {
   WakeOutcomeRecorder({
