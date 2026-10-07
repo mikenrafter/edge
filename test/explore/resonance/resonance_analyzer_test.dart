@@ -223,6 +223,18 @@ void main() {
       expect(c.rateBpm, 5.5);
     });
 
+    test('a rejected tested rate leaves an admitted-boundary winner inconclusive',
+        () {
+      final c = compareBlocks(
+        sweepInputs({6.5: 3, 6.0: 8, 5.5: 5, 5.0: 4, 4.5: 3},
+            reject: {6.5}),
+        testedRates: kRatesAsc,
+      );
+      // 6.0 is the fastest admitted rate, so nothing was measured above it.
+      expect(c.outcome, ComparisonOutcome.inconclusiveBoundary);
+      expectNoRate(c);
+    });
+
     test('fewer than three admitted blocks is inconclusive', () {
       final c = compareBlocks(
         sweepInputs({6.5: 3, 6.0: 4, 5.5: 8, 5.0: 4, 4.5: 3},

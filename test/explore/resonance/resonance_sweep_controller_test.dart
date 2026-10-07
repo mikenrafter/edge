@@ -94,6 +94,35 @@ class Harness {
 }
 
 void main() {
+  group('sweepBeatsFromRr', () {
+    test('pairs each RR value with its timestamp and observation flag', () {
+      final beats = sweepBeatsFromRr(
+        rrMs: [800, 900],
+        rrTsMs: [1234, 2345],
+        observed: [true, false],
+      );
+
+      expect(beats, hasLength(2));
+      expect(beats[0].tMs, 1234);
+      expect(beats[0].rrMs, 800);
+      expect(beats[0].observed, isTrue);
+      expect(beats[1].tMs, 2345);
+      expect(beats[1].rrMs, 900);
+      expect(beats[1].observed, isFalse);
+    });
+
+    test('rejects mismatched parallel lists', () {
+      expect(
+        () => sweepBeatsFromRr(
+          rrMs: [800],
+          rrTsMs: [1000, 2000],
+          observed: [true],
+        ),
+        throwsArgumentError,
+      );
+    });
+  });
+
   group('start', () {
     test('without a connection it fails and touches nothing', () async {
       final h = Harness(connected: false);

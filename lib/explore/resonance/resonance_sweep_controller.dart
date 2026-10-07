@@ -9,7 +9,8 @@
 //   Lehrer, Vaschillo & Vaschillo 2000, doi 10.1023/A:1009554825745
 //   Shaffer & Meehan 2020, doi 10.3389/fnins.2020.570400
 //
-// RED-phase stub: every body throws until the implementation lands.
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../stress/breath_phases.dart';
@@ -19,6 +20,28 @@ import 'resonance_sweep_plan.dart';
 enum CueDelivery { delivered, skippedBusy, rejectedBudget, notConnected }
 
 enum SweepState { idle, running, finished, stopped, failed }
+
+/// Converts parallel RR values, timestamps, and observation flags into beats.
+///
+/// All three lists describe the same samples. A mismatch is rejected rather
+/// than padding a missing value or silently assigning it to another beat.
+List<SweepBeat> sweepBeatsFromRr({
+  required List<double> rrMs,
+  required List<double> rrTsMs,
+  required List<bool> observed,
+}) {
+  if (rrMs.length != rrTsMs.length || rrMs.length != observed.length) {
+    throw ArgumentError('RR values, timestamps, and flags must have equal lengths.');
+  }
+  return [
+    for (var index = 0; index < rrMs.length; index++)
+      SweepBeat(
+        tMs: rrTsMs[index].round(),
+        rrMs: rrMs[index],
+        observed: observed[index],
+      ),
+  ];
+}
 
 class ResonanceSweepController extends ChangeNotifier {
   ResonanceSweepController({
@@ -48,24 +71,185 @@ class ResonanceSweepController extends ChangeNotifier {
   final DateTime Function()? now;
   final bool hapticOnly;
 
-  SweepState get state => throw UnimplementedError();
-  Duration get elapsed => throw UnimplementedError();
-  SweepBlock? get currentBlock => throw UnimplementedError();
-  SweepComparison? get result => throw UnimplementedError();
-  String? get error => throw UnimplementedError();
+  SweepState _state = SweepState.idle;
+  Duration _elapsed = Duration.zero;
+  SweepComparison? _result;
+  String? _error;
+  DateTime? _startedAt;
+  bool _streamsHeld = false;
+  bool _disposed = false;
+  Future<void>? _terminalWork;
+  final List<({int atMs, String hex})> _frames = [];
+  final Set<int> _deliveredCueIndexes = {};
+  final Map<int, int> _missedCuesByBlock = {};
 
-  Future<void> start() => throw UnimplementedError();
+  SweepState get state => _state;
+  Duration get elapsed => _elapsed;
+  SweepBlock? get currentBlock =>
+      _state == SweepState.running ? plan.blockAt(_elapsed) : null;
+  SweepComparison? get result => _result;
+  String? get error => _error;
+
+  Future<void> start() async {
+    if (_state != SweepState.idle || _disposed) return;
+    if (!isConnected()) {
+      _fail('Connect your band first.');
+      return;
+    }
+    try {
+      await acquireStreams();
+      _streamsHeld = true;
+      _startedAt = _clockNow();
+      _elapsed = Duration.zero;
+      _state = SweepState.running;
+      _error = null;
+      _result = null;
+      _notify();
+    } catch (exception) {
+      _fail(_errorText(exception));
+    }
+  }
 
   /// Driven by the UI or a test; reads the injected clock.
-  void tick() => throw UnimplementedError();
+  void tick() {
+    if (_state != SweepState.running) return;
+    _elapsed = _elapsedAtNow();
+    _queueDueCues();
+    if (_elapsed >= plan.total) {
+      _terminalWork ??= _complete(stoppedEarly: false);
+    }
+    _notify();
+  }
 
   /// Buffers a frame (stamped with session-relative ms) while running only.
-  void tapFrame(String hex) => throw UnimplementedError();
+  void tapFrame(String hex) {
+    if (_state != SweepState.running) return;
+    final at = _elapsedAtNow();
+    if (!plan.inMeasureWindow(at)) return;
+    if (_frames.length == 20000) _frames.removeAt(0);
+    _frames.add((atMs: at.inMilliseconds, hex: hex));
+  }
 
   /// User discomfort or leaving. Scores complete blocks only. Idempotent.
-  Future<void> stop() => throw UnimplementedError();
+  Future<void> stop() {
+    if (_state != SweepState.running) return Future<void>.value();
+    _elapsed = _elapsedAtNow();
+    _terminalWork ??= _complete(stoppedEarly: true);
+    return _terminalWork!;
+  }
 
   @override
-  // ignore: must_call_super
-  void dispose() => throw UnimplementedError();
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _releaseStreamsOnce();
+    super.dispose();
+  }
+
+  Future<void> _complete({required bool stoppedEarly}) async {
+    try {
+      final completed = plan.blocks
+          .where((block) => block.end <= _elapsed)
+          .toList(growable: false);
+      final inputs = <BlockInput>[];
+      for (final block in completed) {
+        final frames = _frames
+            .where((frame) =>
+                frame.atMs >= block.settleEnd.inMilliseconds &&
+                frame.atMs < block.end.inMilliseconds)
+            .toList(growable: false);
+        final beats = await decodeBeats(frames);
+        inputs.add(BlockInput(
+          block: block,
+          beats: beats,
+          stillFraction:
+              stillFraction?.call(block.settleEnd, block.end) ?? 1.0,
+          missedCues: _missedCuesByBlock[plan.blocks.indexOf(block)] ?? 0,
+          hapticOnly: hapticOnly,
+        ));
+      }
+      _result = compareBlocks(
+        inputs,
+        testedRates: plan.testedRates,
+        stoppedEarly: stoppedEarly,
+      );
+      _state = stoppedEarly ? SweepState.stopped : SweepState.finished;
+      _releaseStreamsOnce();
+      _notify();
+    } catch (exception) {
+      _fail(_errorText(exception));
+    }
+  }
+
+  DateTime _clockNow() => now?.call() ?? DateTime.now();
+
+  Duration _elapsedAtNow() {
+    final startedAt = _startedAt;
+    if (startedAt == null) return Duration.zero;
+    final value = _clockNow().difference(startedAt);
+    return value.isNegative ? Duration.zero : value;
+  }
+
+  void _queueDueCues() {
+    var cueIndex = 0;
+    for (var blockIndex = 0; blockIndex < plan.blocks.length; blockIndex++) {
+      final block = plan.blocks[blockIndex];
+      final phaseMicros = 30000000.0 / block.rateBpm;
+      for (var phase = 0;; phase++, cueIndex++) {
+        final at = block.start +
+            Duration(microseconds: (phase * phaseMicros).round());
+        if (at >= block.end) break;
+        if (at > _elapsed) break;
+        if (_deliveredCueIndexes.add(cueIndex)) {
+          unawaited(_deliverCue(blockIndex, at, block.pattern.phases[phase % 2].kind));
+        }
+      }
+    }
+  }
+
+  Future<void> _deliverCue(
+    int blockIndex,
+    Duration at,
+    BreathPhaseKind kind,
+  ) async {
+    try {
+      final delivery = await deliverCue(kind);
+      final block = plan.blocks[blockIndex];
+      if (delivery != CueDelivery.delivered &&
+          at >= block.settleEnd &&
+          at < block.end) {
+        _missedCuesByBlock.update(blockIndex, (count) => count + 1,
+            ifAbsent: () => 1);
+      }
+    } catch (_) {
+      final block = plan.blocks[blockIndex];
+      if (at >= block.settleEnd && at < block.end) {
+        _missedCuesByBlock.update(blockIndex, (count) => count + 1,
+            ifAbsent: () => 1);
+      }
+    }
+  }
+
+  void _fail(String message) {
+    _state = SweepState.failed;
+    _error = message;
+    _result = null;
+    _releaseStreamsOnce();
+    _notify();
+  }
+
+  void _releaseStreamsOnce() {
+    if (!_streamsHeld) return;
+    _streamsHeld = false;
+    releaseStreams();
+  }
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  String _errorText(Object exception) {
+    final text = exception.toString();
+    return text.isEmpty ? 'Unable to complete the sweep.' : text;
+  }
 }
