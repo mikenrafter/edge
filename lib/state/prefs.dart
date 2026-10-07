@@ -95,6 +95,10 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
+  /// Explore: "Bedtime breathing cues". Developer-only AND off unless somebody
+  /// turned this on; the entry needs both (see lib/explore/bedtime).
+  static const String exploreBedtime = 'explore.bedtime';
+
   /// Lift the 10 s cap on compiled band haptics. Off by default; the
   /// 8-command plan cap and the band's rolling command limit still apply.
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
