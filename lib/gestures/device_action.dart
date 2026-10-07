@@ -225,6 +225,12 @@ extension DeviceActionX on DeviceAction {
   /// would fire hours late.
   bool get supportsHistoricalReplay => this == DeviceAction.markMoment;
 
+  /// A long-running mode that takes over the band while it runs, so it cannot
+  /// share a gesture slot with any other action. ECG is the one today, but it
+  /// is the separate `GestureSettings.ecgOnDoubleTap` flag, not a
+  /// [DeviceAction]; this is where a future action says it is one.
+  bool get isActiveMode => throw UnimplementedError('DeviceAction.isActiveMode');
+
   static DeviceAction? fromId(String? id) {
     if (id == null) return null;
     for (final a in DeviceAction.values) {

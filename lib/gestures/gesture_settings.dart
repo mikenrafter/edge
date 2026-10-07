@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../platform/device_actions.dart';
 import 'device_action.dart';
 import 'ecg_tap_counter.dart';
+import 'gesture_slots.dart';
 import 'time_buzz.dart';
 
 /// How taps beyond the firmware's double tap are counted. One mapping store
@@ -281,6 +282,38 @@ class GestureSettings extends ChangeNotifier {
     await prefs.setString(_kTimeBuzzMode, mode.name);
     notifyListeners();
   }
+
+  // ---- Per-slot configuration (RED PHASE: stubs, nothing calls them yet) ----
+
+  /// Options for [slot]; an empty [GestureSlotOptions] when it has none.
+  GestureSlotOptions optionsFor(String slot) =>
+      throw UnimplementedError('GestureSettings.optionsFor');
+
+  /// Tell the time's mode for [slot]: the slot's own choice, else the global
+  /// [timeBuzzMode] (the migration of the old single setting: every slot starts
+  /// on it, and a user keeps their mode).
+  TimeBuzzMode timeBuzzModeFor(String slot) =>
+      throw UnimplementedError('GestureSettings.timeBuzzModeFor');
+
+  /// Give [slot] its own Tell the time mode (persisted in the slot's options).
+  Future<void> setTimeBuzzModeFor(String slot, TimeBuzzMode mode) =>
+      throw UnimplementedError('GestureSettings.setTimeBuzzModeFor');
+
+  /// action -> the slots (in tap-count order) it is on in, for every action on
+  /// in TWO OR MORE slots. ECG-on-double-tap is not an action and not listed.
+  Map<DeviceAction, Set<String>> overlaps() =>
+      throw UnimplementedError('GestureSettings.overlaps');
+
+  /// Turn [action] on or off for [slot], refusing what an active mode forbids:
+  /// nothing can be added to a slot ECG occupies. Turning off is always ok.
+  Future<ActionToggleResult> trySetAction(
+          String slot, DeviceAction action, bool on) =>
+      throw UnimplementedError('GestureSettings.trySetAction');
+
+  /// [setEcgOnDoubleTap] with the exclusivity rule: refused while the double
+  /// tap slot has any other action on. Turning off is always ok.
+  Future<ActionToggleResult> trySetEcgOnDoubleTap(bool on) =>
+      throw UnimplementedError('GestureSettings.trySetEcgOnDoubleTap');
 
   Future<void> setEcgOnDoubleTap(bool on) async {
     if (_ecgOnDoubleTap == on) return;

@@ -107,6 +107,13 @@ typedef GestureHandler = Future<void> Function(StrapEvent event);
 /// local clock in the wearer's [GestureSettings.timeBuzzMode], read when the
 /// action runs. Complete once the band has the gesture (it need not wait for
 /// the last buzz to finish: a 12 PM time is ~20 s, past [actionTimeout]).
+/// Runs an in-app action for the SLOT that fired it, so the same action on two
+/// slots keeps separate state (two timers are two timers). When given, it takes
+/// the place of [GestureDispatcher.onMarkMoment] / [onWorkoutToggle] /
+/// [onLogWater]. (RED PHASE: declared, not yet called.)
+typedef SlotActionHandler = Future<void> Function(
+    String slot, DeviceAction action, StrapEvent event);
+
 typedef TellTimeHandler = Future<void> Function(
     StrapEvent event, List<TimeBuzzElement> elements);
 
@@ -119,6 +126,9 @@ class GestureDispatcher {
   final GestureHandler? onMarkMoment;
   final GestureHandler? onWorkoutToggle;
   final GestureHandler? onLogWater;
+
+  /// Per-slot in-app handler; see [SlotActionHandler].
+  final SlotActionHandler? onSlotAction;
 
   /// Plays [DeviceAction.tellTime]. Missing: the action fails (an in-app action
   /// with no handler), like the others.
@@ -185,6 +195,7 @@ class GestureDispatcher {
     this.onWorkoutToggle,
     this.onLogWater,
     this.onTellTime,
+    this.onSlotAction,
     this.now,
     this.ecgSupported,
     this.onEcgTap,

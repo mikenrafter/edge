@@ -35,6 +35,7 @@ import 'package:provider/provider.dart';
 import '../../gestures/device_action.dart';
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
+import '../../gestures/gesture_slots.dart';
 import '../../gestures/tap_names.dart';
 import '../../gestures/time_buzz.dart';
 import '../../l10n/app_localizations.dart';
@@ -152,6 +153,28 @@ class BandGesturesView extends StatelessWidget {
   final ValueChanged<TimeBuzzMode>? onTimeBuzzMode;
   final DateTime Function()? timeBuzzNow;
 
+  /// RED PHASE (declared, not yet drawn). Per-slot configuration, keyed by
+  /// slot id (`GestureSlots`).
+  ///
+  /// [overlaps] is `GestureSettings.overlaps()`: in the tab of a slot, under
+  /// each action that is ON in that slot and also on in others, a non-blocking
+  /// line "Also on Triple tap" (the other slots' `GestureSlots.nameOf`, comma
+  /// separated), key `gesture-overlap:<action id>`.
+  ///
+  /// [onSlotToggle], when given, handles every switch (for every tab) in place
+  /// of [onToggle] / [onTapToggle]. A refusal is shown in the tab as the
+  /// refusal's reason text (key `gesture-refusal`) and the switch is not
+  /// flipped (it is driven by [chosen] / [tapActions]).
+  ///
+  /// [slotTimeBuzzModes] / [onSlotTimeBuzzMode]: each tab's Tell the time
+  /// picker shows its OWN slot's mode (falling back to [timeBuzzMode]) and a
+  /// tap on a row reports the slot (falling back to [onTimeBuzzMode]).
+  final Map<DeviceAction, Set<String>> overlaps;
+  final Future<ActionToggleResult> Function(
+      String slot, DeviceAction action, bool on)? onSlotToggle;
+  final Map<String, TimeBuzzMode> slotTimeBuzzModes;
+  final void Function(String slot, TimeBuzzMode mode)? onSlotTimeBuzzMode;
+
   /// Opens the Haptics screen, where the buzzes these gestures play are
   /// chosen. The row is always drawn; without a callback it is inert.
   final VoidCallback? onHaptics;
@@ -181,6 +204,10 @@ class BandGesturesView extends StatelessWidget {
     this.timeBuzzMode = TimeBuzzMode.count,
     this.onTimeBuzzMode,
     this.timeBuzzNow,
+    this.overlaps = const {},
+    this.onSlotToggle,
+    this.slotTimeBuzzModes = const {},
+    this.onSlotTimeBuzzMode,
     this.onHaptics,
     this.devMode = false,
     this.onDeviceLab,
