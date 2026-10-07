@@ -1,8 +1,24 @@
 import 'dart:convert';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../data/db.dart';
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
 import '../wake/wake_settings.dart' show naturalCollectionLead;
+
+/// The saved expected sleep schedule, read straight from preferences so a
+/// headless run (no AppState) plans collection from the same value the
+/// foreground does. Null when none is saved or the stored value is unreadable.
+ExpectedSleepSchedule? loadSavedExpectedSleepSchedule(SharedPreferences prefs) {
+  final raw = prefs.getString('expected_sleep_schedule_v1');
+  if (raw == null) return null;
+  try {
+    return ExpectedSleepSchedule.fromJson(
+        (jsonDecode(raw) as Map).cast<String, Object?>());
+  } catch (_) {
+    return null;
+  }
+}
 
 class HighFreqWakePlan {
   final bool shouldEnable;
@@ -78,7 +94,7 @@ class HighFreqWakeWindow {
       if (minute != null) wakeMinutes.add(minute);
     }
 
-    HighFreqWakePlan? habitualPlan;
+    HighFreqWakePlan? historyPlan;
     if (wakeMinutes.length >= minSamples) {
       wakeMinutes.sort();
       final habitualWakeMinute = wakeMinutes[wakeMinutes.length ~/ 2];
@@ -101,7 +117,7 @@ class HighFreqWakeWindow {
             )
           : todayTarget;
       final windowStart = targetWake.subtract(lease);
-      habitualPlan = HighFreqWakePlan(
+      historyPlan = HighFreqWakePlan(
         shouldEnable: !now.isBefore(windowStart) && now.isBefore(targetWake),
         targetWake: targetWake,
         source: 'habitual_wake',
@@ -113,16 +129,33 @@ class HighFreqWakeWindow {
     // A saved expectation is collection planning only. It never creates a
     // measured night or automatically arms an alarm. Calendar construction
     // preserves the selected wall-clock time on either side of DST.
+    //
+    // It ADDS a window; it never takes one away. It used to REPLACE the
+    // history-derived habitual plan, so the moment someone saved a schedule the
+    // window their own measured nights had been collecting in went dark
+    // whenever the schedule's wake differed from their habit. Both stand: if
+    // either says "collect now", collect (the one ending later, so its lease
+    // covers the longer span). With nothing enabled the schedule is the
+    // reported plan, as before.
+    HighFreqWakePlan? habitualPlan = historyPlan;
     if (expectedSchedule != null) {
       var window = expectedSchedule.windowFor(now);
       if (!now.isBefore(window.$2)) {
         window = expectedSchedule.windowFor(DateTime(now.year, now.month, now.day + 1));
       }
       final start = window.$2.subtract(lease);
-      habitualPlan = HighFreqWakePlan(
+      final schedulePlan = HighFreqWakePlan(
         shouldEnable: !now.isBefore(start) && now.isBefore(window.$2),
         targetWake: window.$2, source: 'expected_sleep_schedule', sampleCount: 0,
         lease: lease);
+      if (historyPlan != null &&
+          historyPlan.shouldEnable &&
+          (!schedulePlan.shouldEnable ||
+              historyPlan.targetWake!.isAfter(schedulePlan.targetWake!))) {
+        habitualPlan = historyPlan;
+      } else {
+        habitualPlan = schedulePlan;
+      }
     }
 
     // The scheduled-alarm window only takes over when the habitual window

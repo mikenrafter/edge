@@ -81,6 +81,7 @@ import '../wake/wake_controller.dart';
 import '../wake/wake_orchestrator.dart';
 import '../wake/wake_settings.dart';
 import '../wake/wake_stores.dart';
+import '../wake/sleep_onset.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, defaultTargetPlatform;
 import 'capabilities.dart';
 import 'feature_flags.dart';
@@ -4957,6 +4958,11 @@ class AppState extends ChangeNotifier {
         ackedThroughEpochSec: prefs.getInt(_kWakeAckedEpochPref),
       );
       final report = armReportOf(result);
+      String iso(int? e) => e == null
+          ? '-'
+          : DateTime.fromMillisecondsSinceEpoch(e * 1000).toIso8601String();
+      _log('[alarm] arm pass: held=${iso(_savedAlarm ?? device.alarmEpoch)} → '
+          '${result.epoch != null ? 'wrote ${iso(result.epoch)}' : result.refused ? 'REFUSED by the band' : result.disabled ? 'disabled' : 'unchanged'}');
       if (result.disabled) {
         // Every weekday got disabled since the last arm — the strap doesn't
         // give up its old alarm on its own (PR #329 review).
@@ -5192,8 +5198,15 @@ class AppState extends ChangeNotifier {
       if (!isConnected) return;
       _ensureNextAlarmArmed();
       _ensureWakeCollection();
-      final plan = _currentWakePlan();
+      var plan = _currentWakePlan();
       if (plan == null) return;
+      // No saved expected schedule: the night's DETECTED sleep onset (the
+      // persisted derive candidate) decides main sleep vs nap. None detectable
+      // leaves it null and the planner keeps answering "unknown" — never a
+      // guessed onset.
+      if (plan.naturalMinutes > 0 && plan.expectedSchedule == null) {
+        plan = plan.withSleepOnset(await loadDetectedSleepOnset(plan.wakeAt));
+      }
       if (wake.legacySmartWakeActive) await _checkLegacySmartWake(plan.wakeAt);
       // With neither feature on there is nothing to orchestrate: the existing
       // arm engine already keeps the native alarm armed.
@@ -5202,10 +5215,37 @@ class AppState extends ChangeNotifier {
         return;
       }
       final out = await _wakeOrchestrator.tick(plan);
+      _logWakeTick(plan, out);
       if (out.naturalFired) _releaseWakeCollection(plan.wakeSec);
     } catch (e) {
       _log('[wake] tick failed (fallback alarm is unaffected): $e');
     }
+  }
+
+  /// The wake tick's decisions otherwise live only in the database trace; the
+  /// sync log is what survives a field report. One line per CHANGE (the tick
+  /// runs every 30 s all night), never one per tick.
+  String? _lastWakeTickSig;
+
+  /// Ticks that reached the change filter (not closed, not coalesced), so a
+  /// test can tell the filter's suppression from the orchestrator's.
+  @visibleForTesting
+  int debugWakeTicksLogged = 0;
+
+  void _logWakeTick(WakePlanInput plan, WakeTickOutcome out) {
+    if (out.closed || out.coalesced) return;
+    debugWakeTicksLogged++;
+    final sig = '${plan.wakeSec}|${out.natural?.name}|${out.naturalFired}|'
+        '${out.gradualStepFired}|${plan.expectedSchedule != null}|'
+        '${plan.sleepOnset != null}';
+    if (sig == _lastWakeTickSig) return;
+    _lastWakeTickSig = sig;
+    _log('[wake] tick: wakeAt=${plan.wakeAt.toIso8601String()} '
+        'natural=${plan.naturalMinutes}min reason=${out.natural?.name ?? '-'} '
+        'fired=${out.naturalFired} gradualStep=${out.gradualStepFired ?? '-'} '
+        'schedule=${plan.expectedSchedule != null} '
+        'onset=${plan.sleepOnset?.toIso8601String() ?? '-'} '
+        'connected=$isConnected background=$_background');
   }
 
   // ── the alarm must not wait for a connect ──────────────────────────────────
@@ -5244,16 +5284,18 @@ class AppState extends ChangeNotifier {
   DateTime? _lastWakeCollectionCheckAt;
 
   void _ensureWakeCollection() {
-    final epoch = alarmEpoch;
-    if (epoch == null || _wakeCollectionDoneEpoch == epoch) return;
-    final wakeAt = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
-    final entry =
-        _schedule.where((e) => e.weekday == wakeAt.weekday - 1).firstOrNull;
-    if (entry == null || !wake.naturalEnabled || entry.naturalWindowMinutes <= 0) {
-      return;
-    }
+    if (!wake.naturalEnabled) return;
+    final planned = plannedCollectionWindow(
+      epoch: alarmEpoch,
+      schedule: _schedule,
+      upgrade: wake.runningUpgradeState,
+    );
+    if (planned == null) return;
+    final wakeAt = planned.windowEnd;
+    final epoch = wakeAt.millisecondsSinceEpoch ~/ 1000;
+    if (_wakeCollectionDoneEpoch == epoch) return;
     final now = DateTime.now();
-    final from = wakeAt.subtract(naturalCollectionLead(entry.naturalWindowMinutes));
+    final from = wakeAt.subtract(naturalCollectionLead(planned.minutes));
     if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
     final until = engine.highFreqUntil;
     final covered = until != null &&
@@ -5769,10 +5811,16 @@ class AppState extends ChangeNotifier {
   Future<void> _refreshHighFreqWakeWindowOnce() async {
     if (!engine.isConnected) return;
     try {
-      final armed = armedCollectionWindow(
+      // Collection follows the SCHEDULE, not whether this process currently
+      // tracks an armed epoch (see [plannedCollectionWindow]): an epoch cleared
+      // by a fire, a replayed event or a restart must not switch off the
+      // window the user asked for.
+      final armed = plannedCollectionWindow(
         epoch: alarmEpoch,
         schedule: _schedule,
         upgrade: wake.runningUpgradeState,
+        ackedThroughEpochSec:
+            (await SharedPreferences.getInstance()).getInt(_kWakeAckedEpochPref),
       );
       // Natural Wake fired or was acknowledged for this very occurrence: its
       // collection is over, so no plan runs until the next one (the band's

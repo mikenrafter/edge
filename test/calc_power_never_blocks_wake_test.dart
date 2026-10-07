@@ -257,7 +257,10 @@ void main() {
         expect(codeOnly(run), isNot(contains(word)),
             reason: 'runHeadlessSync reads $word itself');
       }
-      final window = run.indexOf('HighFreqWakeWindow.planNow(');
+      final window = run.indexOf('await headlessWakeWindowPlan();');
+      expect(bodyOf(src, 'Future<HighFreqWakePlan> headlessWakeWindowPlan('),
+          contains('HighFreqWakeWindow.planNow('),
+          reason: 'the plan the run applies is built by planNow');
       final apply = run.indexOf('engine.applyHighFreqWakeWindow(');
       final drain = run.indexOf('await engine.runSync();');
       final armBefore = run.indexOf("_headlessArm(engine, 'before the drain')");

@@ -153,6 +153,36 @@ Future<void> headlessDeriveAfterSync() async {
   }
 }
 
+/// The band's high-frequency plan for a headless run. Same inputs as the
+/// foreground refresh, so the two cannot disagree about whether this is a
+/// collection window: the saved expected sleep schedule (it adds a window, it
+/// never removes one), the history habit, and the Natural window of the armed
+/// alarm — or, when no epoch is tracked, of the schedule's next occurrence
+/// ([plannedCollectionWindow]). Read BEFORE the (possibly long) sync; the
+/// re-arm block re-reads the schedule fresh on its own (see PR #403).
+@visibleForTesting
+Future<HighFreqWakePlan> headlessWakeWindowPlan({DateTime? now}) async {
+  final schedule = fillDefaultAlarmSchedule([
+    for (final r in await LocalDb.alarmScheduleRows())
+      AlarmScheduleEntry.fromRow(r),
+  ]);
+  final prefs = await SharedPreferences.getInstance();
+  await FeatureFlags.ensureLoaded(); // a headless run has no launch hook
+  final armed = plannedCollectionWindow(
+    epoch: prefs.getInt('alarm_epoch'),
+    schedule: schedule,
+    upgrade: gateNaturalWake(await loadWakeUpgradeState()),
+    now: now,
+    ackedThroughEpochSec: prefs.getInt('wake_acked_epoch'),
+  );
+  return HighFreqWakeWindow.planNow(
+    now: now,
+    scheduledWindowEnd: armed?.windowEnd,
+    scheduledWindowMinutes: armed?.minutes ?? 0,
+    expectedSchedule: loadSavedExpectedSleepSchedule(prefs),
+  );
+}
+
 /// One headless arm pass: no AppState here, so the schedule read and the
 /// `alarm_epoch` persistence go straight through LocalDb/SharedPreferences —
 /// the same store the foreground path uses, so whichever side runs next sees a
@@ -357,27 +387,7 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       await PairedDevice.save(paired.remoteId, paired.serial, generation: gen);
     }
     try {
-      // Read the schedule + currently-armed epoch for the HighFreq window
-      // check ONLY — HighFreqWakeWindow needs the window of the alarm that's
-      // imminent right now, before the (possibly long) sync below runs. This
-      // read is NOT reused for the re-arm block further down: `runSync()` can
-      // take a while, and re-reading fresh there (as the old code did) avoids
-      // arming a stale schedule if the user edits it mid-sync (see PR #403).
-      final preSyncSchedule = fillDefaultAlarmSchedule([
-        for (final r in await LocalDb.alarmScheduleRows())
-          AlarmScheduleEntry.fromRow(r),
-      ]);
-      final preSyncPrefs = await SharedPreferences.getInstance();
-      await FeatureFlags.ensureLoaded(); // a headless run has no launch hook
-      final armedWindow = armedCollectionWindow(
-        epoch: preSyncPrefs.getInt('alarm_epoch'),
-        schedule: preSyncSchedule,
-        upgrade: gateNaturalWake(await loadWakeUpgradeState()),
-      );
-      final plan = await HighFreqWakeWindow.planNow(
-        scheduledWindowEnd: armedWindow?.windowEnd,
-        scheduledWindowMinutes: armedWindow?.minutes ?? 0,
-      );
+      final plan = await headlessWakeWindowPlan();
       await engine.applyHighFreqWakeWindow(
         enabled: plan.shouldEnable,
         targetWake: plan.targetWake,
@@ -386,11 +396,11 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
 
         reason: plan.source,
       );
-      debugPrint(
-        '[bgsync] HighFreq wake window: source=${plan.source} '
-        'samples=${plan.sampleCount} enabled=${plan.shouldEnable} '
-        'target=${plan.targetWake?.toIso8601String()}',
-      );
+      final planLine = '[bgsync] HighFreq wake window: source=${plan.source} '
+          'samples=${plan.sampleCount} enabled=${plan.shouldEnable} '
+          'target=${plan.targetWake?.toIso8601String()}';
+      debugPrint(planLine);
+      FileLog.write(planLine); // the sync log is the only evidence afterwards
       // THE ALARM BEFORE THE DRAIN. The foreground path arms on connect, ahead
       // of its burst; this one used to arm only after `runSync()`, so a drain
       // that threw, or an OS that ended the background slot mid-drain (both

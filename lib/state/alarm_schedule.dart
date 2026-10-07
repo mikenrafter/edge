@@ -156,6 +156,39 @@ int collectionWindowMinutes(AlarmScheduleEntry e, WakeUpgradeState upgrade) =>
   return (windowEnd: windowEnd, minutes: minutes);
 }
 
+/// The wake occurrence whose Natural window high-frequency collection must
+/// serve, whether or not this process currently TRACKS an armed alarm.
+///
+/// [armedCollectionWindow] needs the armed epoch. That epoch is app state: it
+/// is cleared when an alarm fires (and the fire event is routinely missed), by
+/// a replayed band event, on a reinstall or a prefs wipe, and it is simply
+/// absent until the first arm after a launch. In every one of those the user's
+/// schedule still says "wake at T with a Natural window", the band is still (or
+/// about to be) armed for T, and collection has to cover the window anyway.
+/// So: a FUTURE armed epoch wins (it is what the band holds), otherwise the next
+/// enabled occurrence of the schedule, searched the way the arm engine
+/// searches ([armSearchFrom], so an acknowledged occurrence is not planned).
+({DateTime windowEnd, int minutes})? plannedCollectionWindow({
+  required int? epoch,
+  required List<AlarmScheduleEntry> schedule,
+  required WakeUpgradeState upgrade,
+  DateTime? now,
+  int? ackedThroughEpochSec,
+}) {
+  final at = now ?? DateTime.now();
+  if (epoch != null && epoch * 1000 > at.millisecondsSinceEpoch) {
+    return armedCollectionWindow(
+        epoch: epoch, schedule: schedule, upgrade: upgrade);
+  }
+  final next =
+      nextAlarmOccurrence(schedule, armSearchFrom(at, ackedThroughEpochSec));
+  if (next == null) return null;
+  return armedCollectionWindow(
+      epoch: next.millisecondsSinceEpoch ~/ 1000,
+      schedule: schedule,
+      upgrade: upgrade);
+}
+
 /// Whether a smart-wake early-fire attempt should happen right now.
 ///
 /// [windowEnd] is always the strap's own already-armed fallback alarm epoch —

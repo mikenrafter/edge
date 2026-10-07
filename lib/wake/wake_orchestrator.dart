@@ -210,6 +210,19 @@ class WakePlanInput {
   /// Natural stays inactive.
   final bool upgradePending;
 
+  /// The same plan with the night's detected sleep onset (see
+  /// `sleep_onset.dart`). Only consulted when no expected schedule is saved.
+  WakePlanInput withSleepOnset(DateTime? onset) => WakePlanInput(
+        wakeAt: wakeAt,
+        naturalMinutes: naturalMinutes,
+        gradualMinutes: gradualMinutes,
+        gradualPattern: gradualPattern,
+        gradualCadenceSec: gradualCadenceSec,
+        expectedSchedule: expectedSchedule,
+        sleepOnset: onset,
+        upgradePending: upgradePending,
+      );
+
   int get wakeSec => wakeAt.millisecondsSinceEpoch ~/ 1000;
   WakeConfiguration get configuration => wakeConfigurationOf(
       naturalMinutes: naturalMinutes, gradualMinutes: gradualMinutes);
