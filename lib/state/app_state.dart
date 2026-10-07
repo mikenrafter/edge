@@ -3989,7 +3989,13 @@ class AppState extends ChangeNotifier {
           ? _safeFrameAccel(hex)
           : (sixAxis.feedsAccelConsumers ? sixAxis.toAccelFrame() : null);
       if (f != null) {
-        if (sixAxis == null) _live.bufferLiveImu(f);
+        if (sixAxis == null) {
+          // The sweep's meter takes the accel-only R10 too (same scaling and
+          // stamping as 0x33). frameAccel drops a frame whose band clock was
+          // never set (ts 0), so that one abstains (movementUnknown).
+          _feedSweepAccelFrame(f);
+          _live.bufferLiveImu(f);
+        }
         _ingestLiveMags(f);
         _trackCoverage(recTs);
       }
