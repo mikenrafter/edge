@@ -37,6 +37,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/recalc_state.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
@@ -93,12 +94,30 @@ dynamic _sched(AppState a) => (a as dynamic).debugDeriveScheduler;
 /// test's fake-async zone, so their replies are only delivered by a pump after
 /// real time has passed; a read still in flight when the next test (or
 /// tearDownAll) closes the database holds its lock, and the close never ends.
-/// (A query of our own cannot wait behind it: it would need that pump too.)
-Future<void> _settleDb(WidgetTester t) async {
-  for (var i = 0; i < 3; i++) {
-    await t.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)));
-    await t.pump();
+///
+/// Waits on a condition, not a delay: a query of our own is queued from the
+/// same zone, behind everything already asked of the database, and completes
+/// only once all of that has been answered. We pump until it does, and fail
+/// the test (instead of hanging the file) if it never does. Two rounds, so a
+/// read the first round's replies started is waited for too. (Same as
+/// calc_power_stale_test; a fixed 150 ms was not enough on a loaded machine.)
+Future<void> _settleDb(WidgetTester t,
+    {Duration within = const Duration(seconds: 30)}) async {
+  for (var round = 0; round < 2; round++) {
+    var answered = false;
+    LocalDb.instance.then((db) => db.rawQuery('SELECT 1')).then(
+        (_) => answered = true,
+        onError: (_) => answered = true);
+    final end = DateTime.now().add(within);
+    while (!answered) {
+      if (!DateTime.now().isBefore(end)) {
+        fail('database reads still in flight after ${within.inSeconds} s; '
+            'closing the database under them would hang the file');
+      }
+      await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await t.pump();
+    }
   }
 }
 
