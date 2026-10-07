@@ -33,6 +33,7 @@ import '../gestures/gesture_settings.dart';
 import '../gestures/lab_log.dart';
 import '../gestures/strap_event.dart';
 import '../gestures/tap_names.dart';
+import '../gestures/time_buzz.dart';
 import '../haptics/gesture_cues.dart';
 import '../haptics/haptic_slots.dart'
     show decodeCueAssignments, resolveCuePatterns;
@@ -63,6 +64,7 @@ class GestureController {
     bool Function()? labHold,
     DateTime Function()? now,
   })  : _settings = settings,
+        _log = log,
         _haptics = haptics,
         _deviceLab = deviceLab,
         _alertDispatcher = alertDispatcher,
@@ -81,6 +83,7 @@ class GestureController {
       onMarkMoment: onMarkMoment,
       onWorkoutToggle: onWorkoutToggle,
       onLogWater: onLogWater,
+      onTellTime: _tellTime,
       now: now,
       ecgSupported: ecgSupported,
       onEcgTap: (e) async {
@@ -102,6 +105,7 @@ class GestureController {
   }
 
   final GestureSettings _settings;
+  final void Function(String line) _log;
   final HapticsService _haptics;
   final DeviceLabLog _deviceLab;
   final AlertDispatcher Function() _alertDispatcher;
@@ -175,6 +179,81 @@ class GestureController {
         log: _deviceLab.toPlainText(withPackets: false),
       );
     } catch (_) {}
+  }
+
+  /// Tell the time: [elements] played on the band as ONE gesture. The chunks of
+  /// [toBuzzChunks] are queued one after another under the tap's own gesture
+  /// id, inside a single dispatcher delivery, so the band queue treats them as
+  /// one gesture: the first needs room in the haptic budget when its turn
+  /// comes (else nothing is written and the action fails), and once it has
+  /// started every later chunk plays whatever the window holds. Each chunk is
+  /// queued only when the one before it is done and keeps the silence that
+  /// fell between them as its lead (after the previous playback ended).
+  ///
+  /// Completes as soon as the band accepted the first write, not when the last
+  /// buzz ends (a 12 PM time plays ~20 s, past the dispatcher's action timeout);
+  /// throws when the band took no part of it (the budget had no room, not
+  /// connected, every write refused), so the claim goes back and the
+  /// failure is recorded. A later chunk that fails cannot undo what was felt;
+  /// it is logged.
+  Future<void> _tellTime(StrapEvent e, List<TimeBuzzElement> elements) async {
+    if (_disposed) return;
+    final chunks = toBuzzChunks(elements, _haptics.profile);
+    if (chunks.isEmpty) throw StateError('tell_time: nothing to play');
+    // An unset RTC gives every tap one identity; receipt time keeps the
+    // second time from being swallowed by the first one's claim.
+    final id = '${e.plausible ? e.identity : '${e.identity}:'
+        '${e.receivedAt.microsecondsSinceEpoch}'}:time';
+    var need = const Duration(seconds: 10);
+    for (final c in chunks) {
+      need += _haptics.sequenceTimeout(c.sequence) +
+          Duration(milliseconds: c.waitBeforeMs + 2000);
+    }
+    final started = Completer<bool>();
+    void began(bool ok) {
+      if (!started.isCompleted) started.complete(ok);
+    }
+
+    final delivery = _haptics.asGesture(
+        id,
+        () => _haptics.asLabWork(() => _alertDispatcher().dispatch(
+              kEcgTapRule,
+              eventId: id,
+              sourceTime: DateTime.now(),
+              historical: false,
+              bandTimeout: need,
+              bandDelivery: () async {
+                for (var i = 0; i < chunks.length; i++) {
+                  if (_disposed) return i == 0 ? BuzzDelivery.rejected : BuzzDelivery.partial;
+                  final r = await _haptics.deliver(
+                    chunks[i].sequence,
+                    lead: Duration(milliseconds: chunks[i].waitBeforeMs),
+                    onFirstWrite: i == 0 ? () => began(true) : null,
+                  );
+                  if (r != BuzzDelivery.complete) {
+                    return i == 0 && r == BuzzDelivery.rejected
+                        ? BuzzDelivery.rejected
+                        : BuzzDelivery.partial;
+                  }
+                }
+                return BuzzDelivery.complete;
+              },
+            )));
+    final rest = delivery.then<void>((r) {
+      // Never started (not connected, suppressed, claimed): the action failed.
+      began(false);
+      if (!r.targets.contains('band')) {
+        _log('[gesture] tell_time: delivery ended: ${r.suppressionReason ?? 'not played'}');
+      }
+    }, onError: (Object err) {
+      began(false);
+      _log('[gesture] tell_time: delivery failed: $err');
+    });
+    if (!await started.future) {
+      await rest;
+      throw StateError('the band took no part of the time');
+    }
+    unawaited(rest);
   }
 
   /// The slower multi-tap method: more firmware double taps inside a window.

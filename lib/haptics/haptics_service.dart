@@ -170,9 +170,14 @@ class HapticsService {
   /// compiled command also reports when it started playing: the band's live
   /// event 60 if it arrives within [startWindow] of the write, else the write
   /// time plus the default Bluetooth lead (per-tap buzzes report nothing).
+  ///
+  /// [lead] and [onFirstWrite] are for a rhythm played as several jobs (see
+  /// [deliverBandSequenceQueued]).
   Future<BuzzDelivery> deliver(
     BuzzSequence s, {
     void Function(HapticPlayStart)? onStart,
+    Duration lead = Duration.zero,
+    void Function()? onFirstWrite,
   }) => deliverBandSequenceQueued(
         _queue,
         s,
@@ -184,6 +189,8 @@ class HapticsService {
         isConnected: () => port.isConnected,
         maxRuntime: maxRuntime,
         onWritten: onStart == null ? null : (i) => _watchStart(i, onStart),
+        lead: lead,
+        onFirstWrite: onFirstWrite,
       );
 
   /// How long a delivery of [s] may take on the connected band.

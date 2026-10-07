@@ -11957,6 +11957,50 @@
   "@deviceActionBroadcastToTaskerBlurb": {
     "description": "Band double-tap action picker: blurb for Tasker broadcast (Android only)"
   },
+  "deviceActionTellTimeLabel": "Tell the time",
+  "@deviceActionTellTimeLabel": {
+    "description": "Band double-tap action picker: label for telling the time"
+  },
+  "deviceActionTellTimeBlurb": "Buzz the current time on the band.",
+  "@deviceActionTellTimeBlurb": {
+    "description": "Band double-tap action picker: blurb for telling the time"
+  },
+  "gesturesTimeBuzzTitle": "How to buzz the time",
+  "@gesturesTimeBuzzTitle": {
+    "description": "Gestures: title of the Tell the time encoding picker"
+  },
+  "gesturesTimeBuzzCountTitle": "Count",
+  "@gesturesTimeBuzzCountTitle": {
+    "description": "Tell the time encoding: name of the count mode"
+  },
+  "gesturesTimeBuzzCountSub": "Hours as buzzes (short = AM, long = PM), then quarter-hour clicks",
+  "@gesturesTimeBuzzCountSub": {
+    "description": "Tell the time encoding: what the count mode does"
+  },
+  "gesturesTimeBuzzBinaryTitle": "Binary",
+  "@gesturesTimeBuzzBinaryTitle": {
+    "description": "Tell the time encoding: name of the binary mode"
+  },
+  "gesturesTimeBuzzBinarySub": "Hour as 4 bits (long = 1), then AM or PM, then clicks",
+  "@gesturesTimeBuzzBinarySub": {
+    "description": "Tell the time encoding: what the binary mode does"
+  },
+  "gesturesTimeBuzzMorseTitle": "Morse",
+  "@gesturesTimeBuzzMorseTitle": {
+    "description": "Tell the time encoding: name of the Morse mode"
+  },
+  "gesturesTimeBuzzMorseSub": "Hour digits in Morse, then A or P, then clicks",
+  "@gesturesTimeBuzzMorseSub": {
+    "description": "Tell the time encoding: what the Morse mode does"
+  },
+  "gesturesTimeBuzzNow": "Now",
+  "@gesturesTimeBuzzNow": {
+    "description": "Tell the time encoding: label of the row that shows the current time"
+  },
+  "gesturesTimeBuzzLegend": "▬ long   · short   • click   │ pause",
+  "@gesturesTimeBuzzLegend": {
+    "description": "Tell the time encoding: what each glyph of the worked examples means (long, short, click, pause)"
+  },
   "profileCommunityGroup": "Community",
   "@profileCommunityGroup": {
     "description": "Title of the Profile section grouping the project's public community links."

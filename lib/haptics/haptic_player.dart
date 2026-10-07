@@ -354,6 +354,12 @@ Duration bandSequenceSettle(
 /// reserved up front, every write goes through the job's token (so it is
 /// counted when it happens, resets the ended signal, and is refused once the
 /// job has timed out), and the band is held through the last playback.
+///
+/// [lead] is a silence the job keeps once it has the band, before its first
+/// write (after the previous job's playback and the queue's own gap): how a
+/// rhythm split over several jobs keeps the pause that fell between them.
+/// [onFirstWrite] is called once, when the first write of the job was accepted
+/// by the band (so something is playing).
 Future<BuzzDelivery> deliverBandSequenceQueued(
   BandHapticQueue queue,
   BuzzSequence s, {
@@ -365,23 +371,41 @@ Future<BuzzDelivery> deliverBandSequenceQueued(
   required bool Function() isConnected,
   Duration? maxRuntime = kMaxHapticRuntime,
   void Function(int command)? onWritten,
+  Duration lead = Duration.zero,
+  void Function()? onFirstWrite,
 }) =>
     queue.run(
-      (token) => deliverBandSequence(
-        s,
-        profile: profile,
-        buzz: () => token.write(buzz),
-        buzzForDuration: buzzForDuration == null
-            ? null
-            : (holdMs) => token.write(() => buzzForDuration(holdMs)),
-        writePattern: (effects, loop) =>
-            token.write(() => writePattern(effects, loop)),
-        waitEnded: waitEnded,
-        isConnected: () => !token.cancelled && isConnected(),
-        maxRuntime: maxRuntime,
-        onWritten: onWritten,
-      ),
+      (token) async {
+        if (lead > Duration.zero) await Future<void>.delayed(lead);
+        var first = onFirstWrite;
+        Future<bool> accepted(Future<bool> w) async {
+          final ok = await w;
+          if (ok) {
+            final f = first;
+            first = null;
+            f?.call();
+          }
+          return ok;
+        }
+
+        return deliverBandSequence(
+          s,
+          profile: profile,
+          buzz: () => accepted(token.write(buzz)),
+          buzzForDuration: buzzForDuration == null
+              ? null
+              : (holdMs) =>
+                  accepted(token.write(() => buzzForDuration(holdMs))),
+          writePattern: (effects, loop) =>
+              accepted(token.write(() => writePattern(effects, loop))),
+          waitEnded: waitEnded,
+          isConnected: () => !token.cancelled && isConnected(),
+          maxRuntime: maxRuntime,
+          onWritten: onWritten,
+        );
+      },
       commands: bandSequenceCommands(s, profile, maxRuntime: maxRuntime),
-      timeout: bandSequenceTimeout(s, profile, maxRuntime: maxRuntime),
+      timeout:
+          bandSequenceTimeout(s, profile, maxRuntime: maxRuntime) + lead,
       settle: bandSequenceSettle(s, profile, maxRuntime: maxRuntime),
     );

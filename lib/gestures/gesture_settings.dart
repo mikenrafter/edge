@@ -56,6 +56,7 @@ class GestureSettings extends ChangeNotifier {
   static const _kTapMethod = 'gesture_tap_method';
   static const _kRepeatWindowMs = 'gesture_repeat_window_ms';
   static const _kRepeatLab = 'gesture_repeat_lab';
+  static const _kTimeBuzzMode = 'gesture_time_buzz_mode';
 
   /// The pause allowed between repeated double taps: 1000..5000 ms in 250 ms
   /// steps, 2500 ms until changed.
@@ -93,6 +94,7 @@ class GestureSettings extends ChangeNotifier {
   TapCountMethod? _tapMethod;
   int _repeatWindowMs = defaultRepeatWindowMs;
   bool _repeatLab = false;
+  TimeBuzzMode _timeBuzzMode = TimeBuzzMode.count;
 
   /// Explicit user choices only; absence means "follow the default".
   final Map<DeviceAction, bool> _replay = {};
@@ -188,6 +190,11 @@ class GestureSettings extends ChangeNotifier {
     _repeatLab = prefs.getBool(_kRepeatLab) ?? false;
     if (_ecgOnDoubleTap && _repeatLab) _repeatLab = false; // exclusive
     _tapMethod = TapCountMethod.fromId(prefs.getString(_kTapMethod));
+    final storedMode = prefs.getString(_kTimeBuzzMode);
+    _timeBuzzMode = TimeBuzzMode.values
+            .where((m) => m.name == storedMode)
+            .firstOrNull ??
+        TimeBuzzMode.count;
     final window = prefs.getInt(_kRepeatWindowMs);
     _repeatWindowMs = window != null && isValidRepeatWindow(window)
         ? window
@@ -265,9 +272,15 @@ class GestureSettings extends ChangeNotifier {
   /// an unreadable stored value is count. Stored under the SharedPreferences
   /// key `gesture_time_buzz_mode` as the mode's name ('count', 'binary',
   /// 'morse').
-  TimeBuzzMode get timeBuzzMode => throw UnimplementedError();
+  TimeBuzzMode get timeBuzzMode => _timeBuzzMode;
 
-  Future<void> setTimeBuzzMode(TimeBuzzMode mode) => throw UnimplementedError();
+  Future<void> setTimeBuzzMode(TimeBuzzMode mode) async {
+    if (_timeBuzzMode == mode) return;
+    _timeBuzzMode = mode;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kTimeBuzzMode, mode.name);
+    notifyListeners();
+  }
 
   Future<void> setEcgOnDoubleTap(bool on) async {
     if (_ecgOnDoubleTap == on) return;

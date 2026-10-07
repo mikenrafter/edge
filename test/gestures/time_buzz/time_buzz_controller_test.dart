@@ -195,7 +195,7 @@ void main() {
 
   Future<void> played(int commands) async {
     await until(() => h.band.patterns.length + h.band.holds.length >= commands,
-        within: const Duration(seconds: 5), what: '$commands commands written');
+        within: const Duration(seconds: 12), what: '$commands commands written');
     await settleMs(100); // and nothing more
   }
 

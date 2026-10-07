@@ -53,14 +53,17 @@
 // One action failing never stops the next, and nothing escapes as an unhandled
 // async error: [handle] always completes with a list of outcomes.
 //
-// No wall clock is read here: recency and the debounce both use the event's own
-// `receivedAt`, which keeps this deterministic under test.
+// Recency and the debounce use the event's own `receivedAt`, which keeps this
+// deterministic under test. The one wall-clock read is Tell the time's local
+// time, from the injectable [GestureDispatcher.now].
 //
 // Claim growth: one `gesture:<identity>:<action>` row per tap per action in
 // notif_fired. LocalDb.pruneNotifFired (run whenever a notification fires)
 // drops them after 90 days.
 
 import 'dart:async' show TimeoutException;
+
+import 'package:clock/clock.dart';
 
 import 'device_action.dart';
 import 'double_tap_repeat.dart';
@@ -530,6 +533,16 @@ class GestureDispatcher {
   }
 
   Future<void> _run(DeviceAction a, StrapEvent e) async {
+    if (a == DeviceAction.tellTime) {
+      final handler = onTellTime;
+      if (handler == null) {
+        throw StateError('${a.id} is in-app with no handler');
+      }
+      // Read now, when the action runs (a claim or a queue may have waited).
+      await handler(e,
+          encodeTime((now ?? () => clock.now())(), settings.timeBuzzMode));
+      return;
+    }
     if (a.isInApp) {
       final handler = switch (a) {
         DeviceAction.markMoment => onMarkMoment,

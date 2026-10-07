@@ -172,7 +172,7 @@ extension DeviceActionX on DeviceAction {
       case DeviceAction.broadcastToTasker:
         return l?.deviceActionBroadcastToTaskerLabel ?? label;
       case DeviceAction.tellTime:
-        return label; // TODO(phase 2): localized string
+        return l?.deviceActionTellTimeLabel ?? label;
     }
   }
 
@@ -205,7 +205,7 @@ extension DeviceActionX on DeviceAction {
       case DeviceAction.broadcastToTasker:
         return l?.deviceActionBroadcastToTaskerBlurb ?? blurb;
       case DeviceAction.tellTime:
-        return blurb; // TODO(phase 2): localized string
+        return l?.deviceActionTellTimeBlurb ?? blurb;
     }
   }
 
@@ -214,7 +214,8 @@ extension DeviceActionX on DeviceAction {
   bool get isInApp =>
       this == DeviceAction.markMoment ||
       this == DeviceAction.workoutToggle ||
-      this == DeviceAction.logWater;
+      this == DeviceAction.logWater ||
+      this == DeviceAction.tellTime;
 
   bool get isNative => this != DeviceAction.none && !isInApp;
 
