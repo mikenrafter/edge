@@ -271,6 +271,15 @@ bool? deviceConnectedOf(BuildContext c) {
 /// size). The reading is the strap's last report, so it is shown only while
 /// connected; with no level yet (or no link) it is the connection alone, never
 /// a placeholder. Null with no AppState above.
+/// The Natural Wake "I'm up" card; null with no AppState above (a golden).
+Widget? _naturalWakeCard(BuildContext c) {
+  try {
+    return NaturalWakeBuzzingCard(wake: c.read<AppState>().wake);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
 Widget? connectionLine(BuildContext c, [AppLocalizations? l]) {
   final connected = deviceConnectedOf(c);
   if (connected == null) return null;
@@ -1683,7 +1692,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     if (d == null) {
       return _refreshable(ListView(padding: pad, children: [
         const SizedBox(height: S.x4),
-        NaturalWakeBuzzingCard(wake: c.read<AppState>().wake),
+        ?_naturalWakeCard(c),
         // No day on screen ⇒ no `todayId`, so this renders the dated form.
         // Shown here TOO: a first run, a failed read and a sync in flight are
         // exactly when "how far are we?" is worth answering, and the header
@@ -1763,7 +1772,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     return _refreshable(ListView(padding: pad, children: [
       ?rebuilt,
       // Natural Wake is buzzing and waiting for "I'm up": above everything.
-      NaturalWakeBuzzingCard(wake: c.read<AppState>().wake),
+      ?_naturalWakeCard(c),
 
       // ── the one observation Home is allowed to make ──
       //
