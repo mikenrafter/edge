@@ -76,7 +76,10 @@ void main() {
       'StateError: ... in-app with no handler")', () async {
     final r = await rig();
     r.doubleTap();
-    await settleMs(400);
+    // Wait for the outcome rather than a fixed time: under suite load the
+    // dispatch took longer than 400 ms and the test flaked.
+    await until(() => r.app.breathingActive, what: 'the session starts');
+    await settleMs(150); // a failure would be recorded by now
     expect(r.app.gestureFailures.all, isEmpty);
     expect(r.app.breathingActive, isTrue);
   });
