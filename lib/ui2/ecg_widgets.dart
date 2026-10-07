@@ -500,12 +500,30 @@ class EcgWaveformPainter extends CustomPainter {
 /// A result's metrics, one row each: the metric's NAME and its value with the
 /// unit ("RMSSD", "42 ms"), or "—" when the value is absent. Never "0" for an
 /// absent value, never a row for a metric the result does not have. Each row is
-/// keyed `ecg-metric:<key>`. RED stub (ecg-features): throws until built.
+/// keyed `ecg-metric:<key>`.
 class EcgMetricsList extends StatelessWidget {
   final List<EcgMetric> metrics;
   const EcgMetricsList({super.key, required this.metrics});
 
   @override
-  Widget build(BuildContext context) =>
-      throw UnimplementedError('EcgMetricsList');
+  Widget build(BuildContext context) {
+    final p = P.of(context);
+    return Column(
+      children: [
+        for (final m in metrics)
+          Padding(
+            key: ValueKey('ecg-metric:${m.key}'),
+            padding: const EdgeInsets.symmetric(vertical: S.x1),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(m.name, style: F.body.copyWith(color: p.ink2)),
+                ),
+                Text(m.display, style: F.body.copyWith(color: p.ink)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }

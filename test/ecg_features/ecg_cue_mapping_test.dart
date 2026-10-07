@@ -226,7 +226,7 @@ void main() {
             result: EcgReadingStatus.inconclusive, cleanupIncomplete: true),
         _s(EcgCapturePhase.inconclusiveRetry, cleanupIncomplete: true),
         _s(EcgCapturePhase.unreadable, cleanupIncomplete: true),
-        _s(EcgCapturePhase.failed, reason: 'disconnected', cleanupIncomplete: true),
+        _s(EcgCapturePhase.failed, reason: 'timeout', cleanupIncomplete: true),
         _s(EcgCapturePhase.cancelled, reason: 'paused', cleanupIncomplete: true),
         _s(EcgCapturePhase.cancelled, reason: 'cancelled', cleanupIncomplete: true),
       ];
@@ -234,6 +234,18 @@ void main() {
         expect(_cues([_s(EcgCapturePhase.cleaningUp), e]), [kEcgAttentionKey],
             reason: '${e.phase} ${e.reason} ${e.result}');
       }
+    });
+
+    test('a dropped link also leaves the cleanup undone, but the app retries it '
+        'on the next connection and the band cannot be reached: plain failed, '
+        'not S.O.S.', () {
+      expect(
+        _cues([
+          ..._recording(),
+          _s(EcgCapturePhase.failed, reason: 'disconnected', cleanupIncomplete: true),
+        ]),
+        [kEcgStartedKey, kEcgFailedKey],
+      );
     });
 
     test('a retained guard that could not be cleared (recovery failed) is '

@@ -1,7 +1,7 @@
 // `moment_label`, schema 63 -> 64.
 //
 // ASSUMED (lib/data/db.dart):
-//   * `LocalDb.schemaVersion == 64`.
+//   * `LocalDb.schemaVersion` was 64 when this rung was added (65 since the ECG result column).
 //   * A new table
 //       moment_label(date TEXT NOT NULL, hhmm TEXT NOT NULL, label TEXT,
 //                    note TEXT, answered_at INTEGER NOT NULL,
@@ -94,8 +94,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 64', () {
-    expect(LocalDb.schemaVersion, 64);
+  test('schemaVersion is at least 64 (65 since the ECG result column)', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(64));
   });
 
   test('upgrade from v63 reaches 64, adds moment_label empty, keeps the '

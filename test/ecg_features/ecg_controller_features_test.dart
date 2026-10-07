@@ -421,6 +421,44 @@ void main() {
       expect(r.slots, [kEcgStartedKey, kEcgFailedKey]);
     });
 
+    test('the link drops mid-reading with 12 s of signal: the same partial '
+        'rule applies (saved as partial, stop reason disconnected, metrics '
+        'from enough signal) and the cue is ecg.failed', () async {
+      final r = FRig();
+      await r.c.begin(EcgWrist.right);
+      await r.record(12);
+      r.t.dropLink();
+      await r.settle();
+      await r.settle();
+      expect(r.c.state.phase, EcgCapturePhase.failed);
+      expect(r.c.state.reason, 'disconnected');
+      final reading = r.saved.single.$1;
+      expect(reading.status, EcgReadingStatus.partial);
+      expect(reading.stopReason, 'disconnected');
+      expect(reading.avgHr, 70);
+      expect(r.c.state.result, EcgReadingStatus.partial);
+      expect(r.c.state.readingId, reading.id);
+      expect(r.slots, [kEcgStartedKey, kEcgFailedKey]);
+    });
+
+    test('the link drops with only 5 s of signal: a partial with null '
+        'metrics; with none, nothing is saved', () async {
+      final r = FRig();
+      await r.c.begin(EcgWrist.right);
+      await r.record(5);
+      r.t.dropLink();
+      await r.settle();
+      await r.settle();
+      expect(r.saved.single.$1.avgHr, isNull);
+      expect(r.saved.single.$1.quality, isNull);
+      final r2 = FRig();
+      await r2.c.begin(EcgWrist.right);
+      r2.t.dropLink();
+      await r2.settle();
+      await r2.settle();
+      expect(r2.saved, isEmpty);
+    });
+
     test('backgrounded before any contact: there is nothing recorded, so '
         'nothing is saved', () async {
       final r = FRig();

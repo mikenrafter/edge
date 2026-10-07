@@ -199,6 +199,9 @@ class Rig {
       releaseScreen: (o) async => screen.add('release:$o'),
       captureTimeout: timeout,
       nowMs: () => now,
+      // These tests pin the accepted window handed to save(); the default
+      // (no waveform kept) is pinned in test/ecg_features/.
+      keepWaveform: () => true,
     );
     c.addListener(() => phases.add(c.state.phase));
   }

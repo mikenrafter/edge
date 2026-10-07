@@ -2,9 +2,6 @@
 // new reading replace a recent inconclusive one, and the thresholds around a
 // partial recording. Pure Dart.
 //
-// RED STUBS: every function here throws UnimplementedError until the green
-// phase. The constants are the decisions the tests pin.
-//
 // WHAT METRICS REALLY EXIST FOR ECG. Only what the band reports plus facts
 // about the window: average heart rate (the band's terminal packet, or the
 // live-HR mean of a partial), the band's signal quality, the duration, the
@@ -48,14 +45,35 @@ class EcgMetric {
 
   /// "77 bpm", "42 ms", "3" (no unit), "—" when [value] is null. A whole value
   /// has no decimals; 42.4 keeps one.
-  String get display => throw UnimplementedError('EcgMetric.display');
+  String get display {
+    final v = value;
+    if (v == null) return '—';
+    final n = v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(1);
+    return unit.isEmpty ? n : '$n $unit';
+  }
 }
 
 /// The metrics a saved [r] really has, in page order: Average heart rate (bpm)
 /// then Signal quality. A band value of 0 (it sends 0 for "none") is null here,
 /// never 0. Never contains 'rmssd' or 'sdnn'.
-List<EcgMetric> ecgMetricsOf(EcgReading r) =>
-    throw UnimplementedError('ecgMetricsOf');
+List<EcgMetric> ecgMetricsOf(EcgReading r) {
+  // The band sends 0 for "none"; 0 is absence here, never a measured zero.
+  double? present(int? v) => (v == null || v <= 0) ? null : v.toDouble();
+  return [
+    EcgMetric(
+      key: 'avgHr',
+      name: 'Average heart rate',
+      value: present(r.avgHr),
+      unit: 'bpm',
+    ),
+    EcgMetric(
+      key: 'quality',
+      name: 'Signal quality',
+      value: present(r.quality),
+      unit: '',
+    ),
+  ];
+}
 
 /// The id of the reading [incoming] replaces, or null to add it as a new one.
 ///
@@ -69,4 +87,12 @@ List<EcgMetric> ecgMetricsOf(EcgReading r) =>
 String? ecgReplaceTargetId({
   required EcgReading? latest,
   required EcgReading incoming,
-}) => throw UnimplementedError('ecgReplaceTargetId');
+}) {
+  if (latest == null || latest.status != EcgReadingStatus.inconclusive) {
+    return null;
+  }
+  if (incoming.status == EcgReadingStatus.partial) return null;
+  final gap = incoming.startTs - latest.endTs;
+  if (gap < 0 || gap > kEcgOverwriteWindow.inSeconds) return null;
+  return latest.id;
+}

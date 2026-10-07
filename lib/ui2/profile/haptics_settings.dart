@@ -38,6 +38,7 @@ import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/prefs.dart';
 import '../screens/calm_breathing.dart' show CalmBreathing;
+import '../screens/ecg.dart' show EcgHomeScreen;
 import '../ui2.dart';
 import 'buzz_pattern.dart';
 import 'device_lab.dart' show DeviceLab;
@@ -208,6 +209,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
           'tasker' => const AutomationSettings(),
           'gestures' => const BandGestures(),
           'breathing' => const CalmBreathing(),
+          'ecg' => const EcgHomeScreen(),
           _ => const NotificationSettings(),
         },
       );
@@ -459,8 +461,10 @@ class HapticsSettingsView extends StatelessWidget {
     HapticsTab.cues => [
       _slotGroup(c, 'gestures'),
       _slotGroup(c, 'breathing'),
+      _slotGroup(c, 'ecg'),
       _sectionLink(p, 'gestures'),
       _sectionLink(p, 'breathing'),
+      _sectionLink(p, 'ecg'),
     ],
     HapticsTab.band => [
       SettingsAccordion('Safety',

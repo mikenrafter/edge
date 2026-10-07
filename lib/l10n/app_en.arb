@@ -12369,29 +12369,29 @@
   "@ecgNotDiagnosis": {
     "description": "WHOOP MG ECG: The category comes from the band. This is not a diagnosis."
   },
-  "ecgCategorySinus": "Sinus rhythm",
+  "ecgCategorySinus": "Regular rhythm, nothing flagged",
   "@ecgCategorySinus": {
-    "description": "WHOOP MG ECG: Sinus rhythm"
+    "description": "WHOOP MG ECG: regular rhythm, nothing flagged"
   },
   "ecgCategoryLowHr": "Low heart rate",
   "@ecgCategoryLowHr": {
     "description": "WHOOP MG ECG: Low heart rate"
   },
-  "ecgCategoryPossibleAfib": "Possible AFib",
+  "ecgCategoryPossibleAfib": "Irregular rhythm flagged",
   "@ecgCategoryPossibleAfib": {
-    "description": "WHOOP MG ECG: Possible AFib"
+    "description": "WHOOP MG ECG: irregular rhythm flagged"
   },
-  "ecgCategoryAfibHighHr": "AFib with high heart rate",
+  "ecgCategoryAfibHighHr": "Irregular rhythm flagged, high heart rate",
   "@ecgCategoryAfibHighHr": {
-    "description": "WHOOP MG ECG: AFib with high heart rate"
+    "description": "WHOOP MG ECG: irregular rhythm flagged, high heart rate"
   },
   "ecgCategoryHighHr": "High heart rate",
   "@ecgCategoryHighHr": {
     "description": "WHOOP MG ECG: High heart rate"
   },
-  "ecgCategoryHighHrNoAfib": "High heart rate, no AFib detected",
+  "ecgCategoryHighHrNoAfib": "High heart rate, no irregular rhythm flagged",
   "@ecgCategoryHighHrNoAfib": {
-    "description": "WHOOP MG ECG: High heart rate, no AFib detected"
+    "description": "WHOOP MG ECG: high heart rate, no irregular rhythm flagged"
   },
   "ecgCategoryInconclusive": "Inconclusive",
   "@ecgCategoryInconclusive": {

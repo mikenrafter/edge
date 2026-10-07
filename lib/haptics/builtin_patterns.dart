@@ -61,6 +61,28 @@ const List<String> kEcgCueKeys = [
   kEcgAttentionKey,
 ];
 
+// The ECG cues' names and rhythms (a pulse is a quarter note, a long pulse a
+// half). Six different beat counts, 1, 2, 3, 4, 5 and 9, and lengths more than
+// half a second apart, so no two are flagged as alike (pattern_similarity.dart);
+// none is a gesture or breathing rhythm. `ecg.attention` is the SOS preset's.
+const Map<String, (String, String)> _ecgCues = {
+  kEcgStartedKey: ('ECG started', 'N8*'),
+  kEcgCompleteKey: ('ECG complete', 'N4* R6 N4*'),
+  kEcgInconclusiveKey: ('ECG inconclusive', 'N8* R4 N8* R4 N8*'),
+  kEcgInconclusiveRetryKey: (
+    'ECG try again',
+    'N4* R2 N4* R2 N4* R2 N4*',
+  ),
+  kEcgFailedKey: (
+    'ECG failed',
+    'N6* R4 N6* R4 N6* R4 N6* R4 N6*',
+  ),
+  kEcgAttentionKey: (
+    'ECG attention',
+    'N2* R2 N2* R2 N2* R4 N6* R3 N6* R3 N6* R4 N2* R2 N2* R2 N2*',
+  ),
+};
+
 /// The ten presets, in the order they are listed: key, name and notes. A
 /// pulse is a quarter note, a long pulse a half, the rest between pulses a
 /// quarter. SOS is three short, three long, three short; Hip hip hooray is two
@@ -148,6 +170,7 @@ List<String> builtInKeys() => [
       kBreathHoldKey,
       kBreathDoneKey,
       for (var n = 1; n <= kTaskerSlotCount; n++) taskerSlotKey(n),
+      ...kEcgCueKeys,
       for (final p in kPresets) p.$1,
     ];
 
@@ -262,6 +285,10 @@ BuiltInSpec? builtInDefault(String systemKey) {
   }
   for (final (key, name, notes) in kPresets) {
     if (key == systemKey) return BuiltInSpec(key, name, _fromNotes(notes, id));
+  }
+  final ecg = _ecgCues[systemKey];
+  if (ecg != null) {
+    return BuiltInSpec(systemKey, ecg.$1, _fromNotes(ecg.$2, id));
   }
   // Tasker slot n: n short pulses, the pulse and rest of the "One pulse" preset.
   final tasker = taskerSlotNumber(systemKey);

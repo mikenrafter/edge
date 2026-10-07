@@ -202,6 +202,9 @@ const _notComponents = {
   // Marked-moment follow-up: the Home card is pure and the screen reads and
   // writes the database. Both are pumped in test/gestures/moments/.
   'MomentFollowUpCard', 'MomentFollowUpScreen',
+  // The ECG screener page: a Scaffold of text and links over fixed content,
+  // pumped in test/ecg_features/ecg_screener_page_test.dart.
+  'EcgScreenerScreen',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.

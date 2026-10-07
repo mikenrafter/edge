@@ -210,8 +210,8 @@ class EcgReading {
   final int createdAt; // epoch ms
 
   /// Why a [EcgReadingStatus.partial] stopped: 'paused' (app backgrounded) or
-  /// 'timeout'. Null for every other status. Column `stop_reason` (schema 65);
-  /// RED stub: not yet written by [toRow] nor read by [fromRow].
+  /// 'timeout' or 'disconnected'. Null for every other status. Column
+  /// `stop_reason` (schema 65).
   final String? stopReason;
 
   const EcgReading({
@@ -269,6 +269,7 @@ class EcgReading {
     'status': status.name,
     'notes': notes,
     'created_at': createdAt,
+    'stop_reason': stopReason,
   };
 
   static EcgReading? fromRow(Map<String, Object?> r) {
@@ -302,6 +303,7 @@ class EcgReading {
       status: status,
       notes: r['notes'] as String?,
       createdAt: i('created_at') ?? 0,
+      stopReason: r['stop_reason'] as String?,
     );
   }
 }

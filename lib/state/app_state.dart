@@ -246,6 +246,36 @@ class AppState extends ChangeNotifier {
   /// reachable while the band is away.
   bool pairedIsMaverick = false;
 
+  /// "Keep waveform" (ecg-features): whether a finished reading keeps its
+  /// accepted waveform. Off by default: a reading stores its result, heart
+  /// rate, signal quality and sample statistics only. Turning it on is the
+  /// wearer's explicit choice to save the recording (invariant 14).
+  bool ecgKeepWaveform = false;
+  static const String _kEcgKeepWaveform = 'ecg_keep_waveform';
+
+  Future<void> setEcgKeepWaveform(bool on) async {
+    if (ecgKeepWaveform == on) return;
+    ecgKeepWaveform = on;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEcgKeepWaveform, on);
+  }
+
+  /// An ECG cue slot (`ecg.*`) as one dispatcher delivery on the band queue.
+  /// It rides the `breath` alert rule: like a breathing cue it belongs to a
+  /// session the wearer is in the middle of, so quiet hours do not hold it.
+  /// The wearer's pattern for the slot is read just before it plays.
+  Future<void> _playEcgCue(String slot) async {
+    await _gestures.loadCues();
+    if (_disposed) return;
+    await _dispatchBandAlert(
+      'breath',
+      deliver: (_, _) async =>
+          _disposed ? BuzzDelivery.rejected : gestureCues.slot(slot),
+      deliverTimeout: const Duration(seconds: 10),
+    );
+  }
+
   EcgController _buildEcg() {
     final t = _ecgTransport ??= BleEngineEcgTransport(
       engine: engine,
@@ -255,10 +285,15 @@ class AppState extends ChangeNotifier {
     final c = EcgController(
       transport: t,
       guard: _ecgGuard,
-      save: (r, p) => LocalDb.insertEcgReading(
+      // A new reading within 10 minutes after an inconclusive one replaces it
+      // (LocalDb.saveEcgResult). The controller hands no packets unless
+      // "Keep waveform" is on.
+      save: (r, p) => LocalDb.saveEcgResult(
         r.toRow(),
         [for (final x in p) EcgPacketCodec.toRow(x)],
       ),
+      keepWaveform: () => ecgKeepWaveform,
+      onCue: (slot) => unawaited(_playEcgCue(slot)),
       busyReason: () => activeWorkout != null
           ? 'workout'
           : (breathingActive || breathingWindowOpen)
@@ -3474,6 +3509,9 @@ class AppState extends ChangeNotifier {
     final pairedSerial = paired?.serial;
     pairedIsMaverick = pairedSerial != null &&
         await _ecgGuard.isRememberedMaverick(pairedSerial);
+    ecgKeepWaveform = (await SharedPreferences.getInstance())
+            .getBool(_kEcgKeepWaveform) ??
+        false;
     await loadExpectedSleepSchedule();
     await refreshSensors();
     await _loadProfile();

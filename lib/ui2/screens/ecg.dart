@@ -17,27 +17,46 @@ import '../../coach/coach_config.dart';
 import '../../data/db.dart';
 import '../../ecg/ecg_controller.dart';
 import '../../ecg/ecg_models.dart';
+import '../../ecg/ecg_result.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
+import '../profile/profile.dart' show SwitchRow;
 import '../ui2.dart';
 import 'coach.dart';
+import 'ecg_screener.dart';
 import 'home_screen.dart' show go, pad;
 
 String ecgCategoryLabel(AppLocalizations? l, EcgCategory c) => switch (c) {
-  EcgCategory.sinusRhythm => l?.ecgCategorySinus ?? 'Sinus rhythm',
+  EcgCategory.sinusRhythm => l?.ecgCategorySinus ?? 'Regular rhythm, nothing flagged',
   EcgCategory.lowHeartRate => l?.ecgCategoryLowHr ?? 'Low heart rate',
-  EcgCategory.possibleAfib => l?.ecgCategoryPossibleAfib ?? 'Possible AFib',
+  EcgCategory.possibleAfib => l?.ecgCategoryPossibleAfib ?? 'Irregular rhythm flagged',
   EcgCategory.afibHighHeartRate =>
-    l?.ecgCategoryAfibHighHr ?? 'AFib with high heart rate',
+    l?.ecgCategoryAfibHighHr ?? 'Irregular rhythm flagged, high heart rate',
   EcgCategory.highHeartRate => l?.ecgCategoryHighHr ?? 'High heart rate',
   EcgCategory.highHeartRateNoAfib =>
-    l?.ecgCategoryHighHrNoAfib ?? 'High heart rate, no AFib detected',
+    l?.ecgCategoryHighHrNoAfib ??
+        'High heart rate, no irregular rhythm flagged',
   EcgCategory.inconclusive => l?.ecgCategoryInconclusive ?? 'Inconclusive',
   EcgCategory.unreadable => l?.ecgCategoryUnreadable ?? 'Unreadable',
+};
+
+/// What a saved reading is called in a list: a partial has no band category, so
+/// it is called what it is; everything else is the band's category.
+String ecgReadingLabel(AppLocalizations? l, EcgReading r) =>
+    r.status == EcgReadingStatus.partial
+    ? 'Stopped early (partial)'
+    : ecgCategoryLabel(l, r.category);
+
+/// Why a partial reading stopped, in words.
+String ecgStopReasonLabel(String? reason) => switch (reason) {
+  'paused' => 'The app went to the background.',
+  'timeout' => 'No result within two minutes.',
+  'disconnected' => 'The band disconnected.',
+  _ => '',
 };
 
 List<String> ecgReasonLabels(AppLocalizations? l, int mask) => [
@@ -172,6 +191,34 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
             C.domHealth,
             onTap: canTake ? () => _take(c, app) : null,
           ),
+          const SizedBox(height: S.x2),
+          SwitchRow(
+            'Keep waveform',
+            app.ecgKeepWaveform,
+            (v) => unawaited(app.setEcgKeepWaveform(v)),
+            sub:
+                'Save the recorded signal with each reading. Off: only the '
+                'result, heart rate and signal quality are kept.',
+          ),
+          Pressable(
+            key: const ValueKey('ecg-screener-link'),
+            semanticLabel: 'What the results mean',
+            onTap: () => go(c, const EcgScreenerScreen()),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'What the results mean',
+                      style: F.body.copyWith(color: p.on(C.blue)),
+                    ),
+                  ),
+                  Icon(LucideIcons.chevronRight, size: 16, color: p.on(C.blue)),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: S.x4),
           if (_loaded && _readings.isEmpty)
             StatusCard(
@@ -214,8 +261,8 @@ class EcgReadingRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final cat = ecgCategoryLabel(l, reading.category);
-    final hr = reading.avgHr;
+    final cat = ecgReadingLabel(l, reading);
+    final hr = (reading.avgHr ?? 0) > 0 ? reading.avgHr : null;
     return Pressable(
       onTap: onTap,
       semanticLabel:
@@ -574,6 +621,19 @@ class EcgCaptureBody extends StatelessWidget {
                 ),
               ),
             ),
+            if (s.quality > 0) ...[
+              const SizedBox(height: S.x2),
+              EcgMetricsList(
+                metrics: [
+                  EcgMetric(
+                    key: 'quality',
+                    name: 'Signal quality',
+                    value: s.quality.toDouble(),
+                    unit: '',
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: S.x2),
             Row(
               children: [
@@ -650,6 +710,10 @@ class EcgCaptureBody extends StatelessWidget {
               l?.ecgNotDiagnosis ??
                   'The category comes from the band. This is not a diagnosis.',
             ),
+            if (s.metrics.isNotEmpty) ...[
+              const SizedBox(height: S.x4),
+              EcgMetricsList(metrics: s.metrics),
+            ],
             if (s.cleanupIncomplete) ...[
               const SizedBox(height: S.x3),
               body(
@@ -704,20 +768,35 @@ class EcgCaptureBody extends StatelessWidget {
           'disconnected' =>
             l?.ecgFailedDisconnected ?? 'The band disconnected.',
           'timeout' => l?.ecgFailedTimeout ?? 'No result within two minutes.',
-          'cancelled' || 'paused' || null => '',
+          'cancelled' || null => '',
+          'paused' => ecgStopReasonLabel('paused'),
           final r =>
             l?.ecgFailedGeneric(r) ??
                 'The band did not accept the reading ($r).',
         };
+        final partial = s.result == EcgReadingStatus.partial;
         return ListView(
           children: [
             const SizedBox(height: S.x6),
             title(
-              s.phase == EcgCapturePhase.cancelled
+              partial
+                  ? 'Stopped early'
+                  : s.phase == EcgCapturePhase.cancelled
                   ? (l?.ecgCancelledTitle ?? 'Reading cancelled')
                   : (l?.ecgFailedTitle ?? 'Reading failed'),
             ),
+            if (partial) ...[
+              const SizedBox(height: S.x2),
+              body(
+                'What was recorded is saved as a partial reading. It was not '
+                'screened, so no rhythm result is given.',
+              ),
+            ],
             if (why.isNotEmpty) ...[const SizedBox(height: S.x2), body(why)],
+            if (partial && s.metrics.isNotEmpty) ...[
+              const SizedBox(height: S.x4),
+              EcgMetricsList(metrics: s.metrics),
+            ],
             if (s.cleanupIncomplete) ...[
               const SizedBox(height: S.x3),
               body(
@@ -727,6 +806,10 @@ class EcgCaptureBody extends StatelessWidget {
               ),
             ],
             const SizedBox(height: S.x6),
+            if (partial && s.readingId != null) ...[
+              button(l?.ecgViewReading ?? 'View reading', onView),
+              const SizedBox(height: S.x3),
+            ],
             button(l?.ecgTakeAnother ?? 'Take another', onTakeAnother),
             const SizedBox(height: S.x3),
             button(l?.ecgDone ?? 'Done', onDone, primary: false),
@@ -839,6 +922,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
     final packets = widget.data.packets;
     final px = _scales[_scale];
     final cat = ecgCategoryLabel(l, r.category);
+    final partial = r.status == EcgReadingStatus.partial;
     Widget kv(String k, String v) => Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x1),
       child: Row(
@@ -860,25 +944,66 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  l?.ecgBandReported ?? 'Band-reported result',
-                  style: F.cap.copyWith(color: p.ink3),
-                ),
-                const SizedBox(height: S.x1),
-                Text(cat, style: F.t2.copyWith(color: p.ink)),
-                const SizedBox(height: S.x1),
-                Text(_fmtWhen(r.startTs), style: F.cap.copyWith(color: p.ink3)),
-                if (r.status == EcgReadingStatus.inconclusive ||
-                    r.category == EcgCategory.unreadable) ...[
-                  const SizedBox(height: S.x2),
-                  for (final reason in ecgReasonLabels(l, r.unreadableMask))
-                    Text('· $reason', style: F.body.copyWith(color: p.ink)),
+                if (partial) ...[
+                  Text(
+                    'Partial reading',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
+                  const SizedBox(height: S.x1),
+                  Text(
+                    'Stopped early',
+                    style: F.t2.copyWith(color: p.ink),
+                  ),
+                  const SizedBox(height: S.x1),
+                  Text(_fmtWhen(r.startTs), style: F.cap.copyWith(color: p.ink3)),
+                  if (ecgStopReasonLabel(r.stopReason).isNotEmpty) ...[
+                    const SizedBox(height: S.x2),
+                    Text(
+                      ecgStopReasonLabel(r.stopReason),
+                      style: F.body.copyWith(color: p.ink),
+                    ),
+                  ],
+                  const SizedBox(height: S.x3),
+                  Text(
+                    'It was not screened, so there is no rhythm result.',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
+                ] else ...[
+                  Text(
+                    l?.ecgBandReported ?? 'Band-reported result',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
+                  const SizedBox(height: S.x1),
+                  Text(cat, style: F.t2.copyWith(color: p.ink)),
+                  const SizedBox(height: S.x1),
+                  Text(_fmtWhen(r.startTs), style: F.cap.copyWith(color: p.ink3)),
+                  if (r.status == EcgReadingStatus.inconclusive ||
+                      r.category == EcgCategory.unreadable) ...[
+                    const SizedBox(height: S.x2),
+                    for (final reason in ecgReasonLabels(l, r.unreadableMask))
+                      Text('· $reason', style: F.body.copyWith(color: p.ink)),
+                  ],
+                  const SizedBox(height: S.x3),
+                  Text(
+                    l?.ecgNotDiagnosis ??
+                        'The category comes from the band. This is not a diagnosis.',
+                    style: F.cap.copyWith(color: p.ink3),
+                  ),
                 ],
-                const SizedBox(height: S.x3),
-                Text(
-                  l?.ecgNotDiagnosis ??
-                      'The category comes from the band. This is not a diagnosis.',
-                  style: F.cap.copyWith(color: p.ink3),
+                Pressable(
+                  key: const ValueKey('ecg-screener-link'),
+                  semanticLabel: 'What the results mean',
+                  onTap: () => go(c, const EcgScreenerScreen()),
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: S.x3),
+                    child: Text(
+                      'What the results mean',
+                      style: F.cap.copyWith(
+                        color: p.on(C.blue),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -970,14 +1095,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
           Surface(
             child: Column(
               children: [
-                kv(
-                  l?.ecgAvgHr ?? 'Average heart rate',
-                  r.avgHr == null ? '—' : '${r.avgHr} bpm',
-                ),
-                kv(
-                  l?.ecgQuality ?? 'Signal quality',
-                  r.quality == null ? '—' : '${r.quality}',
-                ),
+                EcgMetricsList(metrics: ecgMetricsOf(r)),
                 kv(l?.ecgDuration ?? 'Duration', '${r.durationS} s'),
                 kv(
                   l?.ecgInterruptions ?? 'Interruptions',
@@ -992,15 +1110,17 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
             ),
           ),
           const SizedBox(height: S.x4),
-          ActionCard(
-            l?.ecgAnalyzeNow ?? 'Analyze now',
-            l?.ecgBandReported ?? 'Band-reported result',
-            l?.ecgAnalyzeNow ?? 'Analyze now',
-            LucideIcons.sparkles,
-            kCoachAccent,
-            onTap: () => _analyze(c),
-          ),
-          const SizedBox(height: S.x4),
+          if (!partial) ...[
+            ActionCard(
+              l?.ecgAnalyzeNow ?? 'Analyze now',
+              l?.ecgBandReported ?? 'Band-reported result',
+              l?.ecgAnalyzeNow ?? 'Analyze now',
+              LucideIcons.sparkles,
+              kCoachAccent,
+              onTap: () => _analyze(c),
+            ),
+            const SizedBox(height: S.x4),
+          ],
           Pressable(
             semanticLabel: l?.ecgDelete ?? 'Delete reading',
             onTap: () => _delete(c),

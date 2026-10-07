@@ -17,6 +17,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 
+import 'ecg_cues.dart';
 import 'ecg_guard_store.dart';
 import 'ecg_models.dart';
 import 'ecg_policy.dart';
@@ -74,7 +75,6 @@ class EcgCaptureState {
   final EcgReadingStatus? result;
 
   /// The saved result's real metrics (see ecgMetricsOf), empty until saved.
-  /// RED stub: never set.
   final List<EcgMetric> metrics;
 
   const EcgCaptureState({
@@ -156,13 +156,13 @@ class EcgController extends ChangeNotifier {
 
   /// Whether the accepted waveform is kept with a saved reading (the wearer's
   /// "Keep waveform" choice; default false). When false the controller hands
-  /// [save] NO packets: only the derived metrics and quality are stored. RED
-  /// stub (ecg-features): declared, not yet honoured.
+  /// [save] NO packets: only the derived metrics and quality are stored. Read
+  /// when the result is saved.
   final bool Function() keepWaveform;
 
   /// Plays the ECG haptic cue [slotKey] (`ecg.*`, see EcgCueTracker). Never
   /// called for a gesture-owned (`persist: false`) capture, whose cues are the
-  /// gesture ones. RED stub: declared, never called.
+  /// gesture ones. A cue that throws is logged and ignored.
   final void Function(String slotKey)? onCue;
 
   static const String screenOwner = 'ecg';
@@ -213,6 +213,14 @@ class EcgController extends ChangeNotifier {
   EcgReducerState _reducer = const EcgReducerState.initial();
   StreamSubscription<EcgTransportEvent>? _sub;
   Timer? _timer;
+  final EcgCueTracker _cues = EcgCueTracker();
+
+  // What the accepted window's packets carried, for a partial result: the
+  // live heart rates (the band sends 0 for "none") and the last quality. They
+  // restart with the window (EcgClear).
+  int _hrSum = 0;
+  int _hrN = 0;
+  int _lastQuality = 0;
 
   bool get isCapturing => _lease != null;
 
@@ -230,6 +238,21 @@ class EcgController extends ChangeNotifier {
   void _set(EcgCaptureState s) {
     _state = s;
     if (!_disposed) notifyListeners();
+    _cue(s);
+  }
+
+  // The haptic cue this state calls for, if any. Never for a gesture-owned
+  // capture (its cues are the gesture ones) and never able to break an exit.
+  void _cue(EcgCaptureState s) {
+    final play = onCue;
+    if (!_persist || _disposed || play == null) return;
+    final slot = _cues.observe(s);
+    if (slot == null) return;
+    try {
+      play(slot);
+    } catch (e) {
+      log('[ECG] cue $slot failed: $e');
+    }
   }
 
   bool _stale(int epoch) => _epoch != epoch || _lease == null;
@@ -265,6 +288,10 @@ class EcgController extends ChangeNotifier {
     _persist = persist;
     _trace = trace;
     _restartNoted = false;
+    _cues.reset();
+    _hrSum = 0;
+    _hrN = 0;
+    _lastQuality = 0;
     final clock = Stopwatch()..start();
     var lastMs = 0;
     void stage(String what) {
@@ -383,7 +410,9 @@ class EcgController extends ChangeNotifier {
         return;
       }
       _timer = Timer(captureTimeout, () {
-        unawaited(_finish(epoch, EcgCapturePhase.failed, reason: 'timeout'));
+        unawaited(
+          _finishWithPartial(epoch, EcgCapturePhase.failed, 'timeout'),
+        );
       });
       if (_state.phase == EcgCapturePhase.starting) {
         _set(_state.copyWith(phase: EcgCapturePhase.waiting));
@@ -415,12 +444,13 @@ class EcgController extends ChangeNotifier {
     await _finish(epoch, EcgCapturePhase.cancelled, reason: 'cancelled');
   }
 
-  /// The app went to the background mid-capture — same as cancel (the
-  /// official screen stops on ON_PAUSE too).
+  /// The app went to the background mid-capture — the capture stops (the
+  /// official screen stops on ON_PAUSE too) and what was recorded is saved as
+  /// a partial reading ([_finishWithPartial]).
   Future<void> onAppPaused() async {
     if (_lease == null || _disposed) return;
     final epoch = ++_epoch;
-    await _finish(epoch, EcgCapturePhase.cancelled, reason: 'paused');
+    await _finishWithPartial(epoch, EcgCapturePhase.cancelled, 'paused');
   }
 
   /// Awaited teardown for the owner (AppState shutdown, tests).
@@ -453,7 +483,7 @@ class EcgController extends ChangeNotifier {
     switch (e) {
       case EcgTransportLinkDown():
         unawaited(
-          _finish(epoch, EcgCapturePhase.failed, reason: 'disconnected'),
+          _finishWithPartial(epoch, EcgCapturePhase.failed, 'disconnected'),
         );
       case EcgTransportMalformed():
         if (_armed) {
@@ -506,9 +536,17 @@ class EcgController extends ChangeNotifier {
     _set(next);
     for (final effect in step.effects) {
       switch (effect) {
-        case EcgAppend():
-        case EcgAppendPlaceholder():
+        case EcgAppend(:final packet):
+          if (packet.liveHr > 0) {
+            _hrSum += packet.liveHr;
+            _hrN++;
+          }
+          if (packet.quality > 0) _lastQuality = packet.quality;
         case EcgClear():
+          _hrSum = 0;
+          _hrN = 0;
+          _lastQuality = 0;
+        case EcgAppendPlaceholder():
           break;
         case EcgSendRestart():
           if (_persist) {
@@ -570,7 +608,7 @@ class EcgController extends ChangeNotifier {
         final packets = List<EcgAcceptedPacket>.from(_reducer.accepted);
         final reading = _buildReading(outcome, packets);
         try {
-          await save(reading, packets);
+          await save(reading, keepWaveform() ? packets : const []);
         } catch (e) {
           log('[ECG] save failed: $e');
           if (_stale(epoch)) return;
@@ -578,7 +616,13 @@ class EcgController extends ChangeNotifier {
           return;
         }
         if (_stale(epoch)) return;
-        await _finish(epoch, EcgCapturePhase.completed, readingId: reading.id);
+        await _finish(
+          epoch,
+          EcgCapturePhase.completed,
+          readingId: reading.id,
+          result: reading.status,
+          metrics: ecgMetricsOf(reading),
+        );
         // The band saved raw R16 under raw-save ON; ordinary incremental
         // history brings it back through the normal safe path.
         try {
@@ -587,6 +631,85 @@ class EcgController extends ChangeNotifier {
           log('[ECG] post-reading sync request failed: $e');
         }
     }
+  }
+
+  /// Stop the capture and, if there is an accepted window, save it as a
+  /// [EcgReadingStatus.partial] reading before the exit completes. [phase] and
+  /// [reason] are what the capture ends as (background: cancelled/'paused',
+  /// timeout and link loss: failed). Nothing is saved for a gesture-owned
+  /// capture, or when no signal was accepted (nothing was recorded); metrics are
+  /// kept only from [kEcgPartialMinSamples] samples. A save that fails still
+  /// ends the capture the same way, with no reading.
+  Future<void> _finishWithPartial(
+    int epoch,
+    EcgCapturePhase phase,
+    String reason,
+  ) async {
+    if (_lease == null || _epoch != epoch) return;
+    _armed = false;
+    _timer?.cancel();
+    final packets = List<EcgAcceptedPacket>.from(_reducer.accepted);
+    final reading = _persist ? _buildPartial(packets, reason) : null;
+    if (reading == null) {
+      await _finish(epoch, phase, reason: reason);
+      return;
+    }
+    _set(_state.copyWith(phase: EcgCapturePhase.saving));
+    try {
+      await save(reading, keepWaveform() ? packets : const []);
+    } catch (e) {
+      log('[ECG] partial save failed: $e');
+      if (_stale(epoch)) return;
+      await _finish(epoch, phase, reason: reason);
+      return;
+    }
+    if (_stale(epoch)) return;
+    await _finish(
+      epoch,
+      phase,
+      reason: reason,
+      readingId: reading.id,
+      result: reading.status,
+      metrics: ecgMetricsOf(reading),
+    );
+  }
+
+  EcgReading? _buildPartial(List<EcgAcceptedPacket> packets, String reason) {
+    final real = packets.where((p) => !p.placeholder);
+    if (real.isEmpty) return null;
+    final now = nowMs();
+    final startMs = _windowStartMs ?? now;
+    final stats = EcgWindowStats.of(packets);
+    // Metrics only from enough signal; the heart rate is the mean of the
+    // band's live rate over the window, never a guess.
+    final enough = stats.sampleCount >= kEcgPartialMinSamples;
+    return EcgReading(
+      id: ecgReadingId(
+        startEpochMs: startMs,
+        terminalStrapS: real.last.strapSeconds,
+      ),
+      deviceId: '',
+      wrist: _wrist ?? EcgWrist.right,
+      startTs: startMs ~/ 1000,
+      endTs: now ~/ 1000,
+      strapTerminalTs: null,
+      strapTerminalSubsec: null,
+      resultCode: 0,
+      category: EcgCategory.inconclusive,
+      avgHr: enough && _hrN > 0 ? (_hrSum / _hrN).round() : null,
+      quality: enough && _lastQuality > 0 ? _lastQuality : null,
+      unreadableMask: 0,
+      interruptions: _reducer.interruptions,
+      sampleCount: stats.sampleCount,
+      minUv: stats.minUv,
+      maxUv: stats.maxUv,
+      rmsUv: stats.rmsUv,
+      missingSegments: stats.missingSegments,
+      status: EcgReadingStatus.partial,
+      notes: null,
+      createdAt: now,
+      stopReason: reason,
+    );
   }
 
   EcgReading _buildReading(
@@ -633,6 +756,8 @@ class EcgController extends ChangeNotifier {
     String? reason,
     String? readingId,
     int? unreadableMask,
+    EcgReadingStatus? result,
+    List<EcgMetric>? metrics,
   }) async {
     final lease = _lease;
     if (lease == null || _epoch != epoch) return;
@@ -669,6 +794,8 @@ class EcgController extends ChangeNotifier {
         readingId: readingId,
         unreadableMask: unreadableMask,
         cleanupIncomplete: incomplete,
+        result: result,
+        metrics: metrics,
       ),
     );
   }

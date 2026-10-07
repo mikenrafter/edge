@@ -137,6 +137,8 @@ void main() {
         'breath.exhale',
         'breath.hold',
         'breath.done',
+        'ecg.started',
+        'ecg.attention',
         'tasker.1',
         'tasker.6',
       ]) {
@@ -152,6 +154,7 @@ void main() {
             k!.startsWith('preset.') ||
                 k.startsWith('gesture.') ||
                 k.startsWith('breath.') ||
+                k.startsWith('ecg.') ||
                 k.startsWith('tasker.'),
             isTrue,
             reason: 'unexpected systemKey $k');

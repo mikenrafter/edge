@@ -3,7 +3,8 @@
 //
 // A slot key is the systemKey scheme: 'alert.<ruleId>' for an alert
 // rule, 'gesture.start|followUp|confirm|failed' for a gesture cue,
-// 'breath.inhale|exhale|hold|done' for a breathing cue, 'tasker.1' .. 'tasker.6'
+// 'breath.inhale|exhale|hold|done' for a breathing cue, 'ecg.started|complete|
+// inconclusive|inconclusiveRetry|failed|attention' for an ECG cue, 'tasker.1' .. 'tasker.6'
 // for a Tasker slot. An alert slot's
 // pattern lives in its rule (a snapshot carrying the pattern's id); a cue's
 // (gesture or breathing) is a pattern id kept in [decodeCueAssignments]'s map.
@@ -72,6 +73,14 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot(kGestureConfirmKey, 'Gesture confirmed'),
     HapticSlot(kGestureFailedKey, 'Gesture failed'),
   ]),
+  HapticSlotSection('ecg', 'ECG', [
+    HapticSlot(kEcgStartedKey, 'Started'),
+    HapticSlot(kEcgCompleteKey, 'Complete'),
+    HapticSlot(kEcgInconclusiveKey, 'Inconclusive'),
+    HapticSlot(kEcgInconclusiveRetryKey, 'Try again'),
+    HapticSlot(kEcgFailedKey, 'Failed'),
+    HapticSlot(kEcgAttentionKey, 'Attention'),
+  ]),
   HapticSlotSection('breathing', 'Breathing', [
     HapticSlot(kBreathInhaleKey, 'Inhale'),
     HapticSlot(kBreathExhaleKey, 'Exhale'),
@@ -125,16 +134,15 @@ bool isBreathCueSlot(String slotKey) =>
     slotKey == kBreathDoneKey;
 
 /// Whether [slotKey] is one of the six ECG cues (`ecg.*`, see [kEcgCueKeys]).
-// RED stub (ecg-features): to be implemented in the green phase.
-bool isEcgCueSlot(String slotKey) =>
-    throw UnimplementedError('isEcgCueSlot: ECG haptic slots not built yet');
+bool isEcgCueSlot(String slotKey) => kEcgCueKeys.contains(slotKey);
 
-/// Whether [slotKey] is a cue slot: a gesture cue, a breathing cue or a Tasker
-/// slot. Its assigned pattern is a pattern id in [decodeCueAssignments]'s map,
+/// Whether [slotKey] is a cue slot: a gesture cue, a breathing cue, an ECG cue
+/// or a Tasker slot. Its assigned pattern is a pattern id in [decodeCueAssignments]'s map,
 /// and it plays the cue's own built-in with none.
 bool isCueSlot(String slotKey) =>
     isGestureCueSlot(slotKey) ||
     isBreathCueSlot(slotKey) ||
+    isEcgCueSlot(slotKey) ||
     isTaskerSlot(slotKey);
 
 /// Whether [slotKey] is a slot on the Haptics screen (any section).
@@ -180,6 +188,7 @@ Map<String, BuzzSequence> resolveCuePatterns(
     kBreathExhaleKey,
     kBreathHoldKey,
     kBreathDoneKey,
+    ...kEcgCueKeys,
     'tasker.1',
     'tasker.2',
     'tasker.3',

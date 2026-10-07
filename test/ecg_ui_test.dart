@@ -395,7 +395,7 @@ void main() {
         );
         final text = _allText(t);
         expect(text, contains('Band-reported result'));
-        expect(text, contains('Sinus rhythm'));
+        expect(text, contains('Regular rhythm, nothing flagged'));
         expect(text, contains('No waveform was saved'));
         expect(text, contains('Analyze now'));
         expect(text, contains('77 bpm'));

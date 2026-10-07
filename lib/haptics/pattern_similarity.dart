@@ -50,6 +50,8 @@ class SimilarityWarning {
 ///  2. The four breathing cues. The interval timer uses them (work = inhale,
 ///     rest = exhale), and there are no separate HIIT slots, so this set is
 ///     also the interval set.
+///  3. The six ECG cues: how a reading ended is told by feel alone, on the
+///     wrist, with the phone often out of sight.
 const List<List<String>> kConfusableSets = [
   [
     'gesture.start',
@@ -59,6 +61,14 @@ const List<List<String>> kConfusableSets = [
     'alarm.snooze.realarm',
   ],
   ['breath.inhale', 'breath.exhale', 'breath.hold', 'breath.done'],
+  [
+    'ecg.started',
+    'ecg.complete',
+    'ecg.inconclusive',
+    'ecg.inconclusiveRetry',
+    'ecg.failed',
+    'ecg.attention',
+  ],
 ];
 
 /// Milliseconds per sixteenth for a pattern written as notes.
