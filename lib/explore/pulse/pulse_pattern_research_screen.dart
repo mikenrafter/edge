@@ -124,6 +124,7 @@ class _NightRow extends StatelessWidget {
       if (count != null && hours != null) _hours(hours),
       if (count != null && coverage != null) _percent(coverage),
       ...n.exclusions,
+      ...n.caveats,
     ].join(' · ');
     return Surface(
       key: ValueKey('pulse-night:${n.dayId}'),

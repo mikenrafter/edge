@@ -59,7 +59,7 @@ void main() {
   group('a present envelope', () {
     test('keeps the detector count, hours, coverage and note as stored', () {
       final n = fromCvhrEnvelope('2026-10-07', _realEnvelope(),
-          sleepHours: 6.5);
+          windowHours: 6.5);
       expect(n.dayId, '2026-10-07');
       expect(n.cycleCount, 309);
       expect(n.analysedHours, closeTo(5.999791, 1e-9));
@@ -72,14 +72,14 @@ void main() {
 
     test('with N cycles reports exactly N', () {
       for (final c in [1, 7, 23, 120]) {
-        final n = fromCvhrEnvelope('d', _present(c, 6.0), sleepHours: 7.0);
+        final n = fromCvhrEnvelope('d', _present(c, 6.0), windowHours: 7.0);
         expect(n.cycleCount, c);
         expect(n.admitted, isTrue, reason: '$c cycles over 6 of 7 hours');
       }
     });
 
     test('with 0 cycles is 0, analysed, and admitted', () {
-      final n = fromCvhrEnvelope('d', _present(0, 5.5), sleepHours: 6.0);
+      final n = fromCvhrEnvelope('d', _present(0, 5.5), windowHours: 6.0);
       expect(n.cycleCount, 0);
       expect(n.cycleCount, isNotNull);
       expect(n.analysedHours, 5.5);
@@ -93,7 +93,7 @@ void main() {
     test('the stored absent shape', () {
       final n = fromCvhrEnvelope(
           'd', _absent('too few beats for a CVHR screen (need ≥60)'),
-          sleepHours: 7.0);
+          windowHours: 7.0);
       expect(n.cycleCount, isNull);
       expect(n.analysedHours, isNull);
       expect(n.coverage, isNull);
@@ -104,18 +104,18 @@ void main() {
     });
 
     test('a null envelope (nothing persisted for the day)', () {
-      final n = fromCvhrEnvelope('d', null, sleepHours: 7.0);
+      final n = fromCvhrEnvelope('d', null, windowHours: 7.0);
       expect(n.cycleCount, isNull);
       expect(n.exclusions, ['not analysed']);
       expect(n.detectorNote, isNull);
       expect(n.admitted, isFalse);
     });
 
-    test('absent stays absent whatever the sleep hours are', () {
+    test('absent stays absent whatever the window hours are', () {
       for (final h in <double?>[null, 0, 4, 9]) {
-        final n = fromCvhrEnvelope('d', _absent('x'), sleepHours: h);
-        expect(n.cycleCount, isNull, reason: 'sleepHours=$h');
-        expect(n.coverage, isNull, reason: 'sleepHours=$h');
+        final n = fromCvhrEnvelope('d', _absent('x'), windowHours: h);
+        expect(n.cycleCount, isNull, reason: 'windowHours=$h');
+        expect(n.coverage, isNull, reason: 'windowHours=$h');
       }
     });
   });
@@ -153,7 +153,7 @@ void main() {
     for (final e in cases.entries) {
       test(e.key, () {
         late PulsePatternNight n;
-        expect(() => n = fromCvhrEnvelope('d', e.value, sleepHours: 7.0),
+        expect(() => n = fromCvhrEnvelope('d', e.value, windowHours: 7.0),
             returnsNormally);
         expect(n.cycleCount, isNull);
         expect(n.analysedHours, isNull);
@@ -166,38 +166,38 @@ void main() {
 
   group('admission gates (proposed engineering gates, not clinical)', () {
     test('3.9 analysed hours is under the 4 hour gate', () {
-      final n = fromCvhrEnvelope('d', _present(5, 3.9), sleepHours: 4.0);
+      final n = fromCvhrEnvelope('d', _present(5, 3.9), windowHours: 4.0);
       expect(n.coverage, closeTo(0.975, 1e-9), reason: 'coverage is fine');
       expect(n.exclusions, ['under 4 analysed hours']);
       expect(n.admitted, isFalse);
     });
 
     test('79% coverage is under the 80% gate', () {
-      final n = fromCvhrEnvelope('d', _present(5, 5.53), sleepHours: 7.0);
+      final n = fromCvhrEnvelope('d', _present(5, 5.53), windowHours: 7.0);
       expect(n.coverage, closeTo(0.79, 1e-9));
       expect(n.exclusions, ['coverage under 80%']);
       expect(n.admitted, isFalse);
     });
 
     test('exactly 4.0 hours at exactly 80% is admitted (both inclusive)', () {
-      final n = fromCvhrEnvelope('d', _present(5, 4.0), sleepHours: 5.0);
+      final n = fromCvhrEnvelope('d', _present(5, 4.0), windowHours: 5.0);
       expect(n.coverage, closeTo(0.8, 1e-12));
       expect(n.exclusions, isEmpty);
       expect(n.admitted, isTrue);
     });
 
     test('failing both gates names both, hours first', () {
-      final n = fromCvhrEnvelope('d', _present(5, 3.0), sleepHours: 8.0);
+      final n = fromCvhrEnvelope('d', _present(5, 3.0), windowHours: 8.0);
       expect(n.exclusions, ['under 4 analysed hours', 'coverage under 80%']);
       expect(n.admitted, isFalse);
     });
 
-    test('unknown sleep hours cannot be assumed to be full coverage', () {
+    test('unknown sleep window cannot be assumed to be full coverage', () {
       for (final h in <double?>[null, 0.0, -2.0]) {
-        final n = fromCvhrEnvelope('d', _present(5, 6.0), sleepHours: h);
-        expect(n.coverage, isNull, reason: 'sleepHours=$h');
-        expect(n.admitted, isFalse, reason: 'sleepHours=$h');
-        expect(n.exclusions, isNotEmpty, reason: 'sleepHours=$h');
+        final n = fromCvhrEnvelope('d', _present(5, 6.0), windowHours: h);
+        expect(n.coverage, isNull, reason: 'windowHours=$h');
+        expect(n.admitted, isFalse, reason: 'windowHours=$h');
+        expect(n.exclusions, isNotEmpty, reason: 'windowHours=$h');
         expect(n.exclusions.any((s) => s.contains('coverage')), isTrue);
         expect(n.exclusions, isNot(contains('not analysed')),
             reason: 'it WAS analysed; only the denominator is unknown');
@@ -210,7 +210,7 @@ void main() {
     // argument is now the sleep WINDOW length (onset to offset), and analysis
     // longer than the window is flagged, never clamped.
     test('analysed hours above the sleep window are flagged, not clamped', () {
-      final n = fromCvhrEnvelope('d', _present(2, 6.1), sleepHours: 6.0);
+      final n = fromCvhrEnvelope('d', _present(2, 6.1), windowHours: 6.0);
       expect(n.exclusions, contains('analysis longer than the sleep window'));
       expect(n.admitted, isFalse);
       expect(n.coverage == null || n.coverage! > 1.0, isTrue,
@@ -221,7 +221,7 @@ void main() {
     // loader passes the window length, so coverage is 4 / 8.
     test('4 analysed hours over an 8 hour window is 50% coverage, excluded',
         () {
-      final n = fromCvhrEnvelope('d', _present(5, 4.0), sleepHours: 8.0);
+      final n = fromCvhrEnvelope('d', _present(5, 4.0), windowHours: 8.0);
       expect(n.coverage, closeTo(0.5, 1e-12));
       expect(n.exclusions, ['coverage under 80%']);
       expect(n.admitted, isFalse);
@@ -230,16 +230,40 @@ void main() {
     // NEW (Sol P2): a window much longer than the analysis, exactly equal,
     // is full coverage (not "longer than the window").
     test('analysis equal to the window is 100% and admitted', () {
-      final n = fromCvhrEnvelope('d', _present(5, 6.0), sleepHours: 6.0);
+      final n = fromCvhrEnvelope('d', _present(5, 6.0), windowHours: 6.0);
       expect(n.coverage, 1.0);
       expect(n.exclusions, isEmpty);
       expect(n.admitted, isTrue);
     });
   });
 
+  group('irregular-rhythm screen', () {
+    test('flagged excludes an otherwise qualifying night', () {
+      final n = fromCvhrEnvelope('d', _present(5, 6.0),
+          windowHours: 7.0, rhythmFlagged: true);
+      expect(n.exclusions, [kPulseExclusionIrregularRhythm]);
+      expect(n.admitted, isFalse);
+      expect(n.caveats, isEmpty);
+    });
+
+    test('regular is admitted with no caveat', () {
+      final n = fromCvhrEnvelope('d', _present(5, 6.0),
+          windowHours: 7.0, rhythmFlagged: false);
+      expect(n.admitted, isTrue);
+      expect(n.caveats, isEmpty);
+    });
+
+    test('unknown does not exclude and carries a caveat', () {
+      final n = fromCvhrEnvelope('d', _present(5, 6.0), windowHours: 7.0);
+      expect(n.admitted, isTrue);
+      expect(n.exclusions, isEmpty);
+      expect(n.caveats, [kPulseCaveatRhythmUnavailable]);
+    });
+  });
+
   group('cyclesPerHour', () {
     test('is the stored cycles over the analysed hours', () {
-      final n = fromCvhrEnvelope('d', _present(12, 6.0), sleepHours: 6.0);
+      final n = fromCvhrEnvelope('d', _present(12, 6.0), windowHours: 6.0);
       expect(n.cyclesPerHour, closeTo(2.0, 1e-12));
     });
 
@@ -249,7 +273,7 @@ void main() {
     });
 
     test('is null, not infinite, when analysed hours are 0', () {
-      final n = fromCvhrEnvelope('d', _present(0, 0.0), sleepHours: 6.0);
+      final n = fromCvhrEnvelope('d', _present(0, 0.0), windowHours: 6.0);
       expect(n.analysedHours, 0);
       expect(n.cyclesPerHour, isNull);
       expect(n.exclusions, contains('under 4 analysed hours'));

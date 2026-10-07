@@ -6,10 +6,12 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../../data/day_label.dart';
 import '../../data/local_repository.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/prefs.dart';
+import '../../ui2/screens/home_screen.dart' show pointsOf;
 import '../../ui2/ui2.dart';
 import 'pulse_pattern_night.dart';
 import 'pulse_pattern_research_screen.dart';
@@ -18,22 +20,35 @@ import 'pulse_pattern_research_screen.dart';
 const int kPulseNightsRead = 30;
 
 /// The newest [kPulseNightsRead] days, newest first. Per day: the stored
-/// `cvhr` envelope (`getDayLungs`) and that night's sleep hours
-/// (`getDaySleepV2` `duration_min`, the read the circadian artifact uses).
-/// A day with no envelope is "not analysed"; a day with no sleep duration
-/// has "coverage unknown". A failed read throws; it is never an empty list.
+/// `cvhr` envelope and the sleep WINDOW (`getDayLungs` `cvhr` and
+/// `sleep_window` start/end, onset to offset: the interval the detector
+/// reads, wake included, so it is the coverage denominator, not asleep
+/// time), plus the stored `irregular_rhythm_flag` series (`getChart`, read
+/// once; one point per derived day stamped at local noon, matched by local
+/// day label as `investigate.dart` does). A day with no envelope is "not
+/// analysed"; a day with no window has "coverage unknown"; a day with no
+/// stored flag is not excluded and says the rhythm screen was unavailable.
+/// A failed read throws; it is never an empty list or an unknown.
 Future<List<PulsePatternNight>> loadPulsePatternNights(
     LocalRepository repo) async {
   final days = await repo.availableDays(); // newest first
+  final flags = <String, bool>{
+    for (final p in pointsOf(await repo.getChart('irregular_rhythm_flag')))
+      dayLabelOf(DateTime.fromMillisecondsSinceEpoch(p.t * 1000)): p.v >= 1,
+  };
   final out = <PulsePatternNight>[];
   for (final day in days.take(kPulseNightsRead)) {
     final lungs = await repo.getDayLungs(day);
-    final sleep = await repo.getDaySleepV2(day);
-    final minutes = sleep['duration_min'];
+    final win = lungs['sleep_window'];
+    final start = win is Map ? win['start'] : null;
+    final end = win is Map ? win['end'] : null;
     out.add(fromCvhrEnvelope(
       day,
       lungs['cvhr'],
-      sleepHours: minutes is num && minutes > 0 ? minutes / 60 : null,
+      windowHours: start is num && end is num && end > start
+          ? (end - start) / 3600
+          : null,
+      rhythmFlagged: flags[day],
     ));
   }
   return out;
