@@ -599,8 +599,9 @@ void main() {
     ]) {
       expect(find.text(action), findsOneWidget, reason: '$action missing');
     }
-    // Nothing chosen: the replay option is explained, not offered.
-    expect(find.text('Turn on Mark a moment first'), findsOneWidget);
+    // Nothing chosen: the replay option and the marked-moment follow-up
+    // are both explained, not offered.
+    expect(find.text('Turn on Mark a moment first'), findsNWidgets(2));
     // No developer mode: no choice of method (it is only ECG touches), and
     // the timing of the double-tap count is on the screen.
     expect(find.text('Count extra taps with'), findsNothing);
