@@ -3,9 +3,15 @@ import 'dart:math' as math;
 import 'package:openstrap_analytics/onehz.dart';
 
 import 'day_activity_state.dart';
+import 'state_fingerprint.dart';
 
 /// RAM-only calculation data copied into workers and published after persistence.
 /// Callbacks passed to [evaluate] are evaluated synchronously, never retained.
+///
+/// The state is kept small on purpose: results and running sums stay, but the
+/// inputs they came from do not. Cached calculations are matched on a
+/// fingerprint of their dependencies ([dependencyFingerprint]) instead of a
+/// copy, and the per-second summaries fingerprint the samples they folded in.
 class DayCalculationState {
   final CalculationCache _cache = CalculationCache(maxEntries: 2048);
   final IncrementalMinuteMetrics _minutes = IncrementalMinuteMetrics();
@@ -13,7 +19,10 @@ class DayCalculationState {
   // with their own sleep bounds, so sharing one would rebuild on any mismatch.
   final Map<String, DayHrSummary> _hr = {};
   final DayMotionSummary _motion = DayMotionSummary();
-  final IncrementalEnmoSeries _enmo = IncrementalEnmoSeries();
+  IncrementalEnmoSeries _enmo = IncrementalEnmoSeries();
+
+  /// Valid samples the motion series above holds a copy of.
+  int _enmoHeld = 0;
 
   /// The gravity reference of the last full motion calculation. Periodic awake
   /// passes reuse it; see [motionMinutes].
@@ -26,6 +35,20 @@ class DayCalculationState {
   int get processedHrSamples =>
       _hr.values.fold(0, (n, h) => n + h.processedSamples);
   int get processedOrientationSamples => _motion.processedSamples;
+
+  /// Samples of the day held in memory by this state, across every part.
+  int get retainedSamples =>
+      _hr.values.fold(0, (n, h) => n + h.retainedSamples) +
+      _motion.retainedSamples +
+      _enmoHeld;
+
+  /// Drops the one part that keeps day samples, the motion series. The next
+  /// pass rebuilds it from the day it is handed, which gives the same minutes
+  /// an appended one does; every other part is already compact.
+  void compact() {
+    _enmo = IncrementalEnmoSeries();
+    _enmoHeld = 0;
+  }
 
   /// Per-key reuse and cost, collected only when [debugStats] is set (for the
   /// cache benchmark). Keys of per-window entries are collapsed to their prefix.
@@ -41,7 +64,7 @@ class DayCalculationState {
     if (stats == null) {
       return _cache.evaluate(
         key,
-        dependencies,
+        dependencyFingerprint(dependencies),
         calculate,
         full: mode != CalculationMode.periodicAwake,
       );
@@ -50,7 +73,7 @@ class DayCalculationState {
     final watch = Stopwatch()..start();
     final result = _cache.evaluate(
       key,
-      dependencies,
+      dependencyFingerprint(dependencies),
       calculate,
       full: mode != CalculationMode.periodicAwake,
     );
@@ -172,8 +195,9 @@ class DayCalculationState {
       ]);
       _gRef = g;
     }
-    return _enmo
-        .sync(samples, gRef: g, expectedMinutes: 1440, force: full)
-        .minutes;
+    final result =
+        _enmo.sync(samples, gRef: g, expectedMinutes: 1440, force: full);
+    _enmoHeld = samples.where((s) => s.valid).length;
+    return result.minutes;
   });
 }

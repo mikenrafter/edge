@@ -318,7 +318,9 @@ void derivationPrepareWorker(SendPort mainSendPort) {
       try {
         final substrate = state.buildSubstrate();
         if (mode == 'substrate') {
-          mainSendPort.send({
+          // `Isolate.exit` moves the payload to the main isolate instead of
+          // copying it; the worker has nothing left to do.
+          Isolate.exit(mainSendPort, {
             'type': 'result',
             'kind': 'substrate',
             'payload': substrate.toJson(),
@@ -328,7 +330,7 @@ void derivationPrepareWorker(SendPort mainSendPort) {
             substrate,
             targetDay: targetDay,
           );
-          mainSendPort.send({
+          Isolate.exit(mainSendPort, {
             'type': 'result',
             'kind': 'prepared_day',
             'payload': payload.toJson(),

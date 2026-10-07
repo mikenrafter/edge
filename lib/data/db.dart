@@ -32,6 +32,8 @@ import '../ble/adapters/signals.dart' show InputSignal;
 import '../import/import_container.dart';
 import 'coverage_resolver.dart' show CoverageInterval;
 import '../gestures/strap_event.dart';
+import 'day_checkpoint.dart';
+export 'day_checkpoint.dart' show DayCheckpoint;
 import 'day_label.dart';
 import 'journal_fields.dart';
 import 'live_coverage_policy.dart';
@@ -394,7 +396,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 60;
+  static const int schemaVersion = 61;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1179,6 +1181,14 @@ class LocalDb {
           // nothing derived moves. _repairOpenSchema re-runs it on every open.
           await _addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
         }
+        if (oldV < 61) {
+          // Resume points of the incremental day derive: scratch, one small
+          // additive table, no backfill (no row means "run the full pass"), so
+          // it is cheap under iOS's CPU watchdog (invariant 11). No
+          // kAlgoVersion bump: nothing derived moves. _repairOpenSchema
+          // re-runs it on every open.
+          await _createDayCheckpoint(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1275,6 +1285,7 @@ class LocalDb {
     await _createInputRev(db);
     await _createLastResult(db);
     await _addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
+    await _createDayCheckpoint(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -1291,6 +1302,97 @@ class LocalDb {
         'key TEXT PRIMARY KEY, computed_at INTEGER NOT NULL, '
         'payload_json TEXT NOT NULL, input_sig TEXT)',
       );
+
+  /// `day_checkpoint`: where an incremental day derive can resume (see
+  /// [DayCheckpoint]). Scratch, so it is NOT in the salvage list, and the
+  /// engine deletes a day's rows once that day is finalized.
+  static Future<void> _createDayCheckpoint(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS day_checkpoint ('
+        'day_id TEXT NOT NULL, algo_version INTEGER NOT NULL, '
+        'fmt INTEGER NOT NULL, ctx_sig TEXT NOT NULL, '
+        'cp_rec_ts INTEGER NOT NULL, rev_vec BLOB NOT NULL, '
+        'state BLOB NOT NULL, night_ref TEXT, computed_at INTEGER NOT NULL, '
+        'PRIMARY KEY (day_id, algo_version))',
+      );
+
+  /// Writes (replacing) the checkpoint at its (day, algo version).
+  static Future<void> putDayCheckpoint(DayCheckpoint cp) async {
+    final db = await instance;
+    await db.insert(
+      'day_checkpoint',
+      {
+        'day_id': cp.dayId,
+        'algo_version': cp.algoVersion,
+        'fmt': cp.fmt,
+        'ctx_sig': cp.ctxSig,
+        'cp_rec_ts': cp.cpRecTs,
+        'rev_vec': cp.revVec,
+        'state': cp.state,
+        'night_ref': cp.nightRef,
+        'computed_at': cp.computedAt,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  /// The checkpoint of [dayId] at exactly [algoVersion], or null.
+  static Future<DayCheckpoint?> dayCheckpoint(
+      String dayId, int algoVersion) async {
+    final db = await instance;
+    final rows = await db.query(
+      'day_checkpoint',
+      where: 'day_id = ? AND algo_version = ?',
+      whereArgs: [dayId, algoVersion],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final r = rows.first;
+    return DayCheckpoint(
+      dayId: r['day_id'] as String,
+      algoVersion: (r['algo_version'] as num).toInt(),
+      fmt: (r['fmt'] as num).toInt(),
+      ctxSig: r['ctx_sig'] as String,
+      cpRecTs: (r['cp_rec_ts'] as num).toInt(),
+      revVec: Uint8List.fromList((r['rev_vec'] as List).cast<int>()),
+      state: Uint8List.fromList((r['state'] as List).cast<int>()),
+      nightRef: r['night_ref'] as String?,
+      computedAt: (r['computed_at'] as num).toInt(),
+    );
+  }
+
+  /// The live `input_rev` of the buckets `[fromBucket, toBucket)` that exist
+  /// (a bucket nothing was ever written to has no row), as `{bucket: rev}`.
+  static Future<Map<int, int>> inputRevisions(int fromBucket, int toBucket) async {
+    if (toBucket <= fromBucket) return const {};
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT bucket, rev FROM input_rev WHERE bucket >= ? AND bucket < ?',
+      [fromBucket, toBucket],
+    );
+    return {
+      for (final r in rows) (r['bucket'] as num).toInt(): (r['rev'] as num).toInt(),
+    };
+  }
+
+  /// Drops every version's checkpoint of [dayId] (the day finalized).
+  static Future<void> deleteDayCheckpoints(String dayId) async {
+    final db = await instance;
+    await db.delete('day_checkpoint', where: 'day_id = ?', whereArgs: [dayId]);
+  }
+
+  /// Drops every checkpoint except those of [keepDays].
+  static Future<void> pruneDayCheckpoints({required Set<String> keepDays}) async {
+    final db = await instance;
+    if (keepDays.isEmpty) {
+      await db.delete('day_checkpoint');
+      return;
+    }
+    await db.delete(
+      'day_checkpoint',
+      where: 'day_id NOT IN (${List.filled(keepDays.length, '?').join(',')})',
+      whereArgs: keepDays.toList(),
+    );
+  }
 
   /// One stored result, or null. A store error is the caller's to swallow: a
   /// missing result is a spinner, never a crash.
@@ -8522,6 +8624,29 @@ class LocalDb {
     return [for (final r in rows) _withDate(r)];
   }
 
+  /// The full served rows (payload included) of just [dayIds], so a caller that
+  /// already knows which days changed does not read the other ~90 payloads.
+  /// Unordered; a day with no row is absent.
+  static Future<List<Map<String, dynamic>>> dayResultsByIds(
+    Iterable<String> dayIds,
+  ) async {
+    final ids = dayIds.toSet().toList();
+    if (ids.isEmpty) return const [];
+    final db = await instance;
+    final out = <Map<String, dynamic>>[];
+    // SQLite caps bound variables (999 on old builds); stay well under.
+    for (var i = 0; i < ids.length; i += 400) {
+      final chunk = ids.sublist(i, i + 400 > ids.length ? ids.length : i + 400);
+      final rows = await db.rawQuery(
+        'SELECT r.* FROM day_result r $_servedDayJoin '
+        'WHERE r.day_id IN (${List.filled(chunk.length, '?').join(',')})',
+        chunk,
+      );
+      out.addAll(rows.map(_withDate));
+    }
+    return out;
+  }
+
   /// The N most recent days at their served version — EVERY column except the
   /// two big JSON blobs. Newest day_id first.
   ///
@@ -10236,6 +10361,30 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// One string field of a baseline's JSON payload, read inside SQLite so the
+  /// payload is neither returned nor decoded in Dart. Null when the row, the
+  /// field or valid JSON is missing.
+  static Future<String?> baselineJsonString(String key, String path) async {
+    final db = await instance;
+    try {
+      final rows = await db.rawQuery(
+        'SELECT json_extract(payload_json, ?) AS v FROM baselines WHERE key = ?',
+        [path, key],
+      );
+      final v = rows.isEmpty ? null : rows.first['v'];
+      return v is String ? v : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Marks a baseline as written now without rewriting its payload.
+  static Future<void> touchBaseline(String key) async {
+    final db = await instance;
+    await db.update('baselines', {'updated_at': nowMs()},
+        where: 'key = ?', whereArgs: [key]);
   }
 
   static Future<void> putBaseline(String key, String payloadJson) async {

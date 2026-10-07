@@ -159,6 +159,61 @@ void main() {
     expect(line, contains('settle'));
   });
 
+  group('stages and counters (where the time and the rows went)', () {
+    test('stages sum over days and start empty each pass', () {
+      perf.startPass();
+      perf.addStage('stage_candidate', 900);
+      perf.addStage('stage_candidate', 100);
+      perf.addStage('load_day', 40);
+      final s = perf.summary();
+      expect(s['stages'], {'stage_candidate': 1000, 'load_day': 40});
+      perf.startPass();
+      expect(perf.summary()['stages'], isEmpty);
+      expect(perf.summary()['counts'], isEmpty);
+    });
+
+    test('counters sum too, and are separate from stages', () {
+      perf.startPass();
+      perf.addCount('rows_search', 130000);
+      perf.addCount('rows_search', 5);
+      perf.addCount('rr_beats', 30);
+      expect(perf.summary()['counts'], {'rows_search': 130005, 'rr_beats': 30});
+      expect(perf.summary()['stages'], isEmpty);
+    });
+
+    test('stage() times the body on the injected clock, even when it throws',
+        () async {
+      perf.startPass();
+      final v = await perf.stage('bundle_isolate', () async {
+        clock.now += 250;
+        return 7;
+      });
+      expect(v, 7);
+      await expectLater(
+        perf.stage('bundle_isolate', () async {
+          clock.now += 50;
+          throw StateError('boom');
+        }),
+        throwsStateError,
+      );
+      expect(perf.summary()['stages'], {'bundle_isolate': 300});
+    });
+
+    test('logLine carries stages and counts only when there are some', () {
+      perf.startPass();
+      perf.addPhase('d', DerivePhase.compute, 10);
+      perf.endPass();
+      expect(perf.logLine(), isNot(contains('stages=')));
+      expect(perf.logLine(), isNot(contains('counts=')));
+      perf.addStage('load_day', 40);
+      perf.addCount('rows_day', 86400);
+      final line = perf.logLine();
+      expect(line, contains('stages=load_day:40ms'));
+      expect(line, contains('counts=rows_day:86400'));
+      expect(line.contains('\n'), isFalse);
+    });
+  });
+
   group('describe (the Settings > Developer "Last calculation" row)', () {
     test('the spec example', () {
       expect(

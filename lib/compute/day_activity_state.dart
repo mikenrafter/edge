@@ -1,9 +1,8 @@
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'hr_max.dart';
+import 'state_fingerprint.dart';
 import 'substrate.dart' show accelPlausible;
-
-bool _same(double a, double b) => a == b || (a.isNaN && b.isNaN);
 
 /// True when `[on, off)` is a sleep window and [t] falls inside it. Every
 /// wake-side reader in the engine and the pipeline excludes exactly this.
@@ -16,8 +15,13 @@ bool _inSleep(int t, int on, int off) => off > on && t >= on && t < off;
 /// same order, and the smoothed extremes see the same windows in the same
 /// order. Any change to an already-summarised sample, the sleep window or the
 /// age (which moves the plausibility ceiling) rebuilds from the start.
+///
+/// The samples themselves are not kept. A 128-bit fingerprint of the folded
+/// prefix tells the next pass whether that prefix is still what the caller
+/// holds, so the summary stays a few thousand numbers however long the day is.
 class DayHrSummary {
-  final List<int> _ts = [], _hr = [];
+  final PrefixFingerprint _prefix = PrefixFingerprint();
+  int _n = 0;
   int _sleepOn = 0, _sleepOff = 0;
   int? _age;
   int _processed = 0;
@@ -44,6 +48,9 @@ class DayHrSummary {
   /// Samples folded in since construction, including rebuilds (work counter).
   int get processedSamples => _processed;
 
+  /// Samples held in memory: the smoothing window, nothing of the day itself.
+  int get retainedSamples => _window.length;
+
   void sync(
     List<int> ts,
     List<int> hr, {
@@ -54,19 +61,25 @@ class DayHrSummary {
   }) {
     final n = ts.length < hr.length ? ts.length : hr.length;
     var append = !force &&
-        n >= _ts.length &&
+        n >= _n &&
         sleepOnsetSec == _sleepOn &&
         sleepOffsetSec == _sleepOff &&
         age == _age;
-    for (var i = 0; append && i < _ts.length; i++) {
-      if (ts[i] != _ts[i] || hr[i] != _hr[i]) append = false;
+    if (append) {
+      final seen = PrefixFingerprint();
+      for (var i = 0; i < _n; i++) {
+        seen.addInt(ts[i]);
+        seen.addInt(hr[i]);
+      }
+      append = seen.matches(_prefix);
     }
     if (!append) _reset(sleepOnsetSec, sleepOffsetSec, age);
     final ceil = hrCeilingForAge(age);
-    for (var i = _ts.length; i < n; i++) {
+    for (var i = _n; i < n; i++) {
       final t = ts[i], h = hr[i];
-      _ts.add(t);
-      _hr.add(h);
+      _prefix.addInt(t);
+      _prefix.addInt(h);
+      _n++;
       _processed++;
       if (!_inSleep(t, _sleepOn, _sleepOff) && h > 0) {
         final m = t ~/ 60;
@@ -96,8 +109,8 @@ class DayHrSummary {
   }
 
   void _reset(int on, int off, int? age) {
-    _ts.clear();
-    _hr.clear();
+    _prefix.clear();
+    _n = 0;
     _sleepOn = on;
     _sleepOff = off;
     _age = age;
@@ -143,10 +156,11 @@ class DayHrSummary {
 ///
 /// Each second's contribution reads only that second and the one before it, so
 /// appending folds in new seconds. Any change to an already-summarised sample,
-/// or to the sleep window, rebuilds from the start.
+/// or to the sleep window, rebuilds from the start. As in [DayHrSummary], a
+/// fingerprint of the folded prefix stands in for a copy of the samples.
 class DayMotionSummary {
-  final List<int> _ts = [];
-  final List<double> _ax = [], _ay = [], _az = [];
+  final PrefixFingerprint _prefix = PrefixFingerprint();
+  int _n = 0;
   int _sleepOn = 0, _sleepOff = 0;
   int _processed = 0;
 
@@ -164,7 +178,10 @@ class DayMotionSummary {
   static const _offGapSec = 120;
 
   int get processedSamples => _processed;
-  int get length => _ts.length;
+  int get length => _n;
+
+  /// Samples held in memory: none, only running sums.
+  int get retainedSamples => 0;
 
   void sync(
     List<int> ts,
@@ -177,19 +194,21 @@ class DayMotionSummary {
   }) {
     final n = ts.length;
     var append = !force &&
-        n >= _ts.length &&
+        n >= _n &&
         sleepOnsetSec == _sleepOn &&
         sleepOffsetSec == _sleepOff;
-    for (var i = 0; append && i < _ts.length; i++) {
-      if (ts[i] != _ts[i] ||
-          !_same(ax[i], _ax[i]) ||
-          !_same(ay[i], _ay[i]) ||
-          !_same(az[i], _az[i])) {
-        append = false;
+    if (append) {
+      final seen = PrefixFingerprint();
+      for (var i = 0; i < _n; i++) {
+        seen.addInt(ts[i]);
+        seen.addDouble(ax[i]);
+        seen.addDouble(ay[i]);
+        seen.addDouble(az[i]);
       }
+      append = seen.matches(_prefix);
     }
     if (!append) _reset(sleepOnsetSec, sleepOffsetSec);
-    for (var i = _ts.length; i < n; i++) {
+    for (var i = _n; i < n; i++) {
       final t = ts[i];
       final angle = ana.zAngle(ax[i], ay[i], az[i]);
       final present = accelPlausible(ax[i], ay[i], az[i]);
@@ -215,19 +234,18 @@ class DayMotionSummary {
       _prevTs = t;
       _prevAngle = angle;
       _prevPresent = present;
-      _ts.add(t);
-      _ax.add(ax[i]);
-      _ay.add(ay[i]);
-      _az.add(az[i]);
+      _prefix.addInt(t);
+      _prefix.addDouble(ax[i]);
+      _prefix.addDouble(ay[i]);
+      _prefix.addDouble(az[i]);
+      _n++;
       _processed++;
     }
   }
 
   void _reset(int on, int off) {
-    _ts.clear();
-    _ax.clear();
-    _ay.clear();
-    _az.clear();
+    _prefix.clear();
+    _n = 0;
     _sleepOn = on;
     _sleepOff = off;
     _prevAngle = 0;
@@ -243,7 +261,7 @@ class DayMotionSummary {
   /// Wake minutes with at least 20 % of their seconds moving ≥ 5°; null when
   /// under a minute of data or no second carried a gravity vector.
   int? activeMinutes() {
-    if (_ts.length < 60 || _wakeTot.isEmpty) return null;
+    if (_n < 60 || _wakeTot.isEmpty) return null;
     var active = 0;
     _wakeTot.forEach((m, tot) {
       if (tot > 0 && (_wakeMove[m] ?? 0) / tot >= _activeFrac) active++;
@@ -253,7 +271,7 @@ class DayMotionSummary {
 
   /// Per-5-minute movement fraction over the whole day.
   List<Map<String, dynamic>> activityCurve() {
-    if (_ts.length < 60) return const [];
+    if (_n < 60) return const [];
     final keys = _curveTot.keys.toList()..sort();
     return [
       for (final b in keys)
@@ -267,7 +285,7 @@ class DayMotionSummary {
   }
 
   /// Contiguous record-presence runs as `[start, end)`; empty with no data.
-  List<List<int>> wearRuns() => _ts.isEmpty
+  List<List<int>> wearRuns() => _n == 0
       ? const []
       : [
           for (final r in _closedRuns) [r[0], r[1]],

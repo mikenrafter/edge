@@ -292,7 +292,8 @@ class AppState extends ChangeNotifier {
   // the foreground budget. Late-initialized, so this reads the value both
   // constructors have already set by the time anything touches `_derive`.
   late final DerivationEngine _derive =
-      DerivationEngine(log: _log, background: _background);
+      DerivationEngine(log: _log, background: _background,
+          isBackgrounded: () => _background);
   /// The derive orchestration: scheduler wiring, the pass itself,
   /// recalc state, per-day publish, warmer hand-off. Everything it needs from
   /// here arrives as a callback; it never sees AppState.
@@ -3505,7 +3506,13 @@ class AppState extends ChangeNotifier {
   /// Called when the app goes to the background. The connection is kept up (iOS
   /// keeps an app alive in the background only while it holds a subscribed BLE
   /// link); see [SyncController.pauseForBackground] for the whole reasoning.
-  Future<void> pauseForBackground() => _sync.pauseForBackground();
+  Future<void> pauseForBackground() {
+    // Memory only: every one of these rebuilds from the database or a full
+    // recompute, so nothing a screen or a derive shows can change.
+    _derive.trimForBackground();
+    LocalRepositoryImpl.invalidateBundleMemo();
+    return _sync.pauseForBackground();
+  }
 
   // ── live HR / IMU ownership (#287) ──────────────────────────────────────────
   //

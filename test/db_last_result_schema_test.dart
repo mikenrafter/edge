@@ -66,8 +66,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 60', () {
-    expect(LocalDb.schemaVersion, 60);
+  test('schemaVersion is at least 60', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(60));
   });
 
   test('upgrade from v58 reaches 60 and creates last_result with the agreed '
@@ -76,7 +76,7 @@ void main() {
     created.add(name);
     await _seedEmptyV58(name);
     final db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 60);
+    expect(await _userVersion(db), LocalDb.schemaVersion);
 
     final cols = {
       for (final c in await db.rawQuery('PRAGMA table_info(last_result)'))
@@ -115,7 +115,7 @@ void main() {
     var db = await _openThroughLocalDb(name);
     await db.execute('DROP TABLE last_result');
     db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 60);
+    expect(await _userVersion(db), LocalDb.schemaVersion);
     expect(await db.query('last_result'), isEmpty,
         reason: '_repairOpenSchema re-runs the creator on every open');
   });
@@ -125,7 +125,7 @@ void main() {
     created.add(name);
     await databaseFactory.deleteDatabase(await _path(name));
     final db = await _openThroughLocalDb(name);
-    expect(await _userVersion(db), 60);
+    expect(await _userVersion(db), LocalDb.schemaVersion);
     expect(await db.query('last_result'), isEmpty);
   });
 }
