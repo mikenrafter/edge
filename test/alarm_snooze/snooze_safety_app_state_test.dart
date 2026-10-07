@@ -399,13 +399,17 @@ void main() {
       expect(await _stored(), isNotNull);
     });
 
-    test('a confirmation 29 minutes before the fire still counts (control)',
-        () async {
+    // Round 3 (partial 5): the 30-minute lookback was a stand-in for "the same
+    // sleep block". A confirmation counts only at or after the fire (60 s
+    // slack for clock skew); anything earlier is another block's, and failing
+    // toward waking is fine. Pinned in full by snooze_r3_stop_test.dart (J).
+    test('a confirmation 29 minutes before the fire is not this alarm\'s '
+        '(round 3: the lookback is 60 s)', () async {
       await open(start: DateTime(2026, 10, 7, 10, 30));
       await _lastNightConfirmedAt(t0.subtract(_min * 29));
       await fireAndStop(HapticsTermination.expired);
-      expect(await _stored(), isNull);
-      expect(rig.deliveries, isEmpty);
+      expect(await _stored(), isNotNull);
+      expect(rig.count(Played.snoozeConfirm), greaterThanOrEqualTo(1));
     });
 
     test('a wake confirmed right after the fire cancels the snooze '
@@ -608,24 +612,31 @@ void main() {
     });
   });
 
-  group('the 30-in-2-minutes precaution never holds an alarm', () {
-    test('with the command budget exhausted the snooze confirm and the due '
-        're-alarm still play at once', () async {
+  group('the 30-in-2-minutes precaution holds the cues, never the re-alarm',
+      () {
+    // Round 3 (new 6): only the RE-ALARM is budget-exempt. The confirm,
+    // dismiss and cancel cues use the normal queue (the wearer is awake or the
+    // snooze is already set), so with the window exhausted they wait for room.
+    test('with the command budget exhausted the snooze confirm waits, and the '
+        'due re-alarm still plays at once', () async {
       await open();
       // The window is full of other haptics.
       rig.app.haptics.ledger.record(60, DateTime.now());
       expect(rig.app.haptics.commandsLeft, 0);
-      await fireAndStop(HapticsTermination.expired);
-      expect(rig.count(Played.snoozeConfirm), 1,
-          reason: 'held two minutes by our own precaution: a wearer who '
-              'does not know the snooze is set');
+      await rig.fire(stamp: t0);
+      rig.clock.advance(const Duration(seconds: 8));
+      await rig.terminate(HapticsTermination.expired, quick: true);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect((await _stored())?.count, 1, reason: 'the snooze is set');
+      expect(rig.count(Played.snoozeConfirm), 0,
+          reason: 'a confirm is a plain job: it waits for room like any '
+              'other cue');
       rig.clock.advance(_min * 5);
       await rig.app.debugKeepAliveTick();
-      await rig.settle();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
       expect(rig.count(Played.reAlarm), 1,
           reason: 'a due re-alarm waits for no budget');
-      expect(rig.app.haptics.commandsLeft, 0,
-          reason: 'still counted, never overdrawn');
+      expect(rig.app.haptics.commandsLeft, 0);
     });
   });
 

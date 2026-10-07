@@ -25,6 +25,11 @@ Widget _app(Widget child) => MaterialApp(
 
 final _until = DateTime(2026, 10, 7, 6, 35);
 
+/// Snooze switched ON (round 3, design A: it is opt-in; off, every row below
+/// the switch is inert, pinned in snooze_r3_settings_ui_test.dart).
+SnoozeSettings _on([Map<String, Object?> over = const {}]) =>
+    SnoozeSettings.fromJson({'enabled': true, ...over});
+
 void main() {
   group('SnoozeCard', () {
     late ValueNotifier<SnoozeStatus> status;
@@ -134,7 +139,7 @@ void main() {
 
     testWidgets('shows the copy and the four settings with their values',
         (t) async {
-      await pump(t, const SnoozeSettings());
+      await pump(t, _on());
       expect(find.text('2 double taps to dismiss — fewer is a snooze'),
           findsOneWidget);
       for (final label in [
@@ -152,7 +157,7 @@ void main() {
     });
 
     testWidgets('the copy follows n live', (t) async {
-      final n = ValueNotifier(const SnoozeSettings());
+      final n = ValueNotifier(_on());
       addTearDown(n.dispose);
       await t.pumpWidget(_app(ValueListenableBuilder<SnoozeSettings>(
         valueListenable: n,
@@ -160,7 +165,7 @@ void main() {
             SnoozeSettingsRows(settings: s, onChanged: (v) => n.value = v),
       )));
       expect(find.textContaining('2 double taps to dismiss'), findsOneWidget);
-      n.value = const SnoozeSettings(requiredTaps: 4);
+      n.value = _on({'requiredTaps': 4});
       await t.pump();
       expect(find.text('4 double taps to dismiss — fewer is a snooze'),
           findsOneWidget);
@@ -168,7 +173,7 @@ void main() {
     });
 
     testWidgets('n: offers 1 to 5 and applies the choice', (t) async {
-      await pump(t, const SnoozeSettings());
+      await pump(t, _on());
       await t.tap(find.text('Double taps to dismiss'));
       await t.pumpAndSettle();
       final opts = [
@@ -185,11 +190,11 @@ void main() {
       ]);
       await t.tap(find.text('3 double taps').last);
       await t.pumpAndSettle();
-      expect(changed, const SnoozeSettings(requiredTaps: 3));
+      expect(changed, _on({'requiredTaps': 3}));
     });
 
     testWidgets('window: its own setting, every option in range', (t) async {
-      await pump(t, const SnoozeSettings());
+      await pump(t, _on());
       await t.tap(find.text('Dismiss window'));
       await t.pumpAndSettle();
       final opts = [
@@ -205,11 +210,11 @@ void main() {
       }
       await t.tap(find.text('6 s').last);
       await t.pumpAndSettle();
-      expect(changed, const SnoozeSettings(windowMs: 6000));
+      expect(changed, _on({'windowMs': 6000}));
     });
 
     testWidgets('snooze length: 1 to 30 minutes', (t) async {
-      await pump(t, const SnoozeSettings());
+      await pump(t, _on());
       await t.tap(find.text('Snooze for'));
       await t.pumpAndSettle();
       final opts = [
@@ -225,26 +230,26 @@ void main() {
       }
       await t.tap(find.text('10 min').last);
       await t.pumpAndSettle();
-      expect(changed, const SnoozeSettings(minutes: 10));
+      expect(changed, _on({'minutes': 10}));
     });
 
     testWidgets('escalation cap: a choice is applied', (t) async {
-      await pump(t, const SnoozeSettings());
+      await pump(t, _on());
       await t.tap(find.text('Stop escalating after'));
       await t.pumpAndSettle();
       await t.tap(find.text('3 snoozes').last);
       await t.pumpAndSettle();
-      expect(changed, const SnoozeSettings(cap: 3));
+      expect(changed, _on({'cap': 3}));
     });
 
     testWidgets('a choice keeps the other settings', (t) async {
-      await pump(t, const SnoozeSettings(requiredTaps: 4, minutes: 9, cap: 3));
+      await pump(t, _on({'requiredTaps': 4, 'minutes': 9, 'cap': 3}));
       await t.tap(find.text('Dismiss window'));
       await t.pumpAndSettle();
       await t.tap(find.text('6 s').last);
       await t.pumpAndSettle();
       expect(changed,
-          const SnoozeSettings(requiredTaps: 4, windowMs: 6000, minutes: 9, cap: 3));
+          _on({'requiredTaps': 4, 'windowMs': 6000, 'minutes': 9, 'cap': 3}));
     });
   });
 
@@ -259,7 +264,7 @@ void main() {
           AlarmScreenView(
             connected: true,
             schedule: week,
-            snoozeSettings: const SnoozeSettings(requiredTaps: 3),
+            snoozeSettings: _on({'requiredTaps': 3}),
             onSnoozeSettings: (s) => changed = s,
           ));
       expect(find.text('3 double taps to dismiss — fewer is a snooze'),
@@ -268,7 +273,7 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('15 min').last);
       await t.pumpAndSettle();
-      expect(changed, const SnoozeSettings(requiredTaps: 3, minutes: 15));
+      expect(changed, _on({'requiredTaps': 3, 'minutes': 15}));
 
       await pumpTall(t, AlarmScreenView(connected: true, schedule: week));
       expect(find.textContaining('double taps to dismiss'), findsNothing);

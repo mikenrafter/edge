@@ -79,6 +79,12 @@ class SnoozeBandEngine extends BleEngine {
   final List<String> armCalls = [];
   final List<PromptCall> prompts = [];
 
+  /// The wearer's own "cancel the alarm" (Cancel-all): a snooze must never
+  /// disable the native alarm, but the wearer may. When true, [disableAlarm]
+  /// is recorded in [userDisables] instead of throwing.
+  bool allowUserDisable = false;
+  final List<String> userDisables = [];
+
   @override
   Future<void> applyHighFreqWakeWindow({
     required bool enabled,
@@ -111,6 +117,10 @@ class SnoozeBandEngine extends BleEngine {
 
   @override
   Future<void> disableAlarm({int? id}) async {
+    if (allowUserDisable) {
+      userDisables.add('disableAlarm');
+      return;
+    }
     armCalls.add('disableAlarm');
     throw StateError('a snooze must never disable the native alarm');
   }
@@ -210,22 +220,38 @@ class SnoozeBandRig {
   /// A rig with the database open and the stores warm, so the first event of a
   /// scenario is not slowed by a cold start (which `settle` would mistake for
   /// quiet).
+  ///
+  /// Snooze is OPT-IN (round 3, design A): [snooze] true switches it on, as the
+  /// wearer does in the alarm settings; null leaves the settings untouched (a
+  /// user who never opened them: the default). [settings] are extra fields for
+  /// the same JSON (`requiredTaps`, `minutes`, ...). The contract used here is
+  /// the settings JSON key `enabled`, so these tests need no new constructor.
   static Future<SnoozeBandRig> open({
     DateTime? start,
     TestClock? clock,
     String generation = 'gen5',
     AutoEnd autoEnd = AutoEnd.queueOnly,
     int autoEndLimit = 60,
+    bool? snooze = true,
+    Map<String, Object?> settings = const {},
   }) async {
     await LocalDb.instance;
     await NotificationPrefs.load();
     await const DbSnoozeStore().loadState();
-    return SnoozeBandRig(
+    final rig = SnoozeBandRig(
         start: start,
         clock: clock,
         generation: generation,
         autoEnd: autoEnd,
         autoEndLimit: autoEndLimit);
+    if (snooze != null || settings.isNotEmpty) {
+      await rig.app.setSnoozeSettings(SnoozeSettings.fromJson({
+        ...rig.app.snoozeSettings.toJson(),
+        ...settings,
+        if (snooze != null) 'enabled': snooze,
+      }));
+    }
+    return rig;
   }
 
   final TestClock clock;
@@ -320,13 +346,26 @@ class SnoozeBandRig {
   /// received now (the engine's clock). Empty [body] is an event with no cause
   /// bytes (what a gen4 strap sends, as far as the protocol decodes).
   Future<void> terminate(int code,
-      {DateTime? stamp, bool noBody = false}) async {
+      {DateTime? stamp, bool noBody = false, bool quick = false}) async {
     engine.debugProcessImmediateFrame(Frame(
         eventInner(100, noBody ? const [] : [1, code],
-            ts: secOf(stamp ?? clock.now)),
+            ts: stamp == null ? secOf(clock.now) : secOf(stamp)),
         true,
         true));
-    await settle();
+    // [quick]: a queue that is held on purpose (budget) never settles.
+    await (quick
+        ? Future<void>.delayed(const Duration(milliseconds: 150))
+        : settle());
+  }
+
+  /// The strap's RTC runs [ahead] of the phone's (negative: behind), as the
+  /// engine learned from a GET_CLOCK reply: [BleEngine.clockRef] then reads
+  /// `driftSec == -ahead`, and a strap stamp S is phone time `S - ahead`. Strap
+  /// stamps in a scenario are written `phoneInstant + ahead`.
+  void strapRunsAhead(Duration ahead) {
+    final wall = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    engine.debugAbsorbDecoded(
+        Decoded('cmd_response', {'clock_epoch': wall + ahead.inSeconds}));
   }
 
   /// The band reports that something we played ended.
@@ -353,15 +392,21 @@ class SnoozeBandRig {
   /// One band double tap (event 14), stamped [stamp] by the strap and received
   /// now. Every call is a distinct tap (its own sub-second) unless [resend]:
   /// the same event delivered again.
+  ///
+  /// [sub] pins the sub-second (an event's identity is its stamp and
+  /// sub-second): the same event again on a restarted rig.
   Future<void> tap(
-      {DateTime? stamp, bool resend = false, bool quick = false}) async {
+      {DateTime? stamp,
+      bool resend = false,
+      bool quick = false,
+      int? sub}) async {
     final sec = resend ? _lastTapSec : secOf(stamp ?? clock.now);
     if (!resend) _tapSeq++;
-    final sub = resend ? _lastTapSub : 100 + 37 * _tapSeq;
+    final subsec = sub ?? (resend ? _lastTapSub : 100 + 37 * _tapSeq);
     _lastTapSec = sec;
-    _lastTapSub = sub;
+    _lastTapSub = subsec;
     engine.debugProcessImmediateFrame(
-        Frame(eventInner(14, const [], ts: sec, sub: sub), true, true));
+        Frame(eventInner(14, const [], ts: sec, sub: subsec), true, true));
     // [quick]: a queue that is held on purpose never settles.
     await (quick
         ? Future<void>.delayed(const Duration(milliseconds: 150))

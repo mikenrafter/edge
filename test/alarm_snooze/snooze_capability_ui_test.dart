@@ -57,6 +57,10 @@ void main() {
     final app = AppState.forTesting(engine: FakeAlarmEngine());
     addTearDown(app.dispose);
     app.engine.state.generation = generation;
+    // Snooze is opt-in (round 3): these tests are about a wearer who switched
+    // it on.
+    await t.runAsync(() => app.setSnoozeSettings(
+        SnoozeSettings.fromJson({'enabled': true})));
     t.view.physicalSize = const Size(1170, 24000);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
@@ -88,7 +92,7 @@ void main() {
       expect(find.byType(SimpleDialog), findsNothing,
           reason: 'a disabled row opens nothing ($label)');
     }
-    expect(app.snoozeSettings, const SnoozeSettings());
+    expect(app.snoozeSettings, SnoozeSettings.fromJson({'enabled': true}));
   });
 
   testWidgets('Gen5: the rows work and say nothing about a missing capability',

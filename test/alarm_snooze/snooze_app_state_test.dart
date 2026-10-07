@@ -124,6 +124,9 @@ void main() {
       plays.add(Play(slot, notes, clock.now));
       return true;
     };
+    // Snooze is OPT-IN (round 3, design A): these tests are about a snooze
+    // that is on. The off state is pinned in snooze_r3_stop_test.dart.
+    await app.setSnoozeSettings(SnoozeSettings.fromJson({'enabled': true}));
   });
   tearDown(() async => app.dispose());
 
@@ -343,6 +346,7 @@ void main() {
         plays.add(Play(slot, notes, clock.now));
         return true;
       };
+      await app.setSnoozeSettings(SnoozeSettings.fromJson({'enabled': true}));
       plays.clear();
       clock.advance(_min * 40); // far past due: still plays
       await app.snooze.resume();
@@ -353,9 +357,9 @@ void main() {
 
   group('settings', () {
     test('defaults, then a change is clamped, stored and used', () async {
-      expect(app.snoozeSettings, const SnoozeSettings());
-      await app.setSnoozeSettings(const SnoozeSettings(
-          requiredTaps: 9, minutes: 12, windowMs: 6000, cap: 3));
+      expect(app.snoozeSettings, SnoozeSettings.fromJson({'enabled': true}));
+      await app.setSnoozeSettings(app.snoozeSettings
+          .copyWith(requiredTaps: 9, minutes: 12, windowMs: 6000, cap: 3));
       expect(app.snoozeSettings.requiredTaps, 5);
       expect(store.settings.requiredTaps, 5);
       expect(store.settings.minutes, 12);
