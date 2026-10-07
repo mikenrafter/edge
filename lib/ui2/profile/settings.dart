@@ -94,6 +94,7 @@ class _MoreSettingsState extends State<MoreSettings> {
 
   /// Home's pull-to-sync, read straight off Prefs like [_barcode].
   bool _pullToSync = Prefs.pullToSyncOn;
+  bool _pulseResearch = Prefs.getBool(Prefs.explorePulsePatterns, false);
 
   /// The developer's band haptic command limit, mirrored from Prefs.
   int _hapticLimit = Prefs.hapticCommandLimit;
@@ -221,6 +222,11 @@ class _MoreSettingsState extends State<MoreSettings> {
       onPickIcon: _pickIcon,
       telemetry: app.telemetryConsent,
       barcodeLookup: _barcode,
+      pulseResearch: _pulseResearch,
+      onTogglePulseResearch: () {
+        Prefs.setBool(Prefs.explorePulsePatterns, !_pulseResearch);
+        setState(() => _pulseResearch = !_pulseResearch);
+      },
       pullToSync: _pullToSync,
       onTogglePullToSync: () {
         Prefs.setBool(Prefs.pullToSync, !_pullToSync);
@@ -537,6 +543,11 @@ class MoreSettingsView extends StatelessWidget {
   final String units, appearance;
   final bool telemetry, barcodeLookup, cycleTracking;
 
+  /// Developer group: the pulse pattern research view in the Device lab. Off by
+  /// default; it also needs developer mode.
+  final bool pulseResearch;
+  final VoidCallback? onTogglePulseResearch;
+
   /// Home's pull down to sync. On by default.
   final bool pullToSync;
   final VoidCallback? onTogglePullToSync;
@@ -632,6 +643,8 @@ class MoreSettingsView extends StatelessWidget {
     this.appearance = 'System',
     this.appIcon,
     this.onPickIcon,
+    this.pulseResearch = false,
+    this.onTogglePulseResearch,
     this.pullToSync = true,
     this.onTogglePullToSync,
     this.calcPowerMode = CalcPowerMode.balanced,
@@ -965,6 +978,14 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',
                         onTap: onDataExplorer),
+                    // Off by default. Turns on a research view in the Device
+                    // lab's Probes tab; not a metric, not a screening.
+                    SetRow(LucideIcons.activity, C.n500,
+                        'Pulse pattern research',
+                        sub: 'Show repeating nighttime pulse patterns in the '
+                            'Device lab',
+                        value: pulseResearch ? on : off,
+                        onTap: onTogglePulseResearch),
                     _HapticLimitRow(
                         limit: hapticCommandLimit,
                         onChanged: onHapticCommandLimit),

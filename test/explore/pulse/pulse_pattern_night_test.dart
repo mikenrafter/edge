@@ -44,7 +44,7 @@ Map<String, dynamic> _present(int cycles, double hours, {String? note}) => {
       'confidence': 0.85,
       'tier': 'HIGH',
       'inputs_used': ['rr_cleaned', 'beat_times'],
-      if (note != null) 'note': note,
+      'note': ?note,
     };
 
 Map<String, dynamic> _absent(String note) => {

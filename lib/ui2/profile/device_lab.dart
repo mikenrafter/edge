@@ -30,6 +30,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../explore/pulse/pulse_pattern_loader.dart';
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/hardware_probe_runner.dart';
@@ -132,6 +133,9 @@ class DeviceLab extends StatelessWidget {
                 padding: const EdgeInsets.only(top: S.x3),
                 child: AlarmSlotProbeCard(runner: app.alarmSlotProbe),
               ),
+            // Also needs the Settings > Developer "Pulse pattern research"
+            // toggle; reads nothing and draws nothing until both are on.
+            PulsePatternResearchPanel(repo: app.repo),
           ],
         ),
         // The IMU recorder is a developer tool: its tab is offered only in

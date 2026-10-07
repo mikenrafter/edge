@@ -71,7 +71,7 @@ class PulsePatternNight {
 
   /// True when the night was analysed and no gate excluded it:
   /// `cycleCount != null && exclusions.isEmpty`.
-  bool get admitted => throw UnimplementedError();
+  bool get admitted => cycleCount != null && exclusions.isEmpty;
 }
 
 /// Parses the persisted `respiration.cvhr_apnea` envelope exactly as stored.
@@ -88,5 +88,50 @@ PulsePatternNight fromCvhrEnvelope(
   String dayId,
   Object? envelope, {
   double? sleepHours,
-}) =>
-    throw UnimplementedError();
+}) {
+  final note = envelope is Map && envelope['note'] is String
+      ? envelope['note'] as String
+      : null;
+  PulsePatternNight notAnalysed() => PulsePatternNight(
+        dayId: dayId,
+        exclusions: const [kPulseExclusionNotAnalysed],
+        detectorNote: note,
+      );
+
+  final value = envelope is Map ? envelope['value'] : null;
+  if (value is! Map) return notAnalysed();
+  final rawCycles = value['cycle_count'];
+  final rawHours = value['analyzed_hours'];
+  if (rawCycles is! num ||
+      rawHours is! num ||
+      !rawCycles.isFinite ||
+      !rawHours.isFinite ||
+      rawCycles < 0 ||
+      rawHours < 0 ||
+      rawCycles != rawCycles.truncate()) {
+    return notAnalysed();
+  }
+  final cycles = rawCycles.toInt();
+  final hours = rawHours.toDouble();
+
+  // Unknown sleep hours leave coverage unknown; they are never read as full.
+  final coverage = sleepHours != null && sleepHours > 0
+      ? (hours / sleepHours).clamp(0.0, 1.0).toDouble()
+      : null;
+  final exclusions = <String>[
+    if (hours < kPulseMinAnalysedHours) kPulseExclusionUnderHours,
+    if (coverage == null)
+      kPulseExclusionCoverageUnknown
+    else if (coverage < kPulseMinCoverage)
+      kPulseExclusionUnderCoverage,
+  ];
+  return PulsePatternNight(
+    dayId: dayId,
+    analysedHours: hours,
+    coverage: coverage,
+    cycleCount: cycles,
+    cyclesPerHour: hours > 0 ? cycles / hours : null,
+    exclusions: exclusions,
+    detectorNote: note,
+  );
+}
