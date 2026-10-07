@@ -13,6 +13,7 @@
 import '../notify/alert_dispatcher.dart';
 import '../notify/alert_rule.dart';
 import '../notify/buzz_sequence.dart' show BuzzDelivery;
+import 'device_action.dart';
 import 'gesture_dispatcher.dart';
 import 'strap_event.dart';
 
@@ -28,6 +29,8 @@ const AlertRule kGestureAckRule = AlertRule(
 );
 
 /// True iff [e] is a live double tap and at least one of its actions ran.
+/// Tell the time does not count: its own buzzes are the answer, and a confirm
+/// cue after a time that plays for seconds would be a stray buzz.
 ///
 /// Not for a COUNTED tap (`GestureOutcome.taps` set): the touch counter has
 /// already buzzed the count and confirmed the final one, so a further buzz when
@@ -36,7 +39,8 @@ bool shouldAckTap(StrapEvent e, List<GestureOutcome> outcomes) =>
     e.eventId == 14 &&
     e.isLive &&
     outcomes.every((o) => o.taps == null) &&
-    outcomes.any((o) => o.status == GestureStatus.ran);
+    outcomes.any((o) =>
+        o.status == GestureStatus.ran && o.action != DeviceAction.tellTime);
 
 /// Buzz the band once for this tap, through [d]'s default band transport, or
 /// through [bandDelivery] (the gesture confirm cue) when given. Returns

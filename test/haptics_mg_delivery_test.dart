@@ -73,7 +73,9 @@ class _RecordingHaptics extends HapticsService {
 
   @override
   Future<BuzzDelivery> deliver(BuzzSequence s,
-      {void Function(HapticPlayStart)? onStart}) async {
+      {void Function(HapticPlayStart)? onStart,
+      Duration lead = Duration.zero,
+      void Function()? onFirstWrite}) async {
     events.add('deliver');
     delivered.add(s);
     return BuzzDelivery.complete;

@@ -36,6 +36,7 @@ import '../../gestures/device_action.dart';
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/tap_names.dart';
+import '../../gestures/time_buzz.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
@@ -84,6 +85,8 @@ class BandGestures extends StatelessWidget {
           return g.setActionsForTaps(n, on ? {...cur, a} : cur.difference({a}));
         },
         extraTaps: caps.has(Feature.extraTapCounting),
+        timeBuzzMode: g.timeBuzzMode,
+        onTimeBuzzMode: g.setTimeBuzzMode,
         onHaptics: () => goto(c, const HapticsSettings()),
         devMode: caps.has(Feature.developerMode),
         onDeviceLab: () => goto(c, const DeviceLab()),
@@ -138,6 +141,17 @@ class BandGesturesView extends StatelessWidget {
   /// plain double-tap action list.
   final bool extraTaps;
 
+  /// Tell the time: the encoding in force, and its change callback. The mode
+  /// picker is drawn, in the tab of every gesture that has
+  /// [DeviceAction.tellTime] on, only then: one row per [TimeBuzzMode]
+  /// (key `time-buzz-example:<mode name>`) with its worked example for 3:08 PM
+  /// from the same encoder the band uses, plus a `time-buzz-now` row for
+  /// [timeBuzzNow] (null: the real local time). The picker is the rows' check
+  /// mark and the tap that calls [onTimeBuzzMode].
+  final TimeBuzzMode timeBuzzMode;
+  final ValueChanged<TimeBuzzMode>? onTimeBuzzMode;
+  final DateTime Function()? timeBuzzNow;
+
   /// Opens the Haptics screen, where the buzzes these gestures play are
   /// chosen. The row is always drawn; without a callback it is inert.
   final VoidCallback? onHaptics;
@@ -164,6 +178,9 @@ class BandGesturesView extends StatelessWidget {
     this.thresholds,
     this.onThresholds,
     this.extraTaps = true,
+    this.timeBuzzMode = TimeBuzzMode.count,
+    this.onTimeBuzzMode,
+    this.timeBuzzNow,
     this.onHaptics,
     this.devMode = false,
     this.onDeviceLab,
@@ -362,6 +379,16 @@ class BandGesturesView extends StatelessWidget {
             ]),
           ),
         ),
+        // Tell the time's encoding, in the tab of every gesture that has it on.
+        if (on.contains(DeviceAction.tellTime))
+          Padding(
+            padding: const EdgeInsets.only(top: S.x3),
+            child: _TimeBuzzPicker(
+              mode: timeBuzzMode,
+              onMode: onTimeBuzzMode,
+              now: timeBuzzNow ?? DateTime.now,
+            ),
+          ),
         if (noPhoneActions)
           Section(
             l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
@@ -433,6 +460,106 @@ class BandGesturesView extends StatelessWidget {
           '${k == 1 ? 'once' : '$k times'}.';
     }
     return 'Double tap ${n - 1} times in a row before the pause ends.';
+  }
+}
+
+/// The fixed time the worked examples are for: 3:08 PM (a PM hour, and a
+/// minute that rounds to one quarter, so every part of a time shows).
+final DateTime _kTimeBuzzExample = DateTime(2026, 1, 1, 15, 8);
+
+// 12-hour clock text: "3:08 PM".
+String _clock12(DateTime t) {
+  final h = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  return '$h:${t.minute.toString().padLeft(2, '0')} ${t.hour >= 12 ? 'PM' : 'AM'}';
+}
+
+/// Tell the time's mode picker: one row per mode with its worked example for
+/// 3:08 PM, and the time now in the mode in force. Every glyph string is
+/// [renderTimeBuzz] of [encodeTime], the encoder the band plays from, so an
+/// example can never drift from what is buzzed.
+class _TimeBuzzPicker extends StatelessWidget {
+  const _TimeBuzzPicker(
+      {required this.mode, required this.onMode, required this.now});
+
+  final TimeBuzzMode mode;
+  final ValueChanged<TimeBuzzMode>? onMode;
+  final DateTime Function() now;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    String title(TimeBuzzMode m) => switch (m) {
+          TimeBuzzMode.count => l?.gesturesTimeBuzzCountTitle ?? 'Count',
+          TimeBuzzMode.binary => l?.gesturesTimeBuzzBinaryTitle ?? 'Binary',
+          TimeBuzzMode.morse => l?.gesturesTimeBuzzMorseTitle ?? 'Morse',
+        };
+    String sub(TimeBuzzMode m) => switch (m) {
+          TimeBuzzMode.count => l?.gesturesTimeBuzzCountSub ??
+              'Hours as buzzes (short = AM, long = PM), then quarter-hour clicks',
+          TimeBuzzMode.binary => l?.gesturesTimeBuzzBinarySub ??
+              'Hour as 4 bits (long = 1), then AM or PM, then clicks',
+          TimeBuzzMode.morse => l?.gesturesTimeBuzzMorseSub ??
+              'Hour digits in Morse, then A or P, then clicks',
+        };
+    String example(DateTime at, TimeBuzzMode m) =>
+        '${_clock12(at)} \u2192 ${renderTimeBuzz(encodeTime(at, m))}';
+
+    final at = now();
+    return Surface(
+      key: const ValueKey('time-buzz-picker'),
+      pad: const EdgeInsets.symmetric(horizontal: S.x4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: S.x3),
+          child: Text(l?.gesturesTimeBuzzTitle ?? 'How to buzz the time',
+              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+        ),
+        Text(
+            l?.gesturesTimeBuzzLegend ??
+                '\u25AC long   \u00B7 short   \u2022 click   \u2502 pause',
+            style: F.over.copyWith(color: p.ink3)),
+        for (final m in TimeBuzzMode.values) ...[
+          Divider(color: p.line, height: 1),
+          Pressable(
+            key: ValueKey('time-buzz-example:${m.name}'),
+            onTap: onMode == null ? null : () => onMode!(m),
+            semanticLabel: '${title(m)}. ${sub(m)}. '
+                '${example(_kTimeBuzzExample, m)}',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title(m), style: F.body.copyWith(color: p.ink)),
+                        Text(sub(m), style: F.over.copyWith(color: p.ink3)),
+                        Text(example(_kTimeBuzzExample, m),
+                            style: F.body.copyWith(color: p.ink2)),
+                      ]),
+                ),
+                const SizedBox(width: S.x2),
+                if (m == mode)
+                  Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
+                else
+                  const SizedBox(width: 18),
+              ]),
+            ),
+          ),
+        ],
+        Divider(color: p.line, height: 1),
+        Padding(
+          key: const ValueKey('time-buzz-now'),
+          padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(l?.gesturesTimeBuzzNow ?? 'Now',
+                style: F.over.copyWith(color: p.ink3)),
+            Text(example(at, mode), style: F.body.copyWith(color: p.ink2)),
+          ]),
+        ),
+      ]),
+    );
   }
 }
 

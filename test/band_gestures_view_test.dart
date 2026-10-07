@@ -89,11 +89,13 @@ void main() {
         'Log water',
         'Ring my phone',
         'Flashlight',
+        'Tell the time',
       ]) {
         expect(_row(label), findsOneWidget, reason: label);
       }
-      // Five actions plus the replay row, which is always drawn.
-      expect(find.byType(SwitchRow), findsNWidgets(6));
+      // Six actions (Tell the time included) plus the replay row, which is
+      // always drawn.
+      expect(find.byType(SwitchRow), findsNWidgets(7));
       expect(find.byType(Radio<DeviceAction>), findsNothing);
       expect(find.text('Do nothing'), findsNothing);
     });
@@ -153,8 +155,8 @@ void main() {
             DeviceAction.broadcastToTasker,
           }));
       expect(_faults(), isEmpty);
-      // Eleven actions plus the always-drawn replay row.
-      expect(find.byType(SwitchRow), findsNWidgets(12));
+      // Twelve actions plus the always-drawn replay row.
+      expect(find.byType(SwitchRow), findsNWidgets(13));
       expect(find.textContaining('could not ask the system'), findsNothing);
     });
 
@@ -229,7 +231,7 @@ void main() {
       // The replay row belongs to Mark moment alone: one per screen, however
       // many other actions are on.
       expect(find.text(_replayLabel), findsOneWidget);
-      expect(find.byType(SwitchRow), findsNWidgets(6),
+      expect(find.byType(SwitchRow), findsNWidgets(7),
           reason: 'one row per offered action plus the one replay row');
     });
 
@@ -241,7 +243,7 @@ void main() {
         DeviceAction.torch,
       });
       expect(find.text(_replayLabel), findsOneWidget);
-      expect(find.byType(SwitchRow), findsNWidgets(6));
+      expect(find.byType(SwitchRow), findsNWidgets(7));
     });
 
     testWidgets('flipping it reports (markMoment, new value)', (t) async {
