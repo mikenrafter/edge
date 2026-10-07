@@ -292,6 +292,16 @@ void main() {
       _expectNullOutputs(r);
     });
 
+    // Sol P2 (hr_rhythm_fit.dart:130): leave-one-out barely moves when half
+    // the days sit at each of two phases, so it admits a nine-hour phase
+    // change as one rhythm (fitted peak 11:30, amplitude 2.3, LOO spread 1.4 h,
+    // matching neither period). Needs a day-to-day consistency check.
+    test('14 days, 7 peaking at 16:00 then 7 at 07:00 -> unstable', () {
+      final r = fitHrRhythm(_days(14, amp: (_) => 6, peak: (d) => d < 7 ? 16 : 7));
+      expect(r.rejection, RhythmRejection.unstable);
+      _expectNullOutputs(r);
+    });
+
     test('a steady daily phase wobble inside 2 h stays admitted', () {
       // +-0.5 h alternating day to day: well inside the limit.
       final r = fitHrRhythm(_days(14, peak: (d) => d.isEven ? 15.5 : 16.5));

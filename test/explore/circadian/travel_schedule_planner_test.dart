@@ -19,8 +19,10 @@
 //     target schedule is reached
 //   light: only coarse text, only the three phrases, no clock times; none when
 //     |shiftHours| >= kAmbiguousShiftHours, with lightSuppressedReason set
-//   same offset on the departure date: empty days, shiftHours 0, reason
-//     exactly 'no time-zone change'
+//   same offset on the departure date AND no change in the wanted schedule:
+//     empty days, shiftHours 0, reason exactly 'no time-zone change'
+//     (RED EDIT, Sol P2: was "same offset on the departure date" alone; a
+//     desired schedule that differs from the usual one is still planned)
 //   unknown IANA name (origin or destination): ArgumentError
 
 import 'package:flutter_test/flutter_test.dart';
@@ -304,6 +306,82 @@ void main() {
         expect(p.lightSuppressedReason, 'no time-zone change');
       });
     }
+  });
+
+  // Sol P2 (planner ~122): equal offsets returned the empty plan before the
+  // desired schedule was read, discarding a requested two-hour advance.
+  group('same offset, desired schedule changed', () {
+    for (final c in [
+      ('same zone', _london, _london),
+      ('same offset (London / Dublin, June)', _london, 'Europe/Dublin'),
+    ]) {
+      test('${c.$1}: usual 23:00-07:00, desired 21:00-05:00 is a 2 h advance',
+          () {
+        final i = _in(c.$2, c.$3, DateTime(2026, 6, 15),
+            desiredOnset: const Duration(hours: 21),
+            desiredWake: const Duration(hours: 5));
+        final p = plan(i);
+        expect(p.days, isNotEmpty, reason: 'not "no time-zone change"');
+        expect(p.lightSuppressedReason, isNot('no time-zone change'));
+        expect(p.shiftHours, 0, reason: 'the zones themselves do not differ');
+        _expectStructure(i, p, maxPre: 3);
+        expect(p.days.last.targetOnset, const Duration(hours: 21));
+        expect(p.days.last.targetWake, const Duration(hours: 5));
+        final shifts = _shifts(i, p);
+        expect(shifts.last, closeTo(2.0, 1e-9));
+        for (final s in _steps(shifts)) {
+          expect(s, inInclusiveRange(0.0, 1.0 + 1e-9),
+              reason: 'advance at most 1 h a day');
+        }
+      });
+    }
+  });
+
+  // Sol P2 (planner ~148, ~159): the clock-of-day conversion drops the calendar
+  // displacement across the date line. Honolulu -> Auckland, departing
+  // 2026-06-15, 23:00-07:00: the June 14 Honolulu night targets 01:00 (June 15
+  // 11:00 UTC) and the June 15 Auckland night targets 23:00 (also June 15 11:00
+  // UTC), the same instant twice.
+  group('date-line travel: each plan night is a distinct absolute instant', () {
+    final minGap = const Duration(hours: 24) - kMaxDelayStepPerDay;
+
+    void expectNightsAdvance(TravelInput i) {
+      final p = plan(i);
+      expect(p.days.length, greaterThanOrEqualTo(2));
+      final onsets = [
+        for (final d in p.days) _nightStart(d.tz, d.date, d.targetOnset),
+      ];
+      for (var k = 1; k < onsets.length; k++) {
+        final gap = onsets[k].difference(onsets[k - 1]);
+        expect(gap, greaterThan(Duration.zero),
+            reason: 'night $k onset ${onsets[k].toUtc()} must come after '
+                'night ${k - 1} onset ${onsets[k - 1].toUtc()}');
+        expect(gap, greaterThanOrEqualTo(minGap),
+            reason: 'nights ${k - 1} -> $k are $gap apart; at least '
+                '24 h minus the largest daily shift is expected');
+      }
+    }
+
+    test('Honolulu -> Auckland (west over the line), departing 2026-06-15', () {
+      expectNightsAdvance(
+          _in('Pacific/Honolulu', 'Pacific/Auckland', DateTime(2026, 6, 15)));
+    });
+
+    // Mirror direction: no duplicate, but a whole night disappears (48 h gap).
+    // Same cause, same fix, so it pins the upper side of the spacing too.
+    test('Auckland -> Honolulu (east over the line): no night is skipped', () {
+      final i =
+          _in('Pacific/Auckland', 'Pacific/Honolulu', DateTime(2026, 6, 15));
+      expectNightsAdvance(i);
+      final onsets = [
+        for (final d in plan(i).days) _nightStart(d.tz, d.date, d.targetOnset),
+      ];
+      for (var k = 1; k < onsets.length; k++) {
+        expect(onsets[k].difference(onsets[k - 1]),
+            lessThanOrEqualTo(const Duration(hours: 24) + kMaxDelayStepPerDay),
+            reason: 'one night per 24 h, not a skipped night');
+      }
+    });
   });
 
   group('unknown time zone', () {

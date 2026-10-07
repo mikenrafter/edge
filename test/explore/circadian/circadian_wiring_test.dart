@@ -62,7 +62,13 @@ void main() {
       expect(bins, hasLength(24));
       expect([for (final b in bins) b.hourStartLocal.hour],
           [for (var h = 0; h < 24; h++) h]);
-      expect(bins.every((b) => b.realMinutes == 60 && b.meanHr == 62), isTrue);
+      // RED EDIT (Sol P2, minute summaries inflate the gate): this used to
+      // assert realMinutes == 60, i.e. that a stored minute is a real minute.
+      // The stored curve carries no per-minute sample count, so the number of
+      // real minutes in an hour is unknown, not 60.
+      expect(bins.every((b) => b.meanHr == 62), isTrue);
+      expect(bins.every((b) => (b as dynamic).realMinutes == null), isTrue,
+          reason: 'real minutes are not knowable from {t, v} points');
     });
 
     test('a spring-forward day is 23 local hours, and 02:00 is missing', () {
@@ -72,7 +78,9 @@ void main() {
       );
       expect(bins, hasLength(23));
       expect(bins.map((b) => b.hourStartLocal.hour).contains(2), isFalse);
-      expect(bins.every((b) => b.realMinutes == 60), isTrue);
+      // RED EDIT (Sol P2): was realMinutes == 60 for every bin.
+      expect(bins.every((b) => (b as dynamic).realMinutes == null), isTrue,
+          reason: 'real minutes are not knowable from {t, v} points');
       expect(bins.every((b) => b.hourStartLocal.day == 8), isTrue);
     });
 
@@ -85,7 +93,9 @@ void main() {
       expect(bins.where((b) => b.hourStartLocal.hour == 1), hasLength(2));
     });
 
-    test('minutes are counted, not assumed; no sample is not a zero', () {
+    // RED EDIT (Sol P2): retitled from 'minutes are counted, not assumed'.
+    test('stored minutes are not counted as real minutes; no sample is not a zero',
+        () {
       final base = DateTime(2026, 5, 4, 10).millisecondsSinceEpoch ~/ 1000;
       final bins = hourlyBinsFromHrCurve([
         {'t': base, 'v': 60},
@@ -96,8 +106,47 @@ void main() {
         'junk',
       ]);
       expect(bins, hasLength(1));
-      expect(bins.single.realMinutes, 2);
+      // RED EDIT (Sol P2): was `realMinutes == 2`. Two stored minutes say
+      // nothing about how many seconds each held, so the count is unknown.
+      expect((bins.single as dynamic).realMinutes, isNull);
       expect(bins.single.meanHr, 65);
+    });
+
+    // Sol P2 (hourly_hr_bins.dart:38): `_downsampleHr` emits a {t, v} point
+    // for a minute with even ONE valid second, and stores nothing else, so the
+    // hourly real-minute count is not recoverable from hr_curve. Seven days x
+    // 18 hours x 10 isolated seconds an hour (in 10 distinct minutes) is 21
+    // minutes of actual samples over the week, and it must not pass any gate.
+    test('7 days x 18 h x 10 isolated seconds an hour is not a rhythm', () {
+      DateTime utc(int s) =>
+          DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
+      final curve = <Map<String, num>>[];
+      for (var d = 0; d < 7; d++) {
+        for (var h = 0; h < 18; h++) {
+          for (var m = 0; m < 10; m++) {
+            // Ten distinct minutes of the hour, one valid second each: the
+            // downsampler would emit exactly these points.
+            final t = DateTime.utc(2026, 5, 4 + d, h, m * 6)
+                    .millisecondsSinceEpoch ~/
+                1000;
+            curve.add({
+              't': t,
+              'v': (60 + 6 * math.cos(2 * math.pi * (h + 0.5 - 16) / 24))
+                  .round(),
+            });
+          }
+        }
+      }
+      final bins = hourlyBinsFromHrCurve(curve, toLocal: utc);
+      expect(bins, hasLength(7 * 18));
+      final r = fitHrRhythm(bins);
+      expect(r.rejection, isNotNull,
+          reason: '21 minutes of samples in a week must not fit a rhythm');
+      expect(['lowCoverage', 'unknownCoverage'], contains(r.rejection?.name));
+      expect(r.acrophaseClock, isNull);
+      expect(r.bathyphaseClock, isNull);
+      expect(r.amplitudeBpm, isNull);
+      expect(r.mesorBpm, isNull);
     });
   });
 
@@ -317,6 +366,10 @@ void main() {
   });
 
   group('loadCircadianExploreData', () {
+    // RED EDIT (Sol P2): this test fed a bare {t, v} minute curve and expected
+    // an ADMITTED rhythm, i.e. it encoded the defect. A minute curve has no
+    // per-minute sample count, so the real-data gate cannot be met from it: the
+    // nights and the summary still read, the rhythm abstains.
     test('reads nights and a stored minute curve, fits off the UI isolate',
         () async {
       // Local time is UTC under TZ=UTC; both sides use the device zone anyway.
@@ -355,10 +408,10 @@ void main() {
       expect(d.summary.nights, 14);
       expect(d.summary.meanOnsetClock, const Duration(hours: 23));
       expect(d.summary.meanWakeClock, const Duration(hours: 7));
-      expect(d.rhythm.rejection, isNull);
-      expect(d.rhythm.daysUsed, 14);
-      expect((d.rhythm.acrophaseClock!.inMinutes / 60 - 16).abs(),
-          lessThan(0.6));
+      expect(d.rhythm.rejection, isNotNull,
+          reason: 'bare minute points do not establish real minutes');
+      expect(['lowCoverage', 'unknownCoverage'], contains(d.rhythm.rejection?.name));
+      expect(d.rhythm.acrophaseClock, isNull);
       expect(repo.heartReads, isNot(contains(_label(now))),
           reason: 'today is partial and is not read');
     });
