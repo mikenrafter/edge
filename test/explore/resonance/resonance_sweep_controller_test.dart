@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_analyzer.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_sweep_controller.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_sweep_plan.dart';
+import 'package:openstrap_edge/explore/resonance/stillness_meter.dart';
 import 'package:openstrap_edge/stress/breath_phases.dart';
 
 import 'support/sweep_fixtures.dart';
@@ -24,7 +25,7 @@ class Harness {
     this.cueOutcome,
     Map<double, double> amp = const {},
     this.decodeThrows = false,
-    double Function(Duration, Duration)? still,
+    double? Function(Duration, Duration)? still,
     // CHANGED (fix round): `still` used to be left null to mean "fully
     // still". Unknown motion must now abstain, so the Harness injects an
     // explicit 1.0 by default and `noMotion` models "no motion source".
@@ -55,7 +56,7 @@ class Harness {
           ? null
           : (from, to) {
               stillCalls.add((from: from, to: to));
-              return still?.call(from, to) ?? 1.0;
+              return still == null ? 1.0 : still(from, to);
             },
       now: () => clock,
       hapticOnly: hapticOnly,
@@ -336,6 +337,98 @@ void main() {
       await h.start();
       await h.run(sec(300));
       expect(h.c.result!.blocks.every((b) => b.rejection == null), isTrue);
+    });
+  });
+
+  // A real StillnessMeter behind the callback, fed straight on the session
+  // clock. The controller asks it once per block, over the measure window
+  // only; the settle stretch never counts.
+  group('with a real StillnessMeter', () {
+    void feedSeconds(StillnessMeter m, int from, int to, {bool shaken = false}) {
+      for (var s = from; s < to; s++) {
+        for (var k = 0; k < 100; k++) {
+          final g = shaken ? (k.isEven ? 1.5 : 0.5) : 1.0;
+          m.add(Duration(milliseconds: s * 1000 + k * 10), g, 0, 0);
+        }
+      }
+    }
+
+    test('still measure window admits; moving settle window is ignored; '
+        'a shaken measure window is movement; no samples is unknown',
+        () async {
+      final meter = StillnessMeter();
+      // Block 0: 0..150 s, settle 0..30 shaken, measure 30..150 still.
+      feedSeconds(meter, 0, 30, shaken: true);
+      feedSeconds(meter, 30, 150);
+      // Block 1: 150..300 s, measure 180..300 shaken from 200 s on:
+      // 20 s still of 120 s.
+      feedSeconds(meter, 150, 200);
+      feedSeconds(meter, 200, 300, shaken: true);
+      // Block 2: 300..450 s, nothing arrived at all.
+      final h = Harness(
+        rates: const [6.0, 5.5, 5.0],
+        still: meter.stillFraction,
+      );
+      await h.start();
+      await h.run(sec(450));
+      expect(h.c.state, SweepState.finished);
+      final blocks = h.c.result!.blocks;
+      expect(blocks[0].rejection, isNull,
+          reason: 'only the measure window is asked about');
+      expect(blocks[0].admitted, isTrue);
+      expect(blocks[1].rejection, BlockRejection.movement);
+      expect(blocks[2].rejection, BlockRejection.movementUnknown);
+      expect(h.stillCalls, [
+        (from: sec(30), to: sec(150)),
+        (from: sec(180), to: sec(300)),
+        (from: sec(330), to: sec(450)),
+      ]);
+    });
+
+    test('a block whose measure window is mostly unobserved abstains instead '
+        'of being scored on what little arrived', () async {
+      final meter = StillnessMeter();
+      // 30..150 s: only 60 of 120 seconds have samples.
+      feedSeconds(meter, 30, 90);
+      final h = Harness(rates: const [6.0], still: meter.stillFraction);
+      await h.start();
+      await h.run(sec(150));
+      expect(h.c.result!.blocks.single.rejection,
+          BlockRejection.movementUnknown);
+    });
+  });
+
+  group('sessionTime', () {
+    test('is null until the sweep runs, then the clock now, not the last tick',
+        () async {
+      final h = Harness();
+      expect(h.c.sessionTime, isNull);
+      await h.start();
+      expect(h.c.sessionTime, Duration.zero);
+      h.clock = h.t0.add(const Duration(milliseconds: 7500));
+      expect(h.c.sessionTime, const Duration(milliseconds: 7500),
+          reason: 'the plan clock, read when asked: no tick has happened');
+    });
+
+    test('is null again once the sweep has stopped or finished', () async {
+      final stopped = Harness();
+      await stopped.start();
+      await stopped.run(sec(10));
+      await stopped.c.stop();
+      expect(stopped.c.sessionTime, isNull);
+
+      final finished = Harness(rates: const [6.0]);
+      await finished.start();
+      await finished.run(sec(150));
+      expect(finished.c.state, SweepState.finished);
+      expect(finished.c.sessionTime, isNull);
+    });
+
+    test('is null for a sweep that failed to start', () async {
+      final h = Harness(connected: false);
+      await h.start();
+      expect(h.c.state, SweepState.failed);
+      expect(h.c.sessionTime, isNull);
     });
   });
 

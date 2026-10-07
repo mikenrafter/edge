@@ -91,6 +91,12 @@ class ResonanceSweepController extends ChangeNotifier {
   SweepBlock? get currentBlock =>
       _state == SweepState.running ? plan.blockAt(_elapsed) : null;
   SweepComparison? get result => _result;
+
+  /// Session-relative time right now on the clock the plan and [tapFrame] use
+  /// (not the last [tick]); null unless the sweep is running. What a live
+  /// sample source stamps its data with.
+  // RED STUB: not written yet.
+  Duration? get sessionTime => throw UnimplementedError('sessionTime');
   String? get error => _error;
 
   Future<void> start() async {
