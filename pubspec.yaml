@@ -522,7 +522,13 @@ dependencies:
       # to ~5e-6 per frequency worst case). kAlgoVersion bumped 100 -> 101.
       # Verified against the SHA:
       #   `git show 65c8901:lib/src/onehz/util.dart | grep -n 'every trig argument'`
-      ref: 65c8901c8fb09cd076290ea37676d55ef6c47429
+      #
+      # perf/incremental-rr (aa67997, on top of 65c8901): correctRr on sliding
+      # sorted windows (bit-identical output, ~37x faster; oracle-tested against
+      # a frozen copy), plus the streaming RrCorrector and IrregularScreenState.
+      # No output change, so no kAlgoVersion bump. Verified against the SHA:
+      #   `git show aa67997:lib/onehz.dart | grep rr_correction_stream`
+      ref: aa67997c430e5656089a70d444d36cc18d6601d0
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
