@@ -130,6 +130,11 @@ class BandGesturesView extends StatelessWidget {
 
   final void Function(DeviceAction, bool)? onReplay;
 
+  /// "Follow up about my marked moments": the switch under the late-marks row.
+  /// Enabled only while Mark moment is on.
+  final bool followUp;
+  final void Function(bool)? onFollowUp;
+
   /// A WHOOP MG: the only band whose ECG sensor can be touched to count taps.
   /// The ECG options are drawn only when [devMode] is on as well.
   final bool ecgSupported;
@@ -227,6 +232,8 @@ class BandGesturesView extends StatelessWidget {
     this.onToggle,
     this.replay = const {},
     this.onReplay,
+    this.followUp = false,
+    this.onFollowUp,
     this.ecgSupported = false,
     this.tapMethod,
     this.onTapMethod,

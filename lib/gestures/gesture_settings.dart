@@ -58,6 +58,11 @@ class GestureSettings extends ChangeNotifier {
   static const _kEcgTolerant = 'gesture_ecg_tolerant_startup';
   static const _kEcgFallback = 'gesture_ecg_fallback';
   static const _kTapMethod = 'gesture_tap_method';
+
+  /// "Follow up about my marked moments": the switch, and the instant (epoch
+  /// ms) it was last turned on — only moments marked since then are followed up.
+  static const _kFollowUpMoments = 'gesture_follow_up_moments';
+  static const _kFollowUpMomentsSinceMs = 'gesture_follow_up_moments_since_ms';
   static const _kRepeatWindowMs = 'gesture_repeat_window_ms';
   static const _kRepeatLab = 'gesture_repeat_lab';
   static const _kTimeBuzzMode = 'gesture_time_buzz_mode';
@@ -514,6 +519,19 @@ class GestureSettings extends ChangeNotifier {
       setDoubleTapActions(
         on ? {..._actions, a} : _actions.where((x) => x != a).toSet(),
       );
+
+  /// Follow up about marked moments. Off by default.
+  bool get followUpMoments =>
+      throw UnimplementedError('GestureSettings.followUpMoments');
+
+  /// When [followUpMoments] was last turned on; null while off.
+  DateTime? get followUpMomentsSince =>
+      throw UnimplementedError('GestureSettings.followUpMomentsSince');
+
+  /// Turning it on stamps [now] (default: the clock) as the start; turning it
+  /// off clears the start. Persisted.
+  Future<void> setFollowUpMoments(bool on, {DateTime? now}) =>
+      throw UnimplementedError('GestureSettings.setFollowUpMoments');
 
   Future<void> setReplayHistorical(DeviceAction a, bool on) async {
     if (!a.supportsHistoricalReplay) return;

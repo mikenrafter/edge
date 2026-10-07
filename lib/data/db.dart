@@ -38,6 +38,7 @@ import 'day_label.dart';
 import 'journal_fields.dart';
 import 'live_coverage_policy.dart';
 import 'med_store.dart';
+import 'moment_label.dart';
 import 'models.dart';
 import 'nutrition_store.dart';
 import 'observation.dart';
@@ -396,7 +397,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 63;
+  static const int schemaVersion = 64;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1206,6 +1207,13 @@ class LocalDb {
           // _repairOpenSchema re-runs it on every open.
           await _createWakeEvidence(db);
         }
+        if (oldV < 64) {
+          // The wearer's answer to a marked moment. One small additive table,
+          // no backfill (no row means "unanswered"), cheap under iOS's CPU
+          // watchdog (invariant 11). No kAlgoVersion bump: nothing derived
+          // moves. _repairOpenSchema re-runs it on every open.
+          await _createMomentLabel(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1305,6 +1313,7 @@ class LocalDb {
     await _createDayCheckpoint(db);
     await _createWakeConfirmation(db);
     await _createWakeEvidence(db);
+    await _createMomentLabel(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -2786,6 +2795,22 @@ class LocalDb {
         'at_sec INTEGER NOT NULL, created_at INTEGER NOT NULL, '
         'PRIMARY KEY (onset_sec, kind, at_sec))',
       );
+
+  /// `moment_label`: the wearer's answer to one marked moment, keyed on the
+  /// same local (date, hhmm) as the journal's `moment HH:mm` tag. A NULL label
+  /// is a skip. STUB (red phase): creates nothing yet.
+  static Future<void> _createMomentLabel(Database db) async {}
+
+  /// Stores one answer. STUB.
+  static Future<void> putMomentLabel(MomentLabel l) =>
+      throw UnimplementedError('LocalDb.putMomentLabel');
+
+  /// Answers, optionally narrowed to one [date] or from [sinceDate] on. STUB.
+  static Future<List<MomentLabel>> momentLabels({
+    String? date,
+    String? sinceDate,
+  }) =>
+      throw UnimplementedError('LocalDb.momentLabels');
 
   /// How long a block's evidence is kept after the block began (days).
   static const int _wakeEvidenceKeepDays = 7;
