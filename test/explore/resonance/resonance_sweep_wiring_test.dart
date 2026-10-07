@@ -6,6 +6,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
+import 'package:openstrap_edge/explore/resonance/resonance_analyzer.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_sweep_controller.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -75,6 +76,42 @@ void main() {
           isTrue);
     });
 
+    // Sol P2: a run of two or more artifacts is dropped by the corrector, so
+    // the beats that come back are all "observed" and the quality share was
+    // taken over the survivors. It must be taken over the INPUT beats.
+    test('a dropped artifact run still counts against the observed share',
+        () {
+      // 119 input beats a second apart across the 30..150 s measure window;
+      // beats 50..57 are eight consecutive 400 ms artifacts (dropped).
+      final frames = [
+        for (var i = 0; i < 119; i++)
+          (
+            atMs: 31000 + i * 1000,
+            hex: _frame(i, (i >= 50 && i < 58) ? 400 : 1000 + (i % 4) * 10),
+          ),
+      ];
+      final beats = sweepBeatsCompute(frames);
+      final block = planFor([6.0]).blocks.single;
+      final scored = compareBlocks(
+        [
+          BlockInput(
+            block: block,
+            beats: beats,
+            stillFraction: 1.0,
+            missedCues: 0,
+            hapticOnly: false,
+          ),
+        ],
+        testedRates: const [6.0],
+      ).blocks.single;
+
+      expect(scored.coverage, greaterThanOrEqualTo(kMinCoverage),
+          reason: 'the block must fail on artifacts, not on coverage');
+      expect(scored.observedFraction, lessThan(kMinObservedFraction),
+          reason: '8 or more of 119 input beats were dropped');
+      expect(scored.rejection, BlockRejection.artifacts);
+    });
+
     test('the repository method runs the same decode off the UI isolate',
         () async {
       final repo = LocalRepositoryImpl(getProfileMap: () => const {});
@@ -113,6 +150,23 @@ void main() {
       await c.start();
       expect(app.debugLiveOwners.breathing, isTrue);
       c.dispose();
+      expect(app.debugLiveOwners.breathing, isFalse);
+    });
+
+    // Sol P1: AppState marks the HR owner held as the acquisition begins; a
+    // screen popped before it ends must still hand it back.
+    test('leaving while the sweep is still starting releases the owner',
+        () async {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      app.device.connection = 'connected';
+      final c = app.buildResonanceSweep(plan: planFor([6.0]));
+      final starting = c.start();
+      expect(app.debugLiveOwners.breathing, isTrue,
+          reason: 'the acquisition has begun');
+      c.dispose();
+      await starting;
+      await pumpEventQueue();
       expect(app.debugLiveOwners.breathing, isFalse);
     });
 

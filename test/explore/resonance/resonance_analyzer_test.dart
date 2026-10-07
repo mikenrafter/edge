@@ -294,15 +294,31 @@ void main() {
       expect(c.range!.hi, 6.0);
     });
 
-    test('rejected blocks between tied rates do not break the run', () {
+    // CHANGED (fix round, Sol P2): the old test, 'rejected blocks between tied
+    // rates do not break the run', expected the range 5.0-6.0. The rate in
+    // the middle of it (5.5) was rejected, so it was never measured: a range
+    // that spans it claims a rate the data does not support. A rejected hole
+    // inside the tie is a non-contiguous tie, which is inconclusive.
+    test('a rejected block between tied rates breaks the run: inconclusive',
+        () {
       final c = compareBlocks(
         sweepInputs({6.5: 3, 6.0: 5, 5.5: 5, 5.0: 5, 4.5: 3}, reject: {5.5}),
         testedRates: kRatesAsc,
       );
+      expect(c.blocks.firstWhere((b) => b.rateBpm == 5.5).rejection,
+          isNotNull);
+      expect(c.outcome, ComparisonOutcome.inconclusiveFlat);
+      expectNoRate(c);
+    });
+
+    test('a rejected rate outside the tie does not matter', () {
+      final c = compareBlocks(
+        sweepInputs({6.5: 3, 6.0: 5, 5.5: 5, 5.0: 3, 4.5: 3}, reject: {4.5}),
+        testedRates: kRatesAsc,
+      );
       expect(c.outcome, ComparisonOutcome.tiedRange);
-      expect(c.range!.lo, 5.0);
+      expect(c.range!.lo, 5.5);
       expect(c.range!.hi, 6.0);
-      expect(c.rateBpm, isNull);
     });
 
     test('a tie that touches a boundary is inconclusive, at either end', () {

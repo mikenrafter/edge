@@ -1,5 +1,7 @@
 // The controller on a fake clock. No real timers: the test sets the clock,
 // calls tick(), and lets microtasks settle.
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_analyzer.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_sweep_controller.dart';
@@ -23,6 +25,11 @@ class Harness {
     Map<double, double> amp = const {},
     this.decodeThrows = false,
     double Function(Duration, Duration)? still,
+    // CHANGED (fix round): `still` used to be left null to mean "fully
+    // still". Unknown motion must now abstain, so the Harness injects an
+    // explicit 1.0 by default and `noMotion` models "no motion source".
+    bool noMotion = false,
+    Future<void> Function()? acquire,
   }) {
     plan = planFor(rates);
     c = ResonanceSweepController(
@@ -42,13 +49,13 @@ class Harness {
             frames.first.atMs < b.end.inMilliseconds);
         return synthBeats(b, amplitudeBpm: amp[b.rateBpm] ?? 4);
       },
-      acquireStreams: () async => acquired++,
+      acquireStreams: acquire ?? () async => acquired++,
       releaseStreams: () => released++,
-      stillFraction: still == null
+      stillFraction: noMotion
           ? null
           : (from, to) {
               stillCalls.add((from: from, to: to));
-              return still(from, to);
+              return still?.call(from, to) ?? 1.0;
             },
       now: () => clock,
       hapticOnly: hapticOnly,
@@ -72,6 +79,15 @@ class Harness {
   final decodeCalls = <Frames>[];
   final stillCalls = <({Duration from, Duration to})>[];
   int _sec = 0;
+
+  /// Jumps the clock to [to] after the start and ticks once, as a late
+  /// timer would (the UI ticker was starved).
+  Future<void> jump(Duration to) async {
+    _sec = to.inSeconds;
+    clock = t0.add(to);
+    c.tick();
+    await settle();
+  }
 
   Future<void> start() async {
     t0 = clock;
@@ -291,8 +307,32 @@ void main() {
       expect(h.c.result!.blocks[1].rejection, isNull);
     });
 
-    test('defaults to fully still when not injected', () async {
-      final h = Harness();
+    // CHANGED (fix round, Sol P1): the old test, 'defaults to fully still when
+    // not injected', pinned the defect. Missing motion evidence is unknown,
+    // not still: every block abstains and no rate is produced.
+    test('without a motion source every block abstains and no rate is given',
+        () async {
+      final h = Harness(
+        rates: kPlanRates,
+        amp: {6.5: 3, 6.0: 4, 5.5: 6, 5.0: 4, 4.5: 3},
+        noMotion: true,
+      );
+      await h.start();
+      await h.run(sec(750));
+      expect(h.c.state, SweepState.finished);
+      final r = h.c.result!;
+      expect(r.blocks.every((b) => b.rejection != null), isTrue,
+          reason: 'unknown motion must not count as still');
+      expect(r.blocks.every((b) => b.amplitudeBpm == null), isTrue);
+      expect(r.outcome, isNot(ComparisonOutcome.tentativeRate));
+      expect(r.outcome, isNot(ComparisonOutcome.tiedRange));
+      expect(r.rateBpm, isNull);
+      expect(r.range, isNull);
+    });
+
+    test('a motion callback that returns a value still scores as before',
+        () async {
+      final h = Harness(still: (_, _) => 1.0);
       await h.start();
       await h.run(sec(300));
       expect(h.c.result!.blocks.every((b) => b.rejection == null), isTrue);
@@ -449,6 +489,79 @@ void main() {
       await stopped.c.stop();
       stopped.c.dispose();
       expect(stopped.released, 1);
+    });
+  });
+
+  group('start ownership (Sol P1)', () {
+    test('leaving while the streams are still being acquired releases them '
+        'once the acquisition ends', () async {
+      final gate = Completer<void>();
+      var acquires = 0;
+      final h = Harness(acquire: () {
+        acquires++;
+        return gate.future;
+      });
+      final starting = h.start();
+      await settle();
+      expect(acquires, 1, reason: 'the acquisition is pending');
+      h.c.dispose();
+      gate.complete();
+      await starting;
+      await pumpEventQueue();
+      expect(h.released, 1,
+          reason: 'streams were acquired for a controller that is gone');
+    });
+
+    test('an acquisition that ends after dispose never starts a run',
+        () async {
+      final gate = Completer<void>();
+      final h = Harness(acquire: () => gate.future);
+      final starting = h.start();
+      await settle();
+      h.c.dispose();
+      gate.complete();
+      await starting;
+      h.clock = h.t0.add(sec(10));
+      h.c.tick();
+      await pumpEventQueue();
+      expect(h.c.state, isNot(SweepState.running));
+      expect(h.cues, isEmpty);
+    });
+  });
+
+  group('late ticks (Sol P2)', () {
+    test('a late tick sends only the current phase cue, not the missed ones',
+        () async {
+      final h = Harness(rates: [6.0, 5.0]); // 6 bpm: 5 s phases
+      await h.start();
+      h.c.tick();
+      await settle();
+      expect(h.cues.map((q) => q.kind), [BreathPhaseKind.inhale]);
+
+      await h.jump(sec(27)); // phases at 5, 10, 15, 20 and 25 s are due
+      await pumpEventQueue();
+      expect(h.cues.length, 2,
+          reason: 'only the phase running at 27 s (began 25 s) may be cued');
+      expect(h.cues.last.kind, BreathPhaseKind.exhale);
+    });
+
+    test('phases skipped inside the measure window count as missed cues',
+        () async {
+      final h = Harness(
+        rates: kPlanRates,
+        hapticOnly: true,
+        amp: {6.5: 3, 6.0: 4, 5.5: 6, 5.0: 4, 4.5: 3},
+      );
+      await h.start();
+      h.c.tick();
+      await settle();
+      // Block 0 measures 30..150 s. The tick after 0 s comes at 60 s: the
+      // phases at 5..55 s were never played, 30..55 s of them inside it.
+      await h.jump(sec(60));
+      await h.run(sec(750));
+      expect(h.c.state, SweepState.finished);
+      expect(h.c.result!.blocks[0].rejection, BlockRejection.missedCues);
+      expect(h.c.result!.blocks[1].rejection, isNull);
     });
   });
 }

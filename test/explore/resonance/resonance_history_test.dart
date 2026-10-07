@@ -84,6 +84,54 @@ void main() {
     });
   });
 
+  // Sol P2: a rate rejected in one of the two sessions was never measured
+  // there, so it is never suggested. Sessions saved before the analyzer fix
+  // can still hold a range that spans a rejected rate.
+  group('suggestedPracticeRate and rejected rates', () {
+    BlockResult block(double rate, {BlockRejection? rejection}) => BlockResult(
+          rateBpm: rate,
+          amplitudeBpm: rejection == null ? 6 : null,
+          coverage: 0.99,
+          observedFraction: 1.0,
+          cycles: 10,
+          rejection: rejection,
+        );
+
+    List<BlockResult> blocksWithHole() => [
+          block(6.5),
+          block(6.0),
+          block(5.5, rejection: BlockRejection.movement),
+          block(5.0),
+          block(4.5),
+        ];
+
+    test('two ranges 5-6 whose middle rate 5.5 was rejected suggest nothing',
+        () {
+      final session = rec(ComparisonOutcome.tiedRange,
+          range: (lo: 5.0, hi: 6.0), blocks: blocksWithHole());
+      final suggestion = suggestedPracticeRate([session, session]);
+      expect(suggestion, isNot(closeTo(5.5, 1e-9)));
+      expect(suggestion, isNull);
+    });
+
+    test('a rate rejected in either session is not suggested', () {
+      final newest = rec(ComparisonOutcome.tentativeRate,
+          rate: 5.5,
+          blocks: [block(6.0), block(5.5), block(5.0)]);
+      final older = rec(ComparisonOutcome.tiedRange,
+          range: (lo: 5.0, hi: 6.0), blocks: blocksWithHole());
+      expect(suggestedPracticeRate([newest, older]), isNull);
+      expect(suggestedPracticeRate([older, newest]), isNull);
+    });
+
+    test('sessions with no rejected rate in the overlap still agree', () {
+      final clean = rec(ComparisonOutcome.tiedRange,
+          range: (lo: 5.0, hi: 6.0),
+          blocks: [block(6.0), block(5.5), block(5.0)]);
+      expect(suggestedPracticeRate([clean, clean]), closeTo(5.5, 1e-9));
+    });
+  });
+
   group('SweepSessionRecord JSON', () {
     const blocks = [
       BlockResult(
