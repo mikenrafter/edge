@@ -318,7 +318,9 @@ void main() {
       ledger.record(r.app.haptics.commandsLeft, DateTime.now());
       expect(r.app.haptics.commandsLeft, 0);
       await _fromTasker('tasker_play', {'slot': 3});
-      await settleMs(400);
+      // Wait for the job to reach the queue rather than a fixed time: the
+      // play is not awaited and took longer than 400 ms under suite load.
+      await until(() => r.app.haptics.pending == 1, what: 'the play is queued');
       expect(_haptic(r), isEmpty, reason: 'no gesture exemption');
       expect(r.app.haptics.pending, 1,
           reason: 'held by the budget as a plain job, not dropped');
@@ -330,7 +332,7 @@ void main() {
           .record(r.app.haptics.commandsLeft, DateTime.now());
       await _fromTasker(
           'tasker_play', {'pattern': systemPatternId('preset.two_pulses')});
-      await settleMs(400);
+      await until(() => r.app.haptics.pending == 1, what: 'the play is queued');
       expect(_haptic(r), isEmpty);
       expect(r.app.haptics.pending, 1);
     });
