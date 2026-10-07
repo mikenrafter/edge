@@ -10,6 +10,8 @@
 //     form. None of them feed a metric, and a field that changes nothing is a
 //     field that implies an account.
 
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -58,6 +60,7 @@ import 'gallery.dart';
 import 'gesture_failures.dart';
 import 'gestures.dart';
 import 'haptics_settings.dart';
+import 'wake_outcomes_route.dart';
 import 'live_devices.dart' show LiveDevices;
 import 'pattern_picker.dart';
 import 'profile.dart';
@@ -97,6 +100,9 @@ class _MoreSettingsState extends State<MoreSettings> {
 
   /// The developer's band haptic command limit, mirrored from Prefs.
   int _hapticLimit = Prefs.hapticCommandLimit;
+
+  /// The developer-only wake-outcome log (shadow mode), read off Prefs.
+  bool _wakeOutcomes = Prefs.exploreWakeOutcomesOn;
   String _version = '';
   int _taps = 0;
 
@@ -213,6 +219,13 @@ class _MoreSettingsState extends State<MoreSettings> {
       lastCalculation: DerivePerf.describe(app.lastPassPerf),
       onVersionTap: _tapVersion,
       onToggleDev: () => _setDev(false),
+      wakeOutcomes: _wakeOutcomes,
+      onToggleWakeOutcomes: () {
+        final want = !_wakeOutcomes;
+        setState(() => _wakeOutcomes = want);
+        unawaited(app.setWakeOutcomesOn(want));
+      },
+      onWakeOutcomes: () => goto(c, const WakeOutcomesRoute()),
       onGallery: () => goto(c, const GalleryScreen()),
       units: units.system.label,
       appearance: theme.choice.label,
@@ -589,6 +602,11 @@ class MoreSettingsView extends StatelessWidget {
 
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
+  /// Developer group: the shadow-mode wake-outcome log is on (default off),
+  /// its toggle, and the row that opens the log (dimmed while it is off).
+  final bool wakeOutcomes;
+  final VoidCallback? onToggleWakeOutcomes, onWakeOutcomes;
+
   /// The expected sleep schedule (local clock times), or null when never set.
   /// The row is always drawn: it needs no data.
   final ExpectedSleepSchedule? expectedSleepSchedule;
@@ -655,6 +673,9 @@ class MoreSettingsView extends StatelessWidget {
     this.lastCalculation = '—',
     this.onVersionTap,
     this.onToggleDev,
+    this.wakeOutcomes = false,
+    this.onToggleWakeOutcomes,
+    this.onWakeOutcomes,
     this.onGallery,
     this.expectedSleepSchedule,
     this.onEditSleepSchedule,
@@ -965,6 +986,21 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',
                         onTap: onDataExplorer),
+                    // Shadow mode: records how each wake went and what a
+                    // preference rule WOULD pick. It never changes an alarm.
+                    SetRow(LucideIcons.listChecks, C.teal, 'Log wake outcomes',
+                        sub: 'Shadow mode. Records how each wake went; never '
+                            'changes your alarm',
+                        value: wakeOutcomes ? on : off,
+                        chevron: false,
+                        onTap: onToggleWakeOutcomes),
+                    // Always drawn, dimmed while the log is off.
+                    SetRow(LucideIcons.clipboardList, C.teal, 'Wake outcomes',
+                        enabled: wakeOutcomes,
+                        sub: wakeOutcomes
+                            ? 'The log and what the shadow rule would choose'
+                            : 'Turn on Log wake outcomes first',
+                        onTap: onWakeOutcomes),
                     _HapticLimitRow(
                         limit: hapticCommandLimit,
                         onChanged: onHapticCommandLimit),

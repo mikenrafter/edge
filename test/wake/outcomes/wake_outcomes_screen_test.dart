@@ -28,7 +28,7 @@ Widget screen(
     WakeOutcomesScreen(
       outcomes: outcomes,
       shadow: shadow,
-      onRate: onRate ?? (_, __) {},
+      onRate: onRate ?? (_, _) {},
     );
 
 List<String> allText(WidgetTester t) => [
@@ -64,8 +64,10 @@ void main() {
     testWidgets('a censored response is never shown as 0', (t) async {
       await pump(t, screen([outcome(kT)])); // nothing observed
       expect(find.textContaining('not seen'), findsNWidgets(3));
-      expect(find.textContaining('0 min'), findsNothing);
-      expect(find.textContaining('0 s'), findsNothing);
+      // Word-bounded: the fixture's "20 min before wake time" contains "0 min"
+      // as a substring and is not a zero latency.
+      expect(find.textContaining(RegExp(r'\b0 min')), findsNothing);
+      expect(find.textContaining(RegExp(r'\b0 s\b')), findsNothing);
       expect(find.textContaining(RegExp(r': 0\b')), findsNothing);
     });
 
@@ -223,7 +225,7 @@ void main() {
     });
 
     testWidgets('is absent when nothing is pending', (t) async {
-      await pump(t, GrogginessPromptCard(pending: null, onRate: (_, __) {}));
+      await pump(t, GrogginessPromptCard(pending: null, onRate: (_, _) {}));
       expect(find.text('How groggy did you feel on waking?'), findsNothing);
       expect(find.byType(Text), findsNothing);
     });
@@ -231,7 +233,7 @@ void main() {
     testWidgets('makes no sleep-inertia, ideal-stage or diagnostic claim',
         (t) async {
       await pump(
-          t, GrogginessPromptCard(pending: outcome(kT), onRate: (_, __) {}));
+          t, GrogginessPromptCard(pending: outcome(kT), onRate: (_, _) {}));
       for (final s in allText(t)) {
         final l = s.toLowerCase();
         expect(l, isNot(contains('sleep inertia')));

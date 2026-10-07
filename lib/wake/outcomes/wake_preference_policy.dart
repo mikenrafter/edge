@@ -33,7 +33,7 @@ class ShadowPolicyResult {
   final Map<String, int> usableByPolicy;
 }
 
-/// Policy key = '<stage>:<W>': stage is stageAtFire ('rem' | 'awake') or
+/// Policy key = `'STAGE:W'`: STAGE is stageAtFire ('rem' | 'awake') or
 /// 'none'; W is the window of the bucket of round(minutesBeforeT): 0–15 -> 15,
 /// 15–30 -> 30, 30–60 -> 60, 60+ -> 120 (the bucket's upper bound; 120 is
 /// kWakeWindowMaxMinutes). Buckets are half-open: round(m) < 15 is the first.
@@ -44,7 +44,7 @@ class ShadowPolicyResult {
 /// mornings in each of at least two candidate keys; else wouldChoose null and
 /// reason 'insufficient'. Keys under the per-key floor are not compared.
 /// Compared keys are ranked by median grogginess (even count: mean of the
-/// middle two), lower better. A unique lowest median chooses 'window:<W>' with
+/// middle two), lower better. A unique lowest median chooses `'window:W'` with
 /// reason 'lowerGrogginess'. A tie for the lowest keeps the current setting:
 /// wouldChoose 'window:$currentWindowMinutes', reason 'tie'.
 /// [usableByPolicy] counts usable outcomes (rated or not) for every key,

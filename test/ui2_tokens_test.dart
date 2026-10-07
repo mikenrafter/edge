@@ -199,6 +199,10 @@ const _notComponents = {
   // Natural Wake repeat runs. Both states are pumped in
   // natural_wake_card_test.dart.
   'NaturalWakeBuzzingCard',
+  // Developer route (Settings > Developer > Wake outcomes): a Scaffold that
+  // reads AppState and the database. Its body, WakeOutcomesScreen, is pumped
+  // in test/wake/outcomes/wake_outcomes_screen_test.dart.
+  'WakeOutcomesRoute',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.

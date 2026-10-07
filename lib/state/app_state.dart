@@ -81,6 +81,9 @@ import '../wake/natural_wake.dart'
         NaturalWakePlanner,
         kUserInteractionFreshness,
         kUserMotionHalfWindow;
+import '../wake/outcomes/wake_outcome.dart';
+import '../wake/outcomes/wake_outcome_recorder.dart';
+import '../wake/outcomes/wake_outcome_store.dart';
 import '../wake/wake_confirmation.dart';
 import '../wake/wake_controller.dart';
 import '../wake/wake_orchestrator.dart';
@@ -2104,6 +2107,9 @@ class AppState extends ChangeNotifier {
   /// headless process has no foreground to note.
   Future<int?> noteAppOpened({DateTime? at}) async {
     if (_background) return null;
+    // Shadow-mode wake outcomes: the app may have been dead at T, so a wake a
+    // few hours old is looked at again now. A no-op unless gated on.
+    _trackWakeSignal(_recordWakeOutcome(null));
     return _noteWake(WakeEvidenceKind.appOpened, at ?? _wakeNow());
   }
 
@@ -5592,6 +5598,119 @@ class AppState extends ChangeNotifier {
     unawaited(_refreshHighFreqWakeWindow());
   }
 
+  // ── wake outcomes (shadow mode; lib/wake/outcomes/) ─────────────────────────
+  // How each wake went, recorded and displayed, never acted on. Everything here
+  // is gated on developer mode AND Prefs.exploreWakeOutcomesOn (inside the
+  // recorder, at every call) and none of it reaches the orchestrator, the plan
+  // or an alarm.
+
+  late final WakeOutcomeRecorder _wakeOutcomes = WakeOutcomeRecorder(
+    enabled: () => wakeOutcomesOn,
+    store: WakeOutcomeStore(
+        read: LocalDb.wakeMetaGet, write: LocalDb.wakeMetaSet),
+    traceFor: (t) => const DbWakeTraceStore().forWake(t),
+    recentTrace: () => const DbWakeTraceStore().recent(),
+    evidenceFor: _wakeOutcomeEvidence,
+    touchSecs: () => [
+      for (final t in _recentInteractions()) t.millisecondsSinceEpoch ~/ 1000,
+    ],
+    now: _wakeNow,
+  );
+
+  /// The wake the closed tick last snapshotted in this session.
+  int? _outcomeSnapshotWakeSec;
+
+  WakeOutcome? _pendingGrogginess;
+
+  /// The wake-outcome log is on: developer mode and the explore flag.
+  bool get wakeOutcomesOn => devMode && Prefs.exploreWakeOutcomesOn;
+
+  /// The delivered, unrated morning Home asks about (under 12 h old), or null.
+  /// Always null while the log is off.
+  WakeOutcome? get pendingGrogginessOutcome =>
+      wakeOutcomesOn ? _pendingGrogginess : null;
+
+  /// Minutes of the next armed alarm's Natural window; 0 when none is armed.
+  int get currentNaturalWindowMinutes => _currentWakePlan()?.naturalMinutes ?? 0;
+
+  /// The app opens and band movement noted for the night that ended at
+  /// [wakeSec]. Only the newest sleep block's evidence is readable, and only
+  /// when that block began before the wake; otherwise nothing was seen (empty,
+  /// never a guess).
+  Future<WakeEvidenceSecs> _wakeOutcomeEvidence(int wakeSec) async {
+    const none = (appOpened: <int>[], movement: <int>[]);
+    final onset = await _wakeStore.sleepOnsetSec();
+    if (onset == null ||
+        onset > wakeSec ||
+        wakeSec - onset > kOpenWakeBlockMaxAge.inSeconds) {
+      return none;
+    }
+    final events = await _wakeStore.evidence();
+    return (
+      appOpened: [
+        for (final e in events)
+          if (e.kind == WakeEvidenceKind.appOpened) e.sec,
+      ],
+      movement: [
+        for (final e in events)
+          if (e.kind == WakeEvidenceKind.bandMovement) e.sec,
+      ],
+    );
+  }
+
+  /// Records the outcome of [wakeSec], or runs the foreground catch-up when
+  /// null; then refreshes the grogginess prompt. Never throws.
+  Future<void> _recordWakeOutcome(int? wakeSec) async {
+    try {
+      final outcome = wakeSec == null
+          ? await _wakeOutcomes.catchUp()
+          : await _wakeOutcomes.record(wakeSec);
+      if (wakeSec != null && outcome != null) _outcomeSnapshotWakeSec = wakeSec;
+      await _refreshGrogginessPrompt();
+    } catch (e) {
+      _log('[wake] recording the wake outcome failed (nothing else is '
+          'affected): $e');
+    }
+  }
+
+  Future<void> _refreshGrogginessPrompt() async {
+    final next = await _wakeOutcomes.pendingRating();
+    if (_disposed) return;
+    final before = _pendingGrogginess;
+    _pendingGrogginess = next;
+    if (before?.wakeSec != next?.wakeSec ||
+        before?.grogginess != next?.grogginess) {
+      notifyListeners();
+    }
+  }
+
+  /// The stored log, newest first (empty while the log is off).
+  Future<List<WakeOutcome>> loadWakeOutcomes() => _wakeOutcomes.outcomes();
+
+  /// Turns the log on or off (the Developer row). On: catch up on a recent wake
+  /// now. Off: nothing is deleted, the prompt just goes.
+  Future<void> setWakeOutcomesOn(bool on) async {
+    Prefs.setBool(Prefs.exploreWakeOutcomes, on);
+    if (on) {
+      await _recordWakeOutcome(null);
+    } else {
+      _pendingGrogginess = null;
+    }
+    if (!_disposed) notifyListeners();
+  }
+
+  /// A grogginess rating (1..5) for the wake at [wakeSec] (the Home card and
+  /// the outcomes screen). Descriptive data only; it feeds the shadow line.
+  Future<void> rateWakeOutcome(int wakeSec, int grogginess) async {
+    await _wakeOutcomes.rate(wakeSec, grogginess);
+    await _refreshGrogginessPrompt();
+  }
+
+  /// Waits for the wake-outcome work started so far. Tests only.
+  @visibleForTesting
+  Future<void> debugRecordWakeOutcome(int? wakeSec) =>
+      _recordWakeOutcome(wakeSec);
+
   /// Tick the wake side the way the 30 s keep-alive does. Tests only.
   @visibleForTesting
   Future<void> debugKeepAliveTick() => _checkSmartWake();
@@ -5636,6 +5755,11 @@ class AppState extends ChangeNotifier {
       final out = await _wakeOrchestrator.tick(plan);
       _logWakeTick(plan, out);
       if (out.naturalFired) _releaseWakeCollection(plan.wakeSec);
+      // T has passed: one outcome snapshot per occurrence per session (the
+      // foreground catch-up fills in what came after). Shadow only.
+      if (out.closed && _outcomeSnapshotWakeSec != plan.wakeSec) {
+        _trackWakeSignal(_recordWakeOutcome(plan.wakeSec));
+      }
     } catch (e) {
       _log('[wake] tick failed (fallback alarm is unaffected): $e');
     }

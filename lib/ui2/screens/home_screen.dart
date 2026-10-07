@@ -45,6 +45,9 @@ import '../../state/app_state.dart';
 import '../../state/prefs.dart';
 import '../../state/recalc_state.dart';
 import '../../state/units_controller.dart';
+import '../../wake/outcomes/wake_outcome.dart' show WakeOutcome;
+import '../../wake/outcomes/wake_outcomes_screen.dart'
+    show GrogginessPromptCard;
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../activity/day_strain.dart' show DayStrainDetail;
 import '../profile/devices.dart' show formatDayTime;
@@ -275,6 +278,22 @@ bool? deviceConnectedOf(BuildContext c) {
 Widget? _naturalWakeCard(BuildContext c) {
   try {
     return NaturalWakeBuzzingCard(wake: c.read<AppState>().wake);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+/// The grogginess question (wake outcomes, a developer-only shadow log): the
+/// newest delivered, unrated wake under 12 h old. Null with no AppState above
+/// (a golden), with the log off, or with nothing to ask.
+Widget? _grogginessCard(BuildContext c) {
+  try {
+    final pending =
+        c.select<AppState, WakeOutcome?>((a) => a.pendingGrogginessOutcome);
+    if (pending == null) return null;
+    final app = c.read<AppState>();
+    return GrogginessPromptCard(
+        pending: pending, onRate: (wakeSec, g) => app.rateWakeOutcome(wakeSec, g));
   } on ProviderNotFoundException {
     return null;
   }
@@ -1693,6 +1712,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       return _refreshable(ListView(padding: pad, children: [
         const SizedBox(height: S.x4),
         ?_naturalWakeCard(c),
+        ?_grogginessCard(c),
         // No day on screen ⇒ no `todayId`, so this renders the dated form.
         // Shown here TOO: a first run, a failed read and a sync in flight are
         // exactly when "how far are we?" is worth answering, and the header
@@ -1773,6 +1793,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       ?rebuilt,
       // Natural Wake is buzzing and waiting for "I'm up": above everything.
       ?_naturalWakeCard(c),
+      ?_grogginessCard(c),
 
       // ── the one observation Home is allowed to make ──
       //

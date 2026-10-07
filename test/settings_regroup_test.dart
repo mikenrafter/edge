@@ -21,7 +21,7 @@
 //    "AI coach", "Tasker and Shortcuts", "Check for updates", "Look barcodes up online"
 //    (Connections, moved from Data & privacy);
 //    "Version", "Notices and licences" (About); "Component gallery", "Live
-//    devices", "Device lab", "Developer mode" (Developer).
+//    devices", "Device lab", "Log wake outcomes", "Developer mode" (Developer).
 //  - One title is written loosely in the spec, so either spelling passes: the
 //    Tasker row may keep "Tasker and Shortcuts" or be called "Automation".
 //  - "My devices" is a Settings > Hardware row. There is no Profile
@@ -137,6 +137,10 @@ const Map<String, List<List<String>>> _rows = {
     ['Live devices'],
     ['Device lab'],
     ['Data Explorer'],
+    // The shadow-mode wake-outcome log switch, and the row that opens the log
+    // (dimmed while the switch is off).
+    ['Log wake outcomes'],
+    ['Wake outcomes'],
     // The read-only timing line for the last derive pass.
     ['Last calculation'],
     ['Developer mode'],
@@ -318,6 +322,31 @@ void main() {
         expect(_in('Developer', row), findsOneWidget, reason: row);
         expect(find.text(row), findsOneWidget, reason: '$row once overall');
       }
+    });
+
+    testWidgets('wake outcomes: the log row is always drawn, inert while the '
+        'switch is off and opening the log while it is on', (t) async {
+      var opened = 0;
+      await _pump(
+          t,
+          MoreSettingsView(
+              devMode: true, version: '1', onWakeOutcomes: () => opened++));
+      expect(_in('Developer', 'Log wake outcomes'), findsOneWidget);
+      expect(_in('Developer', 'Wake outcomes'), findsOneWidget);
+      await t.ensureVisible(_in('Developer', 'Wake outcomes'));
+      await t.tap(_in('Developer', 'Wake outcomes'), warnIfMissed: false);
+      expect(opened, 0, reason: 'off: dimmed and inert');
+
+      await _pump(
+          t,
+          MoreSettingsView(
+              devMode: true,
+              wakeOutcomes: true,
+              version: '1',
+              onWakeOutcomes: () => opened++));
+      await t.ensureVisible(_in('Developer', 'Wake outcomes'));
+      await t.tap(_in('Developer', 'Wake outcomes'));
+      expect(opened, 1);
     });
 
     test('the Settings screen opens the lab by pushing DeviceLab', () {
