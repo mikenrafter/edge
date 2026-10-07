@@ -218,6 +218,81 @@ void main() {
     });
   });
 
+  // Review round 3 (P2): the session clock starts at the user's tap, the
+  // ticking starts only after the streams are acquired. RULE: the pacing clock
+  // (phase 0) starts at the first tick after start, so a slow acquisition makes
+  // no expired phases; the elapsed time and the duration cap still count from
+  // the user's start.
+  group('slow acquisition', () {
+    test('27 s of acquisition at 6 bpm: pacing starts at the first tick, with '
+        'the inhale, and nothing is missed', () async {
+      final r = BedtimeRig();
+      await r.startAcquiringFor(27);
+      await r.at(27);
+      expect(r.kinds, [BreathPhaseKind.inhale],
+          reason: 'phase 0 is anchored at the first tick, not at the tap');
+      expect(r.controller.cuesMissed, 0);
+      expect(r.controller.cuesSent, 1);
+      expect(r.controller.state, BedtimeState.running);
+    });
+
+    test('phases then follow the pacing start: exhale 5 s after the first tick',
+        () async {
+      final r = BedtimeRig();
+      await r.startAcquiringFor(27);
+      await r.at(27);
+      await r.at(31.9);
+      expect(r.cues.length, 1, reason: 'no boundary yet (5 s from 27 s)');
+      await r.at(32);
+      await r.at(37);
+      expect([for (final c in r.cues) c.$2.inSeconds], [27, 32, 37]);
+      expect(r.kinds, [
+        BreathPhaseKind.inhale,
+        BreathPhaseKind.exhale,
+        BreathPhaseKind.inhale,
+      ]);
+      expect(r.controller.cuesMissed, 0);
+      expect(r.controller.state, BedtimeState.running);
+    });
+
+    test('a slow acquisition never ends the session as delivery failing',
+        () async {
+      // Today: five expired phases at 27 s, and a 45 s acquire (nine) is
+      // swallowed the same way; any rule that counts them ends the session.
+      final r = BedtimeRig();
+      await r.startAcquiringFor(45);
+      await r.at(45);
+      await r.to(60);
+      expect(r.controller.state, BedtimeState.running);
+      expect(r.controller.cuesMissed, 0);
+      expect(r.kinds.first, BreathPhaseKind.inhale);
+    });
+
+    test('a tick that is late AFTER the first cue still counts its skipped '
+        'phases (the rule changes only the start)', () async {
+      final r = BedtimeRig();
+      await r.startAcquiringFor(27);
+      await r.at(27);
+      await r.at(27 + 17); // 17 s after the pacing start, as the 17 s test
+      expect(r.controller.cuesMissed, 2);
+      expect(r.kinds, [BreathPhaseKind.inhale, BreathPhaseKind.exhale]);
+    });
+
+    test('the duration cap still counts from the tap, not the pacing start',
+        () async {
+      final r = BedtimeRig(plan: BedtimePlan(duration: const Duration(minutes: 1)));
+      await r.startAcquiringFor(27);
+      await r.at(27);
+      await r.to(59.5);
+      expect(r.controller.state, BedtimeState.running,
+          reason: '59.5 s from the tap (32.5 s of pacing)');
+      await r.at(60);
+      expect(r.controller.state, BedtimeState.ended);
+      expect(r.controller.stopReason, BedtimeStopReason.durationCap);
+      expect(r.releases, 1);
+    });
+  });
+
   group('observe', () {
     test('asked at most every 30 s, the first time on the first tick', () async {
       // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as

@@ -71,6 +71,9 @@ class BedtimeRig {
   Object? acquireThrows;
   Object? releaseThrows;
 
+  /// Holds the acquire open (a slow stream start) until completed.
+  Completer<void>? acquireHold;
+
   Duration get _elapsed => clock.now.difference(kBedtimeT0);
 
   Future<bool> _deliver(BreathPhaseKind k) async {
@@ -98,6 +101,8 @@ class BedtimeRig {
 
   Future<void> _acquire() async {
     acquires++;
+    final hold = acquireHold;
+    if (hold != null) await hold.future;
     if (acquireThrows != null) throw acquireThrows!;
   }
 
@@ -125,6 +130,19 @@ class BedtimeRig {
       await at(s);
     }
     await at(sec);
+  }
+
+  /// Start with a slow acquire: the user taps start at the clock's start, the
+  /// streams come up [sec] seconds later, and the clock is there when it ends.
+  /// The first tick has not happened yet (the screen ticks after start returns).
+  Future<void> startAcquiringFor(num sec) async {
+    acquireHold = Completer<void>();
+    final started = controller.start();
+    await pumpEventQueue();
+    clock.at(kBedtimeT0.add(Duration(milliseconds: (sec * 1000).round())));
+    acquireHold!.complete();
+    await started;
+    await pumpEventQueue();
   }
 
   Future<void> start() async {
