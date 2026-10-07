@@ -199,6 +199,10 @@ const _notComponents = {
   // Natural Wake repeat runs. Both states are pumped in
   // natural_wake_card_test.dart.
   'NaturalWakeBuzzingCard',
+  // Home card bound to SnoozeController.status (a pending main-alarm snooze);
+  // every state is pumped in test/alarm_snooze/snooze_ui_test.dart. The
+  // settings rows are pumped there too, standalone and inside the alarm screen.
+  'SnoozeCard', 'SnoozeSettingsRows',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.

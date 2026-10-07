@@ -81,6 +81,8 @@ import '../wake/natural_wake.dart'
         NaturalWakePlanner,
         kUserInteractionFreshness,
         kUserMotionHalfWindow;
+import '../alarm/snooze/snooze_controller.dart';
+import '../alarm/snooze/snooze_settings.dart';
 import '../wake/wake_confirmation.dart';
 import '../wake/wake_controller.dart';
 import '../wake/wake_orchestrator.dart';
@@ -5591,6 +5593,50 @@ class AppState extends ChangeNotifier {
     _wakeCollectionDoneEpoch = wakeSec;
     unawaited(_refreshHighFreqWakeWindow());
   }
+
+  // ── main-alarm snooze (STUB, red phase) ─────────────────────────────────────
+  // See lib/alarm/snooze/snooze_controller.dart. Wiring to add: engine
+  // .onHapticsTerminated -> [debugOnHapticsTerminated]'s body (only within
+  // minutes of a native alarm firing, never while Natural Wake repeats);
+  // _onLiveEvent consumes event 14 while snooze.consumesDoubleTaps (after the
+  // Natural repeat check); the 30 s keep-alive ticks snooze before anything
+  // that can return early; the controller never arms or disables the band.
+
+  /// The snooze controller (built on first use from the debug* seams below,
+  /// which must be set before that).
+  SnoozeController get snooze => throw UnimplementedError();
+
+  SnoozeSettings get snoozeSettings => throw UnimplementedError();
+
+  /// Persist new settings (clamped); the controller reads them at each use.
+  Future<void> setSnoozeSettings(SnoozeSettings s) => throw UnimplementedError();
+
+  /// Replace what plays a slot. Tests only; set before [snooze] is first read.
+  @visibleForTesting
+  SnoozeHapticPlay? debugSnoozePlay;
+
+  /// Replace the confirmed-wake probe. Tests only.
+  @visibleForTesting
+  Future<bool> Function()? debugSnoozeConfirmedWake;
+
+  /// Replace the evidence recorder (default: the wake recorder). Tests only.
+  @visibleForTesting
+  SnoozeEvidence? debugSnoozeEvidence;
+
+  /// Replace the store (default: [DbSnoozeStore]). Tests only.
+  @visibleForTesting
+  SnoozeStore? debugSnoozeStore;
+
+  /// Replace "Natural Wake is repeating" (default: the orchestrator's). Tests
+  /// only.
+  @visibleForTesting
+  bool Function()? debugNaturalRepeating;
+
+  /// What the engine's HAPTICS_TERMINATED hook runs: [cause] is the engine's
+  /// string. Tests only.
+  @visibleForTesting
+  Future<void> debugOnHapticsTerminated(String cause, {DateTime? at}) =>
+      throw UnimplementedError();
 
   /// Tick the wake side the way the 30 s keep-alive does. Tests only.
   @visibleForTesting

@@ -41,6 +41,7 @@ import '../../state/alarm_draft.dart';
 import '../../state/alarm_schedule.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
+import '../../alarm/snooze/snooze_settings.dart';
 import '../../state/capabilities_scope.dart';
 import '../../wake/wake_settings.dart';
 import '../../wake/wake_trace_text.dart';
@@ -204,6 +205,12 @@ class AlarmScreenView extends StatefulWidget {
   /// confirmed the first send, and it is still unconfirmed. The header says so.
   final bool resent;
 
+  /// The main alarm's dismiss/snooze settings and their change callback (applied
+  /// at once, not part of the Save draft). Null settings omit the rows.
+  /// STUB (red phase): accepted, not yet rendered.
+  final SnoozeSettings? snoozeSettings;
+  final ValueChanged<SnoozeSettings>? onSnoozeSettings;
+
   const AlarmScreenView({
     super.key,
     this.armedAt,
@@ -223,6 +230,8 @@ class AlarmScreenView extends StatefulWidget {
     this.timelineFor,
     this.wakeTrace = const [],
     this.resent = false,
+    this.snoozeSettings,
+    this.onSnoozeSettings,
   });
 
   @override

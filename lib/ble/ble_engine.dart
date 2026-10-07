@@ -2047,6 +2047,12 @@ class BleEngine implements AlarmBandWriter {
   DateTime? _lastHapticsDoubleTapAt;
   DateTime? get lastHapticsDoubleTapAt => _lastHapticsDoubleTapAt;
 
+  /// Called for every HAPTICS_TERMINATED(100) with its cause string
+  /// ('user_double_tap' | 'expired' | 'error' | 'unknown') and the phone-clock
+  /// receipt time. AppState hangs the main-alarm snooze on it. Never throws
+  /// into the engine. STUB (red phase): declared, not yet called.
+  void Function(String cause, DateTime at)? onHapticsTerminated;
+
   // ── reconnect/offload policy ────────────────────────────────────────────────
   // Marginal-radio + post-bond-loop persist ACROSS reconnects (they count
   // consecutive bad cycles), so they live for the engine's lifetime and self-reset

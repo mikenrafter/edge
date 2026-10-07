@@ -35,6 +35,17 @@ const String kBreathExhaleKey = 'breath.exhale';
 const String kBreathHoldKey = 'breath.hold';
 const String kBreathDoneKey = 'breath.done';
 
+/// The main alarm's snooze slots (owner spec 2026-10-07). Each is its own
+/// default pattern, none shared with a gesture cue or with the full-wake
+/// confirmation: snooze set, dismissed, a wake confirmed during a snooze
+/// ("you're up"), and the escalating re-alarm (whose default is the first
+/// snooze's pattern; SnoozeSchedule grows it per snooze).
+/// STUB (red phase): the keys exist; [builtInDefault] has no case for them yet.
+const String kAlarmSnoozeConfirmKey = 'alarm.snooze.confirm';
+const String kAlarmDismissConfirmKey = 'alarm.dismiss.confirm';
+const String kAlarmSnoozeCancelledKey = 'alarm.snooze.cancelled';
+const String kAlarmReAlarmKey = 'alarm.snooze.realarm';
+
 /// The ten presets, in the order they are listed: key, name and notes. A
 /// pulse is a quarter note, a long pulse a half, the rest between pulses a
 /// quarter. SOS is three short, three long, three short; Hip hip hooray is two
