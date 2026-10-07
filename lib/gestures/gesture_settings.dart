@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../platform/device_actions.dart';
+import '../stress/breath_phases.dart' show kBreathPatternsByKey;
 import 'device_action.dart';
 import 'ecg_tap_counter.dart';
 import 'gesture_slots.dart';
@@ -334,25 +335,53 @@ class GestureSettings extends ChangeNotifier {
 
   /// Breathing exercise's pattern key for [slot]: the slot's own choice, else
   /// [kBreatheDefaultPattern]. A stored key that is no longer a pattern reads
-  /// as the default. ArgumentError for an unknown slot. (RED STUB)
-  String breathePatternFor(String slot) =>
-      throw UnimplementedError('breathePatternFor');
+  /// as the default. ArgumentError for an unknown slot.
+  String breathePatternFor(String slot) {
+    final v = optionsFor(slot).values[GestureSlotOptions.kBreathePattern];
+    return kBreathPatternsByKey.containsKey(v) ? v! : kBreatheDefaultPattern;
+  }
 
   /// Breathing exercise's length in minutes for [slot]: the slot's own choice
-  /// (one of [kBreatheMinuteChoices]), else [kBreatheDefaultMinutes]. (RED STUB)
-  int breatheMinutesFor(String slot) =>
-      throw UnimplementedError('breatheMinutesFor');
+  /// (one of [kBreatheMinuteChoices]), else [kBreatheDefaultMinutes].
+  int breatheMinutesFor(String slot) {
+    final v = int.tryParse(
+        optionsFor(slot).values[GestureSlotOptions.kBreatheMinutes] ?? '');
+    return v != null && kBreatheMinuteChoices.contains(v)
+        ? v
+        : kBreatheDefaultMinutes;
+  }
 
   /// Give [slot] its own breathing pattern (persisted in the slot's options,
   /// beside whatever else it holds). ArgumentError for an unknown slot or a key
-  /// that is not a `kBreathPatterns` key. (RED STUB)
-  Future<void> setBreathePatternFor(String slot, String patternKey) =>
-      throw UnimplementedError('setBreathePatternFor');
+  /// that is not a `kBreathPatterns` key.
+  Future<void> setBreathePatternFor(String slot, String patternKey) async {
+    optionsFor(slot); // ArgumentError for an unknown slot
+    if (!kBreathPatternsByKey.containsKey(patternKey)) {
+      throw ArgumentError.value(patternKey, 'patternKey', 'not a pattern');
+    }
+    await _setSlotOption(slot, GestureSlotOptions.kBreathePattern, patternKey);
+  }
 
   /// Give [slot] its own breathing length. ArgumentError for an unknown slot or
-  /// a length that is not in [kBreatheMinuteChoices]. (RED STUB)
-  Future<void> setBreatheMinutesFor(String slot, int minutes) =>
-      throw UnimplementedError('setBreatheMinutesFor');
+  /// a length that is not in [kBreatheMinuteChoices].
+  Future<void> setBreatheMinutesFor(String slot, int minutes) async {
+    optionsFor(slot);
+    if (!kBreatheMinuteChoices.contains(minutes)) {
+      throw ArgumentError.value(minutes, 'minutes', 'not an offered length');
+    }
+    await _setSlotOption(
+        slot, GestureSlotOptions.kBreatheMinutes, '$minutes');
+  }
+
+  Future<void> _setSlotOption(String slot, String key, String value) async {
+    final cur = optionsFor(slot);
+    if (cur.values[key] == value) return;
+    final next = GestureSlotOptions({...cur.values, key: value});
+    _slotOptions[slot] = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kSlotOptionsPrefix$slot', jsonEncode(next.values));
+    notifyListeners();
+  }
 
   static GestureSlotOptions _decodeSlotOptions(String? raw) {
     if (raw == null) return const GestureSlotOptions();

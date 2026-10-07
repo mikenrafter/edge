@@ -43,6 +43,7 @@ import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/prefs.dart';
+import '../screens/calm_breathing.dart' show localizedBreathPatterns;
 import '../ui2.dart';
 import 'device_lab.dart';
 import 'haptics_settings.dart' show HapticsSettings;
@@ -97,6 +98,14 @@ class BandGestures extends StatelessWidget {
           for (final slot in GestureSlots.all) slot: g.timeBuzzModeFor(slot),
         },
         onSlotTimeBuzzMode: g.setTimeBuzzModeFor,
+        slotBreathePatterns: {
+          for (final slot in GestureSlots.all) slot: g.breathePatternFor(slot),
+        },
+        slotBreatheMinutes: {
+          for (final slot in GestureSlots.all) slot: g.breatheMinutesFor(slot),
+        },
+        onSlotBreathePattern: g.setBreathePatternFor,
+        onSlotBreatheMinutes: g.setBreatheMinutesFor,
         onHaptics: () => goto(c, const HapticsSettings()),
         devMode: caps.has(Feature.developerMode),
         onDeviceLab: () => goto(c, const DeviceLab()),
@@ -491,7 +500,21 @@ class BandGesturesView extends StatelessWidget {
               ),
             ),
           // Breathing exercise's pattern and length, in the tab of every gesture
-          // that has it on. (RED STUB: not drawn yet.)
+          // that has it on.
+          if (on.contains(DeviceAction.breathe))
+            Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: _BreathePicker(
+                pattern: slotBreathePatterns[slot] ?? kBreatheDefaultPattern,
+                minutes: slotBreatheMinutes[slot] ?? kBreatheDefaultMinutes,
+                onPattern: onSlotBreathePattern == null
+                    ? null
+                    : (key) => onSlotBreathePattern!(slot, key),
+                onMinutes: onSlotBreatheMinutes == null
+                    ? null
+                    : (m) => onSlotBreatheMinutes!(slot, m),
+              ),
+            ),
           if (noPhoneActions)
             Section(
               l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
@@ -701,6 +724,104 @@ class _TimeBuzzPicker extends StatelessWidget {
             Text(l?.gesturesTimeBuzzNow ?? 'Now',
                 style: F.over.copyWith(color: p.ink3)),
             Text(example(at, mode), style: F.body.copyWith(color: p.ink2)),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Breathing exercise's picker: the pattern rows and the session-length chips
+/// of one slot. The mark follows [pattern] / [minutes] (the caller's settings),
+/// not the tap.
+class _BreathePicker extends StatelessWidget {
+  const _BreathePicker({
+    required this.pattern,
+    required this.minutes,
+    required this.onPattern,
+    required this.onMinutes,
+  });
+
+  final String pattern;
+  final int minutes;
+  final ValueChanged<String>? onPattern;
+  final ValueChanged<int>? onMinutes;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    return Surface(
+      key: const ValueKey('breathe-picker'),
+      pad: const EdgeInsets.symmetric(horizontal: S.x4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(top: S.x3),
+          child: Text(l?.gesturesBreatheTitle ?? 'Breathing session',
+              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+        ),
+        Text(l?.gesturesBreathePatternTitle ?? 'Pattern',
+            style: F.over.copyWith(color: p.ink3)),
+        for (final b in localizedBreathPatterns(l)) ...[
+          Divider(color: p.line, height: 1),
+          Pressable(
+            key: ValueKey('breathe-pattern:${b.key}'),
+            onTap: onPattern == null ? null : () => onPattern!(b.key),
+            semanticLabel: '${b.label}. ${b.description}',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              child: Row(children: [
+                Expanded(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(b.label, style: F.body.copyWith(color: p.ink)),
+                        Text(b.description,
+                            style: F.over.copyWith(color: p.ink3)),
+                      ]),
+                ),
+                const SizedBox(width: S.x2),
+                if (b.key == pattern)
+                  Icon(LucideIcons.check, size: 18, color: p.on(C.blue))
+                else
+                  const SizedBox(width: 18),
+              ]),
+            ),
+          ),
+        ],
+        Divider(color: p.line, height: 1),
+        Padding(
+          padding: const EdgeInsets.only(top: S.x3),
+          child: Text(l?.gesturesBreatheLengthTitle ?? 'Length',
+              style: F.over.copyWith(color: p.ink3)),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: S.x2, bottom: S.x3),
+          child: Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+            for (final m in kBreatheMinuteChoices)
+              Pressable(
+                key: ValueKey('breathe-minutes:$m'),
+                onTap: onMinutes == null ? null : () => onMinutes!(m),
+                semanticLabel: l?.calmBreathingMinutesSemantic(m) ?? '$m minutes',
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      vertical: S.x2, horizontal: S.x3),
+                  decoration: BoxDecoration(
+                    color: m == minutes ? p.wash(C.blue) : p.card,
+                    borderRadius: R.rMd,
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Flexible(
+                      child: Text(l?.calmBreathingMinutesAbbrev(m) ?? '$m min',
+                          style: F.body.copyWith(color: p.ink)),
+                    ),
+                    if (m == minutes) ...[
+                      const SizedBox(width: S.x1),
+                      Icon(LucideIcons.check, size: 16, color: p.on(C.blue)),
+                    ],
+                  ]),
+                ),
+              ),
           ]),
         ),
       ]),

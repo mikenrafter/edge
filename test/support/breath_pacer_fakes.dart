@@ -109,6 +109,9 @@ class FakeBreathHost implements BreathPacerHost {
   final cues = <({BreathPhaseKind kind, double at})>[];
   double? completeAt;
 
+  /// The newest `start:...` event.
+  String get lastStart => events.lastWhere((e) => e.startsWith('start:'));
+
   int get starts => events.where((e) => e.startsWith('start:')).length;
   int get stops => events.where((e) => e == 'stop').length;
   int get completes => events.where((e) => e == 'complete').length;

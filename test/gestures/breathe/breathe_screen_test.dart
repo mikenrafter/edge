@@ -9,6 +9,8 @@
 //     setup page: mounted on one, or open when one starts, it is in the running
 //     view ("End session") at the session's own pattern and elapsed time, and
 //     its End session stops the session through AppState;
+//   * never stops that session itself (not at the target, not on leaving the
+//     screen): only the pacer ends it;
 //   * leaves the running view when that session ends under it;
 //   * is unchanged for a session of its own: the inhale cue at the first tick,
 //     the next phase's cue at its boundary, one cue per boundary.
@@ -18,6 +20,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -114,7 +117,8 @@ class _Spy extends AppState {
   void buzzSessionComplete() => completes++;
 }
 
-Future<_Spy> _pump(WidgetTester t, {void Function(_Spy)? before}) async {
+Future<_Spy> _pump(WidgetTester t,
+    {void Function(_Spy)? before, bool viaRoute = false}) async {
   final app = _Spy();
   addTearDown(app.dispose);
   before?.call(app);
@@ -134,8 +138,19 @@ Future<_Spy> _pump(WidgetTester t, {void Function(_Spy)? before}) async {
           value: Capabilities(const CapabilityInputs())),
     ],
     child: MaterialApp(
-        theme: buildTheme(Brightness.light), home: const CalmBreathing()),
+        theme: buildTheme(Brightness.light),
+        home: viaRoute
+            ? Builder(
+                builder: (c) => TextButton(
+                    onPressed: () => Navigator.of(c).push(MaterialPageRoute<void>(
+                        builder: (_) => const CalmBreathing())),
+                    child: const Text('open')))
+            : const CalmBreathing()),
   ));
+  if (viaRoute) {
+    await t.tap(find.text('open'));
+    await t.pump(const Duration(seconds: 1));
+  }
   await t.pump(const Duration(milliseconds: 50));
   // Leave the tree so the screen's ticker and timers are disposed before the
   // test ends.
@@ -256,6 +271,38 @@ void main() {
       expect(_end, findsNothing);
       expect(app.phases, isEmpty);
       expect(app.completes, 0);
+    });
+
+    testWidgets('the screen does not stop it at the target: only the pacer '
+        'ends a band-paced session (it plays the complete cue first)',
+        (t) async {
+      final app = await _pump(t, before: (a) {
+        a.gestureSession(
+            kBreathPatternsByKey['box']!, const Duration(minutes: 3),
+            ago: const Duration(minutes: 4)); // already past its target
+      });
+      for (var i = 0; i < 10; i++) {
+        await t.pump(const Duration(seconds: 1));
+      }
+      expect(app.stops, 0);
+      expect(app.breathingActive, isTrue);
+      expect(_end, findsOneWidget);
+    });
+
+    testWidgets('leaving the screen leaves the session running on the band',
+        (t) async {
+      final app = await _pump(t, viaRoute: true, before: (a) {
+        a.gestureSession(
+            kBreathPatternsByKey['box']!, const Duration(minutes: 3));
+      });
+      expect(_end, findsOneWidget);
+      await t.tap(find.byIcon(LucideIcons.x));
+      await t.pump(const Duration(seconds: 1));
+      await t.pump(const Duration(seconds: 1));
+      expect(_end, findsNothing);
+      expect(find.text('open'), findsOneWidget, reason: 'the screen was left');
+      expect(app.stops, 0);
+      expect(app.breathingActive, isTrue);
     });
   });
 }

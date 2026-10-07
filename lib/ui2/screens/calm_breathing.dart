@@ -250,7 +250,17 @@ class _CalmBreathingState extends State<CalmBreathing>
   bool _sweepAborted = false;
   bool get _sweeping => _block != null;
 
-  Duration? get _target => sessionEnd(_pattern, _rounds);
+  /// A session the band's pacer is running (a breathing gesture started it),
+  /// which this screen only shows. The pacer alone cues it and ends it at its
+  /// target (so the screen never stops it itself, and makes no cue calls),
+  /// and leaving the screen leaves it running. [_adoptedTarget] is what the
+  /// pacer was asked for, [_offset] how far into it the screen came in.
+  bool _adopted = false;
+  Duration? _adoptedTarget;
+  Duration _offset = Duration.zero;
+
+  Duration? get _target =>
+      _adopted ? _adoptedTarget : sessionEnd(_pattern, _rounds);
   int get _rounds => (_minutes * 60 / _pattern.cycleSeconds).round();
 
   bool _paceRead = false;
@@ -262,6 +272,7 @@ class _CalmBreathingState extends State<CalmBreathing>
     // the pattern is the user's choice from here on, and a profile write mid
     // session must not silently repace her.
     _app = context.read<AppState>();
+    _app!.addListener(_followPacer);
     unawaited(_loadEffect());
   }
 
@@ -277,10 +288,52 @@ class _CalmBreathingState extends State<CalmBreathing>
     final l = AppLocalizations.of(context);
     final yours = agreedPace(_app?.user?[kPaceWinsKey]);
     _pattern = yours != null ? paceAt(yours, l) : localizedBreathPatterns(l).first;
+    if (_pacerRunning) _adopt();
+  }
+
+  bool get _pacerRunning =>
+      _app != null && _app!.breathingActive && _app!.breathingPacedByBand;
+
+  /// Show the session the pacer is running: its pattern and target, the clock
+  /// started at the moment it began.
+  void _adopt() {
+    final app = _app!;
+    _adopted = true;
+    _adoptedTarget = app.breathingTarget;
+    _offset = DateTime.now().difference(app.breathingStartedAt ?? DateTime.now());
+    _pattern = app.breathingPattern;
+    _banded = true;
+    _running = true;
+    _finished = false;
+    _elapsed = _offset;
+    _lastPhase = null;
+    _startClock();
+  }
+
+  /// The app's breathing state changed: pick up a session the band started
+  /// while this screen was open, and leave the running view when the one it
+  /// shows ends elsewhere (the pacer finished, the gesture stopped it).
+  void _followPacer() {
+    if (!mounted) return;
+    if (!_running && _quiet == null && _pacerRunning) {
+      setState(_adopt);
+    } else if (_adopted && !(_app?.breathingActive ?? false)) {
+      _ticker?.stop();
+      _slowTick?.cancel();
+      _watch.stop();
+      setState(() {
+        _adopted = false;
+        _adoptedTarget = null;
+        _running = false;
+        _finished = true;
+      });
+      unawaited(_loadEffect());
+    }
   }
 
   @override
   void dispose() {
+    _app?.removeListener(_followPacer);
     _slowTick?.cancel();
     _quietTick?.cancel();
     _ticker?.dispose();
@@ -387,10 +440,20 @@ class _CalmBreathingState extends State<CalmBreathing>
       _banded = app.breathingActive;
       _running = true;
       _finished = false;
+      _adopted = false;
+      _adoptedTarget = null;
+      _offset = Duration.zero;
       _elapsed = Duration.zero;
       _lastPhase = null;
     });
+    _startClock();
+  }
+
+  /// The clock the running view reads: a frame ticker, or one tick a second
+  /// under reduced motion. Restarted from zero; [_offset] shifts it.
+  void _startClock() {
     _ticker?.dispose();
+    _ticker = null;
     _slowTick?.cancel();
     _watch
       ..reset()
@@ -402,18 +465,23 @@ class _CalmBreathingState extends State<CalmBreathing>
     }
   }
 
-  void _onTick(Duration elapsed) {
+  void _onTick(Duration clock) {
     if (!mounted) return;
+    final elapsed = clock + _offset;
     final target = _target;
-    if (target != null && elapsed >= target) {
+    // A session the pacer runs is ended by the pacer, at its own target.
+    if (!_adopted && target != null && elapsed >= target) {
       _stop();
       return;
     }
     final at = phaseAt(_pattern, elapsed);
     if (at != null && at.phase.kind != _lastPhase) {
       _lastPhase = at.phase.kind;
-      // Best-effort haptic cue so the session works with the screen off.
-      context.read<AppState>().buzzBreathPhase(at.phase.kind);
+      // Best-effort haptic cue so the session works with the screen off. Not
+      // while the band's pacer cues the session: that would be every phase
+      // twice.
+      final app = context.read<AppState>();
+      if (!app.breathingPacedByBand) app.buzzBreathPhase(at.phase.kind);
     }
     setState(() => _elapsed = elapsed);
   }
@@ -440,6 +508,9 @@ class _CalmBreathingState extends State<CalmBreathing>
   /// and hands over to the next pace, and a sweep the user stopped is a
   /// half-measured comparison that must never be banked as one.
   Future<void> _stop({bool abort = false}) async {
+    // The session is ending by this call, not under the screen.
+    _adopted = false;
+    _adoptedTarget = null;
     _ticker?.stop();
     _slowTick?.cancel();
     _watch.stop();
@@ -519,7 +590,8 @@ class _CalmBreathingState extends State<CalmBreathing>
     // owes the same exit — swiping away during one has to close it, not leave
     // it running behind a screen that is gone.
     final l = AppLocalizations.of(c);
-    final busy = _running || _quiet != null;
+    // A session the band paces keeps running when the screen is left.
+    final busy = (_running && !_adopted) || _quiet != null;
     return PopScope(
       canPop: !busy,
       onPopInvokedWithResult: (didPop, _) async {
@@ -545,7 +617,7 @@ class _CalmBreathingState extends State<CalmBreathing>
                     semanticLabel:
                         l?.calmBreathingCloseBreathing ?? 'Close breathing',
                     onTap: () async {
-                      if (_running) {
+                      if (_running && !_adopted) {
                         await _stop(abort: true);
                       } else if (_quiet != null) {
                         await _abortQuiet();

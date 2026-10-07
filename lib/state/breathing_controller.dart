@@ -88,7 +88,7 @@ class BreathingController implements BreathPacerHost {
   /// cues (a breathing gesture started it). The CalmBreathing screen reads this
   /// and makes no cue calls of its own while it is set, so a session is never
   /// cued twice. Cleared by the pacer, and by [stopBreathingSession] on every
-  /// path. (RED STUB: a plain field, nothing sets or clears it yet.)
+  /// path.
   @override
   bool pacedByBand = false;
 
@@ -264,6 +264,7 @@ class BreathingController implements BreathPacerHost {
   /// 4-second entries would bury the real ones.
   @override
   Future<void> stopBreathingSession() async {
+    pacedByBand = false; // whoever stops it, the pacer's claim on the cues ends
     if (!breathingActive) return;
     _breathingRecomputeTimer?.cancel();
     _breathingRecomputeTimer = null;

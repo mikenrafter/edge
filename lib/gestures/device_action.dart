@@ -184,7 +184,7 @@ extension DeviceActionX on DeviceAction {
       case DeviceAction.tellTime:
         return l?.deviceActionTellTimeLabel ?? label;
       case DeviceAction.breathe:
-        return label; // RED STUB: no localized string yet
+        return l?.deviceActionBreatheLabel ?? label;
     }
   }
 
@@ -219,7 +219,7 @@ extension DeviceActionX on DeviceAction {
       case DeviceAction.tellTime:
         return l?.deviceActionTellTimeBlurb ?? blurb;
       case DeviceAction.breathe:
-        return blurb; // RED STUB: no localized string yet
+        return l?.deviceActionBreatheBlurb ?? blurb;
     }
   }
 

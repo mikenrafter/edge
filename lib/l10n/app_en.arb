@@ -11965,6 +11965,26 @@
   "@deviceActionTellTimeBlurb": {
     "description": "Band double-tap action picker: blurb for telling the time"
   },
+  "deviceActionBreatheLabel": "Breathing exercise",
+  "@deviceActionBreatheLabel": {
+    "description": "Band double-tap action picker: label for the breathing exercise"
+  },
+  "deviceActionBreatheBlurb": "Start a guided breathing session paced by the band, or end the one that is running. No need to look at the phone.",
+  "@deviceActionBreatheBlurb": {
+    "description": "Band double-tap action picker: blurb for the breathing exercise"
+  },
+  "gesturesBreatheTitle": "Breathing session",
+  "@gesturesBreatheTitle": {
+    "description": "Gestures: title of the Breathing exercise picker"
+  },
+  "gesturesBreathePatternTitle": "Pattern",
+  "@gesturesBreathePatternTitle": {
+    "description": "Gestures: heading above the breathing pattern rows"
+  },
+  "gesturesBreatheLengthTitle": "Length",
+  "@gesturesBreatheLengthTitle": {
+    "description": "Gestures: heading above the breathing session length options"
+  },
   "gesturesTimeBuzzTitle": "How to buzz the time",
   "@gesturesTimeBuzzTitle": {
     "description": "Gestures: title of the Tell the time encoding picker"

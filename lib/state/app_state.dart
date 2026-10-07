@@ -144,7 +144,7 @@ import 'live_stream_buffer.dart';
 import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
 import 'imu_packet.dart';
-import '../gestures/breath_gesture.dart' show BreathPacer;
+import '../gestures/breath_gesture.dart' show BreathGesture, BreathPacer;
 import 'breathing_controller.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
@@ -2499,6 +2499,7 @@ class AppState extends ChangeNotifier {
     // route recorder is not stopped and a breathing session is not ended.
     // That is today's behaviour, pinned by test/app_state_workout_dispose_test.dart
     // and tracked as a follow-up rather than changed by the move.
+    breathPacer.dispose(); // before the controller: it clears the cue latch
     _breathing.dispose();
     _workout.dispose();
     // The sensor's notifier OUTLIVES this object (HrsLink is a singleton), so
@@ -4822,6 +4823,9 @@ class AppState extends ChangeNotifier {
       // THIS device only — a second device's trace is a separate session.
       _clearLiveHrTrace(deviceId);
       _sync.onLinkDropped();
+      // A band-paced breathing session ends cue-less (banked per the usual
+      // 60 s rule); nothing is left to receive its cues.
+      unawaited(breathPacer.onDisconnect().catchError((_) {}));
       // A lab recording on the dropped link ends with what it has.
       _imuLab?.onDisconnected();
     }
@@ -6396,9 +6400,10 @@ class AppState extends ChangeNotifier {
   bool get breathingPacedByBand => _breathing.pacedByBand;
   set breathingPacedByBand(bool v) => _breathing.pacedByBand = v;
 
-  /// The screen-free pacer behind the Breathing exercise gesture. (RED STUB)
-  BreathPacer get breathPacer =>
-      throw UnimplementedError('AppState.breathPacer');
+  /// The screen-free pacer behind the Breathing exercise gesture.
+  late final BreathPacer breathPacer = BreathPacer(_breathing);
+  late final BreathGesture _breathGesture = BreathGesture(
+      settings: gestureSettings, pacer: breathPacer, host: _breathing);
 
   /// The pattern the running session is pacing to.
   BreathPattern get breathingPattern => _breathing.breathingPattern;
@@ -6609,6 +6614,7 @@ class AppState extends ChangeNotifier {
       DeviceAction.markMoment => _markMomentFromGesture(e),
       DeviceAction.workoutToggle => _toggleWorkoutFromGesture(e),
       DeviceAction.logWater => _logWaterFromGesture(e),
+      DeviceAction.breathe => _breathGesture.onSlot(slot),
       _ => Future<void>.error(StateError('${a.id} is in-app with no handler')),
     };
   }

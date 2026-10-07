@@ -160,10 +160,10 @@ void main() {
       await s.setBreatheMinutesFor('triple', 10);
       final r = _Rig(s);
       await r.tap(2);
-      expect(r.host.events.last, 'start:box:60');
+      expect(r.host.lastStart, 'start:box:60');
       await r.tap(2); // stop
       await r.tap(3);
-      expect(r.host.events.last, 'start:four_seven_eight:600');
+      expect(r.host.lastStart, 'start:four_seven_eight:600');
       expect(r.host.target, const Duration(minutes: 10));
       expect(r.calls.map((c) => c.$1), ['double', 'double', 'triple']);
     });
@@ -177,7 +177,7 @@ void main() {
       await s.setBreathePatternFor('double', 'box');
       final r = _Rig(s);
       await r.tap(4);
-      expect(r.host.events.last, 'start:resonance:180');
+      expect(r.host.lastStart, 'start:resonance:180');
     });
 
     test('the settings are read when the gesture runs, not when it was '
@@ -187,7 +187,7 @@ void main() {
       await s.setBreathePatternFor('double', 'extended_exhale');
       await s.setBreatheMinutesFor('double', 2);
       await r.tap(2);
-      expect(r.host.events.last, 'start:extended_exhale:120');
+      expect(r.host.lastStart, 'start:extended_exhale:120');
     });
 
     test('any slot\'s gesture ends the one running session (there is only '
