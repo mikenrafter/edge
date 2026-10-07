@@ -121,6 +121,7 @@ import '../health/phone_pedometer.dart';
 import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
 import '../gestures/ecg_tap_begin.dart';
+import '../gestures/alarm_slot_probe.dart';
 import '../gestures/hardware_probe_runner.dart';
 import '../gestures/gesture_failures.dart';
 import '../gestures/lab_log.dart';
@@ -560,6 +561,30 @@ class AppState extends ChangeNotifier {
     runLab: haptics.runLab,
     beginLab: haptics.beginLab,
     endLab: haptics.endLab,
+  );
+
+  /// The Device lab's alarm-slot probe (developer mode): can the band hold
+  /// more than one alarm? It replaces the wearer's armed alarm for a few
+  /// minutes and ALWAYS puts it back (`finally`), so it runs as one arm flight
+  /// ([_runAlarmProbeExclusive]), restores through the normal write sink
+  /// ([_restoreRealAlarm]), and leaves a pending-restore marker in prefs while
+  /// it runs so a crash mid-probe is cleaned up by the next arm pass
+  /// ([_recoverFromProbe]). Its own alarm events never reach
+  /// [_handleAlarmEvent] ([AlarmSlotProbeRunner.swallowsEvent]).
+  late final AlarmSlotProbeRunner alarmSlotProbe = AlarmSlotProbeRunner(
+    lab: deviceLab,
+    family: () => engine.linkDeviceFamily,
+    developerMode: () => devMode,
+    isConnected: () => isConnected,
+    heldEpoch: () => alarmEpoch,
+    armBusy: () => _armFlight != null,
+    arm: (slot, when) => engine.setAlarmSlot(when, slot: slot),
+    read: (slot) => engine.readAlarmSlot(slot: slot),
+    clear: (slot) => engine.clearAlarmSlot(slot: slot),
+    restore: _restoreRealAlarm,
+    log: _log,
+    ledger: haptics.ledger,
+    runExclusive: _runAlarmProbeExclusive,
   );
 
   /// One ordinary buzz for the buzz probe: still a dispatcher delivery (its
@@ -2408,6 +2433,11 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   void debugTickWorkout() => _workout.debugTickWorkout();
 
+  /// Feed one live strap event through [_onLiveEvent], as the engine's
+  /// callback does. Tests only.
+  @visibleForTesting
+  void debugOnLiveEvent(StrapEvent e) => _onLiveEvent(e);
+
   /// Feed a strap alarm-lifecycle event (56 set / 57–58 fired / 59 cleared)
   /// without going through the BLE event path. Tests only.
   @visibleForTesting
@@ -3100,7 +3130,13 @@ class AppState extends ChangeNotifier {
     // M3: gesture dispatch and the alarm handler stay unscoped — neither is
     // device-scoped in M3's scope, and a double-tap on either band should
     // still log water.
-    _handleAlarmEvent(e.eventId, e.tsEpoch);
+    // The alarm-slot probe's own alarm events are evidence for it, never for
+    // the real alarm: a fired probe alarm here would be read as the wearer's
+    // alarm being spent and wipe it.
+    alarmSlotProbe.onBandEvent(e);
+    if (!alarmSlotProbe.swallowsEvent(e)) {
+      _handleAlarmEvent(e.eventId, e.tsEpoch);
+    }
     // handle() never throws; the outcomes are logged per action by the
     // dispatcher. They also decide the acknowledgement buzz, which goes through
     // alertDispatcher (live-only, short deadline) and never straight to the
@@ -5039,6 +5075,84 @@ class AppState extends ChangeNotifier {
     return armed;
   }
 
+  /// Prefs key of the alarm-slot probe's pending-restore marker: the epoch of
+  /// the real alarm to put back (0: none). Set before the probe's first write,
+  /// removed once the band is confirmed clean and the alarm restored.
+  static const String _kAlarmProbePendingPref = 'alarm_probe_pending';
+
+  /// The probe as one arm flight: it never starts inside a real arm pass, and
+  /// any arm pass that arrives meanwhile shares the flight and finds the
+  /// restored alarm unchanged. The lab queue gives it the band alone. False
+  /// when it did not run (a pass was in flight, or the band was not free).
+  Future<bool> _runAlarmProbeExclusive(Future<void> Function() body) async {
+    if (_armFlight != null) return false;
+    var ran = false;
+    final held = alarmEpoch;
+    await _joinArmFlight(() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kAlarmProbePendingPref, held ?? 0);
+      try {
+        ran = await haptics.runLab(body);
+      } finally {
+        // Kept when the probe could not confirm it left the band clean: the
+        // next arm pass retries ([_recoverFromProbe]).
+        if (!alarmSlotProbe.needsRecovery) {
+          await prefs.remove(_kAlarmProbePendingPref);
+        }
+      }
+      return const AlarmArmReport();
+    });
+    return ran;
+  }
+
+  /// Put the real alarm back after the probe, through the one write sink every
+  /// arm uses ([_writeAlarm], then [_onArmed]). Called inside the probe's
+  /// flight, so it must not join the flight itself.
+  Future<bool> _restoreRealAlarm(int epoch) async {
+    final when = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+    if (!when.isAfter(DateTime.now().add(const Duration(seconds: 20)))) {
+      _log('[alarm] probe: your alarm at ${when.toIso8601String()} has '
+          'passed; nothing to put back.');
+      return true;
+    }
+    final armed = await _writeAlarm(when);
+    if (armed == null) {
+      _log('[alarm] probe: restoring your alarm at ${when.toIso8601String()} '
+          'was NOT taken by the band.');
+      return false;
+    }
+    await _onArmed(armed, epoch);
+    return true;
+  }
+
+  /// A leftover pending-restore marker: a probe died mid-run. Clear its slots
+  /// and re-arm the real alarm; the marker goes only when both worked. Runs
+  /// inside an arm pass (so inside the flight).
+  Future<void> _recoverFromProbe(SharedPreferences prefs, int epoch) async {
+    if (engine.linkDeviceFamily == null) return; // cannot pick the right form
+    _log('[alarm] probe: a probe was cut short; clearing its slots and '
+        're-arming your alarm.');
+    var clean = true;
+    // Slot B always; slot A too when there is no real alarm to overwrite it.
+    for (final slot in [1, if (epoch == 0) 0]) {
+      try {
+        if (!await engine.clearAlarmSlot(slot: slot)) clean = false;
+      } catch (e) {
+        _log('[alarm] probe recovery: clearing slot $slot failed: $e');
+        clean = false;
+      }
+    }
+    if (epoch != 0) {
+      try {
+        if (!await _restoreRealAlarm(epoch)) clean = false;
+      } catch (e) {
+        _log('[alarm] probe recovery: re-arming failed: $e');
+        clean = false;
+      }
+    }
+    if (clean) await prefs.remove(_kAlarmProbePendingPref);
+  }
+
   Future<AlarmArmReport> _armPass() async {
     if (!isConnected) return const AlarmArmReport();
     try {
@@ -5057,6 +5171,12 @@ class AppState extends ChangeNotifier {
         } else {
           _alarm.disable();
         }
+      }
+      // A probe that was cut short (crash, kill) left its marker: clean the
+      // band and put the real alarm back before anything dedupes against it.
+      final pendingProbe = prefs.getInt(_kAlarmProbePendingPref);
+      if (pendingProbe != null && !alarmSlotProbe.running) {
+        await _recoverFromProbe(prefs, pendingProbe);
       }
       final result = await armNextScheduledOccurrence(
         engine: _armWriter,

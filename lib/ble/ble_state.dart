@@ -1312,6 +1312,58 @@ class AlarmPayloads {
   }) =>
       isGen5 ? <int>[0x04, id & 0xff] : const <int>[0x01];
 
+  /// The Device lab's alarm-slot probe pattern: the stock effect pair
+  /// (47, 152), ONE overall loop and a 3 s cap — a short, gentle buzz rather
+  /// than the stock loop-7, 30 s wake buzz. The waveform bytes are the ones
+  /// the band is known to accept; only the loop and duration shrink.
+  static const List<int> probeHaptics = <int>[
+    47, 152, 0, 0, 0, 0, 0, 0, // waveform-effect slots
+    0, 0, //                       loop control (u16 LE)
+    1, //                          overall loop
+    3, //                          duration seconds
+  ];
+
+  /// The probe's two slots: 0 is alarm A, 1 is alarm B.
+  static void _checkProbeSlot(int slot) {
+    if (slot < 0 || slot > 1) {
+      throw ArgumentError.value(slot, 'slot', 'the probe has slots 0 and 1');
+    }
+  }
+
+  /// SET_ALARM_TIME body for probe alarm [slot]: the RICH form on both
+  /// generations, because the rev-1 form has no index and so cannot address a
+  /// second alarm. gen5 uses alarm ids [gen5Slot] + slot (1, 2 — id 0 is
+  /// rejected) with the crescendo byte; gen4 uses rich indices 0 and 1.
+  /// Always the [probeHaptics] pattern.
+  static List<int> probeBody(
+    DateTime when, {
+    required bool isGen5,
+    required int slot,
+  }) {
+    _checkProbeSlot(slot);
+    return isGen5
+        ? <int>[
+            ...rich(when, index: gen5Slot + slot, haptics: probeHaptics),
+            0, // crescendo off
+          ]
+        : rich(when, index: slot, haptics: probeHaptics);
+  }
+
+  /// GET_ALARM_TIME body for probe [slot]. gen4's read has no index operand,
+  /// so both slots read the same way and report the one alarm it names.
+  static List<int> probeReadBody({required bool isGen5, required int slot}) {
+    _checkProbeSlot(slot);
+    return getPayloadForBand(isGen5: isGen5, id: gen5Slot + slot);
+  }
+
+  /// DISABLE_ALARM body for probe [slot]: gen5 clears exactly that id (never
+  /// the all-slots 0xFF); gen4's disable has no index, so it is the plain
+  /// gen4 body whatever the slot.
+  static List<int> probeClearBody({required bool isGen5, required int slot}) {
+    _checkProbeSlot(slot);
+    return disableForBand(isGen5: isGen5, id: gen5Slot + slot);
+  }
+
   /// Convert a WALL-CLOCK alarm target into the strap's own RTC frame.
   ///
   /// The strap runs the wake alarm autonomously and fires when ITS RTC reaches
@@ -1329,6 +1381,49 @@ class AlarmPayloads {
   /// wall epoch unchanged.
   static DateTime toStrapFrame(DateTime when, int driftSec) =>
       when.subtract(Duration(seconds: driftSec));
+}
+
+/// What the band said to one probe SET_ALARM_TIME (Device lab). [rejected] is
+/// the engine's verdict (a FAILURE/UNSUPPORTED outer result or an input-
+/// rejection alarm-status byte); [answered] false is a write that went out
+/// with no correlated reply, which is NOT a refusal. [wallSec] is the wall
+/// instant asked for, [strapSec] the same in the strap's clock frame — the
+/// frame the band's readbacks and events are in.
+class AlarmSlotWrite {
+  const AlarmSlotWrite({
+    required this.written,
+    required this.answered,
+    required this.rejected,
+    required this.wallSec,
+    required this.strapSec,
+    this.resultStatus,
+    this.alarmStatus,
+    this.alarmStatusName,
+  });
+  final bool written;
+  final bool answered;
+  final bool rejected;
+  final int wallSec;
+  final int strapSec;
+  final int? resultStatus;
+  final int? alarmStatus;
+  final String? alarmStatusName;
+
+  /// Seconds the strap clock is behind the wall clock for this write.
+  int get driftSec => wallSec - strapSec;
+}
+
+/// What the band said to one probe GET_ALARM_TIME. [active] is null where the
+/// form carries no active flag (gen4).
+class AlarmSlotRead {
+  const AlarmSlotRead({required this.answered, this.epoch, this.active});
+  const AlarmSlotRead.silent()
+      : answered = false,
+        epoch = null,
+        active = null;
+  final bool answered;
+  final int? epoch;
+  final bool? active;
 }
 
 /// The two band writes the weekly-schedule arm logic may make. Exists so a test

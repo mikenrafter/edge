@@ -7677,6 +7677,125 @@ class BleEngine implements AlarmBandWriter {
     );
   }
 
+  // ── Device lab alarm-slot probe ────────────────────────────────────────────
+  // Three calls for `lib/gestures/alarm_slot_probe.dart`, which asks whether
+  // the band holds MORE THAN ONE alarm. They are never reached by the normal
+  // arm path: [setAlarm] stays the one place a REAL alarm is written, and these
+  // only run from a user-started probe that restores the real alarm in
+  // `finally`. Slot 0 is probe alarm A (gen5 id 1 / gen4 rich index 0), slot 1
+  // is probe alarm B (gen5 id 2 / gen4 index 1). None of the three opcodes is
+  // in `dangerousCmds`.
+
+  /// SET_ALARM_TIME for probe alarm [slot] at [when] (wall clock; sent in the
+  /// strap's RTC frame exactly as [setAlarm] does), with the short gentle
+  /// [AlarmPayloads.probeHaptics] pattern. Reports what the band said without
+  /// judging it; an unanswered write is `answered: false`, not a refusal.
+  Future<AlarmSlotWrite> setAlarmSlot(DateTime when, {required int slot}) async {
+    if (slot < 0 || slot > 1) {
+      throw ArgumentError.value(slot, 'slot', 'the probe has slots 0 and 1');
+    }
+    final isGen5 = _session?.band.isGen5 ?? false;
+    if (isGen5) {
+      await setClock(); // as setAlarm: the RTC drift must be fresh
+      await Future.delayed(const Duration(milliseconds: 120));
+    }
+    final ref = _clockRef;
+    final driftSec = ref?.driftSec ?? 0;
+    final armWhen = AlarmPayloads.toStrapFrame(when, driftSec);
+    final wallSec = when.millisecondsSinceEpoch ~/ 1000;
+    final strapSec = armWhen.millisecondsSinceEpoch ~/ 1000;
+    final payload =
+        AlarmPayloads.probeBody(armWhen, isGen5: isGen5, slot: slot);
+    final out = await _sendAwaited(Cmd.setAlarmTime, payload);
+    _log('[alarm] probe SET_ALARM_TIME slot $slot '
+        '(${isGen5 ? 'gen5 id ${AlarmPayloads.gen5Slot + slot}' : 'gen4 rich index $slot'} '
+        '${payload.length}B) → wallSec=$wallSec strapSec=$strapSec '
+        'drift=${driftSec}s correlated=${ref != null} '
+        'write=${out.written ? 'ok' : 'FAILED'}');
+    AlarmSlotWrite result({
+      required bool written,
+      required bool answered,
+      bool rejected = false,
+      int? resultStatus,
+      int? alarmStatus,
+      String? alarmStatusName,
+    }) =>
+        AlarmSlotWrite(
+          written: written,
+          answered: answered,
+          rejected: rejected,
+          wallSec: wallSec,
+          strapSec: strapSec,
+          resultStatus: resultStatus,
+          alarmStatus: alarmStatus,
+          alarmStatusName: alarmStatusName,
+        );
+    if (!out.written) return result(written: false, answered: false);
+    final resp = await out.response;
+    if (resp == null) {
+      _log('[alarm] probe slot $slot: no correlated SET_ALARM_TIME reply.');
+      return result(written: true, answered: false);
+    }
+    final code = (resp.fields['alarm_status'] as num?)?.toInt();
+    final name = resp.fields['alarm_status_name'] as String?;
+    final rejected = resp.failed ||
+        resp.unsupported ||
+        (code != null && AlarmStatus.isInputRejection(code));
+    _log('[alarm] probe slot $slot ${rejected ? 'REJECTED' : 'accepted'} — '
+        'result=${resp.status} alarm_status=${code ?? 'absent'} '
+        '(${name ?? 'no status byte'}).');
+    return result(
+      written: true,
+      answered: true,
+      rejected: rejected,
+      resultStatus: resp.status,
+      alarmStatus: code,
+      alarmStatusName: name,
+    );
+  }
+
+  /// GET_ALARM_TIME for probe [slot]. gen5 reads by id; gen4's read has no
+  /// index operand, so it reports whichever one alarm the band names. No
+  /// reply (or an unwritten read) is [AlarmSlotRead.silent], never a guess.
+  Future<AlarmSlotRead> readAlarmSlot({required int slot}) async {
+    final isGen5 = _session?.band.isGen5 ?? false;
+    final out = await _sendAwaited(
+      Cmd.getAlarmTime,
+      AlarmPayloads.probeReadBody(isGen5: isGen5, slot: slot),
+    );
+    if (!out.written) return const AlarmSlotRead.silent();
+    final resp = await out.response;
+    if (resp == null) {
+      _log('[alarm] probe GET_ALARM_TIME slot $slot: no reply.');
+      return const AlarmSlotRead.silent();
+    }
+    final epoch = (resp.fields['alarm_epoch'] as num?)?.toInt();
+    final active = resp.fields['alarm_active'] as bool?;
+    _log('[alarm] probe GET_ALARM_TIME slot $slot: result=${resp.status} '
+        'epoch=${epoch ?? 'absent'} active=${active ?? 'n/a'}');
+    return AlarmSlotRead(answered: true, epoch: epoch, active: active);
+  }
+
+  /// DISABLE_ALARM for probe [slot]: gen5 clears exactly that id (never the
+  /// all-slots 0xFF), gen4's disable has no index. True when the write left
+  /// the phone and the band did not refuse it (no reply counts as sent).
+  Future<bool> clearAlarmSlot({required int slot}) async {
+    final isGen5 = _session?.band.isGen5 ?? false;
+    final out = await _sendAwaited(
+      Cmd.disableAlarm,
+      AlarmPayloads.probeClearBody(isGen5: isGen5, slot: slot),
+    );
+    if (!out.written) {
+      _log('[alarm] probe DISABLE_ALARM slot $slot: write FAILED.');
+      return false;
+    }
+    final resp = await out.response;
+    final refused = resp != null && (resp.failed || resp.unsupported);
+    _log('[alarm] probe DISABLE_ALARM slot $slot: '
+        '${resp == null ? 'sent, no reply' : refused ? 'REFUSED' : 'accepted'}.');
+    return !refused;
+  }
+
   /// Fire the alarm haptics IMMEDIATELY — a "test buzz" so the user can confirm
   /// the strap actually fires before trusting the scheduled wake.
   ///

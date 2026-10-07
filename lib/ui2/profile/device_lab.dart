@@ -45,6 +45,7 @@ import '../../sync/dev_log_export.dart';
 import '../../util/log_file.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
+import 'alarm_slot_probe_card.dart';
 import 'live_devices.dart' show LiveDevices;
 import 'motion_lab.dart';
 import 'pattern_probe_page.dart';
@@ -121,7 +122,18 @@ class DeviceLab extends StatelessWidget {
         // The lab is now reached from Settings > Developer, so the entry no
         // longer carries the flag: the tap tools inside do.
         tapTools: caps.has(Feature.deviceLabTapTools),
-        probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
+        probes: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
+            // Developer mode only: the card is not there otherwise.
+            if (caps.has(Feature.developerMode))
+              Padding(
+                padding: const EdgeInsets.only(top: S.x3),
+                child: AlarmSlotProbeCard(runner: app.alarmSlotProbe),
+              ),
+          ],
+        ),
         // The IMU recorder is a developer tool: its tab is offered only in
         // developer mode.
         motion: caps.has(Feature.developerMode)
