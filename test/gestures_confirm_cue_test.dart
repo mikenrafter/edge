@@ -164,7 +164,8 @@ void main() {
 
     test('an assignment for a key that is not a cue is ignored', () {
       final cues = resolveCuePatterns(store, {'alert.water': slow.id});
-      // The gesture cues and (Oct 4) the four breathing cues.
+      // The gesture cues, (Oct 4) the four breathing cues and (Oct 7) the
+      // four alarm snooze cues.
       expect(cues.keys.toSet(), {
         kGestureStartKey,
         kGestureFollowUpKey,
@@ -174,6 +175,7 @@ void main() {
         kBreathExhaleKey,
         kBreathHoldKey,
         kBreathDoneKey,
+        ...kAlarmSlotKeys,
       });
       expect(cues[kGestureConfirmKey]!.patternId,
           systemPatternId(kGestureConfirmKey));
