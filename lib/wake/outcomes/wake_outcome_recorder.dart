@@ -72,8 +72,47 @@ class WakeOutcomeRecorder {
 
   int get _nowSec => _now().millisecondsSinceEpoch ~/ 1000;
 
+  /// What a later assembly must not forget: the app-touch buffer lasts five
+  /// minutes and the confirmation store stops recording after confirmation, so
+  /// a catch-up can see LESS than the first run did. A response once observed
+  /// stays (the earliest of the two), and so do the exclusions that rest on
+  /// observations (alreadyAwake, crossedEpisode). Everything else (delivery,
+  /// staleStage, competingAlarm, noDelivery) comes from the trace, which only
+  /// grows, so the new assembly stands. Only merged when both runs agree on the
+  /// fire: latencies are relative to it.
+  WakeOutcome _keepObserved(WakeOutcome? old, WakeOutcome fresh) {
+    if (old == null || old.firedAtSec != fresh.firedAtSec) return fresh;
+    final latency = <WakeResponseKind, int?>{};
+    for (final kind in WakeResponseKind.values) {
+      final a = old.latencySec[kind], b = fresh.latencySec[kind];
+      latency[kind] = a == null ? b : (b == null ? a : (a < b ? a : b));
+    }
+    const sticky = {WakeExclusion.alreadyAwake, WakeExclusion.crossedEpisode};
+    final kept = {
+      ...fresh.exclusions,
+      ...old.exclusions.where(sticky.contains),
+    };
+    return WakeOutcome(
+      wakeSec: fresh.wakeSec,
+      firedBy: fresh.firedBy,
+      firedAtSec: fresh.firedAtSec,
+      stageAtFire: fresh.stageAtFire,
+      stageAgeSec: fresh.stageAgeSec,
+      delivered: fresh.delivered,
+      latencySec: latency,
+      grogginess: fresh.grogginess,
+      minutesBeforeT: fresh.minutesBeforeT,
+      configuredWindowMinutes: fresh.configuredWindowMinutes,
+      exclusions: [
+        for (final e in WakeExclusion.values)
+          if (kept.contains(e)) e,
+      ],
+    );
+  }
+
   /// Assembles the outcome of the wake at [wakeSec] and stores it, replacing an
-  /// earlier one for the same wake but keeping its grogginess rating. Null when
+  /// earlier one for the same wake but keeping its grogginess rating and what it
+  /// had already observed ([_keepObserved]). Null when
   /// gated off, when the trace has neither a fire nor a close for it, or on any
   /// failure.
   Future<WakeOutcome?> record(int wakeSec) async {
@@ -107,8 +146,9 @@ class WakeOutcomeRecorder {
           movementSecs: evidence.movement,
           grogginess: existing?.grogginess,
         );
-        await store.upsert(outcome);
-        return outcome;
+        final merged = _keepObserved(existing, outcome);
+        await store.upsert(merged);
+        return merged;
       });
     } catch (_) {
       return null;

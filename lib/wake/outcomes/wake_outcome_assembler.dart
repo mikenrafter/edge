@@ -9,11 +9,18 @@
 //                evidence age.
 //   natural_haptic {phase:'request', stage ('rem'|'wake'|null)} then
 //                {phase:'result', result:'sent'|'notDelivered', delivered:[..]}
-//                A 'result' row with result 'sent' is the delivered fire; its
-//                atMs is the fire time.
+//                `delivered` is the transport's TARGETS ('band', 'phone'), and
+//                the result is 'sent' when ANY target worked. Only a row whose
+//                targets include 'band' is a delivered fire; its atMs is the
+//                fire time.
+//   plan         {naturalMinutes, ...} once per run: the configured Natural
+//                window for that night.
 //   natural_repeat {phase:'start'|'result'|'stop', reason on stop:
 //                acknowledged|bandDoubleTap|wakeTime|headlessBound|disposed}
-//   gradual      {index, result:'sent'|'notDelivered'|'skippedLate'}
+//                A repeat sends to the band only and its result row carries no
+//                targets: 'sent' there means the band.
+//   gradual      {index, result:'sent'|'notDelivered'|'skippedLate',
+//                delivered:[targets]}
 //   fallback     {armed, confirmed, rearmed}  (the native alarm at T)
 //   ack          {cancelNative, cancelled, fallbackArmed}
 //   closed       {naturalFired, gradualSteps, acknowledged}  (T has passed)
@@ -36,17 +43,19 @@ const int kOutcomeCompetingAlarmSec = 900;
 /// episode.
 const int kOutcomeEpisodeSec = 4 * 3600;
 
-/// firedBy:
-///  - natural  when a natural_haptic result row with result 'sent' exists
+/// firedBy (a row is "band-delivered" when result is 'sent' and its `delivered`
+/// targets include 'band'; a natural_repeat row has no targets and counts):
+///  - natural  when a band-delivered natural_haptic / natural_repeat result row
+///             exists
 ///             (fire = that row's time; stageAtFire from the request row, with
 ///             'wake' reported as 'awake'; stageAgeSec = evidenceAgeMs / 1000
 ///             rounded, from the last 'natural' row at or before it that has
 ///             one);
-///  - else gradual when a gradual row has result 'sent' (first such row);
+///  - else gradual when a band-delivered gradual row exists (first such row);
 ///  - else native when a 'closed' row exists (T passed; fire = wakeSec);
 ///  - else none (firedAtSec / minutesBeforeT null, delivered false).
 /// delivered: natural/gradual yes; native only when the LAST 'fallback' row has
-/// armed == true; none no. !delivered adds WakeExclusion.noDelivery.
+/// armed == true AND confirmed == true; none no. !delivered adds WakeExclusion.noDelivery.
 /// minutesBeforeT = (wakeSec - firedAtSec) / 60 (native: 0.0).
 ///
 /// Latencies (seconds, whole): deliberateAck = first 'ack' row, or first
@@ -60,8 +69,12 @@ const int kOutcomeEpisodeSec = 4 * 3600;
 ///
 /// Exclusions: alreadyAwake when an appInteraction lies in
 /// [fire - 600 s, fire]; staleStage when stageAgeSec > 180; competingAlarm
-/// when an otherAlarmSecs value lies in [fire - 900 s, fire]. With no fire
+/// when an otherAlarmSecs value lies in [fire - 900 s, fire] or a band-delivered
+/// Gradual step lies in [fire - 900 s, fire) (a second wake stimulus the
+/// response cannot be told apart from). With no fire
 /// there is no fire time: only noDelivery applies.
+///
+/// configuredWindowMinutes = naturalMinutes of the last 'plan' row, else null.
 WakeOutcome assemble({
   required int wakeSec,
   required List<WakeTraceEntry> trace,
@@ -74,10 +87,17 @@ WakeOutcome assemble({
     for (final row in trace) if (row.wakeEpochSec == wakeSec) row,
   ]..sort((a, b) => a.atMs.compareTo(b.atMs));
 
+  // Sent AND the band among the delivered targets. A natural_repeat result has
+  // no targets (it only ever sends to the band), so absent means band.
+  bool bandSent(WakeTraceEntry row) {
+    if (row.data['result'] != 'sent') return false;
+    final targets = row.data['delivered'];
+    if (targets == null) return row.kind == 'natural_repeat';
+    return targets is List && targets.contains('band');
+  }
+
   bool hasResult(WakeTraceEntry row, String kind) =>
-      row.kind == kind &&
-      row.data['phase'] == 'result' &&
-      row.data['result'] == 'sent';
+      row.kind == kind && row.data['phase'] == 'result' && bandSent(row);
 
   final naturalFire = <WakeTraceEntry>[
     for (final row in rows)
@@ -86,7 +106,7 @@ WakeOutcome assemble({
   ];
   final gradualFire = <WakeTraceEntry>[
     for (final row in rows)
-      if (row.kind == 'gradual' && row.data['result'] == 'sent') row,
+      if (row.kind == 'gradual' && bandSent(row)) row,
   ];
   final closed = rows.where((row) => row.kind == 'closed').toList();
 
@@ -129,7 +149,8 @@ WakeOutcome assemble({
     for (final row in rows) {
       if (row.kind == 'fallback') fallback = row;
     }
-    delivered = fallback?.data['armed'] == true;
+    delivered = fallback?.data['armed'] == true &&
+        fallback?.data['confirmed'] == true;
   } else {
     firedBy = WakeFiredBy.none;
   }
@@ -181,8 +202,18 @@ WakeOutcome assemble({
     alreadyAwake = appInteractionSecs
         .any((second) => second >= fire - kOutcomeAlreadyAwakeSec && second <= fire);
     staleStage = stageAgeSec != null && stageAgeSec > kOutcomeStaleStageSec;
-    competingAlarm = otherAlarmSecs
-        .any((second) => second >= fire - kOutcomeCompetingAlarmSec && second <= fire);
+    competingAlarm = otherAlarmSecs.any(
+            (second) => second >= fire - kOutcomeCompetingAlarmSec && second <= fire) ||
+        gradualFire.any((row) {
+          final second = row.atMs ~/ 1000;
+          return second >= fire - kOutcomeCompetingAlarmSec && second < fire;
+        });
+  }
+
+  int? configuredWindowMinutes;
+  for (final row in rows) {
+    final minutes = row.data['naturalMinutes'];
+    if (row.kind == 'plan' && minutes is int) configuredWindowMinutes = minutes;
   }
 
   final exclusionSet = <WakeExclusion>{
@@ -203,6 +234,7 @@ WakeOutcome assemble({
     grogginess: grogginess,
     minutesBeforeT:
         firedAtSec == null ? null : (wakeSec - firedAtSec) / 60.0,
+    configuredWindowMinutes: configuredWindowMinutes,
     exclusions: [
       for (final exclusion in WakeExclusion.values)
         if (exclusionSet.contains(exclusion)) exclusion,

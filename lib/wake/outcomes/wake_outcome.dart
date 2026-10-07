@@ -28,7 +28,7 @@ enum WakeResponseKind {
 /// Why a morning cannot be compared with the others. Declared in this order;
 /// [WakeOutcome.exclusions] lists them in this order, without duplicates.
 enum WakeExclusion {
-  /// No wake haptic reached the band (and no armed native alarm at T).
+  /// No wake haptic reached the band (and no armed, confirmed native alarm at T).
   noDelivery,
 
   /// The app was already in use in the 10 minutes before the fire.
@@ -59,6 +59,7 @@ class WakeOutcome {
     required this.latencySec,
     this.grogginess,
     this.minutesBeforeT,
+    this.configuredWindowMinutes,
     this.exclusions = const [],
   });
 
@@ -78,8 +79,8 @@ class WakeOutcome {
   /// Age of the stage evidence at the fire, whole seconds. Null when unknown.
   final int? stageAgeSec;
 
-  /// The band accepted at least one wake haptic, or the native alarm at T was
-  /// confirmed armed.
+  /// The BAND was a delivered target of at least one wake haptic, or the native
+  /// alarm at T was armed and confirmed.
   final bool delivered;
 
   /// Seconds from the fire to each response. Always holds all three keys; a
@@ -92,6 +93,11 @@ class WakeOutcome {
   /// How early the fire was, minutes before T (native: 0.0). Null when nothing
   /// fired.
   final double? minutesBeforeT;
+
+  /// The Natural window configured for that night, minutes (the plan row's
+  /// naturalMinutes). This, not when the fire happened, is the policy that was
+  /// in force. Null when unknown (no plan row, or stored before it was kept).
+  final int? configuredWindowMinutes;
 
   final List<WakeExclusion> exclusions;
 
@@ -110,6 +116,7 @@ class WakeOutcome {
         },
         'grogginess': grogginess,
         'minutesBeforeT': minutesBeforeT,
+        'configuredWindowMinutes': configuredWindowMinutes,
         'exclusions': [for (final exclusion in exclusions) exclusion.name],
       };
 
@@ -187,6 +194,7 @@ class WakeOutcome {
       latencySec: latency,
       grogginess: nullableInt('grogginess'),
       minutesBeforeT: nullableDouble('minutesBeforeT'),
+      configuredWindowMinutes: nullableInt('configuredWindowMinutes'),
       exclusions: exclusions,
     );
   }
