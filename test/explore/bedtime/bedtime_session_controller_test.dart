@@ -126,13 +126,21 @@ void main() {
       expect(r.controller.cuesMissed, 0);
     });
 
-    test('a late tick plays the CURRENT phase once; it does not replay missed ones',
-        () async {
+    // RED-FIX EDIT (review P2, skipped phases): this test used the tick at 27 s
+    // (four skipped phases) and did not look at the counts, which is how the
+    // defect passed. A late tick still plays only the CURRENT phase, but every
+    // skipped boundary is a missed cue. Two skipped phases (tick at 17 s: phases
+    // 1 and 2 skipped, phase 3 played) stay under the 3-in-a-row stop.
+    test('a late tick plays the CURRENT phase once; it does not replay missed ones, '
+        'and each one it skipped counts as missed', () async {
       final r = BedtimeRig();
       await r.start();
       await r.at(0);
-      await r.at(27); // 27 s is 7 s into a cycle: exhale
+      await r.at(17); // 17 s is 7 s into the second cycle: exhale (phase 3)
       expect(r.kinds, [BreathPhaseKind.inhale, BreathPhaseKind.exhale]);
+      expect(r.controller.cuesMissed, 2, reason: 'phases 1 and 2 were skipped');
+      expect(r.controller.cuesSent, 2);
+      expect(r.controller.state, BedtimeState.running);
     });
 
     test('a taper keeps counting phases as the pace slows', () async {
@@ -332,6 +340,152 @@ void main() {
       final before = heard;
       await r.controller.stop();
       expect(heard, greaterThan(before));
+    });
+  });
+
+  // Review P2 (skipped phases): a delayed tick or a slow delivery skips phase
+  // boundaries. Each skipped boundary is a missed cue and breaks the run of
+  // successes; only the current phase's cue is ever sent. At 6 bpm a phase is 5 s.
+  group('skipped phases are missed cues (review P2)', () {
+    test('ticks at 0 then 27 s skip four phases: they are missed and, being '
+        'over three in a row, end the session as delivery failing', () async {
+      final r = BedtimeRig();
+      await r.start();
+      await r.at(0);
+      await r.at(27);
+      expect(r.controller.cuesMissed, 4);
+      expect(r.controller.state, BedtimeState.ended);
+      expect(r.controller.stopReason, BedtimeStopReason.deliveryFailing);
+      expect(r.cues.length, 1, reason: 'no cue is sent once it has failed');
+      expect(r.releases, 1);
+    });
+
+    test('one skipped phase is one missed cue; the current cue is still played',
+        () async {
+      final r = BedtimeRig();
+      await r.start();
+      await r.at(0);
+      await r.at(10); // phase 1 skipped, phase 2 (inhale) played
+      expect(r.kinds, [BreathPhaseKind.inhale, BreathPhaseKind.inhale]);
+      expect(r.controller.cuesMissed, 1);
+      expect(r.controller.cuesSent, 2);
+      await r.at(20); // phase 3 skipped, phase 4 played
+      expect(r.controller.cuesMissed, 2);
+      expect(r.controller.cuesSent, 3);
+      expect(r.controller.state, BedtimeState.running,
+          reason: 'a delivered cue between them: never 3 in a row');
+    });
+
+    test('a slow delivery that hides boundaries: they are counted when it lands',
+        () async {
+      final r = BedtimeRig();
+      await r.start();
+      r.deliverHold = Completer<bool>();
+      r.clock.at(kBedtimeT0);
+      final first = r.controller.tick(); // phase 0, still being delivered
+      for (final s in [5, 10, 15]) {
+        r.clock.at(kBedtimeT0.add(Duration(seconds: s)));
+        await r.controller.tick(); // phases 1, 2 come and go while it is open
+      }
+      r.deliverHold!.complete(true);
+      await first;
+      r.deliverHold = null;
+      await r.at(17); // phase 3
+      expect(r.kinds, [BreathPhaseKind.inhale, BreathPhaseKind.exhale]);
+      expect(r.controller.cuesMissed, 2, reason: 'phases 1 and 2');
+      expect(r.controller.cuesSent, 2);
+    });
+
+    test('a delivery slow enough to skip more than three phases reaches the '
+        'failure stop instead of carrying on', () async {
+      final r = BedtimeRig();
+      await r.start();
+      r.deliverHold = Completer<bool>();
+      r.clock.at(kBedtimeT0);
+      final first = r.controller.tick();
+      for (final s in [5, 10, 15, 20, 25]) {
+        r.clock.at(kBedtimeT0.add(Duration(seconds: s)));
+        await r.controller.tick();
+      }
+      r.deliverHold!.complete(true);
+      await first;
+      r.deliverHold = null;
+      await r.at(27); // phases 1..4 were skipped
+      expect(r.controller.cuesMissed, 4);
+      expect(r.controller.state, BedtimeState.ended);
+      expect(r.controller.stopReason, BedtimeStopReason.deliveryFailing);
+    });
+  });
+
+  // Review P2 (freshness and sustained sleep by evidence epochs, not request
+  // times). Ticks every 5 s, so phase skipping never interferes. The stager is
+  // asked at 0, 30, 60, 90 s.
+  group('stage evidence is judged by its own epochs and age (review P2)', () {
+    Future<void> walk(BedtimeRig r, int fromSec, int toSec) async {
+      for (var s = fromSec; s <= toSec; s += 5) {
+        await r.at(s);
+      }
+    }
+
+    NaturalObservation epochEvery(int call, int epochGapSec) =>
+        NaturalObservation(
+          stage: 'nrem',
+          confidence: 0.5,
+          evidenceAgeMs: 30000,
+          abstention: null,
+          runSec: 600,
+          epochStartMs: kBedtimeT0.millisecondsSinceEpoch +
+              1000.0 * epochGapSec * call,
+          note: null,
+        );
+
+    test('four sleep answers whose epochs are 60 s apart (an epoch missing '
+        'between each) never stop the session', () async {
+      final r = BedtimeRig(
+          plan: _stopOnSleep(), script: (c) => epochEvery(c, 60));
+      await r.start();
+      await walk(r, 0, 120);
+      expect(r.controller.state, BedtimeState.running,
+          reason: 'stopped by ${r.controller.stopReason}');
+      expect(r.observeCalls, 5);
+      expect(r.controller.sleepEstimate, 'not yet sustained');
+    });
+
+    test('four ADJACENT 30 s epochs still stop it (guard: the fix keeps this)',
+        () async {
+      final r = BedtimeRig(
+          plan: _stopOnSleep(), script: (c) => epochEvery(c, 30));
+      await r.start();
+      await walk(r, 0, 100);
+      expect(r.controller.state, BedtimeState.ended);
+      expect(r.controller.stopReason, BedtimeStopReason.sleepEstimated);
+    });
+
+    test('evidence that was 80 s old when asked ages after it is admitted: '
+        '20 s later it is stale and the estimate is unavailable', () async {
+      final r = BedtimeRig(
+          plan: _stopOnSleep(),
+          script: (c) => bedtimeObs('nrem', c, evidenceAgeMs: 80000));
+      await r.start();
+      await r.at(0);
+      expect(r.controller.sleepEstimate, 'not yet sustained',
+          reason: '80 s old when asked: still fresh');
+      await walk(r, 5, 25); // no new ask before 30 s
+      expect(r.observeCalls, 1);
+      expect(r.controller.sleepEstimate, 'unavailable',
+          reason: '100 s old by now (80 + 20): stale, never "not yet sustained"');
+    });
+
+    test('four adjacent sleep epochs that were each 90 s old when asked are '
+        'stale by the next tick and never stop the session', () async {
+      final r = BedtimeRig(
+          plan: _stopOnSleep(),
+          script: (c) => bedtimeObs('nrem', c, evidenceAgeMs: 90000));
+      await r.start();
+      await walk(r, 0, 115); // the fourth lands at 90 s; ticks follow at 95...
+      expect(r.controller.state, BedtimeState.running,
+          reason: 'the newest evidence is over 90 s old at every later tick');
+      expect(r.controller.sleepEstimate, 'unavailable');
     });
   });
 

@@ -166,13 +166,17 @@ void main() {
           reason: '91 s is stale');
     });
 
-    test('an outage between observations (over 90 s) breaks the run', () {
+    // RED-FIX EDIT (review P2, freshness by evidence epochs): this test used to
+    // break the run on a gap between OBSERVATION REQUEST times with the epochs
+    // themselves adjacent (0, 30, 60, 90 s). That is the defect: adjacency is
+    // the epochs' own times. The outage is now a missing epoch (epoch 2 never
+    // observed), same expectation.
+    test('a missing epoch (a gap in the epochs\' own times) breaks the run', () {
       final stages = [
         _s('nrem', 0),
         _s('nrem', 1),
-        // epoch 2 was only observed 150 s after the previous observation
-        _s('nrem', 2, observedAfter: const Duration(seconds: 160)),
-        _s('nrem', 3, observedAfter: const Duration(seconds: 190)),
+        _s('nrem', 3), // epoch 2 (t0 + 60 s) was never observed
+        _s('nrem', 4),
       ];
       expect(_tick(_policy(), stages), isNull);
     });
@@ -192,6 +196,40 @@ void main() {
     test('stopOnSleep false never stops for sleep, however clear', () {
       final stages = _run(['nrem', 'nrem', 'nrem', 'nrem', 'nrem', 'nrem']);
       expect(_tick(_policy(stopOnSleep: false), stages), isNull);
+    });
+  });
+
+  // Review P2: "sustained" is four ADJACENT 30 s epochs by the observation's own
+  // epoch time (StageSample.at), not four requests less than 90 s apart.
+  group('sustained sleep needs adjacent epochs (review P2)', () {
+    StageSample every(String stage, int i, int gapSec) => StageSample(
+          at: _t0.add(Duration(seconds: gapSec * i)),
+          stage: stage,
+          observedAt: _t0.add(Duration(seconds: gapSec * i + 40)),
+        );
+
+    test('four sleep epochs 60 s apart (an epoch missing between each) are not '
+        'sustained', () {
+      final s = [for (var i = 0; i < 4; i++) every('nrem', i, 60)];
+      expect(_policy().sleepEstimateStatus(s, _nowFor(s)), 'not yet sustained');
+      expect(_tick(_policy(), s), isNull);
+    });
+
+    test('a single missing epoch inside the last four breaks the run; four '
+        'adjacent ones after it stop', () {
+      final gap = [_s('nrem', 0), _s('nrem', 1), _s('nrem', 2), _s('nrem', 4)];
+      expect(_policy().sleepEstimateStatus(gap, _nowFor(gap)),
+          'not yet sustained');
+      expect(_tick(_policy(), gap), isNull);
+      final after = [
+        _s('nrem', 0),
+        _s('nrem', 1),
+        _s('nrem', 4),
+        _s('nrem', 5),
+        _s('nrem', 6),
+        _s('nrem', 7),
+      ];
+      expect(_tick(_policy(), after), BedtimeStopReason.sleepEstimated);
     });
   });
 
