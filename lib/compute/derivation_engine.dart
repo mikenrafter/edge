@@ -60,6 +60,9 @@ import 'sleep_profile_policy.dart';
 import 'derive_prepare.dart';
 import 'onehz_pipeline.dart';
 import 'day_calculation_state.dart';
+import 'day_checkpoint_fold.dart';
+import 'day_checkpoint_policy.dart';
+import 'day_resume_state.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
 import 'substrate.dart';
@@ -2844,12 +2847,23 @@ class DerivationEngine {
       _calculationStates.keys.toList()..sort();
 
   @visibleForTesting
-  ({int computations, int hits, int minutes, int motionPoints})?
+  ({
+    int computations,
+    int hits,
+    int minutes,
+    int motionPoints,
+    int hrSamples,
+    int orientationSamples,
+    int stepSamples,
+  })?
       debugCalculationState(String day) {
     final state = _calculationStates[day];
     return state == null ? null : (computations: state.computations,
       hits: state.hits,
-      minutes: state.processedMinutes, motionPoints: state.processedMotionPoints);
+      minutes: state.processedMinutes, motionPoints: state.processedMotionPoints,
+      hrSamples: state.processedHrSamples,
+      orientationSamples: state.processedOrientationSamples,
+      stepSamples: state.processedStepSamples);
   }
 
   /// Main-isolate failure seam after both workers completed, before their writes.
@@ -3557,9 +3571,13 @@ class DerivationEngine {
     // signature of the calorie artifact this derive stores.
     final inputFp = (await perf.stage(
         'fingerprints', () => LocalDb.decodedDayFingerprints([dayId])))[dayId];
-    final candidate = await _sleepCandidateForDay(dayId, stats: stats);
     final dayStart = _localDayLabelToSec(dayId);
     final dayEnd = _localNextDayLabelToSec(dayId);
+    // The same, for the day checkpoint: the revision of each 15-minute bucket
+    // of the day before any of its rows is read.
+    final inputRevs = await LocalDb.inputRevisions(
+        dayStart ~/ kRevBucketSec, (dayEnd - 1) ~/ kRevBucketSec + 1);
+    final candidate = await _sleepCandidateForDay(dayId, stats: stats);
 
     // M5: resolve ownership ONCE, over the union of every window this method
     // loads, and pass the same span lists to both the row filter and the
@@ -3626,6 +3644,7 @@ class DerivationEngine {
       ownership: ownership,
       priority: priority,
       inputFp: inputFp,
+      inputRevs: inputRevs,
     );
   }
 
@@ -4932,9 +4951,15 @@ class DerivationEngine {
 
     // Cancellable: on timeout the isolate is KILLED, not merely abandoned to
     // keep burning a core behind the worker pool's back.
+    // No state from an earlier pass in this process (a headless wake, a cold
+    // start): resume from the stored checkpoint when what it folded is still
+    // what the day holds. A user-driven re-derive never resumes; it rebuilds.
+    final ckptReuse = reason == DayResultWrite.derive;
+    final previousState = _calculationStates[day.date] ??
+        (ckptReuse ? await _restoreCheckpoint(day, profile) : null);
     final first = await perf.stage('bundle_isolate', () =>
       _runDayBundleCancellable(withHistory,
-      _calculationStates[day.date], calculationMode, _perDayTimeout,
+      previousState, calculationMode, _perDayTimeout,
       label: 'day-bundle ${day.date}'));
     final bundle = first.bundle;
     var candidateState = first.state;
@@ -5663,9 +5688,234 @@ class DerivationEngine {
     // the reusable checkpoint. Both workers only mutate isolate-owned copies.
     if (secondHalfOk) {
       _publishCalculationState(day.date, candidateState, finalized: finalized);
+      await _refreshCheckpoint(day, profile, dataNowSec,
+          finalized: finalized, reuse: ckptReuse);
     }
     return true;
   }
+
+  /// The settings of the day's checkpoint that live outside its rows, for
+  /// [dayContextSig]. [clipEndSec] is the cursor the checkpoint folded up to:
+  /// ownership is signed only over the rows it folded, so a second device's
+  /// coverage arriving later in the day does not retire a prefix that never
+  /// held its rows.
+  ({String sig, int? age, int? stepModulus}) _checkpointContext(
+    PreparedDerivationDay day,
+    Profile profile, {
+    required int clipEndSec,
+  }) {
+    final dayStart = _localDayLabelToSec(day.date);
+    final dayEnd = _localNextDayLabelToSec(day.date);
+    final clipEnd = math.min(clipEndSec, dayEnd);
+    int offsetMin(int sec) =>
+        DateTime.fromMillisecondsSinceEpoch(sec * 1000).timeZoneOffset.inMinutes;
+    final owners = <String>[
+      for (final sig in kExclusiveOwnershipSignals)
+        for (final span in day.ownership[sig] ?? const <OwnedSpan>[])
+          if (span.end > dayStart && span.start < clipEnd)
+            '${sig.name}:${math.max(span.start, dayStart)}-'
+                '${math.min(span.end, clipEnd)}:${span.deviceId ?? ''}',
+    ];
+    final family = day.daySub.deviceFamily;
+    return (
+      sig: dayContextSig(
+        profileSig: jsonEncode(profile.toMap()),
+        priorityKey: '${priorityKey(day.priority)}#${owners.join(',')}',
+        deviceFamily: family,
+        dayStartSec: dayStart,
+        dayEndSec: dayEnd,
+        tzOffsetAtStartMin: offsetMin(dayStart),
+        tzOffsetAtEndMin: offsetMin(dayEnd),
+        sleepOnsetSec: day.sleepOnsetSec,
+        sleepOffsetSec: day.sleepOffsetSec,
+        sleepSource: day.sleepSource,
+        // Nothing the checkpoint folds reads the movement floor; it joins the
+        // signature when the per-minute motion buckets do.
+        dynFloorG: null,
+      ),
+      age: profile.ageYears,
+      stepModulus: _stepModulusFor(family),
+    );
+  }
+
+  /// [day]'s stored checkpoint when it may be resumed, as a state whose
+  /// summaries start where the checkpoint stopped; null (a full pass) when
+  /// there is none or anything it depends on changed. Any doubt is a full pass.
+  Future<DayCalculationState?> _restoreCheckpoint(
+    PreparedDerivationDay day,
+    Profile profile,
+  ) async {
+    final revs = day.inputRevs;
+    final ts = day.daySub.tsSec;
+    if (revs == null || ts.isEmpty) return null;
+    try {
+      final cp = await LocalDb.dayCheckpoint(day.date, kAlgoVersion);
+      var decision = const ResumeDecision.full('none');
+      DayResumeState? state;
+      if (cp != null) {
+        final cpBucket = cp.cpRecTs ~/ kRevBucketSec;
+        final ctx =
+            _checkpointContext(day, profile, clipEndSec: cp.cpRecTs);
+        decision = decideResume(
+          cp: cp,
+          algoVersion: kAlgoVersion,
+          ctxSig: ctx.sig,
+          liveRevs: {
+            for (final e in revs.entries)
+              if (e.key < cpBucket) e.key: e.value,
+          },
+        );
+        if (decision.resume) {
+          state = decodeDayResumeState(cp.state);
+          // The blob must have folded exactly the day's rows before the cursor.
+          final before = firstIndexAtOrAfter(ts, cp.cpRecTs);
+          if (state == null) {
+            decision = const ResumeDecision.full('unreadable_state');
+          } else if (state.folded != before || before == 0) {
+            decision = const ResumeDecision.full('folded');
+            state = null;
+          }
+        }
+      }
+      _log('[perf] checkpoint ${day.date} '
+          '${decision.resume ? 'resume folded=${state!.folded}' : 'full ${decision.reason}'}');
+      perf.addCount(decision.resume ? 'cp_resumed' : 'cp_full', 1);
+      if (state == null) return null;
+      return DayCalculationState()..seedFrom(state);
+    } catch (e) {
+      _log('checkpoint ${day.date} not resumed: $e');
+      return null;
+    }
+  }
+
+  /// After a day's result committed: advances its checkpoint to the newest
+  /// closed 15-minute boundary (folding only the rows since the one it had,
+  /// or the whole closed prefix when it had none usable), drops it for a
+  /// finalized day, and drops those of days the engine no longer resumes.
+  /// Scratch only: a failure here is logged and never fails the derive.
+  Future<void> _refreshCheckpoint(
+    PreparedDerivationDay day,
+    Profile profile,
+    int dataNowSec, {
+    required bool finalized,
+    required bool reuse,
+  }) async {
+    try {
+      // A day stays resumable until it finalizes, 48 h after it ends, so the
+      // newest data's day and the two before it are the ones that can still
+      // be re-derived by a light pass. Counted from the data, not the clock:
+      // a phone that has not synced in a week resumes the day it last heard of.
+      final newest = DateTime.fromMillisecondsSinceEpoch(dataNowSec * 1000);
+      final keep = {
+        for (var i = 0; i < _retainedCalculationDays; i++)
+          dayLabelOf(DateTime(newest.year, newest.month, newest.day - i)),
+      };
+      await LocalDb.pruneDayCheckpoints(keepDays: keep);
+      if (finalized || !keep.contains(day.date)) {
+        await LocalDb.deleteDayCheckpoints(day.date);
+        return;
+      }
+      final revs = day.inputRevs;
+      final sub = day.daySub;
+      final ts = sub.tsSec;
+      if (revs == null || ts.isEmpty) return;
+      final boundary = (ts.last ~/ kRevBucketSec) * kRevBucketSec;
+      final hi = firstIndexAtOrAfter(ts, boundary);
+      if (hi == 0) return; // no closed bucket yet
+      final existing = reuse ? await LocalDb.dayCheckpoint(day.date, kAlgoVersion) : null;
+      var lo = 0;
+      Uint8List? base;
+      if (existing != null) {
+        final cpBucket = existing.cpRecTs ~/ kRevBucketSec;
+        final decision = decideResume(
+          cp: existing,
+          algoVersion: kAlgoVersion,
+          ctxSig: _checkpointContext(day, profile, clipEndSec: existing.cpRecTs).sig,
+          liveRevs: {
+            for (final e in revs.entries)
+              if (e.key < cpBucket) e.key: e.value,
+          },
+        );
+        if (decision.resume) {
+          if (existing.cpRecTs >= boundary) return; // already as far
+          lo = firstIndexAtOrAfter(ts, existing.cpRecTs);
+          base = existing.state;
+        }
+      }
+      final ctx = _checkpointContext(day, profile, clipEndSec: boundary);
+      final sc = sub.stepCount;
+      final blob = await perf.stage('checkpoint', () => _foldCheckpoint(
+            base: base,
+            alreadyFolded: lo,
+            ts: ts.sublist(lo, hi),
+            hr: sub.hr.sublist(lo, hi),
+            ax: sub.ax.sublist(lo, hi),
+            ay: sub.ay.sublist(lo, hi),
+            az: sub.az.sublist(lo, hi),
+            stepCounter: [for (var i = lo; i < hi; i++) i < sc.length ? sc[i] : -1],
+            sleepOnsetSec: day.sleepOnsetSec,
+            sleepOffsetSec: day.sleepOffsetSec,
+            age: ctx.age,
+            stepModulus: ctx.stepModulus,
+            timeout: _perDayTimeout,
+            label: 'checkpoint ${day.date}',
+          ));
+      perf.addCount('cp_folded', hi - lo);
+      if (blob == null) return;
+      await LocalDb.putDayCheckpoint(DayCheckpoint(
+        dayId: day.date,
+        algoVersion: kAlgoVersion,
+        fmt: kDayCheckpointFmt,
+        ctxSig: ctx.sig,
+        cpRecTs: boundary,
+        revVec: encodeRevVec({
+          for (final e in revs.entries)
+            if (e.key < boundary ~/ kRevBucketSec) e.key: e.value,
+        }),
+        state: blob,
+        nightRef: null,
+        computedAt: DateTime.now().millisecondsSinceEpoch,
+      ));
+    } catch (e) {
+      _log('checkpoint ${day.date} not refreshed: $e');
+    }
+  }
+
+  /// [foldDayCheckpoint] in a killable worker isolate. Static so the closure
+  /// captures only the plain lists, never the engine.
+  static Future<Uint8List?> _foldCheckpoint({
+    required Uint8List? base,
+    required int alreadyFolded,
+    required List<int> ts,
+    required List<int> hr,
+    required List<double> ax,
+    required List<double> ay,
+    required List<double> az,
+    required List<int> stepCounter,
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+    required int? age,
+    required int? stepModulus,
+    required Duration timeout,
+    required String label,
+  }) => _runIsolateCancellable(
+        () => foldDayCheckpoint(
+          base: base,
+          alreadyFolded: alreadyFolded,
+          ts: ts,
+          hr: hr,
+          ax: ax,
+          ay: ay,
+          az: az,
+          stepCounter: stepCounter,
+          sleepOnsetSec: sleepOnsetSec,
+          sleepOffsetSec: sleepOffsetSec,
+          age: age,
+          stepModulus: stepModulus,
+        ),
+        timeout,
+        label: label,
+      );
 
   /// Stores the day's intraday calorie series as the artifact
   /// `kcal_minutes|<day>`, AFTER the day's own row committed, under the
@@ -7572,13 +7822,19 @@ class DerivationEngine {
         scMap,
         liveStepsReal,
         liveStepsFromStrap: liveStepsFromStrap,
-        bandSteps: hardwareStepsFromCounter(
-          daySub,
-          cumulativeCounterModulus: ana.calibrationFor(
-            _stepCounterModulus,
-            daySub.deviceFamily,
-          ),
-        ),
+        // With a state this is the same fold `hardwareStepsFromCounter` runs,
+        // kept as `(previous reading, its time, total)` so it can resume.
+        bandSteps: state == null
+            ? hardwareStepsFromCounter(
+                daySub,
+                cumulativeCounterModulus: _stepModulusFor(daySub.deviceFamily),
+              )
+            : state.bandSteps(
+                daySub.tsSec,
+                daySub.stepCount,
+                modulus: _stepModulusFor(daySub.deviceFamily),
+                mode: mode,
+              ),
       );
 
       if (daySub.length < 60) return;
@@ -8555,6 +8811,10 @@ class DerivationEngine {
   /// cannot be told apart from a wrap afterwards. See
   /// [hardwareStepsFromCounter].
   static const Map<String, int> _stepCounterModulus = {'gen5': 65536};
+
+  /// The wrap of [family]'s step counter, or null when it has none.
+  static int? _stepModulusFor(String? family) =>
+      ana.calibrationFor(_stepCounterModulus, family);
 
   static const Map<String, double> _quietEnmoCutG = {
     'gen4': 0.02,

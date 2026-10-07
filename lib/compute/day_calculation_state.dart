@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:openstrap_analytics/onehz.dart';
 
 import 'day_activity_state.dart';
+import 'day_resume_state.dart';
 import 'state_fingerprint.dart';
 
 /// RAM-only calculation data copied into workers and published after persistence.
@@ -18,7 +19,8 @@ class DayCalculationState {
   // One per isolate half: the pipeline and the activity pass each read the day
   // with their own sleep bounds, so sharing one would rebuild on any mismatch.
   final Map<String, DayHrSummary> _hr = {};
-  final DayMotionSummary _motion = DayMotionSummary();
+  DayMotionSummary _motion = DayMotionSummary();
+  StepCounterFold _steps = StepCounterFold();
   IncrementalEnmoSeries _enmo = IncrementalEnmoSeries();
 
   /// Valid samples the motion series above holds a copy of.
@@ -28,6 +30,26 @@ class DayCalculationState {
   /// passes reuse it; see [motionMinutes].
   double? _gRef;
 
+  /// True when the per-second summaries were seeded from a stored checkpoint
+  /// ([seedFrom]). Summaries are always reused only when the samples they
+  /// folded are still the ones handed in (a fingerprint decides), so seeding
+  /// lets them append in any mode, including a full pass in a fresh process,
+  /// which has no earlier pass to carry them over.
+  bool _seeded = false;
+
+  /// Starts this (empty) state from a stored checkpoint's folded summaries.
+  /// The state takes ownership of [resume]'s parts.
+  void seedFrom(DayResumeState resume) {
+    _hr['pipeline'] = resume.hrPipeline;
+    _hr['activity'] = resume.hrActivity;
+    _motion = resume.motion;
+    _steps = resume.steps;
+    _seeded = true;
+  }
+
+  bool _forceSummaries(CalculationMode mode) =>
+      mode != CalculationMode.periodicAwake && !_seeded;
+
   int get computations => _cache.computations;
   int get hits => _cache.hits;
   int get processedMinutes => _minutes.processedMinutes;
@@ -35,6 +57,7 @@ class DayCalculationState {
   int get processedHrSamples =>
       _hr.values.fold(0, (n, h) => n + h.processedSamples);
   int get processedOrientationSamples => _motion.processedSamples;
+  int get processedStepSamples => _steps.processedSamples;
 
   /// Samples of the day held in memory by this state, across every part.
   int get retainedSamples =>
@@ -145,7 +168,7 @@ class DayCalculationState {
       sleepOnsetSec: sleepOnsetSec,
       sleepOffsetSec: sleepOffsetSec,
       age: age,
-      force: mode != CalculationMode.periodicAwake,
+      force: _forceSummaries(mode),
     );
     return summary;
   });
@@ -167,9 +190,22 @@ class DayCalculationState {
       az,
       sleepOnsetSec: sleepOnsetSec,
       sleepOffsetSec: sleepOffsetSec,
-      force: mode != CalculationMode.periodicAwake,
+      force: _forceSummaries(mode),
     );
     return _motion;
+  });
+
+  /// The strap's own credited steps for the day (see [StepCounterFold]); null
+  /// when the strap has no counter. Same figure `hardwareStepsFromCounter`
+  /// gives over the same seconds.
+  int? bandSteps(
+    List<int> ts,
+    List<int> counter, {
+    required int? modulus,
+    required CalculationMode mode,
+  }) => timed('step_fold', () {
+    _steps.sync(ts, counter, modulus: modulus, force: _forceSummaries(mode));
+    return _steps.steps;
   });
 
   /// Per-minute motion over the whole calendar day (`expectedMinutes` 1440).

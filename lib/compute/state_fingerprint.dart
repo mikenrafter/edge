@@ -28,6 +28,16 @@ int _mix(int z) {
 class PrefixFingerprint {
   int _a = 0x243f6a8885a308d3, _b = 0x13198a2e03707344;
 
+  PrefixFingerprint();
+
+  /// A fingerprint resumed from [words] of an earlier one.
+  PrefixFingerprint.fromWords(int a, int b)
+      : _a = a,
+        _b = b;
+
+  /// The two 64-bit lanes, for storing the fingerprint and resuming it.
+  (int, int) get words => (_a, _b);
+
   void addInt(int v) {
     _a = _mix(_a + v + 0x9e3779b97f4a7c15);
     _b = _mix((_b ^ v) * 0xd6e8feb86659fd93 + 0x632be59bd9b4e019);
