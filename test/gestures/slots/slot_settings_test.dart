@@ -356,8 +356,9 @@ void main() {
       expect(r, _refused(kEcgExclusiveTurnEcgOff));
       expect(s.ecgOnDoubleTap, isTrue);
       expect(s.doubleTapActions, isEmpty);
+      // bootstrap stores an empty mask (0); a refusal must leave it so.
       expect((await SharedPreferences.getInstance())
-          .containsKey('gesture_double_tap_actions'), isFalse);
+          .getInt('gesture_double_tap_actions') ?? 0, 0);
       expect(told, 0);
     });
 

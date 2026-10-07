@@ -229,7 +229,7 @@ extension DeviceActionX on DeviceAction {
   /// share a gesture slot with any other action. ECG is the one today, but it
   /// is the separate `GestureSettings.ecgOnDoubleTap` flag, not a
   /// [DeviceAction]; this is where a future action says it is one.
-  bool get isActiveMode => throw UnimplementedError('DeviceAction.isActiveMode');
+  bool get isActiveMode => false;
 
   static DeviceAction? fromId(String? id) {
     if (id == null) return null;

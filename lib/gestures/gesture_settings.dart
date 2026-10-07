@@ -6,6 +6,8 @@
 // A double-tap maps to a SET of actions, stored as an int bitmask where bit i is
 // `DeviceAction.values[i]` (so the enum order is persisted — never reorder it).
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -196,6 +198,11 @@ class GestureSettings extends ChangeNotifier {
             .where((m) => m.name == storedMode)
             .firstOrNull ??
         TimeBuzzMode.count;
+    _slotOptions.clear();
+    for (final slot in GestureSlots.all) {
+      final o = _decodeSlotOptions(prefs.getString('$_kSlotOptionsPrefix$slot'));
+      if (o.values.isNotEmpty) _slotOptions[slot] = o;
+    }
     final window = prefs.getInt(_kRepeatWindowMs);
     _repeatWindowMs = window != null && isValidRepeatWindow(window)
         ? window
@@ -283,37 +290,115 @@ class GestureSettings extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ---- Per-slot configuration (RED PHASE: stubs, nothing calls them yet) ----
+  // ---- Per-slot configuration ----
+
+  static const _kSlotOptionsPrefix = 'gesture_slot_options_';
+
+  final Map<String, GestureSlotOptions> _slotOptions = {};
+
+  /// Whether ECG-on-double-tap is in force on this build (it needs a band with
+  /// the sensor and developer mode, like the dispatcher's own check). Null:
+  /// always. Without it a stale lab switch would refuse actions on a double
+  /// tap it no longer suspends, with no way left to turn it off.
+  bool Function()? ecgInForce;
+
+  /// ECG owns the double tap now: the lab switch is on and in force.
+  bool get ecgActive => _ecgOnDoubleTap && (ecgInForce?.call() ?? true);
+
+  static String _checkedSlot(String slot) {
+    GestureSlots.tapsOf(slot); // ArgumentError for an unknown slot
+    return slot;
+  }
 
   /// Options for [slot]; an empty [GestureSlotOptions] when it has none.
   GestureSlotOptions optionsFor(String slot) =>
-      throw UnimplementedError('GestureSettings.optionsFor');
+      _slotOptions[_checkedSlot(slot)] ?? const GestureSlotOptions();
 
   /// Tell the time's mode for [slot]: the slot's own choice, else the global
   /// [timeBuzzMode] (the migration of the old single setting: every slot starts
   /// on it, and a user keeps their mode).
   TimeBuzzMode timeBuzzModeFor(String slot) =>
-      throw UnimplementedError('GestureSettings.timeBuzzModeFor');
+      optionsFor(slot).timeBuzzMode ?? _timeBuzzMode;
 
   /// Give [slot] its own Tell the time mode (persisted in the slot's options).
-  Future<void> setTimeBuzzModeFor(String slot, TimeBuzzMode mode) =>
-      throw UnimplementedError('GestureSettings.setTimeBuzzModeFor');
+  Future<void> setTimeBuzzModeFor(String slot, TimeBuzzMode mode) async {
+    final cur = optionsFor(slot);
+    if (cur.timeBuzzMode == mode) return;
+    final next = GestureSlotOptions(
+        {...cur.values, GestureSlotOptions.kTellTimeMode: mode.name});
+    _slotOptions[slot] = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kSlotOptionsPrefix$slot', jsonEncode(next.values));
+    notifyListeners();
+  }
+
+  static GestureSlotOptions _decodeSlotOptions(String? raw) {
+    if (raw == null) return const GestureSlotOptions();
+    try {
+      final j = jsonDecode(raw);
+      if (j is! Map) return const GestureSlotOptions();
+      return GestureSlotOptions({
+        for (final e in j.entries)
+          if (e.key is String && e.value is String)
+            e.key as String: e.value as String,
+      });
+    } catch (_) {
+      return const GestureSlotOptions();
+    }
+  }
 
   /// action -> the slots (in tap-count order) it is on in, for every action on
   /// in TWO OR MORE slots. ECG-on-double-tap is not an action and not listed.
-  Map<DeviceAction, Set<String>> overlaps() =>
-      throw UnimplementedError('GestureSettings.overlaps');
+  Map<DeviceAction, Set<String>> overlaps() {
+    final out = <DeviceAction, Set<String>>{};
+    for (final slot in GestureSlots.all) {
+      for (final a in actionsForTaps(GestureSlots.tapsOf(slot))) {
+        (out[a] ??= {}).add(slot);
+      }
+    }
+    out.removeWhere((_, slots) => slots.length < 2);
+    return out;
+  }
 
   /// Turn [action] on or off for [slot], refusing what an active mode forbids:
-  /// nothing can be added to a slot ECG occupies. Turning off is always ok.
+  /// nothing can be added to a slot ECG occupies, and an active-mode action
+  /// can't join a slot that has others. Turning off is always ok.
   Future<ActionToggleResult> trySetAction(
-          String slot, DeviceAction action, bool on) =>
-      throw UnimplementedError('GestureSettings.trySetAction');
+      String slot, DeviceAction action, bool on) async {
+    final taps = GestureSlots.tapsOf(slot);
+    final cur = actionsForTaps(taps);
+    if (action == DeviceAction.none || cur.contains(action) == on) {
+      return const ActionToggleOk();
+    }
+    if (on) {
+      if (slot == GestureSlots.ecgSlot && ecgActive) {
+        return const ActionToggleRefusedExclusive(kEcgExclusiveTurnEcgOff);
+      }
+      final mode = action.isActiveMode
+          ? action
+          : cur.where((a) => a.isActiveMode).firstOrNull;
+      final others = action.isActiveMode ? cur : {action};
+      if (mode != null && others.isNotEmpty) {
+        return ActionToggleRefusedExclusive(
+            "${mode.label} takes over the band while it runs, so it can't "
+            'share a gesture with other actions. Turn '
+            '${action.isActiveMode ? 'the others' : mode.label} off first.');
+      }
+    }
+    await setActionsForTaps(
+        taps, on ? {...cur, action} : cur.difference({action}));
+    return const ActionToggleOk();
+  }
 
   /// [setEcgOnDoubleTap] with the exclusivity rule: refused while the double
   /// tap slot has any other action on. Turning off is always ok.
-  Future<ActionToggleResult> trySetEcgOnDoubleTap(bool on) =>
-      throw UnimplementedError('GestureSettings.trySetEcgOnDoubleTap');
+  Future<ActionToggleResult> trySetEcgOnDoubleTap(bool on) async {
+    if (on && !_ecgOnDoubleTap && _actions.isNotEmpty) {
+      return const ActionToggleRefusedExclusive(kEcgExclusiveTurnOthersOff);
+    }
+    await setEcgOnDoubleTap(on);
+    return const ActionToggleOk();
+  }
 
   Future<void> setEcgOnDoubleTap(bool on) async {
     if (_ecgOnDoubleTap == on) return;

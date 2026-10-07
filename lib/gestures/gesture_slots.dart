@@ -6,8 +6,6 @@
 // store serves both counting methods, so the slot for 3 taps is the slot for 2
 // double taps.
 //
-// RED PHASE: the bodies below throw until the green phase implements them.
-
 import 'time_buzz.dart';
 
 abstract final class GestureSlots {
@@ -23,14 +21,28 @@ abstract final class GestureSlots {
   static const String ecgSlot = doubleTap;
 
   /// The slot for [taps] taps, 2..5; ArgumentError otherwise.
-  static String ofTaps(int taps) => throw UnimplementedError('GestureSlots.ofTaps');
+  static String ofTaps(int taps) {
+    if (taps < 2 || taps > 5) {
+      throw ArgumentError.value(taps, 'taps', 'must be 2..5');
+    }
+    return all[taps - 2];
+  }
 
   /// The tap count of [slot]; ArgumentError for an unknown slot.
-  static int tapsOf(String slot) => throw UnimplementedError('GestureSlots.tapsOf');
+  static int tapsOf(String slot) {
+    final i = all.indexOf(slot);
+    if (i < 0) throw ArgumentError.value(slot, 'slot', 'unknown gesture slot');
+    return i + 2;
+  }
 
   /// 'Double tap', 'Triple tap', 'Quadruple tap', 'Quintuple tap': what the
   /// overlap warning names a slot ("Also on Triple tap").
-  static String nameOf(String slot) => throw UnimplementedError('GestureSlots.nameOf');
+  static String nameOf(String slot) => switch (tapsOf(slot)) {
+        2 => 'Double tap',
+        3 => 'Triple tap',
+        4 => 'Quadruple tap',
+        _ => 'Quintuple tap',
+      };
 }
 
 /// Per-slot, per-action options, keyed by stable `<action id>.<option id>`
@@ -52,8 +64,13 @@ class GestureSlotOptions {
 
   /// The slot's OWN Tell the time mode; null when it has none (it follows the
   /// global default).
-  TimeBuzzMode? get timeBuzzMode =>
-      throw UnimplementedError('GestureSlotOptions.timeBuzzMode');
+  TimeBuzzMode? get timeBuzzMode {
+    final name = values[kTellTimeMode];
+    for (final m in TimeBuzzMode.values) {
+      if (m.name == name) return m;
+    }
+    return null;
+  }
 }
 
 /// What [GestureSettings.trySetAction] / `trySetEcgOnDoubleTap` answered.
@@ -84,3 +101,10 @@ const String kEcgExclusiveTurnOthersOff =
 const String kEcgExclusiveTurnEcgOff =
     "ECG takes over the band while it records, so it can't share a gesture "
     'with other actions. Turn ECG off first.';
+
+/// Shown in the double tap's tab for a user who already has ECG on AND actions
+/// mapped (their stored config is left alone): only ECG runs there.
+const String kEcgOnlyRunsNote =
+    'Only ECG runs on this gesture, so the actions below are paused. ECG takes '
+    "over the band while it records, so it can't share a gesture with other "
+    'actions. Turn the others off first.';

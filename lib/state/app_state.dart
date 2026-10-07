@@ -119,6 +119,7 @@ import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/alert_dispatcher.dart';
 import '../notify/alert_rule.dart';
+import '../gestures/device_action.dart';
 import '../gestures/gesture_settings.dart';
 import '../health/auto_workout_import.dart';
 import '../health/health_export.dart';
@@ -343,7 +344,14 @@ class AppState extends ChangeNotifier {
   /// before the engine, as the dispatcher was.
   late final GestureController _gestures;
 
-  GestureController _newGestureController() => GestureController(
+  GestureController _newGestureController() {
+    // The same test the dispatcher's ecgSupported callback makes: a stored lab
+    // switch only owns the double tap where ECG gestures exist.
+    gestureSettings.ecgInForce = () => engine.isMaverick && devMode;
+    return _buildGestureController();
+  }
+
+  GestureController _buildGestureController() => GestureController(
         settings: gestureSettings,
         haptics: haptics,
         deviceLab: deviceLab,
@@ -359,6 +367,7 @@ class AppState extends ChangeNotifier {
         onMarkMoment: _markMomentFromGesture,
         onWorkoutToggle: _toggleWorkoutFromGesture,
         onLogWater: _logWaterFromGesture,
+        onSlotAction: _slotActionFromGesture,
         // The stream makes the band save raw ECG that history sync delivers
         // later; keep the interval (no samples) so it is labelled gesture
         // contact.
@@ -6579,6 +6588,19 @@ class AppState extends ChangeNotifier {
 
   // ── band-gesture actions (in-app) ─────────────────────────────────────────────
   // Driven by the double-tap dispatcher (lib/gestures).
+
+  /// The slot that fired an in-app action, then the action. Mark moment, the
+  /// workout and water act on one app-wide thing each, so every slot reaches
+  /// the same handler; a slot-specific action would branch on [slot] here.
+  Future<void> _slotActionFromGesture(
+      String slot, DeviceAction a, StrapEvent e) {
+    return switch (a) {
+      DeviceAction.markMoment => _markMomentFromGesture(e),
+      DeviceAction.workoutToggle => _toggleWorkoutFromGesture(e),
+      DeviceAction.logWater => _logWaterFromGesture(e),
+      _ => Future<void>.error(StateError('${a.id} is in-app with no handler')),
+    };
+  }
 
   /// Double-tap → start a workout if none is live, else end the active one.
   /// CLOUD EXCISED: the workout now lives purely in-app (the local live engine).

@@ -88,6 +88,15 @@ class BandGestures extends StatelessWidget {
         extraTaps: caps.has(Feature.extraTapCounting),
         timeBuzzMode: g.timeBuzzMode,
         onTimeBuzzMode: g.setTimeBuzzMode,
+        // Per gesture slot: the switches go through the exclusivity rule, the
+        // picker has each slot's own mode, and overlaps are warned about.
+        overlaps: g.overlaps(),
+        onSlotToggle: g.trySetAction,
+        ecgOnDoubleTap: g.ecgActive,
+        slotTimeBuzzModes: {
+          for (final slot in GestureSlots.all) slot: g.timeBuzzModeFor(slot),
+        },
+        onSlotTimeBuzzMode: g.setTimeBuzzModeFor,
         onHaptics: () => goto(c, const HapticsSettings()),
         devMode: caps.has(Feature.developerMode),
         onDeviceLab: () => goto(c, const DeviceLab()),
@@ -153,8 +162,7 @@ class BandGesturesView extends StatelessWidget {
   final ValueChanged<TimeBuzzMode>? onTimeBuzzMode;
   final DateTime Function()? timeBuzzNow;
 
-  /// RED PHASE (declared, not yet drawn). Per-slot configuration, keyed by
-  /// slot id (`GestureSlots`).
+  /// Per-slot configuration, keyed by slot id (`GestureSlots`).
   ///
   /// [overlaps] is `GestureSettings.overlaps()`: in the tab of a slot, under
   /// each action that is ON in that slot and also on in others, a non-blocking
@@ -169,7 +177,13 @@ class BandGesturesView extends StatelessWidget {
   /// [slotTimeBuzzModes] / [onSlotTimeBuzzMode]: each tab's Tell the time
   /// picker shows its OWN slot's mode (falling back to [timeBuzzMode]) and a
   /// tap on a row reports the slot (falling back to [onTimeBuzzMode]).
+  ///
+  /// [ecgOnDoubleTap]: ECG owns the double tap (stored switch on and in
+  /// force). The double tap's tab then says only ECG runs when it also has
+  /// actions mapped (an older config, left as it was), key
+  /// `gesture-ecg-only-note`.
   final Map<DeviceAction, Set<String>> overlaps;
+  final bool ecgOnDoubleTap;
   final Future<ActionToggleResult> Function(
       String slot, DeviceAction action, bool on)? onSlotToggle;
   final Map<String, TimeBuzzMode> slotTimeBuzzModes;
@@ -205,6 +219,7 @@ class BandGesturesView extends StatelessWidget {
     this.onTimeBuzzMode,
     this.timeBuzzNow,
     this.overlaps = const {},
+    this.ecgOnDoubleTap = false,
     this.onSlotToggle,
     this.slotTimeBuzzModes = const {},
     this.onSlotTimeBuzzMode,
@@ -343,125 +358,174 @@ class BandGesturesView extends StatelessWidget {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final on = taps == 2 ? chosen : (tapActions[taps] ?? const <DeviceAction>{});
-    return Column(
-      key: ValueKey('gestures-tab-body:$taps'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: EdgeInsets.only(top: top),
-          child: Surface(
-            pad: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: Column(children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: S.x3),
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Flexible(
-                          child: Text(_name(l, taps, ecg),
-                              key: const ValueKey('gestures-tab-name'),
-                              style: F.body.copyWith(
-                                  color: p.ink, fontWeight: FontWeight.w600)),
-                        ),
+    final slot = GestureSlots.ofTaps(taps);
+    return _SlotToggleHost(
+      key: ValueKey('gestures-tab-host:$taps'),
+      slot: slot,
+      onSlotToggle: onSlotToggle,
+      builder: (c, refusal, toggle) => Column(
+        key: ValueKey('gestures-tab-body:$taps'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.only(top: top),
+            child: Surface(
+              pad: const EdgeInsets.symmetric(horizontal: S.x4),
+              child: Column(children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: S.x3),
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Flexible(
+                            child: Text(_name(l, taps, ecg),
+                                key: const ValueKey('gestures-tab-name'),
+                                style: F.body.copyWith(
+                                    color: p.ink, fontWeight: FontWeight.w600)),
+                          ),
+                        ]),
+                        Text(_how(taps, ecg),
+                            key: const ValueKey('gestures-tab-how'),
+                            style: F.over.copyWith(color: p.ink3)),
                       ]),
-                      Text(_how(taps, ecg),
-                          key: const ValueKey('gestures-tab-how'),
-                          style: F.over.copyWith(color: p.ink3)),
-                    ]),
-              ),
-              for (final a in offered) ...[
-                Divider(color: p.line, height: 1),
-                SwitchRow(
-                  a.localizedLabel(c),
-                  on.contains(a),
-                  taps == 2
-                      ? (onToggle == null ? null : (v) => onToggle!(a, v))
-                      : (onTapToggle == null
-                          ? null
-                          : (v) => onTapToggle!(taps, a, v)),
-                  sub: a.localizedBlurb(c),
                 ),
-                // Directly under the one action that can be replayed safely,
-                // on the plain double tap alone: a counted tap is always live.
-                // Always drawn; inert and dimmed while the action itself is
-                // off.
-                if (taps == 2 && a.supportsHistoricalReplay) ...[
+                for (final a in offered) ...[
                   Divider(color: p.line, height: 1),
                   SwitchRow(
-                    l?.gesturesReplayTitle ??
-                        'Also run for taps replayed from history',
-                    replay.contains(a),
-                    onReplay == null ? null : (v) => onReplay!(a, v),
-                    enabled: chosen.contains(a),
-                    sub: !chosen.contains(a)
-                        ? 'Turn on ${a.localizedLabel(c)} first'
-                        : l?.gesturesReplaySub ??
-                            'A tap the band delivers late is still stamped with the '
-                                'minute and day it happened. Other actions never run for '
-                                'a late tap.',
+                    a.localizedLabel(c),
+                    on.contains(a),
+                    onSlotToggle != null
+                        ? (v) => toggle(a, v)
+                        : taps == 2
+                            ? (onToggle == null ? null : (v) => onToggle!(a, v))
+                            : (onTapToggle == null
+                                ? null
+                                : (v) => onTapToggle!(taps, a, v)),
+                    sub: a.localizedBlurb(c),
                   ),
+                  // Non-blocking: both slots still run it, each with its own
+                  // state.
+                  if (on.contains(a) && _otherSlots(a, slot).isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: S.x2),
+                        child: Text(
+                            'Also on ${_otherSlots(a, slot).map(GestureSlots.nameOf).join(', ')}',
+                            key: ValueKey('gesture-overlap:${a.id}'),
+                            style: F.over.copyWith(color: p.ink2)),
+                      ),
+                    ),
+                  // Directly under the one action that can be replayed safely,
+                  // on the plain double tap alone: a counted tap is always live.
+                  // Always drawn; inert and dimmed while the action itself is
+                  // off.
+                  if (taps == 2 && a.supportsHistoricalReplay) ...[
+                    Divider(color: p.line, height: 1),
+                    SwitchRow(
+                      l?.gesturesReplayTitle ??
+                          'Also run for taps replayed from history',
+                      replay.contains(a),
+                      onReplay == null ? null : (v) => onReplay!(a, v),
+                      enabled: chosen.contains(a),
+                      sub: !chosen.contains(a)
+                          ? 'Turn on ${a.localizedLabel(c)} first'
+                          : l?.gesturesReplaySub ??
+                              'A tap the band delivers late is still stamped with the '
+                                  'minute and day it happened. Other actions never run for '
+                                  'a late tap.',
+                    ),
+                  ],
                 ],
-              ],
-            ]),
-          ),
-        ),
-        // Tell the time's encoding, in the tab of every gesture that has it on.
-        if (on.contains(DeviceAction.tellTime))
-          Padding(
-            padding: const EdgeInsets.only(top: S.x3),
-            child: _TimeBuzzPicker(
-              mode: timeBuzzMode,
-              onMode: onTimeBuzzMode,
-              now: timeBuzzNow ?? DateTime.now,
+              ]),
             ),
           ),
-        if (noPhoneActions)
-          Section(
-            l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
-            Surface(
-              child: Text(
-                l?.gesturesNoPhoneActionsBody ??
-                    'Ringing your phone and the flashlight are missing because the app could '
-                        'not ask the system what this device allows. Reopen the app to try '
-                        'again. The in-app actions above still work.',
-                style: F.body.copyWith(color: p.ink2, height: 1.4),
+          // Why the last switch was refused (an active mode, ECG, is exclusive).
+          if (refusal != null)
+            Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: Surface(
+                child: Text(refusal,
+                    key: const ValueKey('gesture-refusal'),
+                    style: F.body.copyWith(color: p.ink2, height: 1.4)),
               ),
             ),
-          ),
-        // The links, each its own card with the page's section gap above it.
-        Padding(
-          padding: const EdgeInsets.only(top: S.x3),
-          child: Surface(
-            pad: const EdgeInsets.symmetric(horizontal: S.x4),
-            child: SetRow(
-              LucideIcons.vibrate,
-              C.purple,
-              'Haptics',
-              key: const ValueKey('gestures-open-haptics'),
-              sub: 'The buzzes these gestures play',
-              onTap: onHaptics,
+          // An older config: ECG is on and so are actions. Only ECG runs.
+          if (ecgOnDoubleTap && slot == GestureSlots.ecgSlot && on.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: Surface(
+                child: Text(kEcgOnlyRunsNote,
+                    key: const ValueKey('gesture-ecg-only-note'),
+                    style: F.body.copyWith(color: p.ink2, height: 1.4)),
+              ),
             ),
-          ),
-        ),
-        if (devMode)
+          // Tell the time's encoding, in the tab of every gesture that has it on.
+          if (on.contains(DeviceAction.tellTime))
+            Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: _TimeBuzzPicker(
+                mode: slotTimeBuzzModes[slot] ?? timeBuzzMode,
+                onMode: onSlotTimeBuzzMode != null
+                    ? (m) => onSlotTimeBuzzMode!(slot, m)
+                    : onTimeBuzzMode,
+                now: timeBuzzNow ?? DateTime.now,
+              ),
+            ),
+          if (noPhoneActions)
+            Section(
+              l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',
+              Surface(
+                child: Text(
+                  l?.gesturesNoPhoneActionsBody ??
+                      'Ringing your phone and the flashlight are missing because the app could '
+                          'not ask the system what this device allows. Reopen the app to try '
+                          'again. The in-app actions above still work.',
+                  style: F.body.copyWith(color: p.ink2, height: 1.4),
+                ),
+              ),
+            ),
+          // The links, each its own card with the page's section gap above it.
           Padding(
             padding: const EdgeInsets.only(top: S.x3),
             child: Surface(
               pad: const EdgeInsets.symmetric(horizontal: S.x4),
               child: SetRow(
-                LucideIcons.flaskConical,
+                LucideIcons.vibrate,
                 C.purple,
-                'Device lab',
-                key: const ValueKey('gestures-open-device-lab'),
-                sub: 'Try gestures the band does not report on its own',
-                onTap: onDeviceLab,
+                'Haptics',
+                key: const ValueKey('gestures-open-haptics'),
+                sub: 'The buzzes these gestures play',
+                onTap: onHaptics,
               ),
             ),
           ),
-      ],
+          if (devMode)
+            Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: Surface(
+                pad: const EdgeInsets.symmetric(horizontal: S.x4),
+                child: SetRow(
+                  LucideIcons.flaskConical,
+                  C.purple,
+                  'Device lab',
+                  key: const ValueKey('gestures-open-device-lab'),
+                  sub: 'Try gestures the band does not report on its own',
+                  onTap: onDeviceLab,
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
+
+  /// The other slots [a] is on in, in tap-count order.
+  List<String> _otherSlots(DeviceAction a, String slot) => [
+        for (final s in GestureSlots.all)
+          if (s != slot && (overlaps[a]?.contains(s) ?? false)) s,
+      ];
 
   // The gesture's name: the plain double tap, then the count's own name. The
   // ECG count's name is the plural message, or the same English from
@@ -488,6 +552,41 @@ class BandGesturesView extends StatelessWidget {
     }
     return 'Double tap ${n - 1} times in a row before the pause ends.';
   }
+}
+
+/// Runs a slot's switch through [onSlotToggle] and keeps the answer: a refusal
+/// is the text shown in the tab, an ok clears it. One host per tab, so another
+/// tab never shows it. The switch itself is driven by the caller's mapping, so
+/// a refused toggle does not flip.
+class _SlotToggleHost extends StatefulWidget {
+  const _SlotToggleHost(
+      {super.key,
+      required this.slot,
+      required this.onSlotToggle,
+      required this.builder});
+
+  final String slot;
+  final Future<ActionToggleResult> Function(
+      String slot, DeviceAction action, bool on)? onSlotToggle;
+  final Widget Function(BuildContext context, String? refusal,
+      Future<void> Function(DeviceAction, bool) toggle) builder;
+
+  @override
+  State<_SlotToggleHost> createState() => _SlotToggleHostState();
+}
+
+class _SlotToggleHostState extends State<_SlotToggleHost> {
+  String? _refusal;
+
+  Future<void> _toggle(DeviceAction a, bool on) async {
+    final r = await widget.onSlotToggle!(widget.slot, a, on);
+    if (!mounted) return; // the screen may have gone while the write ran
+    setState(() => _refusal =
+        r is ActionToggleRefusedExclusive ? r.reason : null);
+  }
+
+  @override
+  Widget build(BuildContext c) => widget.builder(c, _refusal, _toggle);
 }
 
 /// The fixed time the worked examples are for: 3:08 PM (a PM hour, and a
