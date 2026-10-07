@@ -131,7 +131,9 @@ void main() {
 
     test('it is appended: the enum order is the persisted bitmask, so no old '
         'action changes its bit', () {
-      expect(DeviceAction.values.last, DeviceAction.tellTime);
+      expect(DeviceAction.values.indexOf(DeviceAction.breathe),
+          DeviceAction.values.indexOf(DeviceAction.tellTime) + 1,
+          reason: 'only Breathing exercise was appended after it');
       expect(DeviceAction.values.indexOf(DeviceAction.broadcastToTasker), 11);
       expect(DeviceAction.values.indexOf(DeviceAction.tellTime), 12);
       expect(GestureSettings.maskOf({DeviceAction.tellTime}), 1 << 12);

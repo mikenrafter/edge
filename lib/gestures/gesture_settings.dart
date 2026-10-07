@@ -6,12 +6,16 @@
 // A double-tap maps to a SET of actions, stored as an int bitmask where bit i is
 // `DeviceAction.values[i]` (so the enum order is persisted — never reorder it).
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../platform/device_actions.dart';
+import '../stress/breath_phases.dart' show kBreathPatternsByKey;
 import 'device_action.dart';
 import 'ecg_tap_counter.dart';
+import 'gesture_slots.dart';
 import 'time_buzz.dart';
 
 /// How taps beyond the firmware's double tap are counted. One mapping store
@@ -195,6 +199,11 @@ class GestureSettings extends ChangeNotifier {
             .where((m) => m.name == storedMode)
             .firstOrNull ??
         TimeBuzzMode.count;
+    _slotOptions.clear();
+    for (final slot in GestureSlots.all) {
+      final o = _decodeSlotOptions(prefs.getString('$_kSlotOptionsPrefix$slot'));
+      if (o.values.isNotEmpty) _slotOptions[slot] = o;
+    }
     final window = prefs.getInt(_kRepeatWindowMs);
     _repeatWindowMs = window != null && isValidRepeatWindow(window)
         ? window
@@ -280,6 +289,166 @@ class GestureSettings extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kTimeBuzzMode, mode.name);
     notifyListeners();
+  }
+
+  // ---- Per-slot configuration ----
+
+  static const _kSlotOptionsPrefix = 'gesture_slot_options_';
+
+  final Map<String, GestureSlotOptions> _slotOptions = {};
+
+  /// Whether ECG-on-double-tap is in force on this build (it needs a band with
+  /// the sensor and developer mode, like the dispatcher's own check). Null:
+  /// always. Without it a stale lab switch would refuse actions on a double
+  /// tap it no longer suspends, with no way left to turn it off.
+  bool Function()? ecgInForce;
+
+  /// ECG owns the double tap now: the lab switch is on and in force.
+  bool get ecgActive => _ecgOnDoubleTap && (ecgInForce?.call() ?? true);
+
+  static String _checkedSlot(String slot) {
+    GestureSlots.tapsOf(slot); // ArgumentError for an unknown slot
+    return slot;
+  }
+
+  /// Options for [slot]; an empty [GestureSlotOptions] when it has none.
+  GestureSlotOptions optionsFor(String slot) =>
+      _slotOptions[_checkedSlot(slot)] ?? const GestureSlotOptions();
+
+  /// Tell the time's mode for [slot]: the slot's own choice, else the global
+  /// [timeBuzzMode] (the migration of the old single setting: every slot starts
+  /// on it, and a user keeps their mode).
+  TimeBuzzMode timeBuzzModeFor(String slot) =>
+      optionsFor(slot).timeBuzzMode ?? _timeBuzzMode;
+
+  /// Give [slot] its own Tell the time mode (persisted in the slot's options).
+  Future<void> setTimeBuzzModeFor(String slot, TimeBuzzMode mode) async {
+    final cur = optionsFor(slot);
+    if (cur.timeBuzzMode == mode) return;
+    final next = GestureSlotOptions(
+        {...cur.values, GestureSlotOptions.kTellTimeMode: mode.name});
+    _slotOptions[slot] = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kSlotOptionsPrefix$slot', jsonEncode(next.values));
+    notifyListeners();
+  }
+
+  /// Breathing exercise's pattern key for [slot]: the slot's own choice, else
+  /// [kBreatheDefaultPattern]. A stored key that is no longer a pattern reads
+  /// as the default. ArgumentError for an unknown slot.
+  String breathePatternFor(String slot) {
+    final v = optionsFor(slot).values[GestureSlotOptions.kBreathePattern];
+    return kBreathPatternsByKey.containsKey(v) ? v! : kBreatheDefaultPattern;
+  }
+
+  /// Breathing exercise's length in minutes for [slot]: the slot's own choice
+  /// (one of [kBreatheMinuteChoices]), else [kBreatheDefaultMinutes].
+  int breatheMinutesFor(String slot) {
+    final v = int.tryParse(
+        optionsFor(slot).values[GestureSlotOptions.kBreatheMinutes] ?? '');
+    return v != null && kBreatheMinuteChoices.contains(v)
+        ? v
+        : kBreatheDefaultMinutes;
+  }
+
+  /// Give [slot] its own breathing pattern (persisted in the slot's options,
+  /// beside whatever else it holds). ArgumentError for an unknown slot or a key
+  /// that is not a `kBreathPatterns` key.
+  Future<void> setBreathePatternFor(String slot, String patternKey) async {
+    optionsFor(slot); // ArgumentError for an unknown slot
+    if (!kBreathPatternsByKey.containsKey(patternKey)) {
+      throw ArgumentError.value(patternKey, 'patternKey', 'not a pattern');
+    }
+    await _setSlotOption(slot, GestureSlotOptions.kBreathePattern, patternKey);
+  }
+
+  /// Give [slot] its own breathing length. ArgumentError for an unknown slot or
+  /// a length that is not in [kBreatheMinuteChoices].
+  Future<void> setBreatheMinutesFor(String slot, int minutes) async {
+    optionsFor(slot);
+    if (!kBreatheMinuteChoices.contains(minutes)) {
+      throw ArgumentError.value(minutes, 'minutes', 'not an offered length');
+    }
+    await _setSlotOption(
+        slot, GestureSlotOptions.kBreatheMinutes, '$minutes');
+  }
+
+  Future<void> _setSlotOption(String slot, String key, String value) async {
+    final cur = optionsFor(slot);
+    if (cur.values[key] == value) return;
+    final next = GestureSlotOptions({...cur.values, key: value});
+    _slotOptions[slot] = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('$_kSlotOptionsPrefix$slot', jsonEncode(next.values));
+    notifyListeners();
+  }
+
+  static GestureSlotOptions _decodeSlotOptions(String? raw) {
+    if (raw == null) return const GestureSlotOptions();
+    try {
+      final j = jsonDecode(raw);
+      if (j is! Map) return const GestureSlotOptions();
+      return GestureSlotOptions({
+        for (final e in j.entries)
+          if (e.key is String && e.value is String)
+            e.key as String: e.value as String,
+      });
+    } catch (_) {
+      return const GestureSlotOptions();
+    }
+  }
+
+  /// action -> the slots (in tap-count order) it is on in, for every action on
+  /// in TWO OR MORE slots. ECG-on-double-tap is not an action and not listed.
+  Map<DeviceAction, Set<String>> overlaps() {
+    final out = <DeviceAction, Set<String>>{};
+    for (final slot in GestureSlots.all) {
+      for (final a in actionsForTaps(GestureSlots.tapsOf(slot))) {
+        (out[a] ??= {}).add(slot);
+      }
+    }
+    out.removeWhere((_, slots) => slots.length < 2);
+    return out;
+  }
+
+  /// Turn [action] on or off for [slot], refusing what an active mode forbids:
+  /// nothing can be added to a slot ECG occupies, and an active-mode action
+  /// can't join a slot that has others. Turning off is always ok.
+  Future<ActionToggleResult> trySetAction(
+      String slot, DeviceAction action, bool on) async {
+    final taps = GestureSlots.tapsOf(slot);
+    final cur = actionsForTaps(taps);
+    if (action == DeviceAction.none || cur.contains(action) == on) {
+      return const ActionToggleOk();
+    }
+    if (on) {
+      if (slot == GestureSlots.ecgSlot && ecgActive) {
+        return const ActionToggleRefusedExclusive(kEcgExclusiveTurnEcgOff);
+      }
+      final mode = action.isActiveMode
+          ? action
+          : cur.where((a) => a.isActiveMode).firstOrNull;
+      final others = action.isActiveMode ? cur : {action};
+      if (mode != null && others.isNotEmpty) {
+        return ActionToggleRefusedExclusive(
+            "${mode.label} takes over the band while it runs, so it can't "
+            'share a gesture with other actions. Turn '
+            '${action.isActiveMode ? 'the others' : mode.label} off first.');
+      }
+    }
+    await setActionsForTaps(
+        taps, on ? {...cur, action} : cur.difference({action}));
+    return const ActionToggleOk();
+  }
+
+  /// [setEcgOnDoubleTap] with the exclusivity rule: refused while the double
+  /// tap slot has any other action on. Turning off is always ok.
+  Future<ActionToggleResult> trySetEcgOnDoubleTap(bool on) async {
+    if (on && !_ecgOnDoubleTap && _actions.isNotEmpty) {
+      return const ActionToggleRefusedExclusive(kEcgExclusiveTurnOthersOff);
+    }
+    await setEcgOnDoubleTap(on);
+    return const ActionToggleOk();
   }
 
   Future<void> setEcgOnDoubleTap(bool on) async {

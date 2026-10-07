@@ -119,6 +119,7 @@ import '../notify/notification_event.dart';
 import '../notify/notification_prefs.dart';
 import '../notify/alert_dispatcher.dart';
 import '../notify/alert_rule.dart';
+import '../gestures/device_action.dart';
 import '../gestures/gesture_settings.dart';
 import '../health/auto_workout_import.dart';
 import '../health/health_export.dart';
@@ -143,6 +144,7 @@ import 'live_stream_buffer.dart';
 import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
 import 'imu_packet.dart';
+import '../gestures/breath_gesture.dart' show BreathGesture, BreathPacer;
 import 'breathing_controller.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
@@ -343,7 +345,14 @@ class AppState extends ChangeNotifier {
   /// before the engine, as the dispatcher was.
   late final GestureController _gestures;
 
-  GestureController _newGestureController() => GestureController(
+  GestureController _newGestureController() {
+    // The same test the dispatcher's ecgSupported callback makes: a stored lab
+    // switch only owns the double tap where ECG gestures exist.
+    gestureSettings.ecgInForce = () => engine.isMaverick && devMode;
+    return _buildGestureController();
+  }
+
+  GestureController _buildGestureController() => GestureController(
         settings: gestureSettings,
         haptics: haptics,
         deviceLab: deviceLab,
@@ -359,6 +368,7 @@ class AppState extends ChangeNotifier {
         onMarkMoment: _markMomentFromGesture,
         onWorkoutToggle: _toggleWorkoutFromGesture,
         onLogWater: _logWaterFromGesture,
+        onSlotAction: _slotActionFromGesture,
         // The stream makes the band save raw ECG that history sync delivers
         // later; keep the interval (no samples) so it is labelled gesture
         // contact.
@@ -2489,6 +2499,7 @@ class AppState extends ChangeNotifier {
     // route recorder is not stopped and a breathing session is not ended.
     // That is today's behaviour, pinned by test/app_state_workout_dispose_test.dart
     // and tracked as a follow-up rather than changed by the move.
+    breathPacer.dispose(); // before the controller: it clears the cue latch
     _breathing.dispose();
     _workout.dispose();
     // The sensor's notifier OUTLIVES this object (HrsLink is a singleton), so
@@ -4812,6 +4823,9 @@ class AppState extends ChangeNotifier {
       // THIS device only — a second device's trace is a separate session.
       _clearLiveHrTrace(deviceId);
       _sync.onLinkDropped();
+      // A band-paced breathing session ends cue-less (banked per the usual
+      // 60 s rule); nothing is left to receive its cues.
+      unawaited(breathPacer.onDisconnect().catchError((_) {}));
       // A lab recording on the dropped link ends with what it has.
       _imuLab?.onDisconnected();
     }
@@ -6380,6 +6394,17 @@ class AppState extends ChangeNotifier {
   bool get breathingActive => _breathing.breathingActive;
   set breathingActive(bool v) => _breathing.breathingActive = v;
 
+  /// True while the screen-free pacer owns the running session's cues; the
+  /// breathing screen makes no cue calls then. See
+  /// [BreathingController.pacedByBand].
+  bool get breathingPacedByBand => _breathing.pacedByBand;
+  set breathingPacedByBand(bool v) => _breathing.pacedByBand = v;
+
+  /// The screen-free pacer behind the Breathing exercise gesture.
+  late final BreathPacer breathPacer = BreathPacer(_breathing);
+  late final BreathGesture _breathGesture = BreathGesture(
+      settings: gestureSettings, pacer: breathPacer, host: _breathing);
+
   /// The pattern the running session is pacing to.
   BreathPattern get breathingPattern => _breathing.breathingPattern;
   set breathingPattern(BreathPattern v) => _breathing.breathingPattern = v;
@@ -6579,6 +6604,20 @@ class AppState extends ChangeNotifier {
 
   // ── band-gesture actions (in-app) ─────────────────────────────────────────────
   // Driven by the double-tap dispatcher (lib/gestures).
+
+  /// The slot that fired an in-app action, then the action. Mark moment, the
+  /// workout and water act on one app-wide thing each, so every slot reaches
+  /// the same handler; a slot-specific action would branch on [slot] here.
+  Future<void> _slotActionFromGesture(
+      String slot, DeviceAction a, StrapEvent e) {
+    return switch (a) {
+      DeviceAction.markMoment => _markMomentFromGesture(e),
+      DeviceAction.workoutToggle => _toggleWorkoutFromGesture(e),
+      DeviceAction.logWater => _logWaterFromGesture(e),
+      DeviceAction.breathe => _breathGesture.onSlot(slot),
+      _ => Future<void>.error(StateError('${a.id} is in-app with no handler')),
+    };
+  }
 
   /// Double-tap → start a workout if none is live, else end the active one.
   /// CLOUD EXCISED: the workout now lives purely in-app (the local live engine).

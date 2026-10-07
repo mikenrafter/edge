@@ -30,7 +30,9 @@ const AlertRule kGestureAckRule = AlertRule(
 
 /// True iff [e] is a live double tap and at least one of its actions ran.
 /// Tell the time does not count: its own buzzes are the answer, and a confirm
-/// cue after a time that plays for seconds would be a stray buzz.
+/// cue after a time that plays for seconds would be a stray buzz. Nor does the
+/// breathing exercise: its first inhale cue follows at once, and the confirm
+/// would make it skip as busy (the gesture's start cue has already played).
 ///
 /// Not for a COUNTED tap (`GestureOutcome.taps` set): the touch counter has
 /// already buzzed the count and confirmed the final one, so a further buzz when
@@ -40,7 +42,9 @@ bool shouldAckTap(StrapEvent e, List<GestureOutcome> outcomes) =>
     e.isLive &&
     outcomes.every((o) => o.taps == null) &&
     outcomes.any((o) =>
-        o.status == GestureStatus.ran && o.action != DeviceAction.tellTime);
+        o.status == GestureStatus.ran &&
+        o.action != DeviceAction.tellTime &&
+        o.action != DeviceAction.breathe);
 
 /// Buzz the band once for this tap, through [d]'s default band transport, or
 /// through [bandDelivery] (the gesture confirm cue) when given. Returns

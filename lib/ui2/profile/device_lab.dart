@@ -32,6 +32,7 @@ import 'package:provider/provider.dart';
 
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
+import '../../gestures/gesture_slots.dart';
 import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
 import '../../gestures/imu_recording_store.dart';
@@ -108,6 +109,7 @@ class DeviceLab extends StatelessWidget {
         ecgSupported: caps.has(Feature.ecgTouchTaps),
         ecgOnDoubleTap: g.ecgOnDoubleTap,
         onEcgOnDoubleTap: g.setEcgOnDoubleTap,
+        onTryEcgOnDoubleTap: g.trySetEcgOnDoubleTap,
         repeatLab: g.repeatTapsLab,
         onRepeatLab: g.setRepeatTapsLab,
         repeatWindowMs: g.repeatTapWindowMs,
@@ -179,12 +181,65 @@ class _LabSessionState extends State<LabSession> {
   Widget build(BuildContext context) => widget.child;
 }
 
+/// The ECG-on-double-tap switch, with the reason it was refused (if it was)
+/// under it. Refused: the switch is driven by [on], so it stays as it was.
+class _EcgDoubleTapRow extends StatefulWidget {
+  const _EcgDoubleTapRow({
+    required this.on,
+    required this.onChanged,
+    required this.onTry,
+    required this.enabled,
+    required this.sub,
+  });
+
+  final bool on, enabled;
+  final ValueChanged<bool>? onChanged;
+  final Future<ActionToggleResult> Function(bool on)? onTry;
+  final String sub;
+
+  @override
+  State<_EcgDoubleTapRow> createState() => _EcgDoubleTapRowState();
+}
+
+class _EcgDoubleTapRowState extends State<_EcgDoubleTapRow> {
+  String? _refusal;
+
+  Future<void> _change(bool v) async {
+    final r = await widget.onTry!(v);
+    if (!mounted) return; // the lab may have closed while the write ran
+    setState(() => _refusal =
+        r is ActionToggleRefusedExclusive ? r.reason : null);
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SwitchRow(
+        'Toggle ECG recording on double tap',
+        widget.on,
+        widget.onTry != null ? _change : widget.onChanged,
+        enabled: widget.enabled,
+        sub: widget.sub,
+      ),
+      if (_refusal != null)
+        Padding(
+          padding: const EdgeInsets.only(bottom: S.x2),
+          child: Text(_refusal!,
+              key: const ValueKey('device-lab-ecg-refusal'),
+              style: F.over.copyWith(color: p.ink2)),
+        ),
+    ]);
+  }
+}
+
 class DeviceLabView extends StatelessWidget {
   const DeviceLabView({
     super.key,
     required this.ecgSupported,
     this.ecgOnDoubleTap = false,
     this.onEcgOnDoubleTap,
+    this.onTryEcgOnDoubleTap,
     this.repeatLab = false,
     this.onRepeatLab,
     this.repeatWindowMs,
@@ -209,6 +264,12 @@ class DeviceLabView extends StatelessWidget {
   final bool ecgSupported;
   final bool ecgOnDoubleTap;
   final ValueChanged<bool>? onEcgOnDoubleTap;
+
+  /// When given, used instead of [onEcgOnDoubleTap]: ECG is an exclusive mode,
+  /// so turning it on can be refused (the double tap has other actions). The
+  /// refusal's reason is shown under the switch (key
+  /// `device-lab-ecg-refusal`) and the switch does not flip.
+  final Future<ActionToggleResult> Function(bool on)? onTryEcgOnDoubleTap;
 
   /// Try the repeated-double-tap method (any band).
   final bool repeatLab;
@@ -380,10 +441,10 @@ class DeviceLabView extends StatelessWidget {
       SettingsAccordion('ECG on double tap',
           id: 'device_lab_ecg_double_tap',
           children: [
-            SwitchRow(
-              'Toggle ECG recording on double tap',
-              ecgOnDoubleTap && ecgSupported,
-              onEcgOnDoubleTap,
+            _EcgDoubleTapRow(
+              on: ecgOnDoubleTap && ecgSupported,
+              onChanged: onEcgOnDoubleTap,
+              onTry: onTryEcgOnDoubleTap,
               enabled: ecgSupported,
               sub: ecgSupported
                   ? 'A live double tap starts an ECG recording. Once '

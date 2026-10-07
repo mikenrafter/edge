@@ -69,6 +69,7 @@ import 'device_action.dart';
 import 'double_tap_repeat.dart';
 import 'gesture_failures.dart';
 import 'gesture_settings.dart';
+import 'gesture_slots.dart';
 import 'strap_event.dart';
 import 'tap_names.dart';
 import 'time_buzz.dart';
@@ -104,9 +105,17 @@ class GestureOutcome {
 typedef GestureHandler = Future<void> Function(StrapEvent event);
 
 /// Plays the time as a gesture: [elements] is [encodeTime] of the injected
-/// local clock in the wearer's [GestureSettings.timeBuzzMode], read when the
+/// local clock in the mode of the slot that fired
+/// ([GestureSettings.timeBuzzModeFor]), read when the
 /// action runs. Complete once the band has the gesture (it need not wait for
 /// the last buzz to finish: a 12 PM time is ~20 s, past [actionTimeout]).
+/// Runs an in-app action for the SLOT that fired it, so the same action on two
+/// slots keeps separate state (two timers are two timers). When given, it takes
+/// the place of [GestureDispatcher.onMarkMoment] / [onWorkoutToggle] /
+/// [onLogWater]. (RED PHASE: declared, not yet called.)
+typedef SlotActionHandler = Future<void> Function(
+    String slot, DeviceAction action, StrapEvent event);
+
 typedef TellTimeHandler = Future<void> Function(
     StrapEvent event, List<TimeBuzzElement> elements);
 
@@ -119,6 +128,9 @@ class GestureDispatcher {
   final GestureHandler? onMarkMoment;
   final GestureHandler? onWorkoutToggle;
   final GestureHandler? onLogWater;
+
+  /// Per-slot in-app handler; see [SlotActionHandler].
+  final SlotActionHandler? onSlotAction;
 
   /// Plays [DeviceAction.tellTime]. Missing: the action fails (an in-app action
   /// with no handler), like the others.
@@ -185,6 +197,7 @@ class GestureDispatcher {
     this.onWorkoutToggle,
     this.onLogWater,
     this.onTellTime,
+    this.onSlotAction,
     this.now,
     this.ecgSupported,
     this.onEcgTap,
@@ -511,7 +524,8 @@ class GestureDispatcher {
     // d. Run.
     try {
       log?.call('[gesture] double-tap → ${a.id}');
-      await _run(a, e).timeout(actionTimeout);
+      await _run(a, e, GestureSlots.ofTaps(taps ?? 2))
+          .timeout(actionTimeout);
       return outcome(GestureStatus.ran);
     } on TimeoutException catch (err) {
       log?.call('[gesture] ${a.id} did not answer in $actionTimeout');
@@ -532,18 +546,25 @@ class GestureDispatcher {
     }
   }
 
-  Future<void> _run(DeviceAction a, StrapEvent e) async {
+  Future<void> _run(DeviceAction a, StrapEvent e, String slot) async {
     if (a == DeviceAction.tellTime) {
       final handler = onTellTime;
       if (handler == null) {
         throw StateError('${a.id} is in-app with no handler');
       }
       // Read now, when the action runs (a claim or a queue may have waited).
-      await handler(e,
-          encodeTime((now ?? () => clock.now())(), settings.timeBuzzMode));
+      await handler(
+          e,
+          encodeTime((now ?? () => clock.now())(),
+              settings.timeBuzzModeFor(slot)));
       return;
     }
     if (a.isInApp) {
+      final bySlot = onSlotAction;
+      if (bySlot != null) {
+        await bySlot(slot, a, e);
+        return;
+      }
       final handler = switch (a) {
         DeviceAction.markMoment => onMarkMoment,
         DeviceAction.workoutToggle => onWorkoutToggle,

@@ -73,6 +73,7 @@ void main() {
         'log_water': 10,
         'broadcast_to_tasker': 11,
         'tell_time': 12,
+        'breathe': 13,
       };
       expect(DeviceAction.values, hasLength(frozen.length));
       for (final a in DeviceAction.values) {
