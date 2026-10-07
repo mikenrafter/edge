@@ -48,6 +48,8 @@ enum WakeExclusion {
 /// Which mechanism woke the wearer.
 enum WakeFiredBy { natural, gradual, native, none }
 
+const Object _keep = Object();
+
 class WakeOutcome {
   const WakeOutcome({
     required this.wakeSec,
@@ -103,6 +105,38 @@ class WakeOutcome {
 
   /// Delivered and nothing excludes it.
   bool get usable => delivered && exclusions.isEmpty;
+
+  /// A copy with the given fields replaced. EVERY place that rebuilds an
+  /// outcome goes through this, so a field added later cannot be dropped by a
+  /// hand-written constructor call (rating once lost configuredWindowMinutes
+  /// that way). Only [grogginess] can be set back to null (pass null
+  /// explicitly); the other nullable fields keep their value when omitted.
+  WakeOutcome copyWith({
+    int? firedAtSec,
+    String? stageAtFire,
+    int? stageAgeSec,
+    bool? delivered,
+    Map<WakeResponseKind, int?>? latencySec,
+    Object? grogginess = _keep,
+    double? minutesBeforeT,
+    int? configuredWindowMinutes,
+    List<WakeExclusion>? exclusions,
+  }) =>
+      WakeOutcome(
+        wakeSec: wakeSec,
+        firedBy: firedBy,
+        firedAtSec: firedAtSec ?? this.firedAtSec,
+        stageAtFire: stageAtFire ?? this.stageAtFire,
+        stageAgeSec: stageAgeSec ?? this.stageAgeSec,
+        delivered: delivered ?? this.delivered,
+        latencySec: latencySec ?? this.latencySec,
+        grogginess:
+            identical(grogginess, _keep) ? this.grogginess : grogginess as int?,
+        minutesBeforeT: minutesBeforeT ?? this.minutesBeforeT,
+        configuredWindowMinutes:
+            configuredWindowMinutes ?? this.configuredWindowMinutes,
+        exclusions: exclusions ?? this.exclusions,
+      );
 
   Map<String, Object?> toJson() => {
         'wakeSec': wakeSec,

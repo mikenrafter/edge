@@ -5655,7 +5655,10 @@ class AppState extends ChangeNotifier {
         for (final e in events)
           if (e.kind == WakeEvidenceKind.bandMovement) e.sec,
       ],
-      alarmFired: const <int>[], // RED-SCAFFOLD: filled in by the fix
+      alarmFired: [
+        for (final e in events)
+          if (e.kind == WakeEvidenceKind.alarmFired) e.sec,
+      ],
     );
   }
 

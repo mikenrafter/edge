@@ -67,19 +67,7 @@ class WakeOutcomeStore {
     final outcomes = await load();
     final index = outcomes.indexWhere((outcome) => outcome.wakeSec == wakeSec);
     if (index < 0) return;
-    final outcome = outcomes[index];
-    outcomes[index] = WakeOutcome(
-      wakeSec: outcome.wakeSec,
-      firedBy: outcome.firedBy,
-      firedAtSec: outcome.firedAtSec,
-      stageAtFire: outcome.stageAtFire,
-      stageAgeSec: outcome.stageAgeSec,
-      delivered: outcome.delivered,
-      latencySec: outcome.latencySec,
-      grogginess: grogginess,
-      minutesBeforeT: outcome.minutesBeforeT,
-      exclusions: outcome.exclusions,
-    );
+    outcomes[index] = outcomes[index].copyWith(grogginess: grogginess);
     await write(
       kWakeOutcomesKey,
       jsonEncode([for (final item in outcomes) item.toJson()]),

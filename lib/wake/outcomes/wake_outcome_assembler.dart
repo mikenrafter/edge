@@ -39,6 +39,12 @@ const int kOutcomeAlreadyAwakeSec = 600;
 /// Another alarm this close before the fire (seconds) is a competing alarm.
 const int kOutcomeCompetingAlarmSec = 900;
 
+/// A band alarm-fired stamp this close to the wake's T (seconds, either side) is
+/// taken to be THIS wake's own native alarm, not another alarm. Known limit: a
+/// different alarm that fires inside this slack of T cannot be told apart from
+/// it and is not counted.
+const int kOutcomeNativeAlarmSlackSec = 120;
+
 /// A first response later than this after the fire (seconds) is another
 /// episode.
 const int kOutcomeEpisodeSec = 4 * 3600;
@@ -69,10 +75,17 @@ const int kOutcomeEpisodeSec = 4 * 3600;
 ///
 /// Exclusions: alreadyAwake when an appInteraction lies in
 /// [fire - 600 s, fire]; staleStage when stageAgeSec > 180; competingAlarm
-/// when an otherAlarmSecs value lies in [fire - 900 s, fire] or a band-delivered
-/// Gradual step lies in [fire - 900 s, fire) (a second wake stimulus the
-/// response cannot be told apart from). With no fire
-/// there is no fire time: only noDelivery applies.
+/// when
+///  - an otherAlarmSecs value (band alarm-fired stamps) lies in
+///    [fire - 900 s, fire], not counting stamps within
+///    [kOutcomeNativeAlarmSlackSec] of wakeSec (this wake's own native alarm);
+///  - or any wake stimulus that was sent (a natural_haptic / natural_repeat /
+///    gradual result row with result 'sent', to ANY target, phone included)
+///    lies in [fire - 900 s, fire). The attributed fire is the first
+///    band-delivered row, so such an earlier row is a second wake stimulus the
+///    response cannot be told apart from (a phone-only sound just before a band
+///    repeat is one). A row that sounded nowhere ('notDelivered') is not.
+/// With no fire there is no fire time: only noDelivery applies.
 ///
 /// configuredWindowMinutes = naturalMinutes of the last 'plan' row, else null.
 WakeOutcome assemble({
@@ -98,6 +111,14 @@ WakeOutcome assemble({
 
   bool hasResult(WakeTraceEntry row, String kind) =>
       row.kind == kind && row.data['phase'] == 'result' && bandSent(row);
+
+  // A wake stimulus that sounded somewhere (any target), whoever it reached.
+  bool anySent(WakeTraceEntry row) {
+    if (row.data['result'] != 'sent') return false;
+    if (row.kind == 'gradual') return true;
+    return (row.kind == 'natural_haptic' || row.kind == 'natural_repeat') &&
+        row.data['phase'] == 'result';
+  }
 
   final naturalFire = <WakeTraceEntry>[
     for (final row in rows)
@@ -202,11 +223,15 @@ WakeOutcome assemble({
     alreadyAwake = appInteractionSecs
         .any((second) => second >= fire - kOutcomeAlreadyAwakeSec && second <= fire);
     staleStage = stageAgeSec != null && stageAgeSec > kOutcomeStaleStageSec;
-    competingAlarm = otherAlarmSecs.any(
-            (second) => second >= fire - kOutcomeCompetingAlarmSec && second <= fire) ||
-        gradualFire.any((row) {
+    competingAlarm = otherAlarmSecs.any((second) =>
+            (second - wakeSec).abs() > kOutcomeNativeAlarmSlackSec &&
+            second >= fire - kOutcomeCompetingAlarmSec &&
+            second <= fire) ||
+        rows.any((row) {
           final second = row.atMs ~/ 1000;
-          return second >= fire - kOutcomeCompetingAlarmSec && second < fire;
+          return anySent(row) &&
+              second >= fire - kOutcomeCompetingAlarmSec &&
+              second < fire;
         });
   }
 

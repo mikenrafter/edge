@@ -32,8 +32,13 @@ const Duration kGrogginessPromptMaxAge = Duration(hours: 12);
 typedef WakeEvidenceSecs = ({
   List<int> appOpened,
   List<int> movement,
-  // RED-SCAFFOLD (round 3): band alarm-fired stamps (WakeEvidenceKind.alarmFired)
-  // noted for the night; read but not yet used.
+  // Band alarm-fired stamps (WakeEvidenceKind.alarmFired) noted for the night:
+  // the one source of OTHER alarm evidence the app has. They include this
+  // wake's own native alarm at T; the assembler drops that one
+  // ([kOutcomeNativeAlarmSlackSec]). There is NO source for the phone's own
+  // alarms (the app has no phone alarm clock; its phone wake sounds are trace
+  // rows). Known gap: a different alarm within the slack of T is
+  // indistinguishable from the native one and is not counted.
   List<int> alarmFired,
 });
 
@@ -82,8 +87,8 @@ class WakeOutcomeRecorder {
   /// minutes and the confirmation store stops recording after confirmation, so
   /// a catch-up can see LESS than the first run did. A response once observed
   /// stays (the earliest of the two), and so do the exclusions that rest on
-  /// observations (alreadyAwake, crossedEpisode). Everything else (delivery,
-  /// staleStage, competingAlarm, noDelivery) comes from the trace, which only
+  /// observations (alreadyAwake, crossedEpisode, competingAlarm). Everything
+  /// else (delivery, staleStage, noDelivery) comes from the trace, which only
   /// grows, so the new assembly stands. Only merged when both runs agree on the
   /// fire: latencies are relative to it.
   WakeOutcome _keepObserved(WakeOutcome? old, WakeOutcome fresh) {
@@ -93,22 +98,20 @@ class WakeOutcomeRecorder {
       final a = old.latencySec[kind], b = fresh.latencySec[kind];
       latency[kind] = a == null ? b : (b == null ? a : (a < b ? a : b));
     }
-    const sticky = {WakeExclusion.alreadyAwake, WakeExclusion.crossedEpisode};
+    const sticky = {
+      WakeExclusion.alreadyAwake,
+      WakeExclusion.crossedEpisode,
+      // Rests on alarm evidence, which is only readable for the newest sleep
+      // block: a later catch-up can see less. (A trace-derived competing
+      // stimulus is re-found anyway.)
+      WakeExclusion.competingAlarm,
+    };
     final kept = {
       ...fresh.exclusions,
       ...old.exclusions.where(sticky.contains),
     };
-    return WakeOutcome(
-      wakeSec: fresh.wakeSec,
-      firedBy: fresh.firedBy,
-      firedAtSec: fresh.firedAtSec,
-      stageAtFire: fresh.stageAtFire,
-      stageAgeSec: fresh.stageAgeSec,
-      delivered: fresh.delivered,
+    return fresh.copyWith(
       latencySec: latency,
-      grogginess: fresh.grogginess,
-      minutesBeforeT: fresh.minutesBeforeT,
-      configuredWindowMinutes: fresh.configuredWindowMinutes,
       exclusions: [
         for (final e in WakeExclusion.values)
           if (kept.contains(e)) e,
@@ -150,6 +153,7 @@ class WakeOutcomeRecorder {
             ...?touchSecs?.call(),
           ],
           movementSecs: evidence.movement,
+          otherAlarmSecs: evidence.alarmFired,
           grogginess: existing?.grogginess,
         );
         final merged = _keepObserved(existing, outcome);
