@@ -66,8 +66,11 @@ class ResonanceSweepController extends ChangeNotifier {
   final Future<void> Function() acquireStreams;
   final void Function() releaseStreams;
 
-  /// Share of [from]..[to] (session-relative) judged still; 1.0 when null.
-  final double Function(Duration from, Duration to)? stillFraction;
+  /// Share of [from]..[to] (session-relative) judged still, or null for "no
+  /// motion evidence for that span". With no callback at all, or a null
+  /// answer, the block abstains ([BlockRejection.movementUnknown]): unknown is
+  /// never counted as still.
+  final double? Function(Duration from, Duration to)? stillFraction;
   final DateTime Function()? now;
   final bool hapticOnly;
 
@@ -96,9 +99,13 @@ class ResonanceSweepController extends ChangeNotifier {
       _fail('Connect your band first.');
       return;
     }
+    // Ownership is claimed BEFORE the wait: the owner side marks the streams
+    // held as the acquisition begins, so a dispose or failure during the wait
+    // has to hand them back.
+    _streamsHeld = true;
     try {
       await acquireStreams();
-      _streamsHeld = true;
+      if (_disposed) return; // already released by dispose()
       _startedAt = _clockNow();
       _elapsed = Duration.zero;
       _state = SweepState.running;
@@ -106,6 +113,7 @@ class ResonanceSweepController extends ChangeNotifier {
       _result = null;
       _notify();
     } catch (exception) {
+      if (_disposed) return;
       _fail(_errorText(exception));
     }
   }
@@ -162,8 +170,7 @@ class ResonanceSweepController extends ChangeNotifier {
         inputs.add(BlockInput(
           block: block,
           beats: beats,
-          stillFraction:
-              stillFraction?.call(block.settleEnd, block.end) ?? 1.0,
+          stillFraction: stillFraction?.call(block.settleEnd, block.end),
           missedCues: _missedCuesByBlock[plan.blocks.indexOf(block)] ?? 0,
           hapticOnly: hapticOnly,
         ));
@@ -190,7 +197,13 @@ class ResonanceSweepController extends ChangeNotifier {
     return value.isNegative ? Duration.zero : value;
   }
 
+  // Sends the cue for the phase running NOW and nothing older. A tick that
+  // comes late (the UI ticker was starved) must not replay the phases it
+  // slept through as a burst: they describe breaths that are over. Each such
+  // skipped cue is a missed cue (it counts when it lay in a measure window),
+  // and once the sweep is over no cue is sent at all.
   void _queueDueCues() {
+    final due = <({int index, int blockIndex, Duration at, BreathPhaseKind kind})>[];
     var cueIndex = 0;
     for (var blockIndex = 0; blockIndex < plan.blocks.length; blockIndex++) {
       final block = plan.blocks[blockIndex];
@@ -201,9 +214,30 @@ class ResonanceSweepController extends ChangeNotifier {
         if (at >= block.end) break;
         if (at > _elapsed) break;
         if (_deliveredCueIndexes.add(cueIndex)) {
-          unawaited(_deliverCue(blockIndex, at, block.pattern.phases[phase % 2].kind));
+          due.add((
+            index: cueIndex,
+            blockIndex: blockIndex,
+            at: at,
+            kind: block.pattern.phases[phase % 2].kind,
+          ));
         }
       }
+    }
+    if (due.isEmpty) return;
+    final current = _elapsed < plan.total ? due.removeLast() : null;
+    for (final skipped in due) {
+      _countMissed(skipped.blockIndex, skipped.at);
+    }
+    if (current != null) {
+      unawaited(_deliverCue(current.blockIndex, current.at, current.kind));
+    }
+  }
+
+  void _countMissed(int blockIndex, Duration at) {
+    final block = plan.blocks[blockIndex];
+    if (at >= block.settleEnd && at < block.end) {
+      _missedCuesByBlock.update(blockIndex, (count) => count + 1,
+          ifAbsent: () => 1);
     }
   }
 
@@ -214,19 +248,9 @@ class ResonanceSweepController extends ChangeNotifier {
   ) async {
     try {
       final delivery = await deliverCue(kind);
-      final block = plan.blocks[blockIndex];
-      if (delivery != CueDelivery.delivered &&
-          at >= block.settleEnd &&
-          at < block.end) {
-        _missedCuesByBlock.update(blockIndex, (count) => count + 1,
-            ifAbsent: () => 1);
-      }
+      if (delivery != CueDelivery.delivered) _countMissed(blockIndex, at);
     } catch (_) {
-      final block = plan.blocks[blockIndex];
-      if (at >= block.settleEnd && at < block.end) {
-        _missedCuesByBlock.update(blockIndex, (count) => count + 1,
-            ifAbsent: () => 1);
-      }
+      _countMissed(blockIndex, at);
     }
   }
 

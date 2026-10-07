@@ -137,6 +137,19 @@ void main() {
       expect(at.amplitudeBpm, isNotNull);
     });
 
+    test('no motion evidence (null) abstains as movementUnknown', () {
+      final r = scoreOne(BlockInput(
+        block: b6,
+        beats: synthBeats(b6, amplitudeBpm: 4),
+        stillFraction: null,
+        missedCues: 0,
+        hapticOnly: false,
+      ));
+      expect(r.rejection, BlockRejection.movementUnknown);
+      expect(r.admitted, isFalse);
+      expect(r.amplitudeBpm, isNull);
+    });
+
     test('a missed cue rejects a haptic-only block, and only that', () {
       final hapticOnly =
           scoreOne(inputFor(b6, missedCues: 1, hapticOnly: true));

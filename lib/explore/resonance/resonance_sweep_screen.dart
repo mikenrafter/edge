@@ -322,6 +322,16 @@ class _ResonanceSweepScreenState extends State<ResonanceSweepScreen>
             style: F.t1.copyWith(color: p.ink)),
         const SizedBox(height: S.x1),
         Text(detail, style: F.cap.copyWith(color: p.ink2, height: 1.5)),
+        if (r.blocks
+            .any((b) => b.rejection == BlockRejection.movementUnknown)) ...[
+          const SizedBox(height: S.x2),
+          Text(
+            "Movement can't be checked yet, so no rate is suggested; the "
+            'comparison table still shows each pace.',
+            key: const ValueKey('sweep-movement-unknown'),
+            style: F.cap.copyWith(color: p.ink2, height: 1.5),
+          ),
+        ],
         if (suggestion != null) ...[
           const SizedBox(height: S.x3),
           Text(
@@ -391,9 +401,6 @@ class _ResonanceSweepScreenState extends State<ResonanceSweepScreen>
           ),
         const SizedBox(height: S.x5),
         _evidence(c),
-        const SizedBox(height: S.x2),
-        Text('Movement was not checked in this prototype.',
-            style: F.over.copyWith(color: p.ink3)),
         const SizedBox(height: S.x2),
       ],
     );
@@ -477,6 +484,7 @@ class _ResonanceSweepScreenState extends State<ResonanceSweepScreen>
         BlockRejection.lowCoverage => 'Too few beats picked up',
         BlockRejection.artifacts => 'Too many unreliable beats',
         BlockRejection.movement => 'Too much movement',
+        BlockRejection.movementUnknown => "Movement can't be checked",
         BlockRejection.missedCues => 'Missed band buzzes',
         BlockRejection.tooFewCycles => 'Too few full breaths',
       };
@@ -536,20 +544,36 @@ class ResonanceSweepEntry extends StatelessWidget {
         'Pacing rates compared',
         sub: 'Experimental. Breathe at a few paces and see which moves your '
             'heart rate most.',
-        onTap: () => _open(context),
+        onTap: () => unawaited(_open(context)),
       ),
     );
   }
 
   // The controller is made on tap (a read, not a build-time dependency) and
   // handed to the screen, which owns and disposes it.
-  void _open(BuildContext context) {
-    final controller = context.read<AppState>().buildResonanceSweep();
-    Navigator.of(context).push(MaterialPageRoute<void>(
-      builder: (_) => ResonanceSweepScreen(
-        controller: controller,
-        history: const ResonanceHistoryStore(),
-      ),
-    ));
+  //
+  // The Device lab holds the band queue for as long as it is open: it rejects
+  // every immediate non-lab job, and the sweep's pacing cues are exactly that.
+  // The sweep page is not a lab tool, so the lab lets go while the page is on
+  // top and takes the queue back when it pops. Other pages pushed over the lab
+  // keep their hold. Both calls are idempotent; the re-open is skipped when
+  // the lab left the screen in the meantime or was not open to begin with.
+  Future<void> _open(BuildContext context) async {
+    final app = context.read<AppState>();
+    final runner = app.hardwareProbes;
+    final navigator = Navigator.of(context);
+    final controller = app.buildResonanceSweep();
+    final labWasOpen = app.haptics.labOpen;
+    runner.closeLab();
+    try {
+      await navigator.push(MaterialPageRoute<void>(
+        builder: (_) => ResonanceSweepScreen(
+          controller: controller,
+          history: const ResonanceHistoryStore(),
+        ),
+      ));
+    } finally {
+      if (labWasOpen && context.mounted) runner.openLab();
+    }
   }
 }

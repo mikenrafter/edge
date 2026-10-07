@@ -73,7 +73,10 @@ class SweepSessionRecord {
 /// stopped sessions in between are skipped, not compared.
 ///
 /// Returns the midpoint of the overlap, or of the gap when they do not quite
-/// touch (two single rates: their mean).
+/// touch (two single rates: their mean). Null when that rate is one whose block
+/// was rejected in either session: it was never measured there, so it is never
+/// suggested (a session saved before the analyzer treated a rejected rate
+/// inside a tie as a hole can still hold such a range).
 double? suggestedPracticeRate(List<SweepSessionRecord> sessionsNewestFirst) {
   final conclusive = sessionsNewestFirst.where(_isConclusive).take(2).toList();
   if (conclusive.length != 2) return null;
@@ -84,10 +87,15 @@ double? suggestedPracticeRate(List<SweepSessionRecord> sessionsNewestFirst) {
 
   final overlapLo = first.$1 > second.$1 ? first.$1 : second.$1;
   final overlapHi = first.$2 < second.$2 ? first.$2 : second.$2;
-  if (overlapLo <= overlapHi) return (overlapLo + overlapHi) / 2;
-
   final gap = overlapLo - overlapHi;
-  return gap <= 0.5 ? (overlapLo + overlapHi) / 2 : null;
+  if (gap > 0.5) return null;
+  final suggestion = (overlapLo + overlapHi) / 2;
+  for (final session in conclusive) {
+    final rejectedHere = session.blocks.any((block) =>
+        block.rejection != null && (block.rateBpm - suggestion).abs() < 1e-9);
+    if (rejectedHere) return null;
+  }
+  return suggestion;
 }
 
 class ResonanceHistoryStore {

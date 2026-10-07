@@ -101,4 +101,35 @@ void main() {
     await t.pumpWidget(const SizedBox());
     expect(app.haptics.labOpen, isFalse);
   });
+
+  // The release is explicit to the sweep page. Any other page pushed over the
+  // lab (the pattern probe's, for one) keeps the lab's hold on the queue.
+  testWidgets('a plain page pushed over LabSession does not end the lab',
+      (t) async {
+    await t.pumpWidget(MultiProvider(
+      providers: [ChangeNotifierProvider<AppState>.value(value: app)],
+      child: MaterialApp(
+        home: Scaffold(
+          body: LabSession(
+            runner: app.hardwareProbes,
+            child: Builder(
+              builder: (context) => TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                      builder: (_) => const Scaffold(body: Text('probe page'))),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await t.tap(find.text('open'));
+    await t.pump(const Duration(seconds: 1));
+    await t.pump(const Duration(seconds: 1));
+    expect(find.text('probe page'), findsOneWidget);
+    expect(app.haptics.labOpen, isTrue);
+    expect(await tryCue(t), BuzzDelivery.rejected);
+  });
 }

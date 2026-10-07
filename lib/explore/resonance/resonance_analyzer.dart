@@ -15,7 +15,6 @@
 //
 // The gates below are proposed engineering gates, not published thresholds.
 //
-// RED-phase stub: every body throws until the implementation lands.
 import 'package:flutter/foundation.dart' show immutable;
 
 import 'resonance_sweep_plan.dart';
@@ -78,13 +77,25 @@ class BlockInput {
   /// Beats inside the measure window only.
   final List<SweepBeat> beats;
 
-  /// 0..1 share of the measure window judged still.
-  final double stillFraction;
+  /// 0..1 share of the measure window judged still; null when there is no
+  /// motion evidence at all. Unknown is not still: the block abstains
+  /// ([BlockRejection.movementUnknown]).
+  final double? stillFraction;
   final int missedCues;
   final bool hapticOnly;
 }
 
-enum BlockRejection { lowCoverage, artifacts, movement, missedCues, tooFewCycles }
+enum BlockRejection {
+  lowCoverage,
+  artifacts,
+  movement,
+
+  /// No motion evidence for the block (no accelerometer data reached the
+  /// sweep). It abstains rather than counting as still.
+  movementUnknown,
+  missedCues,
+  tooFewCycles,
+}
 
 @immutable
 class BlockResult {
@@ -106,7 +117,8 @@ class BlockResult {
   /// Sum of observed rr over the measure window length.
   final double coverage;
 
-  /// Observed beats over all beats.
+  /// Observed beats over all INPUT beats, including beats the correction stage
+  /// dropped (the decode hands those over as unobserved placeholders).
   final double observedFraction;
 
   /// Complete cycles that had enough observed beats to count.
@@ -209,14 +221,15 @@ SweepComparison compareBlocks(
     );
   }
 
+  // Every tested rate between the tie's ends must itself be in the tie. A
+  // rate that scored lower is a gap, and one that was rejected or never
+  // scored is a hole: a range spanning it names a rate nothing measured.
   final tiedRates = tied.map((block) => block.rateBpm).toSet();
   final low = tied.first.rateBpm;
   final high = tied.last.rateBpm;
-  final hasAdmittedGap = admitted.any((block) =>
-      block.rateBpm > low &&
-      block.rateBpm < high &&
-      !tiedRates.contains(block.rateBpm));
-  if (hasAdmittedGap) {
+  final hasGap = [...tested, ...blocks.map((block) => block.rateBpm)].any(
+      (rate) => rate > low && rate < high && !tiedRates.contains(rate));
+  if (hasGap) {
     return SweepComparison(
       blocks: blocks,
       outcome: ComparisonOutcome.inconclusiveFlat,
@@ -282,7 +295,9 @@ BlockResult _scoreBlock(BlockInput input) {
     rejection = BlockRejection.lowCoverage;
   } else if (observedFraction < kMinObservedFraction) {
     rejection = BlockRejection.artifacts;
-  } else if (input.stillFraction < kMinStillFraction) {
+  } else if (input.stillFraction == null) {
+    rejection = BlockRejection.movementUnknown;
+  } else if (input.stillFraction! < kMinStillFraction) {
     rejection = BlockRejection.movement;
   } else if (input.hapticOnly && input.missedCues > 0) {
     rejection = BlockRejection.missedCues;

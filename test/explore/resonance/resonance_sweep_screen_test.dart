@@ -182,6 +182,37 @@ void main() {
       expect(find.textContaining('5.5 breaths/min'), findsWidgets);
     });
 
+    testWidgets('unknown movement says plainly that no rate is suggested',
+        (t) async {
+      final c = FakeController(
+        fakeState: SweepState.finished,
+        fakeResult: SweepComparison(
+          blocks: [
+            for (final rate in [6.0, 5.0])
+              BlockResult(
+                rateBpm: rate,
+                amplitudeBpm: null,
+                coverage: 0.99,
+                observedFraction: 1.0,
+                cycles: 10,
+                rejection: BlockRejection.movementUnknown,
+              ),
+          ],
+          outcome: ComparisonOutcome.inconclusiveTooFewBlocks,
+          rateBpm: null,
+          range: null,
+        ),
+      );
+      await _pumpScreen(t, c);
+      expect(
+        find.text("Movement can't be checked yet, so no rate is suggested; "
+            'the comparison table still shows each pace.'),
+        findsOneWidget,
+      );
+      expect(find.text("Movement can't be checked"), findsNWidgets(2));
+      expect(find.textContaining('Tentative'), findsNothing);
+    });
+
     testWidgets('a failed session shows its error', (t) async {
       final c = FakeController(
         fakeState: SweepState.failed,

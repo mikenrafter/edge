@@ -4726,9 +4726,10 @@ Map<String, dynamic>? stressSummaryForToday(
 /// shifts every beat of the block alike.
 ///
 /// `observed` is false for a beat the corrector replaced by interpolation. A
-/// beat it dropped is simply absent. `correctRr` exposes a class per INPUT
-/// beat but not which output beat each became, so the mapping replays its
-/// rule: an isolated artifact is interpolated when a normal beat exists on
+/// beat it dropped comes back as an unobserved placeholder (its raw RR, the
+/// time of the beat before it) so it stays in the quality denominator.
+/// `correctRr` exposes a class per INPUT beat but not which output beat each
+/// became, so the mapping replays its rule: an isolated artifact is interpolated when a normal beat exists on
 /// both sides, and dropped otherwise; a run of two or more is dropped. If the
 /// replay does not reproduce the output length (the rule changed upstream),
 /// every beat is marked not observed rather than guessing which were.
@@ -4745,6 +4746,10 @@ List<SweepBeat> sweepBeatsCompute(List<({int atMs, String hex})> frames) {
   final firstNormal = classes.indexOf(ana.BeatClass.normal);
   final lastNormal = classes.lastIndexOf(ana.BeatClass.normal);
   final observed = <bool>[];
+  // Input beats the corrector dropped, keyed by the output index they sit
+  // before. They are handed back as unobserved placeholders so the quality
+  // share is taken over every INPUT beat, not over the survivors.
+  final dropped = <int, List<double>>{};
   var i = 0;
   while (i < classes.length) {
     if (classes[i] == ana.BeatClass.normal) {
@@ -4758,6 +4763,8 @@ List<SweepBeat> sweepBeatsCompute(List<({int atMs, String hex})> frames) {
     }
     if (j - i == 1 && firstNormal >= 0 && firstNormal < i && lastNormal > i) {
       observed.add(false); // interpolated
+    } else if (classes.length == decoded.rrMs.length) {
+      (dropped[observed.length] ??= []).addAll(decoded.rrMs.sublist(i, j));
     }
     i = j;
   }
@@ -4766,13 +4773,34 @@ List<SweepBeat> sweepBeatsCompute(List<({int atMs, String hex})> frames) {
   // nnTimesMs[0] is the first beat's END, measured from (first stamp - first
   // rr); the first stamp is the packet clock's zero for this block.
   final shift = frames[first].atMs - decoded.rrMs.first;
-  return sweepBeatsFromRr(
+  final beats = sweepBeatsFromRr(
     rrMs: cleaned.nn,
     rrTsMs: [for (final t in cleaned.nnTimesMs) t + shift],
     observed: replayed
         ? observed
         : List<bool>.filled(cleaned.nn.length, false),
   );
+  if (!replayed || dropped.isEmpty || beats.isEmpty) return beats;
+
+  // A dropped beat has no time of its own: it sits at the time of the beat
+  // before it (the first beat for a leading run). It is never observed, so it
+  // adds to no coverage and no cycle, only to the share's denominator.
+  final out = <SweepBeat>[];
+  void addDropped(int before) {
+    final raw = dropped[before];
+    if (raw == null) return;
+    final at = before == 0 ? beats.first.tMs : beats[before - 1].tMs;
+    for (final rr in raw) {
+      out.add(SweepBeat(tMs: at, rrMs: rr, observed: false));
+    }
+  }
+
+  for (var k = 0; k < beats.length; k++) {
+    addDropped(k);
+    out.add(beats[k]);
+  }
+  addDropped(beats.length);
+  return out;
 }
 
 Map<String, dynamic> _spotCheckCompute(List<String> records) {

@@ -917,9 +917,12 @@ class AppState extends ChangeNotifier {
   /// breathing cue path and the off-isolate beat decode. The screen that is
   /// given it owns it and disposes it (which releases the streams).
   ///
-  /// Known prototype gap: no `stillFraction` is passed (no 1 Hz motion source
-  /// is wired here), so movement is not checked and the controller treats the
-  /// whole measure window as still. The result screen says so.
+  /// No `stillFraction` is passed, deliberately. The sweep holds the HR stream
+  /// only, and those frames (0x28 compact HR) carry no accelerometer field; the
+  /// R10 frames that do (0x2B / gen4 bundle) arrive only with the IMU owner, a
+  /// high-rate flood a breathing session does not take. Unknown motion is not
+  /// still motion, so every block abstains with `movementUnknown`, no rate is
+  /// suggested, and the result screen says so.
   ResonanceSweepController buildResonanceSweep({
     ResonanceSweepPlan? plan,
     // The sweep's wall clock; tests step it.
