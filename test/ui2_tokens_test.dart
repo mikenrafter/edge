@@ -195,6 +195,10 @@ const _notComponents = {
   // band alarms; every state it draws is pumped in
   // alarm_slot_probe_panel_test.dart with a fake runner.
   'AlarmSlotProbeCard',
+  // Device lab ownership wrapper: hands the band queue back from the lab
+  // while an explore page is on top. Draws nothing of its own; pinned in
+  // test/explore/bedtime/bedtime_lab_yield_test.dart.
+  'LabYield',
   // Home card bound to WakeController.naturalBuzzing; shown only while a
   // Natural Wake repeat runs. Both states are pumped in
   // natural_wake_card_test.dart.
