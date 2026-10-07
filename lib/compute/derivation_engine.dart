@@ -63,6 +63,7 @@ import 'day_calculation_state.dart';
 import 'day_checkpoint_fold.dart';
 import 'day_checkpoint_policy.dart';
 import 'day_resume_state.dart';
+import 'minute_bills.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
 import 'substrate.dart';
@@ -3700,6 +3701,13 @@ class DerivationEngine {
             source: overrideRow['source'] as String? ?? 'manual',
           );
 
+    // The night's confirmed wake (owner rule, see sleep_block_policy.dart),
+    // read from the DB so it holds across restarts and headless passes. Null =
+    // not final: the night follows the data exactly as it always did. A user
+    // window never reaches it (putSleepOverride deletes the row).
+    final confirmedWake =
+        override == null ? (await LocalDb.wakeConfirmation(dayId))?.atSec : null;
+
     if (override == null) {
       final finalized = await LocalDb.finalizedDayIds(kAlgoVersion);
       if (finalized.contains(dayId)) {
@@ -3804,6 +3812,7 @@ class DerivationEngine {
         targetDay: dayId,
         override: override,
         priorSleep: priorSleep,
+        confirmedWakeSec: confirmedWake,
       );
       // Fold the MAIN sleep (most epochs) of a freshly-staged night into the
       // rolling profile — done here in the worker because the observations live
@@ -3875,7 +3884,14 @@ class DerivationEngine {
       // Keyed at this algo version, so a bump still re-stages from scratch —
       // that is what a bump is for. An override never reaches this branch, so a
       // user shortening their own night is untouched.
-      final stored = await LocalDb.sleepSessionCandidate(dayId, kAlgoVersion);
+      //
+      // NOT for a confirmed night: its end is an observed event, so a banked
+      // candidate that ran past it (staged before the confirmation arrived) is
+      // the one that is wrong, and the confirmed one replaces it. Passes after
+      // that re-stage the same truncated night, so it cannot move again.
+      final stored = confirmedWake != null
+          ? null
+          : await LocalDb.sleepSessionCandidate(dayId, kAlgoVersion);
       final storedJson = stored?['payload_json'];
       if (storedJson is String && storedJson.isNotEmpty) {
         try {
@@ -5689,7 +5705,7 @@ class DerivationEngine {
     if (secondHalfOk) {
       _publishCalculationState(day.date, candidateState, finalized: finalized);
       await _refreshCheckpoint(day, profile, dataNowSec,
-          finalized: finalized, reuse: ckptReuse);
+          finalized: finalized, reuse: ckptReuse, state: candidateState);
     }
     return true;
   }
@@ -5726,11 +5742,10 @@ class DerivationEngine {
         dayEndSec: dayEnd,
         tzOffsetAtStartMin: offsetMin(dayStart),
         tzOffsetAtEndMin: offsetMin(dayEnd),
-        sleepOnsetSec: day.sleepOnsetSec,
-        sleepOffsetSec: day.sleepOffsetSec,
         sleepSource: day.sleepSource,
-        // Nothing the checkpoint folds reads the movement floor; it joins the
-        // signature when the per-minute motion buckets do.
+        // The window's bounds are not signed: nothing the checkpoint folds
+        // reads them. Nor does the movement floor: the per-minute motion buckets hold
+        // `dynAmp`, and the floor is applied when they are read.
         dynFloorG: null,
       ),
       age: profile.ageYears,
@@ -5799,6 +5814,7 @@ class DerivationEngine {
     int dataNowSec, {
     required bool finalized,
     required bool reuse,
+    required DayCalculationState state,
   }) async {
     try {
       // A day stays resumable until it finalizes, 48 h after it ends, so the
@@ -5853,10 +5869,12 @@ class DerivationEngine {
             ay: sub.ay.sublist(lo, hi),
             az: sub.az.sublist(lo, hi),
             stepCounter: [for (var i = lo; i < hi; i++) i < sc.length ? sc[i] : -1],
-            sleepOnsetSec: day.sleepOnsetSec,
-            sleepOffsetSec: day.sleepOffsetSec,
             age: ctx.age,
             stepModulus: ctx.stepModulus,
+            // The priced wake minutes up to the checkpoint, so the next pass
+            // prices only what moved. They follow this pass's window, which the
+            // folded state does not.
+            bills: state.minuteBills(beforeMinute: boundary ~/ 60),
             timeout: _perDayTimeout,
             label: 'checkpoint ${day.date}',
           ));
@@ -5892,10 +5910,9 @@ class DerivationEngine {
     required List<double> ay,
     required List<double> az,
     required List<int> stepCounter,
-    required int sleepOnsetSec,
-    required int sleepOffsetSec,
     required int? age,
     required int? stepModulus,
+    required MinuteBills? bills,
     required Duration timeout,
     required String label,
   }) => _runIsolateCancellable(
@@ -5908,10 +5925,9 @@ class DerivationEngine {
           ay: ay,
           az: az,
           stepCounter: stepCounter,
-          sleepOnsetSec: sleepOnsetSec,
-          sleepOffsetSec: sleepOffsetSec,
           age: age,
           stepModulus: stepModulus,
+          bills: bills,
         ),
         timeout,
         label: label,
@@ -8317,27 +8333,28 @@ class DerivationEngine {
     if (last != null && identical(last.state, state) && last.mode == mode) {
       return last.minutes;
     }
-    final samples = <ana.AccelSample>[
-      for (var i = 0; i < s.length; i++)
-        ana.AccelSample(
-          s.tsSec[i] * 1000.0,
-          s.ax[i],
-          s.ay[i],
-          s.az[i],
-          // Wear (HR locked) AND a real gravity vector — either missing makes
-          // the second unusable for ENMO, not a still one.
-          valid: s.hr[i] > 0 && s.accelPresentAt(i),
-        ),
-    ];
     // 1440 = a calendar day. Both callers pass the day substrate, and without
     // it `EnmoResult.coverage` divides by the SPAN of minutes that had a
     // sample — so a day worn 4 h out of 24 reported coverage 1.0. Only
     // `.minutes` is read here today; passing it keeps the result honest if
     // coverage is ever surfaced.
+    // With a state the minutes come from its folded per-minute buckets, which
+    // add only the seconds it has not seen (no copy of the day); a valid second
+    // there is the same one: HR locked AND a real gravity vector, either
+    // missing making it unusable for ENMO, not a still one.
     final minutes = List<ana.MotionMinute>.unmodifiable(
       state == null
-          ? ana.enmoSeries(samples, expectedMinutes: 1440).minutes
-          : state.motionMinutes(samples, mode),
+          ? ana.enmoSeries(<ana.AccelSample>[
+              for (var i = 0; i < s.length; i++)
+                ana.AccelSample(
+                  s.tsSec[i] * 1000.0,
+                  s.ax[i],
+                  s.ay[i],
+                  s.az[i],
+                  valid: s.hr[i] > 0 && s.accelPresentAt(i),
+                ),
+            ], expectedMinutes: 1440).minutes
+          : state.dynMinutes(s.tsSec, s.hr, s.ax, s.ay, s.az, mode),
     );
     _motionBySub[s] = (state: state, mode: mode, minutes: minutes);
     return minutes;

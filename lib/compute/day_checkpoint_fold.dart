@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'day_resume_state.dart';
+import 'minute_bills.dart';
 
 /// Index of the first element of the ascending [sorted] that is >= [value]
 /// (`sorted.length` when there is none).
@@ -23,11 +24,15 @@ int firstIndexAtOrAfter(List<int> sorted, int value) {
 /// the new samples, so a resume copies and folds the tail and nothing else.
 /// Pure and isolate-safe: plain lists in, bytes out.
 ///
+/// The sleep window does not matter to the result (it is accepted only so a
+/// caller that holds it need not drop it): the same days give the same bytes
+/// under any window. [bills] replace the base's, which priced an earlier part of
+/// the day; null drops them.
+///
 /// Null when the result cannot be trusted as a continuation: [base] is not a
 /// readable blob, it did not fold exactly [alreadyFolded] seconds, or it was
-/// folded under another sleep window, age or counter modulus than the one
-/// asked for. The caller then writes nothing and the next pass folds from the
-/// start.
+/// folded under another age or counter modulus than the one asked for. The
+/// caller then writes nothing and the next pass folds from the start.
 Uint8List? foldDayCheckpoint({
   required Uint8List? base,
   required int alreadyFolded,
@@ -37,10 +42,11 @@ Uint8List? foldDayCheckpoint({
   required List<double> ay,
   required List<double> az,
   required List<int> stepCounter,
-  required int sleepOnsetSec,
-  required int sleepOffsetSec,
+  int sleepOnsetSec = 0,
+  int sleepOffsetSec = 0,
   required int? age,
   required int? stepModulus,
+  MinuteBills? bills,
 }) {
   final DayResumeState state;
   if (base == null) {
@@ -63,5 +69,7 @@ Uint8List? foldDayCheckpoint({
     age: age,
     stepModulus: stepModulus,
   );
-  return ok ? encodeDayResumeState(state) : null;
+  if (!ok) return null;
+  state.bills = bills;
+  return encodeDayResumeState(state);
 }

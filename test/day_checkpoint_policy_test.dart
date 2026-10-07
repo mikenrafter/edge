@@ -113,8 +113,8 @@ void main() {
         sig(end: 1000 + 86400 + 1),
         sig(offStart: 60),
         sig(offEnd: 60),
-        sig(onset: 11),
-        sig(offset: 21),
+        // (Phase 3b: the sleep window's onset and offset are not parts of the
+        // signature; test/day_checkpoint_window_free_test.dart pins that.)
         sig(source: 'manual'),
         sig(source: null),
         sig(floor: .04),

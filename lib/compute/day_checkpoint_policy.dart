@@ -20,8 +20,10 @@ import '../data/day_checkpoint.dart';
 /// Width of one `input_rev` bucket.
 const int kRevBucketSec = 900;
 
-/// Layout version of [DayCheckpoint.revVec] and the state blob.
-const int kDayCheckpointFmt = 1;
+/// Layout version of [DayCheckpoint.revVec] and the state blob. 2: the state no
+/// longer depends on the sleep window (per-second wake detail instead of wake
+/// sums), and carries the motion buckets and the minute bills.
+const int kDayCheckpointFmt = 2;
 
 /// `(bucket, rev)` pairs, big-endian int32 each, in bucket order.
 Uint8List encodeRevVec(Map<int, int> revs) {
@@ -50,6 +52,12 @@ Map<int, int>? decodeRevVec(Uint8List bytes) {
 /// DST-aware local-day helpers (never `+ 86400`), and the UTC offset at each end
 /// is included so a clock change inside the day moves the signature even where
 /// the two epochs alone would not.
+///
+/// The sleep window's onset and offset are not part of it: the state is folded
+/// without reference to the window, which moves on most passes, so
+/// [sleepOnsetSec] and [sleepOffsetSec] are accepted (callers that still hold
+/// them) and ignored. [sleepSource] (the user's own window or the detector's)
+/// is still signed.
 String dayContextSig({
   required String profileSig,
   required String priorityKey,
@@ -58,8 +66,8 @@ String dayContextSig({
   required int dayEndSec,
   required int tzOffsetAtStartMin,
   required int tzOffsetAtEndMin,
-  required int sleepOnsetSec,
-  required int sleepOffsetSec,
+  int? sleepOnsetSec,
+  int? sleepOffsetSec,
   required String? sleepSource,
   required double? dynFloorG,
 }) =>
@@ -71,8 +79,6 @@ String dayContextSig({
       dayEndSec,
       tzOffsetAtStartMin,
       tzOffsetAtEndMin,
-      sleepOnsetSec,
-      sleepOffsetSec,
       sleepSource ?? '-',
       dynFloorG ?? '-',
     ].join('|');

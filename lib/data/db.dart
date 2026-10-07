@@ -396,7 +396,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 61;
+  static const int schemaVersion = 62;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1189,6 +1189,14 @@ class LocalDb {
           // re-runs it on every open.
           await _createDayCheckpoint(db);
         }
+        if (oldV < 62) {
+          // The instant a sleep block was confirmed awake (night is final).
+          // One small additive table, no backfill (no row means "not final"),
+          // so it is cheap under iOS's CPU watchdog (invariant 11). No
+          // kAlgoVersion bump: a night without a confirmation scores exactly
+          // as before. _repairOpenSchema re-runs it on every open.
+          await _createWakeConfirmation(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1286,6 +1294,7 @@ class LocalDb {
     await _createLastResult(db);
     await _addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
     await _createDayCheckpoint(db);
+    await _createWakeConfirmation(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -2709,13 +2718,20 @@ class LocalDb {
     required String source,
   }) async {
     final db = await instance;
-    await db.insert('sleep_override', {
-      'day_id': dayId,
-      'onset_ts': onsetTs,
-      'offset_ts': offsetTs,
-      'source': source,
-      'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    // One transaction: a user window edit reopens the night, so the confirmation
+    // goes with it (otherwise a crash between the two leaves an edit the next
+    // pass would still truncate).
+    await db.transaction((txn) async {
+      await txn.insert('sleep_override', {
+        'day_id': dayId,
+        'onset_ts': onsetTs,
+        'offset_ts': offsetTs,
+        'source': source,
+        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+      await txn.delete('wake_confirmation',
+          where: 'day_id = ?', whereArgs: [dayId]);
+    });
   }
 
   /// The user's sleep window for [dayId], or null if none.
@@ -2728,6 +2744,64 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// `wake_confirmation`: the instant a sleep block was confirmed awake, which
+  /// makes that night final (see lib/compute/sleep_block_policy.dart). Keyed by
+  /// the day the night belongs to. Additive, no backfill: no row = not final.
+  static Future<void> _createWakeConfirmation(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS wake_confirmation ('
+        'day_id TEXT PRIMARY KEY, at_sec INTEGER NOT NULL, '
+        'basis TEXT NOT NULL, created_at INTEGER NOT NULL)',
+      );
+
+  /// Records that the sleep block ending on [dayId] was confirmed awake at
+  /// [atSec] (epoch seconds; double wake confirmation, see
+  /// lib/compute/sleep_block_policy.dart) and so is final; [basis] names the
+  /// evidence ('movement' | 'alarm_fired' | 'alarm_acknowledged' |
+  /// 'natural_wake'). The first confirmation stands (a second call is a no-op
+  /// until [deleteWakeConfirmation] reopens the night), including across
+  /// isolates, so a headless pass and the app cannot disagree.
+  static Future<void> putWakeConfirmation({
+    required String dayId,
+    required int atSec,
+    required String basis,
+  }) async {
+    final db = await instance;
+    await db.insert(
+      'wake_confirmation',
+      {
+        'day_id': dayId,
+        'at_sec': atSec,
+        'basis': basis,
+        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  /// The confirmed wake of [dayId]'s night, or null when the night is not final.
+  static Future<({int atSec, String basis})?> wakeConfirmation(
+      String dayId) async {
+    final db = await instance;
+    final rows = await db.query(
+      'wake_confirmation',
+      where: 'day_id = ?',
+      whereArgs: [dayId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return (
+      atSec: (rows.first['at_sec'] as num).toInt(),
+      basis: rows.first['basis'] as String,
+    );
+  }
+
+  /// Reopens [dayId]'s night (a user window edit).
+  static Future<void> deleteWakeConfirmation(String dayId) async {
+    final db = await instance;
+    await db.delete('wake_confirmation',
+        where: 'day_id = ?', whereArgs: [dayId]);
   }
 
   /// Remove the override for [dayId] (revert to auto detection).
@@ -9231,6 +9305,7 @@ class LocalDb {
       await deleteByIn(txn, 'cycle_symptom', 'date', sorted);
       await deleteByIn(txn, 'workout_suggestions', 'date', sorted);
       await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
+      await deleteByIn(txn, 'wake_confirmation', 'day_id', sorted);
       await deleteByIn(txn, 'sleep_nap', 'day_id', sorted);
     });
     return deleted;

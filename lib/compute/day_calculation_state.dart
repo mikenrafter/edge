@@ -4,6 +4,7 @@ import 'package:openstrap_analytics/onehz.dart';
 
 import 'day_activity_state.dart';
 import 'day_resume_state.dart';
+import 'minute_bills.dart';
 import 'state_fingerprint.dart';
 
 /// RAM-only calculation data copied into workers and published after persistence.
@@ -15,12 +16,17 @@ import 'state_fingerprint.dart';
 /// copy, and the per-second summaries fingerprint the samples they folded in.
 class DayCalculationState {
   final CalculationCache _cache = CalculationCache(maxEntries: 2048);
-  final IncrementalMinuteMetrics _minutes = IncrementalMinuteMetrics();
+  IncrementalMinuteMetrics _minutes = IncrementalMinuteMetrics();
+
+  /// Minutes the state above already held when it was read back from storage:
+  /// not work this process did, so [processedMinutes] leaves them out.
+  int _minutesBase = 0;
   // One per isolate half: the pipeline and the activity pass each read the day
   // with their own sleep bounds, so sharing one would rebuild on any mismatch.
   final Map<String, DayHrSummary> _hr = {};
   DayMotionSummary _motion = DayMotionSummary();
   StepCounterFold _steps = StepCounterFold();
+  DayDynMinutes _dyn = DayDynMinutes();
   IncrementalEnmoSeries _enmo = IncrementalEnmoSeries();
 
   /// Valid samples the motion series above holds a copy of.
@@ -39,12 +45,28 @@ class DayCalculationState {
 
   /// Starts this (empty) state from a stored checkpoint's folded summaries.
   /// The state takes ownership of [resume]'s parts.
+  ///
+  /// Its priced minutes come too when the package accepts them; otherwise the
+  /// first pass prices the day's minutes again, which gives the same figures.
   void seedFrom(DayResumeState resume) {
     _hr['pipeline'] = resume.hrPipeline;
     _hr['activity'] = resume.hrActivity;
     _motion = resume.motion;
     _steps = resume.steps;
+    _dyn = resume.dyn;
+    final minutes = resume.bills?.toMetrics();
+    if (minutes != null) {
+      _minutes = minutes;
+      _minutesBase = minutes.processedMinutes;
+    }
     _seeded = true;
+  }
+
+  /// The wake minutes priced so far, those before epoch minute [beforeMinute],
+  /// for the checkpoint; null when there are none to keep.
+  MinuteBills? minuteBills({required int beforeMinute}) {
+    final json = _minutes.toJson();
+    return MinuteBills.fromMetricsJson(json, beforeMinute: beforeMinute);
   }
 
   bool _forceSummaries(CalculationMode mode) =>
@@ -52,8 +74,8 @@ class DayCalculationState {
 
   int get computations => _cache.computations;
   int get hits => _cache.hits;
-  int get processedMinutes => _minutes.processedMinutes;
-  int get processedMotionPoints => _enmo.processedPoints;
+  int get processedMinutes => _minutes.processedMinutes - _minutesBase;
+  int get processedMotionPoints => _enmo.processedPoints + _dyn.processedSamples;
   int get processedHrSamples =>
       _hr.values.fold(0, (n, h) => n + h.processedSamples);
   int get processedOrientationSamples => _motion.processedSamples;
@@ -63,6 +85,7 @@ class DayCalculationState {
   int get retainedSamples =>
       _hr.values.fold(0, (n, h) => n + h.retainedSamples) +
       _motion.retainedSamples +
+      _dyn.retainedSamples +
       _enmoHeld;
 
   /// Drops the one part that keeps day samples, the motion series. The next
@@ -131,7 +154,10 @@ class DayCalculationState {
     profile: profile,
     dayMinutes: dayMinutes,
     quietHrr: quietWakingHrr,
-    force: mode != CalculationMode.periodicAwake,
+    // A state read back from storage trusts the minutes it holds only as far as
+    // the sync can prove them (it compares every minute's HR and cadence and
+    // the anchors), so it never reprices what has not changed.
+    force: _forceSummaries(mode),
     includeMinuteSeries: false,
   );
 
@@ -193,6 +219,23 @@ class DayCalculationState {
       force: _forceSummaries(mode),
     );
     return _motion;
+  });
+
+  /// Per-minute motion over the whole calendar day from the folded per-minute
+  /// buckets ([DayDynMinutes]): the day's seconds are folded in once and only
+  /// new ones afterwards, in any mode, with no `AccelSample` copy of the day.
+  /// Every field the app reads is the batch value (`enmoSeries`); `enmo`, `mad`
+  /// and `meanMag` are NaN, not computed.
+  List<MotionMinute> dynMinutes(
+    List<int> ts,
+    List<int> hr,
+    List<double> ax,
+    List<double> ay,
+    List<double> az,
+    CalculationMode mode,
+  ) => timed('motion_minutes', () {
+    _dyn.sync(ts, hr, ax, ay, az, force: _forceSummaries(mode));
+    return _dyn.minutes();
   });
 
   /// The strap's own credited steps for the day (see [StepCounterFold]); null

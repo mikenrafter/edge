@@ -249,9 +249,9 @@ void main() {
       // to catch, the reader's.
       final bad = Uint8List.fromList(blob);
       final d = ByteData.sublistView(bad);
-      // magic(4) fmt(4) folded(8) | hr: 2 lanes(16) n sleepOn sleepOff(24) age(1+8)
+      // magic(4) fmt(4) folded(8) | hr: 2 lanes(16) n(8) age(1+8)
       // validSum(8) validCount(8) max(1+8) min(1+8) -> window count.
-      const windowCount = 4 + 4 + 8 + 16 + 24 + 9 + 8 + 8 + 9 + 9;
+      const windowCount = 4 + 4 + 8 + 16 + 8 + 9 + 8 + 8 + 9 + 9;
       d.setInt32(windowCount, 0x7fffffff);
       d.setUint32(bad.length - 4, checksum32(bad, bad.length - 4));
       expect(decodeDayResumeState(bad), isNull);
@@ -268,6 +268,8 @@ void main() {
       b.hrActivity.write(w); // folded 400, the header says 500
       a.motion.write(w);
       a.steps.write(w);
+      a.dyn.write(w);
+      w.bool_(false); // no minute bills
       final body = w.takeBytes();
       final out = Uint8List(body.length + 4)..setRange(0, body.length, body);
       ByteData.sublistView(out).setUint32(body.length, checksum32(body, body.length));
@@ -296,6 +298,7 @@ void main() {
       live.motion.sync(day.ts, day.ax, day.ay, day.az,
           sleepOnsetSec: _on, sleepOffsetSec: _off);
       live.steps.sync(day.ts, day.step, modulus: 65536);
+      live.dyn.sync(day.ts, day.hr, day.ax, day.ay, day.az);
       final pieces = _foldInPieces(day, _chunks(math.Random(9), day.length),
           on: _on, off: _off);
       expect(pieces, encodeDayResumeState(live));
@@ -352,7 +355,11 @@ void main() {
       expect(_bytes(resumed.hrPipeline.write), _bytes(oracle.write));
     });
 
-    test('a different sleep window or age refuses the append', () {
+    // Phase 3b: the sleep window is no longer part of the stored state, so a
+    // window that differs from the one a blob was folded under is accepted
+    // (test/day_checkpoint_window_free_test.dart pins that); age and counter
+    // modulus still refuse.
+    test('a different age or counter modulus refuses the append', () {
       final day = _synthDay(start: 1760000000, seconds: 3000);
       final blob = _foldInPieces(day, [3000], on: _on, off: _off);
       Uint8List? more({int on = _on, int off = _off, int? age = 35, int? mod = 65536}) =>
@@ -371,8 +378,6 @@ void main() {
             stepModulus: mod,
           );
       expect(more(), isNotNull);
-      expect(more(on: _on + 1), isNull);
-      expect(more(off: _off + 1), isNull);
       expect(more(age: 36), isNull);
       expect(more(mod: null), isNull);
       expect(

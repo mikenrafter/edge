@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
+import 'growable_bytes.dart';
 import 'hr_max.dart';
 import 'resume_bytes.dart';
 import 'state_fingerprint.dart';
@@ -14,15 +17,25 @@ bool _inSleep(int t, int on, int off) => off > on && t >= on && t < off;
 /// Each figure is a running sum, count or extreme taken in sample order, so it
 /// is bit-identical to the batch reader it replaces: the batch means add in the
 /// same order, and the smoothed extremes see the same windows in the same
-/// order. Any change to an already-summarised sample, the sleep window or the
-/// age (which moves the plausibility ceiling) rebuilds from the start.
+/// order. Any change to an already-summarised sample or the age (which moves
+/// the plausibility ceiling) rebuilds from the start.
 ///
-/// The samples themselves are not kept. A 128-bit fingerprint of the folded
-/// prefix tells the next pass whether that prefix is still what the caller
-/// holds, so the summary stays a few thousand numbers however long the day is.
+/// The sleep window is NOT part of what is folded. The whole-day figures do not
+/// read it, and the wake-side ones (per-minute mean HR, wake count and sum) are
+/// read from the day's valid seconds, kept as one byte of second-in-minute and
+/// one of bpm each, under whatever window the reader names ([wakeMinutesFor],
+/// [wakeHrFor]). So the window can move on every pass, and the folded state,
+/// and the bytes it is stored as, are the same. [sync] and [appendTail] only
+/// record the window the argument-less readers use.
+///
+/// The day's raw samples are not kept beyond that. A 128-bit fingerprint of the
+/// folded prefix tells the next pass whether that prefix is still what the
+/// caller holds.
 class DayHrSummary {
   final PrefixFingerprint _prefix = PrefixFingerprint();
   int _n = 0;
+
+  /// The window the argument-less readers use; not part of the state.
   int _sleepOn = 0, _sleepOff = 0;
   int? _age;
   int _processed = 0;
@@ -37,11 +50,13 @@ class DayHrSummary {
   int _kept = 0;
   int? _plainMax, _plainMin, _medMax, _medMin;
 
-  // Wake-side figures (outside the sleep window).
-  final Map<int, double> _minuteSum = {};
-  final Map<int, int> _minuteCount = {};
-  double _wakeSum = 0;
-  int _wakeCount = 0;
+  // Every valid (hr > 0) second, in fold order, as runs of one epoch minute:
+  // run r is [_runLen[r]] seconds of minute [_runMin[r]], their second within
+  // the minute (biased by 64, so a pre-epoch time still fits a byte) in [_secs]
+  // and their bpm in [_bpm] (255 = look in [_bigBpm], by position).
+  final List<int> _runMin = [], _runLen = [];
+  final GrowableBytes _secs = GrowableBytes(), _bpm = GrowableBytes();
+  final Map<int, int> _bigBpm = {};
 
   /// The odd smoothing window `_smoothedExtremeHrAt` uses.
   static const _w = kHrSmoothWindow % 2 == 1 ? kHrSmoothWindow : kHrSmoothWindow + 1;
@@ -61,11 +76,7 @@ class DayHrSummary {
     bool force = false,
   }) {
     final n = ts.length < hr.length ? ts.length : hr.length;
-    var append = !force &&
-        n >= _n &&
-        sleepOnsetSec == _sleepOn &&
-        sleepOffsetSec == _sleepOff &&
-        age == _age;
+    var append = !force && n >= _n && age == _age;
     if (append) {
       final seen = PrefixFingerprint();
       for (var i = 0; i < _n; i++) {
@@ -74,7 +85,9 @@ class DayHrSummary {
       }
       append = seen.matches(_prefix);
     }
-    if (!append) _reset(sleepOnsetSec, sleepOffsetSec, age);
+    if (!append) _reset(age);
+    _sleepOn = sleepOnsetSec;
+    _sleepOff = sleepOffsetSec;
     _fold(ts, hr, _n, n);
   }
 
@@ -84,22 +97,19 @@ class DayHrSummary {
   /// Folds [ts]/[hr], the samples that come right after the ones already
   /// folded, without looking back at them: a caller that resumed this summary
   /// from storage has already shown (by the revisions of the rows it folded)
-  /// that the prefix is unchanged. False, folding nothing, when the sleep
-  /// window or age differ from the ones this summary was folded under.
+  /// that the prefix is unchanged. False, folding nothing, when the age differs
+  /// from the one this summary was folded under; the window never does.
   bool appendTail(
     List<int> ts,
     List<int> hr, {
-    required int sleepOnsetSec,
-    required int sleepOffsetSec,
+    int sleepOnsetSec = 0,
+    int sleepOffsetSec = 0,
     required int? age,
   }) {
-    if (_n > 0 &&
-        (sleepOnsetSec != _sleepOn ||
-            sleepOffsetSec != _sleepOff ||
-            age != _age)) {
-      return false;
-    }
-    if (_n == 0) _reset(sleepOnsetSec, sleepOffsetSec, age);
+    if (_n > 0 && age != _age) return false;
+    if (_n == 0) _reset(age);
+    _sleepOn = sleepOnsetSec;
+    _sleepOff = sleepOffsetSec;
     _fold(ts, hr, 0, ts.length < hr.length ? ts.length : hr.length);
     return true;
   }
@@ -112,14 +122,8 @@ class DayHrSummary {
       _prefix.addInt(h);
       _n++;
       _processed++;
-      if (!_inSleep(t, _sleepOn, _sleepOff) && h > 0) {
-        final m = t ~/ 60;
-        _minuteSum[m] = (_minuteSum[m] ?? 0) + h.toDouble();
-        _minuteCount[m] = (_minuteCount[m] ?? 0) + 1;
-        _wakeSum += h.toDouble();
-        _wakeCount++;
-      }
       if (h <= 0) continue;
+      _keepSecond(t, h);
       final v = h.toDouble();
       _validSum += v;
       _validCount++;
@@ -139,11 +143,28 @@ class DayHrSummary {
     }
   }
 
-  void _reset(int on, int off, int? age) {
+  /// Records valid second [t] with [h] bpm.
+  void _keepSecond(int t, int h) {
+    final m = (t / 60).floor();
+    if (_runMin.isEmpty || _runMin.last != m) {
+      _runMin.add(m);
+      _runLen.add(0);
+    }
+    _runLen[_runLen.length - 1]++;
+    _secs.add(t - m * 60 + _secBias);
+    if (h < 255) {
+      _bpm.add(h);
+    } else {
+      _bigBpm[_bpm.length] = h;
+      _bpm.add(255);
+    }
+  }
+
+  static const _secBias = 64;
+
+  void _reset(int? age) {
     _prefix.clear();
     _n = 0;
-    _sleepOn = on;
-    _sleepOff = off;
     _age = age;
     _validSum = 0;
     _validCount = 0;
@@ -151,10 +172,11 @@ class DayHrSummary {
     _window.clear();
     _kept = 0;
     _plainMax = _plainMin = _medMax = _medMin = null;
-    _minuteSum.clear();
-    _minuteCount.clear();
-    _wakeSum = 0;
-    _wakeCount = 0;
+    _runMin.clear();
+    _runLen.clear();
+    _secs.clear();
+    _bpm.clear();
+    _bigBpm.clear();
   }
 
   /// The state, for the resume blob. [processedSamples] is a work counter and
@@ -164,8 +186,6 @@ class DayHrSummary {
     w.i64(a);
     w.i64(b);
     w.i64(_n);
-    w.i64(_sleepOn);
-    w.i64(_sleepOff);
     w.optI64(_age);
     w.f64(_validSum);
     w.i64(_validCount);
@@ -180,15 +200,20 @@ class DayHrSummary {
     w.optI64(_plainMin);
     w.optI64(_medMax);
     w.optI64(_medMin);
-    final keys = _minuteSum.keys.toList()..sort();
-    w.i32(keys.length);
-    for (final k in keys) {
-      w.i64(k);
-      w.f64(_minuteSum[k]!);
-      w.i64(_minuteCount[k]!);
+    w.i32(_runMin.length);
+    for (var i = 0; i < _runMin.length; i++) {
+      w.i64(_runMin[i]);
+      w.i32(_runLen[i]);
     }
-    w.f64(_wakeSum);
-    w.i64(_wakeCount);
+    w.i32(_secs.length);
+    w.bytes(_secs.view, _secs.length);
+    w.bytes(_bpm.view, _bpm.length);
+    final big = _bigBpm.keys.toList()..sort();
+    w.i32(big.length);
+    for (final k in big) {
+      w.i32(k);
+      w.i64(_bigBpm[k]!);
+    }
   }
 
   /// Reads what [write] wrote; throws [FormatException] on anything else.
@@ -196,8 +221,6 @@ class DayHrSummary {
     final s = DayHrSummary();
     s._prefix.copyFrom(PrefixFingerprint.fromWords(r.i64(), r.i64()));
     s._n = r.i64();
-    s._sleepOn = r.i64();
-    s._sleepOff = r.i64();
     s._age = r.optI64();
     s._validSum = r.f64();
     s._validCount = r.i64();
@@ -213,15 +236,30 @@ class DayHrSummary {
     s._plainMin = r.optI64();
     s._medMax = r.optI64();
     s._medMin = r.optI64();
-    final minutes = r.count(24);
-    for (var i = 0; i < minutes; i++) {
-      final k = r.i64();
-      s._minuteSum[k] = r.f64();
-      s._minuteCount[k] = r.i64();
+    final runs = r.count(12);
+    var held = 0;
+    for (var i = 0; i < runs; i++) {
+      s._runMin.add(r.i64());
+      final len = r.i32();
+      if (len < 1) throw const FormatException('resume state: bad run');
+      s._runLen.add(len);
+      held += len;
     }
-    s._wakeSum = r.f64();
-    s._wakeCount = r.i64();
-    if (s._n < 0 || s._validCount < 0 || s._kept < 0 || s._wakeCount < 0) {
+    final secs = r.i32();
+    if (secs != held || r.remaining < 2 * secs) {
+      throw const FormatException('resume state: bad seconds');
+    }
+    s._secs.addAll(r.bytes(secs));
+    s._bpm.addAll(r.bytes(secs));
+    final big = r.count(12);
+    for (var i = 0; i < big; i++) {
+      final k = r.i32();
+      if (k < 0 || k >= secs || s._bpm[k] != 255) {
+        throw const FormatException('resume state: bad bpm');
+      }
+      s._bigBpm[k] = r.i64();
+    }
+    if (s._n < 0 || s._validCount < 0 || s._kept < 0 || held > s._n) {
       throw const FormatException('resume state: bad count');
     }
     return s;
@@ -239,36 +277,89 @@ class DayHrSummary {
     };
   }
 
-  /// Per-minute mean wake HR, keyed by epoch minute, in minute order.
-  ({List<int> keys, List<double> hr}) wakeMinutes() {
-    final keys = _minuteSum.keys.toList()..sort();
-    return (
-      keys: keys,
-      hr: [for (final k in keys) _minuteSum[k]! / _minuteCount[k]!],
-    );
+  /// Per-minute mean wake HR, keyed by epoch minute, in minute order, under
+  /// the window of the last [sync] or [appendTail].
+  ({List<int> keys, List<double> hr}) wakeMinutes() =>
+      wakeMinutesFor(sleepOnsetSec: _sleepOn, sleepOffsetSec: _sleepOff);
+
+  /// Day-side input of `hrDip`: valid wake samples, as count and sum, under
+  /// the window of the last [sync] or [appendTail].
+  ({int count, double sum}) get wakeHr =>
+      wakeHrFor(sleepOnsetSec: _sleepOn, sleepOffsetSec: _sleepOff);
+
+  /// Calls [each] with the minute and bpm of every valid second outside the
+  /// window `[on, off)`, in fold order.
+  void _eachWake(int on, int off, void Function(int minute, int bpm) each) {
+    var at = 0;
+    for (var r = 0; r < _runMin.length; r++) {
+      final m = _runMin[r], len = _runLen[r];
+      for (var j = at; j < at + len; j++) {
+        if (_inSleep(m * 60 + _secs[j] - _secBias, on, off)) continue;
+        final v = _bpm[j];
+        each(m, v == 255 ? _bigBpm[j]! : v);
+      }
+      at += len;
+    }
   }
 
-  /// Day-side input of `hrDip`: valid wake samples, as count and sum.
-  ({int count, double sum}) get wakeHr => (count: _wakeCount, sum: _wakeSum);
+  /// [wakeMinutes] for the window `[sleepOnsetSec, sleepOffsetSec)`, read from
+  /// the window-free state, so moving the window between passes never refolds
+  /// the day. Whole bpm are added as integers and divided once, as the batch
+  /// reader does.
+  ({List<int> keys, List<double> hr}) wakeMinutesFor({
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+  }) {
+    final sum = <int, int>{}, count = <int, int>{};
+    _eachWake(sleepOnsetSec, sleepOffsetSec, (m, v) {
+      sum[m] = (sum[m] ?? 0) + v;
+      count[m] = (count[m] ?? 0) + 1;
+    });
+    final keys = sum.keys.toList()..sort();
+    return (keys: keys, hr: [for (final k in keys) sum[k]! / count[k]!]);
+  }
+
+  /// [wakeHr] for the window `[sleepOnsetSec, sleepOffsetSec)`.
+  ({int count, double sum}) wakeHrFor({
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+  }) {
+    var sum = 0, count = 0;
+    _eachWake(sleepOnsetSec, sleepOffsetSec, (_, v) {
+      sum += v;
+      count++;
+    });
+    return (count: count, sum: sum.toDouble());
+  }
 }
 
 /// Exact append-only summaries of a day's 1 Hz orientation and record
 /// presence: wake active minutes, the 5-minute activity curve, and wear runs.
 ///
 /// Each second's contribution reads only that second and the one before it, so
-/// appending folds in new seconds. Any change to an already-summarised sample,
-/// or to the sleep window, rebuilds from the start. As in [DayHrSummary], a
-/// fingerprint of the folded prefix stands in for a copy of the samples.
+/// appending folds in new seconds. Any change to an already-summarised sample
+/// rebuilds from the start. As in [DayHrSummary], a fingerprint of the folded
+/// prefix stands in for a copy of the samples, and the sleep window is not
+/// part of the state: every second that counted (a gravity vector now and one
+/// second before) is kept as its second in the minute and whether it moved,
+/// and [activeMinutesFor] reads them under the window it is given.
 class DayMotionSummary {
   final PrefixFingerprint _prefix = PrefixFingerprint();
   int _n = 0;
+
+  /// The window the argument-less reader uses; not part of the state.
   int _sleepOn = 0, _sleepOff = 0;
   int _processed = 0;
 
   double _prevAngle = 0;
   bool _prevPresent = false;
-  final Map<int, int> _wakeTot = {}, _wakeMove = {};
   final Map<int, int> _curveTot = {}, _curveMove = {};
+
+  // Counted seconds in fold order, as runs of one epoch minute: run r is
+  // [_runLen[r]] seconds of minute [_runMin[r]]; a second is stored as
+  // `(second in minute + 64) << 1 | moved`.
+  final List<int> _runMin = [], _runLen = [];
+  final GrowableBytes _counted = GrowableBytes();
 
   final List<List<int>> _closedRuns = [];
   int _runStart = 0, _prevTs = 0;
@@ -294,10 +385,7 @@ class DayMotionSummary {
     bool force = false,
   }) {
     final n = ts.length;
-    var append = !force &&
-        n >= _n &&
-        sleepOnsetSec == _sleepOn &&
-        sleepOffsetSec == _sleepOff;
+    var append = !force && n >= _n;
     if (append) {
       final seen = PrefixFingerprint();
       for (var i = 0; i < _n; i++) {
@@ -308,25 +396,26 @@ class DayMotionSummary {
       }
       append = seen.matches(_prefix);
     }
-    if (!append) _reset(sleepOnsetSec, sleepOffsetSec);
+    if (!append) _reset();
+    _sleepOn = sleepOnsetSec;
+    _sleepOff = sleepOffsetSec;
     _fold(ts, ax, ay, az, _n, n);
   }
 
   /// Folds the samples that come right after the ones already folded, without
-  /// looking back at them; see [DayHrSummary.appendTail]. False, folding
-  /// nothing, when the sleep window differs from the one folded under.
+  /// looking back at them; see [DayHrSummary.appendTail]. Always true: the
+  /// window is not part of what was folded.
   bool appendTail(
     List<int> ts,
     List<double> ax,
     List<double> ay,
     List<double> az, {
-    required int sleepOnsetSec,
-    required int sleepOffsetSec,
+    int sleepOnsetSec = 0,
+    int sleepOffsetSec = 0,
   }) {
-    if (_n > 0 && (sleepOnsetSec != _sleepOn || sleepOffsetSec != _sleepOff)) {
-      return false;
-    }
-    if (_n == 0) _reset(sleepOnsetSec, sleepOffsetSec);
+    if (_n == 0) _reset();
+    _sleepOn = sleepOnsetSec;
+    _sleepOff = sleepOffsetSec;
     _fold(ts, ax, ay, az, 0, ts.length);
     return true;
   }
@@ -357,11 +446,13 @@ class DayMotionSummary {
           final b = t ~/ _bucketSec;
           _curveTot[b] = (_curveTot[b] ?? 0) + 1;
           if (moved) _curveMove[b] = (_curveMove[b] ?? 0) + 1;
-          if (!_inSleep(t, _sleepOn, _sleepOff)) {
-            final m = t ~/ 60;
-            _wakeTot[m] = (_wakeTot[m] ?? 0) + 1;
-            if (moved) _wakeMove[m] = (_wakeMove[m] ?? 0) + 1;
+          final m = (t / 60).floor();
+          if (_runMin.isEmpty || _runMin.last != m) {
+            _runMin.add(m);
+            _runLen.add(0);
           }
+          _runLen[_runLen.length - 1]++;
+          _counted.add((t - m * 60 + _secBias) << 1 | (moved ? 1 : 0));
         }
       }
       _prevTs = t;
@@ -376,15 +467,16 @@ class DayMotionSummary {
     }
   }
 
-  void _reset(int on, int off) {
+  static const _secBias = 64;
+
+  void _reset() {
     _prefix.clear();
     _n = 0;
-    _sleepOn = on;
-    _sleepOff = off;
     _prevAngle = 0;
     _prevPresent = false;
-    _wakeTot.clear();
-    _wakeMove.clear();
+    _runMin.clear();
+    _runLen.clear();
+    _counted.clear();
     _curveTot.clear();
     _curveMove.clear();
     _closedRuns.clear();
@@ -396,11 +488,16 @@ class DayMotionSummary {
     w.i64(a);
     w.i64(b);
     w.i64(_n);
-    w.i64(_sleepOn);
-    w.i64(_sleepOff);
     w.f64(_prevAngle);
     w.bool_(_prevPresent);
-    for (final m in [_wakeTot, _wakeMove, _curveTot, _curveMove]) {
+    w.i32(_runMin.length);
+    for (var i = 0; i < _runMin.length; i++) {
+      w.i64(_runMin[i]);
+      w.i32(_runLen[i]);
+    }
+    w.i32(_counted.length);
+    w.bytes(_counted.view, _counted.length);
+    for (final m in [_curveTot, _curveMove]) {
       final keys = m.keys.toList()..sort();
       w.i32(keys.length);
       for (final k in keys) {
@@ -421,11 +518,23 @@ class DayMotionSummary {
     final s = DayMotionSummary();
     s._prefix.copyFrom(PrefixFingerprint.fromWords(r.i64(), r.i64()));
     s._n = r.i64();
-    s._sleepOn = r.i64();
-    s._sleepOff = r.i64();
     s._prevAngle = r.f64();
     s._prevPresent = r.bool_();
-    for (final m in [s._wakeTot, s._wakeMove, s._curveTot, s._curveMove]) {
+    final minutes = r.count(12);
+    var held = 0;
+    for (var i = 0; i < minutes; i++) {
+      s._runMin.add(r.i64());
+      final len = r.i32();
+      if (len < 1) throw const FormatException('resume state: bad run');
+      s._runLen.add(len);
+      held += len;
+    }
+    final counted = r.i32();
+    if (counted != held || r.remaining < counted) {
+      throw const FormatException('resume state: bad seconds');
+    }
+    s._counted.addAll(r.bytes(counted));
+    for (final m in [s._curveTot, s._curveMove]) {
       final n = r.count(16);
       for (var i = 0; i < n; i++) {
         m[r.i64()] = r.i64();
@@ -437,17 +546,43 @@ class DayMotionSummary {
     }
     s._runStart = r.i64();
     s._prevTs = r.i64();
-    if (s._n < 0) throw const FormatException('resume state: bad count');
+    if (s._n < 0 || held > s._n) {
+      throw const FormatException('resume state: bad count');
+    }
     return s;
   }
 
   /// Wake minutes with at least 20 % of their seconds moving ≥ 5°; null when
-  /// under a minute of data or no second carried a gravity vector.
-  int? activeMinutes() {
-    if (_n < 60 || _wakeTot.isEmpty) return null;
+  /// under a minute of data or no second carried a gravity vector. Wake is
+  /// outside the window of the last [sync] or [appendTail].
+  int? activeMinutes() =>
+      activeMinutesFor(sleepOnsetSec: _sleepOn, sleepOffsetSec: _sleepOff);
+
+  /// [activeMinutes] for the window `[sleepOnsetSec, sleepOffsetSec)`, read
+  /// from the window-free state.
+  int? activeMinutesFor({
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+  }) {
+    if (_n < 60) return null;
+    final tot = <int, int>{}, move = <int, int>{};
+    var at = 0;
+    for (var r = 0; r < _runMin.length; r++) {
+      final m = _runMin[r], len = _runLen[r];
+      for (var j = at; j < at + len; j++) {
+        final v = _counted[j];
+        if (_inSleep(m * 60 + (v >> 1) - _secBias, sleepOnsetSec, sleepOffsetSec)) {
+          continue;
+        }
+        tot[m] = (tot[m] ?? 0) + 1;
+        if (v & 1 == 1) move[m] = (move[m] ?? 0) + 1;
+      }
+      at += len;
+    }
+    if (tot.isEmpty) return null;
     var active = 0;
-    _wakeTot.forEach((m, tot) {
-      if (tot > 0 && (_wakeMove[m] ?? 0) / tot >= _activeFrac) active++;
+    tot.forEach((m, t) {
+      if ((move[m] ?? 0) / t >= _activeFrac) active++;
     });
     return active;
   }
@@ -599,6 +734,209 @@ class StepCounterFold {
     s._prevTs = r.optI64();
     s._total = r.i64();
     s._seen = r.bool_();
+    if (s._n < 0) throw const FormatException('resume state: bad count');
+    return s;
+  }
+}
+
+/// The day's per-minute motion buckets, folded second by second: for each
+/// minute, how many valid seconds fed it and the sum of their gravity-removed
+/// vector magnitude (`dynAmp` is the mean). Window-free: a valid second is one
+/// with a heart rate and a real gravity vector, nothing about sleep.
+///
+/// The arithmetic is `enmoSeries`' for `dyn`, operation for operation: the
+/// per-axis running sums over the trailing 15 s of valid seconds (add the new
+/// second, then drop the ones 15 s or more behind it, never the new one), the
+/// mean taken over what is in that window, the minute's sum added in second
+/// order. Carrying the three sums and the (at most a few dozen) seconds of the
+/// window across a resume therefore gives the batch's bits.
+///
+/// Nothing is derived from a gravity reference (`calibrateGRef` reads the whole
+/// day and only fed `enmo`, which no reader in the app uses), so [minutes] sets
+/// `enmo`, `mad` and `meanMag` to NaN, "not computed", rather than a number
+/// they are not. Samples must come in ascending time, as the substrate holds
+/// them.
+class DayDynMinutes {
+  final PrefixFingerprint _prefix = PrefixFingerprint();
+  int _n = 0;
+  int _processed = 0;
+
+  double _sx = 0, _sy = 0, _sz = 0;
+  final List<int> _qt = [];
+  final List<double> _qx = [], _qy = [], _qz = [];
+  final Map<int, int> _count = {};
+  final Map<int, double> _dynSum = {};
+
+  static const _windowSec = 15;
+
+  int get processedSamples => _processed;
+  int get length => _n;
+
+  /// Seconds of the day held in memory: the trailing window.
+  int get retainedSamples => _qt.length;
+
+  /// Brings the buckets up to date with the day's [ts]/[hr]/[ax]/[ay]/[az]; as
+  /// [DayMotionSummary.sync], rebuilding unless the folded prefix is still the
+  /// one passed.
+  void sync(
+    List<int> ts,
+    List<int> hr,
+    List<double> ax,
+    List<double> ay,
+    List<double> az, {
+    bool force = false,
+  }) {
+    final n = ts.length;
+    var append = !force && n >= _n;
+    if (append) {
+      final seen = PrefixFingerprint();
+      for (var i = 0; i < _n; i++) {
+        _hash(seen, ts[i], hr[i], ax[i], ay[i], az[i]);
+      }
+      append = seen.matches(_prefix);
+    }
+    if (!append) _reset();
+    _fold(ts, hr, ax, ay, az, _n, n);
+  }
+
+  /// Folds the samples right after the ones already folded, without looking
+  /// back at them; see [DayHrSummary.appendTail].
+  void appendTail(
+    List<int> ts,
+    List<int> hr,
+    List<double> ax,
+    List<double> ay,
+    List<double> az,
+  ) {
+    if (_n == 0) _reset();
+    _fold(ts, hr, ax, ay, az, 0, ts.length);
+  }
+
+  static void _hash(
+    PrefixFingerprint f,
+    int t,
+    int h,
+    double x,
+    double y,
+    double z,
+  ) {
+    f.addInt(t);
+    f.addInt(h > 0 ? 1 : 0);
+    f.addDouble(x);
+    f.addDouble(y);
+    f.addDouble(z);
+  }
+
+  void _fold(
+    List<int> ts,
+    List<int> hr,
+    List<double> ax,
+    List<double> ay,
+    List<double> az,
+    int from,
+    int to,
+  ) {
+    for (var i = from; i < to; i++) {
+      final t = ts[i], x = ax[i], y = ay[i], z = az[i];
+      _hash(_prefix, t, hr[i], x, y, z);
+      _n++;
+      _processed++;
+      if (hr[i] <= 0 || !accelPlausible(x, y, z)) continue;
+      _sx += x;
+      _sy += y;
+      _sz += z;
+      _qt.add(t);
+      _qx.add(x);
+      _qy.add(y);
+      _qz.add(z);
+      while (_qt.length > 1 && t - _qt[0] >= _windowSec) {
+        _sx -= _qx[0];
+        _sy -= _qy[0];
+        _sz -= _qz[0];
+        _qt.removeAt(0);
+        _qx.removeAt(0);
+        _qy.removeAt(0);
+        _qz.removeAt(0);
+      }
+      final w = _qt.length;
+      final dx = x - _sx / w, dy = y - _sy / w, dz = z - _sz / w;
+      final dyn = math.sqrt(dx * dx + dy * dy + dz * dz);
+      final k = (t * 1000.0 / 60000).floor();
+      _count[k] = (_count[k] ?? 0) + 1;
+      _dynSum[k] = (_dynSum[k] ?? 0.0) + dyn;
+    }
+  }
+
+  void _reset() {
+    _prefix.clear();
+    _n = 0;
+    _sx = _sy = _sz = 0;
+    _qt.clear();
+    _qx.clear();
+    _qy.clear();
+    _qz.clear();
+    _count.clear();
+    _dynSum.clear();
+  }
+
+  /// One row per minute that had a valid second, in minute order: what
+  /// `enmoSeries(...).minutes` holds for the fields the app reads (`tsMinStartMs`,
+  /// `nSamples`, `dynAmp`).
+  List<ana.MotionMinute> minutes() {
+    final keys = _count.keys.toList()..sort();
+    return [
+      for (final k in keys)
+        ana.MotionMinute(k * 60000.0, _count[k]!, double.nan, double.nan,
+            double.nan, _dynSum[k]! / _count[k]!),
+    ];
+  }
+
+  void write(ResumeWriter w) {
+    final (a, b) = _prefix.words;
+    w.i64(a);
+    w.i64(b);
+    w.i64(_n);
+    w.f64(_sx);
+    w.f64(_sy);
+    w.f64(_sz);
+    w.i32(_qt.length);
+    for (var i = 0; i < _qt.length; i++) {
+      w.i64(_qt[i]);
+      w.f64(_qx[i]);
+      w.f64(_qy[i]);
+      w.f64(_qz[i]);
+    }
+    final keys = _count.keys.toList()..sort();
+    w.i32(keys.length);
+    for (final k in keys) {
+      w.i64(k);
+      w.i32(_count[k]!);
+      w.f64(_dynSum[k]!);
+    }
+  }
+
+  static DayDynMinutes read(ResumeReader r) {
+    final s = DayDynMinutes();
+    s._prefix.copyFrom(PrefixFingerprint.fromWords(r.i64(), r.i64()));
+    s._n = r.i64();
+    s._sx = r.f64();
+    s._sy = r.f64();
+    s._sz = r.f64();
+    final window = r.count(32);
+    for (var i = 0; i < window; i++) {
+      s._qt.add(r.i64());
+      s._qx.add(r.f64());
+      s._qy.add(r.f64());
+      s._qz.add(r.f64());
+    }
+    final minutes = r.count(20);
+    for (var i = 0; i < minutes; i++) {
+      final k = r.i64();
+      final c = r.i32();
+      if (c < 1) throw const FormatException('resume state: bad count');
+      s._count[k] = c;
+      s._dynSum[k] = r.f64();
+    }
     if (s._n < 0) throw const FormatException('resume state: bad count');
     return s;
   }
