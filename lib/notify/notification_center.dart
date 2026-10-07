@@ -39,6 +39,7 @@ import 'notification_event.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
 import '../state/feature_flags.dart';
+import '../state/units_controller.dart' show UnitSystem;
 import 'tap_router.dart';
 
 class NotificationCenter {
@@ -713,6 +714,14 @@ class NotificationCenter {
       route: kRouteRecap,
     );
   }
+
+  /// The body of the water reminder: names one glass in the user's units (the
+  /// shared WaterUnits formatter) and, when [prefs] assumes a glass per slot,
+  /// says plainly that it was assumed. A nudge to LOG a drink and nothing more.
+  static String waterReminderBody(
+    NotificationPrefs prefs, {
+    required UnitSystem system,
+  }) => throw UnimplementedError('NotificationCenter.waterReminderBody');
 
   // Default waking window when quiet hours are off (so we never buzz at 3am).
   static const int _waterDayStartMin = 8 * 60; // 08:00

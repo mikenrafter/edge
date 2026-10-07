@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/assumed_water.dart';
 import '../../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/moment_follow_ups.dart';
@@ -159,10 +160,17 @@ class MomentFollowUpScreen extends StatefulWidget {
     this.preloaded,
     this.writer = const MomentAnswerWriter(),
     this.now,
+    this.preloadedAssumed,
+    this.assumedWriter = const AssumedWaterWriter(),
   });
 
   /// Injected in tests; null reads them from the database.
   final List<PendingMoment>? preloaded;
+
+  /// Assumed water glasses to list among the moments (RED stub: not yet
+  /// shown). Null reads them from the database.
+  final List<AssumedGlass>? preloadedAssumed;
+  final AssumedWaterWriter assumedWriter;
   final MomentAnswerWriter writer;
   final DateTime? now;
 

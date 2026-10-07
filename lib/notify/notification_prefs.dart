@@ -53,6 +53,14 @@ class NotificationPrefs {
   /// [waterIntervalMinAllowed]..[waterIntervalMaxAllowed] when scheduling.
   final int waterIntervalMin;
 
+/// "Assume I drank water": every reminder slot that fires logs one assumed
+/// glass (data/assumed_water.dart). Default OFF. RED stub: not yet persisted.
+final bool waterAssumeDrank;
+
+/// Epoch ms the toggle was last switched on; slots before it are never
+/// assumed. Null = unknown, so nothing is assumed.
+final int? waterAssumeSinceMs;
+
   /// Allowed bounds for the water interval (30 min .. 6 h).
   static const int waterIntervalMinAllowed = 30;
   static const int waterIntervalMaxAllowed = 360;
@@ -151,6 +159,8 @@ class NotificationPrefs {
     this.criticalOverridesQuiet = true,
     this.waterEnabled = false,
     this.waterIntervalMin = 120, // every 2 hours
+    this.waterAssumeDrank = false,
+    this.waterAssumeSinceMs,
     this.autoDetectEnabled = true,
     this.movementEnabled = false,
     this.medsEnabled = false,
@@ -346,6 +356,8 @@ class NotificationPrefs {
     bool? criticalOverridesQuiet,
     bool? waterEnabled,
     int? waterIntervalMin,
+    bool? waterAssumeDrank,
+    int? waterAssumeSinceMs,
     bool? autoDetectEnabled,
     bool? movementEnabled,
     bool? medsEnabled,

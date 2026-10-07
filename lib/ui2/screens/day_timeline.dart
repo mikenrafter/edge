@@ -35,6 +35,7 @@ import '../../data/local_repository.dart';
 import '../../data/med_store.dart';
 import '../../data/moment_label.dart';
 import '../../gestures/moment_follow_ups.dart' show MomentChoice;
+import '../../gestures/symptom_description.dart' show StoredSymptom;
 import '../../data/nutrition_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
@@ -157,6 +158,7 @@ List<Moment> dayMoments({
   Map<String, JournalMetricValue> journal = const {},
   List<JournalFieldSpec> fields = const [],
   List<MomentLabel> momentLabels = const [],
+  List<StoredSymptom> symptoms = const [],
   AppLocalizations? l,
 }) {
   final out = <Moment>[];

@@ -34,6 +34,8 @@ import 'coverage_resolver.dart' show CoverageInterval;
 import '../gestures/strap_event.dart';
 import 'day_checkpoint.dart';
 export 'day_checkpoint.dart' show DayCheckpoint;
+import '../gestures/symptom_description.dart';
+import 'assumed_water.dart';
 import 'day_label.dart';
 import 'journal_fields.dart';
 import 'live_coverage_policy.dart';
@@ -11566,6 +11568,49 @@ class LocalDb {
       'computed_at': DateTime.now().millisecondsSinceEpoch,
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
+
+  // ── assumed water + symptom entries (RED stubs; schema 65 not yet made) ────
+
+  /// Logs one assumed glass for the slot ([date], [atMin]): adds [ml] (clamped
+  /// to the field ceiling) to that day's `water_ml` and inserts the
+  /// `assumed_water` row recording what was actually added, in ONE transaction.
+  /// Returns false, writing nothing, when the slot was ever logged (removed
+  /// ones included).
+  static Future<bool> logAssumedWater({
+    required String date,
+    required int atMin,
+    required double ml,
+    required int loggedAtMs,
+  }) => throw UnimplementedError('LocalDb.logAssumedWater');
+
+  /// Assumed glasses by (date, atMin); removed ones only with [includeRemoved].
+  static Future<List<AssumedGlass>> assumedWater({
+    String? date,
+    String? sinceDate,
+    bool includeRemoved = false,
+  }) => throw UnimplementedError('LocalDb.assumedWater');
+
+  /// Acknowledge: state `kept`. False when the glass is not `assumed`.
+  static Future<bool> keepAssumedWater(AssumedGlass g) =>
+      throw UnimplementedError('LocalDb.keepAssumedWater');
+
+  /// Subtract exactly the glass's ml from the day's `water_ml` (the field row
+  /// is deleted if that leaves nothing) and tombstone it, in ONE transaction.
+  /// False, changing nothing, when it is already removed.
+  static Future<bool> removeAssumedWater(AssumedGlass g) =>
+      throw UnimplementedError('LocalDb.removeAssumedWater');
+
+  /// The part of [date]'s water total that is assumed (state assumed or kept,
+  /// never above the day's total); 0 when none.
+  static Future<double> assumedWaterMl(String date) =>
+      throw UnimplementedError('LocalDb.assumedWaterMl');
+
+  /// Stored symptoms, narrowed to one [date] or from [sinceDate], in
+  /// (date, hhmm) order.
+  static Future<List<StoredSymptom>> symptomEntries({
+    String? date,
+    String? sinceDate,
+  }) => throw UnimplementedError('LocalDb.symptomEntries');
 
   // ── journal I/O ─────────────────────────────────────────────────────────────
 

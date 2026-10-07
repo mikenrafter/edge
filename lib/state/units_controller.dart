@@ -6,6 +6,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/water_units.dart';
+
 enum UnitSystem { metric, imperial }
 
 extension UnitSystemLabel on UnitSystem {
@@ -192,4 +194,11 @@ class UnitsController extends ChangeNotifier {
   /// bodyweight-only lifts.
   double loadStepKg(double kgStep) =>
       isImperial ? (kgStep <= 0 ? 0.0 : 5 * _kgPerLb) : kgStep;
+
+  // ── water (storage stays ml; see data/water_units.dart) ────────────────────
+  /// "250 ml" / "8 fl oz" for a logged amount in ml.
+  String water(num ml) => WaterUnits.format(ml, _system);
+
+  /// One glass / one stepper tap in ml for the current system.
+  double get waterStepMl => WaterUnits.stepMl(_system);
 }

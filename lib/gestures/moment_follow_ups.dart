@@ -11,10 +11,12 @@
 import 'dart:convert';
 
 import '../data/day_label.dart' show dayLabelOf;
+import '../data/assumed_water.dart';
 import '../data/db.dart';
 import '../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../data/moment_label.dart';
 import '../l10n/app_localizations.dart';
+import 'symptom_description.dart';
 
 /// One quick answer. The id is persisted in `moment_label.label`.
 enum MomentChoice {
@@ -86,6 +88,7 @@ class MomentFollowUps {
     required this.enabledSince,
     this.marked = const [],
     this.labelled = const {},
+    this.assumed = const [],
   });
 
   /// When the setting was switched on; null = off, nothing is pending.
@@ -94,6 +97,15 @@ class MomentFollowUps {
 
   /// `MomentLabel.key`s that already have an answer (a skip counts).
   final Set<String> labelled;
+
+  /// Assumed water glasses read off `assumed_water` (any state).
+  final List<AssumedGlass> assumed;
+
+  /// Assumed glasses still waiting for keep / remove at [now]: state
+  /// `assumed`, not before the setting was enabled, within [windowDays] local
+  /// calendar days, oldest first. Empty when the setting is off. Pure.
+  List<AssumedGlass> pendingAssumed(DateTime now) =>
+      throw UnimplementedError('MomentFollowUps.pendingAssumed');
 
   /// Days a moment stays pending, counted in local calendar days.
   static const int windowDays = 7;
@@ -225,6 +237,15 @@ class MomentAnswerWriter {
       max: choice == MomentChoice.water ? kJournalFieldsByKey[field]!.max : null,
     );
   }
+
+  /// Answers a moment "Symptom" with a structured description: ONE transaction
+  /// writes the `symptom` label and the `symptom_entry` row on the moment's
+  /// local day. A moment that already has an answer is left alone. RED stub.
+  Future<MomentAnswerResult> answerSymptom(
+    PendingMoment m,
+    SymptomDescription d, {
+    DateTime? now,
+  }) => throw UnimplementedError('MomentAnswerWriter.answerSymptom');
 
   /// Marks the moment answered with no label.
   Future<MomentAnswerResult> skip(PendingMoment m, {DateTime? now}) =>

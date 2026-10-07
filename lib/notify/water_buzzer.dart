@@ -23,6 +23,7 @@ class WaterBuzzer {
     required this.buzz,
     required this.isConnected,
     AlertDispatcher? dispatcher,
+    this.onSlot,
   }) : _legacyTransport = dispatcher == null,
        dispatcher =
            dispatcher ??
@@ -42,6 +43,10 @@ class WaterBuzzer {
 
   /// Sends one short haptic to the strap (no-op if the link isn't ready).
   final Future<void> Function() buzz;
+
+  /// Called at every hydration slot, connected or not (RED stub: not yet
+  /// called). This is where an assumed glass is logged.
+  final Future<void> Function(DateTime slot)? onSlot;
 
   /// Whether the strap is currently connected (checked lazily at fire time).
   final bool Function() isConnected;

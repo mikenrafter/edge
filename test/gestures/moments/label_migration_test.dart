@@ -94,8 +94,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 64', () {
-    expect(LocalDb.schemaVersion, 64);
+  test('schemaVersion is at least 64 (moment_label arrived at 64)', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(64));
   });
 
   test('upgrade from v63 reaches 64, adds moment_label empty, keeps the '

@@ -458,9 +458,14 @@ class FieldStepper extends StatelessWidget {
     required this.onChanged,
     this.atMin,
     this.onTime,
+    this.assumedMl,
   });
 
   final JournalFieldSpec spec;
+
+  /// The part of [value] that is an assumed water glass (RED stub: not yet
+  /// shown). Null or 0 = none.
+  final double? assumedMl;
 
   /// Null means the field was left blank, which is NOT zero: "no caffeine
   /// today" is a logged zero, "did not say" is an absence.
