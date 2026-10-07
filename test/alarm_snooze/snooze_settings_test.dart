@@ -140,5 +140,40 @@ void main() {
           count: 2, reAlarmAt: DateTime.fromMillisecondsSinceEpoch(1791000123456));
       expect(SnoozeState.fromJson(st.toJson()), st);
     });
+
+    test('the fire stamp rides the snooze state without being part of its '
+        'identity', () {
+      final st = SnoozeState(
+          count: 1,
+          reAlarmAt: DateTime.fromMillisecondsSinceEpoch(1791000123456),
+          fireAt: DateTime.fromMillisecondsSinceEpoch(1791000000000));
+      final back = SnoozeState.fromJson(st.toJson());
+      expect(back.fireAt, st.fireAt);
+      expect(back, st);
+      expect(
+          SnoozeState.fromJson({'count': 1, 'reAlarmAtMs': 5}).fireAt, isNull,
+          reason: 'a state written before the stamp was kept');
+    });
+
+    test('the open dismiss window round trips through wake_meta, taps and '
+        'all; clearing and garbage read as none', () async {
+      final w = SnoozeWindow(
+        stoppedAt: DateTime.fromMillisecondsSinceEpoch(1791000000000),
+        fireAt: DateTime.fromMillisecondsSinceEpoch(1790999990000),
+        taps: [
+          DateTime.fromMillisecondsSinceEpoch(1791000001000),
+          DateTime.fromMillisecondsSinceEpoch(1791000002500),
+        ],
+      );
+      await store.saveWindow(w);
+      final got = await store.loadWindow();
+      expect(got?.stoppedAt, w.stoppedAt);
+      expect(got?.fireAt, w.fireAt);
+      expect(got?.taps, w.taps);
+      await store.saveWindow(null);
+      expect(await store.loadWindow(), isNull);
+      await LocalDb.wakeMetaSet(kSnoozeWindowKey, 'garbage');
+      expect(await store.loadWindow(), isNull);
+    });
   });
 }

@@ -25,6 +25,14 @@
 //    [BandCommandLedger.reserveUpTo]). A gesture job that cannot start within
 //    its own [BandHapticQueue.run] `startBy` is also rejected.
 //
+//  * An ALARM job (queued inside [BandHapticQueue.asAlarm]: the snooze's
+//    re-alarm and its confirms) is never held for the limit at all. It still
+//    waits its turn for the band (one thing plays at a time) and is counted in
+//    the ledger, clamped like a started gesture so the ledger never counts more
+//    than the limit, but it starts without waiting for room. Waking the wearer
+//    outranks our own precaution: a re-alarm held two minutes by the 30-in-2
+//    rule is a wearer who sleeps on.
+//
 // Between two jobs the band is also left the vocabulary's minimum gap after the
 // last vibration ended ([BandHapticQueue.minGap]), so a second gesture job
 // is not written the instant the first one stops. Lab jobs are not spaced.
@@ -138,6 +146,12 @@ class BandReservation {
 ///   https://www.precisionmicrodrives.com/?p=1190
 ///   https://support.whoop.com/hc/en-us/articles/4407117388955-Haptic-Alarm-Overview
 ///
+/// The limit never holds back an ALARM job (the snooze's re-alarm and its
+/// confirms, [BandHapticQueue.asAlarm]): waking the user outranks our own
+/// precaution. Its commands are still counted (through [reserveUpTo], so the
+/// ledger never counts more than the limit and nothing is overdrawn); it just
+/// does not wait for room, so what follows an alarm waits a little longer.
+///
 /// Two kinds of entry: WRITES (a timestamp per command actually sent, which
 /// leave the window two minutes after they were written) and RESERVATIONS
 /// (room held by a job or probe for commands it is about to write; they count
@@ -188,7 +202,8 @@ class BandCommandLedger {
   /// A reservation for [n] commands that never fails: it holds what room there
   /// is (up to [n]) and the rest of its commands are written without being
   /// counted, so the ledger never counts more than [limitNow]. For a gesture,
-  /// which must play to its end. Null only for a negative [n].
+  /// which must play to its end, and for an alarm job, which must never wait
+  /// (waking the user outranks the precaution). Null only for a negative [n].
   BandReservation? reserveUpTo(int n, DateTime at) {
     if (n < 0) return null;
     final held = n < commandsLeft(at) ? n : commandsLeft(at);
@@ -325,6 +340,10 @@ const Symbol kBandGestureKey = #openstrapBandGesture;
 /// Zone key: the gesture in [kBandGestureKey] is already started.
 const Symbol kBandGestureStartedKey = #openstrapBandGestureStarted;
 
+/// Zone key marking work whose band jobs are alarm jobs (see
+/// [BandHapticQueue.asAlarm]).
+const Symbol kBandAlarmKey = #openstrapBandAlarm;
+
 /// Zone key marking work that must start now or be rejected. Phase cues use it
 /// so a delayed buzz cannot land in the next breathing phase.
 const Symbol kBandImmediateKey = #openstrapBandImmediate;
@@ -332,7 +351,11 @@ const Symbol kBandImmediateKey = #openstrapBandImmediate;
 class _Job {
   _Job(this.run, this.commands, this.timeout, this.settle, this.startBy,
       this.deadline,
-      {this.lab = false, this.hold, this.gesture, this.exempt = false});
+      {this.lab = false,
+      this.hold,
+      this.gesture,
+      this.exempt = false,
+      this.alarm = false});
   final Future<BuzzDelivery> Function(BandJobToken job) run;
   final int commands;
 
@@ -349,6 +372,9 @@ class _Job {
 
   /// A gesture job whose gesture already started when it was queued.
   final bool exempt;
+
+  /// A job of waking the wearer: never held for the command limit.
+  final bool alarm;
 
   /// Only a lab or gesture job has a start deadline: it is dropped when it
   /// cannot start within [startBy]. Every other job waits as long as it must.
@@ -509,6 +535,15 @@ class BandHapticQueue {
         },
       );
 
+  /// Run [work] so every job it queues is an alarm job: it waits for the band
+  /// like any other, but never for room in the command window. Its commands are
+  /// still counted (clamped, never past the limit), so what follows it sees the
+  /// cost. Waking the wearer outranks the 30-in-2-minutes precaution.
+  T asAlarm<T>(T Function() work) => runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandAlarmKey: true},
+      );
+
   /// Run [work] so every job it queues either starts immediately or is
   /// rejected. Immediate jobs never wait behind another job, the Device lab,
   /// or the command ledger's rolling budget.
@@ -582,13 +617,14 @@ class BandHapticQueue {
     bool immediate = false,
   }) {
     final limit = ledger.limitNow;
-    if (commands > limit) {
+    final alarm = Zone.current[kBandAlarmKey] == true && !lab;
+    if (!alarm && commands > limit) {
       log?.call('Band queue: dropped a job of $commands commands '
           '(the limit is $limit)');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
     final zoned = Zone.current[kBandGestureKey];
-    final gesture = zoned is String && !lab ? zoned : null;
+    final gesture = zoned is String && !lab && !alarm ? zoned : null;
     if (gesture != null && labOpen) {
       log?.call('Band queue: rejected a gesture job (the lab is open)');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
@@ -607,6 +643,7 @@ class BandHapticQueue {
         lab: lab,
         hold: hold is BandHold ? hold : null,
         gesture: gesture,
+        alarm: alarm,
         exempt: gesture != null && Zone.current[kBandGestureStartedKey] == true);
     _forgetGestures(clock.now());
     if (gesture != null && _startedGestures.containsKey(gesture)) {
@@ -670,13 +707,16 @@ class BandHapticQueue {
         continue;
       }
       final now = clock.now();
-      if (j.commands > ledger.limitNow) {
+      if (!j.alarm && j.commands > ledger.limitNow) {
         // The limit was lowered under a waiting job: it can never fit.
         _drop(j, why: 'no longer fits the limit');
         continue;
       }
       BandReservation? room;
-      if (j.gesture != null) {
+      if (j.alarm) {
+        // Never held for room: counted up to the limit, written regardless.
+        room = ledger.reserveUpTo(j.commands, now);
+      } else if (j.gesture != null) {
         // Never late: a gesture's first haptic needs room now, else it is
         // dropped; the rest of a started gesture plays regardless.
         final started = j.exempt || _startedGestures.containsKey(j.gesture);

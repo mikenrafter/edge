@@ -455,6 +455,39 @@ class NotificationCenter {
     }
   }
 
+  /// The phone backstop of a main-alarm snooze: one OS-scheduled notification
+  /// at the snooze's [due] time. A suspended phone cannot run the snooze's
+  /// timer, but the OS posts this on time; if the app is awake the re-alarm
+  /// plays as well. Calling again replaces the pending one. Quiet hours do not
+  /// apply (it is the user's own alarm, like the alarm itself); the OS posts a
+  /// scheduled slot with no Dart running, so it never passes
+  /// [NotificationPrefs.shouldFireOs]. Never throws.
+  Future<void> armSnoozeBackstop(DateTime due) async {
+    try {
+      await NotificationService.instance.scheduleOnce(
+        id: NotificationService.idSnoozeBackstop,
+        category: NotifCategory.reminders,
+        title: 'Wake alarm',
+        body: 'Your snooze is over. Time to get up.',
+        at: due,
+        route: kRouteAlarm,
+      );
+    } catch (_) {
+      /* best-effort */
+    }
+  }
+
+  /// Cancels [armSnoozeBackstop]'s notification (the snooze ended). Never
+  /// throws.
+  Future<void> cancelSnoozeBackstop() async {
+    try {
+      await NotificationService.instance
+          .cancel(NotificationService.idSnoozeBackstop);
+    } catch (_) {
+      /* best-effort */
+    }
+  }
+
   /// The hour the 7pm no-alarm-tonight check-in fires at, when armed.
   static const int alarmNightCheckHour = 19;
 

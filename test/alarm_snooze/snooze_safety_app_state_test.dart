@@ -66,9 +66,11 @@ String _window(DateTime onset, DateTime? offset) => jsonEncode({
     });
 
 /// Last night's block (onset 23:00, up 07:15) and a confirmed wake at [at].
-Future<void> _lastNightConfirmedAt(DateTime at) async {
-  final onset = DateTime(2026, 10, 6, 23, 0);
-  final offset = DateTime(2026, 10, 7, 7, 15);
+Future<void> _lastNightConfirmedAt(DateTime at, {DateTime? upAt}) async {
+  final offset = upAt ?? DateTime(2026, 10, 7, 7, 15);
+  final onset = upAt == null
+      ? DateTime(2026, 10, 6, 23, 0)
+      : upAt.subtract(const Duration(hours: 8, minutes: 15));
   await LocalDb.putDayResult(
     dayId: dayLabelOf(offset),
     algoVersion: 1,
@@ -522,13 +524,16 @@ void main() {
 
       test('is cancelled when a wake is confirmed during the snooze',
           () async {
-        await open(start: DateTime(2026, 10, 7, 10, 30));
+        // On the real clock: the OS refuses to schedule a time in the past.
+        await open();
         await fireAndStop(HapticsTermination.expired);
         await rig.settle();
         final id = n.idFor((await _stored())!.reAlarmAt);
         expect(id, isNotNull, reason: 'precondition: it was scheduled');
-        // The app is opened and the band moves: a double confirmation.
-        await _lastNightConfirmedAt(rig.clock.now.add(_min * 1));
+        // The app is opened and the band moves: a double confirmation of the
+        // sleep this alarm woke (up at 3 h ago in the block just derived).
+        await _lastNightConfirmedAt(rig.clock.now.add(_min * 1),
+            upAt: rig.clock.now.subtract(const Duration(hours: 3)));
         rig.clock.advance(_min * 2);
         await rig.app.debugKeepAliveTick();
         await rig.settle();
@@ -600,6 +605,27 @@ void main() {
       expect(after, isNot(contains(Played.snoozeConfirm)),
           reason: 'the re-alarm ended and was taken for a new stop');
       expect(rig.app.snooze.status.value.phase, SnoozePhase.reAlarming);
+    });
+  });
+
+  group('the 30-in-2-minutes precaution never holds an alarm', () {
+    test('with the command budget exhausted the snooze confirm and the due '
+        're-alarm still play at once', () async {
+      await open();
+      // The window is full of other haptics.
+      rig.app.haptics.ledger.record(60, DateTime.now());
+      expect(rig.app.haptics.commandsLeft, 0);
+      await fireAndStop(HapticsTermination.expired);
+      expect(rig.count(Played.snoozeConfirm), 1,
+          reason: 'held two minutes by our own precaution: a wearer who '
+              'does not know the snooze is set');
+      rig.clock.advance(_min * 5);
+      await rig.app.debugKeepAliveTick();
+      await rig.settle();
+      expect(rig.count(Played.reAlarm), 1,
+          reason: 'a due re-alarm waits for no budget');
+      expect(rig.app.haptics.commandsLeft, 0,
+          reason: 'still counted, never overdrawn');
     });
   });
 

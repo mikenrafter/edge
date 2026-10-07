@@ -104,7 +104,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
     HeadlessSyncGate.resetForTest();
-    clock = TestClock(DateTime.now());
+    // Whole seconds: the strap stamps events in whole seconds, and a tap is
+    // timed by its own stamp, so a stop stamped mid-second would put the tap
+    // that follows it before the stop.
+    clock = TestClock(DateTime.fromMillisecondsSinceEpoch(
+        DateTime.now().millisecondsSinceEpoch ~/ 1000 * 1000));
     store = MemorySnoozeStore();
     plays = [];
     evidence = [];
@@ -116,7 +120,7 @@ void main() {
     app.debugSnoozeStore = store;
     app.debugSnoozeConfirmedWake = () async => confirmed;
     app.debugSnoozeEvidence = (k, at) async => evidence.add((k, at));
-    app.debugSnoozePlay = (slot, {notes}) async {
+    app.debugSnoozePlay = (slot, {notes, void Function()? onFirstWrite}) async {
       plays.add(Play(slot, notes, clock.now));
       return true;
     };
@@ -195,14 +199,16 @@ void main() {
       expect(plays, isEmpty);
     });
 
-    test('Natural Wake has no snooze: its stop is not snoozed', () async {
+    test('a native fire takes precedence over a Natural repeat that is still '
+        'flagged running: its stop is snoozed (safety round)', () async {
+      // The repeat only notices T between awaited deliveries, so its flag can
+      // outlive T. Once the NATIVE alarm has fired for this wake, its stop is
+      // the snooze's business (it used to be swallowed).
       app.debugNaturalRepeating = () => true;
       await alarmFires();
-      await terminated('user_double_tap');
       await terminated('expired');
-      expect(app.snooze.consumesDoubleTaps, isFalse);
-      expect(plays, isEmpty);
-      expect(store.state, isNull);
+      expect(slots(), [kSlotSnoozeConfirm]);
+      expect(store.state, isNotNull);
     });
 
     test('a confirmed wake at the stop: no snooze, no window', () async {
@@ -255,11 +261,9 @@ void main() {
       expect(await tapReachedGestures(), isTrue);
     });
 
-    test('while Natural Wake repeats a double tap is Natural\'s, never the '
-        'snooze\'s', () async {
+    test('while Natural Wake repeats, a double tap BEFORE any native fire is '
+        'Natural\'s, never the snooze\'s', () async {
       app.debugNaturalRepeating = () => true;
-      await alarmFires();
-      await terminated('user_double_tap');
       expect(await tapReachedGestures(), isFalse,
           reason: 'consumed as Natural\'s dismissal');
       expect(plays, isEmpty, reason: 'and counted as no snooze tap');
@@ -335,7 +339,7 @@ void main() {
       app.debugSnoozeStore = store;
       app.debugSnoozeConfirmedWake = () async => false;
       app.debugSnoozeEvidence = (k, at) async => evidence.add((k, at));
-      app.debugSnoozePlay = (slot, {notes}) async {
+      app.debugSnoozePlay = (slot, {notes, void Function()? onFirstWrite}) async {
         plays.add(Play(slot, notes, clock.now));
         return true;
       };
@@ -369,13 +373,14 @@ void main() {
       expect(code, contains('.onHapticsTerminated ='));
     });
 
-    test('_onLiveEvent consumes a double tap for the snooze AFTER Natural '
-        'Wake\'s own repeat check', () {
+    test('_onLiveEvent consumes a double tap for the snooze BEFORE Natural '
+        'Wake\'s own repeat check (a native fire takes precedence)', () {
       final body = codeOnly(bodyOf(src, 'void _onLiveEvent('));
       final natural = body.indexOf('_naturalRepeating()');
       final snooze = body.indexOf('consumesDoubleTaps');
       expect(natural, isNonNegative);
-      expect(snooze, greaterThan(natural));
+      expect(snooze, isNonNegative);
+      expect(snooze, lessThan(natural));
       final helper = codeOnly(bodyOf(src, 'bool _naturalRepeating('));
       expect(helper, contains('debugNaturalRepeating'),
           reason: 'the Natural check reads the same seam the tests use');

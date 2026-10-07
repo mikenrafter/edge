@@ -23,7 +23,13 @@ class SnoozeSettingsRows extends StatelessWidget {
     super.key,
     required this.settings,
     required this.onChanged,
+    this.unsupportedReason,
   });
+
+  /// Non-null when this band cannot drive a snooze (it does not report how the
+  /// alarm was stopped): the rows stay, dimmed and inert, and this is said
+  /// under them (the disable-not-hide rule).
+  final String? unsupportedReason;
 
   final SnoozeSettings settings;
 
@@ -61,7 +67,8 @@ class SnoozeSettingsRows extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final l = AppLocalizations.of(c);
-    final on = onChanged;
+    final unsupported = unsupportedReason;
+    final on = unsupported == null ? onChanged : null;
     final p = P.of(c);
     String title(String? localized, String english) => localized ?? english;
     final tapsTitle = title(l?.snoozeRowTaps, 'Double taps to dismiss');
@@ -77,8 +84,16 @@ class SnoozeSettingsRows extends StatelessWidget {
               key: const ValueKey('snooze-dismiss-copy'),
               style: F.cap.copyWith(color: p.ink2)),
         ),
+        if (unsupported != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: Text(l?.snoozeUnsupported ?? unsupported,
+                key: const ValueKey('snooze-unsupported'),
+                style: F.cap.copyWith(color: p.ink2)),
+          ),
         SetRow(LucideIcons.hand, C.blue, tapsTitle,
             value: _taps(l, settings.requiredTaps),
+            enabled: unsupported == null,
             onTap: on == null
                 ? null
                 : () => _choose(c, tapsTitle, [
@@ -87,6 +102,7 @@ class SnoozeSettingsRows extends StatelessWidget {
                     ], (n) => on(settings.copyWith(requiredTaps: n)))),
         SetRow(LucideIcons.timer, C.blue, windowTitle,
             value: _secs(l, settings.windowMs ~/ 1000),
+            enabled: unsupported == null,
             onTap: on == null
                 ? null
                 : () => _choose(c, windowTitle, [
@@ -95,6 +111,7 @@ class SnoozeSettingsRows extends StatelessWidget {
                     ], (ms) => on(settings.copyWith(windowMs: ms)))),
         SetRow(LucideIcons.alarmClockPlus, C.blue, minutesTitle,
             value: _mins(l, settings.minutes),
+            enabled: unsupported == null,
             onTap: on == null
                 ? null
                 : () => _choose(c, minutesTitle, [
@@ -103,6 +120,7 @@ class SnoozeSettingsRows extends StatelessWidget {
                     ], (m) => on(settings.copyWith(minutes: m)))),
         SetRow(LucideIcons.trendingUp, C.blue, capTitle,
             value: _cap(l, settings.cap),
+            enabled: unsupported == null,
             onTap: on == null
                 ? null
                 : () => _choose(c, capTitle, [

@@ -45,7 +45,7 @@ void main() {
       () {
     final r = _rig();
     final seen = <(String, DateTime)>[];
-    r.engine.onHapticsTerminated = (cause, at) => seen.add((cause, at));
+    r.engine.onHapticsTerminated = (cause, at, bandAt) => seen.add((cause, at));
     final before = DateTime.now();
     _terminate(r.engine, HapticsTermination.userDoubleTap);
     _terminate(r.engine, HapticsTermination.expired);
@@ -56,10 +56,37 @@ void main() {
     }
   });
 
+  test('the hook also carries the strap\'s OWN stamp of the termination, '
+      'which is what ties it to the alarm fire it ended', () {
+    final r = _rig();
+    final stamps = <DateTime?>[];
+    r.engine.onHapticsTerminated = (cause, at, bandAt) => stamps.add(bandAt);
+    r.engine.debugProcessImmediateFrame(Frame(
+        _eventInner(EventId.hapticsTerminated,
+            <int>[1, HapticsTermination.expired],
+            ts: 1786000123),
+        true,
+        true));
+    expect(stamps, [DateTime.fromMillisecondsSinceEpoch(1786000123 * 1000)]);
+  });
+
+  test('a strap clock that is not believable gives no stamp', () {
+    final r = _rig();
+    final stamps = <DateTime?>[];
+    r.engine.onHapticsTerminated = (cause, at, bandAt) => stamps.add(bandAt);
+    r.engine.debugProcessImmediateFrame(Frame(
+        _eventInner(EventId.hapticsTerminated,
+            <int>[1, HapticsTermination.expired],
+            ts: 12),
+        true,
+        true));
+    expect(stamps, [null]);
+  });
+
   test('an unknown code reaches the hook as its code_N name', () {
     final r = _rig();
     final seen = <String>[];
-    r.engine.onHapticsTerminated = (cause, at) => seen.add(cause);
+    r.engine.onHapticsTerminated = (cause, at, bandAt) => seen.add(cause);
     _terminate(r.engine, 9);
     expect(seen, ['code_9']);
   });
@@ -67,7 +94,7 @@ void main() {
   test('a hook that throws cannot break the engine\'s own bookkeeping', () {
     final r = _rig();
     var calls = 0;
-    r.engine.onHapticsTerminated = (cause, at) {
+    r.engine.onHapticsTerminated = (cause, at, bandAt) {
       calls++;
       throw StateError('boom');
     };

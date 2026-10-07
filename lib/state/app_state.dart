@@ -2493,6 +2493,7 @@ class AppState extends ChangeNotifier {
     _alarmGraceTimer = null;
     wake.dispose();
     _wakeOrchestrator.dispose(); // ends any Natural repeat
+    _snooze?.status.removeListener(_onSnoozeStatus);
     _snooze?.dispose(); // keeps a pending snooze for the next launch
     // Both controllers cancel their timer and nothing else: a live workout is
     // not finalized, the display hold and Live Activity are not released, the
@@ -3309,23 +3310,36 @@ class AppState extends ChangeNotifier {
     // it stops the repeat (stamped for [_latestBandDoubleTap]) and is consumed,
     // so it does not also run their configured tap actions. Outside a repeat
     // nothing changes. No acknowledgement buzz: it would play over the stop.
-    if (e.eventId == proto.EventId.doubleTap && _naturalRepeating()) {
-      _bandDoubleTapAt = DateTime.now();
-      _log('[wake] band double tap during Natural Wake: dismissing the repeat.');
-      hardwareProbes.onBandEvent(e);
-      haptics.onBandEvent(e);
-      return;
-    }
-    // Then the main alarm's snooze: during its dismiss window and its re-alarm
-    // a double tap counts toward the dismissal and is consumed the same way.
-    // Outside them gestures behave as ever.
+    //
+    // The main alarm's snooze comes FIRST: once the native alarm has fired and
+    // stopped, its dismiss window and re-alarm own the double taps whatever the
+    // Natural repeat flag still says (the repeat only notices T between awaited
+    // deliveries, so the flag can outlive T).
     final snooze = _snooze;
     if (e.eventId == proto.EventId.doubleTap &&
         snooze != null &&
         snooze.consumesDoubleTaps) {
-      _log('[snooze] band double tap: counted toward the dismissal.');
-      snooze.onBandDoubleTap(_wakeNow()).catchError(
-          (Object err) => _log('[snooze] counting a double tap failed: $err'));
+      if (!e.isLive) {
+        // A tap replayed from the band's flash is history, never a dismissal;
+        // the gesture path below drops it as it always has.
+        _log('[snooze] a replayed double tap does not count.');
+      } else if (!_noteSnoozeTap(e.identity)) {
+        _log('[snooze] the same double tap delivered again: counted once.');
+        hardwareProbes.onBandEvent(e);
+        haptics.onBandEvent(e);
+        return;
+      } else {
+        _log('[snooze] band double tap: counted toward the dismissal.');
+        snooze.onBandDoubleTap(e.effectiveTime).catchError((Object err) =>
+            _log('[snooze] counting a double tap failed: $err'));
+        hardwareProbes.onBandEvent(e);
+        haptics.onBandEvent(e);
+        return;
+      }
+    }
+    if (e.eventId == proto.EventId.doubleTap && _naturalRepeating()) {
+      _bandDoubleTapAt = DateTime.now();
+      _log('[wake] band double tap during Natural Wake: dismissing the repeat.');
       hardwareProbes.onBandEvent(e);
       haptics.onBandEvent(e);
       return;
@@ -5624,8 +5638,8 @@ class AppState extends ChangeNotifier {
   // shared band queue). It never arms, re-arms or disables the band's native
   // alarm: the snooze is app-driven only.
 
-  /// How soon after the native alarm fired its termination still counts as
-  /// that alarm's stop (a gesture buzz or a probe may end the same way).
+  /// How soon after the native alarm fired (by the strap's own stamps) its
+  /// termination still counts as that alarm's stop.
   static const Duration kSnoozeAlarmWindow = Duration(minutes: 5);
 
   SnoozeController? _snooze;
@@ -5634,24 +5648,115 @@ class AppState extends ChangeNotifier {
   /// The newest native alarm firing (events 57 and 58), by the strap's stamp.
   DateTime? _nativeAlarmFiredAt;
 
+  /// The fire stamp a termination has already been taken for. A fire is the
+  /// stop of AT MOST ONE termination: our own playback ending afterwards (the
+  /// snooze confirm, a re-alarm, a gesture cue) reports a termination too, and
+  /// must never be mistaken for the wearer stopping the alarm again.
+  DateTime? _consumedFireAt;
+
+  /// Snooze haptics in flight right now (our own playback window): a
+  /// termination heard meanwhile is our own pattern ending.
+  int _snoozePlaying = 0;
+
+  /// Double taps already counted toward a dismissal, by event identity (the
+  /// newest few): one event delivered twice is one tap.
+  final List<String> _snoozeTaps = [];
+
+  bool _noteSnoozeTap(String identity) {
+    if (_snoozeTaps.contains(identity)) return false;
+    _snoozeTaps.add(identity);
+    if (_snoozeTaps.length > 64) _snoozeTaps.removeAt(0);
+    return true;
+  }
+
+  /// A native alarm fired (EXECUTED 57 / 58), stamped [stamp] by the strap.
+  /// Becomes the stamp a termination is correlated with, unless it is the same
+  /// alarm's second event (already stopped) or older than what is known (a
+  /// replayed event). A fire at T ends any Natural repeat that is still going:
+  /// the repeat only notices T between awaited deliveries, and the native
+  /// alarm takes precedence.
+  void _noteNativeFire(DateTime stamp) {
+    final used = _consumedFireAt;
+    if (used != null) {
+      final d = stamp.difference(used);
+      if (d >= const Duration(minutes: -1) && d <= kSnoozeAlarmWindow) return;
+    }
+    final known = _nativeAlarmFiredAt;
+    if (known != null && stamp.isBefore(known)) return;
+    _nativeAlarmFiredAt = stamp;
+    if (_wakeNow().difference(stamp) <= kSnoozeAlarmWindow) {
+      _wakeOrchestrator.dismissNaturalRepeat();
+    }
+  }
+
   /// The snooze controller (built on first use from the debug* seams below,
   /// which must be set before that).
   SnoozeController get snooze => _snooze ??= _buildSnooze();
 
   SnoozeStore get _snoozeStore => debugSnoozeStore ?? const DbSnoozeStore();
 
-  SnoozeController _buildSnooze() => SnoozeController(
-        now: _wakeNow,
-        play: debugSnoozePlay ?? _playSnoozeHaptic,
-        confirmedWake: debugSnoozeConfirmedWake ?? _snoozeConfirmedWake,
-        recordEvidence: debugSnoozeEvidence ??
-            (kind, at) async {
-              await _noteWake(kind, at);
-            },
-        store: _snoozeStore,
-        settings: () => _snoozeSettings,
-        log: _log,
-      );
+  SnoozeController _buildSnooze() {
+    final c = SnoozeController(
+      now: _wakeNow,
+      play: debugSnoozePlay ?? _playSnoozeHaptic,
+      confirmedWake: debugSnoozeConfirmedWake ?? _snoozeConfirmedWake,
+      recordEvidence: debugSnoozeEvidence ??
+          (kind, at) async {
+            await _noteWake(kind, at);
+          },
+      store: _snoozeStore,
+      settings: () => _snoozeSettings,
+      log: _log,
+    );
+    c.status.addListener(_onSnoozeStatus);
+    return c;
+  }
+
+  /// When the phone backstop notification was last armed for (null: none is).
+  DateTime? _snoozeBackstopFor;
+  Future<void> _snoozeNotifTail = Future<void>.value();
+
+  /// A pending snooze needs two things a suspended phone cannot give itself:
+  ///  * the band's prompt lease (BandPromptPolicy: no longer than the snooze
+  ///    between prompts), so the band wakes the process in time; it is taken
+  ///    and released by re-planning the one prompt;
+  ///  * a phone notification at the due time, a backstop through
+  ///    [NotificationCenter] (an OS-scheduled slot, not a Dart timer),
+  ///    cancelled the moment the snooze ends (dismissed, or a wake confirmed).
+  /// Arm and cancel run one after the other, so a quick dismissal cannot be
+  /// overtaken by the arming it follows.
+  void _onSnoozeStatus() {
+    if (_disposed) return;
+    final st = _snooze?.status.value;
+    if (st == null) return;
+    unawaited(_refreshHighFreqWakeWindow());
+    if (st.phase == SnoozePhase.snoozed && st.until != null) {
+      if (_snoozeBackstopFor == st.until) return;
+      final due = _snoozeBackstopFor = st.until;
+      _snoozeNotifTail = _snoozeNotifTail
+          .then((_) => NotificationCenter.instance.armSnoozeBackstop(due!));
+    } else if (st.phase == SnoozePhase.idle && _snoozeBackstopFor != null) {
+      _snoozeBackstopFor = null;
+      _snoozeNotifTail = _snoozeNotifTail
+          .then((_) => NotificationCenter.instance.cancelSnoozeBackstop());
+    }
+  }
+
+  /// The prompt a pending snooze asks of the band, or null when none is pending.
+  BandPromptRequest? _snoozePromptRequest() {
+    final st = _snooze?.status.value;
+    if (st == null ||
+        st.until == null ||
+        (st.phase != SnoozePhase.snoozed &&
+            st.phase != SnoozePhase.reAlarming)) {
+      return null;
+    }
+    return BandPromptRequest.snooze(
+      now: _wakeNow(),
+      due: st.until!,
+      snoozeLength: _snoozeSettings.snoozeFor,
+    );
+  }
 
   SnoozeSettings get snoozeSettings => _snoozeSettings;
 
@@ -5684,35 +5789,77 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<bool> _snoozeConfirmedWake() async =>
-      await _wakeStore.confirmedWakeSec() != null;
+  /// Whether the wake confirmation belongs to THIS alarm's sleep. The store
+  /// answers for the newest block (up to 12 h old), whose confirmation is at or
+  /// after that block's onset; but a block derived before this alarm may be the
+  /// PREVIOUS one (the wearer was up, went back to sleep, the new block is not
+  /// derived yet). So it counts only when it is not older than the native
+  /// fire minus [kSnoozeConfirmLookback]. With no fire stamp known the answer
+  /// is no: in doubt the wearer is woken.
+  Future<bool> _snoozeConfirmedWake() async {
+    final c = await _wakeStore.confirmedWakeSec();
+    if (c == null) return false;
+    final fire = _snooze?.fireAt ?? _nativeAlarmFiredAt;
+    if (fire == null) return false;
+    return !DateTime.fromMillisecondsSinceEpoch(c * 1000)
+        .isBefore(fire.subtract(kSnoozeConfirmLookback));
+  }
 
   bool _naturalRepeating() =>
       (debugNaturalRepeating ?? () => _wakeOrchestrator.isNaturalRepeating)();
 
-  /// The engine's HAPTICS_TERMINATED hook.
-  void _onHapticsTerminated(String cause, DateTime at) {
+  /// The engine's HAPTICS_TERMINATED hook: the cause, when the phone heard it,
+  /// and the strap's own stamp of it (null: not believable).
+  void _onHapticsTerminated(String cause, DateTime at, DateTime? bandAt) {
     if (_disposed) return;
-    _handleHapticsTerminated(cause, at).catchError(
+    _handleHapticsTerminated(cause, at, bandAt: bandAt).catchError(
         (Object e) => _log('[snooze] handling the stop failed: $e'));
   }
 
-  Future<void> _handleHapticsTerminated(String cause, DateTime at) async {
-    if (_naturalRepeating()) {
-      // Natural Wake has no snooze: its stop is its repeat's business.
-      _log('[snooze] stop ($cause) during Natural Wake: not a snooze.');
+  /// A termination is the native alarm's stop when, by the STRAP's stamps, it
+  /// ended an alarm that fired just before ([kSnoozeAlarmWindow]; a stop
+  /// delivered minutes late after a reconnect still correlates), and that
+  /// fire has not already been taken. Natural Wake's repeat flag is not asked:
+  /// a native fire takes precedence. The snooze is then timed from the stop's
+  /// own time.
+  Future<void> _handleHapticsTerminated(String cause, DateTime receivedAt,
+      {DateTime? bandAt}) async {
+    if (_snoozePlaying > 0) {
+      _log('[snooze] stop ($cause) while our own snooze haptics play: that is '
+          'our pattern ending, not the alarm.');
       return;
     }
+    // The strap's own time of the stop (never later than it was heard).
+    final stop = bandAt == null || bandAt.isAfter(receivedAt)
+        ? receivedAt
+        : bandAt;
     final fired = _nativeAlarmFiredAt;
-    final since = fired == null ? null : _wakeNow().difference(fired);
-    if (since == null ||
-        since > kSnoozeAlarmWindow ||
-        since < const Duration(minutes: -1)) {
-      _log('[snooze] stop ($cause) with no native alarm having just fired: '
-          'not an alarm stop.');
+    if (fired == null) {
+      _log('[snooze] stop ($cause) with no native alarm having fired: not an '
+          'alarm stop.');
       return;
     }
-    await snooze.onAlarmStopped(AlarmStopCause.parse(cause), at: at);
+    if (_consumedFireAt == fired) {
+      _log('[snooze] stop ($cause): that alarm\'s stop was already taken.');
+      return;
+    }
+    final since = stop.difference(fired);
+    if (since > kSnoozeAlarmWindow || since < const Duration(minutes: -1)) {
+      _log('[snooze] stop ($cause) ${since.inSeconds} s from the native alarm: '
+          'not its stop.');
+      return;
+    }
+    _consumedFireAt = fired;
+    var parsed = AlarmStopCause.parse(cause);
+    if (parsed == AlarmStopCause.error &&
+        cause != 'error' &&
+        device.generation != 'gen4') {
+      // A band that reports the cause but sent one we cannot read: the alarm
+      // did stop, and nobody knows the wearer is up. Fail toward waking.
+      _log('[snooze] unreadable stop cause "$cause": treated as an expiry.');
+      parsed = AlarmStopCause.expired;
+    }
+    await snooze.onAlarmStopped(parsed, at: stop, fire: fired);
   }
 
   /// Plays a snooze slot through the shared band queue, the way every other
@@ -5721,7 +5868,7 @@ class AppState extends ChangeNotifier {
   /// the wearer put a pattern of their own on the slot. True when the band took
   /// it.
   Future<bool> _playSnoozeHaptic(String slot,
-      {List<PatternEntry>? notes}) async {
+      {List<PatternEntry>? notes, void Function()? onFirstWrite}) async {
     if (_disposed) return false;
     BuzzSequence? seq;
     if (slot == kAlarmReAlarmKey && notes != null) {
@@ -5732,22 +5879,29 @@ class AppState extends ChangeNotifier {
           : alarmSequenceFromNotes(notes.join(' '), id: systemPatternId(slot));
     }
     final now = DateTime.now();
-    final o = await _dispatchBandAlert(
-      'wake',
-      transportTargets: const {'band'},
-      deliver: (_, _) async => _disposed
-          ? BuzzDelivery.rejected
-          : seq != null
-              ? haptics.deliver(seq)
-              : gestureCues.slot(slot),
-      deliverTimeout: seq != null
-          ? haptics.sequenceTimeout(seq)
-          : const Duration(seconds: 30),
-      sequence: seq,
-      eventId: 'snooze:$slot:${now.microsecondsSinceEpoch}',
-      sourceTime: now,
-    );
-    return o.targets.contains('band');
+    _snoozePlaying++;
+    try {
+      final o = await _dispatchBandAlert(
+        'wake',
+        transportTargets: const {'band'},
+        // An alarm job: never held for the 30-in-2-minutes command window
+        // (waking the wearer outranks our own precaution), still counted.
+        deliver: (_, _) async => _disposed
+            ? BuzzDelivery.rejected
+            : haptics.asAlarm(() => seq != null
+                ? haptics.deliver(seq, onFirstWrite: onFirstWrite)
+                : gestureCues.slot(slot, onFirstWrite: onFirstWrite)),
+        deliverTimeout: seq != null
+            ? haptics.sequenceTimeout(seq)
+            : const Duration(seconds: 30),
+        sequence: seq,
+        eventId: 'snooze:$slot:${now.microsecondsSinceEpoch}',
+        sourceTime: now,
+      );
+      return o.targets.contains('band');
+    } finally {
+      _snoozePlaying--;
+    }
   }
 
   /// Replace what plays a slot. Tests only; set before [snooze] is first read.
@@ -5774,8 +5928,9 @@ class AppState extends ChangeNotifier {
   /// What the engine's HAPTICS_TERMINATED hook runs: [cause] is the engine's
   /// string. Tests only.
   @visibleForTesting
-  Future<void> debugOnHapticsTerminated(String cause, {DateTime? at}) =>
-      _handleHapticsTerminated(cause, at ?? _wakeNow());
+  Future<void> debugOnHapticsTerminated(String cause,
+          {DateTime? at, DateTime? bandAt}) =>
+      _handleHapticsTerminated(cause, at ?? _wakeNow(), bandAt: bandAt);
 
   /// Tick the wake side the way the 30 s keep-alive does. Tests only.
   @visibleForTesting
@@ -6271,7 +6426,7 @@ class AppState extends ChangeNotifier {
         ts * 1000 <= _wakeNow().millisecondsSinceEpoch + 5 * 60 * 1000) {
       unawaited(_noteWake(WakeEvidenceKind.alarmFired,
           DateTime.fromMillisecondsSinceEpoch(ts * 1000)));
-      _nativeAlarmFiredAt = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+      _noteNativeFire(DateTime.fromMillisecondsSinceEpoch(ts * 1000));
     }
     if (_alarm.predatesArm(id, ts)) {
       _log('[alarm] ignoring event $id stamped $ts — it predates the current '
@@ -6471,6 +6626,7 @@ class AppState extends ChangeNotifier {
       final target = plan.targetWake;
       final iosBackgrounded = _background && Platform.isIOS;
       final req = BandPromptPolicy.plan(
+        snooze: _snoozePromptRequest(),
         smartWake: plan.shouldEnable && target != null
             ? BandPromptRequest.smartWake(
                 target: target,

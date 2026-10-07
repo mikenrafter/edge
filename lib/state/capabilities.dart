@@ -121,6 +121,12 @@ enum Feature {
   /// editor, the pattern detail.
   hapticVocabulary,
 
+  /// The alarm snooze (double taps to dismiss, snooze length): needs a band
+  /// that reports HOW the alarm was stopped (HAPTICS_TERMINATED's cause), which
+  /// the pinned protocol decodes on a WHOOP 5/MG only. Disabled, never hidden,
+  /// on a 4.0 (the row stays and says why).
+  alarmSnooze,
+
   /// Alarm test and cancel need a live link.
   alarmBandControls,
 
@@ -281,6 +287,11 @@ class Capabilities {
   static const String _noEcg = 'This band has no ECG sensor';
   static const String _needMg = 'Take ECG needs a connected WHOOP MG.';
   static const String _noLink = 'Connect to the band first';
+
+  /// Shown under the disabled snooze rows (also its l10n fallback).
+  static const String noSnoozeBand =
+      'Snooze needs a band that reports how the alarm was stopped '
+      '(WHOOP 5/MG)';
   static const String _noStepSensor = 'This device cannot count steps';
 
   bool _on(FeatureFlag f) => !inputs.flagsOff.contains(f);
@@ -314,6 +325,11 @@ class Capabilities {
         Feature.bandAlerts =>
           _when(bandAlertTargets.contains('band')),
         Feature.hapticVocabulary => _when(hapticProfile != null),
+        // Only the band known NOT to report the cause is refused: a band not
+        // yet identified keeps the rows (failing toward waking, see AppState).
+        Feature.alarmSnooze => inputs.generation == 'gen4'
+            ? Availability.disabled(noSnoozeBand)
+            : Availability.available,
         Feature.alarmBandControls => _link('The band is not connected'),
         Feature.bandBuzz => _link(_noLink),
         Feature.breathingBeatTiming =>

@@ -2398,5 +2398,6 @@
   "snoozeValueTaps": "{n, plural, =1{1 doble toque} other{{n} dobles toques}}",
   "snoozeValueSeconds": "{s} s",
   "snoozeValueMinutes": "{m} min",
-  "snoozeValueCap": "{n, plural, =1{1 pospuesta} other{{n} pospuestas}}"
+  "snoozeValueCap": "{n, plural, =1{1 pospuesta} other{{n} pospuestas}}",
+  "snoozeUnsupported": "La pospuesta necesita una banda que informe de cómo se detuvo la alarma (WHOOP 5/MG)"
 }

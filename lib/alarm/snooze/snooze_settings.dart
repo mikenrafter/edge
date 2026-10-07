@@ -24,6 +24,7 @@ const int kSnoozeMinutesDefault = 5;
 /// `wake_meta` keys.
 const String kSnoozeSettingsKey = 'snooze_settings';
 const String kSnoozeStateKey = 'snooze_state';
+const String kSnoozeWindowKey = 'snooze_window';
 
 class SnoozeSettings {
   const SnoozeSettings({
@@ -106,7 +107,8 @@ class SnoozeSettings {
 
 /// A snooze waiting for its re-alarm (the only thing worth surviving a restart).
 class SnoozeState {
-  const SnoozeState({required this.count, required this.reAlarmAt});
+  const SnoozeState(
+      {required this.count, required this.reAlarmAt, this.fireAt});
 
   /// Snoozes set so far (>= 1): the index of the NEXT re-alarm.
   final int count;
@@ -114,14 +116,23 @@ class SnoozeState {
   /// When the re-alarm is due (phone clock).
   final DateTime reAlarmAt;
 
+  /// The native alarm's own fire stamp this chain answers (null for a state
+  /// written before it was kept). A wake confirmation counts only if it is not
+  /// older than this minus [kSnoozeConfirmLookback]. Not part of equality: a
+  /// snooze is its count and its due time.
+  final DateTime? fireAt;
+
   /// Throws [FormatException] on anything unreadable (count < 1, a bad
   /// instant); the store reads that as "no snooze pending".
   factory SnoozeState.fromJson(Object? json) {
     if (json is Map) {
       final c = json['count'], at = json['reAlarmAtMs'];
+      final f = json['fireAtMs'];
       if (c is int && c >= 1 && at is int) {
         return SnoozeState(
-            count: c, reAlarmAt: DateTime.fromMillisecondsSinceEpoch(at));
+            count: c,
+            reAlarmAt: DateTime.fromMillisecondsSinceEpoch(at),
+            fireAt: f is int ? DateTime.fromMillisecondsSinceEpoch(f) : null);
       }
     }
     throw FormatException('not a snooze state', json);
@@ -130,6 +141,7 @@ class SnoozeState {
   Map<String, Object?> toJson() => {
         'count': count,
         'reAlarmAtMs': reAlarmAt.millisecondsSinceEpoch,
+        if (fireAt != null) 'fireAtMs': fireAt!.millisecondsSinceEpoch,
       };
 
   @override
@@ -142,6 +154,55 @@ class SnoozeState {
   int get hashCode => Object.hash(count, reAlarmAt);
 }
 
+/// How far before the native alarm's fire a wake confirmation may lie and still
+/// belong to the sleep that alarm woke. Earlier than this, the wearer was up
+/// (and went back to sleep) before it: that confirmation is another block's.
+const Duration kSnoozeConfirmLookback = Duration(minutes: 30);
+
+/// The dismiss window after a native double-tap stop, kept while it is open so
+/// a restart cannot lose it: the native alarm is already stopped, and nothing
+/// but this window (or its snooze) will ever wake the wearer again.
+class SnoozeWindow {
+  const SnoozeWindow({
+    required this.stoppedAt,
+    this.fireAt,
+    this.taps = const [],
+  });
+
+  /// When the native alarm stopped (the termination's own time, phone clock).
+  final DateTime stoppedAt;
+
+  /// The native fire stamp this stop answers.
+  final DateTime? fireAt;
+
+  /// The band double taps heard since the stop (their own times).
+  final List<DateTime> taps;
+
+  /// Throws [FormatException] on anything unreadable.
+  factory SnoozeWindow.fromJson(Object? json) {
+    if (json is Map) {
+      final s = json['stoppedAtMs'], f = json['fireAtMs'], t = json['tapsMs'];
+      if (s is int && (t == null || t is List)) {
+        return SnoozeWindow(
+          stoppedAt: DateTime.fromMillisecondsSinceEpoch(s),
+          fireAt: f is int ? DateTime.fromMillisecondsSinceEpoch(f) : null,
+          taps: [
+            for (final x in (t as List? ?? const []))
+              if (x is int) DateTime.fromMillisecondsSinceEpoch(x),
+          ],
+        );
+      }
+    }
+    throw FormatException('not a snooze window', json);
+  }
+
+  Map<String, Object?> toJson() => {
+        'stoppedAtMs': stoppedAt.millisecondsSinceEpoch,
+        if (fireAt != null) 'fireAtMs': fireAt!.millisecondsSinceEpoch,
+        'tapsMs': [for (final t in taps) t.millisecondsSinceEpoch],
+      };
+}
+
 abstract interface class SnoozeStore {
   Future<SnoozeSettings> loadSettings();
   Future<void> saveSettings(SnoozeSettings s);
@@ -151,6 +212,12 @@ abstract interface class SnoozeStore {
 
   /// Null clears.
   Future<void> saveState(SnoozeState? s);
+
+  /// The open dismiss window, or null (none open, or unreadable).
+  Future<SnoozeWindow?> loadWindow();
+
+  /// Null clears.
+  Future<void> saveWindow(SnoozeWindow? w);
 }
 
 /// [SnoozeStore] over `LocalDb.wakeMetaGet/Set`.
@@ -195,4 +262,19 @@ class DbSnoozeStore implements SnoozeStore {
   @override
   Future<void> saveState(SnoozeState? s) => LocalDb.wakeMetaSet(
       kSnoozeStateKey, s == null ? '' : jsonEncode(s.toJson()));
+
+  @override
+  Future<SnoozeWindow?> loadWindow() async {
+    try {
+      final raw = await LocalDb.wakeMetaGet(kSnoozeWindowKey);
+      if (raw == null || raw.isEmpty) return null;
+      return SnoozeWindow.fromJson(jsonDecode(raw));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> saveWindow(SnoozeWindow? w) => LocalDb.wakeMetaSet(
+      kSnoozeWindowKey, w == null ? '' : jsonEncode(w.toJson()));
 }

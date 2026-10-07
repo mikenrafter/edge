@@ -2369,5 +2369,6 @@
   "snoozeValueTaps": "{n, plural, =1{1 Doppeltipp} other{{n} Doppeltipps}}",
   "snoozeValueSeconds": "{s} s",
   "snoozeValueMinutes": "{m} Min.",
-  "snoozeValueCap": "{n, plural, =1{1 Schlummerrunde} other{{n} Schlummerrunden}}"
+  "snoozeValueCap": "{n, plural, =1{1 Schlummerrunde} other{{n} Schlummerrunden}}",
+  "snoozeUnsupported": "Schlummern braucht ein Band, das meldet, wie der Alarm beendet wurde (WHOOP 5/MG)"
 }

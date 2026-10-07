@@ -70,6 +70,22 @@ void main() {
     });
   });
 
+  group('alarmSnooze', () {
+    test('a 4.0 does not report how the alarm was stopped: disabled, with the '
+        'reason, never hidden', () {
+      final a = _caps(generation: 'gen4').of(Feature.alarmSnooze);
+      expect(a.isDisabled, isTrue);
+      expect(a.isHidden, isFalse);
+      expect(a.reason, contains('WHOOP 5/MG'));
+    });
+
+    test('a 5/MG, and a band not identified yet, keep the rows', () {
+      expect(_caps(generation: 'gen5').of(Feature.alarmSnooze),
+          Availability.available);
+      expect(_caps().of(Feature.alarmSnooze), Availability.available);
+    });
+  });
+
   group('developerMode', () {
     test('hidden unless dev mode is on', () {
       expect(_caps().of(Feature.developerMode), Availability.hidden);

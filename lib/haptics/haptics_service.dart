@@ -107,6 +107,11 @@ class HapticsService {
           {bool started = false}) =>
       _queue.asGesture(gestureId, work, started: started);
 
+  /// Run [work] so its band jobs are alarm jobs: never held for the command
+  /// window (waking the wearer outranks our own precaution), still counted in
+  /// the ledger up to its limit. See [BandHapticQueue.asAlarm].
+  T asAlarm<T>(T Function() work) => _queue.asAlarm(work);
+
   /// Run [work] with jobs that start now or are rejected. Used for phase cues,
   /// where a late vibration would describe the wrong phase.
   T asImmediate<T>(T Function() work) => _queue.asImmediate(work);
@@ -170,9 +175,16 @@ class HapticsService {
   /// compiled command also reports when it started playing: the band's live
   /// event 60 if it arrives within [startWindow] of the write, else the write
   /// time plus the default Bluetooth lead (per-tap buzzes report nothing).
+  ///
+  /// [onFirstWrite] is called once, when the band has ACCEPTED the delivery's
+  /// first compiled command (the wearer starts to feel it). A delivery with no
+  /// compiled commands (a band with no haptic profile plays per-tap buzzes)
+  /// never calls it; the caller takes a delivery that returns complete as
+  /// accepted.
   Future<BuzzDelivery> deliver(
     BuzzSequence s, {
     void Function(HapticPlayStart)? onStart,
+    void Function()? onFirstWrite,
   }) => deliverBandSequenceQueued(
         _queue,
         s,
@@ -183,7 +195,12 @@ class HapticsService {
         waitEnded: _ended.wait,
         isConnected: () => port.isConnected,
         maxRuntime: maxRuntime,
-        onWritten: onStart == null ? null : (i) => _watchStart(i, onStart),
+        onWritten: onStart == null && onFirstWrite == null
+            ? null
+            : (i) {
+                if (i == 0) onFirstWrite?.call();
+                if (onStart != null) _watchStart(i, onStart);
+              },
       );
 
   /// How long a delivery of [s] may take on the connected band.

@@ -79,20 +79,23 @@ class GestureCues {
   /// buzz each, since the wearer who put one on a breathing slot there meant
   /// that rhythm; with none stored it plays one plain pulse. (The caller keeps
   /// the 4.0's own per-phase buzzes for a slot nobody assigned.)
-  Future<BuzzDelivery> slot(String key) {
-    if (haptics.profile != null) return _cue(key);
+  ///
+  /// [onFirstWrite] is called when the band has accepted the cue's first
+  /// command (see [HapticsService.deliver]).
+  Future<BuzzDelivery> slot(String key, {void Function()? onFirstWrite}) {
+    if (haptics.profile != null) return _cue(key, onFirstWrite: onFirstWrite);
     final s = _pattern(key);
     return s == null ? _plainPulses(1) : haptics.deliver(s);
   }
 
   // [key]'s pattern as one queue job, compiled for the band like every other
   // stored pattern (the seeded default when the stored one does not compile).
-  Future<BuzzDelivery> _cue(String key) {
+  Future<BuzzDelivery> _cue(String key, {void Function()? onFirstWrite}) {
     final p = haptics.profile;
     if (p == null) return _plainPulses(1);
     final steps = _steps(key, p);
     if (steps == null) return _plainPulses(1);
-    return haptics.deliver(_sequence(p, steps));
+    return haptics.deliver(_sequence(p, steps), onFirstWrite: onFirstWrite);
   }
 
   // A one-press sequence carrying [steps] as its stored plan for [p].

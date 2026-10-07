@@ -2369,5 +2369,6 @@
   "snoozeValueTaps": "{n, plural, =1{1 डबल टैप} other{{n} डबल टैप}}",
   "snoozeValueSeconds": "{s} सेकंड",
   "snoozeValueMinutes": "{m} मिनट",
-  "snoozeValueCap": "{n, plural, =1{1 स्नूज़} other{{n} स्नूज़}}"
+  "snoozeValueCap": "{n, plural, =1{1 स्नूज़} other{{n} स्नूज़}}",
+  "snoozeUnsupported": "स्नूज़ के लिए ऐसा बैंड चाहिए जो बताए कि अलार्म कैसे रोका गया (WHOOP 5/MG)"
 }

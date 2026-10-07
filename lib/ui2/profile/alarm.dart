@@ -147,6 +147,7 @@ class _AlarmScreenState extends State<AlarmScreen> {
             resent: app.alarmResentUnconfirmed,
             snoozeSettings: app.snoozeSettings,
             onSnoozeSettings: app.setSnoozeSettings,
+            snoozeUnsupportedReason: caps.of(Feature.alarmSnooze).reason,
           ),
         );
       },
@@ -213,6 +214,10 @@ class AlarmScreenView extends StatefulWidget {
   final SnoozeSettings? snoozeSettings;
   final ValueChanged<SnoozeSettings>? onSnoozeSettings;
 
+  /// Non-null when the band cannot drive a snooze: the rows are shown disabled
+  /// with this reason (see [Feature.alarmSnooze]).
+  final String? snoozeUnsupportedReason;
+
   const AlarmScreenView({
     super.key,
     this.armedAt,
@@ -234,6 +239,7 @@ class AlarmScreenView extends StatefulWidget {
     this.resent = false,
     this.snoozeSettings,
     this.onSnoozeSettings,
+    this.snoozeUnsupportedReason,
   });
 
   @override
@@ -637,6 +643,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                             child: SnoozeSettingsRows(
                               settings: w.snoozeSettings!,
                               onChanged: w.onSnoozeSettings,
+              unsupportedReason: w.snoozeUnsupportedReason,
                             ),
                           ),
                         const SizedBox(height: S.x4),

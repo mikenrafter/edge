@@ -2,7 +2,28 @@
 // app-driven re-alarm loop. Everything is injected; nothing here can reach the
 // band's native alarm (no arm, no disable: AGENTS 3.15, and arming is taxing).
 //
-// Pinned by test/alarm_snooze/snooze_controller_test.dart.
+// Pinned by test/alarm_snooze/snooze_controller_test.dart and, for the safety
+// round (Sol's review, 2026-10-07), snooze_safety_controller_test.dart. The
+// principle throughout: an alarm that fails to wake the wearer is the worst
+// outcome, so when in doubt the controller re-alarms.
+//
+// Safety rules added by that round:
+//   * the dismiss window is PERSISTED the moment it opens (and with every tap),
+//     so a restart cannot forget it: [resume] restores an open window, snoozes
+//     from the ORIGINAL stop time when it expired while the app was dead, and
+//     re-alarms at once when that snooze is already due;
+//   * a stop is timed by its own [onAlarmStopped] `at` (the strap's stamp), not
+//     by when it was heard: a snooze is due `at + minutes`, and a stop heard
+//     late whose snooze is already due re-alarms now;
+//   * a stop while anything is pending (a window, a snooze, a re-alarm) is
+//     ignored: another termination never resets or postpones a snooze;
+//   * the re-alarm listens only once the band has TAKEN its pattern (the play's
+//     `onFirstWrite`), measures its window from the delivery's end, and a tap
+//     heard before that never counts; a delivery that fails keeps the snooze
+//     pending and is retried;
+//   * [consumesDoubleTaps] is false once a window's deadline has passed, even
+//     if its timer or probe has not run, so an overdue window stops stealing
+//     gestures.
 //
 // Behaviour:
 //   [onAlarmStopped]  the native wake alarm stopped. error: log only. Probe
@@ -51,9 +72,14 @@ import 'snooze_settings.dart';
 /// Plays haptic slot [slotKey] through the shared band queue. The re-alarm
 /// carries its notes (they grow per snooze); the fixed slots play their stored
 /// or default pattern. True when the band took it.
+///
+/// [onFirstWrite] is called once, when the band has ACCEPTED the first command
+/// of the delivery: the wearer starts to feel it. A play that completes true
+/// without having called it is taken as accepted when it returns.
 typedef SnoozeHapticPlay = Future<bool> Function(
   String slotKey, {
   List<PatternEntry>? notes,
+  void Function()? onFirstWrite,
 });
 
 typedef SnoozeEvidence = Future<void> Function(
@@ -110,8 +136,12 @@ class SnoozeStatus {
 /// One open listening period for double taps: the dismiss window after a
 /// native stop, or the re-alarm.
 class _Listen {
-  _Listen(this.cause, this.start, this.window);
+  _Listen(this.cause, this.start, this.window, {Iterable<DateTime>? taps}) {
+    if (taps != null) this.taps.addAll(taps);
+  }
   final AlarmStopCause cause;
+
+  /// A native stop: when the alarm stopped. A re-alarm: when the band took it.
   final DateTime start;
   final Duration window;
   final List<DateTime> taps = [];
@@ -137,7 +167,8 @@ class SnoozeController {
   final DateTime Function() now;
   final SnoozeHapticPlay play;
 
-  /// The double wake confirmation exists for the current sleep block.
+  /// The double wake confirmation exists for THIS alarm's sleep. The caller
+  /// reads [fireAt] to know which alarm that is.
   final Future<bool> Function() confirmedWake;
   final SnoozeEvidence recordEvidence;
   final SnoozeStore store;
@@ -154,11 +185,23 @@ class SnoozeController {
   SnoozeTimer? _snoozeTimer;
   bool _disposed = false;
 
+  /// The native fire stamp of the chain in progress (null: none).
+  DateTime? _fireAt;
+
+  /// True while a native-window record sits in the store (only to skip a
+  /// pointless clearing write).
+  bool _windowStored = false;
+
   // Every transition bumps this; an await that resumes under another value
   // finds its work superseded (dismissed, cancelled, disposed) and stops. It is
-  // the only guard: no flag is ever held across an await, so nothing can stay
+  // the main guard: no flag is ever held across an await, so nothing can stay
   // set after a failure.
   int _gen = 0;
+
+  /// The generation a re-alarm delivery is in flight under, so a tick does not
+  /// start a second one. A transition (bumping [_gen]) makes it stale by
+  /// itself; a failed delivery clears it.
+  int? _startingGen;
 
   bool _alive(int g) => !_disposed && g == _gen;
 
@@ -167,9 +210,26 @@ class SnoozeController {
   /// What Home shows. Not idle while a window, a snooze or a re-alarm is live.
   ValueListenable<SnoozeStatus> get status => _status;
 
+  /// The native alarm's fire stamp the current chain answers, or null.
+  DateTime? get fireAt => _fireAt;
+
   /// A band double tap belongs to the dismiss window or the re-alarm right
-  /// now, so the wearer's gesture actions must not run for it.
-  bool get consumesDoubleTaps => !_disposed && _listen != null;
+  /// now, so the wearer's gesture actions must not run for it. False once the
+  /// window's deadline has passed, whether or not its timer has run.
+  bool get consumesDoubleTaps {
+    final l = _listen;
+    return !_disposed && l != null && !_overdue(l);
+  }
+
+  /// A window's deadline: [AlarmStopPolicy.window] after the stop, or after the
+  /// re-alarm's delivery ended (still open while it is being delivered).
+  bool _overdue(_Listen l) {
+    if (l.reAlarm) {
+      final d = l.deliveredAt;
+      return d != null && now().isAfter(d.add(l.window));
+    }
+    return now().isAfter(l.start.add(l.window));
+  }
 
   // ── helpers that never throw ───────────────────────────────────────────────
 
@@ -183,9 +243,10 @@ class SnoozeController {
     }
   }
 
-  Future<bool> _play(String slot, {List<PatternEntry>? notes}) async {
+  Future<bool> _play(String slot,
+      {List<PatternEntry>? notes, void Function()? onFirstWrite}) async {
     try {
-      return await play(slot, notes: notes);
+      return await play(slot, notes: notes, onFirstWrite: onFirstWrite);
     } catch (e) {
       _log('playing $slot failed: $e');
       return false;
@@ -198,6 +259,19 @@ class SnoozeController {
     } catch (e) {
       _log('saving the snooze state failed: $e');
     }
+  }
+
+  Future<void> _saveWindow(SnoozeWindow? w) async {
+    try {
+      await store.saveWindow(w);
+    } catch (e) {
+      _log('saving the dismiss window failed: $e');
+    }
+    _windowStored = w != null;
+  }
+
+  Future<void> _clearWindow() async {
+    if (_windowStored) await _saveWindow(null);
   }
 
   Future<void> _evidence(DateTime at) async {
@@ -220,8 +294,8 @@ class SnoozeController {
   }
 
   AlarmStopPolicy _policy(_Listen l) {
-    // A re-alarm listens from its start; until its delivery finishes the
-    // window cannot end.
+    // A re-alarm listens from the first accepted write; until its delivery
+    // finishes the window cannot end.
     final Duration w;
     if (l.reAlarm) {
       final done = l.deliveredAt;
@@ -252,27 +326,37 @@ class SnoozeController {
 
   // ── the native alarm stopped ──────────────────────────────────────────────
 
-  /// The native wake alarm stopped for [cause], at [at] (default now).
-  Future<void> onAlarmStopped(AlarmStopCause cause, {DateTime? at}) async {
+  /// The native wake alarm stopped for [cause], at [at] (the strap's own time
+  /// of the stop; default now), answering the native fire stamped [fire].
+  ///
+  /// Ignored while a window, a snooze or a re-alarm is already pending: one
+  /// stop starts a chain, and another termination (our own playback ending,
+  /// a stray one) must never reset or postpone it.
+  Future<void> onAlarmStopped(AlarmStopCause cause,
+      {DateTime? at, DateTime? fire}) async {
     if (_disposed) return;
     if (cause == AlarmStopCause.error || cause == AlarmStopCause.reAlarm) {
       _log('the alarm stopped with an error; no snooze.');
       return;
     }
+    if (_listen != null || _state != null || _startingGen == _gen) {
+      _log('a stop while a window, a snooze or a re-alarm is pending: '
+          'ignored, the pending one is never reset.');
+      return;
+    }
     final t = at ?? now();
-    // A new stop supersedes whatever was pending.
+    _fireAt = fire ?? t;
     final g = ++_gen;
     _cancelTimers();
-    _listen = null;
-    final hadState = _state != null;
-    _state = null;
-    if (hadState) await _save(null);
-    if (!_alive(g)) return;
     final window = settings().window;
     if (cause == AlarmStopCause.userDoubleTap) {
-      // Open before the probe so taps are consumed from the first moment.
+      // Open before the probe so taps are consumed from the first moment, and
+      // persist it before anything can die: the native alarm is stopped, so
+      // nothing but this window will ever wake the wearer again.
       _listen = _Listen(cause, t, window);
       _publish();
+      await _saveWindow(SnoozeWindow(stoppedAt: t, fireAt: _fireAt));
+      if (!_alive(g)) return;
     }
     final confirmed = await _probe();
     if (!_alive(g)) return;
@@ -286,7 +370,7 @@ class SnoozeController {
       confirmedWake: confirmed,
       now: now(),
     );
-    await _apply(d, l, t, g);
+    await _apply(d, l, at: t, anchor: t);
     if (_alive(g) && _listen == l && l != null && _windowTimer == null) {
       final left = t.add(window).difference(now());
       _windowTimer = scheduler(left.isNegative ? Duration.zero : left,
@@ -296,20 +380,36 @@ class SnoozeController {
 
   // ── taps ──────────────────────────────────────────────────────────────────
 
-  /// A band double tap (gesture event 14) at [at]; only meaningful while
-  /// [consumesDoubleTaps].
-  Future<void> onBandDoubleTap(DateTime at) async {
+  /// A band double tap (gesture event 14) at [at], its own time; only
+  /// meaningful while [consumesDoubleTaps]. A tap before the window opened, or
+  /// after its deadline, never counts.
+  Future<void> onBandDoubleTap(DateTime tapAt) async {
     final l = _listen;
     if (_disposed || l == null) return;
+    // A strap clock a little ahead of the phone's cannot make a tap that has
+    // just been heard lie in the future (the policy would not count it yet).
+    final at = tapAt.isAfter(now()) ? now() : tapAt;
+    if (_overdue(l)) {
+      _log('double tap after the window ended: not counted.');
+      return;
+    }
+    if (at.isBefore(l.start)) {
+      _log('double tap before the window opened: not counted.');
+      return;
+    }
     if (!l.reAlarm) {
       final since = at.difference(l.start);
-      if (!since.isNegative && since < kStopTapDedupe) {
+      if (since < kStopTapDedupe) {
         _log('double tap ${since.inMilliseconds} ms after the stop: that '
             'stop\'s own tap, not another.');
         return;
       }
     }
     l.taps.add(at);
+    if (!l.reAlarm) {
+      await _saveWindow(
+          SnoozeWindow(stoppedAt: l.start, fireAt: _fireAt, taps: l.taps));
+    }
     await _evaluate(l);
   }
 
@@ -327,11 +427,15 @@ class SnoozeController {
       confirmedWake: confirmed,
       now: now(),
     );
-    await _apply(d, l, l.taps.isEmpty ? now() : l.taps.last, g);
+    await _apply(d, l,
+        at: l.taps.isEmpty ? now() : l.taps.last,
+        // A native window snoozes from the stop; a re-alarm that went
+        // unanswered snoozes again from now.
+        anchor: l.reAlarm ? now() : l.start);
   }
 
-  Future<void> _apply(
-      AlarmStopDecision d, _Listen? l, DateTime at, int g) async {
+  Future<void> _apply(AlarmStopDecision d, _Listen? l,
+      {required DateTime at, required DateTime anchor}) async {
     switch (d) {
       case AlarmStopDecision.pending:
         return;
@@ -340,7 +444,7 @@ class SnoozeController {
       case AlarmStopDecision.dismissed:
         await _dismiss(at);
       case AlarmStopDecision.snooze:
-        await _setSnooze();
+        await _setSnooze(anchor);
       case AlarmStopDecision.confirmedAwake:
         if (l != null && l.reAlarm) {
           await _cancelSnooze();
@@ -349,11 +453,12 @@ class SnoozeController {
           _gen++;
           _cancelTimers();
           _listen = null;
+          _fireAt = null;
           _publish();
-          if (_state != null) {
-            _state = null;
-            await _save(null);
-          }
+          final had = _state != null;
+          _state = null;
+          if (had) await _save(null);
+          await _clearWindow();
         }
     }
   }
@@ -363,10 +468,12 @@ class SnoozeController {
     final g = ++_gen;
     _cancelTimers();
     _listen = null;
+    _fireAt = null;
     final hadState = _state != null;
     _state = null;
     _publish();
     if (hadState) await _save(null);
+    await _clearWindow();
     await _evidence(at);
     if (!_alive(g)) return;
     await _play(kAlarmDismissConfirmKey);
@@ -377,27 +484,40 @@ class SnoozeController {
     final g = ++_gen;
     _cancelTimers();
     _listen = null;
+    _fireAt = null;
     _state = null;
     _publish();
     await _save(null);
+    await _clearWindow();
     if (!_alive(g)) return;
     await _play(kAlarmSnoozeCancelledKey);
   }
 
-  /// Sets the next snooze: count + 1, due in the setting's minutes.
-  Future<void> _setSnooze() async {
+  /// Sets the next snooze: count + 1, due [SnoozeSettings.snoozeFor] after
+  /// [anchor] (the native stop's own time for the first one). Already due (a
+  /// stop heard late, a restart long after): the re-alarm plays now instead.
+  Future<void> _setSnooze(DateTime anchor) async {
     final g = ++_gen;
     _cancelTimers();
     _listen = null;
     final s = settings();
     final st = SnoozeState(
         count: (_state?.count ?? 0) + 1,
-        reAlarmAt: now().add(s.snoozeFor));
+        reAlarmAt: anchor.add(s.snoozeFor),
+        fireAt: _fireAt);
     _state = st;
     _publish();
-    _snoozeTimer = scheduler(s.snoozeFor, () => _fire(_snoozedStep));
+    final left = st.reAlarmAt.difference(now());
+    final due = left <= Duration.zero;
+    if (!due) _snoozeTimer = scheduler(left, () => _fire(_snoozedStep));
     await _save(st);
+    await _clearWindow();
     if (!_alive(g)) return;
+    if (due) {
+      _log('the snooze is already due: re-alarming now.');
+      await _startReAlarm(st);
+      return;
+    }
     await _play(kAlarmSnoozeConfirmKey);
   }
 
@@ -417,7 +537,7 @@ class SnoozeController {
   /// A pending snooze: cancelled by a confirmed wake, otherwise its re-alarm
   /// once due.
   Future<void> _snoozedStep() async {
-    if (_disposed || _listen != null) return;
+    if (_disposed || _listen != null || _startingGen == _gen) return;
     final st = _state;
     if (st == null) return;
     final g = _gen;
@@ -433,25 +553,42 @@ class SnoozeController {
 
   Future<void> _startReAlarm(SnoozeState st) async {
     final g = ++_gen;
+    _startingGen = g;
     _snoozeTimer?.cancel();
     _snoozeTimer = null;
+    _listen = null;
     final s = settings();
-    final l = _Listen(AlarmStopCause.reAlarm, now(), s.window);
-    _listen = l;
-    _publish();
+    _Listen? l;
+    // Listening opens only when the band has taken the pattern: until then the
+    // wearer has felt nothing, so no tap is a dismissal and no gesture is ours.
+    void accepted() {
+      if (!_alive(g) || l != null) return;
+      final open = l = _Listen(AlarmStopCause.reAlarm, now(), s.window);
+      _listen = open;
+      _publish();
+    }
+
     final notes = SnoozeSchedule(cap: s.cap).reAlarmNotes(st.count);
-    final delivered = await _play(kAlarmReAlarmKey, notes: notes);
+    final delivered =
+        await _play(kAlarmReAlarmKey, notes: notes, onFirstWrite: accepted);
     if (!_alive(g)) return;
     if (!delivered) {
       // Not counted: still due, retried at the next tick.
-      _listen = null;
-      _publish();
+      if (l != null && _listen == l) {
+        _listen = null;
+        _publish();
+      }
+      _startingGen = null;
       _log('re-alarm ${st.count} was not delivered; will retry.');
       return;
     }
-    l.deliveredAt = now();
-    _windowTimer = scheduler(s.window, () => _fire(() => _evaluate(l)));
-    await _evaluate(l);
+    accepted();
+    final done = l!;
+    _startingGen = null;
+    // The window runs from the delivery's end.
+    done.deliveredAt = now();
+    _windowTimer = scheduler(s.window, () => _fire(() => _evaluate(done)));
+    await _evaluate(done);
   }
 
   /// "I'm up": dismisses a window, a snooze or a re-alarm.
@@ -461,18 +598,27 @@ class SnoozeController {
     await _dismiss(now());
   }
 
-  /// Load a persisted snooze after a restart.
+  /// Load what was pending after a restart: a snooze, or a dismiss window that
+  /// was open.
   Future<void> resume() async {
     if (_disposed) return;
     final g = _gen;
     SnoozeState? st;
+    SnoozeWindow? w;
     try {
       st = await store.loadState();
+      w = await store.loadWindow();
     } catch (e) {
       _log('loading the snooze state failed: $e');
     }
-    if (!_alive(g) || st == null || _listen != null || _state != null) return;
+    if (!_alive(g) || _listen != null || _state != null) return;
+    if (st == null) {
+      if (w != null) await _resumeWindow(w, g);
+      return;
+    }
+    if (w != null) await _saveWindow(null); // the snooze is the later fact
     _state = st;
+    _fireAt = st.fireAt;
     _publish();
     if (await _probe()) {
       if (!_alive(g) || _state != st) return;
@@ -486,8 +632,50 @@ class SnoozeController {
         left.isNegative ? Duration.zero : left, () => _fire(_snoozedStep));
   }
 
-  /// Cancels every timer. The persisted snooze stays, so the next launch
-  /// resumes it. Nothing runs or plays afterwards.
+  /// The dismiss window was open when the process died. The native alarm is
+  /// already stopped, so this is the only thing left that can wake the wearer:
+  /// restore it while it is open, count what was heard, and when it ended while
+  /// we were dead decide as it would have (snooze from the ORIGINAL stop; if
+  /// that is already due, re-alarm now).
+  Future<void> _resumeWindow(SnoozeWindow w, int g) async {
+    _fireAt = w.fireAt ?? w.stoppedAt;
+    _windowStored = true;
+    if (await _probe()) {
+      if (!_alive(g)) return;
+      _fireAt = null;
+      await _saveWindow(null);
+      return;
+    }
+    if (!_alive(g) || _listen != null || _state != null) return;
+    final window = settings().window;
+    final d = AlarmStopPolicy(
+            requiredTaps: settings().requiredTaps, window: window)
+        .decide(
+      cause: AlarmStopCause.userDoubleTap,
+      stoppedAt: w.stoppedAt,
+      taps: w.taps,
+      confirmedWake: false,
+      now: now(),
+    );
+    switch (d) {
+      case AlarmStopDecision.dismissed:
+        await _dismiss(w.taps.isEmpty ? now() : w.taps.last);
+      case AlarmStopDecision.snooze:
+      case AlarmStopDecision.confirmedAwake:
+      case AlarmStopDecision.error:
+        await _setSnooze(w.stoppedAt);
+      case AlarmStopDecision.pending:
+        final l = _Listen(AlarmStopCause.userDoubleTap, w.stoppedAt, window,
+            taps: w.taps);
+        _listen = l;
+        _publish();
+        _windowTimer = scheduler(w.stoppedAt.add(window).difference(now()),
+            () => _fire(() => _evaluate(l)));
+    }
+  }
+
+  /// Cancels every timer. The persisted snooze and window stay, so the next
+  /// launch resumes them. Nothing runs or plays afterwards.
   void dispose() {
     if (_disposed) return;
     _disposed = true;

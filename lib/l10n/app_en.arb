@@ -12636,5 +12636,9 @@
         "type": "int"
       }
     }
+  },
+  "snoozeUnsupported": "Snooze needs a band that reports how the alarm was stopped (WHOOP 5/MG)",
+  "@snoozeUnsupported": {
+    "description": "Shown under the disabled alarm snooze rows on a band (WHOOP 4.0) that does not report how the alarm was stopped."
   }
 }

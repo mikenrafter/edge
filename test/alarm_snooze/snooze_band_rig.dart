@@ -247,8 +247,10 @@ class SnoozeBandRig {
 
   /// The only hand-made wire (see the file header).
   void wireTermination() {
-    engine.onHapticsTerminated = (cause, at) {
-      app.debugOnHapticsTerminated(cause, at: at).catchError((Object _) {});
+    engine.onHapticsTerminated = (cause, at, bandAt) {
+      app
+          .debugOnHapticsTerminated(cause, at: at, bandAt: bandAt)
+          .catchError((Object _) {});
     };
   }
 
@@ -370,7 +372,7 @@ class SnoozeBandRig {
   Future<void> settle() async {
     var quietFor = 0;
     var last = writes.length;
-    for (var i = 0; i < 160 && quietFor < 10; i++) {
+    for (var i = 0; i < 160 && quietFor < 16; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 25));
       final busy = app.haptics.pending > 0 || writes.length != last;
       last = writes.length;

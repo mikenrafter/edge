@@ -2369,5 +2369,6 @@
   "snoozeValueTaps": "{n, plural, =1{1 double tape} other{{n} doubles tapes}}",
   "snoozeValueSeconds": "{s} s",
   "snoozeValueMinutes": "{m} min",
-  "snoozeValueCap": "{n, plural, =1{1 report} other{{n} reports}}"
+  "snoozeValueCap": "{n, plural, =1{1 report} other{{n} reports}}",
+  "snoozeUnsupported": "Le report nécessite un bracelet qui indique comment l'alarme a été arrêtée (WHOOP 5/MG)"
 }

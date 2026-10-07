@@ -125,8 +125,10 @@ void main() {
       r.advance(_ms * 1);
       await r.controller.tick();
       expect(r.slots, [kSlotSnoozeConfirm]);
+      // Safety round: a native stop's snooze is due from the STOP, not from the
+      // moment the window was found to be over (it used to be stop + 4 s + 5).
       expect(r.store.state,
-          SnoozeState(count: 1, reAlarmAt: kT0.add(_sec * 4 + _min * 5)));
+          SnoozeState(count: 1, reAlarmAt: kT0.add(_min * 5)));
       expect(r.controller.status.value.phase, SnoozePhase.snoozed);
       expect(r.controller.consumesDoubleTaps, isFalse);
     });
@@ -444,7 +446,7 @@ void main() {
       final r = SnoozeRig();
       final c = SnoozeController(
         now: r.clock.call,
-        play: (slot, {notes}) async => throw StateError('band gone'),
+        play: (slot, {notes, void Function()? onFirstWrite}) async => throw StateError('band gone'),
         confirmedWake: () async => false,
         recordEvidence: (k, at) async {},
         store: r.store,

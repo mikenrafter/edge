@@ -22,6 +22,7 @@ class MemorySnoozeStore implements SnoozeStore {
 
   SnoozeSettings settings;
   SnoozeState? state;
+  SnoozeWindow? window;
 
   /// Every saveState call, in order (null = a clear).
   final List<SnoozeState?> stateWrites = [];
@@ -37,6 +38,11 @@ class MemorySnoozeStore implements SnoozeStore {
     stateWrites.add(s);
     state = s;
   }
+
+  @override
+  Future<SnoozeWindow?> loadWindow() async => window;
+  @override
+  Future<void> saveWindow(SnoozeWindow? w) async => window = w;
 }
 
 class FakeTimer implements SnoozeTimer {
@@ -108,7 +114,7 @@ class SnoozeRig {
   /// A fresh controller over the same fakes and store: a restart.
   SnoozeController build() => SnoozeController(
         now: clock.call,
-        play: (slot, {notes}) async {
+        play: (slot, {notes, void Function()? onFirstWrite}) async {
           plays.add(Play(slot, notes, clock.now));
           final gate = playGate;
           if (gate != null) await gate.future;
