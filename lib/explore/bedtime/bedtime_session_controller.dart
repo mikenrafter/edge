@@ -55,6 +55,11 @@ class BedtimeSessionController extends ChangeNotifier {
   BreathPhaseKind? _phase;
 
   DateTime? _startedAt;
+
+  // Phase 0 starts at the first tick after start (streams acquired), not at the
+  // user's tap: a slow acquisition makes no expired phases. The duration cap
+  // and the policy's elapsed still count from [_startedAt].
+  DateTime? _pacingStartedAt;
   bool _disposed = false;
 
   // Streams: set BEFORE the acquire await, so every way out of a started
@@ -125,12 +130,15 @@ class BedtimeSessionController extends ChangeNotifier {
     final now = _now();
     final started = _startedAt!;
     final elapsed = now.isBefore(started) ? Duration.zero : now.difference(started);
+    final pacingStart = _pacingStartedAt ??= now;
+    final pacing =
+        now.isBefore(pacingStart) ? Duration.zero : now.difference(pacingStart);
 
     if (_plan.stopOnSleep) {
       _sleepEstimate = _policy.sleepEstimateStatus(_stages, now);
       _maybeObserve(now);
     }
-    _countSkippedPhases(elapsed);
+    _countSkippedPhases(pacing);
     final why = _policy.onTick(
       elapsed: elapsed,
       now: now,
@@ -142,7 +150,7 @@ class BedtimeSessionController extends ChangeNotifier {
       _finish(why);
       return;
     }
-    await _cueIfBoundary(elapsed);
+    await _cueIfBoundary(pacing);
   }
 
   /// End the session as [BedtimeStopReason.userStopped]. Idempotent.
@@ -182,9 +190,9 @@ class BedtimeSessionController extends ChangeNotifier {
   /// missed count and the in-a-row streak, before the policy looks at it. Only
   /// the current phase is ever cued. Not counted while a delivery is in flight;
   /// they are counted by the first tick after it lands.
-  void _countSkippedPhases(Duration elapsed) {
+  void _countSkippedPhases(Duration pacing) {
     if (_delivering || _lastCueIndex < 0) return;
-    final index = (_plan.breathsAt(elapsed) * 2).floor();
+    final index = (_plan.breathsAt(pacing) * 2).floor();
     final skipped = index - _lastCueIndex - 1;
     if (skipped <= 0) return;
     _cuesMissed += skipped;
@@ -197,9 +205,9 @@ class BedtimeSessionController extends ChangeNotifier {
   /// far (so a taper keeps one continuous phase): an even half-breath is an
   /// inhale, an odd one an exhale. A late tick plays the current phase once and
   /// does not replay the ones it missed (those were counted as missed).
-  Future<void> _cueIfBoundary(Duration elapsed) async {
+  Future<void> _cueIfBoundary(Duration pacing) async {
     if (_delivering) return;
-    final index = (_plan.breathsAt(elapsed) * 2).floor();
+    final index = (_plan.breathsAt(pacing) * 2).floor();
     if (index == _lastCueIndex) return;
     final kind = index.isEven ? BreathPhaseKind.inhale : BreathPhaseKind.exhale;
     _lastCueIndex = index;
