@@ -186,8 +186,7 @@ WakePlanInput planFor(
       gradualMinutes: gradual,
       gradualPattern: pattern,
       gradualCadenceSec: cadenceSec,
-      expectedSchedule: expected ??
-          const ExpectedSleepSchedule(onsetMinute: 23 * 60, wakeMinute: 7 * 60),
+      expectedSchedule: expected,
       sleepOnset: sleepOnset,
       upgradePending: upgradePending,
     );

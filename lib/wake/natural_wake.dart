@@ -80,11 +80,11 @@ const int kNaturalMaxEvidenceAgeMs = 150000;
 /// A tick the OS ran later than it promised, beyond this, does not fire.
 const Duration kNaturalMaxTickLateness = Duration(minutes: 3);
 
-/// A sleep must span at least this to count as the main sleep.
-const Duration kMainSleepMinSpan = Duration(hours: 4);
-
-/// The alarm must fall within this of the configured main-sleep wake time.
-const Duration kMainSleepWakeTolerance = Duration(hours: 3);
+/// Fewer minutes than this of sleep so far (now minus the sleep's onset, when
+/// an onset is known) and the early wake stays quiet: that is falling asleep,
+/// not a sleep to wake from. No onset known never blocks. The alarm at T and the
+/// gradual wake do not depend on it.
+const Duration kMinSleepBeforeEarlyWake = Duration(minutes: 45);
 
 // ── observation ─────────────────────────────────────────────────────────────
 
@@ -135,8 +135,6 @@ class NaturalObservation {
 
 // ── decision ────────────────────────────────────────────────────────────────
 
-enum SleepEligibility { mainSleep, nap, unknown }
-
 /// Why a Natural Wake tick did or did not fire. Stored by name in the trace.
 enum NaturalReason {
   fire,
@@ -144,8 +142,7 @@ enum NaturalReason {
   upgradePending,
   beforeWindow,
   windowClosed,
-  ineligibleNap,
-  ineligibleUnknown,
+  tooSoonAfterOnset,
   acknowledged,
   alreadyFired,
   disconnected,
@@ -171,19 +168,18 @@ class NaturalDecisionInput {
     required this.now,
     required this.wakeAt,
     required this.windowMinutes,
-    required this.eligibility,
     required this.observation,
     required this.connected,
     required this.alreadyFired,
     required this.acknowledged,
     required this.lateness,
     this.userActive = false,
+    this.sleepOnset,
   });
 
   final DateTime now;
   final DateTime wakeAt;
   final int windowMinutes;
-  final SleepEligibility eligibility;
   final NaturalObservation? observation;
   final bool connected;
   final bool alreadyFired;
@@ -196,6 +192,10 @@ class NaturalDecisionInput {
   /// The user is using the app now AND the band moved with it (see
   /// [NaturalWakePlanner.userAwakeFromInteraction]). Counts as awake.
   final bool userActive;
+
+  /// When the sleep in progress began, if known (see
+  /// [NaturalWakePlanner.sleepOnsetAt]); null is "unknown" and never blocks.
+  final DateTime? sleepOnset;
 }
 
 class NaturalDecision {
@@ -218,38 +218,28 @@ abstract final class NaturalWakePlanner {
   static DateTime windowStart(DateTime wakeAt, int windowMinutes) =>
       wakeAt.subtract(Duration(minutes: windowMinutes));
 
-  /// Whether the alarm at [wakeAt] is the configured main sleep. Naps are
-  /// ineligible. Never guesses: with neither a configured schedule nor a known
-  /// onset the answer is [SleepEligibility.unknown].
-  ///
-  /// The alarm must fall near the configured wake time (the schedule is local
-  /// wall-clock, so this follows the zone the alarm was armed in), and the
-  /// sleep behind it must span at least [kMainSleepMinSpan].
-  static SleepEligibility classify({
-    required DateTime wakeAt,
-    ExpectedSleepSchedule? expected,
-    DateTime? sleepOnset,
-  }) {
-    if (expected == null && sleepOnset == null) return SleepEligibility.unknown;
-    var onset = sleepOnset;
-    if (expected != null) {
-      final local = wakeAt.toLocal();
-      (DateTime, DateTime)? nearest;
-      for (final d in [-1, 0, 1]) {
-        final w = expected.windowFor(DateTime(local.year, local.month, local.day + d));
-        if (nearest == null ||
-            wakeAt.difference(w.$2).abs() < wakeAt.difference(nearest.$2).abs()) {
-          nearest = w;
-        }
-      }
-      if (wakeAt.difference(nearest!.$2).abs() > kMainSleepWakeTolerance) {
-        return SleepEligibility.nap;
-      }
-      onset ??= nearest.$1;
+  /// True only when the sleep so far is KNOWN and shorter than [min]: [onset]
+  /// is not null and at most [min] before [now]. An onset after [now] is not a
+  /// sleep so far; it is unknown too.
+  static bool sleptLessThan({
+    required DateTime? onset,
+    required DateTime now,
+    Duration min = kMinSleepBeforeEarlyWake,
+  }) =>
+      onset != null && !onset.isAfter(now) && now.difference(onset) < min;
+
+  /// The onset of the sleep in progress at [now]: the saved schedule's onset
+  /// for the night whose sleep window contains [now], else null. Never a guess
+  /// outside that window (an afternoon alarm with an overnight schedule has no
+  /// schedule onset).
+  static DateTime? scheduleOnsetAt(ExpectedSleepSchedule? expected, DateTime now) {
+    if (expected == null) return null;
+    final local = now.toLocal();
+    for (final d in [-1, 0, 1]) {
+      final w = expected.windowFor(DateTime(local.year, local.month, local.day + d));
+      if (!now.isBefore(w.$1) && now.isBefore(w.$2)) return w.$1;
     }
-    return wakeAt.difference(onset!) >= kMainSleepMinSpan
-        ? SleepEligibility.mainSleep
-        : SleepEligibility.nap;
+    return null;
   }
 
   static NaturalDecision decide(NaturalDecisionInput i) {
@@ -261,11 +251,8 @@ abstract final class NaturalWakePlanner {
     if (i.now.isBefore(windowStart(i.wakeAt, i.windowMinutes))) {
       return no(NaturalReason.beforeWindow);
     }
-    if (i.eligibility == SleepEligibility.nap) {
-      return no(NaturalReason.ineligibleNap);
-    }
-    if (i.eligibility == SleepEligibility.unknown) {
-      return no(NaturalReason.ineligibleUnknown);
+    if (sleptLessThan(onset: i.sleepOnset, now: i.now)) {
+      return no(NaturalReason.tooSoonAfterOnset);
     }
     if (i.acknowledged) return no(NaturalReason.acknowledged);
     if (i.alreadyFired) return no(NaturalReason.alreadyFired);

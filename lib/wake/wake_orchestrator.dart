@@ -8,8 +8,8 @@
 //   1. verifies the fixed native alarm at T is armed, re-arming it if the
 //      phone lost track (reboot, restart). This happens in EVERY
 //      configuration, including "neither".
-//   2. Natural: feeds the causal stager (off the UI isolate) and, only for the
-//      main sleep, fires ONE early haptic when the sleeper is NOT in light or
+//   2. Natural: feeds the causal stager (off the UI isolate) and, once the
+//      sleep so far (when known) is at least 45 min, fires ONE early haptic when the sleeper is NOT in light or
 //      deep sleep (estimated REM or awake, held `runSec >= 120`) inside
 //      [T-N, T), or when the user is actively using the app and the band moved
 //      with it — otherwise records why it abstained.
@@ -202,16 +202,18 @@ class WakePlanInput {
   final GradualPattern gradualPattern;
   final int gradualCadenceSec;
 
-  /// The configured main sleep, for the main-sleep/nap decision.
+  /// The saved expected sleep, one source of the sleep's onset.
   final ExpectedSleepSchedule? expectedSchedule;
+
+  /// The night's detected sleep onset (see `sleep_onset.dart`), the other
+  /// source. Only loaded when no schedule is saved.
   final DateTime? sleepOnset;
 
   /// The Smart Wake -> Natural Wake explanation has not been acknowledged:
   /// Natural stays inactive.
   final bool upgradePending;
 
-  /// The same plan with the night's detected sleep onset (see
-  /// `sleep_onset.dart`). Only consulted when no expected schedule is saved.
+  /// The same plan with the night's detected sleep onset.
   WakePlanInput withSleepOnset(DateTime? onset) => WakePlanInput(
         wakeAt: wakeAt,
         naturalMinutes: naturalMinutes,
@@ -669,14 +671,13 @@ class WakeOrchestrator {
     if (now.isBefore(plan.wakeAt.subtract(naturalCollectionLead(n)))) {
       return (NaturalReason.beforeWindow, false); // collection has not begun
     }
-    final eligibility = NaturalWakePlanner.classify(
-      wakeAt: plan.wakeAt,
-      expected: plan.expectedSchedule,
-      sleepOnset: plan.sleepOnset,
-    );
-    if (eligibility != SleepEligibility.mainSleep) {
-      final d = NaturalWakePlanner.decide(_input(plan, run, now, eligibility, null, Duration.zero));
-      await log(d.reason, {'eligibility': eligibility.name});
+    // Sleep so far, when known: the detected onset or the saved schedule's onset
+    // for this night. Unknown never blocks.
+    final onset = _onsetFor(plan, now);
+    if (NaturalWakePlanner.sleptLessThan(onset: onset, now: now)) {
+      final d = NaturalWakePlanner.decide(
+          _input(plan, run, now, null, Duration.zero, onset: onset));
+      await log(d.reason, {'sleptMin': now.difference(onset!).inMinutes});
       return (d.reason, false);
     }
     if (run.acknowledged) return (NaturalReason.acknowledged, false);
@@ -750,7 +751,7 @@ class WakeOrchestrator {
     final decision = samplesFailed && !userActive
         ? const NaturalDecision(NaturalReason.samplesUnavailable)
         : NaturalWakePlanner.decide(_input(
-            plan, run, now, eligibility, obs, lateness,
+            plan, run, now, obs, lateness, onset: onset,
             userActive: userActive));
     final detail = <String, Object?>{
       if (decision.viaUserActivity) 'basis': 'userActive',
@@ -825,20 +826,24 @@ class WakeOrchestrator {
   }
 
   NaturalDecisionInput _input(WakePlanInput plan, _Run run, DateTime now,
-          SleepEligibility eligibility, NaturalObservation? obs, Duration lateness,
-          {bool userActive = false}) =>
+          NaturalObservation? obs, Duration lateness,
+          {bool userActive = false, DateTime? onset}) =>
       NaturalDecisionInput(
         now: now,
         wakeAt: plan.wakeAt,
         windowMinutes: plan.naturalMinutes,
-        eligibility: eligibility,
         observation: obs,
         connected: env.connected,
         alreadyFired: run.naturalFired,
         acknowledged: run.acknowledged,
         lateness: lateness,
         userActive: userActive,
+        sleepOnset: onset,
       );
+
+  DateTime? _onsetFor(WakePlanInput plan, DateTime now) =>
+      plan.sleepOnset ??
+      NaturalWakePlanner.scheduleOnsetAt(plan.expectedSchedule, now);
 
   Future<int?> _gradual(WakePlanInput plan, _Run run, DateTime now) async {
     if (plan.gradualMinutes <= 0 || _acked(run)) return null;

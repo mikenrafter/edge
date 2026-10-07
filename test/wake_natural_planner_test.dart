@@ -15,25 +15,25 @@ final _t = DateTime(2026, 10, 5, 7, 0);
 NaturalDecision _decide({
   DateTime? now,
   int window = 60,
-  SleepEligibility eligibility = SleepEligibility.mainSleep,
   NaturalObservation? obs,
   bool connected = true,
   bool fired = false,
   bool acked = false,
   Duration lateness = Duration.zero,
   bool userActive = false,
+  DateTime? sleepOnset,
 }) =>
     NaturalWakePlanner.decide(NaturalDecisionInput(
       now: now ?? _t.subtract(const Duration(minutes: 30)),
       wakeAt: _t,
       windowMinutes: window,
-      eligibility: eligibility,
       observation: obs ?? remObs(),
       connected: connected,
       alreadyFired: fired,
       acknowledged: acked,
       lateness: lateness,
       userActive: userActive,
+      sleepOnset: sleepOnset,
     ));
 
 void main() {
@@ -110,7 +110,6 @@ void main() {
             now: _t.subtract(const Duration(minutes: 30)),
             wakeAt: _t,
             windowMinutes: 60,
-            eligibility: SleepEligibility.mainSleep,
             observation: null,
             connected: true,
             alreadyFired: false,
@@ -121,7 +120,7 @@ void main() {
           isTrue);
     });
 
-    test('never outside the window, for a nap, once fired, acknowledged, '
+    test('never outside the window, once fired, acknowledged, '
         'disconnected or late', () {
       expect(
           _decide(
@@ -130,12 +129,6 @@ void main() {
               .fire,
           isFalse);
       expect(_decide(userActive: true, now: _t).fire, isFalse);
-      expect(
-          _decide(userActive: true, eligibility: SleepEligibility.nap).fire,
-          isFalse);
-      expect(
-          _decide(userActive: true, eligibility: SleepEligibility.unknown).fire,
-          isFalse);
       expect(_decide(userActive: true, fired: true).fire, isFalse);
       expect(_decide(userActive: true, acked: true).fire, isFalse);
       expect(_decide(userActive: true, connected: false).fire, isFalse);
@@ -300,7 +293,6 @@ void main() {
         now: _t.subtract(const Duration(minutes: 30)),
         wakeAt: _t,
         windowMinutes: 60,
-        eligibility: SleepEligibility.mainSleep,
         observation: null,
         connected: true,
         alreadyFired: false,
@@ -329,45 +321,89 @@ void main() {
     });
   });
 
-  group('main sleep versus nap', () {
-    test('a nap and an unknown sleep are ineligible', () {
-      expect(_decide(eligibility: SleepEligibility.nap).reason,
-          NaturalReason.ineligibleNap);
-      expect(_decide(eligibility: SleepEligibility.unknown).reason,
-          NaturalReason.ineligibleUnknown);
+  group('sleep so far: under 45 minutes holds the early wake, unknown does not',
+      () {
+    final now = _t.subtract(const Duration(minutes: 30));
+    DateTime ago(Duration d) => now.subtract(d);
+
+    test('the floor is 45 minutes, a named constant', () {
+      expect(kMinSleepBeforeEarlyWake, const Duration(minutes: 45));
     });
 
-    const expected = ExpectedSleepSchedule(onsetMinute: 23 * 60, wakeMinute: 7 * 60);
-
-    test('the configured overnight sleep is the main sleep', () {
-      expect(
-          NaturalWakePlanner.classify(
-              wakeAt: DateTime(2026, 10, 5, 7, 0), expected: expected),
-          SleepEligibility.mainSleep);
-      expect(
-          NaturalWakePlanner.classify(
-              wakeAt: DateTime(2026, 10, 5, 6, 30), expected: expected),
-          SleepEligibility.mainSleep);
+    test('onset 30 min ago + REM in the window: no early wake', () {
+      final d = _decide(
+          obs: stageObs('rem'), sleepOnset: ago(const Duration(minutes: 30)));
+      expect(d.fire, isFalse);
+      expect(d.reason, NaturalReason.tooSoonAfterOnset);
     });
 
-    test('an afternoon alarm is a nap', () {
+    test('onset 50 min ago: fires', () {
       expect(
-          NaturalWakePlanner.classify(
-              wakeAt: DateTime(2026, 10, 5, 15, 0), expected: expected),
-          SleepEligibility.nap);
+          _decide(sleepOnset: ago(const Duration(minutes: 50))).fire, isTrue);
     });
 
-    test('a short sleep ending at the usual wake time is still a nap', () {
+    test('the boundary: 44:59 holds, 45:00 fires', () {
       expect(
-          NaturalWakePlanner.classify(
-              wakeAt: DateTime(2026, 10, 5, 7, 0),
-              expected: expected,
-              sleepOnset: DateTime(2026, 10, 5, 4, 30)),
-          SleepEligibility.nap);
+          _decide(sleepOnset: ago(const Duration(minutes: 44, seconds: 59)))
+              .reason,
+          NaturalReason.tooSoonAfterOnset);
+      expect(_decide(sleepOnset: ago(const Duration(minutes: 45))).fire, isTrue);
     });
 
-    test('with nothing known the answer is unknown, never a guess', () {
-      expect(NaturalWakePlanner.classify(wakeAt: _t), SleepEligibility.unknown);
+    test('a 3 h sleep in the window fires on REM and on awake; light sleep '
+        'still holds', () {
+      final onset = ago(const Duration(hours: 3));
+      expect(_decide(obs: stageObs('rem'), sleepOnset: onset).fire, isTrue);
+      expect(_decide(obs: stageObs('wake'), sleepOnset: onset).fire, isTrue);
+      expect(_decide(obs: stageObs('nrem'), sleepOnset: onset).fire, isFalse);
+    });
+
+    test('no onset known never blocks', () {
+      expect(_decide().fire, isTrue);
+    });
+
+    test('an onset after now is not a sleep so far: unknown, never blocks', () {
+      expect(_decide(sleepOnset: now.add(const Duration(minutes: 5))).fire,
+          isTrue);
+    });
+
+    test('it also holds the user-activity path', () {
+      expect(
+          _decide(
+                  userActive: true,
+                  sleepOnset: ago(const Duration(minutes: 10)))
+              .fire,
+          isFalse);
+    });
+
+    test('the window bounds are reported before it', () {
+      final onset = ago(const Duration(minutes: 5));
+      expect(_decide(now: _t, sleepOnset: onset).reason,
+          NaturalReason.windowClosed);
+      expect(
+          _decide(
+                  now: _t.subtract(const Duration(minutes: 61)),
+                  sleepOnset: onset)
+              .reason,
+          NaturalReason.beforeWindow);
+    });
+
+    group('the saved schedule\'s onset for this night', () {
+      const sched = ExpectedSleepSchedule(onsetMinute: 23 * 60, wakeMinute: 7 * 60);
+
+      test('inside the schedule\'s sleep: its onset', () {
+        expect(NaturalWakePlanner.scheduleOnsetAt(sched, DateTime(2026, 10, 5, 6, 30)),
+            DateTime(2026, 10, 4, 23, 0));
+        expect(NaturalWakePlanner.scheduleOnsetAt(sched, DateTime(2026, 10, 4, 23, 20)),
+            DateTime(2026, 10, 4, 23, 0));
+      });
+
+      test('outside it (an afternoon alarm) or with no schedule: unknown', () {
+        expect(NaturalWakePlanner.scheduleOnsetAt(sched, DateTime(2026, 10, 5, 14, 20)),
+            isNull);
+        expect(NaturalWakePlanner.scheduleOnsetAt(null, DateTime(2026, 10, 5, 6, 30)),
+            isNull);
+      });
     });
   });
 
@@ -379,7 +415,6 @@ void main() {
           now: _t.subtract(const Duration(minutes: 20)).toUtc(),
           wakeAt: form,
           windowMinutes: 60,
-          eligibility: SleepEligibility.mainSleep,
           observation: remObs(),
           connected: true,
           alreadyFired: false,
@@ -399,7 +434,6 @@ void main() {
               now: now,
               wakeAt: t,
               windowMinutes: 120,
-              eligibility: SleepEligibility.mainSleep,
               observation: remObs(),
               connected: true,
               alreadyFired: false,
@@ -414,21 +448,6 @@ void main() {
         final t = DateTime(2026, 3, 8, 3, 30);
         expect(NaturalWakePlanner.windowStart(t, 120).hour, 0);
       }
-    });
-
-    test('travel: classification follows the wall clock of the zone the '
-        'alarm is armed in, while the decision follows absolute time', () {
-      // 07:00 local in whatever zone this process is in is the main sleep;
-      // the identical absolute instant read as a nap-time alarm (the schedule
-      // saying 07:00 but the alarm now falling at 15:00 after a flight) is
-      // not, and nothing else about the decision changes.
-      const expected = ExpectedSleepSchedule(onsetMinute: 23 * 60, wakeMinute: 7 * 60);
-      final home = DateTime(2026, 10, 5, 7, 0);
-      final afterFlight = home.add(const Duration(hours: 8));
-      expect(NaturalWakePlanner.classify(wakeAt: home, expected: expected),
-          SleepEligibility.mainSleep);
-      expect(NaturalWakePlanner.classify(wakeAt: afterFlight, expected: expected),
-          SleepEligibility.nap);
     });
   });
 }

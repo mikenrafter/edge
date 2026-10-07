@@ -15,6 +15,9 @@ String naturalReasonText(String reason) => switch (reason) {
         'explanation',
   'beforeWindow' => 'it has not started listening yet',
   'windowClosed' => 'its window had already ended',
+  'tooSoonAfterOnset' =>
+    'you had been asleep for under 45 minutes, so it stayed quiet',
+  // Retired reasons: old stored traces still carry them.
   'ineligibleNap' =>
     'this was a nap, and Natural Wake is for your main '
         'sleep only',
