@@ -269,14 +269,14 @@ void main() {
   });
 
   group('no output change', () {
-    test('the artifact itself bumps nothing: 101 is the incremental repin\'s bump '
-        '(lombScargle first-sample shift), not this artifact\'s', () {
-      expect(kAlgoVersion, 101);
+    test('the artifact itself bumps nothing: 101 was the incremental repin\'s '
+        'bump and 102 the streamed day RR\'s, not this artifact\'s', () {
+      expect(kAlgoVersion, 102);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '
-        'descendant 65c8901)', () {
-      expect(kAnalyticsPin, '65c8901c8fb09cd076290ea37676d55ef6c47429');
+        'descendants 65c8901, aa67997)', () {
+      expect(kAnalyticsPin, 'aa67997c430e5656089a70d444d36cc18d6601d0');
     });
   });
 }

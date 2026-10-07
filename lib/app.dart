@@ -57,6 +57,8 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
 
       final app = context.read<AppState>();
       if (app.isPaired) app.openSession();
+      // A cold start into the foreground has no `resumed` transition.
+      unawaited(app.noteAppOpened());
     });
   }
 
@@ -113,6 +115,9 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // a lock screen looking current.
       unawaited(WidgetService.refresh(app.repo));
       if (app.isPaired) app.openSession();
+      // After openSession: that is what takes the app out of the background,
+      // and a backgrounded process has no foreground to note.
+      unawaited(app.noteAppOpened());
     } else if (state == AppLifecycleState.paused) {
       // Backgrounded: hand the band to the iOS restore path so it can wake-and-drain
       // in the background (no-op on Android, where the foreground service holds it).

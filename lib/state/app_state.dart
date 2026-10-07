@@ -76,7 +76,12 @@ import 'alarm_draft.dart';
 import 'alarm_schedule.dart';
 import 'smart_wake.dart';
 import '../wake/natural_wake.dart'
-    show NaturalStageObserver, kUserInteractionFreshness;
+    show
+        NaturalStageObserver,
+        NaturalWakePlanner,
+        kUserInteractionFreshness,
+        kUserMotionHalfWindow;
+import '../wake/wake_confirmation.dart';
 import '../wake/wake_controller.dart';
 import '../wake/wake_orchestrator.dart';
 import '../wake/wake_settings.dart';
@@ -1974,6 +1979,141 @@ class AppState extends ChangeNotifier {
     await _deriveCoordinator.attachPower();
   }
 
+  // ── wake confirmation (see lib/compute/sleep_block_policy.dart) ─────────────
+  // One store and one recorder for every source of wake evidence: the app
+  // opened, band movement under a touch, the strap's alarm fired events, the
+  // "I'm up" acknowledgement and Natural Wake firing. The headless pass notes
+  // its alarm events into the same persisted store. A note that completes the
+  // double confirmation stores it and re-derives the wake day.
+
+  /// The clock the wake-confirmation wiring reads (default `DateTime.now`).
+  @visibleForTesting
+  DateTime Function()? debugWakeClock;
+
+  /// Replaces the engine call that re-derives the day a confirmation just
+  /// finalized; receives the day labels.
+  @visibleForTesting
+  Future<int> Function(Set<String> days)? debugDeriveDays;
+
+  DateTime _wakeNow() => (debugWakeClock ?? DateTime.now)();
+
+  late final DbWakeConfirmationStore _wakeStore =
+      DbWakeConfirmationStore(now: _wakeNow);
+  late final WakeConfirmationRecorder _wakeRecorder =
+      WakeConfirmationRecorder(_wakeStore);
+
+  /// Notes and derives still running; a test waits on them.
+  final Set<Future<void>> _wakeSignals = {};
+
+  void _trackWakeSignal(Future<void> f) {
+    _wakeSignals.add(f);
+    f.whenComplete(() => _wakeSignals.remove(f));
+  }
+
+  /// Completes when every wake-evidence note started so far, and the derive a
+  /// completed confirmation triggers, has finished.
+  @visibleForTesting
+  Future<void> debugWakeSignalsSettled() async {
+    while (_wakeSignals.isNotEmpty) {
+      await Future.wait(_wakeSignals.toList());
+    }
+  }
+
+  /// Notes one wake event; returns the confirmed moment when it completed the
+  /// double confirmation. Never throws: evidence is best-effort and must not
+  /// break the alarm, the wake tick or the touch that triggered it.
+  Future<int?> _noteWake(WakeEvidenceKind kind, DateTime at) {
+    final run = _noteWakeUnsafe(kind, at);
+    _trackWakeSignal(run.then<void>((_) {}));
+    return run;
+  }
+
+  Future<int?> _noteWakeUnsafe(WakeEvidenceKind kind, DateTime at) async {
+    try {
+      final moment = await _wakeRecorder.note(kind, at);
+      if (moment != null && !_disposed) {
+        _log('[wake] confirmed awake at '
+            '${DateTime.fromMillisecondsSinceEpoch(moment * 1000).toIso8601String()} '
+            '(${kind.name} completed it).');
+        _trackWakeSignal(_deriveConfirmedWakeDay(moment));
+      }
+      return moment;
+    } catch (e) {
+      _log('[wake] noting ${kind.name} failed (nothing else is affected): $e');
+      return null;
+    }
+  }
+
+  /// The confirmation finalizes the night: score it now, at the confirmed
+  /// moment, rather than at the next unrelated pass.
+  Future<void> _deriveConfirmedWakeDay(int moment) async {
+    try {
+      final day = await _wakeStore.blockDayId() ??
+          dayLabelOf(DateTime.fromMillisecondsSinceEpoch(moment * 1000));
+      final hook = debugDeriveDays;
+      if (hook != null) {
+        await hook({day});
+        return;
+      }
+      await _waitForDerivation();
+      if (_disposed) return;
+      await _derive.runDays(_profile, {day}, force: true);
+      final error = _derive.snapshot()['last_error'];
+      if (error != null) {
+        _log('[wake] re-deriving $day after the confirmation failed: $error');
+        return;
+      }
+      await LocalDb.refreshComputeFreshness();
+      if (!_disposed) bumpInsights();
+    } catch (e) {
+      _log('[wake] re-deriving after the confirmation failed: $e');
+    }
+  }
+
+  /// The app was opened (cold start or foreground resume). Notes
+  /// `WakeEvidenceKind.appOpened` at [at] (default now); returns the confirmed
+  /// wake moment when that completed the double confirmation. A backgrounded or
+  /// headless process has no foreground to note.
+  Future<int?> noteAppOpened({DateTime? at}) async {
+    if (_background) return null;
+    return _noteWake(WakeEvidenceKind.appOpened, at ?? _wakeNow());
+  }
+
+  Future<void>? _movementCheck;
+
+  /// One movement check (what a fresh touch triggers): a touch at most 5
+  /// minutes old plus band motion (`userAwakeFromInteraction`) notes
+  /// `bandMovement` at this instant. Coalesced: a check already running is the
+  /// one that answers.
+  @visibleForTesting
+  Future<void> debugCheckWakeMovement() => _checkWakeMovement();
+
+  Future<void> _checkWakeMovement() {
+    return _movementCheck ??= () async {
+      try {
+        final now = _wakeNow();
+        final touches = [
+          for (final t in _recentInteractions())
+            if (!t.isAfter(now) && now.difference(t) <= kUserInteractionFreshness)
+              t
+        ];
+        if (touches.isEmpty) return;
+        final newest = touches.reversed.take(3).toList();
+        final from = newest.last.subtract(kUserMotionHalfWindow);
+        final to = newest.first.add(kUserMotionHalfWindow);
+        final samples = await loadWakeSamples(from, to.isAfter(now) ? now : to);
+        if (NaturalWakePlanner.userAwakeFromInteraction(
+            now: now, interactions: newest, accel: samples.accel)) {
+          await _noteWake(WakeEvidenceKind.bandMovement, now);
+        }
+      } catch (e) {
+        _log('[wake] movement check failed (nothing else is affected): $e');
+      } finally {
+        _movementCheck = null;
+      }
+    }();
+  }
+
   /// Foreground activity (a touch, coming back to the app): restarts the idle
   /// timer that warms Home/Health artifacts after 30 s of quiet.
   void noteForegroundActivity() {
@@ -2000,6 +2140,8 @@ class AppState extends ChangeNotifier {
     if (_interactions.length > _interactionCap) {
       _interactions.removeAt(0);
     }
+    // A fresh touch is the moment band movement can corroborate a wake.
+    _trackWakeSignal(_checkWakeMovement());
   }
 
   /// Touches within the freshness bound, oldest first.
@@ -5190,6 +5332,11 @@ class AppState extends ChangeNotifier {
     stateStore: const DbWakeStateStore(),
     traceStore: const DbWakeTraceStore(),
     onTraceChanged: wake.noteTraceChanged,
+    // Delivered buzz only; a throw is the orchestrator's to log, and _noteWake
+    // itself never throws.
+    onNaturalFired: (at) async {
+      await _noteWake(WakeEvidenceKind.naturalWake, at);
+    },
   );
 
   FallbackStatus _wakeFallbackStatus(DateTime wakeAt) => FallbackStatus(
@@ -5269,6 +5416,7 @@ class AppState extends ChangeNotifier {
     final out =
         await _wakeOrchestrator.acknowledge(plan, cancelNative: cancelNative);
     _releaseWakeCollection(plan.wakeSec);
+    unawaited(_noteWake(WakeEvidenceKind.alarmAcknowledged, _wakeNow()));
     return out;
   }
 
@@ -5758,6 +5906,15 @@ class AppState extends ChangeNotifier {
   /// the protocol EventId names (strapDrivenAlarmSet == 56, …); the pure state
   /// machine matches the raw ids so it stays dependency-free.
   void _handleAlarmEvent(int id, int ts) {
+    // Wake evidence from the event's OWN stamp, noted before the stale-replay
+    // filter below: the alarm books must ignore last night's replayed event,
+    // but it still happened, and it is what the strap reported at that time.
+    if ((id == AlarmConfirmation.kEvtStrapExecuted ||
+            id == AlarmConfirmation.kEvtAppExecuted) &&
+        ts * 1000 <= _wakeNow().millisecondsSinceEpoch + 5 * 60 * 1000) {
+      unawaited(_noteWake(WakeEvidenceKind.alarmFired,
+          DateTime.fromMillisecondsSinceEpoch(ts * 1000)));
+    }
     if (_alarm.predatesArm(id, ts)) {
       _log('[alarm] ignoring event $id stamped $ts — it predates the current '
           'arm (an earlier alarm replayed from history).');

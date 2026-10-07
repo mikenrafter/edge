@@ -24,6 +24,7 @@ import '../ble/adapters/host.dart' show BandHost;
 import '../ble/adapters/whoop_gen4.dart' show WhoopFramedAdapter;
 import '../ble/banglejs_link.dart';
 import '../ble/ble_engine.dart';
+import '../ble/ble_state.dart' show AlarmConfirmation;
 import '../ble/casio_link.dart';
 import '../ble/colmi_link.dart';
 import '../ble/coros_link.dart';
@@ -61,7 +62,9 @@ import '../state/feature_flags.dart';
 import '../state/power_source.dart';
 import '../state/prefs.dart';
 import '../wake/wake_settings.dart' show gateNaturalWake;
-import '../wake/wake_stores.dart' show loadWakeUpgradeState;
+import '../wake/wake_confirmation.dart';
+import '../wake/wake_stores.dart'
+    show DbWakeConfirmationStore, loadWakeUpgradeState;
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../state/alarm_schedule.dart';
@@ -78,11 +81,32 @@ import 'sync_policy.dart';
 /// dedupe returns `epoch: null` and skips the re-arm/poll block entirely, so
 /// this is the only place headless ever sees a live confirmation). Extracted
 /// so the write can be unit-tested without the full drain harness.
+///
+/// An alarm FIRED event (57/58) is also wake evidence: it is noted from the
+/// event's own stamp [tsEpoch] (never the time this sync delivered it; with no
+/// stamp nothing is invented) into the persisted store the foreground reads
+/// after a relaunch. Returns the confirmed wake moment when that note
+/// completed the double confirmation, else null. Never throws.
 @visibleForTesting
-Future<void> handleHeadlessAlarmEvent(int id) async {
-  if (id != proto.EventId.strapDrivenAlarmSet) return;
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.setBool('alarm_epoch_confirmed', true);
+Future<int?> handleHeadlessAlarmEvent(int id, {int? tsEpoch}) async {
+  if (id == proto.EventId.strapDrivenAlarmSet) {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('alarm_epoch_confirmed', true);
+    return null;
+  }
+  if (tsEpoch == null ||
+      (id != AlarmConfirmation.kEvtStrapExecuted &&
+          id != AlarmConfirmation.kEvtAppExecuted)) {
+    return null;
+  }
+  try {
+    return await WakeConfirmationRecorder(DbWakeConfirmationStore()).note(
+        WakeEvidenceKind.alarmFired,
+        DateTime.fromMillisecondsSinceEpoch(tsEpoch * 1000));
+  } catch (e) {
+    _bgLog('[bgsync] wake evidence (alarm fired) not recorded: $e');
+    return null;
+  }
 }
 
 /// One line of a headless run: the debug console AND the persistent dev log,
@@ -160,6 +184,34 @@ Future<void> headlessDeriveAfterSync() async {
     }
   } else {
     _bgLog('[bgsync] automatic derive held by Maximum battery mode.');
+  }
+}
+
+/// The headless half of "a confirmation finalizes the night". When a note made
+/// during this run completed the wake confirmation ([moment], what
+/// [handleHeadlessAlarmEvent] returned), the wake day is re-derived NOW, forced,
+/// the way the foreground does: otherwise the night stays scored from the data
+/// as it was until some unrelated later pass. Goes through the headless engine
+/// builder and behind the same power gate as every automatic headless derive.
+/// Called only inside [runHeadlessSync], so it already holds the headless
+/// gate's slot (`HeadlessSyncGate`: skip, never queue). Never throws; true when
+/// the derive ran.
+@visibleForTesting
+Future<bool> headlessDeriveConfirmedWakeDay(int moment) async {
+  if (!await mayRunHeadlessAutomaticDerive()) {
+    _bgLog('[bgsync] wake-day derive held by Maximum battery mode.');
+    return false;
+  }
+  try {
+    final day = await DbWakeConfirmationStore().blockDayId() ??
+        dayLabelOf(DateTime.fromMillisecondsSinceEpoch(moment * 1000));
+    await newHeadlessDerivationEngine(
+      (l) => _bgLog('[bgsync-derive] $l'),
+    ).runDays(await _loadProfile(), {day}, force: true);
+    return true;
+  } catch (e) {
+    _bgLog('[bgsync] wake-day derive skipped: $e');
+    return false;
   }
 }
 
@@ -282,6 +334,9 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       return true;
     }
 
+    // The wake moment a note made during THIS run confirmed, if one did: the
+    // night it finalizes is re-derived after the drain.
+    int? confirmedWake;
     // Connect → drain → store. No live streams (battery): in and out.
     // `bandHost` is `late final`: the closure below captures the variable,
     // not a value, so it is fine that it is only assigned after `engine`
@@ -304,7 +359,9 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
       onEvent: (e) async {
         if (ResetGate.active) return;
         await LocalDb.insertStrapEvent(e);
-        await handleHeadlessAlarmEvent(e.eventId);
+        final moment =
+            await handleHeadlessAlarmEvent(e.eventId, tsEpoch: e.tsEpoch);
+        if (moment != null) confirmedWake = moment;
       },
       // The alarm lines (SET_ALARM_TIME, arm accepted/rejected, events) are the
       // evidence of whether tonight's alarm latched, so they are always
@@ -426,6 +483,10 @@ Future<bool> runHeadlessSync({BandLease? lease}) async {
     } finally {
       await engine.disconnect();
     }
+    // A confirmation this run completed finalizes the night: re-derive that day
+    // first (forced, as the foreground does), ahead of the light pass.
+    final confirmed = confirmedWake;
+    if (confirmed != null) await headlessDeriveConfirmedWakeDay(confirmed);
     // Within the SAME background wake slot: capture raw AND derive the fresh
     // window (bounded LIGHT pass — newest affected day only — so we stay inside
     // the short iOS execution budget). Best-effort; if the slot ends first, the

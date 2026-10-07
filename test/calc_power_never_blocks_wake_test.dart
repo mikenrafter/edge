@@ -275,9 +275,17 @@ void main() {
       expect(derive, greaterThan(rearm));
       expect(src, contains('armNextScheduledOccurrence('));
 
-      // The gate: defined once, used once, and its else branch only logs.
-      expect('mayRunHeadlessAutomaticDerive'.allMatches(code).length, 2,
-          reason: 'its definition and headlessDeriveAfterSync');
+      // The gate: defined once, used by the two headless derives (the light
+      // pass and the forced re-derive of a night this run's own note
+      // confirmed), and its else branch only logs.
+      expect('mayRunHeadlessAutomaticDerive'.allMatches(code).length, 3,
+          reason: 'its definition, headlessDeriveAfterSync and '
+              'headlessDeriveConfirmedWakeDay');
+      final confirmedDerive =
+          bodyOf(src, 'Future<bool> headlessDeriveConfirmedWakeDay(');
+      expect(confirmedDerive, contains('await mayRunHeadlessAutomaticDerive()'));
+      expect(codeOnly(confirmedDerive), isNot(contains('throw')),
+          reason: 'a held or failed re-derive never fails the run');
       final after = bodyOf(src, 'Future<void> headlessDeriveAfterSync()');
       expect(after, contains('await mayRunHeadlessAutomaticDerive()'));
       final elseAt = codeOnly(after).indexOf('else {');

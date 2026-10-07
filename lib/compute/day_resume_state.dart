@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'day_activity_state.dart';
 import 'day_checkpoint_policy.dart' show kDayCheckpointFmt;
+import 'day_curve_states.dart';
+import 'day_rr_state.dart';
 import 'minute_bills.dart';
 import 'resume_bytes.dart';
 
@@ -28,7 +30,11 @@ class DayResumeState {
     StepCounterFold? steps,
     DayDynMinutes? dyn,
     this.bills,
-  })  : hrPipeline = hrPipeline ?? DayHrSummary(),
+    DayRrState? rr,
+    DayCurveStates? curves,
+  })  : rr = rr ?? DayRrState(),
+        curves = curves ?? DayCurveStates(),
+        hrPipeline = hrPipeline ?? DayHrSummary(),
         hrActivity = hrActivity ?? DayHrSummary(),
         motion = motion ?? DayMotionSummary(),
         steps = steps ?? StepCounterFold(),
@@ -43,6 +49,13 @@ class DayResumeState {
   final StepCounterFold steps;
   final DayDynMinutes dyn;
   MinuteBills? bills;
+
+  /// The streaming RR half (corrector + irregular screen) and the three day
+  /// curves. Folded from the day's BEATS, not its 1 Hz rows, so [folded] does not
+  /// count them (see `foldDayCheckpoint`), and none of it depends on the sleep
+  /// window.
+  final DayRrState rr;
+  final DayCurveStates curves;
 
   /// Seconds of the day folded so far.
   int get folded => motion.length;
@@ -105,6 +118,8 @@ Uint8List encodeDayResumeState(DayResumeState state) {
   final bills = state.bills;
   w.bool_(bills != null);
   bills?.write(w);
+  state.rr.write(w);
+  state.curves.write(w);
   final body = w.takeBytes();
   final out = Uint8List(body.length + 4)..setRange(0, body.length, body);
   ByteData.sublistView(out).setUint32(body.length, checksum32(body, body.length));
@@ -124,15 +139,22 @@ DayResumeState? decodeDayResumeState(Uint8List bytes) {
     if (r.i32() != _magic) return null;
     if (r.i32() != kDayCheckpointFmt) return null;
     final folded = r.i64();
+    final hrPipeline = DayHrSummary.read(r);
+    final hrActivity = DayHrSummary.read(r);
+    final motion = DayMotionSummary.read(r);
+    final steps = StepCounterFold.read(r);
+    final dyn = DayDynMinutes.read(r);
+    final bills = r.bool_() ? MinuteBills.read(r) : null;
     final state = DayResumeState(
-      hrPipeline: DayHrSummary.read(r),
-      hrActivity: DayHrSummary.read(r),
-      motion: DayMotionSummary.read(r),
-      steps: StepCounterFold.read(r),
-      dyn: DayDynMinutes.read(r),
-      bills: null,
+      hrPipeline: hrPipeline,
+      hrActivity: hrActivity,
+      motion: motion,
+      steps: steps,
+      dyn: dyn,
+      bills: bills,
+      rr: DayRrState.read(r),
+      curves: DayCurveStates.read(r),
     );
-    if (r.bool_()) state.bills = MinuteBills.read(r);
     if (r.remaining != 0) return null;
     if (state.folded != folded || !state._consistent) return null;
     return state;
