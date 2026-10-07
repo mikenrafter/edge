@@ -9,7 +9,7 @@
 //      phone lost track (reboot, restart). This happens in EVERY
 //      configuration, including "neither".
 //   2. Natural: feeds the causal stager (off the UI isolate) and, once the
-//      sleep so far (when known) is at least 45 min, fires ONE early haptic when the sleeper is NOT in light or
+//      sleep so far (when known) is at least 45 min, fires an early haptic (then repeats it, see below) when the sleeper is NOT in light or
 //      deep sleep (estimated REM or awake, held `runSec >= 120`) inside
 //      [T-N, T), or when the user is actively using the app and the band moved
 //      with it — otherwise records why it abstained.
@@ -25,7 +25,15 @@
 // early haptic, a failed haptic, a skipped tick and an abstention all leave T
 // exactly as it was.
 //
-// Latches. `_ticking` coalesces overlapping ticks and is cleared in `finally`.
+// Natural repeats. Once Natural has fired, its plan is replayed back to back
+// (see [WakeOrchestrator._naturalRepeat]) until the wearer acknowledges, double
+// taps the band, T is reached, or the orchestrator is disposed. The loop is
+// detached from the tick and holds no lock; it only writes early haptics and
+// trace rows, so it can never touch the native alarm at T.
+//
+// Latches. `_ticking` coalesces overlapping ticks and is cleared in `finally`;
+// `_repeating` (one entry per wake occurrence) is cleared in the loop's
+// `finally`.
 // Every call into the environment (samples, observer, haptic, band alarm) is
 // bounded by [opTimeout]; a timeout is recorded and the tick moves on.
 
@@ -92,8 +100,13 @@ class WakeHapticRequest {
     this.stepIndex,
     this.sequence,
     this.gradualPattern,
+    this.repeat = false,
   });
   final WakeHapticKind kind;
+
+  /// A replay of the Natural plan after the first delivery. Band only: the
+  /// phone was told once, by the first one.
+  final bool repeat;
 
   /// Stable per occurrence (and per step), so the dispatcher's durable ledger
   /// refuses a duplicate after a restart.
@@ -127,6 +140,12 @@ abstract interface class WakeEnv {
   /// app was not in use (backgrounded, locked): then only the stager decides.
   List<DateTime> get recentInteractions;
 
+  /// When the band last reported HAPTICS_TERMINATED with cause
+  /// `user_double_tap` (the wearer dismissing a running buzz), on the phone's
+  /// clock; null when it never has this session. Natural's repeat stops on one
+  /// that is not older than the repeat's own start.
+  DateTime? get lastBandDoubleTapAt;
+
   /// Samples in [from, to), oldest first. May be empty.
   Future<WakeSamples> samples(DateTime from, DateTime to);
 
@@ -154,11 +173,14 @@ class CallbackWakeEnv implements WakeEnv {
     required this.cancel,
     required this.sendHaptic,
     List<DateTime> Function()? interactions,
+    DateTime? Function()? doubleTapAt,
   })  : _isConnected = isConnected,
-        _interactions = interactions ?? (() => const []);
+        _interactions = interactions ?? (() => const []),
+        _doubleTapAt = doubleTapAt ?? (() => null);
 
   final bool Function() _isConnected;
   final List<DateTime> Function() _interactions;
+  final DateTime? Function() _doubleTapAt;
   final Future<WakeSamples> Function(DateTime from, DateTime to) loadSamples;
   final Future<FallbackStatus> Function(DateTime wakeAt) status;
   final Future<FallbackStatus> Function(DateTime wakeAt) arm;
@@ -169,6 +191,8 @@ class CallbackWakeEnv implements WakeEnv {
   bool get connected => _isConnected();
   @override
   List<DateTime> get recentInteractions => _interactions();
+  @override
+  DateTime? get lastBandDoubleTapAt => _doubleTapAt();
   @override
   Future<WakeSamples> samples(DateTime from, DateTime to) => loadSamples(from, to);
   @override
@@ -266,7 +290,8 @@ class WakeAckOutcome {
 
 /// One decision-trace row for a wake occurrence.
 ///
-/// kinds: plan, fallback, natural, natural_haptic, gradual, gap, ack, skip,
+/// kinds: plan, fallback, natural, natural_haptic, natural_repeat (phase
+/// start | result | stop, with the stop reason), gradual, gap, ack, skip,
 /// error, closed.
 class WakeTraceEntry {
   const WakeTraceEntry({
@@ -388,8 +413,13 @@ class WakeOrchestrator {
     this.opTimeout = const Duration(seconds: 30),
     this.onTraceChanged,
     this.onNaturalFired,
+    this.repeatNatural = false,
+    this.onNaturalRepeatChanged,
+    this.repeatRetryWait = const Duration(seconds: 5),
+    Future<void> Function(Duration)? repeatDelay,
   })  : observer = observer ?? const IsolateNaturalStageObserver(),
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _repeatDelay = repeatDelay ?? Future<void>.delayed;
 
   final WakeEnv env;
   final NaturalStageObserver observer;
@@ -397,6 +427,28 @@ class WakeOrchestrator {
   final WakeTraceStore traceStore;
   final Duration opTimeout;
   final DateTime Function() _now;
+
+  /// Replay the Natural plan after it fires, until a stop condition holds (see
+  /// [_naturalRepeat]). Off by default so a fake environment that answers at
+  /// once cannot spin; AppState turns it on.
+  final bool repeatNatural;
+
+  /// How long the repeat waits after a delivery that did not land (a dropped
+  /// link, a rejected write) before it tries again. A delivery that landed is
+  /// followed by the next at once: the shared band queue paces those.
+  final Duration repeatRetryWait;
+  final Future<void> Function(Duration) _repeatDelay;
+
+  /// Called with true when a Natural repeat starts and false when the last one
+  /// stops, for any reason: a screen offers "I'm up" while it is true. Never
+  /// throws into the orchestrator.
+  final void Function(bool running)? onNaturalRepeatChanged;
+
+  void _repeatChanged(bool running) {
+    try {
+      onNaturalRepeatChanged?.call(running);
+    } catch (_) {}
+  }
 
   /// Called ONCE after a tick (or an acknowledgement) that appended trace rows,
   /// never per row, so a screen showing the trace can reload without a rebuild
@@ -421,6 +473,22 @@ class WakeOrchestrator {
   }
 
   bool _ticking = false;
+  bool _disposed = false;
+
+  /// Occurrences (wake epoch s) with a Natural repeat running: one loop each.
+  final Set<int> _repeating = {};
+
+  /// A Natural repeat is running (for any wake occurrence).
+  bool get isNaturalRepeating => _repeating.isNotEmpty;
+
+  /// The wearer dismissed the running repeat without a plan to acknowledge
+  /// (the alarm was disarmed meanwhile): stops it like [acknowledge] would.
+  /// Touches nothing else; the native alarm is not reachable from here.
+  void dismissNaturalRepeat() => _ackedWakes.addAll(_repeating);
+
+  /// Stops every Natural repeat at its next check. The native alarm and the
+  /// persisted run state are left exactly as they are.
+  void dispose() => _disposed = true;
 
   /// Wakes the user acknowledged during this process. [acknowledge] sets it
   /// FIRST, so a tick already in flight (holding a snapshot loaded before the
@@ -462,11 +530,18 @@ class WakeOrchestrator {
   bool _memAhead = false;
 
   /// Run one tick. Coalesces with a tick already in flight. Never throws.
-  Future<WakeTickOutcome> tick(WakePlanInput plan, {DateTime? scheduledFor}) async {
+  ///
+  /// [repeatBound] caps how long a Natural repeat started by this tick may run
+  /// (counted from its start), on top of T; null is T only.
+  Future<WakeTickOutcome> tick(
+    WakePlanInput plan, {
+    DateTime? scheduledFor,
+    Duration? repeatBound,
+  }) async {
     if (_ticking) return const WakeTickOutcome(coalesced: true);
     _ticking = true;
     try {
-      return await _tick(plan, scheduledFor);
+      return await _tick(plan, scheduledFor, repeatBound);
     } catch (e) {
       await _trace(plan.wakeSec, 'error', {'where': 'tick', 'error': '$e'});
       return const WakeTickOutcome();
@@ -484,8 +559,15 @@ class WakeOrchestrator {
     DateTime? scheduledFor,
     String owner = kWakeGateOwner,
   }) async {
+    // The Natural repeat outlives the tick (it is detached), so the headless
+    // run's own hard ceiling bounds it too: a background isolate cannot loop
+    // for ever, and iOS ends the task around then anyway. Past that, the
+    // native alarm at T is the wake.
     final out = await HeadlessSyncGate.tryRun<WakeTickOutcome>(
-        owner, () => tick(plan, scheduledFor: scheduledFor));
+        owner,
+        () => tick(plan,
+            scheduledFor: scheduledFor,
+            repeatBound: HeadlessSyncGate.runCeiling));
     if (out == null) {
       await _trace(plan.wakeSec, 'skip',
           {'reason': 'headlessGateBusy', 'owner': owner});
@@ -546,7 +628,8 @@ class WakeOrchestrator {
 
   // ── tick body ─────────────────────────────────────────────────────────────
 
-  Future<WakeTickOutcome> _tick(WakePlanInput plan, DateTime? scheduledFor) async {
+  Future<WakeTickOutcome> _tick(
+      WakePlanInput plan, DateTime? scheduledFor, Duration? repeatBound) async {
     final now = _now();
     final sec = plan.wakeSec;
     if (!_inActiveSpan(plan, now)) return const WakeTickOutcome();
@@ -592,7 +675,7 @@ class WakeOrchestrator {
     NaturalReason? naturalReason;
     var naturalFired = false;
     try {
-      final r = await _natural(plan, run, now, scheduledFor);
+      final r = await _natural(plan, run, now, scheduledFor, repeatBound);
       naturalReason = r.$1;
       naturalFired = r.$2;
     } catch (e) {
@@ -659,6 +742,7 @@ class WakeOrchestrator {
     _Run run,
     DateTime now,
     DateTime? scheduledFor,
+    Duration? repeatBound,
   ) async {
     final n = plan.naturalMinutes;
     final sec = plan.wakeSec;
@@ -792,6 +876,8 @@ class WakeOrchestrator {
       'runSec': obs?.runSec,
       if (decision.viaUserActivity) 'basis': 'userActive',
     });
+    // A double tap during this first delivery already counts as a dismissal.
+    final startedAt = _now();
     final sent = await _haptic(
       sec,
       'natural_haptic',
@@ -803,6 +889,10 @@ class WakeOrchestrator {
       ),
     );
     if (sent == null) return (NaturalReason.acknowledged, false);
+    // Whatever the first delivery did (landed, failed, was held back), Natural
+    // has fired: the repeat keeps going until a stop condition. It is started
+    // only here, so a restart (run.naturalFired is persisted) never replays.
+    if (repeatNatural) _startNaturalRepeat(plan, startedAt, repeatBound);
     // Only a buzz that reached the band is evidence that the wearer was woken.
     // One that failed (threw, timed out, no link) or that the environment held
     // back (`suppressionReason`: a band with no alert transport, a muted rule)
@@ -811,6 +901,105 @@ class WakeOrchestrator {
     // saved).
     if (sent.delivered.isNotEmpty) await _notifyNaturalFired(sec, now);
     return (NaturalReason.fire, true);
+  }
+
+  void _startNaturalRepeat(
+      WakePlanInput plan, DateTime startedAt, Duration? bound) {
+    final sec = plan.wakeSec;
+    if (_disposed || !_repeating.add(sec)) return; // one loop per occurrence
+    final deadline = bound == null ? null : _now().add(bound);
+    _repeatChanged(true);
+    unawaited(_naturalRepeat(plan, startedAt, deadline));
+  }
+
+  /// Why the repeat must stop now, or null to go on.
+  String? _repeatStopReason(
+      WakePlanInput plan, DateTime startedAt, DateTime? deadline) {
+    if (_disposed) return 'disposed';
+    if (_ackedWakes.contains(plan.wakeSec)) return 'acknowledged';
+    final tap = env.lastBandDoubleTapAt;
+    // A double tap from before this repeat started was about something else.
+    if (tap != null && !tap.isBefore(startedAt)) return 'bandDoubleTap';
+    final now = _now();
+    if (!now.isBefore(plan.wakeAt)) return 'wakeTime';
+    if (deadline != null && !now.isBefore(deadline)) return 'headlessBound';
+    return null;
+  }
+
+  /// Replays the Natural plan as soon as the previous delivery finishes, until
+  /// [_repeatStopReason]. Delivered through the same shared band queue as the
+  /// first one (never as a gesture), so the queue paces it: a job waits, never
+  /// drops. A delivery that does not land waits [repeatRetryWait] and goes on.
+  /// Detached from the tick; takes no lock. Never throws. Writes only
+  /// early haptics and trace rows: the native alarm at T is not reachable here.
+  Future<void> _naturalRepeat(
+      WakePlanInput plan, DateTime startedAt, DateTime? deadline) async {
+    final sec = plan.wakeSec;
+    var reason = 'error';
+    var delivered = 0, notDelivered = 0;
+    String? lastSig;
+    try {
+      await _trace(sec, 'natural_repeat', {
+        'phase': 'start',
+        'retryWaitSec': repeatRetryWait.inSeconds,
+        if (deadline != null)
+          'boundSec': deadline.difference(_now()).inSeconds,
+      });
+      _signalTrace();
+      while (true) {
+        final stop = _repeatStopReason(plan, startedAt, deadline);
+        if (stop != null) {
+          reason = stop;
+          break;
+        }
+        final n = delivered + notDelivered + 1;
+        final res = await _haptic(
+          sec,
+          'natural_repeat',
+          WakeHapticRequest(
+            kind: WakeHapticKind.natural,
+            eventId: 'wake:natural:$sec:r$n',
+            wakeAt: plan.wakeAt,
+            sourceTime: _now(),
+            repeat: true,
+          ),
+          traceResult: false,
+        );
+        if (res == null) {
+          reason = 'acknowledged';
+          break;
+        }
+        res.ok ? delivered++ : notDelivered++;
+        // Rows on a change only: a band that is away for an hour must not
+        // write a row every few seconds.
+        final sig = '${res.ok}|${res.suppressionReason}|${res.error}';
+        if (sig != lastSig) {
+          lastSig = sig;
+          await _trace(sec, 'natural_repeat', {
+            'phase': 'result',
+            'index': n,
+            'result': res.ok ? 'sent' : 'notDelivered',
+            'suppression': res.suppressionReason,
+            'error': res.error,
+          });
+          _signalTrace();
+        }
+        if (!res.ok) await _repeatDelay(repeatRetryWait);
+      }
+    } catch (e) {
+      reason = 'error';
+      await _trace(sec, 'error', {'where': 'naturalRepeat', 'error': '$e'});
+    } finally {
+      _repeating.remove(sec);
+      if (_repeating.isEmpty) _repeatChanged(false);
+      await _trace(sec, 'natural_repeat', {
+        'phase': 'stop',
+        'reason': reason,
+        'delivered': delivered,
+        'notDelivered': notDelivered,
+      });
+      _signalTrace();
+    }
   }
 
   Future<void> _notifyNaturalFired(int sec, DateTime at) async {
@@ -917,9 +1106,13 @@ class WakeOrchestrator {
   /// when the user acknowledged this wake: the check and the send are one
   /// synchronous step, so no awaited acknowledgement can slip between them.
   Future<WakeHapticResult?> _haptic(
-      int sec, String kind, WakeHapticRequest req) async {
+      int sec, String kind, WakeHapticRequest req,
+      {bool traceResult = true}) async {
     if (_ackedWakes.contains(sec)) {
-      await _trace(sec, 'skip', {'reason': 'acknowledged', 'eventId': req.eventId});
+      if (traceResult) {
+        await _trace(
+            sec, 'skip', {'reason': 'acknowledged', 'eventId': req.eventId});
+      }
       return null;
     }
     WakeHapticResult res;
@@ -928,6 +1121,7 @@ class WakeOrchestrator {
     } catch (e) {
       res = WakeHapticResult(error: '$e');
     }
+    if (!traceResult) return res;
     await _trace(sec, kind, {
       if (kind == 'natural_haptic') 'phase': 'result',
       if (req.stepIndex != null) 'index': req.stepIndex,

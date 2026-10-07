@@ -101,6 +101,15 @@ class FakeWakeEnv implements WakeEnv {
   WakeHapticResult hapticResult = const WakeHapticResult(delivered: ['band']);
   Object? hapticThrows;
 
+  /// When set, answers every haptic instead of [hapticResult]; lets a test hold
+  /// a delivery open the way the real band queue does.
+  Future<WakeHapticResult> Function(WakeHapticRequest r)? onHaptic;
+
+  /// When the band last reported HAPTICS_TERMINATED `user_double_tap`, on the
+  /// phone's clock (null: never).
+  @override
+  DateTime? lastBandDoubleTapAt;
+
   /// What the database holds. [samples] answers from these and HONORS the
   /// requested bounds exactly as `loadWakeSamples` does (seconds floor on
   /// `from`, ceiling on `to`, half open), so a test can land data late.
@@ -166,6 +175,8 @@ class FakeWakeEnv implements WakeEnv {
   Future<WakeHapticResult> haptic(WakeHapticRequest r) async {
     haptics.add(r);
     if (hapticThrows != null) throw hapticThrows!;
+    final hook = onHaptic;
+    if (hook != null) return hook(r);
     return hapticResult;
   }
 }

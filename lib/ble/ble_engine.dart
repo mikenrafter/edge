@@ -2039,6 +2039,14 @@ class BleEngine implements AlarmBandWriter {
   String? _lastHapticsTermination;
   int? _lastHapticsTerminationTs;
 
+  /// When (phone clock) the band last reported a `user_double_tap`
+  /// termination; null if it has not this session. Natural Wake's repeat reads
+  /// it through the wake environment: a double tap after the repeat started
+  /// is the wearer saying they are awake. The band's own `ts` is not used, so
+  /// the comparison never depends on the band's clock.
+  DateTime? _lastHapticsDoubleTapAt;
+  DateTime? get lastHapticsDoubleTapAt => _lastHapticsDoubleTapAt;
+
   // ── reconnect/offload policy ────────────────────────────────────────────────
   // Marginal-radio + post-bond-loop persist ACROSS reconnects (they count
   // consecutive bad cycles), so they live for the engine's lifetime and self-reset
@@ -5688,10 +5696,14 @@ class BleEngine implements AlarmBandWriter {
       case EventId.hapticsTerminated:
         // . `user_double_tap` is the wearer
         // dismissing a running alarm — a different fact from an alarm that ran
-        // its course. Observed, not acted on: the alarm flow is unchanged.
+        // its course. The alarm flow is unchanged; the one reader of the
+        // double tap is Natural Wake's repeat ([lastHapticsDoubleTapAt]).
         _lastHapticsTermination =
             f['haptics_termination'] as String? ?? 'unknown';
         _lastHapticsTerminationTs = event.tsEpoch;
+        if (_lastHapticsTermination == 'user_double_tap') {
+          _lastHapticsDoubleTapAt = clock();
+        }
         _log('[ALARM] haptics terminated: cause=$_lastHapticsTermination '
             'code=${f['haptics_termination_code']} ts=${event.tsEpoch}');
         return;

@@ -775,6 +775,7 @@ class AppState extends ChangeNotifier {
     )? deliver,
     Duration? deliverTimeout,
     bool immediate = false,
+    Set<String>? transportTargets,
   }) async {
     final time = sourceTime ?? DateTime.now();
     final prefs = await NotificationPrefs.load();
@@ -791,6 +792,7 @@ class AppState extends ChangeNotifier {
       eventId: eventId ?? '$ruleId:${time.microsecondsSinceEpoch}',
       sourceTime: time,
       historical: false,
+      transportTargets: transportTargets,
       targetAllowed: (_) => const {'breath', 'wake'}.contains(ruleId) ||
           !prefs.inQuietHours(DateTime.now().hour * 60 + DateTime.now().minute),
       phoneTransport: () => NotificationCenter.instance.emit(
@@ -2481,6 +2483,7 @@ class AppState extends ChangeNotifier {
     _alarmGraceTimer?.cancel();
     _alarmGraceTimer = null;
     wake.dispose();
+    _wakeOrchestrator.dispose(); // ends any Natural repeat
     // Both controllers cancel their timer and nothing else: a live workout is
     // not finalized, the display hold and Live Activity are not released, the
     // route recorder is not stopped and a breathing session is not ended.
@@ -3291,6 +3294,18 @@ class AppState extends ChangeNotifier {
     } catch (err) {
       // A lab tool must never stop the tap reaching the dispatcher.
       _log('[imu-lab] tap handling failed: $err');
+    }
+    // While Natural Wake is repeating, a double tap is the wearer's dismissal:
+    // it stops the repeat (stamped for [_latestBandDoubleTap]) and is consumed,
+    // so it does not also run their configured tap actions. Outside a repeat
+    // nothing changes. No acknowledgement buzz: it would play over the stop.
+    if (e.eventId == proto.EventId.doubleTap &&
+        _wakeOrchestrator.isNaturalRepeating) {
+      _bandDoubleTapAt = DateTime.now();
+      _log('[wake] band double tap during Natural Wake: dismissing the repeat.');
+      hardwareProbes.onBandEvent(e);
+      haptics.onBandEvent(e);
+      return;
     }
     final handled = _gestures.handle(e);
     hardwareProbes.onBandEvent(e);
@@ -5455,7 +5470,11 @@ class AppState extends ChangeNotifier {
       cancel: _cancelNativeAlarmForWake,
       sendHaptic: _sendWakeHaptic,
       interactions: _recentInteractions,
+      doubleTapAt: _latestBandDoubleTap,
     ),
+    // Natural Wake repeats until acknowledged, double-tapped or T.
+    repeatNatural: true,
+    onNaturalRepeatChanged: wake.noteNaturalRepeat,
     stateStore: const DbWakeStateStore(),
     traceStore: const DbWakeTraceStore(),
     onTraceChanged: wake.noteTraceChanged,
@@ -5465,6 +5484,20 @@ class AppState extends ChangeNotifier {
       await _noteWake(WakeEvidenceKind.naturalWake, at);
     },
   );
+
+  /// When (phone clock) the wearer last double-tapped the band during a Natural
+  /// repeat: the gesture event (14) that [_onLiveEvent] consumed.
+  DateTime? _bandDoubleTapAt;
+
+  /// The newest double-tap evidence: that gesture event, or the firmware's
+  /// HAPTICS_TERMINATED `user_double_tap` (which may only be sent for native
+  /// alarms). Latest wins.
+  DateTime? _latestBandDoubleTap() {
+    final a = _bandDoubleTapAt, b = engine.lastHapticsDoubleTapAt;
+    if (a == null) return b;
+    if (b == null) return a;
+    return a.isAfter(b) ? a : b;
+  }
 
   FallbackStatus _wakeFallbackStatus(DateTime wakeAt) => FallbackStatus(
         armedForWake: alarmEpoch == wakeAt.millisecondsSinceEpoch ~/ 1000,
@@ -5478,6 +5511,8 @@ class AppState extends ChangeNotifier {
     final natural = r.kind == WakeHapticKind.natural;
     final o = await _dispatchBandAlert(
       'wake',
+      // A repeat buzzes the band only; the phone was told by the first one.
+      transportTargets: r.repeat ? const {'band'} : null,
       deliver: (rhythm, runAlarm) => natural
           ? wakeHaptics.natural(runAlarm: runAlarm)
           : wakeHaptics.gradualStep(
@@ -5537,6 +5572,8 @@ class AppState extends ChangeNotifier {
   Future<WakeAckOutcome> _acknowledgeWake(bool cancelNative) async {
     final plan = _currentWakePlan();
     if (plan == null) {
+      // A repeat already running must still stop (the alarm was disarmed).
+      _wakeOrchestrator.dismissNaturalRepeat();
       return const WakeAckOutcome(
           nativeCancelRequested: false, nativeCancelled: false, fallbackArmed: false);
     }

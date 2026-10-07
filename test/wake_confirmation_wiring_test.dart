@@ -52,6 +52,7 @@ import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/notify/notification_center.dart';
 import 'package:openstrap_edge/notify/notification_event.dart';
 import 'package:openstrap_edge/state/alarm_schedule.dart';
@@ -660,6 +661,39 @@ void main() {
         final e = (await evidence()).single;
         expect(e.kind, WakeEvidenceKind.naturalWake);
         expect(e.sec, inInclusiveRange(before, _sec(DateTime.now())));
+      });
+
+      test('a band double tap (event 14) during the repeat dismisses it and '
+          'is consumed; outside a repeat it reaches the gestures', () async {
+        final tap = StrapEvent(
+            eventId: 14,
+            tsEpoch: _sec(DateTime.now()),
+            receivedAt: DateTime.now(),
+            hex: '',
+            deviceId: 'd');
+        // No repeat yet: the dispatcher sees it (the lab logs a row for it).
+        final before = app.deviceLab.entries.length;
+        app.debugOnLiveEvent(tap);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(app.deviceLab.entries.length, before + 1,
+            reason: 'guard: outside a repeat the tap is handled as before');
+
+        (app.debugWakeObserver as ScriptedObserver).next = stageObs('wake');
+        await app.debugRefreshHighFreqWakeWindow();
+        await app.debugKeepAliveTick();
+        expect(app.wake.naturalBuzzing.value, isTrue,
+            reason: 'Natural fired and its repeat is running');
+
+        final during = app.deviceLab.entries.length;
+        app.debugOnLiveEvent(tap);
+        final end = DateTime.now().add(const Duration(seconds: 10));
+        while (app.wake.naturalBuzzing.value && DateTime.now().isBefore(end)) {
+          await Future<void>.delayed(const Duration(milliseconds: 20));
+        }
+        expect(app.wake.naturalBuzzing.value, isFalse,
+            reason: 'the double tap stopped the repeat');
+        expect(app.deviceLab.entries.length, during,
+            reason: 'consumed: no gesture action ran for it');
       });
 
       test('an abstaining tick notes nothing', () async {

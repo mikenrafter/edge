@@ -195,6 +195,10 @@ const _notComponents = {
   // band alarms; every state it draws is pumped in
   // alarm_slot_probe_panel_test.dart with a fake runner.
   'AlarmSlotProbeCard',
+  // Home card bound to WakeController.naturalBuzzing; shown only while a
+  // Natural Wake repeat runs. Both states are pumped in
+  // natural_wake_card_test.dart.
+  'NaturalWakeBuzzingCard',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.

@@ -98,7 +98,17 @@ class WakeController extends ChangeNotifier {
   /// rebuild everything that listens to [WakeController] (or AppState).
   final ValueNotifier<int> traceRevision = ValueNotifier<int>(0);
 
+  /// True while Natural Wake is repeating its buzz and waiting to be dismissed
+  /// ("I'm up" via [acknowledgeWake], or a double tap on the band). A screen
+  /// shows its dismiss card from this; flipped by the orchestrator.
+  final ValueNotifier<bool> naturalBuzzing = ValueNotifier<bool>(false);
+
   bool _disposed = false;
+
+  /// The orchestrator's repeat started or stopped.
+  void noteNaturalRepeat(bool running) {
+    if (!_disposed) naturalBuzzing.value = running;
+  }
 
   /// A tick can finish after the app state is gone; that is not an error.
   void noteTraceChanged() {
@@ -109,6 +119,7 @@ class WakeController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     traceRevision.dispose();
+    naturalBuzzing.dispose();
     super.dispose();
   }
 
