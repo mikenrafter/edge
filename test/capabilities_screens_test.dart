@@ -230,6 +230,19 @@ void main() {
       expect(t.widget<SubTabs>(find.byType(SubTabs)).items,
           ['Probes', 'Live', 'Logs']);
     });
+    testWidgets('the Motion tab (the IMU recorder) is developer mode only',
+        (t) async {
+      await pump(t, const DeviceLab(), _caps());
+      expect(t.widget<SubTabs>(find.byType(SubTabs)).items,
+          isNot(contains('Motion')));
+      await pump(t, const DeviceLab(), _caps(devMode: true));
+      expect(t.widget<SubTabs>(find.byType(SubTabs)).items,
+          ['Taps', 'Probes', 'Motion', 'Live', 'Logs']);
+      await t.tap(find.byKey(const ValueKey('device-lab-tab:motion')));
+      await t.pumpAndSettle();
+      expect(find.text('Record motion'), findsOneWidget);
+      expect(find.text('Saved recordings'), findsOneWidget);
+    });
     testWidgets('the ECG switch says why it is off', (t) async {
       await pump(t, const DeviceLab(), _caps());
       expect(find.text('This band has no ECG sensor'), findsOneWidget);

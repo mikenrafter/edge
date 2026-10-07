@@ -288,6 +288,11 @@ const _notComponents = {
   // over a runner with fake effects. The pattern probe's page is a
   // pushed route over the same runner, pumped by pattern_probe_page_test.dart.
   'HardwareProbePanel', 'PatternProbePage',
+  // The Device lab's Motion tab: it drives the IMU recorder (which asks the
+  // band for a high-rate stream) and a file store, so a gallery case would
+  // start both. device_lab_motion_test.dart pumps it over a real recorder fed
+  // fake packets, with a fake store and share.
+  'MotionLabPanel',
   // FULL-BLEED, so it is a screen element rather than a component: it takes
   // the whole window width back off its parent's padding via OverflowBox. The
   // gallery lays every case out in a ~179 logical-px cell, which is narrower

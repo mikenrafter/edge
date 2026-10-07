@@ -1983,6 +1983,11 @@ class LiveStreamOwners {
   /// everything the band sends; released by Stop or when the screen closes.
   final bool developerLiveFeed;
 
+  /// The Device lab's IMU recorder holds a bounded recording (IMU only, never
+  /// HR). Held from the double tap that begins it until it stops, is
+  /// cancelled, or the band disconnects; never a standing request.
+  final bool imuLab;
+
   const LiveStreamOwners({
     this.visibleLiveHrView = false,
     this.activeWorkout = false,
@@ -1992,6 +1997,7 @@ class LiveStreamOwners {
     this.passiveStrapSteps = false,
     this.foreground = false,
     this.developerLiveFeed = false,
+    this.imuLab = false,
   });
 
   static const none = LiveStreamOwners();
@@ -2002,7 +2008,7 @@ class LiveStreamOwners {
       'fgGait: $foregroundGaitWorkout, breathing: $breathing, '
       'movement: $movementSampling, '
       'passiveSteps: $passiveStrapSteps, foreground: $foreground, '
-      'developer: $developerLiveFeed)';
+      'developer: $developerLiveFeed, imuLab: $imuLab)';
 }
 
 /// The streams the current owners call for.
@@ -2010,7 +2016,7 @@ class LiveStreamOwners {
 ///   wantHr  = visibleLiveHrView || activeWorkout || breathing
 ///             || developerLiveFeed
 ///   wantImu = foregroundGaitWorkout || movementSampling || passiveStrapSteps
-///             || developerLiveFeed
+///             || developerLiveFeed || imuLab
 ///
 /// plus, on gen4 only, `foreground` as an owner of both (see
 /// [LiveStreamOwners.foreground]). History sync is never an owner — it reads
@@ -2034,6 +2040,7 @@ LiveStreamIntent desiredLiveStreams(
           o.movementSampling ||
           o.passiveStrapSteps ||
           o.developerLiveFeed ||
+          o.imuLab ||
           legacy) &&
       !standardHrFallback;
   return LiveStreamIntent(hr: hr, imu: imu);

@@ -127,6 +127,10 @@ a hotspot.
 13. **The coach reads only allow-listed `v_*` views** — never `decoded_*`,
     `raw_*`, or base tables.
 14. **Live high-rate streams (0x28/0x2B/0x33) are never persisted** — RAM-only.
+    The one exception is a Device lab IMU recording the wearer saves with an
+    explicit "Save recording" (`gestures/imu_recording_store.dart`, a JSON Lines
+    file under `device_lab/imu/`); it never reaches `raw_records`, `decoded_*` or
+    `raw_archive`, and nothing is saved automatically.
 15. **Dangerous opcodes are never auto-sent** (`dangerousCmds`, gated in
     `ble/ble_engine.dart` wherever a write checks it): force-trim, reboot,
     power-cycle, firmware load.

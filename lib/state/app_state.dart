@@ -97,6 +97,8 @@ import '../ecg/ecg_controller.dart';
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_models.dart';
 import '../ecg/ecg_recovery.dart';
+import '../gestures/imu_recorder.dart';
+import '../gestures/imu_timing.dart';
 import '../data/live_coverage_policy.dart';
 import '../data/local_repository.dart';
 import '../gps/gps_source.dart';
@@ -134,6 +136,7 @@ import '../haptics/haptic_player.dart' show HapticPlayStart;
 import 'live_stream_buffer.dart';
 import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
+import 'imu_packet.dart';
 import 'breathing_controller.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
@@ -366,6 +369,8 @@ class AppState extends ChangeNotifier {
         readCueAssignments: () => Prefs.getString(Prefs.hapticsCueAssign, ''),
         readFailures: () => Prefs.getString(Prefs.gestureFailures, ''),
         writeFailures: (json) async => Prefs.setString(Prefs.gestureFailures, json),
+        // A Device lab IMU recording owns the tap while it is armed or running.
+        labHold: () => _imuLab?.holdsActions ?? false,
       );
 
   /// The gestures that failed to activate, newest first, kept across
@@ -380,6 +385,66 @@ class AppState extends ChangeNotifier {
   /// callbacks below; read by the Live devices screen.
   final LiveStreamBuffer liveStreams = LiveStreamBuffer();
 
+  /// Startup measurements for the next IMU gesture session. There is no
+  /// session or ownership change in this phase; this only receives packets
+  /// that the existing live path already delivered.
+  late final ImuTimingRecorder _imuTiming = ImuTimingRecorder(
+    onLine: (line) {
+      if (deviceLab.isSessionActive) deviceLab.addStep(line);
+    },
+  );
+
+  ImuTimingRecorder get imuTiming => _imuTiming;
+
+  /// The Device lab's bounded IMU recorder. Created on first use. It owns the
+  /// IMU stream only through the `imuLab` owner ([LiveStreamController.setImuLab])
+  /// and keeps its capture in RAM until the wearer saves it.
+  ImuLabRecorder get imuLab => _imuLab ??= ImuLabRecorder(
+        packets: _live.imuPackets,
+        setStreamOwner: _live.setImuLab,
+        monotonicNow: () => _live.monotonicNow,
+        isConnected: () => engine.isConnected,
+        context: _imuLabContext,
+        lab: deviceLab,
+        // The band buzzes once when motion data is usable: the wearer's cue
+        // to start moving.
+        playReadyCue: () async {
+          await _gestures.readyCue(
+              'imu_ready:${DateTime.now().microsecondsSinceEpoch}');
+        },
+      );
+  ImuLabRecorder? _imuLab;
+
+  /// `<version>+<build>` of this app, once package info has been read.
+  String _appVersionLabel = '';
+
+  /// The id live IMU packets carry for the band (also what the recorder keeps
+  /// packets of).
+  String get _liveImuDeviceId =>
+      paired?.serial ?? engine.state.serial ?? LocalDb.kPrimaryDeviceId;
+
+  ImuLabContext _imuLabContext() {
+    final generation = engine.state.generation;
+    return ImuLabContext(
+      bandModel: engine.isMaverick
+          ? 'WHOOP MG'
+          : switch (generation) {
+              'gen5' => 'WHOOP 5.0',
+              'gen4' => 'WHOOP 4.0',
+              _ => 'WHOOP (generation unknown)',
+            },
+      bandFirmware: engine.bandFirmware,
+      deviceId: _liveImuDeviceId,
+      appVersion: _appVersionLabel,
+      protocolVersion: kProtocolPin,
+    );
+  }
+  Stream<ImuPacket> get imuPackets => _live.imuPackets;
+  Duration get imuMonotonicNow => _live.monotonicNow;
+
+  @visibleForTesting
+  int get debugImuDecodeCount => _live.imuDecodeCount;
+
   /// The live-stream seam: the owner set the engine reads, the
   /// developer live feed, mounted live-HR views, and the buffer-feeding helpers.
   /// AppState keeps the buffer, the HR trace and the frame router.
@@ -392,6 +457,7 @@ class AppState extends ChangeNotifier {
     clearRadioFallbackAndReconcile: () =>
         engine.clearRadioFallbackAndReconcile(),
     notify: notifyListeners,
+    onImuPacket: _imuTiming.packet,
   );
 
   /// The workout seam: the live workout lifecycle, tick, route
@@ -1748,6 +1814,7 @@ class AppState extends ChangeNotifier {
     try {
       final info = await PackageInfo.fromPlatform();
       _currentBuild = int.tryParse(info.buildNumber) ?? 0;
+      _appVersionLabel = '${info.version}+${info.buildNumber}';
     } catch (_) {
       /* keep 0 → update prompts simply won't fire */
     }
@@ -2231,6 +2298,9 @@ class AppState extends ChangeNotifier {
     // Before the ECG controller goes: a gesture in flight stops its stream
     // through it.
     _gestures.dispose();
+    // Before the live controller goes: it releases the IMU owner.
+    _imuLab?.dispose();
+    _live.dispose();
     _ecg?.dispose();
     _ecgTransport?.dispose();
     // EVERY timer this object owns, not just three of them.
@@ -3034,6 +3104,14 @@ class AppState extends ChangeNotifier {
     // dispatcher. They also decide the acknowledgement buzz, which goes through
     // alertDispatcher (live-only, short deadline) and never straight to the
     // engine.
+    // The Device lab's IMU recorder sees the tap first: an armed one takes it
+    // (and the dispatcher, told by its hold, runs nothing).
+    try {
+      _imuLab?.onBandEvent(e);
+    } catch (err) {
+      // A lab tool must never stop the tap reaching the dispatcher.
+      _log('[imu-lab] tap handling failed: $err');
+    }
     final handled = _gestures.handle(e);
     hardwareProbes.onBandEvent(e);
     // The band's "ended" event releases the next compiled command and the
@@ -3588,10 +3666,19 @@ class AppState extends ChangeNotifier {
     final isRrBearing = pt == 0x28 || (pt == 0x2B && _isR10Record(hex));
     if (isRrBearing) _live.bufferLiveRr(hex);
     if (isRrBearing) _breathing.tapFrame(hex);
+    final sixAxis = pt == 0x2B
+        ? _live.decodeAndFanoutImu(
+            packetType: pt,
+            hex: hex,
+            deviceId: _liveImuDeviceId,
+            connectionGeneration: engine.linkGeneration,
+            includeAccel: !_imuStreamSeen,
+          )
+        : null;
     // LIVE STEP COUNTER. Gen4: dedicated 0x33 IMU (~10 frames/s × 10 samples)
     // is preferred; full R10 (0x2B) is only a fallback when 0x33 isn't flowing.
-    // Gen5 Maverick: live IMU is 0x2B (rec 0x15, 100 Hz planar) — see
-    // protocol's frameAccelForBand. Once gen4 0x33 is seen we ignore 0x2B to avoid
+    // Gen5 live IMU is the 0x2B six-axis packet the adapter decoded above.
+    // Once gen4 0x33 is seen we ignore 0x2B for pedometer input to avoid
     // double-counting the same motion from two stream formats.
     if (pt == 0x33) {
       _imuStreamSeen = true;
@@ -3603,9 +3690,13 @@ class AppState extends ChangeNotifier {
       }
     } else if (pt == 0x2B && !_imuStreamSeen) {
       // Gen5 Maverick live IMU is 0x2B (100 Hz planar), not top-level 0x33.
-      final f = _safeFrameAccel(hex);
+      // A frame the six-axis adapter rejected (a short gen4 R10 has accel but
+      // no gyro block) still feeds accel consumers exactly as it did before.
+      final f = sixAxis == null
+          ? _safeFrameAccel(hex)
+          : (sixAxis.feedsAccelConsumers ? sixAxis.toAccelFrame() : null);
       if (f != null) {
-        _live.bufferLiveImu(f);
+        if (sixAxis == null) _live.bufferLiveImu(f);
         _ingestLiveMags(f);
         _trackCoverage(recTs);
       }
@@ -3626,9 +3717,10 @@ class AppState extends ChangeNotifier {
 
   proto.ImuFrame? _safeFrameAccel(String hex) {
     try {
-      // Gen5 Maverick live IMU is 0x2B; gen4 stays on frameAccel (0x33 / R10).
-      // protocol's gen5 path abstains unless the record is the IMU buffer.
-      return proto.frameAccelForBand(hex);
+      // The dedicated accel-only 0x33 path, and the fallback for a 0x2B frame
+      // the six-axis adapter did not accept. Full 0x2B packets are decoded
+      // once by ImuPacketAdapter above.
+      return proto.frameAccel(hex);
     } catch (_) {
       return null;
     }
@@ -4519,6 +4611,8 @@ class AppState extends ChangeNotifier {
       // THIS device only — a second device's trace is a separate session.
       _clearLiveHrTrace(deviceId);
       _sync.onLinkDropped();
+      // A lab recording on the dropped link ends with what it has.
+      _imuLab?.onDisconnected();
     }
     if (_prevConn != 'connected' && s.connection == 'connected') {
       // A Tasker BUZZ_STRAP that arrived while disconnected/dead only gets a

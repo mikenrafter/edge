@@ -60,6 +60,7 @@ class GestureController {
     required String Function() readCueAssignments,
     required String Function() readFailures,
     required Future<void> Function(String json) writeFailures,
+    bool Function()? labHold,
   })  : _settings = settings,
         _haptics = haptics,
         _deviceLab = deviceLab,
@@ -91,6 +92,7 @@ class GestureController {
         deviceLab.addStep('Gesture failed ($reason).');
         _recordGestureFailure(e, kind, reason);
       },
+      labHold: labHold,
     );
   }
 
@@ -363,6 +365,11 @@ class GestureController {
   /// always 1.
   Future<bool> _ecgTapBuzz(int pulses, String eventId) =>
       _gestureCue(eventId, cues.followUp);
+
+  /// The "gyro ready" cue, once, when the IMU stream turns usable. The same
+  /// dispatcher delivery as the other cues (live-only, own event id), so a
+  /// Device lab recording and the future motion gestures buzz the same way.
+  Future<bool> readyCue(String eventId) => _gestureCue(eventId, cues.ready);
 
   /// The confirm cue of a counted gesture, once, when it ends.
   Future<bool> _ecgTapConfirmBuzz(String eventId) =>

@@ -20,11 +20,10 @@
 //
 // Laid out as sub-tabs like Haptics and Gestures, each tab a set of
 // accordions: Taps (the tap tools, behind FeatureFlag.tapClassifiers), Probes,
-// Live (the live streams of each connected device) and Logs (sessions, steps,
-// band events, and the save button). The tab used last is remembered
-// ([kDeviceLabTabPref]); a tab with nothing to show is not offered. A future
-// Motion tab (the gyroscope recorder) is one more [LabTab] value, one more
-// content argument of [DeviceLabView] and one more case in its rows.
+// Motion (the IMU recorder, developer mode only), Live (the live streams of each
+// connected device) and Logs (sessions, steps, band events, and the save
+// button). The tab used last is remembered ([kDeviceLabTabPref]); a tab with
+// nothing to show is not offered.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -35,6 +34,7 @@ import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
+import '../../gestures/imu_recording_store.dart';
 import '../../gestures/lab_log.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
@@ -46,6 +46,7 @@ import '../../util/log_file.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
 import 'live_devices.dart' show LiveDevices;
+import 'motion_lab.dart';
 import 'pattern_probe_page.dart';
 import 'profile.dart';
 
@@ -69,6 +70,7 @@ const String kDeviceLabTabPref = 'ui.device_lab_tab';
 enum LabTab {
   taps('taps', 'Taps'),
   probes('probes', 'Probes'),
+  motion('motion', 'Motion'),
   live('live', 'Live'),
   logs('logs', 'Logs');
 
@@ -79,6 +81,9 @@ enum LabTab {
 
 class DeviceLab extends StatelessWidget {
   const DeviceLab({super.key});
+
+  // Reads the saved IMU recordings folder; holds nothing between uses.
+  static final ImuRecordingStore _motionStore = ImuRecordingStore();
 
   @override
   Widget build(BuildContext c) =>
@@ -117,6 +122,11 @@ class DeviceLab extends StatelessWidget {
         // longer carries the flag: the tap tools inside do.
         tapTools: caps.has(Feature.deviceLabTapTools),
         probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
+        // The IMU recorder is a developer tool: its tab is offered only in
+        // developer mode.
+        motion: caps.has(Feature.developerMode)
+            ? MotionLabPanel(recorder: app.imuLab, store: _motionStore)
+            : null,
         live: const LiveDevices(embedded: true),
         exportDevLog: (origin) =>
             shareDevLog(DevLog.instance, origin: origin),
@@ -178,6 +188,7 @@ class DeviceLabView extends StatelessWidget {
     this.saveLog,
     this.tapTools = true,
     this.live,
+    this.motion,
     this.initialTab,
     this.exportDevLog,
     this.clearDevLog,
@@ -231,6 +242,10 @@ class DeviceLabView extends StatelessWidget {
   /// own); the tab is offered only when it is given.
   final Widget? live;
 
+  /// The Motion tab's content (the IMU recorder); the tab is offered only when
+  /// it is given, which the screen does in developer mode.
+  final Widget? motion;
+
   /// Opens this tab over the remembered one, when it is offered.
   final LabTab? initialTab;
 
@@ -246,6 +261,7 @@ class DeviceLabView extends StatelessWidget {
   List<LabTab> get _tabs => [
     if (tapTools) LabTab.taps,
     if (probes != null) LabTab.probes,
+    if (motion != null) LabTab.motion,
     if (live != null) LabTab.live,
     LabTab.logs,
   ];
@@ -397,6 +413,10 @@ class DeviceLabView extends StatelessWidget {
     // The panel is the accordion: folding it must not stop a running probe.
     LabTab.probes => [
       Padding(padding: const EdgeInsets.only(top: S.x3), child: probes!),
+    ],
+    // The panel is its own accordions: folding must not stop a recording.
+    LabTab.motion => [
+      Padding(padding: const EdgeInsets.only(top: S.x3), child: motion!),
     ],
     LabTab.live => [
       Padding(padding: const EdgeInsets.only(top: S.x3), child: live!),

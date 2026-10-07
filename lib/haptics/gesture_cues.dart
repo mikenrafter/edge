@@ -7,6 +7,10 @@
 //                the increment is seen; never a recount of the pulses so far
 //   confirm()    the confirm cue (gesture.confirm), when the gesture ends
 //   failed()     the failure cue (gesture.failed), when it was abandoned
+//   ready()      the "gyro ready" cue: motion data is flowing, move now. It is
+//                the follow-up slot's single short buzz (distinct from the
+//                start pair, the confirm and the failure), so it has no slot
+//                of its own; a wearer who customised the follow-up hears that.
 //
 // The queue spaces two jobs by the vocabulary's minimum gap
 // (HapticDeviceProfile.minVibrationGapMs), so no cue is dropped, merged or
@@ -61,6 +65,10 @@ class GestureCues {
 
   /// The confirm cue: the gesture ended.
   Future<BuzzDelivery> confirm() => _cue(kGestureConfirmKey);
+
+  /// The "gyro ready" cue: the IMU stream is delivering valid motion data, so
+  /// the wearer can start moving. The single short buzz of the follow-up slot.
+  Future<BuzzDelivery> ready() => _cue(kGestureFollowUpKey);
 
   /// The failure cue: the gesture could not be activated.
   Future<BuzzDelivery> failed() => _cue(kGestureFailedKey);

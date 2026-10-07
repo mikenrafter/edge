@@ -140,6 +140,11 @@ class GestureDispatcher {
   /// action may yet have run, and a re-sent tap must not run it a second time.
   final Duration actionTimeout;
 
+  /// True while a Device lab recording is armed or running (the IMU recorder).
+  /// A double tap then runs nothing, claims nothing and starts no session: the
+  /// recorder owns the tap. Read on every tap.
+  final bool Function()? labHold;
+
   /// FeatureFlag.tapClassifiers, read on every tap so the switch bites at once.
   final bool Function() _tapClassifiersOn;
 
@@ -158,6 +163,7 @@ class GestureDispatcher {
     this.onCountTaps,
     this.repeatSession,
     this.onFailed,
+    this.labHold,
     bool Function()? tapClassifiersOn,
     this.actionTimeout = const Duration(seconds: 10),
     Future<bool> Function(String actionId)? performNative,
@@ -186,6 +192,7 @@ class GestureDispatcher {
   /// Feed every live event here. Cheap for non-gesture events. Never throws.
   Future<List<GestureOutcome>> handle(StrapEvent e) async {
     if (_disposed || e.eventId != _doubleTapEventId) return const [];
+    if (labHold?.call() == true) return const [];
     if (!_tapClassifiersOn()) return _runActions(e, settings.doubleTapActions);
     // Lab mode: suspended whether or not the capture below can start (a late
     // tap, a duplicate, a failed start) so a tap never runs half the lab and
