@@ -30,6 +30,7 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../explore/circadian/circadian_explore_probe.dart';
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/hardware_probe_runner.dart';
@@ -132,6 +133,9 @@ class DeviceLab extends StatelessWidget {
                 padding: const EdgeInsets.only(top: S.x3),
                 child: AlarmSlotProbeCard(runner: app.alarmSlotProbe),
               ),
+            // Developer mode AND Settings > Developer > Circadian estimate;
+            // draws nothing and reads nothing otherwise.
+            CircadianExploreProbe(repo: app.repo),
           ],
         ),
         // The IMU recorder is a developer tool: its tab is offered only in

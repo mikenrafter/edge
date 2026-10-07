@@ -94,6 +94,31 @@ Future<Map<String, dynamic>> buildCircadianArtifact(
   };
 }
 
+/// One sleep window per calendar night, oldest first, from the SAME repository
+/// calls the actogram walk above makes (`availableDays` + `getDaySleepV2`) and
+/// the same rule: a night with no total sleep time was not recorded, so it has
+/// no window. The caller owns what a window means; there is no second sleep
+/// segmentation here.
+Future<List<({int onsetTs, int wakeTs})>> circadianNightWindows(
+    LocalRepository repo,
+    {int nights = kCircadianNights}) async {
+  final days = await repo.availableDays(); // newest first
+  if (days.isEmpty) return const [];
+  final have = days.toSet();
+  final a = DateTime.parse(days.first);
+  final out = <({int onsetTs, int wakeTs})>[];
+  for (var back = nights - 1; back >= 0; back--) {
+    final day = dayLabelOf(DateTime(a.year, a.month, a.day - back));
+    if (!have.contains(day)) continue;
+    final n = await repo.getDaySleepV2(day);
+    final onset = n['onset_ts'], wake = n['wake_ts'];
+    if (n['duration_min'] == null || onset is! num || wake is! num) continue;
+    if (wake <= onset) continue;
+    out.add((onsetTs: onset.round(), wakeTs: wake.round()));
+  }
+  return out;
+}
+
 /// One night as 24 hourly asleep-fractions on a noon-anchored axis.
 List<double>? _column(num? onsetTs, num? wakeTs) {
   if (onsetTs == null || wakeTs == null || wakeTs <= onsetTs) return null;

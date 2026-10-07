@@ -16,6 +16,8 @@
 // PROTOTYPE: phase estimation belongs in the analytics repo; this lives in edge
 // only to explore it, and moves there (AGENTS.md section 1).
 
+import 'dart:math' as math;
+
 /// One local clock hour of recorded HR. [hourStartLocal] is a local wall-clock
 /// hour start; [realMinutes] is minutes of real samples in that hour.
 class HourlyBin {
@@ -71,4 +73,136 @@ class HrRhythm {
   final RhythmRejection? rejection;
 }
 
-HrRhythm fitHrRhythm(List<HourlyBin> bins) => throw UnimplementedError();
+HrRhythm fitHrRhythm(List<HourlyBin> bins) {
+  // Every local calendar day present in the input, admitted or not, and each
+  // day's admitted bins.
+  final present = <int>{};
+  final admittedByDay = <int, List<HourlyBin>>{};
+  for (final b in bins) {
+    final day = _dayKey(b.hourStartLocal);
+    present.add(day);
+    final hr = b.meanHr;
+    if (hr != null && hr.isFinite && b.realMinutes >= kMinRealMinutesPerBin) {
+      (admittedByDay[day] ??= []).add(b);
+    }
+  }
+
+  // A day is usable with enough distinct wall-clock hours covered. A fall-back
+  // day has two bins for one wall hour; that hour is covered once.
+  final usable = <int, List<HourlyBin>>{};
+  var coverageSum = 0.0;
+  for (final e in admittedByDay.entries) {
+    final hours = {for (final b in e.value) b.hourStartLocal.hour};
+    if (hours.length >= kMinCoveredHoursPerDay) {
+      usable[e.key] = e.value;
+      coverageSum += hours.length / 24.0;
+    }
+  }
+  final daysUsed = usable.length;
+  final coverage = daysUsed == 0 ? 0.0 : coverageSum / daysUsed;
+
+  HrRhythm reject(RhythmRejection why) => HrRhythm(
+        daysUsed: daysUsed,
+        coverage: coverage,
+        rejection: why,
+      );
+
+  if (present.length < kMinRhythmDays) return reject(RhythmRejection.tooFewDays);
+  if (daysUsed < kMinRhythmDays) return reject(RhythmRejection.lowCoverage);
+
+  final days = usable.keys.toList()..sort();
+  final all = <HourlyBin>[for (final d in days) ...usable[d]!];
+  final fit = _cosinor(all);
+  if (fit == null || fit.amplitude < kMinRhythmAmplitudeBpm) {
+    return reject(RhythmRejection.flat);
+  }
+
+  // Leave one day out: the acrophase must not hinge on any single day.
+  final loo = <double>[];
+  for (final d in days) {
+    final f = _cosinor([
+      for (final k in days)
+        if (k != d) ...usable[k]!,
+    ]);
+    if (f == null) return reject(RhythmRejection.unstable);
+    loo.add(f.acrophaseHours);
+  }
+  if (_circularRangeHours(loo) > kMaxPhaseSpreadHours) {
+    return reject(RhythmRejection.unstable);
+  }
+
+  final peak = Duration(seconds: (fit.acrophaseHours * 3600).round() % 86400);
+  return HrRhythm(
+    acrophaseClock: peak,
+    bathyphaseClock: Duration(seconds: (peak.inSeconds + 12 * 3600) % 86400),
+    amplitudeBpm: fit.amplitude,
+    mesorBpm: fit.mesor,
+    daysUsed: daysUsed,
+    coverage: coverage,
+  );
+}
+
+int _dayKey(DateTime t) => t.year * 10000 + t.month * 100 + t.day;
+
+class _Cosinor {
+  const _Cosinor(this.mesor, this.amplitude, this.acrophaseHours);
+  final double mesor, amplitude;
+
+  /// Hours since local midnight in [0, 24).
+  final double acrophaseHours;
+}
+
+/// Least squares of y = M + a cos(wt) + b sin(wt), w = 2 pi / 24 h, t the wall
+/// clock hour of the middle of each bin. Null when the system is singular.
+_Cosinor? _cosinor(List<HourlyBin> bins) {
+  const w = 2 * math.pi / 24.0;
+  // Normal equations A x = r for x = (M, a, b).
+  final m = List.generate(3, (_) => List<double>.filled(4, 0));
+  for (final bin in bins) {
+    final t = bin.hourStartLocal.hour + bin.hourStartLocal.minute / 60.0 + 0.5;
+    final row = [1.0, math.cos(w * t), math.sin(w * t)];
+    final y = bin.meanHr!;
+    for (var i = 0; i < 3; i++) {
+      for (var j = 0; j < 3; j++) {
+        m[i][j] += row[i] * row[j];
+      }
+      m[i][3] += row[i] * y;
+    }
+  }
+  // Gaussian elimination with partial pivoting.
+  for (var col = 0; col < 3; col++) {
+    var piv = col;
+    for (var r = col + 1; r < 3; r++) {
+      if (m[r][col].abs() > m[piv][col].abs()) piv = r;
+    }
+    if (m[piv][col].abs() < 1e-9) return null;
+    final tmp = m[col];
+    m[col] = m[piv];
+    m[piv] = tmp;
+    for (var r = 0; r < 3; r++) {
+      if (r == col) continue;
+      final f = m[r][col] / m[col][col];
+      for (var c = col; c < 4; c++) {
+        m[r][c] -= f * m[col][c];
+      }
+    }
+  }
+  final mesor = m[0][3] / m[0][0];
+  final a = m[1][3] / m[1][1];
+  final b = m[2][3] / m[2][2];
+  var phase = math.atan2(b, a) / w;
+  phase = ((phase % 24) + 24) % 24;
+  return _Cosinor(mesor, math.sqrt(a * a + b * b), phase);
+}
+
+/// Smallest arc, in hours, holding every point of [hours] on the 24 h circle.
+double _circularRangeHours(List<double> hours) {
+  if (hours.length < 2) return 0;
+  final s = [for (final h in hours) ((h % 24) + 24) % 24]..sort();
+  // The arc is 24 minus the widest gap between neighbours round the circle.
+  var widest = s.first + 24 - s.last;
+  for (var i = 1; i < s.length; i++) {
+    widest = math.max(widest, s[i] - s[i - 1]);
+  }
+  return 24 - widest;
+}

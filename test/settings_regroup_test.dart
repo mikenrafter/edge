@@ -137,6 +137,7 @@ const Map<String, List<List<String>>> _rows = {
     ['Live devices'],
     ['Device lab'],
     ['Data Explorer'],
+    ['Circadian estimate'],
     // The read-only timing line for the last derive pass.
     ['Last calculation'],
     ['Developer mode'],
@@ -301,18 +302,20 @@ void main() {
         'Component gallery',
         'Live devices',
         'Device lab',
+        'Circadian estimate',
         'Developer mode',
       ]) {
         expect(find.text(row), findsNothing, reason: row);
       }
     });
 
-    testWidgets('dev mode on: the four rows, each once', (t) async {
+    testWidgets('dev mode on: the rows, each once', (t) async {
       await _pump(t, _settings(dev: true));
       for (final row in const [
         'Component gallery',
         'Live devices',
         'Device lab',
+        'Circadian estimate',
         'Developer mode',
       ]) {
         expect(_in('Developer', row), findsOneWidget, reason: row);

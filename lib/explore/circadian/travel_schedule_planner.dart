@@ -30,6 +30,10 @@
 //
 // PROTOTYPE: pure edge orchestration; the phase science stays in analytics.
 
+import 'dart:math' as math;
+
+import 'package:timezone/timezone.dart' as tz;
+
 class TravelInput {
   const TravelInput({
     required this.habitualOnset,
@@ -106,4 +110,165 @@ class TravelPlan {
 
 /// Throws [ArgumentError] for an unknown IANA name. Same offset on the
 /// departure date: an empty plan, shiftHours 0, reason 'no time-zone change'.
-TravelPlan plan(TravelInput input) => throw UnimplementedError();
+TravelPlan plan(TravelInput input) {
+  final origin = _location(input.originTz);
+  final dest = _location(input.destTz);
+  final dep = input.departureLocalDate;
+
+  // Offsets are read at noon on the departure date, clear of any 02:00 change.
+  final oOff = _offsetMinutes(origin, dep);
+  final dOff = _offsetMinutes(dest, dep);
+  final zone = dOff - oOff;
+  if (zone == 0) return _noChange();
+  final zoneHours = (_wrap(zone, 720, zone) / 60).round();
+
+  // Total shift per series, in minutes, + = earlier. A series is the sleep
+  // onset or the wake time: (usual - wanted) on the clock, plus the zone gap.
+  final wantOnset = input.desiredOnset ?? input.habitualOnset;
+  final wantWake = input.desiredWake ?? input.habitualWake;
+  final needOnset =
+      _wrap(_minutes(input.habitualOnset) - _minutes(wantOnset) + zone, 720, zone);
+  final needWake =
+      _wrap(_minutes(input.habitualWake) - _minutes(wantWake) + zone, 720, zone);
+  if (needOnset == 0 && needWake == 0) return _noChange();
+
+  final stepsOnset = _stepsFor(needOnset);
+  final stepsWake = _stepsFor(needWake);
+  final steps = math.max(stepsOnset, stepsWake);
+
+  // Start up to three days ahead, the first step on the first plan day. A plan
+  // that is done before departure still runs on to the departure date.
+  final lead = math.min(kMaxPreDepartureDays, steps);
+  final lastIndex = math.max(steps, lead + 1); // day k of the last plan day
+  final days = <TravelDay>[];
+  final ambiguous =
+      math.max(zoneHours.abs(), (needOnset.abs() / 60).round()) >=
+          kAmbiguousShiftHours;
+  for (var k = 1; k <= lastIndex; k++) {
+    final date = DateTime(dep.year, dep.month, dep.day - lead + k - 1);
+    final before = k <= lead;
+    final loc = before ? origin : dest;
+    final shiftOnset = _shiftAt(needOnset, k);
+    final shiftWake = _shiftAt(needWake, k);
+
+    // The habitual night in the origin zone on this date, as real instants.
+    final startH = _nightStart(origin, date, input.habitualOnset);
+    final wakeH = _wakeAfter(startH, input.habitualWake);
+
+    final Duration onsetClock, wakeClock;
+    if (k >= stepsOnset && !before) {
+      onsetClock = wantOnset;
+    } else {
+      onsetClock = _clockIn(loc, startH.subtract(Duration(minutes: shiftOnset)));
+    }
+    if (k >= stepsWake && !before) {
+      wakeClock = wantWake;
+    } else {
+      wakeClock = _clockIn(loc, wakeH.subtract(Duration(minutes: shiftWake)));
+    }
+
+    String? hint;
+    if (!ambiguous && k <= stepsOnset) {
+      hint = needOnset > 0 ? _morningLight : _eveningLight;
+    }
+    days.add(TravelDay(
+      date: date,
+      tz: before ? input.originTz : input.destTz,
+      targetOnset: onsetClock,
+      targetWake: wakeClock,
+      lightHint: hint,
+    ));
+  }
+
+  return TravelPlan(
+    days: days,
+    shiftHours: zoneHours,
+    lightSuppressedReason: ambiguous ? _ambiguousReason : null,
+    assumptions: const [
+      'Assumption: sleep moves earlier by up to 1 hour per day '
+          '(Eastman & Burgess 2009, doi 10.1016/j.jsmc.2009.02.006).',
+      'Assumption: sleep moves later by up to 1.5 hours per day '
+          '(Eastman & Burgess 2009).',
+      'These rates are assumed for anyone, not measured for you.',
+      'The plan reads only the sleep times and time zones entered here, no '
+          'body data. Zone offsets are read on the departure date.',
+    ],
+  );
+}
+
+const String _morningLight = 'seek morning light';
+const String _eveningLight = 'seek evening light';
+const String _ambiguousReason =
+    'With a shift of $kAmbiguousShiftHours hours or more, light can move '
+    'sleep timing either way depending on when it arrives, so no light advice '
+    'is given.';
+
+TravelPlan _noChange() => const TravelPlan(
+      days: [],
+      shiftHours: 0,
+      lightSuppressedReason: 'no time-zone change',
+      assumptions: [],
+    );
+
+tz.Location _location(String name) {
+  try {
+    return tz.getLocation(name);
+  } on tz.LocationNotFoundException {
+    throw ArgumentError.value(name, 'time zone', 'unknown IANA time zone');
+  }
+}
+
+int _offsetMinutes(tz.Location loc, DateTime date) =>
+    tz.TZDateTime(loc, date.year, date.month, date.day, 12)
+        .timeZoneOffset
+        .inMinutes;
+
+int _minutes(Duration d) => d.inMinutes;
+
+/// [x] minutes folded into [-720, 720]. At exactly +-720 the sign of [tie]
+/// decides which way round it goes.
+int _wrap(int x, int half, int tie) {
+  var n = ((x % 1440) + 1440) % 1440;
+  if (n > half) n -= 1440;
+  if (n == half) n = tie < 0 ? -half : half;
+  return n;
+}
+
+/// Days of stepping a total shift of [need] minutes takes at the pace limit.
+int _stepsFor(int need) {
+  if (need == 0) return 0;
+  final rate = (need > 0 ? kMaxAdvanceStepPerDay : kMaxDelayStepPerDay).inMinutes;
+  return (need.abs() + rate - 1) ~/ rate;
+}
+
+/// The shift, in minutes, after step [k] (1-based): full pace, then the rest.
+int _shiftAt(int need, int k) {
+  if (need == 0) return 0;
+  final rate = (need > 0 ? kMaxAdvanceStepPerDay : kMaxDelayStepPerDay).inMinutes;
+  final moved = math.min(need.abs(), k * rate);
+  return need > 0 ? moved : -moved;
+}
+
+/// First moment at/after 12:00 local on [date] whose wall clock is [clock].
+tz.TZDateTime _nightStart(tz.Location loc, DateTime date, Duration clock) {
+  final next = clock < const Duration(hours: 12) ? 1 : 0;
+  return tz.TZDateTime(loc, date.year, date.month, date.day + next,
+      clock.inHours, clock.inMinutes % 60);
+}
+
+/// First moment after [onset] whose wall clock is [clock].
+tz.TZDateTime _wakeAfter(tz.TZDateTime onset, Duration clock) {
+  var w = tz.TZDateTime(onset.location, onset.year, onset.month, onset.day,
+      clock.inHours, clock.inMinutes % 60);
+  if (!w.isAfter(onset)) {
+    w = tz.TZDateTime(onset.location, onset.year, onset.month, onset.day + 1,
+        clock.inHours, clock.inMinutes % 60);
+  }
+  return w;
+}
+
+/// The wall clock of the instant [t] in [loc], since local midnight.
+Duration _clockIn(tz.Location loc, DateTime t) {
+  final l = tz.TZDateTime.from(t, loc);
+  return Duration(hours: l.hour, minutes: l.minute);
+}

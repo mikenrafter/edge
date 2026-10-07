@@ -94,6 +94,7 @@ class _MoreSettingsState extends State<MoreSettings> {
 
   /// Home's pull-to-sync, read straight off Prefs like [_barcode].
   bool _pullToSync = Prefs.pullToSyncOn;
+  bool _exploreCircadian = Prefs.getBool(Prefs.exploreCircadian, false);
 
   /// The developer's band haptic command limit, mirrored from Prefs.
   int _hapticLimit = Prefs.hapticCommandLimit;
@@ -203,6 +204,11 @@ class _MoreSettingsState extends State<MoreSettings> {
     return MoreSettingsView(
       version: _version,
       devMode: caps.has(Feature.developerMode),
+      exploreCircadian: _exploreCircadian,
+      onToggleExploreCircadian: () {
+        Prefs.setBool(Prefs.exploreCircadian, !_exploreCircadian);
+        setState(() => _exploreCircadian = !_exploreCircadian);
+      },
       hapticCommandLimit: _hapticLimit,
       onHapticCommandLimit: (v) {
         // Read at every use by the band's ledger: it takes effect at once.
@@ -583,6 +589,11 @@ class MoreSettingsView extends StatelessWidget {
   final int hapticCommandLimit;
   final ValueChanged<int>? onHapticCommandLimit;
 
+  /// Developer group: the experimental circadian estimate in the Device lab's
+  /// Probes tab (Prefs.exploreCircadian). Off by default.
+  final bool exploreCircadian;
+  final VoidCallback? onToggleExploreCircadian;
+
   /// The Developer group's "Last calculation" line, already worded; an em dash
   /// until a pass has been measured.
   final String lastCalculation;
@@ -652,6 +663,8 @@ class MoreSettingsView extends StatelessWidget {
     this.devMode = false,
     this.hapticCommandLimit = 30,
     this.onHapticCommandLimit,
+    this.exploreCircadian = false,
+    this.onToggleExploreCircadian,
     this.lastCalculation = '—',
     this.onVersionTap,
     this.onToggleDev,
@@ -965,6 +978,12 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',
                         onTap: onDataExplorer),
+                    // Shown in Device lab > Probes while this is on.
+                    SetRow(LucideIcons.sunMoon, C.indigo, 'Circadian estimate',
+                        sub: 'Experimental: your recorded daily rhythm and a '
+                            'trip schedule, in Device lab under Probes',
+                        value: exploreCircadian ? on : off,
+                        onTap: onToggleExploreCircadian),
                     _HapticLimitRow(
                         limit: hapticCommandLimit,
                         onChanged: onHapticCommandLimit),
