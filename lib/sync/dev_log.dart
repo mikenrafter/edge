@@ -23,8 +23,10 @@
 // the lines of three concurrent writers were lost or torn). So an append is a
 // short critical section behind a lock file (`dev_log/.append.lock`, created
 // with the atomic exclusive-create, deleted after): inside it the record is ONE
-// complete UTF-8 line written in ONE call. A lock older than [lockWait] belongs
-// to a writer that died and is taken over. Inside one isolate the writes are
+// complete UTF-8 line written in ONE call. A lock whose file is older than
+// [lockWait] belongs to a writer that died and is taken over (atomic rename, so
+// one waiter wins); a writer only deletes a lock still carrying its own token.
+// A lock that cannot be created at all drops the line after a bounded wait. Inside one isolate the writes are
 // also chained, so they land in call order. Text is sanitized first (control
 // characters escaped, lone surrogates replaced) so a line is always valid UTF-8
 // and exactly one line, and cut at [_maxLineRunes] so it stays a small write.
@@ -34,6 +36,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -186,9 +189,16 @@ class DevLog {
   int _sinceCheck = 0;
   bool _full = false, _fullNoted = false;
 
-  static Future<Directory> _platformBase() async =>
-      await getExternalStorageDirectory() ??
-      await getApplicationDocumentsDirectory();
+  /// External files dir where there is one. path_provider THROWS (it does not
+  /// return null) on iOS and desktop, so a failed lookup falls back to the app
+  /// documents dir the same way a null does.
+  static Future<Directory> _platformBase() async {
+    try {
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) return ext;
+    } catch (_) {}
+    return getApplicationDocumentsDirectory();
+  }
 
   static DateTime? _prefsReadAt;
   static bool _prefsDev = false;
@@ -283,47 +293,126 @@ class DevLog {
 
   Future<void> _write(DateTime at, String src, String text, bool on) async {
     try {
-      if (!on && !await _devMode()) return;
-      final d = await dir();
-      if (d == null) return;
-      final day = dayLabelOf(at);
-      final opening = day != _day;
-      if (opening || ++_sinceCheck >= sizeCheckEvery) {
-        _sinceCheck = 0;
-        await _prune(d, at, day);
+      try {
+        await _writeOnce(at, src, text, on);
+      } on PathNotFoundException {
+        // The folder vanished under a cached handle (a Clear by the OS, an
+        // uninstall-reinstall restore): resolve it again and keep this line.
+        _dir = null;
+        _day = null;
+        await _writeOnce(at, src, text, on);
       }
-      final file = File('${d.path}/dev-$day.log');
-      if (_full && !on) {
-        // ponytail: a single day over the cap (a runaway logger) drops new
-        // developer-mode lines until the day rolls over or Clear; evicting the
-        // front of today's file would need a rewrite that races the other
-        // isolates' appends. Alarm, wake and sync lines are few and are the
-        // reason this log exists, so they are still written past the cap.
-        if (_fullNoted) return;
-        _fullNoted = true;
-        text = '[devlog] size cap ($maxBytes bytes) reached; dropping '
-            'developer-mode lines';
-        src = 'devlog';
-      } else if (!_full) {
-        _fullNoted = false;
-      }
-      final record = devLogLine(at, src, text);
-      final header = opening
-          ? '${devLogLine(at, source, '[devlog] opened source=$source pid=$pid')}\n'
-          : '';
-      // One buffer, one write call, under the lock: see the header comment.
-      await _appendLocked(
-          d, file, utf8.encode('$header$record\n'));
-      _day = day;
     } catch (_) {
       _dir = null; // the folder may be gone; resolve it again next time
       _day = null;
     }
   }
 
+  Future<void> _writeOnce(DateTime at, String src, String text, bool on) async {
+    if (!on && !await _devMode()) return;
+    final d = await dir();
+    if (d == null) return;
+    final day = dayLabelOf(at);
+    final opening = day != _day;
+    if (opening || ++_sinceCheck >= sizeCheckEvery) {
+      _sinceCheck = 0;
+      await _prune(d, at, day);
+    }
+    final file = File('${d.path}/dev-$day.log');
+    if (_full && !on) {
+      // ponytail: a single day over the cap (a runaway logger) drops new
+      // developer-mode lines until the day rolls over or Clear; evicting the
+      // front of today's file would need a rewrite that races the other
+      // isolates' appends. Alarm, wake and sync lines are few and are the
+      // reason this log exists, so they are still written past the cap.
+      if (_fullNoted) return;
+      _fullNoted = true;
+      text = '[devlog] size cap ($maxBytes bytes) reached; dropping '
+          'developer-mode lines';
+      src = 'devlog';
+    } else if (!_full) {
+      _fullNoted = false;
+    }
+    final record = devLogLine(at, src, text);
+    final header = opening
+        ? '${devLogLine(at, source, '[devlog] opened source=$source pid=$pid')}\n'
+        : '';
+    // One buffer, one write call, under the lock: see the header comment.
+    await _appendLocked(
+        d, file, utf8.encode('$header$record\n'));
+    _day = day;
+  }
+
+  static final Random _rng = Random();
+
+  /// How long ago [f] was last modified, or null when it is not a file now.
+  /// `stat().modified` (millisecond), not `lastModified()` (whole seconds, which
+  /// can read a fresh lock as up to a second older than it is).
+  Future<Duration?> _age(File f) async {
+    final st = await f.stat();
+    if (st.type != FileSystemEntityType.file) return null;
+    return DateTime.now().difference(st.modified);
+  }
+
+  /// A lock is stale by ITS age (mtime), never by how long this waiter has been
+  /// waiting. A clock step that leaves the mtime far in the future counts too.
+  bool _stale(Duration age) => age > lockWait || age < -lockWait;
+
+  /// Take over a lock that looked stale; true when this waiter now holds it.
+  ///
+  /// Synchronous on purpose: the rename that removes the stale lock and the
+  /// exclusive create of our own run with no await between them, so another
+  /// writer in this isolate cannot slip in, and the window against other
+  /// isolates is two syscalls. The atomic rename lets only one waiter remove a
+  /// given lock. If what was moved turns out to be young (a live lock created
+  /// between the age check and the rename) it is put straight back over ours,
+  /// and this waiter keeps waiting.
+  bool _takeOver(File lock, String token) {
+    final moved = File('${lock.path}.stale-$token');
+    try {
+      final st = lock.statSync();
+      if (st.type != FileSystemEntityType.file ||
+          !_stale(DateTime.now().difference(st.modified))) {
+        return false;
+      }
+      lock.renameSync(moved.path);
+    } on FileSystemException {
+      return false; // released, or another waiter took it over first
+    }
+    var held = false;
+    try {
+      lock.createSync(exclusive: true);
+      held = true;
+    } on FileSystemException {
+      // another writer created a lock in the gap: it holds it
+    }
+    try {
+      final st = moved.statSync();
+      final live = st.type == FileSystemEntityType.file &&
+          !_stale(DateTime.now().difference(st.modified));
+      if (live && held) {
+        moved.renameSync(lock.path); // give the live lock back, replacing ours
+        return false;
+      }
+      return held;
+    } on FileSystemException {
+      return held;
+    } finally {
+      try {
+        moved.deleteSync();
+      } on FileSystemException {
+        // already restored over the lock, or gone
+      }
+    }
+  }
+
   Future<void> _appendLocked(Directory d, File file, List<int> bytes) async {
     final lock = File('${d.path}/.append.lock');
+    // The owner token written into the lock: only its owner may release it.
+    final token = '$pid-${DateTime.now().microsecondsSinceEpoch}-'
+        '${_rng.nextInt(1 << 32)}';
     final waited = Stopwatch()..start();
+    var notALock = 0;
     while (true) {
       try {
         await lock.create(exclusive: true);
@@ -331,22 +420,35 @@ class DevLog {
       } on PathNotFoundException {
         rethrow; // the folder is gone, not a busy lock
       } on FileSystemException {
-        if (waited.elapsed < lockWait) {
-          await Future<void>.delayed(const Duration(milliseconds: 2));
-          continue;
+        // Never wait forever: the line is dropped (the caller catches) and the
+        // chain moves on, so later writes and the export are not blocked.
+        if (waited.elapsed > lockWait * 3) rethrow;
+        final age = await _age(lock);
+        if (age != null) {
+          notALock = 0;
+          // An empty or foreign lock is live until its mtime says otherwise.
+          // Taking over also needs this waiter to have waited a full lockWait:
+          // among waiters on one dead lock the earliest-waiting one goes first,
+          // and the others then meet its fresh lock instead of racing it.
+          if (_stale(age) && waited.elapsed >= lockWait) {
+            if (_takeOver(lock, token)) break;
+          }
+        } else if (++notALock >= 5) {
+          // Not a lock file (a directory at the path), or nothing there and
+          // still no create: a full disk, a denied folder. Waiting does not fix
+          // it.
+          rethrow;
         }
-        // Held for too long: its writer died. Take it over.
-        try {
-          await lock.delete();
-        } catch (_) {}
-        waited.reset();
+        await Future<void>.delayed(const Duration(milliseconds: 2));
       }
     }
     try {
+      // Until the token lands the lock is empty: others see it as live by mtime.
+      await lock.writeAsString(token);
       await file.writeAsBytes(bytes, mode: FileMode.append);
     } finally {
       try {
-        await lock.delete();
+        if (await lock.readAsString() == token) await lock.delete();
       } catch (_) {}
     }
   }

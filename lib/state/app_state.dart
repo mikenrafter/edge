@@ -155,7 +155,8 @@ import '../sync/high_freq_wake_window.dart';
 import '../sync/ios_bg_task.dart';
 import '../sync/reset_gate.dart';
 import '../sync/paired_device.dart';
-import '../sync/sync_policy.dart' show BandPromptPolicy, BandPromptRequest;
+import '../sync/sync_policy.dart'
+    show BandPromptPolicy, BandPromptRequest, kIosBackgroundPromptReason;
 import '../sync/update_service.dart';
 import '../telemetry/telemetry_service.dart';
 import '../telemetry/health_uploader.dart';
@@ -5307,9 +5308,9 @@ class AppState extends ChangeNotifier {
       var plan = _currentWakePlan();
       if (plan == null) return;
       // No saved expected schedule: the night's DETECTED sleep onset (the
-      // persisted derive candidate) decides main sleep vs nap. None detectable
-      // leaves it null and the planner keeps answering "unknown" — never a
-      // guessed onset.
+      // persisted derive candidate) says how long they have slept so far. None
+      // detectable leaves it null and the early wake is not held back — never
+      // a guessed onset.
       if (plan.naturalMinutes > 0 && plan.expectedSchedule == null) {
         plan = plan.withSleepOnset(await loadDetectedSleepOnset(plan.wakeAt));
       }
@@ -5404,7 +5405,13 @@ class AppState extends ChangeNotifier {
     final from = wakeAt.subtract(naturalCollectionLead(planned.minutes));
     if (now.isBefore(from) || !now.isBefore(wakeAt)) return;
     final until = engine.highFreqUntil;
+    // Only a wake-window lease (61 s prompts) collects for the stager. The iOS
+    // background keep-alive lease prompts every 900 s: it can run past the
+    // alarm without covering the window, so it must not suppress the request.
+    final reason = engine.highFreqReason;
     final covered = until != null &&
+        reason != null &&
+        reason != kIosBackgroundPromptReason &&
         until.isAfter(now.add(const Duration(minutes: 3))) &&
         !until.isBefore(wakeAt);
     if (covered) return;

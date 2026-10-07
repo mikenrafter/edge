@@ -4,6 +4,8 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/state/control_operations.dart'
+    show ExpectedSleepSchedule;
 import 'package:openstrap_edge/sync/headless_gate.dart';
 import 'package:openstrap_edge/wake/natural_wake.dart';
 import 'package:openstrap_edge/wake/wake_orchestrator.dart';
@@ -176,15 +178,45 @@ void main() {
           reason: 'a later healthy tick recovers');
     });
 
-    test('main sleep only: a nap alarm never reaches the stager', () async {
+    test('no main-sleep gate: an afternoon alarm the user scheduled, with no '
+        'onset known, reaches the stager and fires on an awake stage',
+        () async {
       final r = Rig(at: DateTime(2026, 10, 5, 14, 20));
       final nap = DateTime(2026, 10, 5, 15, 0);
-      await r.orchestrator.tick(planFor(nap, natural: 60));
+      final out = await r.orchestrator.tick(planFor(nap, natural: 60));
+      expect(r.observer.requests, isNotEmpty);
+      expect(out.naturalFired, isTrue);
+      expect(r.env.haptics, hasLength(1));
+    });
+
+    test('a sleep that began under 45 min ago never reaches the stager; at 45 '
+        'min it does', () async {
+      final r = Rig(at: DateTime(2026, 10, 5, 14, 20));
+      final wake = DateTime(2026, 10, 5, 15, 0);
+      await r.orchestrator.tick(planFor(wake,
+          natural: 60, sleepOnset: DateTime(2026, 10, 5, 13, 40)));
       expect(r.observer.requests, isEmpty);
       expect(r.env.haptics, isEmpty);
-      final n = await r.trace.forWake(nap.millisecondsSinceEpoch ~/ 1000);
+      final n = await r.trace.forWake(wake.millisecondsSinceEpoch ~/ 1000);
       expect(n.where((e) => e.kind == 'natural').last.data['reason'],
-          'ineligibleNap');
+          'tooSoonAfterOnset');
+
+      final r2 = Rig(at: DateTime(2026, 10, 5, 14, 20));
+      final out = await r2.orchestrator.tick(planFor(wake,
+          natural: 60, sleepOnset: DateTime(2026, 10, 5, 13, 35)));
+      expect(out.naturalFired, isTrue);
+    });
+
+    test('a saved schedule supplies the onset when none is detected', () async {
+      // Schedule 14:00-22:00 -> onset 14:00; now 14:20, so 20 min of sleep.
+      final r = Rig(at: DateTime(2026, 10, 5, 14, 20));
+      final wake = DateTime(2026, 10, 5, 15, 0);
+      await r.orchestrator.tick(planFor(wake,
+          natural: 60,
+          expected: const ExpectedSleepSchedule(
+              onsetMinute: 14 * 60, wakeMinute: 22 * 60)));
+      expect(r.observer.requests, isEmpty);
+      expect(r.env.haptics, isEmpty);
     });
 
     test('an unresolved upgrade explanation keeps Natural inactive', () async {

@@ -71,10 +71,14 @@ class _Repo extends LocalRepository {
 }
 
 /// Pumps (with real delays between frames) until the screen's spinner is gone;
-/// fails the test if it is still showing after the budget.
-Future<void> settle(WidgetTester t) async {
+/// fails the test if it is still showing after [within]. The wait is on the
+/// spinner going away, not on a frame count: the first test in a file opens
+/// the database cold, and under load that outlasts any fixed number of frames.
+Future<void> settle(WidgetTester t,
+    {Duration within = const Duration(seconds: 30)}) async {
+  final end = DateTime.now().add(within);
   var loaded = false;
-  for (var i = 0; i < 40 && !loaded; i++) {
+  while (!loaded && DateTime.now().isBefore(end)) {
     await t.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)));
     await t.pump(const Duration(milliseconds: 16));
@@ -82,7 +86,7 @@ Future<void> settle(WidgetTester t) async {
   }
   if (!loaded) {
     throw TestFailure('the Wellness screen still shows a '
-        'CircularProgressIndicator after settling');
+        'CircularProgressIndicator after ${within.inSeconds} s');
   }
   for (var i = 0; i < 8; i++) {
     await t.pump(const Duration(milliseconds: 32));

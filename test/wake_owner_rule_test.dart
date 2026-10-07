@@ -27,7 +27,6 @@ import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/sync/background_sync.dart';
 import 'package:openstrap_edge/sync/high_freq_wake_window.dart';
-import 'package:openstrap_edge/wake/natural_wake.dart';
 import 'package:openstrap_edge/wake/sleep_onset.dart';
 import 'package:openstrap_edge/wake/wake_settings.dart';
 import 'package:openstrap_edge/wake/wake_stores.dart';
@@ -257,39 +256,6 @@ void main() {
     });
   });
 
-  group('the planner with a detected onset', () {
-    final wakeAt = DateTime(2026, 10, 6, 14, 0);
-
-    test('no schedule + a detected onset 8 h back: main sleep', () {
-      expect(
-          NaturalWakePlanner.classify(
-              wakeAt: wakeAt,
-              expected: null,
-              sleepOnset: wakeAt.subtract(const Duration(hours: 8))),
-          SleepEligibility.mainSleep);
-    });
-
-    test('no schedule + a short span: nap', () {
-      expect(
-          NaturalWakePlanner.classify(
-              wakeAt: wakeAt,
-              expected: null,
-              sleepOnset: wakeAt.subtract(const Duration(hours: 2))),
-          SleepEligibility.nap);
-    });
-
-    test('no schedule and no onset: unknown', () {
-      expect(NaturalWakePlanner.classify(wakeAt: wakeAt),
-          SleepEligibility.unknown);
-    });
-
-    test('a saved schedule decides, as before', () {
-      const s = ExpectedSleepSchedule(onsetMinute: 6 * 60, wakeMinute: 14 * 60);
-      expect(NaturalWakePlanner.classify(wakeAt: wakeAt, expected: s),
-          SleepEligibility.mainSleep);
-    });
-  });
-
   group('the app, backgrounded, with the alarm not tracked', () {
     late FakeAlarmEngine band;
     late AppState app;
@@ -402,30 +368,32 @@ void main() {
       expect(await naturalReasons(), contains('fire'));
     });
 
-    test('with no schedule and no detectable onset it stays unknown and does '
-        'not fire', () async {
+    test('with no schedule and no detectable onset the early wake is not held '
+        'back: it fires on an awake stage', () async {
       await saveWeek();
       await app.debugArmNextAlarmOccurrence();
       await app.debugRefreshHighFreqWakeWindow();
 
       await app.debugKeepAliveTick();
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await until(() => !requested());
 
-      expect(requested(), isTrue);
-      expect(await naturalReasons(), ['ineligibleUnknown']);
+      expect(requested(), isFalse);
+      expect(await naturalReasons(), contains('fire'));
     });
 
-    test('with no schedule and a short detected sleep it is a nap', () async {
+    test('with no schedule and a detected sleep that began 30 min ago the '
+        'early wake stays quiet', () async {
       await saveWeek();
       await app.debugArmNextAlarmOccurrence();
-      await seedNight(wakeAt.subtract(const Duration(hours: 2)),
+      await seedNight(DateTime.now().subtract(const Duration(minutes: 30)),
           DateTime.now().subtract(const Duration(minutes: 3)));
       await app.debugRefreshHighFreqWakeWindow();
 
       await app.debugKeepAliveTick();
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
-      expect(await naturalReasons(), ['ineligibleNap']);
+      expect(requested(), isTrue);
+      expect(await naturalReasons(), ['tooSoonAfterOnset']);
     });
 
     test('a saved schedule is unchanged: it decides, onset or not', () async {
@@ -447,6 +415,7 @@ void main() {
         () async {
       await saveWeek();
       await app.debugArmNextAlarmOccurrence();
+      app.debugWakeObserver = ScriptedObserver()..next = stageObs('nrem');
       await app.debugRefreshHighFreqWakeWindow();
 
       List<String> lines() =>
@@ -462,15 +431,15 @@ void main() {
       expect(app.debugWakeTicksLogged, 3,
           reason: 'every tick reached the filter; none was coalesced away');
       expect(lines(), hasLength(1));
-      expect(lines().single, contains('reason=ineligibleUnknown'));
+      expect(lines().single, contains('reason=noRemCandidate'));
 
-      // The decision changes: a short sleep is detected, so it is a nap.
-      await seedNight(wakeAt.subtract(const Duration(hours: 2)),
+      // The decision changes: a sleep that began 30 min ago is detected.
+      await seedNight(DateTime.now().subtract(const Duration(minutes: 30)),
           DateTime.now().subtract(const Duration(minutes: 3)));
       await ticks(2);
       expect(app.debugWakeTicksLogged, 5);
       expect(lines(), hasLength(2), reason: 'one new line for the change');
-      expect(lines().first, contains('reason=ineligibleNap'));
+      expect(lines().first, contains('reason=tooSoonAfterOnset'));
       expect(lines().first, isNot(contains('onset=-')));
     });
 
