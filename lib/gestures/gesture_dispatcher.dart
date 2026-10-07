@@ -145,6 +145,13 @@ class GestureDispatcher {
   /// recorder owns the tap. Read on every tap.
   final bool Function()? labHold;
 
+  /// True when the band's haptic budget can play a gesture's haptics. Read on
+  /// every live double tap that would start a gesture (not one that adds to an
+  /// open repeat window, not the Device lab's benches), before any claim: false
+  /// means the gesture is not acted on at all, because an action without its
+  /// confirming haptic is worse than none. Null: no gate.
+  final bool Function()? hapticsAvailable;
+
   /// FeatureFlag.tapClassifiers, read on every tap so the switch bites at once.
   final bool Function() _tapClassifiersOn;
 
@@ -164,6 +171,7 @@ class GestureDispatcher {
     this.repeatSession,
     this.onFailed,
     this.labHold,
+    this.hapticsAvailable,
     bool Function()? tapClassifiersOn,
     this.actionTimeout = const Duration(seconds: 10),
     Future<bool> Function(String actionId)? performNative,
@@ -193,7 +201,10 @@ class GestureDispatcher {
   Future<List<GestureOutcome>> handle(StrapEvent e) async {
     if (_disposed || e.eventId != _doubleTapEventId) return const [];
     if (labHold?.call() == true) return const [];
-    if (!_tapClassifiersOn()) return _runActions(e, settings.doubleTapActions);
+    if (!_tapClassifiersOn()) {
+      if (_noHaptics(e)) return const [];
+      return _runActions(e, settings.doubleTapActions);
+    }
     // Lab mode: suspended whether or not the capture below can start (a late
     // tap, a duplicate, a failed start) so a tap never runs half the lab and
     // half the normal actions.
@@ -207,6 +218,7 @@ class GestureDispatcher {
       if (e.isLive) await _repeatTap(e, repeat, lab: true);
       return const [];
     }
+    if (_noHaptics(e)) return const [];
     final mg = ecgSupported?.call() == true;
     final method = settings.tapMethodFor(ecgSupported: mg);
     // With a 3-5 tap mapping, a live double tap is counted and its actions
@@ -223,6 +235,18 @@ class GestureDispatcher {
     // A late tap while a window is open is still not counted: it takes the
     // ordinary path (stale rules) below.
     return _runActions(e, settings.doubleTapActions);
+  }
+
+  /// True when [e], a live double tap that would START a gesture, finds the
+  /// band's haptic budget spent: nothing runs for it, and it takes no claim, so
+  /// the same tap can run once there is room. A tap inside an open repeat
+  /// window only adds to a gesture that has started, so it is never gated.
+  bool _noHaptics(StrapEvent e) {
+    final gate = hapticsAvailable;
+    if (gate == null || !e.isLive || repeatSession?.open == true) return false;
+    if (gate()) return false;
+    log?.call('[gesture] double-tap ignored: no band haptic budget left');
+    return true;
   }
 
   Future<List<GestureOutcome>> _runActions(StrapEvent e, Set<DeviceAction> actions,

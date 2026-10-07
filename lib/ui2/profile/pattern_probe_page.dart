@@ -26,8 +26,8 @@
 // says why under Play. The march never moves the cursor; a tap or a scroll
 // cancels it.
 //
-// A small display shows how many of the band's 30 commands in 2 minutes are
-// left and when the next one frees up. It is blurred until tapped, so its
+// A small display shows how many of the band's commands allowed in 2 minutes
+// (30 unless the developer changed our own limit) are left and when the next one frees up. It is blurred until tapped, so its
 // countdown does not pull the eye off the metronome.
 //
 // Finish (or going back) closes the probe, its transcripts go into the lab log,
@@ -554,6 +554,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
                       child: _LimitDisplay(
                         key: const ValueKey('pattern-limit'),
                         left: r.patternCommandsLeft,
+                        limit: r.patternCommandLimit,
                         nextIn: r.patternNextFreeIn,
                         blurred: _limitBlurred,
                         onTap: () =>
@@ -572,7 +573,7 @@ class _PatternProbePageState extends State<PatternProbePage> {
                   children: [
                     Text(
                       'Each play waits for the band to finish the last one; at '
-                      'most ${PatternProbe.maxCommandsPerWindow} commands in '
+                      'most ${r.patternCommandLimit} commands in '
                       'any 2 minutes; leaving this screen stops it.',
                       style: F.cap.copyWith(color: p.ink2, height: 1.3),
                     ),
@@ -1133,11 +1134,12 @@ class _LimitDisplay extends StatelessWidget {
   const _LimitDisplay({
     super.key,
     required this.left,
+    required this.limit,
     required this.nextIn,
     required this.blurred,
     required this.onTap,
   });
-  final int left;
+  final int left, limit;
   final Duration? nextIn;
   final bool blurred;
   final VoidCallback onTap;
@@ -1150,7 +1152,7 @@ class _LimitDisplay extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          '$left of ${PatternProbe.maxCommandsPerWindow} left',
+          '$left of $limit left',
           maxLines: 1,
           style: F.cap.copyWith(
             color: left < 5 ? C.red : p.ink2,

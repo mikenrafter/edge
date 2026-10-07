@@ -976,7 +976,7 @@ class _HardwareProbePanelState extends State<HardwareProbePanel> {
                       Text(
                         'MG only. Opens a screen where you play custom buzz '
                         'patterns and tap out what you felt as buzz and gap '
-                        'lengths, at most ${PatternProbe.maxCommandsPerWindow} '
+                        'lengths, at most ${r.patternCommandLimit} '
                         'commands in any 2 minutes. Leaving the screen ends '
                         'it.',
                         style: F.cap.copyWith(color: p.ink2, height: 1.4),

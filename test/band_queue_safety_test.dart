@@ -346,7 +346,10 @@ void main() {
       });
     });
 
-    test('finding 4: a job rejected for waiting too long consumes nothing', () {
+    // Owner rule (haptic budget): a plain job is not dropped for waiting; it
+    // consumes nothing while it waits.
+    test('finding 4: a job waiting for room consumes nothing while it waits, '
+        'and is not dropped at its start deadline', () {
       fakeAsync((async) {
         final l = BandCommandLedger()..record(29, clock.now());
         final q = newQueue(l);
@@ -355,8 +358,11 @@ void main() {
             commands: 5, timeout: _s, startBy: const Duration(seconds: 15))
             .then((v) => out = v);
         async.elapse(const Duration(seconds: 20));
-        expect(out, BuzzDelivery.rejected);
-        expect(l.commandsLeft(clock.now()), 1);
+        expect(out, isNull, reason: 'waiting, not rejected at 15 s');
+        expect(l.commandsLeft(clock.now()), 1, reason: 'nothing reserved');
+        expect(q.pending, 1);
+        async.elapse(const Duration(seconds: 100));
+        expect(out, BuzzDelivery.complete, reason: 'the window had room');
       });
     });
 

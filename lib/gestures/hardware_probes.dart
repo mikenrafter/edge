@@ -145,7 +145,8 @@ class HapticProbe {
     }
   }
 
-  /// Hardware health: no run sends more than this many buzzes.
+  /// No run sends more than this many buzzes (a cap of the probe itself; the
+  /// ledger's limit may be lower).
   static const int maxCommands = 30;
 
   /// Spacings either side of what is known (300 ms pairs play; a third 300 ms
@@ -230,10 +231,19 @@ class HapticProbe {
     final room = _ledger.reserve(total, _now());
     if (room == null) {
       _refused = true;
+      final limit = _ledger.limitNow;
+      if (total > limit) {
+        // More than the limit in force (Settings > Developer): waiting never
+        // helps, so say so instead of a rest time.
+        step?.call('Buzz probe: $total buzzes is more than the limit of '
+            '$limit commands per ${BandCommandLedger.window.inMinutes} '
+            'minutes; nothing was sent.');
+        return results;
+      }
       final secs =
           (_ledger.waitFor(total, _now()).inMilliseconds / 1000).ceil();
       step?.call('Buzz probe: resting the band; ready in $secs s '
-          '($maxCommands commands per ${BandCommandLedger.window.inMinutes} '
+          '($limit commands per ${BandCommandLedger.window.inMinutes} '
           'minutes).');
       return results;
     }
@@ -506,7 +516,9 @@ class PatternProbe {
         _ledger = ledger ?? BandCommandLedger(),
         _runLab = runLab;
 
-  /// Hardware health: at most this many commands in any [commandWindow].
+  /// The default for how many commands go to the band in any [commandWindow]
+  /// (a precaution we chose; the developer may set 10 to 60, see
+  /// [BandCommandLedger]).
   static const int maxCommandsPerWindow = BandCommandLedger.maxCommands;
   static const Duration commandWindow = BandCommandLedger.window;
 
@@ -630,7 +642,7 @@ class PatternProbe {
       _refuse(
         PatternRefusal.resting,
         'Pattern probe: resting the band; ready in $secs s '
-        '($maxCommandsPerWindow commands per ${commandWindow.inMinutes} '
+        '(${_ledger.limitNow} commands per ${commandWindow.inMinutes} '
         'minutes).',
         until: until,
       );

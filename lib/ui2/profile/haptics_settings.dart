@@ -238,6 +238,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       allowLong: _allowLong,
       devMode: caps.has(Feature.developerMode),
       commandsLeft: app.haptics.commandsLeft,
+      commandLimit: app.haptics.ledger.limitNow,
       queued: app.haptics.pending,
       bandConnected: caps.has(Feature.bandBuzz),
       onPlay: app.previewBuzzSequence,
@@ -285,6 +286,7 @@ class HapticsSettingsView extends StatelessWidget {
     required this.devMode,
     required this.commandsLeft,
     required this.queued,
+    this.commandLimit = 30,
     required this.bandConnected,
     required this.onPlay,
     required this.onBuzz,
@@ -318,6 +320,10 @@ class HapticsSettingsView extends StatelessWidget {
 
   /// Band commands left in the rolling window, and jobs waiting in the queue.
   final int commandsLeft, queued;
+
+  /// The command limit per 2 minutes in force (a precaution we chose, see
+  /// [BandCommandLedger]); the read-out shows it.
+  final int commandLimit;
 
   final Future<bool> Function(BuzzSequence) onPlay;
   final VoidCallback onBuzz, onDeviceLab;
@@ -667,7 +673,9 @@ class HapticsSettingsView extends StatelessWidget {
       ),
       subtitle: Text(
         '$_riskCaption The limit of 8 commands per pattern, the band queue '
-        'and the 30 commands per 2 minutes still apply.',
+        'and our own limit of $commandLimit commands per 2 minutes (a '
+        'precaution for the motor and battery, not a band limit) still '
+        'apply.',
         style: F.over.copyWith(color: p.ink3),
       ),
       onChanged: (v) {
@@ -684,7 +692,7 @@ class HapticsSettingsView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$commandsLeft of ${BandCommandLedger.maxCommands} band commands '
+            '$commandsLeft of $commandLimit band commands '
             'left in the last 2 minutes',
             style: F.cap.copyWith(color: p.ink2),
           ),

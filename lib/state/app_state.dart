@@ -712,6 +712,7 @@ class AppState extends ChangeNotifier {
       HapticsService(
         port: BleEngineHapticsPort(() => engine),
         allowLong: () => Prefs.allowLongHaptics,
+        commandLimit: () => Prefs.hapticCommandLimit,
         log: _log,
       );
   HapticsService? _hapticsForTesting;
@@ -3307,13 +3308,19 @@ class AppState extends ChangeNotifier {
         await _gestures.loadCues();
         if (_disposed) return;
       }
-      await haptics.asLabWork(() => ackTap(alertDispatcher, e, outcomes,
-          bandDelivery: haptics.profile == null
-              ? null
-              : () async {
-                  if (_disposed) return BuzzDelivery.rejected;
-                  return gestureCues.confirm();
-                }));
+      // The ack is the haptic of a gesture whose action already ran, so it is
+      // an already-started gesture haptic: it always plays (never rejected for
+      // the window), is never late, and is not counted past the command limit.
+      await haptics.asGesture(
+          'ack:${e.identity}:${e.receivedAt.microsecondsSinceEpoch}',
+          started: true,
+          () => haptics.asLabWork(() => ackTap(alertDispatcher, e, outcomes,
+              bandDelivery: haptics.profile == null
+                  ? null
+                  : () async {
+                      if (_disposed) return BuzzDelivery.rejected;
+                      return gestureCues.confirm();
+                    })));
     }));
   }
 

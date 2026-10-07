@@ -93,6 +93,9 @@ class GestureController {
         _recordGestureFailure(e, kind, reason);
       },
       labHold: labHold,
+      // A gesture whose haptics cannot play is not acted on: no action without
+      // its confirming buzz. Read at every live double tap.
+      hapticsAvailable: () => haptics.commandsLeft > 0,
     );
   }
 
@@ -340,19 +343,31 @@ class GestureController {
     if (_disposed) return false;
     final now = DateTime.now();
     final loaded = loadCues();
-    final r = await _haptics.asLabWork(() => _alertDispatcher().dispatch(
-          kEcgTapRule,
-          eventId: eventId,
-          sourceTime: now,
-          historical: false,
-          bandTimeout: const Duration(seconds: 10),
-          bandDelivery: () async {
-            await loaded;
-            if (_disposed) return BuzzDelivery.rejected;
-            return play();
-          },
-        ));
+    // Every cue of one gesture shares its base id: the queue plays them all
+    // once the first has started, and never plays one late.
+    final r = await _haptics.asGesture(
+        _gestureIdOf(eventId),
+        () => _haptics.asLabWork(() => _alertDispatcher().dispatch(
+              kEcgTapRule,
+              eventId: eventId,
+              sourceTime: now,
+              historical: false,
+              bandTimeout: const Duration(seconds: 10),
+              bandDelivery: () async {
+                await loaded;
+                if (_disposed) return BuzzDelivery.rejected;
+                return play();
+              },
+            )));
     return r.targets.contains('band');
+  }
+
+  /// The gesture a cue event id belongs to: its `<base>:ecg:<cue>` or
+  /// `<base>:rep:<cue>` without the cue; any other id is a gesture of its own.
+  static String _gestureIdOf(String eventId) {
+    final at = [eventId.lastIndexOf(':ecg:'), eventId.lastIndexOf(':rep:')]
+        .reduce((a, b) => a > b ? a : b);
+    return at > 0 ? eventId.substring(0, at) : eventId;
   }
 
   /// The gesture-start cue, sent the moment the double tap is accepted;

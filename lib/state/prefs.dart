@@ -12,6 +12,11 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../compute/calc_power_policy.dart' show CalcPowerMode;
+import '../haptics/band_queue.dart'
+    show
+        kBandCommandLimitDefault,
+        kBandCommandLimitMax,
+        kBandCommandLimitMin;
 
 class Prefs {
   Prefs._();
@@ -94,6 +99,16 @@ class Prefs {
   /// 8-command plan cap and the band's rolling command limit still apply.
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
   static bool get allowLongHaptics => getBool(hapticsAllowLong, false);
+
+  /// Developer setting: how many band haptic commands may be sent in any 2
+  /// minutes, 10..60, default 30. Read on every use (the ledger asks each
+  /// time); a stored value out of range is clamped on read.
+  static const String hapticsCommandLimit = 'haptics_command_limit';
+  static int get hapticCommandLimit =>
+      getInt(hapticsCommandLimit, kBandCommandLimitDefault)
+          .clamp(kBandCommandLimitMin, kBandCommandLimitMax);
+  static void setHapticCommandLimit(int v) => setInt(hapticsCommandLimit,
+      v.clamp(kBandCommandLimitMin, kBandCommandLimitMax));
 
   /// The notes editor's mode, 'follow_rhythm' (the default: every note is
   /// a `*` note and the dynamics bar is hidden) or 'allow_dynamics'.
