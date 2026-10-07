@@ -672,6 +672,11 @@ void main() {
     test('with no repo the live session is still torn down', () async {
       final app = AppState.forTesting();
       app.startWorkout(workoutId: 'w4-norepo', type: 'strength');
+      // startWorkout writes the live row fire-and-forget. Nothing earlier in
+      // this test has touched LocalDb, so that write waits on a cold database
+      // open, which under load outlasts finish()'s fixed settle and lands
+      // after tearDown closes the handle. Wait on the row, not on a delay.
+      await sessionLanded('w4-norepo');
       await app.deleteWorkout('w4-norepo');
       expect(app.activeWorkout, isNull);
       await finish(app);
