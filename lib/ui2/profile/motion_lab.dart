@@ -191,7 +191,7 @@ class _MotionLabPanelState extends State<MotionLabPanel> {
     });
     try {
       final archive = await widget.store.exportAll();
-      if (!mounted) return;
+      if (!mounted || !c.mounted) return;
       final origin = shareOrigin(c);
       var ok = false;
       try {
