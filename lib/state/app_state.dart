@@ -5703,10 +5703,6 @@ class AppState extends ChangeNotifier {
   /// app plays its own pattern, never consumes it.
   DateTime? _consumedFireAt;
 
-  /// When the app's last band playback ended (the app's wake clock), and
-  /// whether it is playing: terminations then are our own pattern ending.
-  DateTime? _appPlaybackEndedAt;
-
   /// The app's recent band playbacks (start, end), in the app's wake clock:
   /// the newest few. A termination is attributed to them by its EVENT time.
   final List<(DateTime, DateTime)> _appPlaybacks = [];
@@ -5718,7 +5714,6 @@ class AppState extends ChangeNotifier {
       _appPlaybackStartedAt ??= now;
       return;
     }
-    _appPlaybackEndedAt = now;
     _appPlaybacks.add((_appPlaybackStartedAt ?? now, now));
     _appPlaybackStartedAt = null;
     if (_appPlaybacks.length > 32) _appPlaybacks.removeAt(0);
@@ -5745,12 +5740,6 @@ class AppState extends ChangeNotifier {
       if (!phoneTime.isBefore(start) && !phoneTime.isAfter(last)) return true;
     }
     return false;
-  }
-
-  bool _appPlaying() {
-    if (haptics.playing) return true;
-    final ended = _appPlaybackEndedAt;
-    return ended != null && _wakeNow().difference(ended) < kAppPlaybackTail;
   }
 
   /// strap RTC to phone: `phone = strap + driftSec` ([ClockRef]); 0 until the
@@ -6079,11 +6068,6 @@ class AppState extends ChangeNotifier {
   Future<void> _handleHapticsTerminated(String cause, DateTime receivedAt,
       {DateTime? bandAt}) async {
     if (!_snoozeOn) return;
-    if (_appPlaying()) {
-      _log('[snooze] stop ($cause) while the app plays its own pattern (or '
-          'just after): that is our pattern ending, not the alarm.');
-      return;
-    }
     final fired = _nativeAlarmFiredAt;
     if (fired == null) {
       _log('[snooze] stop ($cause) with no native alarm having fired: not an '
@@ -6112,11 +6096,14 @@ class AppState extends ChangeNotifier {
     final unset = bandAt == null || _nativeFireClockUnset;
     final fire = unset ? (_nativeFireReceivedAt ?? fired) : fired;
     final stop = unset ? receivedAt : _strapToPhone(bandAt);
-    if (!unset && _insideAppPlayback(stop, fire)) {
-      // Attributed by EVENT time: this ended our own playback, however late
-      // it was heard (receipt-time mode is attributed by receipt, above).
-      _log('[snooze] stop ($cause) stamped inside the app\'s own playback '
-          '(heard late): that is our pattern ending, not the alarm.');
+    // Our own playback ending is told apart by the stop's EVENT time when it
+    // has a usable stamp (however late or promptly it was heard), and by
+    // RECEIPT only in receipt-time mode. Tails are clipped at the fire either
+    // way; a receipt-time fire is the fire's receipt time.
+    if (_insideAppPlayback(stop, fire)) {
+      _log('[snooze] stop ($cause) ${unset ? 'heard' : 'stamped'} inside the '
+          'app\'s own playback (or just after): that is our pattern ending, '
+          'not the alarm.');
       return;
     }
     final since = stop.difference(fire);
