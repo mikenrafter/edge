@@ -22,6 +22,11 @@
 //    targetOnset; wake is the first moment after that with wall clock
 //    targetWake. Days before the departure date are in originTz, from the
 //    departure date on in destTz.
+//  * Each planned night is carried as a dated instant, and [TravelDay.date] is
+//    read back from that instant in the day's zone. So across the date line a
+//    calendar date can be skipped (westward) or appear in both zones
+//    (eastward), but two nights never share an instant and consecutive nights
+//    stay about 24 h apart.
 //  * Shift is measured in real elapsed time against the habitual wall-clock
 //    chain in originTz, so a DST change in either zone is handled by the tz
 //    database, never by adding 24 h.
@@ -109,7 +114,9 @@ class TravelPlan {
 }
 
 /// Throws [ArgumentError] for an unknown IANA name. Same offset on the
-/// departure date: an empty plan, shiftHours 0, reason 'no time-zone change'.
+/// departure date AND a wanted schedule equal to the usual one: an empty plan,
+/// shiftHours 0, reason 'no time-zone change'. Same offset with a different
+/// wanted schedule is planned as a pure schedule shift (shiftHours 0).
 TravelPlan plan(TravelInput input) {
   final origin = _location(input.originTz);
   final dest = _location(input.destTz);
@@ -119,7 +126,6 @@ TravelPlan plan(TravelInput input) {
   final oOff = _offsetMinutes(origin, dep);
   final dOff = _offsetMinutes(dest, dep);
   final zone = dOff - oOff;
-  if (zone == 0) return _noChange();
   final zoneHours = (_wrap(zone, 720, zone) / 60).round();
 
   // Total shift per series, in minutes, + = earlier. A series is the sleep
@@ -145,22 +151,27 @@ TravelPlan plan(TravelInput input) {
       math.max(zoneHours.abs(), (needOnset.abs() / 60).round()) >=
           kAmbiguousShiftHours;
   for (var k = 1; k <= lastIndex; k++) {
-    final date = DateTime(dep.year, dep.month, dep.day - lead + k - 1);
+    final chainDate = DateTime(dep.year, dep.month, dep.day - lead + k - 1);
     final before = k <= lead;
     final loc = before ? origin : dest;
     final shiftOnset = _shiftAt(needOnset, k);
     final shiftWake = _shiftAt(needWake, k);
 
     // The habitual night in the origin zone on this date, as real instants.
-    final startH = _nightStart(origin, date, input.habitualOnset);
+    final startH = _nightStart(origin, chainDate, input.habitualOnset);
     final wakeH = _wakeAfter(startH, input.habitualWake);
 
-    final Duration onsetClock, wakeClock;
-    if (k >= stepsOnset && !before) {
-      onsetClock = wantOnset;
-    } else {
-      onsetClock = _clockIn(loc, startH.subtract(Duration(minutes: shiftOnset)));
-    }
+    // The planned onset as a dated instant, seen in this day's zone. Once the
+    // shift is complete the wanted wall clock is used exactly (the offsets were
+    // read on the departure date, so a later DST change must not nudge it): the
+    // instant of that wall clock nearest the stepped one.
+    var onsetAt = tz.TZDateTime.from(
+        startH.subtract(Duration(minutes: shiftOnset)), loc);
+    if (k >= stepsOnset && !before) onsetAt = _snap(loc, onsetAt, wantOnset);
+    final onsetClock = Duration(hours: onsetAt.hour, minutes: onsetAt.minute);
+    final date = _nightDate(onsetAt);
+
+    final Duration wakeClock;
     if (k >= stepsWake && !before) {
       wakeClock = wantWake;
     } else {
@@ -265,6 +276,24 @@ tz.TZDateTime _wakeAfter(tz.TZDateTime onset, Duration clock) {
         clock.inHours, clock.inMinutes % 60);
   }
   return w;
+}
+
+/// The calendar date of the evening a night starting at [onset] belongs to:
+/// the same local date for an onset from 12:00 on, the previous one before it.
+DateTime _nightDate(tz.TZDateTime onset) => DateTime(
+    onset.year, onset.month, onset.hour >= 12 ? onset.day : onset.day - 1);
+
+/// The instant with wall clock [clock] in [loc] nearest to [p] (in [loc]).
+tz.TZDateTime _snap(tz.Location loc, tz.TZDateTime p, Duration clock) {
+  tz.TZDateTime? best;
+  for (var d = -1; d <= 1; d++) {
+    final c = tz.TZDateTime(loc, p.year, p.month, p.day + d, clock.inHours,
+        clock.inMinutes % 60);
+    if (best == null || c.difference(p).abs() < best.difference(p).abs()) {
+      best = c;
+    }
+  }
+  return best!;
 }
 
 /// The wall clock of the instant [t] in [loc], since local midnight.

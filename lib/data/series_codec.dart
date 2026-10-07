@@ -60,6 +60,12 @@ class SeriesCodec {
     'zone_timeline': 'z',
   };
 
+  /// Curves whose points carry ONE optional extra column beside `t` and the
+  /// value. `hr_curve` points are `{t, v, n}` (`n` = valid seconds behind the
+  /// minute); days stored before `n` existed are plain `{t, v}`. A curve is all
+  /// one shape or the other; a mix is left legacy.
+  static const Map<String, String> seriesExtraKeys = {'hr_curve': 'n'};
+
   /// Curves living at the bundle ROOT rather than under `series`.
   /// `activity_curve` is surfaced by `v_series` like the rest, so it gets the
   /// same treatment.
@@ -82,21 +88,37 @@ class SeriesCodec {
   ///   • a `t` that is not an `int` — a double `t` would come back out of the
   ///     SQL branch as `t0 + key*dt` in a different numeric type than
   ///     `json_extract($.t)` produced before
-  static Object? encodeCurve(Object? raw, {String valueKey = 'v'}) {
+  ///
+  /// [extraKey] names one optional extra column (see [seriesExtraKeys]): every
+  /// point is `{t, valueKey}` or every point is `{t, valueKey, extraKey}`.
+  static Object? encodeCurve(
+    Object? raw, {
+    String valueKey = 'v',
+    String? extraKey,
+  }) {
     if (raw is! List || raw.length < minPoints) return raw;
 
     final ts = <int>[];
     final vs = <Object?>[];
+    final xs = <Object?>[];
+    final withExtra = extraKey != null &&
+        raw.first is Map &&
+        (raw.first as Map).containsKey(extraKey);
     for (final e in raw) {
       if (e is! Map) return raw;
-      // Exactly {t, valueKey} — nothing else survives the columnar form.
-      if (e.length != 2 || !e.containsKey('t') || !e.containsKey(valueKey)) {
+      // Exactly {t, valueKey} (plus extraKey on every point or none) — nothing
+      // else survives the columnar form.
+      if (e.length != (withExtra ? 3 : 2) ||
+          !e.containsKey('t') ||
+          !e.containsKey(valueKey) ||
+          (withExtra && !e.containsKey(extraKey))) {
         return raw;
       }
       final t = e['t'];
       if (t is! int) return raw;
       ts.add(t);
       vs.add(e[valueKey]);
+      if (withExtra) xs.add(e[extraKey]);
     }
 
     // A single positive delta across the whole curve ⇒ a true grid.
@@ -109,7 +131,9 @@ class SeriesCodec {
           break;
         }
       }
-      if (regular) return {'t0': ts[0], 'dt': dt, 'v': vs};
+      if (regular) {
+        return {'t0': ts[0], 'dt': dt, 'v': vs, if (withExtra) extraKey: xs};
+      }
     }
 
     final t0 = ts[0];
@@ -117,6 +141,7 @@ class SeriesCodec {
       't0': t0,
       'to': [for (final t in ts) t - t0],
       'v': vs,
+      if (withExtra) extraKey: xs,
     };
   }
 
@@ -141,6 +166,7 @@ class SeriesCodec {
         encodedSeries[entry.key] = encodeCurve(
           encodedSeries[entry.key],
           valueKey: entry.value,
+          extraKey: seriesExtraKeys[entry.key],
         );
       }
       out['series'] = encodedSeries;
@@ -179,17 +205,30 @@ class SeriesCodec {
   /// happened to sit under a curve key would be replaced by nothing on the way
   /// out. Handing the value back unchanged costs the same and cannot destroy
   /// anything; a caller that wanted a curve still sees a non-List and ignores it.
-  static Object? decodeCurve(Object? raw, {String valueKey = 'v'}) {
+  static Object? decodeCurve(
+    Object? raw, {
+    String valueKey = 'v',
+    String? extraKey,
+  }) {
     if (raw is! Map) return raw;
 
     final t0 = raw['t0'];
     final vs = raw['v'];
     if (t0 is! int || vs is! List) return raw;
 
+    // The optional extra column: absent, or exactly as long as the values.
+    final xs = extraKey == null ? null : raw[extraKey];
+    if (xs != null && (xs is! List || xs.length != vs.length)) return raw;
+    Map<String, Object?> point(int t, int i) => {
+          't': t,
+          valueKey: vs[i],
+          if (xs != null) extraKey!: (xs as List)[i],
+        };
+
     final dt = raw['dt'];
     if (dt is int) {
       return [
-        for (var i = 0; i < vs.length; i++) {'t': t0 + i * dt, valueKey: vs[i]},
+        for (var i = 0; i < vs.length; i++) point(t0 + i * dt, i),
       ];
     }
 
@@ -212,8 +251,7 @@ class SeriesCodec {
       if (o is! int) return raw;
     }
     return [
-      for (var i = 0; i < vs.length; i++)
-        {'t': t0 + (to[i] as int), valueKey: vs[i]},
+      for (var i = 0; i < vs.length; i++) point(t0 + (to[i] as int), i),
     ];
   }
 
@@ -238,7 +276,11 @@ class SeriesCodec {
       for (final entry in seriesCurves.entries) {
         final cur = decodedSeries[entry.key];
         if (cur is! Map) continue; // legacy or absent — nothing to do
-        decodedSeries[entry.key] = decodeCurve(cur, valueKey: entry.value);
+        decodedSeries[entry.key] = decodeCurve(
+          cur,
+          valueKey: entry.value,
+          extraKey: seriesExtraKeys[entry.key],
+        );
       }
       out['series'] = decodedSeries;
     }

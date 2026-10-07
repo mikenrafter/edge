@@ -1930,7 +1930,15 @@ double _round(double v, int dp) {
   return (v * p).round() / p;
 }
 
-/// HR curve downsampled to ~per-minute {t: epochSec, v: bpm} (valid only).
+/// HR curve downsampled to ~per-minute {t: epochSec, v: bpm, n: validSeconds}
+/// (valid only).
+///
+/// `n` is the number of valid (hr > 0) seconds the minute's mean was taken
+/// over, so a reader can tell a full minute from a single stray second. It is
+/// ADDITIVE: no metric reads it and `t`/`v` are unchanged, so this does not
+/// bump `kAlgoVersion`. Days stored before this carry no `n`; a reader that
+/// needs it (the circadian explore fit) treats a missing `n` as unknown and
+/// abstains. New and re-derived days carry it.
 List<Map<String, num>> _downsampleHr(List<int> tsSec, List<int> hr) {
   final buckets = <int, List<double>>{};
   for (var i = 0; i < hr.length; i++) {
@@ -1940,7 +1948,8 @@ List<Map<String, num>> _downsampleHr(List<int> tsSec, List<int> hr) {
   }
   final keys = buckets.keys.toList()..sort();
   return [
-    for (final k in keys) {'t': k * 60, 'v': _mean(buckets[k]!)!.round()},
+    for (final k in keys)
+      {'t': k * 60, 'v': _mean(buckets[k]!)!.round(), 'n': buckets[k]!.length},
   ];
 }
 

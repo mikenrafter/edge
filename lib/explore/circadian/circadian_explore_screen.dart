@@ -127,6 +127,10 @@ class CircadianExploreScreen extends StatelessWidget {
           'Too many gaps: at least $kMinRhythmDays days with '
               '$kMinCoveredHoursPerDay hours or more of recorded heart rate '
               'are needed.',
+        RhythmRejection.unknownCoverage =>
+          'Too many gaps, or too little is known about them: days recorded '
+              'before per-minute coverage was kept cannot show how much of each '
+              'hour was recorded, so no peak is shown. Newly recorded days can.',
         RhythmRejection.flat =>
           'The daily swing is too flat to place a peak, so none is shown.',
         RhythmRejection.unstable =>

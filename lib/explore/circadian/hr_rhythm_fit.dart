@@ -7,11 +7,13 @@
 // dim-light melatonin onset, and fit quality is not accuracy.
 //
 // Strict admission, else null (never a guess; AGENTS.md section 3.3):
-//   * a bin counts only with a non-null meanHr and >= [kMinRealMinutesPerBin]
+//   * a bin counts only with a non-null meanHr and a KNOWN realMinutes >=
+//     [kMinRealMinutesPerBin] (unknown never counts)
 //   * a day counts only with >= [kMinCoveredHoursPerDay] covered hours
 //   * >= [kMinRhythmDays] such days
 //   * amplitude >= [kMinRhythmAmplitudeBpm], else flat
 //   * leave-one-day-out acrophase spread <= [kMaxPhaseSpreadHours], else unstable
+//   * per-day acrophase circular SD <= [kMaxDayPhaseSdHours], else unstable
 //
 // PROTOTYPE: phase estimation belongs in the analytics repo; this lives in edge
 // only to explore it, and moves there (AGENTS.md section 1).
@@ -19,7 +21,9 @@
 import 'dart:math' as math;
 
 /// One local clock hour of recorded HR. [hourStartLocal] is a local wall-clock
-/// hour start; [realMinutes] is minutes of real samples in that hour.
+/// hour start; [realMinutes] is minutes of real samples in that hour, or null
+/// when that is not knowable (a stored curve without per-minute sample counts).
+/// Null is unknown, never zero and never a full hour.
 class HourlyBin {
   const HourlyBin({
     required this.hourStartLocal,
@@ -28,16 +32,31 @@ class HourlyBin {
   });
   final DateTime hourStartLocal;
   final double? meanHr;
-  final int realMinutes;
+  final int? realMinutes;
 }
 
-enum RhythmRejection { tooFewDays, lowCoverage, flat, unstable }
+enum RhythmRejection {
+  tooFewDays,
+  lowCoverage,
+
+  /// Too few days passed the coverage gate, and some hours have no known
+  /// real-minute count (days stored without per-minute sample counts), so
+  /// whether they would have passed is unknown.
+  unknownCoverage,
+  flat,
+  unstable,
+}
 
 const int kMinRhythmDays = 7;
 const int kMinCoveredHoursPerDay = 18;
 const int kMinRealMinutesPerBin = 10;
 const double kMinRhythmAmplitudeBpm = 2.0;
 const double kMaxPhaseSpreadHours = 2.0;
+
+/// Day-to-day consistency: the circular standard deviation, in hours, of the
+/// acrophase fitted to each usable day on its own. Leave-one-out alone cannot
+/// see a step change (half the days at each of two phases barely moves it).
+const double kMaxDayPhaseSdHours = 2.0;
 
 class HrRhythm {
   const HrRhythm({
@@ -78,11 +97,14 @@ HrRhythm fitHrRhythm(List<HourlyBin> bins) {
   // day's admitted bins.
   final present = <int>{};
   final admittedByDay = <int, List<HourlyBin>>{};
+  var unknownBins = false; // an hour whose real-minute count is not known
   for (final b in bins) {
     final day = _dayKey(b.hourStartLocal);
     present.add(day);
     final hr = b.meanHr;
-    if (hr != null && hr.isFinite && b.realMinutes >= kMinRealMinutesPerBin) {
+    final real = b.realMinutes;
+    if (hr != null && hr.isFinite && real == null) unknownBins = true;
+    if (hr != null && hr.isFinite && real != null && real >= kMinRealMinutesPerBin) {
       (admittedByDay[day] ??= []).add(b);
     }
   }
@@ -108,7 +130,11 @@ HrRhythm fitHrRhythm(List<HourlyBin> bins) {
       );
 
   if (present.length < kMinRhythmDays) return reject(RhythmRejection.tooFewDays);
-  if (daysUsed < kMinRhythmDays) return reject(RhythmRejection.lowCoverage);
+  if (daysUsed < kMinRhythmDays) {
+    return reject(unknownBins
+        ? RhythmRejection.unknownCoverage
+        : RhythmRejection.lowCoverage);
+  }
 
   final days = usable.keys.toList()..sort();
   final all = <HourlyBin>[for (final d in days) ...usable[d]!];
@@ -128,6 +154,17 @@ HrRhythm fitHrRhythm(List<HourlyBin> bins) {
     loo.add(f.acrophaseHours);
   }
   if (_circularRangeHours(loo) > kMaxPhaseSpreadHours) {
+    return reject(RhythmRejection.unstable);
+  }
+
+  // Day to day: each day's own acrophase must agree with the others.
+  final perDay = <double>[];
+  for (final d in days) {
+    final f = _cosinor(usable[d]!);
+    if (f == null) return reject(RhythmRejection.unstable);
+    perDay.add(f.acrophaseHours);
+  }
+  if (_circularSdHours(perDay) > kMaxDayPhaseSdHours) {
     return reject(RhythmRejection.unstable);
   }
 
@@ -205,4 +242,18 @@ double _circularRangeHours(List<double> hours) {
     widest = math.max(widest, s[i] - s[i - 1]);
   }
   return 24 - widest;
+}
+
+/// Circular standard deviation of [hours] on the 24 h circle, in hours.
+double _circularSdHours(List<double> hours) {
+  if (hours.length < 2) return 0;
+  var c = 0.0, s = 0.0;
+  for (final h in hours) {
+    final a = 2 * math.pi * h / 24.0;
+    c += math.cos(a);
+    s += math.sin(a);
+  }
+  final r = math.sqrt(c * c + s * s) / hours.length;
+  if (r < 1e-12) return double.infinity;
+  return math.sqrt(-2 * math.log(math.min(1.0, r))) * 24.0 / (2 * math.pi);
 }

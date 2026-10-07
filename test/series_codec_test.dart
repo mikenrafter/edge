@@ -171,6 +171,55 @@ void main() {
       expect(SeriesCodec.encodeCurve(extra), same(extra));
     });
 
+    test('an extra key is only taken where the curve names it (hr_curve n)', () {
+      final withN = [
+        for (var i = 0; i < 4; i++) {'t': 100 + i * 60, 'v': 60 + i, 'n': 40 + i},
+      ];
+      // Default (no extra key named): still legacy.
+      expect(SeriesCodec.encodeCurve(withN), same(withN));
+      // Named: a grid with an n column that decodes back exactly.
+      final enc = SeriesCodec.encodeCurve(withN, extraKey: 'n') as Map;
+      expect(enc['n'], [40, 41, 42, 43]);
+      expect(enc['dt'], 60);
+      expect(SeriesCodec.decodeCurve(enc, extraKey: 'n'), withN);
+    });
+
+    test('n on some points only stays legacy', () {
+      final mixed = [
+        {'t': 100, 'v': 1, 'n': 5},
+        {'t': 160, 'v': 2},
+        {'t': 220, 'v': 3, 'n': 5},
+      ];
+      expect(SeriesCodec.encodeCurve(mixed, extraKey: 'n'), same(mixed));
+    });
+
+    test('n round-trips on an irregular curve and through a whole payload', () {
+      final curve = [
+        {'t': 100, 'v': 60, 'n': 59},
+        {'t': 160, 'v': 61, 'n': 1},
+        {'t': 400, 'v': 62, 'n': 30},
+      ];
+      final payload = {
+        'series': {'hr_curve': curve},
+      };
+      final enc = SeriesCodec.encodePayload(payload);
+      expect(((enc['series'] as Map)['hr_curve'] as Map).containsKey('to'),
+          isTrue);
+      expect((SeriesCodec.decodePayload(enc)!['series'] as Map)['hr_curve'],
+          curve);
+      expect(SeriesCodec.verifyLossless(jsonEncode(payload)), isTrue);
+    });
+
+    test('an n column of the wrong length is returned unchanged', () {
+      final bad = {
+        't0': 100,
+        'dt': 60,
+        'v': [1, 2, 3],
+        'n': [1, 2],
+      };
+      expect(SeriesCodec.decodeCurve(bad, extraKey: 'n'), same(bad));
+    });
+
     test('a non-int timestamp stays legacy', () {
       final floaty = [
         {'t': 100.5, 'v': 1},

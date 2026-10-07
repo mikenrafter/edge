@@ -171,6 +171,7 @@ void main() {
     for (final c in [
       (RhythmRejection.tooFewDays, '7 days'),
       (RhythmRejection.lowCoverage, '18 hours'),
+      (RhythmRejection.unknownCoverage, 'before per-minute coverage'),
       (RhythmRejection.flat, 'flat'),
       (RhythmRejection.unstable, 'stable'),
     ]) {

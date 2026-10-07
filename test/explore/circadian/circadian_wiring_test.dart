@@ -31,13 +31,16 @@ import 'package:timezone/data/latest_all.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
 /// One point per minute of [dayStart, dayEnd), the real elapsed minutes.
+///
+/// [n]: the valid seconds behind each minute (the stored `n`); null leaves the
+/// key off, as on days stored before it existed.
 List<Map<String, num>> _curve(DateTime dayStart, DateTime dayEnd,
-    {num Function(int sec)? v}) {
+    {num Function(int sec)? v, int? n}) {
   final out = <Map<String, num>>[];
   for (var s = dayStart.millisecondsSinceEpoch ~/ 1000;
       s < dayEnd.millisecondsSinceEpoch ~/ 1000;
       s += 60) {
-    out.add({'t': s, 'v': v?.call(s) ?? 62});
+    out.add({'t': s, 'v': v?.call(s) ?? 62, 'n': ?n});
   }
   return out;
 }
@@ -147,6 +150,124 @@ void main() {
       expect(r.bathyphaseClock, isNull);
       expect(r.amplitudeBpm, isNull);
       expect(r.mesorBpm, isNull);
+    });
+  });
+
+  // The stored curve carries `n`, the valid seconds behind each minute.
+  group('hourlyBinsFromHrCurve with per-minute valid seconds (n)', () {
+    DateTime utc(int s) =>
+        DateTime.fromMillisecondsSinceEpoch(s * 1000, isUtc: true);
+
+    /// [days] days of 24 h, one point a minute, `n` seconds behind each.
+    List<Map<String, num>> week(int days, int? n) => [
+          for (var d = 0; d < days; d++)
+            ..._curve(DateTime.utc(2026, 5, 4 + d), DateTime.utc(2026, 5, 5 + d),
+                n: n,
+                v: (s) {
+                  final h = utc(s);
+                  return (60 +
+                          6 *
+                              math.cos(2 *
+                                  math.pi *
+                                  (h.hour + h.minute / 60 + 0.5 / 60 - 16) /
+                                  24))
+                      .round();
+                }),
+        ];
+
+    test('the gate is named: 30 valid seconds make a real minute', () {
+      expect(kMinValidSecondsPerMinute, 30);
+    });
+
+    test('dense minutes (n = 60) are counted and the rhythm is admitted', () {
+      final bins = hourlyBinsFromHrCurve(week(14, 60), toLocal: utc);
+      expect(bins.every((b) => b.realMinutes == 60), isTrue);
+      final r = fitHrRhythm(bins);
+      expect(r.rejection, isNull);
+      expect(r.daysUsed, 14);
+      expect((r.acrophaseClock!.inMinutes / 60 - 16).abs(), lessThan(0.6));
+    });
+
+    test('n = 30 counts, n = 29 does not (the gate is >=)', () {
+      final base = DateTime.utc(2026, 5, 4, 10).millisecondsSinceEpoch ~/ 1000;
+      final bins = hourlyBinsFromHrCurve([
+        {'t': base, 'v': 60, 'n': 30},
+        {'t': base + 60, 'v': 70, 'n': 29},
+        {'t': base + 120, 'v': 80, 'n': 60},
+      ], toLocal: utc);
+      expect(bins.single.realMinutes, 2);
+      // The thin minute is not in the mean either.
+      expect(bins.single.meanHr, 70);
+    });
+
+    test('an hour with no counted minute has no mean, and 0 real minutes', () {
+      final base = DateTime.utc(2026, 5, 4, 10).millisecondsSinceEpoch ~/ 1000;
+      final bins = hourlyBinsFromHrCurve([
+        {'t': base, 'v': 60, 'n': 1},
+        {'t': base + 60, 'v': 70, 'n': 2},
+      ], toLocal: utc);
+      expect(bins.single.realMinutes, 0);
+      expect(bins.single.meanHr, isNull);
+    });
+
+    test('one point without n makes the whole hour unknown, never assumed', () {
+      final base = DateTime.utc(2026, 5, 4, 10).millisecondsSinceEpoch ~/ 1000;
+      final bins = hourlyBinsFromHrCurve([
+        {'t': base, 'v': 60, 'n': 60},
+        {'t': base + 60, 'v': 70},
+        {'t': base + 7200, 'v': 70, 'n': 60}, // another hour, fully known
+      ], toLocal: utc);
+      expect(bins, hasLength(2));
+      expect(bins[0].realMinutes, isNull);
+      expect(bins[1].realMinutes, 1);
+    });
+
+    test('the sparse scenario with n = 1 a minute fails the gate (lowCoverage)',
+        () {
+      final curve = <Map<String, num>>[
+        for (var d = 0; d < 7; d++)
+          for (var h = 0; h < 18; h++)
+            for (var m = 0; m < 10; m++)
+              {
+                't': DateTime.utc(2026, 5, 4 + d, h, m * 6)
+                        .millisecondsSinceEpoch ~/
+                    1000,
+                'v': (60 + 6 * math.cos(2 * math.pi * (h + 0.5 - 16) / 24))
+                    .round(),
+                'n': 1,
+              },
+      ];
+      final bins = hourlyBinsFromHrCurve(curve, toLocal: utc);
+      expect(bins.every((b) => b.realMinutes == 0), isTrue);
+      final r = fitHrRhythm(bins);
+      expect(r.rejection, RhythmRejection.lowCoverage);
+      expect(r.acrophaseClock, isNull);
+    });
+
+    test('a legacy curve without n is unknownCoverage, not a fit', () {
+      final bins = hourlyBinsFromHrCurve(week(14, null), toLocal: utc);
+      expect(bins.every((b) => b.realMinutes == null), isTrue);
+      final r = fitHrRhythm(bins);
+      expect(r.rejection, RhythmRejection.unknownCoverage);
+      expect(r.acrophaseClock, isNull);
+      expect(r.amplitudeBpm, isNull);
+    });
+
+    test('too few days is still tooFewDays, whatever the coverage', () {
+      final r = fitHrRhythm(hourlyBinsFromHrCurve(week(3, null), toLocal: utc));
+      expect(r.rejection, RhythmRejection.tooFewDays);
+    });
+
+    test('a bin of unknown minutes never reaches the fit', () {
+      final bins = [
+        for (var d = 0; d < 14; d++)
+          for (var h = 0; h < 24; h++)
+            HourlyBin(
+                hourStartLocal: DateTime(2026, 5, 4 + d, h),
+                meanHr: 60 + 6 * math.cos(2 * math.pi * (h + 0.5 - 16) / 24),
+                realMinutes: null),
+      ];
+      expect(fitHrRhythm(bins).rejection, RhythmRejection.unknownCoverage);
     });
   });
 
@@ -410,10 +531,38 @@ void main() {
       expect(d.summary.meanWakeClock, const Duration(hours: 7));
       expect(d.rhythm.rejection, isNotNull,
           reason: 'bare minute points do not establish real minutes');
-      expect(['lowCoverage', 'unknownCoverage'], contains(d.rhythm.rejection?.name));
+      expect(d.rhythm.rejection, RhythmRejection.unknownCoverage);
       expect(d.rhythm.acrophaseClock, isNull);
       expect(repo.heartReads, isNot(contains(_label(now))),
           reason: 'today is partial and is not read');
+    });
+
+    test('a stored minute curve with n = 60 is admitted end to end', () async {
+      final now = DateTime(2026, 10, 7, 12);
+      final repo = _FakeRepo(
+        days: [
+          for (var back = 1; back <= 14; back++)
+            _label(DateTime(2026, 10, 7 - back)),
+        ],
+        heart: (day) {
+          final d = DateTime.parse(day);
+          return {
+            'hr': _curve(d, DateTime(d.year, d.month, d.day + 1), n: 60,
+                v: (s) {
+              final h = DateTime.fromMillisecondsSinceEpoch(s * 1000);
+              final hour = h.hour + h.minute / 60 + 0.5 / 60;
+              return (60 + 6 * math.cos(2 * math.pi * (hour - 16) / 24))
+                  .round();
+            }),
+          };
+        },
+        sleep: (day) => {'onset_ts': 1, 'wake_ts': 100, 'duration_min': null},
+      );
+      final d = await loadCircadianExploreData(repo, now: now);
+      expect(d.rhythm.rejection, isNull);
+      expect(d.rhythm.daysUsed, 14);
+      expect((d.rhythm.acrophaseClock!.inMinutes / 60 - 16).abs(),
+          lessThan(0.6));
     });
 
     test('a night with no total sleep time is not a window', () async {
