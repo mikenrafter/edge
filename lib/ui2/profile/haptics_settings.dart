@@ -298,6 +298,7 @@ class HapticsSettingsView extends StatelessWidget {
     required this.onDeviceLab,
     this.onReset,
     this.slotPatternName,
+    this.slotSequence,
     this.onOpenSlotScreen,
     this.onAssignToSlot,
     this.onResetSlot,
@@ -341,6 +342,12 @@ class HapticsSettingsView extends StatelessWidget {
   /// What the slot with this key (see haptic_slots.dart) plays now, by NAME.
   /// Null: the rows say "Default".
   final String Function(String slotKey)? slotPatternName;
+
+  /// The rhythm the slot with this key plays now (null: unknown). The view
+  /// runs these through `similarityWarnings` (haptics/pattern_similarity.dart)
+  /// and writes "Feels like ..." on each flagged slot. A warning never blocks
+  /// an assignment. STUB (red phase): not read yet.
+  final BuzzSequence? Function(String slotKey)? slotSequence;
 
   /// Opens the screen where a section's slots are set; null hides the links.
   final void Function(String sectionId)? onOpenSlotScreen;
