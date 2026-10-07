@@ -71,6 +71,8 @@ class BandGestures extends StatelessWidget {
         onToggle: g.toggleDoubleTapAction,
         replay: g.replayActions,
         onReplay: g.setReplayHistorical,
+        followUp: g.followUpMoments,
+        onFollowUp: g.setFollowUpMoments,
         // The row for 2 taps is the switches above; 3–5 are the extra-tap
         // counts. More double taps by default on any band; ECG touches are an
         // opt-in on a WHOOP MG, in developer mode.
@@ -468,6 +470,22 @@ class BandGesturesView extends StatelessWidget {
                               'A tap the band delivers late is still stamped with the '
                                   'minute and day it happened. Other actions never run for '
                                   'a late tap.',
+                    ),
+                    // Directly under it: ask later what each marked moment
+                    // was. Same rule — drawn always, inert while Mark moment
+                    // is off.
+                    Divider(color: p.line, height: 1),
+                    SwitchRow(
+                      l?.gesturesFollowUpTitle ??
+                          'Follow up about my marked moments',
+                      followUp,
+                      onFollowUp == null ? null : (v) => onFollowUp!(v),
+                      enabled: chosen.contains(a),
+                      sub: !chosen.contains(a)
+                          ? 'Turn on ${a.localizedLabel(c)} first'
+                          : l?.gesturesFollowUpSub ??
+                              'Ask me later what each moment I marked was, so I can '
+                                  'put it in my journal.',
                     ),
                   ],
                 ],

@@ -199,6 +199,9 @@ const _notComponents = {
   // Natural Wake repeat runs. Both states are pumped in
   // natural_wake_card_test.dart.
   'NaturalWakeBuzzingCard',
+  // Marked-moment follow-up: the Home card is pure and the screen reads and
+  // writes the database. Both are pumped in test/gestures/moments/.
+  'MomentFollowUpCard', 'MomentFollowUpScreen',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.

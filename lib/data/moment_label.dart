@@ -36,5 +36,19 @@ class MomentLabel {
 
   /// Epoch SECONDS of that local wall-clock minute (DST-safe: built from the
   /// calendar fields, never from a day start plus minutes).
-  int? get atSec => throw UnimplementedError('MomentLabel.atSec');
+  int? get atSec {
+    final t = momentLocalTime(date, hhmm);
+    return t == null ? null : t.millisecondsSinceEpoch ~/ 1000;
+  }
+}
+
+/// The LOCAL wall-clock DateTime of a `YYYY-MM-DD` + `HH:mm` pair, or null when
+/// either is malformed. Built from calendar fields, never from a day start plus
+/// minutes, so a DST day does not shift it.
+DateTime? momentLocalTime(String date, String hhmm) {
+  final d = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(date);
+  final t = RegExp(r'^([01]\d|2[0-3]):([0-5]\d)$').firstMatch(hhmm);
+  if (d == null || t == null) return null;
+  return DateTime(int.parse(d[1]!), int.parse(d[2]!), int.parse(d[3]!),
+      int.parse(t[1]!), int.parse(t[2]!));
 }

@@ -12618,5 +12618,116 @@
         "type": "String"
       }
     }
+  },
+  "gesturesFollowUpTitle": "Follow up about my marked moments",
+  "@gesturesFollowUpTitle": {
+    "description": "Switch title under the late-marks switch: follow up later about the moments marked with a double tap"
+  },
+  "gesturesFollowUpSub": "Ask me later what each moment I marked was, so I can put it in my journal.",
+  "@gesturesFollowUpSub": {
+    "description": "Subtitle of the follow-up switch while Mark a moment is on"
+  },
+  "momentChoicePillsMeds": "Pills & meds",
+  "@momentChoicePillsMeds": {
+    "description": "Quick answer for a marked moment: pills or medication"
+  },
+  "momentChoiceNap": "Nap",
+  "@momentChoiceNap": {
+    "description": "Quick answer for a marked moment: a nap"
+  },
+  "momentChoiceCaffeine": "Caffeine",
+  "@momentChoiceCaffeine": {
+    "description": "Quick answer for a marked moment: caffeine"
+  },
+  "momentChoiceAlcohol": "Alcohol",
+  "@momentChoiceAlcohol": {
+    "description": "Quick answer for a marked moment: alcohol"
+  },
+  "momentChoiceMeal": "Meal",
+  "@momentChoiceMeal": {
+    "description": "Quick answer for a marked moment: a meal"
+  },
+  "momentChoiceWorkout": "Workout",
+  "@momentChoiceWorkout": {
+    "description": "Quick answer for a marked moment: a workout"
+  },
+  "momentChoiceSymptom": "Symptom",
+  "@momentChoiceSymptom": {
+    "description": "Quick answer for a marked moment: a symptom"
+  },
+  "momentChoiceOther": "Other",
+  "@momentChoiceOther": {
+    "description": "Quick answer for a marked moment: something else, with an optional note"
+  },
+  "momentFollowUpCardTitle": "{n, plural, one{You marked {n} moment — what was it?} other{You marked {n} moments — what were they?}}",
+  "@momentFollowUpCardTitle": {
+    "description": "Home card asking what the marked moments were; n is how many are waiting",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "momentFollowUpAnswer": "Answer",
+  "@momentFollowUpAnswer": {
+    "description": "Button on the Home card that opens the follow-up screen"
+  },
+  "momentFollowUpTitle": "Marked moments",
+  "@momentFollowUpTitle": {
+    "description": "Title of the screen that lists marked moments to answer"
+  },
+  "momentFollowUpSub": "FOLLOW UP",
+  "@momentFollowUpSub": {
+    "description": "Small caption under the follow-up screen title"
+  },
+  "momentFollowUpSkip": "Skip",
+  "@momentFollowUpSkip": {
+    "description": "Button that marks a moment answered without a label"
+  },
+  "momentFollowUpSave": "Save",
+  "@momentFollowUpSave": {
+    "description": "Button that saves the amount or note typed for a marked moment"
+  },
+  "momentFollowUpEmptyTitle": "Nothing to follow up on",
+  "@momentFollowUpEmptyTitle": {
+    "description": "Empty state title when no marked moment is waiting for an answer"
+  },
+  "momentFollowUpEmptyBody": "Moments you mark show up here until you answer them or a week goes by.",
+  "@momentFollowUpEmptyBody": {
+    "description": "Empty state body: how long a marked moment stays waiting"
+  },
+  "momentFollowUpAmountHint": "Amount in {unit} (optional)",
+  "@momentFollowUpAmountHint": {
+    "description": "Hint of the optional dose field; unit is mg or units",
+    "placeholders": {
+      "unit": {
+        "type": "String"
+      }
+    }
+  },
+  "momentFollowUpNoteHint": "Note (optional)",
+  "@momentFollowUpNoteHint": {
+    "description": "Hint of the optional free-text note field"
+  },
+  "momentFollowUpLogWorkout": "Log a workout at this time",
+  "@momentFollowUpLogWorkout": {
+    "description": "Button that opens the workout log prefilled with the moment's time"
+  },
+  "momentFollowUpLabelOnly": "Just label it",
+  "@momentFollowUpLabelOnly": {
+    "description": "Button that stores only the Workout label for the moment"
+  },
+  "momentFollowUpSaveFailed": "Could not save that answer. Try again.",
+  "@momentFollowUpSaveFailed": {
+    "description": "Error shown when an answer to a marked moment could not be saved"
+  },
+  "dayTimelineMarkedAt": "Marked moment at {time}",
+  "@dayTimelineMarkedAt": {
+    "description": "Detail line of a labelled marked moment on the day timeline; time is a clock time",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
   }
 }

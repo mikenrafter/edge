@@ -108,6 +108,9 @@ class GestureSettings extends ChangeNotifier {
   /// Explicit user choices only; absence means "follow the default".
   final Map<DeviceAction, bool> _replay = {};
 
+  bool _followUp = false;
+  DateTime? _followUpSince;
+
   /// What a double-tap currently does, in enum order. Empty (the default) is the
   /// off state — opt-in, so we never surprise a user (or pay the iOS bg
   /// keep-alive cost) until they switch an action on.
@@ -195,6 +198,11 @@ class GestureSettings extends ChangeNotifier {
       final v = prefs.getBool('$_kReplayPrefix${a.id}');
       if (v != null) _replay[a] = v;
     }
+    _followUp = prefs.getBool(_kFollowUpMoments) ?? false;
+    final sinceMs = prefs.getInt(_kFollowUpMomentsSinceMs);
+    _followUpSince = _followUp && sinceMs != null
+        ? DateTime.fromMillisecondsSinceEpoch(sinceMs)
+        : null;
     _ecgOnDoubleTap = prefs.getBool(_kEcgOnDoubleTap) ?? false;
     _repeatLab = prefs.getBool(_kRepeatLab) ?? false;
     if (_ecgOnDoubleTap && _repeatLab) _repeatLab = false; // exclusive
@@ -521,17 +529,28 @@ class GestureSettings extends ChangeNotifier {
       );
 
   /// Follow up about marked moments. Off by default.
-  bool get followUpMoments =>
-      throw UnimplementedError('GestureSettings.followUpMoments');
+  bool get followUpMoments => _followUp;
 
   /// When [followUpMoments] was last turned on; null while off.
-  DateTime? get followUpMomentsSince =>
-      throw UnimplementedError('GestureSettings.followUpMomentsSince');
+  DateTime? get followUpMomentsSince => _followUpSince;
 
   /// Turning it on stamps [now] (default: the clock) as the start; turning it
-  /// off clears the start. Persisted.
-  Future<void> setFollowUpMoments(bool on, {DateTime? now}) =>
-      throw UnimplementedError('GestureSettings.setFollowUpMoments');
+  /// off clears the start. Turning it on while it is already on keeps the first
+  /// start. Persisted.
+  Future<void> setFollowUpMoments(bool on, {DateTime? now}) async {
+    if (on == _followUp && (!on || _followUpSince != null)) return;
+    _followUp = on;
+    _followUpSince = on ? (now ?? DateTime.now()) : null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kFollowUpMoments, on);
+    if (on) {
+      await prefs.setInt(
+          _kFollowUpMomentsSinceMs, _followUpSince!.millisecondsSinceEpoch);
+    } else {
+      await prefs.remove(_kFollowUpMomentsSinceMs);
+    }
+    notifyListeners();
+  }
 
   Future<void> setReplayHistorical(DeviceAction a, bool on) async {
     if (!a.supportsHistoricalReplay) return;

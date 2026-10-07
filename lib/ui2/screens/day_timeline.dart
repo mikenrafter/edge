@@ -34,6 +34,7 @@ import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
 import '../../data/med_store.dart';
 import '../../data/moment_label.dart';
+import '../../gestures/moment_follow_ups.dart' show MomentChoice;
 import '../../data/nutrition_store.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
@@ -327,6 +328,26 @@ List<Moment> dayMoments({
     ));
   });
 
+  // Marked moments the wearer labelled. A marked moment has a real clock (the
+  // minute the tap happened), so it is placed there. A skipped one has no label
+  // to show, and a label this build does not know is not turned into text.
+  for (final m in momentLabels) {
+    final choice = MomentChoice.fromId(m.label);
+    final at = m.atSec;
+    if (choice == null || at == null) continue;
+    final note = m.note;
+    out.add(Moment(
+      at: at,
+      title: choice.localized(l),
+      detail: [
+        l?.dayTimelineMarkedAt(m.hhmm) ?? 'Marked moment at ${m.hhmm}',
+        if (note != null && note.isNotEmpty) note,
+      ].join(' · '),
+      icon: LucideIcons.bookmark,
+      color: C.domMind,
+    ));
+  }
+
   out.sort((a, b) => a.at.compareTo(b.at));
   return out;
 }
@@ -600,6 +621,7 @@ class TimelineData {
     final db = await LocalDb.instance;
     final meals = await NutritionDb.entriesForDay(db, day);
     final notes = await LocalDb.journalRows(sinceDaysEpoch: day);
+    final momentLabels = await LocalDb.momentLabels(date: day);
 
     // Doses: one row per (medication, slot), and only the ones actually taken
     // carry a clock. A skipped dose is a real fact with no time attached, so it
@@ -631,6 +653,7 @@ class TimelineData {
         doses: taken,
         journal: journal,
         fields: fields,
+        momentLabels: momentLabels,
         l: l,
       ),
       notes: [

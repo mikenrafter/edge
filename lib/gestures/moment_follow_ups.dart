@@ -8,6 +8,14 @@
 // Rules (AGENTS.md): never fabricate (a dose is never guessed; a nap never
 // invents a sleep window), local day labels only, additive idempotent storage.
 
+import 'dart:convert';
+
+import '../data/day_label.dart' show dayLabelOf;
+import '../data/db.dart';
+import '../data/journal_fields.dart' show kJournalFieldsByKey;
+import '../data/moment_label.dart';
+import '../l10n/app_localizations.dart';
+
 /// One quick answer. The id is persisted in `moment_label.label`.
 enum MomentChoice {
   pillsMeds('pills_meds', 'Pills & meds'),
@@ -37,6 +45,18 @@ enum MomentChoice {
     }
     return null;
   }
+
+  /// The label in the app's language (English when no localizations).
+  String localized(AppLocalizations? l) => switch (this) {
+        MomentChoice.pillsMeds => l?.momentChoicePillsMeds ?? label,
+        MomentChoice.nap => l?.momentChoiceNap ?? label,
+        MomentChoice.caffeine => l?.momentChoiceCaffeine ?? label,
+        MomentChoice.alcohol => l?.momentChoiceAlcohol ?? label,
+        MomentChoice.meal => l?.momentChoiceMeal ?? label,
+        MomentChoice.workout => l?.momentChoiceWorkout ?? label,
+        MomentChoice.symptom => l?.momentChoiceSymptom ?? label,
+        MomentChoice.other => l?.momentChoiceOther ?? label,
+      };
 }
 
 /// A marked moment as read off a journal day: local date + wall-clock minute.
@@ -54,7 +74,7 @@ class PendingMoment {
   String get key => '$date $hhmm';
 
   /// The moment as a LOCAL DateTime (the wall clock it was marked on).
-  DateTime get local => throw UnimplementedError('PendingMoment.local');
+  DateTime get local => momentLocalTime(date, hhmm)!;
 }
 
 class MomentFollowUps {
@@ -75,23 +95,80 @@ class MomentFollowUps {
   static const int windowDays = 7;
 
   /// Pending moments at [now], oldest first. Pure.
-  List<PendingMoment> pending(DateTime now) =>
-      throw UnimplementedError('MomentFollowUps.pending');
+  ///
+  /// All comparisons are on LOCAL wall-clock minutes built from calendar
+  /// fields: the 7-day cutoff is "same wall minute, 7 calendar days back", so a
+  /// DST change does not move it by an hour.
+  List<PendingMoment> pending(DateTime now) {
+    final since = enabledSince?.toLocal();
+    if (since == null) return const [];
+    final from = DateTime(since.year, since.month, since.day, since.hour,
+        since.minute);
+    final n = now.toLocal();
+    final cutoff =
+        DateTime(n.year, n.month, n.day - windowDays, n.hour, n.minute);
+    final seen = <String>{};
+    final out = <(DateTime, PendingMoment)>[];
+    for (final m in marked) {
+      final at = momentLocalTime(m.date, m.hhmm);
+      if (at == null || at.isBefore(from) || at.isBefore(cutoff)) continue;
+      final p = PendingMoment(date: m.date, hhmm: m.hhmm);
+      if (labelled.contains(p.key) || !seen.add(p.key)) continue;
+      out.add((at, p));
+    }
+    out.sort((a, b) => a.$1.compareTo(b.$1));
+    return [for (final e in out) e.$2];
+  }
+
+  static final _tag = RegExp(r'^moment ([01]\d|2[0-3]):([0-5]\d)$');
 
   /// The `moment HH:mm` tags of `LocalDb.journalRows` rows (`tags_json`).
-  static List<MarkedMoment> parseMarked(List<Map<String, dynamic>> journalRows) =>
-      throw UnimplementedError('MomentFollowUps.parseMarked');
+  static List<MarkedMoment> parseMarked(List<Map<String, dynamic>> journalRows) {
+    final out = <MarkedMoment>[];
+    for (final r in journalRows) {
+      final date = r['date'];
+      final raw = r['tags_json'];
+      if (date is! String || raw is! String) continue;
+      Object? tags;
+      try {
+        tags = jsonDecode(raw);
+      } catch (_) {
+        continue; // a malformed row loses its tags, nothing else
+      }
+      if (tags is! List) continue;
+      for (final t in tags) {
+        final m = t is String ? _tag.firstMatch(t) : null;
+        if (m != null) out.add((date: date, hhmm: '${m[1]}:${m[2]}'));
+      }
+    }
+    return out;
+  }
 
   /// Reads the journal and the labels from the database.
-  static Future<MomentFollowUps> load({required DateTime? enabledSince}) =>
-      throw UnimplementedError('MomentFollowUps.load');
+  static Future<MomentFollowUps> load({required DateTime? enabledSince}) async {
+    if (enabledSince == null) return const MomentFollowUps(enabledSince: null);
+    final from = dayLabelOf(enabledSince);
+    final rows = await LocalDb.journalRows(sinceDaysEpoch: from);
+    final labels = await LocalDb.momentLabels(sinceDate: from);
+    return MomentFollowUps(
+      enabledSince: enabledSince,
+      marked: parseMarked(rows),
+      labelled: {for (final l in labels) l.key},
+    );
+  }
 }
 
 /// The window the "Log a workout at this time" flow opens on: starts at the
 /// moment's wall-clock minute, an hour long, but never ending after [now].
 ({DateTime start, DateTime end}) workoutPrefillFor(
-        PendingMoment m, DateTime now) =>
-    throw UnimplementedError('workoutPrefillFor');
+    PendingMoment m, DateTime now) {
+  final start = m.local;
+  final n = now.toLocal();
+  final nowMin = DateTime(n.year, n.month, n.day, n.hour, n.minute);
+  final end = DateTime(
+      start.year, start.month, start.day, start.hour, start.minute + 60);
+  return (start: start, end: end.isAfter(nowMin) ? nowMin : end);
+}
 
 enum MomentAnswerResult { saved, alreadyAnswered }
 
@@ -108,10 +185,45 @@ class MomentAnswerWriter {
     double? value,
     String? note,
     DateTime? now,
-  }) =>
-      throw UnimplementedError('MomentAnswerWriter.answer');
+  }) async {
+    final field = choice.journalField;
+    if (value != null) {
+      final spec = field == null ? null : kJournalFieldsByKey[field];
+      if (spec == null) {
+        throw ArgumentError.value(
+            value, 'value', '${choice.id} has no journal field to add to');
+      }
+      if (!value.isFinite || value <= 0 || value > spec.max) {
+        throw ArgumentError.value(
+            value, 'value', 'must be above 0 and at most ${spec.max}');
+      }
+    }
+    final trimmed = note?.trim();
+    return _store(
+      MomentLabel(
+        date: m.date,
+        hhmm: m.hhmm,
+        label: choice.id,
+        note: trimmed == null || trimmed.isEmpty ? null : trimmed,
+        answeredAtMs: (now ?? DateTime.now()).millisecondsSinceEpoch,
+      ),
+      field: value == null ? null : field,
+      value: value,
+    );
+  }
 
   /// Marks the moment answered with no label.
   Future<MomentAnswerResult> skip(PendingMoment m, {DateTime? now}) =>
-      throw UnimplementedError('MomentAnswerWriter.skip');
+      _store(MomentLabel(
+        date: m.date,
+        hhmm: m.hhmm,
+        answeredAtMs: (now ?? DateTime.now()).millisecondsSinceEpoch,
+      ));
+
+  Future<MomentAnswerResult> _store(MomentLabel l,
+      {String? field, double? value}) async {
+    final saved = await LocalDb.answerMoment(l,
+        metricField: field, metricValue: value);
+    return saved ? MomentAnswerResult.saved : MomentAnswerResult.alreadyAnswered;
+  }
 }

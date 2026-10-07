@@ -2798,19 +2798,104 @@ class LocalDb {
 
   /// `moment_label`: the wearer's answer to one marked moment, keyed on the
   /// same local (date, hhmm) as the journal's `moment HH:mm` tag. A NULL label
-  /// is a skip. STUB (red phase): creates nothing yet.
-  static Future<void> _createMomentLabel(Database db) async {}
+  /// is a skip. Additive and idempotent.
+  static Future<void> _createMomentLabel(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS moment_label ('
+        'date TEXT NOT NULL, hhmm TEXT NOT NULL, label TEXT, note TEXT, '
+        'answered_at INTEGER NOT NULL, PRIMARY KEY (date, hhmm))',
+      );
 
-  /// Stores one answer. STUB.
-  static Future<void> putMomentLabel(MomentLabel l) =>
-      throw UnimplementedError('LocalDb.putMomentLabel');
+  static Map<String, Object?> _momentLabelRow(MomentLabel l) => {
+        'date': l.date,
+        'hhmm': l.hhmm,
+        'label': l.label,
+        'note': l.note,
+        'answered_at': l.answeredAtMs,
+      };
 
-  /// Answers, optionally narrowed to one [date] or from [sinceDate] on. STUB.
+  /// Stores one answer. A moment is answered once: a second put for the same
+  /// (date, hhmm) leaves the first answer alone.
+  static Future<void> putMomentLabel(MomentLabel l) async {
+    final db = await instance;
+    await db.insert('moment_label', _momentLabelRow(l),
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  /// Answers, optionally narrowed to one [date] or from [sinceDate] on, in
+  /// (date, hhmm) order.
   static Future<List<MomentLabel>> momentLabels({
     String? date,
     String? sinceDate,
-  }) =>
-      throw UnimplementedError('LocalDb.momentLabels');
+  }) async {
+    final db = await instance;
+    final rows = await db.query(
+      'moment_label',
+      where: date != null
+          ? 'date = ?'
+          : sinceDate != null
+              ? 'date >= ?'
+              : null,
+      whereArgs: date != null
+          ? [date]
+          : sinceDate != null
+              ? [sinceDate]
+              : null,
+      orderBy: 'date ASC, hhmm ASC',
+    );
+    return [
+      for (final r in rows)
+        MomentLabel(
+          date: r['date'] as String,
+          hhmm: r['hhmm'] as String,
+          label: r['label'] as String?,
+          note: r['note'] as String?,
+          answeredAtMs: (r['answered_at'] as num).toInt(),
+        ),
+    ];
+  }
+
+  /// Stores [l] and, for a dose answer, ADDS [metricValue] to that local day's
+  /// [metricField] total (the time becomes the later of the stored one and the
+  /// moment's minute) — in ONE transaction, so an answer is never half-written.
+  /// Only that one field's row is touched; the rest of the day is not.
+  /// Returns false, writing nothing, when the moment already has an answer.
+  static Future<bool> answerMoment(
+    MomentLabel l, {
+    String? metricField,
+    double? metricValue,
+  }) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final have = await txn.query('moment_label',
+          columns: ['date'],
+          where: 'date = ? AND hhmm = ?',
+          whereArgs: [l.date, l.hhmm],
+          limit: 1);
+      if (have.isNotEmpty) return false;
+      await txn.insert('moment_label', _momentLabelRow(l));
+      if (metricField != null && metricValue != null) {
+        final atMin = int.parse(l.hhmm.substring(0, 2)) * 60 +
+            int.parse(l.hhmm.substring(3, 5));
+        final old = await txn.query('journal_metric',
+            where: 'date = ? AND field = ?',
+            whereArgs: [l.date, metricField],
+            limit: 1);
+        final oldVal = old.isEmpty ? 0.0 : (old.first['value'] as num).toDouble();
+        final oldAt = old.isEmpty ? null : (old.first['at_min'] as num?)?.toInt();
+        await txn.insert(
+            'journal_metric',
+            {
+              'date': l.date,
+              'field': metricField,
+              'value': oldVal + metricValue,
+              'at_min': oldAt != null && oldAt > atMin ? oldAt : atMin,
+              'updated_at': l.answeredAtMs,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      return true;
+    });
+  }
 
   /// How long a block's evidence is kept after the block began (days).
   static const int _wakeEvidenceKeepDays = 7;

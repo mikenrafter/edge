@@ -95,8 +95,8 @@ void main() {
         expect(_row(label), findsOneWidget, reason: label);
       }
       // Seven actions (Tell the time and Breathing exercise included) plus the
-      // replay row, which is always drawn.
-      expect(find.byType(SwitchRow), findsNWidgets(8));
+      // replay row and the follow-up row under it, which are always drawn.
+      expect(find.byType(SwitchRow), findsNWidgets(9));
       expect(find.byType(Radio<DeviceAction>), findsNothing);
       expect(find.text('Do nothing'), findsNothing);
     });
@@ -156,8 +156,8 @@ void main() {
             DeviceAction.broadcastToTasker,
           }));
       expect(_faults(), isEmpty);
-      // Thirteen actions plus the always-drawn replay row.
-      expect(find.byType(SwitchRow), findsNWidgets(14));
+      // Thirteen actions plus the always-drawn replay and follow-up rows.
+      expect(find.byType(SwitchRow), findsNWidgets(15));
       expect(find.textContaining('could not ask the system'), findsNothing);
     });
 
@@ -232,8 +232,9 @@ void main() {
       // The replay row belongs to Mark moment alone: one per screen, however
       // many other actions are on.
       expect(find.text(_replayLabel), findsOneWidget);
-      expect(find.byType(SwitchRow), findsNWidgets(8),
-          reason: 'one row per offered action plus the one replay row');
+      expect(find.byType(SwitchRow), findsNWidgets(9),
+          reason: 'one row per offered action plus the one replay row and '
+              'the follow-up row under it');
     });
 
     testWidgets('exactly one replay row even with several actions on',
@@ -244,7 +245,7 @@ void main() {
         DeviceAction.torch,
       });
       expect(find.text(_replayLabel), findsOneWidget);
-      expect(find.byType(SwitchRow), findsNWidgets(8));
+      expect(find.byType(SwitchRow), findsNWidgets(9));
     });
 
     testWidgets('flipping it reports (markMoment, new value)', (t) async {
