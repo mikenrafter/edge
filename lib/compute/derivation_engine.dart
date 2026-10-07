@@ -1791,7 +1791,15 @@ import 'substrate.dart';
 // and a value within ~1e-11 of a 6-decimal rounding boundary (or a flag on
 // its 0.70 / 30 % threshold) could flip. Bumped so no per-version row can mix
 // the two (owner decision; to be folded into upstream's numbering later).
-const int kAlgoVersion = 102;
+// v103 (explore/circadian-estimate only): `_downsampleHr` adds `n`, the count
+// of valid (hr > 0) seconds in each minute, to every stored `hr_curve` point
+// (`{t, v, n}`; series_codec stores it as a column beside `v`). No metric
+// value moves and `t`/`v` are unchanged, but the stored day bundle does, so a
+// v102 row finalized without `n` must not share an identity with one derived
+// with it (AGENTS §3.4). Days derived before this carry no `n`; the circadian
+// rhythm fit treats those hours as unknown coverage and abstains.
+// Edge-side only: kAnalyticsPin/kProtocolPin UNCHANGED.
+const int kAlgoVersion = 103;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///

@@ -270,8 +270,9 @@ void main() {
 
   group('no output change', () {
     test('the artifact itself bumps nothing: 101 was the incremental repin\'s '
-        'bump and 102 the streamed day RR\'s, not this artifact\'s', () {
-      expect(kAlgoVersion, 102);
+        'bump, 102 the streamed day RR\'s and 103 the hr_curve valid-second '
+        'counts\', not this artifact\'s', () {
+      expect(kAlgoVersion, 103);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '
