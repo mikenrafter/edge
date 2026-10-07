@@ -25,6 +25,16 @@
 //     if its timer or probe has not run, so an overdue window stops stealing
 //     gestures.
 //
+// Round 3 (Sol's second review, 2026-10-07):
+//   * persisted state AGES OUT: a window or snooze whose native fire is older
+//     than [kSnoozeMaxAge], or is not the alarm occurrence the app knows
+//     ([knownFire]), is dropped on [resume] with a log line, never re-alarmed;
+//     a running chain ends the same way ([kSnoozeMaxAge] after its fire);
+//   * tap identities are persisted with the window, so the same event delivered
+//     again after a restart is not counted twice;
+//   * [endSilently] ends everything with no cue (Cancel-all, unpair, the switch
+//     turned off).
+//
 // Behaviour:
 //   [onAlarmStopped]  the native wake alarm stopped. error: log only. Probe
 //                     [confirmedWake] (a probe that throws reads "not
@@ -136,8 +146,10 @@ class SnoozeStatus {
 /// One open listening period for double taps: the dismiss window after a
 /// native stop, or the re-alarm.
 class _Listen {
-  _Listen(this.cause, this.start, this.window, {Iterable<DateTime>? taps}) {
+  _Listen(this.cause, this.start, this.window,
+      {Iterable<DateTime>? taps, Iterable<String>? tapIds}) {
     if (taps != null) this.taps.addAll(taps);
+    if (tapIds != null) this.tapIds.addAll(tapIds);
   }
   final AlarmStopCause cause;
 
@@ -145,6 +157,9 @@ class _Listen {
   final DateTime start;
   final Duration window;
   final List<DateTime> taps = [];
+
+  /// The identities of the taps counted so far (one event is one tap).
+  final List<String> tapIds = [];
 
   /// Re-alarm only: when its delivery finished (the window runs from there).
   DateTime? deliveredAt;
@@ -162,6 +177,7 @@ class SnoozeController {
     required this.settings,
     this.scheduler = defaultSnoozeScheduler,
     this.log,
+    this.knownFire,
   });
 
   final DateTime Function() now;
@@ -175,6 +191,11 @@ class SnoozeController {
   final SnoozeSettings Function() settings;
   final SnoozeScheduler scheduler;
   final void Function(String line)? log;
+
+  /// The native alarm occurrence the app currently knows (phone time), or null
+  /// when it knows none. A persisted chain whose fire is a different
+  /// occurrence is stale.
+  final DateTime? Function()? knownFire;
 
   final ValueNotifier<SnoozeStatus> _status =
       ValueNotifier<SnoozeStatus>(SnoozeStatus.idle);
@@ -251,6 +272,14 @@ class SnoozeController {
       _log('playing $slot failed: $e');
       return false;
     }
+  }
+
+  /// A cue (snooze set, dismissed, cancelled) is not waited for: the state has
+  /// already changed, and a cue held back by the command budget (it is a plain
+  /// job) must not stall the keep-alive tick or whatever called. A re-alarm is
+  /// awaited ([_startReAlarm]): its result matters.
+  void _cue(String slot) {
+    unawaited(_play(slot));
   }
 
   Future<void> _save(SnoozeState? s) async {
@@ -383,7 +412,10 @@ class SnoozeController {
   /// A band double tap (gesture event 14) at [at], its own time; only
   /// meaningful while [consumesDoubleTaps]. A tap before the window opened, or
   /// after its deadline, never counts.
-  Future<void> onBandDoubleTap(DateTime tapAt) async {
+  ///
+  /// [identity] is the event's own identity: the same one again is not another
+  /// tap (also across a restart: it is persisted with the window).
+  Future<void> onBandDoubleTap(DateTime tapAt, {String? identity}) async {
     final l = _listen;
     if (_disposed || l == null) return;
     // A strap clock a little ahead of the phone's cannot make a tap that has
@@ -405,10 +437,20 @@ class SnoozeController {
         return;
       }
     }
+    if (identity != null) {
+      if (l.tapIds.contains(identity)) {
+        _log('the same double tap delivered again: counted once.');
+        return;
+      }
+      l.tapIds.add(identity);
+    }
     l.taps.add(at);
     if (!l.reAlarm) {
-      await _saveWindow(
-          SnoozeWindow(stoppedAt: l.start, fireAt: _fireAt, taps: l.taps));
+      await _saveWindow(SnoozeWindow(
+          stoppedAt: l.start,
+          fireAt: _fireAt,
+          taps: l.taps,
+          tapIds: l.tapIds));
     }
     await _evaluate(l);
   }
@@ -476,7 +518,7 @@ class SnoozeController {
     await _clearWindow();
     await _evidence(at);
     if (!_alive(g)) return;
-    await _play(kAlarmDismissConfirmKey);
+    _cue(kAlarmDismissConfirmKey);
   }
 
   /// A wake was confirmed while a snooze or re-alarm was pending.
@@ -490,7 +532,7 @@ class SnoozeController {
     await _save(null);
     await _clearWindow();
     if (!_alive(g)) return;
-    await _play(kAlarmSnoozeCancelledKey);
+    _cue(kAlarmSnoozeCancelledKey);
   }
 
   /// Sets the next snooze: count + 1, due [SnoozeSettings.snoozeFor] after
@@ -518,7 +560,7 @@ class SnoozeController {
       await _startReAlarm(st);
       return;
     }
-    await _play(kAlarmSnoozeConfirmKey);
+    _cue(kAlarmSnoozeConfirmKey);
   }
 
   // ── the keep-alive, the snooze and the re-alarm ───────────────────────────
@@ -551,7 +593,19 @@ class SnoozeController {
     await _startReAlarm(st);
   }
 
+  /// True once the chain's native fire is older than [kSnoozeMaxAge]: nothing
+  /// has answered it for hours, and a re-alarm now would be a phantom.
+  bool _chainExpired() {
+    final f = _fireAt;
+    return f != null && now().difference(f) > kSnoozeMaxAge;
+  }
+
   Future<void> _startReAlarm(SnoozeState st) async {
+    if (_chainExpired()) {
+      _log('the chain is older than $kSnoozeMaxAge: ended, no re-alarm.');
+      await endSilently();
+      return;
+    }
     final g = ++_gen;
     _startingGen = g;
     _snoozeTimer?.cancel();
@@ -591,6 +645,23 @@ class SnoozeController {
     await _evaluate(done);
   }
 
+  /// Ends a window, a snooze or a re-alarm with no cue and no evidence (the
+  /// wearer cancelled the alarm, unpaired, or switched snooze off): timers
+  /// cancelled, the stored state and window cleared.
+  Future<void> endSilently() async {
+    if (_disposed) return;
+    ++_gen;
+    _cancelTimers();
+    _listen = null;
+    _startingGen = null;
+    _fireAt = null;
+    final had = _state != null;
+    _state = null;
+    _publish();
+    if (had) await _save(null);
+    await _clearWindow();
+  }
+
   /// "I'm up": dismisses a window, a snooze or a re-alarm.
   Future<void> imUp() async {
     if (_disposed) return;
@@ -612,6 +683,25 @@ class SnoozeController {
       _log('loading the snooze state failed: $e');
     }
     if (!_alive(g) || _listen != null || _state != null) return;
+    // What was persisted must still be this alarm's: a fire older than
+    // [kSnoozeMaxAge], or not the occurrence the app knows, is dropped (cleared,
+    // logged, never re-alarmed). A phantom alarm days later is the second worst
+    // outcome after one that does not wake.
+    final ref = st != null
+        ? (st.fireAt ?? st.reAlarmAt)
+        : (w != null ? (w.fireAt ?? w.stoppedAt) : null);
+    final persistedFire = st != null ? st.fireAt : w?.fireAt;
+    if (ref != null && (_tooOld(ref) || _notKnownFire(persistedFire))) {
+      _log('dropped a stale ${st != null ? 'snooze' : 'dismiss window'} '
+          '(fire ${(persistedFire ?? ref).toIso8601String()}): too old, or not '
+          'the alarm known now.');
+      if (st != null) await _save(null);
+      if (w != null) {
+        _windowStored = true;
+        await _saveWindow(null);
+      }
+      return;
+    }
     if (st == null) {
       if (w != null) await _resumeWindow(w, g);
       return;
@@ -630,6 +720,15 @@ class SnoozeController {
     _snoozeTimer?.cancel();
     _snoozeTimer = scheduler(
         left.isNegative ? Duration.zero : left, () => _fire(_snoozedStep));
+  }
+
+  bool _tooOld(DateTime ref) => now().difference(ref) > kSnoozeMaxAge;
+
+  bool _notKnownFire(DateTime? persisted) {
+    final known = knownFire?.call();
+    return persisted != null &&
+        known != null &&
+        persisted.difference(known).abs() > kSnoozeFireMatch;
   }
 
   /// The dismiss window was open when the process died. The native alarm is
@@ -666,7 +765,7 @@ class SnoozeController {
         await _setSnooze(w.stoppedAt);
       case AlarmStopDecision.pending:
         final l = _Listen(AlarmStopCause.userDoubleTap, w.stoppedAt, window,
-            taps: w.taps);
+            taps: w.taps, tapIds: w.tapIds);
         _listen = l;
         _publish();
         _windowTimer = scheduler(w.stoppedAt.add(window).difference(now()),

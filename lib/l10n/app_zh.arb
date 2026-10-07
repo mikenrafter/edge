@@ -2370,5 +2370,7 @@
   "snoozeValueSeconds": "{s} 秒",
   "snoozeValueMinutes": "{m} 分钟",
   "snoozeValueCap": "{n, plural, other{{n} 次贪睡}}",
-  "snoozeUnsupported": "贪睡需要能报告闹钟如何被停止的手环（WHOOP 5/MG）"
+  "snoozeUnsupported": "贪睡需要能报告闹钟如何被停止的手环（WHOOP 5/MG）",
+  "snoozeEnable": "贪睡",
+  "snoozeExactNote": "精确计时需要闹钟权限"
 }

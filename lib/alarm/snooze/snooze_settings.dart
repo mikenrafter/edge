@@ -1,6 +1,10 @@
 // snooze_settings.dart — the wearer's snooze settings, the persisted snooze
 // state, and the store for both (wake_meta).
 //
+// Snooze is OPT-IN ([SnoozeSettings.enabled], default false): an owner-safety
+// decision. Off, the native alarm path is exactly what it was before the
+// snooze existed.
+//
 // Pinned by test/alarm_snooze/snooze_settings_test.dart.
 
 import 'dart:convert';
@@ -28,12 +32,15 @@ const String kSnoozeWindowKey = 'snooze_window';
 
 class SnoozeSettings {
   const SnoozeSettings({
+    this.enabled = false,
     this.requiredTaps = kSnoozeTapsDefault,
     this.windowMs = kSnoozeWindowMsDefault,
     this.minutes = kSnoozeMinutesDefault,
     this.cap = kSnoozeCapDefault,
   });
 
+  /// The wearer switched snooze on. False until they do.
+  final bool enabled;
   final int requiredTaps;
   final int windowMs;
   final int minutes;
@@ -41,12 +48,14 @@ class SnoozeSettings {
 
   /// Each field clamped into its range.
   factory SnoozeSettings.clamped({
+    bool enabled = false,
     int requiredTaps = kSnoozeTapsDefault,
     int windowMs = kSnoozeWindowMsDefault,
     int minutes = kSnoozeMinutesDefault,
     int cap = kSnoozeCapDefault,
   }) =>
       SnoozeSettings(
+        enabled: enabled,
         requiredTaps: requiredTaps.clamp(kSnoozeTapsMin, kSnoozeTapsMax),
         windowMs: windowMs.clamp(kSnoozeWindowMsMin, kSnoozeWindowMsMax),
         minutes: minutes.clamp(kSnoozeMinutesMin, kSnoozeMinutesMax),
@@ -55,12 +64,14 @@ class SnoozeSettings {
 
   /// Like a copy, with every field clamped.
   SnoozeSettings copyWith({
+    bool? enabled,
     int? requiredTaps,
     int? windowMs,
     int? minutes,
     int? cap,
   }) =>
       SnoozeSettings.clamped(
+        enabled: enabled ?? this.enabled,
         requiredTaps: requiredTaps ?? this.requiredTaps,
         windowMs: windowMs ?? this.windowMs,
         minutes: minutes ?? this.minutes,
@@ -76,6 +87,9 @@ class SnoozeSettings {
     }
 
     return SnoozeSettings.clamped(
+      // Only a stored `true` switches it on; anything else (absent, a legacy
+      // record, a wrong type) is off.
+      enabled: json['enabled'] == true,
       requiredTaps: field('requiredTaps', kSnoozeTapsDefault),
       windowMs: field('windowMs', kSnoozeWindowMsDefault),
       minutes: field('minutes', kSnoozeMinutesDefault),
@@ -84,6 +98,7 @@ class SnoozeSettings {
   }
 
   Map<String, Object?> toJson() => {
+        'enabled': enabled,
         'requiredTaps': requiredTaps,
         'windowMs': windowMs,
         'minutes': minutes,
@@ -96,13 +111,15 @@ class SnoozeSettings {
   @override
   bool operator ==(Object other) =>
       other is SnoozeSettings &&
+      other.enabled == enabled &&
       other.requiredTaps == requiredTaps &&
       other.windowMs == windowMs &&
       other.minutes == minutes &&
       other.cap == cap;
 
   @override
-  int get hashCode => Object.hash(requiredTaps, windowMs, minutes, cap);
+  int get hashCode =>
+      Object.hash(enabled, requiredTaps, windowMs, minutes, cap);
 }
 
 /// A snooze waiting for its re-alarm (the only thing worth surviving a restart).
@@ -154,10 +171,20 @@ class SnoozeState {
   int get hashCode => Object.hash(count, reAlarmAt);
 }
 
-/// How far before the native alarm's fire a wake confirmation may lie and still
-/// belong to the sleep that alarm woke. Earlier than this, the wearer was up
-/// (and went back to sleep) before it: that confirmation is another block's.
-const Duration kSnoozeConfirmLookback = Duration(minutes: 30);
+/// Slack for clock skew: a wake confirmation counts for the alarm that fired at
+/// F only when it is at or after F minus this. Anything earlier is another
+/// sleep block's (the wearer was up, went back to sleep before this alarm), and
+/// never suppresses the snooze: failing toward waking is fine.
+const Duration kSnoozeConfirmLookback = Duration(seconds: 60);
+
+/// A persisted window or snooze whose native fire is older than this is
+/// dropped on resume, and a running chain ends this long after its fire: a
+/// re-alarm days (or hours) later is a phantom.
+const Duration kSnoozeMaxAge = Duration(hours: 3);
+
+/// A persisted fire matches the alarm occurrence the app knows when the two
+/// stamps are within this of each other (the 57 and 58 events of one fire).
+const Duration kSnoozeFireMatch = Duration(minutes: 5);
 
 /// The dismiss window after a native double-tap stop, kept while it is open so
 /// a restart cannot lose it: the native alarm is already stopped, and nothing
@@ -167,6 +194,7 @@ class SnoozeWindow {
     required this.stoppedAt,
     this.fireAt,
     this.taps = const [],
+    this.tapIds = const [],
   });
 
   /// When the native alarm stopped (the termination's own time, phone clock).
@@ -178,17 +206,26 @@ class SnoozeWindow {
   /// The band double taps heard since the stop (their own times).
   final List<DateTime> taps;
 
+  /// The identities of those taps (event identity strings), so the same event
+  /// delivered again after a restart is not counted twice.
+  final List<String> tapIds;
+
   /// Throws [FormatException] on anything unreadable.
   factory SnoozeWindow.fromJson(Object? json) {
     if (json is Map) {
       final s = json['stoppedAtMs'], f = json['fireAtMs'], t = json['tapsMs'];
-      if (s is int && (t == null || t is List)) {
+      final ids = json['tapIds'];
+      if (s is int && (t == null || t is List) && (ids == null || ids is List)) {
         return SnoozeWindow(
           stoppedAt: DateTime.fromMillisecondsSinceEpoch(s),
           fireAt: f is int ? DateTime.fromMillisecondsSinceEpoch(f) : null,
           taps: [
             for (final x in (t as List? ?? const []))
               if (x is int) DateTime.fromMillisecondsSinceEpoch(x),
+          ],
+          tapIds: [
+            for (final x in (ids as List? ?? const []))
+              if (x is String) x,
           ],
         );
       }
@@ -200,6 +237,7 @@ class SnoozeWindow {
         'stoppedAtMs': stoppedAt.millisecondsSinceEpoch,
         if (fireAt != null) 'fireAtMs': fireAt!.millisecondsSinceEpoch,
         'tapsMs': [for (final t in taps) t.millisecondsSinceEpoch],
+        'tapIds': tapIds,
       };
 }
 
@@ -240,6 +278,7 @@ class DbSnoozeStore implements SnoozeStore {
   Future<void> saveSettings(SnoozeSettings s) => LocalDb.wakeMetaSet(
       kSnoozeSettingsKey,
       jsonEncode(SnoozeSettings.clamped(
+              enabled: s.enabled,
               requiredTaps: s.requiredTaps,
               windowMs: s.windowMs,
               minutes: s.minutes,

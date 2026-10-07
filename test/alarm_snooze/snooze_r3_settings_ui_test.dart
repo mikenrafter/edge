@@ -112,6 +112,9 @@ void main() {
       final app = AppState.forTesting(engine: FakeAlarmEngine());
       addTearDown(app.dispose);
       app.engine.state.generation = generation;
+      // A warm database: a first write inside the test's fake-async zone leaves
+      // a pending timer behind.
+      await t.runAsync(() => LocalDb.instance);
       if (on) {
         await t.runAsync(() => app.setSnoozeSettings(snoozeOn()));
       }

@@ -247,6 +247,43 @@ void main() {
     });
   });
 
+  group('dispose (a process going away) keeps what a dead process needs', () {
+    test('timers cancelled and the lease released; the persisted snooze AND '
+        'the OS backstop stay, and the next launch re-alarms', () async {
+      await open();
+      await fireAndStop(HapticsTermination.expired);
+      await rig.settle();
+      final st = await storedState();
+      expect(st, isNotNull, reason: 'precondition');
+      expect(rig.engine.prompts.last.enabled, isTrue,
+          reason: 'precondition: a lease');
+      expect(n.idFor(st!.reAlarmAt), backstopId,
+          reason: 'precondition: a backstop');
+      final clock = rig.clock;
+      final cancelsBefore = n.cancelled.length;
+
+      await rig.dispose();
+
+      expect(rig.app.snooze.consumesDoubleTaps, isFalse);
+      expect(rig.engine.prompts.last.enabled, isFalse,
+          reason: 'nothing here can renew the lease: it is released');
+      expect(await storedState(), isNotNull,
+          reason: 'kept for the next launch');
+      expect(n.cancelled.length, cancelsBefore,
+          reason: 'the backstop is for a process that is not running: it '
+              'stays armed (${n.order})');
+      expect(n.endsScheduled(backstopId), isTrue);
+
+      clock.advance(kMin * 6);
+      rig = await SnoozeBandRig.open(clock: clock);
+      await rig.app.snooze.resume();
+      await rig.app.debugKeepAliveTick();
+      await rig.settle();
+      expect(rig.count(Played.reAlarm), greaterThanOrEqualTo(1),
+          reason: 'the next launch finds the snooze due and re-alarms');
+    });
+  });
+
   // ── K ─────────────────────────────────────────────────────────────────────
 
   group('K a native fire with snooze on takes the lease and arms the backstop '

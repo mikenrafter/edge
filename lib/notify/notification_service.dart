@@ -571,23 +571,44 @@ class NotificationService {
     required String body,
     required DateTime at,
     String? route,
+    bool exact = false,
   }) async {
     try {
       if (!_maySchedule(id)) return;
       if (!await ensurePermission(allowPrompt: false)) return;
       final when = tz.TZDateTime.from(at, tz.local);
+      // [exact]: exactAllowWhileIdle when Android lets this app set exact
+      // alarms (an inexact one can arrive minutes late with Dart suspended),
+      // else the inexact mode, never an exact request that would throw.
+      final mode = exact && await canScheduleExact()
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle;
       await _plugin.zonedSchedule(
         id,
         title,
         body,
         when,
         _details(category),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        androidScheduleMode: mode,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         payload: route,
       );
     } catch (_) {}
+  }
+
+  /// Whether Android lets this app schedule EXACT alarms right now (the
+  /// USE_EXACT_ALARM / SCHEDULE_EXACT_ALARM permission). False on every other
+  /// platform, and when the OS does not say.
+  Future<bool> canScheduleExact() async {
+    try {
+      final android = _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      if (android == null) return false;
+      return await android.canScheduleExactNotifications() ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<void> cancel(int id) async {

@@ -53,6 +53,15 @@
     <!-- Battery-optimization (Doze) exemption request — user-granted via the system
          dialog fired from the "Keep alive in background" row. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Exact timing for the main-alarm snooze's phone backstop (a wake alarm app:
+         the one thing this notification is for is waking the wearer on time when
+         the process is suspended). USE_EXACT_ALARM is granted at install on
+         Android 13+ (reserved for alarm-clock apps); SCHEDULE_EXACT_ALARM is the
+         user-granted special access on Android 12 / 12L. Without either the
+         backstop falls back to an inexact alarm and the snooze settings say so. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
     <!-- Keep the CPU alive while the boot receiver starts the foreground service. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- OTA self-update: download + launch the system installer for the new APK. -->

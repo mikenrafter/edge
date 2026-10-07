@@ -594,7 +594,8 @@ void main() {
     test('the re-alarm\'s own end (snooze of 1 minute, inside the old 5 min '
         'gate) does not restart the snooze', () async {
       await open();
-      await rig.app.setSnoozeSettings(const SnoozeSettings(minutes: 1));
+      await rig.app.setSnoozeSettings(
+          SnoozeSettings.fromJson({'enabled': true, 'minutes': 1}));
       await fireAndStop(HapticsTermination.expired);
       await rig.settle();
       final before = rig.deliveries.length;

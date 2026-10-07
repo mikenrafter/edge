@@ -486,6 +486,24 @@ class WakeOrchestrator {
   /// Touches nothing else; the native alarm is not reachable from here.
   void dismissNaturalRepeat() => _ackedWakes.addAll(_repeating);
 
+  /// A native alarm fired at [fireAt] (phone time): ends only the repeat of THE
+  /// wake it belongs to, i.e. one whose wake time T has [fireAt] within
+  /// [T - 1 min, T + 5 min]. A fire for another wake (a replayed one, an
+  /// earlier alarm) leaves a newly configured wake's repeat alone. Returns
+  /// whether a repeat was ended.
+  bool dismissNaturalRepeatForFire(DateTime fireAt) {
+    var ended = false;
+    for (final sec in _repeating) {
+      final t = DateTime.fromMillisecondsSinceEpoch(sec * 1000);
+      final d = fireAt.difference(t);
+      if (d >= const Duration(minutes: -1) && d <= const Duration(minutes: 5)) {
+        _ackedWakes.add(sec);
+        ended = true;
+      }
+    }
+    return ended;
+  }
+
   /// Stops every Natural repeat at its next check. The native alarm and the
   /// persisted run state are left exactly as they are.
   void dispose() => _disposed = true;

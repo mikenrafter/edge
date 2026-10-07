@@ -139,7 +139,9 @@ void main() {
   }
 
   Future<void> terminated(String cause) async {
-    await app.debugOnHapticsTerminated(cause, at: clock.now);
+    // The strap stamps the stop with a believable clock (round 3: no stamp
+    // means receipt time for the whole alarm).
+    await app.debugOnHapticsTerminated(cause, at: clock.now, bandAt: clock.now);
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
 

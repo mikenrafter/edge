@@ -471,6 +471,7 @@ class NotificationCenter {
         body: 'Your snooze is over. Time to get up.',
         at: due,
         route: kRouteAlarm,
+        exact: true,
       );
     } catch (_) {
       /* best-effort */

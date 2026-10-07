@@ -12640,5 +12640,13 @@
   "snoozeUnsupported": "Snooze needs a band that reports how the alarm was stopped (WHOOP 5/MG)",
   "@snoozeUnsupported": {
     "description": "Shown under the disabled alarm snooze rows on a band (WHOOP 4.0) that does not report how the alarm was stopped."
+  },
+  "snoozeEnable": "Snooze",
+  "@snoozeEnable": {
+    "description": "Alarm settings switch: turn the main-alarm snooze on (off by default)."
+  },
+  "snoozeExactNote": "Exact timing needs the alarm permission",
+  "@snoozeExactNote": {
+    "description": "One line under the snooze settings when Android will not let the app set exact alarms."
   }
 }

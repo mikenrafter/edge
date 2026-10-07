@@ -84,6 +84,19 @@ class _AlarmScreenState extends State<AlarmScreen> {
   int? _traceEpoch;
   int _traceRevision = -1;
 
+  /// Android will not let the app set exact alarms (so the snooze backstop is
+  /// inexact). Asked once when the screen opens.
+  bool _exactUnavailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final app = context.read<AppState>();
+    app.snoozeExactTiming().then((exact) {
+      if (mounted && exact == false) setState(() => _exactUnavailable = true);
+    }, onError: (Object _) {});
+  }
+
   /// The plain-words decision trace for the armed wake. Reloaded when the armed
   /// occurrence changes AND each time a tick appends to it (the revision on
   /// [WakeController.traceRevision]). A reload is one bounded query; the
@@ -148,6 +161,7 @@ class _AlarmScreenState extends State<AlarmScreen> {
             snoozeSettings: app.snoozeSettings,
             onSnoozeSettings: app.setSnoozeSettings,
             snoozeUnsupportedReason: caps.of(Feature.alarmSnooze).reason,
+            snoozeExactTimingUnavailable: _exactUnavailable,
           ),
         );
       },
@@ -218,6 +232,9 @@ class AlarmScreenView extends StatefulWidget {
   /// with this reason (see [Feature.alarmSnooze]).
   final String? snoozeUnsupportedReason;
 
+  /// Android will not let the app set exact alarms: the snooze settings say so.
+  final bool snoozeExactTimingUnavailable;
+
   const AlarmScreenView({
     super.key,
     this.armedAt,
@@ -240,6 +257,7 @@ class AlarmScreenView extends StatefulWidget {
     this.snoozeSettings,
     this.onSnoozeSettings,
     this.snoozeUnsupportedReason,
+    this.snoozeExactTimingUnavailable = false,
   });
 
   @override
@@ -644,6 +662,7 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                               settings: w.snoozeSettings!,
                               onChanged: w.onSnoozeSettings,
               unsupportedReason: w.snoozeUnsupportedReason,
+              exactTimingUnavailable: w.snoozeExactTimingUnavailable,
                             ),
                           ),
                         const SizedBox(height: S.x4),

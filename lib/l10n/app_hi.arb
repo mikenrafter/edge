@@ -2370,5 +2370,7 @@
   "snoozeValueSeconds": "{s} सेकंड",
   "snoozeValueMinutes": "{m} मिनट",
   "snoozeValueCap": "{n, plural, =1{1 स्नूज़} other{{n} स्नूज़}}",
-  "snoozeUnsupported": "स्नूज़ के लिए ऐसा बैंड चाहिए जो बताए कि अलार्म कैसे रोका गया (WHOOP 5/MG)"
+  "snoozeUnsupported": "स्नूज़ के लिए ऐसा बैंड चाहिए जो बताए कि अलार्म कैसे रोका गया (WHOOP 5/MG)",
+  "snoozeEnable": "स्नूज़",
+  "snoozeExactNote": "सटीक समय के लिए अलार्म अनुमति चाहिए"
 }

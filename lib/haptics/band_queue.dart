@@ -25,13 +25,14 @@
 //    [BandCommandLedger.reserveUpTo]). A gesture job that cannot start within
 //    its own [BandHapticQueue.run] `startBy` is also rejected.
 //
-//  * An ALARM job (queued inside [BandHapticQueue.asAlarm]: the snooze's
-//    re-alarm and its confirms) is never held for the limit at all. It still
-//    waits its turn for the band (one thing plays at a time) and is counted in
-//    the ledger, clamped like a started gesture so the ledger never counts more
-//    than the limit, but it starts without waiting for room. Waking the wearer
-//    outranks our own precaution: a re-alarm held two minutes by the 30-in-2
-//    rule is a wearer who sleeps on.
+//  * An ALARM job (queued inside [BandHapticQueue.asAlarm]: ONLY the snooze's
+//    re-alarm; its confirm, dismiss and cancel cues are plain jobs) is never
+//    held for the limit at all. It still waits its turn for the band (one thing
+//    plays at a time), but it starts without waiting for room, and EVERY
+//    command it writes is counted in the ledger, also past the limit, so what
+//    follows it waits for the real count. Waking the wearer outranks our own
+//    precaution: a re-alarm held two minutes by the 30-in-2 rule is a wearer
+//    who sleeps on.
 //
 // Between two jobs the band is also left the vocabulary's minimum gap after the
 // last vibration ended ([BandHapticQueue.minGap]), so a second gesture job
@@ -146,11 +147,12 @@ class BandReservation {
 ///   https://www.precisionmicrodrives.com/?p=1190
 ///   https://support.whoop.com/hc/en-us/articles/4407117388955-Haptic-Alarm-Overview
 ///
-/// The limit never holds back an ALARM job (the snooze's re-alarm and its
-/// confirms, [BandHapticQueue.asAlarm]): waking the user outranks our own
-/// precaution. Its commands are still counted (through [reserveUpTo], so the
-/// ledger never counts more than the limit and nothing is overdrawn); it just
-/// does not wait for room, so what follows an alarm waits a little longer.
+/// The limit never holds back an ALARM job (the snooze's re-alarm only,
+/// [BandHapticQueue.asAlarm]): waking the user outranks our own precaution. Its
+/// commands are all counted, past the limit if need be (through [reserveUpTo]):
+/// the ledger holds the real number of writes in the window, so an ordinary job
+/// that follows waits for the real count rather than running on top of an
+/// uncounted alarm. [commandsLeft] never reads below zero.
 ///
 /// Two kinds of entry: WRITES (a timestamp per command actually sent, which
 /// leave the window two minutes after they were written) and RESERVATIONS
@@ -199,14 +201,17 @@ class BandCommandLedger {
     return BandReservation._(this, n, n);
   }
 
-  /// A reservation for [n] commands that never fails: it holds what room there
-  /// is (up to [n]) and the rest of its commands are written without being
-  /// counted, so the ledger never counts more than [limitNow]. For a gesture,
-  /// which must play to its end, and for an alarm job, which must never wait
-  /// (waking the user outranks the precaution). Null only for a negative [n].
-  BandReservation? reserveUpTo(int n, DateTime at) {
+  /// A reservation for [n] commands that never fails, whatever the window
+  /// holds. With [countAll] (an ALARM job) every one of the [n] is counted,
+  /// also past [limitNow]: the ledger must say how many writes really are in
+  /// the window, so that what follows waits for them. Without it (a started
+  /// gesture, which must play to its end) it holds what room there is and the
+  /// rest is written uncounted, so the ledger never counts more than the
+  /// limit. Null only for a negative [n].
+  BandReservation? reserveUpTo(int n, DateTime at, {bool countAll = false}) {
     if (n < 0) return null;
-    final held = n < commandsLeft(at) ? n : commandsLeft(at);
+    _prune(at);
+    final held = countAll || n < commandsLeft(at) ? n : commandsLeft(at);
     _reserved += held;
     return BandReservation._(this, n, held);
   }
@@ -405,9 +410,25 @@ class BandHapticQueue {
     this.onWrite,
     this.log,
     this.minGap,
+    this.onBusyChanged,
   });
 
   final BandCommandLedger ledger;
+
+  /// Called with true when a job starts and false when the band is free of it
+  /// (its playback ended and the gap after it passed): the app is playing on
+  /// the band. Never throws into the queue.
+  final void Function(bool busy)? onBusyChanged;
+
+  /// A job is running or settling right now.
+  bool get busy => _busy;
+
+  void _setBusy(bool b) {
+    _busy = b;
+    try {
+      onBusyChanged?.call(b);
+    } catch (_) {}
+  }
 
   /// How long the band is left alone after a job that wrote, once its last
   /// vibration ended, before the next job starts (the vocabulary's minimum
@@ -537,7 +558,7 @@ class BandHapticQueue {
 
   /// Run [work] so every job it queues is an alarm job: it waits for the band
   /// like any other, but never for room in the command window. Its commands are
-  /// still counted (clamped, never past the limit), so what follows it sees the
+  /// still counted (every write, also past the limit), so what follows it sees the
   /// cost. Waking the wearer outranks the 30-in-2-minutes precaution.
   T asAlarm<T>(T Function() work) => runZoned(
         work,
@@ -714,8 +735,8 @@ class BandHapticQueue {
       }
       BandReservation? room;
       if (j.alarm) {
-        // Never held for room: counted up to the limit, written regardless.
-        room = ledger.reserveUpTo(j.commands, now);
+        // Never held for room: written regardless, every write counted.
+        room = ledger.reserveUpTo(j.commands, now, countAll: true);
       } else if (j.gesture != null) {
         // Never late: a gesture's first haptic needs room now, else it is
         // dropped; the rest of a started gesture plays regardless.
@@ -760,7 +781,7 @@ class BandHapticQueue {
       if (id != null) {
         _startedGestures[id] = now;
       }
-      _busy = true;
+      _setBusy(true);
       _running = j;
       unawaited(_start(j, room!));
     }
@@ -821,7 +842,7 @@ class BandHapticQueue {
       // No answer is the same as a timeout: the band has finished by then.
     } finally {
       room.release();
-      _busy = false;
+      _setBusy(false);
       _running = null;
       if (!j.over.isCompleted) j.over.complete();
       _pump();

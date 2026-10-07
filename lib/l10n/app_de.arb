@@ -2370,5 +2370,7 @@
   "snoozeValueSeconds": "{s} s",
   "snoozeValueMinutes": "{m} Min.",
   "snoozeValueCap": "{n, plural, =1{1 Schlummerrunde} other{{n} Schlummerrunden}}",
-  "snoozeUnsupported": "Schlummern braucht ein Band, das meldet, wie der Alarm beendet wurde (WHOOP 5/MG)"
+  "snoozeUnsupported": "Schlummern braucht ein Band, das meldet, wie der Alarm beendet wurde (WHOOP 5/MG)",
+  "snoozeEnable": "Schlummern",
+  "snoozeExactNote": "Genaues Timing braucht die Wecker-Berechtigung"
 }

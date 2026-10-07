@@ -2399,5 +2399,7 @@
   "snoozeValueSeconds": "{s} s",
   "snoozeValueMinutes": "{m} min",
   "snoozeValueCap": "{n, plural, =1{1 pospuesta} other{{n} pospuestas}}",
-  "snoozeUnsupported": "La pospuesta necesita una banda que informe de cómo se detuvo la alarma (WHOOP 5/MG)"
+  "snoozeUnsupported": "La pospuesta necesita una banda que informe de cómo se detuvo la alarma (WHOOP 5/MG)",
+  "snoozeEnable": "Posponer",
+  "snoozeExactNote": "La hora exacta necesita el permiso de alarma"
 }

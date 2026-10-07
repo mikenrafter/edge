@@ -103,6 +103,10 @@ void main() {
           stored: SnoozeState(
               count: 1, reAlarmAt: ok.add(_min * 5), fireAt: ok));
       await b.controller.resume();
+      // The overdue snooze's zero-length timer, as a real Timer would fire it.
+      for (final t in b.scheduler.live.toList()) {
+        if (t.after <= Duration.zero) t.fire();
+      }
       await b.settle();
       expect(b.slots, contains(kSlotReAlarm));
     });

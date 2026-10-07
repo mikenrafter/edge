@@ -60,8 +60,17 @@ class HapticsService {
       onWrite: _ended.reset,
       log: log,
       minGap: () => Duration(milliseconds: profile?.minVibrationGapMs ?? 0),
+      onBusyChanged: (b) => onBusyChanged?.call(b),
     );
   }
+
+  /// Called with true when a band job starts and false when the band is free of
+  /// it: the app is playing a pattern. AppState reads this to tell its own
+  /// playback ending from the alarm stopping.
+  void Function(bool busy)? onBusyChanged;
+
+  /// A band job is running or settling right now.
+  bool get playing => _queue.busy;
 
   final BandHapticsPort port;
   final bool Function() _allowLong;
@@ -108,8 +117,9 @@ class HapticsService {
       _queue.asGesture(gestureId, work, started: started);
 
   /// Run [work] so its band jobs are alarm jobs: never held for the command
-  /// window (waking the wearer outranks our own precaution), still counted in
-  /// the ledger up to its limit. See [BandHapticQueue.asAlarm].
+  /// window (waking the wearer outranks our own precaution), every write still
+  /// counted in the ledger. Only the snooze's re-alarm. See
+  /// [BandHapticQueue.asAlarm].
   T asAlarm<T>(T Function() work) => _queue.asAlarm(work);
 
   /// Run [work] with jobs that start now or are rejected. Used for phase cues,

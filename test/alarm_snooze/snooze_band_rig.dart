@@ -248,7 +248,7 @@ class SnoozeBandRig {
       await rig.app.setSnoozeSettings(SnoozeSettings.fromJson({
         ...rig.app.snoozeSettings.toJson(),
         ...settings,
-        if (snooze != null) 'enabled': snooze,
+        'enabled': ?snooze,
       }));
     }
     return rig;
