@@ -172,4 +172,10 @@ class Prefs {
   /// `AppState._persistPaired` (purge before a real pairing ever touches the
   /// database) — see `lib/demo/demo_data_generator.dart`.
   static const String demoModeEnabled = 'demo.mode_enabled';
+
+  /// Wake outcomes: a developer-only, shadow-mode log of how each wake went
+  /// (lib/wake/outcomes/). Off unless somebody turns it on in Developer mode.
+  /// It records and displays; it never changes an alarm.
+  static const String exploreWakeOutcomes = 'explore.wake_outcomes';
+  static bool get exploreWakeOutcomesOn => throw UnimplementedError();
 }
