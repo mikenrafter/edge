@@ -25,7 +25,10 @@ enum MomentChoice {
   meal('meal', 'Meal'),
   workout('workout', 'Workout'),
   symptom('symptom', 'Symptom'),
-  other('other', 'Other');
+  other('other', 'Other'),
+  // RED-PHASE STUB: id/label are final; the journal-field mapping, the writer's
+  // one-glass add and the localized label (momentChoiceWater) are not built yet.
+  water('water', 'Water');
 
   const MomentChoice(this.id, this.label);
   final String id;
@@ -36,6 +39,7 @@ enum MomentChoice {
   String? get journalField => switch (this) {
         MomentChoice.caffeine => 'caffeine_mg',
         MomentChoice.alcohol => 'alcohol_units',
+        MomentChoice.water => 'water_ml', // RED-PHASE STUB
         _ => null,
       };
 
@@ -56,6 +60,7 @@ enum MomentChoice {
         MomentChoice.workout => l?.momentChoiceWorkout ?? label,
         MomentChoice.symptom => l?.momentChoiceSymptom ?? label,
         MomentChoice.other => l?.momentChoiceOther ?? label,
+        MomentChoice.water => label, // RED-PHASE STUB: no ARB key yet
       };
 }
 
