@@ -213,6 +213,59 @@ void main() {
       expect(find.textContaining('Tentative'), findsNothing);
     });
 
+    BlockResult block(double rate, BlockRejection? rejection) => BlockResult(
+          rateBpm: rate,
+          amplitudeBpm: rejection == null ? 4.0 : null,
+          coverage: 0.99,
+          observedFraction: 1.0,
+          cycles: 10,
+          rejection: rejection,
+        );
+
+    testWidgets('measured movement never gets the "can\'t be checked" note',
+        (t) async {
+      final c = FakeController(
+        fakeState: SweepState.finished,
+        fakeResult: SweepComparison(
+          blocks: [
+            block(6.0, null),
+            block(5.0, BlockRejection.movement),
+          ],
+          outcome: ComparisonOutcome.inconclusiveTooFewBlocks,
+          rateBpm: null,
+          range: null,
+        ),
+      );
+      await _pumpScreen(t, c);
+      expect(find.byKey(const ValueKey('sweep-movement-unknown')),
+          findsNothing);
+      expect(find.text("Movement can't be checked"), findsNothing);
+      expect(find.text('Too much movement'), findsOneWidget);
+    });
+
+    testWidgets('only the paces that are really unknown say so', (t) async {
+      final c = FakeController(
+        fakeState: SweepState.finished,
+        fakeResult: SweepComparison(
+          blocks: [
+            block(6.0, null),
+            block(5.0, BlockRejection.movementUnknown),
+          ],
+          outcome: ComparisonOutcome.inconclusiveTooFewBlocks,
+          rateBpm: null,
+          range: null,
+        ),
+      );
+      await _pumpScreen(t, c);
+      expect(find.text("Movement can't be checked"), findsOneWidget);
+      expect(
+        find.text("Movement couldn't be checked for some paces, so they are "
+            'left out of the comparison.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('no rate is suggested'), findsNothing);
+    });
+
     testWidgets('a failed session shows its error', (t) async {
       final c = FakeController(
         fakeState: SweepState.failed,

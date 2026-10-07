@@ -322,12 +322,10 @@ class _ResonanceSweepScreenState extends State<ResonanceSweepScreen>
             style: F.t1.copyWith(color: p.ink)),
         const SizedBox(height: S.x1),
         Text(detail, style: F.cap.copyWith(color: p.ink2, height: 1.5)),
-        if (r.blocks
-            .any((b) => b.rejection == BlockRejection.movementUnknown)) ...[
+        if (_unknownMotionNote(r) case final note?) ...[
           const SizedBox(height: S.x2),
           Text(
-            "Movement can't be checked yet, so no rate is suggested; the "
-            'comparison table still shows each pace.',
+            note,
             key: const ValueKey('sweep-movement-unknown'),
             style: F.cap.copyWith(color: p.ink2, height: 1.5),
           ),
@@ -404,6 +402,21 @@ class _ResonanceSweepScreenState extends State<ResonanceSweepScreen>
         const SizedBox(height: S.x2),
       ],
     );
+  }
+
+  // Said only for paces whose movement really could not be checked. A pace
+  // that was measured (still or not) never gets this note.
+  String? _unknownMotionNote(SweepComparison r) {
+    final unknown = r.blocks
+        .where((b) => b.rejection == BlockRejection.movementUnknown)
+        .length;
+    if (unknown == 0) return null;
+    if (unknown == r.blocks.length) {
+      return "Movement can't be checked yet, so no rate is suggested; the "
+          'comparison table still shows each pace.';
+    }
+    return "Movement couldn't be checked for some paces, so they are left out "
+        'of the comparison.';
   }
 
   (String, String) _outcomeText(SweepComparison r) {

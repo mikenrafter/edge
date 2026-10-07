@@ -2083,6 +2083,12 @@ class LiveStreamOwners {
   /// cancelled, or the band disconnects; never a standing request.
   final bool imuLab;
 
+  /// The pacing-rates sweep is running (IMU, next to the HR it holds through
+  /// [breathing]): its blocks are only admitted when the wrist was measured
+  /// still, and the accelerometer arrives only in the IMU frames. Held from
+  /// the sweep's start until it ends for any reason; never a standing request.
+  final bool sweepMotion;
+
   const LiveStreamOwners({
     this.visibleLiveHrView = false,
     this.activeWorkout = false,
@@ -2093,6 +2099,7 @@ class LiveStreamOwners {
     this.foreground = false,
     this.developerLiveFeed = false,
     this.imuLab = false,
+    this.sweepMotion = false,
   });
 
   static const none = LiveStreamOwners();
@@ -2103,7 +2110,8 @@ class LiveStreamOwners {
       'fgGait: $foregroundGaitWorkout, breathing: $breathing, '
       'movement: $movementSampling, '
       'passiveSteps: $passiveStrapSteps, foreground: $foreground, '
-      'developer: $developerLiveFeed, imuLab: $imuLab)';
+      'developer: $developerLiveFeed, imuLab: $imuLab, '
+      'sweepMotion: $sweepMotion)';
 }
 
 /// The streams the current owners call for.
@@ -2111,7 +2119,7 @@ class LiveStreamOwners {
 ///   wantHr  = visibleLiveHrView || activeWorkout || breathing
 ///             || developerLiveFeed
 ///   wantImu = foregroundGaitWorkout || movementSampling || passiveStrapSteps
-///             || developerLiveFeed || imuLab
+///             || developerLiveFeed || imuLab || sweepMotion
 ///
 /// plus, on gen4 only, `foreground` as an owner of both (see
 /// [LiveStreamOwners.foreground]). History sync is never an owner — it reads
@@ -2136,6 +2144,7 @@ LiveStreamIntent desiredLiveStreams(
           o.passiveStrapSteps ||
           o.developerLiveFeed ||
           o.imuLab ||
+          o.sweepMotion ||
           legacy) &&
       !standardHrFallback;
   return LiveStreamIntent(hr: hr, imu: imu);

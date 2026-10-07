@@ -146,6 +146,7 @@ import 'imu_packet.dart';
 import 'breathing_controller.dart';
 import '../explore/resonance/resonance_sweep_controller.dart';
 import '../explore/resonance/resonance_sweep_plan.dart';
+import '../explore/resonance/stillness_meter.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
 export 'workout_controller.dart' show LiveWorkoutState;
@@ -910,30 +911,40 @@ class AppState extends ChangeNotifier {
   /// ignores frames until the next replaces it.
   ResonanceSweepController? _activeSweep;
 
-  /// A sweep holds the live HR stream. Read by the live-owner set.
+  /// The active sweep's motion meter. Fed only while that sweep is running
+  /// (see [_feedSweepAccel]); RAM only, per-second summaries, never persisted.
+  StillnessMeter? _sweepMeter;
+
+  /// A sweep holds the live HR stream (and, with it, the IMU owner). Read by
+  /// the live-owner set.
   bool _sweepStreamsHeld = false;
 
   /// A controller for one sweep, wired to the band link, the live streams, the
   /// breathing cue path and the off-isolate beat decode. The screen that is
   /// given it owns it and disposes it (which releases the streams).
   ///
-  /// No `stillFraction` is passed, deliberately. The sweep holds the HR stream
-  /// only, and those frames (0x28 compact HR) carry no accelerometer field; the
-  /// R10 frames that do (0x2B / gen4 bundle) arrive only with the IMU owner, a
-  /// high-rate flood a breathing session does not take. Unknown motion is not
-  /// still motion, so every block abstains with `movementUnknown`, no rate is
-  /// suggested, and the result screen says so.
+  /// Motion comes from the accelerometer in the IMU frames (0x2B rec 21 on gen5,
+  /// R10 and 0x33 on gen4), which arrive only with the IMU owner. The sweep
+  /// takes it ([LiveStreamController.setSweepMotion]) next to the HR hold and
+  /// hands both back on every exit path. Each block asks its own
+  /// [StillnessMeter] about its measure window. When no accelerometer reached
+  /// the sweep (the radio fell back to HR only, or the band refused the IMU
+  /// write) the meter has nothing, and unknown motion is not still motion: the
+  /// block abstains with `movementUnknown`. Nothing here is persisted.
   ResonanceSweepController buildResonanceSweep({
     ResonanceSweepPlan? plan,
     // The sweep's wall clock; tests step it.
     DateTime Function()? now,
   }) {
+    final meter = StillnessMeter();
     final controller = ResonanceSweepController(
       plan: plan ?? ResonanceSweepPlan.build(),
       now: now,
       isConnected: () => isConnected,
+      stillFraction: meter.stillFraction,
       acquireStreams: () async {
         _sweepStreamsHeld = true;
+        _live.setSweepMotion(true);
         try {
           await engine.reconcileLiveStreams();
         } catch (_) {
@@ -943,7 +954,8 @@ class AppState extends ChangeNotifier {
       },
       releaseStreams: () {
         _sweepStreamsHeld = false;
-        _nudgeLive();
+        _live.setSweepMotion(false);
+        _nudgeLive(); // the HR flag above, when the IMU one was already off
       },
       deliverCue: _deliverSweepCue,
       decodeBeats: (frames) {
@@ -952,6 +964,7 @@ class AppState extends ChangeNotifier {
         return r.sweepBeats(frames);
       },
     );
+    _sweepMeter = meter;
     return _activeSweep = controller;
   }
 
@@ -3958,11 +3971,17 @@ class AppState extends ChangeNotifier {
       _imuStreamSeen = true;
       final f = _safeFrameAccel(hex);
       if (f != null) {
+        _feedSweepAccelFrame(f);
         _live.bufferLiveImu(f);
         _ingestLiveMags(f);
         _trackCoverage(recTs);
       }
     } else if (pt == 0x2B && !_imuStreamSeen) {
+      // The sweep's motion meter takes every accepted six-axis packet, whether
+      // or not the band's own clock is set (the samples are valid either way;
+      // the sweep stamps them on its own clock). Same once-only rule as the
+      // pedometer: with the 0x33 stream flowing, 0x2B is not read again.
+      if (sixAxis != null) _feedSweepAccel(sixAxis.accelSamples);
       // Gen5 Maverick live IMU is 0x2B (100 Hz planar), not top-level 0x33.
       // A frame the six-axis adapter rejected (a short gen4 R10 has accel but
       // no gyro block) still feeds accel consumers exactly as it did before.
@@ -3976,6 +3995,36 @@ class AppState extends ChangeNotifier {
       }
     }
     _live.bufferLiveExtras(pt, hex);
+  }
+
+  /// One burst of accelerometer samples (g, oldest first, 10 ms apart) that has
+  /// just arrived, into the active sweep's meter on the sweep's own clock.
+  /// Ignored unless that sweep is running, so nothing from before it started or
+  /// after it ended is kept. RAM only (invariant 14).
+  void _feedSweepAccel(List<ImuVector> samples) {
+    final at = _activeSweep?.sessionTime;
+    final meter = _sweepMeter;
+    if (at == null || meter == null || samples.isEmpty) return;
+    final n = samples.length;
+    for (var i = 0; i < n; i++) {
+      final s = samples[i];
+      meter.add(at - Duration(milliseconds: (n - 1 - i) * 10), s.x, s.y, s.z);
+    }
+  }
+
+  /// The gen4 0x33 frame's accel: axes are raw counts, scaled to g here exactly
+  /// as [LiveStreamController.bufferLiveImu] does. A frame without all three
+  /// axes at the magnitude count feeds nothing (no axis is invented).
+  void _feedSweepAccelFrame(proto.ImuFrame f) {
+    final xs = f.xs, ys = f.ys, zs = f.zs;
+    final n = f.mags.length;
+    if (xs == null || ys == null || zs == null) return;
+    if (xs.length != n || ys.length != n || zs.length != n) return;
+    _feedSweepAccel([
+      for (var i = 0; i < n; i++)
+        ImuVector(xs[i] * proto.kGen5AccelScaleG, ys[i] * proto.kGen5AccelScaleG,
+            zs[i] * proto.kGen5AccelScaleG),
+    ]);
   }
 
   /// True iff a live inner packet's record-type byte ([1]) is 10 (R10, the

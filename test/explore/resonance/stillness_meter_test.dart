@@ -178,7 +178,7 @@ void main() {
       feed(clean, 151, 200);
       expect(clean.stillFraction(sec(30), sec(150)), 1.0,
           reason: 'second 29 and second 150 lie outside [30, 150)');
-      expect(clean.stillFraction(sec(29), sec(150)), closeTo(119 / 120, 1e-9));
+      expect(clean.stillFraction(sec(29), sec(150)), closeTo(120 / 121, 1e-9));
       expect(clean.stillFraction(sec(30), sec(151)), closeTo(120 / 121, 1e-9));
     });
 

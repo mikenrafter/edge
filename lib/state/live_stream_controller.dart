@@ -169,6 +169,17 @@ class LiveStreamController {
 
   bool _imuLab = false;
 
+  /// The pacing-rates sweep is running (IMU-only owner; its HR is held through
+  /// the breathing owner). AppState sets it beside the sweep's HR hold and
+  /// clears it on every way out. RAM only: nothing persists it.
+  void setSweepMotion(bool active) {
+    if (_sweepMotion == active) return;
+    _sweepMotion = active;
+    nudge();
+  }
+
+  bool _sweepMotion = false;
+
   /// The developer's "Start live feed" on the Live devices screen is on.
   /// RAM only: never a preference, so a restart never re-arms the flood.
   bool _developerLiveFeed = false;
@@ -226,6 +237,7 @@ class LiveStreamController {
       // Like a mounted live-HR view, not held behind a locked screen.
       developerLiveFeed: !background && _developerLiveFeed,
       imuLab: _imuLab,
+      sweepMotion: _sweepMotion,
     );
   }
 
