@@ -62,21 +62,48 @@ class HardwareProbeRunner extends ChangeNotifier {
   /// is open.
   final void Function()? beginLab;
   final void Function()? endLab;
+  // Whether the queue was last told "lab open". The lab is open while its
+  // screen is up AND no explore page has yielded it (see [yieldLab]).
   bool _labOpen = false;
+  bool _screenUp = false;
+  int _yields = 0;
+
+  void _syncLab() {
+    final want = _screenUp && _yields == 0;
+    if (want == _labOpen) return;
+    _labOpen = want;
+    (want ? beginLab : endLab)?.call();
+  }
 
   /// The Device lab screen opened. Safe to call twice.
   void openLab() {
-    if (_labOpen) return;
-    _labOpen = true;
-    beginLab?.call();
+    _screenUp = true;
+    _syncLab();
   }
 
   /// The Device lab screen closed. Safe to call twice, and without
   /// [openLab].
   void closeLab() {
-    if (!_labOpen) return;
-    _labOpen = false;
-    endLab?.call();
+    _screenUp = false;
+    _syncLab();
+  }
+
+  /// An explore page (Bedtime breathing cues) is on top of the lab. The lab's
+  /// screen is still mounted underneath, but the page's own band cues must be
+  /// able to play, so the lab stops counting as open until the returned release
+  /// is called (idempotent). Closing the lab screen while yielded keeps it
+  /// closed. Other pushed lab pages (the pattern probe) do not call this: they
+  /// are lab work.
+  void Function() yieldLab() {
+    _yields++;
+    _syncLab();
+    var released = false;
+    return () {
+      if (released) return;
+      released = true;
+      _yields--;
+      _syncLab();
+    };
   }
 
   final DeviceLabLog lab;

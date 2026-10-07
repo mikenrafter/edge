@@ -130,6 +130,7 @@ class BedtimeSessionController extends ChangeNotifier {
       _sleepEstimate = _policy.sleepEstimateStatus(_stages, now);
       _maybeObserve(now);
     }
+    _countSkippedPhases(elapsed);
     final why = _policy.onTick(
       elapsed: elapsed,
       now: now,
@@ -176,10 +177,26 @@ class BedtimeSessionController extends ChangeNotifier {
     _changed();
   }
 
+  /// Phase boundaries that passed with no cue tried for them (a late tick, or a
+  /// delivery that took longer than a phase) are missed cues: they add to the
+  /// missed count and the in-a-row streak, before the policy looks at it. Only
+  /// the current phase is ever cued. Not counted while a delivery is in flight;
+  /// they are counted by the first tick after it lands.
+  void _countSkippedPhases(Duration elapsed) {
+    if (_delivering || _lastCueIndex < 0) return;
+    final index = (_plan.breathsAt(elapsed) * 2).floor();
+    final skipped = index - _lastCueIndex - 1;
+    if (skipped <= 0) return;
+    _cuesMissed += skipped;
+    _missedStreak += skipped;
+    _lastCueIndex = index - 1; // the current phase is cued next
+    _changed();
+  }
+
   /// One cue per phase boundary. The phase is the whole breaths completed so
   /// far (so a taper keeps one continuous phase): an even half-breath is an
   /// inhale, an odd one an exhale. A late tick plays the current phase once and
-  /// does not replay the ones it missed.
+  /// does not replay the ones it missed (those were counted as missed).
   Future<void> _cueIfBoundary(Duration elapsed) async {
     if (_delivering) return;
     final index = (_plan.breathsAt(elapsed) * 2).floor();
@@ -257,6 +274,7 @@ class BedtimeSessionController extends ChangeNotifier {
       at: DateTime.fromMillisecondsSinceEpoch(epoch.round(), isUtc: true),
       stage: o.stage,
       observedAt: askedAt,
+      evidenceAge: Duration(milliseconds: age.round()),
     );
   }
 }

@@ -137,4 +137,36 @@ void main() {
     expect(find.text('probe page'), findsOneWidget);
     expect(calls, ['begin']);
   });
+
+  // The runner's yield: the lab is open only while its screen is up AND nothing
+  // has yielded it; a late release never reopens a lab whose screen is gone.
+  test('yieldLab: closes the queue side, release reopens, a gone screen stays '
+      'closed, release is idempotent', () {
+    final calls = <String>[];
+    final r = HardwareProbeRunner(
+      lab: DeviceLabLog(),
+      sendBuzz: (onReply) async => true,
+      sendPattern: (e, l, onReply) async => true,
+      isConnected: () => true,
+      ecgSupported: () => true,
+      ecgBusy: () => false,
+      beginEcg: () async => false,
+      endEcg: () async {},
+      isEcgAlive: () => false,
+      beginLab: () => calls.add('begin'),
+      endLab: () => calls.add('end'),
+    );
+    r.openLab();
+    final release = r.yieldLab();
+    expect(calls, ['begin', 'end']);
+    release();
+    release();
+    expect(calls, ['begin', 'end', 'begin']);
+
+    final again = r.yieldLab();
+    r.closeLab(); // the lab screen goes away while yielded
+    again();
+    expect(calls, ['begin', 'end', 'begin', 'end'],
+        reason: 'releasing never reopens a closed lab screen');
+  });
 }

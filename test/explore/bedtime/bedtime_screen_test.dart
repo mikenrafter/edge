@@ -83,8 +83,9 @@ Future<void> _end(BedtimeRig r, BedtimeStopReason why) async {
       await r.at(60);
     case BedtimeStopReason.sleepEstimated:
       await r.start();
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way.
       for (final s in [0, 30, 60, 90, 91]) {
-        await r.at(s);
+        await r.to(s);
       }
     case BedtimeStopReason.deliveryFailing:
       await r.start();
@@ -257,11 +258,11 @@ void main() {
       expect(find.text('Sleep estimate: not yet sustained'), findsOneWidget);
 
       r.script = (c) => bedtimeObs('wake', c);
-      await _drive(t, () => r.at(30));
+      await _drive(t, () => r.to(30)); // RE-PACED (review P2, skipped phases)
       expect(find.text('Sleep estimate: awake'), findsOneWidget);
 
       r.script = (c) => bedtimeObs('absent', c);
-      await _drive(t, () => r.at(60));
+      await _drive(t, () => r.to(60)); // RE-PACED (review P2, skipped phases)
       expect(find.text('Sleep estimate: unavailable'), findsOneWidget);
       await _drive(t, r.controller.stop);
     });

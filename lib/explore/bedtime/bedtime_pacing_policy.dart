@@ -41,7 +41,8 @@ const double kBedtimeMinBpm = 4.0;
 /// is a missed cue (three in a row end the session). So the range is 4..7.
 const double kBedtimeMaxBpm = 7.0;
 
-/// A stage sample is fresh while now minus when it was observed is at most this.
+/// A stage sample is fresh while now minus when its evidence was current (when
+/// it was observed, less the evidence's age then) is at most this.
 const Duration kBedtimeFreshness = Duration(seconds: 90);
 
 /// Consecutive non-wake epoch observations the sleep stop needs.
@@ -149,17 +150,26 @@ enum BedtimeStopReason {
 }
 
 /// One stage observation. [stage] is 'wake' | 'nrem' | 'rem' | 'absent'; [at]
-/// is the start of the 30 s epoch it describes; [observedAt] is when we asked.
+/// is the start of the 30 s epoch it describes; [observedAt] is when we asked;
+/// [evidenceAge] is how old the newest evidence behind it already was then.
 class StageSample {
   const StageSample({
     required this.at,
     required this.stage,
     required this.observedAt,
+    this.evidenceAge = Duration.zero,
   });
   final DateTime at;
   final String stage;
   final DateTime observedAt;
+  final Duration evidenceAge;
+
+  /// When the evidence was current. It ages with the clock after admission.
+  DateTime get evidenceAt => observedAt.subtract(evidenceAge);
 }
+
+/// The stager's epoch length.
+const Duration kBedtimeEpoch = Duration(seconds: 30);
 
 class BedtimePacingPolicy {
   BedtimePacingPolicy({required this.plan});
@@ -190,14 +200,15 @@ class BedtimePacingPolicy {
   /// 'unavailable' | 'awake' | 'not yet sustained' | 'sustained'.
   ///
   /// Only a fresh newest observation says anything: stale, absent or unknown
-  /// data is 'unavailable', never 'awake'. 'sustained' needs
-  /// [kBedtimeSustainedEpochs] distinct, consecutive, non-wake epochs ending at
-  /// the newest, each observation within [kBedtimeFreshness] of the one before
-  /// (a longer outage breaks the run).
+  /// data is 'unavailable', never 'awake'. Fresh means its evidence (observedAt
+  /// minus evidenceAge) is at most [kBedtimeFreshness] old NOW. 'sustained'
+  /// needs [kBedtimeSustainedEpochs] non-wake epochs ending at the newest that
+  /// are ADJACENT by the epochs' own times ([StageSample.at] exactly
+  /// [kBedtimeEpoch] apart); a missing epoch breaks the run.
   String sleepEstimateStatus(List<StageSample> recent, DateTime now) {
     if (recent.isEmpty) return 'unavailable';
     final newest = recent.last;
-    if (now.difference(newest.observedAt) > kBedtimeFreshness) {
+    if (now.difference(newest.evidenceAt) > kBedtimeFreshness) {
       return 'unavailable';
     }
     if (newest.stage == 'wake') return 'awake';
@@ -217,7 +228,7 @@ class BedtimePacingPolicy {
       final earlier = epochs[i - 1];
       final later = epochs[i];
       if (!_isSleep(earlier.stage) ||
-          later.observedAt.difference(earlier.observedAt) > kBedtimeFreshness) {
+          later.at.difference(earlier.at) != kBedtimeEpoch) {
         break;
       }
       run++;

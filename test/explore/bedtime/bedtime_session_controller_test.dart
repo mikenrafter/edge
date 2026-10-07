@@ -220,16 +220,18 @@ void main() {
 
   group('observe', () {
     test('asked at most every 30 s, the first time on the first tick', () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(plan: _stopOnSleep());
       await r.start();
-      await r.at(0);
-      await r.at(10);
-      await r.at(29);
+      await r.to(0);
+      await r.to(10);
+      await r.to(29);
       expect(r.observeCalls, 1);
-      await r.at(30);
-      await r.at(59);
+      await r.to(30);
+      await r.to(59);
       expect(r.observeCalls, 2);
-      await r.at(60);
+      await r.to(60);
       expect(r.observeCalls, 3);
       expect(r.observeAt, [
         Duration.zero,
@@ -239,22 +241,27 @@ void main() {
     });
 
     test('never concurrent, and a slow stager never delays the cues', () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(plan: _stopOnSleep());
       await r.start();
       r.observeHold = Completer();
-      await r.at(0);
-      await r.at(5);
-      await r.at(30);
-      await r.at(35);
-      await r.at(60);
+      await r.to(0);
+      await r.to(5);
+      await r.to(30);
+      await r.to(35);
+      await r.to(60);
       expect(r.observeCalls, 1, reason: 'one in flight, the rest wait');
       expect(r.maxInFlight, 1);
-      expect(r.cues.length, 5, reason: 'inhale/exhale at 0 5 30 35 60 still played');
+      // RE-PACED: one cue per 5 s phase from 0 to 60 s (13), none held back.
+      expect(r.cues.length, 13, reason: 'every phase boundary still played');
       r.observeHold!.complete(null);
       await pumpEventQueue();
       r.observeHold = null;
-      await r.at(95);
-      expect(r.observeCalls, 2);
+      await r.to(95);
+      // RE-PACED: asked again at 65 s (first tick 30 s after the held ask at 0),
+      // then at 95 s; the one jump used to make it a single ask.
+      expect(r.observeCalls, 3);
       expect(r.maxInFlight, 1);
     });
 
@@ -270,60 +277,68 @@ void main() {
     });
 
     test('an observe that throws is an absent sample, not a crash', () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(plan: _stopOnSleep())
         ..observeThrows = StateError('isolate died');
       await r.start();
-      await r.at(0);
-      await r.at(30);
+      await r.to(0);
+      await r.to(30);
       expect(r.controller.state, BedtimeState.running);
       expect(r.controller.sleepEstimate, 'unavailable',
           reason: 'never "awake" from a failure');
       r.observeThrows = null;
       r.script = _sleepy;
-      await r.at(60);
+      await r.to(60);
       expect(r.controller.sleepEstimate, 'not yet sustained');
     });
 
     test('null, an absent stage and evidence that is too old are all unavailable',
         () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(plan: _stopOnSleep());
       await r.start();
       r.script = (_) => null;
-      await r.at(0);
+      await r.to(0);
       expect(r.controller.sleepEstimate, 'unavailable');
       r.script = (c) => bedtimeObs('absent', c);
-      await r.at(30);
+      await r.to(30);
       expect(r.controller.sleepEstimate, 'unavailable');
       r.script = (c) => bedtimeObs('nrem', c, evidenceAgeMs: 200000);
-      await r.at(60);
+      await r.to(60);
       expect(r.controller.sleepEstimate, 'unavailable',
           reason: 'stale evidence is not an observation of now');
     });
 
     test('the estimate follows what the stager says', () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(plan: _stopOnSleep());
       await r.start();
       r.script = (c) => bedtimeObs('nrem', c);
-      await r.at(0);
+      await r.to(0);
       expect(r.controller.sleepEstimate, 'not yet sustained');
       r.script = (c) => bedtimeObs('wake', c);
-      await r.at(30);
+      await r.to(30);
       expect(r.controller.sleepEstimate, 'awake');
       r.script = (c) => bedtimeObs('absent', c);
-      await r.at(60);
+      await r.to(60);
       expect(r.controller.sleepEstimate, 'unavailable');
     });
 
     test('with no new observation the estimate goes stale and says unavailable',
         () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(plan: _stopOnSleep());
       await r.start();
       r.script = (c) => bedtimeObs('wake', c);
-      await r.at(0);
+      await r.to(0);
       expect(r.controller.sleepEstimate, 'awake');
       r.observeHold = Completer(); // the stager stops answering
-      await r.at(30);
-      await r.at(125); // the awake sample is now 125 s old
+      await r.to(30);
+      await r.to(125); // the awake sample is now 125 s old
       expect(r.controller.sleepEstimate, 'unavailable',
           reason: 'stale data never claims awake');
     });
@@ -498,16 +513,18 @@ void main() {
     }
 
     test('the duration cap (and a cue is not sent after it)', () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig();
       await r.start();
-      await r.at(0);
-      await r.at(899);
+      await r.to(0);
+      await r.to(899);
       expect(r.controller.state, BedtimeState.running);
       final cuesBefore = r.cues.length;
-      await r.at(900);
+      await r.to(900);
       expectEndedOnce(r, BedtimeStopReason.durationCap);
       expect(r.cues.length, cuesBefore, reason: 'the cap tick sends no cue');
-      await r.at(905);
+      await r.to(905);
       await r.controller.stop();
       expectEndedOnce(r, BedtimeStopReason.durationCap);
     });
@@ -533,34 +550,38 @@ void main() {
 
     test('a sustained sleep estimate (four epochs), after the stop is asked for',
         () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(plan: _stopOnSleep(), script: _sleepy);
       await r.start();
-      await r.at(0);
-      await r.at(30);
-      await r.at(60);
+      await r.to(0);
+      await r.to(30);
+      await r.to(60);
       expect(r.controller.state, BedtimeState.running);
-      await r.at(90); // the fourth observation lands
-      await r.at(91);
+      await r.to(90); // the fourth observation lands
+      await r.to(91);
       expectEndedOnce(r, BedtimeStopReason.sleepEstimated);
       expect(r.controller.sleepEstimate, 'sustained');
       final cues = r.cues.length;
-      await r.at(95);
+      await r.to(95);
       expect(r.cues.length, cues);
     });
 
     test('a wake in the middle resets the run; five clean epochs then stop',
         () async {
+      // RE-PACED (review P2, skipped phases): to() ticks every 5 s on the way, as
+      // the real timer does; one jump over several phases is now a missed-cue run.
       final r = BedtimeRig(
         plan: _stopOnSleep(),
         script: (c) => bedtimeObs(c == 2 ? 'wake' : 'nrem', c),
       );
       await r.start();
       for (final s in [0, 30, 60, 90, 120, 150]) {
-        await r.at(s);
+        await r.to(s);
         expect(r.controller.state, BedtimeState.running, reason: 'at $s');
       }
-      await r.at(180); // epochs 3,4,5,6 are non-wake
-      await r.at(181);
+      await r.to(180); // epochs 3,4,5,6 are non-wake
+      await r.to(181);
       expectEndedOnce(r, BedtimeStopReason.sleepEstimated);
     });
 

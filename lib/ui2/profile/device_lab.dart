@@ -175,7 +175,42 @@ class _BedtimePageState extends State<_BedtimePage> {
   }
 
   @override
-  Widget build(BuildContext context) => BedtimeScreen(controller: _session);
+  Widget build(BuildContext context) => LabYield(
+        runner: context.read<AppState>().hardwareProbes,
+        child: BedtimeScreen(controller: _session),
+      );
+}
+
+/// Placed at the root of an explore page pushed over the Device lab: while it
+/// is mounted the lab does not count as open, so the page's own band cues are
+/// not refused by the queue's lab exclusivity. The lab takes it back when the
+/// page goes away (see [HardwareProbeRunner.yieldLab]).
+class LabYield extends StatefulWidget {
+  const LabYield({super.key, required this.runner, required this.child});
+  final HardwareProbeRunner runner;
+  final Widget child;
+
+  @override
+  State<LabYield> createState() => _LabYieldState();
+}
+
+class _LabYieldState extends State<LabYield> {
+  void Function()? _release;
+
+  @override
+  void initState() {
+    super.initState();
+    _release = widget.runner.yieldLab();
+  }
+
+  @override
+  void dispose() {
+    _release?.call();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Marks the Device lab as open for as long as it is on screen: the band queue

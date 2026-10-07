@@ -114,6 +114,19 @@ class BedtimeRig {
     await pumpEventQueue();
   }
 
+  /// Like [at], but ticks every [step] seconds on the way (from wherever the
+  /// clock is), as the real session timer does. Use it for a long jump a real
+  /// session would never make in one tick: skipped phases count as missed cues
+  /// (review P2), so a single 30 s jump ends the session as delivery failing.
+  Future<void> to(num sec, {num step = 5}) async {
+    var s = _elapsed.inMilliseconds / 1000;
+    while (s + step < sec) {
+      s += step;
+      await at(s);
+    }
+    await at(sec);
+  }
+
   Future<void> start() async {
     await controller.start();
     await pumpEventQueue();
