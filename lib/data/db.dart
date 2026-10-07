@@ -2127,6 +2127,17 @@ class LocalDb {
     return newest.reversed.toList();
   }
 
+  /// The newest [limit] trace rows across ALL wakes (still returned oldest
+  /// first): the dev-log export's "what did the wake logic decide lately",
+  /// without knowing which wake epoch to ask for.
+  static Future<List<Map<String, Object?>>> wakeTraceRecent(
+      {int limit = 400}) async {
+    final db = await instance;
+    final newest =
+        await db.query('wake_trace', orderBy: 'id DESC', limit: limit);
+    return newest.reversed.toList();
+  }
+
   /// HR/accel for the causal stager: `decoded_onehz` rows with `rec_ts` (unix
   /// s) in [sinceSec, untilSec). Unlike [onehzHrAccelBetween] a row with a
   /// NULL hr or accel is returned as-is, so the stager can abstain with the

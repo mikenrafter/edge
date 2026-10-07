@@ -15,12 +15,13 @@ typedef LogFileSaver = Future<bool> Function(String fileName, String text);
 String _two(int v) => v.toString().padLeft(2, '0');
 
 /// `openstrap-device-lab-log-20261004-120731.txt`: the kind and [at] in local
-/// time, no spaces, colons or separators.
-String logFileName(String kind, DateTime at) {
+/// time, no spaces, colons or separators. [ext] is the file extension (a ZIP
+/// export is `zip`).
+String logFileName(String kind, DateTime at, {String ext = 'txt'}) {
   final t = at.toLocal();
   return 'openstrap-$kind-log-'
       '${t.year}${_two(t.month)}${_two(t.day)}-'
-      '${_two(t.hour)}${_two(t.minute)}${_two(t.second)}.txt';
+      '${_two(t.hour)}${_two(t.minute)}${_two(t.second)}.$ext';
 }
 
 /// Write [text] verbatim to `<dir>/<fileName>` (default the temporary
@@ -44,6 +45,44 @@ Future<bool> saveLogFile(
               subject: 'OpenStrap log',
               sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1),
             ))(file.path);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// The MIME type of a lab recording (JSON Lines), for the share sheet.
+const String kJsonFileMime = 'application/json';
+
+/// Hand a copy of the file at [path] to [share] (default the platform share
+/// sheet, anchored at [origin] for the iPad popover). The copy goes to [tempDir]
+/// (default the temporary directory), so the share sheet never holds the saved
+/// file itself (a file already there is shared as is). True when the share ran; false, never a throw, when the copy or
+/// the share failed. The file at [path] is the same either way: a failed share
+/// is not a failed save.
+Future<bool> shareFileCopy(
+  String path, {
+  String mimeType = kJsonFileMime,
+  String subject = 'OpenStrap recording',
+  Rect? origin,
+  Directory? tempDir,
+  Future<void> Function(String path)? share,
+}) async {
+  try {
+    final d = tempDir ?? await getTemporaryDirectory();
+    final name = path.split(Platform.pathSeparator).last;
+    final target = '${d.path}/$name';
+    // A file already in [tempDir] is shared as is: copying it onto itself
+    // truncates it to 0 bytes.
+    final copy = File(path).absolute.path == File(target).absolute.path
+        ? File(path)
+        : await File(path).copy(target);
+    await (share ??
+        (p) => Share.shareXFiles(
+              [XFile(p, mimeType: mimeType)],
+              subject: subject,
+              sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1),
+            ))(copy.path);
     return true;
   } catch (_) {
     return false;

@@ -52,9 +52,17 @@ class DbWakeTraceStore implements WakeTraceStore {
       );
 
   @override
-  Future<List<WakeTraceEntry>> forWake(int wakeEpochSec) async => [
-        for (final r in await LocalDb.wakeTraceRows(wakeEpochSec,
-            limit: kWakeTraceReadLimit))
+  Future<List<WakeTraceEntry>> forWake(int wakeEpochSec) async =>
+      _entries(await LocalDb.wakeTraceRows(wakeEpochSec,
+          limit: kWakeTraceReadLimit));
+
+  /// The newest [limit] rows across every wake, oldest first (the dev-log
+  /// export; the orchestrator itself only ever reads one wake).
+  Future<List<WakeTraceEntry>> recent({int limit = kWakeTraceReadLimit}) async =>
+      _entries(await LocalDb.wakeTraceRecent(limit: limit));
+
+  static List<WakeTraceEntry> _entries(List<Map<String, Object?>> rows) => [
+        for (final r in rows)
           WakeTraceEntry(
             wakeEpochSec: (r['wake_epoch'] as num).toInt(),
             atMs: (r['at_ms'] as num).toInt(),

@@ -275,12 +275,15 @@ void main() {
           reason: 'the second pass sits in a finally');
     });
 
-    test('headless arming leaves lines in the sync log file', () {
+    test('headless arming leaves lines in the persistent dev log', () {
       final src = File('lib/sync/background_sync.dart').readAsStringSync();
       final arm = codeOnly(src.substring(
           src.indexOf('Future<void> _headlessArm('),
           src.indexOf('Future<bool> runHeadlessSync(')));
-      expect(arm, contains('FileLog.write('));
+      expect(arm, contains('_bgLog('));
+      final helper = codeOnly(src.substring(src.indexOf('void _bgLog('),
+          src.indexOf('bool _mentionsAlarm(')));
+      expect(helper, contains('DevLog.write('));
     });
 
     test('the keep-alive tick reaches the arm before any wake logic and with '

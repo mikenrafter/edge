@@ -203,6 +203,25 @@ void main() {
       expect((await store.forWake(2000)), hasLength(1));
     });
 
+    test('recent() reads the newest rows across wakes, oldest first, bounded',
+        () async {
+      const store = DbWakeTraceStore();
+      for (var i = 0; i < 5; i++) {
+        await store.append(WakeTraceEntry(
+            wakeEpochSec: 1000 + (i ~/ 3) * 100,
+            atMs: i,
+            kind: 'k$i',
+            data: {'i': i}));
+      }
+      expect((await store.recent()).map((e) => e.kind),
+          ['k0', 'k1', 'k2', 'k3', 'k4']);
+      final last3 = await store.recent(limit: 3);
+      expect(last3.map((e) => e.kind), ['k2', 'k3', 'k4']);
+      expect(last3.first.wakeEpochSec, 1000);
+      expect(last3.last.wakeEpochSec, 1100);
+      expect(last3.last.data['i'], 4);
+    });
+
     test('old nights are pruned when a new wake is traced', () async {
       const store = DbWakeTraceStore();
       const day = 86400;

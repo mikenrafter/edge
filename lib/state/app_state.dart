@@ -157,7 +157,7 @@ import '../sync/update_service.dart';
 import '../telemetry/telemetry_service.dart';
 import '../telemetry/health_uploader.dart';
 import '../widget/widget_service.dart';
-import '../sync/file_log.dart';
+import '../sync/dev_log.dart';
 import 'zone_alert.dart';
 import 'package:uuid/uuid.dart';
 
@@ -3450,9 +3450,14 @@ class AppState extends ChangeNotifier {
     return _sweepHeadline;
   }
 
+  @visibleForTesting
+  void debugLog(String line) => _log(line);
+
   void _log(String line) {
     debugPrint('[OpenStrap] $line');
-    FileLog.write(line);
+    // Everything AppState logs was always persisted (the old sync log), so it
+    // still is, developer mode or not; developer mode adds the headless detail.
+    DevLog.write(line, always: true);
     logLines.insert(0, line);
     if (logLines.length > 200) logLines.removeLast();
   }

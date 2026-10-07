@@ -40,6 +40,8 @@ import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/prefs.dart';
+import '../../sync/dev_log.dart';
+import '../../sync/dev_log_export.dart';
 import '../../util/log_file.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
@@ -116,6 +118,9 @@ class DeviceLab extends StatelessWidget {
         tapTools: caps.has(Feature.deviceLabTapTools),
         probes: HardwareProbePanel(runner: app.hardwareProbes, logText: logText),
         live: const LiveDevices(embedded: true),
+        exportDevLog: (origin) =>
+            shareDevLog(DevLog.instance, origin: origin),
+        clearDevLog: DevLog.instance.clear,
       ),
     );
   }
@@ -174,6 +179,8 @@ class DeviceLabView extends StatelessWidget {
     this.tapTools = true,
     this.live,
     this.initialTab,
+    this.exportDevLog,
+    this.clearDevLog,
   });
 
   final bool ecgSupported;
@@ -226,6 +233,14 @@ class DeviceLabView extends StatelessWidget {
 
   /// Opens this tab over the remembered one, when it is offered.
   final LabTab? initialTab;
+
+  /// The persistent dev log's ZIP export, given the share sheet's anchor;
+  /// true when the share ran. The Logs tab shows the section only when this or
+  /// [clearDevLog] is given.
+  final Future<bool> Function(Rect origin)? exportDevLog;
+
+  /// Deletes the persistent dev log, after a confirm.
+  final Future<void> Function()? clearDevLog;
 
   /// The tabs this lab offers: one with nothing to show is left out.
   List<LabTab> get _tabs => [
@@ -387,6 +402,8 @@ class DeviceLabView extends StatelessWidget {
       Padding(padding: const EdgeInsets.only(top: S.x3), child: live!),
     ],
     LabTab.logs => [
+      if (exportDevLog != null || clearDevLog != null)
+        _DevLogSection(export: exportDevLog, clear: clearDevLog),
       if (sessions.isNotEmpty)
         SettingsAccordion('Sessions',
             id: 'device_lab_sessions',
@@ -434,6 +451,113 @@ class DeviceLabView extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// The persistent dev log: export it as one ZIP, or clear it.
+class _DevLogSection extends StatefulWidget {
+  const _DevLogSection({this.export, this.clear});
+  final Future<bool> Function(Rect origin)? export;
+  final Future<void> Function()? clear;
+
+  @override
+  State<_DevLogSection> createState() => _DevLogSectionState();
+}
+
+class _DevLogSectionState extends State<_DevLogSection> {
+  bool _busy = false;
+
+  void _say(ScaffoldMessengerState m, String text) {
+    // Lifted clear of the pinned button; a retry replaces the last message.
+    m.removeCurrentSnackBar();
+    m.showSnackBar(SnackBar(
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, 88),
+      content: Text(text),
+    ));
+  }
+
+  Future<void> _export(BuildContext c) async {
+    if (_busy) return;
+    // Both read the tree, so both are read before the await.
+    final messenger = ScaffoldMessenger.of(c);
+    final origin = shareOrigin(c);
+    setState(() => _busy = true);
+    var ok = false;
+    try {
+      ok = await widget.export!(origin);
+    } catch (_) {}
+    if (mounted) setState(() => _busy = false);
+    if (!ok && mounted) _say(messenger, 'Could not export the dev log.');
+  }
+
+  Future<void> _clear(BuildContext c) async {
+    if (_busy) return;
+    final messenger = ScaffoldMessenger.of(c);
+    final yes = await confirmRemove(
+      c,
+      title: 'Clear the dev log?',
+      body: 'Every saved day of the dev log, and the old sync log if it is '
+          'still there, is deleted from this phone. Anything you exported '
+          'stays where you sent it. There is no undo.',
+      remove: 'Clear',
+    );
+    if (!yes || !mounted) return;
+    setState(() => _busy = true);
+    var ok = true;
+    try {
+      await widget.clear!();
+    } catch (_) {
+      ok = false;
+    }
+    if (mounted) setState(() => _busy = false);
+    if (mounted) {
+      _say(messenger, ok ? 'Dev log cleared' : 'Could not clear the dev log.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return SettingsAccordion('Dev log',
+        id: 'device_lab_dev_log',
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: S.x3),
+            child: Text(
+              'Kept on the phone, one file a day for the last 7 days, in the '
+              "app's files folder under dev_log, so it survives an update. "
+              'Alarm, wake and sync lines are always kept; the rest only '
+              'while developer mode is on. The export is one ZIP with those '
+              'files and the recent wake trace.',
+              style: F.cap.copyWith(color: p.ink2, height: 1.4),
+            ),
+          ),
+          if (widget.export != null)
+            Padding(
+              padding: const EdgeInsets.only(top: S.x3),
+              child: BigButton(
+                'Export dev log (ZIP)',
+                key: const ValueKey('dev-log-export'),
+                icon: LucideIcons.download,
+                soft: true,
+                color: C.blue,
+                onTap: () => _export(c),
+              ),
+            ),
+          if (widget.clear != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: S.x3),
+              child: BigButton(
+                'Clear dev log',
+                key: const ValueKey('dev-log-clear'),
+                icon: LucideIcons.trash2,
+                soft: true,
+                color: C.red,
+                onTap: () => _clear(c),
+              ),
+            ),
+        ]);
+  }
 }
 
 /// Holds the selected tab: the one asked for, else the one used last (kept in

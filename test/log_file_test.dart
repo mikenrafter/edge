@@ -73,10 +73,59 @@ void main() {
           isNot(logFileName('device-lab', a.add(const Duration(seconds: 1)))));
     });
 
+    test('a zip is named the same way with its own extension', () {
+      expect(logFileName('dev', DateTime(2026, 10, 4, 9, 5, 7), ext: 'zip'),
+          'openstrap-dev-log-20261004-090507.zip');
+    });
+
     test('two kinds at the same second do not share a name', () {
       final a = DateTime(2026, 10, 4, 9, 5, 7);
       expect(logFileName('device-lab', a),
           isNot(logFileName('pattern-probe', a)));
+    });
+  });
+
+  group('shareFileCopy', () {
+    test('shares a copy in the temp dir and leaves the original alone',
+        () async {
+      final src = Directory('${tmp.path}/saved')..createSync();
+      final temp = Directory('${tmp.path}/temp')..createSync();
+      final f = File('${src.path}/rec.jsonl')..writeAsStringSync('abc');
+      final shared = <String>[];
+      final ok = await shareFileCopy(f.path,
+          tempDir: temp, share: (p) async => shared.add(p));
+      expect(ok, isTrue);
+      expect(shared.single, '${temp.path}/rec.jsonl');
+      expect(File(shared.single).readAsStringSync(), 'abc');
+      expect(f.readAsStringSync(), 'abc');
+    });
+
+    test('a file already in the temp dir is shared as is, never copied onto '
+        'itself (that truncates it to 0 bytes)', () async {
+      final f = File('${tmp.path}/export.zip')..writeAsStringSync('payload');
+      final shared = <String>[];
+      final ok = await shareFileCopy(f.path,
+          tempDir: tmp,
+          mimeType: 'application/zip',
+          share: (p) async => shared.add(p));
+      expect(ok, isTrue);
+      expect(shared.single, f.path);
+      expect(f.readAsStringSync(), 'payload');
+    });
+
+    test('false, not a throw, when the file is missing or the share fails',
+        () async {
+      final temp = Directory('${tmp.path}/temp')..createSync();
+      expect(
+          await shareFileCopy('${tmp.path}/nope',
+              tempDir: temp, share: (p) async {}),
+          isFalse);
+      final f = File('${tmp.path}/a.txt')..writeAsStringSync('x');
+      expect(
+          await shareFileCopy(f.path,
+              tempDir: tmp, share: (p) async => throw StateError('no sheet')),
+          isFalse);
+      expect(f.readAsStringSync(), 'x');
     });
   });
 
