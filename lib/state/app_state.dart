@@ -5727,16 +5727,21 @@ class AppState extends ChangeNotifier {
   /// Whether [phoneTime] lies in one of the app's playbacks (or within
   /// [kAppPlaybackTail] after it ended).
   ///
-  /// A playback that began before the native alarm fired ([fire]) has its tail
-  /// clipped at the fire: the wearer's genuine stop just after the fire is not
-  /// the old pattern ending. One that began at or after the fire keeps its full
-  /// interval and tail.
+  /// A playback that began before the native alarm fired ([fire]) has only its
+  /// TAIL clipped at the fire (covered: [start, max(end, min(end + tail,
+  /// fire))]): the wearer's genuine stop just after the fire is not the old
+  /// pattern ending, but a pattern that spans the fire keeps its part after it.
+  /// One that began at or after the fire keeps its full interval and tail.
   bool _insideAppPlayback(DateTime phoneTime, DateTime fire) {
     final open = _appPlaybackStartedAt;
     if (open != null && !phoneTime.isBefore(open)) return true;
     for (final (start, end) in _appPlaybacks) {
+      // Covered: [start, end] whole, plus the tail, clipped at the fire. A
+      // playback that spans the fire keeps its post-fire part up to its end.
       var last = end.add(kAppPlaybackTail);
-      if (start.isBefore(fire) && last.isAfter(fire)) last = fire;
+      if (start.isBefore(fire) && last.isAfter(fire)) {
+        last = end.isAfter(fire) ? end : fire;
+      }
       if (!phoneTime.isBefore(start) && !phoneTime.isAfter(last)) return true;
     }
     return false;

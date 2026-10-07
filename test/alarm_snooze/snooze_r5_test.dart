@@ -31,6 +31,7 @@ import 'snooze_band_rig.dart';
 import 'snooze_fakes.dart';
 import 'snooze_notification_spy.dart';
 import 'snooze_r3_support.dart';
+import 'snooze_r4_support.dart' show until;
 
 void main() {
   snoozeSuiteSetup('openstrap_snooze_r5_test.db');
@@ -110,6 +111,40 @@ void main() {
       rig.clock.advance(kSec * 3);
       await rig.terminate(HapticsTermination.expired,
           stamp: t0.add(kSec * 6));
+      expect(await storedState(), isNotNull);
+    });
+
+    test('a pattern that SPANS the fire (F-1 s .. F+2 s): its expiry '
+        'stamped F+2 s, heard at F+8 s after the queue released, is our '
+        'pattern ending and does not consume the fire; the genuine stop '
+        'afterwards does', () async {
+      await open();
+      final hold = Completer<void>();
+      final job = rig.app.haptics.runJob(1, (token) async {
+        await token.write(() async => true);
+        await hold.future;
+        return BuzzDelivery.complete;
+      }, timeout: const Duration(seconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      rig.clock.advance(kSec * 1);
+      t0 = rig.clock.now; // F: the pattern started at F - 1 s
+      await rig.fire(stamp: t0);
+      rig.clock.advance(kSec * 2); // the pattern ends at F + 2 s
+      hold.complete();
+      await job;
+      expect(await until(() => !rig.app.haptics.playing), isTrue,
+          reason: 'precondition: the band is free of the pattern');
+
+      rig.clock.advance(kSec * 6); // heard at F + 8 s, past the tail
+      await rig.terminate(HapticsTermination.expired,
+          stamp: t0.add(kSec * 2));
+      expect(await storedState(), isNull,
+          reason: 'the part of the pattern after the fire was dropped from '
+              'its interval: its own expiry was taken for the alarm\'s stop');
+
+      rig.clock.advance(kSec * 4);
+      await rig.terminate(HapticsTermination.expired,
+          stamp: t0.add(kSec * 12));
       expect(await storedState(), isNotNull);
     });
 
