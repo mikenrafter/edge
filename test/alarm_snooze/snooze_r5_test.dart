@@ -75,10 +75,11 @@ void main() {
       rig.clock.advance(kSec * 8); // heard at F + 8 s: no app pattern playing
       await rig.terminate(HapticsTermination.userDoubleTap,
           stamp: t0.add(kSec * 1));
-      expect(rig.app.snooze.consumesDoubleTaps, isTrue,
+      // Heard 7 s after it happened, its 4 s dismiss window is already over
+      // (measured from the stop): with no second tap it becomes the snooze.
+      expect(await storedState(), isNotNull,
           reason: 'the old cue\'s tail swallowed the wearer\'s stop: no '
               'dismiss window, and no band snooze follows');
-      expect(rig.app.snooze.status.value.phase, SnoozePhase.window);
     });
 
     test('...an expiry stop in the same place starts the snooze', () async {
@@ -168,6 +169,47 @@ void main() {
       expect(rig.count(Played.reAlarm), 0,
           reason: 'the dismissed alarm buzzed anyway when the pattern ahead '
               'of it finished');
+    });
+
+    test('a wake confirmation that arrives while the re-alarm waits behind '
+        'another pattern drops it too (the next tick notices)', () async {
+      await open();
+      await rig.fire(stamp: t0);
+      rig.clock.advance(kSec * 8);
+      await rig.terminate(HapticsTermination.expired);
+      await rig.settle();
+      expect(await storedState(), isNotNull, reason: 'precondition: snoozed');
+
+      final hold = Completer<void>();
+      final job = rig.app.haptics.runJob(1, (token) async {
+        await token.write(() async => true);
+        await hold.future;
+        return BuzzDelivery.complete;
+      }, timeout: const Duration(seconds: 60));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      rig.clock.advance(kMin * 5);
+      final tick = rig.app.debugKeepAliveTick();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(rig.app.haptics.pending, greaterThan(1),
+          reason: 'precondition: the re-alarm waits behind the pattern');
+
+      // The wearer is up: their phone confirmed it after the fire.
+      await lastNightConfirmedAt(rig.clock.now.add(kSec * 10),
+          upAt: rig.clock.now.subtract(const Duration(hours: 3)));
+      rig.clock.advance(kSec * 30);
+      await rig.app.debugKeepAliveTick(); // the next keep-alive tick
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(rig.app.snooze.status.value.phase, SnoozePhase.idle,
+          reason: 'the confirmation never reached a snooze whose re-alarm '
+              'was already on its way');
+      expect(await storedState(), isNull);
+
+      hold.complete();
+      await job;
+      await tick.timeout(const Duration(seconds: 20), onTimeout: () {});
+      await rig.settle();
+      expect(rig.count(Played.reAlarm), 0,
+          reason: 'the wearer was up and the re-alarm buzzed anyway');
     });
 
     test('control: nobody dismisses: the queued re-alarm plays after the '

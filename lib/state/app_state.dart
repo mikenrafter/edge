@@ -5726,14 +5726,18 @@ class AppState extends ChangeNotifier {
 
   /// Whether [phoneTime] lies in one of the app's playbacks (or within
   /// [kAppPlaybackTail] after it ended).
-  bool _insideAppPlayback(DateTime phoneTime) {
+  ///
+  /// A playback that began before the native alarm fired ([fire]) has its tail
+  /// clipped at the fire: the wearer's genuine stop just after the fire is not
+  /// the old pattern ending. One that began at or after the fire keeps its full
+  /// interval and tail.
+  bool _insideAppPlayback(DateTime phoneTime, DateTime fire) {
     final open = _appPlaybackStartedAt;
     if (open != null && !phoneTime.isBefore(open)) return true;
     for (final (start, end) in _appPlaybacks) {
-      if (!phoneTime.isBefore(start) &&
-          !phoneTime.isAfter(end.add(kAppPlaybackTail))) {
-        return true;
-      }
+      var last = end.add(kAppPlaybackTail);
+      if (start.isBefore(fire) && last.isAfter(fire)) last = fire;
+      if (!phoneTime.isBefore(start) && !phoneTime.isAfter(last)) return true;
     }
     return false;
   }
@@ -5883,6 +5887,9 @@ class AppState extends ChangeNotifier {
     } else if (_guardEngaged) {
       _guardEngaged = false;
       _fireGuardDue = null;
+      // ANY end of the chain (I'm up, a wake confirmed, a dismissal, the age
+      // bound, ...) lands here: a band job queued for it is no longer wanted.
+      _snoozeChain++;
     }
     _syncSnoozeGuard();
   }
@@ -6100,7 +6107,7 @@ class AppState extends ChangeNotifier {
     final unset = bandAt == null || _nativeFireClockUnset;
     final fire = unset ? (_nativeFireReceivedAt ?? fired) : fired;
     final stop = unset ? receivedAt : _strapToPhone(bandAt);
-    if (!unset && _insideAppPlayback(stop)) {
+    if (!unset && _insideAppPlayback(stop, fire)) {
       // Attributed by EVENT time: this ended our own playback, however late
       // it was heard (receipt-time mode is attributed by receipt, above).
       _log('[snooze] stop ($cause) stamped inside the app\'s own playback '
@@ -6146,7 +6153,14 @@ class AppState extends ChangeNotifier {
     // The chain this belongs to: once it ends (switched off, Cancel-all,
     // unpaired) a job still waiting in the band queue is dropped, never written.
     final chain = _snoozeChain;
-    bool wanted() => !_disposed && _snoozeOn && chain == _snoozeChain;
+    bool wanted() {
+      if (_disposed || !_snoozeOn || chain != _snoozeChain) return false;
+      if (!reAlarm) return true;
+      // A re-alarm that would start at or past fire + 3 h (it waited in the
+      // queue) is a phantom.
+      final f = _snooze?.fireAt ?? _nativeAlarmFiredAt;
+      return f == null || _wakeNow().isBefore(f.add(kSnoozeMaxAge));
+    }
     final overs = <Future<void>>[];
     Future<BuzzDelivery> deliver() => seq != null
         ? haptics.deliver(seq, onFirstWrite: onFirstWrite)

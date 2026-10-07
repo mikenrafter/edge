@@ -38,6 +38,10 @@
 // Round 4 (Sol's third review, 2026-10-07):
 //   * a snooze that would fall due at or past fire + [kSnoozeMaxAge] is not set:
 //     the chain ends silently (nothing is scheduled beyond the bound);
+//   * a wake confirmed while a re-alarm waits in the band queue ends the chain
+//     (the tick's probe runs then too);
+//   * a persisted snooze due at or past fire + [kSnoozeMaxAge] is dropped on
+//     resume;
 //   * [onRestoredChainOver]: a resume that finds the persisted chain over tells
 //     the caller, which drops the OS backstop the dead process left.
 //
@@ -602,9 +606,13 @@ class SnoozeController {
   /// A pending snooze: cancelled by a confirmed wake, otherwise its re-alarm
   /// once due.
   Future<void> _snoozedStep() async {
-    if (_disposed || _listen != null || _startingGen == _gen) return;
+    if (_disposed || _listen != null) return;
     final st = _state;
     if (st == null) return;
+    // A re-alarm already on its way (waiting in the band queue) is not started
+    // twice, but a wake confirmed meanwhile still ends the chain: that bumps
+    // the generation, and the queued re-alarm is dropped.
+    final starting = _startingGen == _gen;
     final g = _gen;
     final confirmed = await _probe();
     if (!_alive(g) || _listen != null || _state != st) return;
@@ -612,7 +620,7 @@ class SnoozeController {
       await _cancelSnooze();
       return;
     }
-    if (now().isBefore(st.reAlarmAt)) return;
+    if (starting || now().isBefore(st.reAlarmAt)) return;
     await _startReAlarm(st);
   }
 
@@ -714,7 +722,13 @@ class SnoozeController {
         ? (st.fireAt ?? st.reAlarmAt)
         : (w != null ? (w.fireAt ?? w.stoppedAt) : null);
     final persistedFire = st != null ? st.fireAt : w?.fireAt;
-    if (ref != null && (_tooOld(ref) || _notKnownFire(persistedFire))) {
+    // A snooze due at or past the bound (an older build could write one) is
+    // over, whatever the clock says now.
+    final pastBound = st != null &&
+        st.fireAt != null &&
+        !st.reAlarmAt.isBefore(st.fireAt!.add(kSnoozeMaxAge));
+    if (ref != null &&
+        (_tooOld(ref) || pastBound || _notKnownFire(persistedFire))) {
       _log('dropped a stale ${st != null ? 'snooze' : 'dismiss window'} '
           '(fire ${(persistedFire ?? ref).toIso8601String()}): too old, or not '
           'the alarm known now.');
