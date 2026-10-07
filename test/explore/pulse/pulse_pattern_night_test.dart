@@ -204,9 +204,35 @@ void main() {
       }
     });
 
-    test('analysed hours slightly above sleep hours clamp coverage to 1', () {
+    // EDITED (fix round, Sol P2 "coverage divides incompatible intervals"):
+    // this test used to assert `coverage == 1.0` and `admitted`, i.e. it
+    // encoded the silent clamp at pulse_pattern_night.dart:119. The second
+    // argument is now the sleep WINDOW length (onset to offset), and analysis
+    // longer than the window is flagged, never clamped.
+    test('analysed hours above the sleep window are flagged, not clamped', () {
       final n = fromCvhrEnvelope('d', _present(2, 6.1), sleepHours: 6.0);
+      expect(n.exclusions, contains('analysis longer than the sleep window'));
+      expect(n.admitted, isFalse);
+      expect(n.coverage == null || n.coverage! > 1.0, isTrue,
+          reason: 'coverage must not be silently clamped to 1.0');
+    });
+
+    // NEW (Sol P2): reviewer scenario, an 8 h window with 4 h analysed. The
+    // loader passes the window length, so coverage is 4 / 8.
+    test('4 analysed hours over an 8 hour window is 50% coverage, excluded',
+        () {
+      final n = fromCvhrEnvelope('d', _present(5, 4.0), sleepHours: 8.0);
+      expect(n.coverage, closeTo(0.5, 1e-12));
+      expect(n.exclusions, ['coverage under 80%']);
+      expect(n.admitted, isFalse);
+    });
+
+    // NEW (Sol P2): a window much longer than the analysis, exactly equal,
+    // is full coverage (not "longer than the window").
+    test('analysis equal to the window is 100% and admitted', () {
+      final n = fromCvhrEnvelope('d', _present(5, 6.0), sleepHours: 6.0);
       expect(n.coverage, 1.0);
+      expect(n.exclusions, isEmpty);
       expect(n.admitted, isTrue);
     });
   });
