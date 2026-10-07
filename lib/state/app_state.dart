@@ -5727,10 +5727,21 @@ class AppState extends ChangeNotifier {
   /// fire))]): the wearer's genuine stop just after the fire is not the old
   /// pattern ending, but a pattern that spans the fire keeps its part after it.
   /// One that began at or after the fire keeps its full interval and tail.
-  bool _insideAppPlayback(DateTime phoneTime, DateTime fire) {
+  ///
+  /// With [wholeSecond] (an event stamp: the strap's RTC counts whole seconds)
+  /// the comparison is made at the stamp's precision: a playback's start is
+  /// floored to its second, so a stamp covers [s, s+1) and a cue begun at
+  /// F+2.1 s whose expiry is stamped F+2 s is still attributed to it.
+  bool _insideAppPlayback(DateTime phoneTime, DateTime fire,
+      {bool wholeSecond = false}) {
+    DateTime from(DateTime start) => wholeSecond
+        ? start.subtract(Duration(
+            milliseconds: start.millisecond, microseconds: start.microsecond))
+        : start;
     final open = _appPlaybackStartedAt;
-    if (open != null && !phoneTime.isBefore(open)) return true;
-    for (final (start, end) in _appPlaybacks) {
+    if (open != null && !phoneTime.isBefore(from(open))) return true;
+    for (final (rawStart, end) in _appPlaybacks) {
+      final start = from(rawStart);
       // Covered: [start, end] whole, plus the tail, clipped at the fire. A
       // playback that spans the fire keeps its post-fire part up to its end.
       var last = end.add(kAppPlaybackTail);
@@ -6100,7 +6111,7 @@ class AppState extends ChangeNotifier {
     // has a usable stamp (however late or promptly it was heard), and by
     // RECEIPT only in receipt-time mode. Tails are clipped at the fire either
     // way; a receipt-time fire is the fire's receipt time.
-    if (_insideAppPlayback(stop, fire)) {
+    if (_insideAppPlayback(stop, fire, wholeSecond: !unset)) {
       _log('[snooze] stop ($cause) ${unset ? 'heard' : 'stamped'} inside the '
           'app\'s own playback (or just after): that is our pattern ending, '
           'not the alarm.');
