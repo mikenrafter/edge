@@ -235,10 +235,13 @@ void main() {
       expect(o.exclusions, isEmpty);
     });
 
-    test('native whose fallback was re-armed counts as armed', () {
+    // RED-EDIT (P2 native confirmation): this test used `confirmed: false` and
+    // expected delivered, i.e. it encoded "armed but unconfirmed counts". Armed
+    // AND confirmed is the delivery claim, so the re-armed row is now confirmed.
+    test('native whose fallback was re-armed and confirmed counts as armed', () {
       final o = run(trace: [
         [
-          fallbackRow(kT, kT - 7200, armed: true, confirmed: false, rearmed: true),
+          fallbackRow(kT, kT - 7200, armed: true, confirmed: true, rearmed: true),
           closedRow(kT, kT + 60),
         ],
       ]);
@@ -365,6 +368,153 @@ void main() {
         WakeExclusion.staleStage,
         WakeExclusion.competingAlarm,
       ]);
+    });
+  });
+
+  group('band delivery is a band target, not "sent" (P2)', () {
+    test('Natural sent to the PHONE only is no band delivery', () {
+      // The transport reports result 'sent' when ANY target succeeds; the band
+      // output was rejected, so `delivered` lists only 'phone'.
+      final o = run(trace: [naturalFire(kT, fire, targets: const ['phone'])]);
+      expect(o.delivered, isFalse);
+      expect(o.exclusions, contains(WakeExclusion.noDelivery));
+      expect(o.usable, isFalse);
+    });
+
+    test('Natural sent to phone and band is delivered', () {
+      final o = run(
+          trace: [naturalFire(kT, fire, targets: const ['phone', 'band'])]);
+      expect(o.delivered, isTrue);
+      expect(o.exclusions, isEmpty);
+    });
+
+    test('a phone-only first fire, then a band-only repeat: the repeat is the '
+        'fire', () {
+      final repeatFire = fire + 60;
+      final o = run(trace: [
+        naturalFire(kT, fire, targets: const ['phone']),
+        // natural_repeat results carry no `delivered` list: the repeat sends
+        // with transportTargets {'band'}, so 'sent' there means the band.
+        [
+          row(kT, repeatFire, 'natural_repeat', {
+            'phase': 'result',
+            'index': 1,
+            'result': 'sent',
+            'suppression': null,
+            'error': null,
+          }),
+        ],
+      ]);
+      expect(o.delivered, isTrue);
+      expect(o.firedAtSec, repeatFire);
+      expect(o.exclusions, isEmpty);
+    });
+
+    test('Gradual step sent to the PHONE only is no band delivery', () {
+      final o = run(trace: [
+        [gradualRow(kT, kT - 600, 0, 'sent', targets: const ['phone'])],
+      ]);
+      expect(o.delivered, isFalse);
+      expect(o.exclusions, contains(WakeExclusion.noDelivery));
+      expect(o.usable, isFalse);
+    });
+
+    test('native armed but NOT confirmed is not delivered', () {
+      final o = run(trace: [
+        [
+          fallbackRow(kT, kT - 7200, armed: true, confirmed: false),
+          closedRow(kT, kT + 60),
+        ],
+      ]);
+      expect(o.delivered, isFalse);
+      expect(o.exclusions, contains(WakeExclusion.noDelivery));
+      expect(o.usable, isFalse);
+    });
+
+    test('native armed with an unknown (null) confirmation is not delivered',
+        () {
+      final o = run(trace: [
+        [
+          row(kT, kT - 7200, 'fallback',
+              {'armed': true, 'confirmed': null, 'rearmed': false}),
+          closedRow(kT, kT + 60),
+        ],
+      ]);
+      expect(o.delivered, isFalse);
+      expect(o.usable, isFalse);
+    });
+  });
+
+  group('competing wake stimuli are not attributed to Natural (P2)', () {
+    test('Gradual delivered at T-15 min, Natural at T-10 min: excluded', () {
+      final naturalAt = kT - 600;
+      final o = run(trace: [
+        [gradualRow(kT, kT - 900, 0, 'sent')],
+        naturalFire(kT, naturalAt),
+      ], move: [naturalAt + 30]);
+      expect(o.exclusions, contains(WakeExclusion.competingAlarm));
+      expect(o.usable, isFalse);
+    });
+
+    test('several earlier Gradual steps inside the 15 min: excluded', () {
+      final naturalAt = kT - 600;
+      final o = run(trace: [
+        [
+          gradualRow(kT, naturalAt - 840, 0, 'sent'),
+          gradualRow(kT, naturalAt - 600, 1, 'sent'),
+          gradualRow(kT, naturalAt - 120, 2, 'sent'),
+        ],
+        naturalFire(kT, naturalAt),
+      ]);
+      expect(o.exclusions, contains(WakeExclusion.competingAlarm));
+    });
+
+    test('a Gradual step that never landed is not a competing stimulus', () {
+      final naturalAt = kT - 600;
+      final o = run(trace: [
+        [gradualRow(kT, kT - 900, 0, 'notDelivered')],
+        naturalFire(kT, naturalAt),
+      ]);
+      expect(o.exclusions, isEmpty);
+    });
+
+    test('guard: Gradual over 15 min before the Natural fire does not exclude',
+        () {
+      final naturalAt = kT - 600;
+      final o = run(trace: [
+        [gradualRow(kT, naturalAt - 1000, 0, 'sent')],
+        naturalFire(kT, naturalAt),
+      ]);
+      expect(o.exclusions, isNot(contains(WakeExclusion.competingAlarm)));
+    });
+  });
+
+  group('the configured Natural window is recorded (P2)', () {
+    test('the plan row naturalMinutes becomes configuredWindowMinutes', () {
+      final o = run(trace: [
+        [planRow(kT, kT - 3 * 3600, naturalMinutes: 45)],
+        naturalFire(kT, kT - 20 * 60), // fired 20 min early under a 45 window
+      ]);
+      expect(o.toJson()['configuredWindowMinutes'], 45);
+      expect(o.minutesBeforeT, 20.0, reason: 'firing time stays separate');
+    });
+
+    test('no plan row: the configured window is unknown (null)', () {
+      final o = run(trace: [naturalFire(kT, fire)]);
+      expect(o.toJson()['configuredWindowMinutes'], isNull);
+    });
+
+    test('configuredWindowMinutes survives the json round trip', () {
+      final o = WakeOutcome.fromJson(jsonRoundTrip({
+        ...run(trace: [naturalFire(kT, fire)]).toJson(),
+        'configuredWindowMinutes': 45,
+      }));
+      expect(o.toJson()['configuredWindowMinutes'], 45);
+      // Old stored outcomes have no such key and must still load, as null.
+      final legacy = run(trace: [naturalFire(kT, fire)]).toJson()
+        ..remove('configuredWindowMinutes');
+      expect(WakeOutcome.fromJson(jsonRoundTrip(legacy)).toJson()['configuredWindowMinutes'],
+          isNull);
     });
   });
 

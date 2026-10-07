@@ -20,6 +20,11 @@ List<WakeTraceEntry> naturalFire(
   int fireSec, {
   String stage = 'rem',
   double evidenceAgeMs = 30000,
+  // RED-EDIT (P2 band delivery): the orchestrator's `delivered` is
+  // WakeHapticResult.delivered = the transport's TARGETS ('band', 'phone'),
+  // not an event id. The old fixture put the event id there, which hid that the
+  // assembler never reads it. Default is the band-reached case.
+  List<String> targets = const ['band'],
 }) =>
     [
       row(wake, fireSec - 2, 'natural', {
@@ -42,7 +47,7 @@ List<WakeTraceEntry> naturalFire(
         'phase': 'result',
         'eventId': 'wake:natural:$wake',
         'result': 'sent',
-        'delivered': ['wake:natural:$wake'],
+        'delivered': targets, // RED-EDIT: was ['wake:natural:$wake']
         'suppression': null,
         'error': null,
       }),
@@ -78,12 +83,15 @@ WakeTraceEntry repeatStop(int wake, int sec, String reason) =>
       'notDelivered': 0,
     });
 
-WakeTraceEntry gradualRow(int wake, int sec, int index, String result) =>
+WakeTraceEntry gradualRow(int wake, int sec, int index, String result,
+        // RED-EDIT (P2 band delivery): `delivered` holds transport targets, as
+        // in the orchestrator, not the event id the fixture used to put there.
+        {List<String> targets = const ['band']}) =>
     row(wake, sec, 'gradual', {
       'index': index,
       'eventId': 'wake:gradual:$wake:$index',
       'result': result,
-      'delivered': result == 'sent' ? ['wake:gradual:$wake:$index'] : <String>[],
+      'delivered': result == 'sent' ? targets : <String>[],
       'suppression': null,
       'error': null,
     });
@@ -92,6 +100,20 @@ WakeTraceEntry fallbackRow(int wake, int sec,
         {bool armed = true, bool confirmed = true, bool rearmed = false}) =>
     row(wake, sec, 'fallback',
         {'armed': armed, 'confirmed': confirmed, 'rearmed': rearmed});
+
+/// The once-per-run 'plan' row (wake_orchestrator.dart, `planLogged`);
+/// `naturalMinutes` is the configured Natural window for that night.
+WakeTraceEntry planRow(int wake, int sec, {int naturalMinutes = 60}) =>
+    row(wake, sec, 'plan', {
+      'configuration': 'natural',
+      'naturalMinutes': naturalMinutes,
+      'gradualMinutes': 0,
+      'gradualPattern': 'ramp',
+      'gradualCadenceSec': 60,
+      'upgradePending': false,
+      'wakeAtMs': wake * 1000,
+      'utcOffsetMin': 0,
+    });
 
 WakeTraceEntry ackRow(int wake, int sec) => row(wake, sec, 'ack',
     {'cancelNative': false, 'cancelled': null, 'fallbackArmed': true});
@@ -110,8 +132,12 @@ WakeOutcome outcome(
   int? grogginess,
   List<WakeExclusion> exclusions = const [],
   Map<WakeResponseKind, int?>? latencySec,
-}) =>
-    WakeOutcome(
+  // The configured Natural window recorded for that night. WakeOutcome has no
+  // such field yet, so it goes in through fromJson ('configuredWindowMinutes',
+  // nullable int): this compiles now and keeps working once the field exists.
+  int? configuredWindowMinutes,
+}) {
+  final built = WakeOutcome(
       wakeSec: wakeSec,
       firedBy: firedBy,
       firedAtSec: minutesBeforeT == null
@@ -130,3 +156,9 @@ WakeOutcome outcome(
       minutesBeforeT: minutesBeforeT,
       exclusions: exclusions,
     );
+  if (configuredWindowMinutes == null) return built;
+  return WakeOutcome.fromJson({
+    ...built.toJson(),
+    'configuredWindowMinutes': configuredWindowMinutes,
+  });
+}
