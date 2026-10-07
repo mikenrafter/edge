@@ -95,6 +95,11 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
+  /// Developer-only explore surface: "Your recorded daily rhythm" and the
+  /// schedule-based travel plan (lib/explore/circadian). Off by default, and
+  /// shown only with developer mode on as well.
+  static const String exploreCircadian = 'explore.circadian';
+
   /// Lift the 10 s cap on compiled band haptics. Off by default; the
   /// 8-command plan cap and the band's rolling command limit still apply.
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
