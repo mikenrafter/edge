@@ -137,6 +137,11 @@ class BandGesturesView extends StatelessWidget {
   final bool followUp;
   final void Function(bool)? onFollowUp;
 
+  /// "Tasker connection" is on. Off: the Broadcast to Tasker row is still
+  /// drawn (when the phone offers it) but disabled and dimmed, with the hint
+  /// "Turn on Tasker first". (RED phase: declared, not yet read.)
+  final bool taskerOn;
+
   /// A WHOOP MG: the only band whose ECG sensor can be touched to count taps.
   /// The ECG options are drawn only when [devMode] is on as well.
   final bool ecgSupported;
@@ -236,6 +241,7 @@ class BandGesturesView extends StatelessWidget {
     this.onReplay,
     this.followUp = false,
     this.onFollowUp,
+    this.taskerOn = true,
     this.ecgSupported = false,
     this.tapMethod,
     this.onTapMethod,

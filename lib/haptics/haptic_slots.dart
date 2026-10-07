@@ -71,6 +71,21 @@ const List<HapticSlotSection> kHapticSlotSections = [
   ]),
 ];
 
+/// The six Tasker slots (RED phase stubs): `tasker.1` .. `tasker.6`. Slot n's
+/// built-in default is n short pulses; Tasker plays a slot by its number or its
+/// key and the wearer can put any pattern on it, like a cue slot.
+const int kTaskerSlotCount = 6;
+
+/// The key of Tasker slot [n] (1..6); ArgumentError otherwise.
+String taskerSlotKey(int n) => throw UnimplementedError('taskerSlotKey');
+
+/// Whether [slotKey] is one of the six Tasker slots.
+bool isTaskerSlot(String slotKey) => throw UnimplementedError('isTaskerSlot');
+
+/// The number (1..6) of Tasker slot [slotKey], or null for any other key.
+int? taskerSlotNumber(String slotKey) =>
+    throw UnimplementedError('taskerSlotNumber');
+
 /// The relay's alert slot, which is a relay channel's pattern, not a rule's.
 const String kRelaySlotKey = 'alert.relay';
 

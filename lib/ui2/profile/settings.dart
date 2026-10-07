@@ -2154,10 +2154,22 @@ class _AutomationSettingsState extends State<AutomationSettings> {
 /// [token] is null until the bridge answers.
 class AutomationSettingsView extends StatelessWidget {
   const AutomationSettingsView(
-      {super.key, this.token, this.copied = false, this.onCopy});
+      {super.key,
+      this.token,
+      this.copied = false,
+      this.onCopy,
+      this.taskerOn = true,
+      this.onTaskerOn});
   final String? token;
   final bool copied;
   final VoidCallback? onCopy;
+
+  /// "Tasker connection" (key `tasker-connection`, Android only) and its
+  /// callback. Off: the Tasker rows below it are drawn but disabled and
+  /// dimmed, with the hint "Turn on Tasker first". (RED phase: declared, not
+  /// yet read.)
+  final bool taskerOn;
+  final ValueChanged<bool>? onTaskerOn;
 
   @override
   Widget build(BuildContext c) {
