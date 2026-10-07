@@ -95,6 +95,12 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
+  /// Developer-only research view of the existing cardiac-pattern detector
+  /// output ("Repeating nighttime pulse patterns (research)"). Off by default;
+  /// it is only ever offered together with developer mode. Not a metric, not
+  /// read by the coach or the health export.
+  static const String explorePulsePatterns = 'explore.pulse_patterns';
+
   /// Lift the 10 s cap on compiled band haptics. Off by default; the
   /// 8-command plan cap and the band's rolling command limit still apply.
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
