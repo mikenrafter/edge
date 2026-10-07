@@ -95,6 +95,11 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
+  /// Developer-only experiment: the "Pacing rates compared" entry in the
+  /// Device lab. Off unless somebody deliberately turned it on, and even then
+  /// only offered while developer mode is on. See lib/explore/resonance/.
+  static const String exploreResonance = 'explore.resonance';
+
   /// Lift the 10 s cap on compiled band haptics. Off by default; the
   /// 8-command plan cap and the band's rolling command limit still apply.
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
