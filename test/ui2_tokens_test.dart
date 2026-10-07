@@ -191,6 +191,10 @@ void main() {
 /// this list fails the test above, so the choice has to be made rather than
 /// drifted into.
 const _notComponents = {
+  // Device lab panel bound to a live AlarmSlotProbeRunner, which arms real
+  // band alarms; every state it draws is pumped in
+  // alarm_slot_probe_panel_test.dart with a fake runner.
+  'AlarmSlotProbeCard',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.
