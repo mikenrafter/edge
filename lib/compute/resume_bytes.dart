@@ -39,6 +39,9 @@ class ResumeWriter {
     if (v != null) f64(v);
   }
 
+  /// [n] raw bytes of [v], from the start.
+  void bytes(Uint8List v, int n) => _out.add(Uint8List.sublistView(v, 0, n));
+
   Uint8List takeBytes() => _out.takeBytes();
 }
 
@@ -85,6 +88,14 @@ class ResumeReader {
     final v = _d.getFloat64(_at);
     _at += 8;
     return v;
+  }
+
+  /// [n] raw bytes, checked against what is left before anything is allocated.
+  Uint8List bytes(int n) {
+    _need(n);
+    final out = Uint8List.fromList(Uint8List.sublistView(_d, _at, _at + n));
+    _at += n;
+    return out;
   }
 
   int? optI64() => bool_() ? i64() : null;

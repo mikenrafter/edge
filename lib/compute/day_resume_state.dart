@@ -2,13 +2,19 @@ import 'dart:typed_data';
 
 import 'day_activity_state.dart';
 import 'day_checkpoint_policy.dart' show kDayCheckpointFmt;
+import 'minute_bills.dart';
 import 'resume_bytes.dart';
 
 /// The folded part of a day that a stored `day_checkpoint` resumes: the two
-/// heart-rate summaries (each carrying its per-minute wake HR vector), the
-/// orientation/presence summary, and the step-counter triple, all folded over
-/// the same first [folded] seconds of the day (every row before the
-/// checkpoint's `cp_rec_ts`).
+/// heart-rate summaries (each carrying the day's valid seconds, so the wake side
+/// can be read under any sleep window), the orientation/presence summary, the
+/// per-minute motion buckets and the step-counter triple, all folded over the
+/// same first [folded] seconds of the day (every row before the checkpoint's
+/// `cp_rec_ts`). None of it depends on the sleep window.
+///
+/// [bills] is the one part that is not a fold of the rows: the priced wake
+/// minutes of the pass that wrote the checkpoint, a cache that lets the next
+/// pass price only the minutes that differ (see [MinuteBills]).
 ///
 /// Disposable, like the row that holds it: [decodeDayResumeState] returns null
 /// for anything it cannot read exactly (another layout version, a torn or
@@ -20,19 +26,23 @@ class DayResumeState {
     DayHrSummary? hrActivity,
     DayMotionSummary? motion,
     StepCounterFold? steps,
+    DayDynMinutes? dyn,
+    this.bills,
   })  : hrPipeline = hrPipeline ?? DayHrSummary(),
         hrActivity = hrActivity ?? DayHrSummary(),
         motion = motion ?? DayMotionSummary(),
-        steps = steps ?? StepCounterFold();
+        steps = steps ?? StepCounterFold(),
+        dyn = dyn ?? DayDynMinutes();
 
   /// The summary the pure day pipeline reads, and the one the activity half
-  /// reads. They fold the same samples under the same sleep window and age;
-  /// each is kept as its own object because each is synced (and rebuilt on a
-  /// mismatch) on its own.
+  /// reads. They fold the same samples under the same age; each is kept as its
+  /// own object because each is synced (and rebuilt on a mismatch) on its own.
   final DayHrSummary hrPipeline;
   final DayHrSummary hrActivity;
   final DayMotionSummary motion;
   final StepCounterFold steps;
+  final DayDynMinutes dyn;
+  MinuteBills? bills;
 
   /// Seconds of the day folded so far.
   int get folded => motion.length;
@@ -40,11 +50,14 @@ class DayResumeState {
   bool get _consistent =>
       hrPipeline.length == folded &&
       hrActivity.length == folded &&
-      steps.length == folded;
+      steps.length == folded &&
+      dyn.length == folded;
 
   /// Folds the samples that follow the ones already folded. False when a part
-  /// was folded under a different sleep window, age or counter modulus than the
-  /// one asked for; the state is then partly folded and must be thrown away.
+  /// was folded under a different age or counter modulus than the one asked
+  /// for; the state is then partly folded and must be thrown away. The sleep
+  /// window is accepted only to set the window the argument-less readers use;
+  /// it never changes what is folded.
   bool appendTail({
     required List<int> ts,
     required List<int> hr,
@@ -52,13 +65,13 @@ class DayResumeState {
     required List<double> ay,
     required List<double> az,
     required List<int> stepCounter,
-    required int sleepOnsetSec,
-    required int sleepOffsetSec,
+    int sleepOnsetSec = 0,
+    int sleepOffsetSec = 0,
     required int? age,
     required int? stepModulus,
   }) {
     if (!_consistent) return false;
-    return hrPipeline.appendTail(ts, hr,
+    if (!(hrPipeline.appendTail(ts, hr,
             sleepOnsetSec: sleepOnsetSec,
             sleepOffsetSec: sleepOffsetSec,
             age: age) &&
@@ -68,7 +81,11 @@ class DayResumeState {
             age: age) &&
         motion.appendTail(ts, ax, ay, az,
             sleepOnsetSec: sleepOnsetSec, sleepOffsetSec: sleepOffsetSec) &&
-        steps.appendTail(ts, stepCounter, modulus: stepModulus);
+        steps.appendTail(ts, stepCounter, modulus: stepModulus))) {
+      return false;
+    }
+    dyn.appendTail(ts, hr, ax, ay, az);
+    return true;
   }
 }
 
@@ -84,6 +101,10 @@ Uint8List encodeDayResumeState(DayResumeState state) {
   state.hrActivity.write(w);
   state.motion.write(w);
   state.steps.write(w);
+  state.dyn.write(w);
+  final bills = state.bills;
+  w.bool_(bills != null);
+  bills?.write(w);
   final body = w.takeBytes();
   final out = Uint8List(body.length + 4)..setRange(0, body.length, body);
   ByteData.sublistView(out).setUint32(body.length, checksum32(body, body.length));
@@ -108,7 +129,10 @@ DayResumeState? decodeDayResumeState(Uint8List bytes) {
       hrActivity: DayHrSummary.read(r),
       motion: DayMotionSummary.read(r),
       steps: StepCounterFold.read(r),
+      dyn: DayDynMinutes.read(r),
+      bills: null,
     );
+    if (r.bool_()) state.bills = MinuteBills.read(r);
     if (r.remaining != 0) return null;
     if (state.folded != folded || !state._consistent) return null;
     return state;

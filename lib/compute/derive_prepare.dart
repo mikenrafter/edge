@@ -443,8 +443,19 @@ SleepSessionCandidate prepareSleepSessionCandidate(
   required String targetDay,
   SleepWindowOverride? override,
   List<({int startSec, int endSec, String dayKey})> priorSleep = const [],
+  // The instant the night's wake was confirmed (epoch seconds; see
+  // sleep_block_policy.dart). Staging sees nothing from that second on, so the
+  // window ends there unless the detector ended it earlier (an earlier observed
+  // end stands, awake minutes are never stretched into sleep), a later sync
+  // cannot move the night, and going back to bed is never bridged into it.
+  int? confirmedWakeSec,
 }) {
-  final payload = prepareDerivationPayload(sub,
+  // A user window is the source of truth; a confirmation never trims it.
+  final upTo = override == null ? confirmedWakeSec : null;
+  final staged = (upTo == null || sub.isEmpty || sub.lastTs! < upTo)
+      ? sub
+      : sub.slice(sub.tsSec.first, upTo);
+  final payload = prepareDerivationPayload(staged,
       targetDay: targetDay, override: override, priorSleep: priorSleep);
   if (payload.days.isEmpty) return SleepSessionCandidate.absent(targetDay);
   final day = payload.days.first;
