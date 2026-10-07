@@ -23,6 +23,9 @@ import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_analyzer.dart';
 import 'package:openstrap_edge/explore/resonance/resonance_sweep_controller.dart';
+import 'package:openstrap_edge/state/imu_packet.dart';
+import 'package:openstrap_protocol/openstrap_protocol.dart' as proto
+    show frameAccel;
 import 'package:openstrap_protocol/openstrap_protocol.dart'
     show BandProfile, Cmd;
 import 'package:path/path.dart' as p;
@@ -78,6 +81,29 @@ void gen4R10(G6Rig rig, int i, double Function(int k) mag,
     v.setInt16(85 + 2 * k, _lsb(mag(k)), Endian.little);
   }
   rig.app.debugOnLiveFrame(0x2B, hexOf(inner), ts ?? _ts0 + i);
+}
+
+/// An accel-only gen4 R10 (0x2B rec 10): the first [length] bytes of a full
+/// R10, cut after the accelerometer block. 685 bytes is the shortest protocol's
+/// accel decode takes (X@85, Y@285, Z@485, 100 int16 each); the six-axis
+/// decoder needs the gyro block (to byte 1288) and rejects it, so the sweep's
+/// only way to see this frame's motion is the accel fallback. Beats are not
+/// carried (they come from the 0x28 frames).
+Uint8List accelOnlyR10Inner(int i, double Function(int k) mag,
+    {int length = 700, int? ts}) {
+  final full = r10LiveInner(rr: const [], ax: 0, ts: ts ?? _ts0 + i);
+  final v = ByteData.sublistView(full);
+  for (var k = 0; k < 100; k++) {
+    v.setInt16(85 + 2 * k, _lsb(mag(k)), Endian.little);
+  }
+  return Uint8List.sublistView(full, 0, length);
+}
+
+void accelOnlyR10(G6Rig rig, int i, double Function(int k) mag,
+    {int length = 700, int? ts}) {
+  rig.app.debugOnLiveFrame(
+      0x2B, hexOf(accelOnlyR10Inner(i, mag, length: length, ts: ts)),
+      ts ?? _ts0 + i);
 }
 
 /// A gen4 0x33 IMU frame: 10 accel samples, [mag] (g) by sample index.
@@ -461,6 +487,157 @@ void main() {
         gen4R10(rig, i, still, ts: 0, beat: false);
       });
       expect(only(run).rejection, isNull);
+    });
+  });
+
+  // The gen4 R10 fallback: a valid R10 shorter than the gyro block (685 to
+  // 1287 bytes) carries 100 accel samples but no gyro, so the six-axis decoder
+  // rejects it and `_safeFrameAccel` is the only reader. That path already
+  // feeds the pedometer and the live graphs; the sweep's meter must take the
+  // same frame, scaled to g the same way and stamped on the sweep's own clock.
+  group('accel-only R10 (the fallback the six-axis decoder rejects)', () {
+    test('fixture: protocol reads it, the six-axis adapter does not', () {
+      for (final len in [685, 700, 1000, 1287]) {
+        final inner = accelOnlyR10Inner(0, still, length: len);
+        expect(proto.frameAccel(hexOf(inner)), isNotNull, reason: '$len B');
+        expect(
+            ImuPacketAdapter().decode(
+                packetType: 0x2B,
+                hex: hexOf(inner),
+                deviceId: 'band',
+                connectionGeneration: 1),
+            isNull,
+            reason: '$len B has no gyro block');
+      }
+    });
+
+    test('a still sweep: the block is admitted, not movementUnknown',
+        () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      final run = await sweepOneBlock(rig, (i, at) {
+        hrFrame(rig, i);
+        accelOnlyR10(rig, i, still);
+      });
+      expect(only(run).rejection, isNull);
+      expect(only(run).admitted, isTrue);
+    });
+
+    test('the shortest and the longest valid R10 both count', () async {
+      for (final len in [685, 1287]) {
+        final rig = await newRig(band: BandProfile.gen4);
+        final run = await sweepOneBlock(rig, (i, at) {
+          hrFrame(rig, i);
+          accelOnlyR10(rig, i, still, length: len);
+        });
+        expect(only(run).rejection, isNull, reason: '$len B');
+      }
+    });
+
+    test('a shaken wrist: the block is rejected for movement', () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      final run = await sweepOneBlock(rig, (i, at) {
+        hrFrame(rig, i);
+        accelOnlyR10(rig, i, shaken);
+      });
+      expect(only(run).rejection, BlockRejection.movement);
+      expect(run.c.result!.rateBpm, isNull);
+    });
+
+    test('a wrist that moved for a third of the window is movement, not still',
+        () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      final run = await sweepOneBlock(rig, (i, at) {
+        hrFrame(rig, i);
+        accelOnlyR10(rig, i, i % 3 == 0 ? shaken : still);
+      });
+      expect(only(run).rejection, BlockRejection.movement);
+    });
+
+    test('frames for only half the window: movementUnknown, never still',
+        () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      final run = await sweepOneBlock(rig, (i, at) {
+        hrFrame(rig, i);
+        if (i < 30) accelOnlyR10(rig, i, still);
+      });
+      expect(only(run).rejection, BlockRejection.movementUnknown);
+    });
+
+    test('frames that arrive while the sweep is not running are ignored',
+        () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      rig.app.repo = LocalRepositoryImpl(getProfileMap: () => const {});
+      var clock = DateTime.utc(2026, 10, 7, 12);
+      final start = clock;
+      final c = rig.app.buildResonanceSweep(
+        plan: planFor([6.0],
+            settle: Duration.zero, measure: const Duration(seconds: 60)),
+        now: () => clock,
+      );
+      addTearDown(c.dispose);
+      for (var i = 0; i < 60; i++) {
+        accelOnlyR10(rig, i, shaken);
+      }
+      await c.start();
+      for (var i = 0; i < 60; i++) {
+        clock = start.add(Duration(milliseconds: 500 + i * 1000));
+        hrFrame(rig, i);
+        accelOnlyR10(rig, i, still);
+      }
+      clock = start.add(const Duration(seconds: 61));
+      await c.stop();
+      expect(c.result!.blocks.single.rejection, isNull,
+          reason: 'the earlier shaking was never recorded');
+    });
+
+    // The pedometer's once-only rule: with 0x33 flowing, 0x2B is not read
+    // again, so the same motion is not counted from two stream formats.
+    test('with the 0x33 stream flowing, the R10 is not read again: a still '
+        '0x33 stands against a shaken R10', () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      final run = await sweepOneBlock(rig, (i, at) {
+        hrFrame(rig, i);
+        for (var f = 0; f < 10; f++) {
+          at(i * 1000 + f * 100 + 50);
+          gen4Imu33(rig, i * 10 + f, still);
+        }
+        at(i * 1000 + 950);
+        accelOnlyR10(rig, i, shaken);
+      });
+      expect(only(run).rejection, isNull,
+          reason: 'a shaken R10 after 0x33 began must not reach the meter');
+    });
+
+    test('with the 0x33 stream flowing, a still R10 does not dilute a shaken '
+        '0x33', () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      final run = await sweepOneBlock(rig, (i, at) {
+        hrFrame(rig, i);
+        for (var f = 0; f < 10; f++) {
+          at(i * 1000 + f * 100 + 50);
+          gen4Imu33(rig, i * 10 + f, shaken);
+        }
+        at(i * 1000 + 950);
+        accelOnlyR10(rig, i, still);
+      });
+      expect(only(run).rejection, BlockRejection.movement);
+    });
+
+    test('a sweep with an accel-only R10 flood writes no row (RAM only)',
+        () async {
+      final rig = await newRig(band: BandProfile.gen4);
+      await LocalDb.instance;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      final before = await _totalChanges();
+      final run = await sweepOneBlock(rig, (i, at) {
+        hrFrame(rig, i);
+        accelOnlyR10(rig, i, still);
+      });
+      await rig.settle();
+      expect(only(run).rejection, isNull,
+          reason: 'the frames were read (else this proves nothing)');
+      expect(await _totalChanges(), before,
+          reason: 'no raw_records, decoded_*, raw_archive or settings row');
     });
   });
 
