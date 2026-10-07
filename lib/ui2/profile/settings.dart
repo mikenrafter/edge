@@ -97,6 +97,10 @@ class _MoreSettingsState extends State<MoreSettings> {
 
   /// The developer's band haptic command limit, mirrored from Prefs.
   int _hapticLimit = Prefs.hapticCommandLimit;
+
+  /// Explore: the Bedtime breathing cues entry in the Device lab, mirrored from
+  /// Prefs like [_pullToSync]. Off on every fresh install.
+  bool _exploreBedtime = Prefs.getBool(Prefs.exploreBedtime, false);
   String _version = '';
   int _taps = 0;
 
@@ -211,6 +215,11 @@ class _MoreSettingsState extends State<MoreSettings> {
       },
       // The engine's `last_pass_perf`: measured values only.
       lastCalculation: DerivePerf.describe(app.lastPassPerf),
+      exploreBedtime: _exploreBedtime,
+      onToggleExploreBedtime: () {
+        Prefs.setBool(Prefs.exploreBedtime, !_exploreBedtime);
+        setState(() => _exploreBedtime = !_exploreBedtime);
+      },
       onVersionTap: _tapVersion,
       onToggleDev: () => _setDev(false),
       onGallery: () => goto(c, const GalleryScreen()),
@@ -587,6 +596,11 @@ class MoreSettingsView extends StatelessWidget {
   /// until a pass has been measured.
   final String lastCalculation;
 
+  /// Developer group: whether the Bedtime breathing cues entry is offered in the
+  /// Device lab (Prefs.exploreBedtime, off by default).
+  final bool exploreBedtime;
+  final VoidCallback? onToggleExploreBedtime;
+
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
   /// The expected sleep schedule (local clock times), or null when never set.
@@ -653,6 +667,8 @@ class MoreSettingsView extends StatelessWidget {
     this.hapticCommandLimit = 30,
     this.onHapticCommandLimit,
     this.lastCalculation = '—',
+    this.exploreBedtime = false,
+    this.onToggleExploreBedtime,
     this.onVersionTap,
     this.onToggleDev,
     this.onGallery,
@@ -965,6 +981,13 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',
                         onTap: onDataExplorer),
+                    // Off by default. Adds an entry on the Device lab's Probes
+                    // tab; the row itself is always here, not revealed by it.
+                    SetRow(LucideIcons.wind, C.n500, 'Bedtime breathing cues',
+                        sub: 'Offer paced band cues at bedtime in the Device lab',
+                        value: exploreBedtime ? on : off,
+                        chevron: false,
+                        onTap: onToggleExploreBedtime),
                     _HapticLimitRow(
                         limit: hapticCommandLimit,
                         onChanged: onHapticCommandLimit),

@@ -75,8 +75,12 @@ import '../data/auto_backup.dart' as backup show runBackupIfDue;
 import 'alarm_draft.dart';
 import 'alarm_schedule.dart';
 import 'smart_wake.dart';
+import '../explore/bedtime/bedtime_pacing_policy.dart' show BedtimePlan;
+import '../explore/bedtime/bedtime_session_controller.dart'
+    show BedtimeSessionController;
 import '../wake/natural_wake.dart'
     show
+        NaturalObserveRequest,
         NaturalStageObserver,
         NaturalWakePlanner,
         kUserInteractionFreshness,
@@ -459,7 +463,8 @@ class AppState extends ChangeNotifier {
     buffer: liveStreams,
     isBackground: () => _background,
     activeWorkoutType: () => workoutStopPending ? null : activeWorkout?.type,
-    breathing: () => breathingActive || breathingWindowOpen,
+    breathing: () =>
+        breathingActive || breathingWindowOpen || _bedtimeStreamHolds > 0,
     reconcile: () => engine.reconcileLiveStreams(),
     clearRadioFallbackAndReconcile: () =>
         engine.clearRadioFallbackAndReconcile(),
@@ -861,7 +866,15 @@ class AppState extends ChangeNotifier {
   /// phase. A phase cue starts immediately or is rejected, so it cannot wait
   /// for command budget, the Device lab, or another haptic job and arrive in a
   /// later phase. The session-complete cue may still wait for the band.
-  Future<bool> _playBreathCue(String slot, {required bool skipIfBusy}) async {
+  ///
+  /// [onOutcome] hears what the dispatcher did; [transportTargets] narrows where
+  /// it may deliver (a Bedtime cue is the band's only, never a phone notice).
+  Future<bool> _playBreathCue(
+    String slot, {
+    required bool skipIfBusy,
+    void Function(AlertDeliveryOutcome outcome)? onOutcome,
+    Set<String>? transportTargets,
+  }) async {
     await _gestures.loadCues();
     if (_disposed) return true;
     if (haptics.profile == null && !_gestures.cueAssigned(slot)) {
@@ -873,14 +886,18 @@ class AppState extends ChangeNotifier {
         _ => null,
       };
       if (pattern == null) return false;
-      await _dispatchBandAlert(
+      // Awaited into a local first: `onOutcome?.call(await ...)` would not
+      // evaluate the dispatch at all when there is no listener.
+      final outcome = await _dispatchBandAlert(
         'breath',
         pattern: pattern,
         immediate: skipIfBusy,
+        transportTargets: transportTargets,
       );
+      onOutcome?.call(outcome);
       return true;
     }
-    await _dispatchBandAlert(
+    final outcome = await _dispatchBandAlert(
       'breath',
       deliver: (_, _) async => _disposed
           ? BuzzDelivery.rejected
@@ -888,7 +905,9 @@ class AppState extends ChangeNotifier {
               ? haptics.asImmediate(() => gestureCues.slot(slot))
               : gestureCues.slot(slot),
       deliverTimeout: const Duration(seconds: 10),
+      transportTargets: transportTargets,
     );
+    onOutcome?.call(outcome);
     return true;
   }
 
@@ -3807,6 +3826,7 @@ class AppState extends ChangeNotifier {
       (activeWorkout != null && !workoutStopPending) ||
       breathingActive ||
       breathingWindowOpen ||
+      _bedtimeStreamHolds > 0 ||
       (_ecg?.isCapturing ?? false);
 
   /// A screen that displays the live heart rate is on screen: own the HR
@@ -6425,6 +6445,87 @@ class AppState extends ChangeNotifier {
 
   /// The whole session is over, as opposed to one phase of it.
   void buzzSessionComplete() => _breathing.buzzSessionComplete();
+
+  // ── Bedtime breathing cues (explore, developer-only) ────────────────────────
+  // The controller is lib/explore/bedtime; this is only the seam it is built
+  // from. It owns no stager and no cue path of its own: cues go through the
+  // breathing slot cues, and the stage estimate comes from the one observer the
+  // Natural Wake orchestrator uses.
+
+  /// Sessions currently holding the live HR stream (an owner, like a breathing
+  /// session); each holds once and releases once.
+  int _bedtimeStreamHolds = 0;
+
+  /// How far before a session starts the stager is fed, so its warm-up (about
+  /// 20 minutes of data) is already behind it when the session begins.
+  static const Duration _kBedtimeStagerLead = Duration(minutes: 30);
+
+  /// A [BedtimeSessionController] for [plan]. Not started.
+  BedtimeSessionController buildBedtimeSession(BedtimePlan plan) {
+    var held = false;
+    // This session's own carry-over for the shared observer: its prior state
+    // and the newest sample it was fed (the Natural Wake run keeps the same
+    // two for its own).
+    Map<String, Object?>? stagerState;
+    double? fedMs;
+    return BedtimeSessionController(
+      plan: plan,
+      isConnected: () => engine.isConnected,
+      deliverCue: (kind) async {
+        final (slot, _) = BreathingController.cueFor(kind);
+        var onBand = false;
+        await _playBreathCue(
+          slot,
+          skipIfBusy: true,
+          transportTargets: const {'band'},
+          onOutcome: (o) => onBand = o.targets.contains('band'),
+        );
+        return onBand;
+      },
+      observe: () async {
+        final now = DateTime.now();
+        final toMs = now.millisecondsSinceEpoch.toDouble();
+        final from = fedMs ?? toMs - _kBedtimeStagerLead.inMilliseconds;
+        final samples = await loadWakeSamples(
+                DateTime.fromMillisecondsSinceEpoch(from.round()), now)
+            .timeout(const Duration(seconds: 30));
+        final mark = fedMs;
+        List<List<double>> fresh(List<List<double>> rows) =>
+            mark == null ? rows : [for (final r in rows) if (r[0] > mark) r];
+        final hr = fresh(samples.hr),
+            accel = fresh(samples.accel),
+            rr = fresh(samples.rr);
+        final result = await _wakeOrchestrator.observer
+            .observe(NaturalObserveRequest(
+              nowMs: toMs,
+              hr: hr,
+              accel: accel,
+              rr: rr,
+              priorState: stagerState,
+            ))
+            .timeout(const Duration(seconds: 60));
+        stagerState = result.nextState;
+        for (final rows in [hr, accel, rr]) {
+          for (final r in rows) {
+            if (fedMs == null || r[0] > fedMs!) fedMs = r[0];
+          }
+        }
+        return result.observation;
+      },
+      acquireStreams: () async {
+        if (held) return;
+        held = true;
+        _bedtimeStreamHolds++;
+        await engine.reconcileLiveStreams();
+      },
+      releaseStreams: () {
+        if (!held) return;
+        held = false;
+        if (_bedtimeStreamHolds > 0) _bedtimeStreamHolds--;
+        _nudgeLive();
+      },
+    );
+  }
 
   /// The breathing Live Activity's stop button was tapped. Call on app resume.
   Future<void> maybeStopBreathingFromLiveActivity() =>

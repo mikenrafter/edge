@@ -30,6 +30,9 @@ import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../explore/bedtime/bedtime_pacing_policy.dart' show BedtimePlan;
+import '../../explore/bedtime/bedtime_screen.dart';
+import '../../explore/bedtime/bedtime_session_controller.dart';
 import '../../gestures/ecg_tap_counter.dart';
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/hardware_probe_runner.dart';
@@ -132,6 +135,9 @@ class DeviceLab extends StatelessWidget {
                 padding: const EdgeInsets.only(top: S.x3),
                 child: AlarmSlotProbeCard(runner: app.alarmSlotProbe),
               ),
+            // Draws nothing unless developer mode AND its own default-off flag
+            // (Settings > Developer) are on.
+            BedtimeEntry(onOpen: () => goto(c, const _BedtimePage())),
           ],
         ),
         // The IMU recorder is a developer tool: its tab is offered only in
@@ -146,6 +152,30 @@ class DeviceLab extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Hosts one Bedtime breathing cues session: built from the app's seam when the
+/// page opens, disposed (which ends it and releases the live streams) when the
+/// page closes.
+class _BedtimePage extends StatefulWidget {
+  const _BedtimePage();
+
+  @override
+  State<_BedtimePage> createState() => _BedtimePageState();
+}
+
+class _BedtimePageState extends State<_BedtimePage> {
+  late final BedtimeSessionController _session =
+      context.read<AppState>().buildBedtimeSession(BedtimePlan());
+
+  @override
+  void dispose() {
+    _session.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => BedtimeScreen(controller: _session);
 }
 
 /// Marks the Device lab as open for as long as it is on screen: the band queue

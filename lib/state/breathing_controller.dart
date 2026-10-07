@@ -310,6 +310,17 @@ class BreathingController {
   Future<List<Map<String, dynamic>>> breathingHistory({int limit = 30}) =>
       LocalDb.breathingSessions(limit: limit);
 
+  /// The cue slot and the 4.0's per-phase buzz pattern for [kind]. The one
+  /// mapping: the Bedtime session plays its cues through it too.
+  static (String slot, int pattern) cueFor(BreathPhaseKind kind) =>
+      switch (kind) {
+        BreathPhaseKind.inhale || BreathPhaseKind.work => (kBreathInhaleKey, 1),
+        BreathPhaseKind.exhale || BreathPhaseKind.rest => (kBreathExhaleKey, 0),
+        BreathPhaseKind.holdIn ||
+        BreathPhaseKind.holdOut =>
+          (kBreathHoldKey, 2),
+      };
+
   /// Buzz the strap at a breathing or interval phase boundary.
   ///
   /// Distinct cues per phase so it is legible without looking: the slots
@@ -325,11 +336,7 @@ class BreathingController {
   /// one that arrives late and overlaps the next.
   void buzzBreathPhase(BreathPhaseKind kind) {
     if (!_isConnected()) return;
-    final (slot, pattern) = switch (kind) {
-      BreathPhaseKind.inhale || BreathPhaseKind.work => (kBreathInhaleKey, 1),
-      BreathPhaseKind.exhale || BreathPhaseKind.rest => (kBreathExhaleKey, 0),
-      BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => (kBreathHoldKey, 2),
-    };
+    final (slot, pattern) = cueFor(kind);
     unawaited(_cue(slot, skipIfBusy: true, legacy: () =>
         _dispatchBandAlert('breath', pattern: pattern)));
   }

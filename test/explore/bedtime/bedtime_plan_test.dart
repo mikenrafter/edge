@@ -24,7 +24,8 @@ void main() {
       expect(kBedtimeMaxDuration, const Duration(minutes: 20));
       expect(kBedtimeMinDuration, const Duration(minutes: 1));
       expect(kBedtimeMinBpm, 4.0);
-      expect(kBedtimeMaxBpm, 8.0);
+      expect(kBedtimeMaxBpm, 7.0,
+          reason: '8 bpm needs 32 band commands per 2 min; the budget is 30');
       expect(kBedtimeSustainedEpochs, 4);
       expect(kBedtimeFreshness, const Duration(seconds: 90));
       expect(kBedtimeMaxMissedCues, 3);
@@ -39,11 +40,13 @@ void main() {
   });
 
   group('validation', () {
-    test('rates outside 4..8 bpm are refused', () {
+    test('rates outside 4..7 bpm are refused', () {
       expect(() => BedtimePlan(startBpm: 3.9), throwsArgumentError);
-      expect(() => BedtimePlan(startBpm: 8.1), throwsArgumentError);
+      expect(() => BedtimePlan(startBpm: 7.1), throwsArgumentError);
+      expect(() => BedtimePlan(startBpm: 8), throwsArgumentError,
+          reason: '8 bpm is 32 band commands per 2 min, over the budget of 30');
       expect(() => BedtimePlan(startBpm: 6, endBpm: 3.9), throwsArgumentError);
-      expect(() => BedtimePlan(startBpm: 6, endBpm: 8.1), throwsArgumentError);
+      expect(() => BedtimePlan(startBpm: 6, endBpm: 7.1), throwsArgumentError);
     });
 
     test('a taper may not speed up: endBpm above startBpm is refused', () {
@@ -70,10 +73,10 @@ void main() {
           throwsArgumentError);
     });
 
-    test('the edges are allowed: 4 and 8 bpm, 1 and 20 minutes', () {
+    test('the edges are allowed: 4 and 7 bpm, 1 and 20 minutes', () {
       final widest = BedtimePlan(
-          startBpm: 8, endBpm: 4, duration: const Duration(minutes: 20));
-      expect(widest.rateAt(const Duration(minutes: 10)), closeTo(6.0, 1e-9));
+          startBpm: 7, endBpm: 4, duration: const Duration(minutes: 20));
+      expect(widest.rateAt(const Duration(minutes: 10)), closeTo(5.5, 1e-9));
       final shortest = BedtimePlan(startBpm: 4, duration: _min);
       expect(shortest.rateAt(const Duration(seconds: 30)), closeTo(4.0, 1e-9));
     });
@@ -109,12 +112,12 @@ void main() {
     });
 
     test('never speeds up: the rate is non-increasing in elapsed time', () {
-      final p = BedtimePlan(startBpm: 8, endBpm: 4);
+      final p = BedtimePlan(startBpm: 7, endBpm: 4);
       var prev = double.infinity;
       for (var s = 0; s <= 900; s += 15) {
         final r = p.rateAt(Duration(seconds: s));
         expect(r, lessThanOrEqualTo(prev));
-        expect(r, inInclusiveRange(4.0, 8.0));
+        expect(r, inInclusiveRange(4.0, 7.0));
         prev = r;
       }
     });
