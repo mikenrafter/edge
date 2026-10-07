@@ -78,7 +78,7 @@ class _Rig {
       performNative: (_) async => true,
       claim: (k) async => claims.add(k),
       release: (k) async => claims.remove(k),
-      onLogWater: (e) async => ran.add('water'),
+      onWorkoutToggle: (e) async => ran.add('workout'),
       onTellTime: withHandler
           ? (e, elements) async {
               played.add((e, elements));
@@ -264,17 +264,17 @@ void main() {
     });
 
     test('with other actions mapped each runs; a failing time does not stop '
-        'the water', () async {
+        'the workout', () async {
       final r = _Rig(
           await _boot(
-              actions: {DeviceAction.logWater, DeviceAction.tellTime}),
+              actions: {DeviceAction.workoutToggle, DeviceAction.tellTime}),
           failTime: true);
       final out = await r.dispatcher.handle(repTap());
       expect(out.map((o) => (o.action, o.status)), [
-        (DeviceAction.logWater, GestureStatus.ran),
+        (DeviceAction.workoutToggle, GestureStatus.ran),
         (DeviceAction.tellTime, GestureStatus.failed),
       ]);
-      expect(r.ran, ['water']);
+      expect(r.ran, ['workout']);
     });
   });
 
@@ -313,13 +313,13 @@ void main() {
         '(unchanged)', () {
       expect(
           shouldAckTap(repTap(),
-              [ran(DeviceAction.logWater), ran(DeviceAction.tellTime)]),
+              [ran(DeviceAction.workoutToggle), ran(DeviceAction.tellTime)]),
           isTrue);
     });
 
     test('a tap whose other action ran is acknowledged as before (control)',
         () {
-      expect(shouldAckTap(repTap(), [ran(DeviceAction.logWater)]), isTrue);
+      expect(shouldAckTap(repTap(), [ran(DeviceAction.workoutToggle)]), isTrue);
     });
   });
 }

@@ -304,7 +304,7 @@ void main() {
       });
       final s = GestureSettings();
       await s.bootstrap();
-      await s.setDoubleTapActions({DeviceAction.logWater});
+      await s.setDoubleTapActions({DeviceAction.workoutToggle});
       await s.setActionsForTaps(3, {DeviceAction.markMoment});
       await s.setEcgOnDoubleTap(true);
       return s;
@@ -333,14 +333,14 @@ void main() {
           return 3;
         },
         repeatSession: session,
-        onLogWater: (_) async => ran.add('water'),
+        onWorkoutToggle: (_) async => ran.add('workout'),
         onMarkMoment: (_) async => ran.add('moment'),
         claim: (_) async => true,
         release: (_) async {},
       );
       final out = await d.handle(tap());
       expect(out.single.status, GestureStatus.ran);
-      expect(ran, ['water']);
+      expect(ran, ['workout']);
       expect((counted, ecgStarts, windows), (0, 0, 0));
       expect(session.open, isFalse);
     });
@@ -352,7 +352,7 @@ void main() {
         settings: s,
         ecgSupported: () => true,
         onEcgTap: (_) async => ecgStarts++,
-        onLogWater: (_) async => fail('actions are suspended in the lab'),
+        onWorkoutToggle: (_) async => fail('actions are suspended in the lab'),
         claim: (_) async => true,
         release: (_) async {},
       );
@@ -364,7 +364,7 @@ void main() {
         (t) async {
       Widget view(bool counting) => BandGesturesView(
             chosen: const {},
-            supported: {DeviceAction.none, DeviceAction.logWater},
+            supported: {DeviceAction.none, DeviceAction.workoutToggle},
             ecgSupported: true,
             devMode: true,
             onRepeatWindowMs: (_) {},
@@ -398,7 +398,7 @@ void main() {
       expect(find.byKey(const ValueKey('gestures-tab:3')), findsNothing);
       // The double tap's own actions stay.
       expect(find.byKey(const ValueKey('gestures-tab-name')), findsOneWidget);
-      expect(find.text('Log water'), findsOneWidget);
+      expect(find.text('Start / stop workout'), findsOneWidget);
     });
 
     testWidgets('OFF hides the lab\'s tap tools; the logs and probes stay',

@@ -47,7 +47,7 @@ void main() {
       });
       final s = GestureSettings();
       await s.bootstrap();
-      await s.setDoubleTapActions({DeviceAction.logWater});
+      await s.setDoubleTapActions({DeviceAction.workoutToggle});
       if (three) await s.setActionsForTaps(3, {DeviceAction.markMoment});
       return s;
     }
@@ -56,7 +56,7 @@ void main() {
 
     GestureDispatcher make(
       GestureSettings s, {
-      bool waterThrows = false,
+      bool workoutThrows = false,
       bool mg = false,
       DoubleTapRepeatSession? repeat,
       Future<int?> Function(StrapEvent)? count,
@@ -70,8 +70,8 @@ void main() {
         #ecgSupported: () => mg,
         #repeatSession: repeat,
         #onCountTaps: count,
-        #onLogWater: (StrapEvent e) async {
-          if (waterThrows) throw StateError('no water log');
+        #onWorkoutToggle: (StrapEvent e) async {
+          if (workoutThrows) throw StateError('no workout');
         },
         #onMarkMoment: (StrapEvent e) async => throw StateError('no moment'),
         // The kind is an enum of lib/gestures/gesture_failures.dart; it is
@@ -96,12 +96,12 @@ void main() {
         'action id in the reason', () async {
       final s = await boot();
       final tap = repTap();
-      final out = await make(s, waterThrows: true).handle(tap);
+      final out = await make(s, workoutThrows: true).handle(tap);
       expect(out.single.status, GestureStatus.failed);
       expect(fails, hasLength(1));
       expect(fails.single.$1, tap.identity);
       expect(fails.single.$2, 'doubleTap');
-      expect(fails.single.$3, contains(DeviceAction.logWater.id));
+      expect(fails.single.$3, contains(DeviceAction.workoutToggle.id));
     });
 
     test('regression guard (passes today): an action that ran is no failure', () async {
@@ -135,7 +135,7 @@ void main() {
           maxTaps: () => s.repeatTapMax,
           window: () => s.repeatTapWindow,
         );
-        final d = make(s, waterThrows: true, repeat: repeat);
+        final d = make(s, workoutThrows: true, repeat: repeat);
         d.handle(repTap());
         async.elapse(const Duration(milliseconds: 2500));
         async.flushMicrotasks();

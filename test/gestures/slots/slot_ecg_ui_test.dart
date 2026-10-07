@@ -37,7 +37,7 @@ Future<void> _pumpLab(WidgetTester t, Widget w) async {
 
 Future<void> _pumpGestures(WidgetTester t,
     {required bool ecg,
-    Set<DeviceAction> chosen = const {DeviceAction.logWater}}) async {
+    Set<DeviceAction> chosen = const {DeviceAction.workoutToggle}}) async {
   t.view.physicalSize = const Size(390 * 3, 3200 * 3);
   t.view.devicePixelRatio = 3;
   addTearDown(t.view.reset);
@@ -45,8 +45,8 @@ Future<void> _pumpGestures(WidgetTester t,
     theme: buildTheme(Brightness.light),
     home: BandGesturesView(
       chosen: chosen,
-      supported: const {DeviceAction.none, DeviceAction.logWater},
-      tapActions: const {3: {DeviceAction.logWater}},
+      supported: const {DeviceAction.none, DeviceAction.workoutToggle},
+      tapActions: const {3: {DeviceAction.workoutToggle}},
       ecgOnDoubleTap: ecg,
     ),
   ));
@@ -158,9 +158,9 @@ void main() {
       var inForce = false;
       s.ecgInForce = () => inForce;
       expect(s.ecgActive, isFalse);
-      expect(await s.trySetAction('double', DeviceAction.logWater, true),
+      expect(await s.trySetAction('double', DeviceAction.workoutToggle, true),
           isA<ActionToggleOk>());
-      expect(s.doubleTapActions, {DeviceAction.logWater});
+      expect(s.doubleTapActions, {DeviceAction.workoutToggle});
       inForce = true;
       expect(s.ecgActive, isTrue);
       expect(await s.trySetAction('double', DeviceAction.markMoment, true),
@@ -171,12 +171,12 @@ void main() {
       SharedPreferences.setMockInitialValues({
         'gesture_ecg_on_double_tap': true,
         'gesture_double_tap_actions': GestureSettings.maskOf(
-            {DeviceAction.logWater}),
+            {DeviceAction.workoutToggle}),
       });
       final s = GestureSettings();
       await s.bootstrap();
       expect(s.ecgOnDoubleTap, isTrue);
-      expect(s.doubleTapActions, {DeviceAction.logWater});
+      expect(s.doubleTapActions, {DeviceAction.workoutToggle});
     });
   });
 }

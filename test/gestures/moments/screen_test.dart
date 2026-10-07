@@ -76,7 +76,7 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('each moment offers all eight choices and Skip', (t) async {
+    testWidgets('each moment offers every choice (Water included) and Skip', (t) async {
       await _pump(t, [_a]);
       for (final c in MomentChoice.values) {
         expect(_choice(_a, c), findsOneWidget, reason: c.id);

@@ -52,13 +52,13 @@ Future<GestureSettings> _boot(Map<String, Object> prefs) async {
   return s;
 }
 
-/// 2 taps -> log water, 3 taps -> mark moment, 4 taps -> workout toggle.
+/// 2 taps -> torch, 3 taps -> mark moment, 4 taps -> workout toggle.
 Future<GestureSettings> _mapped({bool three = true, bool four = true}) async {
   final s = await _boot({});
   // Counting touches of the ECG sensor is an opt-in; the app's default is
   // repeated double taps.
   await s.setTapMethod(TapCountMethod.ecg);
-  await s.setDoubleTapActions({DeviceAction.logWater});
+  await s.setDoubleTapActions({DeviceAction.torch});
   if (three) await s.setActionsForTaps(3, {DeviceAction.markMoment});
   if (four) await s.setActionsForTaps(4, {DeviceAction.workoutToggle});
   return s;
@@ -83,7 +83,10 @@ class _Rig {
 
   late final GestureDispatcher dispatcher = GestureDispatcher(
     settings: settings,
-    performNative: (_) async => true,
+    performNative: (id) async {
+      ran.add(id);
+      return true;
+    },
     claim: (k) async => claims.add(k),
     release: (k) async => claims.remove(k),
     ecgSupported: () => mg,
@@ -93,7 +96,6 @@ class _Rig {
       if (startFails) throw StateError('ECG stream did not start');
       return counter(e);
     },
-    onLogWater: (e) async => ran.add('water'),
     onMarkMoment: (e) async {
       if (failMoment) throw StateError('moment');
       ran.add('moment');
@@ -135,7 +137,7 @@ void main() {
     test('a final count of 2 runs the 2-tap actions', () async {
       final r = _Rig(await _mapped())..counter = (_) async => 2;
       final out = await r.dispatcher.handle(_tap());
-      expect(r.ran, ['water']);
+      expect(r.ran, ['torch']);
       expect(out.single.taps, 2);
     });
 
@@ -163,22 +165,22 @@ void main() {
       final e = _tap();
       await r.dispatcher.handle(e);
       expect(r.claims,
-          contains('gesture:${e.identity}:${DeviceAction.logWater.id}'));
+          contains('gesture:${e.identity}:${DeviceAction.torch.id}'));
     });
 
     test('an action that fails gives its claim back; the next still runs',
         () async {
       final s = await _mapped();
       await s.setDoubleTapActions(
-          {DeviceAction.logWater, DeviceAction.markMoment});
+          {DeviceAction.workoutToggle, DeviceAction.markMoment});
       final r = _Rig(s)
         ..failMoment = true
         ..counter = (_) async => 2;
       final out = await r.dispatcher.handle(_tap());
-      // Enum order: the failing mark moment goes first, water still runs.
+      // Enum order: the failing mark moment goes first, the workout still runs.
       expect(out.map((o) => o.status),
           [GestureStatus.failed, GestureStatus.ran]);
-      expect(r.ran, ['water']);
+      expect(r.ran, ['workout']);
       expect(r.claims.where((k) => k.endsWith(DeviceAction.markMoment.id)),
           isEmpty);
     });
@@ -195,7 +197,7 @@ void main() {
       final r = _Rig(await _mapped())..startFails = true;
       final e = _tap();
       final out = await r.dispatcher.handle(e);
-      expect(r.ran, ['water']);
+      expect(r.ran, ['torch']);
       expect(out.single.status, GestureStatus.ran);
       expect(out.single.taps, isNull, reason: 'not counted, so it may be acked');
       expect(r.claims.any((k) => k.endsWith(':ecg')), isFalse);
@@ -246,9 +248,9 @@ void main() {
       final e = _tap();
       final out = await r.dispatcher.handle(e);
       expect(r.counted, isEmpty);
-      expect(r.ran, ['water']);
+      expect(r.ran, ['torch']);
       expect(out.single.taps, isNull);
-      expect(r.claims.single, 'gesture:${e.identity}:${DeviceAction.logWater.id}');
+      expect(r.claims.single, 'gesture:${e.identity}:${DeviceAction.torch.id}');
     });
 
     test('a non-MG band never starts the ECG counter, even with a 4-tap '
@@ -257,7 +259,7 @@ void main() {
       final r = _Rig(await _mapped(), mg: false);
       await r.dispatcher.handle(_tap());
       expect(r.counted, isEmpty);
-      expect(r.ran, ['water']);
+      expect(r.ran, ['torch']);
     });
 
     test('only 4 taps mapped and no 2-tap action: still counted', () async {
@@ -294,7 +296,7 @@ void main() {
       expect(s.ecgTapMax, 5);
       await s.setEcgOnDoubleTap(false);
       expect(s.ecgTapMax, 3);
-      await s.setActionsForTaps(4, {DeviceAction.logWater});
+      await s.setActionsForTaps(4, {DeviceAction.torch});
       expect(s.ecgTapMax, 4);
     });
   });

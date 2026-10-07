@@ -107,7 +107,6 @@ class _Host {
       log: (_) {},
       onMarkMoment: (e) async => acted.add('mark'),
       onWorkoutToggle: (e) async => acted.add('workout'),
-      onLogWater: (e) async => acted.add('water'),
       recordEcgSession: (r) async {},
       loadPatterns: () async => HapticPatternStore.decodeSeeded(null),
       readCueAssignments: () => '',
@@ -205,7 +204,7 @@ void main() {
         'cue and no action', () async {
       await host();
       await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       h.spend(left: 0);
       // Not awaited to the end: a gesture that did start would wait for
       // packets that never come.
@@ -224,7 +223,7 @@ void main() {
         'gesture still plays its start, follow-up and confirm, and the ledger '
         'counts only 2', () async {
       await host();
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       // 28 written a minute ago: they leave the window a minute from now.
       h.spend(left: 2, ago: const Duration(seconds: 60));
       final t0 = clock.now();
@@ -233,7 +232,7 @@ void main() {
       await feedEcgOpening(h.controller.onEcgFrame);
       final out = await done.timeout(const Duration(seconds: 15));
       expect(out.single.taps, 3);
-      expect(h.acted, ['water']);
+      expect(h.acted, ['workout']);
       // Start, one follow-up (2 to 3) and the confirm: three commands against
       // two left. All three are written (the old queue drops the third).
       await until(() => h.order.where((l) => l == 'cue').length == 3,

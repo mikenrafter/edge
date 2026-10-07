@@ -19,7 +19,7 @@ import 'support/settings_sections.dart';
 const _supported = {
   DeviceAction.none,
   DeviceAction.markMoment,
-  DeviceAction.logWater,
+  DeviceAction.workoutToggle,
   DeviceAction.torch,
 };
 
@@ -165,18 +165,18 @@ void main() {
             ecgSupported: false,
             devMode: true,
             tapActions: const {
-              3: {DeviceAction.logWater}
+              3: {DeviceAction.workoutToggle}
             },
             onTapToggle: (n, a, on) async => toggled.add((n, a, on)),
           ));
       await openGesturesTab(t, 3);
       final water = find.descendant(
-          of: find.widgetWithText(SwitchRow, 'Log water'),
+          of: find.widgetWithText(SwitchRow, 'Start / stop workout'),
           matching: find.byType(Switch));
       expect(t.widget<Switch>(water).value, isTrue, reason: 'the shared store');
       await t.tap(water);
       await t.pumpAndSettle();
-      expect(toggled, [(3, DeviceAction.logWater, false)]);
+      expect(toggled, [(3, DeviceAction.workoutToggle, false)]);
       expect(find.text('3 taps does'), findsNothing);
       expect(find.byType(BottomSheet), findsNothing);
     });

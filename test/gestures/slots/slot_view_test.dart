@@ -128,14 +128,14 @@ void main() {
         'rows have no warning', (t) async {
       final asked = <(String, DeviceAction, bool)>[];
       await _pump(t,
-          chosen: const {DeviceAction.markMoment, DeviceAction.logWater},
+          chosen: const {DeviceAction.markMoment, DeviceAction.workoutToggle},
           tapActions: const {3: {DeviceAction.markMoment}},
           overlaps: both,
           onSlotToggle: (s, a, on) async {
             asked.add((s, a, on));
             return const ActionToggleOk();
           });
-      expect(_overlap(DeviceAction.logWater), findsNothing);
+      expect(_overlap(DeviceAction.workoutToggle), findsNothing);
       expect(t.widget<Switch>(_switch('Mark a moment')).onChanged, isNotNull);
       await _flip(t, 'Mark a moment');
       expect(asked, [('double', DeviceAction.markMoment, false)]);
@@ -163,7 +163,7 @@ void main() {
           chosen: const {DeviceAction.markMoment},
           tapActions: const {
             3: {DeviceAction.markMoment},
-            4: {DeviceAction.logWater},
+            4: {DeviceAction.workoutToggle},
           },
           overlaps: both);
       expect(_overlap(DeviceAction.markMoment), findsOneWidget,
@@ -188,11 +188,11 @@ void main() {
         return const ActionToggleRefusedExclusive(_ecgReason);
       });
       expect(_refusal, findsNothing);
-      await _flip(t, 'Log water');
-      expect(asked, [('double', DeviceAction.logWater, true)]);
+      await _flip(t, 'Start / stop workout');
+      expect(asked, [('double', DeviceAction.workoutToggle, true)]);
       expect(_refusal, findsOneWidget);
       expect(_textOf(t, _refusal), _ecgReason);
-      expect(t.widget<Switch>(_switch('Log water')).value, isFalse);
+      expect(t.widget<Switch>(_switch('Start / stop workout')).value, isFalse);
     });
 
     testWidgets('the tab of a counted tap reports its own slot', (t) async {
@@ -202,8 +202,8 @@ void main() {
         return const ActionToggleRefusedExclusive(_ecgReason);
       });
       await _select(t, 3);
-      await _flip(t, 'Log water');
-      expect(asked, [('triple', DeviceAction.logWater, true)]);
+      await _flip(t, 'Start / stop workout');
+      expect(asked, [('triple', DeviceAction.workoutToggle, true)]);
       expect(_textOf(t, _refusal), _ecgReason);
     });
 
@@ -214,7 +214,7 @@ void main() {
         const ActionToggleOk(),
       ];
       await _pump(t, onSlotToggle: (s, a, on) async => answers.removeAt(0));
-      await _flip(t, 'Log water');
+      await _flip(t, 'Start / stop workout');
       expect(_refusal, findsOneWidget);
       await _flip(t, 'Mark a moment');
       expect(_refusal, findsNothing);
@@ -225,7 +225,7 @@ void main() {
       await _pump(t,
           onSlotToggle: (s, a, on) async =>
               const ActionToggleRefusedExclusive(_ecgReason));
-      await _flip(t, 'Log water');
+      await _flip(t, 'Start / stop workout');
       expect(_refusal, findsOneWidget);
       await _select(t, 3);
       expect(_refusal, findsNothing);

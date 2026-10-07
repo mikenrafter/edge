@@ -243,7 +243,9 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   }
 
   void _choose(PendingMoment m, MomentChoice c) {
-    final needsMore = c.journalField != null ||
+    // Water is one tap, one glass: it asks for nothing.
+    final needsMore =
+        (c.journalField != null && c != MomentChoice.water) ||
         c == MomentChoice.other ||
         c == MomentChoice.workout;
     if (needsMore) {

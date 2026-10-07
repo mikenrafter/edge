@@ -2388,6 +2388,7 @@
   "momentChoiceWorkout": "वर्कआउट",
   "momentChoiceSymptom": "लक्षण",
   "momentChoiceOther": "अन्य",
+  "momentChoiceWater": "पानी",
   "momentFollowUpCardTitle": "{n, plural, one{आपने {n} पल चिह्नित किया — वह क्या था?} other{आपने {n} पल चिह्नित किए — वे क्या थे?}}",
   "momentFollowUpAnswer": "जवाब दें",
   "momentFollowUpTitle": "चिह्नित पल",

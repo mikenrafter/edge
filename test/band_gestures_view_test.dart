@@ -86,7 +86,6 @@ void main() {
       for (final label in const [
         'Mark a moment',
         'Start / stop workout',
-        'Log water',
         'Ring my phone',
         'Flashlight',
         'Tell the time',
@@ -94,40 +93,42 @@ void main() {
       ]) {
         expect(_row(label), findsOneWidget, reason: label);
       }
-      // Seven actions (Tell the time and Breathing exercise included) plus the
-      // replay row and the follow-up row under it, which are always drawn.
-      expect(find.byType(SwitchRow), findsNWidgets(9));
+      // Six actions (Tell the time and Breathing exercise included; Log water
+      // is retired) plus the replay row and the follow-up row under it, which
+      // are always drawn.
+      expect(find.byType(SwitchRow), findsNWidgets(8));
       expect(find.byType(Radio<DeviceAction>), findsNothing);
       expect(find.text('Do nothing'), findsNothing);
     });
 
     testWidgets('several can be on at once; the rest are off', (t) async {
       await _pump(t, supported: iphone, chosen: {
-        DeviceAction.logWater,
+        DeviceAction.workoutToggle,
         DeviceAction.torch,
         DeviceAction.markMoment,
       });
-      expect(_on(t, 'Log water'), isTrue);
+      expect(_on(t, 'Start / stop workout'), isTrue);
       expect(_on(t, 'Flashlight'), isTrue);
       expect(_on(t, 'Mark a moment'), isTrue);
       expect(_on(t, 'Ring my phone'), isFalse);
-      expect(_on(t, 'Start / stop workout'), isFalse);
+      expect(_on(t, 'Tell the time'), isFalse);
     });
 
     testWidgets('flipping a switch reports (action, new value)', (t) async {
       final calls = <(DeviceAction, bool)>[];
       await _pump(t,
           supported: iphone,
-          chosen: {DeviceAction.logWater},
+          chosen: {DeviceAction.workoutToggle},
           onToggle: (a, v) => calls.add((a, v)));
 
       await t.tap(find.descendant(
           of: _row('Ring my phone'), matching: find.byType(Switch)));
       await t.pumpAndSettle();
       await t.tap(find.descendant(
-          of: _row('Log water'), matching: find.byType(Switch)));
+          of: _row('Start / stop workout'), matching: find.byType(Switch)));
       await t.pumpAndSettle();
-      expect(calls, [(DeviceAction.ringPhone, true), (DeviceAction.logWater, false)]);
+      expect(calls,
+          [(DeviceAction.ringPhone, true), (DeviceAction.workoutToggle, false)]);
     });
 
     testWidgets('only what this phone can do is offered', (t) async {
@@ -136,7 +137,7 @@ void main() {
       expect(_row('Flashlight'), findsNothing);
       expect(_row('Volume up'), findsNothing);
       expect(_row('Broadcast to Tasker'), findsNothing);
-      expect(_row('Log water'), findsOneWidget);
+      expect(_row('Start / stop workout'), findsOneWidget);
       // Absence still explains itself.
       expect(find.textContaining('could not ask the system'), findsOneWidget);
     });
@@ -156,8 +157,8 @@ void main() {
             DeviceAction.broadcastToTasker,
           }));
       expect(_faults(), isEmpty);
-      // Thirteen actions plus the always-drawn replay and follow-up rows.
-      expect(find.byType(SwitchRow), findsNWidgets(15));
+      // Twelve actions plus the always-drawn replay and follow-up rows.
+      expect(find.byType(SwitchRow), findsNWidgets(14));
       expect(find.textContaining('could not ask the system'), findsNothing);
     });
 
@@ -200,7 +201,7 @@ void main() {
         (t) async {
       for (final chosen in [
         const <DeviceAction>{},
-        {DeviceAction.logWater},
+        {DeviceAction.workoutToggle},
       ]) {
         await _pump(t,
             supported: iphone,
@@ -218,13 +219,13 @@ void main() {
       await _pump(t,
           supported: iphone,
           chosen: {
-            DeviceAction.logWater,
+            DeviceAction.tellTime,
             DeviceAction.workoutToggle,
             DeviceAction.torch,
             DeviceAction.ringPhone,
           },
           replay: {
-            DeviceAction.logWater,
+            DeviceAction.tellTime,
             DeviceAction.workoutToggle,
             DeviceAction.torch,
             DeviceAction.ringPhone,
@@ -232,7 +233,7 @@ void main() {
       // The replay row belongs to Mark moment alone: one per screen, however
       // many other actions are on.
       expect(find.text(_replayLabel), findsOneWidget);
-      expect(find.byType(SwitchRow), findsNWidgets(9),
+      expect(find.byType(SwitchRow), findsNWidgets(8),
           reason: 'one row per offered action plus the one replay row and '
               'the follow-up row under it');
     });
@@ -241,11 +242,11 @@ void main() {
         (t) async {
       await _pump(t, supported: iphone, chosen: {
         DeviceAction.markMoment,
-        DeviceAction.logWater,
+        DeviceAction.workoutToggle,
         DeviceAction.torch,
       });
       expect(find.text(_replayLabel), findsOneWidget);
-      expect(find.byType(SwitchRow), findsNWidgets(9));
+      expect(find.byType(SwitchRow), findsNWidgets(8));
     });
 
     testWidgets('flipping it reports (markMoment, new value)', (t) async {

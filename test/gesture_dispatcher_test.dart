@@ -65,12 +65,12 @@ class _Rig {
 
   Future<void> Function(StrapEvent)? markMoment;
   Future<void> Function(StrapEvent)? workout;
-  Future<void> Function(StrapEvent)? water;
+  Future<void> Function(StrapEvent)? tell;
   Future<bool> Function(String id)? native;
   Future<bool> Function(String key)? claimOverride;
 
   GestureDispatcher build({bool withMarkMoment = true,
-      bool withWorkout = true, bool withWater = true}) {
+      bool withWorkout = true, bool withTell = true}) {
     return GestureDispatcher(
       settings: settings,
       log: logs.add,
@@ -88,12 +88,14 @@ class _Rig {
                 calls.add('workout');
               })
           : null,
-      onLogWater: withWater
-          ? (water ??
+      // The third in-app action is Tell the time (Log water is retired); its
+      // handler ignores the encoded elements.
+      onTellTime: withTell
+          ? (e, _) => (tell ??
               (e) async {
                 seen.add(e);
-                calls.add('water');
-              })
+                calls.add('tell');
+              })(e)
           : null,
       performNative: native ??
           (id) async {
@@ -129,7 +131,7 @@ void main() {
   group('which events, which actions, what order', () {
     test('only double-tap (14) is a gesture; everything else is ignored',
         () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final out = await r.build().handle(_tap(id: 7)); // charging on
       expect(out, isEmpty);
       expect(r.calls, isEmpty);
@@ -145,7 +147,7 @@ void main() {
     test('a live tap runs every selected action, in enum order', () async {
       // Selected in the "wrong" order on purpose.
       final r = await _rig({
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
         DeviceAction.torch,
         DeviceAction.markMoment,
         DeviceAction.workoutToggle,
@@ -157,14 +159,14 @@ void main() {
         'native:torch',
         'mark',
         'workout',
-        'water',
+        'tell',
       ]);
       expect([for (final o in out) o.action], [
         DeviceAction.mediaPlayPause,
         DeviceAction.torch,
         DeviceAction.markMoment,
         DeviceAction.workoutToggle,
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
       ]);
       expect(_statuses(out), everyElement(GestureStatus.ran));
     });
@@ -180,7 +182,7 @@ void main() {
 
     test('handlers are awaited in order: the next action waits for the last one',
         () async {
-      final r = await _rig({DeviceAction.markMoment, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.markMoment, DeviceAction.tellTime});
       final gate = Completer<void>();
       r.markMoment = (e) async {
         r.calls.add('mark:start');
@@ -190,10 +192,10 @@ void main() {
       final done = r.build().handle(_tap());
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
-      expect(r.calls, ['mark:start'], reason: 'water must not start yet');
+      expect(r.calls, ['mark:start'], reason: 'tell must not start yet');
       gate.complete();
       await done;
-      expect(r.calls, ['mark:start', 'mark:end', 'water']);
+      expect(r.calls, ['mark:start', 'mark:end', 'tell']);
     });
   });
 
@@ -202,32 +204,32 @@ void main() {
       final r = await _rig({
         DeviceAction.torch,
         DeviceAction.markMoment,
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
       });
       r.markMoment = (e) {
         throw StateError('journal exploded');
       };
       final out = await r.build().handle(_tap());
-      expect(r.calls, ['native:torch', 'water']);
+      expect(r.calls, ['native:torch', 'tell']);
       expect(_of(out, DeviceAction.markMoment).status, GestureStatus.failed);
       expect(_of(out, DeviceAction.markMoment).error.toString(),
           contains('journal exploded'));
       expect(_of(out, DeviceAction.torch).status, GestureStatus.ran);
-      expect(_of(out, DeviceAction.logWater).status, GestureStatus.ran);
+      expect(_of(out, DeviceAction.tellTime).status, GestureStatus.ran);
     });
 
     test('an asynchronous error', () async {
       final r = await _rig({
         DeviceAction.torch,
         DeviceAction.markMoment,
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
       });
       r.markMoment = (e) async {
         await Future<void>.delayed(Duration.zero);
         throw StateError('late failure');
       };
       final out = await r.build().handle(_tap());
-      expect(r.calls, ['native:torch', 'water']);
+      expect(r.calls, ['native:torch', 'tell']);
       expect(_of(out, DeviceAction.markMoment).status, GestureStatus.failed);
       expect(_of(out, DeviceAction.markMoment).error.toString(),
           contains('late failure'));
@@ -237,7 +239,7 @@ void main() {
       final r = await _rig({
         DeviceAction.mediaPlayPause,
         DeviceAction.torch,
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
       });
       r.native = (id) async {
         r.calls.add('native:$id');
@@ -247,22 +249,22 @@ void main() {
       final out = await r.build().handle(_tap());
       expect(_of(out, DeviceAction.mediaPlayPause).status, GestureStatus.failed);
       expect(_of(out, DeviceAction.torch).status, GestureStatus.failed);
-      expect(_of(out, DeviceAction.logWater).status, GestureStatus.ran);
-      expect(r.calls, contains('water'));
+      expect(_of(out, DeviceAction.tellTime).status, GestureStatus.ran);
+      expect(r.calls, contains('tell'));
     });
 
     test('an in-app action with no handler wired is a failure, not silence',
         () async {
-      final r = await _rig({DeviceAction.workoutToggle, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.workoutToggle, DeviceAction.tellTime});
       final out = await r.build(withWorkout: false).handle(_tap());
       expect(_of(out, DeviceAction.workoutToggle).status, GestureStatus.failed);
-      expect(_of(out, DeviceAction.logWater).status, GestureStatus.ran);
+      expect(_of(out, DeviceAction.tellTime).status, GestureStatus.ran);
     });
 
     test('every action failing still returns normally', () async {
-      final r = await _rig({DeviceAction.markMoment, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.markMoment, DeviceAction.tellTime});
       r.markMoment = (e) async => throw StateError('a');
-      r.water = (e) async => throw StateError('b');
+      r.tell = (e) async => throw StateError('b');
       final out = await r.build().handle(_tap());
       expect(_statuses(out), [GestureStatus.failed, GestureStatus.failed]);
     });
@@ -279,14 +281,14 @@ void main() {
       final r = await _rig({
         DeviceAction.markMoment,
         DeviceAction.workoutToggle,
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
         DeviceAction.torch,
       });
       r.markMoment = (e) {
         throw StateError('sync');
       };
       r.workout = (e) async => throw StateError('async');
-      r.water = (e) => Future<void>.error(StateError('future'));
+      r.tell = (e) => Future<void>.error(StateError('future'));
       r.native = (id) async => throw StateError('native');
       final stray = <Object>[];
       await runZonedGuarded(() async {
@@ -300,7 +302,7 @@ void main() {
 
     test('a failed action releases its claim so a retry can run it, and a '
         'sibling that succeeded keeps its own', () async {
-      final r = await _rig({DeviceAction.markMoment, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.markMoment, DeviceAction.tellTime});
       var attempts = 0;
       r.markMoment = (e) async {
         attempts++;
@@ -311,72 +313,72 @@ void main() {
       final d = r.build();
       final first = await d.handle(e);
       expect(_of(first, DeviceAction.markMoment).status, GestureStatus.failed);
-      expect(r.claimed, contains('gesture:${e.identity}:log_water'));
+      expect(r.claimed, contains('gesture:${e.identity}:tell_time'));
       expect(r.claimed, isNot(contains('gesture:${e.identity}:mark_moment')));
 
       final retry = await d.handle(e);
       expect(_of(retry, DeviceAction.markMoment).status, GestureStatus.ran);
-      expect(_of(retry, DeviceAction.logWater).status,
+      expect(_of(retry, DeviceAction.tellTime).status,
           GestureStatus.skippedDuplicate);
-      expect(r.calls.where((c) => c == 'water'), hasLength(1));
+      expect(r.calls.where((c) => c == 'tell'), hasLength(1));
     });
 
     test('a claim that cannot be decided is a failure for THAT action only; '
         'the handler is not run', () async {
-      final r = await _rig({DeviceAction.markMoment, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.markMoment, DeviceAction.tellTime});
       r.claimOverride = (key) async {
         if (key.endsWith(':mark_moment')) throw StateError('db unavailable');
         return r.claimed.add(key);
       };
       final out = await r.build().handle(_tap());
       expect(_of(out, DeviceAction.markMoment).status, GestureStatus.failed);
-      expect(r.calls, ['water']);
+      expect(r.calls, ['tell']);
     });
   });
 
   group('duplicates: each occurrence is handled at most once, EVER', () {
     test('the claim key is gesture:<identity>:<action id>', () async {
-      final r = await _rig({DeviceAction.logWater, DeviceAction.torch});
+      final r = await _rig({DeviceAction.tellTime, DeviceAction.torch});
       final e = _tap(subsec: 321);
       await r.build().handle(e);
       expect(r.claimed, {
-        'gesture:${e.identity}:log_water',
+        'gesture:${e.identity}:tell_time',
         'gesture:${e.identity}:torch',
       });
     });
 
     test('the same event twice: second is skippedDuplicate for every action',
         () async {
-      final r = await _rig({DeviceAction.torch, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.torch, DeviceAction.tellTime});
       final d = r.build();
       final e = _tap();
       await d.handle(e);
       final again = await d.handle(e);
       expect(_statuses(again), everyElement(GestureStatus.skippedDuplicate));
-      expect(r.calls, ['native:torch', 'water']);
+      expect(r.calls, ['native:torch', 'tell']);
     });
 
     test('a re-send after reconnect: replayable action is a duplicate, the '
         'others are stale — and nothing runs twice', () async {
-      final r = await _rig({DeviceAction.markMoment, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.markMoment, DeviceAction.tellTime});
       final d = r.build();
       await d.handle(_tap()); // the live delivery
       final resent = await d.handle(_tap(receivedAfter: const Duration(minutes: 4)));
       expect(_of(resent, DeviceAction.markMoment).status,
           GestureStatus.skippedDuplicate);
-      expect(_of(resent, DeviceAction.logWater).status,
+      expect(_of(resent, DeviceAction.tellTime).status,
           GestureStatus.skippedStale);
-      expect(r.calls, ['mark', 'water']);
+      expect(r.calls, ['mark', 'tell']);
     });
 
     test('across a restart: a fresh dispatcher on the same persisted claims '
         'still sees the duplicate', () async {
       final claims = <String>{};
-      final first = await _rig({DeviceAction.logWater, DeviceAction.torch},
+      final first = await _rig({DeviceAction.tellTime, DeviceAction.torch},
           claimed: claims);
       await first.build().handle(_tap());
 
-      final second = await _rig({DeviceAction.logWater, DeviceAction.torch},
+      final second = await _rig({DeviceAction.tellTime, DeviceAction.torch},
           claimed: claims);
       // Re-delivered inside the live window (reconnect within seconds).
       final out = await second.build().handle(_tap(receivedAfter: const Duration(seconds: 3)));
@@ -386,17 +388,17 @@ void main() {
 
     test('two DIFFERENT taps in the same second (different subsec) both run',
         () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       final a = await d.handle(_tap(subsec: 100));
       final b = await d.handle(_tap(subsec: 16384));
       expect(_statuses(a), [GestureStatus.ran]);
       expect(_statuses(b), [GestureStatus.ran]);
-      expect(r.calls, ['water', 'water']);
+      expect(r.calls, ['tell', 'tell']);
     });
 
     test('the same instant on two bands is two occurrences', () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       await d.handle(_tap(device: 'band-1'));
       final out = await d.handle(_tap(device: 'band-2'));
@@ -405,19 +407,19 @@ void main() {
 
     test('an action added later runs for a re-sent tap; the old one does not',
         () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       await d.handle(_tap());
       await r.settings
-          .setDoubleTapActions({DeviceAction.logWater, DeviceAction.torch});
+          .setDoubleTapActions({DeviceAction.tellTime, DeviceAction.torch});
       final out = await d.handle(_tap(receivedAfter: const Duration(seconds: 2)));
-      expect(_of(out, DeviceAction.logWater).status,
+      expect(_of(out, DeviceAction.tellTime).status,
           GestureStatus.skippedDuplicate);
       expect(_of(out, DeviceAction.torch).status, GestureStatus.ran);
     });
 
     test('two overlapping deliveries of one tap: exactly one runs it', () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       final e = _tap();
       final both = await Future.wait([d.handle(e), d.handle(e)]);
@@ -425,13 +427,13 @@ void main() {
       expect(all.where((o) => o.status == GestureStatus.ran), hasLength(1));
       expect(all.where((o) => o.status == GestureStatus.skippedDuplicate),
           hasLength(1));
-      expect(r.calls, ['water']);
+      expect(r.calls, ['tell']);
     });
   });
 
   group('out-of-order receipt', () {
     test('newer then older: both run, each under its own identity', () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       final newer = _tap(tsEpoch: _t0Sec + 5, receivedAfter: const Duration(milliseconds: 500));
       // The older tap reaches the phone after the newer one, still inside 6 s.
@@ -466,19 +468,19 @@ void main() {
 
     test('a delayed older tap after a live newer one still replays Mark moment',
         () async {
-      final r = await _rig({DeviceAction.markMoment, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.markMoment, DeviceAction.tellTime});
       final d = r.build();
       await d.handle(_tap(tsEpoch: _t0Sec + 3600));
       final out = await d.handle(_delayed());
       expect(_of(out, DeviceAction.markMoment).status, GestureStatus.ran);
-      expect(_of(out, DeviceAction.logWater).status, GestureStatus.skippedStale);
+      expect(_of(out, DeviceAction.tellTime).status, GestureStatus.skippedStale);
     });
   });
 
   group('recency: live vs delayed', () {
     test('6 s old is still live (inclusive); one microsecond more is stale',
         () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       final onTheLine = _tap(receivedAfter: const Duration(seconds: 6));
       expect(_statuses(await d.handle(onTheLine)), [GestureStatus.ran]);
@@ -488,14 +490,14 @@ void main() {
           receivedAfter: const Duration(seconds: 6, microseconds: 1));
       final out = await d.handle(pastIt);
       expect(_statuses(out), [GestureStatus.skippedStale]);
-      expect(r.calls, ['water']);
-      expect(r.claimed, isNot(contains('gesture:${pastIt.identity}:log_water')),
+      expect(r.calls, ['tell']);
+      expect(r.claimed, isNot(contains('gesture:${pastIt.identity}:tell_time')),
           reason: 'a stale skip must not use up the occurrence');
     });
 
     test('fractional seconds count: 0.5 s of subsec rescues a 6.5 s delivery',
         () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       const late = Duration(seconds: 6, milliseconds: 500);
       final withSubsec = await d.handle(_tap(subsec: 16384, receivedAfter: late));
@@ -510,7 +512,7 @@ void main() {
         final r = await _rig({
           DeviceAction.markMoment,
           DeviceAction.workoutToggle,
-          DeviceAction.logWater,
+          DeviceAction.tellTime,
           DeviceAction.torch,
           DeviceAction.ringPhone,
         });
@@ -519,14 +521,14 @@ void main() {
             reason: '$age');
         for (final a in [
           DeviceAction.workoutToggle,
-          DeviceAction.logWater,
+          DeviceAction.tellTime,
           DeviceAction.torch,
           DeviceAction.ringPhone,
         ]) {
           expect(_of(out, a).status, GestureStatus.skippedStale,
               reason: '$a @ $age');
         }
-        expect(r.calls, ['mark'], reason: 'no native call, no water, no workout');
+        expect(r.calls, ['mark'], reason: 'no native call, no tell, no workout');
       }
     });
 
@@ -561,7 +563,7 @@ void main() {
   group('an implausible strap clock', () {
     test('unset RTC (epoch 0) is treated as live; the outcome says it used the '
         'receipt', () async {
-      final r = await _rig({DeviceAction.logWater, DeviceAction.markMoment});
+      final r = await _rig({DeviceAction.tellTime, DeviceAction.markMoment});
       final out = await r.build().handle(_tap(tsEpoch: 0, receivedAt: _t0));
       expect(_statuses(out), everyElement(GestureStatus.ran));
       for (final o in out) {
@@ -570,7 +572,7 @@ void main() {
     });
 
     test('a strap clock hours in the future is the same', () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final out = await r
           .build()
           .handle(_tap(tsEpoch: _t0Sec + 7200, receivedAt: _t0));
@@ -579,14 +581,14 @@ void main() {
     });
 
     test('a plausible clock reports strap as the time source', () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final out = await r.build().handle(_tap());
       expect(out.single.timeSource, EventTimeSource.strap);
     });
 
     test('an unset RTC must not lock the feature out: taps 10 s apart both run, '
         'and nothing is claimed persistently', () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       final one = await d.handle(_tap(tsEpoch: 0, receivedAt: _t0));
       final two = await d.handle(
@@ -599,7 +601,7 @@ void main() {
 
     test('...but one physical tap delivered twice within 2 s of RECEIPT time is '
         'still collapsed', () async {
-      final r = await _rig({DeviceAction.logWater});
+      final r = await _rig({DeviceAction.tellTime});
       final d = r.build();
       await d.handle(_tap(tsEpoch: 0, receivedAt: _t0));
       final dup = await d.handle(
@@ -610,29 +612,29 @@ void main() {
       final next = await d.handle(
           _tap(tsEpoch: 0, receivedAt: _t0.add(const Duration(seconds: 2))));
       expect(_statuses(next), [GestureStatus.ran]);
-      expect(r.calls, ['water', 'water']);
+      expect(r.calls, ['tell', 'tell']);
     });
   });
 
   group('outcomes', () {
     test('a failed outcome carries the error; a ran outcome carries none',
         () async {
-      final r = await _rig({DeviceAction.markMoment, DeviceAction.logWater});
+      final r = await _rig({DeviceAction.markMoment, DeviceAction.tellTime});
       r.markMoment = (e) async => throw ArgumentError('bad day');
       final out = await r.build().handle(_tap());
       expect(_of(out, DeviceAction.markMoment).error, isA<ArgumentError>());
-      expect(_of(out, DeviceAction.logWater).error, isNull);
+      expect(_of(out, DeviceAction.tellTime).error, isNull);
     });
 
     test('skipped actions are reported too, in enum order', () async {
       final r = await _rig({
         DeviceAction.markMoment,
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
         DeviceAction.torch,
       });
       final out = await r.build().handle(_delayed());
       expect([for (final o in out) o.action],
-          [DeviceAction.torch, DeviceAction.markMoment, DeviceAction.logWater]);
+          [DeviceAction.torch, DeviceAction.markMoment, DeviceAction.tellTime]);
       expect(_statuses(out), [
         GestureStatus.skippedStale,
         GestureStatus.ran,
@@ -662,7 +664,7 @@ void main() {
     GestureDispatcher fresh(GestureSettings s, List<String> calls) =>
         GestureDispatcher(
           settings: s,
-          onLogWater: (e) async => calls.add('water'),
+          onTellTime: (e, _) async => calls.add('tell'),
           // `claim` / `release` deliberately NOT injected.
         );
 
@@ -670,31 +672,31 @@ void main() {
         '(an app restart)', () async {
       SharedPreferences.setMockInitialValues({});
       final s = GestureSettings();
-      await s.setDoubleTapActions({DeviceAction.logWater});
+      await s.setDoubleTapActions({DeviceAction.tellTime});
       final calls = <String>[];
       final e = _tap(device: 'db-dev-1', subsec: 7);
 
       expect(_statuses(await fresh(s, calls).handle(e)), [GestureStatus.ran]);
-      expect(await LocalDb.notifFiredExists('gesture:${e.identity}:log_water'),
+      expect(await LocalDb.notifFiredExists('gesture:${e.identity}:tell_time'),
           isTrue);
 
       final afterRestart = await fresh(s, calls).handle(
           _tap(device: 'db-dev-1', subsec: 7, receivedAfter: const Duration(seconds: 2)));
       expect(_statuses(afterRestart), [GestureStatus.skippedDuplicate]);
-      expect(calls, ['water']);
+      expect(calls, ['tell']);
     });
 
     test('a failed action releases its row in the real store', () async {
       SharedPreferences.setMockInitialValues({});
       final s = GestureSettings();
-      await s.setDoubleTapActions({DeviceAction.logWater});
+      await s.setDoubleTapActions({DeviceAction.tellTime});
       final e = _tap(device: 'db-dev-2', subsec: 9);
       final d = GestureDispatcher(
         settings: s,
-        onLogWater: (e) async => throw StateError('nope'),
+        onTellTime: (e, _) async => throw StateError('nope'),
       );
       expect(_statuses(await d.handle(e)), [GestureStatus.failed]);
-      expect(await LocalDb.notifFiredExists('gesture:${e.identity}:log_water'),
+      expect(await LocalDb.notifFiredExists('gesture:${e.identity}:tell_time'),
           isFalse);
     });
   });

@@ -593,7 +593,6 @@ void main() {
     for (final action in const [
       'Mark a moment',
       'Start / stop workout',
-      'Log water',
       'Ring my phone',
       'Flashlight',
     ]) {

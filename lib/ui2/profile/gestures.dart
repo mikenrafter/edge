@@ -277,7 +277,8 @@ class BandGesturesView extends StatelessWidget {
     // Enum order, filtered to this phone: the in-app actions, then whatever the
     // OS offered. `none` is not an action — it has no row.
     final offered = [
-      ...DeviceAction.values.where((a) => a.isInApp && supported.contains(a)),
+      ...DeviceAction.values
+          .where((a) => a.isInApp && !a.isRetired && supported.contains(a)),
       ...DeviceAction.values.where((a) => a.isNative && supported.contains(a)),
     ];
     final noPhoneActions = !offered.any((a) => a.isNative);

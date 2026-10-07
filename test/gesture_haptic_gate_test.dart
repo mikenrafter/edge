@@ -38,7 +38,7 @@ Future<GestureSettings> _boot({bool three = false, bool ecg = false}) async {
   });
   final s = GestureSettings();
   await s.bootstrap();
-  await s.setDoubleTapActions({DeviceAction.logWater});
+  await s.setDoubleTapActions({DeviceAction.workoutToggle});
   if (three) await s.setActionsForTaps(3, {DeviceAction.markMoment});
   if (ecg) await s.setTapMethod(TapCountMethod.ecg);
   return s;
@@ -73,7 +73,7 @@ class _Rig {
         return 3;
       },
       repeatSession: repeat,
-      onLogWater: (e) async => ran.add('water'),
+      onWorkoutToggle: (e) async => ran.add('workout'),
       onMarkMoment: (e) async => ran.add('moment'),
       onFailed: (e, kind, reason) => failed.add(reason),
       hapticsAvailable: () {
@@ -118,7 +118,7 @@ void main() {
       final r = _Rig(await _boot(), open: true);
       final out = await r.dispatcher.handle(repTap());
       expect(out.map((o) => o.status), [GestureStatus.ran]);
-      expect(r.ran, ['water']);
+      expect(r.ran, ['workout']);
       expect(r.claims, hasLength(1));
     });
 
@@ -130,11 +130,11 @@ void main() {
       r.open = true;
       final again = await r.dispatcher.handle(repTap());
       expect(again.single.status, GestureStatus.ran);
-      expect(r.ran, ['water']);
+      expect(r.ran, ['workout']);
       r.open = false;
       expect(await r.dispatcher.handle(repTap(sec: 5)), isEmpty,
           reason: 'and a later tap with the budget gone again is not acted on');
-      expect(r.ran, ['water']);
+      expect(r.ran, ['workout']);
     });
   });
 
@@ -193,7 +193,7 @@ void main() {
         async.elapse(const Duration(seconds: 10));
         async.flushMicrotasks();
         expect(out!.single.taps, 2);
-        expect(r.ran, ['water']);
+        expect(r.ran, ['workout']);
       });
     });
 
@@ -239,10 +239,10 @@ void main() {
         performNative: (_) async => true,
         claim: (_) async => true,
         release: (_) async {},
-        onLogWater: (e) async => ran.add('water'),
+        onWorkoutToggle: (e) async => ran.add('workout'),
       );
       expect((await d.handle(repTap())).single.status, GestureStatus.ran);
-      expect(ran, ['water']);
+      expect(ran, ['workout']);
     });
   });
 }

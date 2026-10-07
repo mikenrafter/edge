@@ -26,8 +26,7 @@ enum MomentChoice {
   workout('workout', 'Workout'),
   symptom('symptom', 'Symptom'),
   other('other', 'Other'),
-  // RED-PHASE STUB: id/label are final; the journal-field mapping, the writer's
-  // one-glass add and the localized label (momentChoiceWater) are not built yet.
+  // One tap = one glass: no amount is asked (see MomentAnswerWriter.answer).
   water('water', 'Water');
 
   const MomentChoice(this.id, this.label);
@@ -39,7 +38,7 @@ enum MomentChoice {
   String? get journalField => switch (this) {
         MomentChoice.caffeine => 'caffeine_mg',
         MomentChoice.alcohol => 'alcohol_units',
-        MomentChoice.water => 'water_ml', // RED-PHASE STUB
+        MomentChoice.water => 'water_ml',
         _ => null,
       };
 
@@ -60,7 +59,7 @@ enum MomentChoice {
         MomentChoice.workout => l?.momentChoiceWorkout ?? label,
         MomentChoice.symptom => l?.momentChoiceSymptom ?? label,
         MomentChoice.other => l?.momentChoiceOther ?? label,
-        MomentChoice.water => label, // RED-PHASE STUB: no ARB key yet
+        MomentChoice.water => l?.momentChoiceWater ?? label,
       };
 }
 
@@ -184,6 +183,8 @@ class MomentAnswerWriter {
   /// Stores [choice] as the moment's label (always) and, for a dose field with a
   /// [value], adds it to that local day's journal metric. Null [value] never
   /// writes a metric. A moment that already has an answer is left alone.
+  /// Water takes no amount: it adds one glass (`water_ml`'s step, clamped to
+  /// its max) to the moment's local day.
   Future<MomentAnswerResult> answer(
     PendingMoment m,
     MomentChoice choice, {
@@ -192,6 +193,10 @@ class MomentAnswerWriter {
     DateTime? now,
   }) async {
     final field = choice.journalField;
+    if (choice == MomentChoice.water && value != null) {
+      // One tap is one glass; an amount is never asked, so none is accepted.
+      throw ArgumentError.value(value, 'value', 'Water takes no amount');
+    }
     if (value != null) {
       final spec = field == null ? null : kJournalFieldsByKey[field];
       if (spec == null) {
@@ -212,8 +217,12 @@ class MomentAnswerWriter {
         note: trimmed == null || trimmed.isEmpty ? null : trimmed,
         answeredAtMs: (now ?? DateTime.now()).millisecondsSinceEpoch,
       ),
-      field: value == null ? null : field,
-      value: value,
+      field: choice == MomentChoice.water
+          ? field
+          : (value == null ? null : field),
+      // One glass: the field's own step (the + button's), clamped to its max.
+      value: choice == MomentChoice.water ? kJournalFieldsByKey[field]!.step : value,
+      max: choice == MomentChoice.water ? kJournalFieldsByKey[field]!.max : null,
     );
   }
 
@@ -226,9 +235,9 @@ class MomentAnswerWriter {
       ));
 
   Future<MomentAnswerResult> _store(MomentLabel l,
-      {String? field, double? value}) async {
+      {String? field, double? value, double? max}) async {
     final saved = await LocalDb.answerMoment(l,
-        metricField: field, metricValue: value);
+        metricField: field, metricValue: value, metricMax: max);
     return saved ? MomentAnswerResult.saved : MomentAnswerResult.alreadyAnswered;
   }
 }

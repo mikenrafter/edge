@@ -48,14 +48,14 @@ Future<GestureSettings> _boot(Map<String, Object> prefs) async {
   return s;
 }
 
-/// 2 taps -> log water, 3 taps -> mark moment, 4 taps -> workout toggle.
+/// 2 taps -> tell the time, 3 taps -> mark moment, 4 taps -> workout toggle.
 Future<GestureSettings> _mapped({
   bool three = true,
   bool four = true,
   Map<String, Object> prefs = const {},
 }) async {
   final s = await _boot(prefs);
-  await s.setDoubleTapActions({DeviceAction.logWater});
+  await s.setDoubleTapActions({DeviceAction.tellTime});
   if (three) await s.setActionsForTaps(3, {DeviceAction.markMoment});
   if (four) await s.setActionsForTaps(4, {DeviceAction.workoutToggle});
   return s;
@@ -85,7 +85,7 @@ class _Rig {
         return 2;
       },
       repeatSession: repeat,
-      onLogWater: (e) async => ran.add('water'),
+      onTellTime: (e, _) async => ran.add('tell'),
       onMarkMoment: (e) async => ran.add('moment'),
       onWorkoutToggle: (e) async => ran.add('workout'),
     );
@@ -124,7 +124,7 @@ void main() {
         expect(r.first, isNull);
         async.elapse(const Duration(milliseconds: 1));
         async.flushMicrotasks();
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
         expect(r.first!.single.status, GestureStatus.ran);
         expect(r.first!.single.taps, 2,
             reason: 'the session confirms a count of 2 itself, so the '
@@ -140,7 +140,7 @@ void main() {
       fakeAsync((async) {
         final r = _Rig(s)..tap(_tap());
         async.flushMicrotasks();
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
         expect(r.repeat.open, isFalse);
       });
     });
@@ -192,7 +192,7 @@ void main() {
         expect(r.buzzes, isEmpty);
         async.elapse(const Duration(milliseconds: 2500));
         async.flushMicrotasks();
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
       });
     });
 
@@ -226,7 +226,7 @@ void main() {
         r.dispatcher.handle(_tap());
         async.elapse(const Duration(milliseconds: 2500));
         async.flushMicrotasks();
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
         expect(r.finished, [2]);
       });
     });
@@ -238,7 +238,7 @@ void main() {
         final r = _Rig(s)..tap(_tap());
         async.elapse(const Duration(milliseconds: 1000));
         async.flushMicrotasks();
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
       });
     });
 
@@ -250,7 +250,7 @@ void main() {
         async.elapse(const Duration(milliseconds: 2500));
         async.flushMicrotasks();
         expect(r.ecgCounted, isEmpty);
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
       });
     });
   });
@@ -264,7 +264,7 @@ void main() {
         async.elapse(const Duration(milliseconds: 2500));
         async.flushMicrotasks();
         expect(r.ecgCounted, isEmpty);
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
       });
     });
 
@@ -288,7 +288,7 @@ void main() {
         async.elapse(const Duration(milliseconds: 2500));
         async.flushMicrotasks();
         expect(r.ecgCounted, isEmpty);
-        expect(r.ran, ['water']);
+        expect(r.ran, ['tell']);
       });
     });
   });

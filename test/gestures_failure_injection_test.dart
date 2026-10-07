@@ -330,7 +330,7 @@ void main() {
     Future<GestureSettings> settings() async {
       final s = GestureSettings();
       await s.bootstrap();
-      await s.setDoubleTapActions({DeviceAction.logWater, DeviceAction.markMoment});
+      await s.setDoubleTapActions({DeviceAction.workoutToggle, DeviceAction.markMoment});
       return s;
     }
 
@@ -339,19 +339,19 @@ void main() {
         () async {
       final s = await settings();
       final claims = <String>{};
-      var water = 0, moment = 0;
+      var workout = 0, moment = 0;
       final d = GestureDispatcher(
         settings: s,
         actionTimeout: const Duration(milliseconds: 40),
         claim: (k) async => claims.add(k),
         release: (k) async => claims.remove(k),
         onMarkMoment: (_) => Completer<void>().future, // first in enum order; hangs
-        onLogWater: (_) async => water++,
+        onWorkoutToggle: (_) async => workout++,
       );
       final out = await d.handle(_tap());
       expect(out.map((o) => o.status), [GestureStatus.failed, GestureStatus.ran]);
       expect(out.first.error, isA<TimeoutException>());
-      expect(water, 1);
+      expect(workout, 1);
       // The same tap again: nothing runs twice.
       final again = await GestureDispatcher(
         settings: s,
@@ -359,11 +359,11 @@ void main() {
         claim: (k) async => claims.add(k),
         release: (k) async => claims.remove(k),
         onMarkMoment: (_) async => moment++,
-        onLogWater: (_) async => water++,
+        onWorkoutToggle: (_) async => workout++,
       ).handle(_tap());
       expect(again.map((o) => o.status),
           [GestureStatus.skippedDuplicate, GestureStatus.skippedDuplicate]);
-      expect((water, moment), (1, 0));
+      expect((workout, moment), (1, 0));
     });
 
     test('a database that throws on the claim fails closed for every action',
@@ -373,7 +373,7 @@ void main() {
       final out = await GestureDispatcher(
         settings: s,
         claim: (_) async => throw StateError('database is locked'),
-        onLogWater: (_) async => ran++,
+        onWorkoutToggle: (_) async => ran++,
         onMarkMoment: (_) async => ran++,
       ).handle(_tap());
       expect(out.map((o) => o.status), [GestureStatus.failed, GestureStatus.failed]);
@@ -386,7 +386,7 @@ void main() {
         settings: s,
         claim: (_) async => true,
         release: (_) async => throw StateError('database is locked'),
-        onLogWater: (_) async => throw StateError('write failed'),
+        onWorkoutToggle: (_) async => throw StateError('write failed'),
         onMarkMoment: (_) async {},
       ).handle(_tap());
       expect(out.map((o) => o.status), [GestureStatus.ran, GestureStatus.failed]);
@@ -399,7 +399,7 @@ void main() {
       final d = GestureDispatcher(
         settings: s,
         claim: (_) async => fail('an implausible clock must not claim'),
-        onLogWater: (_) async => ran++,
+        onWorkoutToggle: (_) async => ran++,
         onMarkMoment: (_) async {},
       );
       final future = _t0.millisecondsSinceEpoch ~/ 1000 + 6 * 3600;
@@ -417,7 +417,7 @@ void main() {
         claim: (_) async => true,
         release: (_) async {},
         performNative: (_) async => false,
-        onLogWater: (_) async => throw StateError('denied'),
+        onWorkoutToggle: (_) async => throw StateError('denied'),
         onMarkMoment: (_) async => throw StateError('denied'),
       ).handle(_tap());
       var buzzes = 0;
@@ -439,7 +439,7 @@ void main() {
         settings: s,
         claim: (_) async => true,
         release: (_) async {},
-        onLogWater: (_) async {},
+        onWorkoutToggle: (_) async {},
         onMarkMoment: (_) async {},
       ).handle(_tap());
       final d = AlertDispatcher(

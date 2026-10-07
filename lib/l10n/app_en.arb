@@ -12679,6 +12679,10 @@
   "@momentChoiceOther": {
     "description": "Quick answer for a marked moment: something else, with an optional note"
   },
+  "momentChoiceWater": "Water",
+  "@momentChoiceWater": {
+    "description": "Quick answer for a marked moment: a glass of water (one tap adds one glass to that day)"
+  },
   "momentFollowUpCardTitle": "{n, plural, one{You marked {n} moment — what was it?} other{You marked {n} moments — what were they?}}",
   "@momentFollowUpCardTitle": {
     "description": "Home card asking what the marked moments were; n is how many are waiting",

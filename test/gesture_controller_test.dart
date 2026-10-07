@@ -85,10 +85,9 @@ class FakeHost {
       clockRef: () => clockRef,
       log: logged.add,
       onMarkMoment: (e) async => acted.add('mark'),
-      onWorkoutToggle: (e) async => acted.add('workout'),
-      onLogWater: (e) async {
-        acted.add('water');
-        if (waterThrows) throw StateError('no water');
+      onWorkoutToggle: (e) async {
+        acted.add('workout');
+        if (workoutThrows) throw StateError('no workout');
       },
       recordEcgSession: (r) async => sessions.add((r.finalCount, r.reason)),
       loadPatterns: () async {
@@ -117,7 +116,7 @@ class FakeHost {
   int loads = 0;
   int assignmentReads = 0;
   bool loadThrows = false;
-  bool waterThrows = false;
+  bool workoutThrows = false;
   late final FakeBand band;
   late final HapticsService haptics;
   late final SpyEcg ecg;
@@ -198,7 +197,7 @@ void main() {
         'route, and the action of the final count runs', () async {
       await newHost();
       await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       expect(h.controller.ecgTapActive, isTrue);
@@ -206,7 +205,7 @@ void main() {
       await feedEcgOpening(h.controller.onEcgFrame);
       final out = await done.timeout(const Duration(seconds: 15));
       expect(out.single.taps, 3);
-      expect(h.acted, ['water']);
+      expect(h.acted, ['workout']);
       expect(h.sessions.single.$1, 3);
       expect(h.sessions.single.$2, isNull);
       await until(() => !h.controller.ecgTapActive);
@@ -218,7 +217,7 @@ void main() {
     test('the cue write is the first band write of the gesture and PREPARE '
         'follows it', () async {
       await newHost();
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       expect(h.order.first, 'cue');
@@ -240,7 +239,7 @@ void main() {
         'with the lab log, and the 2-tap action still runs', () async {
       await newHost(wrist: false);
       await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       final out = await h.controller.handle(h.doubleTap());
       expect(out.single.action, DeviceAction.markMoment);
       expect(h.acted, ['mark']);
@@ -257,13 +256,13 @@ void main() {
     test('an action that fails is kept as a double-tap failure and the lab '
         'says so', () async {
       await newHost(supported: false);
-      h.waterThrows = true;
-      await h.settings.setDoubleTapActions({DeviceAction.logWater});
+      h.workoutThrows = true;
+      await h.settings.setDoubleTapActions({DeviceAction.workoutToggle});
       final out = await h.controller.handle(h.doubleTap());
       expect(out.single.status, GestureStatus.failed);
       final f = h.controller.failures.all.single;
       expect(f.kind, GestureFailureKind.doubleTap);
-      expect(f.reason, startsWith('log_water'));
+      expect(f.reason, startsWith('workout_toggle'));
       expect(h.lab.toPlainText(withPackets: false), contains('Gesture failed ('));
     });
 
@@ -292,7 +291,7 @@ void main() {
       h.loadThrows = true;
       await expectLater(h.controller.loadCues(), completes);
       expect(h.assignmentReads, 0);
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       // A steady stream with the finger on the sensor.
@@ -306,7 +305,7 @@ void main() {
     test('every cue of a gesture reloads the wearer\'s assignments first',
         () async {
       await newHost();
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       final done = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       // A steady stream with the finger on the sensor.
@@ -323,7 +322,7 @@ void main() {
     test('a second double tap while one is being counted is ignored: it runs '
         'nothing and the first still completes with its own count', () async {
       await newHost();
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       final first = h.controller.handle(h.doubleTap());
       await until(() => h.order.contains('ecg:start'));
       final second = await h.controller.handle(h.doubleTap());
@@ -333,7 +332,7 @@ void main() {
       await feedEcgOpening(h.controller.onEcgFrame);
       final out = await first.timeout(const Duration(seconds: 15));
       expect(out.single.taps, 3);
-      expect(h.acted, ['water']);
+      expect(h.acted, ['workout']);
       await until(() => !h.controller.ecgTapActive);
       await settleMs(50);
     });
@@ -342,7 +341,7 @@ void main() {
         'counts again', () async {
       await newHost(wrist: false);
       await h.settings.setActionsForTaps(2, {DeviceAction.markMoment});
-      await h.settings.setActionsForTaps(3, {DeviceAction.logWater});
+      await h.settings.setActionsForTaps(3, {DeviceAction.workoutToggle});
       await h.controller.handle(h.doubleTap());
       await until(() => !h.controller.ecgTapActive);
       await settleMs(50);

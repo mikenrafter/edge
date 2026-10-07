@@ -75,7 +75,7 @@ void main() {
       expect(layoutFaults, isEmpty);
       expect(find.text('Ring my phone'), findsOneWidget);
       expect(find.text('Flashlight'), findsOneWidget);
-      expect(find.text('Log water'), findsOneWidget);
+      expect(find.text('Start / stop workout'), findsOneWidget);
       expect(find.text('Do nothing'), findsNothing);
       // Not offerable on iOS, so not drawn.
       expect(find.text('Volume up'), findsNothing);
@@ -102,7 +102,7 @@ void main() {
         'Volume up',
         'Ring my phone',
         'Broadcast to Tasker',
-        'Log water',
+        'Start / stop workout',
       ]) {
         expect(find.text(label), findsOneWidget, reason: label);
       }
@@ -119,7 +119,7 @@ void main() {
       expect(find.text('Ring my phone'), findsNothing);
       expect(find.text('Flashlight'), findsNothing);
       // In-app actions act on our own data, so they are unaffected.
-      expect(find.text('Log water'), findsOneWidget);
+      expect(find.text('Start / stop workout'), findsOneWidget);
       expect(find.text('Mark a moment'), findsOneWidget);
       expect(find.textContaining('could not ask the system'), findsOneWidget);
       // Absence explains itself; it is never a bare dash.
@@ -135,12 +135,12 @@ void main() {
       Finder sw(String label) => find.descendant(
           of: find.widgetWithText(SwitchRow, label),
           matching: find.byType(Switch));
-      await t.tap(sw('Log water'));
+      await t.tap(sw('Start / stop workout'));
       await t.pumpAndSettle();
       await t.tap(sw('Ring my phone'));
       await t.pumpAndSettle();
       expect(calls, [
-        (DeviceAction.logWater, true),
+        (DeviceAction.workoutToggle, true),
         (DeviceAction.ringPhone, true),
       ]);
     });
@@ -149,7 +149,7 @@ void main() {
       for (final b in Brightness.values) {
         await _pump(t,
             supported: _supported({DeviceAction.ringPhone, DeviceAction.torch}),
-            chosen: {DeviceAction.logWater, DeviceAction.markMoment},
+            chosen: {DeviceAction.workoutToggle, DeviceAction.markMoment},
             scale: 3.1,
             brightness: b);
         expect(layoutFaults, isEmpty, reason: '$b');
@@ -157,7 +157,7 @@ void main() {
     });
   });
 
-  group('log water dispatches', () {
+  group('workout dispatches', () {
     // The same tap, as the engine now hands it over: a StrapEvent whose own
     // clock decides whether it is live.
     StrapEvent tap({required Duration late}) {
@@ -179,29 +179,29 @@ void main() {
       await s.setDoubleTapActions({mapped});
       return GestureDispatcher(
         settings: s,
-        onLogWater: (_) async => water(),
+        onWorkoutToggle: (_) async => water(),
         onMarkMoment: (_) async {},
         claim: (_) async => true,
         release: (_) async {},
       );
     }
 
-    test('a live double-tap mapped to water calls the water handler', () async {
+    test('a live double-tap mapped to the workout calls its handler', () async {
       var n = 0;
-      final d = await build(DeviceAction.logWater, water: () => n++);
+      final d = await build(DeviceAction.workoutToggle, water: () => n++);
       await d.handle(tap(late: const Duration(seconds: 1)));
       expect(n, 1);
     });
 
-    test('a tap drained from flash is too old to pour a glass', () async {
+    test('a tap drained from flash is too old to toggle a workout', () async {
       var n = 0;
-      final d = await build(DeviceAction.logWater, water: () => n++);
+      final d = await build(DeviceAction.workoutToggle, water: () => n++);
       final out = await d.handle(tap(late: const Duration(hours: 1)));
       expect(n, 0);
       expect(out.single.status, GestureStatus.skippedStale);
     });
 
-    test('water is in-app, so it is offerable with no native at all', () {
+    test("a retired action is in-app and keeps its id so old storage decodes", () {
       expect(DeviceAction.logWater.isInApp, isTrue);
       expect(DeviceAction.logWater.isNative, isFalse);
       // Persisted. Changing it orphans everyone who already picked it.

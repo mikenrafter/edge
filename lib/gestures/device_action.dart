@@ -32,6 +32,10 @@ enum DeviceAction {
   // (iOS can't reach other apps, but it can always do these).
   markMoment,
   workoutToggle,
+  // RETIRED: kept so a stored mask or id still decodes (the enum order is the
+  // persisted bitmask). Never offered; it loads as markMoment (see
+  // GestureSettings.bootstrap) and its glass is the Water answer of the
+  // marked-moment follow-up.
   logWater,
   // Native broadcast — sends an Android broadcast intent for Tasker to subscribe
   // to (see NativeChannels.kt). Only offered on Android.
@@ -233,6 +237,10 @@ extension DeviceActionX on DeviceAction {
       this == DeviceAction.breathe;
 
   bool get isNative => this != DeviceAction.none && !isInApp;
+
+  /// No longer an action a person can choose (Log water, now the Water answer
+  /// of the marked-moment follow-up). Still decodes from old storage.
+  bool get isRetired => this == DeviceAction.logWater;
 
   /// Safe to run for a tap that is replayed from history (the band's flash)
   /// rather than felt now. True only for actions that record a moment in time;

@@ -2863,8 +2863,12 @@ class LocalDb {
     MomentLabel l, {
     String? metricField,
     double? metricValue,
+    double? metricMax,
   }) async {
     final db = await instance;
+    // One transaction: the label check, the read of the day's total and the
+    // write back are serialized by sqflite, so two overlapping answers on one
+    // day cannot read the same total and lose one.
     return db.transaction((txn) async {
       final have = await txn.query('moment_label',
           columns: ['date'],
@@ -2887,7 +2891,9 @@ class LocalDb {
             {
               'date': l.date,
               'field': metricField,
-              'value': oldVal + metricValue,
+              'value': metricMax == null
+                  ? oldVal + metricValue
+                  : (oldVal + metricValue).clamp(0.0, metricMax).toDouble(),
               'at_min': oldAt != null && oldAt > atMin ? oldAt : atMin,
               'updated_at': l.answeredAtMs,
             },

@@ -26,7 +26,7 @@ import 'support/settings_sections.dart';
 const _supported = {
   DeviceAction.none,
   DeviceAction.markMoment,
-  DeviceAction.logWater,
+  DeviceAction.workoutToggle,
 };
 
 /// The card the link row lives in.
@@ -63,7 +63,7 @@ void main() {
               extraTaps: extra));
       final row = find.byKey(const ValueKey('gestures-open-haptics'));
       expect(row, findsOneWidget);
-      expect(_gapBelow(t, find.text('Log water'), _cardOf(t, row)),
+      expect(_gapBelow(t, find.text('Start / stop workout'), _cardOf(t, row)),
           greaterThanOrEqualTo(S.x3));
     });
   }

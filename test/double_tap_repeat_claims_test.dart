@@ -54,7 +54,7 @@ Future<GestureSettings> _mapped() async {
   });
   final s = GestureSettings();
   await s.bootstrap();
-  await s.setDoubleTapActions({DeviceAction.logWater});
+  await s.setDoubleTapActions({DeviceAction.tellTime});
   await s.setActionsForTaps(3, {DeviceAction.markMoment});
   await s.setActionsForTaps(4, {DeviceAction.workoutToggle});
   return s;
@@ -78,7 +78,7 @@ class _Rig {
       },
       release: (k) async => claims.remove(k),
       repeatSession: repeat,
-      onLogWater: (e) async => ran.add('water'),
+      onTellTime: (e, _) async => ran.add('tell'),
       onMarkMoment: (e) async => ran.add('moment'),
       onWorkoutToggle: (e) async => ran.add('workout'),
     );
@@ -153,11 +153,11 @@ void main() {
       r.tap(a);
       async.elapse(const Duration(seconds: 3));
       async.flushMicrotasks();
-      expect(r.ran, ['water']);
+      expect(r.ran, ['tell']);
       r.tap(a);
       async.elapse(const Duration(seconds: 3));
       async.flushMicrotasks();
-      expect(r.ran, ['water']);
+      expect(r.ran, ['tell']);
     });
   });
 
@@ -203,7 +203,7 @@ void main() {
       expect(r.repeat.open, isTrue, reason: 'B opened the next window');
       async.elapse(const Duration(seconds: 3));
       async.flushMicrotasks();
-      expect(r.ran, ['water', 'water'],
+      expect(r.ran, ['tell', 'tell'],
           reason: 'two separate double taps, not a triple');
       expect(r.claimCalls.where((k) => k == r.repKey(b)), hasLength(1),
           reason: 'B claimed once, not again when it opened the group');

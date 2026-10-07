@@ -274,7 +274,6 @@ void main() {
           for (final a in const [
             'Mark a moment',
             'Start / stop workout',
-            'Log water',
             'Ring my phone',
             'Flashlight',
           ])
@@ -293,7 +292,6 @@ void main() {
         for (final a in const [
           'Mark a moment',
           'Start / stop workout',
-          'Log water',
           'Ring my phone',
           'Flashlight',
         ]) {
@@ -333,7 +331,7 @@ void main() {
       for (final n in [3, 4, 5]) {
         await _select(t, n);
         expect(_row(_replayLabel), findsNothing, reason: 'tab $n');
-        expect(find.byType(SwitchRow), findsNWidgets(5), reason: 'tab $n');
+        expect(find.byType(SwitchRow), findsNWidgets(4), reason: 'tab $n');
       }
     });
 
@@ -365,9 +363,9 @@ void main() {
       final calls = <(DeviceAction, bool)>[];
       await _pump(t, onToggle: (a, v) => calls.add((a, v)));
       await t.tap(
-          find.descendant(of: _row('Log water'), matching: find.byType(Switch)));
+          find.descendant(of: _row('Start / stop workout'), matching: find.byType(Switch)));
       await t.pumpAndSettle();
-      expect(calls, [(DeviceAction.logWater, true)]);
+      expect(calls, [(DeviceAction.workoutToggle, true)]);
     });
 
     testWidgets('a switch in the x2 tab (count 3) reports onTapToggle(3, ...) '
@@ -375,22 +373,22 @@ void main() {
       final calls = <(int, DeviceAction, bool)>[];
       await _pump(t, tapActions: {
         3: {DeviceAction.torch},
-        4: {DeviceAction.logWater},
+        4: {DeviceAction.workoutToggle},
       }, onToggle: (a, v) => fail('the plain double tap was not touched'),
           onTapToggle: (n, a, on) async => calls.add((n, a, on)));
       await _select(t, 3);
       Switch sw(String title) => t.widget<Switch>(
           find.descendant(of: _row(title), matching: find.byType(Switch)));
       expect(sw('Flashlight').value, isTrue);
-      expect(sw('Log water').value, isFalse, reason: 'count 4 has water');
+      expect(sw('Start / stop workout').value, isFalse, reason: 'count 4 has the workout');
       await t.tap(find.descendant(
-          of: _row('Log water'), matching: find.byType(Switch)));
+          of: _row('Start / stop workout'), matching: find.byType(Switch)));
       await t.pumpAndSettle();
       await t.tap(find.descendant(
           of: _row('Flashlight'), matching: find.byType(Switch)));
       await t.pumpAndSettle();
       expect(calls, [
-        (3, DeviceAction.logWater, true),
+        (3, DeviceAction.workoutToggle, true),
         (3, DeviceAction.torch, false),
       ]);
     });
@@ -400,7 +398,7 @@ void main() {
       await _pump(t);
       await _select(t, 4);
       final sw = t.widget<Switch>(
-          find.descendant(of: _row('Log water'), matching: find.byType(Switch)));
+          find.descendant(of: _row('Start / stop workout'), matching: find.byType(Switch)));
       expect(sw.onChanged, isNull);
     });
 
@@ -427,7 +425,7 @@ void main() {
       for (var n = 2; n <= 5; n++) {
         await _select(t, n);
         await t.tap(find.descendant(
-            of: _row('Log water'), matching: find.byType(Switch)));
+            of: _row('Start / stop workout'), matching: find.byType(Switch)));
         await t.pumpAndSettle();
         expect(find.byType(BottomSheet), findsNothing, reason: 'tab $n');
         expect(find.byType(CheckboxListTile), findsNothing, reason: 'tab $n');

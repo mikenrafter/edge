@@ -63,8 +63,6 @@ import '../compute/manual_session.dart' show supersededSuggestionIds;
 import '../compute/hr_max.dart';
 import '../compute/profile.dart';
 import '../data/day_label.dart';
-import '../data/journal_fields.dart'
-    show JournalMetricValue, kJournalFieldsByKey;
 import '../data/med_store.dart' show MedDb, MedDef;
 import '../data/auto_backup.dart'
     show BackupCadence, BackupOutcome, runBackup;
@@ -371,7 +369,6 @@ class AppState extends ChangeNotifier {
         log: _log,
         onMarkMoment: _markMomentFromGesture,
         onWorkoutToggle: _toggleWorkoutFromGesture,
-        onLogWater: _logWaterFromGesture,
         onSlotAction: _slotActionFromGesture,
         // The stream makes the band save raw ECG that history sync delivers
         // later; keep the interval (no samples) so it is labelled gesture
@@ -3348,7 +3345,7 @@ class AppState extends ChangeNotifier {
     if (_disposed) return;
     // M3: gesture dispatch and the alarm handler stay unscoped — neither is
     // device-scoped in M3's scope, and a double-tap on either band should
-    // still log water.
+    // still run its actions.
     // The alarm-slot probe's own alarm events are evidence for it, never for
     // the real alarm: a fired probe alarm here would be read as the wearer's
     // alarm being spent and wipe it.
@@ -6667,15 +6664,14 @@ class AppState extends ChangeNotifier {
   // ── band-gesture actions (in-app) ─────────────────────────────────────────────
   // Driven by the double-tap dispatcher (lib/gestures).
 
-  /// The slot that fired an in-app action, then the action. Mark moment, the
-  /// workout and water act on one app-wide thing each, so every slot reaches
+  /// The slot that fired an in-app action, then the action. Mark moment and the
+  /// workout act on one app-wide thing each, so every slot reaches
   /// the same handler; a slot-specific action would branch on [slot] here.
   Future<void> _slotActionFromGesture(
       String slot, DeviceAction a, StrapEvent e) {
     return switch (a) {
       DeviceAction.markMoment => _markMomentFromGesture(e),
       DeviceAction.workoutToggle => _toggleWorkoutFromGesture(e),
-      DeviceAction.logWater => _logWaterFromGesture(e),
       DeviceAction.breathe => _breathGesture.onSlot(slot),
       _ => Future<void>.error(StateError('${a.id} is in-app with no handler')),
     };
@@ -6709,39 +6705,6 @@ class AppState extends ChangeNotifier {
       await HapticFeedback.mediumImpact();
     } catch (e) {
       _log('[gesture] workout toggle failed: $e');
-    }
-  }
-
-  /// One water write at a time. `_logWaterFromGesture` reads the day, awaits, then
-  /// writes the whole map back, and `postJournalMetrics` REPLACES the day — so two
-  /// taps overlapping that await both read the same total and the second write eats
-  /// the first glass. Same guard the nutrition screen's `+` already uses. This is not
-  /// a second debounce (the dispatcher owns that); it is the read-modify-write lock.
-  bool _writingWaterFromGesture = false;
-
-  /// Double-tap → add one glass to today's water. Step and ceiling come from the
-  /// journal field spec, so a wrist tap and the on-screen `+` always agree.
-  Future<void> _logWaterFromGesture(StrapEvent _) async {
-    final r = repo;
-    if (r == null || _writingWaterFromGesture) return;
-    _writingWaterFromGesture = true;
-    try {
-      final spec = kJournalFieldsByKey['water_ml']!;
-      final date = todayLabel();
-      // Inside the try: the READ can throw too, and a guard set before it would
-      // stay set forever. Spread into a fresh map — postJournalMetrics rewrites
-      // the whole day from what it is handed.
-      final fields = {...await r.getJournalMetrics(date)};
-      final now = fields['water_ml']?.value ?? 0;
-      fields['water_ml'] =
-          JournalMetricValue((now + spec.step).clamp(0, spec.max).toDouble());
-      await r.postJournalMetrics(date, fields);
-      _log('[gesture] water logged (+${spec.step.round()} ${spec.unit})');
-      await HapticFeedback.mediumImpact();
-    } catch (e) {
-      _log('[gesture] log water failed: $e');
-    } finally {
-      _writingWaterFromGesture = false;
     }
   }
 

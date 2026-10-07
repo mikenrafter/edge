@@ -2388,6 +2388,7 @@
   "momentChoiceWorkout": "训练",
   "momentChoiceSymptom": "症状",
   "momentChoiceOther": "其他",
+  "momentChoiceWater": "饮水",
   "momentFollowUpCardTitle": "{n, plural, other{你标记了 {n} 个时刻——它们是什么？}}",
   "momentFollowUpAnswer": "回答",
   "momentFollowUpTitle": "标记的时刻",

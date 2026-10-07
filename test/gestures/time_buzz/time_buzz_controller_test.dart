@@ -124,7 +124,6 @@ class _Host {
       log: (_) {},
       onMarkMoment: (e) async {},
       onWorkoutToggle: (e) async {},
-      onLogWater: (e) async {},
       recordEcgSession: (r) async {},
       loadPatterns: () async => HapticPatternStore.decodeSeeded(null),
       readCueAssignments: () => '',

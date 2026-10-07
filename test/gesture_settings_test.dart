@@ -125,21 +125,21 @@ void main() {
         () async {
       final s = await _boot({});
       await s.setDoubleTapActions(
-          {DeviceAction.logWater, DeviceAction.markMoment});
+          {DeviceAction.workoutToggle, DeviceAction.markMoment});
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getInt(_maskKey), (1 << 8) | (1 << 10));
+      expect(prefs.getInt(_maskKey), (1 << 8) | (1 << 9));
 
       final restarted = GestureSettings();
       await restarted.bootstrap();
       expect(restarted.doubleTapActions,
-          {DeviceAction.markMoment, DeviceAction.logWater});
+          {DeviceAction.markMoment, DeviceAction.workoutToggle});
       expect(restarted.hasActiveMapping, isTrue);
     });
 
     test('order is enum order, whatever order the user switched them on',
         () async {
       final a = await _boot({});
-      await a.toggleDoubleTapAction(DeviceAction.logWater, true);
+      await a.toggleDoubleTapAction(DeviceAction.workoutToggle, true);
       await a.toggleDoubleTapAction(DeviceAction.torch, true);
       await a.toggleDoubleTapAction(DeviceAction.markMoment, true);
       final inA = (await SharedPreferences.getInstance()).getInt(_maskKey);
@@ -147,13 +147,13 @@ void main() {
       final b = await _boot({});
       await b.toggleDoubleTapAction(DeviceAction.markMoment, true);
       await b.toggleDoubleTapAction(DeviceAction.torch, true);
-      await b.toggleDoubleTapAction(DeviceAction.logWater, true);
+      await b.toggleDoubleTapAction(DeviceAction.workoutToggle, true);
       final inB = (await SharedPreferences.getInstance()).getInt(_maskKey);
 
       const expected = [
         DeviceAction.torch,
         DeviceAction.markMoment,
-        DeviceAction.logWater,
+        DeviceAction.workoutToggle,
       ];
       expect(a.doubleTapActions.toList(), expected);
       expect(b.doubleTapActions.toList(), expected);
@@ -176,13 +176,13 @@ void main() {
       final s = await _boot({});
       await s.toggleDoubleTapAction(DeviceAction.none, true);
       expect(s.doubleTapActions, isEmpty);
-      await s.setDoubleTapActions({DeviceAction.none, DeviceAction.logWater});
-      expect(s.doubleTapActions, {DeviceAction.logWater});
+      await s.setDoubleTapActions({DeviceAction.none, DeviceAction.workoutToggle});
+      expect(s.doubleTapActions, {DeviceAction.workoutToggle});
     });
 
     test('the exposed set cannot be mutated around the persistence', () async {
       final s = await _boot({});
-      await s.setDoubleTapActions({DeviceAction.logWater});
+      await s.setDoubleTapActions({DeviceAction.workoutToggle});
       expect(() => s.doubleTapActions.add(DeviceAction.torch),
           throwsUnsupportedError);
     });
@@ -191,9 +191,9 @@ void main() {
       final s = await _boot({});
       var n = 0;
       s.addListener(() => n++);
-      await s.toggleDoubleTapAction(DeviceAction.logWater, true);
+      await s.toggleDoubleTapAction(DeviceAction.workoutToggle, true);
       expect(n, 1);
-      await s.toggleDoubleTapAction(DeviceAction.logWater, true);
+      await s.toggleDoubleTapAction(DeviceAction.workoutToggle, true);
       expect(n, 1, reason: 'already on');
       await s.toggleDoubleTapAction(DeviceAction.torch, false);
       expect(n, 1, reason: 'already off');
@@ -202,10 +202,10 @@ void main() {
 
   group('migration from the single-action key', () {
     test('an old string id becomes a one-bit set', () async {
-      final s = await _boot({_legacyKey: 'log_water'});
-      expect(s.doubleTapActions, {DeviceAction.logWater});
+      final s = await _boot({_legacyKey: 'workout_toggle'});
+      expect(s.doubleTapActions, {DeviceAction.workoutToggle});
       expect(s.hasActiveMapping, isTrue);
-      expect((await SharedPreferences.getInstance()).getInt(_maskKey), 1 << 10);
+      expect((await SharedPreferences.getInstance()).getInt(_maskKey), 1 << 9);
     });
 
     test('the legacy key is left in place for the alert-rule migration',
@@ -252,14 +252,14 @@ void main() {
           _maskKey: GestureSettings.maskOf({
             DeviceAction.ringPhone,
             DeviceAction.torch,
-            DeviceAction.logWater,
+            DeviceAction.tellTime,
           }),
         },
         native: const ['torch'],
       );
-      expect(s.doubleTapActions, {DeviceAction.torch, DeviceAction.logWater});
+      expect(s.doubleTapActions, {DeviceAction.torch, DeviceAction.tellTime});
       expect((await SharedPreferences.getInstance()).getInt(_maskKey),
-          GestureSettings.maskOf({DeviceAction.torch, DeviceAction.logWater}));
+          GestureSettings.maskOf({DeviceAction.torch, DeviceAction.tellTime}));
     });
 
     test('in-app actions are supported with no native channel at all', () async {
@@ -269,7 +269,7 @@ void main() {
         _maskKey: GestureSettings.maskOf({
           DeviceAction.markMoment,
           DeviceAction.workoutToggle,
-          DeviceAction.logWater,
+          DeviceAction.tellTime,
           DeviceAction.torch,
         }),
       });
@@ -278,7 +278,7 @@ void main() {
       expect(s.doubleTapActions, {
         DeviceAction.markMoment,
         DeviceAction.workoutToggle,
-        DeviceAction.logWater,
+        DeviceAction.tellTime,
       });
     });
   });
@@ -308,26 +308,26 @@ void main() {
     test('actions that cannot be replayed are never replayed', () async {
       final s = await _boot({});
       await s.setDoubleTapActions({
-        DeviceAction.logWater,
-        DeviceAction.torch,
         DeviceAction.workoutToggle,
+        DeviceAction.torch,
+        DeviceAction.tellTime,
       });
       for (final a in s.doubleTapActions) {
         expect(s.replayHistorical(a), isFalse, reason: a.id);
       }
-      await s.setReplayHistorical(DeviceAction.logWater, true);
-      expect(s.replayHistorical(DeviceAction.logWater), isFalse,
+      await s.setReplayHistorical(DeviceAction.workoutToggle, true);
+      expect(s.replayHistorical(DeviceAction.workoutToggle), isFalse,
           reason: 'asking for it does not make it safe');
     });
 
     test('a stored "true" for a non-replayable action is ignored on load',
         () async {
       final s = await _boot({
-        _maskKey: 1 << 10,
-        'gesture_replay_log_water': true,
+        _maskKey: 1 << 9,
+        'gesture_replay_workout_toggle': true,
         'gesture_replay_torch': true,
       });
-      expect(s.replayHistorical(DeviceAction.logWater), isFalse);
+      expect(s.replayHistorical(DeviceAction.workoutToggle), isFalse);
       expect(s.replayHistorical(DeviceAction.torch), isFalse);
     });
 

@@ -112,8 +112,7 @@ typedef GestureHandler = Future<void> Function(StrapEvent event);
 /// the last buzz to finish: a 12 PM time is ~20 s, past [actionTimeout]).
 /// Runs an in-app action for the SLOT that fired it, so the same action on two
 /// slots keeps separate state (two timers are two timers). When given, it takes
-/// the place of [GestureDispatcher.onMarkMoment] / [onWorkoutToggle] /
-/// [onLogWater]. (RED PHASE: declared, not yet called.)
+/// the place of [GestureDispatcher.onMarkMoment] / [onWorkoutToggle].
 typedef SlotActionHandler = Future<void> Function(
     String slot, DeviceAction action, StrapEvent event);
 
@@ -128,7 +127,6 @@ class GestureDispatcher {
   /// platform channel instead.
   final GestureHandler? onMarkMoment;
   final GestureHandler? onWorkoutToggle;
-  final GestureHandler? onLogWater;
 
   /// Per-slot in-app handler; see [SlotActionHandler].
   final SlotActionHandler? onSlotAction;
@@ -202,7 +200,6 @@ class GestureDispatcher {
     this.log,
     this.onMarkMoment,
     this.onWorkoutToggle,
-    this.onLogWater,
     this.onTellTime,
     this.onSlotAction,
     this.now,
@@ -297,7 +294,7 @@ class GestureDispatcher {
       {int? taps,
       GestureFailureKind kind = GestureFailureKind.doubleTap}) async {
     final out = <GestureOutcome>[];
-    for (final a in actions) {
+    for (final a in _retired(actions)) {
       if (_disposed) break;
       final o = await _handleOne(e, a, taps: taps);
       // Disposed while this one waited (its claim): nothing ran, and a
@@ -315,6 +312,16 @@ class GestureDispatcher {
     }
     return out;
   }
+
+  /// "Log water" is retired: its glass is now the Water answer of the
+  /// marked-moment follow-up. An old value that still reaches the dispatcher
+  /// is Mark a moment, mapped BEFORE the claim so the occurrence is claimed,
+  /// replayed and reported as the action that runs, and a tap that also has
+  /// Mark a moment marks once.
+  static Set<DeviceAction> _retired(Set<DeviceAction> actions) => {
+        for (final a in actions)
+          a == DeviceAction.logWater ? DeviceAction.markMoment : a,
+      };
 
   // A short, single-line reason for a failed outcome.
   static String _why(Object? error) {
@@ -578,7 +585,6 @@ class GestureDispatcher {
       final handler = switch (a) {
         DeviceAction.markMoment => onMarkMoment,
         DeviceAction.workoutToggle => onWorkoutToggle,
-        DeviceAction.logWater => onLogWater,
         _ => null,
       };
       // An action offered in the picker that then does nothing is the exact

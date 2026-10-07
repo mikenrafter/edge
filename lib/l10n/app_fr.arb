@@ -2388,6 +2388,7 @@
   "momentChoiceWorkout": "Séance",
   "momentChoiceSymptom": "Symptôme",
   "momentChoiceOther": "Autre",
+  "momentChoiceWater": "Eau",
   "momentFollowUpCardTitle": "{n, plural, one{Tu as marqué {n} moment — qu'était-ce ?} other{Tu as marqué {n} moments — qu'étaient-ils ?}}",
   "momentFollowUpAnswer": "Répondre",
   "momentFollowUpTitle": "Moments marqués",

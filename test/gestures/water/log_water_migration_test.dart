@@ -166,7 +166,9 @@ void main() {
 
   group('the follow-up is switched on by a migration', () {
     test('on, stamped with the load instant, and persisted', () async {
-      final before = DateTime.now();
+      // Whole milliseconds: that is what is stored and read back.
+      final before = DateTime.fromMillisecondsSinceEpoch(
+          DateTime.now().millisecondsSinceEpoch);
       final s = await _boot({_maskKey: _mask({DeviceAction.logWater})});
       final after = DateTime.now();
       expect(s.followUpMoments, isTrue);
@@ -216,6 +218,59 @@ void main() {
 
       s = await _boot({});
       expect(s.followUpMoments, isFalse);
+    });
+  });
+
+  group('replay from history keeps Log water\'s "never"', () {
+    const replayKey = 'gesture_replay_mark_moment';
+
+    test('Mark a moment newly added to the double tap does NOT replay history, '
+        'and that is stored', () async {
+      final s = await _boot({_maskKey: _mask({DeviceAction.logWater})});
+      expect(s.replayHistorical(DeviceAction.markMoment), isFalse);
+      expect(s.replayActions, isEmpty);
+      expect((await SharedPreferences.getInstance()).getBool(replayKey),
+          isFalse);
+      // Idempotent: it stays so after a restart.
+      final again = await _boot(await _stored());
+      expect(again.replayHistorical(DeviceAction.markMoment), isFalse);
+    });
+
+    test('an explicit stored replay choice wins', () async {
+      final s = await _boot({
+        _maskKey: _mask({DeviceAction.logWater}),
+        replayKey: true,
+      });
+      expect(s.replayHistorical(DeviceAction.markMoment), isTrue);
+      expect((await SharedPreferences.getInstance()).getBool(replayKey),
+          isTrue);
+    });
+
+    test('a double tap that already had Mark a moment keeps its default '
+        '(replay on), nothing is written', () async {
+      final s = await _boot({
+        _maskKey: _mask({DeviceAction.logWater, DeviceAction.markMoment}),
+      });
+      expect(s.replayHistorical(DeviceAction.markMoment), isTrue);
+      expect((await SharedPreferences.getInstance()).containsKey(replayKey),
+          isFalse);
+    });
+
+    test('Log water on a counted tap only does not touch the double tap\'s '
+        'replay', () async {
+      final s = await _boot({
+        _maskKey: _mask({DeviceAction.markMoment}),
+        _tripleKey: _mask({DeviceAction.logWater}),
+      });
+      expect(s.replayHistorical(DeviceAction.markMoment), isTrue);
+      expect((await SharedPreferences.getInstance()).containsKey(replayKey),
+          isFalse);
+    });
+
+    test('no Log water anywhere: no replay key is written', () async {
+      await _boot({_maskKey: _mask({DeviceAction.markMoment})});
+      expect((await SharedPreferences.getInstance()).containsKey(replayKey),
+          isFalse);
     });
   });
 

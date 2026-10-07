@@ -243,10 +243,31 @@ class GestureSettings extends ChangeNotifier {
     supported = {
       DeviceAction.none,
       // In-app actions act on our own app, so they're offerable everywhere.
-      ...DeviceAction.values.where((a) => a.isInApp),
+      ...DeviceAction.values.where((a) => a.isInApp && !a.isRetired),
       // Native actions: only what this platform reported it can do.
       ...caps.map(DeviceActionX.fromId).whereType<DeviceAction>(),
     };
+
+    // Log water is retired (it is the Water answer of the marked-moment
+    // follow-up now): a stored assignment loads as Mark a moment. This runs
+    // BEFORE the supported filter below, which would otherwise drop it. Each
+    // trigger is migrated and written back, so a second load finds nothing.
+    var migrated = false; // any trigger held Log water
+    var addedMark = false; // ... the double tap, and without Mark a moment
+    Set<DeviceAction> retire(Set<DeviceAction> set, {bool doubleTap = false}) {
+      if (!set.contains(DeviceAction.logWater)) return set;
+      migrated = true;
+      // Replay is a per-action setting that only the double tap consults.
+      if (doubleTap && !set.contains(DeviceAction.markMoment)) addedMark = true;
+      return {
+        for (final a in DeviceAction.values)
+          if (a == DeviceAction.markMoment ||
+              (a != DeviceAction.logWater && set.contains(a)))
+            a,
+      };
+    }
+
+    actions = retire(actions, doubleTap: true);
 
     // A previously-chosen action this platform can't do (e.g. settings synced
     // from an Android backup onto an iPhone) is dropped rather than silently
@@ -257,10 +278,35 @@ class GestureSettings extends ChangeNotifier {
     for (var n = 3; n <= 5; n++) {
       final m = prefs.getInt('$_kTapActionsPrefix$n');
       if (m == null) continue;
-      _tapActions[n] = actionsOfMask(m).where(supported.contains).toSet();
+      final before = actionsOfMask(m);
+      final after = retire(before);
+      _tapActions[n] = after.where(supported.contains).toSet();
+      if (!identical(before, after)) {
+        await prefs.setInt('$_kTapActionsPrefix$n', maskOf(_tapActions[n]!));
+      }
     }
     final mask = maskOf(actions);
     if (stored != mask) await prefs.setInt(_kActions, mask);
+    if (migrated) {
+      // Those taps are still asked about: switch the follow-up on, keeping
+      // its start when it already was.
+      if (!_followUp || _followUpSince == null) {
+        _followUp = true;
+        // Whole milliseconds, as stored: a reload must read the same instant.
+        _followUpSince = DateTime.fromMillisecondsSinceEpoch(
+            DateTime.now().millisecondsSinceEpoch);
+        await prefs.setBool(_kFollowUpMoments, true);
+        await prefs.setInt(
+            _kFollowUpMomentsSinceMs, _followUpSince!.millisecondsSinceEpoch);
+      }
+      // Log water never ran for a tap replayed from history; Mark a moment,
+      // newly added, must not start to unless the person already chose so.
+      final key = '$_kReplayPrefix${DeviceAction.markMoment.id}';
+      if (addedMark && !prefs.containsKey(key)) {
+        _replay[DeviceAction.markMoment] = false;
+        await prefs.setBool(key, false);
+      }
+    }
     notifyListeners();
   }
 

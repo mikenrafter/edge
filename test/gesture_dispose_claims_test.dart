@@ -74,7 +74,6 @@ class _Rig {
         return 2;
       },
       repeatSession: repeat,
-      onLogWater: (e) async => started.add('water'),
       onMarkMoment: (e) async => started.add('moment'),
       onWorkoutToggle: (e) async => started.add('workout'),
       tapClassifiersOn: () => true,
@@ -129,7 +128,7 @@ void main() {
       'included', () async {
     final s = await _settings();
     await s.setDoubleTapActions(
-        {DeviceAction.mediaPlayPause, DeviceAction.logWater});
+        {DeviceAction.mediaPlayPause, DeviceAction.workoutToggle});
     final r = _Rig(s);
     final outcomes = await r.tapDisposedDuringClaim();
     await r.settle();
@@ -151,7 +150,7 @@ void main() {
   test('the touch counter starts no session after dispose, and its actions '
       'do not run', () async {
     final s = await _settings();
-    await s.setDoubleTapActions({DeviceAction.logWater});
+    await s.setDoubleTapActions({DeviceAction.workoutToggle});
     await s.setActionsForTaps(3, {DeviceAction.markMoment});
     final r = _Rig(s, mg: true);
     final outcomes = await r.tapDisposedDuringClaim();
@@ -163,7 +162,7 @@ void main() {
 
   test('the repeated-double-tap window never opens after dispose', () async {
     final s = await _settings();
-    await s.setDoubleTapActions({DeviceAction.logWater});
+    await s.setDoubleTapActions({DeviceAction.workoutToggle});
     await s.setActionsForTaps(3, {DeviceAction.markMoment});
     final r = _Rig(s);
     final outcomes = await r.tapDisposedDuringClaim();

@@ -194,12 +194,12 @@ void main() {
     test('a slot handler runs for every in-app action, not only one',
         () async {
       final s = await _boot(actions: {
-        3: {DeviceAction.logWater, DeviceAction.markMoment},
+        3: {DeviceAction.workoutToggle, DeviceAction.markMoment},
       });
       final r = _Rig(s);
       await r.tap(3);
       expect(r.calls.toSet(), {
-        ('triple', DeviceAction.logWater),
+        ('triple', DeviceAction.workoutToggle),
         ('triple', DeviceAction.markMoment),
       });
     });

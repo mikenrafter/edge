@@ -46,7 +46,7 @@ Future<GestureSettings> _boot({bool three = true}) async {
   });
   final s = GestureSettings();
   await s.bootstrap();
-  await s.setDoubleTapActions({DeviceAction.logWater});
+  await s.setDoubleTapActions({DeviceAction.workoutToggle});
   if (three) await s.setActionsForTaps(3, {DeviceAction.markMoment});
   return s;
 }
@@ -65,7 +65,7 @@ class _Rig {
       release: (k) async => claims.remove(k),
       ecgSupported: () => false,
       repeatSession: repeat,
-      onLogWater: (e) async => ran.add('water'),
+      onWorkoutToggle: (e) async => ran.add('workout'),
       onMarkMoment: (e) async => ran.add('moment'),
     );
   }
@@ -91,10 +91,10 @@ void main() {
       final r = _Rig(s)..tap(repTap());
       async.elapse(const Duration(milliseconds: 2500));
       async.flushMicrotasks();
-      expect(r.ran, ['water']);
+      expect(r.ran, ['workout']);
       expect(r.first!.single.taps, 2);
       expect(shouldAckTap(repTap(), r.first!), isFalse);
-      expect(r.claims, contains('gesture:${repTap().identity}:${DeviceAction.logWater.id}'),
+      expect(r.claims, contains('gesture:${repTap().identity}:${DeviceAction.workoutToggle.id}'),
           reason: 'a count of 2 keeps the plain claim key');
     });
   });
@@ -119,7 +119,7 @@ void main() {
     fakeAsync((async) {
       final r = _Rig(s)..tap(repTap());
       async.flushMicrotasks();
-      expect(r.ran, ['water']);
+      expect(r.ran, ['workout']);
       expect(r.first!.single.taps, isNull);
       expect(shouldAckTap(repTap(), r.first!), isTrue);
       expect(r.repeat.open, isFalse);
