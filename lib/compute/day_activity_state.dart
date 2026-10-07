@@ -1,6 +1,7 @@
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'hr_max.dart';
+import 'resume_bytes.dart';
 import 'state_fingerprint.dart';
 import 'substrate.dart' show accelPlausible;
 
@@ -74,8 +75,38 @@ class DayHrSummary {
       append = seen.matches(_prefix);
     }
     if (!append) _reset(sleepOnsetSec, sleepOffsetSec, age);
-    final ceil = hrCeilingForAge(age);
-    for (var i = _n; i < n; i++) {
+    _fold(ts, hr, _n, n);
+  }
+
+  /// Samples folded so far (the day's rows before the resume point).
+  int get length => _n;
+
+  /// Folds [ts]/[hr], the samples that come right after the ones already
+  /// folded, without looking back at them: a caller that resumed this summary
+  /// from storage has already shown (by the revisions of the rows it folded)
+  /// that the prefix is unchanged. False, folding nothing, when the sleep
+  /// window or age differ from the ones this summary was folded under.
+  bool appendTail(
+    List<int> ts,
+    List<int> hr, {
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+    required int? age,
+  }) {
+    if (_n > 0 &&
+        (sleepOnsetSec != _sleepOn ||
+            sleepOffsetSec != _sleepOff ||
+            age != _age)) {
+      return false;
+    }
+    if (_n == 0) _reset(sleepOnsetSec, sleepOffsetSec, age);
+    _fold(ts, hr, 0, ts.length < hr.length ? ts.length : hr.length);
+    return true;
+  }
+
+  void _fold(List<int> ts, List<int> hr, int from, int to) {
+    final ceil = hrCeilingForAge(_age);
+    for (var i = from; i < to; i++) {
       final t = ts[i], h = hr[i];
       _prefix.addInt(t);
       _prefix.addInt(h);
@@ -124,6 +155,76 @@ class DayHrSummary {
     _minuteCount.clear();
     _wakeSum = 0;
     _wakeCount = 0;
+  }
+
+  /// The state, for the resume blob. [processedSamples] is a work counter and
+  /// starts again from 0 when the state is read back.
+  void write(ResumeWriter w) {
+    final (a, b) = _prefix.words;
+    w.i64(a);
+    w.i64(b);
+    w.i64(_n);
+    w.i64(_sleepOn);
+    w.i64(_sleepOff);
+    w.optI64(_age);
+    w.f64(_validSum);
+    w.i64(_validCount);
+    w.optF64(_validMax);
+    w.optF64(_validMin);
+    w.i32(_window.length);
+    for (final v in _window) {
+      w.i64(v);
+    }
+    w.i64(_kept);
+    w.optI64(_plainMax);
+    w.optI64(_plainMin);
+    w.optI64(_medMax);
+    w.optI64(_medMin);
+    final keys = _minuteSum.keys.toList()..sort();
+    w.i32(keys.length);
+    for (final k in keys) {
+      w.i64(k);
+      w.f64(_minuteSum[k]!);
+      w.i64(_minuteCount[k]!);
+    }
+    w.f64(_wakeSum);
+    w.i64(_wakeCount);
+  }
+
+  /// Reads what [write] wrote; throws [FormatException] on anything else.
+  static DayHrSummary read(ResumeReader r) {
+    final s = DayHrSummary();
+    s._prefix.copyFrom(PrefixFingerprint.fromWords(r.i64(), r.i64()));
+    s._n = r.i64();
+    s._sleepOn = r.i64();
+    s._sleepOff = r.i64();
+    s._age = r.optI64();
+    s._validSum = r.f64();
+    s._validCount = r.i64();
+    s._validMax = r.optF64();
+    s._validMin = r.optF64();
+    final window = r.count(8);
+    if (window > _w) throw const FormatException('resume state: bad window');
+    for (var i = 0; i < window; i++) {
+      s._window.add(r.i64());
+    }
+    s._kept = r.i64();
+    s._plainMax = r.optI64();
+    s._plainMin = r.optI64();
+    s._medMax = r.optI64();
+    s._medMin = r.optI64();
+    final minutes = r.count(24);
+    for (var i = 0; i < minutes; i++) {
+      final k = r.i64();
+      s._minuteSum[k] = r.f64();
+      s._minuteCount[k] = r.i64();
+    }
+    s._wakeSum = r.f64();
+    s._wakeCount = r.i64();
+    if (s._n < 0 || s._validCount < 0 || s._kept < 0 || s._wakeCount < 0) {
+      throw const FormatException('resume state: bad count');
+    }
+    return s;
   }
 
   /// `{max, min, avg}` over the day's valid HR, as the engine and pipeline
@@ -208,11 +309,43 @@ class DayMotionSummary {
       append = seen.matches(_prefix);
     }
     if (!append) _reset(sleepOnsetSec, sleepOffsetSec);
-    for (var i = _n; i < n; i++) {
+    _fold(ts, ax, ay, az, _n, n);
+  }
+
+  /// Folds the samples that come right after the ones already folded, without
+  /// looking back at them; see [DayHrSummary.appendTail]. False, folding
+  /// nothing, when the sleep window differs from the one folded under.
+  bool appendTail(
+    List<int> ts,
+    List<double> ax,
+    List<double> ay,
+    List<double> az, {
+    required int sleepOnsetSec,
+    required int sleepOffsetSec,
+  }) {
+    if (_n > 0 && (sleepOnsetSec != _sleepOn || sleepOffsetSec != _sleepOff)) {
+      return false;
+    }
+    if (_n == 0) _reset(sleepOnsetSec, sleepOffsetSec);
+    _fold(ts, ax, ay, az, 0, ts.length);
+    return true;
+  }
+
+  void _fold(
+    List<int> ts,
+    List<double> ax,
+    List<double> ay,
+    List<double> az,
+    int from,
+    int to,
+  ) {
+    for (var i = from; i < to; i++) {
       final t = ts[i];
       final angle = ana.zAngle(ax[i], ay[i], az[i]);
       final present = accelPlausible(ax[i], ay[i], az[i]);
-      if (i == 0) {
+      // `_n` is the day's own sample index (it counts the samples folded
+      // before this one), which is what "the first sample" means here.
+      if (_n == 0) {
         _runStart = t;
       } else {
         if (t - _prevTs > _offGapSec) {
@@ -258,6 +391,56 @@ class DayMotionSummary {
     _runStart = _prevTs = 0;
   }
 
+  void write(ResumeWriter w) {
+    final (a, b) = _prefix.words;
+    w.i64(a);
+    w.i64(b);
+    w.i64(_n);
+    w.i64(_sleepOn);
+    w.i64(_sleepOff);
+    w.f64(_prevAngle);
+    w.bool_(_prevPresent);
+    for (final m in [_wakeTot, _wakeMove, _curveTot, _curveMove]) {
+      final keys = m.keys.toList()..sort();
+      w.i32(keys.length);
+      for (final k in keys) {
+        w.i64(k);
+        w.i64(m[k]!);
+      }
+    }
+    w.i32(_closedRuns.length);
+    for (final r in _closedRuns) {
+      w.i64(r[0]);
+      w.i64(r[1]);
+    }
+    w.i64(_runStart);
+    w.i64(_prevTs);
+  }
+
+  static DayMotionSummary read(ResumeReader r) {
+    final s = DayMotionSummary();
+    s._prefix.copyFrom(PrefixFingerprint.fromWords(r.i64(), r.i64()));
+    s._n = r.i64();
+    s._sleepOn = r.i64();
+    s._sleepOff = r.i64();
+    s._prevAngle = r.f64();
+    s._prevPresent = r.bool_();
+    for (final m in [s._wakeTot, s._wakeMove, s._curveTot, s._curveMove]) {
+      final n = r.count(16);
+      for (var i = 0; i < n; i++) {
+        m[r.i64()] = r.i64();
+      }
+    }
+    final runs = r.count(16);
+    for (var i = 0; i < runs; i++) {
+      s._closedRuns.add([r.i64(), r.i64()]);
+    }
+    s._runStart = r.i64();
+    s._prevTs = r.i64();
+    if (s._n < 0) throw const FormatException('resume state: bad count');
+    return s;
+  }
+
   /// Wake minutes with at least 20 % of their seconds moving ≥ 5°; null when
   /// under a minute of data or no second carried a gravity vector.
   int? activeMinutes() {
@@ -291,4 +474,132 @@ class DayMotionSummary {
           for (final r in _closedRuns) [r[0], r[1]],
           [_runStart, _prevTs + 1],
         ];
+}
+
+/// The band's own step counter folded second by second: the previous reading,
+/// when it was taken, and the credited total. Identical to
+/// `hardwareStepsFromCounter` over the same seconds (that function is this fold
+/// run once over a whole day), so a day folded in pieces, or resumed from the
+/// stored triple, gives the same total.
+///
+/// Counter wrap and reset are handled exactly as there: a negative delta is
+/// re-read modulo [modulus], and a delta over the plausibility budget (which is
+/// what a reset looks like) is dropped, never invented.
+class StepCounterFold {
+  final PrefixFingerprint _prefix = PrefixFingerprint();
+  int _n = 0;
+  int? _modulus;
+  int? _prev, _prevTs;
+  int _total = 0;
+  bool _seen = false;
+  int _processed = 0;
+
+  static const _maxStepsPerSecond = 5;
+  static const _minGapSecForBudget = 60;
+  static const _maxGapSecForBudget = 3600;
+
+  int get processedSamples => _processed;
+  int get length => _n;
+
+  /// The credited steps, or null when the strap has no counter (no modulus) or
+  /// no second carried a reading: absent, never 0.
+  int? get steps {
+    final m = _modulus;
+    if (m == null || m <= 0) return null;
+    return _seen ? _total : null;
+  }
+
+  /// Brings the fold up to date with the day's [ts] and [counter] (`-1` = no
+  /// reading that second). Rebuilds from the start unless the samples folded
+  /// before are still the ones passed and [modulus] is unchanged.
+  void sync(
+    List<int> ts,
+    List<int> counter, {
+    required int? modulus,
+    bool force = false,
+  }) {
+    final n = ts.length;
+    var append = !force && n >= _n && modulus == _modulus;
+    if (append) {
+      final seen = PrefixFingerprint();
+      for (var i = 0; i < _n; i++) {
+        seen.addInt(ts[i]);
+        seen.addInt(i < counter.length ? counter[i] : -1);
+      }
+      append = seen.matches(_prefix);
+    }
+    if (!append) _reset(modulus);
+    _fold(ts, counter, _n, n);
+  }
+
+  /// Folds the samples right after the ones already folded, without looking
+  /// back at them; see [DayHrSummary.appendTail]. False, folding nothing, when
+  /// [modulus] differs from the one folded under.
+  bool appendTail(List<int> ts, List<int> counter, {required int? modulus}) {
+    if (_n > 0 && modulus != _modulus) return false;
+    if (_n == 0) _reset(modulus);
+    _fold(ts, counter, 0, ts.length);
+    return true;
+  }
+
+  void _reset(int? modulus) {
+    _prefix.clear();
+    _n = 0;
+    _modulus = modulus;
+    _prev = _prevTs = null;
+    _total = 0;
+    _seen = false;
+  }
+
+  void _fold(List<int> ts, List<int> counter, int from, int to) {
+    final wrap = _modulus;
+    final live = wrap != null && wrap > 0;
+    for (var i = from; i < to; i++) {
+      final t = ts[i];
+      final c = i < counter.length ? counter[i] : -1;
+      _prefix.addInt(t);
+      _prefix.addInt(c);
+      _n++;
+      _processed++;
+      if (!live || c < 0) continue;
+      _seen = true;
+      final prev = _prev, prevTs = _prevTs;
+      if (prev != null && prevTs != null && t > prevTs) {
+        final gap = t - prevTs;
+        final budget =
+            gap.clamp(_minGapSecForBudget, _maxGapSecForBudget) *
+            _maxStepsPerSecond;
+        var delta = c - prev;
+        if (delta < 0) delta += wrap; // wrap candidate; a reset overshoots below
+        if (delta > 0 && delta <= budget) _total += delta;
+      }
+      _prev = c;
+      _prevTs = t;
+    }
+  }
+
+  void write(ResumeWriter w) {
+    final (a, b) = _prefix.words;
+    w.i64(a);
+    w.i64(b);
+    w.i64(_n);
+    w.optI64(_modulus);
+    w.optI64(_prev);
+    w.optI64(_prevTs);
+    w.i64(_total);
+    w.bool_(_seen);
+  }
+
+  static StepCounterFold read(ResumeReader r) {
+    final s = StepCounterFold();
+    s._prefix.copyFrom(PrefixFingerprint.fromWords(r.i64(), r.i64()));
+    s._n = r.i64();
+    s._modulus = r.optI64();
+    s._prev = r.optI64();
+    s._prevTs = r.optI64();
+    s._total = r.i64();
+    s._seen = r.bool_();
+    if (s._n < 0) throw const FormatException('resume state: bad count');
+    return s;
+  }
 }

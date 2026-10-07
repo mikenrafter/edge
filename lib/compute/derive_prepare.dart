@@ -55,6 +55,12 @@ class PreparedDerivationDay {
   /// signature, no artifact.
   final String? inputFp;
 
+  /// The live `input_rev` of the buckets the calendar day spans, read BEFORE
+  /// the substrate was (like [inputFp], so a row landing mid-derive leaves it
+  /// stale rather than falsely current). What a stored day checkpoint is
+  /// validated against and written with. Null on the import path.
+  final Map<int, int>? inputRevs;
+
   const PreparedDerivationDay({
     required this.date,
     required this.endSec,
@@ -71,6 +77,7 @@ class PreparedDerivationDay {
     this.ownership = const {},
     this.priority = const {},
     this.inputFp,
+    this.inputRevs,
   }) : napSub = napSub ?? daySub;
 
   Map<String, dynamic> toJson() => {
@@ -238,6 +245,7 @@ class SleepSessionCandidate {
     Map<InputSignal, List<OwnedSpan>> ownership = const {},
     Map<InputSignal, List<String>> priority = const {},
     String? inputFp,
+    Map<int, int>? inputRevs,
   }) => PreparedDerivationDay(
     date: dayId,
     // `endSec` is what the engine anchors FINALIZATION on
@@ -263,6 +271,7 @@ class SleepSessionCandidate {
     ownership: ownership,
     priority: priority,
     inputFp: inputFp,
+    inputRevs: inputRevs,
   );
 }
 
