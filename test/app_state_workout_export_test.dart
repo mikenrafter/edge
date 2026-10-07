@@ -75,6 +75,11 @@ void main() {
       'after start at second resolution)', () async {
     final app = AppState.forTesting();
     app.healthSyncEnabled = true;
+    // Start just after a wall-clock second boundary: the session stamps the
+    // real clock, so a start at .999 would cross into the next second before
+    // the stop and become a valid 1 s sample (flaky under suite load).
+    final ms = DateTime.now().millisecond;
+    await Future<void>.delayed(Duration(milliseconds: 1000 - ms + 5));
     app.startWorkout(workoutId: 'w4-x4', type: 'strength');
     await app.stopWorkout();
     await settleMs(400);
