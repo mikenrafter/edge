@@ -189,6 +189,19 @@ class BandGesturesView extends StatelessWidget {
   final Map<String, TimeBuzzMode> slotTimeBuzzModes;
   final void Function(String slot, TimeBuzzMode mode)? onSlotTimeBuzzMode;
 
+  /// Breathing exercise, per slot: the pattern key (`BreathPattern.key`) and
+  /// the length in minutes each slot has (absent: [kBreatheDefaultPattern] /
+  /// [kBreatheDefaultMinutes]), and the callbacks for a pick. In the tab of
+  /// every gesture that has [DeviceAction.breathe] on (and only there), one
+  /// picker (key `breathe-picker`): a row per `kBreathPatterns` entry (key
+  /// `breathe-pattern:<key>`, its label, a check icon on the selected one) and
+  /// a chip per `kBreatheMinuteChoices` (key `breathe-minutes:<n>`, "N min",
+  /// a check icon on the selected one).
+  final Map<String, String> slotBreathePatterns;
+  final Map<String, int> slotBreatheMinutes;
+  final void Function(String slot, String patternKey)? onSlotBreathePattern;
+  final void Function(String slot, int minutes)? onSlotBreatheMinutes;
+
   /// Opens the Haptics screen, where the buzzes these gestures play are
   /// chosen. The row is always drawn; without a callback it is inert.
   final VoidCallback? onHaptics;
@@ -223,6 +236,10 @@ class BandGesturesView extends StatelessWidget {
     this.onSlotToggle,
     this.slotTimeBuzzModes = const {},
     this.onSlotTimeBuzzMode,
+    this.slotBreathePatterns = const {},
+    this.slotBreatheMinutes = const {},
+    this.onSlotBreathePattern,
+    this.onSlotBreatheMinutes,
     this.onHaptics,
     this.devMode = false,
     this.onDeviceLab,
@@ -473,6 +490,8 @@ class BandGesturesView extends StatelessWidget {
                 now: timeBuzzNow ?? DateTime.now,
               ),
             ),
+          // Breathing exercise's pattern and length, in the tab of every gesture
+          // that has it on. (RED STUB: not drawn yet.)
           if (noPhoneActions)
             Section(
               l?.gesturesNoPhoneActionsTitle ?? 'Nothing on the phone?',

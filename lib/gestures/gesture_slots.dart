@@ -8,6 +8,12 @@
 //
 import 'time_buzz.dart';
 
+/// Breathing exercise: the session lengths a slot can pick (minutes), the
+/// default length and the default pattern (`BreathPattern.key`).
+const List<int> kBreatheMinuteChoices = [1, 2, 3, 5, 10];
+const int kBreatheDefaultMinutes = 3;
+const String kBreatheDefaultPattern = 'resonance';
+
 abstract final class GestureSlots {
   static const String doubleTap = 'double';
   static const String tripleTap = 'triple';
@@ -59,6 +65,11 @@ class GestureSlotOptions {
   /// Tell the time's encoding for the slot: the mode's name ('count',
   /// 'binary', 'morse').
   static const String kTellTimeMode = 'tell_time.mode';
+
+  /// Breathing exercise's pattern (`BreathPattern.key`) and length (whole
+  /// minutes, as a string) for the slot.
+  static const String kBreathePattern = 'breathe.pattern';
+  static const String kBreatheMinutes = 'breathe.minutes';
 
   final Map<String, String> values;
 

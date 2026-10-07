@@ -332,6 +332,28 @@ class GestureSettings extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Breathing exercise's pattern key for [slot]: the slot's own choice, else
+  /// [kBreatheDefaultPattern]. A stored key that is no longer a pattern reads
+  /// as the default. ArgumentError for an unknown slot. (RED STUB)
+  String breathePatternFor(String slot) =>
+      throw UnimplementedError('breathePatternFor');
+
+  /// Breathing exercise's length in minutes for [slot]: the slot's own choice
+  /// (one of [kBreatheMinuteChoices]), else [kBreatheDefaultMinutes]. (RED STUB)
+  int breatheMinutesFor(String slot) =>
+      throw UnimplementedError('breatheMinutesFor');
+
+  /// Give [slot] its own breathing pattern (persisted in the slot's options,
+  /// beside whatever else it holds). ArgumentError for an unknown slot or a key
+  /// that is not a `kBreathPatterns` key. (RED STUB)
+  Future<void> setBreathePatternFor(String slot, String patternKey) =>
+      throw UnimplementedError('setBreathePatternFor');
+
+  /// Give [slot] its own breathing length. ArgumentError for an unknown slot or
+  /// a length that is not in [kBreatheMinuteChoices]. (RED STUB)
+  Future<void> setBreatheMinutesFor(String slot, int minutes) =>
+      throw UnimplementedError('setBreatheMinutesFor');
+
   static GestureSlotOptions _decodeSlotOptions(String? raw) {
     if (raw == null) return const GestureSlotOptions();
     try {

@@ -39,6 +39,9 @@ enum DeviceAction {
   // In-app: buzzes the current local time on the band (see time_buzz.dart).
   // APPENDED LAST: the enum order is the persisted bitmask, never reorder.
   tellTime,
+  // In-app: a guided breathing session paced on the band, with no phone
+  // screen (see breath_gesture.dart). APPENDED LAST, after tellTime.
+  breathe,
 }
 
 extension DeviceActionX on DeviceAction {
@@ -72,6 +75,8 @@ extension DeviceActionX on DeviceAction {
         return 'broadcast_to_tasker';
       case DeviceAction.tellTime:
         return 'tell_time';
+      case DeviceAction.breathe:
+        return 'breathe';
     }
   }
 
@@ -104,6 +109,8 @@ extension DeviceActionX on DeviceAction {
         return 'Broadcast to Tasker';
       case DeviceAction.tellTime:
         return 'Tell the time';
+      case DeviceAction.breathe:
+        return 'Breathing exercise';
     }
   }
 
@@ -137,6 +144,9 @@ extension DeviceActionX on DeviceAction {
         return 'Send an Android broadcast message that a Tasker task can listen for.';
       case DeviceAction.tellTime:
         return 'Buzz the current time on the band.';
+      case DeviceAction.breathe:
+        return 'Start a guided breathing session paced by the band, or end '
+            'the one that is running. No need to look at the phone.';
     }
   }
 
@@ -173,6 +183,8 @@ extension DeviceActionX on DeviceAction {
         return l?.deviceActionBroadcastToTaskerLabel ?? label;
       case DeviceAction.tellTime:
         return l?.deviceActionTellTimeLabel ?? label;
+      case DeviceAction.breathe:
+        return label; // RED STUB: no localized string yet
     }
   }
 
@@ -206,6 +218,8 @@ extension DeviceActionX on DeviceAction {
         return l?.deviceActionBroadcastToTaskerBlurb ?? blurb;
       case DeviceAction.tellTime:
         return l?.deviceActionTellTimeBlurb ?? blurb;
+      case DeviceAction.breathe:
+        return blurb; // RED STUB: no localized string yet
     }
   }
 
@@ -215,7 +229,8 @@ extension DeviceActionX on DeviceAction {
       this == DeviceAction.markMoment ||
       this == DeviceAction.workoutToggle ||
       this == DeviceAction.logWater ||
-      this == DeviceAction.tellTime;
+      this == DeviceAction.tellTime ||
+      this == DeviceAction.breathe;
 
   bool get isNative => this != DeviceAction.none && !isInApp;
 

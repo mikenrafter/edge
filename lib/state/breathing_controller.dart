@@ -23,6 +23,7 @@ import 'dart:async';
 
 import '../data/db.dart';
 import '../data/local_repository.dart';
+import '../gestures/breath_gesture.dart' show BreathPacerHost;
 import '../haptics/builtin_patterns.dart'
     show kBreathDoneKey, kBreathExhaleKey, kBreathHoldKey, kBreathInhaleKey;
 import '../live/breathing_live_activity.dart';
@@ -30,7 +31,7 @@ import '../notify/alert_dispatcher.dart';
 import '../stress/breath_phases.dart';
 import '../widget/widget_service.dart';
 
-class BreathingController {
+class BreathingController implements BreathPacerHost {
   BreathingController({
     required bool Function() isConnected,
     required Future<void> Function() reconcileLiveStreams,
@@ -80,7 +81,16 @@ class BreathingController {
   // jittering on a short recent slice. Replaces the screen's old
   // Random()-fabricated score. Ephemeral — nothing persisted.
   static const Duration _breathingRecomputeInterval = Duration(seconds: 20);
+  @override
   bool breathingActive = false;
+
+  /// True while the screen-free [BreathPacer] owns the running session's phase
+  /// cues (a breathing gesture started it). The CalmBreathing screen reads this
+  /// and makes no cue calls of its own while it is set, so a session is never
+  /// cued twice. Cleared by the pacer, and by [stopBreathingSession] on every
+  /// path. (RED STUB: a plain field, nothing sets or clears it yet.)
+  @override
+  bool pacedByBand = false;
 
   /// The pattern the running session is pacing to. Coherence is only computed
   /// for a pattern that claims a resonance frequency — see
@@ -204,6 +214,7 @@ class BreathingController {
   }
 
   /// Begin a guided-breathing session. Requires a connected band.
+  @override
   Future<void> startBreathingSession({
     BreathPattern? pattern,
     Duration? target,
@@ -251,6 +262,7 @@ class BreathingController {
   /// A session shorter than a minute is NOT recorded. Opening the screen and
   /// closing it again is not a breathing session, and a history full of
   /// 4-second entries would bury the real ones.
+  @override
   Future<void> stopBreathingSession() async {
     if (!breathingActive) return;
     _breathingRecomputeTimer?.cancel();
@@ -323,6 +335,7 @@ class BreathingController {
   /// animation. A cue that would start while the band still plays the last is
   /// skipped, not queued: a phase shorter than its cue gets no cue rather than
   /// one that arrives late and overlaps the next.
+  @override
   void buzzBreathPhase(BreathPhaseKind kind) {
     if (!_isConnected()) return;
     final (slot, pattern) = switch (kind) {
@@ -342,6 +355,7 @@ class BreathingController {
   /// while it is still playing, so N of them are felt as one, and the user
   /// cannot tell "round over" from "session over". Never skipped: nothing
   /// follows it, so it waits for the band instead.
+  @override
   void buzzSessionComplete() {
     if (!_isConnected()) return;
     unawaited(_cue(kBreathDoneKey, skipIfBusy: false, legacy: () =>

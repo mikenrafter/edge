@@ -144,6 +144,7 @@ import 'live_stream_buffer.dart';
 import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
 import 'imu_packet.dart';
+import '../gestures/breath_gesture.dart' show BreathPacer;
 import 'breathing_controller.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
@@ -6388,6 +6389,16 @@ class AppState extends ChangeNotifier {
   // recompute live in [BreathingController]; AppState delegates.
   bool get breathingActive => _breathing.breathingActive;
   set breathingActive(bool v) => _breathing.breathingActive = v;
+
+  /// True while the screen-free pacer owns the running session's cues; the
+  /// breathing screen makes no cue calls then. See
+  /// [BreathingController.pacedByBand].
+  bool get breathingPacedByBand => _breathing.pacedByBand;
+  set breathingPacedByBand(bool v) => _breathing.pacedByBand = v;
+
+  /// The screen-free pacer behind the Breathing exercise gesture. (RED STUB)
+  BreathPacer get breathPacer =>
+      throw UnimplementedError('AppState.breathPacer');
 
   /// The pattern the running session is pacing to.
   BreathPattern get breathingPattern => _breathing.breathingPattern;
