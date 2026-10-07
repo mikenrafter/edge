@@ -1,4 +1,4 @@
-// Gesture -> Tasker (RED): the Broadcast to Tasker action carries WHICH
+// Gesture -> Tasker: the Broadcast to Tasker action carries WHICH
 // gesture fired it. Tasker profiles listen for one Android intent
 // (wtf.openstrap.openstrap_edge.DOUBLE_TAP); without the slot and the tap
 // count in its extras a profile cannot tell a double tap from a triple.

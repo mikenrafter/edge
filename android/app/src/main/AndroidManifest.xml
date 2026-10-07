@@ -226,13 +226,15 @@
              instead requires a String extra "token" matching the per-install
              secret shown in Settings -> Automation, plus a short rate limit;
              anything else is silently dropped. Optional int extra "pattern"
-             (default 2). -->
+             (default 2). PLAY_HAPTIC takes the same token and plays a haptic
+             slot ("slot") or a stored pattern ("pattern") on the band. -->
         <receiver
             android:name=".TaskerReceiver"
             android:exported="true"
             android:enabled="true">
             <intent-filter>
                 <action android:name="wtf.openstrap.openstrap_edge.BUZZ_STRAP" />
+                <action android:name="wtf.openstrap.openstrap_edge.PLAY_HAPTIC" />
             </intent-filter>
         </receiver>
 

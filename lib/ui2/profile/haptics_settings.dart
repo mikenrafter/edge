@@ -46,7 +46,7 @@ import 'gestures.dart' show BandGestures;
 import 'haptic_pattern_editor.dart';
 import 'pattern_picker.dart' show patternDetail, showPatternPicker;
 import 'profile.dart';
-import 'settings.dart' show NotificationSettings;
+import 'settings.dart' show AutomationSettings, NotificationSettings;
 
 /// Where the tab last used is kept (a [HapticsTab] id), in the app prefs with
 /// the other UI selections.
@@ -205,6 +205,7 @@ class _HapticsSettingsState extends State<HapticsSettings> {
         c,
         switch (sectionId) {
           'apps' => const BandNotifications(),
+          'tasker' => const AutomationSettings(),
           'gestures' => const BandGestures(),
           'breathing' => const CalmBreathing(),
           _ => const NotificationSettings(),
@@ -445,8 +446,10 @@ class HapticsSettingsView extends StatelessWidget {
     HapticsTab.alerts => [
       _slotGroup(c, 'alerts'),
       _slotGroup(c, 'apps'),
+      _slotGroup(c, 'tasker'),
       _sectionLink(p, 'alerts'),
       _sectionLink(p, 'apps'),
+      _sectionLink(p, 'tasker'),
     ],
     // One group: no accordion to fold, just the card.
     HapticsTab.activity => [
@@ -622,7 +625,21 @@ class HapticsSettingsView extends StatelessWidget {
   Widget _slotGroup(BuildContext c, String sectionId) => SettingsAccordion(
     _sectionOf(sectionId).title,
     id: 'haptics_slots_$sectionId',
-    children: _slotRowsOf(c, sectionId),
+    children: [
+      // Tasker plays are alerts as far as the band is concerned.
+      if (sectionId == 'tasker')
+        Padding(
+          key: const ValueKey('haptic-tasker-note'),
+          padding: const EdgeInsets.symmetric(vertical: S.x3),
+          child: Text(
+            AppLocalizations.of(c)?.hapticsTaskerSectionSub ??
+                'Tasker plays these by number. Like any alert they follow '
+                    'quiet hours and the haptic limit.',
+            style: F.over.copyWith(color: P.of(c).ink3),
+          ),
+        ),
+      ..._slotRowsOf(c, sectionId),
+    ],
   );
 
   // The card of a tab's only group: the accordion's look without its header.

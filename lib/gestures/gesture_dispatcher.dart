@@ -76,6 +76,7 @@ import 'time_buzz.dart';
 import '../data/db.dart';
 import '../platform/device_actions.dart';
 import '../state/feature_flags.dart';
+import '../state/prefs.dart';
 
 enum GestureStatus { ran, skippedStale, skippedDuplicate, failed }
 
@@ -186,7 +187,13 @@ class GestureDispatcher {
   /// FeatureFlag.tapClassifiers, read on every tap so the switch bites at once.
   final bool Function() _tapClassifiersOn;
 
-  final Future<bool> Function(String actionId) _performNative;
+  /// "Tasker connection", read on every run of Broadcast to Tasker. Null: the
+  /// stored switch (on unless turned off).
+  final bool Function() _taskerConnectionOn;
+
+  /// A native action injected by a test; null is the real channel, which also
+  /// carries the slot and tap count of Broadcast to Tasker.
+  final Future<bool> Function(String actionId)? _performNativeOverride;
   final Future<bool> Function(String key) _claim;
   final Future<void> Function(String key) _release;
 
@@ -209,11 +216,14 @@ class GestureDispatcher {
     bool Function()? tapClassifiersOn,
     this.actionTimeout = const Duration(seconds: 10),
     Future<bool> Function(String actionId)? performNative,
+    bool Function()? taskerConnectionOn,
     Future<bool> Function(String key)? claim,
     Future<void> Function(String key)? release,
   })  : _tapClassifiersOn = tapClassifiersOn ??
             (() => FeatureFlags.isOn(FeatureFlag.tapClassifiers)),
-        _performNative = performNative ?? DeviceActions.perform,
+        _performNativeOverride = performNative,
+        _taskerConnectionOn =
+            taskerConnectionOn ?? (() => Prefs.taskerConnectionOn),
         _claim = claim ?? LocalDb.claimNotifFired,
         _release = release ?? LocalDb.releaseNotifFired;
 
@@ -579,7 +589,17 @@ class GestureDispatcher {
       await handler(e);
       return;
     }
-    if (!await _performNative(a.id)) {
+    if (a == DeviceAction.broadcastToTasker && !_taskerConnectionOn()) {
+      throw StateError('the Tasker connection is off');
+    }
+    final tapCount = GestureSlots.tapsOf(slot);
+    final override = _performNativeOverride;
+    final ok = override != null
+        ? await override(a.id)
+        : a == DeviceAction.broadcastToTasker
+            ? await DeviceActions.perform(a.id, slot: slot, taps: tapCount)
+            : await DeviceActions.perform(a.id);
+    if (!ok) {
       throw StateError('native ${a.id} reported failure');
     }
   }

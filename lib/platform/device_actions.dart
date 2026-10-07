@@ -34,9 +34,18 @@ class DeviceActions {
 
   /// Execute one action by its wire id. Returns true on success. Never throws —
   /// a gesture failing is never worth crashing a background isolate over.
-  static Future<bool> perform(String actionId) async {
+  ///
+  /// [slot] (a `GestureSlots` id) and [taps] say which gesture fired the
+  /// action; they are sent only when given. Broadcast to Tasker is the one
+  /// action that uses them: they become the intent's `slot` and `taps` extras.
+  static Future<bool> perform(String actionId,
+      {String? slot, int? taps}) async {
     try {
-      final ok = await _ch.invokeMethod<bool>('perform', {'action': actionId});
+      final ok = await _ch.invokeMethod<bool>('perform', {
+        'action': actionId,
+        'slot': ?slot,
+        'taps': ?taps,
+      });
       return ok ?? false;
     } catch (e) {
       debugPrint('[device_actions] perform($actionId) failed: $e');

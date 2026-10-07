@@ -113,6 +113,10 @@ import '../data/local_repository_impl.dart';
 import '../data/series_codec.dart';
 import '../notify/battery_forecast.dart';
 import '../notify/buzz_sequence.dart';
+import '../haptics/haptic_slots.dart'
+    show isCueSlot, kRelaySlotChannel, kRelaySlotKey;
+import '../haptics/builtin_patterns.dart' show alertPresetKey;
+import '../platform/tasker_play.dart';
 import '../notify/med_buzzer.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -942,7 +946,65 @@ class AppState extends ChangeNotifier {
   /// Tasker and buzzes the strap. Wired in the constructor.
   late final TaskerBridge taskerBridge = TaskerBridge(
     buzzPattern: (p) => _dispatchBandAlert('tasker', pattern: p),
+    playRequest: _playFromTasker,
+    log: _log,
   );
+
+  /// A `tasker_play` request as one delivery of the alert dispatcher, so it
+  /// is a plain job of the band queue: held by the haptic budget (no gesture
+  /// exemption), by quiet hours and by the Device lab like any alert. An
+  /// unknown pattern, or a slot with nothing to play, is ignored and logged.
+  Future<void> _playFromTasker(TaskerPlayRequest request) async {
+    switch (request) {
+      case TaskerPatternPlay(:final patternId):
+        final store = await SettingsRepository.instance.patterns();
+        final p = store.byId(patternId);
+        if (p == null) {
+          _log('[tasker] ignored tasker_play: no pattern "$patternId"');
+          return;
+        }
+        await _dispatchBandAlert('tasker', sequence: p.sequence);
+      case TaskerSlotPlay(:final slotKey):
+        if (isCueSlot(slotKey)) {
+          await _gestures.loadCues();
+          if (_disposed) return;
+          await _dispatchBandAlert(
+            'tasker',
+            deliver: (_, _) async => _disposed
+                ? BuzzDelivery.rejected
+                : gestureCues.slot(slotKey),
+            deliverTimeout: const Duration(seconds: 10),
+          );
+          return;
+        }
+        final rhythm = await _alertSlotRhythm(slotKey);
+        if (rhythm == null) {
+          _log('[tasker] ignored tasker_play: nothing to play on "$slotKey"');
+          return;
+        }
+        await _dispatchBandAlert('tasker', sequence: rhythm);
+    }
+  }
+
+  /// What alert slot [slotKey] (`alert.<ruleId>`) plays now: the rule's own
+  /// pattern, else its stored or seeded built-in.
+  Future<BuzzSequence?> _alertSlotRhythm(String slotKey) async {
+    if (!slotKey.startsWith('alert.')) return null;
+    try {
+      final id = slotKey.substring('alert.'.length);
+      final own = slotKey == kRelaySlotKey
+          ? (await SettingsRepository.instance.channels())[kRelaySlotChannel]
+              ?.buzzSequence
+          : (await NotificationPrefs.load()).alertRule(id).buzzSequence;
+      if (own != null) return own;
+      final store = await SettingsRepository.instance.patterns();
+      return (store.bySystemKey(slotKey) ??
+              store.bySystemKey(alertPresetKey(slotKey) ?? ''))
+          ?.sequence;
+    } catch (_) {
+      return null;
+    }
+  }
   Sample? lastSynced;
   // The data edge (the band's own clock, epoch SECONDS, of the newest record we
   // hold) lives in [SyncController]; these are the host's reads and writes of it

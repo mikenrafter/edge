@@ -2129,6 +2129,7 @@ class AutomationSettings extends StatefulWidget {
 class _AutomationSettingsState extends State<AutomationSettings> {
   String? _token;
   bool _copied = false;
+  bool _taskerOn = Prefs.taskerConnectionOn;
 
   @override
   void initState() {
@@ -2145,9 +2146,18 @@ class _AutomationSettingsState extends State<AutomationSettings> {
     if (mounted) setState(() => _copied = true);
   }
 
+  void _setTaskerOn(bool on) {
+    Prefs.setBool(Prefs.taskerConnection, on);
+    setState(() => _taskerOn = on);
+  }
+
   @override
-  Widget build(BuildContext c) =>
-      AutomationSettingsView(token: _token, copied: _copied, onCopy: _copy);
+  Widget build(BuildContext c) => AutomationSettingsView(
+      token: _token,
+      copied: _copied,
+      onCopy: _copy,
+      taskerOn: _taskerOn,
+      onTaskerOn: _setTaskerOn);
 }
 
 /// The Automation screen without its token fetch, so it can be pumped headless.
@@ -2166,8 +2176,7 @@ class AutomationSettingsView extends StatelessWidget {
 
   /// "Tasker connection" (key `tasker-connection`, Android only) and its
   /// callback. Off: the Tasker rows below it are drawn but disabled and
-  /// dimmed, with the hint "Turn on Tasker first". (RED phase: declared, not
-  /// yet read.)
+  /// dimmed, with the hint "Turn on Tasker first".
   final bool taskerOn;
   final ValueChanged<bool>? onTaskerOn;
 
@@ -2189,6 +2198,24 @@ class AutomationSettingsView extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
               children: [
+                if (android)
+                  SettingsAccordion(
+                    l?.settingsTaskerConnectionSectionTitle ?? 'Tasker',
+                    id: 'automation_tasker',
+                    children: [
+                      SwitchRow(
+                        l?.settingsTaskerConnectionTitle ?? 'Tasker connection',
+                        taskerOn,
+                        onTaskerOn,
+                        key: const ValueKey('tasker-connection'),
+                        sub: l?.settingsTaskerConnectionSub ??
+                            'Lets Tasker and other automation apps buzz the '
+                                'band, and lets the Broadcast to Tasker '
+                                'gesture action reach them. Off, all of it '
+                                'stops.',
+                      ),
+                    ],
+                  ),
                 SettingsAccordion(
                   l?.settingsSyncFinishesSectionTitle ??
                       'When a sync finishes',
@@ -2260,6 +2287,11 @@ class AutomationSettingsView extends StatelessWidget {
                                     'On iOS, a shortcut you run yourself can reach the app. It cannot start itself when the band syncs.'),
                             style: F.body.copyWith(color: p.ink2, height: 1.4),
                           ),
+                          if (android && !taskerOn) ...[
+                            const SizedBox(height: S.x2),
+                            Text(l?.taskerTurnOnFirst ?? 'Turn on Tasker first',
+                                style: F.over.copyWith(color: p.ink3)),
+                          ],
                           if (android) ...[
                             const SizedBox(height: S.x4),
                             if (token == null)
@@ -2271,17 +2303,21 @@ class AutomationSettingsView extends StatelessWidget {
                               SelectableText(token,
                                   style: F.cap.copyWith(color: p.ink)),
                               const SizedBox(height: S.x3),
-                              BigButton(
-                                  copied
-                                      ? (l?.settingsCopied ?? 'Copied')
-                                      : (l?.settingsCopyTheToken ??
-                                          'Copy the token'),
-                                  icon: copied
-                                      ? LucideIcons.check
-                                      : LucideIcons.copy,
-                                  color: C.indigo,
-                                  soft: true,
-                                  onTap: onCopy),
+                              // Tasker off: still drawn, dimmed and inert.
+                              Opacity(
+                                opacity: taskerOn ? 1 : kDisabledOpacity,
+                                child: BigButton(
+                                    copied
+                                        ? (l?.settingsCopied ?? 'Copied')
+                                        : (l?.settingsCopyTheToken ??
+                                            'Copy the token'),
+                                    icon: copied
+                                        ? LucideIcons.check
+                                        : LucideIcons.copy,
+                                    color: C.indigo,
+                                    soft: true,
+                                    onTap: taskerOn ? onCopy : null),
+                              ),
                             ],
                           ],
                         ]),

@@ -1,4 +1,4 @@
-// The six Tasker haptic slots (RED). `tasker.1` .. `tasker.6` are named system
+// The six Tasker haptic slots. `tasker.1` .. `tasker.6` are named system
 // slots like the gesture and breathing cues: slot n's built-in default is n
 // short pulses, each can be given a saved pattern, and they are listed on the
 // Haptics screen under a "Tasker" section. Tasker plays them by number or by

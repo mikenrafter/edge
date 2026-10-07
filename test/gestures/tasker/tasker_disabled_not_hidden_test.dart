@@ -1,4 +1,4 @@
-// "Tasker connection" off (RED): the Tasker toggles and choices are still
+// "Tasker connection" off: the Tasker toggles and choices are still
 // DRAWN but disabled and dimmed, with the hint "Turn on Tasker first". Same
 // rule as test/settings_disable_not_hide_test.dart: a dependent row is never
 // hidden behind its parent; only a row the platform cannot offer is omitted.

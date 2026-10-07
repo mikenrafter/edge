@@ -1,4 +1,4 @@
-// Tasker -> band (RED): an incoming `tasker_play` call on the
+// Tasker -> band: an incoming `tasker_play` call on the
 // `openstrap/tasker` method channel plays a haptic SLOT or a PATTERN on the
 // band. The native side (TaskerReceiver.kt, device-tested by hand) forwards
 // the intent's extras as the call's arguments: {slot: 1..6 | "<slot key>"} or

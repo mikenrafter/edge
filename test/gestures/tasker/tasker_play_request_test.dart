@@ -1,4 +1,4 @@
-// What an incoming `tasker_play` call asks for (RED), as a pure parse.
+// What an incoming `tasker_play` call asks for, as a pure parse.
 //
 // Tasker -> band. The native receiver forwards the intent's extras on the
 // `openstrap/tasker` channel as method `tasker_play` with a map holding

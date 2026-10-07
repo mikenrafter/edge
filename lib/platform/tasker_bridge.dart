@@ -1,18 +1,59 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import '../state/prefs.dart';
+import 'tasker_play.dart';
 
 class TaskerBridge {
   static const _ch = MethodChannel('openstrap/tasker');
 
   final Future<void> Function(int pattern) buzzPattern;
 
-  TaskerBridge({required this.buzzPattern}) {
+  /// Plays what a `tasker_play` call asked for (a slot or a pattern) as an
+  /// ordinary job of the band queue. Null: such a call is ignored.
+  final Future<void> Function(TaskerPlayRequest request)? playRequest;
+
+  /// "Tasker connection", read on every incoming call. Null: the stored
+  /// switch (on unless turned off).
+  final bool Function() connectionOn;
+
+  final void Function(String line)? log;
+
+  TaskerBridge({
+    required this.buzzPattern,
+    this.playRequest,
+    bool Function()? connectionOn,
+    this.log,
+  }) : connectionOn = connectionOn ?? (() => Prefs.taskerConnectionOn) {
     _ch.setMethodCallHandler(_onMethodCall);
   }
 
   Future<void> _onMethodCall(MethodCall call) async {
+    if (call.method != 'buzz_strap' && call.method != 'tasker_play') return;
+    // Everything Tasker sends is part of the integration the wearer can turn
+    // off; off means nothing reaches the band.
+    if (!connectionOn()) {
+      _note('[tasker] ignored ${call.method}: the Tasker connection is off');
+      return;
+    }
+    if (call.method == 'tasker_play') {
+      final request = parseTaskerPlay(call.arguments);
+      final play = playRequest;
+      if (request == null || play == null) {
+        _note('[tasker] ignored tasker_play: nothing known to play in '
+            '${call.arguments}');
+        return;
+      }
+      // Not awaited: a play can wait minutes for the band's command window,
+      // and the native sender does not need an answer.
+      unawaited(play(request).catchError((Object e, StackTrace st) {
+        debugPrint('[tasker] play failed: $e\n$st');
+      }));
+      return;
+    }
     if (call.method == 'buzz_strap') {
       try {
         final args = call.arguments;
@@ -25,6 +66,11 @@ class TaskerBridge {
         debugPrint('[tasker] buzz failed: $e\n$st');
       }
     }
+  }
+
+  void _note(String line) {
+    debugPrint(line);
+    log?.call(line);
   }
 
   /// Read (without clearing) a buzz Tasker requested while the app was fully

@@ -192,7 +192,14 @@ object NativeChannels {
                             "broadcast_to_tasker"
                         )
                     )
-                    "perform" -> result.success(perform(app, call.argument<String>("action") ?: ""))
+                    "perform" -> result.success(
+                        perform(
+                            app,
+                            call.argument<String>("action") ?: "",
+                            call.argument<String>("slot"),
+                            call.argument<Int>("taps")
+                        )
+                    )
                     else -> result.notImplemented()
                 }
             }
@@ -320,7 +327,7 @@ object NativeChannels {
         }
     }
 
-    private fun perform(ctx: Context, action: String): Boolean {
+    private fun perform(ctx: Context, action: String, slot: String? = null, taps: Int? = null): Boolean {
         return try {
             when (action) {
                 "media_play_pause" -> dispatchMediaKey(ctx, KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
@@ -330,7 +337,7 @@ object NativeChannels {
                 "volume_down" -> adjustVolume(ctx, AudioManager.ADJUST_LOWER)
                 "ring_phone" -> ringPhone(ctx)
                 "torch" -> toggleTorch(ctx)
-                "broadcast_to_tasker" -> sendTaskerBroadcast(ctx)
+                "broadcast_to_tasker" -> sendTaskerBroadcast(ctx, slot, taps)
                 else -> return false
             }
             true
@@ -556,11 +563,16 @@ object NativeChannels {
     /** Send a broadcast intent so Tasker (or any automation app) can subscribe
      * to band double-taps. The intent action is
      * `wtf.openstrap.openstrap_edge.DOUBLE_TAP`; Tasker listens via
-     * Event → Intent Received.
+     * Event → Intent Received. The name is historical: it is sent for every
+     * counted gesture. Extras: `slot` (String: double, triple, quad, quint)
+     * and `taps` (Int, 2..5), so a profile can tell a double from a triple.
+     * Each is omitted when Dart did not send it.
      */
-    private fun sendTaskerBroadcast(ctx: Context) {
+    private fun sendTaskerBroadcast(ctx: Context, slot: String?, taps: Int?) {
         val intent = Intent(ACTION_DOUBLE_TAP).apply {
             addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES)
+            if (slot != null) putExtra("slot", slot)
+            if (taps != null) putExtra("taps", taps)
         }
         ctx.sendBroadcast(intent)
     }

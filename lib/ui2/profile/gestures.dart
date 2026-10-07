@@ -73,6 +73,7 @@ class BandGestures extends StatelessWidget {
         onReplay: g.setReplayHistorical,
         followUp: g.followUpMoments,
         onFollowUp: g.setFollowUpMoments,
+        taskerOn: Prefs.taskerConnectionOn,
         // The row for 2 taps is the switches above; 3–5 are the extra-tap
         // counts. More double taps by default on any band; ECG touches are an
         // opt-in on a WHOOP MG, in developer mode.
@@ -139,7 +140,7 @@ class BandGesturesView extends StatelessWidget {
 
   /// "Tasker connection" is on. Off: the Broadcast to Tasker row is still
   /// drawn (when the phone offers it) but disabled and dimmed, with the hint
-  /// "Turn on Tasker first". (RED phase: declared, not yet read.)
+  /// "Turn on Tasker first".
   final bool taskerOn;
 
   /// A WHOOP MG: the only band whose ECG sensor can be touched to count taps.
@@ -443,7 +444,11 @@ class BandGesturesView extends StatelessWidget {
                             : (onTapToggle == null
                                 ? null
                                 : (v) => onTapToggle!(taps, a, v)),
-                    sub: a.localizedBlurb(c),
+                    // Tasker off: the row stays, inert and dimmed, saying why.
+                    enabled: a != DeviceAction.broadcastToTasker || taskerOn,
+                    sub: a == DeviceAction.broadcastToTasker && !taskerOn
+                        ? (l?.taskerTurnOnFirst ?? 'Turn on Tasker first')
+                        : a.localizedBlurb(c),
                   ),
                   // Non-blocking: both slots still run it, each with its own
                   // state.

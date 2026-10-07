@@ -12,6 +12,7 @@ import '../notify/buzz_sequence.dart';
 import '../notify/notification_prefs.dart';
 import 'haptic_compiler.dart';
 import 'haptic_profile.dart';
+import 'haptic_slots.dart' show kTaskerSlotCount, taskerSlotKey, taskerSlotNumber;
 import 'tap_notes.dart';
 
 const String kGestureStartKey = 'gesture.start';
@@ -121,6 +122,7 @@ List<String> builtInKeys() => [
       kBreathExhaleKey,
       kBreathHoldKey,
       kBreathDoneKey,
+      for (var n = 1; n <= kTaskerSlotCount; n++) taskerSlotKey(n),
       for (final p in kPresets) p.$1,
     ];
 
@@ -235,6 +237,15 @@ BuiltInSpec? builtInDefault(String systemKey) {
   }
   for (final (key, name, notes) in kPresets) {
     if (key == systemKey) return BuiltInSpec(key, name, _fromNotes(notes, id));
+  }
+  // Tasker slot n: n short pulses, the pulse and rest of the "One pulse" preset.
+  final tasker = taskerSlotNumber(systemKey);
+  if (tasker != null) {
+    return BuiltInSpec(
+      systemKey,
+      'Tasker slot $tasker',
+      _fromNotes(List.filled(tasker, 'N4*').join(' R4 '), id),
+    );
   }
   // An alert slot's default is its preset.
   final preset = alertPresetKey(systemKey);

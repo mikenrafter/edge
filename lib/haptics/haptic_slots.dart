@@ -3,7 +3,8 @@
 //
 // A slot key is the systemKey scheme: 'alert.<ruleId>' for an alert
 // rule, 'gesture.start|followUp|confirm|failed' for a gesture cue,
-// 'breath.inhale|exhale|hold|done' for a breathing cue. An alert slot's
+// 'breath.inhale|exhale|hold|done' for a breathing cue, 'tasker.1' .. 'tasker.6'
+// for a Tasker slot. An alert slot's
 // pattern lives in its rule (a snapshot carrying the pattern's id); a cue's
 // (gesture or breathing) is a pattern id kept in [decodeCueAssignments]'s map.
 // With neither, the slot plays its default (a preset for an alert, the cue's
@@ -57,6 +58,14 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot('alert.relay', 'App notifications'),
     HapticSlot('alert.tasker', 'Automation alerts'),
   ]),
+  HapticSlotSection('tasker', 'Tasker', [
+    HapticSlot('tasker.1', 'Tasker slot 1'),
+    HapticSlot('tasker.2', 'Tasker slot 2'),
+    HapticSlot('tasker.3', 'Tasker slot 3'),
+    HapticSlot('tasker.4', 'Tasker slot 4'),
+    HapticSlot('tasker.5', 'Tasker slot 5'),
+    HapticSlot('tasker.6', 'Tasker slot 6'),
+  ]),
   HapticSlotSection('gestures', 'Gestures', [
     HapticSlot(kGestureStartKey, 'Gesture start'),
     HapticSlot(kGestureFollowUpKey, 'Gesture follow-up'),
@@ -71,20 +80,29 @@ const List<HapticSlotSection> kHapticSlotSections = [
   ]),
 ];
 
-/// The six Tasker slots (RED phase stubs): `tasker.1` .. `tasker.6`. Slot n's
-/// built-in default is n short pulses; Tasker plays a slot by its number or its
-/// key and the wearer can put any pattern on it, like a cue slot.
+/// The six Tasker slots: `tasker.1` .. `tasker.6`. Slot n's built-in default
+/// is n short pulses; Tasker plays a slot by its number or its key and the
+/// wearer can put any pattern on it, like a cue slot.
 const int kTaskerSlotCount = 6;
 
 /// The key of Tasker slot [n] (1..6); ArgumentError otherwise.
-String taskerSlotKey(int n) => throw UnimplementedError('taskerSlotKey');
-
-/// Whether [slotKey] is one of the six Tasker slots.
-bool isTaskerSlot(String slotKey) => throw UnimplementedError('isTaskerSlot');
+String taskerSlotKey(int n) {
+  if (n < 1 || n > kTaskerSlotCount) {
+    throw ArgumentError.value(n, 'n', 'must be 1..$kTaskerSlotCount');
+  }
+  return 'tasker.$n';
+}
 
 /// The number (1..6) of Tasker slot [slotKey], or null for any other key.
-int? taskerSlotNumber(String slotKey) =>
-    throw UnimplementedError('taskerSlotNumber');
+int? taskerSlotNumber(String slotKey) {
+  if (!slotKey.startsWith('tasker.')) return null;
+  final n = int.tryParse(slotKey.substring('tasker.'.length));
+  if (n == null || n < 1 || n > kTaskerSlotCount) return null;
+  return slotKey == 'tasker.$n' ? n : null;
+}
+
+/// Whether [slotKey] is one of the six Tasker slots.
+bool isTaskerSlot(String slotKey) => taskerSlotNumber(slotKey) != null;
 
 /// The relay's alert slot, which is a relay channel's pattern, not a rule's.
 const String kRelaySlotKey = 'alert.relay';
@@ -106,11 +124,18 @@ bool isBreathCueSlot(String slotKey) =>
     slotKey == kBreathHoldKey ||
     slotKey == kBreathDoneKey;
 
-/// Whether [slotKey] is a cue slot: a gesture cue or a breathing cue. Its
-/// assigned pattern is a pattern id in [decodeCueAssignments]'s map, and it
-/// plays the cue's own built-in with none.
+/// Whether [slotKey] is a cue slot: a gesture cue, a breathing cue or a Tasker
+/// slot. Its assigned pattern is a pattern id in [decodeCueAssignments]'s map,
+/// and it plays the cue's own built-in with none.
 bool isCueSlot(String slotKey) =>
-    isGestureCueSlot(slotKey) || isBreathCueSlot(slotKey);
+    isGestureCueSlot(slotKey) ||
+    isBreathCueSlot(slotKey) ||
+    isTaskerSlot(slotKey);
+
+/// Whether [slotKey] is a slot on the Haptics screen (any section).
+bool isKnownSlot(String slotKey) => [
+      for (final sec in kHapticSlotSections) ...sec.slots,
+    ].any((s) => s.key == slotKey);
 
 /// The pattern id each cue was given, from its stored JSON (never
 /// throws; anything unreadable is none).
@@ -150,6 +175,12 @@ Map<String, BuzzSequence> resolveCuePatterns(
     kBreathExhaleKey,
     kBreathHoldKey,
     kBreathDoneKey,
+    'tasker.1',
+    'tasker.2',
+    'tasker.3',
+    'tasker.4',
+    'tasker.5',
+    'tasker.6',
   ]) {
     final given = assignments[key];
     final p = (given == null ? null : store.byId(given)) ??

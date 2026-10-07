@@ -120,9 +120,10 @@ class Prefs {
   static const String hapticsCueAssign = 'haptics_gesture_cue_assign';
 
   /// "Tasker connection": the one switch for the Tasker integration (the
-  /// Broadcast to Tasker gesture action and the incoming Tasker plays). The
-  /// key is the contract; what it gates is not wired yet (RED phase).
+  /// Broadcast to Tasker gesture action and the incoming Tasker plays). On
+  /// unless somebody turned it off, so existing Tasker users see no change.
   static const String taskerConnection = 'tasker_connection';
+  static bool get taskerConnectionOn => getBool(taskerConnection, true);
 
   /// The gestures that failed to activate, one JSON string (see
   /// gestures/gesture_failures.dart); bounded to the newest 20.

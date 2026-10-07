@@ -37,7 +37,7 @@ const _ids = ['patterns', 'alerts', 'activity', 'cues', 'band'];
 
 /// Which slot sections each tab lists.
 const _sectionsOf = {
-  'alerts': ['alerts', 'apps'],
+  'alerts': ['alerts', 'apps', 'tasker'],
   'activity': ['activity'],
   'cues': ['gestures', 'breathing'],
 };
@@ -192,7 +192,7 @@ void main() {
         'with a single group (Activity) has none', (t) async {
       await _pump(t);
       await _go(t, 'alerts');
-      expect(sectionTitles(t), ['Alerts', 'Apps and automation']);
+      expect(sectionTitles(t), ['Alerts', 'Apps and automation', 'Tasker']);
       await _go(t, 'activity');
       expect(sectionTitles(t), isEmpty);
       await _go(t, 'cues');

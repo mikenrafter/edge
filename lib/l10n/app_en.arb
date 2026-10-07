@@ -11716,6 +11716,26 @@
   "@settingsCopyTheToken": {
     "description": "Button label to copy the automation token"
   },
+  "taskerTurnOnFirst": "Turn on Tasker first",
+  "@taskerTurnOnFirst": {
+    "description": "Hint under a Tasker control that is disabled because the Tasker connection is off"
+  },
+  "settingsTaskerConnectionSectionTitle": "Tasker",
+  "@settingsTaskerConnectionSectionTitle": {
+    "description": "Automation screen section heading for the Tasker connection"
+  },
+  "settingsTaskerConnectionTitle": "Tasker connection",
+  "@settingsTaskerConnectionTitle": {
+    "description": "Title of the switch that turns the Tasker integration on or off"
+  },
+  "settingsTaskerConnectionSub": "Lets Tasker and other automation apps buzz the band, and lets the Broadcast to Tasker gesture action reach them. Off, all of it stops.",
+  "@settingsTaskerConnectionSub": {
+    "description": "Explains what the Tasker connection switch controls"
+  },
+  "hapticsTaskerSectionSub": "Tasker plays these by number. Like any alert they follow quiet hours and the haptic limit.",
+  "@hapticsTaskerSectionSub": {
+    "description": "Note at the top of the Tasker group on the Haptics screen"
+  },
   "bandStatusBluetoothDeniedTitle": "OpenStrap does not have Bluetooth permission",
   "@bandStatusBluetoothDeniedTitle": {
     "description": "BandStatus card title: app-level Bluetooth permission denied"
