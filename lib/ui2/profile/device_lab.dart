@@ -35,6 +35,8 @@ import '../../gestures/gesture_settings.dart';
 import '../../gestures/hardware_probe_runner.dart';
 import '../../gestures/hardware_probes.dart';
 import '../../gestures/imu_recording_store.dart';
+import '../../explore/resonance/resonance_sweep_screen.dart'
+    show ResonanceSweepEntry;
 import '../../gestures/lab_log.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
@@ -132,6 +134,8 @@ class DeviceLab extends StatelessWidget {
                 padding: const EdgeInsets.only(top: S.x3),
                 child: AlarmSlotProbeCard(runner: app.alarmSlotProbe),
               ),
+            // Hidden unless developer mode AND its Settings switch are on.
+            const ResonanceSweepEntry(),
           ],
         ),
         // The IMU recorder is a developer tool: its tab is offered only in

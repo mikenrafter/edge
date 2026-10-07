@@ -961,6 +961,7 @@ class MoreSettingsView extends StatelessWidget {
                     SetRow(LucideIcons.flaskConical, C.purple, 'Device lab',
                         sub: 'Try gestures the band does not report on its own',
                         onTap: onDeviceLab),
+                    const _ResonanceExperimentRow(),
                     // Not a Health tab yet: up to four metrics on one time axis.
                     SetRow(LucideIcons.chartLine, C.blue, 'Data Explorer',
                         sub: 'Compare up to four metrics on one time axis',
@@ -979,6 +980,34 @@ class MoreSettingsView extends StatelessWidget {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// Developer group: the switch for the "Pacing rates compared" experiment. It
+/// only shows the lab entry (which also needs developer mode); it reads and
+/// writes the one pref and keeps no other state.
+class _ResonanceExperimentRow extends StatefulWidget {
+  const _ResonanceExperimentRow();
+
+  @override
+  State<_ResonanceExperimentRow> createState() =>
+      _ResonanceExperimentRowState();
+}
+
+class _ResonanceExperimentRowState extends State<_ResonanceExperimentRow> {
+  @override
+  Widget build(BuildContext c) {
+    final on = Prefs.getBool(Prefs.exploreResonance, false);
+    return SetRow(
+      LucideIcons.wind,
+      C.green,
+      'Pacing rates compared',
+      sub: 'Experiment: adds a breathing-pace comparison to the Device lab',
+      value: on ? 'On' : 'Off',
+      chevron: false,
+      key: const ValueKey('developer-resonance-experiment'),
+      onTap: () => setState(() => Prefs.setBool(Prefs.exploreResonance, !on)),
     );
   }
 }

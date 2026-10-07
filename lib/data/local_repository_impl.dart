@@ -28,6 +28,9 @@ import '../compute/kcal_minutes.dart';
 import '../compute/manual_session.dart';
 import '../compute/onehz_pipeline.dart' show kUnknownAbsenceNote, needInputNote;
 import '../compute/profile.dart';
+import '../explore/resonance/resonance_analyzer.dart' show SweepBeat;
+import '../explore/resonance/resonance_sweep_controller.dart'
+    show sweepBeatsFromRr;
 import 'package:openstrap_protocol/openstrap_protocol.dart' as proto;
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
@@ -4295,6 +4298,16 @@ class LocalRepositoryImpl extends LocalRepository {
     return Isolate.run(() => _breathingCoherenceCompute(records, pacedHz));
   }
 
+  @override
+  Future<List<SweepBeat>> sweepBeats(
+    List<({int atMs, String hex})> frames,
+  ) async {
+    if (frames.isEmpty) return const [];
+    // Off the UI isolate like the two above: decode plus RR correction over a
+    // whole 2-minute block. Frames in, plain beats out; both are sendable.
+    return Isolate.run(() => sweepBeatsCompute(frames));
+  }
+
   // ── small series helpers ─────────────────────────────────────────────────────
 
   Future<double?> _seriesMean(String key) async {
@@ -4674,14 +4687,17 @@ Map<String, dynamic>? stressSummaryForToday(
 /// equal timestamp is accepted like normal (sourcery flagged the earlier
 /// strict `>` as silently losing real beats on any multi-packet-per-second
 /// burst).
-({List<double> rrMs, List<double> rrTsMs}) _decodeLiveRr(
+({List<double> rrMs, List<double> rrTsMs, int? firstFrame}) _decodeLiveRr(
   List<String> records,
 ) {
   final rrMs = <double>[];
   final rrTsMs = <double>[];
   int? lastPacketTs;
-  for (final hex in records) {
-    final rr = proto.realtimeRr(hex);
+  // Index in [records] of the first frame that yielded a beat, so a caller
+  // that knows when each frame ARRIVED can put the packet clock on its own.
+  int? firstFrame;
+  for (var i = 0; i < records.length; i++) {
+    final rr = proto.realtimeRr(records[i]);
     if (rr == null || (lastPacketTs != null && rr.ts < lastPacketTs)) {
       continue;
     }
@@ -4689,12 +4705,74 @@ Map<String, dynamic>? stressSummaryForToday(
     final ts = rr.ts.toDouble() * 1000;
     for (final v in rr.rrMs) {
       if (v > 0) {
+        firstFrame ??= i;
         rrMs.add(v.toDouble());
         rrTsMs.add(ts);
       }
     }
   }
-  return (rrMs: rrMs, rrTsMs: rrTsMs);
+  return (rrMs: rrMs, rrTsMs: rrTsMs, firstFrame: firstFrame);
+}
+
+/// One sweep block's frames to beats on the SESSION clock (ms since the sweep
+/// started), for `ResonanceSweepController.decodeBeats`.
+///
+/// The beat times are the corrector's timeline (`nnTimesMs`: RR summed inside
+/// a contiguous run, re-anchored at a dropout), not the packets' whole-second
+/// stamps, so beats land in the right breath cycle. That timeline is relative
+/// to the first packet; it is placed on the session clock by pinning the first
+/// packet's stamp to the [atMs] it arrived at. The pin is good to about a
+/// second (the stamp is whole seconds, and arrival lags the beat), which
+/// shifts every beat of the block alike.
+///
+/// `observed` is false for a beat the corrector replaced by interpolation. A
+/// beat it dropped is simply absent. `correctRr` exposes a class per INPUT
+/// beat but not which output beat each became, so the mapping replays its
+/// rule: an isolated artifact is interpolated when a normal beat exists on
+/// both sides, and dropped otherwise; a run of two or more is dropped. If the
+/// replay does not reproduce the output length (the rule changed upstream),
+/// every beat is marked not observed rather than guessing which were.
+///
+/// Top-level and public only so a test can reach it without an isolate.
+@visibleForTesting
+List<SweepBeat> sweepBeatsCompute(List<({int atMs, String hex})> frames) {
+  final decoded = _decodeLiveRr([for (final f in frames) f.hex]);
+  final first = decoded.firstFrame;
+  if (first == null || decoded.rrMs.isEmpty) return const [];
+  final cleaned = ana.correctRr(decoded.rrMs, rrTsMs: decoded.rrTsMs);
+
+  final classes = cleaned.classes;
+  final firstNormal = classes.indexOf(ana.BeatClass.normal);
+  final lastNormal = classes.lastIndexOf(ana.BeatClass.normal);
+  final observed = <bool>[];
+  var i = 0;
+  while (i < classes.length) {
+    if (classes[i] == ana.BeatClass.normal) {
+      observed.add(true);
+      i++;
+      continue;
+    }
+    var j = i;
+    while (j < classes.length && classes[j] != ana.BeatClass.normal) {
+      j++;
+    }
+    if (j - i == 1 && firstNormal >= 0 && firstNormal < i && lastNormal > i) {
+      observed.add(false); // interpolated
+    }
+    i = j;
+  }
+  final replayed = observed.length == cleaned.nn.length;
+
+  // nnTimesMs[0] is the first beat's END, measured from (first stamp - first
+  // rr); the first stamp is the packet clock's zero for this block.
+  final shift = frames[first].atMs - decoded.rrMs.first;
+  return sweepBeatsFromRr(
+    rrMs: cleaned.nn,
+    rrTsMs: [for (final t in cleaned.nnTimesMs) t + shift],
+    observed: replayed
+        ? observed
+        : List<bool>.filled(cleaned.nn.length, false),
+  );
 }
 
 Map<String, dynamic> _spotCheckCompute(List<String> records) {

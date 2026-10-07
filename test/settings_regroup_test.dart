@@ -136,6 +136,8 @@ const Map<String, List<List<String>>> _rows = {
     ['Component gallery'],
     ['Live devices'],
     ['Device lab'],
+    // The switch for the developer-only pacing experiment.
+    ['Pacing rates compared'],
     ['Data Explorer'],
     // The read-only timing line for the last derive pass.
     ['Last calculation'],
@@ -301,6 +303,7 @@ void main() {
         'Component gallery',
         'Live devices',
         'Device lab',
+        'Pacing rates compared',
         'Developer mode',
       ]) {
         expect(find.text(row), findsNothing, reason: row);

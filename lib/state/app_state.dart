@@ -144,6 +144,8 @@ import 'gesture_controller.dart';
 import 'live_stream_controller.dart';
 import 'imu_packet.dart';
 import 'breathing_controller.dart';
+import '../explore/resonance/resonance_sweep_controller.dart';
+import '../explore/resonance/resonance_sweep_plan.dart';
 import 'sync_controller.dart';
 import 'workout_controller.dart';
 export 'workout_controller.dart' show LiveWorkoutState;
@@ -255,7 +257,7 @@ class AppState extends ChangeNotifier {
       ),
       busyReason: () => activeWorkout != null
           ? 'workout'
-          : (breathingActive || breathingWindowOpen)
+          : (breathingActive || breathingWindowOpen || _sweepStreamsHeld)
               ? 'breathing'
               : null,
       holdScreen: ScreenWake.hold,
@@ -459,7 +461,9 @@ class AppState extends ChangeNotifier {
     buffer: liveStreams,
     isBackground: () => _background,
     activeWorkoutType: () => workoutStopPending ? null : activeWorkout?.type,
-    breathing: () => breathingActive || breathingWindowOpen,
+    // The pacing-rates sweep owns the HR stream through the same owner as a
+    // breathing session: it wants exactly what that wants.
+    breathing: () => breathingActive || breathingWindowOpen || _sweepStreamsHeld,
     reconcile: () => engine.reconcileLiveStreams(),
     clearRadioFallbackAndReconcile: () =>
         engine.clearRadioFallbackAndReconcile(),
@@ -859,9 +863,18 @@ class AppState extends ChangeNotifier {
   /// phase. A phase cue starts immediately or is rejected, so it cannot wait
   /// for command budget, the Device lab, or another haptic job and arrive in a
   /// later phase. The session-complete cue may still wait for the band.
-  Future<bool> _playBreathCue(String slot, {required bool skipIfBusy}) async {
+  Future<bool> _playBreathCue(String slot, {required bool skipIfBusy}) async =>
+      (await _breathCue(slot, skipIfBusy: skipIfBusy)).handled;
+
+  /// [_playBreathCue] with the dispatcher's answer kept: `handled` is what it
+  /// always returned, `outcome` is null when nothing was dispatched (an unknown
+  /// slot, or this state disposed).
+  Future<({bool handled, AlertDeliveryOutcome? outcome})> _breathCue(
+    String slot, {
+    required bool skipIfBusy,
+  }) async {
     await _gestures.loadCues();
-    if (_disposed) return true;
+    if (_disposed) return (handled: true, outcome: null);
     if (haptics.profile == null && !_gestures.cueAssigned(slot)) {
       final pattern = switch (slot) {
         'breath.inhale' => 1,
@@ -870,15 +883,15 @@ class AppState extends ChangeNotifier {
         'breath.done' => 4,
         _ => null,
       };
-      if (pattern == null) return false;
-      await _dispatchBandAlert(
+      if (pattern == null) return (handled: false, outcome: null);
+      final outcome = await _dispatchBandAlert(
         'breath',
         pattern: pattern,
         immediate: skipIfBusy,
       );
-      return true;
+      return (handled: true, outcome: outcome);
     }
-    await _dispatchBandAlert(
+    final outcome = await _dispatchBandAlert(
       'breath',
       deliver: (_, _) async => _disposed
           ? BuzzDelivery.rejected
@@ -887,7 +900,77 @@ class AppState extends ChangeNotifier {
               : gestureCues.slot(slot),
       deliverTimeout: const Duration(seconds: 10),
     );
-    return true;
+    return (handled: true, outcome: outcome);
+  }
+
+  // ── Pacing rates compared (developer experiment, lib/explore/resonance) ─────
+
+  /// The sweep whose controller is routed live RR frames; the newest one built.
+  /// It buffers only while it is running, so a finished or abandoned one just
+  /// ignores frames until the next replaces it.
+  ResonanceSweepController? _activeSweep;
+
+  /// A sweep holds the live HR stream. Read by the live-owner set.
+  bool _sweepStreamsHeld = false;
+
+  /// A controller for one sweep, wired to the band link, the live streams, the
+  /// breathing cue path and the off-isolate beat decode. The screen that is
+  /// given it owns it and disposes it (which releases the streams).
+  ///
+  /// Known prototype gap: no `stillFraction` is passed (no 1 Hz motion source
+  /// is wired here), so movement is not checked and the controller treats the
+  /// whole measure window as still. The result screen says so.
+  ResonanceSweepController buildResonanceSweep({
+    ResonanceSweepPlan? plan,
+    // The sweep's wall clock; tests step it.
+    DateTime Function()? now,
+  }) {
+    final controller = ResonanceSweepController(
+      plan: plan ?? ResonanceSweepPlan.build(),
+      now: now,
+      isConnected: () => isConnected,
+      acquireStreams: () async {
+        _sweepStreamsHeld = true;
+        try {
+          await engine.reconcileLiveStreams();
+        } catch (_) {
+          // Best-effort like the breathing session: the engine's keep-alive
+          // retries, and a block with no beats is rejected, not invented.
+        }
+      },
+      releaseStreams: () {
+        _sweepStreamsHeld = false;
+        _nudgeLive();
+      },
+      deliverCue: _deliverSweepCue,
+      decodeBeats: (frames) {
+        final r = repo;
+        if (r == null) throw StateError('The data store is not ready.');
+        return r.sweepBeats(frames);
+      },
+    );
+    return _activeSweep = controller;
+  }
+
+  /// One sweep phase cue through the breathing cue path, never queued.
+  ///
+  /// The seam reports whether the band was written to, not why not: a cue the
+  /// band queue refused for being busy and one refused for the command budget
+  /// both come back as a failed band delivery. Both are mapped to
+  /// [CueDelivery.skippedBusy]; [CueDelivery.rejectedBudget] is not produced.
+  /// The analyzer counts any undelivered cue the same way.
+  Future<CueDelivery> _deliverSweepCue(BreathPhaseKind kind) async {
+    if (!isConnected) return CueDelivery.notConnected;
+    final slot = switch (kind) {
+      BreathPhaseKind.inhale || BreathPhaseKind.work => 'breath.inhale',
+      BreathPhaseKind.holdIn || BreathPhaseKind.holdOut => 'breath.hold',
+      BreathPhaseKind.exhale || BreathPhaseKind.rest => 'breath.exhale',
+    };
+    final played = await _breathCue(slot, skipIfBusy: true);
+    if (played.outcome?.targets.contains('band') ?? false) {
+      return CueDelivery.delivered;
+    }
+    return isConnected ? CueDelivery.skippedBusy : CueDelivery.notConnected;
   }
 
   /// Relay selected phone-app notifications to the strap as a buzz (Android only).
@@ -3792,6 +3875,7 @@ class AppState extends ChangeNotifier {
       (activeWorkout != null && !workoutStopPending) ||
       breathingActive ||
       breathingWindowOpen ||
+      _sweepStreamsHeld ||
       (_ecg?.isCapturing ?? false);
 
   /// A screen that displays the live heart rate is on screen: own the HR
@@ -3852,6 +3936,7 @@ class AppState extends ChangeNotifier {
     final isRrBearing = pt == 0x28 || (pt == 0x2B && _isR10Record(hex));
     if (isRrBearing) _live.bufferLiveRr(hex);
     if (isRrBearing) _breathing.tapFrame(hex);
+    if (isRrBearing) _activeSweep?.tapFrame(hex);
     final sixAxis = pt == 0x2B
         ? _live.decodeAndFanoutImu(
             packetType: pt,

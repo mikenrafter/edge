@@ -13,6 +13,7 @@
 // nothing above this file references HTTP, JWT, or a backend URL anymore.
 
 import '../compute/manual_session.dart' show SessionSpan;
+import '../explore/resonance/resonance_analyzer.dart' show SweepBeat;
 import '../gps/route_models.dart';
 import 'journal_fields.dart';
 
@@ -357,4 +358,12 @@ abstract class LocalRepository {
     List<String> records, {
     double? pacedHz,
   }) => throw UnimplementedError('re-layer: breathingCoherence');
+
+  // ── "Pacing rates compared" (developer experiment) ────────────────────────────
+  /// Decode and correct the live RR frames of one sweep block into beats. Each
+  /// frame carries the session-relative ms it arrived at ([atMs]); the beats
+  /// come back on that same clock, with `observed == false` for any beat the
+  /// correction stage replaced. Runs off the UI isolate.
+  Future<List<SweepBeat>> sweepBeats(List<({int atMs, String hex})> frames) =>
+      throw UnimplementedError('re-layer: sweepBeats');
 }
