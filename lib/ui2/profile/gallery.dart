@@ -1383,6 +1383,16 @@ Map<String, Widget> _stateCases() => {
           0, 7, 'Nights with a full sleep record', C.domHealth),
       'consistency_full': const Consistency(
           7, 7, 'Nights with a full sleep record', C.domHealth),
+      // A haptic pattern as one line of music: notes, rests, dots and the
+      // dynamics under them, then a tapped rhythm (no notes, no dynamics).
+      'haptic_score': Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        HapticScore(BuzzSequence(const [0],
+            durationsMs: const [125],
+            notes: 'N2mf R2 N3f R1 N6ff R2 N1mp R3 N8mf')),
+        const SizedBox(height: S.x3),
+        HapticScore(BuzzSequence(const [0, 500, 1000],
+            durationsMs: const [125, 250, 125])),
+      ]),
       // Every accent, so a palette change is one picture rather than a hunt.
       'pill_every_colour': const Wrap(spacing: S.x2, runSpacing: S.x2, children: [
         Pill('Measured', C.green),

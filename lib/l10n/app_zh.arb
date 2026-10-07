@@ -2396,5 +2396,11 @@
   "momentFollowUpLogWorkout": "记录此时的一次训练",
   "momentFollowUpLabelOnly": "仅添加标签",
   "momentFollowUpSaveFailed": "无法保存该回答，请重试。",
-  "dayTimelineMarkedAt": "{time} 标记的时刻"
+  "dayTimelineMarkedAt": "{time} 标记的时刻",
+  "hapticSimilarSameBeats": "感觉像「{slot}」（振动次数相同：{n, plural, other{{n} 次}}）",
+  "hapticSimilarCloseLength": "感觉像「{slot}」（时长相差不超过 0.5 秒）",
+  "hapticScoreNotes": "{n, plural, other{{n} 个音符}}",
+  "hapticScoreOneSecond": "1 秒",
+  "hapticScoreSeconds": "{value} 秒",
+  "hapticScoreSemantics": "{notes}，{length}"
 }

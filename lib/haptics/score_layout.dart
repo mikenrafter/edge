@@ -8,10 +8,9 @@
 // tied. Values by length in sixteenths: 1 sixteenth, 2 eighth, 3 dotted
 // eighth, 4 quarter, 6 dotted quarter, 8 half, 12 dotted half, 16 whole.
 //
-// STUB (red phase): everything here throws until implemented.
-
 import '../gestures/pattern_transcript.dart';
 import '../notify/buzz_sequence.dart';
+import 'tap_notes.dart';
 
 /// The undotted note values, by their length in sixteenths.
 enum NoteValue {
@@ -79,16 +78,66 @@ class ScoreLayout {
   final double unitWidth;
 
   /// `totalUnits * unitWidth`.
-  double get width => throw UnimplementedError('ScoreLayout.width');
+  double get width => totalUnits * unitWidth;
 
   /// The glyphs of [notes], in order, [unitWidth] logical pixels per
   /// sixteenth. The glyphs of one entry sit end to end with no gap. An entry
   /// of length 0 or less gives nothing.
-  static ScoreLayout of(List<PatternEntry> notes, {double unitWidth = 8}) =>
-      throw UnimplementedError('ScoreLayout.of');
+  static ScoreLayout of(List<PatternEntry> notes, {double unitWidth = 8}) {
+    final glyphs = <ScoreGlyph>[];
+    var at = 0;
+    for (var i = 0; i < notes.length; i++) {
+      final e = notes[i];
+      var left = e.length;
+      var first = true;
+      while (left > 0) {
+        final (units, value, dotted) =
+            _shapes.firstWhere((s) => s.$1 <= left);
+        left -= units;
+        glyphs.add(ScoreGlyph(
+          rest: !e.note,
+          value: value,
+          dotted: dotted,
+          units: units,
+          startUnit: at,
+          x: at * unitWidth,
+          entryIndex: i,
+          dynamic: e.note ? e.dynamic : null,
+          tiedFromPrev: e.note && !first,
+          tiedToNext: e.note && left > 0,
+        ));
+        at += units;
+        first = false;
+      }
+    }
+    return ScoreLayout(glyphs, at, unitWidth);
+  }
 }
+
+// Length, value and dot, largest first: what an entry is cut into.
+const List<(int, NoteValue, bool)> _shapes = [
+  (16, NoteValue.whole, false),
+  (12, NoteValue.half, true),
+  (8, NoteValue.half, false),
+  (6, NoteValue.quarter, true),
+  (4, NoteValue.quarter, false),
+  (3, NoteValue.eighth, true),
+  (2, NoteValue.eighth, false),
+  (1, NoteValue.sixteenth, false),
+];
 
 /// The notes and rests that draw [s]: its `notes` code when it has one, else
 /// the taps as notes (any loudness, [unitMs] per sixteenth).
-List<PatternEntry> scoreEntriesOf(BuzzSequence s, {int unitMs = 125}) =>
-    throw UnimplementedError('scoreEntriesOf');
+List<PatternEntry> scoreEntriesOf(BuzzSequence s, {int unitMs = 125}) {
+  final code = s.notes;
+  if (code != null) {
+    try {
+      return PatternTranscript.parseCode(code).entries;
+    } on FormatException {
+      // Fall through to the taps: a score is drawn from what can be read.
+    } on ArgumentError {
+      // Same.
+    }
+  }
+  return notesFromTaps(s, unitMs: unitMs);
+}

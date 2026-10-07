@@ -2396,5 +2396,11 @@
   "momentFollowUpLogWorkout": "Enregistrer une séance à cette heure",
   "momentFollowUpLabelOnly": "Juste l'étiqueter",
   "momentFollowUpSaveFailed": "Impossible d'enregistrer cette réponse. Réessaie.",
-  "dayTimelineMarkedAt": "Moment marqué à {time}"
+  "dayTimelineMarkedAt": "Moment marqué à {time}",
+  "hapticSimilarSameBeats": "Ressemble à {slot} (même nombre : {n, plural, one{1 impulsion} other{{n} impulsions}})",
+  "hapticSimilarCloseLength": "Ressemble à {slot} (durée à 0,5 s près)",
+  "hapticScoreNotes": "{n, plural, one{1 note} other{{n} notes}}",
+  "hapticScoreOneSecond": "1 seconde",
+  "hapticScoreSeconds": "{value} secondes",
+  "hapticScoreSemantics": "{notes}, {length}"
 }

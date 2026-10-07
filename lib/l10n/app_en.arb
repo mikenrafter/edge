@@ -12729,5 +12729,60 @@
         "type": "String"
       }
     }
+  },
+  "hapticSimilarSameBeats": "Feels like {slot} (same {n, plural, one{1 beat} other{{n} beats}})",
+  "@hapticSimilarSameBeats": {
+    "description": "Warning on a haptic slot whose pattern has the same number of beats as another slot that could be mistaken for it; slot is that slot's name, n the beat count",
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      },
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticSimilarCloseLength": "Feels like {slot} (within 0.5 s)",
+  "@hapticSimilarCloseLength": {
+    "description": "Warning on a haptic slot whose pattern is within half a second of another slot's in total length; slot is that slot's name",
+    "placeholders": {
+      "slot": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreNotes": "{n, plural, one{1 note} other{{n} notes}}",
+  "@hapticScoreNotes": {
+    "description": "Spoken note count of a haptic pattern drawn as a music score",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticScoreOneSecond": "1 second",
+  "@hapticScoreOneSecond": {
+    "description": "Spoken total length of a haptic pattern that lasts exactly one second"
+  },
+  "hapticScoreSeconds": "{value} seconds",
+  "@hapticScoreSeconds": {
+    "description": "Spoken total length of a haptic pattern; value is a number such as 1.5 or 2",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreSemantics": "{notes}, {length}",
+  "@hapticScoreSemantics": {
+    "description": "Screen-reader label of a haptic pattern's music score: the note count, then the total length",
+    "placeholders": {
+      "notes": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      }
+    }
   }
 }

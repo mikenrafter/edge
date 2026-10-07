@@ -13,8 +13,8 @@
 // (a tapped rhythm) by its presses and `playTime`, to the millisecond. Pure
 // Dart.
 //
-// STUB (red phase): everything below `kConfusableSets` throws.
-
+import '../gestures/pattern_transcript.dart';
+import '../l10n/app_localizations.dart';
 import '../notify/buzz_sequence.dart';
 
 /// Why two slots were flagged. [sameBeats] wins when both apply.
@@ -61,23 +61,103 @@ const List<List<String>> kConfusableSets = [
   ['breath.inhale', 'breath.exhale', 'breath.hold', 'breath.done'],
 ];
 
+/// Milliseconds per sixteenth for a pattern written as notes.
+const int _unitMs = 125;
+
+// The notes of [s] as entries, or null for a tapped rhythm (or unreadable
+// notes), which is measured by its presses.
+List<PatternEntry>? _entries(BuzzSequence s) {
+  final code = s.notes;
+  if (code == null) return null;
+  try {
+    return PatternTranscript.parseCode(code).entries;
+  } on FormatException {
+    return null;
+  } on ArgumentError {
+    return null;
+  }
+}
+
 /// How many beats [s] has.
-int patternBeats(BuzzSequence s) => throw UnimplementedError('patternBeats');
+int patternBeats(BuzzSequence s) {
+  final es = _entries(s);
+  if (es == null) return s.length;
+  var beats = 0;
+  var inNote = false;
+  for (final e in es) {
+    if (e.note && !inNote) beats++;
+    inNote = e.note;
+  }
+  return beats;
+}
 
 /// How long [s] is felt from first beat to last, exactly.
-Duration patternDuration(BuzzSequence s) =>
-    throw UnimplementedError('patternDuration');
+Duration patternDuration(BuzzSequence s) {
+  final es = _entries(s);
+  if (es == null) return s.playTime;
+  var at = 0;
+  int? first, end;
+  for (final e in es) {
+    if (e.note) {
+      first ??= at;
+      end = at + e.length;
+    }
+    at += e.length;
+  }
+  if (first == null || end == null) return Duration.zero;
+  return Duration(milliseconds: (end - first) * _unitMs);
+}
 
 /// Every flagged pair among [slots] (slot key -> what it plays). A slot that is
 /// not in the map, or not in a set, is never flagged. One warning per pair,
 /// ordered by set, then by the first slot's place in the set, then the
 /// second's.
-List<SimilarityWarning> similarityWarnings(Map<String, BuzzSequence> slots) =>
-    throw UnimplementedError('similarityWarnings');
+List<SimilarityWarning> similarityWarnings(Map<String, BuzzSequence> slots) {
+  final out = <SimilarityWarning>[];
+  for (final set in kConfusableSets) {
+    final present = [
+      for (final k in set)
+        if (slots[k] != null) k,
+    ];
+    for (var i = 0; i < present.length; i++) {
+      for (var j = i + 1; j < present.length; j++) {
+        final a = slots[present[i]]!, b = slots[present[j]]!;
+        final beats = patternBeats(a);
+        if (beats == patternBeats(b)) {
+          out.add(SimilarityWarning(
+            slotA: present[i],
+            slotB: present[j],
+            reason: SimilarityReason.sameBeats,
+            beats: beats,
+          ));
+        } else if ((patternDuration(a) - patternDuration(b)).abs() <=
+            kCloseDuration) {
+          out.add(SimilarityWarning(
+            slotA: present[i],
+            slotB: present[j],
+            reason: SimilarityReason.closeDuration,
+          ));
+        }
+      }
+    }
+  }
+  return out;
+}
 
 /// The line a slot shows for [w]: "Feels like Gesture start (same 2 beats)"
 /// ("same 1 beat"), or "Feels like Gesture start (within 0.5 s)" for
 /// [SimilarityReason.closeDuration]. [other] is the label of the OTHER slot
-/// of the pair.
-String similarityLine(SimilarityWarning w, {required String other}) =>
-    throw UnimplementedError('similarityLine');
+/// of the pair. Translated through [l10n]; English when there is none.
+String similarityLine(
+  SimilarityWarning w, {
+  required String other,
+  AppLocalizations? l10n,
+}) {
+  if (w.reason == SimilarityReason.closeDuration) {
+    return l10n?.hapticSimilarCloseLength(other) ??
+        'Feels like $other (within 0.5 s)';
+  }
+  final n = w.beats ?? 0;
+  return l10n?.hapticSimilarSameBeats(other, n) ??
+      'Feels like $other (same $n ${n == 1 ? 'beat' : 'beats'})';
+}

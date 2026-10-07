@@ -28,7 +28,9 @@ import '../../haptics/band_queue.dart' show BandCommandLedger;
 import '../../haptics/builtin_patterns.dart' show isPresetKey, kPresets;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/haptic_slots.dart';
+import '../../haptics/pattern_similarity.dart';
 import '../../haptics/pattern_store.dart';
+import '../../l10n/app_localizations.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../settings/settings_repository.dart';
 import '../../state/app_state.dart';
@@ -230,6 +232,29 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     // (the ledger and the queue are not notifiers themselves).
     final app = c.watch<AppState>();
     final caps = c.caps;
+    final cueAssignments =
+        decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, ''));
+    // What a slot plays, for the similarity warnings. Only slots in a
+    // confusable set matter (cues, and the alarm slots by key): the pattern
+    // put on it, else its own built-in.
+    BuzzSequence? slotSequence(String key) {
+      SavedHapticPattern? byId(String? id) {
+        for (final p in snap.patterns) {
+          if (p.id == id) return p;
+        }
+        return null;
+      }
+
+      SavedHapticPattern? own() {
+        for (final p in snap.patterns) {
+          if (p.systemKey == key) return p;
+        }
+        return null;
+      }
+
+      return (byId(cueAssignments[key]) ?? own())?.sequence;
+    }
+
     return HapticsSettingsView(
       initialTab: widget.tab,
       patterns: snap.patterns,
@@ -265,9 +290,9 @@ class _HapticsSettingsState extends State<HapticsSettings> {
         patterns: snap.patterns,
         alerts: snap.alerts,
         channels: snap.channels,
-        cueAssignments:
-            decodeCueAssignments(Prefs.getString(Prefs.hapticsCueAssign, '')),
+        cueAssignments: cueAssignments,
       ),
+      slotSequence: slotSequence,
       onOpenSlotScreen: (id) => _openSlotScreen(c, id),
       onAssignToSlot: (key, p) => _assign(key, p),
       onResetSlot: (key) => _assign(key, null),
@@ -346,7 +371,7 @@ class HapticsSettingsView extends StatelessWidget {
   /// The rhythm the slot with this key plays now (null: unknown). The view
   /// runs these through `similarityWarnings` (haptics/pattern_similarity.dart)
   /// and writes "Feels like ..." on each flagged slot. A warning never blocks
-  /// an assignment. STUB (red phase): not read yet.
+  /// an assignment. Null: no warnings.
   final BuzzSequence? Function(String slotKey)? slotSequence;
 
   /// Opens the screen where a section's slots are set; null hides the links.
@@ -533,19 +558,62 @@ class HapticsSettingsView extends StatelessWidget {
   HapticSlotSection _sectionOf(String id) =>
       kHapticSlotSections.firstWhere((s) => s.id == id);
 
-  // One section's slot rows: the pattern each plays, by NAME.
+  // The "Feels like ..." lines of every flagged slot, by slot key. Both slots of
+  // a pair get one, naming the other. Never blocks anything.
+  Map<String, List<String>> _warnings(BuildContext c) {
+    final seq = slotSequence;
+    if (seq == null) return const {};
+    final labels = {
+      for (final sec in kHapticSlotSections)
+        for (final s in sec.slots) s.key: s.label,
+    };
+    final keys = {...labels.keys, for (final set in kConfusableSets) ...set};
+    final playing = <String, BuzzSequence>{
+      for (final k in keys)
+        if (seq(k) != null) k: seq(k)!,
+    };
+    final l = AppLocalizations.of(c);
+    final out = <String, List<String>>{};
+    for (final w in similarityWarnings(playing)) {
+      out.putIfAbsent(w.slotA, () => []).add(
+          similarityLine(w, other: labels[w.slotB] ?? w.slotB, l10n: l));
+      out.putIfAbsent(w.slotB, () => []).add(
+          similarityLine(w, other: labels[w.slotA] ?? w.slotA, l10n: l));
+    }
+    return out;
+  }
+
+  // One section's slot rows: the pattern each plays, by NAME, and under it
+  // what it could be mistaken for.
   List<Widget> _slotRowsOf(BuildContext c, String sectionId) {
     final name = slotPatternName;
+    final p = P.of(c);
+    final warn = _warnings(c);
     return [
       for (final slot in _sectionOf(sectionId).slots)
-        SetRow(
-          LucideIcons.waves,
-          C.purple,
-          slot.label,
-          key: ValueKey('haptic-slot:${slot.key}'),
-          value: name == null ? 'Default' : name(slot.key),
-          chevron: false,
-          onTap: onAssignToSlot == null ? null : () => _pickForSlot(c, slot),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SetRow(
+              LucideIcons.waves,
+              C.purple,
+              slot.label,
+              key: ValueKey('haptic-slot:${slot.key}'),
+              value: name == null ? 'Default' : name(slot.key),
+              chevron: false,
+              onTap: onAssignToSlot == null ? null : () => _pickForSlot(c, slot),
+            ),
+            if (warn[slot.key] != null)
+              Padding(
+                key: ValueKey('haptic-slot-warning:${slot.key}'),
+                padding: const EdgeInsets.only(
+                    left: 32 + S.x3, bottom: S.x3),
+                child: Text(
+                  warn[slot.key]!.join('\n'),
+                  style: F.over.copyWith(color: p.on(C.orange)),
+                ),
+              ),
+          ],
         ),
     ];
   }
@@ -652,6 +720,10 @@ class HapticsSettingsView extends StatelessWidget {
                   Text(
                     patternDetail(s.sequence, profile: profile),
                     style: F.over.copyWith(color: p.ink3),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: S.x1),
+                    child: HapticScore(s.sequence),
                   ),
                 ],
               ),
@@ -839,6 +911,10 @@ class HapticsSettingsView extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: S.x2),
                   child: Text(s.name, style: F.head.copyWith(color: p.ink)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: S.x2),
+                  child: HapticScore(s.sequence),
                 ),
                 SetRow(
                   LucideIcons.play,
