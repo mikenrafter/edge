@@ -177,5 +177,5 @@ class Prefs {
   /// (lib/wake/outcomes/). Off unless somebody turns it on in Developer mode.
   /// It records and displays; it never changes an alarm.
   static const String exploreWakeOutcomes = 'explore.wake_outcomes';
-  static bool get exploreWakeOutcomesOn => throw UnimplementedError();
+  static bool get exploreWakeOutcomesOn => getBool(exploreWakeOutcomes, false);
 }

@@ -69,5 +69,143 @@ WakeOutcome assemble({
   required List<int> movementSecs,
   int? grogginess,
   List<int> otherAlarmSecs = const [],
-}) =>
-    throw UnimplementedError();
+}) {
+  final rows = [
+    for (final row in trace) if (row.wakeEpochSec == wakeSec) row,
+  ]..sort((a, b) => a.atMs.compareTo(b.atMs));
+
+  bool hasResult(WakeTraceEntry row, String kind) =>
+      row.kind == kind &&
+      row.data['phase'] == 'result' &&
+      row.data['result'] == 'sent';
+
+  final naturalFire = <WakeTraceEntry>[
+    for (final row in rows)
+      if (hasResult(row, 'natural_haptic') || hasResult(row, 'natural_repeat'))
+        row,
+  ];
+  final gradualFire = <WakeTraceEntry>[
+    for (final row in rows)
+      if (row.kind == 'gradual' && row.data['result'] == 'sent') row,
+  ];
+  final closed = rows.where((row) => row.kind == 'closed').toList();
+
+  WakeFiredBy firedBy;
+  int? firedAtSec;
+  String? stageAtFire;
+  int? stageAgeSec;
+  var delivered = false;
+
+  if (naturalFire.isNotEmpty) {
+    final fire = naturalFire.first;
+    firedBy = WakeFiredBy.natural;
+    firedAtSec = fire.atMs ~/ 1000;
+    delivered = true;
+
+    WakeTraceEntry? request;
+    WakeTraceEntry? evidence;
+    for (final row in rows) {
+      if (row.atMs > fire.atMs) break;
+      if (row.kind == 'natural_haptic' && row.data['phase'] == 'request') {
+        request = row;
+      }
+      if (row.kind == 'natural' && row.data['evidenceAgeMs'] is num) {
+        evidence = row;
+      }
+    }
+    final rawStage = request?.data['stage'];
+    if (rawStage == 'rem') stageAtFire = 'rem';
+    if (rawStage == 'wake') stageAtFire = 'awake';
+    final ageMs = evidence?.data['evidenceAgeMs'];
+    if (ageMs is num) stageAgeSec = (ageMs / 1000).round();
+  } else if (gradualFire.isNotEmpty) {
+    firedBy = WakeFiredBy.gradual;
+    firedAtSec = gradualFire.first.atMs ~/ 1000;
+    delivered = true;
+  } else if (closed.isNotEmpty) {
+    firedBy = WakeFiredBy.native;
+    firedAtSec = wakeSec;
+    WakeTraceEntry? fallback;
+    for (final row in rows) {
+      if (row.kind == 'fallback') fallback = row;
+    }
+    delivered = fallback?.data['armed'] == true;
+  } else {
+    firedBy = WakeFiredBy.none;
+  }
+
+  int? firstAfter(Iterable<int> seconds, int fire) {
+    int? first;
+    for (final second in seconds) {
+      if (second > fire && (first == null || second < first)) first = second;
+    }
+    return first;
+  }
+
+  final latency = <WakeResponseKind, int?>{
+    for (final kind in WakeResponseKind.values) kind: null,
+  };
+  var alreadyAwake = false;
+  var staleStage = false;
+  var competingAlarm = false;
+  var crossedEpisode = false;
+
+  if (firedAtSec != null) {
+    final fire = firedAtSec;
+    final ackSeconds = <int>[
+      for (final row in rows)
+        if (row.kind == 'ack') row.atMs ~/ 1000,
+      for (final row in rows)
+        if (row.kind == 'natural_repeat' &&
+            row.data['phase'] == 'stop' &&
+            (row.data['reason'] == 'acknowledged' ||
+                row.data['reason'] == 'bandDoubleTap'))
+          row.atMs ~/ 1000,
+    ];
+    final responseSeconds = <WakeResponseKind, int?>{
+      WakeResponseKind.deliberateAck: firstAfter(ackSeconds, fire),
+      WakeResponseKind.appInteraction: firstAfter(appInteractionSecs, fire),
+      WakeResponseKind.movement: firstAfter(movementSecs, fire),
+    };
+    final observed = <int>[];
+    for (final entry in responseSeconds.entries) {
+      final response = entry.value;
+      if (response == null) continue;
+      final elapsed = response - fire;
+      observed.add(elapsed);
+      if (elapsed <= kOutcomeEpisodeSec) latency[entry.key] = elapsed;
+    }
+    if (observed.isNotEmpty && observed.reduce((a, b) => a < b ? a : b) > kOutcomeEpisodeSec) {
+      crossedEpisode = true;
+    }
+    alreadyAwake = appInteractionSecs
+        .any((second) => second >= fire - kOutcomeAlreadyAwakeSec && second <= fire);
+    staleStage = stageAgeSec != null && stageAgeSec > kOutcomeStaleStageSec;
+    competingAlarm = otherAlarmSecs
+        .any((second) => second >= fire - kOutcomeCompetingAlarmSec && second <= fire);
+  }
+
+  final exclusionSet = <WakeExclusion>{
+    if (!delivered) WakeExclusion.noDelivery,
+    if (alreadyAwake) WakeExclusion.alreadyAwake,
+    if (staleStage) WakeExclusion.staleStage,
+    if (competingAlarm) WakeExclusion.competingAlarm,
+    if (crossedEpisode) WakeExclusion.crossedEpisode,
+  };
+  return WakeOutcome(
+    wakeSec: wakeSec,
+    firedBy: firedBy,
+    firedAtSec: firedAtSec,
+    stageAtFire: stageAtFire,
+    stageAgeSec: stageAgeSec,
+    delivered: delivered,
+    latencySec: latency,
+    grogginess: grogginess,
+    minutesBeforeT:
+        firedAtSec == null ? null : (wakeSec - firedAtSec) / 60.0,
+    exclusions: [
+      for (final exclusion in WakeExclusion.values)
+        if (exclusionSet.contains(exclusion)) exclusion,
+    ],
+  );
+}

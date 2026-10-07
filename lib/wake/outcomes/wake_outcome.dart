@@ -96,12 +96,98 @@ class WakeOutcome {
   final List<WakeExclusion> exclusions;
 
   /// Delivered and nothing excludes it.
-  bool get usable => throw UnimplementedError();
+  bool get usable => delivered && exclusions.isEmpty;
 
-  Map<String, Object?> toJson() => throw UnimplementedError();
+  Map<String, Object?> toJson() => {
+        'wakeSec': wakeSec,
+        'firedBy': firedBy.name,
+        'firedAtSec': firedAtSec,
+        'stageAtFire': stageAtFire,
+        'stageAgeSec': stageAgeSec,
+        'delivered': delivered,
+        'latencySec': {
+          for (final kind in WakeResponseKind.values) kind.name: latencySec[kind],
+        },
+        'grogginess': grogginess,
+        'minutesBeforeT': minutesBeforeT,
+        'exclusions': [for (final exclusion in exclusions) exclusion.name],
+      };
 
   /// Throws FormatException/TypeError on a malformed map; callers that read
   /// storage catch it (see WakeOutcomeStore).
-  factory WakeOutcome.fromJson(Map<String, Object?> json) =>
-      throw UnimplementedError();
+  factory WakeOutcome.fromJson(Map<String, Object?> json) {
+    T requiredValue<T>(String key) {
+      final value = json[key];
+      if (value is! T) throw FormatException('Invalid wake outcome $key');
+      return value;
+    }
+
+    int? nullableInt(String key) {
+      final value = json[key];
+      if (value == null) return null;
+      if (value is! int) throw FormatException('Invalid wake outcome $key');
+      return value;
+    }
+
+    String? nullableString(String key) {
+      final value = json[key];
+      if (value == null) return null;
+      if (value is! String) throw FormatException('Invalid wake outcome $key');
+      return value;
+    }
+
+    double? nullableDouble(String key) {
+      final value = json[key];
+      if (value == null) return null;
+      if (value is! num) throw FormatException('Invalid wake outcome $key');
+      return value.toDouble();
+    }
+
+    final firedByName = requiredValue<String>('firedBy');
+    final firedBy = WakeFiredBy.values.where((v) => v.name == firedByName);
+    if (firedBy.isEmpty) throw FormatException('Invalid wake outcome firedBy');
+
+    final rawLatency = requiredValue<Object?>('latencySec');
+    if (rawLatency is! Map) throw FormatException('Invalid wake outcome latencySec');
+    final latency = <WakeResponseKind, int?>{};
+    for (final kind in WakeResponseKind.values) {
+      if (!rawLatency.containsKey(kind.name)) {
+        throw FormatException('Missing wake outcome latency ${kind.name}');
+      }
+      final value = rawLatency[kind.name];
+      if (value != null && value is! int) {
+        throw FormatException('Invalid wake outcome latency ${kind.name}');
+      }
+      latency[kind] = value as int?;
+    }
+
+    final rawExclusions = requiredValue<Object?>('exclusions');
+    if (rawExclusions is! List) {
+      throw FormatException('Invalid wake outcome exclusions');
+    }
+    final exclusions = <WakeExclusion>[];
+    for (final value in rawExclusions) {
+      if (value is! String) {
+        throw FormatException('Invalid wake outcome exclusion');
+      }
+      final matching = WakeExclusion.values.where((v) => v.name == value);
+      if (matching.isEmpty) {
+        throw FormatException('Invalid wake outcome exclusion');
+      }
+      exclusions.add(matching.first);
+    }
+
+    return WakeOutcome(
+      wakeSec: requiredValue<int>('wakeSec'),
+      firedBy: firedBy.first,
+      firedAtSec: nullableInt('firedAtSec'),
+      stageAtFire: nullableString('stageAtFire'),
+      stageAgeSec: nullableInt('stageAgeSec'),
+      delivered: requiredValue<bool>('delivered'),
+      latencySec: latency,
+      grogginess: nullableInt('grogginess'),
+      minutesBeforeT: nullableDouble('minutesBeforeT'),
+      exclusions: exclusions,
+    );
+  }
 }

@@ -72,6 +72,23 @@ void main() {
       expect(o.delivered, isFalse);
     });
 
+    test('a sent Natural repeat delivers after the first haptic failed', () {
+      final repeatFire = fire + 30;
+      final o = run(trace: [
+        naturalNotDelivered(kT, fire),
+        row(kT, repeatFire, 'natural_repeat', {
+          'phase': 'result',
+          'index': 1,
+          'result': 'sent',
+          'suppression': null,
+          'error': null,
+        }),
+      ]);
+      expect(o.firedBy, WakeFiredBy.natural);
+      expect(o.firedAtSec, repeatFire);
+      expect(o.delivered, isTrue);
+    });
+
     test('rows of another wake are ignored; unsorted input is fine', () {
       final other = kT + 86400;
       final o = run(

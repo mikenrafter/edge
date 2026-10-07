@@ -52,5 +52,74 @@ class ShadowPolicyResult {
 ShadowPolicyResult evaluate(
   List<WakeOutcome> outcomes, {
   required int currentWindowMinutes,
-}) =>
-    throw UnimplementedError();
+}) {
+  String? policyKey(WakeOutcome outcome) {
+    final minutes = outcome.minutesBeforeT;
+    if (minutes == null) return null;
+    final rounded = minutes.round();
+    final window = rounded < 15
+        ? 15
+        : rounded < 30
+            ? 30
+            : rounded < 60
+                ? 60
+                : 120;
+    return '${outcome.stageAtFire ?? 'none'}:$window';
+  }
+
+  final usableByPolicy = <String, int>{};
+  final ratedByPolicy = <String, List<int>>{};
+  var totalRated = 0;
+  for (final outcome in outcomes) {
+    if (!outcome.usable) continue;
+    final key = policyKey(outcome);
+    if (key == null) continue;
+    usableByPolicy[key] = (usableByPolicy[key] ?? 0) + 1;
+    final rating = outcome.grogginess;
+    if (rating == null) continue;
+    totalRated++;
+    (ratedByPolicy[key] ??= []).add(rating);
+  }
+
+  final candidates = <String, List<int>>{};
+  for (final entry in ratedByPolicy.entries) {
+    final window = int.parse(entry.key.split(':').last);
+    if (window <= currentWindowMinutes && entry.value.length >= kPolicyMinPerKey) {
+      candidates[entry.key] = entry.value;
+    }
+  }
+  if (totalRated < kPolicyMinTotal || candidates.length < 2) {
+    return ShadowPolicyResult(
+      reason: 'insufficient',
+      usableByPolicy: usableByPolicy,
+    );
+  }
+
+  double median(List<int> values) {
+    final sorted = [...values]..sort();
+    final middle = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[middle].toDouble()
+        : (sorted[middle - 1] + sorted[middle]) / 2.0;
+  }
+
+  final medians = <String, double>{
+    for (final entry in candidates.entries) entry.key: median(entry.value),
+  };
+  final lowest = medians.values.reduce((a, b) => a < b ? a : b);
+  final best = [
+    for (final entry in medians.entries) if (entry.value == lowest) entry.key,
+  ];
+  if (best.length != 1) {
+    return ShadowPolicyResult(
+      wouldChoose: 'window:$currentWindowMinutes',
+      reason: 'tie',
+      usableByPolicy: usableByPolicy,
+    );
+  }
+  return ShadowPolicyResult(
+    wouldChoose: 'window:${best.single.split(':').last}',
+    reason: 'lowerGrogginess',
+    usableByPolicy: usableByPolicy,
+  );
+}
