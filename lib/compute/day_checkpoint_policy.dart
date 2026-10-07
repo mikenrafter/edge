@@ -22,8 +22,30 @@ const int kRevBucketSec = 900;
 
 /// Layout version of [DayCheckpoint.revVec] and the state blob. 2: the state no
 /// longer depends on the sleep window (per-second wake detail instead of wake
-/// sums), and carries the motion buckets and the minute bills.
-const int kDayCheckpointFmt = 2;
+/// sums), and carries the motion buckets and the minute bills. 3: also carries
+/// the day's streaming RR state (corrector and irregular-rhythm screen) and the
+/// three day curves, folded from its beats.
+const int kDayCheckpointFmt = 3;
+
+/// The checkpoint folds the day's BEATS up to `cpRecTs - kRrFoldGuardSec`, not up
+/// to `cpRecTs`: a record's earlier beats sit before its own second (they are
+/// placed backwards from the record's sub-second anchor), so cutting the beats at
+/// the 1 Hz boundary itself would put beats of a still-open bucket in a state the
+/// revision check does not cover. Every folded beat then comes from a closed
+/// bucket. Cut by beat TIME rather than by row because the day's beat axis is
+/// non-decreasing in time (`monotonizeBeatAxis`), so the folded beats are a
+/// prefix of the day's list and the rest is its tail.
+const int kRrFoldGuardSec = 30;
+
+/// A resumed pass reads `decoded_rr` rows from `cpRecTs - kRrReadSlackSec`:
+/// every beat of the tail has a row at or after `cpRecTs - kRrFoldGuardSec - 1`
+/// (a beat is never later than its record's second plus one), and the rest of
+/// the slack is for the beats of those rows that the state already holds.
+const int kRrReadSlackSec = 60;
+
+/// Epoch ms of the edge between the beats a checkpoint at [cpRecTs] folded and
+/// the tail.
+double rrFoldEdgeMs(int cpRecTs) => (cpRecTs - kRrFoldGuardSec) * 1000.0;
 
 /// `(bucket, rev)` pairs, big-endian int32 each, in bucket order.
 Uint8List encodeRevVec(Map<int, int> revs) {

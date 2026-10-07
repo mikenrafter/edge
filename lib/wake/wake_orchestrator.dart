@@ -387,6 +387,7 @@ class WakeOrchestrator {
     DateTime Function()? now,
     this.opTimeout = const Duration(seconds: 30),
     this.onTraceChanged,
+    this.onNaturalFired,
   })  : observer = observer ?? const IsolateNaturalStageObserver(),
         _now = now ?? DateTime.now;
 
@@ -401,6 +402,14 @@ class WakeOrchestrator {
   /// never per row, so a screen showing the trace can reload without a rebuild
   /// storm. Never throws into the orchestrator.
   final void Function()? onTraceChanged;
+
+  /// Called once when a Natural early haptic was DELIVERED to the band
+  /// (`WakeHapticResult.delivered` is not empty), with the tick's own time
+  /// (foreground tick and headless gate alike); the wake-confirmation wiring
+  /// hangs off it. A buzz that failed or that the environment held back (no
+  /// alert transport, quiet hours, a stale event) woke nobody and is no
+  /// evidence. Never throws into the orchestrator.
+  final FutureOr<void> Function(DateTime at)? onNaturalFired;
   bool _traceDirty = false;
 
   void _signalTrace() {
@@ -783,7 +792,7 @@ class WakeOrchestrator {
       'runSec': obs?.runSec,
       if (decision.viaUserActivity) 'basis': 'userActive',
     });
-    final attempted = await _haptic(
+    final sent = await _haptic(
       sec,
       'natural_haptic',
       WakeHapticRequest(
@@ -793,9 +802,25 @@ class WakeOrchestrator {
         sourceTime: now,
       ),
     );
-    return attempted
-        ? (NaturalReason.fire, true)
-        : (NaturalReason.acknowledged, false);
+    if (sent == null) return (NaturalReason.acknowledged, false);
+    // Only a buzz that reached the band is evidence that the wearer was woken.
+    // One that failed (threw, timed out, no link) or that the environment held
+    // back (`suppressionReason`: a band with no alert transport, a muted rule)
+    // is still the early wake having fired, and is not re-sent, but it proves
+    // nothing about the wearer. A failing hook never undoes the fire (it is
+    // saved).
+    if (sent.delivered.isNotEmpty) await _notifyNaturalFired(sec, now);
+    return (NaturalReason.fire, true);
+  }
+
+  Future<void> _notifyNaturalFired(int sec, DateTime at) async {
+    final hook = onNaturalFired;
+    if (hook == null) return;
+    try {
+      await Future<void>.sync(() => hook(at)).timeout(opTimeout);
+    } catch (e) {
+      await _trace(sec, 'error', {'where': 'naturalFiredHook', 'error': '$e'});
+    }
   }
 
   /// Whether a recent foreground touch and band motion line up. Reads only the
@@ -883,18 +908,19 @@ class WakeOrchestrator {
         gradualPattern: plan.gradualPattern,
       ),
     );
-    if (!attempted) return null;
+    if (attempted == null) return null;
     run.gradualFired++;
     return latest.index;
   }
 
-  /// Sends one haptic. False (nothing sent) when the user acknowledged this
-  /// wake: the check and the send are one synchronous step, so no awaited
-  /// acknowledgement can slip between them.
-  Future<bool> _haptic(int sec, String kind, WakeHapticRequest req) async {
+  /// Sends one haptic and returns what the band reported. Null (nothing sent)
+  /// when the user acknowledged this wake: the check and the send are one
+  /// synchronous step, so no awaited acknowledgement can slip between them.
+  Future<WakeHapticResult?> _haptic(
+      int sec, String kind, WakeHapticRequest req) async {
     if (_ackedWakes.contains(sec)) {
       await _trace(sec, 'skip', {'reason': 'acknowledged', 'eventId': req.eventId});
-      return false;
+      return null;
     }
     WakeHapticResult res;
     try {
@@ -911,7 +937,7 @@ class WakeOrchestrator {
       'suppression': res.suppressionReason,
       'error': res.error,
     });
-    return true;
+    return res;
   }
 
   // ── persistence helpers (a store failure never breaks a wake) ─────────────

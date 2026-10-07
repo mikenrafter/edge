@@ -396,7 +396,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 62;
+  static const int schemaVersion = 63;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1197,6 +1197,15 @@ class LocalDb {
           // as before. _repairOpenSchema re-runs it on every open.
           await _createWakeConfirmation(db);
         }
+        if (oldV < 63) {
+          // The evidence behind that confirmation (app opened, band movement,
+          // alarm events), kept so it survives a restart: an alarm that fired
+          // while the app was dead still counts when it is opened. One small
+          // additive table, no backfill, cheap under iOS's CPU watchdog
+          // (invariant 11). No kAlgoVersion bump: nothing derived moves.
+          // _repairOpenSchema re-runs it on every open.
+          await _createWakeEvidence(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1295,6 +1304,7 @@ class LocalDb {
     await _addColumnIfMissing(db, 'last_result', 'input_sig', 'TEXT');
     await _createDayCheckpoint(db);
     await _createWakeConfirmation(db);
+    await _createWakeEvidence(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -2765,6 +2775,59 @@ class LocalDb {
         'day_id TEXT PRIMARY KEY, at_sec INTEGER NOT NULL, '
         'basis TEXT NOT NULL, created_at INTEGER NOT NULL)',
       );
+
+  /// `wake_evidence`: one noted wake event of the sleep block that began at
+  /// `onset_sec`. Keyed by the block (its onset) so the next block starts
+  /// empty; `at_sec` is the event's own instant, which is what day deletion
+  /// ranges over. Scratch for the confirmation above; no row = nothing noted.
+  static Future<void> _createWakeEvidence(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS wake_evidence ('
+        'onset_sec INTEGER NOT NULL, kind TEXT NOT NULL, '
+        'at_sec INTEGER NOT NULL, created_at INTEGER NOT NULL, '
+        'PRIMARY KEY (onset_sec, kind, at_sec))',
+      );
+
+  /// How long a block's evidence is kept after the block began (days).
+  static const int _wakeEvidenceKeepDays = 7;
+
+  /// Notes one event ([kind] is the `WakeEvidenceKind` name) at [atSec] for the
+  /// block that began at [onsetSec]. Idempotent (the same event twice is one
+  /// row); rows of blocks long past are dropped in the same transaction.
+  static Future<void> putWakeEvidence({
+    required int onsetSec,
+    required String kind,
+    required int atSec,
+  }) async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      await txn.insert(
+        'wake_evidence',
+        {
+          'onset_sec': onsetSec,
+          'kind': kind,
+          'at_sec': atSec,
+          'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+      await txn.delete('wake_evidence',
+          where: 'onset_sec < ?',
+          whereArgs: [onsetSec - _wakeEvidenceKeepDays * 86400]);
+    });
+  }
+
+  /// Every event noted for the block that began at [onsetSec], oldest first:
+  /// `{kind, at_sec}`.
+  static Future<List<Map<String, Object?>>> wakeEvidence(int onsetSec) async {
+    final db = await instance;
+    return db.query(
+      'wake_evidence',
+      columns: ['kind', 'at_sec'],
+      where: 'onset_sec = ?',
+      whereArgs: [onsetSec],
+      orderBy: 'at_sec ASC, rowid ASC',
+    );
+  }
 
   /// Records that the sleep block ending on [dayId] was confirmed awake at
   /// [atSec] (epoch seconds; double wake confirmation, see
@@ -8232,6 +8295,41 @@ class LocalDb {
     );
   }
 
+  /// The seconds in `[fromRecTs, toRecTs]` that have beats, as `(rec_ts,
+  /// device_id)` pairs, with none of the beats: what a reader that already holds
+  /// those beats elsewhere needs to keep the substrate's 1 Hz slots (a beat can
+  /// exist for a second with no `decoded_onehz` row, and that second still gets
+  /// a slot) without reading the beats again.
+  ///
+  /// [onlyBeatOnly] leaves out the seconds the same device also has a 1 Hz row
+  /// for: those get their slot from the row. Exact when one device's rows are
+  /// the day's (a second another device's row fills gets a slot either way, and
+  /// a stub for a second that already has one is harmless); with several owners
+  /// ask for every second.
+  static Future<List<Map<String, dynamic>>> decodedRrSecondsByRecTsRange({
+    required int fromRecTs,
+    required int toRecTs,
+    bool onlyBeatOnly = false,
+  }) async {
+    final db = await instance;
+    final lo = fromRecTs <= toRecTs ? fromRecTs : toRecTs;
+    final hi = fromRecTs <= toRecTs ? toRecTs : fromRecTs;
+    final noRow = onlyBeatOnly
+        ? 'AND NOT EXISTS (SELECT 1 FROM decoded_onehz o '
+            'WHERE o.rec_ts = decoded_rr.rec_ts '
+            'AND o.device_id = decoded_rr.device_id '
+            'AND ${derivableSourceSql('o.source')}) '
+        : '';
+    return db.rawQuery(
+      'SELECT DISTINCT rec_ts, device_id '
+      'FROM decoded_rr '
+      'WHERE rec_ts >= ? AND rec_ts <= ? AND ${derivableSourceSql()} '
+      '$noRow'
+      'ORDER BY rec_ts ASC',
+      [lo, hi],
+    );
+  }
+
   // ── M5: the resolver's two reads (device_coverage / signal_priority) ───────
 
   /// Devices that declare [signal], highest priority first. ALSO the
@@ -9273,6 +9371,11 @@ class LocalDb {
         deleted += await txn.delete(
           'band_battery',
           where: 'ts >= ? AND ts < ?',
+          whereArgs: [startSec, endSec],
+        );
+        deleted += await txn.delete(
+          'wake_evidence',
+          where: 'at_sec >= ? AND at_sec < ?',
           whereArgs: [startSec, endSec],
         );
         // CASCADE the GPS route and the typed sets BEFORE their session row

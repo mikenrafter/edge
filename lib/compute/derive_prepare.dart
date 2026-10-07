@@ -5,7 +5,27 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import '../ble/adapters/signals.dart';
 import '../data/coverage_resolver.dart';
+import '../data/day_checkpoint.dart';
+import 'day_resume_state.dart';
 import 'substrate.dart';
+
+/// A day whose substrate was loaded WITHOUT the beats the stored checkpoint
+/// already folded: [cp] resumes it, [state] is [cp]'s blob decoded, and `decoded_rr`
+/// rows with `rec_ts` below [skipBelowRecTs] were not read (only the seconds
+/// they sit in, so the 1 Hz slots still match a full load). `daySub`'s beats are
+/// therefore the tail only. When the checkpoint turns out not to be usable the
+/// engine loads the missing beats back (`_withFullRr`) before anything reads them.
+class DayRrResume {
+  const DayRrResume({
+    required this.cp,
+    required this.state,
+    required this.skipBelowRecTs,
+  });
+
+  final DayCheckpoint cp;
+  final DayResumeState state;
+  final int skipBelowRecTs;
+}
 
 class PreparedDerivationDay {
   final String date;
@@ -61,6 +81,10 @@ class PreparedDerivationDay {
   /// validated against and written with. Null on the import path.
   final Map<int, int>? inputRevs;
 
+  /// Non-null when [daySub] / [napSub] carry only the beats after the
+  /// checkpoint (see [DayRrResume]). Null: every beat of the day is present.
+  final DayRrResume? rrResume;
+
   const PreparedDerivationDay({
     required this.date,
     required this.endSec,
@@ -78,7 +102,32 @@ class PreparedDerivationDay {
     this.priority = const {},
     this.inputFp,
     this.inputRevs,
+    this.rrResume,
   }) : napSub = napSub ?? daySub;
+
+  /// This day with its substrates replaced by [daySub] / [napSub] (every beat
+  /// present: [rrResume] is dropped).
+  PreparedDerivationDay withFullRr({
+    required Substrate daySub,
+    required Substrate napSub,
+  }) => PreparedDerivationDay(
+    date: date,
+    endSec: endSec,
+    confidence: confidence,
+    flags: flags,
+    sleepJson: sleepJson,
+    hypnoStages: hypnoStages,
+    sleepOnsetSec: sleepOnsetSec,
+    sleepOffsetSec: sleepOffsetSec,
+    daySub: daySub,
+    sleepSub: sleepSub,
+    napSub: napSub,
+    sleepSource: sleepSource,
+    ownership: ownership,
+    priority: priority,
+    inputFp: inputFp,
+    inputRevs: inputRevs,
+  );
 
   Map<String, dynamic> toJson() => {
     'date': date,
@@ -246,6 +295,7 @@ class SleepSessionCandidate {
     Map<InputSignal, List<String>> priority = const {},
     String? inputFp,
     Map<int, int>? inputRevs,
+    DayRrResume? rrResume,
   }) => PreparedDerivationDay(
     date: dayId,
     // `endSec` is what the engine anchors FINALIZATION on
@@ -272,6 +322,7 @@ class SleepSessionCandidate {
     priority: priority,
     inputFp: inputFp,
     inputRevs: inputRevs,
+    rrResume: rrResume,
   );
 }
 

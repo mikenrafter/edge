@@ -148,6 +148,13 @@ class DayBundleInput {
   final List<double> dayRrTsMs;
   final List<double> dayRrMs;
 
+  /// The day's 24/7 irregular-rhythm screen already computed, as the persisted
+  /// metric envelope (`Metric.toJson`): what the streaming RR state of a resumed
+  /// pass produces, so the whole day's beats are not needed here. When set it is
+  /// published as it is, and [dayRrMs] / [dayRrTsMs] are not read for the screen.
+  /// Null: the screen is computed from the day's beats, as before.
+  final Map<String, dynamic>? dayIrregular;
+
   // ── SLEEP window 1 Hz substrate (the window from segmentSleep) ────────────
   final List<int> sleepTsSec;
   final List<int> sleepHr;
@@ -221,6 +228,7 @@ class DayBundleInput {
     required this.dayHr,
     this.dayRrTsMs = const [],
     this.dayRrMs = const [],
+    this.dayIrregular,
     required this.sleepTsSec,
     required this.sleepHr,
     required this.sleepRrTsMs,
@@ -251,6 +259,7 @@ class DayBundleInput {
     'day_hr': dayHr,
     'day_rr_ts_ms': dayRrTsMs,
     'day_rr_ms': dayRrMs,
+    if (dayIrregular != null) 'day_irregular': dayIrregular,
     'sleep_ts': sleepTsSec,
     'sleep_hr': sleepHr,
     'sleep_rr_ts_ms': sleepRrTsMs,
@@ -298,6 +307,7 @@ class DayBundleInput {
       dayHr: ints('day_hr'),
       dayRrTsMs: dbls('day_rr_ts_ms'),
       dayRrMs: dbls('day_rr_ms'),
+      dayIrregular: (m['day_irregular'] as Map?)?.cast<String, dynamic>(),
       sleepTsSec: ints('sleep_ts'),
       sleepHr: ints('sleep_hr'),
       sleepRrTsMs: dbls('sleep_rr_ts_ms'),
@@ -546,25 +556,43 @@ Map<String, dynamic> deriveDayBundle(
   // Runs over the WHOLE-DAY cleaned RR (not just sleep) so an arrhythmia screen
   // isn't limited to the sleep window. Hard-gated on beat count + artifact inside
   // irregularBeatScreen; returns absent on a thin/noisy day.
-  final dayCorrected = memo(
-    'day_rr',
-    [d.dayRrMs, d.dayRrTsMs],
-    () =>
-        correctRr(d.dayRrMs, rrTsMs: d.dayRrTsMs.isEmpty ? null : d.dayRrTsMs),
-  );
-  final irregular24h = memo(
-    'irregular_day',
-    [d.dayRrMs, d.dayRrTsMs],
-    () => irregularBeatScreen(
-      dayCorrected.nn,
-      // Require sustained irregularity in independent short windows, not just
-      // in one ratio blended across sleep+rest+exercise+posture changes — see
-      // irregularBeatScreen's doc. Without this, real data showed the screen
-      // firing on effectively every day regardless of actual cardiac health.
-      nnTimesMs: dayCorrected.nnTimesMs,
-      artifactFraction: (1.0 - dayCorrected.cleanFraction).clamp(0.0, 1.0),
-    ),
-  );
+  // A resumed pass hands the screen in (`day_irregular`, from the streaming RR
+  // state): the whole day's beats are then not read here at all.
+  final handedIrregular = d.dayIrregular;
+  final dayCorrected = handedIrregular != null
+      ? null
+      : memo(
+          'day_rr',
+          [d.dayRrMs, d.dayRrTsMs],
+          () => correctRr(
+            d.dayRrMs,
+            rrTsMs: d.dayRrTsMs.isEmpty ? null : d.dayRrTsMs,
+          ),
+        );
+  final irregular24h = dayCorrected == null
+      ? null
+      : memo(
+          'irregular_day',
+          [d.dayRrMs, d.dayRrTsMs],
+          () => irregularBeatScreen(
+            dayCorrected.nn,
+            // Require sustained irregularity in independent short windows, not
+            // just in one ratio blended across sleep+rest+exercise+posture
+            // changes — see irregularBeatScreen's doc. Without this, real data
+            // showed the screen firing on effectively every day regardless of
+            // actual cardiac health.
+            nnTimesMs: dayCorrected.nnTimesMs,
+            artifactFraction:
+                (1.0 - dayCorrected.cleanFraction).clamp(0.0, 1.0),
+          ),
+        );
+  final Map<String, dynamic> irregular24hJson = handedIrregular ??
+      irregular24h!.toJson((v) => v.toJson());
+  final irregular24hFlag = handedIrregular != null
+      ? (handedIrregular['value'] is Map
+          ? ((handedIrregular['value'] as Map)['flag'] == true ? 1.0 : 0.0)
+          : null)
+      : (irregular24h!.present ? (irregular24h.value!.flag ? 1.0 : 0.0) : null);
 
   // ── BREATHING-RATE VARIABILITY (per-window RSA over the sleep NN) ──────────
   // Window the cleaned sleep NN into ~30-min bins, take each bin's RSA resp rate,
@@ -1061,7 +1089,7 @@ Map<String, dynamic> deriveDayBundle(
     },
     // 24/7 irregular-rhythm SCREEN over the whole-day RR (the headline screen
     // that drives the opt-in notification). Sleep-only `irregular` kept above.
-    'irregular_24h': irregular24h.toJson((v) => v.toJson()),
+    'irregular_24h': irregular24hJson,
     // Breathing-rate variability trend (within-user only).
     'brv': brv.toJson((v) => v.toJson()),
     // Canonical nightly HRV, matching the sleep-session windowed RMSSD
@@ -1586,9 +1614,7 @@ Map<String, dynamic> deriveDayBundle(
       'lf_hf': lfhf == null ? null : _round(lfhf, 3),
       'hrv_cv': hrvCv == null ? null : _round(hrvCv, 1),
       // 24/7 irregular-rhythm screen flag (1/0) → drives trend + notification.
-      'irregular_rhythm_flag': irregular24h.present
-          ? (irregular24h.value!.flag ? 1.0 : 0.0)
-          : null,
+      'irregular_rhythm_flag': irregular24hFlag,
       // Breathing-rate variability (CV) + Theil-Sen trend slope.
       'brv_cv': brv.present ? _round(brv.value!.cv, 4) : null,
       'brv_slope': brv.present && brv.value!.trendSlope != null

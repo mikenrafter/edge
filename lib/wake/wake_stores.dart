@@ -5,7 +5,9 @@
 
 import 'dart:convert';
 
+import '../data/day_label.dart';
 import '../data/db.dart';
+import 'wake_confirmation.dart';
 import 'wake_orchestrator.dart';
 import 'wake_settings.dart';
 
@@ -121,4 +123,115 @@ Future<WakeSamples> loadWakeSamples(DateTime from, DateTime to) async {
         [(b['rr_ts_ms'] as num).toDouble(), (b['rr_ms'] as num).toDouble()],
     ],
   );
+}
+
+/// A block that ended longer ago than this is over: confirming it now would put
+/// a wake in an unrelated day. A block still open (no offset yet) counts while
+/// it began within [kOpenWakeBlockMaxAge]: elapsed time, not a calendar day
+/// (no sleep still running after 18 h is the one in progress).
+const Duration kWakeBlockLookback = Duration(hours: 12);
+const Duration kOpenWakeBlockMaxAge = Duration(hours: 18);
+
+/// The SQLite-backed [WakeConfirmationStore]. The block is the newest stored
+/// sleep window (`day_result.window_json`, onset/offset) that is recent enough;
+/// evidence persists in `wake_evidence` keyed by the block's onset (an alarm
+/// that fired while the app was dead still counts after a relaunch);
+/// [confirmWake] writes `LocalDb.putWakeConfirmation` under that block's day.
+class DbWakeConfirmationStore implements WakeConfirmationStore {
+  DbWakeConfirmationStore({DateTime Function()? now})
+      : _now = now ?? DateTime.now;
+
+  final DateTime Function() _now;
+
+  Future<({String dayId, int onsetSec, int? offsetSec})?> _block() async {
+    final nowSec = _now().millisecondsSinceEpoch ~/ 1000;
+    for (final r in await LocalDb.sleepWindowRows(4)) {
+      final w = _window(r['window_json'] as String?);
+      final onMs = (w?['onset_ms'] as num?)?.toInt();
+      if (onMs == null) continue; // no sleep that day: look at the one before
+      final offMs = (w?['offset_ms'] as num?)?.toInt();
+      final onset = onMs ~/ 1000;
+      final offset = offMs == null ? null : offMs ~/ 1000;
+      final age = nowSec - (offset ?? onset);
+      final max = (offset == null ? kOpenWakeBlockMaxAge : kWakeBlockLookback)
+          .inSeconds;
+      // Newest night wins: if it is stale every older one is staler.
+      if (age > max) return null;
+      return (dayId: r['day_id'] as String, onsetSec: onset, offsetSec: offset);
+    }
+    return null;
+  }
+
+  /// Both shapes `window_json` has: the Metric envelope (`{value: {...}}`; the
+  /// value is the string '—' on a night with no sleep) and the bare window.
+  static Map<String, Object?>? _window(String? raw) {
+    try {
+      final j = jsonDecode(raw ?? '{}');
+      if (j is! Map) return null;
+      final v = j['value'];
+      if (v is Map) return v.cast<String, Object?>();
+      return j['onset_ms'] != null || j['offset_ms'] != null
+          ? j.cast<String, Object?>()
+          : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The day label the block in progress or just ended belongs to (the key its
+  /// confirmation is stored under), or null when no block is known.
+  Future<String?> blockDayId() async => (await _block())?.dayId;
+
+  @override
+  Future<int?> sleepOnsetSec() async => (await _block())?.onsetSec;
+
+  @override
+  Future<int?> confirmedWakeSec() async {
+    final b = await _block();
+    if (b == null) return null;
+    final at = (await LocalDb.wakeConfirmation(b.dayId))?.atSec;
+    // The row is per day: one from an earlier block that day is not this one's.
+    return at != null && at >= b.onsetSec ? at : null;
+  }
+
+  @override
+  Future<List<WakeEvidenceEvent>> evidence() async {
+    final b = await _block();
+    if (b == null) return const [];
+    return [
+      for (final r in await LocalDb.wakeEvidence(b.onsetSec))
+        (
+          kind: WakeEvidenceKind.values.byName(r['kind'] as String),
+          sec: (r['at_sec'] as num).toInt(),
+        ),
+    ];
+  }
+
+  @override
+  Future<void> addEvidence(WakeEvidenceKind kind, int sec) async {
+    final b = await _block();
+    if (b == null) return;
+    await LocalDb.putWakeEvidence(
+        onsetSec: b.onsetSec, kind: kind.name, atSec: sec);
+  }
+
+  @override
+  Future<void> confirmWake(int sec, {required WakeEvidenceKind basis}) async {
+    final b = await _block();
+    await LocalDb.putWakeConfirmation(
+      dayId: b?.dayId ??
+          dayLabelOf(DateTime.fromMillisecondsSinceEpoch(sec * 1000)),
+      atSec: sec,
+      basis: _basisWire(basis),
+    );
+  }
+
+  static String _basisWire(WakeEvidenceKind k) => switch (k) {
+        WakeEvidenceKind.bandMovement => 'movement',
+        WakeEvidenceKind.alarmFired => 'alarm_fired',
+        WakeEvidenceKind.alarmAcknowledged => 'alarm_acknowledged',
+        WakeEvidenceKind.naturalWake => 'natural_wake',
+        // An open is never the evidence that completes it (it only pairs).
+        WakeEvidenceKind.appOpened => 'app_opened',
+      };
 }

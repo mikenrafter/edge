@@ -62,7 +62,9 @@ import 'onehz_pipeline.dart';
 import 'day_calculation_state.dart';
 import 'day_checkpoint_fold.dart';
 import 'day_checkpoint_policy.dart';
+import 'day_curve_states.dart';
 import 'day_resume_state.dart';
+import 'day_rr_state.dart';
 import 'minute_bills.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
@@ -1779,7 +1781,17 @@ import 'substrate.dart';
 // `IncrementalMinuteMetrics`, `IncrementalEnmoSeries`, `CalculationCache`) and
 // `IntHistogram`; those are bit-for-bit (or 1e-9) equal to their batch
 // readers and change no output.
-const int kAlgoVersion = 101;
+// v102: streamed day RR. A resumed day pass folds only the new beats into
+// the checkpoint's RrCorrector + IrregularScreenState and the three day
+// curves (dayHrvCurve, dayRespCurve, daytime HRV) instead of re-running
+// correctRr / irregularBeatScreen over the whole day. The curves are
+// bit-identical by construction; the streamed irregular screen keeps running
+// sums where the batch screen makes two passes, so its raw SD1/SD2 differ by
+// up to ~1.6e-11 (0 persisted-text mismatches in 120 randomly chunked days),
+// and a value within ~1e-11 of a 6-decimal rounding boundary (or a flag on
+// its 0.70 / 30 % threshold) could flip. Bumped so no per-version row can mix
+// the two (owner decision; to be folded into upstream's numbering later).
+const int kAlgoVersion = 102;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -1971,7 +1983,10 @@ const int kAlgoVersion = 101;
 // 7334289: the incremental calculation states, `hrDipFromDayTotals`,
 // `IntHistogram`, and the `lombScargle` first-sample time shift. The shift is
 // the one OUTPUT CHANGE (see v101 above), so kAlgoVersion bumped 100 -> 101.
-const String kAnalyticsPin = '65c8901c8fb09cd076290ea37676d55ef6c47429';
+// REPIN @ aa67997 (perf/incremental-rr, on 65c8901): correctRr on sliding
+// sorted windows (oracle-tested bit-identical, ~37x faster) and the streaming
+// RrCorrector / IrregularScreenState the day checkpoint now carries (v102).
+const String kAnalyticsPin = 'aa67997c430e5656089a70d444d36cc18d6601d0';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
@@ -2906,10 +2921,11 @@ class DerivationEngine {
   }
 
   /// [_prepareTargetDay] with its wall time reported to [perf].
-  Future<PreparedDerivationDay?> _prepareTargetDayTimed(String dayId) async {
+  Future<PreparedDerivationDay?> _prepareTargetDayTimed(String dayId,
+      {bool reuse = false}) async {
     final sw = Stopwatch()..start();
     try {
-      return await _prepareTargetDay(dayId);
+      return await _prepareTargetDay(dayId, reuse: reuse);
     } finally {
       perf.addPhase(dayId, DerivePhase.prepare, sw.elapsedMilliseconds);
     }
@@ -3136,7 +3152,8 @@ class DerivationEngine {
         var reportDone = true;
         try {
           await debugDayHook?.call(dayId);
-          final prepared = await _prepareTargetDayTimed(dayId);
+          final prepared = await _prepareTargetDayTimed(dayId,
+              reuse: !(force || overrideDays.contains(dayId)));
           // Override day whose raw has been pruned (≥14 d): re-deriving would
           // produce an empty/absent result and clobber the user's manual sleep.
           // Keep the existing locked result instead.
@@ -3421,7 +3438,7 @@ class DerivationEngine {
         _diag['active_days'] = activeDays.toList();
         var reportDone = true;
         try {
-          final prepared = await _prepareTargetDayTimed(dayId);
+          final prepared = await _prepareTargetDayTimed(dayId, reuse: !force);
           if (prepared != null) {
             _diag['prepared_days'] = (_diag['prepared_days'] as int) + 1;
             // `force` only ever comes from a user action (see callers), so it
@@ -3559,7 +3576,11 @@ class DerivationEngine {
   static const int _maxDayRawRows = 500000;
   static const int _maxDayRawPages = 300;
 
-  Future<PreparedDerivationDay?> _prepareTargetDay(String dayId) async {
+  /// [reuse]: this pass may resume from the day's stored checkpoint (it is not a
+  /// user-driven re-derive). A resumable day is then loaded without the beats
+  /// the checkpoint already folded (see [DayRrResume]).
+  Future<PreparedDerivationDay?> _prepareTargetDay(String dayId,
+      {bool reuse = false}) async {
     // Per-day page/row totals used to live in the shared `_diag` map (reset
     // then accumulated across this day's 2-3 substrate loads). Under
     // concurrent per-day processing (see `run()`), multiple days resetting/
@@ -3579,6 +3600,11 @@ class DerivationEngine {
     final inputRevs = await LocalDb.inputRevisions(
         dayStart ~/ kRevBucketSec, (dayEnd - 1) ~/ kRevBucketSec + 1);
     final candidate = await _sleepCandidateForDay(dayId, stats: stats);
+    // A day another pass of this process left state for derives from that state;
+    // only a cold day (a headless wake, a fresh process) resumes from storage.
+    final rrResume = reuse && !_calculationStates.containsKey(dayId)
+        ? await _probeRrResume(dayId, inputRevs)
+        : null;
 
     // M5: resolve ownership ONCE, over the union of every window this method
     // loads, and pass the same span lists to both the row filter and the
@@ -3615,6 +3641,7 @@ class DerivationEngine {
       stats: stats,
       label: 'load_day',
       ownership: ownership,
+      rrFromRecTs: rrResume?.skipBelowRecTs,
     );
     final daySub = napSub.slice(dayStart, dayEnd);
     Substrate sleepSub = Substrate.empty;
@@ -3646,7 +3673,41 @@ class DerivationEngine {
       priority: priority,
       inputFp: inputFp,
       inputRevs: inputRevs,
+      rrResume: rrResume,
     );
+  }
+
+  /// [dayId]'s stored checkpoint when it can be resumed from as far as can be
+  /// told BEFORE the day's rows are read (the layout, algorithm version and the
+  /// revisions of the buckets it folded; the context needs the loaded day and is
+  /// decided later by [_restoreCheckpoint]), with its blob decoded. Null: load
+  /// the whole day.
+  Future<DayRrResume?> _probeRrResume(String dayId, Map<int, int> revs) async {
+    try {
+      final cp = await LocalDb.dayCheckpoint(dayId, kAlgoVersion);
+      if (cp == null) return null;
+      final cpBucket = cp.cpRecTs ~/ kRevBucketSec;
+      final decision = decideResume(
+        cp: cp,
+        algoVersion: kAlgoVersion,
+        ctxSig: cp.ctxSig,
+        liveRevs: {
+          for (final e in revs.entries)
+            if (e.key < cpBucket) e.key: e.value,
+        },
+      );
+      if (!decision.resume) return null;
+      final state = decodeDayResumeState(cp.state);
+      if (state == null || state.folded == 0) return null;
+      return DayRrResume(
+        cp: cp,
+        state: state,
+        skipBelowRecTs: cp.cpRecTs - kRrReadSlackSec,
+      );
+    } catch (e) {
+      _log('checkpoint $dayId not probed: $e');
+      return null;
+    }
   }
 
   /// Who owns each anchor signal over `[from, to]`, plus the order that
@@ -4145,10 +4206,44 @@ class DerivationEngine {
     // single-device install resolves to anyway and what the direct-load tests
     // pass.
     Map<InputSignal, List<OwnedSpan>> ownership = const {},
+    // Beats are read only from this second on; the seconds before it that have
+    // beats are still given to the substrate (as slots with no beat), so its 1 Hz
+    // axis is the one a full load builds. Null reads every beat.
+    int? rrFromRecTs,
   }) async {
     if (toRecTs < fromRecTs) return Substrate.empty;
     final loadStartedAt = DateTime.now().millisecondsSinceEpoch;
     var loadedRows = 0;
+    var rrRowsRead = 0;
+    var rrSlotRows = 0;
+    // The `decoded_rr` rows of [from, to] for the substrate: every beat, or for
+    // the part below [rrFromRecTs] only which seconds have beats.
+    Future<List<Map<String, dynamic>>> readRr(int from, int to) async {
+      final low = rrFromRecTs;
+      final out = <Map<String, dynamic>>[];
+      if (low != null && from < low) {
+        final slots = await LocalDb.decodedRrSecondsByRecTsRange(
+          fromRecTs: from,
+          toRecTs: math.min(to, low - 1),
+          onlyBeatOnly: ownersOf(ownership).length <= 1,
+        );
+        rrSlotRows += slots.length;
+        for (final r in slots) {
+          out.add({'rec_ts': r['rec_ts'], 'device_id': r['device_id']});
+        }
+        from = low;
+      }
+      if (from <= to) {
+        final rows = await LocalDb.decodedRrByRecTsRange(
+          fromRecTs: from,
+          toRecTs: to,
+        );
+        rrRowsRead += rows.length;
+        out.addAll(rows);
+      }
+      return out;
+    }
+
     final port = ReceivePort();
     // onError/onExit are LOAD-BEARING. Without them, an uncaught throw inside
     // the worker (a malformed SQLite row reaching one of the numeric reads in
@@ -4290,10 +4385,7 @@ class DerivationEngine {
             // [rrFrom, lastSentRecTs] is a PK range read — no counter span
             // (which broke across the strap's reboot reset).
             final lastSentRecTs = (toSend.last['rec_ts'] as num).toInt();
-            final rawRrRows = await LocalDb.decodedRrByRecTsRange(
-              fromRecTs: rrFrom,
-              toRecTs: lastSentRecTs,
-            );
+            final rawRrRows = await readRr(rrFrom, lastSentRecTs);
             rrFrom = lastSentRecTs + 1;
             final frames = composeOneHzFrames(toSend, ownership);
             final rrRows = [
@@ -4314,10 +4406,7 @@ class DerivationEngine {
       // (the next fetch came back empty) — its trailing group is still held.
       if (carry.isNotEmpty) {
         final lastRecTs = (carry.last['rec_ts'] as num).toInt();
-        final rawRrRows = await LocalDb.decodedRrByRecTsRange(
-          fromRecTs: rrFrom,
-          toRecTs: lastRecTs,
-        );
+        final rawRrRows = await readRr(rrFrom, lastRecTs);
         rrFrom = lastRecTs + 1;
         final frames = composeOneHzFrames(carry, ownership);
         final rrRows = [
@@ -4331,10 +4420,7 @@ class DerivationEngine {
       // lookup; when it is not, these are seconds the band recorded and only
       // reported beats for.
       if (rrFrom <= toRecTs) {
-        final rawTailRr = await LocalDb.decodedRrByRecTsRange(
-          fromRecTs: rrFrom,
-          toRecTs: toRecTs,
-        );
+        final rawTailRr = await readRr(rrFrom, toRecTs);
         final tailRr = [
           for (final r in rawTailRr)
             if (owned(rrOwnedSpans, r)) r,
@@ -4366,6 +4452,11 @@ class DerivationEngine {
       isolate.kill(priority: Isolate.immediate);
       perf.addStage(label, DateTime.now().millisecondsSinceEpoch - loadStartedAt);
       perf.addCount('rows_$label', loadedRows);
+      // The day's own beats are `rr_rows_read`; the night's loads read theirs
+      // under their own names (the night is not streamed).
+      perf.addCount(label == 'load_day' ? 'rr_rows_read' : 'rr_rows_$label',
+          rrRowsRead);
+      if (rrSlotRows > 0) perf.addCount('rr_slot_rows_$label', rrSlotRows);
     }
   }
 
@@ -4669,7 +4760,7 @@ class DerivationEngine {
       Future<void> processDay(String dayId) async {
         var reportDone = true;
         try {
-          final prepared = await _prepareTargetDayTimed(dayId);
+          final prepared = await _prepareTargetDayTimed(dayId, reuse: true);
           if (prepared != null) {
             final committed = await _derivePreparedDayTimed(
                 prepared, profile, dataNowSec, history);
@@ -4919,6 +5010,29 @@ class DerivationEngine {
     ana.CalculationMode calculationMode = ana.CalculationMode.forced,
     DayResultWrite reason = DayResultWrite.derive,
   }) async {
+    // No state from an earlier pass in this process (a headless wake, a cold
+    // start): resume from the stored checkpoint when what it folded is still
+    // what the day holds. A user-driven re-derive never resumes; it rebuilds.
+    final ckptReuse = reason == DayResultWrite.derive;
+    DayCalculationState? previousState = _calculationStates[day.date];
+    DayResumeState? resumed;
+    if (previousState == null && ckptReuse) {
+      final restored = await _restoreCheckpoint(day, profile);
+      if (restored != null) {
+        previousState = restored.state;
+        resumed = restored.resume;
+      }
+    }
+    // A day loaded without the beats its checkpoint folded takes the beat-driven
+    // figures (24/7 screen, day curves) from the checkpoint's streaming state
+    // plus the tail; when it cannot, the missing beats are read back.
+    _DayStream? stream;
+    if (day.rrResume != null) {
+      stream = await _streamDayTail(day, resumed);
+      if (stream == null) day = await _withFullRr(day);
+    }
+    perf.addCount('curve_beats_folded',
+        stream != null ? stream.tailRr.length : day.daySub.rrMs.length);
     final daySub = day.daySub;
     final sleepSub = day.sleepSub;
     // Per-second 4-class stage labels (the single source): 'wake'|'light'|
@@ -4940,8 +5054,11 @@ class DerivationEngine {
       dayTsSec: daySub.tsSec,
       dayHr: daySub.hr,
       stepSpans: stepSpans,
-      dayRrTsMs: daySub.rrTsMs,
-      dayRrMs: daySub.rrMs,
+      // A streamed day has no whole-day beats to hand over: its screen is the
+      // streaming state's, handed in whole.
+      dayRrTsMs: stream != null ? const [] : daySub.rrTsMs,
+      dayRrMs: stream != null ? const [] : daySub.rrMs,
+      dayIrregular: stream?.irregular,
       sleepTsSec: sleepSub.tsSec,
       sleepHr: sleepSub.hr,
       sleepRrTsMs: sleepSub.rrTsMs,
@@ -4967,12 +5084,6 @@ class DerivationEngine {
 
     // Cancellable: on timeout the isolate is KILLED, not merely abandoned to
     // keep burning a core behind the worker pool's back.
-    // No state from an earlier pass in this process (a headless wake, a cold
-    // start): resume from the stored checkpoint when what it folded is still
-    // what the day holds. A user-driven re-derive never resumes; it rebuilds.
-    final ckptReuse = reason == DayResultWrite.derive;
-    final previousState = _calculationStates[day.date] ??
-        (ckptReuse ? await _restoreCheckpoint(day, profile) : null);
     final first = await perf.stage('bundle_isolate', () =>
       _runDayBundleCancellable(withHistory,
       previousState, calculationMode, _perDayTimeout,
@@ -5308,6 +5419,7 @@ class DerivationEngine {
 
       final blocksInput = _DayBlocksInput(
         calculationState: candidateState, calculationMode: calculationMode,
+        streamed: stream,
         ceilingReuse: ceilingReuse,
         daySub: daySub,
         napSub: day.napSub,
@@ -5705,7 +5817,10 @@ class DerivationEngine {
     if (secondHalfOk) {
       _publishCalculationState(day.date, candidateState, finalized: finalized);
       await _refreshCheckpoint(day, profile, dataNowSec,
-          finalized: finalized, reuse: ckptReuse, state: candidateState);
+          finalized: finalized,
+          reuse: ckptReuse,
+          state: candidateState,
+          stream: stream);
     }
     return true;
   }
@@ -5754,9 +5869,13 @@ class DerivationEngine {
   }
 
   /// [day]'s stored checkpoint when it may be resumed, as a state whose
-  /// summaries start where the checkpoint stopped; null (a full pass) when
-  /// there is none or anything it depends on changed. Any doubt is a full pass.
-  Future<DayCalculationState?> _restoreCheckpoint(
+  /// summaries start where the checkpoint stopped (and the decoded checkpoint
+  /// itself, whose streaming RR state a streamed day continues); null (a full
+  /// pass) when there is none or anything it depends on changed. Any doubt is a
+  /// full pass. A day loaded against a probed checkpoint ([DayRrResume]) is
+  /// judged against that one, not a second read of the row.
+  Future<({DayCalculationState state, DayResumeState resume})?>
+      _restoreCheckpoint(
     PreparedDerivationDay day,
     Profile profile,
   ) async {
@@ -5764,7 +5883,8 @@ class DerivationEngine {
     final ts = day.daySub.tsSec;
     if (revs == null || ts.isEmpty) return null;
     try {
-      final cp = await LocalDb.dayCheckpoint(day.date, kAlgoVersion);
+      final probed = day.rrResume;
+      final cp = probed?.cp ?? await LocalDb.dayCheckpoint(day.date, kAlgoVersion);
       var decision = const ResumeDecision.full('none');
       DayResumeState? state;
       if (cp != null) {
@@ -5781,7 +5901,7 @@ class DerivationEngine {
           },
         );
         if (decision.resume) {
-          state = decodeDayResumeState(cp.state);
+          state = probed?.state ?? decodeDayResumeState(cp.state);
           // The blob must have folded exactly the day's rows before the cursor.
           final before = firstIndexAtOrAfter(ts, cp.cpRecTs);
           if (state == null) {
@@ -5796,11 +5916,109 @@ class DerivationEngine {
           '${decision.resume ? 'resume folded=${state!.folded}' : 'full ${decision.reason}'}');
       perf.addCount(decision.resume ? 'cp_resumed' : 'cp_full', 1);
       if (state == null) return null;
-      return DayCalculationState()..seedFrom(state);
+      return (state: DayCalculationState()..seedFrom(state), resume: state);
     } catch (e) {
       _log('checkpoint ${day.date} not resumed: $e');
       return null;
     }
+  }
+
+  /// The beat-driven figures of a day loaded against its checkpoint: the
+  /// checkpoint's streaming RR state and day curves, advanced over the beats
+  /// after it (and the accelerometer rows after it), read as they stand now.
+  /// Null when it cannot be done soundly: the day was not resumed from that
+  /// checkpoint, its family has no quiet cut, the curves were folded under
+  /// another one, or the tail does not continue the state. The caller then
+  /// reads the day's whole beats.
+  Future<_DayStream?> _streamDayTail(
+    PreparedDerivationDay day,
+    DayResumeState? resumed,
+  ) async {
+    final probe = day.rrResume!;
+    if (resumed == null || !identical(resumed, probe.state)) return null;
+    final sub = day.daySub;
+    final cut = ana.calibrationFor(_quietEnmoCutG, sub.deviceFamily);
+    if (cut == null || resumed.curves.cut != cut) return null;
+    try {
+      final tail = rrTailBeats(
+        sub.rrMs,
+        sub.rrTsMs,
+        floorMs: resumed.rr.lastTsMs,
+        edgeMs: rrFoldEdgeMs(probe.cp.cpRecTs),
+      );
+      final from = resumed.folded;
+      return await perf.stage(
+        'day_stream',
+        () => _foldTail(
+          rr: resumed.rr,
+          curves: resumed.curves,
+          tailRr: tail.rrMs,
+          tailTs: tail.rrTsMs,
+          accTs: sub.tsSec.sublist(from),
+          ax: sub.ax.sublist(from),
+          ay: sub.ay.sublist(from),
+          az: sub.az.sublist(from),
+          onsetSec: day.sleepOnsetSec,
+          offsetSec: day.sleepOffsetSec,
+          timeout: _perDayTimeout,
+          label: 'day-stream ${day.date}',
+        ),
+      );
+    } catch (e) {
+      _log('day-stream ${day.date} not used: $e');
+      return null;
+    }
+  }
+
+  /// [DayRrState] and [DayCurveStates] advanced over the tail in a killable
+  /// isolate (they are copied into it; the caller's are untouched). Static so
+  /// the closure captures only the plain data.
+  static Future<_DayStream?> _foldTail({
+    required DayRrState rr,
+    required DayCurveStates curves,
+    required List<double> tailRr,
+    required List<double> tailTs,
+    required List<int> accTs,
+    required List<double> ax,
+    required List<double> ay,
+    required List<double> az,
+    required int onsetSec,
+    required int offsetSec,
+    required Duration timeout,
+    required String label,
+  }) =>
+      _runIsolateCancellable<_DayStream?>(() {
+        // The first beats of a day, whose rows went with the pass before.
+        if (!curves.continuesWith(tailTs, accTs)) return null;
+        rr.fold(tailRr, tailTs);
+        // Every accelerometer row of the day is in: nothing waits.
+        if (!curves.fold(tailRr, tailTs, accTs, ax, ay, az, 1 << 60)) return null;
+        return _DayStream(
+          irregular: rr.irregular24h().toJson((v) => v.toJson()),
+          hrv: curves.hrvCurve(),
+          resp: curves.respCurve(),
+          daytime: curves.daytimeHrv(onsetSec: onsetSec, offsetSec: offsetSec),
+          tailRr: tailRr,
+          tailTs: tailTs,
+        );
+      }, timeout, label: label);
+
+  /// [day] with every beat of the day read (the checkpoint it was loaded
+  /// against is not going to be used).
+  Future<PreparedDerivationDay> _withFullRr(PreparedDerivationDay day) async {
+    final dayStart = _localDayLabelToSec(day.date);
+    final dayEnd = _localNextDayLabelToSec(day.date);
+    final napSub = await _loadSubstrateRange(
+      dayStart,
+      dayEnd - 1 + napBoundaryBufferSec,
+      dayId: day.date,
+      label: 'load_day',
+      ownership: day.ownership,
+    );
+    return day.withFullRr(
+      daySub: napSub.slice(dayStart, dayEnd),
+      napSub: napSub,
+    );
   }
 
   /// After a day's result committed: advances its checkpoint to the newest
@@ -5815,6 +6033,7 @@ class DerivationEngine {
     required bool finalized,
     required bool reuse,
     required DayCalculationState state,
+    _DayStream? stream,
   }) async {
     try {
       // A day stays resumable until it finalizes, 48 h after it ends, so the
@@ -5858,6 +6077,28 @@ class DerivationEngine {
           base = existing.state;
         }
       }
+      // A streamed day holds only the beats after the checkpoint it resumed
+      // from, so it can only extend THAT checkpoint: one that is gone or moved
+      // since is left for the next (full) pass to rewrite.
+      if (stream != null &&
+          (base == null || existing!.cpRecTs != day.rrResume!.cp.cpRecTs)) {
+        return;
+      }
+      // The beats this checkpoint adds: those from the edge of the last one's
+      // (all of them for a first fold) to this one's, off the day's beats or, for
+      // a streamed day, its tail.
+      final srcRr = stream?.tailRr ?? sub.rrMs;
+      final srcTs = stream?.tailTs ?? sub.rrTsMs;
+      final edgeOld =
+          base == null ? double.negativeInfinity : rrFoldEdgeMs(existing!.cpRecTs);
+      final edgeNew = rrFoldEdgeMs(boundary);
+      final addRr = <double>[], addTs = <double>[];
+      for (var i = 0; i < srcRr.length; i++) {
+        if (srcTs[i] >= edgeOld && srcTs[i] < edgeNew) {
+          addRr.add(srcRr[i]);
+          addTs.add(srcTs[i]);
+        }
+      }
       final ctx = _checkpointContext(day, profile, clipEndSec: boundary);
       final sc = sub.stepCount;
       final blob = await perf.stage('checkpoint', () => _foldCheckpoint(
@@ -5875,11 +6116,21 @@ class DerivationEngine {
             // prices only what moved. They follow this pass's window, which the
             // folded state does not.
             bills: state.minuteBills(beforeMinute: boundary ~/ 60),
+            rrMs: addRr,
+            rrTsMs: addTs,
+            throughSec: boundary,
+            quietCutG: ana.calibrationFor(_quietEnmoCutG, sub.deviceFamily) ?? 0.02,
             timeout: _perDayTimeout,
             label: 'checkpoint ${day.date}',
           ));
       perf.addCount('cp_folded', hi - lo);
-      if (blob == null) return;
+      if (blob == null) {
+        // The stored blob cannot be extended (a pass that resumed from it would
+        // fall short of the next boundary again and again): drop it, and the
+        // next pass folds the day from its start.
+        if (base != null) await LocalDb.deleteDayCheckpoints(day.date);
+        return;
+      }
       await LocalDb.putDayCheckpoint(DayCheckpoint(
         dayId: day.date,
         algoVersion: kAlgoVersion,
@@ -5913,6 +6164,10 @@ class DerivationEngine {
     required int? age,
     required int? stepModulus,
     required MinuteBills? bills,
+    required List<double> rrMs,
+    required List<double> rrTsMs,
+    required int throughSec,
+    required double quietCutG,
     required Duration timeout,
     required String label,
   }) => _runIsolateCancellable(
@@ -5928,6 +6183,10 @@ class DerivationEngine {
           age: age,
           stepModulus: stepModulus,
           bills: bills,
+          rrMs: rrMs,
+          rrTsMs: rrTsMs,
+          throughSec: throughSec,
+          quietCutG: quietCutG,
         ),
         timeout,
         label: label,
@@ -9609,9 +9868,13 @@ class DerivationEngine {
       state: inp.calculationState, mode: inp.calculationMode,
     );
 
-    bundlePatch['daytime_hrv'] = _daytimeHrv(daySub, onset, offset);
-    seriesPatch['hrv_day'] = dayHrvCurve(daySub, state: inp.calculationState, mode: inp.calculationMode);
-    seriesPatch['resp_day'] = dayRespCurve(daySub, state: inp.calculationState, mode: inp.calculationMode);
+    final streamed = inp.streamed;
+    bundlePatch['daytime_hrv'] =
+        streamed?.daytime ?? _daytimeHrv(daySub, onset, offset);
+    seriesPatch['hrv_day'] = streamed?.hrv ??
+        dayHrvCurve(daySub, state: inp.calculationState, mode: inp.calculationMode);
+    seriesPatch['resp_day'] = streamed?.resp ??
+        dayRespCurve(daySub, state: inp.calculationState, mode: inp.calculationMode);
     seriesPatch['skin_temp_day'] = _daySkinTempCurve(daySub);
     bundlePatch['restlessness'] = _restlessness(sleepSub);
     // napSub extends a few hours past this day's calendar end so a nap/
@@ -10347,6 +10610,29 @@ Future<R> runCancellableIsolate<R>(
 }) =>
     DerivationEngine._runIsolateCancellable(compute, timeout, label: label);
 
+/// What a resumed pass takes from the checkpoint's streaming states instead of
+/// the day's whole beats: the 24/7 irregular-rhythm screen (as the persisted
+/// metric envelope), the three day curves read under this pass's sleep window,
+/// and the tail the states were advanced over (the checkpoint written after this
+/// pass extends from it).
+class _DayStream {
+  const _DayStream({
+    required this.irregular,
+    required this.hrv,
+    required this.resp,
+    required this.daytime,
+    required this.tailRr,
+    required this.tailTs,
+  });
+
+  final Map<String, dynamic> irregular;
+  final List<Map<String, num>> hrv;
+  final List<Map<String, num>> resp;
+  final Map<String, dynamic> daytime;
+  final List<double> tailRr;
+  final List<double> tailTs;
+}
+
 /// Sendable input for [DerivationEngine._computeDayBlocks] — crosses the
 /// `Isolate.run` boundary, so every field is plain data (Substrate is int/double
 /// lists; Profile is a primitive data class). DB reads that the
@@ -10354,6 +10640,10 @@ Future<R> runCancellableIsolate<R>(
 class _DayBlocksInput {
   final DayCalculationState calculationState;
   final ana.CalculationMode calculationMode;
+
+  /// The beat-driven day figures of a resumed pass, from the checkpoint's
+  /// streaming state; null computes them from [daySub]'s beats.
+  final _DayStream? streamed;
 
   /// Finished sessions whose observed ceiling is already known, by session id.
   final Map<String, ({Map<String, dynamic> json, double? bpm})> ceilingReuse;
@@ -10430,6 +10720,7 @@ class _DayBlocksInput {
   const _DayBlocksInput({
     required this.calculationState,
     required this.calculationMode,
+    this.streamed,
     required this.ceilingReuse,
     required this.daySub,
     required this.napSub,

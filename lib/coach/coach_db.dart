@@ -93,7 +93,8 @@ class CoachDb {
     // derived / user tables
     'day_result', 'metric_series', 'baselines', 'derived_day', 'sessions',
     'notifications', 'journal', 'cycle_log', 'cycle_symptom', 'notif_fired',
-    'sleep_override', 'wake_confirmation', 'sleep_session_candidates',
+    'sleep_override', 'wake_confirmation', 'wake_evidence',
+    'sleep_session_candidates',
     'wake_day_features',
     'workout_suggestions', 'workout_route', 'live_coverage',
     // raw / decoded substrate
