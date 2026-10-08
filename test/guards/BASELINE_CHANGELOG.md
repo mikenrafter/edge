@@ -71,3 +71,14 @@ occurrences (mostly unresolvedInvocation callback calls, plus heavyOriginOutside
 in the archiver/codec) were baselined instead of being moved into registered
 worker entries. FOLLOW-UP: register the archive's encode/carve work as @heavy
 entries (it already runs on Isolate.run) so these keys shrink out.
+
+## Shrink (2026-10-08) — _foldTail inline closure → registered foldDayTailHeavy; 17 keys removed (2,083 → 2,066)
+`DerivationEngine._foldTail` handed an inline closure to `_runIsolateCancellable`.
+It is now the registered cancellable entry `foldDayTailHeavy`
+(`lib/compute/day_tail_fold.dart`; the states cross as resume bytes). The 16
+legacy `_foldTail` / `DayRrState.irregular24h` keys (dispatcherClosureContract 10,
+captureNotSendable 2, heavyOriginOutsideHeavy 4) are gone: `irregular24h` is
+folded into `irregular24hDetailedHeavy`, a `@heavy` inner function, so the five
+keys the PRV diagnostics rename would have added never enter the baseline. The
+17th is a stale `saveLogFile` unresolvedInvocation the writer pruned (the code
+it fingerprinted no longer exists). Entries 1,896 → 1,879. No key added.

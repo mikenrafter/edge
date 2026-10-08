@@ -9,7 +9,7 @@
 //     if (!curves.continuesWith(tailTs, accTs)) return null;
 //     rr.fold(tailRr, tailTs);
 //     if (!curves.fold(tailRr, tailTs, accTs, ax, ay, az, 1 << 60)) return null;
-//     -> irregular24hDetailed().toJson(), hrvCurve(), respCurve(),
+//     -> irregular24hDetailedHeavy().toJson(), hrvCurve(), respCurve(),
 //        daytimeHrv(onsetSec:, offsetSec:), and the tail it folded
 //
 // run on this isolate over its own decoded copy of the same checkpoint blob.
@@ -88,7 +88,7 @@ Map<String, Object?>? _inline(
   rr.fold(t.rr, t.ts);
   if (!curves.fold(t.rr, t.ts, t.accTs, t.ax, t.ay, t.az, 1 << 60)) return null;
   return {
-    'irregular': rr.irregular24hDetailed().toJson(),
+    'irregular': rr.irregular24hDetailedHeavy().toJson(),
     'hrv': curves.hrvCurve(),
     'resp': curves.respCurve(),
     'daytime': curves.daytimeHrv(onsetSec: onsetSec, offsetSec: offsetSec),

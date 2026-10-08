@@ -114,6 +114,7 @@ void main() {
     'deriveDayBundle',
     'buildCrossDayBundle',
     'foldDayCheckpoint',
+    'foldDayTailHeavy',
   };
 
   // `#DerivationEngine.kcalMinutesForDayHeavy` -> `kcalMinutesForDayHeavy`

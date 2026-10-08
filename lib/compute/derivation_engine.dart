@@ -64,15 +64,15 @@ import 'onehz_pipeline.dart';
 import 'day_calculation_state.dart';
 import 'day_checkpoint_fold.dart';
 import 'day_checkpoint_policy.dart';
-import 'day_curve_states.dart';
 import 'day_resume_state.dart';
-import 'day_rr_state.dart';
+import 'day_tail_fold.dart';
 import 'minute_bills.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
 import 'substrate.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
+import '../util/worker_init.dart' show WorkerInputs;
 import '../util/worker_entries.dart' show Dispatcher;
 
 /// Analytics/bundle version — bump to force a recompute of non-finalized days.
@@ -5056,7 +5056,7 @@ class DerivationEngine {
     // A day loaded without the beats its checkpoint folded takes the beat-driven
     // figures (24/7 screen, day curves) from the checkpoint's streaming state
     // plus the tail; when it cannot, the missing beats are read back.
-    _DayStream? stream;
+    DayTailResult? stream;
     if (day.rrResume != null) {
       stream = await _streamDayTail(day, resumed);
       if (stream == null) day = await _withFullRr(day);
@@ -5960,7 +5960,7 @@ class DerivationEngine {
   /// checkpoint, its family has no quiet cut, the curves were folded under
   /// another one, or the tail does not continue the state. The caller then
   /// reads the day's whole beats.
-  Future<_DayStream?> _streamDayTail(
+  Future<DayTailResult?> _streamDayTail(
     PreparedDerivationDay day,
     DayResumeState? resumed,
   ) async {
@@ -5977,20 +5977,33 @@ class DerivationEngine {
         edgeMs: rrFoldEdgeMs(probe.cp.cpRecTs),
       );
       final from = resumed.folded;
+      // The states cross as their resume bytes: the worker advances its own
+      // decoded copies, so the caller's `resumed` is never touched, and a fold
+      // killed by the timeout leaves nothing behind.
+      final input = DayTailInput.fromStates(
+        rr: resumed.rr,
+        curves: resumed.curves,
+        tailRr: tail.rrMs,
+        tailTs: tail.rrTsMs,
+        accTs: sub.tsSec.sublist(from),
+        ax: sub.ax.sublist(from),
+        ay: sub.ay.sublist(from),
+        az: sub.az.sublist(from),
+        onsetSec: day.sleepOnsetSec,
+        offsetSec: day.sleepOffsetSec,
+      );
+      // The fold reads no clock, zone or locale; the record is the entry's
+      // contract.
+      final inputs = WorkerInputs(
+        nowEpochMs: DateTime.now().millisecondsSinceEpoch,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
       return await perf.stage(
         'day_stream',
-        () => _foldTail(
-          rr: resumed.rr,
-          curves: resumed.curves,
-          tailRr: tail.rrMs,
-          tailTs: tail.rrTsMs,
-          accTs: sub.tsSec.sublist(from),
-          ax: sub.ax.sublist(from),
-          ay: sub.ay.sublist(from),
-          az: sub.az.sublist(from),
-          onsetSec: day.sleepOnsetSec,
-          offsetSec: day.sleepOffsetSec,
-          timeout: _perDayTimeout,
+        () => _runIsolateCancellable<DayTailResult?>(
+          () => foldDayTailHeavy(inputs, input),
+          _perDayTimeout,
           label: 'day-stream ${day.date}',
         ),
       );
@@ -5999,39 +6012,6 @@ class DerivationEngine {
       return null;
     }
   }
-
-  /// [DayRrState] and [DayCurveStates] advanced over the tail in a killable
-  /// isolate (they are copied into it; the caller's are untouched). Static so
-  /// the closure captures only the plain data.
-  static Future<_DayStream?> _foldTail({
-    required DayRrState rr,
-    required DayCurveStates curves,
-    required List<double> tailRr,
-    required List<double> tailTs,
-    required List<int> accTs,
-    required List<double> ax,
-    required List<double> ay,
-    required List<double> az,
-    required int onsetSec,
-    required int offsetSec,
-    required Duration timeout,
-    required String label,
-  }) =>
-      _runIsolateCancellable<_DayStream?>(() {
-        // The first beats of a day, whose rows went with the pass before.
-        if (!curves.continuesWith(tailTs, accTs)) return null;
-        rr.fold(tailRr, tailTs);
-        // Every accelerometer row of the day is in: nothing waits.
-        if (!curves.fold(tailRr, tailTs, accTs, ax, ay, az, 1 << 60)) return null;
-        return _DayStream(
-          irregular: rr.irregular24hDetailed().toJson(),
-          hrv: curves.hrvCurve(),
-          resp: curves.respCurve(),
-          daytime: curves.daytimeHrv(onsetSec: onsetSec, offsetSec: offsetSec),
-          tailRr: tailRr,
-          tailTs: tailTs,
-        );
-      }, timeout, label: label);
 
   /// [day] with every beat of the day read (the checkpoint it was loaded
   /// against is not going to be used).
@@ -6063,7 +6043,7 @@ class DerivationEngine {
     required bool finalized,
     required bool reuse,
     required DayCalculationState state,
-    _DayStream? stream,
+    DayTailResult? stream,
   }) async {
     try {
       // A day stays resumable until it finalizes, 48 h after it ends, so the
@@ -9805,7 +9785,7 @@ class DerivationEngine {
       _DayBlocksInput(
         calculationState: DayCalculationState(),
         calculationMode: ana.CalculationMode.forced,
-        streamed: const _DayStream(
+        streamed: const DayTailResult(
           irregular: {'flag': false, 'n': 0},
           hrv: [
             {'t': 1760000600, 'rmssd': 41.5}
@@ -10790,29 +10770,6 @@ Future<R> runCancellableIsolate<R>(
 }) =>
     DerivationEngine._runIsolateCancellable(compute, timeout, label: label);
 
-/// What a resumed pass takes from the checkpoint's streaming states instead of
-/// the day's whole beats: the 24/7 irregular-rhythm screen (as the persisted
-/// metric envelope), the three day curves read under this pass's sleep window,
-/// and the tail the states were advanced over (the checkpoint written after this
-/// pass extends from it).
-class _DayStream {
-  const _DayStream({
-    required this.irregular,
-    required this.hrv,
-    required this.resp,
-    required this.daytime,
-    required this.tailRr,
-    required this.tailTs,
-  });
-
-  final Map<String, dynamic> irregular;
-  final List<Map<String, num>> hrv;
-  final List<Map<String, num>> resp;
-  final Map<String, dynamic> daytime;
-  final List<double> tailRr;
-  final List<double> tailTs;
-}
-
 /// Sendable input for [DerivationEngine._computeDayBlocks] — crosses the
 /// `Isolate.run` boundary, so every field is plain data (Substrate is int/double
 /// lists; Profile is a primitive data class). DB reads that the
@@ -10823,7 +10780,7 @@ class _DayBlocksInput {
 
   /// The beat-driven day figures of a resumed pass, from the checkpoint's
   /// streaming state; null computes them from [daySub]'s beats.
-  final _DayStream? streamed;
+  final DayTailResult? streamed;
 
   /// Finished sessions whose observed ceiling is already known, by session id.
   final Map<String, ({Map<String, dynamic> json, double? bpm})> ceilingReuse;

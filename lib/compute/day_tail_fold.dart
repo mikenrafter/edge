@@ -2,12 +2,14 @@
 // worker (design 02). Replaces the inline closure `DerivationEngine._foldTail`
 // handed to `_runIsolateCancellable`, which was not a registered entry.
 //
-// PHASE 1 STUB (red): everything here throws `UnimplementedError`. Not yet
-// registered in `kWorkerEntries` and not yet called by the engine.
+// The states cross as their resume bytes (`ResumeWriter`), so the worker folds
+// its own decoded copies: the caller's objects are never touched and a fold
+// killed by the dispatcher's timeout leaves nothing behind.
 
 import 'dart:typed_data';
 
 import 'day_curve_states.dart';
+import 'resume_bytes.dart';
 import 'day_rr_state.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
@@ -43,8 +45,24 @@ class DayTailInput {
     required List<double> az,
     required int onsetSec,
     required int offsetSec,
-  }) =>
-      throw UnimplementedError('DayTailInput.fromStates');
+  }) {
+    final rrW = ResumeWriter();
+    rr.write(rrW);
+    final curvesW = ResumeWriter();
+    curves.write(curvesW);
+    return DayTailInput(
+      rrState: rrW.takeBytes(),
+      curvesState: curvesW.takeBytes(),
+      tailRr: tailRr,
+      tailTs: tailTs,
+      accTs: accTs,
+      ax: ax,
+      ay: ay,
+      az: az,
+      onsetSec: onsetSec,
+      offsetSec: offsetSec,
+    );
+  }
 
   /// `DayRrState.write` bytes.
   final Uint8List rrState;
@@ -99,5 +117,30 @@ DayTailResult? foldDayTailHeavy(WorkerInputs inputs, DayTailInput input) {
   WorkerInit.ensure(inputs);
   assertWorker();
   WorkerAudit.entered('foldDayTailHeavy');
-  throw UnimplementedError('foldDayTailHeavy');
+  final DayRrState rr;
+  final DayCurveStates curves;
+  try {
+    rr = DayRrState.read(ResumeReader(input.rrState));
+    curves = DayCurveStates.read(ResumeReader(input.curvesState));
+  } on FormatException {
+    // Never half read: the caller reads the day's whole beats instead.
+    return null;
+  }
+  final (tailRr, tailTs, accTs) = (input.tailRr, input.tailTs, input.accTs);
+  // The first beats of a day, whose rows went with the pass before.
+  if (!curves.continuesWith(tailTs, accTs)) return null;
+  rr.fold(tailRr, tailTs);
+  // Every accelerometer row of the day is in: nothing waits.
+  if (!curves.fold(tailRr, tailTs, accTs, input.ax, input.ay, input.az, 1 << 60)) {
+    return null;
+  }
+  return DayTailResult(
+    irregular: rr.irregular24hDetailedHeavy().toJson(),
+    hrv: curves.hrvCurve(),
+    resp: curves.respCurve(),
+    daytime: curves.daytimeHrv(
+        onsetSec: input.onsetSec, offsetSec: input.offsetSec),
+    tailRr: tailRr,
+    tailTs: tailTs,
+  );
 }

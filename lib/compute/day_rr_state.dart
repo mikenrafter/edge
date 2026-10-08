@@ -13,6 +13,7 @@ import 'dart:typed_data';
 
 import 'package:openstrap_analytics/onehz.dart';
 
+import '../util/heavy.dart';
 import 'resume_bytes.dart';
 
 class DayRrState {
@@ -44,16 +45,13 @@ class DayRrState {
     _lastTsMs = rrTsMs.last;
   }
 
-  /// The day's 24/7 irregular-rhythm screen over every beat folded: equal to
-  /// `irregularBeatScreen(correctRr(all).nn, ...)` as persisted. Does not
-  /// change the state.
-  Metric<IrregularRhythm> irregular24h() => irregular24hDetailed().metric;
-
-  /// [irregular24h] and the evidence behind it (beat counts, the corrector's
+  /// The day's 24/7 irregular-rhythm screen over every beat folded, and the
+  /// evidence behind it (beat counts, the corrector's
   /// corrected / dropped, per-window counts incl. the open window): equal to
   /// `irregularBeatScreenDetailed(correctRr(all)...)`. `.toJson()` is the
-  /// envelope persisted as `clinical.irregular_24h`.
-  IrregularScreenResult irregular24hDetailed() {
+  /// envelope persisted as `clinical.irregular_24h`. Does not change the state.
+  @heavy
+  IrregularScreenResult irregular24hDetailedHeavy() {
     final s = _corr.snapshot();
     return _irr.evaluateDetailed(
       s.tailNn,

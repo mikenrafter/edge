@@ -7,7 +7,7 @@
 // between chunks (a headless wake, a cold start):
 //
 //  * `DayRrState` (lib/compute/day_rr_state.dart): `RrCorrector` +
-//    `IrregularScreenState` (analytics aa67997). Its `irregular24h()` equals the
+//    `IrregularScreenState` (analytics aa67997). Its `irregular24hDetailedHeavy().metric` equals the
 //    batch screen AS PERSISTED (`toJson`, which rounds to 6 places) at every
 //    prefix, and the state's bytes do not depend on how the day was chunked.
 //  * `DayCurveStates` (lib/compute/day_curve_states.dart): the three curves as
@@ -136,7 +136,7 @@ void main() {
         var sawAbsent = false, sawPresent = false;
         final r = math.Random(11);
         void check(String why) {
-          final got = st.irregular24h();
+          final got = st.irregular24hDetailedHeavy().metric;
           final want = _batchIrregular(
               Beats(day.rr.sublist(0, at), day.ts.sublist(0, at)));
           expect(_irregularText(got), _irregularText(want), reason: why);
@@ -172,7 +172,7 @@ void main() {
         expect(sawAbsent, isTrue, reason: 'fixture: the early prefixes abstain');
         expect(sawPresent, isTrue, reason: 'fixture: the day reaches a screen');
         if (e.key == 'a flagged day') {
-          expect(st.irregular24h().value!.flag, isTrue,
+          expect(st.irregular24hDetailedHeavy().metric.value!.flag, isTrue,
               reason: 'fixture: sustained irregular rhythm flags');
         }
       });
@@ -181,11 +181,11 @@ void main() {
     test('no beats, one beat, two beats: the same abstention as the batch', () {
       final day = days['a mixed day']!;
       final st = DayRrState();
-      expect(_irregularText(st.irregular24h()),
+      expect(_irregularText(st.irregular24hDetailedHeavy().metric),
           _irregularText(_batchIrregular(Beats([], []))));
       for (var n = 1; n <= 3; n++) {
         st.fold(day.rr.sublist(n - 1, n), day.ts.sublist(n - 1, n));
-        expect(_irregularText(st.irregular24h()),
+        expect(_irregularText(st.irregular24hDetailedHeavy().metric),
             _irregularText(_batchIrregular(
                 Beats(day.rr.sublist(0, n), day.ts.sublist(0, n)))),
             reason: '$n beats');
@@ -214,7 +214,7 @@ void main() {
           st = _restartRr(st);
         }
         expect(_bytesOfRr(st), _bytesOfRr(once), reason: 'seed $seed');
-        expect(_irregularText(st.irregular24h()), _irregularText(once.irregular24h()));
+        expect(_irregularText(st.irregular24hDetailedHeavy().metric), _irregularText(once.irregular24hDetailedHeavy().metric));
       }
     });
 
@@ -481,7 +481,7 @@ void main() {
       final state = decodeDayResumeState(fold([2500, 1, 4000, 777]))!;
       expect(state.folded, ts.length);
       final (b, sub) = batchDay(ts.length);
-      expect(_irregularText(state.rr.irregular24h()), _irregularText(_batchIrregular(b)));
+      expect(_irregularText(state.rr.irregular24hDetailedHeavy().metric), _irregularText(_batchIrregular(b)));
       expect(curveText(state.curves.hrvCurve()),
           curveText(DerivationEngine.dayHrvCurve(sub)));
       expect(curveText(state.curves.respCurve()),
@@ -499,7 +499,7 @@ void main() {
         final state = decodeDayResumeState(fold([rows], total: rows))!;
         expect(state.folded, rows);
         final (b, sub) = batchDay(rows);
-        expect(_irregularText(state.rr.irregular24h()), _irregularText(_batchIrregular(b)),
+        expect(_irregularText(state.rr.irregular24hDetailedHeavy().metric), _irregularText(_batchIrregular(b)),
             reason: 'rows $rows');
         expect(curveText(state.curves.hrvCurve()),
             curveText(DerivationEngine.dayHrvCurve(sub)),

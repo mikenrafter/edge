@@ -87,6 +87,13 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
     reason: 'day-checkpoint fold; legacy: no WorkerInit.ensure',
   ),
   WorkerEntry(
+    #foldDayTailHeavy,
+    dispatcher: Dispatcher.cancellable,
+    reason: 'resumed day tail fold (streaming RR screen + day curves); meets '
+        'the contract (WorkerInit.ensure first, state resume bytes in, '
+        '@SendableShape JSON envelopes out)',
+  ),
+  WorkerEntry(
     #DerivationEngine.kcalMinutesForDayHeavy,
     dispatcher: Dispatcher.run,
     reason: 'stored-day calorie minutes; legacy: Substrate/Profile arguments, '

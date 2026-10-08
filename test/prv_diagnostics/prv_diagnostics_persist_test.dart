@@ -199,7 +199,7 @@ void main() {
         st.fold(beats.rr.sublist(at, to), beats.ts.sublist(at, to));
         at = to;
         st = _restart(st);
-        final got = st.irregular24hDetailed();
+        final got = st.irregular24hDetailedHeavy();
         final want = _refDay(beats.rr.sublist(0, at), beats.ts.sublist(0, at));
         expect(_j(got.diagnostics.toJson()), _j(want.diagnostics.toJson()),
             reason: 'beats=$at');
@@ -207,7 +207,7 @@ void main() {
         checked++;
       }
       expect(checked, greaterThan(5));
-      final end = st.irregular24hDetailed();
+      final end = st.irregular24hDetailedHeavy();
       expect(end.diagnostics.rrRaw, beats.length);
       expect(end.diagnostics.corrected, isNotNull);
       expect(end.diagnostics.windows!.total, greaterThan(10));
@@ -234,7 +234,7 @@ void main() {
       final lean = copyDay(input)
         ..['day_rr_ts_ms'] = <double>[]
         ..['day_rr_ms'] = <double>[]
-        ..['day_irregular'] = st.irregular24hDetailed().toJson();
+        ..['day_irregular'] = st.irregular24hDetailedHeavy().toJson();
       final got = deriveDayBundle(lean);
       expect(_j(_clinical(got)['irregular_24h']), _j(screen));
       expect(_j(got), _j(oracle),
