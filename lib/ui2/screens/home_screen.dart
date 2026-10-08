@@ -26,7 +26,9 @@
 // data layer. They live here rather than in a fourth file because there are
 // only three of them and they are read together.
 
-import 'package:clock/clock.dart' as pkg_clock;
+import 'dart:async';
+
+import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -386,6 +388,27 @@ bool syncBusyOf(BuildContext c) {
   }
 }
 
+/// The next armed alarm, or null with none held (or in a golden). May be an
+/// instant already past — the sleep ring ignores those.
+DateTime? nextAlarmOf(BuildContext c) {
+  try {
+    final e = c.select<AppState, int?>((a) => a.alarmEpoch);
+    return e == null ? null : DateTime.fromMillisecondsSinceEpoch(e * 1000);
+  } catch (_) {
+    return null;
+  }
+}
+
+/// The saved expected sleep schedule, or null with none saved (or in a golden).
+ExpectedSleepSchedule? sleepScheduleOf(BuildContext c) {
+  try {
+    return c.select<AppState, ExpectedSleepSchedule?>(
+        (a) => a.sleepOperations.schedule);
+  } catch (_) {
+    return null;
+  }
+}
+
 bool derivingOf(BuildContext c) {
   try {
     return c.select<AppState, bool>((a) => a.deriving || a.derivePending);
@@ -591,7 +614,7 @@ String axisDay(int? epochSec,
 int? daysBehind(int? epochSec) {
   if (epochSec == null) return null;
   return calendarDaysBetween(
-      DateTime.fromMillisecondsSinceEpoch(epochSec * 1000), pkg_clock.clock.now());
+      DateTime.fromMillisecondsSinceEpoch(epochSec * 1000), pc.clock.now());
 }
 
 /// The withheld-rollup reason inside a `getInsights()` result, or null when the
@@ -922,18 +945,30 @@ class RingTrio extends StatelessWidget {
   /// worth pushing onto.
   final void Function(HomeRingKind)? onOpen;
 
-  const RingTrio({super.key, required this.d, this.onOpen});
+  /// The instant the sleep ring measures an unslept night's estimate from.
+  /// Injected by tests; production reads `clock.now()`.
+  final DateTime? now;
+
+  const RingTrio({super.key, required this.d, this.onOpen, this.now});
 
   /// Whether ANY of the three has something to draw. When none do, the screen
   /// owes the user one written absence, not three empty circles.
-  static bool has(HomeData d) =>
-      HomeRingKind.values.any((k) => _ringOf(k, d, null).why == null);
+  static bool has(HomeData d, {DateTime? now}) {
+    final at = now ?? pc.clock.now();
+    return HomeRingKind.values.any((k) => _ringOf(k, d, null, at).why == null);
+  }
+
+  /// Whether the sleep ring can estimate tonight's sleep, and so has something
+  /// to draw even when nothing else on the day does.
+  static bool hasSleepEstimate(HomeData d, {DateTime? now}) =>
+      _ringOf(HomeRingKind.sleep, d, null, now ?? pc.clock.now()).estimated;
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
-    final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l)];
+    final at = now ?? pc.clock.now();
+    final rings = [for (final k in HomeRingKind.values) _ringOf(k, d, l, at)];
     final gaps = rings.where((r) => r.why != null).toList();
     // THERE IS NO "THESE TWO ARE FROM SATURDAY" LINE ANY MORE, and there is
     // nothing left for one to explain. Recovery and sleep used to be served
@@ -1031,6 +1066,14 @@ class _RingState {
   /// ring is [absent].
   final String? why;
 
+  /// The sleep ring's arcs when a night is scored: stage arcs, or one solid
+  /// arc. Null for every other ring and state.
+  final List<SleepArc>? arcs;
+
+  /// An ESTIMATE of tonight's sleep, not a reading: drawn in the muted ink,
+  /// never a stage colour, and never solid.
+  final bool estimated;
+
   const _RingState(
     this.kind,
     this.label,
@@ -1043,24 +1086,31 @@ class _RingState {
     this.have,
     this.need,
     this.why,
+    this.arcs,
+    this.estimated = false,
   });
 
   /// A number the ring is actually reporting. Calibration is progress, not a
   /// reading, so it is not one.
-  bool get measured => why == null && !calibrating;
+  bool get measured => why == null && !calibrating && !estimated;
 
-  Color arc(P p) => calibrating ? p.ink3 : p.on(color);
+  /// Whether the value is a number to set in numerals (a reading or an
+  /// estimate) rather than an absence in words.
+  bool get showsNumber => why == null && !calibrating;
+
+  Color arc(P p) => calibrating || estimated ? p.ink3 : p.on(color);
   Color ink(P p) => measured ? p.on(color) : p.ink3;
 
   String get spoken => [
         label,
-        measured ? value : value.toLowerCase(),
+        showsNumber ? value : value.toLowerCase(),
         if (sub.isNotEmpty) sub,
         ?why,
       ].join('. ');
 }
 
-_RingState _ringOf(HomeRingKind k, HomeData d, AppLocalizations? l) {
+_RingState _ringOf(
+    HomeRingKind k, HomeData d, AppLocalizations? l, DateTime now) {
   switch (k) {
     case HomeRingKind.recovery:
       final v = d.readiness.value;
@@ -1080,22 +1130,64 @@ _RingState _ringOf(HomeRingKind k, HomeData d, AppLocalizations? l) {
           : _RingState(k, l?.homeRingStrain ?? MetricLabels.strain, LucideIcons.zap, C.purple,
               value: v.toStringAsFixed(1), sub: l?.homeStrainOf21 ?? 'of 21', frac: v / 21);
     case HomeRingKind.sleep:
-      final v = d.sleepMin.value;
-      final need = d.sleepNeedMin.value;
-      return v == null
-          ? _gap(k, l?.homeRingSleep ?? 'Sleep', LucideIcons.moon, C.blue,
-              d.sleepMin, l?.homeRingNoSleep ?? 'No sleep', l,
-              fallbackWhy: l?.homeSleepGapFallback ??
-                  'No night long enough to score was recorded.')
-          : _RingState(k, l?.homeRingSleep ?? 'Sleep', LucideIcons.moon, C.blue,
-              value: hm(v),
-              // No computed need means no denominator. The hardcoded 480 in
-              // the sleep bundle is not this user's need and must never be
-              // shown as one, so the ring stays open and says so.
-              sub: need == null
-                  ? (l?.homeSleepNoTarget ?? 'No target yet')
-                  : (l?.homeOfSpan(hm(need)) ?? 'of ${hm(need)}'),
-              frac: need == null || need <= 0 ? null : v / need);
+      final label = l?.homeRingSleep ?? 'Sleep';
+      // A baseline still filling is progress, not an absence, and is drawn
+      // exactly as before: dashed, ahead of any estimate.
+      if (d.sleepMin.value == null &&
+          baselineCountsFromNote(d.sleepMin.note) != null) {
+        return _gap(k, label, LucideIcons.moon, C.blue, d.sleepMin,
+            l?.homeRingNoSleep ?? 'No sleep', l);
+      }
+      final m = sleepRingModel(
+        now: now,
+        durationMin: d.sleepMin.value,
+        stages: d.sleepStages,
+        needMin: d.sleepNeedMin.value,
+        coachBedtimeMinOfDay: d.bedtime.value,
+        schedule: d.sleepSchedule,
+        nextAlarm: d.nextAlarm,
+        learnedOnsetMin: d.learnedOnsetMin,
+        learnedWakeMin: d.learnedWakeMin,
+        cycleLenMin: d.cycleLenMin,
+      );
+      switch (m.phase) {
+        case SleepRingPhase.slept:
+          final target = hm(m.targetMin);
+          return _RingState(k, label, LucideIcons.moon, C.blue,
+              value: hm(m.asleepMin),
+              // The target is the learned need, or the 8 h default — and the
+              // default says so. It is never passed off as this user's need.
+              sub: m.targetIsDefault
+                  ? (l?.homeSleepPctOfDefault(m.pct!, target) ??
+                      '${m.pct}% of $target (default)')
+                  : (l?.homeSleepPctOf(m.pct!, target) ??
+                      '${m.pct}% of $target'),
+              frac: m.sweep,
+              arcs: m.arcs);
+        case SleepRingPhase.estimate:
+          final est = hm(m.estimateMin);
+          return _RingState(k, label, LucideIcons.moon, C.blue,
+              value: est,
+              // The ring is filled against the target, so the default says
+              // so here too — it is never passed off as this user's need.
+              sub: m.targetIsDefault
+                  ? (l?.homeSleepOnTrackDefault(
+                          m.cycles!, est, hm(m.targetMin)) ??
+                      'on track for ${m.cycles} '
+                          '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'
+                          ' · target ${hm(m.targetMin)} (default)')
+                  : (l?.homeSleepOnTrack(m.cycles!, est) ??
+                      'on track for ${m.cycles} '
+                          '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'),
+              frac: m.sweep,
+              estimated: true);
+        case SleepRingPhase.none:
+          return _gap(k, label, LucideIcons.moon, C.blue, d.sleepMin,
+              l?.homeSleepNoEstimate ?? 'No estimate', l,
+              fallbackWhy: l?.homeSleepNoEstimateWhy ??
+                  'No sleep scored yet, and no alarm or typical wake time '
+                      'to estimate from.');
+      }
   }
 }
 
@@ -1129,6 +1221,27 @@ _RingState _gap(HomeRingKind k, String label, IconData icon, Color color,
               : (l?.homeGapNoReason ?? 'The app has no record of why this is missing.')));
 }
 
+/// The scored night split by stage, in the hypnogram's own colours — or null
+/// when the night is one solid arc (stage totals absent) or not a night.
+List<RingArc>? _stageArcs(_RingState r, P p) {
+  final arcs = r.arcs;
+  if (arcs == null || arcs.every((a) => a.kind == SleepArcKind.solid)) {
+    return null;
+  }
+  final cols = Hypnogram.cols(p);
+  return [
+    for (final a in arcs)
+      RingArc(
+          cols[switch (a.kind) {
+            SleepArcKind.deep => SleepStage.deep,
+            SleepArcKind.rem => SleepStage.rem,
+            SleepArcKind.light => SleepStage.light,
+            _ => SleepStage.awake,
+          }]!,
+          a.fraction),
+  ];
+}
+
 /// The dial itself. An empty [frac] draws the track and nothing else — which is
 /// exactly what [Ring] already does with a zero sweep.
 class _Dial extends StatelessWidget {
@@ -1151,6 +1264,9 @@ class _Dial extends StatelessWidget {
             // "6 of 14" draws as 14 divisions with 6 filled.
             ? DashedRing(r.frac ?? 0, r.arc(p), p.track,
                 stroke: stroke, segments: r.need ?? 24)
+            : _stageArcs(r, p) != null
+            ? StageRing(_stageArcs(r, p)!, p.track,
+                stroke: stroke, t: animate(c, 1))
             : Ring(r.frac ?? 0, r.arc(p), p.track,
                 stroke: stroke, t: animate(c, 1), solid: r.measured),
       ),
@@ -1231,7 +1347,7 @@ class _RingText extends StatelessWidget {
       // Absent reads as words, never as a dash and never as a zero — so it
       // takes the sentence weight rather than the numeral one.
       Text(r.value,
-          style: r.measured
+          style: r.showsNumber
               ? F.n24.copyWith(color: p.ink)
               : F.body.copyWith(color: p.ink2),
           textAlign: align),
@@ -1284,6 +1400,39 @@ class _GapRow extends StatelessWidget {
 
 // ═══════════════════ the screen ═══════════════════
 
+/// The night's stage totals off a `getDaySleepV2` map, or null when it carries
+/// none of them. Individual stages stay null when the pipeline had no figure —
+/// the ring splits only when Deep, REM and Light are all there.
+SleepStageMin? sleepStagesOf(Map<String, dynamic> night) {
+  int? m(String k) => (night[k] as num?)?.round();
+  final s = SleepStageMin(
+      deep: m('deep_min'),
+      rem: m('rem_min'),
+      light: m('light_min'),
+      awake: m('awake_min'));
+  return s.deep == null && s.rem == null && s.light == null && s.awake == null
+      ? null
+      : s;
+}
+
+/// The learned sleep need and the coach bedtime out of `getInsights()`, shared
+/// by every loader so a dated view cannot forget them (it did, and drew an
+/// empty bar under a night that had a need).
+({Metric need, Metric bedtime}) sleepCoachOf(Map<String, dynamic> insights) {
+  final coach = insights['sleep_coach'];
+  final needEnv = coach is Map ? coach['need'] : null;
+  final bedEnv = coach is Map ? coach['bedtime'] : null;
+  final needSec = envValue(needEnv)?['need_sec'] as num?;
+  return (
+    // sleep_coach.need is the COMPUTED need. `sleep.need_min` is a hardcoded
+    // 480 and must never be shown as "your sleep need".
+    need: envMetric(needEnv, needSec == null ? null : needSec / 60,
+        unit: 'min'),
+    bedtime: envMetric(
+        bedEnv, envValue(bedEnv)?['bedtime_min_of_day'] as num?),
+  );
+}
+
 class HomeData {
   final String? name;
   final String? dayId;
@@ -1299,6 +1448,25 @@ class HomeData {
   final Metric sleepNeedMin;
   final Metric bedtime;
   final Map<String, dynamic>? strainTarget;
+
+  /// The scored night's stage totals (`getDaySleepV2`): the sleep ring splits
+  /// its arc by these. Null when none were loaded; fields inside are null when
+  /// the pipeline had no figure.
+  final SleepStageMin? sleepStages;
+
+  /// Settings > expected sleep schedule, when saved.
+  final ExpectedSleepSchedule? sleepSchedule;
+
+  /// The next armed alarm (a future instant), when one is set.
+  final DateTime? nextAlarm;
+
+  /// Median local clock minute-of-day of the user's recent onsets / wakes.
+  final int? learnedOnsetMin, learnedWakeMin;
+
+  /// The user's own sleep-cycle length, minutes. Null until a persisted
+  /// per-user value exists, which means the 90 min assumption.
+  // TODO(sleep-ring): populate from a persisted per-user cycle length when one exists.
+  final int? cycleLenMin;
 
   /// Non-null when the cross-day rollup was withheld rather than absent — see
   /// [staleInsightsCard]. Drivers, sleep need and bedtime are all empty in that
@@ -1351,6 +1519,12 @@ class HomeData {
     this.sleepNeedMin = Metric.empty,
     this.bedtime = Metric.empty,
     this.strainTarget,
+    this.sleepStages,
+    this.sleepSchedule,
+    this.nextAlarm,
+    this.learnedOnsetMin,
+    this.learnedWakeMin,
+    this.cycleLenMin,
     this.heldOverNight,
     this.illnessState,
     this.illnessDay,
@@ -1365,7 +1539,34 @@ class HomeData {
   /// The three illness fields, replaced together. Test-facing sugar, and they
   /// travel as a set on purpose — they are read as one envelope, and setting
   /// one without the others describes a state the pipeline cannot produce.
-  HomeData copyOrIllness(String? state, String? day, double? z) => HomeData(
+  HomeData copyOrIllness(String? state, String? day, double? z) => _copy(
+        illnessState: state,
+        illnessDay: day,
+        illnessZ: z,
+        nextAlarm: nextAlarm,
+      );
+
+  /// The same data with the armed alarm and saved schedule replaced — both
+  /// live on AppState, not in the repository, so the screen lays them over
+  /// what loaded.
+  HomeData withSleepInputs(
+          {DateTime? alarm, ExpectedSleepSchedule? schedule}) =>
+      _copy(
+        illnessState: illnessState,
+        illnessDay: illnessDay,
+        illnessZ: illnessZ,
+        nextAlarm: alarm,
+        sleepSchedule: schedule,
+      );
+
+  HomeData _copy({
+    required String? illnessState,
+    required String? illnessDay,
+    required double? illnessZ,
+    required DateTime? nextAlarm,
+    ExpectedSleepSchedule? sleepSchedule,
+  }) =>
+      HomeData(
         name: name,
         dayId: dayId,
         readiness: readiness,
@@ -1380,10 +1581,16 @@ class HomeData {
         sleepNeedMin: sleepNeedMin,
         bedtime: bedtime,
         strainTarget: strainTarget,
+        sleepStages: sleepStages,
+        sleepSchedule: sleepSchedule ?? this.sleepSchedule,
+        nextAlarm: nextAlarm,
+        learnedOnsetMin: learnedOnsetMin,
+        learnedWakeMin: learnedWakeMin,
+        cycleLenMin: cycleLenMin,
         heldOverNight: heldOverNight,
-        illnessState: state,
-        illnessDay: day,
-        illnessZ: z,
+        illnessState: illnessState,
+        illnessDay: illnessDay,
+        illnessZ: illnessZ,
         insightsStale: insightsStale,
         overnightAt: overnightAt,
         activityAt: activityAt,
@@ -1407,6 +1614,14 @@ class HomeData {
     final overview = await repo.getDayOverview(date);
     final strain = await repo.getDayStrain(date);
     final sleep = await repo.getDaySleepV2(date);
+    // The learned need, like [load]. A failed read leaves it absent — the ring
+    // then shows the labelled default, never an invented need.
+    ({Metric need, Metric bedtime})? coach;
+    try {
+      coach = sleepCoachOf(await repo.getInsights());
+    } catch (_) {
+      coach = null;
+    }
     return HomeData(
       name: profile['name']?.toString(),
       dayId: date,
@@ -1417,6 +1632,8 @@ class HomeData {
       calories: metricOf(strain['calories']),
       caloriesTotal: metricOf(strain['calories_total']),
       sleepMin: metricOf(sleep['duration_min']),
+      sleepNeedMin: coach?.need ?? Metric.empty,
+      sleepStages: sleepStagesOf(sleep),
       stepGoal: (profile['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
     );
   }
@@ -1434,10 +1651,7 @@ class HomeData {
     final gb = cd['readiness_glassbox'];
     final gbDrivers = gb is Map ? gb['drivers'] : null;
 
-    final coach = cd['sleep_coach'];
-    final needEnv = coach is Map ? coach['need'] : null;
-    final bedEnv = coach is Map ? coach['bedtime'] : null;
-    final needSec = (envValue(needEnv)?['need_sec'] as num?);
+    final coach = sleepCoachOf(cd);
 
     final strain = today['coach'];
 
@@ -1448,6 +1662,30 @@ class HomeData {
     // here may imply a second signal.
     final illness = today['illness'];
     final status = today['status'] as Map?;
+
+    final sleepMin = overnightMetric(today, s('duration_min'), l);
+
+    // Stage totals of TODAY'S OWN night only: a held-over night is refused
+    // above, and its stages must not turn up under today's ring.
+    SleepStageMin? stages;
+    if (sleepMin.value != null) {
+      final night = (status?['overnight_day'] ?? status?['today_day'])?.toString();
+      if (night != null) {
+        try {
+          stages = sleepStagesOf(await repo.getDaySleepV2(night));
+        } catch (_) {
+          stages = null;
+        }
+      }
+    }
+
+    // Typical onset/wake for the unslept estimate. The saved schedule and the
+    // armed alarm are AppState's and are laid over this by the screen
+    // ([HomeData.withSleepInputs]); a failed read here is simply absent.
+    ({int? onsetMin, int? wakeMin}) learned = (onsetMin: null, wakeMin: null);
+    try {
+      learned = learnedClockMinutes(await repo.sleepWindows(days: 14));
+    } catch (_) {}
 
     return HomeData(
       name: profile['name']?.toString(),
@@ -1466,18 +1704,17 @@ class HomeData {
           if (e is Map) e.cast<String, dynamic>(),
       ],
       strain: metricOf(d('strain')),
-      sleepMin: overnightMetric(today, s('duration_min'), l),
+      sleepMin: sleepMin,
+      sleepStages: stages,
+      learnedOnsetMin: learned.onsetMin,
+      learnedWakeMin: learned.wakeMin,
       rhr: overnightMetric(today, d('resting_hr'), l),
       steps: metricOf(d('steps')),
       calories: metricOf(d('calories')),
       caloriesTotal: metricOf(d('calories_total')),
       stepGoal: (today['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal,
-      // sleep_coach.need is the COMPUTED need. `sleep.need_min` is a hardcoded
-      // 480 and must never be shown as "your sleep need".
-      sleepNeedMin: envMetric(needEnv, needSec == null ? null : needSec / 60,
-          unit: 'min'),
-      bedtime: envMetric(
-          bedEnv, envValue(bedEnv)?['bedtime_min_of_day'] as num?),
+      sleepNeedMin: coach.need,
+      bedtime: coach.bedtime,
       strainTarget: strain is Map && strain['strain_target'] is Map
           ? (strain['strain_target'] as Map).cast<String, dynamic>()
           : null,
@@ -1490,6 +1727,23 @@ class HomeData {
       activityDay: status?['activity_day']?.toString(),
     );
   }
+}
+
+/// How long until the next whole minute after [now], in (0, 60 s].
+///
+/// Taken from the UTC instant, never from local wall-clock fields: a minute
+/// boundary is the same instant in every whole-, half- and quarter-hour zone,
+/// but `DateTime(y, m, d, h, min + 1)` in the repeated fall-back hour resolves
+/// to the FIRST occurrence of that wall time, an hour in the past — a negative
+/// delay, a zero-delay Timer, and a setState loop.
+@visibleForTesting
+Duration nextMinuteTickDelay(DateTime now) {
+  const minuteUs = 60 * 1000000;
+  final us = now.toUtc().microsecondsSinceEpoch;
+  final next = DateTime.fromMicrosecondsSinceEpoch(
+      us - us % minuteUs + minuteUs,
+      isUtc: true);
+  return next.difference(now.toUtc());
 }
 
 class HomeScreen extends StatefulWidget {
@@ -1506,13 +1760,19 @@ class HomeScreen extends StatefulWidget {
   /// reads it off AppState via [workoutLiveOf].
   final bool? workoutLive;
 
-  const HomeScreen({super.key, this.data, this.hour, this.workoutLive});
+  /// The instant the sleep ring estimates from, injected only by tests.
+  /// Production reads `clock.now()`.
+  final DateTime? now;
+
+  const HomeScreen(
+      {super.key, this.data, this.hour, this.workoutLive, this.now});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with RevisionReload {
+class _HomeScreenState extends State<HomeScreen>
+    with RevisionReload, WidgetsBindingObserver {
   HomeData? _d;
   bool _loading = true;
 
@@ -1531,9 +1791,53 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// history that their band has never produced data is the wrong answer to it.
   bool _failed = false;
 
+  /// Fires on each minute boundary so the sleep ring's estimate (wake minus
+  /// now) does not freeze at the minute the screen was built.
+  Timer? _tick;
+
+  /// Test-facing: how many times the tick fired, and the delay last armed.
+  @visibleForTesting
+  int debugTickCount = 0;
+  @visibleForTesting
+  Duration? debugLastTickDelay;
+
+  void _armTick() {
+    _tick?.cancel();
+    final delay = nextMinuteTickDelay(pc.clock.now());
+    debugLastTickDelay = delay;
+    _tick = Timer(delay, () {
+      if (!mounted) return;
+      debugTickCount++;
+      setState(() {});
+      _armTick();
+    });
+  }
+
+  /// Nothing to keep fresh while the app is in the background; it catches up
+  /// the moment it is back.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() {});
+      _armTick();
+    } else {
+      _tick?.cancel();
+      _tick = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _armTick();
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
@@ -1750,7 +2054,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     // them apart: whether this install has ever scored a night. "No band
     // recordings processed yet" said to someone with three months of history is
     // the first-run answer to a gap, and it is wrong.
-    final bare = d.readiness.isEmpty &&
+    final noData = d.readiness.isEmpty &&
         d.sleepMin.isEmpty &&
         d.strain.isEmpty &&
         d.rhr.isEmpty &&
@@ -1761,6 +2065,16 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     // gates the plan/live-workout copy below, which is about what to DO
     // today and reads as a stale instruction on a day already in the past.
     final isToday = _day == null || _day == todayLabel();
+    // The alarm is AppState's. Only TODAY's rings estimate toward it.
+    final ringData =
+        isToday ? d.withSleepInputs(
+                alarm: nextAlarmOf(c) ?? d.nextAlarm,
+                schedule: sleepScheduleOf(c) ?? d.sleepSchedule)
+            : d;
+    // A day with no measured data is not bare when tonight's estimate can be
+    // made: a saved schedule or an armed alarm is something to show.
+    final bare =
+        noData && !(isToday && RingTrio.hasSleepEstimate(ringData, now: widget.now));
 
     // No sync button on this card either: Home's one sync control is the
     // only place Home starts a sync.
@@ -1916,9 +2230,10 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
         // diagnostic used to go nowhere but a Firebase breadcrumb. It belongs
         // one tap away, on the Readiness screen: a wall of per-input
         // diagnostics on Home makes the app read as broken.
-        if (RingTrio.has(d))
+        if (RingTrio.has(ringData, now: widget.now))
           RingTrio(
-            d: d,
+            d: ringData,
+            now: widget.now,
             onOpen: (k) => go(
                 c,
                 switch (k) {

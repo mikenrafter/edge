@@ -633,6 +633,83 @@ class Ring extends CustomPainter {
       o.v != v || o.t != t || o.solid != solid || o.color != color;
 }
 
+/// One coloured arc of a [StageRing]: [fraction] of the FULL circle.
+class RingArc {
+  final Color color;
+  final double fraction;
+  const RingArc(this.color, this.fraction);
+
+  @override
+  bool operator ==(Object other) =>
+      other is RingArc && other.color == color && other.fraction == fraction;
+
+  @override
+  int get hashCode => Object.hash(color, fraction);
+}
+
+/// The sleep dial once a night is scored: the track, then [arcs] laid end to
+/// end clockwise from 12 o'clock, each in its own colour. Butt caps, so one
+/// stage ends exactly where the next begins; anything past a full circle is
+/// clipped, never wrapped. [t] is the draw-in progress, as for [Ring].
+class StageRing extends CustomPainter {
+  final List<RingArc> arcs;
+  final Color track;
+  final double stroke, t;
+
+  StageRing(this.arcs, this.track, {this.stroke = 10, this.t = 1});
+
+  @override
+  void paint(Canvas cv, Size s) {
+    final c = Offset(s.width / 2, s.height / 2);
+    final r = min(s.width, s.height) / 2 - stroke / 2;
+    if (r <= 0) return;
+    cv.drawCircle(
+      c,
+      r,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = stroke
+        ..color = track,
+    );
+    final rect = Rect.fromCircle(center: c, radius: r);
+    final k = t.clamp(0.0, 1.0);
+    var at = -pi / 2;
+    var left = 2 * pi;
+    for (final a in arcs) {
+      final sweep = min(2 * pi * a.fraction.clamp(0.0, 1.0) * k, left);
+      if (sweep <= 0) continue;
+      cv.drawArc(
+        rect,
+        at,
+        sweep,
+        false,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.butt
+          ..color = a.color,
+      );
+      at += sweep;
+      left -= sweep;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant StageRing o) =>
+      o.track != track ||
+      o.stroke != stroke ||
+      o.t != t ||
+      o.arcs.length != arcs.length ||
+      !_sameArcs(o.arcs);
+
+  bool _sameArcs(List<RingArc> other) {
+    for (var i = 0; i < arcs.length; i++) {
+      if (other[i] != arcs[i]) return false;
+    }
+    return true;
+  }
+}
+
 /// A ring made of discrete dashes rather than a continuous arc — for a value
 /// that is still filling (a baseline calibrating night by night), so "not
 /// solid yet" is literally true of the shape, not just a softer tint of the
