@@ -16,13 +16,22 @@
 //     uncovered come in (SpectralCodec.restrict), as a new part. Seconds in a
 //     boundary cell that is only partly covered are not imported - the price of
 //     carving a coded blob without the raw.
+// The carve (a decode + re-encode) runs in a worker isolate; the reads and the
+// insert stay on the calling transaction.
 // Parts of one device-signal stay pairwise disjoint in absolute time.
+import 'dart:async';
+import 'dart:isolate';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:sqflite/sqflite.dart';
 
 import 'spectral_codec.dart';
 import 'spectral_zone.dart';
+
+/// Where the carve runs. [Isolate.run] in production; a test swaps it to
+/// record that the work is handed off.
+Future<R> Function<R>(FutureOr<R> Function()) spectralCarveRunner = Isolate.run;
 
 Uint8List spectralBytes(Object? v) =>
     v is Uint8List ? v : Uint8List.fromList((v as List).cast<int>());
@@ -165,23 +174,65 @@ Future<bool> importSpectralPart(DatabaseExecutor ex, Map<String, Object?> row,
   if (overlapped == 0) {
     return insert(blob, h.nValid, num0('rms_err'), num0('max_err'), h.length);
   }
-  final enc = SpectralCodec.restrict(blob, (m) => !coveredMinute.contains(m));
-  if (enc == null) return false;
-  final spec = SpectralCodec.specs[sig];
-  double rms, max;
-  switch (h.mode) {
-    case SpectralMode.pyramidOnly:
-      rms = 0;
-      max = 0;
-    case SpectralMode.losslessAtQuantum:
-      rms = num0('rms_err');
-      max = num0('max_err');
-    case SpectralMode.adaptive:
-    case SpectralMode.staticBlocks:
-      // Second generation: vs the original raw the error is at most the first
-      // generation's (every segment met the spec) plus this re-encode's.
-      rms = (spec?.maxRms ?? num0('rms_err')) + enc.stats.rmsErr;
-      max = num0('max_err') + enc.stats.maxErr;
-  }
-  return insert(enc.blob, enc.stats.nValid, rms, max, h.length);
+  final carved = await carveSpectralPart(blob, coveredMinute,
+      valid: valid,
+      rmsErr: row['rms_err'],
+      maxErr: row['max_err']);
+  if (carved == null) return false;
+  return insert(
+      carved.blob, carved.nValid, carved.rmsErr, carved.maxErr, h.length);
+}
+
+/// A carved part, ready to insert. Plain data, so it crosses isolates.
+class SpectralCarved {
+  const SpectralCarved(this.blob, this.nValid, this.rmsErr, this.maxErr);
+  final Uint8List blob;
+  final int nValid;
+  final double rmsErr;
+  final double maxErr;
+}
+
+/// Carve [blob] without the minute cells in [coveredMinutes], off the calling
+/// isolate (invariant 10: the re-encode is the heavy part). Takes and returns
+/// sendable values only; the closure captures nothing else, so no database
+/// handle is dragged across. [valid] is the incoming part's valid-slot count
+/// and [rmsErr] / [maxErr] its stored bounds (absent reads as 0).
+Future<SpectralCarved?> carveSpectralPart(
+  Uint8List blob,
+  Set<int> coveredMinutes, {
+  required int valid,
+  Object? rmsErr,
+  Object? maxErr,
+}) {
+  final rms = (rmsErr as num?)?.toDouble() ?? 0;
+  final max = (maxErr as num?)?.toDouble() ?? 0;
+  return spectralCarveRunner(() => carveSpectralPartSync(
+      blob, coveredMinutes, valid: valid, rmsErr: rms, maxErr: max));
+}
+
+/// The carve itself (also what the worker runs).
+///
+/// Error bounds, against the ORIGINAL raw, which is not available here:
+///   * max: the incoming part's max (every kept sample was within it) plus this
+///     re-encode's own max error (0 for lossless and pyramid-only), so never
+///     below the incoming bound.
+///   * rms: the kept samples are a subset, whose sum of squares is at most the
+///     whole's, so rms_subset <= rms_whole * sqrt(valid_whole / valid_kept),
+///     and never above the max; plus this re-encode's rms (Minkowski). The
+///     whole's rms is NOT copied: the subset can be rougher than the whole.
+SpectralCarved? carveSpectralPartSync(
+  Uint8List blob,
+  Set<int> coveredMinutes, {
+  required int valid,
+  required double rmsErr,
+  required double maxErr,
+}) {
+  final enc = SpectralCodec.restrict(blob, (m) => !coveredMinutes.contains(m));
+  if (enc == null) return null;
+  final kept = enc.stats.nValid;
+  final subsetRms = kept == 0 || valid == 0
+      ? 0.0
+      : math.min(rmsErr * math.sqrt(valid / kept), maxErr);
+  return SpectralCarved(enc.blob, kept, subsetRms + enc.stats.rmsErr,
+      maxErr + enc.stats.maxErr);
 }
