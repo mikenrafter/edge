@@ -199,6 +199,27 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
     reason: 'injected log saver (saveLogChunksResult in production, invariant 16)',
   ),
   UnresolvedOk(
+    file: 'compute/prv_export.dart',
+    symbol: 'exportPrvLog',
+    source: 'env.now()',
+    ordinal: 0,
+    reason: 'injected export environment: the export clock (no real time in tests)',
+  ),
+  UnresolvedOk(
+    file: 'compute/prv_export.dart',
+    symbol: 'exportPrvLog',
+    source: 'env.appVersion()',
+    ordinal: 1,
+    reason: 'injected export environment: app version string',
+  ),
+  UnresolvedOk(
+    file: 'compute/prv_export.dart',
+    symbol: 'exportPrvLog',
+    source: "save(logFileName('prv', at), text)",
+    ordinal: 2,
+    reason: 'injected log saver (saveLogFileResult in production, invariant 16)',
+  ),
+  UnresolvedOk(
     file: 'util/log_file.dart',
     symbol: 'saveLogChunksResult',
     source: "(share ?? (p) => Share.shareXFiles( [XFile(p, mimeType: 'text/plain')], subject: 'OpenStrap log', sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1), ))(file.path)",

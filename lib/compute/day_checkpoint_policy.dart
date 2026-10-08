@@ -24,8 +24,10 @@ const int kRevBucketSec = 900;
 /// longer depends on the sleep window (per-second wake detail instead of wake
 /// sums), and carries the motion buckets and the minute bills. 3: also carries
 /// the day's streaming RR state (corrector and irregular-rhythm screen) and the
-/// three day curves, folded from its beats.
-const int kDayCheckpointFmt = 3;
+/// three day curves, folded from its beats. 4: the screen state inside it is
+/// analytics' version-2 checkpoint (it counts the beats and windows the PRV
+/// diagnostics report); a layout-3 blob is not resumed, the day refolds.
+const int kDayCheckpointFmt = 4;
 
 /// The checkpoint folds the day's BEATS up to `cpRecTs - kRrFoldGuardSec`, not up
 /// to `cpRecTs`: a record's earlier beats sit before its own second (they are

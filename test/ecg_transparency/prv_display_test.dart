@@ -9,8 +9,10 @@
 //   * the flag rows read flagged / not flagged / not screened - a screen that
 //     did not run is "not screened", never "not flagged" and never a dash that
 //     reads as one;
-//   * NO day_result payload change: kAlgoVersion and both pins are untouched
-//     (a bump would re-derive every stored day; this phase is display only).
+//   * (Phase 1 only) NO day_result payload change. The PRV diagnostics item
+//     that followed (test/prv_diagnostics/) changed the payload on purpose:
+//     kAlgoVersion 102 -> 103 and the analytics pin moved, so the version
+//     test below now pins THAT state.
 //
 // Fed through InvestigateData exactly as the repository shapes it
 // (lib/data/local_repository_impl.dart getDayHeart / getDayHrv).
@@ -137,10 +139,10 @@ void main() {
   });
 
   group('no derived output changes (R4)', () {
-    test('kAlgoVersion and both sibling pins are exactly what Phase 1 started '
-        'from', () {
-      expect(kAlgoVersion, 102);
-      expect(kAnalyticsPin, 'aa67997c430e5656089a70d444d36cc18d6601d0');
+    test('kAlgoVersion and both sibling pins are exactly what the PRV '
+        'diagnostics change set (v103)', () {
+      expect(kAlgoVersion, 103);
+      expect(kAnalyticsPin, 'bf1be1981ed4fcd2ecd9958f0e0c742859eea20f');
       expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
     });
 
@@ -150,7 +152,7 @@ void main() {
       for (final k in [
         "'sd1': irrSleep == null",
         "'flag': irrSleep?.flag",
-        "'confidence': irregularSleep.present",
+        "'confidence': irregularSleep.metric.present",
         "'clean_fraction': _round(corrected.cleanFraction, 4)",
         "'irregular_24h': irregular24hJson",
       ]) {

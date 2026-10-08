@@ -1796,7 +1796,24 @@ import '../util/worker_entries.dart' show Dispatcher;
 // and a value within ~1e-11 of a 6-decimal rounding boundary (or a flag on
 // its 0.70 / 30 % threshold) could flip. Bumped so no per-version row can mix
 // the two (owner decision; to be folded into upstream's numbering later).
-const int kAlgoVersion = 102;
+// v103: PRV diagnostics (design 04 R4 follow-up). The irregular-rhythm screen
+// now stores the evidence behind its verdict, for the 24 h screen
+// (`clinical.irregular_24h.diagnostics`) and the sleep screen
+// (`clinical.irregular.diagnostics`, plus the sleep `pnn_pct`, `n_beats` and
+// `sd1_sd2` it computed and used to discard): beats in / kept after the
+// [300, 2000] ms filter, the corrector's raw / corrected / dropped counts,
+// artifact fraction, per-5-minute-window counts (total, voting, flagged, the
+// final OPEN window and what became of it, sustained share seen vs required),
+// the thresholds, and, for an abstention, the gate that stopped it. The
+// verdicts and figures themselves do not change; the payload does, so every
+// stored day re-derives. Comes from analytics bf1be1981ed4fcd2ecd9958f0e0c742859eea20f
+// (`irregularBeatScreenDetailed`, `IrregularScreenState.evaluateDetailed`,
+// state checkpoint version 2) on mikenrafter/openstrap-analytics
+// feat/prv-diagnostics, repinned below; verified present with
+// `git show bf1be1981ed4fcd2ecd9958f0e0c742859eea20f:lib/src/onehz/clinical/irregular_diagnostics.dart`. The day
+// checkpoint layout moved 3 -> 4 with it (the screen state gained counters), so
+// no old checkpoint is resumed with counts it never kept.
+const int kAlgoVersion = 103;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
@@ -1991,7 +2008,10 @@ const int kAlgoVersion = 102;
 // REPIN @ aa67997 (perf/incremental-rr, on 65c8901): correctRr on sliding
 // sorted windows (oracle-tested bit-identical, ~37x faster) and the streaming
 // RrCorrector / IrregularScreenState the day checkpoint now carries (v102).
-const String kAnalyticsPin = 'aa67997c430e5656089a70d444d36cc18d6601d0';
+// REPIN @ bf1be19 (feat/prv-diagnostics, on aa67997): the screen's
+// diagnostics (v103). The verdict code is the same; the payload carries the
+// evidence behind it.
+const String kAnalyticsPin = 'bf1be1981ed4fcd2ecd9958f0e0c742859eea20f';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
@@ -6004,7 +6024,7 @@ class DerivationEngine {
         // Every accelerometer row of the day is in: nothing waits.
         if (!curves.fold(tailRr, tailTs, accTs, ax, ay, az, 1 << 60)) return null;
         return _DayStream(
-          irregular: rr.irregular24h().toJson((v) => v.toJson()),
+          irregular: rr.irregular24hDetailed().toJson(),
           hrv: curves.hrvCurve(),
           resp: curves.respCurve(),
           daytime: curves.daytimeHrv(onsetSec: onsetSec, offsetSec: offsetSec),

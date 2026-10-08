@@ -529,7 +529,13 @@ dependencies:
       # correctRr output unchanged; the streamed day RR built on it bumps
       # kAlgoVersion 101 -> 102 (see the v102 note). Verified against the SHA:
       #   `git show aa67997:lib/onehz.dart | grep rr_correction_stream`
-      ref: aa67997c430e5656089a70d444d36cc18d6601d0
+      #
+      # REPIN @ bf1be19 (mikenrafter/openstrap-analytics feat/prv-diagnostics,
+      # on aa67997): irregularBeatScreenDetailed + IrregularScreenState
+      # .evaluateDetailed, the evidence behind the PRV screen's verdict (v103).
+      # Same verdicts; IrregularScreenState checkpoint is version 2. Verified:
+      #   `git show bf1be19:lib/onehz.dart | grep irregular_diagnostics`
+      ref: bf1be1981ed4fcd2ecd9958f0e0c742859eea20f
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8

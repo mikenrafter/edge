@@ -27,7 +27,40 @@
         "sd2": 14.1,
         "flag": false,
         "confidence": 0.9,
-        "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+        "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+        "sd1_sd2": 1.0,
+        "pnn_pct": 0.0,
+        "n_beats": 21597,
+        "diagnostics": {
+          "version": 1,
+          "abstain": null,
+          "beats": {
+            "rr_raw": 21597,
+            "nn_in": 21597,
+            "nn_kept": 21597,
+            "corrected": 0,
+            "dropped": 0,
+            "artifact_fraction": 0.0
+          },
+          "windows": {
+            "total": 71,
+            "valid": 71,
+            "flagged": 0,
+            "sustained_observed": 0.0,
+            "open_beats": 230,
+            "open": "unflagged"
+          },
+          "thresholds": {
+            "min_beats": 500,
+            "max_artifact": 0.3,
+            "sd1sd2_flag": 0.7,
+            "pnn_threshold_ms": 70.0,
+            "pnn_flag_pct": 30.0,
+            "window_minutes": 5.0,
+            "min_window_beats": 40,
+            "sustained_fraction": 0.5
+          }
+        }
       },
       "irregular_24h": {
         "value": {
@@ -43,7 +76,37 @@
         "inputs_used": [
           "rr_cleaned"
         ],
-        "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms."
+        "note": "irregular-rhythm SCREEN (not a diagnosis): Poincaré SD1/SD2 + pNN70. PRV not ECG — wrist pulse misses P-waves. Discuss with a clinician only if you have symptoms.",
+        "diagnostics": {
+          "version": 1,
+          "abstain": null,
+          "beats": {
+            "rr_raw": 21598,
+            "nn_in": 21598,
+            "nn_kept": 21598,
+            "corrected": 0,
+            "dropped": 0,
+            "artifact_fraction": 0.0
+          },
+          "windows": {
+            "total": 71,
+            "valid": 71,
+            "flagged": 0,
+            "sustained_observed": 0.0,
+            "open_beats": 231,
+            "open": "unflagged"
+          },
+          "thresholds": {
+            "min_beats": 500,
+            "max_artifact": 0.3,
+            "sd1sd2_flag": 0.7,
+            "pnn_threshold_ms": 70.0,
+            "pnn_flag_pct": 30.0,
+            "window_minutes": 5.0,
+            "min_window_beats": 40,
+            "sustained_fraction": 0.5
+          }
+        }
       },
       "brv": {
         "value": {

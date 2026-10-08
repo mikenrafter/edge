@@ -13919,5 +13919,192 @@
   "investigateCleanFractionSleep": "Share of beats kept after cleaning, sleep",
   "@investigateCleanFractionSleep": {
     "description": "Design 04 cardio transparency: Share of beats kept after cleaning, sleep"
+  },
+  "investigatePrvEvidenceTitle": "Irregular-rhythm screen evidence",
+  "@investigatePrvEvidenceTitle": {
+    "description": "Design 04 PRV diagnostics: Irregular-rhythm screen evidence"
+  },
+  "investigatePrvScopeSleep": "sleep",
+  "@investigatePrvScopeSleep": {
+    "description": "Design 04 PRV diagnostics: sleep"
+  },
+  "investigatePrvScope24h": "24 h",
+  "@investigatePrvScope24h": {
+    "description": "Design 04 PRV diagnostics: 24 h"
+  },
+  "investigatePrvBeatsRaw": "Beats before cleaning, {scope}",
+  "@investigatePrvBeatsRaw": {
+    "description": "Design 04 PRV diagnostics: Beats before cleaning, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsCorrected": "Beats corrected, {scope}",
+  "@investigatePrvBeatsCorrected": {
+    "description": "Design 04 PRV diagnostics: Beats corrected, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsDropped": "Beats dropped, {scope}",
+  "@investigatePrvBeatsDropped": {
+    "description": "Design 04 PRV diagnostics: Beats dropped, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvBeatsAnalysed": "Beats analysed, {scope}",
+  "@investigatePrvBeatsAnalysed": {
+    "description": "Design 04 PRV diagnostics: Beats analysed, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvArtifactShare": "Share of beats rejected by cleaning, {scope}",
+  "@investigatePrvArtifactShare": {
+    "description": "Design 04 PRV diagnostics: Share of beats rejected by cleaning, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsTotal": "Windows, all, {scope}",
+  "@investigatePrvWindowsTotal": {
+    "description": "Design 04 PRV diagnostics: Windows, all, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsValid": "Windows with enough beats to count, {scope}",
+  "@investigatePrvWindowsValid": {
+    "description": "Design 04 PRV diagnostics: Windows with enough beats to count, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsFlagged": "Windows flagged, {scope}",
+  "@investigatePrvWindowsFlagged": {
+    "description": "Design 04 PRV diagnostics: Windows flagged, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWindowsShare": "Flagged share, seen / needed, {scope}",
+  "@investigatePrvWindowsShare": {
+    "description": "Design 04 PRV diagnostics: Flagged share, seen / needed, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenWindow": "Last (open) window, {scope}",
+  "@investigatePrvOpenWindow": {
+    "description": "Design 04 PRV diagnostics: Last (open) window, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenThin": "{n} beats, too few to count",
+  "@investigatePrvOpenThin": {
+    "description": "Design 04 PRV diagnostics: {n} beats, too few to count",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenFlagged": "{n} beats, flagged",
+  "@investigatePrvOpenFlagged": {
+    "description": "Design 04 PRV diagnostics: {n} beats, flagged",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvOpenUnflagged": "{n} beats, not flagged",
+  "@investigatePrvOpenUnflagged": {
+    "description": "Design 04 PRV diagnostics: {n} beats, not flagged",
+    "placeholders": {
+      "n": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvPnnSleep": "Successive intervals over 70 ms, sleep",
+  "@investigatePrvPnnSleep": {
+    "description": "Design 04 PRV diagnostics: Successive intervals over 70 ms, sleep"
+  },
+  "investigatePrvWhy": "Why not screened, {scope}",
+  "@investigatePrvWhy": {
+    "description": "Design 04 PRV diagnostics: Why not screened, {scope}",
+    "placeholders": {
+      "scope": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyTooFew": "Too few usable beats: {have} of {need} needed",
+  "@investigatePrvWhyTooFew": {
+    "description": "Design 04 PRV diagnostics: Too few usable beats: {have} of {need} needed",
+    "placeholders": {
+      "have": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyArtifact": "Too much artifact: {seen} of beats rejected, {allowed} allowed",
+  "@investigatePrvWhyArtifact": {
+    "description": "Design 04 PRV diagnostics: Too much artifact: {seen} of beats rejected, {allowed} allowed",
+    "placeholders": {
+      "seen": {
+        "type": "String"
+      },
+      "allowed": {
+        "type": "String"
+      }
+    }
+  },
+  "investigatePrvWhyNoPairs": "No successive usable beats to compare",
+  "@investigatePrvWhyNoPairs": {
+    "description": "Design 04 PRV diagnostics: No successive usable beats to compare"
+  },
+  "investigatePrvWhyNoVariability": "No long-term variability (SD2 is zero), so the ratio is undefined",
+  "@investigatePrvWhyNoVariability": {
+    "description": "Design 04 PRV diagnostics: No long-term variability (SD2 is zero), so the ratio is undefined"
+  },
+  "investigatePrvExport": "Export PRV log",
+  "@investigatePrvExport": {
+    "description": "Design 04 PRV diagnostics: Export PRV log"
+  },
+  "investigatePrvExportFailed": "Couldn't save the PRV log: {reason}",
+  "@investigatePrvExportFailed": {
+    "description": "Design 04 PRV diagnostics: Couldn't save the PRV log: {reason}",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
   }
 }

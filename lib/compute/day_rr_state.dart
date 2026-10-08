@@ -47,23 +47,25 @@ class DayRrState {
   /// The day's 24/7 irregular-rhythm screen over every beat folded: equal to
   /// `irregularBeatScreen(correctRr(all).nn, ...)` as persisted. Does not
   /// change the state.
-  Metric<IrregularRhythm> irregular24h() {
-    final s = _corr.snapshot();
-    return _irr.evaluate(
-      s.tailNn,
-      s.tailNnTimes,
-      artifactFraction: (1.0 - s.cleanFraction).clamp(0.0, 1.0),
-    );
-  }
+  Metric<IrregularRhythm> irregular24h() => irregular24hDetailed().metric;
 
   /// [irregular24h] and the evidence behind it (beat counts, the corrector's
   /// corrected / dropped, per-window counts incl. the open window): equal to
   /// `irregularBeatScreenDetailed(correctRr(all)...)`. `.toJson()` is the
-  /// envelope persisted as `clinical.irregular_24h`. RED STUB (PRV
-  /// diagnostics): the green phase builds it from the corrector's snapshot
-  /// counts and `IrregularScreenState.evaluateDetailed`.
-  IrregularScreenResult irregular24hDetailed() =>
-      throw UnimplementedError('PRV diagnostics: red stub');
+  /// envelope persisted as `clinical.irregular_24h`.
+  IrregularScreenResult irregular24hDetailed() {
+    final s = _corr.snapshot();
+    return _irr.evaluateDetailed(
+      s.tailNn,
+      s.tailNnTimes,
+      artifactFraction: (1.0 - s.cleanFraction).clamp(0.0, 1.0),
+      cleaning: RrCleaningCounts(
+        raw: s.n,
+        corrected: s.correctedCount,
+        dropped: s.droppedCount,
+      ),
+    );
+  }
 
   void write(ResumeWriter w) {
     w.i64(_beats);

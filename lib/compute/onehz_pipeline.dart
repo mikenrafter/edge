@@ -578,7 +578,7 @@ Map<String, dynamic> deriveDayBundle(
       : memo(
           'irregular_day',
           [d.dayRrMs, d.dayRrTsMs],
-          () => irregularBeatScreen(
+          () => irregularBeatScreenDetailed(
             dayCorrected.nn,
             // Require sustained irregularity in independent short windows, not
             // just in one ratio blended across sleep+rest+exercise+posture
@@ -588,15 +588,24 @@ Map<String, dynamic> deriveDayBundle(
             nnTimesMs: dayCorrected.nnTimesMs,
             artifactFraction:
                 (1.0 - dayCorrected.cleanFraction).clamp(0.0, 1.0),
+            // What the corrector did, so a flag or an abstention can be traced
+            // to the beats behind it (stored as `diagnostics`).
+            cleaning: RrCleaningCounts(
+              raw: d.dayRrMs.length,
+              corrected: dayCorrected.correctedCount,
+              dropped: dayCorrected.droppedCount,
+            ),
           ),
         );
-  final Map<String, dynamic> irregular24hJson = handedIrregular ??
-      irregular24h!.toJson((v) => v.toJson());
+  final Map<String, dynamic> irregular24hJson =
+      handedIrregular ?? irregular24h!.toJson();
   final irregular24hFlag = handedIrregular != null
       ? (handedIrregular['value'] is Map
           ? ((handedIrregular['value'] as Map)['flag'] == true ? 1.0 : 0.0)
           : null)
-      : (irregular24h!.present ? (irregular24h.value!.flag ? 1.0 : 0.0) : null);
+      : (irregular24h!.metric.present
+          ? (irregular24h.metric.value!.flag ? 1.0 : 0.0)
+          : null);
 
   // ── BREATHING-RATE VARIABILITY (per-window RSA over the sleep NN) ──────────
   // Window the cleaned sleep NN into ~30-min bins, take each bin's RSA resp rate,
@@ -1067,14 +1076,26 @@ Map<String, dynamic> deriveDayBundle(
   // confidence was a hard-coded 0.5 however noisy the night was.
   final irregularSleep = memo(
     'irregular_sleep',
-    [nn, nnTimes, artifactFraction],
-    () => irregularBeatScreen(
+    [
+      nn,
+      nnTimes,
+      artifactFraction,
+      d.sleepRrMs.length,
+      corrected.correctedCount,
+      corrected.droppedCount,
+    ],
+    () => irregularBeatScreenDetailed(
       nn,
       nnTimesMs: nnTimes,
       artifactFraction: artifactFraction,
+      cleaning: RrCleaningCounts(
+        raw: d.sleepRrMs.length,
+        corrected: corrected.correctedCount,
+        dropped: corrected.droppedCount,
+      ),
     ),
   );
-  final irrSleep = irregularSleep.present ? irregularSleep.value : null;
+  final irrSleep = irregularSleep.metric.value;
 
   final clinical = <String, dynamic>{
     'hrv_time': hrvT.toJson((v) => v.toJson()),
@@ -1086,10 +1107,18 @@ Map<String, dynamic> deriveDayBundle(
       'sd1': irrSleep == null ? null : _round(irrSleep.sd1, 1),
       'sd2': irrSleep == null ? null : _round(irrSleep.sd2, 1),
       'flag': irrSleep?.flag,
-      'confidence': irregularSleep.present
-          ? _round(irregularSleep.confidence, 4)
+      'confidence': irregularSleep.metric.present
+          ? _round(irregularSleep.metric.confidence, 4)
           : 0.0,
-      'note': irregularSleep.note,
+      'note': irregularSleep.metric.note,
+      // Computed by the screen and thrown away until now. Absent is null,
+      // never a 0.
+      'sd1_sd2': irrSleep == null ? null : _round(irrSleep.sd1sd2, 3),
+      'pnn_pct': irrSleep == null ? null : _round(irrSleep.pnnPct, 1),
+      'n_beats': irrSleep?.nBeats,
+      // The evidence behind the verdict (or the abstention): beat and cleaning
+      // counts, per-window counts incl. the open window, thresholds.
+      'diagnostics': irregularSleep.diagnostics.toJson(),
     },
     // 24/7 irregular-rhythm SCREEN over the whole-day RR (the headline screen
     // that drives the opt-in notification). Sleep-only `irregular` kept above.

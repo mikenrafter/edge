@@ -26,12 +26,16 @@ import 'dart:math' show sqrt;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/local_repository.dart';
+import '../../compute/derivation_engine.dart'
+    show kAlgoVersion, kAnalyticsPin, kProtocolPin;
 import '../../compute/prv_export.dart';
 import '../../l10n/app_localizations.dart';
+import '../../util/log_file.dart' show LogSaveFailed;
 import '../ui2.dart';
 import 'day_timeline.dart';
 import 'home_screen.dart';
@@ -234,6 +238,10 @@ class _InvestigateState extends State<Investigate> {
   bool _loading = true;
   String? _day;
 
+  // PRV log export (the 'hrv' page). Cleared on every exit of an attempt.
+  bool _prvExporting = false;
+  String? _prvExportFailure;
+
   @override
   void initState() {
     super.initState();
@@ -367,6 +375,207 @@ class _InvestigateState extends State<Investigate> {
       ? (l?.investigateFlagRaised ?? 'flagged')
       : (l?.investigateFlagClear ?? 'not flagged');
 
+  // ── PRV screen evidence (design 04 PRV diagnostics) ──
+  // What the irregular-rhythm screen counted on its way to its verdict, read
+  // from the stored day bundle (`diagnostics` inside `clinical.irregular` and
+  // `clinical.irregular_24h`); nothing is recomputed. An unstored value has no
+  // row (MonoTable drops a dash): never a 0 or a 0 %.
+  List<Widget> _prvEvidencePanels(BuildContext c, InvestigateData d) {
+    final l = AppLocalizations.of(c);
+    Map<String, dynamic>? diagOf(Object? screen) {
+      final m = screen is Map ? screen['diagnostics'] : null;
+      return m is Map ? m.cast<String, dynamic>() : null;
+    }
+
+    Map<String, dynamic> sub(Object? m) =>
+        m is Map ? m.cast<String, dynamic>() : const <String, dynamic>{};
+    String n(Object? v) => v is num ? thousands(v) : '—';
+    String pct(Object? v) => v is num
+        ? '${(v * 100).toStringAsFixed(1).replaceFirst('-', '\u2212')} %'
+        : '—';
+
+    String why(Map<String, dynamic> g, String reason) {
+      final beats = sub(g['beats']), th = sub(g['thresholds']);
+      switch (reason) {
+        case 'too_few_beats':
+          return l?.investigatePrvWhyTooFew(
+                  n(beats['nn_kept']), n(th['min_beats'])) ??
+              'Too few usable beats: ${n(beats['nn_kept'])} of '
+                  '${n(th['min_beats'])} needed';
+        case 'artifact':
+          return l?.investigatePrvWhyArtifact(
+                  pct(beats['artifact_fraction']), pct(th['max_artifact'])) ??
+              'Too much artifact: ${pct(beats['artifact_fraction'])} of beats '
+                  'rejected, ${pct(th['max_artifact'])} allowed';
+        case 'no_successive_pairs':
+          return l?.investigatePrvWhyNoPairs ??
+              'No successive usable beats to compare';
+        case 'no_long_term_variability':
+          return l?.investigatePrvWhyNoVariability ??
+              'No long-term variability (SD2 is zero), so the ratio is '
+                  'undefined';
+      }
+      return '—';
+    }
+
+    String open(Map<String, dynamic> w) {
+      final beats = n(w['open_beats']);
+      switch (w['open']) {
+        case 'thin':
+          return l?.investigatePrvOpenThin(beats) ??
+              '$beats beats, too few to count';
+        case 'flagged':
+          return l?.investigatePrvOpenFlagged(beats) ?? '$beats beats, flagged';
+        case 'unflagged':
+          return l?.investigatePrvOpenUnflagged(beats) ??
+              '$beats beats, not flagged';
+      }
+      return '—';
+    }
+
+    List<(String, String)> rows(
+        String scope, Map<String, dynamic>? g, List<(String, String)> extra) {
+      if (g == null) return [...extra];
+      final beats = sub(g['beats']), w = sub(g['windows']), th = sub(g['thresholds']);
+      final reason = g['abstain'];
+      return [
+        if (reason is String)
+          (l?.investigatePrvWhy(scope) ?? 'Why not screened, $scope',
+              why(g, reason)),
+        (l?.investigatePrvBeatsRaw(scope) ?? 'Beats before cleaning, $scope',
+            n(beats['rr_raw'])),
+        (l?.investigatePrvBeatsCorrected(scope) ?? 'Beats corrected, $scope',
+            n(beats['corrected'])),
+        (l?.investigatePrvBeatsDropped(scope) ?? 'Beats dropped, $scope',
+            n(beats['dropped'])),
+        (l?.investigatePrvBeatsAnalysed(scope) ?? 'Beats analysed, $scope',
+            n(beats['nn_kept'])),
+        (l?.investigatePrvArtifactShare(scope) ??
+            'Share of beats rejected by cleaning, $scope',
+            pct(beats['artifact_fraction'])),
+        ...extra,
+        (l?.investigatePrvWindowsTotal(scope) ?? 'Windows, all, $scope',
+            n(w['total'])),
+        (l?.investigatePrvWindowsValid(scope) ??
+            'Windows with enough beats to count, $scope',
+            n(w['valid'])),
+        (l?.investigatePrvWindowsFlagged(scope) ?? 'Windows flagged, $scope',
+            n(w['flagged'])),
+        (l?.investigatePrvWindowsShare(scope) ??
+            'Flagged share, seen / needed, $scope',
+            w['sustained_observed'] is num && th['sustained_fraction'] is num
+                ? '${pct(w['sustained_observed'])} / '
+                    '${pct(th['sustained_fraction'])}'
+                : '—'),
+        if (w.isNotEmpty)
+          (l?.investigatePrvOpenWindow(scope) ?? 'Last (open) window, $scope',
+              open(w)),
+      ];
+    }
+
+    final sleepPlain = sub(d.heart['irregular']);
+    final sleepDiag = diagOf(d.heart['irregular']);
+    final dayDiag = diagOf(d.heart['irregular_24h']);
+    final s24 = l?.investigatePrvScope24h ?? '24 h';
+    final sSleep = l?.investigatePrvScopeSleep ?? 'sleep';
+    final all = [
+      ...rows(s24, dayDiag, const []),
+      ...rows(sSleep, sleepDiag, [
+        (l?.investigatePrvPnnSleep ?? 'Successive intervals over 70 ms, sleep',
+            sleepPlain['pnn_pct'] is num
+                ? '${(sleepPlain['pnn_pct'] as num).toStringAsFixed(1)} %'
+                : '—'),
+      ]),
+    ];
+    if (all.every((r) => r.$2 == '—')) return const [];
+    return [
+      const SizedBox(height: S.x3),
+      MonoTable(
+          l?.investigatePrvEvidenceTitle ?? 'Irregular-rhythm screen evidence',
+          all),
+      const SizedBox(height: S.x2),
+      _prvExportRow(c, d),
+    ];
+  }
+
+  Widget _prvExportRow(BuildContext c, InvestigateData d) {
+    final l = AppLocalizations.of(c);
+    final p = P.of(c);
+    final label = l?.investigatePrvExport ?? 'Export PRV log';
+    final failure = _prvExportFailure;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Pressable(
+          key: const ValueKey('prv-log-export'),
+          semanticLabel: label,
+          onTap: _prvExporting ? null : () => _exportPrv(d),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: S.x2),
+            child: Row(children: [
+              Icon(LucideIcons.share, size: 16, color: p.on(C.blue)),
+              const SizedBox(width: S.x2),
+              Expanded(
+                  child: Text(label, style: F.body.copyWith(color: p.on(C.blue)))),
+            ]),
+          ),
+        ),
+        if (failure != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              l?.investigatePrvExportFailed(failure) ??
+                  'Couldn\'t save the PRV log: $failure',
+              style: F.cap.copyWith(color: p.ink3),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Saves the shown day's PRV verdict and evidence as a log file. The busy
+  /// flag clears on every exit; a failure is shown with its reason.
+  Future<void> _exportPrv(InvestigateData d) async {
+    setState(() {
+      _prvExporting = true;
+      _prvExportFailure = null;
+    });
+    String? failure;
+    try {
+      Map<String, dynamic>? asMap(Object? m) =>
+          m is Map ? m.cast<String, dynamic>() : null;
+      final r = await exportPrvLog(
+        env: widget.prvExport ?? _defaultPrvEnv(),
+        analyticsPin: kAnalyticsPin,
+        protocolPin: kProtocolPin,
+        algoVersion: kAlgoVersion,
+        day: d.day ?? _day ?? 'not recorded',
+        sleep: asMap(d.heart['irregular']),
+        screen24h: asMap(d.heart['irregular_24h']),
+      );
+      if (r is LogSaveFailed) failure = r.reason;
+    } catch (e) {
+      failure = '$e';
+    } finally {
+      if (mounted) {
+        setState(() {
+          _prvExporting = false;
+          _prvExportFailure = failure;
+        });
+      }
+    }
+  }
+
+  /// The production environment: the installed app's version, the wall clock,
+  /// the platform share sheet. Tests hand in their own.
+  PrvExportEnv _defaultPrvEnv() => PrvExportEnv(
+        appVersion: () async {
+          final i = await PackageInfo.fromPlatform();
+          return '${i.version}+${i.buildNumber}';
+        },
+        now: DateTime.now,
+      );
+
   // ── HRV: time, frequency, non-linear ──
   List<Widget> _hrvPanels(BuildContext c, InvestigateData d) {
     final l = AppLocalizations.of(c);
@@ -497,6 +706,7 @@ class _InvestigateState extends State<Investigate> {
         (l?.investigateDcAnchors ?? 'DC anchors',
             dc['anchors'] == null ? '—' : thousands(dc['anchors'] as num)),
       ]),
+      ..._prvEvidencePanels(c, d),
       if (d.dcPoints.isNotEmpty) ...[
         const SizedBox(height: S.x3),
         _dcTrend(c, d, beats),

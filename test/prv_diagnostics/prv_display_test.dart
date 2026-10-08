@@ -255,8 +255,7 @@ void main() {
       expect(text.contains('artifact_fraction'), isFalse);
     });
 
-    testWidgets('no variability / no adjacent pairs have their own wording',
-        (t) async {
+    testWidgets('no long-term variability has its own wording', (t) async {
       final a = await _pump(t, heart: {
         'irregular_24h': _env24(
             present: false, diagnostics: _diag(abstain: 'no_long_term_variability')),
@@ -266,13 +265,16 @@ void main() {
               r'no (long-term )?variability|variability (is )?(zero|absent|missing)|SD2 (is )?(zero|0)|undefined'),
           isTrue);
       expect(a.contains('no_long_term_variability'), isFalse);
+    });
+
+    testWidgets('no adjacent clean pairs has its own wording', (t) async {
       final b = await _pump(t, heart: {
         'irregular_24h': _env24(
             present: false, diagnostics: _diag(abstain: 'no_successive_pairs')),
       });
       expect(
           _words(b,
-              r'no (successive|adjacent|consecutive)|(successive|adjacent|consecutive) (clean )?(beats|pairs)|no pairs'),
+              r'no (successive|adjacent|consecutive)|(successive|adjacent|consecutive) (clean |usable )?(beats|pairs)|no pairs'),
           isTrue);
       expect(b.contains('no_successive_pairs'), isFalse);
     });

@@ -270,13 +270,14 @@ void main() {
 
   group('no output change', () {
     test('the artifact itself bumps nothing: 101 was the incremental repin\'s '
-        'bump and 102 the streamed day RR\'s, not this artifact\'s', () {
-      expect(kAlgoVersion, 102);
+        'bump, 102 the streamed day RR\'s and 103 the PRV diagnostics\', not '
+        'this artifact\'s', () {
+      expect(kAlgoVersion, 103);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '
-        'descendants 65c8901, aa67997)', () {
-      expect(kAnalyticsPin, 'aa67997c430e5656089a70d444d36cc18d6601d0');
+        'descendants 65c8901, aa67997, bf1be19)', () {
+      expect(kAnalyticsPin, 'bf1be1981ed4fcd2ecd9958f0e0c742859eea20f');
     });
   });
 }

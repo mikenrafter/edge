@@ -21,9 +21,11 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
+import 'package:openstrap_edge/compute/day_checkpoint_policy.dart';
 import 'package:openstrap_edge/compute/day_rr_state.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
@@ -240,6 +242,59 @@ void main() {
     });
   });
 
+  group('old checkpoints are refused, never resumed with counts they never kept',
+      () {
+    test('the day checkpoint layout moved past 3: a layout-3 checkpoint is a '
+        'full pass', () {
+      expect(kDayCheckpointFmt, greaterThan(3));
+      final cp = DayCheckpoint(
+        dayId: 'd',
+        algoVersion: kAlgoVersion,
+        fmt: 3,
+        ctxSig: 'c',
+        cpRecTs: 900,
+        revVec: encodeRevVec(const {}),
+        state: Uint8List(0),
+        nightRef: null,
+        computedAt: 1,
+      );
+      final d = decideResume(
+          cp: cp, algoVersion: kAlgoVersion, ctxSig: 'c', liveRevs: const {});
+      expect(d.resume, isFalse);
+      expect(d.reason, 'fmt');
+    });
+
+    test('a streamed RR state holding analytics\' version-1 screen checkpoint '
+        'does not read', () {
+      final beats = synthBeats(const SynthBeats(seed: 5, seconds: 900));
+      final st = DayRrState()..fold(beats.rr, beats.ts);
+      final w = ResumeWriter();
+      st.write(w);
+      // The same bytes, with the screen state rewritten the way analytics
+      // aa67997 wrote it (version 1, no input-beat or window-total counters).
+      final r = ResumeReader(w.takeBytes());
+      final n = r.i64();
+      final last = r.optF64();
+      final j = jsonDecode(utf8.decode(r.bytes(r.count(1)))) as Map<String, dynamic>;
+      final screen = (j['i'] as Map).cast<String, dynamic>()
+        ..['version'] = 1
+        ..remove('nIn')
+        ..remove('total');
+      final text = utf8.encode(jsonEncode({'c': j['c'], 'i': screen}));
+      final old = ResumeWriter()
+        ..i64(n)
+        ..optF64(last)
+        ..i32(text.length)
+        ..bytes(Uint8List.fromList(text), text.length);
+      expect(() => DayRrState.read(ResumeReader(old.takeBytes())),
+          throwsFormatException);
+      // And the current layout reads.
+      final ok = ResumeWriter();
+      st.write(ok);
+      expect(DayRrState.read(ResumeReader(ok.takeBytes())).beats, st.beats);
+    });
+  });
+
   group('versioned: a payload change re-derives every stored day', () {
     final src = File('lib/compute/derivation_engine.dart').readAsStringSync();
     final m = RegExp(r'const int kAlgoVersion = (\d+);').firstMatch(src)!;
@@ -281,7 +336,7 @@ void main() {
           .firstMatch(pubspec)!;
       expect(block.group(1), kAnalyticsPin,
           reason: 'pubspec.yaml is the source of truth');
-      expect(pubspec.contains('ref: main'), isFalse);
+      expect(RegExp(r'^\s+ref: main\s*$', multiLine: true).hasMatch(pubspec), isFalse);
     });
   });
 
