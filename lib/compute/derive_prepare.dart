@@ -372,6 +372,14 @@ void derivationPrepareWorker(SendPort mainSendPort) {
       state.addRawPage(hexes);
       return;
     }
+    if (type == 'audit') {
+      // Test-only (never sent in production): report to the test's audit port.
+      // The top-of-function `entered` ran before the port was known, so the
+      // start of this worker is reported here, on the handshake.
+      WorkerAudit.adopt(message['port'] as SendPort?);
+      WorkerAudit.entered('derivationPrepareWorker');
+      return;
+    }
     if (type == 'config') {
       targetDay = message['target_day']?.toString();
       final cfgMode = message['mode']?.toString();

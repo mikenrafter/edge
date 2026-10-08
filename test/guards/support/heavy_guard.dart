@@ -100,7 +100,11 @@ enum HeavyRule {
   /// name (migrations, readers). New ones fail; the legacy ones migrate to
   /// registered `RowBatch` readers / persisted artifacts later.
   rawReaderUnregistered(baselineable: true),
-  rawReaderWrongReturnType(baselineable: false);
+  rawReaderWrongReturnType(baselineable: false),
+
+  /// A `kMigrationMethods` entry (explicit exemption of a row-returning
+  /// migration step) for a method that no longer needs it: remove the entry.
+  migrationAllowStale(baselineable: false);
 
   const HeavyRule({required this.baselineable});
 
@@ -108,6 +112,49 @@ enum HeavyRule {
   /// Structure findings (registry, naming, grammar, @live) never are.
   final bool baselineable;
 }
+
+/// The version of every baselineable rule. The baseline JSON records the
+/// versions it was built with (heavy_baseline.dart). The baseline may grow ONLY
+/// for the keys of a rule whose version here is higher than in the target
+/// branch's baseline, and only when test/guards/BASELINE_CHANGELOG.md has a
+/// `## <rule> v<N>` entry for the new version. Raise a version when you EXTEND a
+/// rule so that it reports more than before (a new origin, a stricter contract);
+/// loosening a rule or fixing code never needs a bump.
+///
+/// v2: the four rules extended after the first guard commit (stored-data
+/// iteration, worker entries must start initialised, `Map<String?, T>` and
+/// plain-class entry types, raw readers by what they return). See the changelog.
+const Map<HeavyRule, int> kRuleVersions = {
+  HeavyRule.heavyOriginOutsideHeavy: 2,
+  HeavyRule.rowBatchIterationOutsideHeavy: 1,
+  HeavyRule.heavyCallOutsideApprovedContext: 1,
+  HeavyRule.heavyReferenceEscapes: 1,
+  HeavyRule.dispatcherClosureContract: 1,
+  HeavyRule.captureNotSendable: 1,
+  HeavyRule.sendableGrammar: 2,
+  HeavyRule.workerEntryNotInitialised: 2,
+  HeavyRule.unresolvedInvocation: 1,
+  HeavyRule.rawReaderUnregistered: 2,
+};
+
+/// A `LocalDb` method that reads raw tables and returns rows but is a schema
+/// migration / backfill / repair step handing them to its own caller, exempt
+/// from the raw-reader registry. The list is EXPLICIT: a method is never exempt
+/// because of its name (`ensureRows()` that returns rows is a raw reader), and a
+/// method returning void/int/bool/num is never a raw reader at all.
+class MigrationMethod {
+  /// `LocalDb.method`
+  final String symbol;
+  final String reason;
+  const MigrationMethod(this.symbol, this.reason);
+}
+
+/// The real tree's migration exemptions: each entry says why the method may
+/// return rows without being a registered `RowBatch` reader. EMPTY today: no
+/// `LocalDb` migration/backfill/repair step both touches a raw table and returns
+/// rows (they return void/int/bool). An entry that stops needing its exemption
+/// fails as `migrationAllowStale`.
+const List<MigrationMethod> kMigrationMethods = <MigrationMethod>[];
 
 /// One finding. [file] is relative to the analysed package's `lib/`; [symbol]
 /// is the enclosing declaration (`Class.method`, `topLevelFn`, or
@@ -197,6 +244,9 @@ class HeavyGuardConfig {
 
   final List<OriginAllow> originAllow;
 
+  /// Explicit migration-step exemptions from the raw-reader registry.
+  final List<MigrationMethod> migrationMethods;
+
   /// `…Heavy`-named symbols that are NOT heavy compute (rule (b) exemptions),
   /// each with a reason. Generated files (`l10n/app_localizations*`) are
   /// skipped entirely by [skipFilePrefixes].
@@ -235,6 +285,7 @@ class HeavyGuardConfig {
     required this.rawReaderClass,
     required this.rawTables,
     this.originAllow = const [],
+    this.migrationMethods = const [],
     this.nameAllow = const [],
     this.skipFilePrefixes = const [],
     this.storedDataTypes = const {},
@@ -296,6 +347,7 @@ class HeavyGuardConfig {
         bannedPlatformTypes: _banned,
         rawReaderClass: 'LocalDb',
         rawTables: _tables,
+        migrationMethods: kMigrationMethods,
         originAllow: const [
           OriginAllow(
             'WorkerInit.ensure',
@@ -418,6 +470,9 @@ class HeavyGuardConfig {
         bannedPlatformTypes: _banned,
         rawReaderClass: 'LocalDb',
         rawTables: _tables,
+        migrationMethods: const [
+          MigrationMethod('LocalDb.upgradeRows', 'fixture: a migration step'),
+        ],
         originAllow: const [
           OriginAllow('Arm.arm', 'resetCardioObservations', 'fixture allow-list'),
         ],

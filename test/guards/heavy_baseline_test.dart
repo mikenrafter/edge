@@ -4,7 +4,11 @@
 // line numbers, so unrelated edits do not churn the file. Two comparisons:
 //   (1) current tree vs baseline: a NEW occurrence, or MORE instances of a known
 //       one, fails (heavy_calc_guard_test.dart applies this to lib/).
-//   (2) baseline vs the target branch's baseline: may only SHRINK.
+//   (2) baseline vs the target branch's baseline: may only SHRINK -- except for
+//       the keys of a rule whose VERSION (kRuleVersions in support/heavy_guard.dart,
+//       recorded in the baseline JSON) went up against the target branch AND has
+//       an entry in test/guards/BASELINE_CHANGELOG.md. That is the only reviewed
+//       way for the baseline to grow (a deliberate rule extension).
 //
 // CI passes the target branch like this (.github/workflows/test.yml, pull
 // requests only):
@@ -193,6 +197,177 @@ void main() {
     });
   });
 
+  group('baseline growth is reviewed through rule versions', () {
+    const changelogV2 = '# Baseline changelog\n\n'
+        '## heavyOriginOutsideHeavy v2 - stored-data iteration\n\n'
+        'Why the rule grew.\n';
+    final base = HeavyBaseline([occ(origin)]);
+    HeavyBaseline head({int version = 1}) => HeavyBaseline(
+          [occ(origin), occ(origin, symbol: 'New.thing')],
+          ruleVersions: {origin: version},
+        );
+
+    test('growth of a bumped rule WITH a changelog entry passes', () {
+      expect(
+        baselineGrowth(base: base, head: head(version: 2), changelog: changelogV2),
+        isEmpty,
+      );
+    });
+
+    test('a higher count of a bumped rule with a changelog entry passes', () {
+      expect(
+        baselineGrowth(
+          base: HeavyBaseline([occ(origin)]),
+          head: HeavyBaseline([occ(origin, count: 4)],
+              ruleVersions: const {origin: 2}),
+          changelog: changelogV2,
+        ),
+        isEmpty,
+      );
+    });
+
+    test('growth of a bumped rule WITHOUT a changelog entry fails', () {
+      final reasons = baselineGrowth(
+        base: base,
+        head: head(version: 2),
+        changelog: '# Baseline changelog\n',
+      );
+      expect(reasons, isNotEmpty);
+      expect(reasons.join('\n'), contains('BASELINE_CHANGELOG.md'));
+      expect(reasons.join('\n'), contains('heavyOriginOutsideHeavy'));
+    });
+
+    test('a changelog entry for another version does not cover the bump', () {
+      expect(
+        baselineGrowth(base: base, head: head(version: 3), changelog: changelogV2),
+        isNotEmpty,
+      );
+    });
+
+    test('a changelog entry for another rule does not cover the bump', () {
+      const other = '## sendableGrammar v2 - x\n';
+      expect(
+        baselineGrowth(base: base, head: head(version: 2), changelog: other),
+        isNotEmpty,
+      );
+    });
+
+    test('growth of an UNBUMPED rule fails even with a changelog entry', () {
+      final reasons = baselineGrowth(
+        base: base,
+        head: head(version: 1),
+        changelog: changelogV2,
+      );
+      expect(reasons, hasLength(1));
+      expect(reasons.single, contains('New.thing'));
+      expect(reasons.single, contains('not bumped'));
+    });
+
+    test('a bump of one rule does not license growth of another', () {
+      final reasons = baselineGrowth(
+        base: base,
+        head: HeavyBaseline(
+          [occ(origin), occ(HeavyRule.sendableGrammar, symbol: 'New.thing')],
+          ruleVersions: const {origin: 2},
+        ),
+        changelog: changelogV2,
+      );
+      expect(reasons, hasLength(1));
+      expect(reasons.single, contains('sendableGrammar'));
+    });
+
+    test('shrinking always passes, bumped or not, documented or not', () {
+      final big = HeavyBaseline([occ(origin, count: 3), occ(origin, symbol: 'X.y')]);
+      for (final v in [1, 2]) {
+        expect(
+          baselineGrowth(
+            base: big,
+            head: HeavyBaseline([occ(origin)], ruleVersions: {origin: v}),
+          ),
+          isEmpty,
+        );
+      }
+    });
+
+    test('a bump without any growth needs no changelog entry', () {
+      expect(
+        baselineGrowth(
+          base: base,
+          head: HeavyBaseline([occ(origin)], ruleVersions: const {origin: 2}),
+        ),
+        isEmpty,
+      );
+    });
+
+    test("the base ref's versions are what the head is compared with", () {
+      // Base already at v2: v2 on the head is NOT a bump.
+      final base2 = HeavyBaseline([occ(origin)], ruleVersions: const {origin: 2});
+      expect(
+        baselineGrowth(base: base2, head: head(version: 2), changelog: changelogV2),
+        isNotEmpty,
+      );
+    });
+
+    test('a baseline without ruleVersions (format 1) reads as every rule at v1',
+        () {
+      final old = HeavyBaseline.fromJson({
+        'version': 1,
+        'occurrences': [occ(origin).toJson()],
+      });
+      expect(old.versionOf(origin), 1);
+      expect(old.versionOf(HeavyRule.sendableGrammar), 1);
+    });
+
+    test('rule versions survive the JSON round trip', () {
+      final b = HeavyBaseline([occ(origin)],
+          ruleVersions: const {origin: 2, HeavyRule.sendableGrammar: 3});
+      final back = HeavyBaseline.fromJson(
+        (jsonDecode(jsonEncode(b.toJson())) as Map).cast<String, Object?>(),
+      );
+      expect(back.versionOf(origin), 2);
+      expect(back.versionOf(HeavyRule.sendableGrammar), 3);
+      expect(back.versionOf(HeavyRule.unresolvedInvocation), 1);
+    });
+
+    test("a baseline built from findings records the guard's kRuleVersions", () {
+      final b = HeavyBaseline.fromViolations([v(origin)]);
+      for (final r in HeavyRule.values.where((r) => r.baselineable)) {
+        expect(b.versionOf(r), kRuleVersions[r], reason: r.name);
+      }
+    });
+
+    test('every baselineable rule has a version of at least 1, no others', () {
+      expect(kRuleVersions.keys.toSet(),
+          HeavyRule.values.where((r) => r.baselineable).toSet());
+      for (final e in kRuleVersions.entries) {
+        expect(e.value, greaterThanOrEqualTo(1), reason: e.key.name);
+      }
+    });
+  });
+
+  group('BASELINE_CHANGELOG.md entries', () {
+    test('an entry is a level-2 heading naming the rule and vN', () {
+      const log = '## heavyOriginOutsideHeavy v2 - why\ntext\n## sendableGrammar v10\n';
+      expect(changelogCovers(log, origin, 2), isTrue);
+      expect(changelogCovers(log, HeavyRule.sendableGrammar, 10), isTrue);
+      expect(changelogCovers(log, HeavyRule.sendableGrammar, 1), isFalse);
+      expect(changelogCovers(log, origin, 3), isFalse);
+    });
+
+    test('a mention in prose, a code fence or a deeper heading is not an entry',
+        () {
+      const log = 'We bumped heavyOriginOutsideHeavy v2 last week.\n'
+          '### heavyOriginOutsideHeavy v2\n'
+          '    ## heavyOriginOutsideHeavy v2\n';
+      expect(changelogCovers(log, origin, 2), isFalse);
+    });
+
+    test('a rule name that merely starts with another does not match', () {
+      const log = '## workerEntryNotInitialisedX v2\n';
+      expect(changelogCovers(log, HeavyRule.workerEntryNotInitialised, 2), isFalse);
+    });
+  });
+
   group('reading the target branch (git show <ref>:path)', () {
     late Directory repo;
 
@@ -255,7 +430,12 @@ void main() {
                   as Map)
               .cast<String, Object?>(),
         );
-        expect(baselineGrowth(base: base, head: head), isEmpty);
+        final changelog =
+            File('test/guards/BASELINE_CHANGELOG.md').readAsStringSync();
+        expect(
+          baselineGrowth(base: base, head: head, changelog: changelog),
+          isEmpty,
+        );
       },
       skip: baseRef == null || baseRef.isEmpty
           ? 'set HEAVY_BASELINE_BASE to the target branch ref (CI does)'

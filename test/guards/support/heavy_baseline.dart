@@ -4,8 +4,11 @@
 //
 // The checked-in file is test/guards/heavy_calc_baseline.json. Two comparisons:
 //   1. current tree vs baseline  -> a NEW occurrence (or a higher count) fails.
-//   2. baseline vs the target branch's baseline (heavy_calc_baseline_shrink_test)
-//      -> the file may only shrink.
+//   2. baseline vs the target branch's baseline (heavy_baseline_test)
+//      -> the file may only shrink, except for the keys of a rule whose VERSION
+//      went up against the target branch (kRuleVersions, recorded in the JSON)
+//      and that has an entry in test/guards/BASELINE_CHANGELOG.md. That is the
+//      one reviewed way to grow it: a deliberate extension of a rule.
 //
 
 import 'dart:convert';
@@ -51,28 +54,51 @@ class HeavyOccurrence {
 }
 
 class HeavyBaseline {
-  static const formatVersion = 1;
+  /// 2 adds `ruleVersions`. A format-1 file (no versions) reads as every rule at
+  /// version 1, which is what it was built with.
+  static const formatVersion = 2;
   final List<HeavyOccurrence> occurrences;
-  const HeavyBaseline(this.occurrences);
+
+  /// The rule versions this baseline was built with; a rule that is absent is
+  /// at version 1.
+  final Map<HeavyRule, int> ruleVersions;
+
+  const HeavyBaseline(this.occurrences, {this.ruleVersions = const {}});
+
+  int versionOf(HeavyRule rule) => ruleVersions[rule] ?? 1;
 
   Map<String, Object?> toJson() => {
         'version': formatVersion,
+        'ruleVersions': {
+          for (final r in HeavyRule.values)
+            if (r.baselineable) r.name: versionOf(r),
+        },
         'occurrences': [for (final o in occurrences) o.toJson()],
       };
 
   factory HeavyBaseline.fromJson(Map<String, Object?> j) {
-    if (j['version'] != formatVersion) {
-      throw FormatException('unsupported baseline version ${j['version']}');
+    final v = j['version'];
+    if (v != 1 && v != formatVersion) {
+      throw FormatException('unsupported baseline version $v');
     }
-    return HeavyBaseline([
-      for (final o in (j['occurrences']! as List))
-        HeavyOccurrence.fromJson((o as Map).cast<String, Object?>()),
-    ]);
+    final versions = (j['ruleVersions'] as Map?)?.cast<String, Object?>() ?? {};
+    return HeavyBaseline(
+      [
+        for (final o in (j['occurrences']! as List))
+          HeavyOccurrence.fromJson((o as Map).cast<String, Object?>()),
+      ],
+      ruleVersions: {
+        for (final e in versions.entries)
+          HeavyRule.values.byName(e.key): e.value! as int,
+      },
+    );
   }
 
   /// Groups [violations] whose rule is baselineable into occurrences with
   /// multiplicity, sorted by key (stable, diff-friendly). Non-baselineable
   /// rules never appear.
+  /// The baseline is stamped with [kRuleVersions]: it records the rule versions
+  /// it was built with.
   factory HeavyBaseline.fromViolations(List<HeavyViolation> violations) {
     final counts = <String, HeavyOccurrence>{};
     for (final v in violations) {
@@ -90,7 +116,8 @@ class HeavyBaseline {
               count: prev.count + 1);
     }
     final keys = counts.keys.toList()..sort();
-    return HeavyBaseline([for (final k in keys) counts[k]!]);
+    return HeavyBaseline([for (final k in keys) counts[k]!],
+        ruleVersions: kRuleVersions);
   }
 }
 
@@ -121,20 +148,48 @@ List<HeavyOccurrence> newOccurrences(
   return fresh;
 }
 
-/// Human-readable reasons [head] grows relative to [base] (new key, higher
-/// count). Empty when head is a subset (shrink or equal).
+/// True when [changelog] (the text of test/guards/BASELINE_CHANGELOG.md) has an
+/// entry for [rule] at [version]: a level-2 heading `## <ruleName> v<N>` at the
+/// start of a line. Prose, deeper headings and indented lines do not count.
+bool changelogCovers(String changelog, HeavyRule rule, int version) {
+  final entry = RegExp(
+    '^## ${RegExp.escape(rule.name)} v$version(?![0-9A-Za-z_])',
+    multiLine: true,
+  );
+  return entry.hasMatch(changelog);
+}
+
+/// Human-readable reasons [head] may not replace [base]. Empty when head is a
+/// subset (shrink or equal), or when every growing key belongs to a rule whose
+/// version went up against [base] AND has an entry in [changelog]
+/// (test/guards/BASELINE_CHANGELOG.md). Anything else that grows (a new key, a
+/// higher count) is a reason: the only reviewed way to grow the baseline is to
+/// extend a rule, bump its version and say why in the changelog.
 List<String> baselineGrowth({
   required HeavyBaseline base,
   required HeavyBaseline head,
+  String changelog = '',
 }) {
   final was = {for (final o in base.occurrences) o.key: o.count};
   final reasons = <String>[];
   for (final o in head.occurrences) {
     final before = was[o.key];
+    final String? what;
     if (before == null) {
-      reasons.add('new occurrence ${o.key} x${o.count}');
+      what = 'new occurrence ${o.key} x${o.count}';
     } else if (o.count > before) {
-      reasons.add('${o.key} grew from $before to ${o.count}');
+      what = '${o.key} grew from $before to ${o.count}';
+    } else {
+      continue;
+    }
+    final from = base.versionOf(o.rule), to = head.versionOf(o.rule);
+    if (to <= from) {
+      reasons.add('$what (rule ${o.rule.name} not bumped: v$from -> v$to; '
+          'a rule that grows must be extended and its version raised)');
+    } else if (!changelogCovers(changelog, o.rule, to)) {
+      reasons.add('$what (rule ${o.rule.name} bumped to v$to but '
+          'test/guards/BASELINE_CHANGELOG.md has no "## ${o.rule.name} v$to" '
+          'entry)');
     }
   }
   return reasons;

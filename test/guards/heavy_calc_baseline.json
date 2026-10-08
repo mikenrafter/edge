@@ -1,5 +1,17 @@
 {
-  "version": 1,
+  "version": 2,
+  "ruleVersions": {
+    "heavyOriginOutsideHeavy": 2,
+    "rowBatchIterationOutsideHeavy": 1,
+    "heavyCallOutsideApprovedContext": 1,
+    "heavyReferenceEscapes": 1,
+    "dispatcherClosureContract": 1,
+    "captureNotSendable": 1,
+    "sendableGrammar": 2,
+    "workerEntryNotInitialised": 2,
+    "unresolvedInvocation": 1,
+    "rawReaderUnregistered": 2
+  },
   "occurrences": [
     {
       "rule": "captureNotSendable",
@@ -1565,20 +1577,6 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb._mergeFromDbFile",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.counts",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.dataHistoryDays",
       "element": "decoded_onehz",
       "count": 1
@@ -1586,21 +1584,7 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb.decodedDayFingerprints",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.decodedOneHzBatchByRecTsRange",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.decodedRecTsMaxByDay",
       "element": "decoded_onehz",
       "count": 1
     },
@@ -1628,13 +1612,6 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb.meanHrByDevice",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.onehzForStager",
       "element": "decoded_onehz",
       "count": 1
@@ -1649,20 +1626,6 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb.rawArchiveStats",
-      "element": "raw_archive",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.rawStats",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.rrForStager",
       "element": "decoded_rr",
       "count": 1
@@ -1671,27 +1634,6 @@
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
       "symbol": "LocalDb.samplesInRange",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.schemaHealth",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.sessionHrSamplesBySession",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.sessionHrStats",
       "element": "decoded_onehz",
       "count": 1
     },

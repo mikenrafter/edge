@@ -12,6 +12,8 @@ class LocalDb {
   LocalDb(this._db);
   final Database _db;
 
+  // A method returning void/int/bool/num is never a raw reader, whatever it is
+  // called and whichever raw table it touches.
   Future<void> _backfillOnehz() async {
     await _db.rawQuery('UPDATE decoded_onehz SET x = 1');
   }
@@ -24,7 +26,31 @@ class LocalDb {
 
   Future<bool> hasRr() async => (await _db.query('decoded_rr')).isNotEmpty;
 
-  // By NAME: a repair/ensure/backfill step may return rows to its own caller.
-  Future<List<Row>> _repairRows() => _db.query('decoded_rr');
-  Future<List<Row>> _ensureRows() => _db.query('raw_records');
+  Future<int> ensureCount() async => (await _db.query('raw_records')).length;
+
+  Future<num> repairTotal() async => (await _db.query('decoded_rr')).length;
+
+  Future<bool> ensureHasRows() async => (await _db.query('raw_archive')).isNotEmpty;
+
+  // Scalar summaries: a Map whose values are numbers, strings or untyped
+  // scalars is not rows, however many raw rows it was computed from.
+  Future<Map<String, int>> counts() async => {
+        'onehz': (await _db.query('decoded_onehz')).length,
+      };
+
+  Future<Map<String, dynamic>> rawStats() async => {
+        'n': (await _db.query('raw_records')).length,
+      };
+
+  Future<Map<String, Object?>> schemaHealth() async => {
+        'rr': (await _db.query('decoded_rr')).isNotEmpty,
+      };
+
+  Future<Map<String, double>> meanHrByDevice() async => {
+        for (final r in await _db.query('decoded_onehz')) '${r['d']}': 1.0,
+      };
+
+  Future<Map<String, String>> fingerprints() async => {
+        for (final r in await _db.query('raw_archive')) '${r['d']}': 'x',
+      };
 }

@@ -153,6 +153,9 @@ final Map<String, Expect> kExpectations = {
     elements: {HeavyRule.rootNotRegistered: {'innerHeavy'}},
   ),
   'c_ok_closure_setup_and_wrap': const Expect.clean(),
+  // The audit hook (util/worker_audit.dart) may be adopted inside a dispatcher
+  // closure and its SendPort captured (design 02 rev 8, audit from the worker).
+  'c_ok_closure_audit_adopt': const Expect.clean(),
   'c_bad_closure_two_entries': const Expect(
     {HeavyRule.dispatcherClosureContract},
     symbols: {HeavyRule.dispatcherClosureContract: {'Both.go'}},
@@ -368,16 +371,36 @@ final Map<String, Expect> kExpectations = {
     symbols: {HeavyRule.rawReaderUnregistered: {'LocalDb.latest'}},
   ),
   'rawreader_ok_unrelated_method': const Expect.clean(),
-  // Migrations / scalar accessors are not raw-row readers: only methods whose
-  // return type exposes rows count, and backfill/repair/ensure/migrate names
-  // are exempt by name.
+  // Only a method whose RETURN TYPE exposes rows is a reader: void/int/bool/num
+  // never is (whatever its name), and a Map is rows only when its VALUES are row
+  // collections (scalar summaries are not).
   'rawreader_ok_void_backfill_and_scalars': const Expect.clean(),
+  // The name loophole is closed: ensure*/repair*/backfill* that RETURN ROWS are
+  // raw readers. Only an explicit kMigrationMethods entry (symbol + reason in
+  // the guard config) exempts a migration step.
+  'rawreader_bad_ensure_named_rows': const Expect(
+    {HeavyRule.rawReaderUnregistered},
+    symbols: {
+      HeavyRule.rawReaderUnregistered: {
+        'LocalDb.ensureRows',
+        'LocalDb._repairRows',
+        'LocalDb.backfillRows',
+      },
+    },
+    counts: {HeavyRule.rawReaderUnregistered: 3},
+  ),
+  'rawreader_ok_listed_migration_method': const Expect.clean(),
+  // A kMigrationMethods entry that no longer needs its exemption must go.
+  'rawreader_bad_stale_migration_allow': const Expect(
+    {HeavyRule.migrationAllowStale},
+    symbols: {HeavyRule.migrationAllowStale: {'LocalDb.upgradeRows'}},
+  ),
   'rawreader_bad_exposes_rows_variants': const Expect(
     {HeavyRule.rawReaderUnregistered},
     symbols: {
       HeavyRule.rawReaderUnregistered: {
         'LocalDb.beats',
-        'LocalDb.firstRow',
+        'LocalDb.byDay',
         'LocalDb.stream',
       },
     },

@@ -4316,6 +4316,10 @@ class DerivationEngine {
     }
     try {
       final worker = await ready.future;
+      // Test-only (null in production): hand the worker the audit port so it
+      // reports which registered entry ran, from inside its own isolate.
+      final auditPort = WorkerAudit.auditPort;
+      if (auditPort != null) worker.send({'type': 'audit', 'port': auditPort});
       worker.send(const {'type': 'config', 'mode': 'substrate'});
       int? afterRecTs;
       int? afterCursor;
@@ -6271,16 +6275,19 @@ class DerivationEngine {
       for (final s in liveSteps.spans) [s.startTs, s.endTs, s.steps],
     ];
     WorkerAudit.dispatched(Dispatcher.run, 'kcal minutes');
-    return Isolate.run(
-      () => kcalMinutesForDayHeavy(
+    // Null in production; a test's port so the worker reports its entry.
+    final auditPort = WorkerAudit.auditPort;
+    return Isolate.run(() {
+      WorkerAudit.adopt(auditPort);
+      return kcalMinutesForDayHeavy(
         daySub: daySub,
         profile: profile,
         nocturnalRhr: stored.rhr,
         sleepOnsetSec: onset,
         sleepOffsetSec: offset,
         stepSpans: spans,
-      ),
-    );
+      );
+    });
   }
 
   /// The day's calorie series, or null wherever the day's stored calories would
@@ -9678,7 +9685,8 @@ class DerivationEngine {
     WorkerAudit.dispatched(Dispatcher.spawn, 'day blocks');
     final isolate = await Isolate.spawn(
       _dayBlocksIsolateEntry,
-      (port.sendPort, input),
+      // The third element is the test-only audit port (null in production).
+      (port.sendPort, input, WorkerAudit.auditPort),
       onError: port.sendPort,
       onExit: port.sendPort,
     );
@@ -9727,6 +9735,108 @@ class DerivationEngine {
     }
   }
 
+  /// A fully populated [_DayBlocksInput] for the entry's sendability test
+  /// (test/guards/support/entry_samples.dart): every nested kind the production
+  /// argument carries — substrates with typed beats, the calculation state,
+  /// records in [_DayBlocksInput.ceilingReuse], [NapEdit]s, span lists, saved
+  /// session rows and the streamed day figures. Typed `Object` because the
+  /// class is library-private.
+  @visibleForTesting
+  static Object dayBlocksInputForTest({
+    required Substrate daySub,
+    required String date,
+    required int dayStartSec,
+  }) =>
+      _DayBlocksInput(
+        calculationState: DayCalculationState(),
+        calculationMode: ana.CalculationMode.forced,
+        streamed: const _DayStream(
+          irregular: {'flag': false, 'n': 0},
+          hrv: [
+            {'t': 1760000600, 'rmssd': 41.5}
+          ],
+          resp: [
+            {'t': 1760000600, 'rate': 14.0}
+          ],
+          daytime: {'rmssd': 38.0},
+          tailRr: [812.0, 798.0],
+          tailTs: [1760000598.0, 1760000599.0],
+        ),
+        ceilingReuse: {
+          's1': (json: {'bpm': 181.0, 'n': 3}, bpm: 181.0),
+          's2': (json: {'bpm': null}, bpm: null),
+        },
+        daySub: daySub,
+        napSub: daySub,
+        sleepSub: Substrate.empty,
+        profile: const Profile(ageYears: 35, weightKg: 70, sex: 'm'),
+        onsetSec: dayStartSec + 300,
+        offsetSec: dayStartSec + 1500,
+        rhr: 52.0,
+        maxHrUsed: 188,
+        liveStepsReal: 1234,
+        liveStepsFromStrap: 1200,
+        stepSpans: const [
+          [1760000000, 1760000060, 80]
+        ],
+        dynFloorG: 0.02,
+        dynHistoryDays: 9,
+        savedSessions: [
+          {
+            'id': 's1',
+            'start_ts': dayStartSec + 600,
+            'end_ts': dayStartSec + 1200,
+            'type': 'run',
+            'status': 'done',
+            'source': 'manual',
+            'private': 0,
+            'created_at': dayStartSec,
+          }
+        ],
+        napEdits: const [
+          NapEdit(
+            kind: NapEditKind.added,
+            startSec: 1760000900,
+            endSec: 1760001200,
+          ),
+        ],
+        wristOffSpans: const [
+          [1760000100, 1760000160]
+        ],
+        chargingSpans: const [
+          [1760000200, 1760000260]
+        ],
+        blankedSpans: const [
+          [1760000300, 1760000360]
+        ],
+        mainTstMin: 420,
+        mainEfficiency: 0.91,
+        date: date,
+        dayStartSec: dayStartSec,
+        dayEndSec: dayStartSec + 86400,
+        dataNowSec: dayStartSec + 1800,
+      );
+
+  /// A short digest of the fields [dayBlocksInputForTest] populates, for the
+  /// round-trip projection (the class is private).
+  @visibleForTesting
+  static String dayBlocksInputSummaryForTest(Object input) {
+    final i = input as _DayBlocksInput;
+    return 'date: ${i.date}, ceilingReuse: ${i.ceilingReuse.length} '
+        '${i.ceilingReuse['s1']?.bpm}, napEdits: ${i.napEdits.length} '
+        '${i.napEdits.first.startSec}, daySub: ${i.daySub.tsSec.length} '
+        '${i.daySub.rrMs.length}, streamed: ${i.streamed?.tailRr}, '
+        'spans: ${i.stepSpans}/${i.wristOffSpans}, sessions: '
+        '${i.savedSessions.map((s) => s['id'])}, rhr: ${i.rhr}';
+  }
+
+  /// Runs [input] through the REAL spawn path ([_runDayBlocksCancellable] →
+  /// [_dayBlocksIsolateEntry]) and returns the [_DayBlocksOutput].
+  @visibleForTesting
+  static Future<Object> runDayBlocksForTest(Object input) =>
+      _runDayBlocksCancellable(
+          input as _DayBlocksInput, const Duration(minutes: 2));
+
   /// Run [compute] in an explicitly spawned isolate and enforce [timeout] ON THE
   /// ISOLATE — the general-purpose form of [_runDayBlocksCancellable].
   ///
@@ -9755,8 +9865,10 @@ class DerivationEngine {
     required String label,
   }) async {
     final port = ReceivePort();
+    // `wrap` is the closure itself unless a test installed the audit hook, in
+    // which case the worker adopts the audit port before running it.
     final (SendPort, FutureOr<Object?> Function()) message =
-        (port.sendPort, compute);
+        (port.sendPort, WorkerAudit.wrap<Object?>(compute));
     WorkerAudit.dispatched(Dispatcher.cancellable, label);
     final isolate = await Isolate.spawn(
       _cancellableIsolateEntry,
@@ -9823,9 +9935,10 @@ class DerivationEngine {
   /// `Isolate.spawn` entry point for [_runDayBlocksCancellable]. Must be a
   /// static/top-level function taking exactly one (sendable) argument.
   @heavy
-  static void _dayBlocksIsolateEntry((SendPort, _DayBlocksInput) args) {
+  static void _dayBlocksIsolateEntry((SendPort, _DayBlocksInput, SendPort?) args) {
+    final (sendPort, input, auditPort) = args;
+    WorkerAudit.adopt(auditPort);
     WorkerAudit.entered('_dayBlocksIsolateEntry');
-    final (sendPort, input) = args;
     try {
       // Ownership move, not a copy: see [_cancellableIsolateEntry].
       Isolate.exit(sendPort, _computeDayBlocks(input));

@@ -31,6 +31,7 @@ import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/import/backup_crypto.dart';
 import 'package:openstrap_edge/wake/natural_wake.dart';
 
+import '../../support/day_stream_fixture.dart';
 import '../../support/incremental_day_fixture.dart';
 import 'sendability.dart';
 
@@ -104,13 +105,34 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
   ),
   '_dayBlocksIsolateEntry': (
     roundTrip: () async {
-      // Argument is (SendPort, _DayBlocksInput): the SendPort half is the only
-      // part a test can build; the private input class is covered by the
-      // engine tests that drive the spawn for real.
+      // The REAL message: (reply SendPort, _DayBlocksInput, audit SendPort?).
+      // The input is built by the engine's @visibleForTesting factory with every
+      // nested kind populated (substrates with typed beats, the calculation
+      // state, records in ceilingReuse, NapEdit, spans, saved sessions, the
+      // streamed day figures), so the sample proves the production argument type
+      // crosses, not a stand-in.
+      final beats = synthBeats(const SynthBeats(seed: 3, seconds: 1800));
+      final accel = synthAccel(5, 1760000000, 1760000000 + 1800);
+      final input = DerivationEngine.dayBlocksInputForTest(
+        daySub: substrateOf(beats, accel),
+        date: '2025-10-09',
+        dayStartSec: 1760000000,
+      );
+      final before = DerivationEngine.dayBlocksInputSummaryForTest(input);
+      expect(before, contains('ceilingReuse: 2 181.0'));
+      expect(before, contains('napEdits: 1'));
+
       final port = ReceivePort();
       addTearDown(port.close);
-      await expectIsolateRoundTrip<(SendPort, int)>((port.sendPort, 3),
-          project: (r) => r.$2);
+      await expectIsolateRoundTrip<(SendPort, Object, SendPort?)>(
+        (port.sendPort, input, null),
+        project: (r) => DerivationEngine.dayBlocksInputSummaryForTest(r.$2),
+      );
+
+      // And through the entry itself, on its real spawn path: the input goes in,
+      // a _DayBlocksOutput comes back.
+      final out = await DerivationEngine.runDayBlocksForTest(input);
+      expect(out.runtimeType.toString(), '_DayBlocksOutput');
     },
   ),
   '_reencodeBatchHeavy': (

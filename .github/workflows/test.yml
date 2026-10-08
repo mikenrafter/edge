@@ -66,7 +66,9 @@ jobs:
         run: flutter pub get
 
       # Design 02: test/guards/heavy_calc_baseline.json lists legacy heavy-work
-      # occurrences and may only SHRINK relative to the PR's target branch. The
+      # occurrences and may only SHRINK relative to the PR's target branch (the
+      # one exception: a rule whose version was raised, with its entry in
+      # test/guards/BASELINE_CHANGELOG.md). The
       # base ref goes through an env var (never interpolated into the script).
       # The same file also runs inside the normal suite, where it skips.
       - name: Guard — the heavy-calc baseline only shrinks

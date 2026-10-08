@@ -17,8 +17,11 @@
 // Regenerate (shrinking, or the first time):
 //   HEAVY_GUARD_WRITE_BASELINE=1 flutter test test/guards/heavy_calc_guard_test.dart \
 //       --plain-name 'write baseline'
-// Refuses to write a baseline that grows an existing one (HEAVY_GUARD_WRITE_BASELINE=grow
-// overrides, for a deliberate rule extension).
+// Refuses to write a baseline that grows an existing one, EXCEPT for the keys
+// of a rule whose version (kRuleVersions in support/heavy_guard.dart) went up
+// against the file being replaced and has an entry in
+// test/guards/BASELINE_CHANGELOG.md. There is no override flag: the same rule
+// CI applies against the target branch applies when writing.
 
 @Timeout(Duration(minutes: 10))
 library;
@@ -68,6 +71,40 @@ void main() {
   group('baseline file', () {
     test('test/guards/heavy_calc_baseline.json exists and parses', () {
       expect(_loadBaseline(repoRoot).occurrences, isNotNull);
+    });
+
+    test('records exactly the rule versions the guard is at (kRuleVersions)', () {
+      final b = _loadBaseline(repoRoot);
+      for (final r in HeavyRule.values.where((r) => r.baselineable)) {
+        expect(b.versionOf(r), kRuleVersions[r],
+            reason: '${r.name}: regenerate the baseline after bumping a rule '
+                'version');
+      }
+    });
+
+    test('every rule above v1 has its BASELINE_CHANGELOG.md entry', () {
+      final log = File('$repoRoot/test/guards/BASELINE_CHANGELOG.md');
+      expect(log.existsSync(), isTrue, reason: 'test/guards/BASELINE_CHANGELOG.md');
+      final text = log.readAsStringSync();
+      for (final e in kRuleVersions.entries.where((e) => e.value > 1)) {
+        for (var v = 2; v <= e.value; v++) {
+          expect(changelogCovers(text, e.key, v), isTrue,
+              reason: 'missing "## ${e.key.name} v$v" in BASELINE_CHANGELOG.md');
+        }
+      }
+    });
+
+    test('kMigrationMethods names real LocalDb methods, each with a reason', () {
+      final src = File('$repoRoot/lib/data/db.dart').readAsStringSync();
+      for (final m in kMigrationMethods) {
+        expect(m.reason.trim(), isNotEmpty, reason: m.symbol);
+        final name = m.symbol.split('.').last;
+        expect(m.symbol, startsWith('LocalDb.'));
+        expect(RegExp('[ >]${RegExp.escape(name)}\\(').hasMatch(src), isTrue,
+            reason: '${m.symbol} is not a method of lib/data/db.dart (stale)');
+      }
+      expect(kMigrationMethods.map((m) => m.symbol).toSet(),
+          hasLength(kMigrationMethods.length));
     });
 
     test('lists only baselineable rules, sorted, with positive counts', () {
@@ -169,22 +206,25 @@ void main() {
     () async {
       final file = File('$repoRoot/$_baselinePath');
       final fresh = HeavyBaseline.fromViolations((await analysis()).violations);
-      // `=grow` is for a deliberate rule extension (new stored-data findings,
-      // newly registered entries); the PR must say which rules grew and why.
-      if (file.existsSync() &&
-          Platform.environment['HEAVY_GUARD_WRITE_BASELINE'] != 'grow') {
+      // Growth is allowed only for a rule whose version went up and which has
+      // a BASELINE_CHANGELOG.md entry (the same rule CI applies to the PR).
+      if (file.existsSync()) {
         final old = HeavyBaseline.fromJson(
           (jsonDecode(file.readAsStringSync()) as Map).cast<String, Object?>(),
         );
-        final growth = baselineGrowth(base: old, head: fresh);
+        final growth = baselineGrowth(
+          base: old,
+          head: fresh,
+          changelog:
+              File('$repoRoot/test/guards/BASELINE_CHANGELOG.md').readAsStringSync(),
+        );
         expect(growth, isEmpty,
             reason: 'refusing to grow the baseline:\n${growth.join('\n')}');
       }
       file.writeAsStringSync(
           '${const JsonEncoder.withIndent('  ').convert(fresh.toJson())}\n');
     },
-    skip: const ['1', 'grow']
-            .contains(Platform.environment['HEAVY_GUARD_WRITE_BASELINE'])
+    skip: Platform.environment['HEAVY_GUARD_WRITE_BASELINE'] == '1'
         ? false
         : 'set HEAVY_GUARD_WRITE_BASELINE=1 to (re)generate the baseline',
   );

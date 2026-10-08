@@ -1205,6 +1205,9 @@ void _checkClosure(
       entryCalls++;
       continue;
     }
+    // The audit hook only tells the audit where this worker reports to
+    // (`WorkerAudit.adopt(port)`); it computes nothing (design 02 rev 8).
+    if (el != null && _uri(el).endsWith('util/worker_audit.dart')) continue;
     if (u.kind == _UseKind.create && el is ConstructorElement) {
       final cls = el.enclosingElement;
       if ((_hasMarker(cls, 'sendable') ||
@@ -1248,7 +1251,8 @@ String? _bannedOrUnsendable(DartType t, HeavyGuardConfig config) {
     final hit = names.intersection(config.bannedPlatformTypes);
     if (hit.isNotEmpty) return 'captures a ${hit.first}';
   }
-  return _sendProblem(t, {}, []);
+  // A SendPort is sendable by definition (the audit hook's report port).
+  return _sendProblem(t, {}, [], allowSendPort: true);
 }
 
 class _CaptureScan extends RecursiveAstVisitor<void> {
@@ -1419,8 +1423,26 @@ void _rawReaders(
         return e != null && _isFunctionish(e) && regSet.contains(_label(e));
       });
 
-  // Only methods whose return type exposes ROWS are readers; scalar accessors
-  // and migration/backfill/repair steps (by name) are not.
+  // Only methods whose return type exposes ROWS are readers. By TYPE, never by
+  // name: void/int/bool/num never expose rows (an `ensureCount()` is not a
+  // reader), a row-returning `ensureRows()` is one, and a Map is rows only when
+  // its VALUES are row collections (a `Map<String, int>` of counts, or the
+  // `Map<String, dynamic>` scalar summaries, are not).
+  bool isRowElement(DartType t) =>
+      t is InterfaceType && (t.isDartCoreMap || _isRowBatch(t));
+
+  bool isRowCollection(DartType t) {
+    if (t is! InterfaceType) return false;
+    if (_isRowBatch(t)) return true;
+    if (t.isDartCoreList ||
+        t.isDartCoreIterable ||
+        t.isDartCoreSet ||
+        t.isDartAsyncStream) {
+      return t.typeArguments.isNotEmpty && isRowElement(t.typeArguments.first);
+    }
+    return false;
+  }
+
   bool exposesRows(MethodElement m) {
     var t = m.returnType;
     if (t is InterfaceType &&
@@ -1429,24 +1451,33 @@ void _rawReaders(
       t = t.typeArguments.first;
     }
     if (t is! InterfaceType) return false;
+    if (t.isDartCoreMap) {
+      return t.typeArguments.length == 2 && isRowCollection(t.typeArguments[1]);
+    }
     if (t.isDartAsyncStream) return true;
     return t.isDartCoreList ||
         t.isDartCoreIterable ||
         t.isDartCoreSet ||
-        t.isDartCoreMap ||
-        t.element.name == 'RowBatch';
+        _isRowBatch(t);
   }
 
-  final migrationName = RegExp(
-      r'^_?(backfill|repair|ensure|migrate|upgrade|retire|create|drop|onUpgrade|onCreate|onOpen)',
-      caseSensitive: false);
-  bool migration(_Decl m) => migrationName.hasMatch(m.element?.name ?? '');
+  final listed = {for (final m in config.migrationMethods) m.symbol};
+  bool needsExemption(_Decl m) =>
+      (table(m) != null || callsRegistered(m)) &&
+      exposesRows(m.element as MethodElement);
+
+  // A listed migration method must still need its exemption.
+  for (final m in methods) {
+    if (listed.contains(m.symbol) && !needsExemption(m)) {
+      add(HeavyRule.migrationAllowStale, m.file, m.symbol, m.symbol,
+          'kMigrationMethods lists a method that is not a row-returning raw '
+          'reader: remove the entry');
+    }
+  }
 
   final reaches = {
     for (final m in methods)
-      m.symbol: (table(m) != null || callsRegistered(m)) &&
-          exposesRows(m.element as MethodElement) &&
-          !migration(m),
+      m.symbol: needsExemption(m) && !listed.contains(m.symbol),
   };
   // private helpers whose every caller is registered (or itself exempt) hand
   // their rows only to a registered caller.

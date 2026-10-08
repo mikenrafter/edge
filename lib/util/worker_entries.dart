@@ -152,7 +152,7 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'util/worker_audit.dart',
     symbol: 'WorkerAudit.dispatched',
-    source: 'hook(DispatchEvent(kind, label, StackTrace.current))',
+    source: 'hook(DispatchEvent(kind, label, currentIsolateId, StackTrace.current))',
     ordinal: 0,
     reason: 'test-installed audit hook: a function-typed static, null in '
         'production',
@@ -160,9 +160,25 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'util/worker_audit.dart',
     symbol: 'WorkerAudit.entered',
-    source: 'hook(entry)',
+    source: 'hook(event)',
     ordinal: 0,
     reason: 'test-installed audit hook: a function-typed static, null in '
         'production',
+  ),
+  UnresolvedOk(
+    file: 'util/worker_audit.dart',
+    symbol: 'WorkerAudit.auditPort',
+    source: 'hook(EntryEvent.fromMessage(message))',
+    ordinal: 0,
+    reason: 'test-installed audit hook: a function-typed static, null in '
+        'production (the port only exists when it is installed)',
+  ),
+  UnresolvedOk(
+    file: 'util/worker_audit.dart',
+    symbol: 'WorkerAudit.wrap',
+    source: 'work()',
+    ordinal: 0,
+    reason: 'runs the dispatcher\'s own closure after adopting the audit port; '
+        'wrap only exists to prefix a closure the dispatcher already runs',
   ),
 ];
