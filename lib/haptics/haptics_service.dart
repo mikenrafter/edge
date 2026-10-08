@@ -259,6 +259,7 @@ class HapticsService {
   void beginQuiet() => _queue.beginQuiet();
   void endQuiet() => _queue.endQuiet();
   bool get quietOpen => _queue.quietOpen;
+  bool get quietExpected => _queue.quietExpected;
   void expectQuiet(DateTime? startsAt) => _queue.expectQuiet(startsAt);
 
   Future<bool> runLab(Future<void> Function() body) => _queue.runLab(body);

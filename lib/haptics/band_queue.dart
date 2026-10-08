@@ -370,7 +370,8 @@ class _Job {
       this.wanted,
       this.gesture,
       this.exempt = false,
-      this.alarm = false});
+      this.alarm = false,
+      this.immediate = false});
   final Future<BuzzDelivery> Function(BandJobToken job) run;
   final int commands;
 
@@ -395,6 +396,9 @@ class _Job {
   /// A job of waking the wearer: never held for the command limit.
   final bool alarm;
 
+  /// Must start now or be rejected (a phase cue): never deferred either.
+  final bool immediate;
+
   /// Only a lab or gesture job has a start deadline: it is dropped when it
   /// cannot start within [startBy]. Every other job waits as long as it must.
   bool get expires => lab || gesture != null;
@@ -406,6 +410,10 @@ class _Job {
   /// freshness rule drop it on release. A quiet window never drops anything.
   bool heldByLab = false;
   bool wasHeld = false;
+
+  /// Held because it could still be playing when the expected quiet window
+  /// opens (see [BandHapticQueue.expectQuiet]).
+  bool deferredHold = false;
 
   /// True once the job found no room in the window and had to wait for it.
   bool waitedBudget = false;
@@ -557,33 +565,43 @@ class BandHapticQueue {
   /// True while a quiet window is open.
   bool get quietOpen => _quiet > 0;
 
+  /// True while a quiet window is expected ([expectQuiet]) and not yet open.
+  bool get quietExpected => _quietAhead != null;
+
   /// A quiet window will open at [startsAt] (null: none is expected). Until
   /// then a plain job that could still be playing at that moment, by its
   /// planned end (its timeout, its settle and the write grace after now), is
   /// HELD: it would otherwise play across the native alarm. Held, not dropped:
-  /// it goes when the window ends, or when the expectation is withdrawn.
+  /// it goes when the window ends, or when the expectation is withdrawn. Told
+  /// again with the same time it re-reads the clock, so a job whose planned end
+  /// no longer passes the start is released.
   void expectQuiet(DateTime? startsAt) {
-    if (startsAt == _quietAhead) return;
-    final withdrawn =
-        startsAt == null || (_quietAhead != null && startsAt.isAfter(_quietAhead!));
+    final changed = startsAt != _quietAhead;
     _quietAhead = startsAt;
-    if (withdrawn) {
-      _releaseHeld('quiet window no longer expected');
+    if (changed) {
+      _releaseHeld('quiet window ${startsAt == null ? 'no longer ' : ''}'
+          'expected');
     } else {
+      _unholdUnneeded();
       _pump();
     }
   }
 
   DateTime? _quietAhead;
 
+  /// Whether a plain job of [limit] + [settle] started now could still be
+  /// running when the expected window opens.
+  bool _crosses(Duration limit, Duration settle) {
+    final ahead = _quietAhead;
+    if (ahead == null || _quiet > 0) return false;
+    return _planNow().add(limit + settle + kBandWriteGrace).isAfter(ahead);
+  }
+
   /// A plain job that would still be running when the expected window opens.
   bool _deferred(_Job j) {
-    final ahead = _quietAhead;
     final limit = j.timeout;
-    if (ahead == null || _quiet > 0 || limit == null || !_quietHolds(j)) {
-      return false;
-    }
-    return _planNow().add(limit + j.settle + kBandWriteGrace).isAfter(ahead);
+    if (limit == null || !_quietHolds(j)) return false;
+    return _crosses(limit, j.settle);
   }
 
   bool _quietHolds(_Job j) => !j.lab && !j.alarm && j.gesture == null;
@@ -591,6 +609,16 @@ class BandHapticQueue {
   /// Releases every held job nothing holds any more: they start their wait
   /// over and go on.
   void _releaseHeld(String why) {
+    final n = _unholdUnneeded();
+    if (n > 0 || why.startsWith('lab')) {
+      log?.call('Band queue: $why, releasing $n alerts');
+    }
+    _pump();
+  }
+
+  /// Un-holds every held job nothing holds any more (no lab, no open window,
+  /// no expected window it could cross); returns how many.
+  int _unholdUnneeded() {
     final held = _waiting
         .where((j) =>
             j.held &&
@@ -598,14 +626,14 @@ class BandHapticQueue {
             !(_quiet > 0 && _quietHolds(j)) &&
             !_deferred(j))
         .toList();
-    log?.call('Band queue: $why, releasing ${held.length} alerts');
     for (final j in held) {
       j.held = false;
+      j.deferredHold = false;
       j.deadline = clock.now().add(j.startBy);
       if (j.expires) j.expiry = Timer(j.startBy, () => _expire(j));
       _resume(j);
     }
-    _pump();
+    return held.length;
   }
 
   void _hold(_Job j) {
@@ -771,6 +799,10 @@ class BandHapticQueue {
         (pending > 0 ||
             labOpen ||
             (quietOpen && !alarm && gesture == null) ||
+            (!alarm &&
+                gesture == null &&
+                timeout != null &&
+                _crosses(timeout, settle)) ||
             ledger.commandsLeft(clock.now()) < commands)) {
       log?.call('Band queue: rejected a job that could not start immediately');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
@@ -784,6 +816,7 @@ class BandHapticQueue {
         wanted: wanted is bool Function() ? wanted : null,
         gesture: gesture,
         alarm: alarm,
+        immediate: immediate,
         exempt: gesture != null && Zone.current[kBandGestureStartedKey] == true);
     final observe = Zone.current[kBandObserveKey];
     if (observe is void Function(Future<void>)) observe(j.over.future);
@@ -832,6 +865,7 @@ class BandHapticQueue {
   }
 
   void _pump() {
+    _unholdUnneeded(); // a clock or an expectation may have moved
     _wake?.cancel();
     _wake = null;
     _forgetGestures(clock.now());
@@ -844,7 +878,14 @@ class BandHapticQueue {
         _drop(j, why: 'was no longer wanted');
         continue;
       }
-      if (!j.held && _deferred(j)) _hold(j); // could play across the window
+      if (!j.held && _deferred(j)) {
+        if (j.immediate) {
+          _drop(j, why: 'could not start in time (a quiet window is near)');
+          continue;
+        }
+        j.deferredHold = true;
+        _hold(j); // could play across the window
+      }
       // Lab jobs sit first; a held job means the lab is open and no lab job is
       // waiting: the band stays idle for the lab.
       if (j.held) {

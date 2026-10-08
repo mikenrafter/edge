@@ -246,4 +246,83 @@ void main() {
       });
     });
   });
+
+  group('C an immediate (must-start-now) cue is rejected near an expected '
+      'window, never deferred', () {
+    test('its planned end passes the window start: rejected at admission',
+        () {
+      fakeAsync((async) {
+        final q = BandHapticQueue(ledger: BandCommandLedger());
+        final writes = <(String, int)>[];
+        q.expectQuiet(clock.now().add(_s * 100));
+        async.elapse(_s * 95);
+        BuzzDelivery? out;
+        q.asImmediate(() => q.run(_buzz(async, writes, 'phase'),
+            commands: 1,
+            timeout: const Duration(seconds: 3),
+            settle: Duration.zero)).then((v) => out = v);
+        async.elapse(_s * 200);
+        expect(out, BuzzDelivery.rejected,
+            reason: 'admitted, then held until the alarm window ended: it '
+                'would play in a later phase');
+        expect(writes, isEmpty);
+        expect(q.pending, 0);
+      });
+    });
+
+    test('far from the window it starts at once (control)', () {
+      fakeAsync((async) {
+        final q = BandHapticQueue(ledger: BandCommandLedger());
+        final writes = <(String, int)>[];
+        q.expectQuiet(clock.now().add(_s * 100));
+        async.elapse(_s * 50);
+        BuzzDelivery? out;
+        q.asImmediate(() => q.run(_buzz(async, writes, 'phase'),
+            commands: 1,
+            timeout: const Duration(seconds: 3),
+            settle: Duration.zero)).then((v) => out = v);
+        async.elapse(_s);
+        expect(out, BuzzDelivery.complete);
+        expect(writes, [('phase', 50)]);
+      });
+    });
+
+    test('with the window open it is rejected (control)', () {
+      fakeAsync((async) {
+        final q = BandHapticQueue(ledger: BandCommandLedger());
+        q.beginQuiet();
+        BuzzDelivery? out;
+        q.asImmediate(() => q.run(_buzz(async, [], 'phase'),
+            commands: 1,
+            timeout: const Duration(seconds: 3),
+            settle: Duration.zero)).then((v) => out = v);
+        async.elapse(_s);
+        expect(out, BuzzDelivery.rejected);
+      });
+    });
+  });
+
+  group('B the expectation is re-read against the planning clock', () {
+    test('a job deferred, then the planning clock moves back an hour: the '
+        'same expectation, told again, releases it (it has time now)', () {
+      fakeAsync((async) {
+        var now = clock.now();
+        final base = now;
+        final q = BandHapticQueue(
+            ledger: BandCommandLedger(), planningNow: () => now);
+        final writes = <(String, int)>[];
+        q.expectQuiet(base.add(_s * 10));
+        q.run(_buzz(async, writes, 'p'),
+            commands: 1,
+            timeout: const Duration(seconds: 30),
+            settle: Duration.zero);
+        async.elapse(_s * 2);
+        expect(writes, isEmpty, reason: 'precondition: deferred');
+        now = base.subtract(const Duration(hours: 1));
+        q.expectQuiet(base.add(_s * 10)); // told again on the next sync
+        async.elapse(_s);
+        expect(writes, hasLength(1));
+      });
+    });
+  });
 }
