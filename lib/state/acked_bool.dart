@@ -12,7 +12,11 @@ import 'package:flutter/foundation.dart';
 
 import 'prefs.dart';
 
-class AckedBool {
+/// The state is published here, and a screen renders THIS, never a copy it took
+/// at init: [value] (the confirmed value, or the pending write's optimistic
+/// one), [pending], and [failed] (the last write was refused; cleared by the
+/// next success). A screen opened mid-write, or a second one, shows the same.
+class AckedBool extends ChangeNotifier {
   AckedBool._(this.key);
 
   static final Map<String, AckedBool> _byKey = {};
@@ -21,10 +25,25 @@ class AckedBool {
   static AckedBool forKey(String key) =>
       _byKey.putIfAbsent(key, () => AckedBool._(key));
 
+  /// Test isolation: forget every instance (and its pending/failed state).
+  @visibleForTesting
+  static void resetForTest() => _byKey.clear();
+
   final String key;
 
+  bool _pending = false;
+  bool _failed = false;
+  bool _optimistic = false;
+
   /// True while a write waits for its acknowledgement.
-  final ValueNotifier<bool> pending = ValueNotifier<bool>(false);
+  bool get pending => _pending;
+
+  /// The last write was refused or threw; the next success clears it.
+  bool get failed => _failed;
+
+  /// What to show: the pending write's value while it waits, else the confirmed
+  /// one (with nothing pending, the cache IS the last confirmed value).
+  bool get value => _pending ? _optimistic : Prefs.getBool(key, false);
 
   /// Writes [on] ([write] is `Prefs.setBoolAcked` unless a test passes its own).
   /// Null: ignored, a write is already pending. Otherwise whether the platform
@@ -32,18 +51,21 @@ class AckedBool {
   /// one confirmed before this write.
   Future<bool?> set(bool on,
       {Future<bool> Function(String key, bool value)? write}) async {
-    if (pending.value) return null;
-    // With nothing pending, the cache IS the last confirmed value.
+    if (_pending) return null;
     final confirmed = Prefs.getBool(key, false);
-    pending.value = true;
+    _optimistic = on;
+    _pending = true;
+    notifyListeners();
     var ok = false;
     try {
       ok = await (write ?? Prefs.setBoolAcked)(key, on);
     } catch (_) {
       ok = false;
     }
-    if (!ok) Prefs.setBool(key, confirmed);
-    pending.value = false;
+    Prefs.setBool(key, ok ? on : confirmed);
+    _failed = !ok;
+    _pending = false;
+    notifyListeners();
     return ok;
   }
 }

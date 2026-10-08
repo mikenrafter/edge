@@ -2157,13 +2157,10 @@ class _AutomationSettingsState extends State<AutomationSettings> {
   String? _token;
   bool _copied = false;
   bool _taskerOn = Prefs.taskerConnectionOn;
-  bool _momentExportOn = Prefs.taskerMomentExportOn;
-  bool _momentExportError = false;
 
   @override
   void initState() {
     super.initState();
-    _consent.pending.addListener(_onConsentPending);
     TaskerBridge.authToken().then((t) {
       if (mounted) setState(() => _token = t);
     });
@@ -2171,7 +2168,6 @@ class _AutomationSettingsState extends State<AutomationSettings> {
 
   @override
   void dispose() {
-    _consent.pending.removeListener(_onConsentPending);
     super.dispose();
   }
 
@@ -2189,36 +2185,30 @@ class _AutomationSettingsState extends State<AutomationSettings> {
 
   late final AckedBool _consent = AckedBool.forKey(Prefs.taskerMomentExport);
 
-  void _onConsentPending() {
-    if (mounted) setState(() {});
-  }
-
   /// Consent is a durable choice: it is changed with the acknowledged write,
-  /// one write at a time (the switch is disabled while one waits). If the
-  /// platform refuses, `AckedBool` puts the cache back to the last CONFIRMED
-  /// value, whether or not this screen is still there; the switch then shows
-  /// what is stored, with a message. A failed switch-OFF must never look like it
-  /// worked: after a restart consent would be back ON.
-  Future<void> _setMomentExportOn(bool on) async {
-    final ok = await _consent.set(on, write: widget.setBoolAcked);
-    if (ok == null || !mounted) return;
-    setState(() {
-      _momentExportOn = Prefs.taskerMomentExportOn;
-      _momentExportError = !ok;
-    });
-  }
+  /// one write at a time (the switch is disabled while one waits). The switch,
+  /// its busy state and its error all render [AckedBool]'s own state, so every
+  /// screen instance (including one opened mid-write) shows what is stored: if
+  /// the platform refuses, `AckedBool` puts the cache back to the last CONFIRMED
+  /// value, whether or not this screen is still there, and publishes the
+  /// failure. A failed switch-OFF must never look like it worked: after a
+  /// restart consent would be back ON.
+  Future<void> _setMomentExportOn(bool on) =>
+      _consent.set(on, write: widget.setBoolAcked);
 
   @override
-  Widget build(BuildContext c) => AutomationSettingsView(
-      token: _token,
-      copied: _copied,
-      onCopy: _copy,
-      taskerOn: _taskerOn,
-      onTaskerOn: _setTaskerOn,
-      momentExportOn: _momentExportOn,
-      onMomentExportOn: _setMomentExportOn,
-      momentExportError: _momentExportError,
-      momentExportBusy: _consent.pending.value);
+  Widget build(BuildContext c) => ListenableBuilder(
+      listenable: _consent,
+      builder: (c, _) => AutomationSettingsView(
+          token: _token,
+          copied: _copied,
+          onCopy: _copy,
+          taskerOn: _taskerOn,
+          onTaskerOn: _setTaskerOn,
+          momentExportOn: _consent.value,
+          onMomentExportOn: _setMomentExportOn,
+          momentExportError: _consent.failed,
+          momentExportBusy: _consent.pending));
 }
 
 /// The Automation screen without its token fetch, so it can be pumped headless.

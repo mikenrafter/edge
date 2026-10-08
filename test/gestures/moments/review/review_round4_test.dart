@@ -57,6 +57,7 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     await Prefs.ensureLoaded();
+    AckedBool.resetForTest();
     Prefs.setString(MomentReviewStore.prefKey, '');
   });
 
@@ -178,7 +179,7 @@ void main() {
         writes++;
         return gate.future;
       });
-      expect(b.pending.value, isTrue);
+      expect(b.pending, isTrue);
       expect(await b.set(false, write: (k, v) async {
         writes++;
         return true;
@@ -186,7 +187,7 @@ void main() {
       gate.complete(true);
       expect(await first, isTrue);
       expect(writes, 1);
-      expect(b.pending.value, isFalse);
+      expect(b.pending, isFalse);
     });
 
     test('a failure rolls back to the value confirmed BEFORE it', () async {
@@ -212,7 +213,7 @@ void main() {
       expect(await b.set(false, write: (k, v) async => throw StateError('x')),
           isFalse);
       expect(Prefs.taskerMomentExportOn, isTrue);
-      expect(b.pending.value, isFalse);
+      expect(b.pending, isFalse);
     });
 
     test('the real write, when it works, is confirmed', () async {
