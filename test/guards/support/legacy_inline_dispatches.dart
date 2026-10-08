@@ -2,8 +2,9 @@
 // instead of a registered entry, so the audit cannot require an entry report
 // for them. This is DEBT: the list may only shrink.
 //
-//   * Each entry is an EXACT label or an ANCHORED pattern (`^...$`); the
-//     detector refuses an unanchored pattern, so there are no open prefixes
+//   * Each entry is an EXACT label or an ANCHORED pattern (`^...$`), matched
+//     against the WHOLE label; the detector refuses an unanchored pattern, so
+//     there are no open prefixes
 //     (`crossday-input-new-work` is not `crossday-input`).
 //   * Adding an entry needs a note in test/guards/BASELINE_CHANGELOG.md, a level-2
 //     heading `## legacyInlineDispatch <id>` (checked by
@@ -24,9 +25,13 @@ class LegacyInlineDispatch {
   final String reason;
   const LegacyInlineDispatch(this.id, this.pattern, this.reason);
 
-  bool matches(String label) => RegExp(pattern).hasMatch(label);
+  /// FULL-string match: the pattern is wrapped in `^(?:...)$`, so an alternation
+  /// like `^a|b$` cannot match a label that only starts with `a` (the
+  /// syntactic check in [requireAnchored] cannot see that).
+  bool matches(String label) => RegExp('^(?:$pattern)\$').hasMatch(label);
 
-  /// Throws unless [pattern] is anchored at both ends.
+  /// Throws unless [pattern] starts with `^` and ends with `$` (a lint on the
+  /// list; [matches] is what enforces the whole-label match).
   void requireAnchored() {
     if (!pattern.startsWith('^') || !pattern.endsWith(r'$')) {
       throw ArgumentError.value(pattern, 'pattern',

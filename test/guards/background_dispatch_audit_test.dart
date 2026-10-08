@@ -317,6 +317,26 @@ void main() {
           throwsArgumentError);
     });
 
+    // Sol r2: `^a|b$` passes a syntactic anchor check but its first alternative
+    // matches any label that merely STARTS with `a`. Matching is full-string.
+    test('(P2e) an alternation pattern cannot match by prefix: '
+        '^crossday-input|foo\$ does not exempt crossday-input-new-work', () {
+      const sneaky = LegacyInlineDispatch(
+          'crossday-input', r'^crossday-input|foo$', 'x');
+      List<String> run(String label) => dispatchCorrelationProblems(
+            [dispatch(1, Dispatcher.cancellable, label)], const [],
+            entryOfLabel: entryOfLabel,
+            dispatcherOf: registered,
+            cancellableEntries: cancellableEntries,
+            legacyInline: const [sneaky],
+          );
+      expect(run('crossday-input-new-work'), isNotEmpty);
+      expect(run('crossday-input'), isEmpty, reason: 'the whole label matches');
+      expect(run('foo'), isEmpty);
+      expect(run('xfoo'), isNotEmpty);
+      expect(sneaky.matches('crossday-input-new-work'), isFalse);
+    });
+
     test('(P2c) a new allowlist entry without a changelog note is a problem; '
         'a documented one is not', () {
       const added = LegacyInlineDispatch('derive-day', r'^derive day$', 'x');
