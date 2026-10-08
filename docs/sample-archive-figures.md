@@ -85,3 +85,29 @@ Reading it:
 - What the transform still offers: progressive refinement (coarse coefficients
   first, for long chart views) and a smooth reconstruction. What it costs:
   codec complexity, per-block (not per-sample) error accounting, encode time.
+
+## Load times, codec v2 (2026-10-08)
+
+Dev harness `test/sample_archive/sample_load_bench_test.dart` on the same
+export (median of 7 after 2 warm-ups; desktop CPU via sqflite FFI — a phone is
+several times slower and goes through the sqflite platform channel, so read the
+RATIOS). One full day, five signals:
+
+| load | 10-03 ms | 10-04 ms | vs raw |
+|---|---|---|---|
+| Raw `decoded_onehz` rows (5 columns, 86k rows as maps) | 218 | 316 | 1× |
+| Archive full detail (hr + temp samples decoded, accel minute envelope) | 8.9 | 16.7 | ≈19–25× faster |
+| Old DCT archive, full detail (comparison) | 32.4 | 36.1 | ≈7–9× faster |
+| Archive summary levels only (week/month views) | 0.8 | 0.9 | ≈270–350× faster |
+
+The archive figures exclude reading its ≈43 KB of blobs from SQLite (a single
+small query). The quantized codec decodes 2–4× faster than the DCT it replaced.
+
+## Storage, codec v2 (shipped default), like for like
+
+| stored as | B/day | MB/yr | archive is smaller by |
+|---|---|---|---|
+| **Sample archive v2** (hr + temp quantized, accel per-minute envelope) | ≈42,900 | **15.7** | 1× |
+| Lossless (delta + deflate) of the same 5 signals | 210,572 | 76.9 | ≈4.9× |
+| Raw samples, 8 B each, 5 signals | 3,455,340 | 1,261 | ≈81× |
+| `decoded_onehz` as stored in SQLite today (all columns + index) | ≈12,080,000 | ≈4,410 | ≈282× |
