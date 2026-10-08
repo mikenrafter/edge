@@ -407,13 +407,15 @@ final Map<String, Expect> kExpectations = {
     counts: {HeavyRule.rawReaderUnregistered: 3},
   ),
   // exposesRows decides by the ELEMENT type of the collection, not by "is a
-  // List/Iterable/Set/Stream of something": a list, set or stream of scalars
-  // (List<int>, List<String>, Future<List<double>>, Stream<int>, ...) is not a
-  // raw reader even when the method reads a raw table.
+  // List/Iterable/Set/Stream of something" (rawReaderUnregistered v3): a list,
+  // set or stream of scalars (int/double/num/String/bool/DateTime/Duration/an
+  // enum, nullable too: List<int>, Future<List<double>>, Stream<int>, ...) is
+  // not a raw reader even when the method reads a raw table.
   'rawreader_ok_scalar_collections': const Expect.clean(),
-  // ...and every row-element spelling still is one: Map<String, Object?>,
-  // Map<String, dynamic>, RowBatch (also inside a Stream), and a Map whose
-  // values are row collections.
+  // ...and anything that is not a scalar still is one: Map<String, Object?>,
+  // Map<String, dynamic>, Map<String, int>, RowBatch (also inside a Stream), a
+  // class (`Sample`), a record, dynamic, Object?, and a Map whose values are
+  // such collections.
   'rawreader_bad_row_element_types': const Expect(
     {HeavyRule.rawReaderUnregistered},
     symbols: {
@@ -426,9 +428,15 @@ final Map<String, Expect> kExpectations = {
         'LocalDb.batches',
         'LocalDb.rowsByDay',
         'LocalDb.dynamicRowsByDay',
+        // The element rule is conservative: not a scalar => rows.
+        'LocalDb.samples',
+        'LocalDb.intRows',
+        'LocalDb.untyped',
+        'LocalDb.objects',
+        'LocalDb.pairs',
       },
     },
-    counts: {HeavyRule.rawReaderUnregistered: 8},
+    counts: {HeavyRule.rawReaderUnregistered: 13},
   ),
 };
 

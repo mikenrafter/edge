@@ -1425,11 +1425,29 @@ void _rawReaders(
 
   // Only methods whose return type exposes ROWS are readers. By TYPE, never by
   // name: void/int/bool/num never expose rows (an `ensureCount()` is not a
-  // reader), a row-returning `ensureRows()` is one, and a Map is rows only when
-  // its VALUES are row collections (a `Map<String, int>` of counts, or the
-  // `Map<String, dynamic>` scalar summaries, are not).
-  bool isRowElement(DartType t) =>
-      t is InterfaceType && (t.isDartCoreMap || _isRowBatch(t));
+  // reader), a row-returning `ensureRows()` is one.
+  //
+  // The ELEMENT type of a collection decides (rawReaderUnregistered v3). A
+  // List/Iterable/Set/Stream is NOT a reader only when its element is a scalar
+  // (int/double/num/String/bool/DateTime/Duration/an enum, or a nullable of
+  // these): a list of timestamps or ids carries no row. EVERYTHING else is
+  // treated as rows - Map<String, *> of any value type, a class or record such
+  // as `Sample`, `dynamic`, `Object?`, RowBatch - so a typed projection of a raw
+  // table is not waved through. A Map return is a reader only when its VALUES
+  // are such collections (`Map<String, List<Row>>`; a `Map<String, int>` of
+  // counts or the `Map<String, dynamic>` scalar summaries are not).
+  bool isScalar(DartType t) {
+    if (t is! InterfaceType) return false;
+    final el = t.element;
+    return t.isDartCoreInt ||
+        t.isDartCoreDouble ||
+        t.isDartCoreNum ||
+        t.isDartCoreString ||
+        t.isDartCoreBool ||
+        el is EnumElement ||
+        ((el.name == 'DateTime' || el.name == 'Duration') &&
+            _uri(el) == 'dart:core');
+  }
 
   bool isRowCollection(DartType t) {
     if (t is! InterfaceType) return false;
@@ -1438,7 +1456,7 @@ void _rawReaders(
         t.isDartCoreIterable ||
         t.isDartCoreSet ||
         t.isDartAsyncStream) {
-      return t.typeArguments.isNotEmpty && isRowElement(t.typeArguments.first);
+      return t.typeArguments.isEmpty || !isScalar(t.typeArguments.first);
     }
     return false;
   }
@@ -1454,11 +1472,7 @@ void _rawReaders(
     if (t.isDartCoreMap) {
       return t.typeArguments.length == 2 && isRowCollection(t.typeArguments[1]);
     }
-    if (t.isDartAsyncStream) return true;
-    return t.isDartCoreList ||
-        t.isDartCoreIterable ||
-        t.isDartCoreSet ||
-        _isRowBatch(t);
+    return isRowCollection(t);
   }
 
   final listed = {for (final m in config.migrationMethods) m.symbol};

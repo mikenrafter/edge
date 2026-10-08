@@ -376,7 +376,7 @@ void derivationPrepareWorker(SendPort mainSendPort) {
       // Test-only (never sent in production): report to the test's audit port.
       // The top-of-function `entered` ran before the port was known, so the
       // start of this worker is reported here, on the handshake.
-      WorkerAudit.adopt(message['port'] as SendPort?);
+      WorkerAudit.adopt(message['port'] as SendPort?, message['dispatch'] as int?);
       WorkerAudit.entered('derivationPrepareWorker');
       return;
     }

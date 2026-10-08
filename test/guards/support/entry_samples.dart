@@ -137,7 +137,8 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
   ),
   '_dayBlocksIsolateEntry': (
     roundTrip: () async {
-      // The REAL message: (reply SendPort, _DayBlocksInput, audit SendPort?).
+      // The REAL message: (reply SendPort, _DayBlocksInput, audit SendPort?,
+      // dispatch id).
       // The input is built by the engine's @visibleForTesting factory with every
       // nested kind populated (substrates with typed beats, the calculation
       // state, records in ceilingReuse, NapEdit, spans, saved sessions, the
@@ -156,8 +157,8 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
 
       final port = ReceivePort();
       addTearDown(port.close);
-      await expectIsolateRoundTrip<(SendPort, Object, SendPort?)>(
-        (port.sendPort, input, null),
+      await expectIsolateRoundTrip<(SendPort, Object, SendPort?, int)>(
+        (port.sendPort, input, null, 0),
         project: (r) => DerivationEngine.dayBlocksInputSummaryForTest(r.$2),
       );
 

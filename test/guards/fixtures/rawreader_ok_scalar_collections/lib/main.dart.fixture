@@ -6,6 +6,8 @@
 
 typedef Row = Map<String, Object?>;
 
+enum Kind { a, b }
+
 class Database {
   Future<List<Row>> query(String table) async => const [];
   Future<List<Row>> rawQuery(String sql) async => const [];
@@ -43,6 +45,26 @@ class LocalDb {
       yield r['rec_ts'] as int;
     }
   }
+
+  // The rest of the scalar set: num, bool, DateTime, Duration, an enum.
+  Future<List<num>> magnitudes() async =>
+      [for (final r in await _db.query('decoded_onehz')) r['hr'] as num];
+
+  Future<List<bool>> flags() async =>
+      [for (final r in await _db.query('decoded_rr')) r['x'] == 1];
+
+  Future<List<DateTime>> instants() async => [
+        for (final r in await _db.query('decoded_onehz'))
+          DateTime.fromMillisecondsSinceEpoch(r['ts_ms'] as int)
+      ];
+
+  Future<List<Duration>> gaps() async => [
+        for (final r in await _db.query('decoded_rr'))
+          Duration(milliseconds: r['rr_ms'] as int)
+      ];
+
+  Future<List<Kind>> kinds() async =>
+      [for (final r in await _db.query('raw_records')) Kind.values[r['k'] as int]];
 
   // A Map whose VALUES are scalar collections is not rows either.
   Future<Map<String, List<int>>> timestampsByDevice() async => {

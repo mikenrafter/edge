@@ -10,7 +10,7 @@
     "sendableGrammar": 2,
     "workerEntryNotInitialised": 2,
     "unresolvedInvocation": 1,
-    "rawReaderUnregistered": 2
+    "rawReaderUnregistered": 3
   },
   "occurrences": [
     {
@@ -277,48 +277,6 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.getWeekdayEffect",
       "element": "weekdayEffect",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/sample_archive.dart",
-      "symbol": "SampleArchiver._archiveDevice",
-      "element": "SampleCodec.encode",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/sample_archive.dart",
-      "symbol": "SampleArchiver.reconstructWithOrigin",
-      "element": "List.filled",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/sample_archive.dart",
-      "symbol": "SampleArchiver.reconstructWithOrigin",
-      "element": "SampleCodec.decode",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/sample_archive.dart",
-      "symbol": "SampleArchiver.reconstructWithOrigin",
-      "element": "SampleCodec.decodeCoarse",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/sample_archive.dart",
-      "symbol": "SampleArchiver.reconstructWithOrigin",
-      "element": "max",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/sample_archive.dart",
-      "symbol": "SampleArchiver.reconstructWithOrigin",
-      "element": "min",
       "count": 1
     },
     {
@@ -5170,13 +5128,6 @@
       "file": "data/sample_codec.dart",
       "symbol": "SampleCodec.restrict",
       "element": "keepMinute(j)",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "data/sample_import.dart",
-      "symbol": "carveSamplePart",
-      "element": "sampleCarveRunner(() => carveSamplePartSync( blob, coveredMinutes, valid: valid, rmsErr: rms, maxErr: max))",
       "count": 1
     },
     {

@@ -12,12 +12,16 @@
 // from inside the worker through a SendPort:
 //   * the test installs [onEntry]; [auditPort] then returns the port that
 //     forwards worker reports to it (null when no hook is installed);
-//   * a dispatcher hands that port to the worker: [wrap] for closure
-//     dispatchers, a message field for `_dayBlocksIsolateEntry`, an `audit`
-//     command for the prepare worker; the worker calls [adopt];
-//   * [entered], running in the worker, sends `(entry, isolate id)` through it.
-// The test can then assert WHICH registered entry ran and that it ran in a
-// different isolate than the dispatcher.
+//   * a dispatcher hands that port to the worker, with the id [dispatched]
+//     returned for this dispatch: [wrap] for closure dispatchers, message
+//     fields for `_dayBlocksIsolateEntry`, an `audit` command for the prepare
+//     worker; the worker calls [adopt];
+//   * [entered], running in the worker, sends `(entry, isolate id, dispatch id)`
+//     through it.
+// The test can then assert WHICH registered entry ran, that it ran in a
+// different isolate than the dispatcher, and that it ran FOR that dispatch: a
+// dispatch is matched by the reports carrying its id, never by the set of
+// entries seen anywhere in the run.
 //
 // Production installs nothing: [auditPort] is null, [wrap] returns its argument,
 // [adopt] ignores null and [entered] returns at once when it has neither a port
@@ -38,9 +42,10 @@ class DispatchEvent {
   final String isolateId;
   final StackTrace stack;
 
-  /// Per-dispatch token (RED stub: always 0, real ids start at 1). The worker
-  /// echoes it in every [EntryEvent] it reports, so a dispatch is matched by the
-  /// entry reports it caused and by no others.
+  /// Per-dispatch token: unique within the process, starting at 1. The
+  /// dispatcher hands it to the worker with the audit port and the worker echoes
+  /// it in every [EntryEvent] it reports, so a dispatch is matched by the entry
+  /// reports it caused and by no others.
   final int id;
   const DispatchEvent(this.kind, this.label, this.isolateId, this.stack,
       {this.id = 0});
@@ -54,16 +59,18 @@ class EntryEvent {
   final String entry;
   final String isolateId;
 
-  /// The [DispatchEvent.id] of the dispatch whose worker reported this entry
-  /// (RED stub: never set). Null for an entry called directly, with no dispatch.
+  /// The [DispatchEvent.id] of the dispatch whose worker reported this entry.
+  /// Null for an entry called directly (no dispatch), or in a worker whose
+  /// dispatcher handed it no token.
   final int? dispatchId;
   const EntryEvent(this.entry, this.isolateId, {this.dispatchId});
 
   /// The plain, sendable form sent through the audit port.
-  List<String> toMessage() => <String>[entry, isolateId];
+  List<Object?> toMessage() => <Object?>[entry, isolateId, dispatchId];
 
-  factory EntryEvent.fromMessage(List<dynamic> m) =>
-      EntryEvent(m[0] as String, m[1] as String);
+  factory EntryEvent.fromMessage(List<dynamic> m) => EntryEvent(
+      m[0] as String, m[1] as String,
+      dispatchId: m.length > 2 ? m[2] as int? : null);
 
   @override
   String toString() => '$entry@$isolateId';
@@ -84,6 +91,12 @@ class WorkerAudit {
 
   /// Test side: the receive port that forwards worker reports to [onEntry].
   static ReceivePort? _inbox;
+
+  /// Worker side: the id of the dispatch this isolate runs for. Set by [adopt].
+  static int? _dispatchId;
+
+  /// Test side: the last id handed out by [dispatched].
+  static int _lastId = 0;
 
   /// A stable identity of the current isolate (the hash of its control port is
   /// the same wherever it is read and differs between isolates).
@@ -108,31 +121,37 @@ class WorkerAudit {
   }
 
   /// Closure dispatchers: returns [work] itself when no hook is installed,
-  /// otherwise a closure that adopts the audit port in the worker, then runs
-  /// [work].
+  /// otherwise a closure that adopts the audit port (and the dispatch's
+  /// [dispatchId], from [dispatched]) in the worker, then runs [work].
   static FutureOr<T> Function() wrap<T>(FutureOr<T> Function() work,
       [int? dispatchId]) {
     final port = auditPort;
     if (port == null) return work;
     return () {
-      adopt(port);
+      adopt(port, dispatchId);
       return work();
     };
   }
 
-  /// Worker side: report this isolate's entries to [port]. Null does nothing.
+  /// Worker side: report this isolate's entries to [port], each tagged with
+  /// [dispatchId]. A null port does nothing.
   static void adopt(SendPort? port, [int? dispatchId]) {
-    if (port != null) _report = port;
+    if (port == null) return;
+    _report = port;
+    // 0 is `dispatched`'s "no hook" answer, not a dispatch.
+    _dispatchId = dispatchId == 0 ? null : dispatchId;
   }
 
-  /// An approved dispatcher is about to run work on another isolate. Returns
-  /// the dispatch's id (RED stub: always 0).
+  /// An approved dispatcher is about to run work on another isolate. Returns the
+  /// dispatch's id for the dispatcher to hand to its worker ([wrap] / [adopt]);
+  /// 0 when no hook is installed (production), where nothing uses it.
   static int dispatched(Dispatcher kind, String label) {
     final hook = onDispatch;
-    if (hook != null) {
-      hook(DispatchEvent(kind, label, currentIsolateId, StackTrace.current));
-    }
-    return 0;
+    if (hook == null) return 0;
+    final id = ++_lastId;
+    hook(DispatchEvent(kind, label, currentIsolateId, StackTrace.current,
+        id: id));
+    return id;
   }
 
   /// A registered worker entry started, in the isolate it runs in.
@@ -140,7 +159,8 @@ class WorkerAudit {
     final port = _report;
     final hook = onEntry;
     if (port == null && hook == null) return;
-    final event = EntryEvent(entry, currentIsolateId);
+    final event =
+        EntryEvent(entry, currentIsolateId, dispatchId: _dispatchId);
     if (port != null) {
       port.send(event.toMessage());
     } else if (hook != null) {
@@ -153,6 +173,7 @@ class WorkerAudit {
     onDispatch = null;
     onEntry = null;
     _report = null;
+    _dispatchId = null;
     _inbox?.close();
     _inbox = null;
   }

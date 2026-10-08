@@ -121,6 +121,11 @@ void main() {
     'sample carve': 'carveSamplePartHeavy',
     'sample reconstruct': 'reconstructSamplePartsHeavy',
   };
+  // Cancellable dispatches whose closure runs inline code rather than a
+  // registered entry (legacy, baselined as dispatcherClosureContract). They are
+  // still checked for dispatcher kind and for stray reports, but cannot be
+  // required to have run an entry.
+  const legacyInlineLabels = ['sleep-staging', 'crossday-input'];
   const cancellableEntries = {
     'deriveDayBundle',
     'buildCrossDayBundle',
@@ -173,7 +178,8 @@ void main() {
         dispatchCorrelationProblems(dispatches, entries,
             entryOfLabel: entryOfLabel,
             dispatcherOf: registered,
-            cancellableEntries: cancellableEntries),
+            cancellableEntries: cancellableEntries,
+            legacyInlineLabels: legacyInlineLabels),
         isEmpty,
         reason: '$path: dispatches vs the entry reports they caused');
   }
@@ -233,6 +239,20 @@ void main() {
       ]);
       expect(problems, hasLength(1), reason: '$problems');
       expect(problems.single, contains('derive day'));
+    });
+
+    test('(b2b) a legacy inline-closure label needs no entry; a lookalike '
+        'label still does', () {
+      List<String> run(String label) => dispatchCorrelationProblems(
+            [dispatch(1, Dispatcher.cancellable, label)], const [],
+            entryOfLabel: entryOfLabel,
+            dispatcherOf: registered,
+            cancellableEntries: cancellableEntries,
+            legacyInlineLabels: legacyInlineLabels,
+          );
+      expect(run('sleep-staging 2026-01-10'), isEmpty);
+      expect(run('crossday-input'), isEmpty);
+      expect(run('crossday'), isNotEmpty);
     });
 
     test('(b3) a report under no token, or under a token no dispatch has, '

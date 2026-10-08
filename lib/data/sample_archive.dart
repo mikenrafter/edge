@@ -22,19 +22,22 @@
 // `SampleArchiver.archiveBefore`, called by `_pruneOldDecoded` immediately
 // before `pruneDecodedBeforeRecTs` with the same cutoff.
 //
-// Heavy work (the encode and its error measurement) runs in `Isolate.run` (invariant 10);
+// Heavy work (the encode and its error measurement, the reconstruction) runs in
+// the registered entries of sample_heavy.dart, through `Isolate.run` (invariant 10);
 // rows are read in 3-hour windows so no single result is a whole day. Day labels are LOCAL
 // (`localDayStartSec`/`localDayLengthSec`, invariant 7); `nowSec` is injected, never read from the clock here.
 
 import 'dart:isolate';
-import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 
+import '../util/worker_audit.dart';
+import '../util/worker_entries.dart' show Dispatcher;
 import 'db.dart';
 import 'sample_codec.dart';
+import 'sample_heavy.dart';
 import 'sample_import.dart';
 import 'sample_lock.dart';
 import 'sample_zone.dart';
@@ -285,22 +288,18 @@ class SampleArchiver {
     }
 
     // Off the calling isolate (invariant 10): the transform is the heavy part.
+    // The mode of each signal is resolved HERE so the worker is handed plain
+    // values (the registered entry, lib/data/sample_heavy.dart).
+    final encodeInput = SampleEncodeInput(slots: work, modes: {
+      for (final s in todo)
+        s: modes[s] ?? defaultModes[s] ?? SampleMode.pyramidOnly,
+    });
+    final encodeDispatch =
+        WorkerAudit.dispatched(Dispatcher.run, 'sample encode');
+    final auditPort = WorkerAudit.auditPort; // null in production
     final encoded = await Isolate.run(() {
-      final out = <String, (Uint8List, int, double, double)>{};
-      for (final e in work.entries) {
-        final samples = <double?>[for (final v in e.value) v.isNaN ? null : v];
-        final enc = SampleCodec.encode(e.key, samples,
-            mode: modes[e.key] ??
-                defaultModes[e.key] ??
-                SampleMode.pyramidOnly);
-        out[e.key] = (
-          enc.blob,
-          enc.stats.nValid,
-          enc.stats.rmsErr,
-          enc.stats.maxErr,
-        );
-      }
-      return out;
+      WorkerAudit.adopt(auditPort, encodeDispatch);
+      return encodeSampleSignalsHeavy(sampleWorkerInputs, encodeInput);
     });
     await debugBeforeWrite?.call();
     // Coverage and part numbers were read BEFORE the encode; a restore can
@@ -318,10 +317,10 @@ class SampleArchiver {
           'origin_sec': start,
           'n_slots': len,
           'slot_sec': 1,
-          'blob': e.value.$1,
-          'n_valid': e.value.$2,
-          'rms_err': e.value.$3,
-          'max_err': e.value.$4,
+          'blob': e.value.blob,
+          'n_valid': e.value.nValid,
+          'rms_err': e.value.rmsErr,
+          'max_err': e.value.maxErr,
           'created_at': nowSec,
         });
         if (wrote) written++;
@@ -461,28 +460,16 @@ class SampleArchiver {
         if (SampleCodec.hasSamples(p.blob)) p
     ];
     if (parts.isEmpty) return null;
+    final input = SampleReconstructInput(
+      parts: [for (final p in parts) SampleBlobPart(p.originSec, p.blob)],
+      maxOrder: maxOrder,
+    );
+    final dispatchId =
+        WorkerAudit.dispatched(Dispatcher.run, 'sample reconstruct');
+    final auditPort = WorkerAudit.auditPort; // null in production
     return Isolate.run(() {
-      final decoded = [
-        for (final p in parts)
-          maxOrder == null
-              ? SampleCodec.decode(p.blob)
-              : SampleCodec.decodeCoarse(p.blob, maxOrder: maxOrder)
-      ];
-      var o0 = parts.first.originSec, end = 0;
-      for (var i = 0; i < parts.length; i++) {
-        o0 = math.min(o0, parts[i].originSec);
-        end = math.max(end, parts[i].originSec + decoded[i].length);
-      }
-      final out = List<double?>.filled(end - o0, null);
-      for (var i = 0; i < parts.length; i++) {
-        final base = parts[i].originSec - o0;
-        final d = decoded[i];
-        for (var j = 0; j < d.length; j++) {
-          final v = d[j];
-          if (v != null) out[base + j] = v;
-        }
-      }
-      return (originSec: o0, samples: out);
+      WorkerAudit.adopt(auditPort, dispatchId);
+      return reconstructSamplePartsHeavy(sampleWorkerInputs, input);
     });
   }
 

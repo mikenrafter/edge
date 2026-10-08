@@ -1,6 +1,6 @@
 // ignore_for_file: file_names
 // Sendable round trip + parity for the sample archive's carve entry (design 02
-// follow-up: the carve that `carveSamplePart` handed to `sampleCarveRunner` as an
+// follow-up: the carve that `carveSamplePart` handed to a function-typed runner as an
 // inline closure is the registered @heavy entry `carveSamplePartHeavy`).
 //
 // Pins: `SampleCarveInput` (the incoming blob, the covered minutes as a LIST, the

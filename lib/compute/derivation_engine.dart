@@ -4289,7 +4289,8 @@ class DerivationEngine {
     // never returned and ALL derivation was dead until app restart. Now a
     // worker death fails the future, and the timeout below bounds the wait
     // even if no signal arrives at all.
-    WorkerAudit.dispatched(Dispatcher.spawn, 'derivation prepare');
+    final prepareDispatch =
+        WorkerAudit.dispatched(Dispatcher.spawn, 'derivation prepare');
     final isolate = await Isolate.spawn(
       derivationPrepareWorker,
       port.sendPort,
@@ -4352,7 +4353,13 @@ class DerivationEngine {
       // Test-only (null in production): hand the worker the audit port so it
       // reports which registered entry ran, from inside its own isolate.
       final auditPort = WorkerAudit.auditPort;
-      if (auditPort != null) worker.send({'type': 'audit', 'port': auditPort});
+      if (auditPort != null) {
+        worker.send({
+          'type': 'audit',
+          'port': auditPort,
+          'dispatch': prepareDispatch,
+        });
+      }
       worker.send(const {'type': 'config', 'mode': 'substrate'});
       int? afterRecTs;
       int? afterCursor;
@@ -6288,11 +6295,11 @@ class DerivationEngine {
     final spans = [
       for (final s in liveSteps.spans) [s.startTs, s.endTs, s.steps],
     ];
-    WorkerAudit.dispatched(Dispatcher.run, 'kcal minutes');
+    final dispatchId = WorkerAudit.dispatched(Dispatcher.run, 'kcal minutes');
     // Null in production; a test's port so the worker reports its entry.
     final auditPort = WorkerAudit.auditPort;
     return Isolate.run(() {
-      WorkerAudit.adopt(auditPort);
+      WorkerAudit.adopt(auditPort, dispatchId);
       return kcalMinutesForDayHeavy(
         daySub: daySub,
         profile: profile,
@@ -9729,11 +9736,12 @@ class DerivationEngine {
     Duration timeout,
   ) async {
     final port = ReceivePort();
-    WorkerAudit.dispatched(Dispatcher.spawn, 'day blocks');
+    final dispatchId = WorkerAudit.dispatched(Dispatcher.spawn, 'day blocks');
     final isolate = await Isolate.spawn(
       _dayBlocksIsolateEntry,
-      // The third element is the test-only audit port (null in production).
-      (port.sendPort, input, WorkerAudit.auditPort),
+      // The third and fourth elements are the test-only audit port (null in
+      // production) and this dispatch's id.
+      (port.sendPort, input, WorkerAudit.auditPort, dispatchId),
       onError: port.sendPort,
       onExit: port.sendPort,
     );
@@ -9912,11 +9920,12 @@ class DerivationEngine {
     required String label,
   }) async {
     final port = ReceivePort();
-    // `wrap` is the closure itself unless a test installed the audit hook, in
-    // which case the worker adopts the audit port before running it.
+    // The id first: `wrap` is the closure itself unless a test installed the
+    // audit hook, in which case the worker adopts the audit port and this id
+    // before running it.
+    final dispatchId = WorkerAudit.dispatched(Dispatcher.cancellable, label);
     final (SendPort, FutureOr<Object?> Function()) message =
-        (port.sendPort, WorkerAudit.wrap<Object?>(compute));
-    WorkerAudit.dispatched(Dispatcher.cancellable, label);
+        (port.sendPort, WorkerAudit.wrap<Object?>(compute, dispatchId));
     final isolate = await Isolate.spawn(
       _cancellableIsolateEntry,
       message,
@@ -9982,9 +9991,10 @@ class DerivationEngine {
   /// `Isolate.spawn` entry point for [_runDayBlocksCancellable]. Must be a
   /// static/top-level function taking exactly one (sendable) argument.
   @heavy
-  static void _dayBlocksIsolateEntry((SendPort, _DayBlocksInput, SendPort?) args) {
-    final (sendPort, input, auditPort) = args;
-    WorkerAudit.adopt(auditPort);
+  static void _dayBlocksIsolateEntry(
+      (SendPort, _DayBlocksInput, SendPort?, int) args) {
+    final (sendPort, input, auditPort, dispatchId) = args;
+    WorkerAudit.adopt(auditPort, dispatchId);
     WorkerAudit.entered('_dayBlocksIsolateEntry');
     try {
       // Ownership move, not a copy: see [_cancellableIsolateEntry].

@@ -3,10 +3,20 @@
 // Every row-element spelling a reader can hand out: Map<String, Object?>,
 // Map<String, dynamic> (through a Future, synchronously, lazily, as a stream),
 // RowBatch (also as a stream element), and a Map whose values are row
-// collections. Each of these is a raw reader that is not registered.
+// collections. The element rule is conservative: ONLY a scalar element
+// (int/double/num/String/bool/DateTime/Duration/enum, nullable too) is not a
+// row, so a typed class (`Sample`), a record, `dynamic`, `Object?` and a map
+// with non-Object values (`Map<String, int>`) are readers as well. Each of these
+// is a raw reader that is not registered.
 import 'package:openstrap_edge/util/raw_readers.dart';
 
 typedef Row = Map<String, Object?>;
+
+class Sample {
+  const Sample(this.ts, this.hr);
+  final int ts;
+  final int hr;
+}
 
 class Database {
   Future<List<Row>> query(String table) async => const [];
@@ -43,4 +53,23 @@ class LocalDb {
   Future<Map<String, List<Map<String, dynamic>>>> dynamicRowsByDay() async => {
         'd': [for (final r in await _db.query('raw_records')) {...r}],
       };
+
+  // Typed projections and loosely typed elements are not scalars.
+  Future<List<Sample>> samples() async => [
+        for (final r in await _db.query('decoded_onehz'))
+          Sample(r['rec_ts'] as int, r['hr'] as int)
+      ];
+
+  Future<List<Map<String, int>>> intRows() async => [
+        for (final r in await _db.query('decoded_rr')) {'ms': r['rr_ms'] as int}
+      ];
+
+  Future<List<dynamic>> untyped() async => await _db.query('raw_records');
+
+  Future<List<Object?>> objects() async => await _db.query('raw_archive');
+
+  Future<List<(int, double)>> pairs() async => [
+        for (final r in await _db.query('decoded_onehz'))
+          (r['rec_ts'] as int, (r['hr'] as num).toDouble())
+      ];
 }

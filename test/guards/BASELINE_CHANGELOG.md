@@ -82,3 +82,34 @@ folded into `irregular24hDetailedHeavy`, a `@heavy` inner function, so the five
 keys the PRV diagnostics rename would have added never enter the baseline. The
 17th is a stale `saveLogFile` unresolvedInvocation the writer pruned (the code
 it fingerprinted no longer exists). Entries 1,896 → 1,879. No key added.
+
+## rawReaderUnregistered v3 - the element type decides; scalar collections are not readers (2026-10-08)
+v2 treated any `List` / `Iterable` / `Set` / `Stream` return as rows, so a method
+that read a raw table and returned `List<int>` (timestamps, ids, hr values) was a
+reader that had to be registered. v3 decides by the collection's ELEMENT type: a
+scalar element (`int`, `double`, `num`, `String`, `bool`, `DateTime`, `Duration`,
+an enum, or a nullable of these) is not rows. Everything else still is - a
+`Map<String, *>`, a class or record such as `Sample`, `dynamic`, `Object?`,
+`RowBatch` - so a typed projection of a raw table is not waved through. A `Map`
+return still counts only when its values are such collections. This rule change
+only NARROWS what is reported: no key is added; the keys it removes are listed in
+the shrink entry that follows.
+
+## Shrink (2026-10-08) — sample archive encode / reconstruct / carve → registered entries; 7 keys removed (2,066 → 2,059)
+The archive's three inline `Isolate.run` closures are registered `Dispatcher.run`
+entries in `lib/data/sample_heavy.dart` (`encodeSampleSignalsHeavy`,
+`reconstructSamplePartsHeavy`, `carveSamplePartHeavy`), each dispatched with
+`WorkerAudit.dispatched` ('sample encode' / 'sample reconstruct' / 'sample
+carve'). Entries 1,879 → 1,872. Removed, no key added, no count raised:
+- dispatcherClosureContract `SampleArchiver._archiveDevice`: `SampleCodec.encode`
+- dispatcherClosureContract `SampleArchiver.reconstructWithOrigin`: `List.filled`,
+  `SampleCodec.decode`, `SampleCodec.decodeCoarse`, `max`, `min`
+- unresolvedInvocation `carveSamplePart`: `sampleCarveRunner(() => carveSamplePartSync(...))`
+  (the function-typed `sampleCarveRunner` test seam is gone; the guard could not
+  see through it, so it could not know the carve entry was dispatched. Tests record
+  the hand-off through the audit hook instead.)
+
+The `rawReaderUnregistered` v3 narrowing removed nothing from the real tree: the 9
+baselined readers return `Map` rows, or `List<Sample>` (`samplesInRange`), which v3
+still treats as rows. (The worker_audit hook fingerprint in `kUnresolvedOk` was
+refreshed for the new `id:` argument; it is not a baseline key.)

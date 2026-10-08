@@ -239,9 +239,25 @@ void main() {
     }
   });
 
-  test('the encode runs off the UI isolate (invariant 10)', () {
+  // Source-scan guard, rewritten when the encode became the registered entry
+  // `encodeSampleSignalsHeavy` (before: `SampleCodec.encode` in the closure
+  // handed to Isolate.run in this file). The archiver must not encode itself; its
+  // only encode is the entry, called from inside an `Isolate.run(` call.
+  test('the encode runs off the UI isolate (invariant 10), through the '
+      'registered entry', () {
     final src = stripCommentsAndStrings(
         File('lib/data/sample_archive.dart').readAsStringSync());
-    expect(src, contains('Isolate.run('));
+    expect(src, isNot(contains('SampleCodec.encode(')),
+        reason: 'the archiver encodes only through encodeSampleSignalsHeavy');
+    final run = RegExp(r'Isolate\s*\.\s*run\s*\(').firstMatch(src);
+    final entry = RegExp(r'encodeSampleSignalsHeavy\s*\(').firstMatch(src);
+    expect(run, isNotNull);
+    expect(entry, isNotNull);
+    var depth = 0;
+    for (final c in src.substring(run!.start, entry!.start).split('')) {
+      if (c == '(') depth++;
+      if (c == ')') depth--;
+    }
+    expect(depth, greaterThan(0), reason: 'the entry call sits inside Isolate.run');
   });
 }

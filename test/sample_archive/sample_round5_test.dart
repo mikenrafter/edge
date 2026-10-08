@@ -6,9 +6,7 @@
 //               incoming part's; its rms is recomputed, not copied
 //
 // Fixed dates, nowSec injected, real sqflite_ffi and real codec blobs.
-import 'dart:async';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -20,7 +18,8 @@ import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/sample_archive.dart';
 import 'package:openstrap_edge/data/sample_codec.dart';
-import 'package:openstrap_edge/data/sample_import.dart';
+import 'package:openstrap_edge/util/worker_audit.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
 
 import '../support/dart_source.dart';
 
@@ -116,36 +115,39 @@ void main() {
     _d0 = localDayStartSec(_day)!;
   });
   tearDownAll(() async => LocalDb.close());
-  tearDown(() => sampleCarveRunner = Isolate.run);
+  // The carve is the registered entry `carveSamplePartHeavy`, dispatched through
+  // `Isolate.run` and reported to the dispatcher audit as 'sample carve'. The
+  // old `sampleCarveRunner` test seam is gone (the guard could not see through a
+  // function-typed static, so it could not know the entry was ever dispatched);
+  // the audit hook records the same fact: "the work was handed off".
+  final carves = <DispatchEvent>[];
+  setUp(() {
+    carves.clear();
+    WorkerAudit.onDispatch = (e) {
+      if (e.label == 'sample carve') carves.add(e);
+    };
+  });
+  tearDown(WorkerAudit.reset);
 
   group('P1: the carve runs through Isolate.run', () {
-    test('importing an overlapping part hands the carve to the runner', () async {
+    test('importing an overlapping part hands the carve to a worker', () async {
       await _destination();
-      var calls = 0;
-      sampleCarveRunner = <R>(FutureOr<R> Function() f) {
-        calls++;
-        return Isolate.run<R>(f);
-      };
       final src = await _source([_row('hr', _blob('hr', 180, 360, _hr))]);
       await LocalDb.importFromDbFile(src);
-      expect(calls, 1);
+      expect(carves, hasLength(1));
+      expect(carves.single.kind, Dispatcher.run);
       expect(await SampleArchiver.rows(_day), hasLength(greaterThan(3)));
     });
 
     test('a verbatim insert and a fully covered part never spin up a worker',
         () async {
       await _destination();
-      var calls = 0;
-      sampleCarveRunner = <R>(FutureOr<R> Function() f) {
-        calls++;
-        return Isolate.run<R>(f);
-      };
       final src = await _source([
         _row('hr', _blob('hr', 1000, 1100, _hr)), // disjoint
         _row('hr', _blob('hr', 50, 150, _hr), part: 1), // fully covered
       ]);
       await LocalDb.importFromDbFile(src);
-      expect(calls, 0);
+      expect(carves, isEmpty);
     });
 
     test('byte-identical to carving in-isolate with the same predicate',
@@ -159,27 +161,38 @@ void main() {
       expect((await _carved('hr')).blob, direct.blob);
     });
 
-    test('guard: sample_import.dart calls restrict only inside the worker '
-        'closure handed to the runner', () {
+    // Source-scan guard, rewritten when the carve became a registered entry
+    // (before: restrict reachable only inside the closure handed to the
+    // `sampleCarveRunner` seam, with `carveSamplePartSync` called twice). Now:
+    // the pure carve is `carveSamplePartSync`, called by exactly one place, the
+    // entry in sample_heavy.dart, and `carveSamplePart` reaches that entry only
+    // from inside an `Isolate.run(` call.
+    test('guard: restrict lives only in the sync carve, which only the '
+        'registered entry calls, and the entry runs inside Isolate.run', () {
       final code = stripCommentsAndStrings(
           File('lib/data/sample_import.dart').readAsStringSync());
       expect(RegExp(r'SampleCodec\s*\.\s*restrict').allMatches(code).length, 1,
           reason: 'one carve site');
-      // The only callers of the sync carve: its definition and the closure
-      // handed to the runner.
-      final sites = RegExp(r'carveSamplePartSync\s*\(').allMatches(code).toList();
-      expect(sites.length, 2);
-      final runner = RegExp(r'sampleCarveRunner\s*\(').firstMatch(code);
-      expect(runner, isNotNull, reason: 'the carve must go through the runner');
+      expect(RegExp(r'carveSamplePartSync\s*\(').allMatches(code).length, 1,
+          reason: 'sample_import.dart only defines the sync carve');
+      expect(code.indexOf('SampleCodec.restrict'),
+          greaterThan(code.indexOf('carveSamplePartSync')),
+          reason: 'restrict lives only in the sync carve');
+      final heavy = stripCommentsAndStrings(
+          File('lib/data/sample_heavy.dart').readAsStringSync());
+      expect(RegExp(r'carveSamplePartSync\s*\(').allMatches(heavy).length, 1,
+          reason: 'the registered entry is the only caller of the sync carve');
+
+      final run = RegExp(r'Isolate\s*\.\s*run\s*\(').firstMatch(code);
+      final entry = RegExp(r'carveSamplePartHeavy\s*\(').firstMatch(code);
+      expect(run, isNotNull, reason: 'the carve must go through Isolate.run');
+      expect(entry, isNotNull);
       var depth = 0;
-      for (final c in code.substring(runner!.start, sites.first.start).split('')) {
+      for (final c in code.substring(run!.start, entry!.start).split('')) {
         if (c == '(') depth++;
         if (c == ')') depth--;
       }
-      expect(depth, greaterThan(0), reason: 'the call sits inside the runner call');
-      expect(code.indexOf('SampleCodec.restrict'), greaterThan(sites.last.start),
-          reason: 'restrict lives only in the sync carve');
-      expect(code.contains('Isolate.run'), isTrue);
+      expect(depth, greaterThan(0), reason: 'the entry call sits inside Isolate.run');
     });
   });
 

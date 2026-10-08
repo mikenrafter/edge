@@ -159,6 +159,26 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
     reason: 'PBKDF2 backup decrypt; legacy: File parameters, no '
         'WorkerInit.ensure',
   ),
+  WorkerEntry(
+    #encodeSampleSignalsHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'sample archive encode (one day-device, all signals); meets the '
+        'contract (WorkerInit.ensure first, sendable slots/modes in, '
+        'sendable records out)',
+  ),
+  WorkerEntry(
+    #carveSamplePartHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'sample archive carve of an incoming part around covered minutes; '
+        'meets the contract (WorkerInit.ensure first, sendable in/out)',
+  ),
+  WorkerEntry(
+    #reconstructSamplePartsHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'sample archive reconstruction (decode + overlay of the stored '
+        'parts); meets the contract (WorkerInit.ensure first, sendable '
+        'in/out)',
+  ),
 ];
 
 /// Fingerprinted unresolved invocations. Shrink-only.
@@ -236,7 +256,7 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'util/worker_audit.dart',
     symbol: 'WorkerAudit.dispatched',
-    source: 'hook(DispatchEvent(kind, label, currentIsolateId, StackTrace.current))',
+    source: 'hook(DispatchEvent(kind, label, currentIsolateId, StackTrace.current, id: id))',
     ordinal: 0,
     reason: 'test-installed audit hook: a function-typed static, null in '
         'production',

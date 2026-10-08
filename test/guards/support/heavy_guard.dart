@@ -134,7 +134,7 @@ const Map<HeavyRule, int> kRuleVersions = {
   HeavyRule.sendableGrammar: 2,
   HeavyRule.workerEntryNotInitialised: 2,
   HeavyRule.unresolvedInvocation: 1,
-  HeavyRule.rawReaderUnregistered: 2,
+  HeavyRule.rawReaderUnregistered: 3,
 };
 
 /// A `LocalDb` method that reads raw tables and returns rows but is a schema

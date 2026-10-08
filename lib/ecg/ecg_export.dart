@@ -276,11 +276,11 @@ Future<String> _formatPageInWorker(
     zoneId: 'UTC',
     localeTag: 'en',
   );
-  WorkerAudit.dispatched(Dispatcher.run, 'ecg export page');
+  final dispatchId = WorkerAudit.dispatched(Dispatcher.run, 'ecg export page');
   // Null in production; a test's port so the worker reports its entry.
   final auditPort = WorkerAudit.auditPort;
   return Isolate.run(() {
-    WorkerAudit.adopt(auditPort);
+    WorkerAudit.adopt(auditPort, dispatchId);
     return ecgFormatPageHeavy(inputs, page);
   });
 }

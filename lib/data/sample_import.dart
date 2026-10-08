@@ -19,19 +19,18 @@
 // The carve (a decode + re-encode) runs in a worker isolate; the reads and the
 // insert stay on the calling transaction.
 // Parts of one device-signal stay pairwise disjoint in absolute time.
-import 'dart:async';
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:sqflite/sqflite.dart';
 
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
+import '../util/worker_entries.dart' show Dispatcher;
 import 'sample_codec.dart';
+import 'sample_heavy.dart';
 import 'sample_zone.dart';
-
-/// Where the carve runs. [Isolate.run] in production; a test swaps it to
-/// record that the work is handed off.
-Future<R> Function<R>(FutureOr<R> Function()) sampleCarveRunner = Isolate.run;
 
 Uint8List sampleBytes(Object? v) =>
     v is Uint8List ? v : Uint8List.fromList((v as List).cast<int>());
@@ -215,6 +214,7 @@ Future<bool> _held(DatabaseExecutor ex, String day, String dev, String sig,
 }
 
 /// A carved part, ready to insert. Plain data, so it crosses isolates.
+@sendable
 class SampleCarved {
   const SampleCarved(this.blob, this.nValid, this.rmsErr, this.maxErr);
   final Uint8List blob;
@@ -224,9 +224,10 @@ class SampleCarved {
 }
 
 /// Carve [blob] without the minute cells in [coveredMinutes], off the calling
-/// isolate (invariant 10: the re-encode is the heavy part). Takes and returns
-/// sendable values only; the closure captures nothing else, so no database
-/// handle is dragged across. [valid] is the incoming part's valid-slot count
+/// isolate (invariant 10: the re-encode is the heavy part) through the
+/// registered entry [carveSamplePartHeavy]. Takes and returns sendable values
+/// only; the closure captures nothing else, so no database handle is dragged
+/// across. [valid] is the incoming part's valid-slot count
 /// and [rmsErr] / [maxErr] its stored bounds (absent reads as 0).
 Future<SampleCarved?> carveSamplePart(
   Uint8List blob,
@@ -237,11 +238,22 @@ Future<SampleCarved?> carveSamplePart(
 }) {
   final rms = (rmsErr as num?)?.toDouble() ?? 0;
   final max = (maxErr as num?)?.toDouble() ?? 0;
-  return sampleCarveRunner(() => carveSamplePartSync(
-      blob, coveredMinutes, valid: valid, rmsErr: rms, maxErr: max));
+  final input = SampleCarveInput(
+    blob: blob,
+    coveredMinutes: coveredMinutes.toList(),
+    valid: valid,
+    rmsErr: rms,
+    maxErr: max,
+  );
+  final dispatchId = WorkerAudit.dispatched(Dispatcher.run, 'sample carve');
+  final auditPort = WorkerAudit.auditPort; // null in production
+  return Isolate.run(() {
+    WorkerAudit.adopt(auditPort, dispatchId);
+    return carveSamplePartHeavy(sampleWorkerInputs, input);
+  });
 }
 
-/// The carve itself (also what the worker runs).
+/// The carve itself (what [carveSamplePartHeavy] runs in the worker).
 ///
 /// Error bounds, against the ORIGINAL raw, which is not available here:
 ///   * max: the incoming part's max (every kept sample was within it) plus this
