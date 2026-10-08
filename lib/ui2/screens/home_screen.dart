@@ -1729,6 +1729,23 @@ class HomeData {
   }
 }
 
+/// How long until the next whole minute after [now], in (0, 60 s].
+///
+/// Taken from the UTC instant, never from local wall-clock fields: a minute
+/// boundary is the same instant in every whole-, half- and quarter-hour zone,
+/// but `DateTime(y, m, d, h, min + 1)` in the repeated fall-back hour resolves
+/// to the FIRST occurrence of that wall time, an hour in the past — a negative
+/// delay, a zero-delay Timer, and a setState loop.
+@visibleForTesting
+Duration nextMinuteTickDelay(DateTime now) {
+  const minuteUs = 60 * 1000000;
+  final us = now.toUtc().microsecondsSinceEpoch;
+  final next = DateTime.fromMicrosecondsSinceEpoch(
+      us - us % minuteUs + minuteUs,
+      isUtc: true);
+  return next.difference(now.toUtc());
+}
+
 class HomeScreen extends StatefulWidget {
   /// Injected only by goldens; production always loads.
   final HomeData? data;
@@ -1778,12 +1795,19 @@ class _HomeScreenState extends State<HomeScreen>
   /// now) does not freeze at the minute the screen was built.
   Timer? _tick;
 
+  /// Test-facing: how many times the tick fired, and the delay last armed.
+  @visibleForTesting
+  int debugTickCount = 0;
+  @visibleForTesting
+  Duration? debugLastTickDelay;
+
   void _armTick() {
     _tick?.cancel();
-    final n = pc.clock.now();
-    final next = DateTime(n.year, n.month, n.day, n.hour, n.minute + 1);
-    _tick = Timer(next.difference(n), () {
+    final delay = nextMinuteTickDelay(pc.clock.now());
+    debugLastTickDelay = delay;
+    _tick = Timer(delay, () {
       if (!mounted) return;
+      debugTickCount++;
       setState(() {});
       _armTick();
     });
