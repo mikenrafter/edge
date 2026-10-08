@@ -209,6 +209,9 @@ const _notComponents = {
   // every state is pumped in test/alarm_snooze/snooze_ui_test.dart. The
   // settings rows are pumped there too, standalone and inside the alarm screen.
   'SnoozeCard', 'SnoozeSettingsRows',
+  // The ECG screener page: a Scaffold of text and links over fixed content,
+  // pumped in test/ecg_features/ecg_screener_page_test.dart.
+  'EcgScreenerScreen',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.

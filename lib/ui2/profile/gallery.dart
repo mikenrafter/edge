@@ -36,6 +36,7 @@ import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
 import '../../ecg/ecg_controller.dart';
 import '../../ecg/ecg_models.dart';
+import '../../ecg/ecg_result.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
 import '../../gestures/gesture_failures.dart';
 import '../../data/journal_fields.dart';
@@ -210,6 +211,15 @@ Map<String, Widget> goldenCases() => {
           onView: () {},
         ),
       ),
+      // A result's metrics: a real name and value with its unit, and "—" for
+      // a value the result does not have (never a zero).
+      'ecg_metrics': const Surface(
+          child: EcgMetricsList(metrics: [
+        EcgMetric(
+            key: 'avgHr', name: 'Average heart rate', value: 77, unit: 'bpm'),
+        EcgMetric(key: 'quality', name: 'Signal quality', value: 3, unit: ''),
+        EcgMetric(key: 'rmssd', name: 'RMSSD', value: null, unit: 'ms'),
+      ])),
       'ecg_reading_row': Surface(
           pad: EdgeInsets.zero,
           child: EcgReadingRow(reading: _ecgDemoReading, onTap: () {})),

@@ -115,9 +115,16 @@ class EcgAcceptedPacket {
 /// Persisted status of a reading. Unreadable and first-attempt-inconclusive
 /// terminals are not persisted (official behaviour); a retried inconclusive
 /// is.
+///
+/// [partial] (ecg-features): the app was backgrounded or the capture timed out
+/// mid-recording and what had been recorded was saved. It carries no
+/// band-reported verdict: result_code 0, category [EcgCategory.inconclusive]
+/// (the band never concluded), and metrics only if there was enough signal. A
+/// partial is never overwritten and never overwrites (see ecg_result.dart).
 enum EcgReadingStatus {
   completed,
-  inconclusive;
+  inconclusive,
+  partial;
 
   static EcgReadingStatus? parse(String? s) {
     for (final v in values) {
@@ -202,6 +209,11 @@ class EcgReading {
   final String? notes;
   final int createdAt; // epoch ms
 
+  /// Why a [EcgReadingStatus.partial] stopped: 'paused' (app backgrounded) or
+  /// 'timeout' or 'disconnected'. Null for every other status. Column
+  /// `stop_reason` (schema 66).
+  final String? stopReason;
+
   const EcgReading({
     required this.id,
     required this.deviceId,
@@ -224,6 +236,7 @@ class EcgReading {
     required this.status,
     required this.notes,
     required this.createdAt,
+    this.stopReason,
   });
 
   int get durationS => endTs - startTs;
@@ -256,6 +269,7 @@ class EcgReading {
     'status': status.name,
     'notes': notes,
     'created_at': createdAt,
+    'stop_reason': stopReason,
   };
 
   static EcgReading? fromRow(Map<String, Object?> r) {
@@ -289,6 +303,7 @@ class EcgReading {
       status: status,
       notes: r['notes'] as String?,
       createdAt: i('created_at') ?? 0,
+      stopReason: r['stop_reason'] as String?,
     );
   }
 }

@@ -104,6 +104,7 @@ import '../ui2/sources/source_views.dart' show SourceViews;
 import '../data/db.dart';
 import '../ecg/ble_ecg_transport.dart';
 import '../ecg/ecg_controller.dart';
+import '../ecg/ecg_cues.dart' show kEcgCueRule;
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_models.dart';
 import '../ecg/ecg_recovery.dart';
@@ -258,6 +259,42 @@ class AppState extends ChangeNotifier {
   /// reachable while the band is away.
   bool pairedIsMaverick = false;
 
+  /// "Keep waveform" (ecg-features): whether a finished reading keeps its
+  /// accepted waveform. Off by default: a reading stores its result, heart
+  /// rate, signal quality and sample statistics only. Turning it on is the
+  /// wearer's explicit choice to save the recording (invariant 14).
+  bool ecgKeepWaveform = false;
+  static const String _kEcgKeepWaveform = 'ecg_keep_waveform';
+
+  Future<void> setEcgKeepWaveform(bool on) async {
+    if (ecgKeepWaveform == on) return;
+    ecgKeepWaveform = on;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEcgKeepWaveform, on);
+  }
+
+  /// An ECG cue slot (`ecg.*`) as one band-only dispatcher delivery under
+  /// [kEcgCueRule]. It is deliberately NOT an alert rule with preferences: the
+  /// breathing alerts' on/off, phone destination and quiet hours do not apply
+  /// to a reading the wearer is in the middle of, and no phone notification is
+  /// ever made. It still plays through the cue slots, so the band queue and the
+  /// haptic budget govern it. The wearer's pattern is read just before it plays.
+  Future<void> _playEcgCue(String slot) async {
+    await _gestures.loadCues();
+    if (_disposed) return;
+    final now = DateTime.now();
+    await alertDispatcher.dispatch(
+      kEcgCueRule,
+      eventId: 'ecg:$slot:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandTimeout: const Duration(seconds: 10),
+      bandDelivery: () async =>
+          _disposed ? BuzzDelivery.rejected : gestureCues.slot(slot),
+    );
+  }
+
   EcgController _buildEcg() {
     final t = _ecgTransport ??= BleEngineEcgTransport(
       engine: engine,
@@ -267,10 +304,15 @@ class AppState extends ChangeNotifier {
     final c = EcgController(
       transport: t,
       guard: _ecgGuard,
-      save: (r, p) => LocalDb.insertEcgReading(
+      // A new reading within 10 minutes after an inconclusive one replaces it
+      // (LocalDb.saveEcgResult). The controller hands no packets unless
+      // "Keep waveform" is on.
+      save: (r, p) => LocalDb.saveEcgResult(
         r.toRow(),
         [for (final x in p) EcgPacketCodec.toRow(x)],
       ),
+      keepWaveform: () => ecgKeepWaveform,
+      onCue: (slot) => unawaited(_playEcgCue(slot)),
       busyReason: () => activeWorkout != null
           ? 'workout'
           : (breathingActive || breathingWindowOpen)
@@ -3594,6 +3636,9 @@ class AppState extends ChangeNotifier {
     final pairedSerial = paired?.serial;
     pairedIsMaverick = pairedSerial != null &&
         await _ecgGuard.isRememberedMaverick(pairedSerial);
+    ecgKeepWaveform = (await SharedPreferences.getInstance())
+            .getBool(_kEcgKeepWaveform) ??
+        false;
     await loadExpectedSleepSchedule();
     await refreshSensors();
     await _loadProfile();

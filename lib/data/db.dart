@@ -41,6 +41,8 @@ import 'journal_fields.dart';
 import 'live_coverage_policy.dart';
 import 'med_store.dart';
 import 'moment_label.dart';
+import '../ecg/ecg_models.dart' show EcgReading;
+import '../ecg/ecg_result.dart' show ecgReplaceTargetId;
 import 'models.dart';
 import 'nutrition_store.dart';
 import 'observation.dart';
@@ -399,7 +401,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 65;
+  static const int schemaVersion = 66;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1225,6 +1227,14 @@ class LocalDb {
           // re-runs both on every open.
           await _createAssumedWater(db);
           await _createSymptomEntry(db);
+        }
+        if (oldV < 66) {
+          // ECG results (ecg-features): one nullable column, why a partial
+          // reading stopped. Through _createEcgTables so the rung and the
+          // every-open repair share one definition; no backfill, nothing
+          // read, cheap under iOS's CPU watchdog (invariant 11). No
+          // kAlgoVersion bump: nothing derived moves.
+          await _createEcgTables(db);
         }
       },
       onOpen: (db) async {
@@ -2411,6 +2421,10 @@ class LocalDb {
     // an older build gains it; the CREATE above deliberately keeps the old
     // shape so a fresh install and an upgrade run the same code.
     await _addColumnIfMissing(db, 'ecg_raw_packet', 'origin', 'TEXT');
+    // v66. Why a partial reading stopped ('paused' | 'timeout' |
+    // 'disconnected'); NULL for every other status. By ALTER for the same
+    // reason as `origin`.
+    await _addColumnIfMissing(db, 'ecg_reading', 'stop_reason', 'TEXT');
     // One row per gesture session: the strap-clock interval and the outcome,
     // NOTHING else (invariant 14: no samples). The key is the natural one so a
     // restore (INSERT OR REPLACE) can never overwrite a different session.
@@ -2556,6 +2570,67 @@ class LocalDb {
         );
       }
       await batch.commit(noResult: true);
+    });
+  }
+
+  /// Persist a finished result (ecg-features) and report which inconclusive
+  /// reading it replaced. [reading] is an [EcgReading.toRow]; [packets] are
+  /// the codec rows to keep (empty unless the wearer keeps the waveform, and
+  /// then they are ONLY the accepted window; raw live frames are never stored).
+  ///
+  /// In ONE transaction: look up the latest reading by end_ts, ask
+  /// `ecgReplaceTargetId` whether the incoming one replaces it, delete that
+  /// reading and its packets (manual cascade, like [deleteEcgReading]) and
+  /// insert the new one. All or nothing: if the insert fails the old
+  /// inconclusive reading is still there. Returns the replaced id or null.
+  /// [insertEcgReading] stays as the plain insert (it refuses a duplicate id
+  /// and never replaces).
+  static Future<String?> saveEcgResult(
+    Map<String, Object?> reading,
+    List<Map<String, Object?>> packets,
+  ) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final incoming = EcgReading.fromRow(reading);
+      String? replaced;
+      if (incoming != null) {
+        final rows = await txn.query(
+          'ecg_reading',
+          orderBy: 'end_ts DESC, created_at DESC',
+          limit: 1,
+        );
+        final latest = rows.isEmpty ? null : EcgReading.fromRow(rows.first);
+        replaced = ecgReplaceTargetId(latest: latest, incoming: incoming);
+      }
+      if (replaced != null) {
+        await txn.delete(
+          'ecg_reading_packet',
+          where: 'reading_id = ?',
+          whereArgs: [replaced],
+        );
+        await txn.update(
+          'ecg_raw_packet',
+          {'reading_id': null},
+          where: 'reading_id = ?',
+          whereArgs: [replaced],
+        );
+        await txn.delete('ecg_reading', where: 'id = ?', whereArgs: [replaced]);
+      }
+      await txn.insert(
+        'ecg_reading',
+        reading,
+        conflictAlgorithm: ConflictAlgorithm.fail,
+      );
+      final batch = txn.batch();
+      for (var i = 0; i < packets.length; i++) {
+        batch.insert(
+          'ecg_reading_packet',
+          {...packets[i], 'reading_id': reading['id'], 'ordinal': i},
+          conflictAlgorithm: ConflictAlgorithm.fail,
+        );
+      }
+      await batch.commit(noResult: true);
+      return replaced;
     });
   }
 
@@ -5629,7 +5704,7 @@ class LocalDb {
       SELECT id, start_ts, end_ts,
              strftime('%Y-%m-%d', start_ts, 'unixepoch', 'localtime') AS date,
              wrist, status, category, result_code, avg_hr, quality,
-             unreadable_mask, interruptions,
+             unreadable_mask, interruptions, stop_reason,
              (end_ts - start_ts) AS duration_s,
              sample_count, sample_rate_hz, sample_unit,
              min_uv, max_uv, rms_uv, missing_segments

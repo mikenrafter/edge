@@ -143,6 +143,7 @@ class AlertCapabilityRegistry {
     'tasker',
     'relay',
     'gesture',
+    'ecg',
     'buzzPreview',
     'hardwareProbe',
   };

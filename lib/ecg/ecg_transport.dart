@@ -88,7 +88,16 @@ abstract class EcgTransport {
   /// End the phone-side history owner and wait for it to go quiescent.
   Future<void> cancelHistory(EcgLeaseHandle lease);
 
-  Future<EcgCommandListResult> prepare(EcgLeaseHandle lease, EcgWrist wrist);
+  /// PREPARE: wrist, filtered ON and, when [rawSave], the band's raw-save ON.
+  /// Raw save makes the band keep the recording, which ordinary history sync
+  /// later stores in `ecg_raw_packet`: it is on only when the wearer chose to
+  /// keep the waveform (or for the tap-counting gesture, whose packets are
+  /// tagged as gesture contact).
+  Future<EcgCommandListResult> prepare(
+    EcgLeaseHandle lease,
+    EcgWrist wrist, {
+    bool rawSave = true,
+  });
   Future<EcgCommandListResult> start(EcgLeaseHandle lease);
   Future<EcgCommandListResult> restart(EcgLeaseHandle lease);
 

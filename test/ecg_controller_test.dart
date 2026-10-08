@@ -91,6 +91,9 @@ class FakeTransport implements EcgTransport {
   Completer<void>? holdCleanup;
   int syncRequests = 0;
 
+  /// The rawSave flag of every PREPARE, in order.
+  final rawSaves = <bool>[];
+
   @override
   bool get isReady => ready;
   @override
@@ -135,8 +138,12 @@ class FakeTransport implements EcgTransport {
 
   @override
   Future<EcgCommandListResult> prepare(
-      EcgLeaseHandle lease, EcgWrist wrist) async {
+    EcgLeaseHandle lease,
+    EcgWrist wrist, {
+    bool rawSave = true,
+  }) async {
     calls.add('prepare:${wrist.name}');
+    rawSaves.add(rawSave);
     return prepareResult ?? _ok(['selectWrist', 'filteredOn', 'rawSaveOn']);
   }
 
@@ -199,6 +206,9 @@ class Rig {
       releaseScreen: (o) async => screen.add('release:$o'),
       captureTimeout: timeout,
       nowMs: () => now,
+      // These tests pin the accepted window handed to save(); the default
+      // (no waveform kept) is pinned in test/ecg_features/.
+      keepWaveform: () => true,
     );
     c.addListener(() => phases.add(c.state.phase));
   }
