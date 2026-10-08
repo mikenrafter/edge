@@ -9,6 +9,7 @@
 // If a screen is somehow built before [ensureLoaded] completes, reads fall back
 // to the provided default — never throws, never blocks.
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../compute/calc_power_policy.dart' show CalcPowerMode;
@@ -101,6 +102,17 @@ class Prefs {
   /// a normal install. Irrelevant when developer mode is off.
   static const String reviveCommunityCards = 'dev.revive_community_cards';
   static bool get reviveCommunityCardsOn => getBool(reviveCommunityCards, true);
+
+  /// Ticks every time [setReviveCommunityCards] writes. Home keeps its
+  /// community cards mounted while Settings is open over it, so they listen
+  /// here instead of reading the pref only when they are built.
+  static final ValueNotifier<int> reviveCommunityCardsRevision = ValueNotifier(0);
+
+  /// The one writer of the setting: stores it, then tells the listeners.
+  static void setReviveCommunityCards(bool on) {
+    setBool(reviveCommunityCards, on);
+    reviveCommunityCardsRevision.value++;
+  }
 
   /// Lift the 10 s cap on compiled band haptics. Off by default; the
   /// 8-command plan cap and the band's rolling command limit still apply.

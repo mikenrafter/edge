@@ -367,17 +367,18 @@ AnnotationLayout layoutAnnotations({
     t += scale.badgeWidth;
   }
 
-  // Still no room: give up icons from the right (never the focused one while
-  // another can go, and the main sleep only after every other icon). Their ids
-  // are reported, and a range keeps its shade.
+  // Still no room: give up icons from the right. The main sleep goes LAST, of
+  // every other icon, the focused one included (a focused item keeps the fixed
+  // label slot whether or not its icon survives). Among the rest the focused
+  // one goes last. Their ids are reported, and a range keeps its shade.
   final unplaced = <String>[];
   bool holdsFocus(_Icon i) => i.members.any((m) => m.a.id == focusedId);
   bool holdsNight(_Icon i) =>
       i.members.any((m) => m.a.kind == AnnotationKind.mainSleep);
   while (!_place(icons, scale.width, scale.iconWidth)) {
     var drop = icons.lastIndexWhere((i) => !holdsFocus(i) && !holdsNight(i));
-    if (drop < 0) drop = icons.lastIndexWhere((i) => !holdsFocus(i));
-    if (drop < 0) drop = 0;
+    if (drop < 0) drop = icons.lastIndexWhere((i) => !holdsNight(i));
+    if (drop < 0) drop = icons.length - 1;
     unplaced.addAll([for (final m in icons[drop].members) m.a.id]);
     icons.removeAt(drop);
   }
@@ -690,12 +691,39 @@ class ChartAnnotationLane extends StatefulWidget {
 
   static const double iconSize = 24;
 
-  /// The row reserved for the static label (always there, so focus never
-  /// changes the lane's height).
+  /// The label row at 1x text: the least the row ever is. At a larger text
+  /// scale use [labelRowHeight], which is what the lane really reserves.
   static const double labelHeight = 16;
 
-  /// Everything above the plot: the label row, then the icon row.
+  /// Everything above the plot at 1x text: the label row, then the icon row.
+  /// Use [headerFor] wherever the text scale is known.
   static const double header = labelHeight + iconSize;
+
+  /// The style of the static label. One place, so the row is sized from the
+  /// very style it draws with.
+  static TextStyle labelStyle() =>
+      F.cap.copyWith(fontWeight: FontWeight.w700, height: 1);
+
+  /// The row reserved for the static label (always there, so focus never
+  /// changes the lane's height): one line of [labelStyle] at the ambient
+  /// [scaler], never less than [labelHeight]. Sized from the real line height
+  /// so a large-text setting cannot clip the default label.
+  static double labelRowHeight(TextScaler scaler,
+      [TextDirection direction = TextDirection.ltr]) {
+    final tp = TextPainter(
+      text: TextSpan(text: 'Ag', style: labelStyle()),
+      textDirection: direction,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    return math.max(labelHeight, tp.height.ceilToDouble());
+  }
+
+  /// Everything above the plot at [scaler]: the label row, then the icon row.
+  /// This is what pushes the plot down, so the dashed lines and icons stay on it.
+  static double headerFor(TextScaler scaler,
+          [TextDirection direction = TextDirection.ltr]) =>
+      labelRowHeight(scaler, direction) + iconSize;
 
   static const laneKey = ValueKey('annotation-lane');
   static const linesKey = ValueKey('annotation-lines');
@@ -727,7 +755,9 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
   Widget build(BuildContext context) {
     final p = P.of(context);
     final set = widget.set;
-    const header = ChartAnnotationLane.header;
+    final labelH = ChartAnnotationLane.labelRowHeight(
+        MediaQuery.textScalerOf(context), Directionality.of(context));
+    final header = labelH + ChartAnnotationLane.iconSize;
     return LayoutBuilder(builder: (context, box) {
       final width = box.maxWidth.isFinite ? box.maxWidth : 0.0;
       final scale = AnnotationScale(
@@ -824,7 +854,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
             left: 0,
             right: 0,
             top: 0,
-            height: ChartAnnotationLane.labelHeight,
+            height: labelH,
             child: IgnorePointer(
               child: Align(
                 alignment: Alignment.centerLeft,
@@ -833,8 +863,8 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
                   key: ChartAnnotationLane.labelKey,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: F.cap.copyWith(
-                      color: p.ink, fontWeight: FontWeight.w700, height: 1),
+                  style: ChartAnnotationLane.labelStyle()
+                      .copyWith(color: p.ink),
                 ),
               ),
             ),
@@ -844,7 +874,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
           // overhangs the icon's box rather than pushing the lane apart.
           Positioned(
             left: i.iconLeft - _overhang,
-            top: ChartAnnotationLane.labelHeight - _overhang,
+            top: labelH - _overhang,
             child: Pressable(
               onTap: () => step(i),
               child: AnnotationIcon(
@@ -856,7 +886,7 @@ class _ChartAnnotationLaneState extends State<ChartAnnotationLane> {
           if (i.more > 0)
             Positioned(
               left: i.iconLeft + i.iconWidth - (_tap - i.badgeWidth) / 2,
-              top: ChartAnnotationLane.labelHeight - _overhang,
+              top: labelH - _overhang,
               child: Pressable(
                 onTap: () => step(i),
                 child: SizedBox(

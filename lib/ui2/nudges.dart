@@ -69,17 +69,43 @@ class _CommunityNudgeState extends State<CommunityNudge> {
   // is a smaller thing to ask for than money.
   late List<_Ask> _asks;
 
+  List<_Ask> _eligibleNow() {
+    final devMode = context.capsRead.has(Feature.developerMode);
+    return [for (final a in _Ask.values) if (_eligible(a, devMode: devMode)) a];
+  }
+
+  // Mark an ask as seen NOW, not only on snooze/silence — otherwise the
+  // cooldown never actually starts and leaving Home without tapping anything
+  // shows the same ask again on the very next rebuild.
+  void _stamp(Iterable<_Ask> shown) {
+    for (final a in shown) {
+      Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    final devMode = context.capsRead.has(Feature.developerMode);
-    _asks = [for (final a in _Ask.values) if (_eligible(a, devMode: devMode)) a];
-    // Mark each shown ask as seen NOW, not only on snooze/silence — otherwise
-    // the cooldown never actually starts and leaving Home without tapping
-    // anything shows the same ask again on the very next rebuild.
-    for (final a in _asks) {
-      Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
-    }
+    _asks = _eligibleNow();
+    _stamp(_asks);
+    Prefs.reviveCommunityCardsRevision.addListener(_reviveChanged);
+  }
+
+  @override
+  void dispose() {
+    Prefs.reviveCommunityCardsRevision.removeListener(_reviveChanged);
+    super.dispose();
+  }
+
+  // Home stays mounted under Settings, so a flip of "Revive community cards"
+  // has to move the cards already on screen. Eligibility is re-asked as for a
+  // fresh mount (stored dismissal, cooldown, and this launch's dismissals are
+  // all honoured by _eligible); only cards that newly appear start a cooldown.
+  void _reviveChanged() {
+    if (!mounted) return;
+    final next = _eligibleNow();
+    _stamp(next.where((a) => !_asks.contains(a)));
+    setState(() => _asks = next);
   }
 
   void _snooze(_Ask a) {

@@ -196,6 +196,44 @@ void main() {
       _expectNoOverlapInBounds(l, 60);
       expect(_allIds(l).toSet(), {'a', 'b', 'sleep', 'c'});
     });
+
+    // The night outranks FOCUS too: a focused item keeps the fixed label slot,
+    // but its icon may be folded or reported unplaced to leave the night's.
+    for (final focus in ['a', 'b']) {
+      test('a scrub or a pin on "$focus" (a 2-moment cluster, 46 px) does not '
+          'push the night off a 60 px chart', () {
+        final l = _lay([_pt('a', 5), _pt('b', 25), _sleepPt(58)],
+            scale: narrow, focus: focus);
+        expect(l.items.map((i) => i.id), contains('sleep'),
+            reason: 'the night keeps its icon whatever is focused');
+        expect(l.unplaced, isNot(contains('sleep')));
+        expect(l.focusedId, focus);
+        expect(l.labelText, 'L-$focus',
+            reason: 'the focused item still owns the label slot');
+        expect(_allIds(l).toSet(), {'a', 'b', 'sleep'},
+            reason: 'nothing vanishes: reported unplaced at worst');
+        _expectNoOverlapInBounds(l, 60);
+      });
+    }
+
+    test('a focused lone moment is given up before the night, and still '
+        'labels', () {
+      // 40 px: two 24 px icons cannot both fit.
+      const tiny = AnnotationScale(domainStart: 0, domainEnd: 40, width: 40);
+      final l =
+          _lay([_pt('a', 5), _sleepPt(36)], scale: tiny, focus: 'a');
+      expect(l.items.map((i) => i.id), ['sleep']);
+      expect(l.unplaced, ['a']);
+      expect(l.labelText, 'L-a');
+    });
+
+    test('a night that is a range is held the same way', () {
+      final l = _lay([_pt('a', 5), _pt('b', 25), _sleep(40, 59)],
+          scale: narrow, focus: 'b');
+      expect(l.items.map((i) => i.id), contains('sleep'));
+      expect(l.shades.map((s) => s.id), ['sleep']);
+      expect(l.labelText, 'L-b');
+    });
   });
 
   group('(3) its label is the default label', () {

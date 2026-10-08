@@ -22,6 +22,7 @@
 // TZ=UTC, so DST days are built as 1500- / 1380-slot graphs directly.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/l10n/app_localizations.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
@@ -526,6 +527,89 @@ void main() {
       expect(_lineX(t).containsKey('${m.id}:end'), isFalse,
           reason: 'on a 24 h domain this wake would be inside; here it is not');
       expect(_icon(m.id), findsOneWidget);
+    });
+  });
+
+  // The label row is sized from the ambient text scale and the label's line
+  // height, so a large-text setting never clips the default label. `header`
+  // (what pushes the plot down) follows it, so icons and dashed lines stay on
+  // the plot.
+  group('the label row grows with the text scale', () {
+    const long = 'Main sleep 11:10 PM to 6:40 AM, then a deliberately long '
+        'tail so that even a wide chart could not hold this on one line';
+
+    for (final scale in [1.0, 2.0, 3.1]) {
+      testWidgets('textScaler $scale: label inside its row, one line, '
+          'plot still aligned (narrow chart, long label)', (t) async {
+        t.view.devicePixelRatio = 3;
+        t.view.physicalSize = const Size(300 * 3, 4000 * 3);
+        addTearDown(t.view.reset);
+        final a = [
+          ChartAnnotation(
+              id: 'night',
+              kind: AnnotationKind.mainSleep,
+              at: (_start - 3000).toDouble(),
+              until: _ts(6, 40).toDouble(),
+              label: long),
+          ChartAnnotation(
+              id: 'w',
+              kind: AnnotationKind.water,
+              at: _ts(14).toDouble(),
+              label: 'Drank water'),
+        ];
+        await t.pumpWidget(MaterialApp(
+          theme: buildTheme(Brightness.light),
+          builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!),
+          home: Scaffold(
+            body: Builder(
+              builder: (c) => SingleChildScrollView(
+                child: dayGraphCard(
+                        c, DayGraph(hr: _curve(1440), dayStart: _start),
+                        annotations: a) ??
+                    const SizedBox(),
+              ),
+            ),
+          ),
+        ));
+        await t.pumpAndSettle();
+
+        final label = find.byKey(ChartAnnotationLane.labelKey);
+        expect(label, findsOneWidget);
+        final lane = t.getRect(_lane);
+        final text = t.getRect(label);
+        final iconTop = t.getTopLeft(_icon('night')).dy;
+        expect(text.top, greaterThanOrEqualTo(lane.top - .5),
+            reason: 'not cut off above the lane');
+        expect(text.bottom, lessThanOrEqualTo(iconTop + .5),
+            reason: 'the whole line sits in the label row, above the icons');
+        expect(text.width, lessThanOrEqualTo(lane.width + .5));
+        final para = t.renderObject<RenderParagraph>(label);
+        // The box a row hands its text is tight, so its size can never show a
+        // clip: ask the paragraph for the height its line NEEDS at this width.
+        final needed = para.getMinIntrinsicHeight(para.size.width);
+        expect(needed, lessThanOrEqualTo(iconTop - lane.top + .5),
+            reason: 'the line ($needed px) fits the label row '
+                '(${iconTop - lane.top} px)');
+        expect(para.maxLines, 1);
+        expect(para.didExceedMaxLines, isTrue,
+            reason: 'too long for the width: one line with an ellipsis');
+        // Header and plot agree: the dashed lines start where the icon row
+        // ends, which is where the plot starts.
+        final iconBottom = t.getBottomLeft(_icon('night')).dy;
+        final plotTop = t.getTopLeft(find.byType(ChartScrub)).dy;
+        final linesTop = t.getTopLeft(find.byKey(ChartAnnotationLane.linesKey)).dy;
+        expect(linesTop, moreOrLessEquals(iconBottom, epsilon: .5));
+        expect(plotTop, moreOrLessEquals(linesTop, epsilon: .5));
+      });
+    }
+
+    testWidgets('at 1x nothing moved: the row is still 16 px, header 40',
+        (t) async {
+      expect(ChartAnnotationLane.header, 40);
+      expect(ChartAnnotationLane.labelHeight, 16);
     });
   });
 }

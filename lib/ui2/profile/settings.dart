@@ -216,7 +216,7 @@ class _MoreSettingsState extends State<MoreSettings> {
       pullToSync: _pullToSync,
       reviveCommunityCards: _reviveCommunityCards,
       onToggleReviveCommunityCards: () {
-        Prefs.setBool(Prefs.reviveCommunityCards, !_reviveCommunityCards);
+        Prefs.setReviveCommunityCards(!_reviveCommunityCards);
         setState(() => _reviveCommunityCards = !_reviveCommunityCards);
       },
       onTogglePullToSync: () {

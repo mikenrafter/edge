@@ -15,6 +15,8 @@
 // The settings row exists only in developer mode, with the exact label
 // "Revive community cards", and flips the pref through the real screen.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/state/app_state.dart';
@@ -25,11 +27,13 @@ import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/profile/profile.dart' show SetRow;
 import 'package:openstrap_edge/ui2/profile/settings.dart';
+import 'package:openstrap_edge/ui2/screens/screens.dart' show HomeScreen;
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'support/as_of_recalc_fakes.dart';
 import 'support/settings_sections.dart';
 
 const _day = 24 * 60 * 60 * 1000;
@@ -309,6 +313,95 @@ void main() {
       await t.pump();
       expect(Prefs.reviveCommunityCardsOn, isTrue);
       expect(t.widget<SetRow>(row()).value, 'On');
+    });
+  });
+
+  // Home stays MOUNTED in the shell while Settings is open over it, so the
+  // setting has to move the cards that are already there, not only the next
+  // mount. Session dismissals are never undone by it.
+  group('toggling in Settings updates the mounted Home', () {
+    Future<NavigatorState> pumpHomeInDev(WidgetTester t) async {
+      t.view.physicalSize = const Size(390 * 3, 3200 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      final app = AppState.forTesting()..repo = HomeRepo(homeBundle());
+      addTearDown(app.dispose);
+      await t.pumpWidget(MultiProvider(
+        providers: [
+          ChangeNotifierProvider<AppState>.value(value: app),
+          ChangeNotifierProvider(
+              create: (_) => UnitsController.seed(UnitSystem.metric)),
+          ChangeNotifierProvider(
+              create: (_) =>
+                  ThemeController.seed(AppThemeChoice.light, Brightness.light)),
+          ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
+          Provider<Capabilities>.value(
+              value: Capabilities(CapabilityInputs.detached(devMode: true))),
+        ],
+        child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: const Scaffold(body: HomeScreen(hour: 9))),
+      ));
+      await settle(t);
+      return Navigator.of(t.element(find.byType(HomeScreen)));
+    }
+
+    /// Open Settings over Home, flip the row once, come back.
+    Future<void> toggleInSettings(WidgetTester t, NavigatorState nav) async {
+      unawaited(nav.push(MaterialPageRoute<void>(
+          builder: (_) => const MoreSettings())));
+      await settle(t, n: 10);
+      await t.ensureVisible(find.text(_label));
+      await t.pump();
+      await t.tap(find.text(_label));
+      await t.pump();
+      nav.pop();
+      await settle(t, n: 10);
+    }
+
+    testWidgets('ON -> OFF hides a dismissed card and one cooling down; '
+        'OFF -> ON brings both back', (t) async {
+      await _seed(t, {'nudge.discord.dismissed': true});
+      final nav = await pumpHomeInDev(t);
+      expect(_discord, findsOneWidget, reason: 'revived by default');
+      expect(_donate, findsOneWidget);
+
+      await toggleInSettings(t, nav);
+      expect(Prefs.reviveCommunityCardsOn, isFalse);
+      expect(_discord, findsNothing, reason: 'dismissed: hidden at once');
+      expect(_donate, findsNothing,
+          reason: 'shown a moment ago: inside its cooldown');
+
+      await toggleInSettings(t, nav);
+      expect(Prefs.reviveCommunityCardsOn, isTrue);
+      expect(_discord, findsOneWidget, reason: 'revived again, no remount');
+      expect(_donate, findsOneWidget);
+    });
+
+    testWidgets('OFF -> ON revives a stored dismissal that was hidden at '
+        'mount', (t) async {
+      await _seed(t, {
+        Prefs.reviveCommunityCards: false,
+        'nudge.discord.dismissed': true,
+      });
+      final nav = await pumpHomeInDev(t);
+      expect(_discord, findsNothing);
+      expect(_donate, findsOneWidget);
+      await toggleInSettings(t, nav);
+      expect(_discord, findsOneWidget);
+    });
+
+    testWidgets('a card dismissed in THIS session stays hidden through both '
+        'toggles', (t) async {
+      await _seed(t, {});
+      final nav = await pumpHomeInDev(t);
+      await t.tap(find.text("Don't show this again").first);
+      await t.pump();
+      expect(_discord, findsNothing);
+      await toggleInSettings(t, nav); // OFF
+      await toggleInSettings(t, nav); // ON
+      expect(_discord, findsNothing, reason: 'the session dismissal holds');
+      expect(_donate, findsOneWidget);
     });
   });
 }

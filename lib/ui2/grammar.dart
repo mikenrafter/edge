@@ -2861,10 +2861,14 @@ class ChartFrame extends StatelessWidget {
   /// through it; it is added on top of [plot], never inside the plot's own
   /// RepaintBoundary, and it takes taps only on its icons — a touch anywhere
   /// else reaches the scrub underneath.
-  Widget _annotated(_ChartHub hub, double inset, Widget plot) {
+  Widget _annotated(
+      _ChartHub hub, double inset, Widget plot, BuildContext context) {
     final set = annotations;
     if (set == null || set.items.isEmpty) return plot;
-    const header = ChartAnnotationLane.header;
+    // The label row follows the text scale (see ChartAnnotationLane.headerFor),
+    // so the plot is pushed down by exactly what the lane reserves above it.
+    final header = ChartAnnotationLane.headerFor(
+        MediaQuery.textScalerOf(context), Directionality.of(context));
     return SizedBox(
       height: height + header,
       child: Stack(
@@ -3103,6 +3107,7 @@ class ChartFrame extends StatelessWidget {
                 ],
               ),
             ),
+              c,
             ),
 
           // ── x axis ──
