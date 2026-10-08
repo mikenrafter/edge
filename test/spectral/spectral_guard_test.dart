@@ -97,6 +97,7 @@ void main() {
       final readers = <String>[];
       for (final f in _dartFiles('lib')) {
         if (f.path.endsWith('lib/data/spectral_archive.dart') ||
+            f.path.endsWith('lib/data/spectral_import.dart') ||
             f.path.endsWith('lib/data/db.dart')) {
           continue;
         }

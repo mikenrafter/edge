@@ -268,9 +268,10 @@ void main() {
           "day_id TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', "
           'outcome TEXT NOT NULL, reason TEXT, updated_at INTEGER NOT NULL, '
           'PRIMARY KEY (day_id, device_id))');
+      final good = SpectralCodec.encode('hr', [70.0, 71.0, 72.0]).blob;
       await src.insert('spectral_archive', {
         'day_id': _day1, 'device_id': '', 'signal': 'hr', 'codec_version': 1,
-        'part': 0, 'blob': Uint8List.fromList([9, 8, 7]), 'n_valid': 3,
+        'part': 0, 'blob': good, 'n_valid': 3,
         'rms_err': 0.1, 'max_err': 0.2, 'created_at': 5,
       });
       await src.insert('spectral_archive_status', {
@@ -280,7 +281,7 @@ void main() {
       await src.close();
       await LocalDb.importFromDbFile(srcPath);
       final rows = await SpectralArchiver.rows(_day1);
-      expect(rows.single.blob, Uint8List.fromList([9, 8, 7]));
+      expect(rows.single.blob, good);
       expect((await SpectralArchiver.status(_day1)).single.outcome, 'ok');
       await databaseFactory.deleteDatabase(srcPath);
     });

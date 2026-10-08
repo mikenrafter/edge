@@ -33,15 +33,20 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:sqflite/sqflite.dart';
 
-import 'day_label.dart';
 import 'db.dart';
 import 'spectral_codec.dart';
+import 'spectral_import.dart';
+import 'spectral_zone.dart';
+
+export 'spectral_zone.dart' show SpectralZone;
 
 class SpectralArchiveRow {
   const SpectralArchiveRow({
     required this.dayId,
     this.deviceId = '',
     this.part = 0,
+    this.originSec = 0,
+    this.nSlots = 0,
     required this.signal,
     required this.codecVersion,
     required this.blob,
@@ -54,6 +59,8 @@ class SpectralArchiveRow {
   final String dayId;
   final String deviceId;
   final int part;
+  final int originSec;
+  final int nSlots;
   final String signal;
   final int codecVersion;
   final Uint8List blob;
@@ -117,6 +124,12 @@ class SpectralArchiver {
     return any;
   }
 
+  /// The calendar in use (a seam: tests fix a zone, e.g. Denver then New York).
+  @visibleForTesting
+  static SpectralZone get zone => SpectralZone.current;
+  @visibleForTesting
+  static set zone(SpectralZone z) => SpectralZone.current = z;
+
   /// Test seam: runs on the calling isolate right before a signal is encoded
   /// (a closure cannot cross into the encoding isolate).
   @visibleForTesting
@@ -144,7 +157,7 @@ class SpectralArchiver {
               [from, cutoffSec]))
           .first['m'] as int?;
       if (m == null) break;
-      final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(m * 1000));
+      final day = zone.dayOf(m);
       try {
         written += await archiveDay(day,
             nowSec: nowSec, log: log, modes: modes);
@@ -152,7 +165,7 @@ class SpectralArchiver {
         log?.call('spectral archive of $day skipped: $e');
         await _setStatus(db, day, '', 'failed', '$e', nowSec);
       }
-      from = localDayEndSec(day)!;
+      from = zone.endOf(day);
     }
     return written;
   }
@@ -166,9 +179,11 @@ class SpectralArchiver {
       {required int nowSec,
       void Function(String)? log,
       Map<String, SpectralMode>? modes}) async {
-    final start = localDayStartSec(dayId);
-    final end = localDayEndSec(dayId);
-    if (start == null || end == null) {
+    final int start, end;
+    try {
+      start = zone.startOf(dayId);
+      end = zone.endOf(dayId);
+    } catch (_) {
       throw ArgumentError.value(dayId, 'dayId', 'not a YYYY-MM-DD label');
     }
     final db = await LocalDb.instance;
@@ -222,22 +237,23 @@ class SpectralArchiver {
       }
     }
 
-    // What earlier parts already hold, per signal.
-    final covered = <String, Uint8List>{};
-    final nextPart = <String, int>{};
-    for (final r in await db.query('spectral_archive',
-        columns: const ['signal', 'part', 'blob'],
-        where: 'day_id = ? AND device_id = ? AND codec_version = ?',
-        whereArgs: [dayId, dev, SpectralCodec.codecVersion])) {
-      final sig = r['signal'] as String;
-      final mask = covered.putIfAbsent(sig, () => Uint8List(len));
-      for (final (a, b) in SpectralCodec.validRuns(_bytes(r['blob']))) {
-        for (var i = a; i < b && i < len; i++) {
-          mask[i] = 1;
-        }
-      }
-      nextPart[sig] = math.max(nextPart[sig] ?? 0, (r['part'] as int) + 1);
-    }
+    // What earlier parts already hold, per signal, by ABSOLUTE second and
+    // across day labels (a part archived in another zone, or under the
+    // neighbouring label, covers the same instants).
+    final covered = await spectralCoverage(db,
+        device: dev,
+        version: SpectralCodec.codecVersion,
+        start: start,
+        end: end,
+        legacyDay: dayId);
+    final nextPart = <String, int>{
+      for (final r in await db.rawQuery(
+          'SELECT signal, MAX(part) AS m FROM spectral_archive '
+          'WHERE day_id = ? AND device_id = ? AND codec_version = ? '
+          'GROUP BY signal',
+          [dayId, dev, SpectralCodec.codecVersion]))
+        r['signal'] as String: ((r['m'] as num?)?.toInt() ?? -1) + 1
+    };
 
     final todo = <String>[];
     final work = <String, Float64List>{};
@@ -293,6 +309,9 @@ class SpectralArchiver {
             'signal': e.key,
             'codec_version': SpectralCodec.codecVersion,
             'part': nextPart[e.key] ?? 0,
+            'origin_sec': start,
+            'n_slots': len,
+            'slot_sec': 1,
             'blob': e.value.$1,
             'n_valid': e.value.$2,
             'rms_err': e.value.$3,
@@ -326,8 +345,7 @@ class SpectralArchiver {
     }
   }
 
-  static Uint8List _bytes(Object? v) =>
-      v is Uint8List ? v : Uint8List.fromList((v as List).cast<int>());
+  static Uint8List _bytes(Object? v) => spectralBytes(v);
 
   /// The last archive outcome per device for [dayId], ordered by device.
   static Future<List<SpectralDayStatus>> status(String dayId) async {
@@ -357,6 +375,10 @@ class SpectralArchiver {
           dayId: r['day_id'] as String,
           deviceId: r['device_id'] as String,
           part: r['part'] as int,
+          originSec: (r['origin_sec'] as num?)?.toInt() ??
+              zone.startOf(r['day_id'] as String),
+          nSlots: (r['n_slots'] as num?)?.toInt() ??
+              SpectralCodec.readHeader(_bytes(r['blob'])).length,
           signal: r['signal'] as String,
           codecVersion: r['codec_version'] as int,
           blob: _bytes(r['blob']),
@@ -368,53 +390,93 @@ class SpectralArchiver {
     ];
   }
 
-  static Future<List<Uint8List>> _blobs(
+  /// The parts of one device-day signal at the live codec version, with their
+  /// absolute origins, in part order. Throws [StateError] if two parts cover
+  /// the same second: parts are disjoint by construction (archive and import
+  /// both guarantee it), so an overlap means a corrupt table and summing it
+  /// would double count.
+  static Future<List<({int originSec, Uint8List blob})>> _parts(
       String dayId, String deviceId, String signal) async {
     final db = await LocalDb.instance;
     final r = await db.query('spectral_archive',
-        columns: const ['blob'],
+        columns: const ['blob', 'origin_sec'],
         where: 'day_id = ? AND device_id = ? AND signal = ? '
             'AND codec_version = ?',
         whereArgs: [dayId, deviceId, signal, SpectralCodec.codecVersion],
         orderBy: 'part ASC');
-    return [for (final x in r) _bytes(x['blob'])];
+    final parts = [
+      for (final x in r)
+        (
+          originSec:
+              (x['origin_sec'] as num?)?.toInt() ?? zone.startOf(dayId),
+          blob: _bytes(x['blob']),
+        )
+    ];
+    final spans = <(int, int)>[
+      for (final p in parts)
+        for (final (a, b) in SpectralCodec.validRuns(p.blob))
+          (p.originSec + a, p.originSec + b)
+    ]..sort((x, y) => x.$1.compareTo(y.$1));
+    for (var i = 1; i < spans.length; i++) {
+      if (spans[i].$1 < spans[i - 1].$2) {
+        throw StateError('spectral: parts of $dayId/$deviceId/$signal overlap '
+            'at ${spans[i].$1}');
+      }
+    }
+    return parts;
   }
 
+  static Future<List<Uint8List>> _blobs(
+          String dayId, String deviceId, String signal) async =>
+      [for (final p in await _parts(dayId, deviceId, signal)) p.blob];
+
   /// The reconstruction of one signal of one device-day (null elements =
-  /// absent): every part overlaid (parts never overlap), or null when no
+  /// absent): every part overlaid at its absolute position, or null when no
   /// archive with samples exists (a signal archived pyramid-only has none).
+  /// Slot 0 is the earliest contributing part's origin; use
+  /// [reconstructWithOrigin] when parts from different zones may be present.
   /// With [maxOrder] a coarse view (still null in every gap). For
   /// display/export only. A lossy part is an approximation, never a
   /// measurement; a [SpectralMode.losslessAtQuantum] part is exact relative to
   /// its quantum (see [isExact]).
   static Future<List<double?>?> reconstruct(String dayId, String signal,
+          {String deviceId = '', int? maxOrder}) async =>
+      (await reconstructWithOrigin(dayId, signal,
+              deviceId: deviceId, maxOrder: maxOrder))
+          ?.samples;
+
+  /// [reconstruct] plus the absolute epoch second of its slot 0.
+  static Future<({int originSec, List<double?> samples})?> reconstructWithOrigin(
+      String dayId, String signal,
       {String deviceId = '', int? maxOrder}) async {
-    final blobs = await _blobs(dayId, deviceId, signal);
-    if (blobs.isEmpty) return null;
     // A pyramid-only part holds no samples: skipped, never decoded to nulls.
-    final withSamples = [
-      for (final b in blobs)
-        if (SpectralCodec.hasSamples(b)) b
+    final parts = [
+      for (final p in await _parts(dayId, deviceId, signal))
+        if (SpectralCodec.hasSamples(p.blob)) p
     ];
-    if (withSamples.isEmpty) return null;
+    if (parts.isEmpty) return null;
     return Isolate.run(() {
-      List<double?>? out;
-      for (final b in withSamples) {
-        final d = maxOrder == null
-            ? SpectralCodec.decode(b)
-            : SpectralCodec.decodeCoarse(b, maxOrder: maxOrder);
-        if (out == null) {
-          out = d;
-          continue;
-        }
-        if (d.length != out.length) {
-          throw StateError('spectral parts of one day differ in length');
-        }
-        for (var i = 0; i < d.length; i++) {
-          out[i] ??= d[i];
+      final decoded = [
+        for (final p in parts)
+          maxOrder == null
+              ? SpectralCodec.decode(p.blob)
+              : SpectralCodec.decodeCoarse(p.blob, maxOrder: maxOrder)
+      ];
+      var o0 = parts.first.originSec, end = 0;
+      for (var i = 0; i < parts.length; i++) {
+        o0 = math.min(o0, parts[i].originSec);
+        end = math.max(end, parts[i].originSec + decoded[i].length);
+      }
+      final out = List<double?>.filled(end - o0, null);
+      for (var i = 0; i < parts.length; i++) {
+        final base = parts[i].originSec - o0;
+        final d = decoded[i];
+        for (var j = 0; j < d.length; j++) {
+          final v = d[j];
+          if (v != null) out[base + j] = v;
         }
       }
-      return out;
+      return (originSec: o0, samples: out);
     });
   }
 
@@ -423,31 +485,11 @@ class SpectralArchiver {
   /// extremes, the mean is count-weighted. Null when no archive exists.
   static Future<List<SpectralLevel>?> summary(String dayId, String signal,
       {String deviceId = ''}) async {
-    final blobs = await _blobs(dayId, deviceId, signal);
-    if (blobs.isEmpty) return null;
-    final all = [for (final b in blobs) SpectralCodec.summary(b)];
-    if (all.length == 1) return all.single;
-    final out = <SpectralLevel>[];
-    for (var li = 0; li < all.first.length; li++) {
-      final cells = <LodCell>[];
-      for (var ci = 0; ci < all.first[li].cells.length; ci++) {
-        var count = 0;
-        double? lo, hi;
-        var sum = 0.0;
-        for (final a in all) {
-          final c = a[li].cells[ci];
-          if (c.count == 0) continue;
-          count += c.count;
-          sum += c.mean! * c.count;
-          lo = lo == null ? c.min : math.min(lo, c.min!);
-          hi = hi == null ? c.max : math.max(hi, c.max!);
-        }
-        cells.add(count == 0
-            ? const LodCell(0, null, null, null)
-            : LodCell(count, lo, sum / count, hi));
-      }
-      out.add(SpectralLevel(all.first[li].cellSeconds, cells));
-    }
-    return out;
+    final parts = await _parts(dayId, deviceId, signal);
+    if (parts.isEmpty) return null;
+    return SpectralCodec.mergeSummaries([
+      for (final p in parts)
+        SpectralPartSummary(p.originSec, SpectralCodec.summary(p.blob))
+    ]);
   }
 }

@@ -216,6 +216,13 @@ class SpectralRefinement {
   final List<double?> samples;
 }
 
+/// One part's pyramid together with the absolute second its slot 0 is.
+class SpectralPartSummary {
+  const SpectralPartSummary(this.originSec, this.levels);
+  final int originSec;
+  final List<SpectralLevel> levels;
+}
+
 class SpectralCodec {
   SpectralCodec._();
 
@@ -259,7 +266,12 @@ class SpectralCodec {
   /// Throws [ArgumentError] for an unknown [signal] or a non-finite value
   /// (NaN is not "absent"; null is).
   static SpectralEncoding encode(String signal, List<double?> samples,
-      {SpectralMode mode = SpectralMode.adaptive}) {
+          {SpectralMode mode = SpectralMode.adaptive}) =>
+      _encode(signal, samples, mode);
+
+  static SpectralEncoding _encode(
+      String signal, List<double?> samples, SpectralMode mode,
+      {Uint8List? pyramid}) {
     final spec = specs[signal];
     if (spec == null) throw ArgumentError.value(signal, 'signal', 'unknown');
     final n = samples.length;
@@ -317,7 +329,7 @@ class SpectralCodec {
       mask.varint(run);
     }
 
-    final pyramid = _pyramidBytes(samples, spec.quantum);
+    pyramid ??= _pyramidBytes(samples, spec.quantum);
 
     final segTab = _W();
     for (final g in segs) {
@@ -1001,11 +1013,11 @@ class SpectralCodec {
   // ── pyramid ────────────────────────────────────────────────────────────────
 
   static Uint8List _pyramidBytes(List<double?> s, double q) {
-    final w = _W();
     final len = s.length;
-    var prevMean = 0;
+    final levels = <List<_Cell?>>[];
     for (final cs in _levelSeconds(len)) {
       final nCells = _cellCount(len, cs);
+      final cells = <_Cell?>[];
       for (var ci = 0; ci < nCells; ci++) {
         final from = ci * cs;
         final to = cs == len ? len : math.min(len, from + cs);
@@ -1020,21 +1032,188 @@ class SpectralCodec {
           if (v < lo) lo = v;
           if (v > hi) hi = v;
         }
-        w.varint(count);
-        if (count == 0) continue;
+        if (count == 0) {
+          cells.add(null);
+          continue;
+        }
         final loQ = (lo / q).round(), hiQ = (hi / q).round();
         final meanQ = math.min(hiQ, math.max(loQ, (sum / count / q).round()));
-        w.zigzag(meanQ - prevMean);
-        prevMean = meanQ;
-        w.varint(meanQ - loQ);
-        w.varint(hiQ - meanQ);
+        cells.add(_Cell(count, loQ, meanQ, hiQ));
+      }
+      levels.add(cells);
+    }
+    return _writePyramid(levels);
+  }
+
+  static Uint8List _writePyramid(List<List<_Cell?>> levels) {
+    final w = _W();
+    var prevMean = 0;
+    for (final cells in levels) {
+      for (final c in cells) {
+        if (c == null) {
+          w.varint(0);
+          continue;
+        }
+        w.varint(c.count);
+        w.zigzag(c.meanQ - prevMean);
+        prevMean = c.meanQ;
+        w.varint(c.meanQ - c.loQ);
+        w.varint(c.hiQ - c.meanQ);
       }
     }
     return w.take();
   }
+
+  /// The four pyramid levels rebuilt from the kept 60 s cells alone (quantized
+  /// cells in, coarser levels aggregated from them).
+  static Uint8List _pyramidFromMinutes(
+      List<_Cell?> minutes, int length, double q) {
+    _Cell? agg(Iterable<_Cell?> cs) {
+      var count = 0;
+      var lo = 1 << 62, hi = -(1 << 62);
+      var sum = 0.0;
+      for (final c in cs) {
+        if (c == null) continue;
+        count += c.count;
+        sum += c.meanQ * c.count;
+        if (c.loQ < lo) lo = c.loQ;
+        if (c.hiQ > hi) hi = c.hiQ;
+      }
+      if (count == 0) return null;
+      final mean = math.min(hi, math.max(lo, (sum / count).round()));
+      return _Cell(count, lo, mean, hi);
+    }
+
+    final levels = <List<_Cell?>>[];
+    for (final cs in _levelSeconds(length)) {
+      final nCells = _cellCount(length, cs);
+      if (cs == 60) {
+        levels.add([for (var i = 0; i < nCells; i++) i < minutes.length ? minutes[i] : null]);
+      } else {
+        final per = cs == length ? minutes.length : cs ~/ 60;
+        levels.add([
+          for (var i = 0; i < nCells; i++)
+            agg(minutes.skip(i * per).take(per)),
+        ]);
+      }
+    }
+    return _writePyramid(levels);
+  }
+
+  // ── carve / merge ──────────────────────────────────────────────────────────
+
+  /// Carve [blob]: keep only the 60 s pyramid cells (cell j = slots
+  /// [60j, 60j+60) of the part) for which [keepMinute] is true, as a new blob
+  /// of the same mode and quantum. The kept cells keep their TRUE raw
+  /// statistics; samples (if the mode has any) are the decoded samples of the
+  /// kept cells, re-encoded. A lossless part stays exact; a lossy part is
+  /// re-encoded from its own reconstruction, so the result is a second
+  /// generation (its error vs the original raw is at most the original's plus
+  /// the returned stats' error). Null when nothing is kept.
+  static SpectralEncoding? restrict(
+      Uint8List blob, bool Function(int minute) keepMinute) {
+    final h = _head(blob);
+    if (h.header.codecVersion != codecVersion) {
+      throw FormatException(
+          'spectral: unsupported codec version ${h.header.codecVersion}');
+    }
+    final head = h.header;
+    final q = head.quantum;
+    final minute = summary(blob).first.cells;
+    final kept = List<bool>.generate(
+        minute.length, (j) => minute[j].count > 0 && keepMinute(j));
+    if (!kept.any((k) => k)) return null;
+    final mode = head.mode;
+    final decoded = mode == SpectralMode.pyramidOnly ? null : decode(blob);
+    final samples = List<double?>.filled(head.length, null);
+    for (final (a, b) in _validRuns(blob, h)) {
+      for (var i = a; i < b; i++) {
+        if (!kept[i ~/ 60]) continue;
+        samples[i] = decoded == null ? 0.0 : decoded[i];
+      }
+    }
+    final cells = <_Cell?>[
+      for (var j = 0; j < minute.length; j++)
+        if (kept[j])
+          _Cell(minute[j].count, (minute[j].min! / q).round(),
+              (minute[j].mean! / q).round(), (minute[j].max! / q).round())
+        else
+          null
+    ];
+    return _encode(head.signal, samples, mode,
+        pyramid: _pyramidFromMinutes(cells, head.length, q));
+  }
+
+  /// Merge the pyramids of parts with DISJOINT coverage onto one absolute grid
+  /// anchored at the earliest origin. Every origin must sit a whole number of
+  /// minutes from it (zone offsets always do). Counts add, min/max are the
+  /// extremes, the mean is count-weighted; the 900 s / 3600 s / whole-series
+  /// levels are aggregated from the merged 60 s cells, so a part whose own
+  /// hour grid was shifted still lands correctly. One part passes through.
+  static List<SpectralLevel> mergeSummaries(List<SpectralPartSummary> parts) {
+    if (parts.isEmpty) throw ArgumentError('no parts');
+    if (parts.length == 1) return parts.single.levels;
+    final o0 = parts.map((p) => p.originSec).reduce(math.min);
+    var end = o0;
+    for (final p in parts) {
+      end = math.max(end, p.originSec + p.levels.last.cellSeconds);
+      if ((p.originSec - o0) % 60 != 0) {
+        throw StateError('spectral: part origins are not minute-aligned');
+      }
+    }
+    final total = end - o0;
+    final nMin = (total + 59) ~/ 60;
+    final count = List<int>.filled(nMin, 0);
+    final lo = List<double>.filled(nMin, double.infinity);
+    final hi = List<double>.filled(nMin, double.negativeInfinity);
+    final sum = List<double>.filled(nMin, 0);
+    for (final p in parts) {
+      final base = (p.originSec - o0) ~/ 60;
+      final cells = p.levels.first.cells;
+      for (var j = 0; j < cells.length; j++) {
+        final c = cells[j];
+        if (c.count == 0) continue;
+        final g = base + j;
+        count[g] += c.count;
+        sum[g] += c.mean! * c.count;
+        lo[g] = math.min(lo[g], c.min!);
+        hi[g] = math.max(hi[g], c.max!);
+      }
+    }
+    LodCell cell(Iterable<int> idx) {
+      var n = 0;
+      var s = 0.0, a = double.infinity, b = double.negativeInfinity;
+      for (final g in idx) {
+        if (count[g] == 0) continue;
+        n += count[g];
+        s += sum[g];
+        a = math.min(a, lo[g]);
+        b = math.max(b, hi[g]);
+      }
+      return n == 0 ? const LodCell(0, null, null, null) : LodCell(n, a, s / n, b);
+    }
+
+    final out = <SpectralLevel>[];
+    for (final cs in _levelSeconds(total)) {
+      final nCells = _cellCount(total, cs);
+      final per = cs == total ? nMin : cs ~/ 60;
+      out.add(SpectralLevel(cs, [
+        for (var i = 0; i < nCells; i++)
+          cell(Iterable<int>.generate(
+              math.max(0, math.min(per, nMin - i * per)), (k) => i * per + k)),
+      ]));
+    }
+    return out;
+  }
 }
 
 // ── private helpers ──────────────────────────────────────────────────────────
+
+/// One quantized pyramid cell (integers in units of the quantum).
+class _Cell {
+  const _Cell(this.count, this.loQ, this.meanQ, this.hiQ);
+  final int count, loQ, meanQ, hiQ;
+}
 
 class _Seg {
   _Seg(this.start, this.length, this.idx, this.val);

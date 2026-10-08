@@ -38,6 +38,8 @@ import '../gestures/symptom_description.dart';
 import 'assumed_water.dart';
 import 'day_label.dart';
 import 'journal_fields.dart';
+import 'spectral_codec.dart' show SpectralCodec;
+import 'spectral_import.dart' show importSpectralPart;
 import 'live_coverage_policy.dart';
 import 'med_store.dart';
 import 'moment_label.dart';
@@ -402,7 +404,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 67;
+  static const int schemaVersion = 68;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1244,6 +1246,12 @@ class LocalDb {
           // _createSpectralStatus adds the per-day outcome ledger.
           await _createSpectralArchive(db);
           await _createSpectralStatus(db);
+        }
+        if (oldV < 68) {
+          // origin_sec / n_slots / slot_sec: a part's absolute origin, so
+          // coverage reconciles across time zones. _createSpectralArchive adds
+          // the columns and gives legacy parts their origin (see there).
+          await _createSpectralArchive(db);
         }
       },
       onOpen: (db) async {
@@ -10166,6 +10174,13 @@ class LocalDb {
               // beats, never the other band's for the same second.
               final highestBeat = <(Object?, Object?), int>{};
               for (final row in rows) {
+                if (t == 'spectral_archive') {
+                  // Never REPLACE: part numbers are local allocation order, so
+                  // a matching key says nothing about matching bytes. Reconcile
+                  // by absolute coverage (spectral_import.dart).
+                  if (await importSpectralPart(txn, row)) copied++;
+                  continue;
+                }
                 batch.insert(
                   t,
                   row,
@@ -11666,6 +11681,8 @@ class LocalDb {
       'part INTEGER NOT NULL DEFAULT 0, blob BLOB NOT NULL, '
       'n_valid INTEGER NOT NULL, rms_err REAL NOT NULL, '
       'max_err REAL NOT NULL, created_at INTEGER NOT NULL, '
+      'origin_sec INTEGER, n_slots INTEGER, '
+      'slot_sec INTEGER NOT NULL DEFAULT 1, '
       'PRIMARY KEY (day_id, device_id, signal, codec_version, part))',
     );
     final leftover = await db.rawQuery(
@@ -11680,6 +11697,37 @@ class LocalDb {
         'max_err, created_at FROM $old',
       );
       await db.execute('DROP TABLE $old');
+    }
+    // Schema 68: the absolute origin (epoch second of slot 0), the slot count
+    // and the slot length in seconds. Legacy parts are positional relative to
+    // the start of their day id in the zone they were archived in, which was not
+    // recorded; ASSUMPTION: the device is still in that zone, so the origin is
+    // the start of the day id here and now. n_slots comes from the blob header
+    // (the day length when the blob cannot be read). Only rows still NULL are
+    // touched, so a re-run changes nothing.
+    await _addColumnIfMissing(db, 'spectral_archive', 'origin_sec', 'INTEGER');
+    await _addColumnIfMissing(db, 'spectral_archive', 'n_slots', 'INTEGER');
+    await _addColumnIfMissing(
+        db, 'spectral_archive', 'slot_sec', 'INTEGER NOT NULL DEFAULT 1');
+    final legacy = await db.rawQuery(
+      'SELECT rowid AS rid, day_id, blob FROM spectral_archive '
+      'WHERE origin_sec IS NULL OR n_slots IS NULL',
+    );
+    for (final r in legacy) {
+      final day = r['day_id'] as String;
+      var n = localDayLengthSec(day) ?? 86400;
+      try {
+        n = SpectralCodec.readHeader(
+                Uint8List.fromList((r['blob'] as List).cast<int>()))
+            .length;
+      } catch (_) {
+        /* unreadable: the day length stands */
+      }
+      await db.rawUpdate(
+        'UPDATE spectral_archive SET origin_sec = COALESCE(origin_sec, ?), '
+        'n_slots = COALESCE(n_slots, ?) WHERE rowid = ?',
+        [localDayStartSec(day), n, r['rid']],
+      );
     }
   }
 

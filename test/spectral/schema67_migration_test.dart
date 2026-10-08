@@ -58,10 +58,10 @@ Future<void> _expectShape(Database db) async {
     for (final c in await db.rawQuery('PRAGMA table_info(spectral_archive)'))
       c['name'] as String: c,
   };
-  expect(cols.keys.toSet(), {
+  expect(cols.keys.toSet(), containsAll({
     'day_id', 'device_id', 'signal', 'codec_version', 'part', 'blob',
     'n_valid', 'rms_err', 'max_err', 'created_at',
-  });
+  }));
   expect(cols['day_id']!['pk'], 1);
   expect(cols['device_id']!['pk'], 2);
   expect(cols['signal']!['pk'], 3);
@@ -96,7 +96,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 67', () => expect(LocalDb.schemaVersion, 67));
+  test('schemaVersion is at least 67',
+      () => expect(LocalDb.schemaVersion, greaterThanOrEqualTo(67)));
 
   test('v66 -> 67 rebuilds the table: rows keep their bytes on the primary '
       'device as part 0', () async {

@@ -67,10 +67,10 @@ Future<void> _expectShape(Database db) async {
   };
   // Shape as of schema 67 (device_id and part joined the key there; see
   // schema67_migration_test.dart). The 66 rung is still what creates the table.
-  expect(cols.keys.toSet(), {
+  expect(cols.keys.toSet(), containsAll({
     'day_id', 'device_id', 'signal', 'codec_version', 'part', 'blob',
     'n_valid', 'rms_err', 'max_err', 'created_at',
-  });
+  }));
   expect(cols['day_id']!['type'], 'TEXT');
   expect(cols['day_id']!['pk'], 1);
   expect(cols['signal']!['pk'], 3);
@@ -81,6 +81,8 @@ Future<void> _expectShape(Database db) async {
   expect(cols['rms_err']!['type'], 'REAL');
   expect(cols['max_err']!['type'], 'REAL');
   for (final k in cols.keys) {
+    // origin_sec / n_slots arrived in 68 and are nullable (legacy rows).
+    if (k == 'origin_sec' || k == 'n_slots') continue;
     expect(cols[k]!['notnull'], 1, reason: k);
   }
 }
