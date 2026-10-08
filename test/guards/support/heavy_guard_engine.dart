@@ -132,6 +132,10 @@ class _Decl {
   final strings = StringBuffer();
   final rowBatchIterations = <(AstNode, String)>[];
 
+  /// Raw table named by each row loop over a `Database.query` / `rawQuery`
+  /// result (rawTableRowLoopOutsideHeavy), one entry per loop.
+  final rawTableLoops = <String>[];
+
   /// Iterations of stored-data collections (label = `Type.member`).
   final storedIterations = <String>[];
 
@@ -182,6 +186,11 @@ String _uri(Element e) => e.library?.uri.toString() ?? '';
 // ---------------------------------------------------------------------------
 // Scan: collects the facts of one decl body
 // ---------------------------------------------------------------------------
+
+/// Column names a stored payload lives in (storedPayloadDecodeOutsideHeavy).
+const _payloadColumns = [
+  'payload_json', 'window_json', 'trace_json', 'meta_json', 'payload',
+];
 
 class _Scan extends RecursiveAstVisitor<void> {
   final _Decl decl;
@@ -272,6 +281,9 @@ class _Scan extends RecursiveAstVisitor<void> {
     _use(node, el, _UseKind.call);
     _rowBatchMember(node.target, node.methodName.name, node);
     _storedMember(node.target, node.methodName.name);
+    if (_rowLoopMembers.contains(node.methodName.name)) {
+      _rawTableLoop(node.target);
+    }
     super.visitMethodInvocation(node);
   }
 
@@ -453,7 +465,11 @@ class _Scan extends RecursiveAstVisitor<void> {
 
   // --- RowBatch iteration ---
 
-  static const _rowBatchCheap = {'length', 'isEmpty', 'isNotEmpty'};
+  // first / last are O(1) (P2.0b: a shrink-only widening, so the rule version
+  // does not move). single / elementAt / firstWhere ... stay findings.
+  static const _rowBatchCheap = {
+    'length', 'isEmpty', 'isNotEmpty', 'first', 'last',
+  };
 
   void _rowBatchMember(Expression? target, String member, AstNode at) {
     if (target == null) return;
@@ -462,8 +478,73 @@ class _Scan extends RecursiveAstVisitor<void> {
     decl.rowBatchIterations.add((at, member));
   }
 
+  // --- raw-table row loops (rawTableRowLoopOutsideHeavy) ---
+
+  static const _queryClasses = {'Database', 'DatabaseExecutor', 'Transaction'};
+  static const _rowLoopMembers = {
+    'map', 'forEach', 'fold', 'where', 'any', 'every', 'expand', 'reduce',
+    'toList',
+  };
+
+  /// Variables initialised from a raw-table query result, with the table.
+  final Map<Element, String> _queryVars = {};
+
+  /// The raw table a `Database.query` / `rawQuery` call names in its arguments
+  /// (a string literal or a const), or null.
+  String? _queryTable(MethodInvocation call) {
+    final name = call.methodName.name;
+    if (name != 'query' && name != 'rawQuery') return null;
+    final el = call.methodName.element;
+    if (el is! MethodElement) return null;
+    final enc = el.enclosingElement;
+    if (enc is! InterfaceElement || !_queryClasses.contains(enc.name)) {
+      return null;
+    }
+    final v = _ConstStrings();
+    call.argumentList.accept(v);
+    final s = v.text.toString();
+    for (final t in config.rawTables) {
+      if (RegExp('(^|[^A-Za-z0-9_])$t([^A-Za-z0-9_]|\$)').hasMatch(s)) return t;
+    }
+    return null;
+  }
+
+  /// The raw table behind [e] when [e] is a query result: the call itself
+  /// (possibly awaited / parenthesised) or a variable initialised from one.
+  String? _resultTable(Expression? e) {
+    while (true) {
+      if (e is ParenthesizedExpression) {
+        e = e.expression;
+      } else if (e is AwaitExpression) {
+        e = e.expression;
+      } else {
+        break;
+      }
+    }
+    if (e is MethodInvocation) return _queryTable(e);
+    if (e is SimpleIdentifier) {
+      final el = e.element;
+      return el == null ? null : _queryVars[el];
+    }
+    return null;
+  }
+
+  void _rawTableLoop(Expression? iterable) {
+    final t = _resultTable(iterable);
+    if (t != null) decl.rawTableLoops.add(t);
+  }
+
+  @override
+  void visitVariableDeclaration(VariableDeclaration node) {
+    final t = _resultTable(node.initializer);
+    final el = node.declaredFragment?.element;
+    if (t != null && el != null) _queryVars[el] = t;
+    super.visitVariableDeclaration(node);
+  }
+
   void _forEachParts(Expression iterable, AstNode at) {
     _storedForEach(iterable);
+    _rawTableLoop(iterable);
     if (_isRowBatch(iterable.staticType)) {
       decl.rowBatchIterations.add((at, 'for-in'));
     }
@@ -581,6 +662,34 @@ class _Scan extends RecursiveAstVisitor<void> {
             : null;
     if (v != null) decl.strings.write(' $v ');
     super.visitInterpolationExpression(node);
+  }
+}
+
+/// The text of every string literal in a subtree, plus the value of any const
+/// string it names (a `const kTable = 'raw_archive'` passed as an argument).
+class _ConstStrings extends RecursiveAstVisitor<void> {
+  final text = StringBuffer();
+
+  @override
+  void visitSimpleStringLiteral(SimpleStringLiteral node) =>
+      text.write(' ${node.value} ');
+
+  @override
+  void visitInterpolationString(InterpolationString node) =>
+      text.write(' ${node.value} ');
+
+  void _const(Element? el) {
+    final v = el is GetterElement
+        ? el.variable.computeConstantValue()?.toStringValue()
+        : el is VariableElement
+            ? el.computeConstantValue()?.toStringValue()
+            : null;
+    if (v != null) text.write(' $v ');
+  }
+
+  @override
+  void visitSimpleIdentifier(SimpleIdentifier node) {
+    if (!node.inDeclarationContext()) _const(node.element);
   }
 }
 
@@ -856,6 +965,27 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
     return config.heavyOriginPrefixes.any(u.startsWith);
   }
 
+  // dart:convert's JSON entry points, or any function / method / factory of a
+  // payload codec library (HeavyGuardConfig.payloadCodecPrefixes).
+  bool isPayloadCodec(Element e) {
+    if (!(e is TopLevelFunctionElement ||
+        e is MethodElement ||
+        (e is ConstructorElement && e.isFactory))) {
+      return false;
+    }
+    final u = _uri(e);
+    if (u == 'dart:convert') {
+      final l = _label(e);
+      return l == 'jsonDecode' ||
+          l == 'jsonEncode' ||
+          l == 'JsonCodec.decode' ||
+          l == 'JsonCodec.encode';
+    }
+    return config.payloadCodecPrefixes.any(u.startsWith);
+  }
+
+  final regSet = rawReaders.toSet();
+
   for (final d in decls) {
     var ordinal = 0;
     for (final u in d.uses) {
@@ -930,6 +1060,35 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
       for (final label in d.storedIterations) {
         add(HeavyRule.heavyOriginOutsideHeavy, d.file, d.symbol, label,
             'iterating stored data ($label) outside @heavy');
+      }
+    }
+
+    // stored payload decode / encode (outside @heavy)
+    if (!d.isHeavy) {
+      final s = d.strings.toString();
+      final namesColumn = _payloadColumns.any((c) =>
+          RegExp('(^|[^A-Za-z0-9_])$c([^A-Za-z0-9_]|\$)').hasMatch(s));
+      final readsPayload = d.uses.any((u) {
+        final e = u.element;
+        return e != null && _isFunctionish(e) && regSet.contains(_label(e));
+      });
+      if (namesColumn || readsPayload) {
+        for (final u in d.uses) {
+          final e = u.element;
+          if (u.kind == _UseKind.create || e == null || !isPayloadCodec(e)) {
+            continue;
+          }
+          add(HeavyRule.storedPayloadDecodeOutsideHeavy, d.file, d.symbol,
+              _label(e), 'decodes / encodes a stored payload outside @heavy');
+        }
+      }
+    }
+
+    // raw-table row loops (outside @heavy and outside the raw-reader class)
+    if (!d.isHeavy && d.container != config.rawReaderClass) {
+      for (final t in d.rawTableLoops) {
+        add(HeavyRule.rawTableRowLoopOutsideHeavy, d.file, d.symbol, t,
+            'row loop over a $t query result outside @heavy');
       }
     }
 

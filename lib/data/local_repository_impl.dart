@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../compute/calc_status.dart';
 import '../compute/derivation_engine.dart';
+import '../compute/derive_perf.dart' show ReadPerf;
 import '../compute/hr_max.dart';
 import '../compute/kcal_minutes.dart';
 import '../compute/manual_session.dart';
@@ -127,8 +128,9 @@ class LocalRepositoryImpl extends LocalRepository {
   /// [_crossDayArtifact] with the time (epoch ms) the stored row was written.
   Future<_BundleAt> _crossDayArtifactAt() async {
     final r = await LocalDb.baseline('crossday');
-    return _BundleAt(
-        _decode(r?['payload_json']), (r?['updated_at'] as num?)?.toInt());
+    final b = _decode(r?['payload_json']);
+    ReadPerf.crossday(r?['payload_json'], b);
+    return _BundleAt(b, (r?['updated_at'] as num?)?.toInt());
   }
 
   Future<Map<String, dynamic>?> _freshness(String key) async {
@@ -180,8 +182,11 @@ class LocalRepositoryImpl extends LocalRepository {
   /// Safe on the non-day_result payloads that also use it (baselines,
   /// freshness, wake features): SeriesCodec only rewrites keys already in
   /// grid/offset shape, which nothing but `putDayResult` ever writes.
-  static Map<String, dynamic>? _decode(Object? json) =>
-      SeriesCodec.decodePayloadJson(json);
+  static Map<String, dynamic>? _decode(Object? json) {
+    final b = SeriesCodec.decodePayloadJson(json);
+    ReadPerf.payload(json, b); // P2.0a counter; a null sink records nothing
+    return b;
+  }
 
   // ── decoded day_result bundles, memoised ──────────────────────────────────
   //
@@ -233,7 +238,11 @@ class LocalRepositoryImpl extends LocalRepository {
         at == null ? null : '${row['day_id']}|${row['algo_version']}|$at';
     if (key != null) {
       final hit = _bundleMemo.remove(key);
-      if (hit != null) return _bundleMemo[key] = hit; // most recent last
+      if (hit != null) {
+        // A hit still read the full row and will be deep-copied: it is a read.
+        ReadPerf.payload(row['payload_json'], hit);
+        return _bundleMemo[key] = hit; // most recent last
+      }
     }
     debugBundleDecodes++;
     final b = _decode(row['payload_json']);
@@ -376,7 +385,7 @@ class LocalRepositoryImpl extends LocalRepository {
   // nocturnal:{…}, resp:{…}, hrv:{…}, skin_temp:{…}, step_goal}.
 
   @override
-  Future<Map<String, dynamic>> getToday() async {
+  Future<Map<String, dynamic>> getToday() => ReadPerf.reading('getToday', () async {
     // Refresh when the row is missing OR when its `today_day` is no longer the
     // real local day. The row is stamped by the last derive, so an app left
     // running over midnight (band on the charger, or an imported-only user)
@@ -633,7 +642,7 @@ class LocalRepositoryImpl extends LocalRepository {
       },
       'step_goal': await _stepGoal(),
     };
-  }
+  });
 
   /// How long a stored `crossday` rollup may outlive the day it was built for.
   ///
@@ -697,7 +706,7 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> getInsights() async {
+  Future<Map<String, dynamic>> getInsights() => ReadPerf.reading('getInsights', () async {
     final _BundleAt(bundle: cd, :computedAt) = await _crossDayArtifactAt();
     if (cd == null) return const {};
     final stale = crossDayStaleReason(cd, _todayLocalLabel());
@@ -710,7 +719,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // the cross-day step recalculates it. Absent from the withheld shape — a
     // rollup that is not shown has no time to caption it with.
     return stale == null ? {...cd, 'computed_at': computedAt} : {'stale': stale};
-  }
+  });
 
   Future<int> _stepGoal() async =>
       (getProfileMap()?['step_goal'] as num?)?.toInt() ?? kDefaultStepGoal;
@@ -862,7 +871,7 @@ class LocalRepositoryImpl extends LocalRepository {
   // ── day drill-downs ─────────────────────────────────────────────────────────
 
   @override
-  Future<Map<String, dynamic>> getDayHeart(String date) async {
+  Future<Map<String, dynamic>> getDayHeart(String date) => ReadPerf.reading('getDayHeart', () async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final hrCurve = (_sub(b, 'series')?['hr_curve'] as List?) ?? const [];
@@ -910,10 +919,10 @@ class LocalRepositoryImpl extends LocalRepository {
       'illness': cd?['illness'],
       'skin_temp': await _skinTempBlock(b),
     };
-  }
+  });
 
   @override
-  Future<Map<String, dynamic>> getDayHrv(String date) async {
+  Future<Map<String, dynamic>> getDayHrv(String date) => ReadPerf.reading('getDayHrv', () async {
     final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
     if (b == null) return const {};
     return {
@@ -947,7 +956,7 @@ class LocalRepositoryImpl extends LocalRepository {
       // computation and no extra decode (it is on the bundle already in hand).
       'night_shape': b['hrv_night_shape'],
     };
-  }
+  });
 
   /// The night's beats, corrected. See [LocalRepository.getNightBeats].
   ///
@@ -1001,10 +1010,12 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<List<String>> availableDays() => LocalDb.availableDayIds();
 
   @override
-  Future<Map<String, dynamic>> getDaySleep(String date) => _daySleep(date);
+  Future<Map<String, dynamic>> getDaySleep(String date) =>
+      ReadPerf.reading('getDaySleep', () => _daySleep(date));
 
   @override
-  Future<Map<String, dynamic>> getDaySleepV2(String date) => _daySleep(date);
+  Future<Map<String, dynamic>> getDaySleepV2(String date) =>
+      ReadPerf.reading('getDaySleepV2', () => _daySleep(date));
 
   Future<Map<String, dynamic>> _daySleep(String date) async {
     final _BundleAt(bundle: b, :computedAt) = await _bundleAtForDate(date);
@@ -1351,7 +1362,7 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> getDayLungs(String date) async {
+  Future<Map<String, dynamic>> getDayLungs(String date) => ReadPerf.reading('getDayLungs', () async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final sleepWin = _sub(b, 'sleep.window.value');
@@ -1368,10 +1379,10 @@ class LocalRepositoryImpl extends LocalRepository {
             : ((sleepWin!['offset_ms'] as num) / 1000).round(),
       },
     };
-  }
+  });
 
   @override
-  Future<Map<String, dynamic>> getDayWear(String date) async {
+  Future<Map<String, dynamic>> getDayWear(String date) => ReadPerf.reading('getDayWear', () async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final cov = _sub(b, 'coverage');
@@ -1422,10 +1433,10 @@ class LocalRepositoryImpl extends LocalRepository {
       'longest_off_min': w?['longest_off_min'],
       'hourly': const [],
     };
-  }
+  });
 
   @override
-  Future<Map<String, dynamic>> getDayNaps(String date) async {
+  Future<Map<String, dynamic>> getDayNaps(String date) => ReadPerf.reading('getDayNaps', () async {
     // THE EXACT DAY, never the latest-complete fallback: this list is editable,
     // and offering "not a nap" against another day's naps would write an edit
     // onto a day the user was not looking at.
@@ -1453,10 +1464,10 @@ class LocalRepositoryImpl extends LocalRepository {
       'nap_min': (_sub(b, 'scalars')?['nap_min'] as num?)?.round(),
       'note': block['note']?.toString(),
     };
-  }
+  });
 
   @override
-  Future<Map<String, dynamic>> getDaySteps(String date) async {
+  Future<Map<String, dynamic>> getDaySteps(String date) => ReadPerf.reading('getDaySteps', () async {
     final r = await LocalDb.resolvedStepsForDay(date);
     // Only for naming: a span that sits inside a session gets that session's
     // name. Cheap — one indexed read over one day.
@@ -1490,7 +1501,7 @@ class LocalRepositoryImpl extends LocalRepository {
           },
       ],
     };
-  }
+  });
 
   /// The session a step span sits inside, by type — or null.
   ///
@@ -1521,7 +1532,7 @@ class LocalRepositoryImpl extends LocalRepository {
   }
 
   @override
-  Future<Map<String, dynamic>> getDayStress(String date) async {
+  Future<Map<String, dynamic>> getDayStress(String date) => ReadPerf.reading('getDayStress', () async {
     // Stress = the pipeline's Baevsky Stress Index block (resting autonomic
     // tension; transparent RR-histogram metric → 0–100 score). No fallback: the
     // score stays null when the SI is absent, so the screen renders "—" (the old
@@ -1584,10 +1595,10 @@ class LocalRepositoryImpl extends LocalRepository {
       'restlessness': b['restlessness'],
       'daytime_hrv': b['daytime_hrv'],
     };
-  }
+  });
 
   @override
-  Future<Map<String, dynamic>> getDayStrain(String date) async {
+  Future<Map<String, dynamic>> getDayStrain(String date) => ReadPerf.reading('getDayStrain', () async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final zones = _sub(b, 'zones');
@@ -1694,20 +1705,20 @@ class LocalRepositoryImpl extends LocalRepository {
       },
       'flags': const {},
     };
-  }
+  });
 
   @override
-  Future<Map<String, dynamic>> getDayOverview(String date) async {
+  Future<Map<String, dynamic>> getDayOverview(String date) => ReadPerf.reading('getDayOverview', () async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     return {
       'readiness': _scalar(b, 'readiness'),
       'resting_hr': _scalar(b, 'rhr')?.round(),
     };
-  }
+  });
 
   @override
-  Future<Map<String, dynamic>> getDayTimeline(String date) async {
+  Future<Map<String, dynamic>> getDayTimeline(String date) => ReadPerf.reading('getDayTimeline', () async {
     final b = await _bundleForDate(date);
     if (b == null) return const {};
     final hrCurve = (_sub(b, 'series')?['hr_curve'] as List?) ?? const [];
@@ -1838,7 +1849,7 @@ class LocalRepositoryImpl extends LocalRepository {
       'sessions': [for (final r in sess) _workoutOf(r)],
       'events': events,
     };
-  }
+  });
 
   /// Local midnight (epoch sec) of a 'YYYY-MM-DD' date string.
   int _localMidnightSec(String ymd) => localDayStartSec(ymd) ?? 0;
@@ -1976,7 +1987,7 @@ class LocalRepositoryImpl extends LocalRepository {
     int? from,
     int? to,
     Set<String> signals = const {},
-  }) async {
+  }) => ReadPerf.reading('getChart', () async {
     if (metric == 'hr') {
       // "Today's heart rate" card: the curve must be TODAY's. _latestBundle
       // falls back to the latest COMPLETE day, so its curve could be
@@ -2087,7 +2098,7 @@ class LocalRepositoryImpl extends LocalRepository {
               toSec: _nowSec(),
             ),
     };
-  }
+  });
 
   int _nowSec() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
@@ -3456,7 +3467,7 @@ class LocalRepositoryImpl extends LocalRepository {
   // ── journal — local store + tag-vs-metric correlation insights ──────────────
 
   @override
-  Future<List<Map<String, dynamic>>> getJournal({String range = '30d'}) async {
+  Future<List<Map<String, dynamic>>> getJournal({String range = '30d'}) => ReadPerf.reading('getJournal', () async {
     final since = _rangeSinceLabel(range);
     final rows = await LocalDb.journalRows(sinceDaysEpoch: since);
     return [
@@ -3467,7 +3478,7 @@ class LocalRepositoryImpl extends LocalRepository {
           'note': (r['note'] as String?) ?? '',
         },
     ];
-  }
+  });
 
   @override
   Future<void> postJournal(String date, List<String> tags, String note) async {
@@ -3525,7 +3536,7 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<Map<String, dynamic>> getJournalInsights({
     String range = '90d',
-  }) async {
+  }) => ReadPerf.reading('getJournalInsights', () async {
     final since = _rangeSinceLabel(range);
     final journal = await LocalDb.journalRows(sinceDaysEpoch: since);
     final metricsByDay = await LocalDb.journalMetricsByDay(
@@ -3674,7 +3685,7 @@ class LocalRepositoryImpl extends LocalRepository {
       ),
     );
     return {'insights': insights, 'numeric_insights': numericInsights};
-  }
+  });
 
   /// Rank correlations between the numeric journal fields and each outcome.
   ///
@@ -4042,7 +4053,7 @@ class LocalRepositoryImpl extends LocalRepository {
   // ── menstrual cycle — local log + honest phase/prediction ───────────────────
 
   @override
-  Future<Map<String, dynamic>> getCycle() async {
+  Future<Map<String, dynamic>> getCycle() => ReadPerf.reading('getCycle', () async {
     final profile = getProfileMap();
     final enabled = profile?['track_cycle'] == true;
     // WH-07 — DECLARED reproductive state. The app never guesses it, and unset
@@ -4242,7 +4253,7 @@ class LocalRepositoryImpl extends LocalRepository {
       'logs': logs,
       'overlay': overlay,
     };
-  }
+  });
 
   @override
   Future<void> postCycleLog(
@@ -4265,7 +4276,7 @@ class LocalRepositoryImpl extends LocalRepository {
   }) async => LocalDb.putCycleSymptoms(date, symptoms, note: note);
 
   @override
-  Future<Map<String, List<String>>> getCycleSymptoms() async {
+  Future<Map<String, List<String>>> getCycleSymptoms() => ReadPerf.reading('getCycleSymptoms', () async {
     final rows = await LocalDb.cycleSymptoms();
     final out = <String, List<String>>{};
     for (final r in rows) {
@@ -4274,7 +4285,7 @@ class LocalRepositoryImpl extends LocalRepository {
       out[d] = _decodeStrList(r['symptoms_json']);
     }
     return out;
-  }
+  });
 
   // ── live HRV spot-check (on-device decode + HRV) ────────────────────────────
 
@@ -4328,7 +4339,7 @@ class LocalRepositoryImpl extends LocalRepository {
   /// from, the zone edges and WHICH TWO NUMBERS they were anchored on, and —
   /// only when both of those were measured — the 28-day intensity distribution.
   @override
-  Future<Map<String, dynamic>> getZones() async {
+  Future<Map<String, dynamic>> getZones() => ReadPerf.reading('getZones', () async {
     final ceiling = await _observedCeiling();
     final rhrHistory = await LocalDb.trailingSeriesValues('rhr', 28);
     final nowSec = DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -4463,7 +4474,7 @@ class LocalRepositoryImpl extends LocalRepository {
         'distribution': ?_absentMetric(distributionNote, 'ESTIMATE'),
       },
     };
-  }
+  });
 
   /// The family stamped on the most recent of [rows] that carries one (they
   /// arrive `start_ts DESC`) — the free answer when the caller has already

@@ -4254,6 +4254,8 @@ class DerivationEngine {
     if (toRecTs < fromRecTs) return Substrate.empty;
     final loadStartedAt = DateTime.now().millisecondsSinceEpoch;
     var loadedRows = 0;
+    var pagerPages = 0;
+    var pagerBytes = 0;
     var rrRowsRead = 0;
     var rrSlotRows = 0;
     // The `decoded_rr` rows of [from, to] for the substrate: every beat, or for
@@ -4295,12 +4297,14 @@ class DerivationEngine {
     // even if no signal arrives at all.
     final prepareDispatch =
         WorkerAudit.dispatched(Dispatcher.spawn, 'derivation prepare');
+    final spawnStartedAt = DateTime.now().millisecondsSinceEpoch;
     final isolate = await Isolate.spawn(
       derivationPrepareWorker,
       port.sendPort,
       onError: port.sendPort,
       onExit: port.sendPort,
     );
+    perf.addCount('worker_spawns_$label', 1);
     final ready = Completer<SendPort>();
     final result = Completer<Substrate>();
     // A failure completes BOTH completers, but we may bail out via `ready` and
@@ -4323,7 +4327,15 @@ class DerivationEngine {
         if (kind == 'substrate') {
           final payload = ((message['payload'] as Map?) ?? const {})
               .cast<String, dynamic>();
-          if (!result.isCompleted) result.complete(Substrate.fromJson(payload));
+          if (!result.isCompleted) {
+            // P2.0a: what the UI isolate pays to adopt the worker's map.
+            final adoptStartedAt = DateTime.now().millisecondsSinceEpoch;
+            final adopted = Substrate.fromJson(payload);
+            perf.addStage('substrate_adopt_$label',
+                DateTime.now().millisecondsSinceEpoch - adoptStartedAt);
+            perf.addCount('substrate_adopt_samples_$label', adopted.length);
+            result.complete(adopted);
+          }
         }
         return;
       }
@@ -4354,6 +4366,8 @@ class DerivationEngine {
     }
     try {
       final worker = await ready.future;
+      perf.addStage('worker_spawn_$label',
+          DateTime.now().millisecondsSinceEpoch - spawnStartedAt);
       // Test-only (null in production): hand the worker the audit port so it
       // reports which registered entry ran, from inside its own isolate.
       final auditPort = WorkerAudit.auditPort;
@@ -4403,6 +4417,9 @@ class DerivationEngine {
           rangePages += 1;
           rangeRows += decodedRows.length;
           loadedRows = rangeRows;
+          pagerPages += 1;
+          // The byte sum walks every cell: only when somebody reads it.
+          if (perf.enabled) pagerBytes += rowsByteEstimate(decodedRows);
           if (stats != null) {
             stats.pages += 1;
             stats.rows += decodedRows.length;
@@ -4504,6 +4521,9 @@ class DerivationEngine {
       isolate.kill(priority: Isolate.immediate);
       perf.addStage(label, DateTime.now().millisecondsSinceEpoch - loadStartedAt);
       perf.addCount('rows_$label', loadedRows);
+      perf.addCount('pager_pages_$label', pagerPages);
+      perf.addCount('pager_rows_$label', loadedRows);
+      perf.addCount('pager_bytes_$label', pagerBytes);
       // The day's own beats are `rr_rows_read`; the night's loads read theirs
       // under their own names (the night is not streamed).
       perf.addCount(label == 'load_day' ? 'rr_rows_read' : 'rr_rows_$label',

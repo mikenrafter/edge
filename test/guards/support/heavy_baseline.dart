@@ -7,8 +7,10 @@
 //   2. baseline vs the target branch's baseline (heavy_baseline_test)
 //      -> the file may only shrink, except for the keys of a rule whose VERSION
 //      went up against the target branch (kRuleVersions, recorded in the JSON)
-//      and that has an entry in test/guards/BASELINE_CHANGELOG.md. That is the
-//      one reviewed way to grow it: a deliberate extension of a rule.
+//      and that has an entry in test/guards/BASELINE_CHANGELOG.md, or the keys
+//      of a rule the target baseline does not list at all (a new rule) with a
+//      `## <rule> v1` entry. That is the one reviewed way to grow it: a
+//      deliberate extension of a rule.
 //
 
 import 'dart:convert';
@@ -162,7 +164,8 @@ bool changelogCovers(String changelog, HeavyRule rule, int version) {
 /// Human-readable reasons [head] may not replace [base]. Empty when head is a
 /// subset (shrink or equal), or when every growing key belongs to a rule whose
 /// version went up against [base] AND has an entry in [changelog]
-/// (test/guards/BASELINE_CHANGELOG.md). Anything else that grows (a new key, a
+/// (test/guards/BASELINE_CHANGELOG.md), or to a rule that [base] does not list
+/// (a new rule) and whose `## <rule> v1` entry is in [changelog]. Anything else that grows (a new key, a
 /// higher count) is a reason: the only reviewed way to grow the baseline is to
 /// extend a rule, bump its version and say why in the changelog.
 List<String> baselineGrowth({
@@ -180,6 +183,19 @@ List<String> baselineGrowth({
     } else if (o.count > before) {
       what = '${o.key} grew from $before to ${o.count}';
     } else {
+      continue;
+    }
+    // A rule the (versioned) base baseline has never heard of is NEW: it has
+    // no version to raise, so its first keys are licensed by the entry for its
+    // first version. A format-1 base (no versions at all) knows every rule at
+    // v1, so nothing is new against it.
+    if (base.ruleVersions.isNotEmpty &&
+        !base.ruleVersions.containsKey(o.rule)) {
+      if (!changelogCovers(changelog, o.rule, 1)) {
+        reasons.add('$what (rule ${o.rule.name} is new in this baseline but '
+            'test/guards/BASELINE_CHANGELOG.md has no "## ${o.rule.name} v1" '
+            'entry)');
+      }
       continue;
     }
     final from = base.versionOf(o.rule), to = head.versionOf(o.rule);

@@ -2,6 +2,10 @@
 // time went per day. Pure Dart (no Flutter, no I/O) with an injected clock so
 // the numbers are testable. Nothing here changes a metric; it only reports.
 
+import 'dart:async' show Zone, runZoned;
+import 'dart:convert' show utf8;
+import 'dart:typed_data' show Uint8List;
+
 /// The three phases of one day's derivation.
 enum DerivePhase { prepare, compute, persist }
 
@@ -10,8 +14,7 @@ enum DerivePhase { prepare, compute, persist }
 /// [addPhase] and [endPass].
 class DerivePerf {
   /// [enabled] false makes every recording call a no-op (design 02 step 2,
-  /// P2.0a: measuring must cost nothing when nobody reads it). RED STUB: the
-  /// flag is stored and not yet honoured.
+  /// P2.0a: measuring must cost nothing when nobody reads it).
   DerivePerf({required int Function() nowMs, this.enabled = true})
       : _now = nowMs;
 
@@ -74,22 +77,30 @@ class DerivePerf {
 
   /// Accumulates per (day, phase): the same pair reported twice adds up.
   void addPhase(String day, DerivePhase phase, int ms) {
+    if (!enabled) return;
     final byPhase = _days.putIfAbsent(day, () => {});
     byPhase[phase] = (byPhase[phase] ?? 0) + ms;
   }
 
   /// Adds [ms] to the named stage of this pass.
-  void addStage(String name, int ms) =>
-      _stages[name] = (_stages[name] ?? 0) + ms;
+  void addStage(String name, int ms) {
+    if (!enabled) return;
+    _stages[name] = (_stages[name] ?? 0) + ms;
+  }
 
   /// Adds [n] to a named counter of this pass (rows read, beats, bytes).
-  void addCount(String name, int n) =>
-      _counts[name] = (_counts[name] ?? 0) + n;
+  void addCount(String name, int n) {
+    if (!enabled) return;
+    _counts[name] = (_counts[name] ?? 0) + n;
+  }
 
   /// Like [addCount], but [value] runs only when this instance is [enabled]:
   /// the way to book a count that is itself costly to measure (a node walk, a
-  /// byte sum). RED STUB: does nothing.
-  void addCountLazy(String name, int Function() value) {}
+  /// byte sum).
+  void addCountLazy(String name, int Function() value) {
+    if (!enabled) return;
+    addCount(name, value());
+  }
 
   /// Runs [body] and books its wall time to [name], also when it throws.
   Future<T> stage<T>(String name, Future<T> Function() body) async {
@@ -200,17 +211,102 @@ class RenderLatency {
 /// read seam, `LastResultCache`). Null = disabled: the readers record nothing
 /// and measure nothing. Tests and a diagnostics switch set it; production
 /// leaves it null until the owner's device trace needs it (design 02 step 2,
-/// P2.0a). RED STUB: nothing reads it yet.
+/// P2.0a).
 abstract final class ReadPerf {
   static DerivePerf? sink;
+
+  static const Symbol _readerKey = #openstrapReadPerfReader;
+
+  /// Runs [body] with [reader] (the repository method a screen called) as the
+  /// owner of every payload it decodes. A null [sink] costs one null check: no
+  /// zone is made.
+  static Future<T> reading<T>(String reader, Future<T> Function() body) =>
+      sink == null
+          ? Zone.current.run(body) // same as body(); keeps the guard's
+          // unresolvedInvocation list free of a function-typed call
+          : runZoned(body, zoneValues: {_readerKey: reader});
+
+  /// Books one stored payload handed out: [stored] is the column as read (its
+  /// length is the byte count, O(1)), [decoded] the graph returned. A null
+  /// [decoded] books nothing: an absent or undecodable row is not a read. The
+  /// node walk runs only when the sink is enabled.
+  static void payload(Object? stored, Object? decoded) {
+    final p = sink;
+    if (p == null || decoded == null) return;
+    final reader = Zone.current[_readerKey] as String? ?? 'other';
+    final bytes = stored is String ? stored.length : 0;
+    p.addCount('payload_reads_$reader', 1);
+    p.addCount('payload_bytes_$reader', bytes);
+    p.addCountLazy('payload_nodes_$reader', () => payloadNodeCount(decoded));
+  }
+
+  /// The cross-day artifact on its own (it is decoded on every call).
+  static void crossday(Object? stored, Object? decoded) {
+    final p = sink;
+    if (p == null || decoded == null) return;
+    p.addCount('crossday_payload_bytes', stored is String ? stored.length : 0);
+    p.addCountLazy('crossday_payload_nodes', () => payloadNodeCount(decoded));
+  }
+
+  /// The artifact kind of a `last_result` key: the key up to the first '|'.
+  static String kindOf(String key) {
+    final i = key.indexOf('|');
+    return i < 0 ? key : key.substring(0, i);
+  }
+
+  /// A `last_result` row written: [bytes] is the encoded length.
+  static void lastResultPut(String key, int bytes) {
+    final p = sink;
+    if (p == null) return;
+    final k = kindOf(key);
+    p.addCount('last_result_puts_$k', 1);
+    p.addCount('last_result_put_bytes_$k', bytes);
+  }
+
+  /// A `last_result` row read from the table (a memory hit is not one).
+  static void lastResultRead(String key, int bytes, Object? decoded) {
+    final p = sink;
+    if (p == null) return;
+    final k = kindOf(key);
+    p.addCount('last_result_reads_$k', 1);
+    p.addCount('last_result_read_bytes_$k', bytes);
+    p.addCountLazy('last_result_read_nodes_$k', () => payloadNodeCount(decoded));
+  }
 }
 
 /// Number of values in a decoded JSON graph: every map, every list and every
 /// scalar (including null) counts once; map keys do not. The root counts.
-/// `{'a': [1, 2], 'b': null}` is 5. RED STUB: returns 0.
-int payloadNodeCount(Object? decoded) => 0;
+/// `{'a': [1, 2], 'b': null}` is 5.
+int payloadNodeCount(Object? decoded) {
+  var n = 0;
+  final todo = <Object?>[decoded];
+  while (todo.isNotEmpty) {
+    final v = todo.removeLast();
+    n++;
+    if (v is Map) {
+      todo.addAll(v.values);
+    } else if (v is List) {
+      todo.addAll(v);
+    }
+  }
+  return n;
+}
 
 /// Estimated bytes the rows carry as sqflite hands them over: a `num` is 8, a
 /// `String` its UTF-8 length, a `Uint8List` its length, null and anything else
-/// 0; map keys are not counted. RED STUB: returns 0.
-int rowsByteEstimate(Iterable<Map<String, Object?>> rows) => 0;
+/// 0; map keys are not counted.
+int rowsByteEstimate(Iterable<Map<String, Object?>> rows) {
+  var n = 0;
+  for (final row in rows) {
+    for (final v in row.values) {
+      if (v is num) {
+        n += 8;
+      } else if (v is String) {
+        n += utf8.encode(v).length;
+      } else if (v is Uint8List) {
+        n += v.length;
+      }
+    }
+  }
+  return n;
+}

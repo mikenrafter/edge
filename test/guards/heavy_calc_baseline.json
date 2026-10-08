@@ -10,7 +10,9 @@
     "sendableGrammar": 2,
     "workerEntryNotInitialised": 2,
     "unresolvedInvocation": 1,
-    "rawReaderUnregistered": 3
+    "rawReaderUnregistered": 3,
+    "storedPayloadDecodeOutsideHeavy": 1,
+    "rawTableRowLoopOutsideHeavy": 1
   },
   "occurrences": [
     {
@@ -1533,6 +1535,27 @@
       "count": 1
     },
     {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl.getDeviceChart",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver._archiveDayLocked",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "rawTableRowLoopOutsideHeavy",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver._archiveDevice",
+      "element": "decoded_onehz",
+      "count": 1
+    },
+    {
       "rule": "sendableGrammar",
       "file": "util/worker_entries.dart",
       "symbol": "DerivationEngine._dayBlocksIsolateEntry",
@@ -1600,6 +1623,314 @@
       "file": "util/worker_entries.dart",
       "symbol": "observeNaturalSync",
       "element": "not sendable: NaturalObserveRequest",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/crossday_input.dart",
+      "symbol": "assembleCrossDayInput",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._baselineSignature",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._blankStoredNight",
+      "element": "jsonEncode",
+      "count": 4
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._crossDayInputDays",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._derivePreparedDay",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._sleepCandidateForDay",
+      "element": "jsonDecode",
+      "count": 4
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._sleepCandidateForDay",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._storedSleepHistory",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._timezoneTravelSuspected",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._timezoneTravelSuspected",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.run",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "compute/strain_backfill.dart",
+      "symbol": "backfillStrainScale",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb._ensureSyncLedgerSchema",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb._ensureSyncQuarantineSchema",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb._writeCaptureFreshness",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb._writeCaptureFreshness",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.crossDayStats",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.derivedFingerprintMaxRecTs",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.derivedFingerprints",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.getMovementFloor",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.insertEvent",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.isMeasuredDayRow",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.putDayResult",
+      "element": "SeriesCodec.encodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.recentDayDiagnostics",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.reencodeLegacyDayResults",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.reencodeLegacyDayResults",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.refreshComputeFreshness",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.refreshComputeFreshness",
+      "element": "jsonEncode",
+      "count": 3
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.syncLedgerSummary",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.upsertSyncLedgerEntry",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/db.dart",
+      "symbol": "LocalDb.upsertSyncLedgerEntry",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl._frozenTrace",
+      "element": "SeriesCodec.decodeCurve",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl._frozenTrace",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl._rescoreSessionFromSubstrate",
+      "element": "jsonEncode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl.getNightBeats",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "data/local_repository_impl.dart",
+      "symbol": "LocalRepositoryImpl.sleepWindows",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "health/health_export.dart",
+      "symbol": "HealthExporter.exportAll",
+      "element": "jsonEncode",
+      "count": 2
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "health/health_rhr_seed.dart",
+      "symbol": "RhrSeedImporter.storedSeedBaseline",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "state/app_state.dart",
+      "symbol": "AppState._maybeNotifyRecoveryReady",
+      "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "state/app_state.dart",
+      "symbol": "AppState._readCrossdaySummary",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "ui2/screens/investigate.dart",
+      "symbol": "InvestigateData.load",
+      "element": "jsonDecode",
+      "count": 1
+    },
+    {
+      "rule": "storedPayloadDecodeOutsideHeavy",
+      "file": "ui2/screens/readiness_detail.dart",
+      "symbol": "ReadinessData._absentDiag",
+      "element": "jsonDecode",
       "count": 1
     },
     {

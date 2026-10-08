@@ -124,3 +124,50 @@ token. Delete the entry when the closure becomes a registered entry.
 
 ## legacyInlineDispatch crossday-input
 The same for the cross-day input closure (exact label `crossday-input`).
+
+## storedPayloadDecodeOutsideHeavy v1 - stored payloads decoded or encoded outside @heavy (2026-10-08)
+New rule (design 02 step 2, P2.0b). `heavyOriginOutsideHeavy` only counts
+`SeriesCodec.*` and analytics calls, so a plain `jsonDecode` of a stored
+`payload_json` was invisible although it is the same UI-isolate cost. The rule
+reports, in a non-`@heavy` function (inside `LocalDb` too), every `jsonDecode` /
+`jsonEncode` / `json.decode` / `json.encode` call and every call into a payload
+codec library (`SeriesCodec`, `HeavyGuardConfig.payloadCodecPrefixes`) when the
+same function (a closure counts as its enclosing function) either names a
+payload column in a string literal or const (`payload_json`, `window_json`,
+`trace_json`, `meta_json`, `payload`, as a whole word) or calls a registered
+payload reader (`kRawReaders`). One finding per call; the element is the called
+function. A new rule has no earlier version to raise: the base baseline does not
+list it, and this entry licenses its first keys (see the header). The keys are
+the existing readers and writers of stored payloads in derivation, cross-day,
+`LocalDb` and the repository read seam; P2.2 to P2.10 move them behind the
+`BundleStore` lane and the write-path entries, and each phase removes the keys
+in its scope.
+
+Detection is by literal, not by data flow, so it can miss a decode whose
+column name is not spelled in the same function. Known and left unflagged for
+now: `getDayCalorieCurve` (key `kcal_minutes|...`, no column literal) and
+`HealthExporter._decode`; both are scheduled in P2.5 and become visible if the
+rule is later widened.
+
+## rawTableRowLoopOutsideHeavy v1 - row loops over raw-table queries outside LocalDb (2026-10-08)
+New rule (design 02 step 2, P2.0b). `rawReaderUnregistered` only looks at
+methods of `LocalDb`, so a screen or archiver that runs `Database.query` /
+`rawQuery` on `decoded_onehz`, `decoded_rr`, `raw_records` or `raw_archive` and
+loops over the rows itself was invisible. The rule reports, in a non-`@heavy`
+function outside `LocalDb`, each row loop (a `for-in`, or `map` / `forEach` /
+`fold` / `where` / `any` / `every` / `expand` / `reduce` / `toList`) over the
+result of such a call, where the table is named in that call's own literal or
+const arguments (decided per call: a loop over another table's rows next to a
+raw query in the same function is not a finding). The result may be iterated
+directly or through a local variable initialised from the call. Reading
+`length` / `isEmpty` / `isNotEmpty` / `first` / `firstOrNull` / `last` / `single`
+is not a loop. One finding per loop; the element is the table. The keys are
+`getDeviceChart` and the `SampleArchiver` day/device fill loops, which move to
+registered chunk readers and `@heavy` fill entries in P2.12.
+
+## rowBatchIterationOutsideHeavy (no version change) - first and last are cheap
+`RowBatch.first` and `RowBatch.last` join `length` / `isEmpty` / `isNotEmpty`
+as members that are not iteration (both are O(1)). This only NARROWS what the
+rule reports, so it adds no key, raises no count and needs no version bump or
+entry; this note records the widening of the cheap-member set. `single`,
+`elementAt`, `toList`, `firstWhere` and every other member stay findings.

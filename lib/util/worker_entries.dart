@@ -184,6 +184,13 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
 /// Fingerprinted unresolved invocations. Shrink-only.
 const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
+    file: 'compute/derive_perf.dart',
+    symbol: 'DerivePerf.addCountLazy',
+    source: 'value()',
+    ordinal: 0,
+    reason: 'perf counter whose value is costly to measure (a node walk, a byte sum): runs only when the instance is enabled, one scalar out, no stored-data loop of its own',
+  ),
+  UnresolvedOk(
     file: 'ecg/ecg_controller.dart',
     symbol: 'EcgController._asked',
     source: 'provider?.call()',

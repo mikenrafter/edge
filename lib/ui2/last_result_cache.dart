@@ -25,6 +25,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../compute/derive_perf.dart' show ReadPerf;
 import '../data/db.dart';
 
 class CachedResult<T> {
@@ -99,6 +100,7 @@ class LastResultCache {
       if (row == null || epoch != LocalDb.wipeEpoch) return null;
       final v = jsonDecode(row.payload);
       if (v is! T) return null;
+      ReadPerf.lastResultRead(key, row.payload.length, v);
       final at = DateTime.fromMillisecondsSinceEpoch(row.computedAt);
       // A newer result put while the table was read stays.
       if (!_m.containsKey(key)) _store(key, v, at, epoch, row.sig);
@@ -115,6 +117,7 @@ class LastResultCache {
     _store(key, value, at, LocalDb.wipeEpoch, sig);
     final json = _encode(value);
     if (json == null) return;
+    ReadPerf.lastResultPut(key, json.length);
     _enqueue(() => LocalDb.putLastResult(
         key, at.millisecondsSinceEpoch, json, maxRows,
         sig: sig));
