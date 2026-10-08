@@ -526,7 +526,6 @@ class DayGraph {
 
   /// Epoch seconds of the local day's start; the annotation domain runs
   /// `dayStart` .. `dayStart + slots * 60`. Null when unknown.
-  // RED STUB (day-graph-annotations): accepted, not yet filled by [dayGraph].
   final int? dayStart;
 
   /// Beats per minute, one slot per minute of the day, `null` where nothing
@@ -663,7 +662,8 @@ DayGraph dayGraph(Map<String, dynamic> timeline, {List<Object?>? hrOverride}) {
       if (s is Map) ?span(s['start_ts'], s['end_ts'], C.orange),
   ];
 
-  return DayGraph(hr: hr, movement: movement, rest: rest, work: work);
+  return DayGraph(
+      hr: hr, movement: movement, rest: rest, work: work, dayStart: dayStart);
 }
 
 // ═══════════════════ the screen ═══════════════════
@@ -1007,7 +1007,6 @@ const _movementNote = 'Movement is the share of each 5 minutes in which your '
 /// of zero. A day like that is entirely carried by the list underneath, which
 /// is the right shape for it — a handful of things that happened, in order.
 Widget? dayGraphCard(BuildContext c, DayGraph g,
-    // RED STUB (day-graph-annotations): accepted, not yet drawn.
     {List<ChartAnnotation> annotations = const []}) {
   if (!g.hasCurve) return null;
   final p = P.of(c);
@@ -1023,6 +1022,18 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
   final asleepLabel = l?.dayTimelineAsleep ?? 'Asleep';
   final workoutLabel = l?.dayTimelineWorkout ?? 'Workout';
   final gaps = g.unmeasured;
+  // The card marks the same labelled moments as the list beneath it, on the
+  // real local-day domain: dayStart + slots * 60 follows a 23 h or 25 h day,
+  // never a flat 86400. No day start or nothing logged: no lane, nothing
+  // invented.
+  final dayStart = g.dayStart;
+  final marks = dayStart == null || annotations.isEmpty
+      ? null
+      : AnnotationSet(
+          items: annotations,
+          domainStart: dayStart.toDouble(),
+          domainEnd: (dayStart + n * 60).toDouble(),
+          reach: 48);
 
   bool present(double? v) => v != null && v.isFinite;
   // A lane of the day, one slot per minute; the lane's own holes read null.
@@ -1060,6 +1071,7 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
       unit: 'bpm',
       height: 200,
       yAxis: axis,
+      annotations: marks,
       // Three, and only three, because ChartFrame lays the first flush left,
       // the last flush right and the rest centred — which puts a middle label
       // exactly on the middle of the plot and a five-label row 5 % out.
@@ -1133,7 +1145,8 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
 List<Widget> timelineBody(BuildContext c, TimelineData d) {
   final p = P.of(c);
   final l = AppLocalizations.of(c);
-  final graph = dayGraphCard(c, d.graph);
+  final graph =
+      dayGraphCard(c, d.graph, annotations: dayAnnotations(d.moments));
   return [
     ?graph,
     if (d.moments.isEmpty && d.notes.isEmpty && graph == null)
