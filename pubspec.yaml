@@ -538,8 +538,8 @@ dependencies:
       #
       # REPIN @ 0fc5768 (same branch, on bf1be19): the diagnostics' artifact
       # fraction is absent (null) when the corrector saw no beats, instead of the
-      # 1.0 `1 - cleanFraction` gives an empty series. Verdicts unchanged; v103
-      # is unreleased, so no second bump. Verified:
+      # 1.0 `1 - cleanFraction` gives an empty series. Verdicts unchanged; the
+      # persisted output changed, so kAlgoVersion 104 (§3.4). Verified:
       #   `git show 0fc5768:lib/src/onehz/clinical/irregular_diagnostics.dart | grep diagnosticArtifactFraction`
       ref: 0fc57682b988c44cb5943c6e39a0746167388d46
 
