@@ -228,7 +228,8 @@ void main() {
       ]);
     });
 
-    test('a timed water field is water; any other timed field is journal', () {
+    test('the water total is an aggregate, not an event: never annotated; '
+        'any other timed field is journal', () {
       final m = dayMoments(
         timeline: {'day_start': _day},
         journal: const {
@@ -237,10 +238,32 @@ void main() {
         },
         fields: kJournalFields,
       );
+      // The row still reads on the day page (it IS a stored fact)...
+      expect({for (final x in m) x.at}, {_at(8), _at(9)});
+      // ...but the real water events (assumed glasses, water taps) carry their
+      // own records and their own kind; the total is not a third one.
       expect({for (final x in m) x.at: x.annotationKind}, {
-        _at(8): AnnotationKind.water,
+        _at(8): isNull,
         _at(9): AnnotationKind.journal,
       });
+    });
+
+    test('a dose answered from a marked moment is that moment, once', () {
+      // MomentAnswerWriter writes the label AND adds to caffeine_mg at the
+      // same minute. One event: the moment.
+      final m = dayMoments(
+        timeline: {'day_start': _day},
+        momentLabels: [
+          MomentLabel(
+              date: '2026-08-14', hhmm: '09:00', label: 'caffeine', answeredAtMs: 1),
+        ],
+        journal: const {
+          'caffeine_mg': JournalMetricValue(80, atMinuteOfDay: 9 * 60),
+        },
+        fields: kJournalFields,
+      );
+      expect(dayAnnotations(m).map((a) => a.kind).toList(),
+          [AnnotationKind.moment]);
     });
 
     test('assumed water is its own kind, and a removed glass is not shown', () {
@@ -393,13 +416,33 @@ void main() {
       expect(a.single.until, 3.0);
     });
 
-    test('a range that runs past the window keeps its visible part honest', () {
+    test('a range that runs past the window keeps its off-window end', () {
       final a = dailyAnnotations([
         _timed('long', _sec(2026, 8, 15, 20),
             until: _sec(2026, 8, 18, 6), kind: AnnotationKind.review),
       ], days);
-      // Starts on slot 5; its end is off the chart, so it runs to the last
-      // slot rather than being cut to a point.
+      // Starts on slot 5. Its end is three days past slot 6 (the last), and it
+      // stays off the chart: clamping it to slot 6 made the layout draw a
+      // dashed END edge on a day the range did not end on.
+      expect(a.single.at, 5.0);
+      expect(a.single.until, greaterThan(6.0),
+          reason: 'off-window bounds go through to the layout, which clips');
+    });
+
+    test('a range that began before the window keeps its off-window start', () {
+      final a = dailyAnnotations([
+        _timed('long', _sec(2026, 8, 7, 20),
+            until: _sec(2026, 8, 11, 6), kind: AnnotationKind.review),
+      ], days);
+      expect(a.single.at, lessThan(0.0));
+      expect(a.single.until, 1.0);
+    });
+
+    test('a range ending on the last visible day still ends there', () {
+      final a = dailyAnnotations([
+        _timed('trip', _sec(2026, 8, 15, 20),
+            until: _sec(2026, 8, 16, 6), kind: AnnotationKind.review),
+      ], days);
       expect(a.single.at, 5.0);
       expect(a.single.until, 6.0);
     });

@@ -9,6 +9,7 @@
 // Every metric goes through THIS screen. Forty bespoke detail screens is how
 // the old UI ended up with forty different opinions about what a chart is.
 
+import 'package:clock/clock.dart' as pkg_clock;
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -23,6 +24,7 @@ import '../../state/app_state.dart';
 import '../../state/recalc_state.dart';
 import '../ui2.dart';
 import 'beats.dart';
+import 'explorer_annotations.dart' show AnnotationLoader, loadAnnotations;
 import 'day_steps.dart';
 import 'home_screen.dart';
 import 'investigate.dart';
@@ -705,8 +707,21 @@ class MetricDetail extends StatefulWidget {
   /// that night's value and date rather than today's empty slot. Applied once,
   /// after the first load; [initialRange] is ignored for it.
   final String? initialDay;
+
+  /// Reads the journal annotations behind the hero's toggle for the local days
+  /// `from`..`to` ([loadAnnotations] when null). Injectable so tests open no
+  /// database; a failing loader leaves the chart without them.
+  final AnnotationLoader? annotationLoader;
+
+  /// The hero's "journal marks" toggle chip (off by default).
+  static const journalToggleKey = ValueKey('metric-journal-toggle');
+
   const MetricDetail(this.metricKey,
-      {super.key, this.data, this.initialRange, this.initialDay});
+      {super.key,
+      this.data,
+      this.initialRange,
+      this.initialDay,
+      this.annotationLoader});
 
   @override
   State<MetricDetail> createState() => _MetricDetailState();
@@ -743,6 +758,15 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   late int _range = _windows.indexOf(widget.initialRange ?? 1).clamp(0, 4);
   MetricData? _d;
   bool _loading = true;
+
+  /// The hero's journal marks toggle. OFF by default and not remembered: algo
+  /// marks are provenance and always on, journal marks are opt-in detail.
+  bool _journalMarks = false;
+
+  /// What has been read for the toggle, by "from..to" (epoch-second domain),
+  /// and the reads in flight. Nothing is read while the toggle is off.
+  final Map<String, List<ChartAnnotation>> _journalRead = {};
+  final Set<String> _journalReading = {};
 
   /// True once [MetricDetail.initialDay] has been turned into a window and a
   /// selected slot, so a reload (a changed preference) never moves the user.
@@ -854,7 +878,60 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   bool get revisionReloads => widget.data == null;
 
   @override
-  void reload() => _load();
+  void reload() {
+    _journalRead.clear();
+    _load();
+  }
+
+  /// Reads the journal marks for [from]..[to] once, when the toggle is on. A
+  /// failure is an empty list (a smaller claim, not a wrong one).
+  void _readJournal(String from, String to) {
+    final key = '$from..$to';
+    if (_journalRead.containsKey(key) || !_journalReading.add(key)) return;
+    final load = widget.annotationLoader ??
+        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
+    Future<List<ChartAnnotation>> read() async {
+      try {
+        return await load(from, to);
+      } catch (_) {
+        return const <ChartAnnotation>[];
+      }
+    }
+
+    read().then((items) {
+      _journalReading.remove(key);
+      if (mounted) setState(() => _journalRead[key] = items);
+    });
+  }
+
+  Widget _journalChip(BuildContext c, MetricSpec spec) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final on = _journalMarks;
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Semantics(
+        key: MetricDetail.journalToggleKey,
+        selected: on,
+        button: true,
+        child: Pressable(
+          onTap: () => setState(() => _journalMarks = !on),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: S.x3, vertical: S.x2),
+            decoration: BoxDecoration(
+                color: on ? p.wash(spec.color) : null,
+                border: on ? null : Border.all(color: p.line),
+                borderRadius: R.rPill),
+            child: Text(l?.metricDetailJournalMarksToggle ?? 'Journal marks',
+                style: F.cap.copyWith(
+                    color: on ? p.on(spec.color) : p.ink2,
+                    fontWeight: FontWeight.w600)),
+          ),
+        ),
+      ),
+    );
+  }
 
   /// Set while the insights on screen are the last result of a previous open
   /// (memory or the stored copy), shown at once while the 90-day pass
@@ -1429,7 +1506,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
         // one-day window is a single point — and a single point drawn on an
         // axis is a shape pretending to be a trend. "Your normal range" below
         // is the context that actually helps here.
-        if (win > 1) const SizedBox(height: S.x5),
+        if (win > 1) const SizedBox(height: S.x4),
+        if (win > 1) _journalChip(c, spec),
+        if (win > 1) const SizedBox(height: S.x2),
         if (win > 1)
         Builder(builder: (c) {
           // One axis, shared by the labels and the curve. `min` unit metrics
@@ -1456,6 +1535,24 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             daysBehind: daysBehind,
             label: l?.investigateAlgoVersionLabel ?? 'Algorithm version',
           );
+          // Journal marks (water, moments, symptoms, meals, workouts...) only
+          // while the toggle is on, on their local day's slot.
+          final dayLabels = [
+            for (var i = 0; i < series.length; i++)
+              _dayOfSlot(i, series.length),
+          ];
+          var journal = const <ChartAnnotation>[];
+          if (_journalMarks && dayLabels.length > 1) {
+            final from = dayLabels.first, to = dayLabels.last;
+            final read = _journalRead['$from..$to'];
+            if (read == null) {
+              WidgetsBinding.instance
+                  .addPostFrameCallback((_) => _readJournal(from, to));
+            } else {
+              journal = dailyAnnotations(read, dayLabels);
+            }
+          }
+          final shown = [...marks, ...journal];
           final dim = _dimMask(d, series.length);
           return ChartFrame(
             title: spec.title,
@@ -1464,10 +1561,10 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             yAxis: axis,
             // Icon + dashed line, through the shared annotation layout so a
             // mark can never sit on another icon. Provenance, not an event.
-            annotations: marks.isEmpty
+            annotations: shown.isEmpty
                 ? null
                 : AnnotationSet(
-                    items: marks,
+                    items: shown,
                     domainStart: 0,
                     domainEnd: (series.length - 1).toDouble()),
             annotationCursor:
@@ -1663,7 +1760,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   /// with, walked through [DateTime]'s own calendar so the two days a year that
   /// are 23 or 25 hours long land on the right date.
   String _dayOfSlot(int i, int len) {
-    final n = DateTime.now();
+    final n = pkg_clock.clock.now();
     return dayLabelOf(DateTime(n.year, n.month, n.day - (len - 1 - i)));
   }
 

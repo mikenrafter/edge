@@ -93,6 +93,29 @@ List<ChartAnnotation> rangeAnnotations({
   return out;
 }
 
+/// The detected naps of one day's `getDayTimeline` as range annotations (domain:
+/// epoch seconds), through the same join as every other annotation. Ids carry
+/// the day, like [rangeAnnotations]'s. Pure.
+List<ChartAnnotation> napAnnotations(
+  String day,
+  Map<String, dynamic> timeline, {
+  AppLocalizations? l,
+}) =>
+    [
+      for (final a in dayAnnotations(dayMoments(
+        timeline: {'naps': timeline['naps']},
+        l: l,
+      )))
+        if (a.kind == AnnotationKind.nap)
+          ChartAnnotation(
+            id: '$day/${a.id}',
+            kind: a.kind,
+            at: a.at,
+            until: a.until,
+            label: a.label,
+          ),
+    ];
+
 /// The real reader. Never throws: a store that cannot be read leaves the chart
 /// without annotations, which is a smaller claim, not a wrong one.
 Future<List<ChartAnnotation>> loadAnnotations(String from, String to,

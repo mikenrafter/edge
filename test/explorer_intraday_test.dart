@@ -1,5 +1,5 @@
 // The day scale: several lanes of one local day on one clock axis,
-// sleep / nap / workout bands behind them, gaps that stay gaps, a day picker.
+// a sleep band behind them (workouts and naps are annotation ranges), gaps that stay gaps, a day picker.
 //
 // API: test/support/explorer_harness.dart, explorer_series_test.dart.
 //   * explore-scale:day switches to intraday; the chosen day starts at today
@@ -9,11 +9,10 @@
 //   * explore-day-prev / explore-day-next step one local calendar day;
 //     next is inert on today (nothing in the future). explore-day-label shows
 //     the day.
-//   * ExplorePlotPainter.bands = exploreBands(timeline, ...) fractions;
-//     a day with no sleep/workout has none.
+//   * ExplorePlotPainter.bands = the SLEEP bands of exploreBands(timeline, ...)
+//     as fractions; a day with no sleep has none.
 //   * The readout lists a lane per picked metric ("<n> <unit>" or "—") and,
-//     only for a day that has them, "Asleep" and "Workout" cells reading
-//     "Yes"/"No" (the same words the Day timeline's chart key uses).
+//     only for a day that has sleep, an "Asleep" cell reading "Yes"/"No".
 //   * x = (t - dayStart) / (dayEnd - dayStart) with the day's REAL local length.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -173,16 +172,13 @@ void main() {
           '—');
     });
 
-    testWidgets('a sleep that began yesterday and a workout are bands, clipped',
-        (t) async {
+    testWidgets('a sleep that began yesterday is a band, clipped; a workout is '
+        'not a band any more (it is an annotation range)', (t) async {
       await _openDay(t, _repo());
       final bands = plotPainter(t).bands;
-      expect([for (final b in bands) b.kind],
-          [ExploreBandKind.sleep, ExploreBandKind.workout]);
-      expect(bands.first.from, 0.0);
-      expect(bands.first.to, closeTo(_at(420), 1e-9));
-      expect(bands.last.from, closeTo(_at(1020), 1e-9));
-      expect(bands.last.to, closeTo(_at(1080), 1e-9));
+      expect([for (final b in bands) b.kind], [ExploreBandKind.sleep]);
+      expect(bands.single.from, 0.0);
+      expect(bands.single.to, closeTo(_at(420), 1e-9));
     });
 
     testWidgets('a day with no sleep or workout has no bands at all', (t) async {
@@ -268,15 +264,15 @@ void main() {
       }
     });
 
-    testWidgets('Asleep and Workout say Yes inside their stretch and No outside',
-        (t) async {
+    testWidgets('Asleep says Yes inside its stretch and No outside; there is no '
+        'Workout cell (workouts are annotation ranges)', (t) async {
       await _openDay(t, _repo());
       await scrubAt(t, _at(200));
       expect(readoutText(t, 'Asleep'), 'Yes');
-      expect(readoutText(t, 'Workout'), 'No');
+      expect(readoutValue('Workout'), findsNothing);
       await scrubAt(t, _at(1050));
       expect(readoutText(t, 'Asleep'), 'No');
-      expect(readoutText(t, 'Workout'), 'Yes');
+      expect(readoutValue('Workout'), findsNothing);
     });
 
     testWidgets('activity reads as the day screen does: a share of time moving',

@@ -69,6 +69,7 @@ Text _label(WidgetTester t) =>
     t.widget<Text>(find.byKey(ChartAnnotationLane.labelKey));
 
 void main() {
+  _dailyRangeTests();
   group('icon and dashed line', () {
     testWidgets('every item has an icon of its kind on its own x', (t) async {
       await _pumpLane(t, [
@@ -614,4 +615,97 @@ class _CountingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter old) => false;
+}
+
+// ── daily ranges: the rendered boundary ─────────────────────────────────────
+
+/// Seven local days, drawn as a 0..6 slot domain over a 300 px lane (the
+/// metric-detail hero's), through the SAME seam the hero uses.
+const _week = [
+  '2026-08-10',
+  '2026-08-11',
+  '2026-08-12',
+  '2026-08-13',
+  '2026-08-14',
+  '2026-08-15',
+  '2026-08-16',
+];
+
+double _sec(int d, [int h = 12]) =>
+    DateTime(2026, 8, d, h).millisecondsSinceEpoch / 1000;
+
+Widget _weekLane(List<ChartAnnotation> timed) => _app(ChartAnnotationLane(
+      set: AnnotationSet(
+          items: dailyAnnotations(timed, _week), domainStart: 0, domainEnd: 6),
+      cursor: null,
+      plotHeight: _plotH,
+    ));
+
+void _dailyRangeTests() {
+  group('a daily range at the edge of its window', () {
+    testWidgets('one that runs past the last day has no end edge there',
+        (t) async {
+      await t.pumpWidget(_weekLane([
+        ChartAnnotation(
+            id: 'trip',
+            kind: AnnotationKind.review,
+            at: _sec(15),
+            until: _sec(19),
+            label: 'trip'),
+      ]));
+      await t.pump();
+      expect(_lines(t).map((l) => l.id), ['trip'],
+          reason: 'the range did not end on the last visible day');
+      final lane = t.getRect(find.byKey(ChartAnnotationLane.laneKey));
+      final shade = t.getRect(find.byKey(ChartAnnotationLane.shadeKey('trip')));
+      expect(shade.left - lane.left, moreOrLessEquals(_w * 5 / 6, epsilon: .5));
+      expect(shade.right, moreOrLessEquals(lane.right, epsilon: .5),
+          reason: 'it still shades to the edge of the plot');
+    });
+
+    testWidgets('one that began before the first day has no start edge there',
+        (t) async {
+      await t.pumpWidget(_weekLane([
+        ChartAnnotation(
+            id: 'trip',
+            kind: AnnotationKind.review,
+            at: _sec(7),
+            until: _sec(12),
+            label: 'trip'),
+      ]));
+      await t.pump();
+      expect(_lines(t).map((l) => l.id), ['trip:end']);
+      expect(_line(t, 'trip:end').x, moreOrLessEquals(_w * 2 / 6, epsilon: .5));
+    });
+
+    testWidgets('one that ends ON the last day keeps its end edge',
+        (t) async {
+      await t.pumpWidget(_weekLane([
+        ChartAnnotation(
+            id: 'trip',
+            kind: AnnotationKind.review,
+            at: _sec(15),
+            until: _sec(16, 18),
+            label: 'trip'),
+      ]));
+      await t.pump();
+      expect(_lines(t).map((l) => l.id), unorderedEquals(['trip', 'trip:end']));
+      expect(_line(t, 'trip:end').x, moreOrLessEquals(_w, epsilon: .5));
+    });
+
+    testWidgets('one spanning the whole window has neither edge', (t) async {
+      await t.pumpWidget(_weekLane([
+        ChartAnnotation(
+            id: 'trip',
+            kind: AnnotationKind.review,
+            at: _sec(1),
+            until: _sec(28),
+            label: 'trip'),
+      ]));
+      await t.pump();
+      expect(find.byKey(ChartAnnotationLane.shadeKey('trip')), findsOneWidget);
+      expect(find.byKey(ChartAnnotationLane.linesKey), findsNothing,
+          reason: 'no edge is on the plot, so there is nothing to dash');
+    });
+  });
 }

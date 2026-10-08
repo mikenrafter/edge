@@ -488,8 +488,9 @@ List<ChartAnnotation> algoBreakAnnotations({
 /// Intraday annotations (domain: epoch seconds) onto a daily chart whose slots
 /// are the local day [dayLabels] ('YYYY-MM-DD', oldest first). Slot i is at
 /// domain i. A point lands on its LOCAL day; a range inside one day is that
-/// day's point; a range across days spans its first to its last day's slot
-/// (clipped to the window). Anything outside the labels is dropped. Never
+/// day's point; a range across days spans its first to its last day's slot. A
+/// bound outside the window is kept as slot -1 / length, not clamped, so the
+/// layout can tell a range that ended at the edge from one that ran past it. Anything outside the labels is dropped. Never
 /// invents an item.
 List<ChartAnnotation> dailyAnnotations(
   List<ChartAnnotation> timed,
@@ -513,17 +514,17 @@ List<ChartAnnotation> dailyAnnotations(
     final s = slotOf(a.at);
     if (s == null) continue;
     final u = a.until;
-    var e = u != null && u.isFinite && u > a.at ? slotOf(u) : null;
+    final e = u != null && u.isFinite && u > a.at ? slotOf(u) : null;
     if (e != null && e < 0) continue; // the whole range is before the window
     if (s >= dayLabels.length) continue;
-    if (e == null && (s < 0 || s >= dayLabels.length)) continue;
-    final from = math.max(s, 0);
-    final to = e == null ? from : math.min(e, dayLabels.length - 1);
+    if (e == null && s < 0) continue;
+    // Off-window bounds (-1 / length) are KEPT: the layout clips the shade and
+    // draws no dashed edge on a side that lies outside the window.
     out.add(ChartAnnotation(
       id: a.id,
       kind: a.kind,
-      at: from.toDouble(),
-      until: to > from ? to.toDouble() : null,
+      at: s.toDouble(),
+      until: e != null && e > s ? e.toDouble() : null,
       label: a.label,
     ));
   }

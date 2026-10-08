@@ -5493,6 +5493,10 @@
       }
     }
   },
+  "metricDetailJournalMarksToggle": "Journal marks",
+  "@metricDetailJournalMarksToggle": {
+    "description": "Toggle chip above the metric-detail trend chart: show or hide journal items (water, moments, symptoms, meals) as icons with dashed lines on the chart. Off by default."
+  },
   "metricDetailAlgoBreakFootnote": "{n, plural, one{The dashed line marks a change in how these days were computed. Readings on either side came from different versions.} other{The dashed lines mark changes in how these days were computed. Readings on either side of a line came from different versions.}}",
   "@metricDetailAlgoBreakFootnote": {
     "description": "Chart footnote explaining the dashed vertical line(s) marking an algorithm-version change.",
