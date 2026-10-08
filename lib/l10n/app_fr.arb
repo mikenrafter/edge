@@ -2535,5 +2535,7 @@
   "hapticsSectionGestures": "Gestes",
   "hapticsSectionBreathing": "Respiration",
   "hapticsSectionAlarm": "Répétition de l’alarme",
-  "hapticsSectionEcg": "ECG"
+  "hapticsSectionEcg": "ECG",
+  "sampleArchiveLoadingDetail": "Chargement du détail…",
+  "sampleArchiveApproximation": "Approximatif (archivé)"
 }

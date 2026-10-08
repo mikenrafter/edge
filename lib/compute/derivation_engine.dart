@@ -40,6 +40,7 @@ import '../data/coverage_resolver.dart';
 import '../data/db.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
+import '../data/sample_archive.dart' show SampleArchiver;
 import '../notify/fired_keys.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -7369,7 +7370,32 @@ class DerivationEngine {
       derivedDayIds: derivedIds,
     );
     if (cutoffSec == null) return;
-    final deleted = await LocalDb.pruneDecodedBeforeRecTs(cutoffSec);
+    // Lossy sample archive of the 1 Hz signals BEFORE the rows go (write
+    // only: nothing derived ever reads it back - invariant 3). Best effort: a
+    // failure here must not hold the prune, which is what enforces
+    // `rawRetentionDays`. `created_at` is the data-edge second, not a wall
+    // clock.
+    //
+    // RACE: an offload can land during this pass behind a window the archive
+    // already read. The input revision at or before the cutoff is read BEFORE
+    // the archive and the delete runs only if it is unchanged (checked inside
+    // the delete's transaction); otherwise nothing is pruned this pass and the
+    // next one archives the straggler first. If the archive itself threw there
+    // is nothing to protect, so the prune is unguarded exactly as before.
+    int? revSum;
+    try {
+      revSum = await LocalDb.decodedRevSumBefore(cutoffSec);
+      await SampleArchiver.archiveBefore(cutoffSec,
+          nowSec: dataNowSec, log: _log);
+    } catch (e) {
+      revSum = null;
+      _log('sample archive skipped: $e');
+    }
+    final deleted =
+        await LocalDb.pruneDecodedBeforeRecTs(cutoffSec, expectedRevSum: revSum);
+    if (deleted < 0) {
+      _log('prune deferred: records landed behind the archive pass');
+    }
     if (deleted > 0) {
       _log('pruned $deleted decoded rows with rec_ts < $cutoffSec');
     }

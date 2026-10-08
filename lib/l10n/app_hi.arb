@@ -2535,5 +2535,7 @@
   "hapticsSectionGestures": "जेस्चर",
   "hapticsSectionBreathing": "श्वास",
   "hapticsSectionAlarm": "अलार्म स्नूज़",
-  "hapticsSectionEcg": "ईसीजी"
+  "hapticsSectionEcg": "ईसीजी",
+  "sampleArchiveLoadingDetail": "विवरण लोड हो रहा है…",
+  "sampleArchiveApproximation": "अनुमानित (संग्रहीत)"
 }

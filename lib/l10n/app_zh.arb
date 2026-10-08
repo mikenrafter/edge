@@ -2535,5 +2535,7 @@
   "hapticsSectionGestures": "手势",
   "hapticsSectionBreathing": "呼吸",
   "hapticsSectionAlarm": "闹钟贪睡",
-  "hapticsSectionEcg": "心电图"
+  "hapticsSectionEcg": "心电图",
+  "sampleArchiveLoadingDetail": "正在加载细节…",
+  "sampleArchiveApproximation": "近似值（已归档）"
 }

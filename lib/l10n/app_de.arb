@@ -2535,5 +2535,7 @@
   "hapticsSectionGestures": "Gesten",
   "hapticsSectionBreathing": "Atmung",
   "hapticsSectionAlarm": "Wecker-Schlummern",
-  "hapticsSectionEcg": "EKG"
+  "hapticsSectionEcg": "EKG",
+  "sampleArchiveLoadingDetail": "Details werden geladen…",
+  "sampleArchiveApproximation": "Näherung (archiviert)"
 }
