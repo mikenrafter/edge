@@ -768,6 +768,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   final Map<String, List<ChartAnnotation>> _journalRead = {};
   final Set<String> _journalReading = {};
 
+  /// Bumped by every reload; a read commits only if it started in this one.
+  int _journalGen = 0;
+
   /// True once [MetricDetail.initialDay] has been turned into a window and a
   /// selected slot, so a reload (a changed preference) never moves the user.
   bool _dayApplied = false;
@@ -879,7 +882,11 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
 
   @override
   void reload() {
+    // Whatever is in flight was asked before this revision: it must neither
+    // hold back the next read of its window nor commit when it lands.
+    _journalGen++;
     _journalRead.clear();
+    _journalReading.clear();
     _load();
   }
 
@@ -888,6 +895,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
   void _readJournal(String from, String to) {
     final key = '$from..$to';
     if (_journalRead.containsKey(key) || !_journalReading.add(key)) return;
+    final gen = _journalGen;
     final load = widget.annotationLoader ??
         ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
     Future<List<ChartAnnotation>> read() async {
@@ -899,6 +907,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
     }
 
     read().then((items) {
+      // A read from before the last reload is dropped whole: its in-flight
+      // mark was cleared, and the fresh read of this window may be running.
+      if (gen != _journalGen) return;
       _journalReading.remove(key);
       if (mounted) setState(() => _journalRead[key] = items);
     });
@@ -1535,7 +1546,7 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
             daysBehind: daysBehind,
             label: l?.investigateAlgoVersionLabel ?? 'Algorithm version',
           );
-          // Journal marks (water, moments, symptoms, meals, workouts...) only
+          // Journal marks (workouts, moments, water, symptoms, timed journal fields) only
           // while the toggle is on, on their local day's slot.
           final dayLabels = [
             for (var i = 0; i < series.length; i++)

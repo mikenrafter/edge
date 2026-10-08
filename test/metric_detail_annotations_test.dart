@@ -6,14 +6,19 @@
 // counts its day slots back from "today", and nothing here reads the system
 // time. The chip's label is localised in every shipped language.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/data/local_repository.dart';
+import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/screens/screens.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
+
+import 'support/explorer_harness.dart' show providers;
 
 /// "Now" for every test: noon on 2026-10-04. A 30-day window is then
 /// 2026-09-05 .. 2026-10-04, slot 0 .. 29.
@@ -145,6 +150,97 @@ void main() {
     });
   });
 
+  group('a read superseded by a revision reload never commits', () {
+    // A LIVE screen (no injected data): a derive/import ticks
+    // insightsRevision, the screen re-reads, and the journal read that was in
+    // flight for the same window must neither suppress the fresh one nor
+    // overwrite it when it lands late.
+    ChartAnnotation mark(String id, int day) => ChartAnnotation(
+        id: id,
+        kind: AnnotationKind.water,
+        at: DateTime(2026, 10, day, 9).millisecondsSinceEpoch / 1000,
+        label: id);
+
+    Future<(AppState, List<Completer<List<ChartAnnotation>>>)> live(
+        WidgetTester t) async {
+      t.view.physicalSize = const Size(390 * 3, 1400 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      final app = AppState.forTesting()..repo = _LiveRepo();
+      addTearDown(app.dispose);
+      final reads = <Completer<List<ChartAnnotation>>>[];
+      await t.pumpWidget(providers(
+        app,
+        MetricDetail('calories', initialRange: 30, annotationLoader: (_, _) {
+          final c = Completer<List<ChartAnnotation>>();
+          reads.add(c);
+          return c.future;
+        }),
+      ));
+      for (var i = 0; i < 10; i++) {
+        await t.pump(const Duration(milliseconds: 50));
+      }
+      return (app, reads);
+    }
+
+    Future<void> bump(WidgetTester t, AppState app) async {
+      app.insightsRevision.value++;
+      for (var i = 0; i < 10; i++) {
+        await t.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    _test('a reload while a read is in flight starts a fresh read, and the '
+        'old one landing first does not win', (t) async {
+      final (app, reads) = await live(t);
+      await t.tap(_chip);
+      await t.pump();
+      expect(reads, hasLength(1));
+      await bump(t, app);
+      expect(reads, hasLength(2),
+          reason: 'the in-flight read is superseded, not waited on');
+      reads[0].complete([mark('old', 1)]);
+      await t.pump();
+      reads[1].complete([mark('new', 2)]);
+      await t.pump();
+      await t.pump();
+      expect(_icon('old'), findsNothing);
+      expect(_icon('new'), findsOneWidget);
+    });
+
+    _test('the old read landing after the new one changes nothing', (t) async {
+      final (app, reads) = await live(t);
+      await t.tap(_chip);
+      await t.pump();
+      await bump(t, app);
+      expect(reads, hasLength(2));
+      reads[1].complete([mark('new', 2)]);
+      await t.pump();
+      await t.pump();
+      reads[0].complete([mark('old', 1)]);
+      await t.pump();
+      await t.pump();
+      expect(_icon('old'), findsNothing);
+      expect(_icon('new'), findsOneWidget);
+      expect(reads, hasLength(2), reason: 'no third read');
+    });
+  });
+
+  group('the toggle describes only what the reader loads', () {
+    test('no source the loader does not read is claimed', () {
+      final m = jsonDecode(File('lib/l10n/app_en.arb').readAsStringSync())
+          as Map<String, dynamic>;
+      final d = ((m['@metricDetailJournalMarksToggle']
+              as Map<String, dynamic>)['description'] as String)
+          .toLowerCase();
+      // loadAnnotations reads workouts, marked moments (incl. water taps),
+      // symptoms, assumed water and timed journal fields. Not meals or doses.
+      expect(d, isNot(contains('meal')));
+      expect(d, isNot(contains('dose')));
+      expect(d, contains('workout'));
+    });
+  });
+
   group('the chip\'s label is localised', () {
     test('every shipped language has it, non-empty', () {
       final arbs = Directory('lib/l10n')
@@ -162,4 +258,21 @@ void main() {
       }
     });
   });
+}
+
+/// Just enough repository for a live MetricDetail('calories').
+class _LiveRepo extends LocalRepository {
+  @override
+  Future<Map<String, dynamic>> getChart(String metric,
+          {int? from, int? to, Set<String> signals = const {}}) async =>
+      {
+        'points': [
+          for (var i = 0; i < 30; i++)
+            {'t': _noon(9, 5 + i), 'v': 2000.0 + i},
+        ],
+      };
+
+  @override
+  Future<List<String>> availableDays() async =>
+      [for (var i = 0; i < 40; i++) 'd$i'];
 }
