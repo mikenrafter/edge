@@ -1,0 +1,18 @@
+// FIXTURE: rawreader_ok_listed_migration_method
+// `LocalDb.upgradeRows` is in the fixture config's kMigrationMethods (symbol +
+// reason): a migration step that hands rows to its own caller is exempt ONLY
+// because it is listed, not because of its name.
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<List<Row>> upgradeRows() => _db.query('decoded_rr');
+}

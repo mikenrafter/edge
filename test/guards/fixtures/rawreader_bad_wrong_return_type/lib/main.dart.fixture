@@ -1,0 +1,20 @@
+// FIXTURE: rawreader_bad_wrong_return_type
+import 'package:openstrap_edge/util/raw_readers.dart';
+const kRawReaders = <RawReader>[
+  RawReader(#LocalDb.getOnehz, reason: 'fixture'),
+];
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  // Registered, but hands out a bare mutable list instead of a RowBatch.
+  Future<List<Row>> getOnehz() => _db.query('decoded_onehz');
+}

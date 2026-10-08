@@ -1,0 +1,10 @@
+// FIXTURE: unresolved_bad_stale_fingerprint
+import 'package:openstrap_edge/util/worker_entries.dart';
+
+const kUnresolvedOk = <UnresolvedOk>[
+  UnresolvedOk(file: 'main.dart', symbol: 'probe', source: 'x.gone()', ordinal: 0, reason: 'fixture'),
+];
+
+void probe(int x) {
+  x.toString();
+}

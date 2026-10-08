@@ -1,0 +1,9 @@
+// FIXTURE: a_ok_allow_listed_origin
+import 'package:openstrap_analytics/onehz.dart';
+
+// Allow-listed by (enclosing symbol, element) with a reason in the guard config.
+class Arm {
+  void arm() {
+    resetCardioObservations();
+  }
+}

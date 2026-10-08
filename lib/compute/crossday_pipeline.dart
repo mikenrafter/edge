@@ -25,6 +25,8 @@ import '../data/day_label.dart';
 // isolate safety. One grammar for "a required input was missing" across both
 // pipelines rather than a second one here.
 import 'onehz_pipeline.dart' show needInputNote;
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 /// Build the cross-day analytics bundle from a time-ordered (OLDEST FIRST) list
 /// of per-day records and the user profile.
@@ -47,12 +49,14 @@ import 'onehz_pipeline.dart' show needInputNote;
 /// that day (TS-11). A day with more than one is dropped by the analytics, not
 /// split — it belongs to no single type. Empty ⇒ `session_cost` is absent,
 /// which is also its state for the first ten sessions of any type.
+@heavy
 Map<String, dynamic> buildCrossDayBundle(
   List<Map<String, dynamic>> daysOldestFirst,
   Map<String, dynamic> profile, {
   List<String> cycleStartDates = const [],
   Map<String, List<String>> sessionTypesByDate = const {},
 }) {
+  WorkerAudit.entered('buildCrossDayBundle');
   final days = daysOldestFirst;
   final n = days.length;
 

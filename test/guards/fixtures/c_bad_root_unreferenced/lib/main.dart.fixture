@@ -1,0 +1,26 @@
+// FIXTURE: c_bad_root_unreferenced
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+
+// Never called, never registered: a heavy root with no dispatcher in sight.
+@heavy
+DayOut lonelyHeavy(DayArgs a) {
+  assertWorker();
+  return DayOut(readinessCompute(a.hr).value);
+}

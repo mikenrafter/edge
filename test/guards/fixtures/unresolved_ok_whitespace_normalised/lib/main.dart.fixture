@@ -1,0 +1,11 @@
+// FIXTURE: unresolved_ok_whitespace_normalised
+import 'package:openstrap_edge/util/worker_entries.dart';
+
+const kUnresolvedOk = <UnresolvedOk>[
+  UnresolvedOk(file: 'main.dart', symbol: 'probe', source: 'x.compute(1, 2)', ordinal: 0, reason: 'fixture'),
+];
+
+void probe(dynamic x) {
+  x.compute(1,
+      2);
+}

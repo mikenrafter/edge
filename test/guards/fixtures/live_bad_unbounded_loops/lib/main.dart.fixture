@@ -1,0 +1,29 @@
+// FIXTURE: live_bad_unbounded_loops
+import 'package:openstrap_edge/util/heavy.dart';
+
+@live
+double sumFor(List<double> samples) {
+  var s = 0.0;
+  for (final x in samples) {
+    s += x;
+  }
+  return s;
+}
+
+@live
+int whileLoop(int n) {
+  var i = 0;
+  while (i < n) {
+    i++;
+  }
+  return i;
+}
+
+@live
+int countFor(int n) {
+  var c = 0;
+  for (var i = 0; i < n; i++) {
+    c++;
+  }
+  return c;
+}

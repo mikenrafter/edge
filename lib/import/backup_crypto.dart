@@ -55,6 +55,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:pointycastle/export.dart';
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 /// File magic. Four bytes so a corrupted or mis-picked file fails on the first
 /// read rather than after a two-second key derivation.
@@ -206,6 +208,7 @@ GCMBlockCipher _gcm({
 ///
 /// [iterations] and [rng] are injectable for tests ONLY — production must take
 /// the defaults, and a test's fixed rng must never reach a real backup.
+@heavy
 Future<void> encryptBackupFile(
   File src,
   File dest,
@@ -213,6 +216,7 @@ Future<void> encryptBackupFile(
   int iterations = kDefaultIterations,
   Random? rng,
 }) async {
+  WorkerAudit.entered('encryptBackupFile');
   if (passphrase.isEmpty) {
     throw const BackupFormatException('a backup needs a passphrase');
   }
@@ -250,7 +254,9 @@ Future<void> encryptBackupFile(
 ///
 /// [dest] is DELETED on failure. A half-written plaintext file that fails
 /// authentication must never be left behind looking like a restore candidate.
+@heavy
 Future<void> decryptBackupFile(File src, File dest, String passphrase) async {
+  WorkerAudit.entered('decryptBackupFile');
   final raf = await src.open();
   Uint8List headerBytes;
   try {

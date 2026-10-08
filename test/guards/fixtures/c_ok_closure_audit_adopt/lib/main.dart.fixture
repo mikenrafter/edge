@@ -1,0 +1,30 @@
+// FIXTURE: c_ok_closure_audit_adopt
+// The audit hook (util/worker_audit.dart) may be adopted inside a dispatcher
+// closure, and its SendPort captured: the port is sendable and the call only
+// tells the audit where to report; it computes nothing.
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_audit.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#deriveHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@heavy
+double? deriveHeavy(List<double> hr) {
+  assertWorker();
+  return readinessCompute(hr).value;
+}
+
+class Caller {
+  Future<double?> go(List<double> hr) {
+    final audit = WorkerAudit.auditPort;
+    return Isolate.run(() {
+      WorkerAudit.adopt(audit);
+      return deriveHeavy(hr);
+    });
+  }
+}

@@ -1,0 +1,41 @@
+// FIXTURE: capture_bad_this_cancellable
+import 'dart:isolate';
+import 'package:fixture_dispatch/dispatch.dart';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#deriveHeavy, dispatcher: Dispatcher.cancellable, reason: 'fixture'),
+];
+
+
+@heavy
+DayOut deriveHeavy(DayArgs a) {
+  assertWorker();
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+
+class Repo {
+  final List<double> hr;
+  Repo(this.hr);
+
+  Future<DayOut> derive(int n) => runCancellable(
+      () => deriveHeavy(DayArgs(n, hr)), const Duration(seconds: 5),
+      label: 'fx');
+}

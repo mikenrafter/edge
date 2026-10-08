@@ -1,0 +1,16 @@
+// FIXTURE: rawreader_ok_unrelated_method
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<List<Row>> settings() => _db.query('settings');
+}

@@ -40,6 +40,8 @@ import 'local_repository.dart';
 import 'series_codec.dart';
 import '../gps/route_models.dart';
 import '../gps/route_math.dart' as rmath;
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 class LocalRepositoryImpl extends LocalRepository {
   LocalRepositoryImpl({required this.getProfileMap, this.saveProfileFields});
@@ -4281,7 +4283,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // Decode + HRV run OFF the UI isolate. The spot-check buffer grows over the
     // multi-minute measurement, so decoding every frame + RR correction + HRV on
     // the main isolate was real per-tick work that hung the UI on slower phones.
-    return Isolate.run(() => _spotCheckCompute(records));
+    return Isolate.run(() => _spotCheckComputeHeavy(records));
   }
 
   @override
@@ -4292,7 +4294,7 @@ class LocalRepositoryImpl extends LocalRepository {
     // Offloaded: cardiac coherence is a 400-point Lomb-Scargle PSD recomputed
     // over the FULL (growing) session buffer every 20 s — pure sin/cos work that
     // was running on the UI isolate and is a confirmed foreground-hang source.
-    return Isolate.run(() => _breathingCoherenceCompute(records, pacedHz));
+    return Isolate.run(() => _breathingCoherenceComputeHeavy(records, pacedHz));
   }
 
   // ── small series helpers ─────────────────────────────────────────────────────
@@ -4662,7 +4664,7 @@ Map<String, dynamic>? stressSummaryForToday(
 // functions + a List<String> of hex frames in, a plain Map out — all sendable.
 
 /// Decode RR beats from the live RR-bearing frames (0x28 / R10), shared by
-/// [_spotCheckCompute] and [_breathingCoherenceCompute] (CodeRabbit noted the
+/// [_spotCheckComputeHeavy] and [_breathingCoherenceComputeHeavy] (CodeRabbit noted the
 /// duplication on edge#308). rrTsMs carries each beat's packet timestamp
 /// (ms) alongside it — same seam getNightBeats uses (line ~867) — so
 /// correctRr can re-anchor at a dropout and hrvTime's/coherence's seam
@@ -4697,7 +4699,9 @@ Map<String, dynamic>? stressSummaryForToday(
   return (rrMs: rrMs, rrTsMs: rrTsMs);
 }
 
-Map<String, dynamic> _spotCheckCompute(List<String> records) {
+@heavy
+Map<String, dynamic> _spotCheckComputeHeavy(List<String> records) {
+  WorkerAudit.entered('_spotCheckComputeHeavy');
   final decoded = _decodeLiveRr(records);
   final rrMs = decoded.rrMs;
   final rrTsMs = decoded.rrTsMs;
@@ -4725,10 +4729,12 @@ Map<String, dynamic> _spotCheckCompute(List<String> records) {
   };
 }
 
-Map<String, dynamic> _breathingCoherenceCompute(
+@heavy
+Map<String, dynamic> _breathingCoherenceComputeHeavy(
   List<String> records,
   double? pacedHz,
 ) {
+  WorkerAudit.entered('_breathingCoherenceComputeHeavy');
   // Decode RR from the live RR-bearing frames (0x28 / R10) via the shared
   // _decodeLiveRr helper (same seam spotCheck uses), then run McCraty &
   // Zayas 2014 cardiac coherence. rrTsMs lets correctRr re-anchor at a real

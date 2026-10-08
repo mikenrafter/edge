@@ -18,6 +18,8 @@ import '../util/log_file.dart';
 import '../wake/wake_orchestrator.dart';
 import '../wake/wake_stores.dart';
 import 'dev_log.dart';
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 /// Write the export ZIP into [outDir] and return it. [wakeTrace] defaults to
 /// the newest rows of the real trace store; a trace that cannot be read is
@@ -99,9 +101,11 @@ Future<bool> shareDevLog(
 // Its own function so the closure captures only plain values.
 Future<void> _zipOffIsolate(
         String outPath, List<List<String>> entries, String traceJson) =>
-    Isolate.run(() => _writeZip(outPath, entries, traceJson));
+    Isolate.run(() => _writeZipHeavy(outPath, entries, traceJson));
 
-void _writeZip(String outPath, List<List<String>> entries, String traceJson) {
+@heavy
+void _writeZipHeavy(String outPath, List<List<String>> entries, String traceJson) {
+  WorkerAudit.entered('_writeZipHeavy');
   final a = Archive();
   for (final e in entries) {
     try {
