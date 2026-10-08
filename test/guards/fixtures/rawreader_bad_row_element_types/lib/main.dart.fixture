@@ -1,0 +1,46 @@
+// FIXTURE: rawreader_bad_row_element_types
+//
+// Every row-element spelling a reader can hand out: Map<String, Object?>,
+// Map<String, dynamic> (through a Future, synchronously, lazily, as a stream),
+// RowBatch (also as a stream element), and a Map whose values are row
+// collections. Each of these is a raw reader that is not registered.
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+  List<Row> querySync(String table) => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<List<Map<String, Object?>>> objectRows() => _db.query('decoded_onehz');
+
+  Future<List<Map<String, dynamic>>> dynamicRows() async =>
+      [for (final r in await _db.query('decoded_rr')) {...r}];
+
+  List<Row> syncRows() => _db.querySync('raw_records');
+
+  Iterable<Map<String, dynamic>> lazyRows() =>
+      _db.querySync('raw_archive').map((r) => {...r});
+
+  Stream<Map<String, Object?>> rowStream() async* {
+    yield* Stream.fromIterable(await _db.query('decoded_onehz'));
+  }
+
+  Stream<RowBatch> batches() async* {
+    yield RowBatch.wrap(await _db.query('decoded_onehz'));
+  }
+
+  Future<Map<String, List<Row>>> rowsByDay() async => {
+        'd': await _db.query('decoded_rr'),
+      };
+
+  Future<Map<String, List<Map<String, dynamic>>>> dynamicRowsByDay() async => {
+        'd': [for (final r in await _db.query('raw_records')) {...r}],
+      };
+}

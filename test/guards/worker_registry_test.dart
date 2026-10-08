@@ -28,6 +28,11 @@ const kExpected = <String, Dispatcher>{
   'observeNaturalSync': Dispatcher.run,
   'encryptBackupFile': Dispatcher.run,
   'decryptBackupFile': Dispatcher.run,
+  // The sample archive (lib/data/sample_heavy.dart): encode / carve / reconstruct
+  // were inline `Isolate.run` closures (baselined as dispatcherClosureContract).
+  'encodeSampleSignalsHeavy': Dispatcher.run,
+  'carveSamplePartHeavy': Dispatcher.run,
+  'reconstructSamplePartsHeavy': Dispatcher.run,
 };
 
 void main() {

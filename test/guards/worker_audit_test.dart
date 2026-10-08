@@ -102,4 +102,80 @@ void main() {
       expect(WorkerAudit.auditPort, isNot(same(first)));
     });
   });
+
+  // Per-dispatch correlation (follow-up to design 02 rev 8): a dispatch gets an
+  // id, hands it to its worker with the audit port, and every report from that
+  // worker echoes it, so a dispatch is matched by the reports IT caused.
+  group('per-dispatch tokens', () {
+    setUp(() {
+      entries.clear();
+      dispatches.clear();
+      WorkerAudit.onEntry = entries.add;
+      WorkerAudit.onDispatch = dispatches.add;
+    });
+
+    test('dispatched() returns the id its DispatchEvent carries; ids are '
+        'positive and distinct', () {
+      final a = WorkerAudit.dispatched(Dispatcher.run, 'one');
+      final b = WorkerAudit.dispatched(Dispatcher.run, 'two');
+      expect(a, greaterThan(0));
+      expect(b, isNot(a));
+      expect(dispatches.map((d) => d.id), [a, b]);
+    });
+
+    test('a worker reached through wrap(work, id) reports that id', () async {
+      final id = WorkerAudit.dispatched(Dispatcher.run, 'probe');
+      expect(await Isolate.run(WorkerAudit.wrap(_entryLikeWork, id)), 7);
+      await pumpEventQueue();
+      expect(entries.single.entry, 'fakeEntry');
+      expect(entries.single.dispatchId, id);
+    });
+
+    test('two workers report their OWN dispatch ids', () async {
+      final a = WorkerAudit.dispatched(Dispatcher.run, 'a');
+      final b = WorkerAudit.dispatched(Dispatcher.run, 'b');
+      await Isolate.run(WorkerAudit.wrap(_entryLikeWork, b));
+      await Isolate.run(WorkerAudit.wrap(_entryLikeWork, a));
+      await pumpEventQueue();
+      expect([for (final e in entries) e.dispatchId], [b, a]);
+    });
+
+    test('an inner entry call in the same worker reports the worker\'s id',
+        () async {
+      final id = WorkerAudit.dispatched(Dispatcher.run, 'outer');
+      await Isolate.run(WorkerAudit.wrap(() {
+        _entryLikeWork();
+        return _entryLikeWork();
+      }, id));
+      await pumpEventQueue();
+      expect(entries, hasLength(2));
+      expect(entries.every((e) => e.dispatchId == id), isTrue);
+    });
+
+    test('a direct call on this isolate has no dispatch id', () {
+      _entryLikeWork();
+      expect(entries.single.dispatchId, isNull);
+    });
+
+    test('wrap(work) without an id reports a null dispatch id (legacy callers)',
+        () async {
+      await Isolate.run(WorkerAudit.wrap(_entryLikeWork));
+      await pumpEventQueue();
+      expect(entries.single.dispatchId, isNull);
+    });
+
+    test('the dispatch id survives the audit port message', () {
+      const e = EntryEvent('x', 'iso', dispatchId: 5);
+      expect(EntryEvent.fromMessage(e.toMessage()).dispatchId, 5);
+      const n = EntryEvent('x', 'iso');
+      expect(EntryEvent.fromMessage(n.toMessage()).dispatchId, isNull);
+    });
+
+    test('production: with no hook, wrap(work, id) is still the closure itself',
+        () {
+      WorkerAudit.reset();
+      int work() => 1;
+      expect(identical(WorkerAudit.wrap(work, 3), work), isTrue);
+    });
+  });
 }

@@ -37,7 +37,13 @@ class DispatchEvent {
   /// The isolate that dispatched (see [WorkerAudit.currentIsolateId]).
   final String isolateId;
   final StackTrace stack;
-  const DispatchEvent(this.kind, this.label, this.isolateId, this.stack);
+
+  /// Per-dispatch token (RED stub: always 0, real ids start at 1). The worker
+  /// echoes it in every [EntryEvent] it reports, so a dispatch is matched by the
+  /// entry reports it caused and by no others.
+  final int id;
+  const DispatchEvent(this.kind, this.label, this.isolateId, this.stack,
+      {this.id = 0});
 
   @override
   String toString() => '${kind.name}:$label';
@@ -47,7 +53,11 @@ class DispatchEvent {
 class EntryEvent {
   final String entry;
   final String isolateId;
-  const EntryEvent(this.entry, this.isolateId);
+
+  /// The [DispatchEvent.id] of the dispatch whose worker reported this entry
+  /// (RED stub: never set). Null for an entry called directly, with no dispatch.
+  final int? dispatchId;
+  const EntryEvent(this.entry, this.isolateId, {this.dispatchId});
 
   /// The plain, sendable form sent through the audit port.
   List<String> toMessage() => <String>[entry, isolateId];
@@ -100,7 +110,8 @@ class WorkerAudit {
   /// Closure dispatchers: returns [work] itself when no hook is installed,
   /// otherwise a closure that adopts the audit port in the worker, then runs
   /// [work].
-  static FutureOr<T> Function() wrap<T>(FutureOr<T> Function() work) {
+  static FutureOr<T> Function() wrap<T>(FutureOr<T> Function() work,
+      [int? dispatchId]) {
     final port = auditPort;
     if (port == null) return work;
     return () {
@@ -110,16 +121,18 @@ class WorkerAudit {
   }
 
   /// Worker side: report this isolate's entries to [port]. Null does nothing.
-  static void adopt(SendPort? port) {
+  static void adopt(SendPort? port, [int? dispatchId]) {
     if (port != null) _report = port;
   }
 
-  /// An approved dispatcher is about to run work on another isolate.
-  static void dispatched(Dispatcher kind, String label) {
+  /// An approved dispatcher is about to run work on another isolate. Returns
+  /// the dispatch's id (RED stub: always 0).
+  static int dispatched(Dispatcher kind, String label) {
     final hook = onDispatch;
     if (hook != null) {
       hook(DispatchEvent(kind, label, currentIsolateId, StackTrace.current));
     }
+    return 0;
   }
 
   /// A registered worker entry started, in the isolate it runs in.

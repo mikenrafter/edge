@@ -31,6 +31,8 @@ import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
+import 'package:openstrap_edge/data/sample_heavy.dart';
+import 'package:openstrap_edge/data/sample_import.dart' show SampleCarved;
 import 'package:openstrap_edge/ecg/ecg_export.dart';
 import 'package:openstrap_edge/util/worker_init.dart';
 import 'package:openstrap_edge/import/backup_crypto.dart';
@@ -38,6 +40,7 @@ import 'package:openstrap_edge/wake/natural_wake.dart';
 
 import '../../support/day_stream_fixture.dart';
 import '../../support/incremental_day_fixture.dart';
+import '../../support/sample_heavy_fixtures.dart';
 import 'sendability.dart';
 
 typedef EntrySample = ({
@@ -234,6 +237,40 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
           () => encryptBackupFile(src, dest, 'pw', iterations: 1000));
       expect(dest.existsSync(), isTrue);
       expect(dest.readAsBytesSync(), isNot(contains(isNull)));
+    },
+  ),
+  'encodeSampleSignalsHeavy': (
+    roundTrip: () async {
+      // Per-signal slots (Float64List with NaN gaps) and resolved modes in; the
+      // encoded parts out. Worker answer == direct answer, and the blobs equal
+      // SampleCodec.encode (test/sample_archive/sendable_*_test.dart).
+      final input = sampleEncodeInput();
+      await expectIsolateRoundTrip<SampleEncodeInput>(input);
+      await _sameInWorker(
+          () => encodeSampleSignalsHeavy(sampleHeavyInputs, input),
+          json: (Map<String, SampleEncodedPart> r) => [
+                for (final e in r.entries)
+                  [e.key, e.value.blob.toList(), e.value.nValid]
+              ]);
+    },
+  ),
+  'carveSamplePartHeavy': (
+    roundTrip: () async {
+      final input = sampleCarveInput();
+      await expectIsolateRoundTrip<SampleCarveInput>(input);
+      await _sameInWorker(() => carveSamplePartHeavy(sampleHeavyInputs, input),
+          json: (SampleCarved? c) =>
+              c == null ? null : [c.blob.toList(), c.nValid, c.rmsErr, c.maxErr]);
+    },
+  ),
+  'reconstructSamplePartsHeavy': (
+    roundTrip: () async {
+      final input = sampleReconstructInput();
+      await expectIsolateRoundTrip<SampleReconstructInput>(input);
+      await _sameInWorker(
+          () => reconstructSamplePartsHeavy(sampleHeavyInputs, input),
+          json: (({int originSec, List<double?> samples}) r) =>
+              [r.originSec, r.samples]);
     },
   ),
   'decryptBackupFile': (

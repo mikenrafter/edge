@@ -1,0 +1,51 @@
+// FIXTURE: rawreader_ok_scalar_collections
+//
+// A collection return type is rows only when its ELEMENT type is a row. These
+// LocalDb methods all touch a raw table, but what they hand out is a list / set
+// / stream of scalars (timestamps, ids, hr values), which is not a raw reader.
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+  List<Row> querySync(String table) => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<List<int>> recTimestamps() async =>
+      [for (final r in await _db.query('decoded_onehz')) r['rec_ts'] as int];
+
+  Future<List<String>> deviceIds() async =>
+      [for (final r in await _db.query('raw_records')) '${r['device_id']}'];
+
+  Future<List<double>> hrValues() async =>
+      [for (final r in await _db.query('decoded_onehz')) (r['hr'] as num).toDouble()];
+
+  Future<List<int?>> maybeCounters() async =>
+      [for (final r in await _db.query('decoded_rr')) r['counter'] as int?];
+
+  // Synchronous variants and the other collection shapes.
+  List<int> recTimestampsNow() =>
+      [for (final r in _db.querySync('decoded_onehz')) r['rec_ts'] as int];
+
+  Iterable<int> lazyTimestamps() =>
+      _db.querySync('decoded_rr').map((r) => r['rec_ts'] as int);
+
+  Future<Set<String>> distinctDays() async =>
+      {for (final r in await _db.query('raw_archive')) '${r['day']}'};
+
+  Stream<int> timestampStream() async* {
+    for (final r in await _db.query('raw_records')) {
+      yield r['rec_ts'] as int;
+    }
+  }
+
+  // A Map whose VALUES are scalar collections is not rows either.
+  Future<Map<String, List<int>>> timestampsByDevice() async => {
+        'd': [for (final r in await _db.query('decoded_onehz')) r['rec_ts'] as int],
+      };
+}

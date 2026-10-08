@@ -20,7 +20,13 @@
 //      worker, so before this a passing test proved dispatch, not which worker
 //      ran;
 //   3. each spawn / run dispatch is matched by ITS registered entry, in the
-//      registered dispatcher kind.
+//      registered dispatcher kind, and by the entry reports THAT dispatch caused:
+//      the dispatcher hands the worker a per-dispatch token (`DispatchEvent.id`),
+//      every report echoes it (`EntryEvent.dispatchId`), and
+//      `dispatchCorrelationProblems` matches by token. Matching by the SET of
+//      entries seen anywhere in the run let two dispatches be satisfied by one
+//      report and an unmapped cancellable dispatch pass on any other dispatch's
+//      cancellable entry.
 //
 // The Android boot wake (`HeadlessBoot.run`) is driven with fakes for the
 // platform edges AND for the BLE drain (`runHeadlessSync` needs a band); the
@@ -34,6 +40,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 import 'package:openstrap_edge/compute/calc_power_policy.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/sample_archive.dart';
 import 'package:openstrap_edge/sync/background_sync.dart';
 import 'package:openstrap_edge/sync/band_ownership.dart';
 import 'package:openstrap_edge/sync/headless_boot.dart';
@@ -50,6 +57,7 @@ import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import '../support/day_stream_fixture.dart';
 import '../support/incremental_day_fixture.dart';
 import '../support/fake_power_source.dart';
+import 'support/dispatch_correlation.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -109,6 +117,9 @@ void main() {
     'derivation prepare': 'derivationPrepareWorker',
     'day blocks': '_dayBlocksIsolateEntry',
     'kcal minutes': 'kcalMinutesForDayHeavy',
+    'sample encode': 'encodeSampleSignalsHeavy',
+    'sample carve': 'carveSamplePartHeavy',
+    'sample reconstruct': 'reconstructSamplePartsHeavy',
   };
   const cancellableEntries = {
     'deriveDayBundle',
@@ -152,24 +163,126 @@ void main() {
               'isolate, not in a worker');
     }
 
-    // Every dispatch is matched by its registered entry, dispatched the way the
-    // registry says. (An entry can also run INSIDE a worker as an inner heavy
-    // call, e.g. kcalMinutesForDayHeavy from the day-blocks pipeline; that is why
-    // the check goes dispatch -> entry, not entry -> dispatch.)
-    for (final d in dispatches) {
-      final want = entryOfLabel[d.label];
-      final seen = {for (final e in entries) e.entry};
-      if (want != null) {
-        expect(seen, contains(want), reason: '$path: dispatch "$d" ran no $want');
-        expect(registered[want], d.kind, reason: '$want is registered as ${registered[want]}');
-      } else {
-        expect(d.kind, Dispatcher.cancellable, reason: '$path: unmapped "$d"');
-        expect(seen.intersection(cancellableEntries), isNotEmpty,
-            reason: '$path: cancellable dispatch "${d.label}" ran no pipeline '
-                'entry (saw $seen)');
-      }
-    }
+    // Every dispatch is matched by the entry reports it caused, dispatched the
+    // way the registry says. (An entry can also run INSIDE a worker as an inner
+    // heavy call, e.g. kcalMinutesForDayHeavy from the day-blocks pipeline; it
+    // reports under the token of the dispatch whose worker it ran in.)
+    expect(entries.where((e) => e.dispatchId == null), isEmpty,
+        reason: '$path: a worker reported an entry with no dispatch token');
+    expect(
+        dispatchCorrelationProblems(dispatches, entries,
+            entryOfLabel: entryOfLabel,
+            dispatcherOf: registered,
+            cancellableEntries: cancellableEntries),
+        isEmpty,
+        reason: '$path: dispatches vs the entry reports they caused');
   }
+
+  // ---- detector self-tests: dispatch <-> entry correlation ------------------
+  // Synthetic events only (no worker): they pin what `dispatchCorrelationProblems`
+  // accepts. Ids are the per-dispatch tokens; a report names the dispatch whose
+  // worker it ran in.
+  group('detector self-test: per-dispatch correlation', () {
+    DispatchEvent dispatch(int id, Dispatcher kind, String label) =>
+        DispatchEvent(kind, label, 'ui', StackTrace.empty, id: id);
+    EntryEvent report(String entry, int? dispatchId) =>
+        EntryEvent(entry, 'worker$dispatchId', dispatchId: dispatchId);
+    List<String> check(List<DispatchEvent> d, List<EntryEvent> e) =>
+        dispatchCorrelationProblems(d, e,
+            entryOfLabel: entryOfLabel,
+            dispatcherOf: registered,
+            cancellableEntries: cancellableEntries);
+
+    test('(a) two dispatches with only one entry report fail', () {
+      final problems = check([
+        dispatch(1, Dispatcher.run, 'kcal minutes'),
+        dispatch(2, Dispatcher.run, 'kcal minutes'),
+      ], [
+        report('kcalMinutesForDayHeavy', 1),
+      ]);
+      expect(problems, hasLength(1), reason: '$problems');
+      expect(problems.single, allOf(contains('kcal minutes'), contains('2')),
+          reason: 'names the dispatch that ran nothing');
+    });
+
+    test('(b) a dispatch whose entry ran under a DIFFERENT dispatch\'s token '
+        'fails', () {
+      // The set of entries seen is {_dayBlocksIsolateEntry, kcalMinutesForDayHeavy},
+      // which "satisfies" both labels; but dispatch 1 itself reported nothing.
+      final problems = check([
+        dispatch(1, Dispatcher.run, 'kcal minutes'),
+        dispatch(2, Dispatcher.spawn, 'day blocks'),
+      ], [
+        report('_dayBlocksIsolateEntry', 2),
+        report('kcalMinutesForDayHeavy', 2),
+      ]);
+      expect(problems, isNotEmpty);
+      expect(problems.join('\n'), contains('kcal minutes'));
+      expect(problems.join('\n'), isNot(contains('day blocks')),
+          reason: 'dispatch 2 is satisfied by its own entry');
+    });
+
+    test('(b2) an unmapped cancellable dispatch needs a cancellable entry '
+        'under ITS token, not under another dispatch\'s', () {
+      final problems = check([
+        dispatch(1, Dispatcher.cancellable, 'derive day'),
+        dispatch(2, Dispatcher.cancellable, 'cross day'),
+      ], [
+        report('kcalMinutesForDayHeavy', 1), // not a pipeline entry
+        report('buildCrossDayBundle', 2), // fine for dispatch 2 only
+      ]);
+      expect(problems, hasLength(1), reason: '$problems');
+      expect(problems.single, contains('derive day'));
+    });
+
+    test('(b3) a report under no token, or under a token no dispatch has, '
+        'fails', () {
+      final d = [dispatch(1, Dispatcher.run, 'kcal minutes')];
+      expect(
+          check(d, [
+            report('kcalMinutesForDayHeavy', 1),
+            report('kcalMinutesForDayHeavy', null),
+          ]),
+          isNotEmpty,
+          reason: 'a worker report with no token');
+      expect(
+          check(d, [
+            report('kcalMinutesForDayHeavy', 1),
+            report('kcalMinutesForDayHeavy', 99),
+          ]),
+          isNotEmpty,
+          reason: 'a token that names no dispatch');
+    });
+
+    test('(b4) a mapped dispatch reported under the wrong dispatcher kind '
+        'fails', () {
+      expect(
+          check([dispatch(1, Dispatcher.spawn, 'kcal minutes')],
+              [report('kcalMinutesForDayHeavy', 1)]),
+          isNotEmpty,
+          reason: 'kcalMinutesForDayHeavy is registered as Dispatcher.run');
+    });
+
+    test('(c) the correctly correlated case passes, inner entries included',
+        () {
+      expect(
+          check([
+            dispatch(1, Dispatcher.spawn, 'derivation prepare'),
+            dispatch(2, Dispatcher.spawn, 'day blocks'),
+            dispatch(3, Dispatcher.run, 'kcal minutes'),
+            dispatch(4, Dispatcher.run, 'kcal minutes'),
+            dispatch(5, Dispatcher.cancellable, 'derive day'),
+          ], [
+            report('derivationPrepareWorker', 1),
+            report('_dayBlocksIsolateEntry', 2),
+            report('kcalMinutesForDayHeavy', 2), // inner call in the day-blocks worker
+            report('kcalMinutesForDayHeavy', 3),
+            report('kcalMinutesForDayHeavy', 4),
+            report('deriveDayBundle', 5),
+          ]),
+          isEmpty);
+    });
+  });
 
   test('detector self-test: a DIRECT call of a registered entry on this isolate '
       'is seen, as this isolate', () {
@@ -178,6 +291,41 @@ void main() {
     expect(entries.single.isolateId, WorkerAudit.currentIsolateId);
     expect(dispatches, isEmpty);
   });
+
+  test('a background derive that prunes an old day archives it through the '
+      'registered sample encode entry', () async {
+    // A second block six days after the seeded 2026-01-10 puts the data edge
+    // past the 3-day raw retention, so the full-history pass archives the old day
+    // (SampleArchiver.archiveBefore, called from the engine's raw prune) before
+    // its rows go.
+    final later = DateTime.utc(2026, 1, 16, 8).millisecondsSinceEpoch ~/ 1000;
+    await writeSeconds(
+        synthBeats(SynthBeats(seed: 6, startSec: later, seconds: seconds)),
+        synthAccel(8, later, later + seconds + 60),
+        later,
+        later + seconds);
+    await _saveMode(CalcPowerMode.balanced);
+    expect(await IosBgTask.runForTest(syncOnly: false), isTrue);
+    expect(await SampleArchiver.rows('2026-01-10'), isNotEmpty,
+        reason: 'precondition: the scenario archived the old day');
+    await expectOnlyApprovedDispatch('IosBgTask full (prune)');
+
+    final encode = [
+      for (final d in dispatches)
+        if (d.label == 'sample encode') d
+    ];
+    expect(encode, isNotEmpty,
+        reason: 'the archive encode is dispatched through an approved '
+            'dispatcher, not an anonymous Isolate.run');
+    for (final d in encode) {
+      expect(d.kind, Dispatcher.run);
+      expect(
+          [for (final e in entries) if (e.dispatchId == d.id) e.entry],
+          contains('encodeSampleSignalsHeavy'),
+          reason: 'dispatch ${d.id} ran the registered encode entry');
+    }
+  });
+
 
   test('iOS BGProcessingTask (FULL profile) dispatches its heavy derive', () async {
     await _saveMode(CalcPowerMode.balanced);

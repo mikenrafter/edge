@@ -406,6 +406,30 @@ final Map<String, Expect> kExpectations = {
     },
     counts: {HeavyRule.rawReaderUnregistered: 3},
   ),
+  // exposesRows decides by the ELEMENT type of the collection, not by "is a
+  // List/Iterable/Set/Stream of something": a list, set or stream of scalars
+  // (List<int>, List<String>, Future<List<double>>, Stream<int>, ...) is not a
+  // raw reader even when the method reads a raw table.
+  'rawreader_ok_scalar_collections': const Expect.clean(),
+  // ...and every row-element spelling still is one: Map<String, Object?>,
+  // Map<String, dynamic>, RowBatch (also inside a Stream), and a Map whose
+  // values are row collections.
+  'rawreader_bad_row_element_types': const Expect(
+    {HeavyRule.rawReaderUnregistered},
+    symbols: {
+      HeavyRule.rawReaderUnregistered: {
+        'LocalDb.objectRows',
+        'LocalDb.dynamicRows',
+        'LocalDb.syncRows',
+        'LocalDb.lazyRows',
+        'LocalDb.rowStream',
+        'LocalDb.batches',
+        'LocalDb.rowsByDay',
+        'LocalDb.dynamicRowsByDay',
+      },
+    },
+    counts: {HeavyRule.rawReaderUnregistered: 8},
+  ),
 };
 
 void main() {
