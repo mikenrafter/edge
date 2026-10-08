@@ -14,6 +14,8 @@
 // Real sqflite_ffi, same idiom as gestures/moments/schema65_migration_test.
 // NOTE for the green phase: gestures/moments/schema65_migration_test.dart pins
 // `schemaVersion == 65` exactly and must become `>= 65`.
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -85,7 +87,7 @@ Map<String, Object?> _row({String day = '2026-10-06', int v = 1}) => {
       'day_id': day,
       'signal': 'hr',
       'codec_version': v,
-      'blob': [1, 2, 3],
+      'blob': Uint8List.fromList([1, 2, 3]),
       'n_valid': 3,
       'rms_err': 0.1,
       'max_err': 0.2,

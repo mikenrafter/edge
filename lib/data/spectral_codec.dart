@@ -3,9 +3,6 @@
 // record can outlive `rawRetentionDays` at much higher fidelity than the daily
 // scalars alone.
 //
-// RED PHASE: every method below is a throwing stub. The doc comments pin the
-// contract the tests in test/spectral/ hold the green phase to.
-//
 // DESIGN (pinned by the tests, challenged in the report):
 //   * SEGMENT transform, not a whole-day Fourier series: DCT-II per segment (no
 //     periodicity assumption, so a step costs one segment, not the day). Two
@@ -20,8 +17,12 @@
 //         (240 s) windows over the day index, clipped to valid runs. The
 //         comparison baseline for the experiment harness.
 //   * The encoder keeps the FEWEST coefficients per segment that still meet the
-//     signal's error bound ([SpectralSignalSpec.maxRms] / [maxAbs]), then
-//     quantizes with [SpectralSignalSpec.quantum]. The bound is a HARD
+//     signal's error bound ([SpectralSignalSpec.maxRms] / [maxAbs]). The DCT is
+//     orthonormal, so the coefficients are chosen by the squared error each
+//     removes once quantized (a SPARSE choice, not a low-pass prefix: a signal
+//     with a fast periodic component costs a couple of coefficients, not all of
+//     them), the DC term always first. Coefficients are quantized with
+//     [SpectralSignalSpec.quantum]. The bound is a HARD
 //     contract: on a signal the transform cannot compress (white noise) the
 //     encoder spends bytes until the bound holds, it never returns a blob that
 //     violates it.
@@ -29,20 +30,26 @@
 //     per-cell count/min/mean/max over 60 s, 900 s, 3600 s and the whole series,
 //     computed from the RAW samples at encode time (never from the
 //     reconstruction), gaps honoured (count 0 => no stats), readable without
-//     touching a coefficient; and (b) coefficients ordered low-order first, so
-//     a reader can stop early ([SpectralCodec.decodeCoarse]). Layout order:
-//     header, pyramid, segment table, coefficients (see
-//     [SpectralHeader.coefficientOffset]).
+//     touching a coefficient; and (b) each segment's coefficients stored in
+//     ascending order, so a reader can stop at any order
+//     ([SpectralCodec.decodeCoarse], [SpectralCodec.progressive]). Layout:
+//     header, validity mask, pyramid, segment table (each section raw-deflate),
+//     then the coefficient section (see [SpectralHeader.coefficientOffset]);
+//     everything before the coefficients is readable from that prefix alone.
 //   * Absence is never interpolated or imputed (AGENTS invariant 3). Missing
 //     seconds are stored as a run-length validity mask; only valid runs are
 //     transformed; decode returns null exactly where the input had null.
 //   * The reported [SpectralStats] error is MEASURED by decoding, not estimated.
 //   * Deterministic (same input, same bytes, on any isolate) and PURE: no I/O
-//     beyond dart:typed_data / dart:convert / dart:io zlib, no plugins, no
-//     clock. Safe on any isolate.
+//     beyond dart:typed_data and dart:io's in-memory zlib, no plugins, no
+//     clock. Safe on any isolate. The encoder's fit check and the decoder run
+//     the SAME synthesis function, so the error it certifies is the error a
+//     reader gets, bit for bit.
 //   * A reconstruction is an approximation. Nothing derived may read it
 //     (invariant 3) — `lib/compute` must never reference this file.
 
+import 'dart:io' show ZLibCodec;
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 /// One signal's tolerances. [quantum] is the coefficient quantizer step (stored
@@ -54,7 +61,7 @@ class SpectralSignalSpec {
     required this.maxRms,
     required this.maxAbs,
     this.blockSeconds = 240,
-    this.maxCoefficients = 48,
+    this.maxCoefficients = 64,
   });
 
   final String id;
@@ -94,7 +101,7 @@ class SpectralStats {
   final int nSamples;
   final int nValid;
 
-  /// Non-zero quantized coefficients actually stored.
+  /// Coefficients actually stored, over all segments.
   final int coefficientCount;
 
   final int segmentCount;
@@ -153,7 +160,7 @@ class SpectralSegment {
   const SpectralSegment(this.start, this.length, this.coefficientCount);
   final int start, length;
 
-  /// Non-zero quantized coefficients stored for this segment.
+  /// Coefficients stored for this segment (DC included).
   final int coefficientCount;
 }
 
@@ -192,6 +199,11 @@ class SpectralCodec {
   /// any other version is refused by [decode], never guessed at.
   static const int codecVersion = 1;
 
+  /// Longest adaptive segment, in 60 s extensions (30 x 60 = 30 min).
+  static const int _maxExtensions = 30;
+
+  static const List<int> _magic = [0x4f, 0x53, 0x50, 0x58]; // "OSPX"
+
   /// Signals the archive covers and their bounds. Justification:
   ///  * `hr` (bpm): the owner's bound, RMS <= 1 and max <= 3. Inside a zone
   ///    width and well under a night's beat-to-beat spread.
@@ -202,7 +214,8 @@ class SpectralCodec {
   ///    few tenths of a degree; RMS <= 0.05, max <= 0.15 keeps it.
   /// Raw spo2 red/ir and the counters (`step_count`, `activity_class`) are
   /// deliberately NOT here: ratios of raw ADC channels and monotone counters
-  /// are not what a smoothness transform is for (see the report).
+  /// are not what a smoothness transform is for (a lossless / run-length
+  /// archive could cover them later).
   static const Map<String, SpectralSignalSpec> specs = {
     'hr': SpectralSignalSpec(
         id: 'hr', quantum: 0.5, maxRms: 1.0, maxAbs: 3.0),
@@ -216,52 +229,791 @@ class SpectralCodec {
         id: 'skin_temp_c', quantum: 0.01, maxRms: 0.05, maxAbs: 0.15),
   };
 
+  // ── encode ─────────────────────────────────────────────────────────────────
+
   /// Encode [samples] (index = second slot of the local day, null = absent).
   /// Throws [ArgumentError] for an unknown [signal] or a non-finite value
   /// (NaN is not "absent"; null is).
   static SpectralEncoding encode(String signal, List<double?> samples,
-          {SpectralMode mode = SpectralMode.adaptive}) =>
-      throw UnimplementedError('SpectralCodec.encode');
+      {SpectralMode mode = SpectralMode.adaptive}) {
+    final spec = specs[signal];
+    if (spec == null) throw ArgumentError.value(signal, 'signal', 'unknown');
+    final n = samples.length;
+    var nValid = 0;
+    for (final v in samples) {
+      if (v == null) continue;
+      if (!v.isFinite) {
+        throw ArgumentError.value(v, 'samples', 'non-finite; use null for absent');
+      }
+      nValid++;
+    }
+
+    // Valid runs [start, end).
+    final runs = <(int, int)>[];
+    for (var i = 0; i < n;) {
+      if (samples[i] == null) {
+        i++;
+        continue;
+      }
+      var j = i;
+      while (j < n && samples[j] != null) {
+        j++;
+      }
+      runs.add((i, j));
+      i = j;
+    }
+
+    final tables = _Tables();
+    final segs = <_Seg>[];
+    for (final (a, b) in runs) {
+      if (mode == SpectralMode.adaptive) {
+        _segmentRunAdaptive(samples, a, b, spec, tables, segs);
+      } else {
+        _segmentRunStatic(samples, a, b, spec, tables, segs);
+      }
+    }
+
+    final mask = _W();
+    {
+      var cur = false;
+      var run = 0;
+      for (final v in samples) {
+        if ((v != null) == cur) {
+          run++;
+        } else {
+          mask.varint(run);
+          cur = !cur;
+          run = 1;
+        }
+      }
+      mask.varint(run);
+    }
+
+    final pyramid = _pyramidBytes(samples, spec.quantum);
+
+    final segTab = _W();
+    for (final g in segs) {
+      segTab.varint(g.length);
+      segTab.varint(g.idx.length);
+    }
+
+    final gaps = _W(), vals = _W();
+    for (final g in segs) {
+      var prev = -1;
+      for (var e = 0; e < g.idx.length; e++) {
+        gaps.varint(g.idx[e] - prev - 1);
+        prev = g.idx[e];
+        vals.zigzag(g.val[e]);
+      }
+    }
+    final gapBytes = gaps.take();
+    final coef = _W()
+      ..varint(gapBytes.length)
+      ..bytes(gapBytes)
+      ..bytes(vals.take());
+
+    final maskZ = _deflate(mask.take());
+    final pyrZ = _deflate(pyramid);
+    final segZ = _deflate(segTab.take());
+    final coefZ = _deflate(coef.take());
+
+    final out = _W()
+      ..bytes(_magic)
+      ..byte(codecVersion)
+      ..byte(mode == SpectralMode.adaptive ? 0 : 1)
+      ..byte(signal.length)
+      ..bytes(signal.codeUnits)
+      ..varint(spec.blockSeconds)
+      ..f64(spec.quantum)
+      ..varint(n)
+      ..varint(nValid)
+      ..varint(segs.length)
+      ..varint(maskZ.length)
+      ..varint(pyrZ.length)
+      ..varint(segZ.length)
+      ..varint(coefZ.length)
+      ..bytes(maskZ)
+      ..bytes(pyrZ)
+      ..bytes(segZ)
+      ..bytes(coefZ);
+    final blob = out.take();
+
+    // Measure, don't estimate: decode what was just written.
+    final back = decode(blob);
+    var sq = 0.0, mx = 0.0;
+    for (var i = 0; i < n; i++) {
+      final o = samples[i];
+      if (o == null) continue;
+      final d = (back[i]! - o).abs();
+      sq += d * d;
+      if (d > mx) mx = d;
+    }
+    return SpectralEncoding(
+      blob,
+      SpectralStats(
+        nSamples: n,
+        nValid: nValid,
+        coefficientCount: segs.fold<int>(0, (a, g) => a + g.idx.length),
+        segmentCount: segs.length,
+        summaryBytes: pyrZ.length,
+        bytes: blob.length,
+        rmsErr: nValid == 0 ? 0 : math.sqrt(sq / nValid),
+        maxErr: mx,
+      ),
+    );
+  }
+
+  static void _segmentRunAdaptive(List<double?> s, int a, int b,
+      SpectralSignalSpec spec, _Tables t, List<_Seg> out) {
+    var pos = a;
+    while (pos < b) {
+      final rem = b - pos;
+      final jmax = math.min(_maxExtensions, (rem + 59) ~/ 60);
+      int lenOf(int j) => math.min(j * 60, rem);
+      final tried = <int, _Seg?>{};
+      _Seg? fits(int j) => tried.putIfAbsent(
+          j, () => _fit(s, pos, lenOf(j), spec, spec.maxCoefficients, t));
+
+      var lo = 1;
+      var hi = -1;
+      if (fits(1) == null) {
+        // Cannot happen (a one-minute segment holds up to 64 coefficients and
+        // the quantizer alone is inside the bound), but never emit a blob that
+        // violates the contract.
+        throw StateError('spectral: even a 1-minute segment misses the bound');
+      }
+      while (lo < jmax) {
+        final next = math.min(lo * 2, jmax);
+        if (fits(next) != null) {
+          lo = next;
+        } else {
+          hi = next;
+          break;
+        }
+      }
+      while (hi > 0 && hi - lo > 1) {
+        final mid = (lo + hi) ~/ 2;
+        if (fits(mid) != null) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      final seg = tried[lo]!;
+      out.add(seg);
+      pos += seg.length;
+    }
+  }
+
+  static void _segmentRunStatic(List<double?> s, int a, int b,
+      SpectralSignalSpec spec, _Tables t, List<_Seg> out) {
+    final w = spec.blockSeconds;
+    var pos = a;
+    while (pos < b) {
+      final end = math.min(b, (pos ~/ w + 1) * w);
+      final seg = _fit(s, pos, end - pos, spec, 1 << 30, t);
+      if (seg == null) {
+        throw StateError('spectral: static block misses the bound');
+      }
+      out.add(seg);
+      pos = end;
+    }
+  }
+
+  /// The fewest coefficients (<= [cap]) that bring slots [start, start+n) of
+  /// [s] inside the spec's bounds, or null when none do.
+  static _Seg? _fit(List<double?> s, int start, int n, SpectralSignalSpec spec,
+      int cap, _Tables t) {
+    final q = spec.quantum;
+    final x = Float64List(n);
+    for (var i = 0; i < n; i++) {
+      x[i] = s[start + i]!;
+    }
+    final c = _dct(x, t);
+    var total = 0.0;
+    final qv = List<int>.filled(n, 0);
+    final gain = Float64List(n);
+    final cand = <int>[];
+    for (var k = 0; k < n; k++) {
+      total += c[k] * c[k];
+      final v = (c[k] / q).round();
+      qv[k] = v;
+      final e = c[k] - v * q;
+      gain[k] = c[k] * c[k] - e * e;
+      if (k != 0 && v != 0) cand.add(k);
+    }
+    // DC first (always stored), the rest by the error each removes.
+    cand.sort((p, r) {
+      final d = gain[r].compareTo(gain[p]);
+      return d != 0 ? d : p.compareTo(r);
+    });
+    final order = [0, ...cand];
+    final budget = n * spec.maxRms * spec.maxRms;
+
+    var m = 1;
+    var drop = total - gain[0];
+    while (m < order.length && drop > budget) {
+      drop -= gain[order[m]];
+      m++;
+    }
+    final limit = math.max(cap, n < 60 ? n : 0);
+    while (true) {
+      if (m > limit) return null;
+      final pick = order.sublist(0, m)..sort();
+      final val = [for (final k in pick) qv[k]];
+      final r = _synth(n, pick, val, q, t);
+      var sq = 0.0, mx = 0.0;
+      for (var i = 0; i < n; i++) {
+        final d = (r[i] - x[i]).abs();
+        sq += d * d;
+        if (d > mx) mx = d;
+      }
+      if (math.sqrt(sq / n) <= spec.maxRms && mx <= spec.maxAbs) {
+        return _Seg(start, n, pick, val);
+      }
+      if (m >= order.length) return null;
+      m = math.min(order.length, m + math.max(1, m ~/ 4));
+    }
+  }
+
+  // ── decode ─────────────────────────────────────────────────────────────────
 
   /// Inverse of [encode]. Same length as the input; null exactly where the
   /// input was null. Throws [FormatException] on bad magic, an unknown
   /// [codecVersion], or a truncated/corrupt body.
   static List<double?> decode(Uint8List blob) =>
-      throw UnimplementedError('SpectralCodec.decode');
+      _decode(_parse(blob), 1 << 30);
 
-  /// Decode using only the first [maxOrder]+1 coefficients (orders
-  /// 0..maxOrder) of every segment: order 0 is the segment's DC term, a
-  /// piecewise-constant coarse view; larger orders refine it. Null exactly
-  /// where the input was null, like [decode] (a coarse view never invents a
-  /// value in a gap). With [maxOrder] >= the largest order stored it equals
-  /// [decode].
+  /// Decode using only the coefficients of order <= [maxOrder] in every segment
+  /// (order = DCT index; 0 is the segment's DC term, a piecewise-constant
+  /// coarse view; larger orders refine it). Null exactly where the input was
+  /// null, like [decode] (a coarse view never invents a value in a gap). With
+  /// [maxOrder] >= the largest order stored it equals [decode].
   static List<double?> decodeCoarse(Uint8List blob, {required int maxOrder}) =>
-      throw UnimplementedError('SpectralCodec.decodeCoarse');
+      _decode(_parse(blob), maxOrder);
 
   /// Successive refinements for progressive loading: one step per entry of
-  /// [orders] (strictly increasing, each below the largest order stored), then
-  /// a final full-detail step ([SpectralRefinement.isFull]) whose samples equal
-  /// [decode] exactly. Lazy: nothing is decoded until the next step is pulled,
-  /// so a caller can pull one step per frame or per isolate hop. Step k equals
+  /// [orders] (strictly increasing; entries at or above the largest order
+  /// stored fold into the final step), then a final full-detail step
+  /// ([SpectralRefinement.isFull]) whose samples equal [decode] exactly. Lazy:
+  /// nothing is decoded until the next step is pulled, so a caller can pull one
+  /// step per frame or per isolate hop. Step k equals
   /// `decodeCoarse(blob, maxOrder: orders[k])`. Throws [ArgumentError] for
-  /// non-increasing [orders].
+  /// negative or non-increasing [orders].
   static Iterable<SpectralRefinement> progressive(Uint8List blob,
-          {List<int> orders = const [0, 2, 8, 32]}) =>
-      throw UnimplementedError('SpectralCodec.progressive');
+      {List<int> orders = const [0, 2, 8, 32]}) sync* {
+    for (var i = 0; i < orders.length; i++) {
+      if (orders[i] < 0 || (i > 0 && orders[i] <= orders[i - 1])) {
+        throw ArgumentError.value(orders, 'orders', 'must be increasing, >= 0');
+      }
+    }
+    final p = _parse(blob);
+    var top = 0;
+    for (final g in p.segs) {
+      top = math.max(top, g.idx.last);
+    }
+    for (final o in orders) {
+      if (o >= top) break;
+      yield SpectralRefinement(o, false, _decode(p, o));
+    }
+    yield SpectralRefinement(top, true, _decode(p, 1 << 30));
+  }
+
+  /// Exactly step [step] of [progressive] (0-based), decoding only that step,
+  /// or null when [step] is past the final one. For callers that run each
+  /// refinement in its own isolate hop (a generator cannot cross isolates).
+  static SpectralRefinement? refinementAt(Uint8List blob,
+      {List<int> orders = const [0, 2, 8, 32], required int step}) {
+    for (var i = 0; i < orders.length; i++) {
+      if (orders[i] < 0 || (i > 0 && orders[i] <= orders[i - 1])) {
+        throw ArgumentError.value(orders, 'orders', 'must be increasing, >= 0');
+      }
+    }
+    final p = _parse(blob);
+    var top = 0;
+    for (final g in p.segs) {
+      top = math.max(top, g.idx.last);
+    }
+    final partial = [for (final o in orders) if (o < top) o];
+    if (step < 0 || step > partial.length) return null;
+    if (step < partial.length) {
+      return SpectralRefinement(partial[step], false, _decode(p, partial[step]));
+    }
+    return SpectralRefinement(top, true, _decode(p, 1 << 30));
+  }
 
   /// The summary pyramid, levels ordered 60 s, 900 s, 3600 s, whole series.
   /// Reads only the prefix up to [SpectralHeader.coefficientOffset]. Count,
   /// min, mean, max are from the RAW samples, stored at [quantum] resolution
   /// (so mean is within quantum/2 of the true mean, and min/max equal the true
   /// extremes rounded to the quantum — never taken from the reconstruction).
-  static List<SpectralLevel> summary(Uint8List blob) =>
-      throw UnimplementedError('SpectralCodec.summary');
+  static List<SpectralLevel> summary(Uint8List blob) {
+    final h = _head(blob);
+    final r = _R(_inflate(blob, h.pyrAt, h.pyrLen));
+    final q = h.header.quantum;
+    final out = <SpectralLevel>[];
+    try {
+      var prevMean = 0;
+      for (final cs in _levelSeconds(h.header.length)) {
+        final cells = <LodCell>[];
+        final nCells = _cellCount(h.header.length, cs);
+        for (var i = 0; i < nCells; i++) {
+          final count = r.varint();
+          if (count == 0) {
+            cells.add(const LodCell(0, null, null, null));
+            continue;
+          }
+          final mean = prevMean + r.zigzag();
+          prevMean = mean;
+          final lo = mean - r.varint();
+          final hi = mean + r.varint();
+          cells.add(LodCell(count, lo * q, mean * q, hi * q));
+        }
+        out.add(SpectralLevel(cs, cells));
+      }
+    } on RangeError {
+      throw const FormatException('spectral: truncated pyramid');
+    }
+    return out;
+  }
 
   /// The segment table, in slot order. Same [FormatException] rules.
-  static List<SpectralSegment> segments(Uint8List blob) =>
-      throw UnimplementedError('SpectralCodec.segments');
+  static List<SpectralSegment> segments(Uint8List blob) {
+    final h = _head(blob);
+    final raw = _segTable(blob, h);
+    final starts = _segmentStarts(blob, h, raw);
+    return [
+      for (var i = 0; i < raw.length; i++)
+        SpectralSegment(starts[i], raw[i].$1, raw[i].$2)
+    ];
+  }
 
-  /// The header alone, with the same [FormatException] rules as [decode].
-  static SpectralHeader readHeader(Uint8List blob) =>
-      throw UnimplementedError('SpectralCodec.readHeader');
+  /// The header alone. It reports whatever codec version the bytes carry (only
+  /// [decode] and friends refuse a version they do not know) and throws
+  /// [FormatException] for bad magic or a prefix shorter than it declares.
+  static SpectralHeader readHeader(Uint8List blob) => _head(blob).header;
+
+  // ── internals ──────────────────────────────────────────────────────────────
+
+  static List<int> _levelSeconds(int length) => [60, 900, 3600, length];
+
+  static int _cellCount(int length, int cellSeconds) =>
+      cellSeconds == length ? 1 : (length + cellSeconds - 1) ~/ cellSeconds;
+
+  static Uint8List _deflate(Uint8List raw) =>
+      Uint8List.fromList(ZLibCodec(level: 9, raw: true).encode(raw));
+
+  static Uint8List _inflate(Uint8List blob, int at, int len) {
+    try {
+      return Uint8List.fromList(ZLibCodec(raw: true)
+          .decode(Uint8List.sublistView(blob, at, at + len)));
+    } on FormatException {
+      rethrow;
+    } catch (e) {
+      throw FormatException('spectral: corrupt section ($e)');
+    }
+  }
+
+  static _Head _head(Uint8List blob) {
+    try {
+      final r = _R(blob);
+      for (final m in _magic) {
+        if (r.byte() != m) throw const FormatException('spectral: bad magic');
+      }
+      final version = r.byte();
+      final modeByte = r.byte();
+      if (modeByte > 1) throw const FormatException('spectral: bad mode');
+      final sig = String.fromCharCodes(r.take(r.byte()));
+      final blockSeconds = r.varint();
+      final quantum = r.f64();
+      final length = r.varint();
+      final nValid = r.varint();
+      final segCount = r.varint();
+      final maskLen = r.varint();
+      final pyrLen = r.varint();
+      final segLen = r.varint();
+      final coefLen = r.varint();
+      final maskAt = r.pos;
+      final pyrAt = maskAt + maskLen;
+      final segAt = pyrAt + pyrLen;
+      final coefAt = segAt + segLen;
+      if (coefAt > blob.length) {
+        throw const FormatException('spectral: truncated header sections');
+      }
+      return _Head(
+        SpectralHeader(
+          codecVersion: version,
+          signal: sig,
+          mode: modeByte == 0 ? SpectralMode.adaptive : SpectralMode.staticBlocks,
+          blockSeconds: blockSeconds,
+          quantum: quantum,
+          length: length,
+          nValid: nValid,
+          segmentCount: segCount,
+          coefficientOffset: coefAt,
+        ),
+        maskAt, maskLen, pyrAt, pyrLen, segAt, segLen, coefAt, coefLen,
+      );
+    } on RangeError {
+      throw const FormatException('spectral: truncated header');
+    }
+  }
+
+  static List<(int, int)> _segTable(Uint8List blob, _Head h) {
+    final r = _R(_inflate(blob, h.segAt, h.segLen));
+    try {
+      return [
+        for (var i = 0; i < h.header.segmentCount; i++) (r.varint(), r.varint())
+      ];
+    } on RangeError {
+      throw const FormatException('spectral: truncated segment table');
+    }
+  }
+
+  static List<(int, int)> _validRuns(Uint8List blob, _Head h) {
+    final r = _R(_inflate(blob, h.maskAt, h.maskLen));
+    final runs = <(int, int)>[];
+    var pos = 0;
+    var valid = false;
+    try {
+      while (r.hasMore) {
+        final len = r.varint();
+        if (valid && len > 0) runs.add((pos, pos + len));
+        pos += len;
+        valid = !valid;
+      }
+    } on RangeError {
+      throw const FormatException('spectral: truncated mask');
+    }
+    if (pos != h.header.length) {
+      throw const FormatException('spectral: mask does not cover the series');
+    }
+    return runs;
+  }
+
+  static List<int> _segmentStarts(
+      Uint8List blob, _Head h, List<(int, int)> raw) {
+    final runs = _validRuns(blob, h);
+    final starts = <int>[];
+    var si = 0;
+    for (final (a, b) in runs) {
+      var pos = a;
+      while (pos < b) {
+        if (si >= raw.length) {
+          throw const FormatException('spectral: segments end early');
+        }
+        starts.add(pos);
+        pos += raw[si].$1;
+        si++;
+      }
+      if (pos != b) {
+        throw const FormatException('spectral: segment crosses a gap');
+      }
+    }
+    if (si != raw.length) {
+      throw const FormatException('spectral: surplus segments');
+    }
+    return starts;
+  }
+
+  static _Parsed _parse(Uint8List blob) {
+    final h = _head(blob);
+    if (h.header.codecVersion != codecVersion) {
+      throw FormatException(
+          'spectral: unsupported codec version ${h.header.codecVersion}');
+    }
+    if (blob.length != h.coefAt + h.coefLen) {
+      throw const FormatException('spectral: truncated or trailing bytes');
+    }
+    final raw = _segTable(blob, h);
+    final starts = _segmentStarts(blob, h, raw);
+    final r = _R(_inflate(blob, h.coefAt, h.coefLen));
+    final segs = <_Seg>[];
+    try {
+      final gapLen = r.varint();
+      final gr = _R(Uint8List.sublistView(r.data, r.pos, r.pos + gapLen));
+      final vr = _R(Uint8List.sublistView(r.data, r.pos + gapLen));
+      for (var i = 0; i < raw.length; i++) {
+        final n = raw[i].$1;
+        if (raw[i].$2 < 1) throw const FormatException('spectral: empty segment');
+        final idx = <int>[], val = <int>[];
+        var prev = -1;
+        for (var e = 0; e < raw[i].$2; e++) {
+          final k = prev + 1 + gr.varint();
+          if (k >= n) throw const FormatException('spectral: bad coefficient');
+          idx.add(k);
+          val.add(vr.zigzag());
+          prev = k;
+        }
+        segs.add(_Seg(starts[i], n, idx, val));
+      }
+    } on RangeError {
+      throw const FormatException('spectral: truncated coefficients');
+    }
+    return _Parsed(h, segs);
+  }
+
+  static List<double?> _decode(_Parsed p, int maxOrder) {
+    final q = p.head.header.quantum;
+    final out = List<double?>.filled(p.head.header.length, null);
+    final t = _Tables();
+    for (final g in p.segs) {
+      var take = 0;
+      while (take < g.idx.length && g.idx[take] <= maxOrder) {
+        take++;
+      }
+      final r = _synth(g.length, g.idx.sublist(0, take),
+          g.val.sublist(0, take), q, t);
+      for (var i = 0; i < g.length; i++) {
+        out[g.start + i] = r[i];
+      }
+    }
+    return out;
+  }
+
+  /// The one synthesis routine: encoder fit checks and the decoder both call
+  /// this, with entries in ascending index, so they agree bit for bit.
+  static Float64List _synth(
+      int n, List<int> idx, List<int> val, double q, _Tables t) {
+    final out = Float64List(n);
+    if (idx.isEmpty) return out;
+    final tab = t.cos(n);
+    final m4 = 4 * n;
+    final s0 = math.sqrt(1.0 / n), sk = math.sqrt(2.0 / n);
+    for (var e = 0; e < idx.length; e++) {
+      final k = idx[e];
+      final amp = val[e] * q * (k == 0 ? s0 : sk);
+      var j = k % m4;
+      final step = (2 * k) % m4;
+      for (var i = 0; i < n; i++) {
+        out[i] += amp * tab[j];
+        j += step;
+        if (j >= m4) j -= m4;
+      }
+    }
+    return out;
+  }
+
+  /// Orthonormal DCT-II of [x] via an N-point mixed-radix FFT.
+  static Float64List _dct(Float64List x, _Tables t) {
+    final n = x.length;
+    if (n == 1) return Float64List.fromList([x[0]]);
+    final vr = Float64List(n), vi = Float64List(n);
+    for (var i = 0; 2 * i < n; i++) {
+      vr[i] = x[2 * i];
+    }
+    for (var i = 0; 2 * i + 1 < n; i++) {
+      vr[n - 1 - i] = x[2 * i + 1];
+    }
+    final (fr, fi) = _fft(vr, vi, n, t.twiddle(n));
+    final out = Float64List(n);
+    final tab = t.cos(n);
+    final s0 = math.sqrt(1.0 / n), sk = math.sqrt(2.0 / n);
+    for (var k = 0; k < n; k++) {
+      // cos(pi k / 2n) = tab[k]; sin(pi k / 2n) = cos(pi (k - n) / 2n).
+      final cs = tab[k];
+      final sn = tab[(k + 3 * n) % (4 * n)];
+      out[k] = (fr[k] * cs + fi[k] * sn) * (k == 0 ? s0 : sk);
+    }
+    return out;
+  }
+
+  /// Recursive mixed-radix DFT of length n (n0 == n at the root); [tw] holds
+  /// cos/sin(2 pi j / n0).
+  static (Float64List, Float64List) _fft(
+      Float64List xr, Float64List xi, int n0, (Float64List, Float64List) tw) {
+    final n = xr.length;
+    if (n == 1) return (xr, xi);
+    var p = n;
+    for (var f = 2; f * f <= n; f++) {
+      if (n % f == 0) {
+        p = f;
+        break;
+      }
+    }
+    final m = n ~/ p;
+    final stride = n0 ~/ n;
+    final (ct, st) = tw;
+    final yr = Float64List(n), yi = Float64List(n);
+    if (m == 1) {
+      for (var k = 0; k < n; k++) {
+        var sr = 0.0, si = 0.0;
+        for (var j = 0; j < n; j++) {
+          final e = ((j * k) % n) * stride;
+          final c = ct[e], s = st[e];
+          sr += xr[j] * c + xi[j] * s;
+          si += xi[j] * c - xr[j] * s;
+        }
+        yr[k] = sr;
+        yi[k] = si;
+      }
+      return (yr, yi);
+    }
+    final subR = <Float64List>[], subI = <Float64List>[];
+    for (var s = 0; s < p; s++) {
+      final ar = Float64List(m), ai = Float64List(m);
+      for (var t = 0; t < m; t++) {
+        ar[t] = xr[s + p * t];
+        ai[t] = xi[s + p * t];
+      }
+      final (br, bi) = _fft(ar, ai, n0, tw);
+      subR.add(br);
+      subI.add(bi);
+    }
+    for (var k = 0; k < m; k++) {
+      for (var r = 0; r < p; r++) {
+        final idx = k + m * r;
+        var sr = 0.0, si = 0.0;
+        for (var s = 0; s < p; s++) {
+          final e = ((s * idx) % n) * stride;
+          final c = ct[e], sn = st[e];
+          final a = subR[s][k], b = subI[s][k];
+          sr += a * c + b * sn;
+          si += b * c - a * sn;
+        }
+        yr[idx] = sr;
+        yi[idx] = si;
+      }
+    }
+    return (yr, yi);
+  }
+
+  // ── pyramid ────────────────────────────────────────────────────────────────
+
+  static Uint8List _pyramidBytes(List<double?> s, double q) {
+    final w = _W();
+    final len = s.length;
+    var prevMean = 0;
+    for (final cs in _levelSeconds(len)) {
+      final nCells = _cellCount(len, cs);
+      for (var ci = 0; ci < nCells; ci++) {
+        final from = ci * cs;
+        final to = cs == len ? len : math.min(len, from + cs);
+        var count = 0;
+        var sum = 0.0;
+        var lo = double.infinity, hi = double.negativeInfinity;
+        for (var i = from; i < to; i++) {
+          final v = s[i];
+          if (v == null) continue;
+          count++;
+          sum += v;
+          if (v < lo) lo = v;
+          if (v > hi) hi = v;
+        }
+        w.varint(count);
+        if (count == 0) continue;
+        final loQ = (lo / q).round(), hiQ = (hi / q).round();
+        final meanQ = math.min(hiQ, math.max(loQ, (sum / count / q).round()));
+        w.zigzag(meanQ - prevMean);
+        prevMean = meanQ;
+        w.varint(meanQ - loQ);
+        w.varint(hiQ - meanQ);
+      }
+    }
+    return w.take();
+  }
+}
+
+// ── private helpers ──────────────────────────────────────────────────────────
+
+class _Seg {
+  _Seg(this.start, this.length, this.idx, this.val);
+  final int start, length;
+  final List<int> idx, val;
+}
+
+class _Head {
+  _Head(this.header, this.maskAt, this.maskLen, this.pyrAt, this.pyrLen,
+      this.segAt, this.segLen, this.coefAt, this.coefLen);
+  final SpectralHeader header;
+  final int maskAt, maskLen, pyrAt, pyrLen, segAt, segLen, coefAt, coefLen;
+}
+
+class _Parsed {
+  _Parsed(this.head, this.segs);
+  final _Head head;
+  final List<_Seg> segs;
+}
+
+/// Per-length trig tables, built once per encode/decode call.
+class _Tables {
+  final Map<int, Float64List> _cos = {};
+  final Map<int, (Float64List, Float64List)> _tw = {};
+
+  /// cos(pi j / 2n) for j in [0, 4n).
+  Float64List cos(int n) => _cos.putIfAbsent(n, () {
+        final t = Float64List(4 * n);
+        for (var j = 0; j < 4 * n; j++) {
+          t[j] = math.cos(math.pi * j / (2 * n));
+        }
+        return t;
+      });
+
+  /// cos / sin(2 pi j / n) for j in [0, n).
+  (Float64List, Float64List) twiddle(int n) => _tw.putIfAbsent(n, () {
+        final c = Float64List(n), s = Float64List(n);
+        for (var j = 0; j < n; j++) {
+          c[j] = math.cos(2 * math.pi * j / n);
+          s[j] = math.sin(2 * math.pi * j / n);
+        }
+        return (c, s);
+      });
+}
+
+class _W {
+  final BytesBuilder _b = BytesBuilder(copy: false);
+  int get length => _b.length;
+  void byte(int v) => _b.addByte(v);
+  void bytes(List<int> v) => _b.add(v);
+  void varint(int v) {
+    assert(v >= 0);
+    while (v >= 0x80) {
+      _b.addByte((v & 0x7f) | 0x80);
+      v >>= 7;
+    }
+    _b.addByte(v);
+  }
+
+  void zigzag(int v) => varint(v >= 0 ? v << 1 : ((-v) << 1) - 1);
+  void f64(double v) {
+    final d = ByteData(8)..setFloat64(0, v, Endian.little);
+    _b.add(d.buffer.asUint8List());
+  }
+
+  Uint8List take() => _b.takeBytes();
+}
+
+class _R {
+  _R(this.data);
+  final Uint8List data;
+  int pos = 0;
+  bool get hasMore => pos < data.length;
+  int byte() => data[pos++]; // RangeError on overrun, mapped by callers
+  Uint8List take(int n) {
+    final v = Uint8List.sublistView(data, pos, pos + n);
+    pos += n;
+    return v;
+  }
+
+  int varint() {
+    var shift = 0, v = 0;
+    while (true) {
+      final b = data[pos++];
+      v |= (b & 0x7f) << shift;
+      if (b < 0x80) return v;
+      shift += 7;
+      if (shift > 56) throw const FormatException('spectral: bad varint');
+    }
+  }
+
+  int zigzag() {
+    final z = varint();
+    return (z & 1) == 0 ? z >> 1 : -((z + 1) >> 1);
+  }
+
+  double f64() {
+    final v = ByteData.sublistView(data, pos, pos + 8).getFloat64(0, Endian.little);
+    pos += 8;
+    return v;
+  }
 }

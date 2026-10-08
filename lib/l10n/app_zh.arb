@@ -2466,5 +2466,6 @@
   "assumedWaterTitle": "假定的一杯水",
   "assumedWaterBody": "根据饮水提醒假定，会为已喝水量增加 {amount}。可保留或移除。",
   "assumedWaterKeep": "保留",
-  "assumedWaterRemove": "移除"
+  "assumedWaterRemove": "移除",
+  "spectralLoadingDetail": "正在加载细节…"
 }

@@ -399,7 +399,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 65;
+  static const int schemaVersion = 66;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1226,6 +1226,14 @@ class LocalDb {
           await _createAssumedWater(db);
           await _createSymptomEntry(db);
         }
+        if (oldV < 66) {
+          // One additive side table, no backfill (no row means "nothing was
+          // archived"), cheap under iOS's CPU watchdog (invariant 11): the
+          // lossy spectral archive of the 1 Hz signals. No kAlgoVersion bump:
+          // nothing derived reads it (a reconstruction is an approximation,
+          // invariant 3). _repairOpenSchema re-runs it on every open.
+          await _createSpectralArchive(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1328,6 +1336,7 @@ class LocalDb {
     await _createMomentLabel(db);
     await _createAssumedWater(db);
     await _createSymptomEntry(db);
+    await _createSpectralArchive(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -11593,6 +11602,21 @@ class LocalDb {
         'date TEXT NOT NULL, at_min INTEGER NOT NULL, ml REAL NOT NULL, '
         "state TEXT NOT NULL DEFAULT 'assumed', logged_at INTEGER NOT NULL, "
         'PRIMARY KEY (date, at_min))',
+      );
+
+  /// `spectral_archive`: one error-bounded block-DCT blob per (local day,
+  /// signal, codec version) of the 1 Hz `decoded_onehz` signals, written by
+  /// `SpectralArchiver` immediately BEFORE the raw prune and never pruned.
+  /// `rms_err` / `max_err` are the MEASURED reconstruction error, `n_valid` the
+  /// count of real samples it was built from. Read only by
+  /// `lib/data/spectral_archive.dart` - never by derivation or the coach.
+  static Future<void> _createSpectralArchive(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS spectral_archive ('
+        'day_id TEXT NOT NULL, signal TEXT NOT NULL, '
+        'codec_version INTEGER NOT NULL, blob BLOB NOT NULL, '
+        'n_valid INTEGER NOT NULL, rms_err REAL NOT NULL, '
+        'max_err REAL NOT NULL, created_at INTEGER NOT NULL, '
+        'PRIMARY KEY (day_id, signal, codec_version))',
       );
 
   /// `symptom_entry`: the structured description of a marked moment answered

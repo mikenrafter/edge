@@ -131,8 +131,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 65', () {
-    expect(LocalDb.schemaVersion, 65);
+  test('schemaVersion is at least 65', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(65));
   });
 
   test('upgrade from v64 reaches 65, adds both tables empty, keeps every '

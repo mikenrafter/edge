@@ -40,6 +40,7 @@ import '../data/coverage_resolver.dart';
 import '../data/db.dart';
 import '../data/day_label.dart';
 import '../data/series_codec.dart';
+import '../data/spectral_archive.dart' show SpectralArchiver;
 import '../notify/fired_keys.dart';
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
@@ -7369,6 +7370,17 @@ class DerivationEngine {
       derivedDayIds: derivedIds,
     );
     if (cutoffSec == null) return;
+    // Lossy spectral archive of the 1 Hz signals BEFORE the rows go (write
+    // only: nothing derived ever reads it back - invariant 3). Best effort: a
+    // failure here must not hold the prune, which is what enforces
+    // `rawRetentionDays`. `created_at` is the data-edge second, not a wall
+    // clock.
+    try {
+      await SpectralArchiver.archiveBefore(cutoffSec,
+          nowSec: dataNowSec, log: _log);
+    } catch (e) {
+      _log('spectral archive skipped: $e');
+    }
     final deleted = await LocalDb.pruneDecodedBeforeRecTs(cutoffSec);
     if (deleted > 0) {
       _log('pruned $deleted decoded rows with rec_ts < $cutoffSec');

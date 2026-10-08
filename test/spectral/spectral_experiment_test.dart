@@ -14,6 +14,8 @@
 // Re-run it on an exported day before believing a ratio. A `whiteNoiseAccel`
 // row (the repo's own synthAccel generator) is the worst case, reported but not
 // asserted.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/spectral_codec.dart';
 
@@ -24,9 +26,13 @@ void main() {
   final rows = <String>[];
 
   tearDownAll(() {
+    final report = '=== spectral archive experiment (bytes per signal-day) ===\n'
+        '${rows.join('\n')}\n';
+    // Also to a file the owner can open: build/spectral_experiment.txt.
+    Directory('build').createSync(recursive: true);
+    File('build/spectral_experiment.txt').writeAsStringSync(report);
     // ignore: avoid_print
-    print('\n=== spectral archive experiment (bytes per signal-day) ===\n'
-        '${rows.join('\n')}\n');
+    print('\n$report');
   });
 
   for (final sig in day.keys) {
@@ -78,6 +84,24 @@ void main() {
     rows.add('worst-case ax (white noise while moving): '
         'lossless=${losslessBytes(s, spec.quantum)}B spectral=${e.stats.bytes}B '
         'segments=${e.stats.segmentCount}');
+  });
+
+  test('harder case (reported, not asserted on size): broadband HR with '
+      'coloured beat-to-beat variability, bound still holds', () {
+    final s = withGaps(broadbandHr(), 21);
+    final spec = SpectralCodec.specs['hr']!;
+    final a = SpectralCodec.encode('hr', s);
+    final b = SpectralCodec.encode('hr', s, mode: SpectralMode.staticBlocks);
+    final m = errorOf(s, SpectralCodec.decode(a.blob));
+    expect(m.rms, lessThanOrEqualTo(spec.maxRms));
+    expect(m.max, lessThanOrEqualTo(spec.maxAbs));
+    final nth = keepEveryNth(s, spec.quantum, spec.maxRms, spec.maxAbs);
+    rows.add('broadband hr (AR(1) variability, no pure sinusoid): '
+        'lossless=${losslessBytes(s, spec.quantum)}B every-${nth.n}=${nth.bytes}B '
+        'adaptive=${a.stats.bytes}B (segments=${a.stats.segmentCount}, '
+        'rms=${a.stats.rmsErr.toStringAsFixed(3)}, '
+        'max=${a.stats.maxErr.toStringAsFixed(3)}) '
+        'static-240s=${b.stats.bytes}B (segments=${b.stats.segmentCount})');
   });
 
   test('five signals together: bytes/day for adaptive vs static', () {

@@ -2466,5 +2466,6 @@
   "assumedWaterTitle": "Angenommenes Glas Wasser",
   "assumedWaterBody": "Fügt {amount} zum getrunkenen Wasser hinzu, angenommen durch deine Wassererinnerung. Behalten oder entfernen.",
   "assumedWaterKeep": "Behalten",
-  "assumedWaterRemove": "Entfernen"
+  "assumedWaterRemove": "Entfernen",
+  "spectralLoadingDetail": "Details werden geladen…"
 }

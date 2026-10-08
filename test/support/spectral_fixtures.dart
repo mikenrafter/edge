@@ -54,6 +54,22 @@ List<double?> sleepLikeHr({int seed = 7, int length = kDay}) {
   });
 }
 
+/// The harder, more honest HR: no pure sinusoid. The same circadian/workout
+/// shape as [sleepLikeHr] plus coloured (AR(1), phi 0.8, sigma ~1.6 bpm)
+/// beat-to-beat variability, rounded to integer bpm. Broadband, so a sparse
+/// transform cannot hide it in two coefficients.
+List<double?> broadbandHr({int seed = 17, int length = kDay}) {
+  final rnd = math.Random(seed);
+  final base = sleepLikeHr(seed: seed, length: length);
+  var ar = 0.0;
+  return List<double?>.generate(length, (t) {
+    ar = 0.8 * ar + (rnd.nextDouble() + rnd.nextDouble() - 1) * 1.7;
+    // sleepLikeHr already holds rounded values with its own small noise; add
+    // the coloured part and re-round.
+    return (base[t]! + ar).roundToDouble();
+  });
+}
+
 /// Gravity-vector component: posture holds for minutes (steps), tiny jitter
 /// while still, correlated (AR(1)) swings while moving. [axis] 0..2.
 List<double?> correlatedAccel(int axis, {int seed = 11, int length = kDay}) {

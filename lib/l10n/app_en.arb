@@ -13075,5 +13075,9 @@
   "assumedWaterRemove": "Remove",
   "@assumedWaterRemove": {
     "description": "Follow-up list: remove an assumed glass"
+  },
+  "spectralLoadingDetail": "Loading detail…",
+  "@spectralLoadingDetail": {
+    "description": "Label on a long-range chart while its curve is still being refined from a coarse view to full detail; no precise value is shown until it disappears."
   }
 }

@@ -2466,5 +2466,6 @@
   "assumedWaterTitle": "अनुमानित पानी का गिलास",
   "assumedWaterBody": "आपके पानी रिमाइंडर से अनुमानित: पिए गए पानी में {amount} जुड़ता है। रखें या हटाएँ।",
   "assumedWaterKeep": "रखें",
-  "assumedWaterRemove": "हटाएँ"
+  "assumedWaterRemove": "हटाएँ",
+  "spectralLoadingDetail": "विवरण लोड हो रहा है…"
 }
