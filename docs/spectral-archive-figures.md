@@ -43,3 +43,37 @@ chart load (raw vs pyramid) has not been done yet.
 - Synthetic fixtures promised 2.7–5.5× on hr; real beat-to-beat variability is broadband ⇒ 1.6×.
 - Owner narrowed the lossy codec to hr + skin temp; accel defaults to pyramid-only (2026-10-07).
 - Source report: edge.research/spectral-real-data-2026-10-07.md (outside the repo).
+
+## Like-for-like: the same accuracy without the spectral codec (2026-10-08)
+
+Same export, same full days. "Plain" = quantize each sample to a step that gives
+the codec's error, then zigzag-delta varint + deflate -9, gaps as run-lengths;
+plus the same per-minute/15-min/hour/day count/min/mean/max pyramid the archive
+carries (the archive's hr/temp bytes include theirs). Script:
+edge.research/scripts/like_for_like.py (aggregates only).
+
+Two ways to match accuracy:
+- **max-matched**: step = 2 × the codec's max bound (hr 6 bpm ⇒ |err| ≤ 3 bpm,
+  rms ≈1.8; temp 0.3 °C ⇒ |err| ≤ 0.15 °C, rms ≈0.087) — same worst case,
+  worse average than the codec.
+- **rms-matched**: step = codec rms × √12 (hr 2.8 bpm ⇒ rms ≈0.81, |err| ≤ 1.4;
+  temp 0.12 °C ⇒ rms ≈0.035, |err| ≤ 0.06) — same average, BETTER worst case
+  than the codec (codec max is 3 bpm / 0.15 °C).
+
+| B/day (10-03 / 10-04) | hr | skin temp | accel pyramid | total | MB/yr |
+|---|---|---|---|---|---|
+| Spectral archive (shipped) | 13,800 / 14,000 | 6,577 / 6,826 | 15,662 / 15,500 | **36,039 / 36,326** | **13.2** |
+| Plain, max-matched | 10,863 / 10,926 | 7,259 / 7,513 | 14,553 / 14,509 | 32,675 / 32,948 | 12.0 |
+| Plain, rms-matched | 15,672 / 15,983 | 10,827 / 11,465 | 14,553 / 14,509 | 41,052 / 41,957 | 15.2 |
+| Plain, lossless at native quantum (+pyramid) | 25,227 / 25,923 | 39,038 / 39,503 | 14,553 / 14,509 | 78,818 / 79,935 | 29.0 |
+
+Reading it:
+- At equal accuracy the spectral codec is within about ±12 % of plain
+  quantize-and-deflate: ≈12 % smaller than rms-matched plain (which has a better
+  worst case), ≈10 % larger than max-matched plain (same worst case).
+- Nearly all of the saving versus lossless (≈2.2×) and versus raw comes from
+  (1) storing only to the needed accuracy and (2) keeping only the per-minute
+  envelope for the accelerometer — neither needs the spectral transform.
+- What the transform still offers: progressive refinement (coarse coefficients
+  first, for long chart views) and a smooth reconstruction. What it costs:
+  codec complexity, per-block (not per-sample) error accounting, encode time.
