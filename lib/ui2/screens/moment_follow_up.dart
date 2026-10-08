@@ -34,17 +34,30 @@ import 'home_screen.dart' show repoOf;
 import 'journal_compose.dart' show OsTextField;
 import 'log_workout.dart' show ActivityTypeSheet, LogWorkout, appOf;
 
-/// "N things to review — marked moments and assumed water" with an Answer
-/// button. [count] is pending moments plus assumed glasses.
+/// Home card for what waits for review: one line "N marked moments", one line
+/// "N assumed water" (a zero line is hidden), and an Answer button. No
+/// dismiss or snooze: it goes away only when the answers are in.
+// STUB (RED phase): takes the two counts, still draws the old one-line total.
 class MomentFollowUpCard extends StatelessWidget {
-  const MomentFollowUpCard({super.key, required this.count, this.onAnswer});
-  final int count;
+  const MomentFollowUpCard(
+      {super.key,
+      required this.moments,
+      required this.assumedWater,
+      this.onAnswer});
+
+  /// Pending marked moments, plus started ranges that only owe their
+  /// announcement (see [MomentFollowUps.reviewCounts]).
+  final int moments;
+
+  /// Assumed water glasses waiting for keep / remove.
+  final int assumedWater;
   final VoidCallback? onAnswer;
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
+    final count = moments + assumedWater;
     return Padding(
       padding: const EdgeInsets.only(top: S.x3),
       child: Surface(
@@ -75,11 +88,13 @@ class MomentFollowUpCard extends StatelessWidget {
 /// The card, or null when the setting is off or nothing is pending. Pure.
 Widget? momentFollowUpCardFor({
   required bool enabled,
-  required int count,
+  required int moments,
+  required int assumedWater,
   VoidCallback? onAnswer,
 }) =>
-    enabled && count > 0
-        ? MomentFollowUpCard(count: count, onAnswer: onAnswer)
+    enabled && moments + assumedWater > 0
+        ? MomentFollowUpCard(
+            moments: moments, assumedWater: assumedWater, onAnswer: onAnswer)
         : null;
 
 /// Home's helper: null with no AppState above (a golden), like
@@ -155,7 +170,8 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
     final on = widget.settings.followUpMoments;
     return momentFollowUpCardFor(
           enabled: on,
-          count: _count,
+          moments: _count,
+          assumedWater: 0,
           onAnswer: () async {
             await Navigator.of(c).push(themedRoute<void>(
                 (_) => const MomentFollowUpScreen(),

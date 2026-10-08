@@ -60,7 +60,13 @@ class Moment {
     this.detail = '',
     this.eventId,
     this.annotationKind,
+    this.annotationLabel,
   });
+
+  /// What the chart annotation says when it is not the moment's [title] (the
+  /// main sleep's "Main sleep 11:10 PM to 6:40 AM"). Null: use [title].
+  // STUB (RED phase): carried, not yet read by [dayAnnotations].
+  final String? annotationLabel;
 
   /// What chart annotation this moment becomes, or NULL when it is not one
   /// (sleep, band events, the day's extremes — facts about the band or the

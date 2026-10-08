@@ -575,6 +575,12 @@ class MoreSettingsView extends StatelessWidget {
 
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
+  /// Developer group's "Revive community cards": on (the default) keeps the
+  /// Discord and Sponsor cards coming back in developer mode.
+  // STUB (RED phase): accepted, not yet drawn or wired to `Prefs`.
+  final bool reviveCommunityCards;
+  final VoidCallback? onToggleReviveCommunityCards;
+
   /// The expected sleep schedule (local clock times), or null when never set.
   /// The row is always drawn: it needs no data.
   final ExpectedSleepSchedule? expectedSleepSchedule;
@@ -640,6 +646,8 @@ class MoreSettingsView extends StatelessWidget {
     this.onVersionTap,
     this.onToggleDev,
     this.onGallery,
+    this.reviveCommunityCards = true,
+    this.onToggleReviveCommunityCards,
     this.expectedSleepSchedule,
     this.onEditSleepSchedule,
     this.relaySupported = false,

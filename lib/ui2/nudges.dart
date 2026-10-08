@@ -23,6 +23,14 @@ class CommunityNudge extends StatefulWidget {
   @visibleForTesting
   static void debugResetSession() => _CommunityNudgeState._sessionHidden.clear();
 
+  /// Test seam: the clock the cooldown and "last shown" stamp read, epoch
+  /// milliseconds. Null (the default) is the real clock.
+  @visibleForTesting
+  static int Function()? debugNowMs;
+
+  static int _nowMs() => (debugNowMs ?? _systemNowMs)();
+  static int _systemNowMs() => DateTime.now().millisecondsSinceEpoch;
+
   @override
   State<CommunityNudge> createState() => _CommunityNudgeState();
 }
@@ -52,7 +60,7 @@ class _CommunityNudgeState extends State<CommunityNudge> {
     if (devMode) return true;
     if (Prefs.getBool(_dismissedKey(a), false)) return false;
     final last = Prefs.getInt(_lastShownKey(a), 0);
-    return DateTime.now().millisecondsSinceEpoch - last > _cooldownMs;
+    return CommunityNudge._nowMs() - last > _cooldownMs;
   }
 
   // Discord above the sponsor ask when both are due — joining a community
@@ -68,13 +76,13 @@ class _CommunityNudgeState extends State<CommunityNudge> {
     // the cooldown never actually starts and leaving Home without tapping
     // anything shows the same ask again on the very next rebuild.
     for (final a in _asks) {
-      Prefs.setInt(_lastShownKey(a), DateTime.now().millisecondsSinceEpoch);
+      Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
     }
   }
 
   void _snooze(_Ask a) {
     _sessionHidden.add(a.name);
-    Prefs.setInt(_lastShownKey(a), DateTime.now().millisecondsSinceEpoch);
+    Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
     _hide(a);
   }
 

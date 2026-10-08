@@ -371,8 +371,10 @@ void _graphTests() {
       expect(find.text('bpm'), findsOneWidget);
       expect(find.text('Midnight'), findsNWidgets(2));
       expect(find.text('Noon'), findsOneWidget);
-      // Every lane with something in it is named, and none that is empty.
-      expect(find.text('Asleep'), findsOneWidget);
+      // Every lane with something in it is named, and none that is empty. The
+      // night is no longer a lane: it is the main-sleep annotation, so there
+      // is no "Asleep" key (the full() day has a night and a workout).
+      expect(find.text('Asleep'), findsNothing);
       expect(find.text('Workout'), findsOneWidget);
       expect(find.text('Movement (% of time moving)'), findsOneWidget);
       expect(find.text('Heart rate (bpm)'), findsOneWidget);

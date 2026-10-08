@@ -217,6 +217,15 @@ class MomentFollowUps {
     return pendingCount(now) + queue.orphanRanges(keys).length;
   }
 
+  /// [reviewCount] split the way the Home card shows it: `moments` is the
+  /// pending marks plus the started ranges that only owe their announcement,
+  /// `assumedWater` the glasses waiting for keep / remove. They always add up
+  /// to [reviewCount]; both are 0 while the setting is off. Pure.
+  // STUB (RED phase): not implemented, reports nothing.
+  ({int moments, int assumedWater}) reviewCounts(
+          DateTime now, MomentReviewQueue queue) =>
+      (moments: 0, assumedWater: 0);
+
   /// Days a moment stays pending, counted in local calendar days.
   static const int windowDays = 7;
 

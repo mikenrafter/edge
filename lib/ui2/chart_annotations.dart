@@ -41,6 +41,14 @@ enum AnnotationKind {
   workout,
   nap,
 
+  /// The night's main sleep, onset to wake (design: day timeline, owner-approved
+  /// 2026-10-08). The one kind with PRIORITY: never folded into a "+n" cluster,
+  /// never the icon given up first, and its label is the lane's default label
+  /// while nothing is focused.
+  // STUB (RED phase): the value, icon and colour exist; the layout does not
+  // give it priority yet.
+  mainSleep,
+
   /// A nap/workout range created by the marked-moment review.
   // TODO(moments-review): no producer yet — it arrives with the
   // feature/moments-review branch (not merged). Keep the kind so its colour and
@@ -58,6 +66,7 @@ IconData annotationIcon(AnnotationKind k) => switch (k) {
       AnnotationKind.symptom => LucideIcons.heartPulse,
       AnnotationKind.workout => LucideIcons.dumbbell,
       AnnotationKind.nap => LucideIcons.bedDouble,
+      AnnotationKind.mainSleep => LucideIcons.moon,
       AnnotationKind.review => LucideIcons.clipboardCheck,
       AnnotationKind.journal => LucideIcons.notebookPen,
       AnnotationKind.algoVersion => LucideIcons.gitCommitVertical,
@@ -71,6 +80,9 @@ Color annotationColor(AnnotationKind k) => switch (k) {
       AnnotationKind.symptom => C.red,
       AnnotationKind.workout => C.orange,
       AnnotationKind.nap => C.indigo,
+      // Pink, not a blue: the Asleep band this replaces was blue, and a range
+      // shade in a blue would read as that band coming back.
+      AnnotationKind.mainSleep => C.pink,
       AnnotationKind.review => C.purple,
       AnnotationKind.journal => C.yellow,
       // Neutral on purpose: a version change is provenance, not an event that

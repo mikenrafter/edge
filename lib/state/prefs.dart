@@ -95,6 +95,14 @@ class Prefs {
   /// list and nothing reads it except the surfaces it reveals.
   static const String devMode = 'dev.mode';
 
+  /// Developer setting "Revive community cards". ON (the default) is today's
+  /// behaviour: in developer mode the Discord and Sponsor cards ignore a stored
+  /// dismissal and the cooldown. OFF: developer mode honours both exactly like
+  /// a normal install. Irrelevant when developer mode is off.
+  // STUB (RED phase): the key and getter exist; nothing reads them yet.
+  static const String reviveCommunityCards = 'dev.revive_community_cards';
+  static bool get reviveCommunityCardsOn => getBool(reviveCommunityCards, true);
+
   /// Lift the 10 s cap on compiled band haptics. Off by default; the
   /// 8-command plan cap and the band's rolling command limit still apply.
   static const String hapticsAllowLong = 'haptics_allow_long_sequences';
