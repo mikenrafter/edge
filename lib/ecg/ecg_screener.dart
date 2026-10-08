@@ -11,6 +11,8 @@
 // wearer is cleared. No diagnosis words at all, the disclaimer included: it
 // says "This is a screen, not a medical test."
 
+import '../l10n/app_localizations.dart';
+
 /// One state on the page.
 class EcgScreenerEntry {
   const EcgScreenerEntry({
@@ -39,7 +41,11 @@ class EcgScreenerEntry {
 /// 'failed'. One entry per [EcgCategory] value plus those two. The category
 /// titles are the same words as the ECG screens' labels (app_*.arb
 /// ecgCategory*), so a result and its explanation read alike.
-List<EcgScreenerEntry> ecgScreenerEntries() => const [
+///
+/// Design 04 R5: the text moves to the ARBs (`ecgScreener*` keys, six
+/// locales). [l] is the locale to read it in; RED: ignored, still the
+/// hardcoded English below.
+List<EcgScreenerEntry> ecgScreenerEntries([AppLocalizations? l]) => const [
   EcgScreenerEntry(
     id: 'sinusRhythm',
     title: 'Regular rhythm, nothing flagged',
@@ -143,6 +149,11 @@ List<EcgScreenerEntry> ecgScreenerEntries() => const [
     screened: false,
   ),
 ];
+
+/// The screener intro from the ARBs (design 04 R5; replaces [kEcgScreenerIntro]
+/// once the text moves). RED stub.
+String ecgScreenerIntro([AppLocalizations? l]) =>
+    throw UnimplementedError('design 04 phase 1: ecgScreenerIntro');
 
 /// The lines at the top of the screener page: a screen, not a diagnosis; a
 /// result with nothing flagged is not a clearance; it ends in a person.

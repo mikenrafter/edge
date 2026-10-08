@@ -12,6 +12,26 @@ import 'package:share_plus/share_plus.dart';
 /// How a screen saves a log; injectable so widgets are tested with a fake.
 typedef LogFileSaver = Future<bool> Function(String fileName, String text);
 
+/// How a screen saves a log when it must say WHY a save failed (design 04
+/// R7''); injectable so widgets are tested with a fake.
+typedef LogResultSaver = Future<LogSaveResult> Function(
+    String fileName, String text);
+
+/// The outcome of [saveLogFileResult]: written and shared, or failed with a
+/// reason a person can read.
+sealed class LogSaveResult {
+  const LogSaveResult();
+}
+
+class LogSaveOk extends LogSaveResult {
+  const LogSaveOk();
+}
+
+class LogSaveFailed extends LogSaveResult {
+  const LogSaveFailed(this.reason);
+  final String reason;
+}
+
 String _two(int v) => v.toString().padLeft(2, '0');
 
 /// `openstrap-device-lab-log-20261004-120731.txt`: the kind and [at] in local
@@ -50,6 +70,18 @@ Future<bool> saveLogFile(
     return false;
   }
 }
+
+/// [saveLogFile] with a reason (design 04 R7''). Same write and share, never a
+/// throw: a failure returns [LogSaveFailed] carrying the error's text, and
+/// [saveLogFile] stays as the bool wrapper for existing callers.
+/// RED stub.
+Future<LogSaveResult> saveLogFileResult(
+  String fileName,
+  String text, {
+  Rect? origin,
+  Directory? dir,
+  Future<void> Function(String path)? share,
+}) => throw UnimplementedError('design 04 phase 1: saveLogFileResult');
 
 /// The MIME type of a lab recording (JSON Lines), for the share sheet.
 const String kJsonFileMime = 'application/json';

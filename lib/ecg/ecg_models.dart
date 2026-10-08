@@ -214,6 +214,31 @@ class EcgReading {
   /// `stop_reason` (schema 66).
   final String? stopReason;
 
+  // ── design 04 phase 1 (schema 70). RED: carried by the constructor only;
+  // toRow / fromRow do not map them yet. All nullable; NULL = not recorded
+  // (legacy rows), never inferred.
+
+  /// Bitwise OR of the terminal mask and every accepted packet's mask.
+  final int? maskAny;
+
+  /// Id of the reading that replaced this attempt, or null.
+  final String? supersededBy;
+
+  /// Id of the first attempt of this attempt's group; null on a legacy row
+  /// (a group of one).
+  final String? attemptGroup;
+  final int? attempt;
+  final int? liveHr;
+
+  /// The band's variability value; null when the wire said 0xffff.
+  final int? variabilityRaw;
+  final String? firmwareVersion;
+  final String? captureAppVersion;
+  final int? captureTableVersion;
+
+  /// UTC offset in minutes at capture.
+  final int? startOffsetMin;
+
   const EcgReading({
     required this.id,
     required this.deviceId,
@@ -237,6 +262,16 @@ class EcgReading {
     required this.notes,
     required this.createdAt,
     this.stopReason,
+    this.maskAny,
+    this.supersededBy,
+    this.attemptGroup,
+    this.attempt,
+    this.liveHr,
+    this.variabilityRaw,
+    this.firmwareVersion,
+    this.captureAppVersion,
+    this.captureTableVersion,
+    this.startOffsetMin,
   });
 
   int get durationS => endTs - startTs;

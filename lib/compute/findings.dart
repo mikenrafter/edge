@@ -31,6 +31,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:openstrap_analytics/onehz.dart' as ana;
 
+import '../l10n/app_localizations.dart';
+
 /// Below this, readiness is a finding. Shared so the notification and the log
 /// cannot disagree about which mornings were low.
 const double kLowReadiness = 34;
@@ -182,3 +184,17 @@ List<Finding> findingsHistory(
   }
   return out;
 }
+
+/// Design 04 R5/R5': a finding's title from the ARBs (all six locales), so a
+/// notification and the log say it the same way. The irregular-rhythm one is
+/// "Irregular pulse pattern flagged". RED stub: `Finding.title` is still the
+/// hardcoded English until this replaces it.
+String findingTitle(AppLocalizations l, Finding f) =>
+    throw UnimplementedError('design 04 phase 1: findingTitle');
+
+/// A finding's detail from the ARBs. The irregular-rhythm one begins "Your
+/// beat-to-beat pulse timing looked irregular today. This screen uses the wrist
+/// pulse, which can't show the heart's electrical activity, and is not a
+/// diagnosis." RED stub.
+String findingDetail(AppLocalizations l, Finding f) =>
+    throw UnimplementedError('design 04 phase 1: findingDetail');

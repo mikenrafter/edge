@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import '../../coach/coach_config.dart';
 import '../../data/db.dart';
 import '../../ecg/ecg_controller.dart';
+import '../../ecg/ecg_export.dart';
 import '../../ecg/ecg_models.dart';
 import '../../ecg/ecg_result.dart';
 import '../../ecg/ecg_waveform_buffer.dart';
@@ -24,6 +25,7 @@ import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
+import '../../util/log_file.dart' show LogResultSaver;
 import '../profile/profile.dart' show SwitchRow;
 import '../ui2.dart';
 import 'coach.dart';
@@ -99,7 +101,18 @@ class EcgEntryCard extends StatelessWidget {
 // ═══════════════════ home: history + Take ECG ═══════════════════
 
 class EcgHomeScreen extends StatefulWidget {
-  const EcgHomeScreen({super.key});
+  /// Design 04 R7: the seams "Export ECG logs" runs through (tests hand in
+  /// fakes; defaults are the real LocalDb source, the platform share sheet and
+  /// the wall clock). RED: accepted, not yet used.
+  final LogResultSaver? saveLog;
+  final EcgReadingSource? exportSource;
+  final EcgExportEnv? exportEnv;
+  const EcgHomeScreen({
+    super.key,
+    this.saveLog,
+    this.exportSource,
+    this.exportEnv,
+  });
 
   @override
   State<EcgHomeScreen> createState() => _EcgHomeScreenState();
@@ -826,7 +839,16 @@ class EcgCaptureBody extends StatelessWidget {
 class EcgDetailData {
   final EcgReading reading;
   final List<EcgAcceptedPacket> packets;
-  const EcgDetailData({required this.reading, required this.packets});
+
+  /// Design 04 R2'': every attempt in this reading's group (superseded
+  /// included), ordered by attempt; empty = a group of one. RED: `load` does
+  /// not fill it yet.
+  final List<EcgReading> attempts;
+  const EcgDetailData({
+    required this.reading,
+    required this.packets,
+    this.attempts = const [],
+  });
 
   static Future<EcgDetailData?> load(String id) async {
     final row = await LocalDb.ecgReading(id);
@@ -841,7 +863,21 @@ class EcgDetailData {
 
 class EcgDetailScreen extends StatefulWidget {
   final EcgDetailData data;
-  const EcgDetailScreen({super.key, required this.data});
+
+  /// Design 04 seams (RED: accepted, not yet used): deleting the whole attempt
+  /// group (default LocalDb.deleteEcgReading), and the export path.
+  final Future<void> Function(String id)? onDelete;
+  final LogResultSaver? saveLog;
+  final EcgReadingSource? exportSource;
+  final EcgExportEnv? exportEnv;
+  const EcgDetailScreen({
+    super.key,
+    required this.data,
+    this.onDelete,
+    this.saveLog,
+    this.exportSource,
+    this.exportEnv,
+  });
 
   @override
   State<EcgDetailScreen> createState() => _EcgDetailScreenState();

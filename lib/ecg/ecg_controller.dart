@@ -20,6 +20,7 @@ import 'package:openstrap_protocol/openstrap_protocol.dart' show LabradorR17;
 import 'ecg_cues.dart';
 import 'ecg_guard_store.dart';
 import 'ecg_models.dart';
+import 'ecg_outcome.dart';
 import 'ecg_policy.dart';
 import 'ecg_recovery.dart';
 import 'ecg_result.dart';
@@ -77,6 +78,11 @@ class EcgCaptureState {
   /// The saved result's real metrics (see ecgMetricsOf), empty until saved.
   final List<EcgMetric> metrics;
 
+  /// Design 04 R1: the shared outcome of what was saved (ecgOutcome of the
+  /// saved reading). Null while capturing and when nothing was saved. RED: the
+  /// controller never sets it.
+  final EcgOutcome? outcome;
+
   const EcgCaptureState({
     this.phase = EcgCapturePhase.idle,
     this.wrist,
@@ -90,6 +96,7 @@ class EcgCaptureState {
     this.cleanupIncomplete = false,
     this.result,
     this.metrics = const [],
+    this.outcome,
   });
 
   EcgCaptureState copyWith({
@@ -106,6 +113,7 @@ class EcgCaptureState {
     bool? cleanupIncomplete,
     EcgReadingStatus? result,
     List<EcgMetric>? metrics,
+    EcgOutcome? outcome,
   }) => EcgCaptureState(
     phase: phase ?? this.phase,
     wrist: wrist ?? this.wrist,
@@ -119,6 +127,7 @@ class EcgCaptureState {
     cleanupIncomplete: cleanupIncomplete ?? this.cleanupIncomplete,
     result: result ?? this.result,
     metrics: metrics ?? this.metrics,
+    outcome: outcome ?? this.outcome,
   );
 
   /// The phases in which the band may be generating: from the first ON
@@ -165,6 +174,15 @@ class EcgController extends ChangeNotifier {
   /// gesture ones. A cue that throws is logged and ignored.
   final void Function(String slotKey)? onCue;
 
+  /// Design 04 R3 provenance stamped on every new reading. Each is read when
+  /// the reading is built; null (or a provider returning null) = not recorded,
+  /// stored NULL and shown "not recorded", never inferred. RED: unused.
+  final String? Function()? firmwareVersion;
+  final String? Function()? appVersion;
+
+  /// UTC offset in minutes at the instant [epochMs] (the window start).
+  final int? Function(int epochMs)? utcOffsetMin;
+
   static const String screenOwner = 'ecg';
 
   /// Every live packet that passes the armed gate, before the reducer sees it.
@@ -184,6 +202,9 @@ class EcgController extends ChangeNotifier {
     int Function()? nowMs,
     bool Function()? keepWaveform,
     this.onCue,
+    this.firmwareVersion,
+    this.appVersion,
+    this.utcOffsetMin,
   }) : keepWaveform = keepWaveform ?? (() => false),
        log = log ?? ((_) {}),
        nowMs = nowMs ?? (() => DateTime.now().millisecondsSinceEpoch);

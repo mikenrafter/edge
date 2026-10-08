@@ -128,11 +128,18 @@ class EcgTerminalOutcome {
   final EcgCategory liveCategory;
   final EcgCategory persistedCategory;
   final LabradorR17 terminal;
+
+  /// Design 04 R2'': the window this terminal ended, terminal packet included,
+  /// handed over BEFORE it is cleared, so every attempt (unreadable, first
+  /// inconclusive, final) can be saved. RED: the reducer does not fill it yet.
+  final List<EcgAcceptedPacket> window;
+
   const EcgTerminalOutcome({
     required this.kind,
     required this.liveCategory,
     required this.persistedCategory,
     required this.terminal,
+    this.window = const [],
   });
 
   int get resultCode => terminal.result;

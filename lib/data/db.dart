@@ -2669,12 +2669,32 @@ class LocalDb {
   }
 
   /// Saved readings, newest first, WITHOUT packets.
+  ///
+  /// Design 04 R2: superseded attempts are hidden unless [includeSuperseded].
+  /// RED: the flag is accepted and ignored.
   static Future<List<Map<String, Object?>>> listEcgReadings({
     int limit = 200,
+    bool includeSuperseded = false,
   }) async {
     final db = await instance;
     return db.query('ecg_reading', orderBy: 'start_ts DESC', limit: limit);
   }
+
+  /// Every attempt in the group of [id] (superseded included) ordered by
+  /// attempt; a legacy row (NULL group) is a group of one. RED stub.
+  static Future<List<Map<String, Object?>>> ecgAttempts(String id) =>
+      throw UnimplementedError('design 04 phase 1: LocalDb.ecgAttempts');
+
+  /// Export reader: every reading (superseded included), oldest -> newest by
+  /// start_ts then id, at most [limit] strictly after the ([afterStartTs],
+  /// [afterId]) cursor. RED stub.
+  static Future<List<Map<String, Object?>>> ecgReadingsForExport({
+    required int limit,
+    int? afterStartTs,
+    String? afterId,
+  }) => throw UnimplementedError(
+    'design 04 phase 1: LocalDb.ecgReadingsForExport',
+  );
 
   /// One reading row, or null.
   static Future<Map<String, Object?>?> ecgReading(String id) async {

@@ -96,3 +96,16 @@ String? ecgReplaceTargetId({
   if (gap < 0 || gap > kEcgOverwriteWindow.inSeconds) return null;
   return latest.id;
 }
+
+/// Design 04 R2''' - the attempt-group join rule, replacing the delete-based
+/// [ecgReplaceTargetId] (RED stub).
+///
+/// The id of the latest reading that [incoming] joins as a further attempt, or
+/// null when it starts a new group. gap = incoming.startTs - latest.endTs;
+/// joins iff 0 <= gap <= [kEcgOverwriteWindow] in seconds AND [latest] is
+/// non-final (status inconclusive, or category unreadable) AND neither side is
+/// a partial.
+String? ecgJoinTargetId({
+  required EcgReading? latest,
+  required EcgReading incoming,
+}) => throw UnimplementedError('design 04 phase 1: ecgJoinTargetId');
