@@ -172,12 +172,14 @@ List<int?> allocatePulses(List<int> perCommand, int pulses) {
   ];
 }
 
-// Who plays each pulse of the target [cells] (leading rests trimmed; [first] is
-// how many were). When the commands' own pulses add up to the target's, they
-// are handed out in order: that is exact. When they do not (the cap bit, or a
-// pulse was merged or dropped) each pulse goes to the command whose felt notes
-// overlap it most, the nearest one if none does.
-List<int?> _pulseOwners(
+/// Who plays each pulse of the target [cells] (leading rests trimmed; [first]
+/// is how many were). When the commands' own pulses add up to the target's,
+/// they are handed out in order: that is exact. When they do not (the cap bit,
+/// or a pulse was merged or dropped) each pulse goes to the command whose felt
+/// notes overlap it most (the earlier on a tie), the nearest one if none does,
+/// and null when no command feels any note. Public so a hand-built plan can
+/// force the second branch in tests; the compiler calls it for every plan.
+List<int?> pulseOwnersOf(
     List<HapticStep> steps, List<PatternDynamic?> cells, int first) {
   final pulses = pulseRuns(cells);
   final counts = [
@@ -548,7 +550,7 @@ HapticPlan _assemble(
     usesUnstable: steps.any((s) => !s.phrase.stable || !s.gapStable),
     summary: _summary(steps),
     runtimeMs: timeline(feltMax).length * p.unitMs,
-    pulseOwners: _pulseOwners(steps, cells, first),
+    pulseOwners: pulseOwnersOf(steps, cells, first),
   );
 }
 

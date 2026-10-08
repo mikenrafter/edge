@@ -189,7 +189,7 @@ class ScoreLine {
 
   final int index;
 
-  /// Top of the line's band; the band is `ScoreMetrics.lineHeight` tall.
+  /// Top of the line's band; the band is `ScoreLayout.lineHeight` tall.
   final double top;
 
   /// The y of the top, middle and bottom staff line.
@@ -238,10 +238,22 @@ class ScoreLayout {
   final double width;
 
   /// 1 unless not even one measure fits [width] at the metrics' sizes; then the
-  /// factor every width in the score (glyphs, dots, dynamics, gaps, padding)
-  /// was multiplied by so that one measure just fits. The painter draws the
-  /// heads at the same factor.
+  /// factor EVERYTHING drawn was multiplied by so that one measure just fits:
+  /// widths, gaps and padding, the staff spacing and so the row height, stems,
+  /// flags, ties, rests, dots, bars and stroke widths. The score is the same
+  /// picture smaller; only the "~x.xs" text beside it (its room, [ScoreMetrics
+  /// .leadWidth]) keeps its size. The painter reads [staffSpace], [lineHeight]
+  /// and [doubleBarWidth] from here, and multiplies its strokes by this.
   final double scale;
+
+  /// The distance between two staff lines as laid out: the metrics' at [scale].
+  double get staffSpace => metrics.staffSpace * scale;
+
+  /// The height of one staff line's band as laid out.
+  double get lineHeight => metrics.lineHeight * scale;
+
+  /// The width of a double bar as laid out.
+  double get doubleBarWidth => metrics.doubleBarWidth * scale;
 
   /// The right edge of the furthest content; never more than [width] unless
   /// not even one measure fits.
@@ -249,7 +261,7 @@ class ScoreLayout {
       lines.fold(0.0, (w, l) => l.right > w ? l.right : w);
 
   /// All the lines stacked.
-  double get height => lines.length * metrics.lineHeight;
+  double get height => lines.length * lineHeight;
 
   /// The wrapped score of [notes] in [width] logical pixels. Pure: the same
   /// entries, width and metrics always give the same layout.
@@ -337,26 +349,29 @@ class ScoreLayout {
     final needed = byMeasure.map(need).reduce((a, b) => a > b ? a : b);
 
     // 3. A measure that cannot fit even alone scales the whole score down,
-    // everything horizontal alike, so proportions and the equal width of the
-    // measures stay and one measure just fits a line (never below a fifth).
-    final firstX = m.leadWidth + m.doubleBarWidth;
-    final room = width - firstX - m.doubleBarWidth;
+    // everything alike (widths, staff spacing, so the row height, and every
+    // drawn size), so proportions and the equal width of the measures stay and
+    // one measure just fits a line (never below a fifth). The room is judged
+    // with the double bars at full size, which the scaled ones then fit inside.
+    final room = width - m.leadWidth - 2 * m.doubleBarWidth;
     var scale = needed > room ? room / needed : 1.0;
     if (scale < _kMinScale) scale = _kMinScale;
     final mw = needed * scale;
+    final bar = m.doubleBarWidth * scale;
+    final firstX = m.leadWidth + bar;
 
     // 4. Wrap by whole measures. The count is chosen so a line could also be
     // the last one, with the end double bar after it.
-    var per = ((width - firstX - m.doubleBarWidth) / mw).floor();
+    var per = ((width - firstX - bar) / mw).floor();
     if (per < 1) per = 1;
 
     final glyphs = <ScoreGlyph>[];
     final measures = <ScoreMeasure>[];
     final lines = <ScoreLine>[];
     final lineCount = (byMeasure.length + per - 1) ~/ per;
-    final s = m.staffSpace;
+    final s = m.staffSpace * scale;
     for (var li = 0; li < lineCount; li++) {
-      final top = li * m.lineHeight;
+      final top = li * m.lineHeight * scale;
       final staffY = [top + 3.3 * s, top + 4.3 * s, top + 5.3 * s];
       final lineMeasures = <ScoreMeasure>[];
       for (var k = li * per; k < byMeasure.length && k < (li + 1) * per; k++) {
@@ -412,9 +427,7 @@ class ScoreLayout {
         top: top,
         staffY: staffY,
         left: 0,
-        right: lineMeasures.last.x +
-            mw +
-            (last ? m.doubleBarWidth : 0),
+        right: lineMeasures.last.x + mw + (last ? bar : 0),
         measures: lineMeasures,
         startDoubleBar: li == 0,
         endDoubleBar: last,

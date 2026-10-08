@@ -65,18 +65,22 @@ class HapticScorePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final m = layout.metrics;
-    final s = m.staffSpace;
-    // Heads shrink with the score when a measure did not fit at full size.
-    final r = s * .55 * layout.scale;
+    // When a measure did not fit at full size the whole score is smaller, so
+    // every size below (staff spacing, heads, stems, flags, ties, dots, bars
+    // and every stroke width) is its full size times the layout's scale.
+    final k = layout.scale;
+    final s = layout.staffSpace;
+    final bw = layout.doubleBarWidth;
+    final r = s * .55;
     final lineP = Paint()
       ..color = ink.withValues(alpha: .35)
-      ..strokeWidth = 1;
+      ..strokeWidth = 1 * k;
     final bar = Paint()
       ..color = ink.withValues(alpha: .6)
-      ..strokeWidth = 1;
+      ..strokeWidth = 1 * k;
     final heavy = Paint()
       ..color = ink.withValues(alpha: .6)
-      ..strokeWidth = 2.4;
+      ..strokeWidth = 2.4 * k;
 
     for (final line in layout.lines) {
       // The staff starts after the room kept for the length, on every line.
@@ -90,8 +94,8 @@ class HapticScorePainter extends CustomPainter {
       final first = line.measures.first;
       if (line.startDoubleBar) {
         // Thin then thick, just before the first measure.
-        vbar(first.x - m.doubleBarWidth + 1, bar);
-        vbar(first.x - 1.2, heavy);
+        vbar(first.x - bw + 1 * k, bar);
+        vbar(first.x - 1.2 * k, heavy);
       } else {
         vbar(first.x, bar);
       }
@@ -99,7 +103,7 @@ class HapticScorePainter extends CustomPainter {
         final x = ms.x + ms.width;
         if (line.endDoubleBar && ms == line.measures.last) {
           vbar(x, bar);
-          vbar(x + m.doubleBarWidth - 1.2, heavy);
+          vbar(x + bw - 1.2 * k, heavy);
         } else {
           vbar(x, bar);
         }
@@ -109,11 +113,11 @@ class HapticScorePainter extends CustomPainter {
     final fill = Paint()..style = PaintingStyle.fill;
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
+      ..strokeWidth = 1.2 * k
       ..strokeCap = StrokeCap.round;
 
     double headX(ScoreGlyph g) =>
-        g.x + (g.width - (g.dotted ? m.dotWidth * layout.scale : 0)) / 2;
+        g.x + (g.width - (g.dotted ? m.dotWidth * k : 0)) / 2;
 
     final glyphs = layout.glyphs;
     for (var i = 0; i < glyphs.length; i++) {
@@ -147,7 +151,7 @@ class HapticScorePainter extends CustomPainter {
         }
       }
       if (g.dotted) {
-        canvas.drawCircle(Offset(cx + r * 2, y - r * .3), 1.1, fill);
+        canvas.drawCircle(Offset(cx + r * 2, y - r * .3), 1.1 * k, fill);
       }
       if (g.tiedToNext) {
         // The tie under the heads: to the next piece, or to the end of the
@@ -155,12 +159,12 @@ class HapticScorePainter extends CustomPainter {
         final next = i + 1 < glyphs.length ? glyphs[i + 1] : null;
         final toX = next != null && next.line == g.line
             ? headX(next)
-            : layout.lines[g.line].right - 2;
+            : layout.lines[g.line].right - 2 * k;
         _tie(canvas, cx, toX, y + r, r, stroke);
       }
       if (g.tiedFromPrev && i > 0 && glyphs[i - 1].line != g.line) {
         // The other half of a tie that wrapped: from the line's start.
-        _tie(canvas, layout.lines[g.line].measures.first.x + 2, cx, y + r, r,
+        _tie(canvas, layout.lines[g.line].measures.first.x + 2 * k, cx, y + r, r,
             stroke);
       }
     }
@@ -192,7 +196,7 @@ class HapticScorePainter extends CustomPainter {
         canvas.drawPath(path, stroke);
     }
     if (g.dotted) {
-      canvas.drawCircle(Offset(cx + r * 1.6, y - r * .3), 1.1, fill);
+      canvas.drawCircle(Offset(cx + r * 1.6, y - r * .3), 1.1 * layout.scale, fill);
     }
   }
 
@@ -274,28 +278,64 @@ class HapticScore extends StatelessWidget {
         final width = box.maxWidth.isFinite ? box.maxWidth : 600.0;
         final layout = ScoreLayout.fit(entries,
             width: width, metrics: metrics, commands: commands);
-        final s = metrics.staffSpace;
+        // The drawing is as laid out (smaller when a measure did not fit, see
+        // ScoreLayout.scale); the "~x.xs" text beside it keeps its size, so
+        // the row is at least as tall as the text and the drawing is centred
+        // in it.
+        final s = layout.staffSpace;
+        final labelH = 4 * metrics.staffSpace;
+        final height = layout.height > labelH ? layout.height : labelH;
+        final dy = (height - layout.height) / 2;
         return SizedBox(
           width: box.maxWidth.isFinite ? width : layout.contentWidth,
-          height: layout.height,
+          height: height,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              CustomPaint(
-                key: const ValueKey('haptic-score-staff'),
-                size: Size(width, layout.height),
-                painter: HapticScorePainter(
-                  layout,
-                  ink: p.ink,
-                  commandColor: (c) => commandColor(c, p),
+              Positioned(
+                left: 0,
+                top: dy,
+                width: width,
+                height: layout.height,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    CustomPaint(
+                      key: const ValueKey('haptic-score-staff'),
+                      size: Size(width, layout.height),
+                      painter: HapticScorePainter(
+                        layout,
+                        ink: p.ink,
+                        commandColor: (c) => commandColor(c, p),
+                      ),
+                    ),
+                    for (final g in layout.glyphs)
+                      if (!g.rest &&
+                          !g.tiedFromPrev &&
+                          g.dynamic != null &&
+                          g.dynamic != PatternDynamic.any)
+                        Positioned(
+                          left: g.x,
+                          top: layout.lines[g.line].staffY[2] + s * .2,
+                          width: g.width,
+                          height: s * 1.8,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(g.dynamic!.code,
+                                textScaler: TextScaler.noScaling,
+                                style: F.over.copyWith(color: p.ink3)),
+                          ),
+                        ),
+                  ],
                 ),
               ),
               if (layout.lines.isNotEmpty)
                 Positioned(
                   left: 0,
-                  top: layout.lines.first.staffY[1] - 2 * s,
+                  top: (dy + layout.lines.first.staffY[1] - labelH / 2)
+                      .clamp(0.0, height - labelH),
                   width: metrics.leadWidth - S.x1,
-                  height: 4 * s,
+                  height: labelH,
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
@@ -308,23 +348,6 @@ class HapticScore extends StatelessWidget {
                     ),
                   ),
                 ),
-              for (final g in layout.glyphs)
-                if (!g.rest &&
-                    !g.tiedFromPrev &&
-                    g.dynamic != null &&
-                    g.dynamic != PatternDynamic.any)
-                  Positioned(
-                    left: g.x,
-                    top: layout.lines[g.line].staffY[2] + s * .2,
-                    width: g.width,
-                    height: s * 1.8,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: Text(g.dynamic!.code,
-                          textScaler: TextScaler.noScaling,
-                          style: F.over.copyWith(color: p.ink3)),
-                    ),
-                  ),
             ],
           ),
         );

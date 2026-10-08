@@ -137,11 +137,22 @@ Future<BuzzDelivery> playHapticPlan(
 // (null: no command plays it). Decided where the plan is built (the compiler
 // for a compiled one, [_fromBaked] for a stored one), so the colouring never
 // reconstructs it. [stored] says the commands are the rule's saved plan.
+//
+// [feltMs] is what the writes and their waits are sized by; [runtimeMs] is how
+// long the plan is felt, which the runtime cap judges and the row prints. They
+// agree except for a stored plan saved before its runtime was recorded, which
+// is written as its commands and delays add up but felt as long as its profile
+// says its rests are.
 class _Resolved {
   const _Resolved(this.cmds, this.feltMs,
-      {required this.target, required this.noteOwners, this.stored = false});
+      {int? runtimeMs,
+      required this.target,
+      required this.noteOwners,
+      this.stored = false})
+      : runtimeMs = runtimeMs ?? feltMs;
   final List<_Cmd> cmds;
   final int feltMs;
+  final int runtimeMs;
   final List<PatternEntry> target;
   final List<int?> noteOwners;
   final bool stored;
@@ -208,11 +219,12 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
     felt += span + b.delayMs;
   }
   // The runtime recorded when the plan was saved is the better estimate of how
-  // long it plays. When it is longer than the commands add up to (a command no
+  // long it plays, but it only ever lengthens it ([_atLeast]): one shorter than
+  // the commands add up to is not what plays. When it is longer (a command no
   // phrase matches is sized at a flat 3 s), the difference is the last
   // command's: the band is held that much longer after the last write.
-  final stored = s.bakedRuntimeMs;
-  if (stored != null && stored > felt) {
+  final stored = _atLeast(s.bakedRuntimeMs, felt);
+  if (stored > felt) {
     final extra = stored - felt;
     final last = cmds.removeLast();
     cmds.add(_Cmd(last.effects, last.loop, last.delayMs, last.spanMs + extra,
@@ -228,10 +240,18 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
   final target = _targetOf(s, profile);
   final pulses = _pulsesIn(target);
   return _Resolved(cmds, felt,
+      // Shown and capped by how long the plan is felt: the number the sender
+      // holds the band for, or, for a rule with no recorded runtime, what its
+      // profile makes it (the picker's figure).
+      runtimeMs: _atLeast(bakedRuntimeMsFor(s, profile), felt),
       target: target,
       noteOwners: _noteOwners(target, allocatePulses(perCommand, pulses)),
       stored: true);
 }
+
+// [ms], or [recorded] when there is one and it is longer.
+int _atLeast(int? recorded, int ms) =>
+    recorded != null && recorded > ms ? recorded : ms;
 
 // The phrase of [profile] a stored command is, if any.
 HapticPhrase? _phraseOf(BakedStep b, HapticDeviceProfile profile) {
@@ -344,10 +364,8 @@ _Resolved? _resolveUncached(
 ) {
   final baked = _fromBaked(s, profile);
   if (baked != null) {
-    final runtime = bakedRuntimeMsFor(s, profile);
-    if (maxRuntime == null ||
-        runtime == null ||
-        runtime <= maxRuntime.inMilliseconds) {
+    // The cap judges how long the plan is felt, not the runtime as recorded.
+    if (maxRuntime == null || baked.runtimeMs <= maxRuntime.inMilliseconds) {
       return baked;
     }
   }
@@ -521,8 +539,9 @@ bool _readable(String code) {
 }
 
 /// How long [s] plays, in ms, as it is actually sent: the felt length of the
-/// resolved plan (the stored plan's recorded runtime when it has one, else
-/// sized from [profile] as the picker does), or on a band with no profile, or
+/// resolved plan (a stored plan's commands on [profile], lengthened to the
+/// runtime recorded with it only when that is longer; a rule saved before the
+/// runtime was recorded is sized from [profile] as the picker does), or on a band with no profile, or
 /// when the cap leaves the rhythm to the taps, the time the taps take. The
 /// same [_resolve] as the commands, so the printed and spoken length follow the
 /// device and the long-sequence switch.
@@ -533,9 +552,7 @@ int scoreDurationMs(
 }) {
   final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
   if (resolved == null) return s.playTime.inMilliseconds;
-  return resolved.stored
-      ? bakedRuntimeMsFor(s, profile) ?? resolved.feltMs
-      : resolved.feltMs;
+  return resolved.runtimeMs;
 }
 
 /// How long a delivery of [s] may take: the sequence's own transport timeout,
