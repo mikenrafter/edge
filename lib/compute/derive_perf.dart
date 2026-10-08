@@ -9,8 +9,13 @@ enum DerivePhase { prepare, compute, persist }
 /// [noteSettle] while the job waits; the engine calls [startPass],
 /// [addPhase] and [endPass].
 class DerivePerf {
-  DerivePerf({required int Function() nowMs}) : _now = nowMs;
+  /// [enabled] false makes every recording call a no-op (design 02 step 2,
+  /// P2.0a: measuring must cost nothing when nobody reads it). RED STUB: the
+  /// flag is stored and not yet honoured.
+  DerivePerf({required int Function() nowMs, this.enabled = true})
+      : _now = nowMs;
 
+  final bool enabled;
   final int Function() _now;
 
   // What is known about the NEXT pass (queued, not yet started).
@@ -80,6 +85,11 @@ class DerivePerf {
   /// Adds [n] to a named counter of this pass (rows read, beats, bytes).
   void addCount(String name, int n) =>
       _counts[name] = (_counts[name] ?? 0) + n;
+
+  /// Like [addCount], but [value] runs only when this instance is [enabled]:
+  /// the way to book a count that is itself costly to measure (a node walk, a
+  /// byte sum). RED STUB: does nothing.
+  void addCountLazy(String name, int Function() value) {}
 
   /// Runs [body] and books its wall time to [name], also when it throws.
   Future<T> stage<T>(String name, Future<T> Function() body) async {
@@ -185,3 +195,22 @@ class RenderLatency {
     return _now() - at;
   }
 }
+
+/// The perf instance of reads that happen outside a derive pass (the repository
+/// read seam, `LastResultCache`). Null = disabled: the readers record nothing
+/// and measure nothing. Tests and a diagnostics switch set it; production
+/// leaves it null until the owner's device trace needs it (design 02 step 2,
+/// P2.0a). RED STUB: nothing reads it yet.
+abstract final class ReadPerf {
+  static DerivePerf? sink;
+}
+
+/// Number of values in a decoded JSON graph: every map, every list and every
+/// scalar (including null) counts once; map keys do not. The root counts.
+/// `{'a': [1, 2], 'b': null}` is 5. RED STUB: returns 0.
+int payloadNodeCount(Object? decoded) => 0;
+
+/// Estimated bytes the rows carry as sqflite hands them over: a `num` is 8, a
+/// `String` its UTF-8 length, a `Uint8List` its length, null and anything else
+/// 0; map keys are not counted. RED STUB: returns 0.
+int rowsByteEstimate(Iterable<Map<String, Object?>> rows) => 0;

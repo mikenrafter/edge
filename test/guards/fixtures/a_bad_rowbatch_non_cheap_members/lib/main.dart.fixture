@@ -1,0 +1,16 @@
+// FIXTURE: a_bad_rowbatch_non_cheap_members
+// P2.0b: the cheap-member set is length / isEmpty / isNotEmpty / first / last and
+// nothing else. Every other member of a RowBatch outside @heavy is still a
+// finding (single and elementAt look cheap but are not in the set; toList copies;
+// firstWhere / lastWhere scan).
+import 'package:openstrap_edge/util/raw_readers.dart';
+
+typedef Row = Map<String, Object?>;
+
+class Screen {
+  Row only(RowBatch<Row> b) => b.single;
+  List<Row> all(RowBatch<Row> b) => b.toList();
+  Row at(RowBatch<Row> b, int i) => b.elementAt(i);
+  Row firstMatch(RowBatch<Row> b) => b.firstWhere((r) => r['hr'] != null);
+  Row lastMatch(RowBatch<Row> b) => b.lastWhere((r) => r['hr'] != null);
+}

@@ -94,6 +94,22 @@ void main() {
       }
     });
 
+    test('a rule added after the first guard commit has its v1 changelog entry',
+        () {
+      // New rules start at v1 (P2.0b); the baseline growth they cause is
+      // licensed by `## <rule> v1` in BASELINE_CHANGELOG.md.
+      final text =
+          File('$repoRoot/test/guards/BASELINE_CHANGELOG.md').readAsStringSync();
+      for (final r in const [
+        HeavyRule.storedPayloadDecodeOutsideHeavy,
+        HeavyRule.rawTableRowLoopOutsideHeavy,
+      ]) {
+        expect(changelogCovers(text, r, kRuleVersions[r]!), isTrue,
+            reason: 'missing "## ${r.name} v${kRuleVersions[r]}" in '
+                'BASELINE_CHANGELOG.md');
+      }
+    });
+
     test('kMigrationMethods names real LocalDb methods, each with a reason', () {
       final src = File('$repoRoot/lib/data/db.dart').readAsStringSync();
       for (final m in kMigrationMethods) {
@@ -133,6 +149,45 @@ void main() {
             'Move the work into a registered @heavy worker entry '
             '(lib/util/worker_entries.dart) instead of growing the baseline.',
       );
+    });
+
+    // P2.0b: the two new rules must find the sites the design names, or the
+    // baseline would not carry them and later phases would have nothing to
+    // retire. The keys themselves enter the baseline in the GREEN commit.
+    test('storedPayloadDecodeOutsideHeavy finds the legacy payload decoders',
+        () async {
+      final found = {
+        for (final v in (await analysis()).of(HeavyRule.storedPayloadDecodeOutsideHeavy))
+          '${v.file} :: ${v.symbol}',
+      };
+      expect(
+        found,
+        containsAll(<String>[
+          // SeriesCodec.decodePayloadJson over a payload_json row.
+          'data/db.dart :: LocalDb.refreshComputeFreshness',
+          // SeriesCodec.encodePayloadJson and the payload_json column.
+          'data/db.dart :: LocalDb.putDayResult',
+        ]),
+        reason: found.join('\n'),
+      );
+    });
+
+    test('rawTableRowLoopOutsideHeavy finds getDeviceChart and '
+        'SampleArchiver._archiveDevice', () async {
+      final r = (await analysis()).of(HeavyRule.rawTableRowLoopOutsideHeavy);
+      final found = {for (final v in r) '${v.file} :: ${v.symbol} -> ${v.element}'};
+      expect(
+        found,
+        containsAll(<String>[
+          'data/local_repository_impl.dart :: LocalRepositoryImpl.getDeviceChart'
+              ' -> decoded_onehz',
+          'data/sample_archive.dart :: SampleArchiver._archiveDevice'
+              ' -> decoded_onehz',
+        ]),
+        reason: found.join('\n'),
+      );
+      expect(r.where((v) => v.symbol.startsWith('LocalDb.')), isEmpty,
+          reason: 'LocalDb is the raw-reader registry\'s business, not this rule\'s');
     });
 
     test('structure rules have no findings at all (never baselineable)', () async {

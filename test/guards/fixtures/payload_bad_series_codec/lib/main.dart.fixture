@@ -1,0 +1,19 @@
+// FIXTURE: payload_bad_series_codec
+// storedPayloadDecodeOutsideHeavy: a call into the payload codec library counts
+// like jsonDecode / jsonEncode. (heavyOriginOutsideHeavy fires on the same calls:
+// that rule is unchanged and its keys are separate.)
+import 'package:fixture_app/series_codec.dart';
+
+class Repo {
+  List<double> trace(List<int> bytes) {
+    final column = 'trace_json';
+    assert(column.isNotEmpty);
+    return decodeSeries(bytes);
+  }
+
+  List<int> save(List<double> values) {
+    final column = 'payload_json';
+    assert(column.isNotEmpty);
+    return encodeSeries(values);
+  }
+}

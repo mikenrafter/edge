@@ -102,6 +102,27 @@ enum HeavyRule {
   rawReaderUnregistered(baselineable: true),
   rawReaderWrongReturnType(baselineable: false),
 
+  // stored payloads and raw tables read outside LocalDb (design 02 step 2,
+  // P2.0b). RED: declared so the fixtures compile; the engine does not report
+  // them yet.
+  /// A `jsonDecode` / `jsonEncode` / `json.decode` / `json.encode` or payload
+  /// codec call (a library in [HeavyGuardConfig.payloadCodecPrefixes]) in a
+  /// non-`@heavy` function whose string literals name a payload column
+  /// (`payload_json`, `window_json`, `trace_json`, `meta_json`, `payload`, as a
+  /// whole word) or that calls a registered payload reader (`kRawReaders`).
+  /// One finding per such call; element = the called function's label. Applies
+  /// inside `LocalDb` too.
+  storedPayloadDecodeOutsideHeavy(baselineable: true),
+
+  /// A row loop (for-in, or map / forEach / fold / where / any / every / expand
+  /// / reduce / toList over the result) over a `Database.query` / `rawQuery`
+  /// result whose call names a raw table (a string literal or a const in its
+  /// arguments), in a non-`@heavy` function outside [HeavyGuardConfig
+  /// .rawReaderClass]. Reading `length` / `isEmpty` / `isNotEmpty` / `first` /
+  /// `firstOrNull` / `last` is not a loop. One finding per loop; element = the
+  /// raw table name.
+  rawTableRowLoopOutsideHeavy(baselineable: true),
+
   /// A `kMigrationMethods` entry (explicit exemption of a row-returning
   /// migration step) for a method that no longer needs it: remove the entry.
   migrationAllowStale(baselineable: false);
@@ -135,6 +156,11 @@ const Map<HeavyRule, int> kRuleVersions = {
   HeavyRule.workerEntryNotInitialised: 2,
   HeavyRule.unresolvedInvocation: 1,
   HeavyRule.rawReaderUnregistered: 3,
+  // New rules (P2.0b). Their first version is 1: a rule that is ABSENT from the
+  // base branch's baseline is new, and its first keys are the reviewed growth
+  // (see heavy_baseline_test.dart, 'a rule that is new in the head').
+  HeavyRule.storedPayloadDecodeOutsideHeavy: 1,
+  HeavyRule.rawTableRowLoopOutsideHeavy: 1,
 };
 
 /// A `LocalDb` method that reads raw tables and returns rows but is a schema
@@ -238,6 +264,11 @@ class HeavyGuardConfig {
   /// used inside an `@heavy` body.
   final Set<String> bannedPlatformTypes;
 
+  /// Library URI prefixes whose functions are payload codecs: a call into one
+  /// counts as a decode/encode for `storedPayloadDecodeOutsideHeavy` (the
+  /// `dart:convert` JSON functions always do). RED: not read by the engine yet.
+  final List<String> payloadCodecPrefixes;
+
   /// The class whose methods are raw-row readers, and the raw table names.
   final String rawReaderClass;
   final Set<String> rawTables;
@@ -284,6 +315,7 @@ class HeavyGuardConfig {
     required this.bannedPlatformTypes,
     required this.rawReaderClass,
     required this.rawTables,
+    this.payloadCodecPrefixes = const [],
     this.originAllow = const [],
     this.migrationMethods = const [],
     this.nameAllow = const [],
@@ -347,6 +379,9 @@ class HeavyGuardConfig {
         bannedPlatformTypes: _banned,
         rawReaderClass: 'LocalDb',
         rawTables: _tables,
+        payloadCodecPrefixes: const [
+          'package:openstrap_edge/data/series_codec.dart',
+        ],
         migrationMethods: kMigrationMethods,
         originAllow: const [
           OriginAllow(
@@ -470,6 +505,7 @@ class HeavyGuardConfig {
         bannedPlatformTypes: _banned,
         rawReaderClass: 'LocalDb',
         rawTables: _tables,
+        payloadCodecPrefixes: const ['package:fixture_app/series_codec.dart'],
         migrationMethods: const [
           MigrationMethod('LocalDb.upgradeRows', 'fixture: a migration step'),
         ],

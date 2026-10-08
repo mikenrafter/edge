@@ -71,6 +71,23 @@ final Map<String, Expect> kExpectations = {
     counts: {HeavyRule.rowBatchIterationOutsideHeavy: 2},
   ),
   'a_ok_rowbatch_iteration_in_heavy': const Expect.clean(),
+  // P2.0b: first and last join length / isEmpty / isNotEmpty as cheap members
+  // (a shrink-only widening: no rule version bump); every other member stays a
+  // finding.
+  'a_ok_rowbatch_first_last': const Expect.clean(),
+  'a_bad_rowbatch_non_cheap_members': const Expect(
+    {HeavyRule.rowBatchIterationOutsideHeavy},
+    symbols: {
+      HeavyRule.rowBatchIterationOutsideHeavy: {
+        'Screen.only',
+        'Screen.all',
+        'Screen.at',
+        'Screen.firstMatch',
+        'Screen.lastMatch',
+      },
+    },
+    counts: {HeavyRule.rowBatchIterationOutsideHeavy: 5},
+  ),
   'a_bad_codec_outside_heavy': const Expect(
     {HeavyRule.heavyOriginOutsideHeavy},
     elements: {HeavyRule.heavyOriginOutsideHeavy: {'decodeSeries'}},
@@ -103,6 +120,89 @@ final Map<String, Expect> kExpectations = {
     counts: {HeavyRule.heavyOriginOutsideHeavy: 1},
   ),
   'a_ok_heavy_calls_inner_heavy': const Expect.clean(),
+
+  // ---- stored payloads and raw-table loops (P2.0b) -----------------------
+  // storedPayloadDecodeOutsideHeavy v1: a JSON/codec call in a non-@heavy
+  // function whose literals name a payload column, or that calls a registered
+  // payload reader (kRawReaders).
+  'payload_bad_column_literals': const Expect(
+    {HeavyRule.storedPayloadDecodeOutsideHeavy},
+    symbols: {
+      HeavyRule.storedPayloadDecodeOutsideHeavy: {
+        'Repo.day',
+        'Repo.window',
+        'Repo.trace',
+        'Repo.meta',
+        'Repo.generic',
+        'Repo.mapped',
+      },
+    },
+    elements: {
+      HeavyRule.storedPayloadDecodeOutsideHeavy: {
+        'jsonDecode',
+        'jsonEncode',
+        'JsonCodec.decode',
+      },
+    },
+    counts: {HeavyRule.storedPayloadDecodeOutsideHeavy: 6},
+  ),
+  'payload_bad_registered_reader': const Expect(
+    {HeavyRule.storedPayloadDecodeOutsideHeavy},
+    symbols: {HeavyRule.storedPayloadDecodeOutsideHeavy: {'Repo.show'}},
+    elements: {HeavyRule.storedPayloadDecodeOutsideHeavy: {'jsonDecode'}},
+    counts: {HeavyRule.storedPayloadDecodeOutsideHeavy: 1},
+  ),
+  // The codec call is also a heavyOriginOutsideHeavy finding (unchanged rule,
+  // separate keys).
+  'payload_bad_series_codec': const Expect(
+    {
+      HeavyRule.storedPayloadDecodeOutsideHeavy,
+      HeavyRule.heavyOriginOutsideHeavy,
+    },
+    symbols: {
+      HeavyRule.storedPayloadDecodeOutsideHeavy: {'Repo.trace', 'Repo.save'},
+    },
+    elements: {
+      HeavyRule.storedPayloadDecodeOutsideHeavy: {'decodeSeries', 'encodeSeries'},
+    },
+    counts: {HeavyRule.storedPayloadDecodeOutsideHeavy: 2},
+  ),
+  'payload_bad_inside_localdb': const Expect(
+    {HeavyRule.storedPayloadDecodeOutsideHeavy},
+    symbols: {
+      HeavyRule.storedPayloadDecodeOutsideHeavy: {'LocalDb.countSkipped'},
+    },
+    elements: {HeavyRule.storedPayloadDecodeOutsideHeavy: {'jsonDecode'}},
+  ),
+  'payload_ok_inside_heavy': const Expect.clean(),
+  'payload_ok_unrelated_or_split': const Expect.clean(),
+  // rawTableRowLoopOutsideHeavy v1: a row loop over a Database.query/rawQuery
+  // result on a raw table, outside @heavy and outside LocalDb
+  // (getDeviceChart, SampleArchiver._archiveDevice).
+  'rawtable_bad_loops': const Expect(
+    {HeavyRule.rawTableRowLoopOutsideHeavy},
+    symbols: {
+      HeavyRule.rawTableRowLoopOutsideHeavy: {
+        'Screen.chart',
+        'Screen.archive',
+        'Screen.direct',
+        'Screen.mapped',
+        'Screen.viaConst',
+        'Screen.forEachLoop',
+      },
+    },
+    elements: {
+      HeavyRule.rawTableRowLoopOutsideHeavy: {
+        'decoded_onehz',
+        'decoded_rr',
+        'raw_records',
+        'raw_archive',
+      },
+    },
+    counts: {HeavyRule.rawTableRowLoopOutsideHeavy: 6},
+  ),
+  'rawtable_ok_not_a_loop_or_not_raw': const Expect.clean(),
+  'rawtable_ok_inside_localdb': const Expect.clean(),
 
   // ---- (b) @heavy <=> ...Heavy -----------------------------------------
   'b_bad_marker_without_suffix': const Expect(

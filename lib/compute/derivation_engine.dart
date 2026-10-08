@@ -2664,7 +2664,13 @@ class _AsyncLock {
 }
 
 class DerivationEngine {
-  DerivationEngine({this.log, this.background = false, this.isBackgrounded});
+  DerivationEngine({
+    this.log,
+    this.background = false,
+    this.isBackgrounded,
+    DerivePerf? perf,
+  }) : perf = perf ??
+            DerivePerf(nowMs: () => DateTime.now().millisecondsSinceEpoch);
   final void Function(String)? log;
 
   /// Whether the app is in the background right now, asked when a pass ends.
@@ -2776,9 +2782,7 @@ class DerivationEngine {
   /// Timing of the current / last pass. The scheduler feeds it the queue wait
   /// and hold reasons before a pass starts; run()/runDays()/rescanRecent()
   /// feed it the per-day phases. Measurement only: no metric reads it.
-  final DerivePerf perf = DerivePerf(
-    nowMs: () => DateTime.now().millisecondsSinceEpoch,
-  );
+  final DerivePerf perf;
 
   /// Persist time of each day currently inside [_derivePreparedDay], read back
   /// by [_derivePreparedDayTimed] to split compute from persist.

@@ -345,6 +345,109 @@ void main() {
     });
   });
 
+  // P2.0b adds two rules (storedPayloadDecodeOutsideHeavy, rawTableRowLoopOutsideHeavy)
+  // at version 1. A rule absent from a base baseline that records rule versions
+  // did not exist there: its first keys are reviewed growth, licensed by the
+  // changelog entry `## <rule> v1` and not by a version raise (v1 is its first
+  // version, nothing to raise). Today baselineGrowth reads an absent rule as v1,
+  // so v1 -> v1 is "not bumped" and the first keys could never be written.
+  group('a rule that is new in the head (first version, P2.0b)', () {
+    const fresh = HeavyRule.storedPayloadDecodeOutsideHeavy;
+    const changelog = '## storedPayloadDecodeOutsideHeavy v1 - stored payload decode\n\n'
+        'Why the rule exists.\n';
+    // A format-2 base: it records versions, and does not know `fresh`.
+    final base = HeavyBaseline(
+      [occ(origin)],
+      ruleVersions: const {origin: 2, HeavyRule.sendableGrammar: 2},
+    );
+    HeavyBaseline head({Map<HeavyRule, int>? versions}) => HeavyBaseline(
+          [occ(origin), occ(fresh, symbol: 'New.thing')],
+          ruleVersions: versions ??
+              const {origin: 2, HeavyRule.sendableGrammar: 2, fresh: 1},
+        );
+
+    test('its first keys pass with a changelog entry for v1', () {
+      expect(baselineGrowth(base: base, head: head(), changelog: changelog),
+          isEmpty);
+    });
+
+    test('its first keys fail without the changelog entry', () {
+      final reasons = baselineGrowth(
+          base: base, head: head(), changelog: '# Baseline changelog\n');
+      expect(reasons, hasLength(1));
+      expect(reasons.single, contains('storedPayloadDecodeOutsideHeavy v1'));
+      expect(reasons.single, contains('BASELINE_CHANGELOG.md'));
+    });
+
+    test('a changelog entry for another version or rule does not cover it', () {
+      for (final log in [
+        '## storedPayloadDecodeOutsideHeavy v2 - x\n',
+        '## rawTableRowLoopOutsideHeavy v1 - x\n',
+      ]) {
+        expect(baselineGrowth(base: base, head: head(), changelog: log),
+            isNotEmpty,
+            reason: log);
+      }
+    });
+
+    test('once the base knows the rule at v1, more keys at v1 are not licensed',
+        () {
+      final known = HeavyBaseline(
+        [occ(origin), occ(fresh)],
+        ruleVersions: const {origin: 2, HeavyRule.sendableGrammar: 2, fresh: 1},
+      );
+      final reasons =
+          baselineGrowth(base: known, head: head(), changelog: changelog);
+      expect(reasons, hasLength(1));
+      expect(reasons.single, contains('not bumped'));
+    });
+
+    test('a baseline without ruleVersions (format 1) still reads every rule as '
+        'v1: no new-rule licence', () {
+      final old = HeavyBaseline([occ(origin)]);
+      final reasons = baselineGrowth(
+        base: old,
+        head: HeavyBaseline([occ(origin), occ(fresh, symbol: 'New.thing')],
+            ruleVersions: const {fresh: 1}),
+        changelog: changelog,
+      );
+      expect(reasons, hasLength(1));
+      expect(reasons.single, contains('not bumped'));
+    });
+
+    test('one new rule does not license growth of another rule', () {
+      final reasons = baselineGrowth(
+        base: base,
+        head: HeavyBaseline(
+          [
+            occ(origin),
+            occ(fresh, symbol: 'New.thing'),
+            occ(HeavyRule.sendableGrammar, symbol: 'New.other'),
+          ],
+          ruleVersions: const {origin: 2, HeavyRule.sendableGrammar: 2, fresh: 1},
+        ),
+        changelog: changelog,
+      );
+      expect(reasons, hasLength(1));
+      expect(reasons.single, contains('sendableGrammar'));
+    });
+
+    test('the two P2.0b rules start at version 1 and are baselineable', () {
+      for (final r in [
+        HeavyRule.storedPayloadDecodeOutsideHeavy,
+        HeavyRule.rawTableRowLoopOutsideHeavy,
+      ]) {
+        expect(r.baselineable, isTrue, reason: r.name);
+        expect(kRuleVersions[r], 1, reason: r.name);
+      }
+    });
+
+    test('widening the RowBatch cheap members (first/last) is a shrink: that '
+        "rule's version does not move", () {
+      expect(kRuleVersions[HeavyRule.rowBatchIterationOutsideHeavy], 1);
+    });
+  });
+
   group('BASELINE_CHANGELOG.md entries', () {
     test('an entry is a level-2 heading naming the rule and vN', () {
       const log = '## heavyOriginOutsideHeavy v2 - why\ntext\n## sendableGrammar v10\n';
