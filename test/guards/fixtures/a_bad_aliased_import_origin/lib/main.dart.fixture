@@ -1,0 +1,8 @@
+// FIXTURE: a_bad_aliased_import_origin
+
+
+import 'package:openstrap_analytics/onehz.dart' as ana;
+
+class FakeWidget {
+  ana.Metric build(Object context) => ana.readinessCompute(const [60.0]);
+}

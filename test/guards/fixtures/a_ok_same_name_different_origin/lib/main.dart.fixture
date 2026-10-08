@@ -1,0 +1,10 @@
+// FIXTURE: a_ok_same_name_different_origin
+
+
+// A local function that happens to be called like an analytics API: judged by
+// resolved element, not by name, so this is fine.
+double readinessCompute(List<double> hr) => hr.length.toDouble();
+
+class FakeWidget {
+  double build(Object context) => readinessCompute(const [60.0]);
+}

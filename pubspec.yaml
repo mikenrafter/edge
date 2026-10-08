@@ -707,6 +707,11 @@ dev_dependencies:
   # minor bump is allowed to change or withdraw it and would break the test on
   # someone else's `pub upgrade` rather than on a deliberate one here.
   sqflite_common: 2.5.8
+  # test/guards/heavy_calc_guard_test.dart resolves lib/ with package:analyzer
+  # (design 02). Dev-only, no lint plugin. 10.0.1 is what the Flutter 3.41.6
+  # SDK already resolves transitively (via `test`), so this only
+  # promotes it to a direct dev dependency without moving the lock.
+  analyzer: ^10.0.1
 
 # Run with `dart run flutter_launcher_icons`. TWO THINGS TO KNOW BEFORE YOU DO:
 #

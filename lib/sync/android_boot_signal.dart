@@ -11,13 +11,19 @@ import 'package:flutter/services.dart';
 ///
 /// That closes the "first foreground open after reboot" hole where a pending
 /// boot flag could otherwise be consumed by a normal UI launch.
+bool _platformIsAndroid() => Platform.isAndroid;
+
 class AndroidBootSignal {
   AndroidBootSignal._();
 
   static const MethodChannel _ch = MethodChannel('openstrap/edge_tracking');
 
-  static Future<bool> consumePendingHeadlessBoot() async {
-    if (!Platform.isAndroid) return false;
+  /// [isAndroid] is a test seam (design 02): CI hosts are not Android, so the
+  /// real boot wake could not otherwise be driven.
+  static Future<bool> consumePendingHeadlessBoot({
+    bool Function() isAndroid = _platformIsAndroid,
+  }) async {
+    if (!isAndroid()) return false;
     try {
       return await _ch.invokeMethod<bool>('consumeHeadlessBootPending') ??
           false;

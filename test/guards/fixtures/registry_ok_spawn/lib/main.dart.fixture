@@ -1,0 +1,20 @@
+// FIXTURE: registry_ok_spawn
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#spawnWorkerHeavy, dispatcher: Dispatcher.spawn, reason: 'fixture'),
+];
+
+@heavy
+void spawnWorkerHeavy((SendPort, int) args) {
+  assertWorker();
+  final (port, n) = args;
+  port.send(readinessCompute([n.toDouble()]).value);
+}
+
+class Spawner {
+  Future<Isolate> go(ReceivePort rp) => Isolate.spawn(spawnWorkerHeavy, (rp.sendPort, 3));
+}

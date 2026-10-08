@@ -1,0 +1,6 @@
+// FIXTURE: unresolved_bad_function_value
+
+
+void run(void Function() cb) {
+  cb();
+}

@@ -1,0 +1,123 @@
+// FIXTURE: platform_bad_in_heavy
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+
+class MethodChannel {
+  const MethodChannel(this.name);
+  final String name;
+  Future<Object?> invokeMethod(String m) async => null;
+}
+
+class EventChannel {
+  const EventChannel(this.name);
+  final String name;
+}
+
+class LocalDb {
+  static final LocalDb instance = LocalDb();
+  int count() => 0;
+}
+
+class SharedPreferences {
+  static Future<SharedPreferences> getInstance() async => SharedPreferences();
+}
+
+class HeadlessSyncGate {
+  static Future<T?> tryRun<T>(String owner, Future<T> Function() body) async => null;
+}
+
+class NotificationCenter {
+  static void emit(String key) {}
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#methodChannelHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#eventChannelHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#localDbHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#prefsHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#gateHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+  WorkerEntry(#notifyHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@heavy
+DayOut methodChannelHeavy(DayArgs a) {
+  assertWorker();
+  const MethodChannel('x').invokeMethod('a');
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+@heavy
+DayOut eventChannelHeavy(DayArgs a) {
+  assertWorker();
+  const EventChannel('x');
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+@heavy
+DayOut localDbHeavy(DayArgs a) {
+  assertWorker();
+  LocalDb.instance.count();
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+@heavy
+DayOut prefsHeavy(DayArgs a) {
+  assertWorker();
+  SharedPreferences.getInstance();
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+@heavy
+DayOut gateHeavy(DayArgs a) {
+  assertWorker();
+  HeadlessSyncGate.tryRun<int>('x', () async => 1);
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+@heavy
+DayOut notifyHeavy(DayArgs a) {
+  assertWorker();
+  NotificationCenter.emit('x');
+  return DayOut(readinessCompute(a.hr).value);
+}
+class Caller {
+  Future<DayOut> via_methodChannelHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return methodChannelHeavy(a);
+  });
+  Future<DayOut> via_eventChannelHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return eventChannelHeavy(a);
+  });
+  Future<DayOut> via_localDbHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return localDbHeavy(a);
+  });
+  Future<DayOut> via_prefsHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return prefsHeavy(a);
+  });
+  Future<DayOut> via_gateHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return gateHeavy(a);
+  });
+  Future<DayOut> via_notifyHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return notifyHeavy(a);
+  });
+}

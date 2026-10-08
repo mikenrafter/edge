@@ -1,0 +1,35 @@
+// Stand-in for package:openstrap_analytics: just enough surface for the guard
+// fixtures. Functions here are "compute APIs" (heavy origin); constructors and
+// constants are value reads (exempt).
+
+class Metric {
+  final double? value;
+  const Metric(this.value);
+  const Metric.absent() : value = null;
+
+  /// A factory that computes from stored samples: not a value constructor, so
+  /// it is flagged outside @heavy unless allow-listed by element.
+  factory Metric.fromSamples(List<double> samples) =>
+      Metric(samples.isEmpty ? null : samples.first);
+}
+
+/// A constant lookup table: reading it is not heavy.
+const Map<String, double> kZoneTable = {'z1': 0.5, 'z2': 0.6};
+
+class SleepUserProfile {
+  final int nights;
+  const SleepUserProfile({this.nights = 0});
+  factory SleepUserProfile.fromJson(Map<String, dynamic> j) =>
+      SleepUserProfile(nights: (j['nights'] as num?)?.toInt() ?? 0);
+  Map<String, dynamic> toJson() => {'nights': nights};
+}
+
+// Ambient globals the real package keeps isolate-local.
+SleepUserProfile? cardioUserProfile;
+bool cardioRecordObservations = false;
+void resetCardioObservations() {}
+
+// Compute APIs.
+Metric readinessCompute(List<double> hr) => Metric(hr.isEmpty ? null : hr.first);
+List<int> stageSleep(List<double> hr) => const [];
+double weekdayEffect(List<String> dates, List<double> values) => 0;

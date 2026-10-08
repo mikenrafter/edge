@@ -1,0 +1,40 @@
+// FIXTURE: capture_bad_unsendable_class
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#deriveHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+
+@heavy
+DayOut deriveHeavy(DayArgs a) {
+  assertWorker();
+  return DayOut(readinessCompute(a.hr).value);
+}
+
+
+// Not @sendable: nothing says every field may cross an isolate.
+class Plain {
+  int x = 0;
+}
+
+class Caller2 {
+  Future<DayOut> go(Plain p) => Isolate.run(() => deriveHeavy(DayArgs(p.x, const [])));
+}

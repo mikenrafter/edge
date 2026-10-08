@@ -65,6 +65,18 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      # Design 02: test/guards/heavy_calc_baseline.json lists legacy heavy-work
+      # occurrences and may only SHRINK relative to the PR's target branch. The
+      # base ref goes through an env var (never interpolated into the script).
+      # The same file also runs inside the normal suite, where it skips.
+      - name: Guard — the heavy-calc baseline only shrinks
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_REF"
+          HEAVY_BASELINE_BASE="origin/$BASE_REF" flutter test test/guards/heavy_baseline_test.dart
+
       # --concurrency=1: the suite uses sqflite_common_ffi against real database
       # files, and parallel workers race on them.
       #

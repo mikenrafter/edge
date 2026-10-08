@@ -1,0 +1,11 @@
+// Stand-in codec library (heavy origin by URI). Functions decode/encode stored
+// payloads; the constant and the value class are exempt reads.
+const int kSeriesVersion = 1;
+
+class SeriesHeader {
+  final int version;
+  const SeriesHeader(this.version);
+}
+
+List<double> decodeSeries(List<int> bytes) => const [];
+List<int> encodeSeries(List<double> values) => const [];
