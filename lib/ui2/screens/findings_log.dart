@@ -130,8 +130,13 @@ class FindingRow extends StatelessWidget {
   Widget build(BuildContext c) {
     final p = P.of(c);
     final ink = _ink(p, f);
+    // A view built without localizations (a bare test host) still says it in
+    // English rather than not at all.
+    final l = AppLocalizations.of(c) ?? lookupAppLocalizations(const Locale('en'));
+    final title = findingTitle(l, f);
+    final detail = findingDetail(l, f);
     return Semantics(
-      label: '${f.title}. ${f.detail}',
+      label: '$title. $detail',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -144,14 +149,14 @@ class FindingRow extends StatelessWidget {
               ),
               const SizedBox(width: S.x2),
               Expanded(
-                child: Text(f.title,
+                child: Text(title,
                     style: F.body.copyWith(
                         color: p.ink, fontWeight: FontWeight.w600)),
               ),
             ],
           ),
           const SizedBox(height: S.x2),
-          Text(f.detail, style: F.cap.copyWith(color: p.ink2, height: 1.5)),
+          Text(detail, style: F.cap.copyWith(color: p.ink2, height: 1.5)),
         ],
       ),
     );

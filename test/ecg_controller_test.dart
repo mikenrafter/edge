@@ -556,7 +556,7 @@ void main() {
   });
 
   group('terminal outcomes', () {
-    test('unreadable: cleanup, mask surfaced, nothing saved', () async {
+    test('unreadable: cleanup, mask surfaced, saved as an attempt', () async {
       final r = Rig();
       await r.c.begin(EcgWrist.right);
       r.t.emitFrame(frame(seq: 1, progress: 3));
@@ -565,13 +565,19 @@ void main() {
       await r.settle();
       expect(r.c.state.phase, EcgCapturePhase.unreadable);
       expect(r.c.state.unreadableMask, 0x03);
-      expect(r.saved, isEmpty);
+      // Design 04: an unreadable terminal is SAVED as an attempt (category
+      // unreadable, its mask kept), not dropped; no sync is requested.
+      expect(r.saved, hasLength(1));
+      expect(r.saved.single.$1.category, EcgCategory.unreadable);
+      expect(r.saved.single.$1.unreadableMask, 0x03);
+      expect(r.c.state.readingId, r.saved.single.$1.id);
       expect(r.t.calls.where((c) => c == 'cleanup'), hasLength(1));
       expect(r.t.syncRequests, 0);
     });
 
     test(
-      'first inconclusive offers one retry; the retry persists inconclusive',
+      'first inconclusive (saved) offers one retry; the retry saves a second '
+      'inconclusive',
       () async {
         final r = Rig();
         await r.c.begin(EcgWrist.right);
@@ -580,7 +586,9 @@ void main() {
         await r.settle();
         await r.settle();
         expect(r.c.state.phase, EcgCapturePhase.inconclusiveRetry);
-        expect(r.saved, isEmpty);
+        // Design 04: the first inconclusive is saved before the retry is
+        // offered; the retry then adds the second (final) attempt.
+        expect(r.saved.single.$1.status, EcgReadingStatus.inconclusive);
         expect(r.c.isCapturing, isFalse);
         await r.c.retry();
         expect(r.c.state.phase, EcgCapturePhase.waiting);
@@ -590,7 +598,8 @@ void main() {
         await r.settle();
         await r.settle();
         expect(r.c.state.phase, EcgCapturePhase.completed);
-        expect(r.saved.single.$1.status, EcgReadingStatus.inconclusive);
+        expect(r.saved, hasLength(2));
+        expect(r.saved.last.$1.status, EcgReadingStatus.inconclusive);
         // No third attempt is offered.
         await r.c.retry();
         expect(r.t.calls.where((c) => c == 'prepare:right'), hasLength(2));

@@ -2,7 +2,11 @@
 // one place. Capture, history, detail, export and the coach all read
 // [ecgOutcome]; none of them re-derive a verdict from the stored category.
 //
-// RED STUB (design 04 phase 1): the data types are real, the functions throw.
+// Nothing here looks at the waveform: the inputs are the band's own bytes
+// (result code, average heart rate, the reason mask) and whether the recording
+// stopped early. The app adds exactly one thing, the override: any band-reported
+// problem, an unknown code, a missing or out-of-table heart rate withholds the
+// rhythm label (AGENTS 3.3).
 
 import 'ecg_models.dart';
 
@@ -103,6 +107,39 @@ class EcgOutcome {
   final int mask;
 }
 
+/// The band's category for a result code and average heart rate: the stored
+/// `category` of a new reading. It is the raw band value (a set mask does not
+/// change it; [ecgOutcomeOf] decides what is SHOWN). The one place outside the
+/// table itself that reads [categoryFor].
+EcgCategory ecgBandCategory(int resultCode, int? avgHr) =>
+    categoryFor(resultCode, _rate(avgHr) ?? 0);
+
+/// 0, 255 and absent all mean "the band gave no heart rate".
+int? _rate(int? hr) => (hr == null || hr <= 0 || hr >= 255) ? null : hr;
+
+const _maskBitIds = [
+  EcgReasonId.lowAmplitude,
+  EcgReasonId.significantNoise,
+  EcgReasonId.unstableSignal,
+  EcgReasonId.notEnoughData,
+];
+
+/// Result codes whose category depends on a heart rate (0 and 2 say unreadable,
+/// 6 inconclusive, whatever the rate).
+const _needsRate = {1, 3, 4, 5};
+
+/// The reasons a band reason [mask] names, in bit order: bits 0-3 by name,
+/// bits 4-7 as "unknown band reason bit n" (never given a meaning). Empty for
+/// mask 0. The one place a mask becomes reasons: the outcome and the Details
+/// both read it.
+List<EcgReason> ecgMaskReasons(int mask) => [
+  for (var bit = 0; bit < 8; bit++)
+    if (mask & (1 << bit) != 0)
+      bit < _maskBitIds.length
+          ? EcgReason(_maskBitIds[bit])
+          : EcgReason(EcgReasonId.unknownBandReasonBit, bit),
+];
+
 /// The decision matrix (design 04 R1 with R1' / R1''), on raw band values.
 /// [mask] is the OR of every mask the capture saw; [avgHr] null = none.
 EcgOutcome ecgOutcomeOf({
@@ -110,9 +147,56 @@ EcgOutcome ecgOutcomeOf({
   required int? avgHr,
   required int mask,
   bool partial = false,
-}) => throw UnimplementedError('design 04 phase 1: ecgOutcomeOf');
+}) {
+  EcgOutcome out(
+    EcgOutcomeKind kind, {
+    EcgCategory? band,
+    List<EcgReason> reasons = const [],
+    List<EcgCaveat> caveats = const [],
+  }) => EcgOutcome(
+    kind: kind,
+    bandResult: band,
+    reasons: reasons,
+    caveats: caveats,
+    resultCode: resultCode,
+    avgHr: avgHr,
+    mask: mask,
+  );
+
+  // Stopped early: whatever the band bytes say, nothing was concluded.
+  if (partial) return out(EcgOutcomeKind.partial);
+
+  final reasons = ecgMaskReasons(mask);
+
+  if (resultCode == 0 || resultCode == 2) {
+    reasons.add(EcgReason(EcgReasonId.bandUnreadableResult, resultCode));
+  } else if (_needsRate.contains(resultCode)) {
+    final hr = _rate(avgHr);
+    if (hr == null) {
+      reasons.add(const EcgReason(EcgReasonId.noHeartRate));
+    } else if (categoryFor(resultCode, hr) == EcgCategory.unreadable) {
+      reasons.add(EcgReason(EcgReasonId.heartRateOutOfRange, hr));
+    }
+  } else if (resultCode != 6) {
+    reasons.add(EcgReason(EcgReasonId.unknownResultCode, resultCode));
+  }
+
+  if (reasons.isNotEmpty) {
+    return out(EcgOutcomeKind.notReadable, reasons: reasons);
+  }
+  if (resultCode == 6) return out(EcgOutcomeKind.inconclusive);
+  return out(
+    EcgOutcomeKind.bandResult,
+    band: categoryFor(resultCode, _rate(avgHr)!),
+    caveats: const [EcgCaveat.bandReportedQualityUnchecked],
+  );
+}
 
 /// The outcome of a saved reading. Uses `mask_any | unreadable_mask` (a legacy
 /// row has only the terminal mask) and `avg_hr`; never the stored category.
-EcgOutcome ecgOutcome(EcgReading r) =>
-    throw UnimplementedError('design 04 phase 1: ecgOutcome');
+EcgOutcome ecgOutcome(EcgReading r) => ecgOutcomeOf(
+  resultCode: r.resultCode,
+  avgHr: r.avgHr,
+  mask: (r.maskAny ?? 0) | r.unreadableMask,
+  partial: r.status == EcgReadingStatus.partial,
+);

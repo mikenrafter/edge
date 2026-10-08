@@ -304,14 +304,23 @@ class AppState extends ChangeNotifier {
     final c = EcgController(
       transport: t,
       guard: _ecgGuard,
-      // A new reading within 10 minutes after an inconclusive one replaces it
-      // (LocalDb.saveEcgResult). The controller hands no packets unless
-      // "Keep waveform" is on.
+      // A new reading within 10 minutes after a non-final one (not readable or
+      // inconclusive) joins its attempt group; nothing is deleted
+      // (LocalDb.saveEcgResult). The controller hands no packets unless "Keep
+      // waveform" is on.
       save: (r, p) => LocalDb.saveEcgResult(
         r.toRow(),
         [for (final x in p) EcgPacketCodec.toRow(x)],
       ),
       keepWaveform: () => ecgKeepWaveform,
+      // Provenance stamped on every new reading (design 04 R3). The band's
+      // firmware is null until its hello arrives, and the app version is ''
+      // until PackageInfo answers: both are "not recorded", never a blank
+      // string stored as a version.
+      firmwareVersion: () => engine.bandFirmware,
+      appVersion: () => _appVersionLabel.isEmpty ? null : _appVersionLabel,
+      utcOffsetMin: (ms) =>
+          DateTime.fromMillisecondsSinceEpoch(ms).timeZoneOffset.inMinutes,
       onCue: (slot) => unawaited(_playEcgCue(slot)),
       busyReason: () => activeWorkout != null
           ? 'workout'

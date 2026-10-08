@@ -72,32 +72,6 @@ class Finding {
         _ => false,
       };
 
-  String get title => switch (kind) {
-        FindingKind.illness => 'Possible illness onset',
-        FindingKind.anomaly => 'Unusual overnight readings',
-        FindingKind.tempElevated => 'Skin temperature elevated',
-        FindingKind.irregularRhythm => 'Irregular heart rhythm flagged',
-        FindingKind.lowReadiness => 'Low readiness today',
-        FindingKind.rhrShift => 'Your resting heart-rate trend shifted',
-      };
-
-  String get detail => switch (kind) {
-        FindingKind.illness =>
-          'Resting heart rate is up and heart rate variability (HRV) is down over recent nights.',
-        FindingKind.anomaly =>
-          'Your overnight readings are outside your usual range.',
-        FindingKind.tempElevated =>
-          'Sustained rise above your baseline, which can be a sign of illness.',
-        FindingKind.irregularRhythm =>
-          'Your beat-to-beat pattern looked irregular today. This is a '
-          'screen for irregularity and not a diagnosis. See a clinician if you have symptoms.',
-        FindingKind.lowReadiness =>
-          'Your recovery markers are below your usual range. Take an easier day.',
-        FindingKind.rhrShift =>
-          'Your resting HR has ${risen == false ? 'fallen' : 'risen'} '
-              'noticeably versus your recent baseline.',
-      };
-
   @override
   bool operator ==(Object other) =>
       other is Finding &&
@@ -185,16 +159,31 @@ List<Finding> findingsHistory(
   return out;
 }
 
-/// Design 04 R5/R5': a finding's title from the ARBs (all six locales), so a
-/// notification and the log say it the same way. The irregular-rhythm one is
-/// "Irregular pulse pattern flagged". RED stub: `Finding.title` is still the
-/// hardcoded English until this replaces it.
-String findingTitle(AppLocalizations l, Finding f) =>
-    throw UnimplementedError('design 04 phase 1: findingTitle');
+/// A finding's title from the ARBs (all six locales), so a notification and the
+/// log say it the same way. The irregular-rhythm one is "Irregular pulse
+/// pattern flagged": the screen reads the wrist pulse, which cannot show the
+/// heart's electrical activity (design 04 R5).
+String findingTitle(AppLocalizations l, Finding f) => switch (f.kind) {
+  FindingKind.illness => l.findingTitleIllness,
+  FindingKind.anomaly => l.findingTitleAnomaly,
+  FindingKind.tempElevated => l.findingTitleTemp,
+  FindingKind.irregularRhythm => l.findingTitleIrregularRhythm,
+  FindingKind.lowReadiness => l.findingTitleLowReadiness,
+  FindingKind.rhrShift => l.findingTitleRhrShift,
+};
 
-/// A finding's detail from the ARBs. The irregular-rhythm one begins "Your
-/// beat-to-beat pulse timing looked irregular today. This screen uses the wrist
-/// pulse, which can't show the heart's electrical activity, and is not a
-/// diagnosis." RED stub.
-String findingDetail(AppLocalizations l, Finding f) =>
-    throw UnimplementedError('design 04 phase 1: findingDetail');
+/// A finding's one-sentence explanation from the ARBs. The irregular-rhythm one
+/// begins "Your beat-to-beat pulse timing looked irregular today. This screen
+/// uses the wrist pulse, which can't show the heart's electrical activity, and
+/// is not a diagnosis."
+String findingDetail(AppLocalizations l, Finding f) => switch (f.kind) {
+  FindingKind.illness => l.findingDetailIllness,
+  FindingKind.anomaly => l.findingDetailAnomaly,
+  FindingKind.tempElevated => l.findingDetailTemp,
+  FindingKind.irregularRhythm => l.findingDetailIrregularRhythm,
+  FindingKind.lowReadiness => l.findingDetailLowReadiness,
+  FindingKind.rhrShift =>
+    f.risen == false
+        ? l.findingDetailRhrShiftFallen
+        : l.findingDetailRhrShiftRisen,
+};

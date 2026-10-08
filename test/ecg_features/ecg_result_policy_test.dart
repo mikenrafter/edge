@@ -1,12 +1,12 @@
-// ECG features, phase 1 (RED): the overwrite rule and the metrics a result
+// ECG features, phase 1: the attempt-join rule and the metrics a result
 // really has. Pure functions in lib/ecg/ecg_result.dart.
 //
-// OVERWRITE (owner spec 5): a new reading started within 10 minutes AFTER an
-// inconclusive one REPLACES that record instead of adding a new one. A
-// complete one is never overwritten. Decisions on the edges: the window is
-// inclusive (exactly 10:00 replaces); only the MOST RECENT reading is
-// considered; a partial neither replaces nor is replaced (never trade a fuller
-// record for a thinner one); a start before the previous end (clock skew) adds.
+// JOIN (owner spec 5, changed by design 04): a new reading started within 10
+// minutes AFTER a non-final one joins that reading's attempt group instead of
+// deleting it. A final one is never joined. Decisions on the edges: the window
+// is inclusive (exactly 10:00 joins); only the MOST RECENT reading is
+// considered; a partial neither joins nor is joined; a start before the
+// previous end (clock skew) starts a group.
 //
 // METRICS (owner spec 3, 7): only what really exists. Average heart rate and
 // signal quality. There is no RMSSD or SDNN from an ECG anywhere in edge or in
@@ -31,63 +31,69 @@ void main() {
     });
   });
 
-  group('ecgReplaceTargetId', () {
+  // Design 04 replaced "replace the inconclusive one" with "join its attempt
+  // group": nothing is deleted. The 10-minute window, its inclusive edge, the
+  // clock-skew rule and "a partial neither joins nor is joined" are unchanged;
+  // what is non-final changed from "status inconclusive" to "outcome not
+  // readable or inconclusive" (the full boundary matrix is in
+  // test/ecg_transparency/ecg_attempts_policy_test.dart).
+  group('ecgJoinTargetId (was ecgReplaceTargetId)', () {
     EcgReading incoming(int startTs,
             {EcgReadingStatus status = EcgReadingStatus.completed}) =>
         fixtureReading(id: 'new', startTs: startTs, status: status);
 
-    test('within 10 minutes after an inconclusive: replaces it', () {
+    test('within 10 minutes after an inconclusive: joins it', () {
       final prev = inconclusiveEndingAt(kT0 + 1000);
       expect(
-        ecgReplaceTargetId(latest: prev, incoming: incoming(kT0 + 1000 + 120)),
+        ecgJoinTargetId(latest: prev, incoming: incoming(kT0 + 1000 + 120)),
         prev.id,
       );
     });
 
-    test('exactly 10:00 after still replaces; one second more adds', () {
+    test('exactly 10:00 after still joins; one second more starts a group', () {
       final prev = inconclusiveEndingAt(kT0 + 1000);
-      expect(ecgReplaceTargetId(latest: prev, incoming: incoming(kT0 + 1600)),
+      expect(ecgJoinTargetId(latest: prev, incoming: incoming(kT0 + 1600)),
           prev.id);
-      expect(ecgReplaceTargetId(latest: prev, incoming: incoming(kT0 + 1601)),
+      expect(ecgJoinTargetId(latest: prev, incoming: incoming(kT0 + 1601)),
           isNull);
     });
 
-    test('a start at the same second the inconclusive ended replaces', () {
+    test('a start at the same second the inconclusive ended joins', () {
       final prev = inconclusiveEndingAt(kT0 + 1000);
-      expect(ecgReplaceTargetId(latest: prev, incoming: incoming(kT0 + 1000)),
+      expect(ecgJoinTargetId(latest: prev, incoming: incoming(kT0 + 1000)),
           prev.id);
     });
 
-    test('a start BEFORE the previous one ended (clock skew) adds', () {
-      final prev = inconclusiveEndingAt(kT0 + 1000);
-      expect(ecgReplaceTargetId(latest: prev, incoming: incoming(kT0 + 999)),
-          isNull);
-    });
-
-    test('after a complete reading: always a new record, never an overwrite',
+    test('a start BEFORE the previous one ended (clock skew) starts a group',
         () {
+      final prev = inconclusiveEndingAt(kT0 + 1000);
+      expect(ecgJoinTargetId(latest: prev, incoming: incoming(kT0 + 999)),
+          isNull);
+    });
+
+    test('after a final reading: always its own group, never a join', () {
       final prev = fixtureReading(endTs: kT0 + 1000);
       for (final dt in [0, 30, 120, 599, 600]) {
-        expect(ecgReplaceTargetId(latest: prev, incoming: incoming(kT0 + 1000 + dt)),
+        expect(ecgJoinTargetId(latest: prev, incoming: incoming(kT0 + 1000 + dt)),
             isNull,
             reason: '+${dt}s');
       }
     });
 
-    test('after a partial: a new record (a partial is never overwritten)', () {
+    test('after a partial: its own group (a partial is never joined)', () {
       final prev = partialEndingAt(kT0 + 1000);
-      expect(ecgReplaceTargetId(latest: prev, incoming: incoming(kT0 + 1100)),
+      expect(ecgJoinTargetId(latest: prev, incoming: incoming(kT0 + 1100)),
           isNull);
     });
 
-    test('no previous reading: a new record', () {
-      expect(ecgReplaceTargetId(latest: null, incoming: incoming(kT0)), isNull);
+    test('no previous reading: its own group', () {
+      expect(ecgJoinTargetId(latest: null, incoming: incoming(kT0)), isNull);
     });
 
-    test('an inconclusive follow-up replaces an inconclusive one too', () {
+    test('an inconclusive follow-up joins an inconclusive one too', () {
       final prev = inconclusiveEndingAt(kT0 + 1000);
       expect(
-        ecgReplaceTargetId(
+        ecgJoinTargetId(
           latest: prev,
           incoming: incoming(kT0 + 1100, status: EcgReadingStatus.inconclusive),
         ),
@@ -95,11 +101,10 @@ void main() {
       );
     });
 
-    test('a partial follow-up does NOT replace the inconclusive one (a '
-        'thinner record never displaces a fuller one)', () {
+    test('a partial follow-up does NOT join the inconclusive one', () {
       final prev = inconclusiveEndingAt(kT0 + 1000);
       expect(
-        ecgReplaceTargetId(
+        ecgJoinTargetId(
           latest: prev,
           incoming: incoming(kT0 + 1100, status: EcgReadingStatus.partial),
         ),

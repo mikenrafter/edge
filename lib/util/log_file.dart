@@ -47,8 +47,29 @@ String logFileName(String kind, DateTime at, {String ext = 'txt'}) {
 /// Write [text] verbatim to `<dir>/<fileName>` (default the temporary
 /// directory) and hand the path to [share] (default the platform share sheet,
 /// anchored at [origin] for the iPad popover). True when both worked; false,
-/// never a throw, when the write or the share failed.
+/// never a throw, when the write or the share failed. A thin wrapper over
+/// [saveLogFileResult], for the callers that do not show why.
 Future<bool> saveLogFile(
+  String fileName,
+  String text, {
+  Rect? origin,
+  Directory? dir,
+  Future<void> Function(String path)? share,
+}) async {
+  final r = await saveLogFileResult(
+    fileName,
+    text,
+    origin: origin,
+    dir: dir,
+    share: share,
+  );
+  return r is LogSaveOk;
+}
+
+/// [saveLogFile] with a reason (design 04 R7''). The one write path: UTF-8
+/// [text] to `<dir>/<fileName>`, then [share]. Never a throw: a failure
+/// returns [LogSaveFailed] carrying the error's text.
+Future<LogSaveResult> saveLogFileResult(
   String fileName,
   String text, {
   Rect? origin,
@@ -65,23 +86,11 @@ Future<bool> saveLogFile(
               subject: 'OpenStrap log',
               sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1),
             ))(file.path);
-    return true;
-  } catch (_) {
-    return false;
+    return const LogSaveOk();
+  } catch (e) {
+    return LogSaveFailed('$e');
   }
 }
-
-/// [saveLogFile] with a reason (design 04 R7''). Same write and share, never a
-/// throw: a failure returns [LogSaveFailed] carrying the error's text, and
-/// [saveLogFile] stays as the bool wrapper for existing callers.
-/// RED stub.
-Future<LogSaveResult> saveLogFileResult(
-  String fileName,
-  String text, {
-  Rect? origin,
-  Directory? dir,
-  Future<void> Function(String path)? share,
-}) => throw UnimplementedError('design 04 phase 1: saveLogFileResult');
 
 /// The MIME type of a lab recording (JSON Lines), for the share sheet.
 const String kJsonFileMime = 'application/json';

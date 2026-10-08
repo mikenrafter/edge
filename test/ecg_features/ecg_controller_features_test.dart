@@ -128,7 +128,12 @@ void main() {
         kEcgStartedKey,
         kEcgInconclusiveKey,
       ]);
-      expect(r.saved.single.$1.status, EcgReadingStatus.inconclusive);
+      // Design 04: every terminal is saved as an attempt - the first
+      // inconclusive before the retry was offered, the second as the final.
+      expect(r.saved.map((s) => s.$1.status), [
+        EcgReadingStatus.inconclusive,
+        EcgReadingStatus.inconclusive,
+      ]);
     });
 
     test('the band could not read it: failed', () async {

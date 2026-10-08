@@ -51,3 +51,9 @@ in the same change that introduces it (AGENTS.md §6).
 ## Spectral archive (experimental)
 - **Part** — one append-only encoded chunk of the spectral archive.
 - **Pyramid** — the per-minute summary levels kept for a signal.
+
+## ECG
+- **Attempt** — one terminal of an ECG capture that was saved as its own reading: not readable, inconclusive or a result. Nothing is deleted when a retake follows.
+- **Attempt group** — the attempts of one sitting: a reading joins the latest group when that group's latest attempt is non-final and the new one starts within 10 minutes after it ended (`attempt_group`, `attempt`).
+- **Superseded** — an attempt a later attempt of its group replaced (`superseded_by`); hidden from the history list, kept for Details and exports.
+- **ECG outcome** — what a saved reading is allowed to say, decided only by `ecgOutcome`: a band-reported rhythm, inconclusive, not readable, or partial. The band's own bytes (result code, average heart rate, reason mask) stay stored untouched.

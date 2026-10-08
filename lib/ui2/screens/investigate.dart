@@ -354,6 +354,13 @@ class _InvestigateState extends State<Investigate> {
     ];
   }
 
+  /// A screen's verdict in words. null = the screen did not run.
+  static String _flagWord(AppLocalizations? l, Object? flag) => flag == null
+      ? (l?.investigateFlagNotScreened ?? 'not screened')
+      : flag == true
+      ? (l?.investigateFlagRaised ?? 'flagged')
+      : (l?.investigateFlagClear ?? 'not flagged');
+
   // ── HRV: time, frequency, non-linear ──
   List<Widget> _hrvPanels(BuildContext c, InvestigateData d) {
     final l = AppLocalizations.of(c);
@@ -370,6 +377,11 @@ class _InvestigateState extends State<Investigate> {
         ? (d.heart['irregular'] as Map).cast<String, dynamic>()
         : const <String, dynamic>{};
     final irr24 = envValue(d.heart['irregular_24h']) ?? const {};
+    // The 24 h confidence rides on the envelope, not in its value.
+    final irr24Env = d.heart['irregular_24h'];
+    final irr24Confidence = irr24Env is Map ? irr24Env['confidence'] : null;
+    final coverage = d.hrv['coverage'];
+    final cleanFraction = coverage is Map ? coverage['clean_fraction'] : null;
     final dc = envValue(d.hrv['prsa_dc']) ?? const {};
     final ac = envValue(d.hrv['prsa_ac']) ?? const {};
     final hrvBlock = d.heart['hrv'];
@@ -454,21 +466,24 @@ class _InvestigateState extends State<Investigate> {
         // A screen that never RAN is not a screen that ran and found nothing.
         // `irregularBeatScreen` abstains below 500 clean beats or over 30%
         // artifact — the common case for a barely-worn day — and both rows
-        // printed "clear" for it, i.e. a negative arrhythmia screen for a day
-        // the screen was explicitly suppressed. MonoTable drops the em-dash.
+        // used to print "clear" for it, i.e. a negative arrhythmia screen for
+        // a day the screen was explicitly suppressed. Now: flagged / not
+        // flagged / not screened, and "not screened" is never "not flagged".
         (l?.investigateIrregularRhythmFlagSleep ??
             'Irregular-rhythm flag, sleep',
-            irr['flag'] == null
-                ? '—'
-                : (irr['flag'] == true
-                    ? (l?.investigateFlagRaised ?? 'raised')
-                    : (l?.investigateFlagClear ?? 'clear'))),
+            _flagWord(l, irr['flag'])),
         (l?.investigateIrregularRhythmFlag24h ?? 'Irregular-rhythm flag, 24 h',
-            irr24['flag'] == null
-                ? '—'
-                : (irr24['flag'] == true
-                    ? (l?.investigateFlagRaised ?? 'raised')
-                    : (l?.investigateFlagClear ?? 'clear'))),
+            _flagWord(l, irr24['flag'])),
+        // The stored evidence behind those two verdicts, read from the day
+        // bundle as persisted (design 04 R4: display only, nothing recomputed).
+        // An unpersisted value has no row: never a 0 or a 0 %.
+        (l?.investigateConfidence24h ?? 'Confidence, 24 h',
+            plain(irr24Confidence)),
+        (l?.investigateConfidenceSleep ?? 'Confidence, sleep',
+            plain(irr['confidence'])),
+        (l?.investigateCleanFractionSleep ??
+            'Share of beats kept after cleaning, sleep',
+            cleanFraction is num ? pct(cleanFraction * 100) : '—'),
         (l?.investigateDecelerationCapacity ?? 'Deceleration capacity',
             ms(dc['capacity_ms'])),
         (l?.investigateAccelerationCapacity ?? 'Acceleration capacity',
@@ -775,11 +790,11 @@ class _InvestigateState extends State<Investigate> {
         ],
         legend: [(ranLabel, p.on(C.purple))],
         footnote: l?.investigateRhythmStripFootnote(ran, raised) ??
-            'Ran on $ran day${ran == 1 ? '' : 's'}, raised its flag on '
-            '$raised. An outlined square is a day it did not run. A clear '
-            'strip does not rule anything out. The screen reads pulse '
-            'timing and cannot tell an ectopic beat from a dropped beat '
-            'or from the band moving on your wrist.',
+            'Ran on $ran day${ran == 1 ? '' : 's'}, flagged on '
+            '$raised. An outlined square is a day it did not run. A strip '
+            'with nothing flagged does not rule anything out. The screen '
+            'reads pulse timing and cannot tell an ectopic beat from a '
+            'dropped beat or from the band moving on your wrist.',
         // A grid: the finger selects the week (column) it is over, and the
         // readout counts that week's squares. A week with no day on which the
         // screen ran reads "No data here".
@@ -801,7 +816,7 @@ class _InvestigateState extends State<Investigate> {
           keys: [
             weekKey(ranLabel, p.on(C.purple),
                 (col) => col.where((v) => v != null).length),
-            weekKey('Flag raised', p.on(C.purple),
+            weekKey('Flagged', p.on(C.purple),
                 (col) => col.where((v) => v != null && v >= 1).length),
           ],
           child: CustomPaint(

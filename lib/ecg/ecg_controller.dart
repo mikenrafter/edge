@@ -23,6 +23,7 @@ import 'ecg_models.dart';
 import 'ecg_outcome.dart';
 import 'ecg_policy.dart';
 import 'ecg_recovery.dart';
+import 'ecg_seconds.dart';
 import 'ecg_result.dart';
 import 'ecg_transport.dart';
 import 'ecg_waveform_buffer.dart';
@@ -79,8 +80,7 @@ class EcgCaptureState {
   final List<EcgMetric> metrics;
 
   /// Design 04 R1: the shared outcome of what was saved (ecgOutcome of the
-  /// saved reading). Null while capturing and when nothing was saved. RED: the
-  /// controller never sets it.
+  /// saved reading). Null while capturing and when nothing was saved.
   final EcgOutcome? outcome;
 
   const EcgCaptureState({
@@ -176,7 +176,7 @@ class EcgController extends ChangeNotifier {
 
   /// Design 04 R3 provenance stamped on every new reading. Each is read when
   /// the reading is built; null (or a provider returning null) = not recorded,
-  /// stored NULL and shown "not recorded", never inferred. RED: unused.
+  /// stored NULL and shown "not recorded", never inferred.
   final String? Function()? firmwareVersion;
   final String? Function()? appVersion;
 
@@ -634,33 +634,48 @@ class EcgController extends ChangeNotifier {
           await _teardown(epoch, EcgCapturePhase.cancelled, reason: 'gesture');
           return;
         }
+        // EVERY terminal is saved as an attempt before the window is gone
+        // (design 04 R2): an unreadable or first-inconclusive one is evidence
+        // too, and the store groups it with the retake that follows. A failed
+        // save ends the capture `failed`/'save', never a "saved" screen.
+        _set(_state.copyWith(phase: EcgCapturePhase.saving));
+        final packets = List<EcgAcceptedPacket>.from(outcome.window);
+        final reading = _buildReading(outcome, packets);
+        try {
+          await save(reading, _keep ? packets : const []);
+        } catch (e) {
+          log('[ECG] save failed: $e');
+          await _teardown(epoch, EcgCapturePhase.failed, reason: 'save');
+          return;
+        }
+        // What the screens say about it: the one outcome, band bytes plus the
+        // mask the whole window carried.
+        final shown = ecgOutcome(reading);
         switch (outcome.kind) {
           case EcgTerminalKind.unreadable:
             await _teardown(
               epoch,
               EcgCapturePhase.unreadable,
               unreadableMask: outcome.unreadableMask,
+              readingId: reading.id,
+              outcome: shown,
             );
           case EcgTerminalKind.inconclusiveOfferRetry:
-            await _teardown(epoch, EcgCapturePhase.inconclusiveRetry);
+            await _teardown(
+              epoch,
+              EcgCapturePhase.inconclusiveRetry,
+              readingId: reading.id,
+              outcome: shown,
+            );
           case EcgTerminalKind.completed:
           case EcgTerminalKind.inconclusiveFinal:
-            _set(_state.copyWith(phase: EcgCapturePhase.saving));
-            final packets = List<EcgAcceptedPacket>.from(_reducer.accepted);
-            final reading = _buildReading(outcome, packets);
-            try {
-              await save(reading, _keep ? packets : const []);
-            } catch (e) {
-              log('[ECG] save failed: $e');
-              await _teardown(epoch, EcgCapturePhase.failed, reason: 'save');
-              return;
-            }
             await _teardown(
               epoch,
               EcgCapturePhase.completed,
               readingId: reading.id,
               result: reading.status,
               metrics: ecgMetricsOf(reading),
+              outcome: shown,
             );
             // With the raw save on, the band kept the recording; ordinary
             // incremental history brings it back through the normal safe path.
@@ -761,7 +776,33 @@ class EcgController extends ChangeNotifier {
       notes: null,
       createdAt: now,
       stopReason: reason,
+      maskAny: ecgMaskAnyOf(packets),
+      captureTableVersion: kEcgOutcomeTableVersion,
+      firmwareVersion: _asked(firmwareVersion),
+      captureAppVersion: _asked(appVersion),
+      startOffsetMin: _offsetAt(startMs),
     );
+  }
+
+  // Provenance providers belong to other modules and may throw or know
+  // nothing: "not recorded" (null), never a guess and never a failed save.
+  // A throw is swallowed on purpose: this runs inside the one exit, before the
+  // band is stopped, so it must not be able to end it early (AGENTS 4.3).
+  String? _asked(String? Function()? provider) {
+    try {
+      final v = provider?.call();
+      return (v == null || v.isEmpty) ? null : v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int? _offsetAt(int epochMs) {
+    try {
+      return utcOffsetMin?.call(epochMs);
+    } catch (_) {
+      return null;
+    }
   }
 
   EcgReading _buildReading(
@@ -791,11 +832,26 @@ class EcgController extends ChangeNotifier {
       maxUv: stats.maxUv,
       rmsUv: stats.rmsUv,
       missingSegments: stats.missingSegments,
-      status: outcome.kind == EcgTerminalKind.inconclusiveFinal
-          ? EcgReadingStatus.inconclusive
-          : EcgReadingStatus.completed,
+      // The band's own status: an unreadable terminal is `completed` with
+      // category unreadable (as it always was); an inconclusive one, first
+      // attempt or final, is `inconclusive`.
+      status: switch (outcome.kind) {
+        EcgTerminalKind.inconclusiveFinal ||
+        EcgTerminalKind.inconclusiveOfferRetry => EcgReadingStatus.inconclusive,
+        EcgTerminalKind.completed ||
+        EcgTerminalKind.unreadable => EcgReadingStatus.completed,
+      },
       notes: null,
       createdAt: now,
+      // R1'': every band reason bit the window carried, whether or not the
+      // waveform is kept, so identical captures read identically.
+      maskAny: ecgMaskAnyOf(packets) | t.unreadable.raw,
+      liveHr: t.liveHr > 0 ? t.liveHr : null,
+      variabilityRaw: t.variabilityRaw,
+      captureTableVersion: kEcgOutcomeTableVersion,
+      firmwareVersion: _asked(firmwareVersion),
+      captureAppVersion: _asked(appVersion),
+      startOffsetMin: _offsetAt(startMs),
     );
   }
 
@@ -834,6 +890,7 @@ class EcgController extends ChangeNotifier {
     int? unreadableMask,
     EcgReadingStatus? result,
     List<EcgMetric>? metrics,
+    EcgOutcome? outcome,
   }) async {
     final lease = _lease;
     if (lease == null || _epoch != epoch) return;
@@ -872,6 +929,7 @@ class EcgController extends ChangeNotifier {
         cleanupIncomplete: incomplete,
         result: result,
         metrics: metrics,
+        outcome: outcome,
       ),
     );
   }

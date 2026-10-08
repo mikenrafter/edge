@@ -4706,11 +4706,11 @@
   "@investigateIrregularRhythmFlag24h": {
     "description": "HRV metric label: irregular-rhythm flag over 24 hours"
   },
-  "investigateFlagRaised": "raised",
+  "investigateFlagRaised": "flagged",
   "@investigateFlagRaised": {
     "description": "Value shown when the irregular-rhythm flag was raised"
   },
-  "investigateFlagClear": "clear",
+  "investigateFlagClear": "not flagged",
   "@investigateFlagClear": {
     "description": "Value shown when the irregular-rhythm flag was clear"
   },
@@ -4835,7 +4835,7 @@
   "@investigateScreenRan": {
     "description": "Chart legend label: day the irregular-rhythm screen ran"
   },
-  "investigateRhythmStripFootnote": "Ran on {ran} {ran, plural, one{day} other{days}}, raised its flag on {raised}. An outlined square marks a day it did not run. A clear strip does not rule anything out. The screen reads pulse timing and cannot tell an ectopic beat, a dropped beat or wrist movement apart.",
+  "investigateRhythmStripFootnote": "Ran on {ran} {ran, plural, one{day} other{days}}, flagged on {raised}. An outlined square marks a day it did not run. A strip with nothing flagged does not rule anything out. The screen reads pulse timing and cannot tell an ectopic beat, a dropped beat or wrist movement apart.",
   "@investigateRhythmStripFootnote": {
     "description": "Footnote summarising how many days the irregular-rhythm screen ran and flagged",
     "placeholders": {
@@ -12447,7 +12447,7 @@
   "@ecgNotDiagnosis": {
     "description": "WHOOP MG ECG: the category comes from the band; this is a screen, not a medical test"
   },
-  "ecgCategorySinus": "Regular rhythm, nothing flagged",
+  "ecgCategorySinus": "Regular rhythm reported",
   "@ecgCategorySinus": {
     "description": "WHOOP MG ECG: regular rhythm, nothing flagged"
   },
@@ -13496,5 +13496,428 @@
   "sampleArchiveApproximation": "Approximate (archived)",
   "@sampleArchiveApproximation": {
     "description": "Label kept on an archived long-range chart even at full detail: the curve is read back from an archive that stores rounded values, not a measurement."
+  },
+  "ecgOutcomeNotReadable": "Not readable",
+  "@ecgOutcomeNotReadable": {
+    "description": "WHOOP MG ECG: Not readable"
+  },
+  "ecgStoppedEarly": "Stopped early",
+  "@ecgStoppedEarly": {
+    "description": "WHOOP MG ECG: Stopped early"
+  },
+  "ecgOutcomeNoRhythm": "This recording does not support a rhythm reading.",
+  "@ecgOutcomeNoRhythm": {
+    "description": "WHOOP MG ECG: This recording does not support a rhythm reading."
+  },
+  "ecgCaveatQualityUnchecked": "Band-reported. The app has not checked this recording's quality yet.",
+  "@ecgCaveatQualityUnchecked": {
+    "description": "WHOOP MG ECG: Band-reported. The app has not checked this recording's quality yet."
+  },
+  "ecgReasonUnknownBit": "Unknown band reason bit {bit}",
+  "@ecgReasonUnknownBit": {
+    "description": "WHOOP MG ECG: Unknown band reason bit {bit}",
+    "placeholders": {
+      "bit": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonUnknownCode": "The band's result code {code} is not one this app knows",
+  "@ecgReasonUnknownCode": {
+    "description": "WHOOP MG ECG: The band's result code {code} is not one this app knows",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonBandUnreadable": "The band's result code {code} means it could not read the recording",
+  "@ecgReasonBandUnreadable": {
+    "description": "WHOOP MG ECG: The band's result code {code} means it could not read the recording",
+    "placeholders": {
+      "code": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgReasonNoHeartRate": "No heart rate was reported",
+  "@ecgReasonNoHeartRate": {
+    "description": "WHOOP MG ECG: No heart rate was reported"
+  },
+  "ecgReasonHrOutOfRange": "The average heart rate ({hr} bpm) is outside the range this result can be read at",
+  "@ecgReasonHrOutOfRange": {
+    "description": "WHOOP MG ECG: The average heart rate ({hr} bpm) is outside the range this result can be read at",
+    "placeholders": {
+      "hr": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgExportAll": "Export ECG logs",
+  "@ecgExportAll": {
+    "description": "WHOOP MG ECG: Export ECG logs"
+  },
+  "ecgExportReading": "Export this reading",
+  "@ecgExportReading": {
+    "description": "WHOOP MG ECG: Export this reading"
+  },
+  "ecgExportFailed": "Couldn't save the ECG log: {reason}",
+  "@ecgExportFailed": {
+    "description": "WHOOP MG ECG: Couldn't save the ECG log: {reason}",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDeleteConfirmOne": "Delete this reading?",
+  "@ecgDeleteConfirmOne": {
+    "description": "WHOOP MG ECG: Delete this reading?"
+  },
+  "ecgDeleteConfirmMany": "Delete this reading and all {count} attempts?",
+  "@ecgDeleteConfirmMany": {
+    "description": "WHOOP MG ECG: Delete this reading and all {count} attempts?",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDeleteConfirm": "Delete",
+  "@ecgDeleteConfirm": {
+    "description": "WHOOP MG ECG: Delete"
+  },
+  "ecgWaveformNotKept": "Waveform not kept",
+  "@ecgWaveformNotKept": {
+    "description": "WHOOP MG ECG: Waveform not kept"
+  },
+  "ecgCoachNoRhythm": "No rhythm reading to analyze — {reason}",
+  "@ecgCoachNoRhythm": {
+    "description": "WHOOP MG ECG: No rhythm reading to analyze — {reason}",
+    "placeholders": {
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDetails": "Details",
+  "@ecgDetails": {
+    "description": "WHOOP MG ECG: Details"
+  },
+  "ecgNotRecorded": "not recorded",
+  "@ecgNotRecorded": {
+    "description": "WHOOP MG ECG: not recorded"
+  },
+  "ecgNotKept": "not kept",
+  "@ecgNotKept": {
+    "description": "WHOOP MG ECG: not kept"
+  },
+  "ecgDetailNone": "none",
+  "@ecgDetailNone": {
+    "description": "WHOOP MG ECG: none"
+  },
+  "ecgDetailOutcome": "What the app decided",
+  "@ecgDetailOutcome": {
+    "description": "WHOOP MG ECG: What the app decided"
+  },
+  "ecgDetailResultCode": "Band result code",
+  "@ecgDetailResultCode": {
+    "description": "WHOOP MG ECG: Band result code"
+  },
+  "ecgDetailStoredCategory": "Band category as stored",
+  "@ecgDetailStoredCategory": {
+    "description": "WHOOP MG ECG: Band category as stored"
+  },
+  "ecgDetailAvgHr": "Average heart rate (decides)",
+  "@ecgDetailAvgHr": {
+    "description": "WHOOP MG ECG: Average heart rate (decides)"
+  },
+  "ecgDetailLiveHr": "Live heart rate (never decides)",
+  "@ecgDetailLiveHr": {
+    "description": "WHOOP MG ECG: Live heart rate (never decides)"
+  },
+  "ecgDetailQualityValue": "{value} · band-reported, scale unknown",
+  "@ecgDetailQualityValue": {
+    "description": "WHOOP MG ECG: {value} · band-reported, scale unknown",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgDetailFinalMask": "Band reasons, final second",
+  "@ecgDetailFinalMask": {
+    "description": "WHOOP MG ECG: Band reasons, final second"
+  },
+  "ecgDetailMaskAny": "Band reasons, any second",
+  "@ecgDetailMaskAny": {
+    "description": "WHOOP MG ECG: Band reasons, any second"
+  },
+  "ecgDetailVariability": "Variability (raw, unit unknown)",
+  "@ecgDetailVariability": {
+    "description": "WHOOP MG ECG: Variability (raw, unit unknown)"
+  },
+  "ecgDetailMin": "Lowest sample",
+  "@ecgDetailMin": {
+    "description": "WHOOP MG ECG: Lowest sample"
+  },
+  "ecgDetailMax": "Highest sample",
+  "@ecgDetailMax": {
+    "description": "WHOOP MG ECG: Highest sample"
+  },
+  "ecgDetailRms": "RMS amplitude",
+  "@ecgDetailRms": {
+    "description": "WHOOP MG ECG: RMS amplitude"
+  },
+  "ecgDetailSampleCount": "Samples",
+  "@ecgDetailSampleCount": {
+    "description": "WHOOP MG ECG: Samples"
+  },
+  "ecgDetailStopReason": "Stopped because",
+  "@ecgDetailStopReason": {
+    "description": "WHOOP MG ECG: Stopped because"
+  },
+  "ecgDetailFirmware": "Band firmware",
+  "@ecgDetailFirmware": {
+    "description": "WHOOP MG ECG: Band firmware"
+  },
+  "ecgDetailAppVersion": "App version at capture",
+  "@ecgDetailAppVersion": {
+    "description": "WHOOP MG ECG: App version at capture"
+  },
+  "ecgDetailTableVersion": "Rule table version",
+  "@ecgDetailTableVersion": {
+    "description": "WHOOP MG ECG: Rule table version"
+  },
+  "ecgDetailTableBoth": "captured with table v{captured}, shown now with table v{now}",
+  "@ecgDetailTableBoth": {
+    "description": "WHOOP MG ECG: captured with table v{captured}, shown now with table v{now}",
+    "placeholders": {
+      "captured": {
+        "type": "int"
+      },
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailTableSame": "v{now} (captured and shown now)",
+  "@ecgDetailTableSame": {
+    "description": "WHOOP MG ECG: v{now} (captured and shown now)",
+    "placeholders": {
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailTableNotRecorded": "not recorded; shown now with table v{now}",
+  "@ecgDetailTableNotRecorded": {
+    "description": "WHOOP MG ECG: not recorded; shown now with table v{now}",
+    "placeholders": {
+      "now": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailUtcOffset": "UTC offset at capture",
+  "@ecgDetailUtcOffset": {
+    "description": "WHOOP MG ECG: UTC offset at capture"
+  },
+  "ecgDetailPackets": "Kept waveform",
+  "@ecgDetailPackets": {
+    "description": "WHOOP MG ECG: Kept waveform"
+  },
+  "ecgDetailPacketsKept": "{count} seconds kept",
+  "@ecgDetailPacketsKept": {
+    "description": "WHOOP MG ECG: {count} seconds kept",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "ecgDetailAttempts": "Attempts in this group",
+  "@ecgDetailAttempts": {
+    "description": "WHOOP MG ECG: Attempts in this group"
+  },
+  "ecgAttemptLine": "Attempt {n}: {outcome}",
+  "@ecgAttemptLine": {
+    "description": "WHOOP MG ECG: Attempt {n}: {outcome}",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      },
+      "outcome": {
+        "type": "String"
+      }
+    }
+  },
+  "ecgAttemptThis": "this reading",
+  "@ecgAttemptThis": {
+    "description": "WHOOP MG ECG: this reading"
+  },
+  "ecgDetailBandLogic": "How the band decides its result is proprietary and unknown to this app. The app only reads the numbers the band reports.",
+  "@ecgDetailBandLogic": {
+    "description": "WHOOP MG ECG: How the band decides its result is proprietary and unknown to this app. The app only reads the numbers the ban"
+  },
+  "ecgRateMapping": "Regular rhythm is only reported at 51–99 bpm; at 100–150 bpm the band separates irregular from not irregular; at 151–200 bpm it reports only high heart rate; outside that the band gives no rhythm reading. These ranges come from how the app reads the band's codes, not from a validation of this device.",
+  "@ecgRateMapping": {
+    "description": "WHOOP MG ECG: Regular rhythm is only reported at 51–99 bpm; at 100–150 bpm the band separates irregular from not irregular; "
+  },
+  "ecgDetailRuleHr": "The heart rate that decides is the average heart rate the band reports. The live rate is shown but never decides.",
+  "@ecgDetailRuleHr": {
+    "description": "WHOOP MG ECG: The heart rate that decides is the average heart rate the band reports. The live rate is shown but never decid"
+  },
+  "ecgDetailRuleMask": "Any reason bit the band set in any second, an unknown result code or a missing heart rate makes the reading Not readable, whatever the result code says.",
+  "@ecgDetailRuleMask": {
+    "description": "WHOOP MG ECG: Any reason bit the band set in any second, an unknown result code or a missing heart rate makes the reading No"
+  },
+  "ecgTimelineTitle": "Per-second timeline",
+  "@ecgTimelineTitle": {
+    "description": "WHOOP MG ECG: Per-second timeline"
+  },
+  "ecgTimelineSecond": "Sec",
+  "@ecgTimelineSecond": {
+    "description": "WHOOP MG ECG: Sec"
+  },
+  "ecgTimelineQuality": "Quality",
+  "@ecgTimelineQuality": {
+    "description": "WHOOP MG ECG: Quality"
+  },
+  "ecgTimelineContact": "Contact",
+  "@ecgTimelineContact": {
+    "description": "WHOOP MG ECG: Contact"
+  },
+  "ecgTimelineS2": "S2 state/flag",
+  "@ecgTimelineS2": {
+    "description": "WHOOP MG ECG: S2 state/flag"
+  },
+  "ecgTimelineReasons": "Reasons",
+  "@ecgTimelineReasons": {
+    "description": "WHOOP MG ECG: Reasons"
+  },
+  "ecgTimelineProgress": "Progress",
+  "@ecgTimelineProgress": {
+    "description": "WHOOP MG ECG: Progress"
+  },
+  "ecgTimelineMissing": "missing second",
+  "@ecgTimelineMissing": {
+    "description": "WHOOP MG ECG: missing second"
+  },
+  "ecgTimelineUndecodable": "not decodable",
+  "@ecgTimelineUndecodable": {
+    "description": "WHOOP MG ECG: not decodable"
+  },
+  "ecgScreenerSinusMeaning": "The band reported a regular rhythm at a heart rate between 51 and 99 beats per minute. The app has not checked this recording's quality. This does not mean you were cleared: the screen cannot rule anything out, and it looks at one short recording only.",
+  "@ecgScreenerSinusMeaning": {
+    "description": "WHOOP MG ECG: The band reported a regular rhythm at a heart rate between 51 and 99 beats per minute. The app has not checked"
+  },
+  "ecgScreenerLowHrMeaning": "The average heart rate was 50 beats per minute or lower. A low rate can be ordinary for some people, and this screen says nothing about the cause. If you feel faint, dizzy or unwell, see a clinician.",
+  "@ecgScreenerLowHrMeaning": {
+    "description": "WHOOP MG ECG: The average heart rate was 50 beats per minute or lower. A low rate can be ordinary for some people, and this "
+  },
+  "ecgScreenerPossibleAfibMeaning": "The band's screen flagged an irregular rhythm in this recording, at a heart rate between 51 and 99 beats per minute. A flag is a prompt for a proper test, not a finding. One short recording from a wrist band cannot tell a lasting pattern from a passing one, so see a clinician for an ECG, especially with symptoms.",
+  "@ecgScreenerPossibleAfibMeaning": {
+    "description": "WHOOP MG ECG: The band's screen flagged an irregular rhythm in this recording, at a heart rate between 51 and 99 beats per m"
+  },
+  "ecgScreenerAfibHighHrMeaning": "The band's screen flagged an irregular rhythm together with a heart rate from 100 to 150 beats per minute. A flag is a prompt for a proper test, not a finding. See a clinician for an ECG, and soon if you feel unwell, short of breath or have chest pain.",
+  "@ecgScreenerAfibHighHrMeaning": {
+    "description": "WHOOP MG ECG: The band's screen flagged an irregular rhythm together with a heart rate from 100 to 150 beats per minute. A f"
+  },
+  "ecgScreenerHighHrMeaning": "The heart rate was between 151 and 200 beats per minute. At this rate the screen does not tell a regular rhythm from an irregular one. Exercise, fever, caffeine and stress all raise it. If it stays high at rest or you feel unwell, see a clinician.",
+  "@ecgScreenerHighHrMeaning": {
+    "description": "WHOOP MG ECG: The heart rate was between 151 and 200 beats per minute. At this rate the screen does not tell a regular rhyth"
+  },
+  "ecgScreenerHighHrNoAfibMeaning": "The heart rate was between 100 and 150 beats per minute and the screen flagged no irregular rhythm. This does not mean you were cleared: the screen cannot rule anything out. If a high rate stays at rest or you feel unwell, see a clinician.",
+  "@ecgScreenerHighHrNoAfibMeaning": {
+    "description": "WHOOP MG ECG: The heart rate was between 100 and 150 beats per minute and the screen flagged no irregular rhythm. This does "
+  },
+  "ecgScreenerInconclusiveMeaning": "The band could not reach a result from this recording; the signal may have been too noisy or too short. It says nothing either way. Try again with your arm resting and your fingers still. This attempt is kept with the reading's details, and a reading you start within 10 minutes is grouped with it.",
+  "@ecgScreenerInconclusiveMeaning": {
+    "description": "WHOOP MG ECG: The band could not reach a result from this recording; the signal may have been too noisy or too short. It say"
+  },
+  "ecgScreenerUnreadableMeaning": "The app could not read a rhythm from this recording: the band reported low amplitude, noise, an unstable signal or not enough data, or its result code or heart rate could not be mapped to a result. This recording was not screened. Not screened is not the same as nothing flagged.",
+  "@ecgScreenerUnreadableMeaning": {
+    "description": "WHOOP MG ECG: The app could not read a rhythm from this recording: the band reported low amplitude, noise, an unstable signa"
+  },
+  "ecgScreenerPartialMeaning": "The recording stopped before it finished, because the app went to the background, it timed out or the band connection dropped. What was recorded is saved as a partial reading. It was not screened, so no rhythm result is given. Heart rate and signal quality appear only if at least 10 seconds of signal were recorded.",
+  "@ecgScreenerPartialMeaning": {
+    "description": "WHOOP MG ECG: The recording stopped before it finished, because the app went to the background, it timed out or the band con"
+  },
+  "ecgScreenerFailedMeaning": "The reading could not be completed: the band would not start it, or the connection was lost before any signal came in. It was not screened and nothing is saved. Check that the band is connected and worn snugly, then try again.",
+  "@ecgScreenerFailedMeaning": {
+    "description": "WHOOP MG ECG: The reading could not be completed: the band would not start it, or the connection was lost before any signal "
+  },
+  "ecgScreenerIntro": "This is a screen, not a medical test.\n\nA result with nothing flagged does not mean you were cleared, and the screen cannot rule anything out. A result that was not screened says nothing at all.\n\nThe result is the band's own. The app does not read the trace itself and has not checked the recording's quality; it only withholds a rhythm result when the band reports a problem. A wrist band records a single lead.\n\nWith symptoms, see a clinician for a proper test.",
+  "@ecgScreenerIntro": {
+    "description": "WHOOP MG ECG: This is a screen, not a medical test.  A result with nothing flagged does not mean you were cleared, and the s"
+  },
+  "findingTitleIllness": "Possible illness onset",
+  "@findingTitleIllness": {
+    "description": "Design 04 cardio transparency: Possible illness onset"
+  },
+  "findingTitleAnomaly": "Unusual overnight readings",
+  "@findingTitleAnomaly": {
+    "description": "Design 04 cardio transparency: Unusual overnight readings"
+  },
+  "findingTitleTemp": "Skin temperature elevated",
+  "@findingTitleTemp": {
+    "description": "Design 04 cardio transparency: Skin temperature elevated"
+  },
+  "findingTitleIrregularRhythm": "Irregular pulse pattern flagged",
+  "@findingTitleIrregularRhythm": {
+    "description": "Design 04 cardio transparency: Irregular pulse pattern flagged"
+  },
+  "findingTitleLowReadiness": "Low readiness today",
+  "@findingTitleLowReadiness": {
+    "description": "Design 04 cardio transparency: Low readiness today"
+  },
+  "findingTitleRhrShift": "Your resting heart-rate trend shifted",
+  "@findingTitleRhrShift": {
+    "description": "Design 04 cardio transparency: Your resting heart-rate trend shifted"
+  },
+  "findingDetailIllness": "Resting heart rate is up and heart rate variability (HRV) is down over recent nights.",
+  "@findingDetailIllness": {
+    "description": "Design 04 cardio transparency: Resting heart rate is up and heart rate variability (HRV) is down over recent nights."
+  },
+  "findingDetailAnomaly": "Your overnight readings are outside your usual range.",
+  "@findingDetailAnomaly": {
+    "description": "Design 04 cardio transparency: Your overnight readings are outside your usual range."
+  },
+  "findingDetailTemp": "Sustained rise above your baseline, which can be a sign of illness.",
+  "@findingDetailTemp": {
+    "description": "Design 04 cardio transparency: Sustained rise above your baseline, which can be a sign of illness."
+  },
+  "findingDetailIrregularRhythm": "Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the heart's electrical activity, and is not a diagnosis. See a clinician if you have symptoms.",
+  "@findingDetailIrregularRhythm": {
+    "description": "Design 04 cardio transparency: Your beat-to-beat pulse timing looked irregular today. This screen uses the wrist pulse, which can't show the "
+  },
+  "findingDetailLowReadiness": "Your recovery markers are below your usual range. Take an easier day.",
+  "@findingDetailLowReadiness": {
+    "description": "Design 04 cardio transparency: Your recovery markers are below your usual range. Take an easier day."
+  },
+  "findingDetailRhrShiftRisen": "Your resting HR has risen noticeably versus your recent baseline.",
+  "@findingDetailRhrShiftRisen": {
+    "description": "Design 04 cardio transparency: Your resting HR has risen noticeably versus your recent baseline."
+  },
+  "findingDetailRhrShiftFallen": "Your resting HR has fallen noticeably versus your recent baseline.",
+  "@findingDetailRhrShiftFallen": {
+    "description": "Design 04 cardio transparency: Your resting HR has fallen noticeably versus your recent baseline."
+  },
+  "investigateFlagNotScreened": "not screened",
+  "@investigateFlagNotScreened": {
+    "description": "Design 04 cardio transparency: not screened"
+  },
+  "investigateConfidence24h": "Confidence, 24 h",
+  "@investigateConfidence24h": {
+    "description": "Design 04 cardio transparency: Confidence, 24 h"
+  },
+  "investigateConfidenceSleep": "Confidence, sleep",
+  "@investigateConfidenceSleep": {
+    "description": "Design 04 cardio transparency: Confidence, sleep"
+  },
+  "investigateCleanFractionSleep": "Share of beats kept after cleaning, sleep",
+  "@investigateCleanFractionSleep": {
+    "description": "Design 04 cardio transparency: Share of beats kept after cleaning, sleep"
   }
 }

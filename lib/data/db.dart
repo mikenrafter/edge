@@ -45,7 +45,7 @@ import 'live_coverage_policy.dart';
 import 'med_store.dart';
 import 'moment_label.dart';
 import '../ecg/ecg_models.dart' show EcgReading;
-import '../ecg/ecg_result.dart' show ecgReplaceTargetId;
+import '../ecg/ecg_result.dart' show ecgJoinTargetId;
 import 'models.dart';
 import 'nutrition_store.dart';
 import 'observation.dart';
@@ -407,7 +407,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 69;
+  static const int schemaVersion = 70;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -512,6 +512,7 @@ class LocalDb {
         await _createDeviceCoverage(db);
         await _createSignalPriority(db);
         await _createEcgTables(db);
+        await _ensureEcgPhase1Columns(db);
         await _createWorkoutSuggestions(db);
         await _createSleepOverride(db);
         await _createSleepNap(db);
@@ -1268,6 +1269,14 @@ class LocalDb {
           // the columns and gives legacy parts their origin (see there).
           await _createSampleArchive(db);
         }
+        if (oldV < 70) {
+          // ECG attempt groups and provenance (design 04 phase 1): ten nullable
+          // columns and one index on ecg_reading, no backfill (a legacy row
+          // stays NULL = "not recorded" and is a group of one), cheap under
+          // iOS's CPU watchdog (invariant 11). No kAlgoVersion bump: nothing
+          // derived reads them. _repairOpenSchema re-runs it on every open.
+          await _ensureEcgPhase1Columns(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1359,6 +1368,7 @@ class LocalDb {
     );
     await _ensureWakeSchema(db);
     await _createEcgTables(db);
+    await _ensureEcgPhase1Columns(db);
     // After every step above that can rebuild decoded_* (_relaxDecodedHrNull):
     // a rebuilt table drops its triggers, this puts them back.
     await _createInputRev(db);
@@ -2573,6 +2583,39 @@ class LocalDb {
     }
   }
 
+  /// Design 04 phase 1 (schema 70): the attempt-group and provenance columns of
+  /// `ecg_reading`, all nullable (NULL = "not recorded", a legacy row is a group
+  /// of one) and by ALTER so a table made by an older build gains them. One
+  /// idempotent creator for the `oldV < 70` rung, onCreate and
+  /// `_repairOpenSchema`; no backfill, so it stays cheap under iOS's CPU
+  /// watchdog (invariant 11). It must run before `_ensureCoachViews`, which
+  /// reads `superseded_by`.
+  static Future<void> _ensureEcgPhase1Columns(Database db) async {
+    // The table itself first: a database that reached this rung without it
+    // (a fixture, a partial restore) gets the whole ECG store, not a failed
+    // ALTER that would quarantine the user's data.
+    await _createEcgTables(db);
+    const cols = {
+      'mask_any': 'INTEGER',
+      'superseded_by': 'TEXT',
+      'attempt_group': 'TEXT',
+      'attempt': 'INTEGER',
+      'live_hr': 'INTEGER',
+      'variability_raw': 'INTEGER',
+      'firmware_version': 'TEXT',
+      'capture_app_version': 'TEXT',
+      'capture_table_version': 'INTEGER',
+      'start_offset_min': 'INTEGER',
+    };
+    for (final e in cols.entries) {
+      await _addColumnIfMissing(db, 'ecg_reading', e.key, e.value);
+    }
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_ecg_reading_group '
+      'ON ecg_reading(attempt_group, attempt)',
+    );
+  }
+
   /// Gesture sessions, newest first (diagnostics and tests).
   static Future<List<Map<String, Object?>>> ecgGestureSessions() async {
     final db = await instance;
@@ -2607,18 +2650,20 @@ class LocalDb {
     });
   }
 
-  /// Persist a finished result (ecg-features) and report which inconclusive
-  /// reading it replaced. [reading] is an [EcgReading.toRow]; [packets] are
-  /// the codec rows to keep (empty unless the wearer keeps the waveform, and
-  /// then they are ONLY the accepted window; raw live frames are never stored).
+  /// Persist a finished result and report which earlier attempt it superseded.
+  /// [reading] is an [EcgReading.toRow]; [packets] are the codec rows to keep
+  /// (empty unless the wearer keeps the waveform, and then they are ONLY the
+  /// accepted window; raw live frames are never stored).
   ///
-  /// In ONE transaction: look up the latest reading by end_ts, ask
-  /// `ecgReplaceTargetId` whether the incoming one replaces it, delete that
-  /// reading and its packets (manual cascade, like [deleteEcgReading]) and
-  /// insert the new one. All or nothing: if the insert fails the old
-  /// inconclusive reading is still there. Returns the replaced id or null.
-  /// [insertEcgReading] stays as the plain insert (it refuses a duplicate id
-  /// and never replaces).
+  /// Nothing is ever deleted by a save (design 04 R2). In ONE transaction: look
+  /// up the latest current reading (by end_ts), ask `ecgJoinTargetId` whether
+  /// the incoming one is a further attempt at it. If so the new row takes that
+  /// group (`attempt_group`, `attempt` = previous + 1) and the previous row's
+  /// `superseded_by` is set to the new id, kept with its packets; otherwise the
+  /// new row starts its own group (`attempt_group` = its id, `attempt` 1). All
+  /// or nothing: if the insert fails the earlier attempt is untouched. Returns
+  /// the id superseded, or null. [insertEcgReading] stays as the plain insert
+  /// (it refuses a duplicate id and never groups).
   static Future<String?> saveEcgResult(
     Map<String, Object?> reading,
     List<Map<String, Object?>> packets,
@@ -2626,33 +2671,38 @@ class LocalDb {
     final db = await instance;
     return db.transaction((txn) async {
       final incoming = EcgReading.fromRow(reading);
-      String? replaced;
+      Map<String, Object?>? target;
       if (incoming != null) {
         final rows = await txn.query(
           'ecg_reading',
+          where: 'superseded_by IS NULL',
           orderBy: 'end_ts DESC, created_at DESC',
           limit: 1,
         );
         final latest = rows.isEmpty ? null : EcgReading.fromRow(rows.first);
-        replaced = ecgReplaceTargetId(latest: latest, incoming: incoming);
+        if (ecgJoinTargetId(latest: latest, incoming: incoming) != null) {
+          target = rows.first;
+        }
       }
-      if (replaced != null) {
-        await txn.delete(
-          'ecg_reading_packet',
-          where: 'reading_id = ?',
-          whereArgs: [replaced],
-        );
-        await txn.update(
-          'ecg_raw_packet',
-          {'reading_id': null},
-          where: 'reading_id = ?',
-          whereArgs: [replaced],
-        );
-        await txn.delete('ecg_reading', where: 'id = ?', whereArgs: [replaced]);
+      final id = reading['id'] as String?;
+      final String? group;
+      final int attempt;
+      if (target != null) {
+        // A legacy target has no group: it becomes attempt 1 of its own.
+        group = (target['attempt_group'] as String?) ?? target['id'] as String;
+        attempt = ((target['attempt'] as num?)?.toInt() ?? 1) + 1;
+      } else {
+        group = id;
+        attempt = 1;
       }
       await txn.insert(
         'ecg_reading',
-        reading,
+        {
+          ...reading,
+          'attempt_group': group,
+          'attempt': attempt,
+          'superseded_by': null,
+        },
         conflictAlgorithm: ConflictAlgorithm.fail,
       );
       final batch = txn.batch();
@@ -2664,37 +2714,80 @@ class LocalDb {
         );
       }
       await batch.commit(noResult: true);
-      return replaced;
+      if (target == null) return null;
+      await txn.update(
+        'ecg_reading',
+        {
+          'superseded_by': id,
+          'attempt_group': group,
+          'attempt': (target['attempt'] as num?)?.toInt() ?? 1,
+        },
+        where: 'id = ?',
+        whereArgs: [target['id']],
+      );
+      return target['id'] as String;
     });
   }
 
-  /// Saved readings, newest first, WITHOUT packets.
-  ///
-  /// Design 04 R2: superseded attempts are hidden unless [includeSuperseded].
-  /// RED: the flag is accepted and ignored.
+  /// Saved readings, newest first, WITHOUT packets. Superseded attempts (an
+  /// earlier try that a later one replaced, design 04 R2) are hidden unless
+  /// [includeSuperseded]; the detail screen and the exports see them.
   static Future<List<Map<String, Object?>>> listEcgReadings({
     int limit = 200,
     bool includeSuperseded = false,
   }) async {
     final db = await instance;
-    return db.query('ecg_reading', orderBy: 'start_ts DESC', limit: limit);
+    return db.query(
+      'ecg_reading',
+      where: includeSuperseded ? null : 'superseded_by IS NULL',
+      orderBy: 'start_ts DESC',
+      limit: limit,
+    );
   }
 
   /// Every attempt in the group of [id] (superseded included) ordered by
-  /// attempt; a legacy row (NULL group) is a group of one. RED stub.
-  static Future<List<Map<String, Object?>>> ecgAttempts(String id) =>
-      throw UnimplementedError('design 04 phase 1: LocalDb.ecgAttempts');
+  /// attempt; a legacy row (NULL group) is a group of one. Empty when [id]
+  /// does not exist.
+  static Future<List<Map<String, Object?>>> ecgAttempts(String id) async {
+    final db = await instance;
+    final me = await db.query('ecg_reading', where: 'id = ?', whereArgs: [id]);
+    if (me.isEmpty) return const [];
+    final group = me.first['attempt_group'] as String?;
+    if (group == null) return me;
+    return db.query(
+      'ecg_reading',
+      where: 'attempt_group = ?',
+      whereArgs: [group],
+      orderBy: 'attempt ASC, start_ts ASC, id ASC',
+    );
+  }
 
   /// Export reader: every reading (superseded included), oldest -> newest by
   /// start_ts then id, at most [limit] strictly after the ([afterStartTs],
-  /// [afterId]) cursor. RED stub.
+  /// [afterId]) cursor. Keyset paging, so a large store is read in bounded
+  /// pages with no gap or repeat.
   static Future<List<Map<String, Object?>>> ecgReadingsForExport({
     required int limit,
     int? afterStartTs,
     String? afterId,
-  }) => throw UnimplementedError(
-    'design 04 phase 1: LocalDb.ecgReadingsForExport',
-  );
+  }) async {
+    final db = await instance;
+    return db.query(
+      'ecg_reading',
+      where: afterStartTs == null
+          ? null
+          : afterId == null
+          ? 'start_ts > ?'
+          : '(start_ts > ? OR (start_ts = ? AND id > ?))',
+      whereArgs: afterStartTs == null
+          ? null
+          : afterId == null
+          ? [afterStartTs]
+          : [afterStartTs, afterStartTs, afterId],
+      orderBy: 'start_ts ASC, id ASC',
+      limit: limit,
+    );
+  }
 
   /// One reading row, or null.
   static Future<Map<String, Object?>?> ecgReading(String id) async {
@@ -2716,24 +2809,44 @@ class LocalDb {
     );
   }
 
-  /// Delete a reading and ITS packets in one transaction (manual cascade —
-  /// see [_createEcgTables]). Raw R16 rows are independent history evidence
-  /// and are not deleted with a reading; their association is cleared.
+  /// Delete a reading's WHOLE attempt group (every attempt, hidden ones too)
+  /// and their packets in one transaction (manual cascade, see
+  /// [_createEcgTables]); a legacy row with no group deletes just itself. Raw
+  /// R16 rows are independent history evidence and are not deleted with a
+  /// reading; their association is cleared.
   static Future<void> deleteEcgReading(String id) async {
     final db = await instance;
     await db.transaction((txn) async {
-      await txn.delete(
-        'ecg_reading_packet',
-        where: 'reading_id = ?',
+      final me = await txn.query(
+        'ecg_reading',
+        columns: ['attempt_group'],
+        where: 'id = ?',
         whereArgs: [id],
       );
-      await txn.update(
-        'ecg_raw_packet',
-        {'reading_id': null},
-        where: 'reading_id = ?',
-        whereArgs: [id],
-      );
-      await txn.delete('ecg_reading', where: 'id = ?', whereArgs: [id]);
+      final group = me.isEmpty ? null : me.first['attempt_group'] as String?;
+      final rows = group == null
+          ? const <Map<String, Object?>>[]
+          : await txn.query(
+              'ecg_reading',
+              columns: ['id'],
+              where: 'attempt_group = ?',
+              whereArgs: [group],
+            );
+      final ids = <String>{id, for (final r in rows) r['id']! as String};
+      for (final one in ids) {
+        await txn.delete(
+          'ecg_reading_packet',
+          where: 'reading_id = ?',
+          whereArgs: [one],
+        );
+        await txn.update(
+          'ecg_raw_packet',
+          {'reading_id': null},
+          where: 'reading_id = ?',
+          whereArgs: [one],
+        );
+        await txn.delete('ecg_reading', where: 'id = ?', whereArgs: [one]);
+      }
     });
   }
 
@@ -5753,16 +5866,24 @@ class LocalDb {
     // bounded waveform envelope is served by the typed get_ecg_reading tool
     // instead. No device_id (band identity) and no free-text notes. `date` is
     // the LOCAL day like v_sessions; start_ts/end_ts are epoch SECONDS.
+    //
+    // Design 04: superseded attempts are not listed (the latest attempt of a
+    // group is the reading), and the stored band value is exposed as
+    // `band_category` because it is only what the BAND said. What the reading
+    // MEANS (not readable / inconclusive / partial / a band-reported rhythm) is
+    // decided in Dart by ecgOutcome and reaches the coach through
+    // get_ecg_reading; SQL never computes it.
     await db.execute('''
       CREATE VIEW v_ecg_readings AS
       SELECT id, start_ts, end_ts,
              strftime('%Y-%m-%d', start_ts, 'unixepoch', 'localtime') AS date,
-             wrist, status, category, result_code, avg_hr, quality,
-             unreadable_mask, interruptions, stop_reason,
+             wrist, status, category AS band_category, result_code, avg_hr,
+             quality, unreadable_mask, interruptions, stop_reason,
              (end_ts - start_ts) AS duration_s,
              sample_count, sample_rate_hz, sample_unit,
              min_uv, max_uv, rms_uv, missing_segments
       FROM ecg_reading
+      WHERE superseded_by IS NULL
     ''');
   }
 

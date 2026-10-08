@@ -5,9 +5,9 @@
 // absent stays NULL (never 0); no waveform packet rows unless the caller hands
 // packets (the controller only does when the wearer keeps the waveform, see
 // ecg_controller_features_test.dart) and nothing here touches the raw R16
-// ledger; the overwrite rule is applied INSIDE the transaction against the
-// most recent reading by end time; and a failed save leaves the old
-// inconclusive reading exactly as it was.
+// ledger; the attempt-join rule is applied INSIDE the transaction against the
+// most recent reading by end time (and deletes nothing); and a failed save
+// leaves the earlier attempt exactly as it was.
 //
 // Waveform policy (decision): a reading is user-initiated, but "Take ECG" asks
 // for a result, not for a saved recording. By default only the derived metrics
@@ -66,7 +66,7 @@ void main() {
         interruptions: 1,
         sampleCount: 3000,
       );
-      expect(await _save(r), isNull, reason: 'nothing to replace');
+      expect(await _save(r), isNull, reason: 'nothing to supersede');
       final back = EcgReading.fromRow((await LocalDb.ecgReading('full'))!)!;
       expect(back.startTs, r.startTs);
       expect(back.endTs, r.endTs);
@@ -157,23 +157,36 @@ void main() {
     });
   });
 
-  group('replacing an inconclusive reading', () {
-    test('a reading that starts 5 minutes after an inconclusive one replaces '
-        'it: the old row AND its packets are gone, in one save', () async {
+  // Design 04: a retake no longer deletes the inconclusive reading. It joins
+  // its attempt group; the earlier attempt keeps its row and packets, marked
+  // superseded and hidden from the default list. (The full matrix is in
+  // test/ecg_transparency/ecg_attempts_store_test.dart.)
+  group('joining an inconclusive reading', () {
+    Future<List<String>> all() async => [
+      for (final r in await LocalDb.listEcgReadings(includeSuperseded: true))
+        r['id']! as String,
+    ];
+
+    test('a reading that starts 5 minutes after an inconclusive one joins it: '
+        'the old row AND its packets are KEPT, superseded, in one save',
+        () async {
       final a = inconclusiveEndingAt(kT0 + 1000, id: 'A');
       await _save(a, packets: 2);
       final b = fixtureReading(id: 'B', startTs: kT0 + 1000 + 300);
-      expect(await _save(b, packets: 1), 'A');
-      expect(await _ids(), ['B']);
-      expect(await LocalDb.ecgReadingPackets('A'), isEmpty);
+      expect(await _save(b, packets: 1), 'A', reason: 'the id it superseded');
+      expect(await _ids(), ['B'], reason: 'the default list hides A');
+      expect(await all(), unorderedEquals(['A', 'B']));
+      expect(await LocalDb.ecgReadingPackets('A'), hasLength(2));
       expect(await LocalDb.ecgReadingPackets('B'), hasLength(1));
+      expect((await LocalDb.ecgReading('A'))!['superseded_by'], 'B');
     });
 
-    test('an inconclusive reading replaces an inconclusive one', () async {
+    test('an inconclusive reading joins an inconclusive one', () async {
       await _save(inconclusiveEndingAt(kT0 + 1000, id: 'A'));
       final b = inconclusiveEndingAt(kT0 + 1000 + 200 + 30, id: 'B');
       expect(await _save(b), 'A');
       expect(await _ids(), ['B']);
+      expect(await all(), unorderedEquals(['A', 'B']));
     });
 
     test('after a complete reading the next one is added; the complete one '
@@ -184,29 +197,30 @@ void main() {
       expect(await LocalDb.ecgReadingPackets('A'), hasLength(2));
     });
 
-    test('more than 10 minutes later is a new record, the inconclusive one '
-        'stays', () async {
+    test('more than 10 minutes later is a new group, the inconclusive one '
+        'stays current', () async {
       await _save(inconclusiveEndingAt(kT0 + 1000, id: 'A'));
       expect(await _save(fixtureReading(id: 'B', startTs: kT0 + 1000 + 601)),
           isNull);
       expect(await _ids(), unorderedEquals(['A', 'B']));
     });
 
-    test('exactly 10 minutes later still replaces', () async {
+    test('exactly 10 minutes later still joins', () async {
       await _save(inconclusiveEndingAt(kT0 + 1000, id: 'A'));
       expect(await _save(fixtureReading(id: 'B', startTs: kT0 + 1600)), 'A');
       expect(await _ids(), ['B']);
     });
 
-    test('a partial result is added beside the inconclusive one, not instead '
-        'of it', () async {
+    test('a partial result is added beside the inconclusive one, not as a '
+        'further attempt', () async {
       await _save(inconclusiveEndingAt(kT0 + 1000, id: 'A'));
       expect(await _save(partialEndingAt(kT0 + 1100 + 12, id: 'P')), isNull);
       expect(await _ids(), unorderedEquals(['A', 'P']));
     });
 
-    test('only the MOST RECENT reading (by end time) can be replaced: an older '
-        'inconclusive one behind a newer complete one is kept', () async {
+    test('only the MOST RECENT reading (by end time) can be joined: an older '
+        'inconclusive one behind a newer complete one stays current',
+        () async {
       await _save(inconclusiveEndingAt(kT0 + 1000, id: 'A'));
       await _save(fixtureReading(id: 'C', startTs: kT0 + 4000)); // 10+ min later
       // D starts 3 min after A ended but A is not the latest reading.
@@ -215,7 +229,8 @@ void main() {
     });
 
     test('a failed save rolls back: the old inconclusive reading and its '
-        'packets are exactly as they were, the new one is absent', () async {
+        'packets are exactly as they were (not superseded), the new one is '
+        'absent', () async {
       await _save(inconclusiveEndingAt(kT0 + 1000, id: 'A'), packets: 2);
       final bad = fixtureReading(id: 'B', startTs: kT0 + 1100);
       await expectLater(
@@ -228,6 +243,7 @@ void main() {
       expect(await _ids(), ['A']);
       expect(await LocalDb.ecgReadingPackets('A'), hasLength(2));
       expect(await LocalDb.ecgReadingPackets('B'), isEmpty);
+      expect((await LocalDb.ecgReading('A'))!['superseded_by'], isNull);
     });
 
     test('re-saving the same reading id is refused, not merged', () async {

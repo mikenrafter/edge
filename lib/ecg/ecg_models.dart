@@ -58,7 +58,10 @@ EcgCategory categoryFor(int result, int hr) {
           ? EcgCategory.sinusRhythm
           : EcgCategory.unreadable;
     case 3:
-      return hr <= 50 ? EcgCategory.lowHeartRate : EcgCategory.unreadable;
+      // 0 is "no rate", not a very low one.
+      return (hr >= 1 && hr <= 50)
+          ? EcgCategory.lowHeartRate
+          : EcgCategory.unreadable;
     case 4:
       if (hr >= 51 && hr <= 99) return EcgCategory.possibleAfib;
       if (hr >= 100 && hr <= 150) return EcgCategory.afibHighHeartRate;
@@ -214,8 +217,7 @@ class EcgReading {
   /// `stop_reason` (schema 66).
   final String? stopReason;
 
-  // ── design 04 phase 1 (schema 70). RED: carried by the constructor only;
-  // toRow / fromRow do not map them yet. All nullable; NULL = not recorded
+  // ── design 04 phase 1 (schema 70). All nullable; NULL = not recorded
   // (legacy rows), never inferred.
 
   /// Bitwise OR of the terminal mask and every accepted packet's mask.
@@ -305,6 +307,16 @@ class EcgReading {
     'notes': notes,
     'created_at': createdAt,
     'stop_reason': stopReason,
+    'mask_any': maskAny,
+    'superseded_by': supersededBy,
+    'attempt_group': attemptGroup,
+    'attempt': attempt,
+    'live_hr': liveHr,
+    'variability_raw': variabilityRaw,
+    'firmware_version': firmwareVersion,
+    'capture_app_version': captureAppVersion,
+    'capture_table_version': captureTableVersion,
+    'start_offset_min': startOffsetMin,
   };
 
   static EcgReading? fromRow(Map<String, Object?> r) {
@@ -339,6 +351,16 @@ class EcgReading {
       notes: r['notes'] as String?,
       createdAt: i('created_at') ?? 0,
       stopReason: r['stop_reason'] as String?,
+      maskAny: i('mask_any'),
+      supersededBy: r['superseded_by'] as String?,
+      attemptGroup: r['attempt_group'] as String?,
+      attempt: i('attempt'),
+      liveHr: i('live_hr'),
+      variabilityRaw: i('variability_raw'),
+      firmwareVersion: r['firmware_version'] as String?,
+      captureAppVersion: r['capture_app_version'] as String?,
+      captureTableVersion: i('capture_table_version'),
+      startOffsetMin: i('start_offset_min'),
     );
   }
 }

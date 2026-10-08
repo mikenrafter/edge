@@ -42,6 +42,7 @@ import '../data/day_label.dart';
 import '../data/series_codec.dart';
 import '../data/sample_archive.dart' show SampleArchiver;
 import '../notify/fired_keys.dart';
+import '../state/locale_controller.dart' show LocaleController;
 import '../notify/notification_center.dart';
 import '../notify/notification_event.dart';
 import '../notify/tap_router.dart' show workoutSuggestionRoute;
@@ -7115,17 +7116,25 @@ class DerivationEngine {
       // only on a real present, or a medical one lost to quiet hours would
       // take the plain one down with it.
       final medical = findings.any((f) => f.medical);
+      // The notification is composed here, with no BuildContext, so the words
+      // come from the ARBs in the language the app is showing.
+      final strings = await LocaleController.currentStrings();
       final fired = await NotificationCenter.instance.emit(
         NotificationEvent(
           dedupeKey: medical ? '$date:exception:medical' : '$date:exception',
           category: NotifCategory.health,
           priority: NotifPriority.critical,
           title: one
-              ? findings.first.title
+              ? findingTitle(strings, findings.first)
               : '${findings.length} findings to review',
           body: one
-              ? findings.first.detail
-              : findings.map((f) => '• ${f.title} — ${f.detail}').join('\n'),
+              ? findingDetail(strings, findings.first)
+              : findings
+                    .map(
+                      (f) =>
+                          '• ${findingTitle(strings, f)} — ${findingDetail(strings, f)}',
+                    )
+                    .join('\n'),
           date: date,
           route: '/heart',
         ),

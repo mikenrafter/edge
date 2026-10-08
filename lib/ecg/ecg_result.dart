@@ -1,6 +1,6 @@
 // ECG results (ecg-features): the saved result's metrics, the rule that lets a
-// new reading replace a recent inconclusive one, and the thresholds around a
-// partial recording. Pure Dart.
+// new reading join a recent non-final one's attempt group, and the thresholds
+// around a partial recording. Pure Dart.
 //
 // WHAT METRICS REALLY EXIST FOR ECG. Only what the band reports plus facts
 // about the window: average heart rate (the band's terminal packet, or the
@@ -13,9 +13,11 @@
 // 'rmssd'/'sdnn' and a page never invents them.
 
 import 'ecg_models.dart';
+import 'ecg_outcome.dart';
 
-/// A new reading that starts within this long after an inconclusive one ended
-/// replaces it (owner spec: 10 minutes). Inclusive: exactly 10:00 still replaces.
+/// A new reading that starts within this long after a non-final one ended joins
+/// its attempt group (owner spec: 10 minutes). Inclusive: exactly 10:00 still
+/// joins.
 const Duration kEcgOverwriteWindow = Duration(minutes: 10);
 
 /// A partial recording keeps metrics only with at least this many accepted
@@ -75,37 +77,33 @@ List<EcgMetric> ecgMetricsOf(EcgReading r) {
   ];
 }
 
-/// The id of the reading [incoming] replaces, or null to add it as a new one.
+/// The id of the latest reading that [incoming] joins as a further attempt, or
+/// null when it starts a new group (design 04 R2, decision 2).
 ///
-/// [latest] is the most recent saved reading (by end time), or null. Replace
-/// iff ALL hold: [latest] is [EcgReadingStatus.inconclusive]; [incoming] is
-/// complete or inconclusive (a partial neither replaces nor is replaced: a
-/// fuller record is never traded for a thinner one); and 0 <= incoming.startTs
-/// - latest.endTs <= [kEcgOverwriteWindow] in seconds (a start before the end,
-/// a clock skew, adds). A complete or partial [latest] is never replaced, and
-/// an older inconclusive hidden behind a newer reading is not considered.
-String? ecgReplaceTargetId({
+/// [latest] is the most recent saved reading (by end time), or null. It is
+/// joined iff ALL hold: neither side is a partial (a fuller record is never
+/// traded for a thinner one, and a stopped recording is never an attempt at
+/// anything); [latest] is NON-FINAL, meaning its [ecgOutcome] is not readable or
+/// inconclusive (the same outcome the screens show, so a "regular" reading the
+/// band's noise bit overrode is retaken, not kept as a verdict); and
+/// 0 <= incoming.startTs - latest.endTs <= [kEcgOverwriteWindow] in seconds (a
+/// start before the end is clock skew or overlap and starts a new group).
+/// Nothing is deleted: the join only decides the group.
+String? ecgJoinTargetId({
   required EcgReading? latest,
   required EcgReading incoming,
 }) {
-  if (latest == null || latest.status != EcgReadingStatus.inconclusive) {
+  if (latest == null) return null;
+  if (latest.status == EcgReadingStatus.partial ||
+      incoming.status == EcgReadingStatus.partial) {
     return null;
   }
-  if (incoming.status == EcgReadingStatus.partial) return null;
+  final kind = ecgOutcome(latest).kind;
+  if (kind != EcgOutcomeKind.notReadable &&
+      kind != EcgOutcomeKind.inconclusive) {
+    return null;
+  }
   final gap = incoming.startTs - latest.endTs;
   if (gap < 0 || gap > kEcgOverwriteWindow.inSeconds) return null;
   return latest.id;
 }
-
-/// Design 04 R2''' - the attempt-group join rule, replacing the delete-based
-/// [ecgReplaceTargetId] (RED stub).
-///
-/// The id of the latest reading that [incoming] joins as a further attempt, or
-/// null when it starts a new group. gap = incoming.startTs - latest.endTs;
-/// joins iff 0 <= gap <= [kEcgOverwriteWindow] in seconds AND [latest] is
-/// non-final (status inconclusive, or category unreadable) AND neither side is
-/// a partial.
-String? ecgJoinTargetId({
-  required EcgReading? latest,
-  required EcgReading incoming,
-}) => throw UnimplementedError('design 04 phase 1: ecgJoinTargetId');

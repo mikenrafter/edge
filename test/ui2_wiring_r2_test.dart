@@ -743,6 +743,9 @@ void main() {
   // ── CV-10: three states, and "not screened" is not "clear" ──
   group('irregular-rhythm strip', () {
     testWidgets('counts the days it ran and refuses to reassure', (t) async {
+      // Design 04 wording: "flagged" (not "raised its flag") and "a strip with
+      // nothing flagged" (not "a clear strip"): a strip says what the screen
+      // found, never that the person is clear.
       t.view.physicalSize = const Size(390 * 3, 3000 * 3);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
@@ -755,10 +758,10 @@ void main() {
       ));
       await t.pumpAndSettle();
       expect(find.text('Irregular-rhythm screen'), findsOneWidget);
-      expect(find.textContaining('Ran on 10 days, raised its flag on 1'),
+      expect(find.textContaining('Ran on 10 days, flagged on 1'),
           findsOneWidget);
       // The permanent line. Not a tooltip, and not optional.
-      expect(find.textContaining('A clear strip does not rule anything out'),
+      expect(find.textContaining('A strip with nothing flagged does not rule anything out'),
           findsOneWidget);
     });
   });

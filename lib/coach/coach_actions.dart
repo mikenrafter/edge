@@ -28,6 +28,7 @@ import 'package:sqflite/sqflite.dart';
 import '../data/day_label.dart';
 import '../data/db.dart';
 import '../ecg/ecg_models.dart';
+import '../ecg/ecg_outcome.dart';
 import '../data/journal_fields.dart';
 import '../data/local_repository.dart';
 import '../data/med_store.dart';
@@ -126,8 +127,13 @@ class CoachActions {
   /// Largest stride the decimation will reach before giving up widening it.
   static const int ecgMaxStride = 16;
 
-  /// One saved ECG reading for the coach: the band-reported summary plus the
-  /// accepted waveform at the band's own sample rate. A BOUND query on the
+  /// One saved ECG reading for the coach: the OUTCOME first (ecgOutcome, the
+  /// one the screens show), the band's own values, and - only when the outcome
+  /// is a band-reported rhythm AND the waveform was kept - the accepted
+  /// waveform at the band's own sample rate. A reading with nothing to read
+  /// (not readable, inconclusive, partial) or no kept waveform carries no
+  /// samples at all and an instruction not to interpret rhythm (design 04 R6).
+  /// A BOUND query on the
   /// reading id — never model-written SQL — and never the raw frame hex, the
   /// band serial, the device id or the notes. A completed reading is 30 s =
   /// 3,000 samples and is sent whole; only a longer accepted window is
@@ -142,11 +148,14 @@ class CoachActions {
     if (reading == null) {
       return jsonEncode({'error': 'No ECG reading with id $readingId.'});
     }
+    final outcome = ecgOutcome(reading);
     final packets = (await LocalDb.ecgReadingPackets(readingId))
         .map(EcgPacketCodec.fromRow)
         .toList();
+    final kept = packets.isNotEmpty;
+    final readable = outcome.kind == EcgOutcomeKind.bandResult && kept;
     final samples = <int?>[];
-    for (final p in packets) {
+    for (final p in readable ? packets : const <EcgAcceptedPacket>[]) {
       if (p.placeholder) {
         // One second of "no data" keeps the waveform's time axis honest.
         samples.addAll(List<int?>.filled(kEcgSampleRateHz, null));
@@ -164,6 +173,22 @@ class CoachActions {
     Map<String, Object?> payload(int stride) {
       final out = strided(stride);
       return {
+        // FIRST: what the reading means. Everything below is the evidence it
+        // was decided on.
+        'outcome': {
+          'kind': outcome.kind.name,
+          'band_result': outcome.bandResult?.name,
+          'reasons': [for (final r in outcome.reasons) r.toString()],
+          'caveats': [for (final c in outcome.caveats) c.name],
+        },
+        'waveform_kept': kept,
+        if (!readable)
+          'instruction': outcome.kind == EcgOutcomeKind.bandResult
+              ? 'No waveform was kept with this reading. Report the '
+                  'band-reported values only. Do not interpret rhythm.'
+              : 'This reading does not support a rhythm reading. Say what the '
+                  'band reported and why it was withheld. Do not interpret '
+                  'rhythm.',
         'id': reading.id,
         'local_time': local.toIso8601String(),
         'date': dayLabelOf(local),
@@ -173,6 +198,7 @@ class CoachActions {
         'avg_hr': reading.avgHr,
         'quality': reading.quality,
         'unreadable_reasons': reading.unreadableReasons,
+        'mask_any': reading.maskAny,
         'interruptions': reading.interruptions,
         'duration_s': reading.durationS,
         'sample_count': reading.sampleCount,
@@ -183,15 +209,16 @@ class CoachActions {
         'source': 'WHOOP MG band. The category is the HeartKey result the band reports.',
         'unit': reading.sampleCount == 0 ? null : kEcgSampleUnit,
         'sample_rate_hz': kEcgSampleRateHz,
-        'waveform': {
-          'samples': out,
-          'count': out.length,
-          'stride': stride,
-          'effective_rate_hz': kEcgSampleRateHz / stride,
-          'note': 'consecutive samples in filtered input-referred microvolts at '
-              'effective_rate_hz; null where the accepted window has a missing '
-              'segment. stride 1 is every sample the band sent.',
-        },
+        if (readable)
+          'waveform': {
+            'samples': out,
+            'count': out.length,
+            'stride': stride,
+            'effective_rate_hz': kEcgSampleRateHz / stride,
+            'note': 'consecutive samples in filtered input-referred microvolts at '
+                'effective_rate_hz; null where the accepted window has a missing '
+                'segment. stride 1 is every sample the band sent.',
+          },
         // What the numbers above are and what they cannot support. The model
         // otherwise infers intervals from avg_hr and reads QRS width as if the
         // trace were a 500 Hz diagnostic ECG.
@@ -209,12 +236,14 @@ class CoachActions {
           'avg_hr': 'The band\'s own average over the reading, not measured from these samples. '
                     'To state an RR interval or beat-to-beat variation, measure it from the samples and say so. '
                     'Do not present 60/avg_hr as a measurement.',
-          'quality': 'The band\'s own 0-3 signal-quality scale, higher is '
-              'better; it climbs as contact settles.',
+          'quality': 'The band\'s own signal-quality number. Its scale is '
+              'unknown, so do not call a value good or poor and do not compare '
+              'it across readings.',
           'interruptions': 'Times contact was lost and the band restarted its '
               'progress. missing_segments are whole seconds absent from the '
               'accepted window, and appear as null runs in samples.',
-          'category': 'The band\'s HeartKey result, mapped by the app. '
+          'category': 'The band\'s HeartKey result, mapped by the app. The '
+                      'outcome above is what the app allows to be said about it. '
                       'If your own reading of the trace differs, say so.',
         },
         'note': 'Band-reported. Not a diagnosis: no lead polarity is proven and '

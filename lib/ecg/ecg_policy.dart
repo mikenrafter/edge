@@ -13,6 +13,7 @@
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import 'ecg_models.dart';
+import 'ecg_outcome.dart';
 
 enum EcgPhase { waiting, active, contactLost, done }
 
@@ -106,37 +107,37 @@ class EcgFail extends EcgEffect {
 }
 
 enum EcgTerminalKind {
-  /// A category worth persisting (anything but unreadable / inconclusive-
-  /// with-a-retry-available).
+  /// A band-reported category.
   completed,
 
-  /// Band says unreadable; the mask says why. Not persisted.
+  /// Band says unreadable (or its code / average rate maps to nothing); the
+  /// mask says why. Saved as an attempt (design 04 R2).
   unreadable,
 
-  /// Inconclusive on the first attempt: offer ONE retry. Not persisted.
+  /// Inconclusive on the first attempt: offer ONE retry. Saved as an attempt.
   inconclusiveOfferRetry,
 
-  /// Inconclusive on the retry: persisted as inconclusive.
+  /// Inconclusive on the retry: the final reading.
   inconclusiveFinal,
 }
 
-/// The terminal packet's verdict. [liveCategory] used live HR (offset 20) —
-/// what the state machine branches on; [persistedCategory] used the final
-/// average HR (offset 19) — what a saved reading carries.
+/// The terminal packet's verdict. The heart rate that decides is the packet's
+/// AVERAGE (offset 19), the one stored; the live rate (offset 20) is recorded
+/// and shown but never branches anything (design 04: the live and the saved
+/// verdict used to disagree). [persistedCategory] is the band's category for
+/// that average, as stored with a saved reading.
 class EcgTerminalOutcome {
   final EcgTerminalKind kind;
-  final EcgCategory liveCategory;
   final EcgCategory persistedCategory;
   final LabradorR17 terminal;
 
   /// Design 04 R2'': the window this terminal ended, terminal packet included,
   /// handed over BEFORE it is cleared, so every attempt (unreadable, first
-  /// inconclusive, final) can be saved. RED: the reducer does not fill it yet.
+  /// inconclusive, final) can be saved.
   final List<EcgAcceptedPacket> window;
 
   const EcgTerminalOutcome({
     required this.kind,
-    required this.liveCategory,
     required this.persistedCategory,
     required this.terminal,
     this.window = const [],
@@ -266,8 +267,28 @@ EcgReducerStep reduceEcg(EcgReducerState s, LabradorR17 f) {
 }
 
 EcgReducerStep _terminal(EcgReducerState s, LabradorR17 f) {
-  final live = categoryFor(f.result, f.liveHr);
-  final persisted = categoryFor(f.result, f.averageHr);
+  // The band's own verdict on its bytes, decided by the one outcome function
+  // (never a second table lookup here). The reason MASK is not part of this:
+  // it spans the whole window and is folded by the controller into the saved
+  // reading, where ecgOutcome applies it; the flow below follows what the band
+  // said, so a stored status/category is always the band's.
+  final band = ecgOutcomeOf(
+    resultCode: f.result,
+    avgHr: f.averageHr,
+    mask: 0,
+  );
+  final category = ecgBandCategory(f.result, f.averageHr);
+  // The window this terminal ends, terminal packet included, handed over
+  // BEFORE it is cleared so an unreadable or first-inconclusive attempt can be
+  // saved as what it was. A finished reading's window is the official
+  // accumulator's (a sequence jump gets its one placeholder); an attempt's is
+  // exactly the packets accepted plus the terminal one.
+  final (appended, appendEffects) = _append(s, f);
+  final isFinal = band.kind == EcgOutcomeKind.bandResult ||
+      (band.kind == EcgOutcomeKind.inconclusive && s.retriesUsed != 0);
+  final window = isFinal
+      ? appended
+      : [...s.accepted, EcgAcceptedPacket.of(f)];
   EcgReducerStep finish(
     EcgTerminalKind kind,
     List<EcgAcceptedPacket> accepted,
@@ -280,29 +301,26 @@ EcgReducerStep _terminal(EcgReducerState s, LabradorR17 f) {
         EcgTerminal(
           EcgTerminalOutcome(
             kind: kind,
-            liveCategory: live,
-            persistedCategory: persisted,
+            persistedCategory: category,
             terminal: f,
+            window: window,
           ),
         ),
       ],
     );
   }
 
-  if (live == EcgCategory.unreadable) {
-    return finish(EcgTerminalKind.unreadable, const [], const [EcgClear()]);
+  switch (band.kind) {
+    case EcgOutcomeKind.notReadable:
+      return finish(EcgTerminalKind.unreadable, const [], const [EcgClear()]);
+    case EcgOutcomeKind.inconclusive when s.retriesUsed == 0:
+      return finish(EcgTerminalKind.inconclusiveOfferRetry, const [], const [
+        EcgClear(),
+      ]);
+    case EcgOutcomeKind.inconclusive:
+      return finish(EcgTerminalKind.inconclusiveFinal, window, appendEffects);
+    case EcgOutcomeKind.bandResult:
+    case EcgOutcomeKind.partial:
+      return finish(EcgTerminalKind.completed, window, appendEffects);
   }
-  if (live == EcgCategory.inconclusive && s.retriesUsed == 0) {
-    return finish(EcgTerminalKind.inconclusiveOfferRetry, const [], const [
-      EcgClear(),
-    ]);
-  }
-  final (accepted, effects) = _append(s, f);
-  return finish(
-    live == EcgCategory.inconclusive
-        ? EcgTerminalKind.inconclusiveFinal
-        : EcgTerminalKind.completed,
-    accepted,
-    effects,
-  );
 }

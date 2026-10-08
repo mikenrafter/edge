@@ -5,9 +5,8 @@
 // "nothing flagged" (an outlined marker, not a colour), a permanent line that a
 // result with nothing flagged does not mean you were cleared.
 //
-// The copy is English literals, like the rest of the Haptics and gallery
-// screens: medical wording should be reviewed in each language before it ships
-// as ARB strings.
+// The copy is in the ARBs (ecgScreener* keys, six locales); the page chrome
+// below is still English literals.
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -15,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../ecg/ecg_links.dart';
 import '../../ecg/ecg_screener.dart';
+import '../../l10n/app_localizations.dart';
 import '../ui2.dart';
 import 'home_screen.dart' show pad;
 
@@ -44,6 +44,7 @@ class EcgScreenerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
+    final loc = AppLocalizations.of(c);
     return Scaffold(
       backgroundColor: p.bg,
       appBar: AppBar(
@@ -54,11 +55,19 @@ class EcgScreenerScreen extends StatelessWidget {
         padding: pad,
         children: [
           Text(
-            kEcgScreenerIntro,
+            ecgScreenerIntro(loc),
+            style: F.body.copyWith(color: p.ink2, height: 1.4),
+          ),
+          const SizedBox(height: S.x3),
+          // The supported heart-rate ranges, stated as this app's own reading
+          // of the band's codes, never a validation of the device.
+          Text(
+            (loc ?? lookupAppLocalizations(const Locale('en'))).ecgRateMapping,
+            key: const ValueKey('ecg-rate-mapping'),
             style: F.body.copyWith(color: p.ink2, height: 1.4),
           ),
           const SizedBox(height: S.x4),
-          for (final e in ecgScreenerEntries()) ...[
+          for (final e in ecgScreenerEntries(loc)) ...[
             Surface(
               key: ValueKey('ecg-states:${e.id}'),
               child: Column(

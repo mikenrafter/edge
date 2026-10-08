@@ -255,11 +255,20 @@ void main() {
 
     testWidgets('a band quality of 0, or a missing heart rate, is "—" and '
         'never "0"', (t) async {
+      // An inconclusive reading (result 6) needs no heart rate, so its rows
+      // are still the headline; a "regular rhythm" with no rate is now Not
+      // readable and shows no rate row at all (design 04).
       await _pump(
         t,
         EcgDetailScreen(
           data: EcgDetailData(
-            reading: fixtureReading(avgHr: null, quality: 0),
+            reading: fixtureReading(
+              avgHr: null,
+              quality: 0,
+              resultCode: 6,
+              status: EcgReadingStatus.inconclusive,
+              category: EcgCategory.inconclusive,
+            ),
             packets: const [],
           ),
         ),
