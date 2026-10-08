@@ -202,7 +202,7 @@ void main() {
     } finally {
       await db.close();
     }
-    final report = lines.join('\n') + '\n';
+    final report = '${lines.join('\n')}\n';
     if (reportPath != null && reportPath.isNotEmpty) {
       File(reportPath).writeAsStringSync(report);
     }

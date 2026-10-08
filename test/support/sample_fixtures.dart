@@ -207,7 +207,7 @@ int losslessBytes(List<double?> v, double quantum) {
 /// error meets the bounds, its bytes, and N (null when even N=1 is the answer).
 ({int n, int bytes}) keepEveryNth(
     List<double?> v, double quantum, double maxRms, double maxAbs) {
-  final dense = [for (final e in v) if (e != null) e];
+  final dense = [for (final e in v) ?e];
   var best = (n: 1, bytes: losslessBytes(v, quantum));
   for (final n in const [2, 4, 8, 16, 32, 64, 128, 256]) {
     if (dense.length < n + 1) break;

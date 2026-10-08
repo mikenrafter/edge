@@ -216,7 +216,7 @@ void main() {
     expect(lv.map((l) => l.cellSeconds).toList(),
         [60, 900, 3600, localDayLengthSec(_day1)]);
     final day = lv.last.cells.single;
-    final valid = [for (final v in truth) if (v != null) v];
+    final valid = [for (final v in truth) ?v];
     expect(day.count, valid.length);
     expect(day.min, valid.reduce((a, b) => a < b ? a : b));
     expect(day.max, valid.reduce((a, b) => a > b ? a : b));
