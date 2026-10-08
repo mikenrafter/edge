@@ -43,6 +43,11 @@ in the same change that introduces it (AGENTS.md §6).
 - **Cluster** — overlapping annotations drawn as `+n`; tapping steps through them.
 - **Algo mark** — an annotation where the algorithm version changed; never clustered.
 
+## Haptics
+- **Band command** — one write to the band (a phrase of effects and its loop, after a wait). A pattern is sent as one or more; the budget (the command limit per 2 minutes) counts them. Chosen once, in `haptics/haptic_player.dart`.
+- **Pulse** — a run of adjacent notes in a pattern: what one tap is, and the unit a band command plays.
+- **Score** — a pattern drawn as music on a three-line staff in 4/4; its notes are coloured by the band command that plays them.
+
 ## Spectral archive (experimental)
 - **Part** — one append-only encoded chunk of the spectral archive.
 - **Pyramid** — the per-minute summary levels kept for a signal.

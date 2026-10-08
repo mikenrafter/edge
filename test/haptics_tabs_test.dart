@@ -132,10 +132,10 @@ void main() {
   });
 
   group('each tab shows its own section and not the others\'', () {
-    testWidgets('Patterns: the saved patterns, the presets, and the two ways '
-        'to make one; no slots, no safety', (t) async {
+    testWidgets('Patterns: the saved patterns, the presets by section, and the '
+        'two ways to make one (pinned); no slots, no safety', (t) async {
       await _pump(t);
-      expect(sectionTitles(t), ['Your patterns', 'Presets']);
+      expect(sectionTitles(t), ['Your patterns', 'General']);
       expect(find.byKey(const ValueKey('haptic-pattern:a')), findsOneWidget);
       expect(find.byKey(const ValueKey('haptic-pattern:sys.p1')), findsOneWidget);
       expect(find.byKey(const ValueKey('haptics-new-taps')), findsOneWidget);

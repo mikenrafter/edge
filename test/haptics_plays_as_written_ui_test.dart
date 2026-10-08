@@ -382,29 +382,35 @@ void main() {
   });
 
   group('finding 9: the hub row says how long the baked plan plays', () {
+    // The row no longer writes "2 commands . ~4.0 s" (it shows the staff and its
+    // "~x.xs"); the length it shows is still the rhythm's, never the 0.5 s of
+    // the fallback taps.
     testWidgets('N4ff R12 R12 N4ff: 4 s, not the 0.5 s fallback taps',
         (t) async {
       final p = _stored('N4ff R12 R12 N4ff', runtimeMs: 4000);
       expect(p.sequence.playTime, const Duration(milliseconds: 500));
       await pumpTall(t, _hub(patterns: [p]));
       final row = find.byKey(const ValueKey('haptic-pattern:g'));
-      expect(
-        find.descendant(of: row, matching: find.text('2 commands · ~4.0 s')),
-        findsOneWidget,
-      );
+      expect(find.descendant(of: row, matching: find.text('~4.0s')),
+          findsOneWidget);
+      expect(find.descendant(of: row, matching: find.text('~0.5s')),
+          findsNothing);
+      expect(find.descendant(of: row, matching: find.text('2 commands · ~4.0 s')),
+          findsNothing);
     });
 
-    testWidgets('an older save without the runtime is sized from the profile',
+    testWidgets('an older save without the runtime is sized the same',
         (t) async {
       final p = _stored('N4ff R12 R12 N4ff');
       await pumpTall(t, _hub(patterns: [p]));
       final row = find.byKey(const ValueKey('haptic-pattern:g'));
-      final line = t
-          .widget<Text>(find.descendant(
-              of: row, matching: find.textContaining('2 commands')))
-          .data!;
-      final secs = double.parse(RegExp(r'~(\d+\.\d)').firstMatch(line)!.group(1)!);
-      expect(secs, greaterThanOrEqualTo(3.0), reason: line);
+      final length = t
+          .widgetList<Text>(find.descendant(
+              of: row, matching: find.textContaining(RegExp(r'^~\d+\.\ds$'))))
+          .map((w) => w.data!)
+          .single;
+      final secs = double.parse(length.substring(1, length.length - 1));
+      expect(secs, greaterThanOrEqualTo(3.0), reason: length);
     });
   });
 }

@@ -95,6 +95,35 @@ const List<HapticSlotSection> kHapticSlotSections = [
   ]),
 ];
 
+/// The section id of the Presets groups for the ten presets (and any built-in
+/// that belongs to no slot section).
+const String kGeneralSectionId = 'general';
+
+/// The Presets groups in the order the Patterns tab lists them: the general
+/// presets, then the slot sections as the other tabs list them.
+const List<String> kPresetSectionOrder = [
+  kGeneralSectionId,
+  'alerts',
+  'apps',
+  'tasker',
+  'activity',
+  'gestures',
+  'breathing',
+  'alarm',
+  'ecg',
+];
+
+/// The section a built-in with [systemKey] is listed under: the id of the
+/// [kHapticSlotSections] entry that has a slot with that key (`gesture.start`
+/// is Gestures, `alert.zone` Activity, `ecg.failed` ECG ...), else
+/// [kGeneralSectionId] (the `preset.*` ten, and any key no slot has).
+String builtInSectionId(String systemKey) {
+  for (final sec in kHapticSlotSections) {
+    if (sec.slots.any((s) => s.key == systemKey)) return sec.id;
+  }
+  return kGeneralSectionId;
+}
+
 /// The six Tasker slots: `tasker.1` .. `tasker.6`. Slot n's built-in default
 /// is n short pulses; Tasker plays a slot by its number or its key and the
 /// wearer can put any pattern on it, like a cue slot.

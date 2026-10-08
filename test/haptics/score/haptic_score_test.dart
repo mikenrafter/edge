@@ -1,5 +1,11 @@
-// HapticScore: a pattern as a one-line music score. Widget behaviour, the
-// clef logo asset, the pattern rows that show it, and the gallery.
+// HapticScore: a pattern as a wrapped three-line music score. Widget
+// behaviour (sizes, text scale, pixel density), the "~x.xs" length that stands
+// where the clef was, the pattern rows that show it, and the gallery.
+//
+// The display overhaul: the logo clef is gone from the staff (a text with the
+// pattern's length stands there), the staff has three lines and wraps by
+// measure; layout geometry is pinned in score_layout_test.dart, colour per
+// command in command_colour_test.dart.
 
 import 'dart:io';
 
@@ -30,6 +36,11 @@ Future<void> _pump(WidgetTester t, BuzzSequence s, {double width = 360}) =>
 final _staff = find.byKey(const ValueKey('haptic-score-staff'));
 final _clef = find.byKey(const ValueKey('haptic-score-clef'));
 
+// "~2.0s": a tilde, whole seconds, ONE decimal, an s. Nothing else matches.
+final _length = find.byWidgetPredicate(
+    (w) => w is Text && RegExp(r'^~\d+\.\ds$').hasMatch(w.data ?? ''),
+    description: 'a "~x.xs" length');
+
 ScoreLayout _drawn(WidgetTester t) {
   final paint = t.widget<CustomPaint>(_staff);
   return (paint.painter! as HapticScorePainter).layout;
@@ -53,28 +64,111 @@ void main() {
     expect(_staff, findsOneWidget);
   });
 
-  group('the clef is the app logo', () {
-    testWidgets('an SVG sits where the clef would be, before the staff',
-        (t) async {
+  group('the length stands where the clef was', () {
+    testWidgets('no logo is drawn on the staff', (t) async {
       await _pump(t, _seq('N4mf R4 N4mf'));
-      expect(_clef, findsOneWidget);
-      expect(find.descendant(of: _clef, matching: find.byType(SvgPicture)),
-          findsOneWidget);
-      expect(t.getTopLeft(_clef).dx, lessThan(t.getTopLeft(_staff).dx));
+      expect(_clef, findsNothing);
+      expect(find.byType(SvgPicture), findsNothing);
     });
 
-    test('the asset path is one constant, an svg under assets/brand', () {
-      expect(kClefLogoAsset, 'assets/brand/clef_logo.svg');
+    testWidgets('"~x.xs": the total length, one decimal, tilde first',
+        (t) async {
+      // 4 + 4 + 8 = 16 sixteenths of 125 ms.
+      await _pump(t, _seq('N4mf R4 N8mf'));
+      expect(find.text('~2.0s'), findsOneWidget);
+      await _pump(t, _seq('N4mf R4 N4mf')); // 12 x 125 ms
+      expect(find.text('~1.5s'), findsOneWidget);
+      await _pump(t, _seq('N4mf R2 N2mf')); // 8 x 125 ms
+      expect(find.text('~1.0s'), findsOneWidget);
     });
 
-    test('the placeholder file exists and the folder is a declared asset', () {
-      expect(File(kClefLogoAsset).existsSync(), isTrue,
-          reason: 'the logo placeholder must be committed at $kClefLogoAsset');
-      final head = File(kClefLogoAsset).readAsStringSync();
-      expect(head, contains('<svg'));
-      expect(File('pubspec.yaml').readAsStringSync(),
-          contains('- assets/brand/'),
-          reason: 'a folder under assets/ is bundled only when listed');
+    testWidgets('a stored plan\'s recorded runtime wins over the written length',
+        (t) async {
+      // 12 sixteenths written (1.5 s); the plan is felt for 2.5 s.
+      final s = BuzzSequence(const [0, 625],
+          durationsMs: const [500, 500],
+          notes: 'N4mf R4 N4mf',
+          bakedSteps: [
+            BakedStep(effects: const [47], loop: 1, delayMs: 0),
+            BakedStep(effects: const [47], loop: 1, delayMs: 300),
+          ],
+          bakedRuntimeMs: 2500);
+      await _pump(t, s);
+      expect(find.text('~2.5s'), findsOneWidget);
+      expect(find.text('~1.5s'), findsNothing);
+    });
+
+    testWidgets('it counts the rests at both ends', (t) async {
+      await _pump(t, _seq('R4 N4mf R8')); // 16 x 125 ms
+      expect(find.text('~2.0s'), findsOneWidget);
+    });
+
+    testWidgets('it follows the unit: a sixteenth of 250 ms doubles it',
+        (t) async {
+      await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        home: Scaffold(
+          body: SizedBox(
+              width: 360, child: HapticScore(_seq('N4mf R4 N4mf'), unitMs: 250)),
+        ),
+      ));
+      expect(find.text('~3.0s'), findsOneWidget);
+    });
+
+    testWidgets('it is left of the staff, on its first line', (t) async {
+      await _pump(t, _seq('N4mf R4 N8mf'));
+      final layout = _drawn(t);
+      final text = t.getRect(_length);
+      final staff = t.getTopLeft(_staff);
+      final first = layout.lines.first;
+      expect(text.left, greaterThanOrEqualTo(staff.dx - 0.5));
+      expect(text.right,
+          lessThanOrEqualTo(staff.dx + first.measures.first.x + 0.5),
+          reason: 'before the first measure');
+      expect(text.center.dy, greaterThanOrEqualTo(staff.dy + first.top - 0.5));
+      expect(text.center.dy,
+          lessThanOrEqualTo(staff.dy + first.top + layout.metrics.lineHeight));
+    });
+
+    testWidgets('once, however many lines the score wraps onto', (t) async {
+      final dense = List.filled(6, 'N3mf R1 N3mf R1 N3mf R1 N3mf R1').join(' ');
+      await _pump(t, _seq(dense), width: 320);
+      expect(_drawn(t).lines.length, greaterThan(1));
+      expect(_length, findsOneWidget);
+    });
+  });
+
+  group('the staff is three lines wrapped by measure', () {
+    testWidgets('one painter draws every line; it is the layout of the width',
+        (t) async {
+      await _pump(t, _seq('N4mf R4 N8mf'), width: 360);
+      final l = _drawn(t);
+      expect(l.lines, hasLength(1));
+      expect(l.lines.single.staffY, hasLength(3));
+      expect(l.lines.single.startDoubleBar && l.lines.single.endDoubleBar,
+          isTrue);
+    });
+
+    testWidgets('the first measure begins after the room kept for the length',
+        (t) async {
+      await _pump(t, _seq('N4mf R4 N8mf'));
+      final l = _drawn(t);
+      final text = t.getRect(_length);
+      expect(t.getTopLeft(_staff).dx + l.lines.first.measures.first.x,
+          greaterThanOrEqualTo(text.right - 0.5),
+          reason: 'the start double bar and the notes clear the text');
+    });
+
+    testWidgets('a narrower row wraps onto more lines and grows taller',
+        (t) async {
+      final dense = List.filled(6, 'N3mf R1 N3mf R1 N3mf R1 N3mf R1').join(' ');
+      await _pump(t, _seq(dense), width: 600);
+      final wide = _drawn(t).lines.length;
+      final wideHeight = t.getSize(find.byType(HapticScore)).height;
+      await _pump(t, _seq(dense), width: 320);
+      expect(_drawn(t).lines.length, greaterThan(wide));
+      expect(t.getSize(find.byType(HapticScore)).height,
+          greaterThan(wideHeight));
     });
   });
 
@@ -146,6 +240,128 @@ void main() {
       await _pump(t, _seq('N4mf R4 N8mf')); // 16 x 125 ms = 2 s, 2 notes
       expect(find.bySemanticsLabel('2 notes, 2 seconds'), findsOneWidget);
       h.dispose();
+    });
+  });
+
+  group('it fits every phone: pixel density and text size', () {
+    // The sizes the app runs at, logical px: the narrowest phone and a wide one.
+    const widths = [320.0, 600.0];
+    const densities = [1.0, 1.5, 2.625];
+    const scales = [1.0, 2.0];
+    // Long enough to wrap on a phone, with dynamics and a bar-crossing tie.
+    final long = [
+      'N6mf R2 N2f R2 N2mf R2 N6ff R3 N6mf R3 N6mf R4',
+      'N2f R2 N2mf R2 N2f R4 N6mf R2 N3ff R1 N3mf R1 N3mf R1 N3mf R1',
+    ].join(' ');
+
+    for (final dpr in densities) {
+      for (final scale in scales) {
+        for (final w in widths) {
+          testWidgets('dpr $dpr, text x$scale, $w px wide', (t) async {
+            t.view.devicePixelRatio = dpr;
+            t.view.physicalSize = Size(w * dpr, 900 * dpr);
+            addTearDown(t.view.reset);
+            await t.pumpWidget(MaterialApp(
+              theme: buildTheme(Brightness.light),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context)
+                    .copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: Scaffold(
+                body: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(width: w, child: HapticScore(_seq(long))),
+                ),
+              ),
+            ));
+            // No overflow, no layout error.
+            expect(t.takeException(), isNull);
+            // The length is there, once.
+            expect(_length, findsOneWidget);
+
+            final box = t.getRect(find.byType(HapticScore));
+            expect(box.width, lessThanOrEqualTo(w + 0.01));
+            // Nothing clipped: every text, and the staff, inside the widget.
+            for (final text in t.widgetList<Text>(
+                find.descendant(
+                    of: find.byType(HapticScore), matching: find.byType(Text)))) {
+              final r = t.getRect(find.byWidget(text));
+              expect(r.left, greaterThanOrEqualTo(box.left - 0.5),
+                  reason: '"${text.data}" left');
+              expect(r.right, lessThanOrEqualTo(box.right + 0.5),
+                  reason: '"${text.data}" right');
+              expect(r.top, greaterThanOrEqualTo(box.top - 0.5),
+                  reason: '"${text.data}" top');
+              expect(r.bottom, lessThanOrEqualTo(box.bottom + 0.5),
+                  reason: '"${text.data}" bottom');
+            }
+            final paint = t.getRect(_staff);
+            expect(paint.left, greaterThanOrEqualTo(box.left - 0.5));
+            expect(paint.right, lessThanOrEqualTo(box.right + 0.5));
+            expect(paint.bottom, lessThanOrEqualTo(box.bottom + 0.5));
+
+            // What is painted stays on the canvas.
+            final l = _drawn(t);
+            expect(l.contentWidth, lessThanOrEqualTo(paint.width + 0.01));
+            expect(l.height, lessThanOrEqualTo(paint.height + 0.01));
+            for (final g in l.glyphs) {
+              expect(g.x + g.width, lessThanOrEqualTo(paint.width + 0.01));
+              expect(g.bottom, lessThanOrEqualTo(paint.height + 0.01));
+              expect(g.top, greaterThanOrEqualTo(-0.01));
+            }
+            // And the layout is a pure function of the logical width: the
+            // density changes nothing about where things go.
+            expect(l.lines, isNotEmpty);
+            if (w == 320) {
+              expect(l.lines.length, greaterThan(1),
+                  reason: 'a long pattern wraps on a phone');
+            }
+          });
+        }
+      }
+    }
+
+    testWidgets('the layout does not depend on the pixel density', (t) async {
+      final seen = <List<double>>[];
+      for (final dpr in densities) {
+        t.view.devicePixelRatio = dpr;
+        t.view.physicalSize = Size(320 * dpr, 900 * dpr);
+        await _pump(t, _seq(long), width: 320);
+        seen.add([for (final g in _drawn(t).glyphs) g.x]);
+      }
+      addTearDown(t.view.reset);
+      expect(seen[1], seen[0]);
+      expect(seen[2], seen[0]);
+    });
+
+    testWidgets('the dynamics under the notes stay in the widget at x2',
+        (t) async {
+      t.view.physicalSize = const Size(320 * 3, 900 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: const TextScaler.linear(2)),
+          child: child!,
+        ),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(width: 320, child: HapticScore(_seq(long))),
+          ),
+        ),
+      ));
+      final box = t.getRect(find.byType(HapticScore));
+      for (final d in ['mf', 'f', 'ff']) {
+        for (final e in find.text(d).evaluate()) {
+          final r = t.getRect(find.byElementPredicate((x) => x == e));
+          expect(box.contains(r.topLeft) && box.contains(r.bottomRight), isTrue,
+              reason: '"$d" at $r outside $box');
+        }
+      }
     });
   });
 

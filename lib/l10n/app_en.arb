@@ -13305,5 +13305,63 @@
   "settingsTaskerMomentExportSaveFailed": "Could not save that change. The switch shows what is stored.",
   "@settingsTaskerMomentExportSaveFailed": {
     "description": "Shown under the send-reviewed-moments-to-Tasker switch when the phone refused to store the change; the switch shows the stored state"
+  },
+  "hapticsPresetsGeneral": "General",
+  "@hapticsPresetsGeneral": {
+    "description": "Title of the group of the ten general presets on the Patterns tab of the Haptics screen"
+  },
+  "hapticsNewFromTaps": "New from taps",
+  "@hapticsNewFromTaps": {
+    "description": "Button under the Haptics title that records a new pattern by tapping"
+  },
+  "hapticsNewFromNotes": "New from notes",
+  "@hapticsNewFromNotes": {
+    "description": "Button under the Haptics title that writes a new pattern as notes"
+  },
+  "hapticsCommandsCount": "{n, plural, one{1 command} other{{n} commands}}",
+  "@hapticsCommandsCount": {
+    "description": "Spoken count of the band commands a haptic pattern is sent as",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsRowSemantics": "{name}, {length}, {commands}",
+  "@hapticsRowSemantics": {
+    "description": "Screen-reader label of a haptic pattern row: its name, its length, then its command count",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      },
+      "commands": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreLength": "~{value}s",
+  "@hapticScoreLength": {
+    "description": "Total length printed on the staff of a haptic pattern; value is a number with one decimal such as 1.5",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsCommandLimitTitle": "Band haptic limit",
+  "@hapticsCommandLimitTitle": {
+    "description": "Title of the control that sets how many haptic commands the band may be sent in 2 minutes"
+  },
+  "hapticsCommandLimitBody": "{n} commands in any 2 minutes. A precaution we chose to spare the motor and the battery, not a limit of the band. Alerts wait for room; a gesture without room is not acted on.",
+  "@hapticsCommandLimitBody": {
+    "description": "Explains the haptic command limit; n is the limit",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
   }
 }

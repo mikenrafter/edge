@@ -2507,5 +2507,13 @@
   "momentReviewAmbiguous": "घड़ी पीछे करने पर यह समय दो बार आया, इसलिए इसे किसी दूसरे निशान से जोड़ा नहीं जा सकता।",
   "momentReviewResume": "अब तक सहेजा गया। इस जोड़ी को पूरा करने के लिए सहेजें दबाएँ।",
   "momentReviewProgressNotSaved": "इस जोड़ी की प्रगति दर्ज नहीं हो सकी, इसलिए इसे रोक दिया गया। दोबारा कोशिश के लिए सहेजें दबाएँ।",
-  "settingsTaskerMomentExportSaveFailed": "वह बदलाव सहेजा नहीं जा सका। स्विच वही दिखाता है जो सहेजा हुआ है।"
+  "settingsTaskerMomentExportSaveFailed": "वह बदलाव सहेजा नहीं जा सका। स्विच वही दिखाता है जो सहेजा हुआ है।",
+  "hapticsPresetsGeneral": "सामान्य",
+  "hapticsNewFromTaps": "टैप से नया",
+  "hapticsNewFromNotes": "नोट्स से नया",
+  "hapticsCommandsCount": "{n, plural, one{1 कमांड} other{{n} कमांड}}",
+  "hapticsRowSemantics": "{name}, {length}, {commands}",
+  "hapticScoreLength": "~{value}s",
+  "hapticsCommandLimitTitle": "बैंड हैप्टिक सीमा",
+  "hapticsCommandLimitBody": "किसी भी 2 मिनट में {n} कमांड। यह मोटर और बैटरी को बचाने के लिए हमारी चुनी हुई सावधानी है, बैंड की सीमा नहीं। अलर्ट जगह मिलने तक रुकते हैं; जगह न होने पर जेस्चर पर कार्रवाई नहीं होती।"
 }

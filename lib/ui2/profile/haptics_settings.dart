@@ -1,12 +1,18 @@
 // HAPTICS — Settings > The band > Haptics.
 //
+// Under the nav bar and above the tabs, on every tab, one pinned row of two
+// buttons: New from taps and New from notes (the latter needs a haptic profile,
+// so a 4.0 has only the first).
+//
 // Five sub-tabs (the app's SubTabs), each showing only its own groups: Patterns
-// (Your patterns: the wearer's saved patterns; Presets: the built-in ones, the
-// ten presets are read-only, the gesture and breathing cues can be customised
-// and put back; none can be renamed or deleted), Alerts (the alert slots, and
+// (Your patterns: the wearer's saved patterns; then the built-in ones in a group
+// per slot section, General first: the ten presets are read-only, the cues can
+// be customised and put back; none can be renamed or deleted; a group with
+// nothing in it is not shown), Alerts (the alert slots, and
 // the app and automation ones), Activity (the workout slots), Cues (the gesture
 // and the breathing cues) and Band (Safety: allow long sequences, and what the
-// band's rolling command limit and queue are doing; Test: buzz the band; and,
+// band's rolling command limit (and the control that sets it) and queue are
+// doing; Test: buzz the band; and,
 // in developer mode only, Calibration: the Device lab). Every slot row plays a
 // pattern, shown by the NAME of the pattern; the link to the screen where a
 // section's slots are set sits at the bottom of the tab that lists them. The
@@ -24,12 +30,20 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
-import '../../haptics/band_queue.dart' show BandCommandLedger;
+import '../../haptics/band_queue.dart'
+    show
+        BandCommandLedger,
+        kBandCommandLimitMax,
+        kBandCommandLimitMin;
 import '../../haptics/builtin_patterns.dart' show isPresetKey, kPresets;
+import '../../haptics/haptic_compiler.dart' show maxRuntimeFor;
+import '../../haptics/haptic_player.dart'
+    show bandSequenceCommands, scoreDurationMs;
 import '../../haptics/haptic_profile.dart';
 import '../../haptics/haptic_slots.dart';
 import '../../haptics/pattern_similarity.dart';
 import '../../haptics/pattern_store.dart';
+import '../../haptics/score_layout.dart' show scoreEntriesOf;
 import '../../l10n/app_localizations.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../settings/settings_repository.dart';
@@ -46,7 +60,7 @@ import 'alarm.dart' show AlarmScreen;
 import 'band_notifications.dart' show BandNotifications;
 import 'gestures.dart' show BandGestures;
 import 'haptic_pattern_editor.dart';
-import 'pattern_picker.dart' show patternDetail, showPatternPicker;
+import 'pattern_picker.dart' show showPatternPicker;
 import 'profile.dart';
 import 'settings.dart' show AutomationSettings, NotificationSettings;
 
@@ -269,6 +283,11 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       devMode: caps.has(Feature.developerMode),
       commandsLeft: app.haptics.commandsLeft,
       commandLimit: app.haptics.ledger.limitNow,
+      onCommandLimit: (v) {
+        // Read at every use by the band's ledger: it takes effect at once.
+        Prefs.setHapticCommandLimit(v);
+        setState(() {});
+      },
       queued: app.haptics.pending,
       bandConnected: caps.has(Feature.bandBuzz),
       onPlay: app.previewBuzzSequence,
@@ -317,6 +336,7 @@ class HapticsSettingsView extends StatelessWidget {
     required this.commandsLeft,
     required this.queued,
     this.commandLimit = 30,
+    this.onCommandLimit,
     required this.bandConnected,
     required this.onPlay,
     required this.onBuzz,
@@ -355,6 +375,11 @@ class HapticsSettingsView extends StatelessWidget {
   /// The command limit per 2 minutes in force (a precaution we chose, see
   /// [BandCommandLedger]); the read-out shows it.
   final int commandLimit;
+
+  /// The wearer moved the limit (Band tab, Safety): a whole number from
+  /// `kBandCommandLimitMin` to `kBandCommandLimitMax`. Null: the control is
+  /// inert.
+  final ValueChanged<int>? onCommandLimit;
 
   final Future<bool> Function(BuzzSequence) onPlay;
   final VoidCallback onBuzz, onDeviceLab;
@@ -407,6 +432,7 @@ class HapticsSettingsView extends StatelessWidget {
                 padding: EdgeInsets.symmetric(horizontal: S.x4),
                 child: NavBar('Haptics'),
               ),
+              _createRow(c),
               Padding(
                 padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, 0),
                 child: SubTabs(
@@ -444,8 +470,7 @@ class HapticsSettingsView extends StatelessWidget {
     HapticsTab.patterns => [
       SettingsAccordion('Your patterns',
           id: 'haptics_your_patterns', children: _yourRows(c, p)),
-      SettingsAccordion('Presets',
-          id: 'haptics_presets', children: _presetRows(c, p)),
+      ..._presetGroups(c, p),
     ],
     HapticsTab.alerts => [
       _slotGroup(c, 'alerts'),
@@ -521,49 +546,91 @@ class HapticsSettingsView extends StatelessWidget {
         )
       else
         for (final s in mine) _patternRow(c, p, s),
-      SetRow(
-        LucideIcons.hand,
-        C.blue,
-        'New from taps',
-        key: const ValueKey('haptics-new-taps'),
-        sub: 'Tap out a rhythm',
-        onTap: () => _newFromTaps(c),
-      ),
-      if (profile != null)
-        SetRow(
-          LucideIcons.music,
-          C.blue,
-          'New from notes',
-          key: const ValueKey('haptics-new-notes'),
-          sub: 'Notes and rests, with dynamics',
-          onTap: () => _newFromNotes(c),
-        ),
     ];
   }
 
-  // The built-ins: the ten presets in their own order, then the rest (the
-  // gesture cues, and a per-alert built-in the wearer had changed).
-  List<Widget> _presetRows(BuildContext c, P p) {
-    final order = [for (final k in kPresets) k.$1];
+  // The two ways to make a pattern, pinned under the nav bar on every tab. One
+  // row, so they never scroll away and are one thumb-reach from any tab.
+  Widget _createRow(BuildContext c) {
+    final l = AppLocalizations.of(c);
+    return Padding(
+      key: const ValueKey('haptics-create-row'),
+      padding: const EdgeInsets.fromLTRB(S.x4, S.x1, S.x4, S.x2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: BigButton(
+              l?.hapticsNewFromTaps ?? 'New from taps',
+              key: const ValueKey('haptics-new-taps'),
+              icon: LucideIcons.hand,
+              color: C.blue,
+              soft: true,
+              onTap: () => _newFromTaps(c),
+            ),
+          ),
+          if (profile != null) ...[
+            const SizedBox(width: S.x2),
+            Expanded(
+              child: BigButton(
+                l?.hapticsNewFromNotes ?? 'New from notes',
+                key: const ValueKey('haptics-new-notes'),
+                icon: LucideIcons.music,
+                color: C.blue,
+                soft: true,
+                onTap: () => _newFromNotes(c),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // The built-ins, one group per slot section in the order the other tabs list
+  // them (General, the ten presets, first). Which group a built-in is in is
+  // builtInSectionId's call. A group with nothing in it is left out. Inside
+  // a group: the presets in their own order, the slots in their section's.
+  List<Widget> _presetGroups(BuildContext c, P p) {
+    final builtIn = [
+      for (final s in patterns)
+        if (s.system) s,
+    ];
+    final presetOrder = [for (final k in kPresets) k.$1];
+    List<String> orderOf(String sectionId) => sectionId == kGeneralSectionId
+        ? presetOrder
+        : [for (final slot in _sectionOf(sectionId).slots) slot.key];
+    return [
+      for (final id in kPresetSectionOrder)
+        if (builtIn.any((s) => builtInSectionId(s.systemKey!) == id))
+          SettingsAccordion(
+            id == kGeneralSectionId
+                ? (AppLocalizations.of(c)?.hapticsPresetsGeneral ?? 'General')
+                : _sectionOf(id).title,
+            id: 'haptics_presets_$id',
+            children: [
+              for (final s in _inOrder(
+                  [
+                    for (final s in builtIn)
+                      if (builtInSectionId(s.systemKey!) == id) s,
+                  ],
+                  orderOf(id)))
+                _patternRow(c, p, s),
+            ],
+          ),
+    ];
+  }
+
+  // [group] by where each key sits in [order], keys not in it last (the sort
+  // is stable, so they keep the store's order).
+  List<SavedHapticPattern> _inOrder(
+      List<SavedHapticPattern> group, List<String> order) {
     int rank(SavedHapticPattern s) {
       final i = order.indexOf(s.systemKey ?? '');
       return i < 0 ? order.length : i;
     }
 
-    final builtIn = [
-      for (final s in patterns)
-        if (s.system) s,
-    ]..sort((a, b) => rank(a).compareTo(rank(b)));
-    if (builtIn.isEmpty) {
-      return [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: S.x3),
-          child: Text('No presets to show.',
-              style: F.over.copyWith(color: p.ink3)),
-        ),
-      ];
-    }
-    return [for (final s in builtIn) _patternRow(c, p, s)];
+    return [...group]..sort((a, b) => rank(a).compareTo(rank(b)));
   }
 
   HapticSlotSection _sectionOf(String id) =>
@@ -709,46 +776,39 @@ class HapticsSettingsView extends StatelessWidget {
     child: Text(label, style: F.cap.copyWith(color: p.ink2)),
   );
 
+  // A pattern row is its name and its staff: the notes code, the command count
+  // and the length are not printed (the staff prints the length), but a screen
+  // reader still hears the name, the length and the command count.
   Widget _patternRow(BuildContext c, P p, SavedHapticPattern s) {
-    final notes = s.sequence.notes;
+    final l = AppLocalizations.of(c);
+    final maxRuntime = maxRuntimeFor(allowLong: allowLong);
+    final ms = scoreDurationMs(s.sequence, scoreEntriesOf(s.sequence), profile);
+    final commands = bandSequenceCommands(s.sequence, profile,
+        maxRuntime: maxRuntime);
+    final commandsText = l?.hapticsCommandsCount(commands) ??
+        (commands == 1 ? '1 command' : '$commands commands');
+    final seconds = (ms / 1000).toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+    final lengthText = ms == 1000
+        ? (l?.hapticScoreOneSecond ?? '1 second')
+        : (l?.hapticScoreSeconds(seconds) ?? '$seconds seconds');
     return Pressable(
       key: ValueKey('haptic-pattern:${s.id}'),
       onTap: () => _openSheet(c, s),
-      semanticLabel: s.name,
+      semanticLabel: l?.hapticsRowSemantics(s.name, lengthText, commandsText) ??
+          '${s.name}, $lengthText, $commandsText',
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: S.x3),
+        padding: const EdgeInsets.symmetric(vertical: S.x2),
         child: Row(
           children: [
-            Container(
-              width: 32,
-              height: 32,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: p.wash(C.purple),
-                borderRadius: R.rSm,
-              ),
-              child: Icon(LucideIcons.waves, size: 16, color: p.on(C.purple)),
-            ),
-            const SizedBox(width: S.x3),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(s.name, style: F.body.copyWith(color: p.ink)),
-                  if (notes != null)
-                    Text(
-                      notes,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: F.over.copyWith(color: p.ink3),
-                    ),
-                  Text(
-                    patternDetail(s.sequence, profile: profile),
-                    style: F.over.copyWith(color: p.ink3),
-                  ),
                   Padding(
                     padding: const EdgeInsets.only(top: S.x1),
-                    child: HapticScore(s.sequence),
+                    child: HapticScore(s.sequence,
+                        profile: profile, allowLong: allowLong),
                   ),
                 ],
               ),
@@ -790,6 +850,7 @@ class HapticsSettingsView extends StatelessWidget {
         }
       },
     ),
+    _commandLimitRow(c, p),
     Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x3),
       child: Column(
@@ -808,6 +869,40 @@ class HapticsSettingsView extends StatelessWidget {
       ),
     ),
   ];
+
+  // How many commands the band may be sent in any 2 minutes. A precaution we
+  // chose (motor wear, battery), not a limit of the band, so it says the number
+  // in force and why. Not a developer setting: the wearer sees it, next to the
+  // copy and the read-out that name it.
+  Widget _commandLimitRow(BuildContext c, P p) {
+    final l = AppLocalizations.of(c);
+    final limit = commandLimit.clamp(kBandCommandLimitMin, kBandCommandLimitMax);
+    return Padding(
+      key: const ValueKey('haptics-command-limit'),
+      padding: const EdgeInsets.symmetric(vertical: S.x3),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(l?.hapticsCommandLimitTitle ?? 'Band haptic limit',
+            style: F.body.copyWith(color: p.ink)),
+        Text(
+          l?.hapticsCommandLimitBody(limit) ??
+              '$limit commands in any 2 minutes. A precaution we chose to '
+                  'spare the motor and the battery, not a limit of the band. '
+                  'Alerts wait for room; a gesture without room is not acted on.',
+          style: F.over.copyWith(color: p.ink3),
+        ),
+        Slider(
+          min: kBandCommandLimitMin.toDouble(),
+          max: kBandCommandLimitMax.toDouble(),
+          divisions: kBandCommandLimitMax - kBandCommandLimitMin,
+          value: limit.toDouble(),
+          label: '$limit',
+          onChanged: onCommandLimit == null
+              ? null
+              : (v) => onCommandLimit!(v.round()),
+        ),
+      ]),
+    );
+  }
 
   Future<void> _confirmAllow(BuildContext c) async {
     final ok = await showDialog<bool>(
@@ -939,7 +1034,8 @@ class HapticsSettingsView extends StatelessWidget {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(bottom: S.x2),
-                  child: HapticScore(s.sequence),
+                  child: HapticScore(s.sequence,
+                      profile: profile, allowLong: allowLong),
                 ),
                 SetRow(
                   LucideIcons.play,

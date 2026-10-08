@@ -490,15 +490,15 @@ void main() {
 
     double top(WidgetTester t, Finder f) => t.getTopLeft(f.first).dy;
 
-    testWidgets('the Your patterns and Presets accordions and their rows sit '
-        'in that order', (t) async {
+    testWidgets('the Your patterns accordion and its rows sit above the '
+        'built-ins\' accordions (General first)', (t) async {
       final (built, mine) = await mixed(t);
       // The view is handed one list, the user's patterns and the built-ins
       // interleaved, and splits it itself.
       await pumpTall(t, hub([built.first, ...mine, ...built.skip(1)],
           profile: _mg));
       final yours = top(t, section('Your patterns'));
-      final presets = top(t, section('Presets'));
+      final presets = top(t, section('General'));
       expect(yours, lessThan(presets));
       for (final p in mine) {
         final y = top(t, find.byKey(ValueKey('haptic-pattern:${p.id}')));
@@ -517,7 +517,7 @@ void main() {
       // A fresh store: the two patterns _addMine made are not in this list.
       await pumpTall(t, hub(built, profile: _mg));
       expect(top(t, section('Your patterns')),
-          lessThan(top(t, section('Presets'))));
+          lessThan(top(t, section('General'))));
     });
 
     testWidgets('a built-in row says so (a lock or "Built in") and a user '

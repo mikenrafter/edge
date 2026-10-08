@@ -2507,5 +2507,13 @@
   "momentReviewAmbiguous": "时钟回拨时这个时间出现了两次，因此无法与另一个标记配对。",
   "momentReviewResume": "目前已保存。点按“保存”完成这一对。",
   "momentReviewProgressNotSaved": "无法记录这一对的进度，因此已停止。点按“保存”重试。",
-  "settingsTaskerMomentExportSaveFailed": "无法保存该更改。开关显示的是已保存的状态。"
+  "settingsTaskerMomentExportSaveFailed": "无法保存该更改。开关显示的是已保存的状态。",
+  "hapticsPresetsGeneral": "通用",
+  "hapticsNewFromTaps": "通过点按新建",
+  "hapticsNewFromNotes": "通过音符新建",
+  "hapticsCommandsCount": "{n, plural, other{{n} 条命令}}",
+  "hapticsRowSemantics": "{name}，{length}，{commands}",
+  "hapticScoreLength": "~{value}s",
+  "hapticsCommandLimitTitle": "手环振动上限",
+  "hapticsCommandLimitBody": "任意 2 分钟内最多 {n} 条命令。这是我们为保护马达和电池而设的预防措施，并非手环本身的限制。提醒会等到有空位再发；没有空位时，手势不会被执行。"
 }
