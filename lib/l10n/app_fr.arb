@@ -2515,5 +2515,19 @@
   "hapticsRowSemantics": "{name}, {length}, {commands}",
   "hapticScoreLength": "~{value}s",
   "hapticsCommandLimitTitle": "Limite de vibrations du bracelet",
-  "hapticsCommandLimitBody": "{n} commandes sur toute période de 2 minutes. Une précaution de notre part pour ménager le moteur et la batterie, pas une limite du bracelet. Les alertes attendent qu’il y ait de la place ; un geste sans place n’est pas exécuté."
+  "hapticsCommandLimitBody": "{n} commandes sur toute période de 2 minutes. Une précaution de notre part pour ménager le moteur et la batterie, pas une limite du bracelet. Les alertes attendent qu’il y ait de la place ; un geste sans place n’est pas exécuté.",
+  "hapticsCommandLimitSaving": "Enregistrement…",
+  "hapticsCommandLimitFailed": "Impossible d’enregistrer ce changement. La limite reste à {n}.",
+  "hapticsYourPatterns": "Vos motifs",
+  "hapticsSafety": "Sécurité",
+  "hapticsTest": "Test",
+  "hapticsCalibration": "Étalonnage",
+  "hapticsSectionAlerts": "Alertes",
+  "hapticsSectionApps": "Applis et automatisation",
+  "hapticsSectionTasker": "Tasker",
+  "hapticsSectionActivity": "Activité",
+  "hapticsSectionGestures": "Gestes",
+  "hapticsSectionBreathing": "Respiration",
+  "hapticsSectionAlarm": "Répétition de l’alarme",
+  "hapticsSectionEcg": "ECG"
 }

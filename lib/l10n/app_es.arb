@@ -2544,5 +2544,19 @@
   "hapticsRowSemantics": "{name}, {length}, {commands}",
   "hapticScoreLength": "~{value}s",
   "hapticsCommandLimitTitle": "Límite de vibración de la banda",
-  "hapticsCommandLimitBody": "{n} comandos en cualquier periodo de 2 minutos. Una precaución que elegimos para cuidar el motor y la batería, no un límite de la banda. Los avisos esperan a que haya hueco; un gesto sin hueco no se ejecuta."
+  "hapticsCommandLimitBody": "{n} comandos en cualquier periodo de 2 minutos. Una precaución que elegimos para cuidar el motor y la batería, no un límite de la banda. Los avisos esperan a que haya hueco; un gesto sin hueco no se ejecuta.",
+  "hapticsCommandLimitSaving": "Guardando…",
+  "hapticsCommandLimitFailed": "No se pudo guardar ese cambio. El límite sigue en {n}.",
+  "hapticsYourPatterns": "Tus patrones",
+  "hapticsSafety": "Seguridad",
+  "hapticsTest": "Prueba",
+  "hapticsCalibration": "Calibración",
+  "hapticsSectionAlerts": "Alertas",
+  "hapticsSectionApps": "Apps y automatización",
+  "hapticsSectionTasker": "Tasker",
+  "hapticsSectionActivity": "Actividad",
+  "hapticsSectionGestures": "Gestos",
+  "hapticsSectionBreathing": "Respiración",
+  "hapticsSectionAlarm": "Repetición de alarma",
+  "hapticsSectionEcg": "ECG"
 }

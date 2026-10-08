@@ -2515,5 +2515,19 @@
   "hapticsRowSemantics": "{name}，{length}，{commands}",
   "hapticScoreLength": "~{value}s",
   "hapticsCommandLimitTitle": "手环振动上限",
-  "hapticsCommandLimitBody": "任意 2 分钟内最多 {n} 条命令。这是我们为保护马达和电池而设的预防措施，并非手环本身的限制。提醒会等到有空位再发；没有空位时，手势不会被执行。"
+  "hapticsCommandLimitBody": "任意 2 分钟内最多 {n} 条命令。这是我们为保护马达和电池而设的预防措施，并非手环本身的限制。提醒会等到有空位再发；没有空位时，手势不会被执行。",
+  "hapticsCommandLimitSaving": "正在保存…",
+  "hapticsCommandLimitFailed": "无法保存该更改。上限仍为 {n}。",
+  "hapticsYourPatterns": "你的振动模式",
+  "hapticsSafety": "安全",
+  "hapticsTest": "测试",
+  "hapticsCalibration": "校准",
+  "hapticsSectionAlerts": "提醒",
+  "hapticsSectionApps": "应用与自动化",
+  "hapticsSectionTasker": "Tasker",
+  "hapticsSectionActivity": "活动",
+  "hapticsSectionGestures": "手势",
+  "hapticsSectionBreathing": "呼吸",
+  "hapticsSectionAlarm": "闹钟贪睡",
+  "hapticsSectionEcg": "心电图"
 }

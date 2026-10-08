@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';
+import 'package:openstrap_edge/haptics/haptic_compiler.dart'
+    show kMaxHapticRuntime, maxRuntimeFor;
 import 'package:openstrap_edge/haptics/haptic_player.dart';
 import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/tap_notes.dart';
@@ -128,6 +130,111 @@ void main() {
     final before = debugCompileCount;
     bandSequenceCommands(keep, _mg);
     expect(debugCompileCount, before);
+  });
+
+  group('what is SENT follows an edit, a new profile and the long switch', () {
+    // The commands a delivery writes, as the band is sent them.
+    Future<List<String>> written(BuzzSequence s, HapticDeviceProfile? p,
+        {Duration? maxRuntime = kMaxHapticRuntime}) async {
+      final out = <String>[];
+      await deliverBandSequence(
+        s,
+        profile: p,
+        buzz: () async => true,
+        writePattern: (e, l) async {
+          out.add('${e.join('+')}x$l');
+          return true;
+        },
+        waitEnded: (_) async => true,
+        isConnected: () => true,
+        maxRuntime: maxRuntime,
+      );
+      return out;
+    }
+
+    BuzzSequence stored(List<BakedStep> steps) => BuzzSequence(
+          const [0],
+          durationsMs: const [500],
+          notes: 'N4ff',
+          profileId: _mg.id,
+          profileVersion: _mg.version,
+          bakedSteps: steps,
+        );
+
+    test('editing the baked plan changes what is written (no stale cache)',
+        () async {
+      final a = stored([BakedStep(effects: const [47], loop: 1, delayMs: 0)]);
+      expect(await written(a, _mg), ['47x1']);
+      expect(bandStepsFor(a, _mg)!.single.effects, [47]);
+      final b = a.copyWith(
+          bakedSteps: [BakedStep(effects: const [14], loop: 2, delayMs: 0)]);
+      expect(await written(b, _mg), ['14x2']);
+      expect(bandStepsFor(b, _mg)!.single.effects, [14]);
+      // And back: the first answer is still its own.
+      expect(await written(a, _mg), ['47x1']);
+    });
+
+    test('a replaced profile with the same id compiles to its own commands',
+        () async {
+      final s = _unplanned('N4ff');
+      expect(await written(s, _mg), ['47x1']);
+      final other = HapticDeviceProfile(
+        id: _mg.id,
+        name: _mg.name,
+        unitMs: _mg.unitMs,
+        probeSetId: _mg.probeSetId,
+        version: _mg.version,
+        phrases: [
+          for (final ph in _mg.phrases)
+            HapticPhrase(
+              id: ph.id,
+              effects: ph.id == 'buzz47' ? const [48] : ph.effects,
+              loop: ph.loop,
+              min: ph.min,
+              max: ph.max,
+              stable: ph.stable,
+              sourceTests: ph.sourceTests,
+            ),
+        ],
+        gaps: _mg.gaps,
+      );
+      expect(await written(s, other), ['48x1']);
+      expect(await written(s, _mg), ['47x1']);
+    });
+
+    test('a replaced profile changes how a stored plan is timed', () {
+      final s = stored([BakedStep(effects: const [47], loop: 1, delayMs: 0)]);
+      final other = HapticDeviceProfile(
+        id: _mg.id,
+        name: _mg.name,
+        unitMs: _mg.unitMs,
+        probeSetId: _mg.probeSetId,
+        version: _mg.version,
+        phrases: [
+          for (final ph in _mg.phrases)
+            if (ph.id != 'buzz47') ph,
+        ],
+        gaps: _mg.gaps,
+      );
+      expect(bandSequenceTimeout(s, other), isNot(bandSequenceTimeout(s, _mg)),
+          reason: 'a step the new profile does not know is sized as unknown');
+    });
+
+    test('lifting the cap changes what a long rhythm is sent as', () async {
+      // 12 s of notes, no stored plan: under the 10 s cap it goes tap by tap.
+      final s = _unplanned(List.filled(6, 'N12* R4').join(' '));
+      expect(bandStepsFor(s, _mg), isNull);
+      expect(bandSequenceCommands(s, _mg), s.length);
+      expect(await written(s, _mg), isEmpty, reason: 'taps are not patterns');
+      final lifted = maxRuntimeFor(allowLong: true);
+      expect(lifted, isNull);
+      expect(bandStepsFor(s, _mg, maxRuntime: lifted), isNotNull);
+      expect(await written(s, _mg, maxRuntime: lifted), isNotEmpty);
+      expect(bandSequenceCommands(s, _mg, maxRuntime: lifted),
+          bandStepsFor(s, _mg, maxRuntime: lifted)!.length);
+      // Switching back is capped again.
+      expect(bandStepsFor(s, _mg), isNull);
+    });
   });
 
   group('the staff', () {

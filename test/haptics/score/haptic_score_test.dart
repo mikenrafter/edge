@@ -12,23 +12,29 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:openstrap_edge/gestures/pattern_transcript.dart';
+import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/haptics/score_layout.dart';
+import 'package:openstrap_edge/haptics/tap_notes.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/ui2/haptic_score.dart';
 import 'package:openstrap_edge/ui2/ui2.dart' show buildTheme;
 
 import '../../support/haptics_screen_support.dart';
 
-// A pattern whose notes code is [notes]; the taps behind it are not drawn.
-BuzzSequence _seq(String notes) =>
-    BuzzSequence(const [0], durationsMs: const [125], notes: notes);
+// A pattern whose notes code is [notes], with the taps those notes make (the
+// taps a band with no profile is sent, and what its length is counted from).
+BuzzSequence _seq(String notes) => tapsFromNotes(
+        PatternTranscript.parseCode(notes).entries)
+    .copyWith(notes: notes);
 
-Future<void> _pump(WidgetTester t, BuzzSequence s, {double width = 360}) =>
+Future<void> _pump(WidgetTester t, BuzzSequence s,
+        {double width = 360, HapticDeviceProfile? profile}) =>
     t.pumpWidget(MaterialApp(
       theme: buildTheme(Brightness.light),
       home: Scaffold(
         body: Center(
-          child: SizedBox(width: width, child: HapticScore(s)),
+          child: SizedBox(width: width, child: HapticScore(s, profile: profile)),
         ),
       ),
     ));
@@ -82,29 +88,32 @@ void main() {
       expect(find.text('~1.0s'), findsOneWidget);
     });
 
-    testWidgets('a stored plan\'s recorded runtime wins over the written length',
+    testWidgets('a stored plan\'s recorded runtime wins over the taps\' length',
         (t) async {
-      // 12 sixteenths written (1.5 s); the plan is felt for 2.5 s.
+      // The taps hold 1.1 s; the plan is felt for 2.5 s.
       final s = BuzzSequence(const [0, 625],
           durationsMs: const [500, 500],
           notes: 'N4mf R4 N4mf',
+          profileId: HapticDeviceProfile.whoopMg.id,
+          profileVersion: 1,
           bakedSteps: [
             BakedStep(effects: const [47], loop: 1, delayMs: 0),
             BakedStep(effects: const [47], loop: 1, delayMs: 300),
           ],
           bakedRuntimeMs: 2500);
-      await _pump(t, s);
+      await _pump(t, s, profile: HapticDeviceProfile.whoopMg);
       expect(find.text('~2.5s'), findsOneWidget);
-      expect(find.text('~1.5s'), findsNothing);
+      expect(find.text('~1.1s'), findsNothing);
     });
 
-    testWidgets('it counts the rests at both ends', (t) async {
-      await _pump(t, _seq('R4 N4mf R8')); // 16 x 125 ms
-      expect(find.text('~2.0s'), findsOneWidget);
-    });
-
-    testWidgets('it follows the unit: a sixteenth of 250 ms doubles it',
+    testWidgets('rests at the ends are not played, so they are not counted',
         (t) async {
+      await _pump(t, _seq('R4 N4mf R8')); // the band plays the one 0.5 s press
+      expect(find.text('~0.5s'), findsOneWidget);
+    });
+
+    testWidgets('the printed length is what plays, whatever the unit of the '
+        'notes', (t) async {
       await t.pumpWidget(MaterialApp(
         theme: buildTheme(Brightness.light),
         home: Scaffold(
@@ -112,7 +121,69 @@ void main() {
               width: 360, child: HapticScore(_seq('N4mf R4 N4mf'), unitMs: 250)),
         ),
       ));
-      expect(find.text('~3.0s'), findsOneWidget);
+      expect(find.text('~1.5s'), findsOneWidget);
+    });
+
+    group('the length follows the device and the long switch', () {
+      final mg = HapticDeviceProfile.whoopMg;
+      // One half note of three loops of effect 47: felt 1.0 s on an MG; the
+      // taps it makes for a band with no profile hold 0.625 s.
+      final s = BuzzSequence(const [0],
+          durationsMs: const [625],
+          notes: 'N8*',
+          profileId: mg.id,
+          profileVersion: mg.version,
+          bakedSteps: [BakedStep(effects: const [47], loop: 3, delayMs: 0)],
+          bakedRuntimeMs: 1000);
+
+      Future<void> pumpWith(WidgetTester t, BuzzSequence q,
+              {HapticDeviceProfile? profile, bool allowLong = false}) =>
+          t.pumpWidget(MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: Scaffold(
+              body: SizedBox(
+                width: 360,
+                child: HapticScore(q, profile: profile, allowLong: allowLong),
+              ),
+            ),
+          ));
+
+      testWidgets('an MG plays the stored plan: 1.0 s', (t) async {
+        final h = t.ensureSemantics();
+        await pumpWith(t, s, profile: mg);
+        expect(find.text('~1.0s'), findsOneWidget);
+        expect(find.bySemanticsLabel('1 note, 1 second'), findsOneWidget);
+        h.dispose();
+      });
+
+      testWidgets('a 4.0 plays the taps: 0.6 s, not the MG\'s 1.0', (t) async {
+        final h = t.ensureSemantics();
+        await pumpWith(t, s);
+        expect(find.text('~0.6s'), findsOneWidget);
+        expect(find.text('~1.0s'), findsNothing);
+        expect(find.bySemanticsLabel('1 note, 0.63 seconds'), findsOneWidget);
+        h.dispose();
+      });
+
+      testWidgets('a plan over the cap is not played: the taps are, until the '
+          'long switch is on', (t) async {
+        // Six dotted halves with rests: 12 s as a plan, 11.5 s as taps.
+        final long = tapsFromNotes(PatternTranscript.parseCode(
+                List.filled(6, 'N12* R4').join(' ')).entries)
+            .copyWith(
+          notes: List.filled(6, 'N12* R4').join(' '),
+          profileId: mg.id,
+          profileVersion: mg.version,
+          bakedSteps: List.filled(
+              6, BakedStep(effects: const [47], loop: 3, delayMs: 300)),
+          bakedRuntimeMs: 12000,
+        );
+        await pumpWith(t, long, profile: mg);
+        expect(find.text('~11.5s'), findsOneWidget,
+            reason: 'over 10 s: delivery falls back to the taps');
+        await pumpWith(t, long, profile: mg, allowLong: true);
+        expect(find.text('~12.0s'), findsOneWidget);
+      });
     });
 
     testWidgets('it is left of the staff, on its first line', (t) async {

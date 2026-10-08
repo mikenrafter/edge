@@ -12,6 +12,11 @@
 //   hapticScoreLength         value                "~{value}s" on the staff
 //   hapticsCommandLimitTitle  (none)               Band > Safety control title
 //   hapticsCommandLimitBody   n                    "n commands in any 2 minutes ..."
+//   hapticsCommandLimitSaving (none)               "Saving..." while the limit is written
+//   hapticsCommandLimitFailed n                    the write was refused; the limit stays n
+//   hapticsYourPatterns, hapticsSafety, hapticsTest, hapticsCalibration,
+//   hapticsSection{Alerts,Apps,Tasker,Activity,Gestures,Breathing,Alarm,Ecg}
+//                             (none)               accordion headings
 
 import 'dart:convert';
 import 'dart:io';
@@ -27,6 +32,20 @@ const _keys = [
   'hapticScoreLength',
   'hapticsCommandLimitTitle',
   'hapticsCommandLimitBody',
+  'hapticsCommandLimitSaving',
+  'hapticsCommandLimitFailed',
+  'hapticsYourPatterns',
+  'hapticsSafety',
+  'hapticsTest',
+  'hapticsCalibration',
+  'hapticsSectionAlerts',
+  'hapticsSectionApps',
+  'hapticsSectionTasker',
+  'hapticsSectionActivity',
+  'hapticsSectionGestures',
+  'hapticsSectionBreathing',
+  'hapticsSectionAlarm',
+  'hapticsSectionEcg',
 ];
 
 Map<String, dynamic> _arb(File f) =>

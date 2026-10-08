@@ -16,11 +16,15 @@
 //     60. The Safety copy says "our own limit of <commandLimit> commands per 2
 //     minutes" and the read-out "<left> of <commandLimit> band commands left in
 //     the last 2 minutes".
-//   HapticsSettings (the stateful route) writes the value through
-//     Prefs.setHapticCommandLimit and rebuilds with the ledger's limitNow.
+//   HapticsSettings (the stateful route) writes the value through the settings
+//     repository (SettingsRepository.update, the one owner of settings writes),
+//     says "Saving..." while the write is in flight, and when the write is
+//     refused puts the control back at the limit in force and says so; on
+//     success it rebuilds with the ledger's limitNow.
 //   MoreSettingsView no longer has hapticCommandLimit / onHapticCommandLimit
 //     and the Developer group has no `developer-haptic-limit` row.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -31,6 +35,7 @@ import 'package:openstrap_edge/haptics/haptic_profile.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/state/capabilities.dart';
 import 'package:openstrap_edge/state/locale_controller.dart';
+import 'package:openstrap_edge/settings/settings_repository.dart';
 import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
@@ -39,6 +44,9 @@ import 'package:openstrap_edge/ui2/profile/settings.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// A test-only import, as in test/settings_repository_test.dart: the store seam.
+// ignore: depend_on_referenced_packages
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'support/dart_source_lexical.dart';
@@ -108,15 +116,42 @@ HapticsSettingsView _hub({
             onDeviceLab: () {},
           );
 
+/// A store whose writes of the limit can be held (a slow disk) or refused (a
+/// full or locked one): every value but [keepOnly] is refused, so that putting
+/// the old one back, which a rollback does, is allowed.
+class _Store extends InMemorySharedPreferencesStore {
+  _Store() : super.empty();
+  Completer<void>? hold;
+  int? keepOnly;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    if (key == 'flutter.haptics_command_limit') {
+      if (hold != null) await hold!.future;
+      if (keepOnly != null && value != keepOnly) return false;
+    }
+    return super.setValue(valueType, key, value);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // The accordions of every screen below read their open/closed state through
-  // the settings repository's queue; without stored preferences that read never
-  // answers and would hold up the stateful test at the end of the file.
-  setUp(() async {
+  // One SharedPreferences for the whole file, over a store the tests can hold
+  // or make refuse (Prefs keeps the first instance it loads, and the settings
+  // repository must write to that same one). No test below waits on real time:
+  // every read and write here is a microtask, so pumping runs it.
+  late _Store store;
+  setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    store = _Store();
+    SharedPreferencesStorePlatform.instance = store;
     await Prefs.ensureLoaded();
+  });
+  setUp(() {
+    store
+      ..hold = null
+      ..keepOnly = null;
   });
 
   group('Settings > Developer: the limit is no longer here', () {
@@ -154,12 +189,14 @@ void main() {
       expect(src, isNot(contains('developer-haptic-limit')));
     });
 
-    test('source: the Haptics route is the one place that writes the setting',
-        () {
+    test('source: the Haptics route writes it through the settings owner', () {
       final code = codeOnly(
           File('lib/ui2/profile/haptics_settings.dart').readAsStringSync());
-      expect(code, contains('setHapticCommandLimit('));
+      expect(code, contains('SettingsRepository.instance'));
+      expect(code, contains('hapticsCommandLimit'));
       expect(code, contains('onCommandLimit'));
+      expect(code, isNot(contains('setHapticCommandLimit(')),
+          reason: 'a fire-and-forget Prefs write cannot say it was refused');
     });
   });
 
@@ -290,21 +327,12 @@ void main() {
       LocalDb.dbName = 'openstrap_haptic_command_limit_ui_test.db';
     });
 
-    // One test: the settings repository serialises on a static queue, which a
-    // test that ends mid-load would leave waiting for the next one.
-    testWidgets('moving the slider sets the pref, the ledger and the copy',
-        (t) async {
-      SharedPreferences.setMockInitialValues({});
-      await Prefs.ensureLoaded();
-      Prefs.setHapticCommandLimit(25);
-
+    // Pumps the route up over a bare AppState and returns it. The settings
+    // snapshot loads through microtasks, so pumping is all the waiting there
+    // is.
+    Future<AppState> pumpRoute(WidgetTester t) async {
       final app = AppState.forTesting();
       addTearDown(app.dispose);
-      // The same ledger the real band queue budgets with: it asks Prefs on
-      // every use, so a change is live with no restart.
-      final BandCommandLedger ledger = app.haptics.ledger;
-      expect(ledger.limitNow, 25);
-
       t.view.physicalSize = const Size(1170, 24000);
       t.view.devicePixelRatio = 3;
       addTearDown(t.view.reset);
@@ -318,18 +346,7 @@ void main() {
                   ThemeController.seed(AppThemeChoice.light, Brightness.light)),
           ChangeNotifierProvider(create: (_) => LocaleController.seed(null)),
           Provider<Capabilities>.value(
-            value: Capabilities(const CapabilityInputs(
-              platform: TargetPlatform.android,
-              generation: null,
-              ecgPaired: false,
-              ecgLive: false,
-              connected: false,
-              devMode: false,
-              flagsOff: {},
-              updateChecksBuild: false,
-              healthShareBuild: false,
-              healthShareConsent: false,
-            )),
+            value: Capabilities(const CapabilityInputs()),
           ),
         ],
         child: MaterialApp(
@@ -337,16 +354,26 @@ void main() {
           home: const HapticsSettings(tab: HapticsTab.band),
         ),
       ));
-      final loaded = find.byType(HapticsSettingsView);
-      // The settings snapshot loads from sqflite in real time; a busy machine
-      // (the suite runs files in parallel) can take a few seconds.
-      for (var i = 0; i < 600; i++) {
-        await t.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 20)));
-        await t.pump();
-        if (i >= 4 && loaded.evaluate().isNotEmpty) break;
-      }
-      expect(loaded, findsOneWidget, reason: 'the route never finished loading');
+      await t.pumpAndSettle();
+      expect(find.byType(HapticsSettingsView), findsOneWidget,
+          reason: 'the route loaded');
+      return app;
+    }
+
+    // One drag moves the slider to an end; it reports on the way.
+    Future<void> dragTo(WidgetTester t, double dx) async {
+      await t.drag(_slider(), Offset(dx, 0));
+      await t.pump();
+    }
+
+    testWidgets('moving the slider sets the pref, the ledger and the copy',
+        (t) async {
+      Prefs.setHapticCommandLimit(25);
+      final app = await pumpRoute(t);
+      // The same ledger the real band queue budgets with: it asks Prefs on
+      // every use, so a change is live with no restart.
+      final BandCommandLedger ledger = app.haptics.ledger;
+      expect(ledger.limitNow, 25);
       expect(find.byKey(_row), findsOneWidget,
           reason: 'visible without developer mode');
       expect(t.widget<Slider>(_slider()).value, 25,
@@ -354,7 +381,7 @@ void main() {
       expect(find.textContaining('our own limit of 25 commands per 2 minutes'),
           findsOneWidget);
 
-      await t.drag(_slider(), const Offset(4000, 0));
+      await dragTo(t, 4000);
       await t.pumpAndSettle();
       expect(Prefs.hapticCommandLimit, 60);
       expect(ledger.limitNow, 60, reason: 'the ledger follows at once');
@@ -362,13 +389,77 @@ void main() {
       expect(find.textContaining('our own limit of 60 commands per 2 minutes'),
           findsOneWidget);
       expect(find.textContaining('of 60 band commands left'), findsOneWidget);
+      expect(find.textContaining('Saving'), findsNothing);
+      expect(find.textContaining('Could not save'), findsNothing);
 
-      await t.drag(_slider(), const Offset(-4000, 0));
+      await dragTo(t, -4000);
       await t.pumpAndSettle();
       expect(Prefs.hapticCommandLimit, 10);
       expect(ledger.limitNow, 10);
       expect(find.textContaining('our own limit of 10 commands per 2 minutes'),
           findsOneWidget);
+    });
+
+    testWidgets('the write goes through the settings owner and is announced',
+        (t) async {
+      Prefs.setHapticCommandLimit(25);
+      await pumpRoute(t);
+      final seen = <Map<String, Object>>[];
+      final sub = SettingsRepository.instance.changes
+          .listen((c) => seen.add(Map.of(c.appPrefs)));
+      addTearDown(sub.cancel);
+      await dragTo(t, 4000);
+      await t.pumpAndSettle();
+      expect(seen.where((m) => m['haptics_command_limit'] == 60), isNotEmpty);
+    });
+
+    testWidgets('while the write is in flight the control says so', (t) async {
+      Prefs.setHapticCommandLimit(25);
+      final app = await pumpRoute(t);
+      store.hold = Completer<void>();
+      await dragTo(t, 4000);
+      await t.pump();
+      expect(find.textContaining('Saving'), findsOneWidget);
+      expect(t.widget<Slider>(_slider()).value, 60,
+          reason: 'it shows what was asked for');
+      store.hold!.complete();
+      await t.pumpAndSettle();
+      expect(find.textContaining('Saving'), findsNothing);
+      expect(Prefs.hapticCommandLimit, 60);
+      expect(app.haptics.ledger.limitNow, 60);
+    });
+
+    testWidgets('a refused write puts the limit back and says so', (t) async {
+      Prefs.setHapticCommandLimit(25);
+      final app = await pumpRoute(t);
+      store.keepOnly = 25;
+      await dragTo(t, 4000);
+      await t.pumpAndSettle();
+      expect(find.textContaining('Could not save'), findsOneWidget);
+      expect(find.textContaining('Saving'), findsNothing);
+      expect(Prefs.hapticCommandLimit, 25, reason: 'nothing was stored');
+      expect(app.haptics.ledger.limitNow, 25);
+      expect(t.widget<Slider>(_slider()).value, 25,
+          reason: 'the control is back at the limit in force');
+      expect(find.textContaining('our own limit of 25 commands per 2 minutes'),
+          findsOneWidget);
+      expect(find.textContaining('of 25 band commands left'), findsOneWidget);
+    });
+
+    testWidgets('the failure note goes away on the next try that lands',
+        (t) async {
+      Prefs.setHapticCommandLimit(25);
+      final app = await pumpRoute(t);
+      store.keepOnly = 25;
+      await dragTo(t, 4000);
+      await t.pumpAndSettle();
+      expect(find.textContaining('Could not save'), findsOneWidget);
+      store.keepOnly = null;
+      await dragTo(t, 4000);
+      await t.pumpAndSettle();
+      expect(find.textContaining('Could not save'), findsNothing);
+      expect(Prefs.hapticCommandLimit, 60);
+      expect(app.haptics.ledger.limitNow, 60);
     });
   });
 }

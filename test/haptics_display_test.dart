@@ -31,10 +31,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:openstrap_edge/gestures/pattern_transcript.dart';
 import 'package:openstrap_edge/haptics/builtin_patterns.dart';
 import 'package:openstrap_edge/haptics/haptic_player.dart';
 import 'package:openstrap_edge/haptics/haptic_slots.dart';
 import 'package:openstrap_edge/haptics/pattern_store.dart';
+import 'package:openstrap_edge/haptics/tap_notes.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/ui2/profile/buzz_pattern.dart';
 import 'package:openstrap_edge/ui2/profile/haptic_pattern_editor.dart';
@@ -136,16 +138,20 @@ void main() {
     });
 
     testWidgets('the length is the plan\'s recorded runtime when there is one, '
-        'the written length when there is not', (t) async {
+        'what compiling the notes plays when there is not', (t) async {
       final h = t.ensureSemantics();
       // 16 sixteenths written (2.0 s), but the plan plays for 2.5 s.
       final longer = _mine('l', 'Longer', runtimeMs: 2500);
-      // No plan at all: the written 1.5 s.
+      // No plan at all: the notes are compiled when sent, two 47s with a
+      // 300 ms wait (up to 6 sixteenths) between: 4 + 6 + 4 = 1.75 s.
       final bare = SavedHapticPattern(
         id: 'b',
         name: 'Bare',
         sequence: BuzzSequence(const [0, 625],
-            durationsMs: const [500, 500], notes: 'N4mf R4 N4mf'),
+            durationsMs: const [500, 500],
+            notes: 'N4mf R4 N4mf',
+            profileId: kMg.id,
+            profileVersion: kMg.version),
       );
       await pumpHub(t, HubCalls(), patterns: [longer, bare], profile: kMg);
       expect(find.descendant(of: _row('l'), matching: find.text('~2.5s')),
@@ -153,9 +159,38 @@ void main() {
       expect(find.descendant(of: _row('l'), matching: find.text('~2.0s')),
           findsNothing);
       expect(t.getSemantics(_row('l')).label, contains('2.5 seconds'));
-      expect(find.descendant(of: _row('b'), matching: find.text('~1.5s')),
+      expect(find.descendant(of: _row('b'), matching: find.text('~1.8s')),
           findsOneWidget);
-      expect(t.getSemantics(_row('b')).label, contains('1.5 seconds'));
+      expect(t.getSemantics(_row('b')).label, contains('1.75 seconds'));
+      h.dispose();
+    });
+
+    testWidgets('on a 4.0 the same pattern is the length its taps play, not '
+        'the MG plan\'s', (t) async {
+      final h = t.ensureSemantics();
+      // Taps hold 625 ms; the MG plan is stored as 1.0 s.
+      final p = SavedHapticPattern(
+        id: 'm',
+        name: 'Made on an MG',
+        sequence: BuzzSequence(const [0],
+            durationsMs: const [625],
+            notes: 'N8*',
+            profileId: kMg.id,
+            profileVersion: kMg.version,
+            bakedSteps: [BakedStep(effects: const [47], loop: 3, delayMs: 0)],
+            bakedRuntimeMs: 1000),
+      );
+      await pumpHub(t, HubCalls(), patterns: [p], profile: kMg);
+      expect(find.descendant(of: _row('m'), matching: find.text('~1.0s')),
+          findsOneWidget);
+      expect(t.getSemantics(_row('m')).label, contains('1 second'));
+      await pumpHub(t, HubCalls(), patterns: [p]);
+      expect(find.descendant(of: _row('m'), matching: find.text('~0.6s')),
+          findsOneWidget);
+      expect(find.descendant(of: _row('m'), matching: find.text('~1.0s')),
+          findsNothing);
+      expect(t.getSemantics(_row('m')).label, contains('0.63 seconds'));
+      expect(t.getSemantics(_row('m')).label, contains('1 command'));
       h.dispose();
     });
 
@@ -699,6 +734,75 @@ void main() {
         expect(r.right, lessThanOrEqualTo(320.5), reason: id);
       }
     });
+  });
+
+  group('a dense pattern in a real row at 320 px', () {
+    // Sixteen glyphs in a measure, eight of them writing a dynamic: more than
+    // a phone row holds at the glyphs' own size.
+    final dense = [
+      ...List.filled(8, 'N1mf R1'),
+      ...List.filled(8, 'N1f R1'),
+    ].join(' ');
+    SavedHapticPattern densePattern() {
+      final e = PatternTranscript.parseCode(dense).entries;
+      return SavedHapticPattern(
+        id: 'd',
+        name: 'Dense',
+        sequence: tapsFromNotes(e).copyWith(
+          notes: dense,
+          profileId: kMg.id,
+          profileVersion: kMg.version,
+        ),
+      );
+    }
+
+    for (final scale in const [1.0, 2.0]) {
+      testWidgets('text x$scale: nothing overflows, clips or leaves the row',
+          (t) async {
+        t.view.physicalSize = const Size(320 * 2, 1400 * 2);
+        t.view.devicePixelRatio = 2;
+        addTearDown(t.view.reset);
+        await t.pumpWidget(MaterialApp(
+          theme: buildTheme(Brightness.light),
+          builder: (c, child) => MediaQuery(
+            data: MediaQuery.of(c).copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: hubView(HubCalls(), patterns: [densePattern()], profile: kMg),
+        ));
+        await t.pumpAndSettle();
+        expect(t.takeException(), isNull);
+        final row = t.getRect(_row('d'));
+        expect(row.right, lessThanOrEqualTo(320.5));
+        final score = find.descendant(of: _row('d'), matching: find.byType(HapticScore));
+        final box = t.getRect(score);
+        final staff = find.descendant(
+            of: score, matching: find.byKey(const ValueKey('haptic-score-staff')));
+        final paint = t.getRect(staff);
+        final layout =
+            (t.widget<CustomPaint>(staff).painter! as HapticScorePainter).layout;
+        expect(layout.contentWidth, lessThanOrEqualTo(paint.width + 0.01));
+        expect(layout.height, lessThanOrEqualTo(paint.height + 0.01));
+        for (final g in layout.glyphs) {
+          expect(g.x, greaterThanOrEqualTo(-0.01));
+          expect(g.x + g.width, lessThanOrEqualTo(paint.width + 0.01));
+        }
+        for (final line in layout.lines) {
+          expect(line.right, lessThanOrEqualTo(paint.width + 0.01));
+        }
+        for (final w in t.widgetList<Text>(
+            find.descendant(of: score, matching: find.byType(Text)))) {
+          final r = t.getRect(find.byWidget(w));
+          expect(r.left, greaterThanOrEqualTo(box.left - 0.5), reason: w.data);
+          expect(r.right, lessThanOrEqualTo(box.right + 0.5), reason: w.data);
+          expect(r.top, greaterThanOrEqualTo(box.top - 0.5), reason: w.data);
+          expect(r.bottom, lessThanOrEqualTo(box.bottom + 0.5), reason: w.data);
+        }
+        expect(paint.right, lessThanOrEqualTo(box.right + 0.5));
+        // The glyphs really were too many for the row at their own size.
+        expect((layout as dynamic).scale as double, lessThan(1.0));
+      });
+    }
   });
 
   group('source', () {

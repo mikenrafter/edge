@@ -66,7 +66,8 @@ class HapticScorePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final m = layout.metrics;
     final s = m.staffSpace;
-    final r = s * .55;
+    // Heads shrink with the score when a measure did not fit at full size.
+    final r = s * .55 * layout.scale;
     final lineP = Paint()
       ..color = ink.withValues(alpha: .35)
       ..strokeWidth = 1;
@@ -112,7 +113,7 @@ class HapticScorePainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     double headX(ScoreGlyph g) =>
-        g.x + (g.width - (g.dotted ? m.dotWidth : 0)) / 2;
+        g.x + (g.width - (g.dotted ? m.dotWidth * layout.scale : 0)) / 2;
 
     final glyphs = layout.glyphs;
     for (var i = 0; i < glyphs.length; i++) {
@@ -213,7 +214,8 @@ class HapticScore extends StatelessWidget {
   /// Whether the 10 s cap is lifted (it decides how a long rhythm is sent).
   final bool allowLong;
 
-  /// Milliseconds per sixteenth of the written notes.
+  /// Milliseconds per sixteenth of the notes a tapped rhythm is drawn as (the
+  /// printed length is not from this: it is how long the rhythm plays).
   final int unitMs;
 
   // "1.5", "2", "0.75": up to two decimals, none that are zero.
@@ -241,12 +243,13 @@ class HapticScore extends StatelessWidget {
     final p = P.of(context);
     final l = AppLocalizations.of(context);
     final entries = scoreEntriesOf(pattern, unitMs: unitMs);
-    // One duration for the printed and the spoken length: how long the stored
-    // plan is felt when known (what the picker's detail line gives), else the
-    // written length.
-    final ms = scoreDurationMs(pattern, entries, profile, unitMs: unitMs);
-    final commands = bandCommandOfEntries(pattern, entries, profile,
-        maxRuntime: maxRuntimeFor(allowLong: allowLong));
+    // One duration for the printed and the spoken length, and the commands the
+    // notes are coloured by: both from the plan this band is actually sent
+    // (its device, its cap), see haptics/haptic_player.dart.
+    final cap = maxRuntimeFor(allowLong: allowLong);
+    final ms = scoreDurationMs(pattern, profile, maxRuntime: cap);
+    final commands =
+        bandCommandOfEntries(pattern, entries, profile, maxRuntime: cap);
 
     // The printed length is a label on a drawing, not running text: it grows
     // with the text size up to a point, then the drawing keeps its size.

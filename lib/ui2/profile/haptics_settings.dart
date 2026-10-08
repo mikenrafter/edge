@@ -43,7 +43,6 @@ import '../../haptics/haptic_profile.dart';
 import '../../haptics/haptic_slots.dart';
 import '../../haptics/pattern_similarity.dart';
 import '../../haptics/pattern_store.dart';
-import '../../haptics/score_layout.dart' show scoreEntriesOf;
 import '../../l10n/app_localizations.dart';
 import '../../notify/buzz_sequence.dart';
 import '../../settings/settings_repository.dart';
@@ -99,6 +98,13 @@ class HapticsSettings extends StatefulWidget {
 class _HapticsSettingsState extends State<HapticsSettings> {
   SettingsSnapshot? _snap;
   bool _allowLong = Prefs.allowLongHaptics;
+
+  // The command limit being written (null when none is) and whether the last
+  // write was refused. [_limitTry] numbers the writes: only the newest one
+  // speaks, so an older answer arriving late cannot overwrite a newer.
+  int? _limitPending;
+  bool _limitFailed = false;
+  int _limitTry = 0;
 
   @override
   void initState() {
@@ -216,6 +222,34 @@ class _HapticsSettingsState extends State<HapticsSettings> {
     await _load();
   }
 
+  /// Writes the band command limit through the settings owner (the one write
+  /// path, serialized with every other settings write). While it is in flight
+  /// the control says so; if it is refused nothing is stored, the control goes
+  /// back to the limit in force and says it could not save. The band's ledger
+  /// reads [Prefs.hapticCommandLimit] at every use, so a landed write is live.
+  Future<void> _setCommandLimit(int v) async {
+    final limit = v.clamp(kBandCommandLimitMin, kBandCommandLimitMax);
+    final mine = ++_limitTry;
+    setState(() {
+      _limitPending = limit;
+      _limitFailed = false;
+    });
+    try {
+      await SettingsRepository.instance.update(
+        (d) => d.setInt(Prefs.hapticsCommandLimit, limit),
+        sections: const {},
+      );
+      if (!mounted || mine != _limitTry) return;
+      setState(() => _limitPending = null);
+    } catch (_) {
+      if (!mounted || mine != _limitTry) return;
+      setState(() {
+        _limitPending = null;
+        _limitFailed = true;
+      });
+    }
+  }
+
   // The screen where a section's slots are set.
   void _openSlotScreen(BuildContext c, String sectionId) => goto(
         c,
@@ -283,11 +317,9 @@ class _HapticsSettingsState extends State<HapticsSettings> {
       devMode: caps.has(Feature.developerMode),
       commandsLeft: app.haptics.commandsLeft,
       commandLimit: app.haptics.ledger.limitNow,
-      onCommandLimit: (v) {
-        // Read at every use by the band's ledger: it takes effect at once.
-        Prefs.setHapticCommandLimit(v);
-        setState(() {});
-      },
+      onCommandLimit: _setCommandLimit,
+      commandLimitPending: _limitPending,
+      commandLimitFailed: _limitFailed,
       queued: app.haptics.pending,
       bandConnected: caps.has(Feature.bandBuzz),
       onPlay: app.previewBuzzSequence,
@@ -337,6 +369,8 @@ class HapticsSettingsView extends StatelessWidget {
     required this.queued,
     this.commandLimit = 30,
     this.onCommandLimit,
+    this.commandLimitPending,
+    this.commandLimitFailed = false,
     required this.bandConnected,
     required this.onPlay,
     required this.onBuzz,
@@ -380,6 +414,12 @@ class HapticsSettingsView extends StatelessWidget {
   /// `kBandCommandLimitMin` to `kBandCommandLimitMax`. Null: the control is
   /// inert.
   final ValueChanged<int>? onCommandLimit;
+
+  /// The limit being written now (the control shows it and says "Saving"), and
+  /// whether the last write was refused (the control is back at
+  /// [commandLimit] and says so).
+  final int? commandLimitPending;
+  final bool commandLimitFailed;
 
   final Future<bool> Function(BuzzSequence) onPlay;
   final VoidCallback onBuzz, onDeviceLab;
@@ -468,7 +508,7 @@ class HapticsSettingsView extends StatelessWidget {
 
   List<Widget> _tabRows(BuildContext c, P p, HapticsTab tab) => switch (tab) {
     HapticsTab.patterns => [
-      SettingsAccordion('Your patterns',
+      SettingsAccordion(_l(c)?.hapticsYourPatterns ?? 'Your patterns',
           id: 'haptics_your_patterns', children: _yourRows(c, p)),
       ..._presetGroups(c, p),
     ],
@@ -476,29 +516,31 @@ class HapticsSettingsView extends StatelessWidget {
       _slotGroup(c, 'alerts'),
       _slotGroup(c, 'apps'),
       _slotGroup(c, 'tasker'),
-      _sectionLink(p, 'alerts'),
-      _sectionLink(p, 'apps'),
-      _sectionLink(p, 'tasker'),
+      _sectionLink(c, p, 'alerts'),
+      _sectionLink(c, p, 'apps'),
+      _sectionLink(c, p, 'tasker'),
     ],
     // One group: no accordion to fold, just the card.
     HapticsTab.activity => [
       _slotCard(p, _slotRowsOf(c, 'activity')),
-      _sectionLink(p, 'activity'),
+      _sectionLink(c, p, 'activity'),
     ],
     HapticsTab.cues => [
       _slotGroup(c, 'gestures'),
       _slotGroup(c, 'breathing'),
       _slotGroup(c, 'alarm'),
       _slotGroup(c, 'ecg'),
-      _sectionLink(p, 'gestures'),
-      _sectionLink(p, 'breathing'),
-      _sectionLink(p, 'alarm'),
-      _sectionLink(p, 'ecg'),
+      _sectionLink(c, p, 'gestures'),
+      _sectionLink(c, p, 'breathing'),
+      _sectionLink(c, p, 'alarm'),
+      _sectionLink(c, p, 'ecg'),
     ],
     HapticsTab.band => [
-      SettingsAccordion('Safety',
+      SettingsAccordion(_l(c)?.hapticsSafety ?? 'Safety',
           id: 'haptics_safety', children: _safetyRows(c, p)),
-      SettingsAccordion('Test', id: 'haptics_test', children: [
+      SettingsAccordion(_l(c)?.hapticsTest ?? 'Test',
+          id: 'haptics_test',
+          children: [
         SetRow(
           LucideIcons.bellRing,
           C.orange,
@@ -513,7 +555,7 @@ class HapticsSettingsView extends StatelessWidget {
         ),
       ]),
       if (devMode)
-        SettingsAccordion('Calibration',
+        SettingsAccordion(_l(c)?.hapticsCalibration ?? 'Calibration',
             id: 'haptics_calibration',
             children: [
           SetRow(
@@ -606,7 +648,7 @@ class HapticsSettingsView extends StatelessWidget {
           SettingsAccordion(
             id == kGeneralSectionId
                 ? (AppLocalizations.of(c)?.hapticsPresetsGeneral ?? 'General')
-                : _sectionOf(id).title,
+                : _titleOf(c, id),
             id: 'haptics_presets_$id',
             children: [
               for (final s in _inOrder(
@@ -631,6 +673,26 @@ class HapticsSettingsView extends StatelessWidget {
     }
 
     return [...group]..sort((a, b) => rank(a).compareTo(rank(b)));
+  }
+
+  static AppLocalizations? _l(BuildContext c) => AppLocalizations.of(c);
+
+  // A section's heading in the wearer's language (the English title in
+  // kHapticSlotSections is the fallback with no localizations).
+  String _titleOf(BuildContext c, String id) {
+    final l = AppLocalizations.of(c);
+    return switch (id) {
+          'alerts' => l?.hapticsSectionAlerts,
+          'apps' => l?.hapticsSectionApps,
+          'tasker' => l?.hapticsSectionTasker,
+          'activity' => l?.hapticsSectionActivity,
+          'gestures' => l?.hapticsSectionGestures,
+          'breathing' => l?.hapticsSectionBreathing,
+          'alarm' => l?.hapticsSectionAlarm,
+          'ecg' => l?.hapticsSectionEcg,
+          _ => null,
+        } ??
+        _sectionOf(id).title;
   }
 
   HapticSlotSection _sectionOf(String id) =>
@@ -698,7 +760,7 @@ class HapticsSettingsView extends StatelessWidget {
 
   // A tab with two or more groups folds each one under its section's title.
   Widget _slotGroup(BuildContext c, String sectionId) => SettingsAccordion(
-    _sectionOf(sectionId).title,
+    _titleOf(c, sectionId),
     id: 'haptics_slots_$sectionId',
     children: [
       // Tasker plays are alerts as far as the band is concerned.
@@ -740,10 +802,10 @@ class HapticsSettingsView extends StatelessWidget {
   // The link to the screen where a section's slots are set, at the bottom of
   // its tab. A text link on the page, not a row in a card, so no hairline
   // sits next to it.
-  Widget _sectionLink(P p, String sectionId) {
+  Widget _sectionLink(BuildContext c, P p, String sectionId) {
     final open = onOpenSlotScreen;
     if (open == null) return const SizedBox.shrink();
-    final title = _sectionOf(sectionId).title;
+    final title = _titleOf(c, sectionId);
     return Align(
       alignment: Alignment.centerLeft,
       child: Padding(
@@ -782,7 +844,7 @@ class HapticsSettingsView extends StatelessWidget {
   Widget _patternRow(BuildContext c, P p, SavedHapticPattern s) {
     final l = AppLocalizations.of(c);
     final maxRuntime = maxRuntimeFor(allowLong: allowLong);
-    final ms = scoreDurationMs(s.sequence, scoreEntriesOf(s.sequence), profile);
+    final ms = scoreDurationMs(s.sequence, profile, maxRuntime: maxRuntime);
     final commands = bandSequenceCommands(s.sequence, profile,
         maxRuntime: maxRuntime);
     final commandsText = l?.hapticsCommandsCount(commands) ??
@@ -877,6 +939,8 @@ class HapticsSettingsView extends StatelessWidget {
   Widget _commandLimitRow(BuildContext c, P p) {
     final l = AppLocalizations.of(c);
     final limit = commandLimit.clamp(kBandCommandLimitMin, kBandCommandLimitMax);
+    final shown = (commandLimitPending ?? limit)
+        .clamp(kBandCommandLimitMin, kBandCommandLimitMax);
     return Padding(
       key: const ValueKey('haptics-command-limit'),
       padding: const EdgeInsets.symmetric(vertical: S.x3),
@@ -894,12 +958,21 @@ class HapticsSettingsView extends StatelessWidget {
           min: kBandCommandLimitMin.toDouble(),
           max: kBandCommandLimitMax.toDouble(),
           divisions: kBandCommandLimitMax - kBandCommandLimitMin,
-          value: limit.toDouble(),
-          label: '$limit',
+          value: shown.toDouble(),
+          label: '$shown',
           onChanged: onCommandLimit == null
               ? null
               : (v) => onCommandLimit!(v.round()),
         ),
+        if (commandLimitPending != null)
+          Text(l?.hapticsCommandLimitSaving ?? 'Saving…',
+              style: F.over.copyWith(color: p.ink3)),
+        if (commandLimitFailed)
+          Text(
+            l?.hapticsCommandLimitFailed(limit) ??
+                'Could not save that change. The limit stays at $limit.',
+            style: F.over.copyWith(color: p.on(C.red)),
+          ),
       ]),
     );
   }
@@ -987,7 +1060,7 @@ class HapticsSettingsView extends StatelessWidget {
                       style: F.head.copyWith(color: p.ink)),
                 ),
                 for (final section in kHapticSlotSections) ...[
-                  _sectionHeader(p, section.title),
+                  _sectionHeader(p, _titleOf(c, section.id)),
                   for (final slot in section.slots)
                     SetRow(
                       LucideIcons.waves,

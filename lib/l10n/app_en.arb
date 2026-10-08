@@ -13363,5 +13363,66 @@
         "type": "int"
       }
     }
+  },
+  "hapticsCommandLimitSaving": "Saving…",
+  "@hapticsCommandLimitSaving": {
+    "description": "Shown on the command-limit control while the new limit is being written"
+  },
+  "hapticsCommandLimitFailed": "Could not save that change. The limit stays at {n}.",
+  "@hapticsCommandLimitFailed": {
+    "description": "Shown on the command-limit control when the write was refused; n is the limit still in force",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsYourPatterns": "Your patterns",
+  "@hapticsYourPatterns": {
+    "description": "Heading of the group of the wearer's own patterns on the Haptics screen"
+  },
+  "hapticsSafety": "Safety",
+  "@hapticsSafety": {
+    "description": "Heading of the Safety group on the Haptics Band tab"
+  },
+  "hapticsTest": "Test",
+  "@hapticsTest": {
+    "description": "Heading of the Test group on the Haptics Band tab"
+  },
+  "hapticsCalibration": "Calibration",
+  "@hapticsCalibration": {
+    "description": "Heading of the Calibration group on the Haptics Band tab (developer mode)"
+  },
+  "hapticsSectionAlerts": "Alerts",
+  "@hapticsSectionAlerts": {
+    "description": "Heading of the alert slots group on the Haptics screen"
+  },
+  "hapticsSectionApps": "Apps and automation",
+  "@hapticsSectionApps": {
+    "description": "Heading of the apps and automation slots group on the Haptics screen"
+  },
+  "hapticsSectionTasker": "Tasker",
+  "@hapticsSectionTasker": {
+    "description": "Heading of the Tasker slots group on the Haptics screen (Tasker is a product name)"
+  },
+  "hapticsSectionActivity": "Activity",
+  "@hapticsSectionActivity": {
+    "description": "Heading of the workout slots group on the Haptics screen"
+  },
+  "hapticsSectionGestures": "Gestures",
+  "@hapticsSectionGestures": {
+    "description": "Heading of the gesture cues group on the Haptics screen"
+  },
+  "hapticsSectionBreathing": "Breathing",
+  "@hapticsSectionBreathing": {
+    "description": "Heading of the breathing cues group on the Haptics screen"
+  },
+  "hapticsSectionAlarm": "Alarm snooze",
+  "@hapticsSectionAlarm": {
+    "description": "Heading of the alarm snooze cues group on the Haptics screen"
+  },
+  "hapticsSectionEcg": "ECG",
+  "@hapticsSectionEcg": {
+    "description": "Heading of the ECG cues group on the Haptics screen"
   }
 }

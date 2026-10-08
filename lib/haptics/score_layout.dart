@@ -215,6 +215,7 @@ class ScoreLayout {
     required this.measureWidth,
     required this.metrics,
     required this.width,
+    required this.scale,
   });
 
   /// Every glyph, in time order.
@@ -235,6 +236,12 @@ class ScoreLayout {
 
   /// The width the layout was asked to fit.
   final double width;
+
+  /// 1 unless not even one measure fits [width] at the metrics' sizes; then the
+  /// factor every width in the score (glyphs, dots, dynamics, gaps, padding)
+  /// was multiplied by so that one measure just fits. The painter draws the
+  /// heads at the same factor.
+  final double scale;
 
   /// The right edge of the furthest content; never more than [width] unless
   /// not even one measure fits.
@@ -301,6 +308,7 @@ class ScoreLayout {
         measureWidth: 0,
         metrics: m,
         width: width,
+        scale: 1,
       );
     }
     // A note writes its dynamic once, under its first piece (any loudness
@@ -326,11 +334,19 @@ class ScoreLayout {
         2 * m.measurePad +
         ms.fold<double>(0, (n, c) => n + widthOf(c)) +
         (ms.length - 1) * m.minGap;
-    final mw = byMeasure.map(need).reduce((a, b) => a > b ? a : b);
+    final needed = byMeasure.map(need).reduce((a, b) => a > b ? a : b);
 
-    // 3. Wrap by whole measures. The count is chosen so a line could also be
-    // the last one, with the end double bar after it.
+    // 3. A measure that cannot fit even alone scales the whole score down,
+    // everything horizontal alike, so proportions and the equal width of the
+    // measures stay and one measure just fits a line (never below a fifth).
     final firstX = m.leadWidth + m.doubleBarWidth;
+    final room = width - firstX - m.doubleBarWidth;
+    var scale = needed > room ? room / needed : 1.0;
+    if (scale < _kMinScale) scale = _kMinScale;
+    final mw = needed * scale;
+
+    // 4. Wrap by whole measures. The count is chosen so a line could also be
+    // the last one, with the end double bar after it.
     var per = ((width - firstX - m.doubleBarWidth) / mw).floor();
     if (per < 1) per = 1;
 
@@ -346,12 +362,12 @@ class ScoreLayout {
       for (var k = li * per; k < byMeasure.length && k < (li + 1) * per; k++) {
         final x0 = firstX + (k - li * per) * mw;
         final ms = byMeasure[k];
-        final extra = mw - need(ms);
+        final extra = mw - need(ms) * scale;
         final totalU = ms.fold<int>(0, (n, c) => n + c.units);
-        var x = x0 + m.measurePad;
+        var x = x0 + m.measurePad * scale;
         final mGlyphs = <ScoreGlyph>[];
         for (final c in ms) {
-          final w = widthOf(c);
+          final w = widthOf(c) * scale;
           final note = c.e.note;
           final y = note ? staffY[1] + s / 2 : staffY[1];
           final g = ScoreGlyph(
@@ -379,7 +395,7 @@ class ScoreLayout {
           mGlyphs.add(g);
           glyphs.add(g);
           // The measure's spare room goes to the glyphs by their length.
-          x += w + m.minGap + extra * c.units / totalU;
+          x += w + m.minGap * scale + extra * c.units / totalU;
         }
         lineMeasures.add(ScoreMeasure(
           index: k,
@@ -412,9 +428,13 @@ class ScoreLayout {
       measureWidth: mw,
       metrics: m,
       width: width,
+      scale: scale,
     );
   }
 }
+
+/// The smallest the score is scaled to when a measure will not fit.
+const double _kMinScale = 0.2;
 
 /// Sixteenths in a 4/4 measure.
 const int _kMeasureUnits = 16;

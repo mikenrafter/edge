@@ -2515,5 +2515,19 @@
   "hapticsRowSemantics": "{name}, {length}, {commands}",
   "hapticScoreLength": "~{value}s",
   "hapticsCommandLimitTitle": "बैंड हैप्टिक सीमा",
-  "hapticsCommandLimitBody": "किसी भी 2 मिनट में {n} कमांड। यह मोटर और बैटरी को बचाने के लिए हमारी चुनी हुई सावधानी है, बैंड की सीमा नहीं। अलर्ट जगह मिलने तक रुकते हैं; जगह न होने पर जेस्चर पर कार्रवाई नहीं होती।"
+  "hapticsCommandLimitBody": "किसी भी 2 मिनट में {n} कमांड। यह मोटर और बैटरी को बचाने के लिए हमारी चुनी हुई सावधानी है, बैंड की सीमा नहीं। अलर्ट जगह मिलने तक रुकते हैं; जगह न होने पर जेस्चर पर कार्रवाई नहीं होती।",
+  "hapticsCommandLimitSaving": "सहेजा जा रहा है…",
+  "hapticsCommandLimitFailed": "वह बदलाव सहेजा नहीं जा सका। सीमा {n} पर ही रहेगी।",
+  "hapticsYourPatterns": "आपके पैटर्न",
+  "hapticsSafety": "सुरक्षा",
+  "hapticsTest": "परीक्षण",
+  "hapticsCalibration": "अंशांकन",
+  "hapticsSectionAlerts": "अलर्ट",
+  "hapticsSectionApps": "ऐप्स और ऑटोमेशन",
+  "hapticsSectionTasker": "Tasker",
+  "hapticsSectionActivity": "गतिविधि",
+  "hapticsSectionGestures": "जेस्चर",
+  "hapticsSectionBreathing": "श्वास",
+  "hapticsSectionAlarm": "अलार्म स्नूज़",
+  "hapticsSectionEcg": "ईसीजी"
 }

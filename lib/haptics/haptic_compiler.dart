@@ -104,6 +104,7 @@ class HapticPlan {
     required this.usesUnstable,
     required this.summary,
     this.runtimeMs = 0,
+    this.pulseOwners = const [],
   });
 
   final List<HapticStep> steps;
@@ -131,6 +132,98 @@ class HapticPlan {
 
   /// "2 commands: effect 47, then 300 ms after it ends, effect 14".
   final String summary;
+
+  /// Which command plays each pulse (a run of adjacent notes) of the target,
+  /// in order: an index into [steps], or null for a pulse no command plays.
+  /// Decided here, where the plan is built, so nothing downstream has to
+  /// work it out again from start positions or rounded times.
+  final List<int?> pulseOwners;
+}
+
+/// The runs of notes of [cells] as `[from, to)` cell ranges.
+List<(int, int)> pulseRuns(List<PatternDynamic?> cells) {
+  final out = <(int, int)>[];
+  int? from;
+  for (var i = 0; i <= cells.length; i++) {
+    final note = i < cells.length && cells[i] != null;
+    if (note && from == null) from = i;
+    if (!note && from != null) {
+      out.add((from, i));
+      from = null;
+    }
+  }
+  return out;
+}
+
+/// [pulses] handed out in order to commands that play [perCommand] each; any
+/// pulses left over go to the last command, and pulses a command has no room
+/// for are not played by it (the commands after it get fewer). Where a plan
+/// has no positions (a stored one), this is how its commands share the score.
+List<int?> allocatePulses(List<int> perCommand, int pulses) {
+  final owner = <int>[];
+  for (var i = 0; i < perCommand.length; i++) {
+    for (var n = 0; n < perCommand[i]; n++) {
+      owner.add(i);
+    }
+  }
+  return [
+    for (var k = 0; k < pulses; k++)
+      perCommand.isEmpty ? null : (k < owner.length ? owner[k] : perCommand.length - 1),
+  ];
+}
+
+// Who plays each pulse of the target [cells] (leading rests trimmed; [first] is
+// how many were). When the commands' own pulses add up to the target's, they
+// are handed out in order: that is exact. When they do not (the cap bit, or a
+// pulse was merged or dropped) each pulse goes to the command whose felt notes
+// overlap it most, the nearest one if none does.
+List<int?> _pulseOwners(
+    List<HapticStep> steps, List<PatternDynamic?> cells, int first) {
+  final pulses = pulseRuns(cells);
+  final counts = [
+    for (final s in steps) pulseRuns(timeline(s.phrase.min)).length,
+  ];
+  if (counts.fold<int>(0, (a, b) => a + b) == pulses.length) {
+    return allocatePulses(counts, pulses.length);
+  }
+  final felt = <Set<int>>[
+    for (final s in steps)
+      {
+        for (final r in [s.phrase.min, s.phrase.max])
+          for (var i = 0; i < timeline(r).length; i++)
+            if (timeline(r)[i] != null) s.startUnit - first + i,
+      },
+  ];
+  return [
+    for (final (a, b) in pulses)
+      () {
+        int? best;
+        var bestOverlap = 0;
+        for (var i = 0; i < steps.length; i++) {
+          var o = 0;
+          for (var c = a; c < b; c++) {
+            if (felt[i].contains(c)) o++;
+          }
+          if (o > bestOverlap) {
+            bestOverlap = o;
+            best = i;
+          }
+        }
+        if (best != null) return best;
+        // None overlaps: the command with the nearest felt note.
+        var bestDist = 1 << 30;
+        for (var i = 0; i < steps.length; i++) {
+          for (final c in felt[i]) {
+            final d = c < a ? a - c : c - b + 1;
+            if (d < bestDist) {
+              bestDist = d;
+              best = i;
+            }
+          }
+        }
+        return best;
+      }(),
+  ];
 }
 
 /// Cost of one cell that disagrees about note versus rest, and of one loudness
@@ -392,7 +485,7 @@ HapticPlan? compile(
           startUnit: first + (node.wait == null ? 0 : node.prev + node.wait!.units),
         ),
     ];
-    final plan = _assemble(steps, cells, p,
+    final plan = _assemble(steps, cells, first, p,
         cost: cand.total.cost,
         commands: cand.k,
         unstableParts: cand.total.unstable,
@@ -429,6 +522,7 @@ HapticPlan? compile(
 HapticPlan _assemble(
   List<HapticStep> steps,
   List<PatternDynamic?> cells,
+  int first,
   HapticDeviceProfile p, {
   required int cost,
   required int commands,
@@ -454,6 +548,7 @@ HapticPlan _assemble(
     usesUnstable: steps.any((s) => !s.phrase.stable || !s.gapStable),
     summary: _summary(steps),
     runtimeMs: timeline(feltMax).length * p.unitMs,
+    pulseOwners: _pulseOwners(steps, cells, first),
   );
 }
 
@@ -707,7 +802,7 @@ HapticPlan? _compileKeepingRests(
           startUnit: first + startAt[seg.at],
         ),
     ];
-    final plan = _assemble(steps, cells, p,
+    final plan = _assemble(steps, cells, first, p,
         cost: cand.total.cost,
         commands: cand.k,
         unstableParts: cand.total.unstable,

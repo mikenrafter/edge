@@ -2515,5 +2515,19 @@
   "hapticsRowSemantics": "{name}, {length}, {commands}",
   "hapticScoreLength": "~{value}s",
   "hapticsCommandLimitTitle": "Vibrationslimit des Armbands",
-  "hapticsCommandLimitBody": "{n} Befehle in je 2 Minuten. Eine Vorsichtsmaßnahme von uns, um Motor und Akku zu schonen, kein Limit des Armbands. Erinnerungen warten, bis wieder Platz ist; eine Geste ohne Platz wird nicht ausgeführt."
+  "hapticsCommandLimitBody": "{n} Befehle in je 2 Minuten. Eine Vorsichtsmaßnahme von uns, um Motor und Akku zu schonen, kein Limit des Armbands. Erinnerungen warten, bis wieder Platz ist; eine Geste ohne Platz wird nicht ausgeführt.",
+  "hapticsCommandLimitSaving": "Wird gespeichert…",
+  "hapticsCommandLimitFailed": "Die Änderung konnte nicht gespeichert werden. Das Limit bleibt bei {n}.",
+  "hapticsYourPatterns": "Deine Muster",
+  "hapticsSafety": "Sicherheit",
+  "hapticsTest": "Test",
+  "hapticsCalibration": "Kalibrierung",
+  "hapticsSectionAlerts": "Benachrichtigungen",
+  "hapticsSectionApps": "Apps und Automatisierung",
+  "hapticsSectionTasker": "Tasker",
+  "hapticsSectionActivity": "Aktivität",
+  "hapticsSectionGestures": "Gesten",
+  "hapticsSectionBreathing": "Atmung",
+  "hapticsSectionAlarm": "Wecker-Schlummern",
+  "hapticsSectionEcg": "EKG"
 }

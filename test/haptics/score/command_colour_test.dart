@@ -162,6 +162,81 @@ void main() {
     });
   });
 
+  group('the colouring agrees with what is sent (review finding 1)', () {
+    // Notes with no stored plan: delivery compiles them.
+    BuzzSequence unplanned(String code) {
+      final notes = _entries(code);
+      return tapsFromNotes(notes).copyWith(
+        notes: notes.join(' '),
+        profileId: _mg.id,
+        profileVersion: _mg.version,
+      );
+    }
+
+    test('N1mp R1 N3mp: two commands, one note each', () {
+      final s = unplanned('N1mp R1 N3mp');
+      expect(bandSequenceCommands(s, _mg), 2);
+      expect(bandCommandOfEntries(s, _entries('N1mp R1 N3mp'), _mg),
+          [0, _n, 1],
+          reason: 'the plan starts its second command after the note it plays, '
+              'but that command still plays that note');
+    });
+
+    test('the same steps baked into the rule colour the same', () {
+      final compiled = unplanned('N1mp R1 N3mp');
+      final baked = compiled.copyWith(bakedSteps: bandStepsFor(compiled, _mg));
+      expect(baked.bakedSteps, hasLength(2));
+      expect(bandSequenceCommands(baked, _mg), 2);
+      expect(bandCommandOfEntries(baked, _entries('N1mp R1 N3mp'), _mg),
+          bandCommandOfEntries(compiled, _entries('N1mp R1 N3mp'), _mg));
+      expect(bandCommandOfEntries(baked, _entries('N1mp R1 N3mp'), _mg),
+          [0, _n, 1]);
+    });
+
+    test('taps that round to touching notes are still one command each', () {
+      // Presses at 0 and 126 ms held 125 ms each: a 1 ms release gap rounds to
+      // no rest, so the two notes touch; the band is sent two taps.
+      final s = BuzzSequence(const [0, 126], durationsMs: const [125, 125]);
+      final e = scoreEntriesOf(s);
+      expect([for (final x in e) x.note], [true, true]);
+      expect(bandSequenceCommands(s, null), 2);
+      expect(bandCommandOfEntries(s, e, null), [0, 1]);
+    });
+
+    test('a tapped rhythm on an MG keeps one pulse for touching notes', () {
+      final s = BuzzSequence(const [0, 126], durationsMs: const [125, 125]);
+      final got = bandCommandOfEntries(s, scoreEntriesOf(s), _mg);
+      expect(got.whereType<int>().toSet().length,
+          bandSequenceCommands(s, _mg),
+          reason: 'what is sent is what is coloured');
+    });
+
+    // The built-ins and presets, on an MG as stored and as compiled fresh, and
+    // on a 4.0: the number of colours drawn is the number of commands sent.
+    final keys = [...builtInKeys(), 'alert.health', 'alert.zone', 'alert.relay'];
+    for (final key in keys) {
+      test('$key: colours drawn == commands sent (MG, stored plan)', () {
+        final s = _builtIn(key);
+        final got = bandCommandOfEntries(s, scoreEntriesOf(s), _mg);
+        expect(got.whereType<int>().toSet().length,
+            bandSequenceCommands(s, _mg));
+      });
+      test('$key: colours drawn == commands sent (MG, compiled fresh)', () {
+        final spec = builtInDefault(key)!.sequence;
+        final s = unplanned(spec.notes!);
+        final got = bandCommandOfEntries(s, _entries(spec.notes!), _mg);
+        expect(got.whereType<int>().toSet().length,
+            bandSequenceCommands(s, _mg));
+      });
+      test('$key: colours drawn == commands sent (4.0)', () {
+        final s = _builtIn(key);
+        final got = bandCommandOfEntries(s, scoreEntriesOf(s), null);
+        expect(got.whereType<int>().toSet().length,
+            bandSequenceCommands(s, null));
+      });
+    }
+  });
+
   group('it is the delivery\'s own split', () {
     test('the commands it names are exactly the ones the budget counts', () {
       for (final key in builtInKeys()) {
