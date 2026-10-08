@@ -78,6 +78,12 @@ const List<HapticSlotSection> kHapticSlotSections = [
     HapticSlot(kBreathHoldKey, 'Hold'),
     HapticSlot(kBreathDoneKey, 'Session complete'),
   ]),
+  HapticSlotSection('alarm', 'Alarm snooze', [
+    HapticSlot(kAlarmSnoozeConfirmKey, 'Snooze set'),
+    HapticSlot(kAlarmDismissConfirmKey, 'Alarm dismissed'),
+    HapticSlot(kAlarmSnoozeCancelledKey, 'Snooze cancelled (you are up)'),
+    HapticSlot(kAlarmReAlarmKey, 'Snooze re-alarm'),
+  ]),
 ];
 
 /// The six Tasker slots: `tasker.1` .. `tasker.6`. Slot n's built-in default
@@ -124,13 +130,15 @@ bool isBreathCueSlot(String slotKey) =>
     slotKey == kBreathHoldKey ||
     slotKey == kBreathDoneKey;
 
-/// Whether [slotKey] is a cue slot: a gesture cue, a breathing cue or a Tasker
-/// slot. Its assigned pattern is a pattern id in [decodeCueAssignments]'s map,
-/// and it plays the cue's own built-in with none.
+/// Whether [slotKey] is a cue slot: a gesture cue, a breathing cue, a Tasker
+/// slot or one of the four alarm snooze slots (they are kept the same way). Its
+/// assigned pattern is a pattern id in [decodeCueAssignments]'s map, and it
+/// plays the cue's own built-in with none.
 bool isCueSlot(String slotKey) =>
     isGestureCueSlot(slotKey) ||
     isBreathCueSlot(slotKey) ||
-    isTaskerSlot(slotKey);
+    isTaskerSlot(slotKey) ||
+    isAlarmSlot(slotKey);
 
 /// Whether [slotKey] is a slot on the Haptics screen (any section).
 bool isKnownSlot(String slotKey) => [
@@ -181,6 +189,7 @@ Map<String, BuzzSequence> resolveCuePatterns(
     'tasker.4',
     'tasker.5',
     'tasker.6',
+    ...kAlarmSlotKeys,
   ]) {
     final given = assignments[key];
     final p = (given == null ? null : store.byId(given)) ??

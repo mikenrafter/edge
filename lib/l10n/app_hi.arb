@@ -2466,5 +2466,21 @@
   "assumedWaterTitle": "अनुमानित पानी का गिलास",
   "assumedWaterBody": "आपके पानी रिमाइंडर से अनुमानित: पिए गए पानी में {amount} जुड़ता है। रखें या हटाएँ।",
   "assumedWaterKeep": "रखें",
-  "assumedWaterRemove": "हटाएँ"
+  "assumedWaterRemove": "हटाएँ",
+  "snoozeCardUntil": "{time} तक स्नूज़",
+  "snoozeCardBuzzing": "आपका अलार्म फिर से बज रहा है",
+  "snoozeCardHint": "या बैंड पर दो बार टैप करें",
+  "snoozeImUp": "मैं उठ गया",
+  "snoozeDismissCopy": "{taps, plural, =1{बंद करने के लिए 1 डबल टैप — कम टैप का मतलब स्नूज़} other{बंद करने के लिए {taps} डबल टैप — कम टैप का मतलब स्नूज़}}",
+  "snoozeRowTaps": "बंद करने के डबल टैप",
+  "snoozeRowWindow": "बंद करने की समय-सीमा",
+  "snoozeRowMinutes": "स्नूज़ अवधि",
+  "snoozeRowCap": "इतने स्नूज़ के बाद तीव्रता न बढ़े",
+  "snoozeValueTaps": "{n, plural, =1{1 डबल टैप} other{{n} डबल टैप}}",
+  "snoozeValueSeconds": "{s} सेकंड",
+  "snoozeValueMinutes": "{m} मिनट",
+  "snoozeValueCap": "{n, plural, =1{1 स्नूज़} other{{n} स्नूज़}}",
+  "snoozeUnsupported": "स्नूज़ के लिए ऐसा बैंड चाहिए जो बताए कि अलार्म कैसे रोका गया (WHOOP 5/MG)",
+  "snoozeEnable": "स्नूज़",
+  "snoozeExactNote": "सटीक समय के लिए अलार्म अनुमति चाहिए"
 }

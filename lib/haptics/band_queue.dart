@@ -25,6 +25,15 @@
 //    [BandCommandLedger.reserveUpTo]). A gesture job that cannot start within
 //    its own [BandHapticQueue.run] `startBy` is also rejected.
 //
+//  * An ALARM job (queued inside [BandHapticQueue.asAlarm]: ONLY the snooze's
+//    re-alarm; its confirm, dismiss and cancel cues are plain jobs) is never
+//    held for the limit at all. It still waits its turn for the band (one thing
+//    plays at a time), but it starts without waiting for room, and EVERY
+//    command it writes is counted in the ledger, also past the limit, so what
+//    follows it waits for the real count. Waking the wearer outranks our own
+//    precaution: a re-alarm held two minutes by the 30-in-2 rule is a wearer
+//    who sleeps on.
+//
 // Between two jobs the band is also left the vocabulary's minimum gap after the
 // last vibration ended ([BandHapticQueue.minGap]), so a second gesture job
 // is not written the instant the first one stops. Lab jobs are not spaced.
@@ -138,6 +147,13 @@ class BandReservation {
 ///   https://www.precisionmicrodrives.com/?p=1190
 ///   https://support.whoop.com/hc/en-us/articles/4407117388955-Haptic-Alarm-Overview
 ///
+/// The limit never holds back an ALARM job (the snooze's re-alarm only,
+/// [BandHapticQueue.asAlarm]): waking the user outranks our own precaution. Its
+/// commands are all counted, past the limit if need be (through [reserveUpTo]):
+/// the ledger holds the real number of writes in the window, so an ordinary job
+/// that follows waits for the real count rather than running on top of an
+/// uncounted alarm. [commandsLeft] never reads below zero.
+///
 /// Two kinds of entry: WRITES (a timestamp per command actually sent, which
 /// leave the window two minutes after they were written) and RESERVATIONS
 /// (room held by a job or probe for commands it is about to write; they count
@@ -185,13 +201,17 @@ class BandCommandLedger {
     return BandReservation._(this, n, n);
   }
 
-  /// A reservation for [n] commands that never fails: it holds what room there
-  /// is (up to [n]) and the rest of its commands are written without being
-  /// counted, so the ledger never counts more than [limitNow]. For a gesture,
-  /// which must play to its end. Null only for a negative [n].
-  BandReservation? reserveUpTo(int n, DateTime at) {
+  /// A reservation for [n] commands that never fails, whatever the window
+  /// holds. With [countAll] (an ALARM job) every one of the [n] is counted,
+  /// also past [limitNow]: the ledger must say how many writes really are in
+  /// the window, so that what follows waits for them. Without it (a started
+  /// gesture, which must play to its end) it holds what room there is and the
+  /// rest is written uncounted, so the ledger never counts more than the
+  /// limit. Null only for a negative [n].
+  BandReservation? reserveUpTo(int n, DateTime at, {bool countAll = false}) {
     if (n < 0) return null;
-    final held = n < commandsLeft(at) ? n : commandsLeft(at);
+    _prune(at);
+    final held = countAll || n < commandsLeft(at) ? n : commandsLeft(at);
     _reserved += held;
     return BandReservation._(this, n, held);
   }
@@ -325,6 +345,19 @@ const Symbol kBandGestureKey = #openstrapBandGesture;
 /// Zone key: the gesture in [kBandGestureKey] is already started.
 const Symbol kBandGestureStartedKey = #openstrapBandGestureStarted;
 
+/// Zone key marking work whose band jobs are alarm jobs (see
+/// [BandHapticQueue.asAlarm]).
+const Symbol kBandAlarmKey = #openstrapBandAlarm;
+
+/// Zone key carrying a `bool Function()` "this job is still wanted", asked every
+/// time the queue considers starting the job (see [BandHapticQueue.asWanted]).
+const Symbol kBandWantedKey = #openstrapBandWanted;
+
+/// Zone key carrying a `void Function(Future<void> over)`: told, for every job
+/// queued in the zone, the future that completes when the band is free of it
+/// (see [BandHapticQueue.asObserved]).
+const Symbol kBandObserveKey = #openstrapBandObserve;
+
 /// Zone key marking work that must start now or be rejected. Phase cues use it
 /// so a delayed buzz cannot land in the next breathing phase.
 const Symbol kBandImmediateKey = #openstrapBandImmediate;
@@ -332,7 +365,13 @@ const Symbol kBandImmediateKey = #openstrapBandImmediate;
 class _Job {
   _Job(this.run, this.commands, this.timeout, this.settle, this.startBy,
       this.deadline,
-      {this.lab = false, this.hold, this.gesture, this.exempt = false});
+      {this.lab = false,
+      this.hold,
+      this.wanted,
+      this.gesture,
+      this.exempt = false,
+      this.alarm = false,
+      this.immediate = false});
   final Future<BuzzDelivery> Function(BandJobToken job) run;
   final int commands;
 
@@ -344,11 +383,21 @@ class _Job {
   final bool lab;
   final BandHold? hold;
 
+  /// Asked before the job would start (also while the lab holds it): false
+  /// drops it as rejected. Null: always wanted.
+  final bool Function()? wanted;
+
   /// The gesture this job's haptic belongs to ([BandHapticQueue.asGesture]).
   final String? gesture;
 
   /// A gesture job whose gesture already started when it was queued.
   final bool exempt;
+
+  /// A job of waking the wearer: never held for the command limit.
+  final bool alarm;
+
+  /// Must start now or be rejected (a phase cue): never deferred either.
+  final bool immediate;
 
   /// Only a lab or gesture job has a start deadline: it is dropped when it
   /// cannot start within [startBy]. Every other job waits as long as it must.
@@ -356,7 +405,15 @@ class _Job {
 
   /// True while the open lab keeps this job from starting.
   bool held = false;
+
+  /// True once the open LAB held this job: only then does the alert's own
+  /// freshness rule drop it on release. A quiet window never drops anything.
+  bool heldByLab = false;
   bool wasHeld = false;
+
+  /// Held because it could still be playing when the expected quiet window
+  /// opens (see [BandHapticQueue.expectQuiet]).
+  bool deferredHold = false;
 
   /// True once the job found no room in the window and had to wait for it.
   bool waitedBudget = false;
@@ -379,9 +436,31 @@ class BandHapticQueue {
     this.onWrite,
     this.log,
     this.minGap,
-  });
+    this.onBusyChanged,
+    DateTime Function()? planningNow,
+  }) : _planningNow = planningNow;
+
+  /// The clock the quiet-window expectation ([expectQuiet]) is read against:
+  /// the app's wake clock (an injected one in tests), else the package clock.
+  final DateTime Function()? _planningNow;
+  DateTime _planNow() => _planningNow?.call() ?? clock.now();
 
   final BandCommandLedger ledger;
+
+  /// Called with true when a job starts and false when the band is free of it
+  /// (its playback ended and the gap after it passed): the app is playing on
+  /// the band. Never throws into the queue.
+  final void Function(bool busy)? onBusyChanged;
+
+  /// A job is running or settling right now.
+  bool get busy => _busy;
+
+  void _setBusy(bool b) {
+    _busy = b;
+    try {
+      onBusyChanged?.call(b);
+    } catch (_) {}
+  }
 
   /// How long the band is left alone after a job that wrote, once its last
   /// vibration ended, before the next job starts (the vocabulary's minimum
@@ -401,6 +480,7 @@ class BandHapticQueue {
   _Job? _running;
   bool _busy = false;
   int _labs = 0;
+  int _quiet = 0;
   Timer? _wake;
   _Job? _restLogged;
 
@@ -444,6 +524,7 @@ class BandHapticQueue {
       if (j.gesture != null) {
         _drop(j, why: 'could not play now (the lab opened)');
       } else {
+        j.heldByLab = true;
         _hold(j);
       }
     }
@@ -455,15 +536,104 @@ class BandHapticQueue {
     if (_labs == 0) return;
     _labs--;
     if (_labs != 0) return;
-    final held = _waiting.where((j) => j.held).toList();
-    log?.call('Band queue: lab closed, releasing ${held.length} alerts');
+    _releaseHeld('lab closed');
+  }
+
+  /// A quiet window is open: plain jobs (not lab, alarm or gesture jobs) are
+  /// HELD, never dropped, until [endQuiet]. The same hold as the lab's: the job
+  /// does not start, its start deadline and the dispatcher's own delivery
+  /// deadline are suspended, and both restart in full when it is released.
+  /// Counted. The snooze uses it around the native alarm so that no app pattern
+  /// of ours can end (and be heard) while the alarm's own stop is awaited.
+  void beginQuiet() {
+    _quiet++;
+    if (_quiet != 1) return;
+    _quietAhead = null; // it is open now
+    final held = _waiting.where(_quietHolds).toList();
+    log?.call('Band queue: quiet window open, holding ${held.length} alerts');
+    held.forEach(_hold);
+  }
+
+  /// The quiet window closed (safe to call more often than [beginQuiet]).
+  void endQuiet() {
+    if (_quiet == 0) return;
+    _quiet--;
+    if (_quiet != 0) return;
+    _releaseHeld('quiet window closed');
+  }
+
+  /// True while a quiet window is open.
+  bool get quietOpen => _quiet > 0;
+
+  /// True while a quiet window is expected ([expectQuiet]) and not yet open.
+  bool get quietExpected => _quietAhead != null;
+
+  /// A quiet window will open at [startsAt] (null: none is expected). Until
+  /// then a plain job that could still be playing at that moment, by its
+  /// planned end (its timeout, its settle and the write grace after now), is
+  /// HELD: it would otherwise play across the native alarm. Held, not dropped:
+  /// it goes when the window ends, or when the expectation is withdrawn. Told
+  /// again with the same time it re-reads the clock, so a job whose planned end
+  /// no longer passes the start is released.
+  void expectQuiet(DateTime? startsAt) {
+    final changed = startsAt != _quietAhead;
+    _quietAhead = startsAt;
+    if (changed) {
+      _releaseHeld('quiet window ${startsAt == null ? 'no longer ' : ''}'
+          'expected');
+    } else {
+      _unholdUnneeded();
+      _pump();
+    }
+  }
+
+  DateTime? _quietAhead;
+
+  /// Whether a plain job of [limit] + [settle] started now could still be
+  /// running when the expected window opens.
+  bool _crosses(Duration limit, Duration settle) {
+    final ahead = _quietAhead;
+    if (ahead == null || _quiet > 0) return false;
+    return _planNow().add(limit + settle + kBandWriteGrace).isAfter(ahead);
+  }
+
+  /// A plain job that would still be running when the expected window opens.
+  bool _deferred(_Job j) {
+    final limit = j.timeout;
+    if (limit == null || !_quietHolds(j)) return false;
+    return _crosses(limit, j.settle);
+  }
+
+  bool _quietHolds(_Job j) => !j.lab && !j.alarm && j.gesture == null;
+
+  /// Releases every held job nothing holds any more: they start their wait
+  /// over and go on.
+  void _releaseHeld(String why) {
+    final n = _unholdUnneeded();
+    if (n > 0 || why.startsWith('lab')) {
+      log?.call('Band queue: $why, releasing $n alerts');
+    }
+    _pump();
+  }
+
+  /// Un-holds every held job nothing holds any more (no lab, no open window,
+  /// no expected window it could cross); returns how many.
+  int _unholdUnneeded() {
+    final held = _waiting
+        .where((j) =>
+            j.held &&
+            !(_labs > 0 && !j.lab) &&
+            !(_quiet > 0 && _quietHolds(j)) &&
+            !_deferred(j))
+        .toList();
     for (final j in held) {
       j.held = false;
+      j.deferredHold = false;
       j.deadline = clock.now().add(j.startBy);
       if (j.expires) j.expiry = Timer(j.startBy, () => _expire(j));
       _resume(j);
     }
-    _pump();
+    return held.length;
   }
 
   void _hold(_Job j) {
@@ -507,6 +677,36 @@ class BandHapticQueue {
           kBandGestureKey: gestureId,
           kBandGestureStartedKey: started,
         },
+      );
+
+  /// Run [work] so every job it queues is an alarm job: it waits for the band
+  /// like any other, but never for room in the command window. Its commands are
+  /// still counted (every write, also past the limit), so what follows it sees the
+  /// cost. Waking the wearer outranks the 30-in-2-minutes precaution.
+  T asAlarm<T>(T Function() work) => runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandAlarmKey: true},
+      );
+
+  /// Run [work] so every job it queues is dropped (rejected, never written)
+  /// when [wanted] says false by the time the queue would start it. The queue
+  /// asks whenever it looks at its waiting jobs (a job ahead finished, the lab
+  /// closed), so a job queued for something that has ended meanwhile never
+  /// plays. [wanted] must not throw.
+  T asWanted<T>(bool Function() wanted, T Function() work) => runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandWantedKey: wanted},
+      );
+
+  /// Run [work] so [onQueued] is handed, for every band job it queues, the
+  /// future that completes when the band is free of THAT job: delivered, its
+  /// playback ended (or its settle time ran out), the gap after it passed; or
+  /// dropped. Unlike [whenIdle] it waits for nothing else.
+  T asObserved<T>(
+          void Function(Future<void> over) onQueued, T Function() work) =>
+      runZoned(
+        work,
+        zoneValues: <Object?, Object?>{kBandObserveKey: onQueued},
       );
 
   /// Run [work] so every job it queues either starts immediately or is
@@ -582,13 +782,14 @@ class BandHapticQueue {
     bool immediate = false,
   }) {
     final limit = ledger.limitNow;
-    if (commands > limit) {
+    final alarm = Zone.current[kBandAlarmKey] == true && !lab;
+    if (!alarm && commands > limit) {
       log?.call('Band queue: dropped a job of $commands commands '
           '(the limit is $limit)');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
     final zoned = Zone.current[kBandGestureKey];
-    final gesture = zoned is String && !lab ? zoned : null;
+    final gesture = zoned is String && !lab && !alarm ? zoned : null;
     if (gesture != null && labOpen) {
       log?.call('Band queue: rejected a gesture job (the lab is open)');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
@@ -597,17 +798,28 @@ class BandHapticQueue {
         !lab &&
         (pending > 0 ||
             labOpen ||
+            (quietOpen && !alarm && gesture == null) ||
+            (!alarm &&
+                gesture == null &&
+                timeout != null &&
+                _crosses(timeout, settle)) ||
             ledger.commandsLeft(clock.now()) < commands)) {
       log?.call('Band queue: rejected a job that could not start immediately');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
     }
     final hold = Zone.current[kBandHoldKey];
+    final wanted = Zone.current[kBandWantedKey];
     final j = _Job(job, commands, timeout, settle, startBy,
         clock.now().add(startBy),
         lab: lab,
         hold: hold is BandHold ? hold : null,
+        wanted: wanted is bool Function() ? wanted : null,
         gesture: gesture,
+        alarm: alarm,
+        immediate: immediate,
         exempt: gesture != null && Zone.current[kBandGestureStartedKey] == true);
+    final observe = Zone.current[kBandObserveKey];
+    if (observe is void Function(Future<void>)) observe(j.over.future);
     _forgetGestures(clock.now());
     if (gesture != null && _startedGestures.containsKey(gesture)) {
       _startedGestures[gesture] = clock.now();
@@ -625,7 +837,8 @@ class BandHapticQueue {
     } else {
       _waiting.add(j);
     }
-    if (labOpen && !lab) {
+    if (labOpen && !lab || quietOpen && _quietHolds(j)) {
+      j.heldByLab = labOpen && !lab;
       _hold(j);
     } else if (j.expires) {
       j.expiry = Timer(startBy, () => _expire(j));
@@ -652,6 +865,7 @@ class BandHapticQueue {
   }
 
   void _pump() {
+    _unholdUnneeded(); // a clock or an expectation may have moved
     _wake?.cancel();
     _wake = null;
     _forgetGestures(clock.now());
@@ -660,23 +874,42 @@ class BandHapticQueue {
     var i = 0;
     while (!_busy && i < _waiting.length) {
       final j = _waiting[i];
+      if (j.wanted != null && !j.wanted!()) {
+        _drop(j, why: 'was no longer wanted');
+        continue;
+      }
+      if (!j.held && _deferred(j)) {
+        if (j.immediate) {
+          _drop(j, why: 'could not start in time (a quiet window is near)');
+          continue;
+        }
+        j.deferredHold = true;
+        _hold(j); // could play across the window
+      }
       // Lab jobs sit first; a held job means the lab is open and no lab job is
       // waiting: the band stays idle for the lab.
-      if (j.held) break;
-      if (j.wasHeld && (j.hold?.isStale?.call() ?? false)) {
+      if (j.held) {
+        if (_labs > 0) break;
+        i++; // only a quiet window holds it: alarm and gesture jobs go on
+        continue;
+      }
+      if (j.heldByLab && (j.hold?.isStale?.call() ?? false)) {
         // Held through the lab and out of date by now: the alert's own rule
         // says it is no longer worth playing.
         _drop(j, why: 'went stale while the lab was open');
         continue;
       }
       final now = clock.now();
-      if (j.commands > ledger.limitNow) {
+      if (!j.alarm && j.commands > ledger.limitNow) {
         // The limit was lowered under a waiting job: it can never fit.
         _drop(j, why: 'no longer fits the limit');
         continue;
       }
       BandReservation? room;
-      if (j.gesture != null) {
+      if (j.alarm) {
+        // Never held for room: written regardless, every write counted.
+        room = ledger.reserveUpTo(j.commands, now, countAll: true);
+      } else if (j.gesture != null) {
         // Never late: a gesture's first haptic needs room now, else it is
         // dropped; the rest of a started gesture plays regardless.
         final started = j.exempt || _startedGestures.containsKey(j.gesture);
@@ -720,7 +953,7 @@ class BandHapticQueue {
       if (id != null) {
         _startedGestures[id] = now;
       }
-      _busy = true;
+      _setBusy(true);
       _running = j;
       unawaited(_start(j, room!));
     }
@@ -781,7 +1014,7 @@ class BandHapticQueue {
       // No answer is the same as a timeout: the band has finished by then.
     } finally {
       room.release();
-      _busy = false;
+      _setBusy(false);
       _running = null;
       if (!j.over.isCompleted) j.over.complete();
       _pump();

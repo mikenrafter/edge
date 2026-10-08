@@ -2466,5 +2466,21 @@
   "assumedWaterTitle": "Verre d'eau supposé",
   "assumedWaterBody": "Ajoute {amount} à l'eau bue, supposé par votre rappel d'eau. Conservez-le ou supprimez-le.",
   "assumedWaterKeep": "Garder",
-  "assumedWaterRemove": "Supprimer"
+  "assumedWaterRemove": "Supprimer",
+  "snoozeCardUntil": "Reportée jusqu'à {time}",
+  "snoozeCardBuzzing": "Votre alarme vibre de nouveau",
+  "snoozeCardHint": "ou touchez deux fois le bracelet",
+  "snoozeImUp": "Je suis réveillé",
+  "snoozeDismissCopy": "{taps, plural, =1{1 double tape pour arrêter : moins, c'est un report} other{{taps} doubles tapes pour arrêter : moins, c'est un report}}",
+  "snoozeRowTaps": "Doubles tapes pour arrêter",
+  "snoozeRowWindow": "Fenêtre d'arrêt",
+  "snoozeRowMinutes": "Reporter de",
+  "snoozeRowCap": "Arrêter l'escalade après",
+  "snoozeValueTaps": "{n, plural, =1{1 double tape} other{{n} doubles tapes}}",
+  "snoozeValueSeconds": "{s} s",
+  "snoozeValueMinutes": "{m} min",
+  "snoozeValueCap": "{n, plural, =1{1 report} other{{n} reports}}",
+  "snoozeUnsupported": "Le report nécessite un bracelet qui indique comment l'alarme a été arrêtée (WHOOP 5/MG)",
+  "snoozeEnable": "Répéter",
+  "snoozeExactNote": "L’heure exacte nécessite l’autorisation d’alarme"
 }

@@ -2466,5 +2466,21 @@
   "assumedWaterTitle": "Angenommenes Glas Wasser",
   "assumedWaterBody": "Fügt {amount} zum getrunkenen Wasser hinzu, angenommen durch deine Wassererinnerung. Behalten oder entfernen.",
   "assumedWaterKeep": "Behalten",
-  "assumedWaterRemove": "Entfernen"
+  "assumedWaterRemove": "Entfernen",
+  "snoozeCardUntil": "Schlummern bis {time}",
+  "snoozeCardBuzzing": "Dein Wecker summt wieder",
+  "snoozeCardHint": "oder tippe zweimal auf das Band",
+  "snoozeImUp": "Ich bin wach",
+  "snoozeDismissCopy": "{taps, plural, =1{1 Doppeltipp zum Beenden – weniger ist Schlummern} other{{taps} Doppeltipps zum Beenden – weniger ist Schlummern}}",
+  "snoozeRowTaps": "Doppeltipps zum Beenden",
+  "snoozeRowWindow": "Zeitfenster zum Beenden",
+  "snoozeRowMinutes": "Schlummern für",
+  "snoozeRowCap": "Steigerung endet nach",
+  "snoozeValueTaps": "{n, plural, =1{1 Doppeltipp} other{{n} Doppeltipps}}",
+  "snoozeValueSeconds": "{s} s",
+  "snoozeValueMinutes": "{m} Min.",
+  "snoozeValueCap": "{n, plural, =1{1 Schlummerrunde} other{{n} Schlummerrunden}}",
+  "snoozeUnsupported": "Schlummern braucht ein Band, das meldet, wie der Alarm beendet wurde (WHOOP 5/MG)",
+  "snoozeEnable": "Schlummern",
+  "snoozeExactNote": "Genaues Timing braucht die Wecker-Berechtigung"
 }

@@ -51,6 +51,7 @@ class HapticsService {
     void Function(String line)? log,
     BandCommandLedger? ledger,
     int Function()? commandLimit,
+    DateTime Function()? planningNow,
   })  : _allowLong = allowLong,
         _now = now ?? (() => clock.now()),
         ledger = ledger ?? BandCommandLedger(limit: commandLimit) {
@@ -60,8 +61,18 @@ class HapticsService {
       onWrite: _ended.reset,
       log: log,
       minGap: () => Duration(milliseconds: profile?.minVibrationGapMs ?? 0),
+      onBusyChanged: (b) => onBusyChanged?.call(b),
+      planningNow: planningNow,
     );
   }
+
+  /// Called with true when a band job starts and false when the band is free of
+  /// it: the app is playing a pattern. AppState reads this to tell its own
+  /// playback ending from the alarm stopping.
+  void Function(bool busy)? onBusyChanged;
+
+  /// A band job is running or settling right now.
+  bool get playing => _queue.busy;
 
   final BandHapticsPort port;
   final bool Function() _allowLong;
@@ -106,6 +117,22 @@ class HapticsService {
   T asGesture<T>(String gestureId, T Function() work,
           {bool started = false}) =>
       _queue.asGesture(gestureId, work, started: started);
+
+  /// Run [work] so its band jobs are alarm jobs: never held for the command
+  /// window (waking the wearer outranks our own precaution), every write still
+  /// counted in the ledger. Only the snooze's re-alarm. See
+  /// [BandHapticQueue.asAlarm].
+  T asAlarm<T>(T Function() work) => _queue.asAlarm(work);
+
+  /// Run [work] so its band jobs are dropped when [wanted] turns false before
+  /// they start. See [BandHapticQueue.asWanted].
+  T asWanted<T>(bool Function() wanted, T Function() work) =>
+      _queue.asWanted(wanted, work);
+
+  /// Run [work], handing [onQueued] the "band is free of it" future of every
+  /// job it queues. See [BandHapticQueue.asObserved].
+  T asObserved<T>(void Function(Future<void> over) onQueued, T Function() work) =>
+      _queue.asObserved(onQueued, work);
 
   /// Run [work] with jobs that start now or are rejected. Used for phase cues,
   /// where a late vibration would describe the wrong phase.
@@ -172,7 +199,11 @@ class HapticsService {
   /// time plus the default Bluetooth lead (per-tap buzzes report nothing).
   ///
   /// [lead] and [onFirstWrite] are for a rhythm played as several jobs (see
-  /// [deliverBandSequenceQueued]).
+  /// [deliverBandSequenceQueued]). [onFirstWrite] is called once, when the
+  /// band has ACCEPTED the delivery's first compiled command (the wearer
+  /// starts to feel it). A delivery with no compiled commands (a band with no
+  /// haptic profile plays per-tap buzzes) never calls it; the caller takes a
+  /// delivery that returns complete as accepted.
   Future<BuzzDelivery> deliver(
     BuzzSequence s, {
     void Function(HapticPlayStart)? onStart,
@@ -221,6 +252,14 @@ class HapticsService {
   void beginLab() => _queue.beginLab();
 
   void endLab() => _queue.endLab();
+
+  /// A quiet window (plain jobs held, not dropped): see
+  /// [BandHapticQueue.beginQuiet].
+  void beginQuiet() => _queue.beginQuiet();
+  void endQuiet() => _queue.endQuiet();
+  bool get quietOpen => _queue.quietOpen;
+  bool get quietExpected => _queue.quietExpected;
+  void expectQuiet(DateTime? startsAt) => _queue.expectQuiet(startsAt);
 
   Future<bool> runLab(Future<void> Function() body) => _queue.runLab(body);
 

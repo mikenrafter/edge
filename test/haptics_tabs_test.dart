@@ -39,7 +39,7 @@ const _ids = ['patterns', 'alerts', 'activity', 'cues', 'band'];
 const _sectionsOf = {
   'alerts': ['alerts', 'apps', 'tasker'],
   'activity': ['activity'],
-  'cues': ['gestures', 'breathing'],
+  'cues': ['gestures', 'breathing', 'alarm'],
 };
 
 Iterable<String> _slotKeys(Iterable<String> sections) => [
@@ -196,7 +196,7 @@ void main() {
       await _go(t, 'activity');
       expect(sectionTitles(t), isEmpty);
       await _go(t, 'cues');
-      expect(sectionTitles(t), ['Gestures', 'Breathing']);
+      expect(sectionTitles(t), ['Gestures', 'Breathing', 'Alarm snooze']);
       // Never an accordion inside an accordion.
       expect(
           find.descendant(
@@ -209,7 +209,7 @@ void main() {
       await _pump(t);
       await _go(t, 'cues');
       expect([for (final a in accordions(t)) a.id],
-          ['haptics_slots_gestures', 'haptics_slots_breathing']);
+          ['haptics_slots_gestures', 'haptics_slots_breathing', 'haptics_slots_alarm']);
     });
   });
 

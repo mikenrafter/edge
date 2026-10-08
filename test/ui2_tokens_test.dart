@@ -205,6 +205,10 @@ const _notComponents = {
   // Marked-moment follow-up: the Home card is pure and the screen reads and
   // writes the database. Both are pumped in test/gestures/moments/.
   'MomentFollowUpCard', 'MomentFollowUpScreen',
+  // Home card bound to SnoozeController.status (a pending main-alarm snooze);
+  // every state is pumped in test/alarm_snooze/snooze_ui_test.dart. The
+  // settings rows are pumped there too, standalone and inside the alarm screen.
+  'SnoozeCard', 'SnoozeSettingsRows',
   // shell and routing
   'AppShell', 'Domain', 'GalleryScreen',
   // The developer-only route around ExplorerView, which is in the gallery.

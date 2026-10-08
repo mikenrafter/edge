@@ -2047,6 +2047,16 @@ class BleEngine implements AlarmBandWriter {
   DateTime? _lastHapticsDoubleTapAt;
   DateTime? get lastHapticsDoubleTapAt => _lastHapticsDoubleTapAt;
 
+  /// Called for every HAPTICS_TERMINATED(100) with its cause string
+  /// ('user_double_tap' | 'expired' | 'error' | 'unknown' | 'code_N'), the
+  /// phone-clock receipt time, and the strap's OWN stamp of the event (null
+  /// when the strap clock is not believable). The stamp is what ties a
+  /// termination to the native alarm fire it ended (events 57/58 carry the
+  /// same clock), however late the link delivered it. AppState hangs the
+  /// main-alarm snooze on it. A throw from it is logged and goes no further.
+  void Function(String cause, DateTime at, DateTime? bandAt)?
+      onHapticsTerminated;
+
   // ── reconnect/offload policy ────────────────────────────────────────────────
   // Marginal-radio + post-bond-loop persist ACROSS reconnects (they count
   // consecutive bad cycles), so they live for the engine's lifetime and self-reset
@@ -5706,6 +5716,16 @@ class BleEngine implements AlarmBandWriter {
         }
         _log('[ALARM] haptics terminated: cause=$_lastHapticsTermination '
             'code=${f['haptics_termination_code']} ts=${event.tsEpoch}');
+        // The main alarm's snooze hangs on this. A throw from it must never
+        // reach the frame path.
+        try {
+          final strap = event.tsEpoch >= kMinPlausibleStrapEpoch
+              ? DateTime.fromMillisecondsSinceEpoch(event.tsEpoch * 1000)
+              : null;
+          onHapticsTerminated?.call(_lastHapticsTermination!, clock(), strap);
+        } catch (e) {
+          _log('[ALARM] haptics-terminated hook failed: $e');
+        }
         return;
       case EventId.highFreqSyncPrompt:
         _log(

@@ -41,10 +41,12 @@ import '../../state/alarm_draft.dart';
 import '../../state/alarm_schedule.dart';
 import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
+import '../../alarm/snooze/snooze_settings.dart';
 import '../../state/capabilities_scope.dart';
 import '../../wake/wake_settings.dart';
 import '../../wake/wake_trace_text.dart';
 import '../screens/home_screen.dart' show weekdayShortName;
+import 'snooze_settings_rows.dart';
 import '../ui2.dart';
 import 'profile.dart' show SetRow, SettingsAccordion, kDisabledOpacity;
 import 'settings.dart' show editExpectedSleepSchedule;
@@ -81,6 +83,19 @@ class _AlarmScreenState extends State<AlarmScreen> {
   Future<List<String>>? _trace;
   int? _traceEpoch;
   int _traceRevision = -1;
+
+  /// Android will not let the app set exact alarms (so the snooze backstop is
+  /// inexact). Asked once when the screen opens.
+  bool _exactUnavailable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final app = context.read<AppState>();
+    app.snoozeExactTiming().then((exact) {
+      if (mounted && exact == false) setState(() => _exactUnavailable = true);
+    }, onError: (Object _) {});
+  }
 
   /// The plain-words decision trace for the armed wake. Reloaded when the armed
   /// occurrence changes AND each time a tick appends to it (the revision on
@@ -143,6 +158,10 @@ class _AlarmScreenState extends State<AlarmScreen> {
             timelineFor: (at, entry) => app.wake.timelineAt(at, entry: entry),
             wakeTrace: trace.data ?? const [],
             resent: app.alarmResentUnconfirmed,
+            snoozeSettings: app.snoozeSettings,
+            onSnoozeSettings: app.setSnoozeSettings,
+            snoozeUnsupportedReason: caps.of(Feature.alarmSnooze).reason,
+            snoozeExactTimingUnavailable: _exactUnavailable,
           ),
         );
       },
@@ -204,6 +223,18 @@ class AlarmScreenView extends StatefulWidget {
   /// confirmed the first send, and it is still unconfirmed. The header says so.
   final bool resent;
 
+  /// The main alarm's dismiss/snooze settings and their change callback (applied
+  /// at once, not part of the Save draft). Null settings omit the rows.
+  final SnoozeSettings? snoozeSettings;
+  final ValueChanged<SnoozeSettings>? onSnoozeSettings;
+
+  /// Non-null when the band cannot drive a snooze: the rows are shown disabled
+  /// with this reason (see [Feature.alarmSnooze]).
+  final String? snoozeUnsupportedReason;
+
+  /// Android will not let the app set exact alarms: the snooze settings say so.
+  final bool snoozeExactTimingUnavailable;
+
   const AlarmScreenView({
     super.key,
     this.armedAt,
@@ -223,6 +254,10 @@ class AlarmScreenView extends StatefulWidget {
     this.timelineFor,
     this.wakeTrace = const [],
     this.resent = false,
+    this.snoozeSettings,
+    this.onSnoozeSettings,
+    this.snoozeUnsupportedReason,
+    this.snoozeExactTimingUnavailable = false,
   });
 
   @override
@@ -617,6 +652,19 @@ class _AlarmScreenViewState extends State<AlarmScreenView> {
                           ),
                           children: _timelineChildren(c, p, week),
                         ),
+                        // The main alarm's dismiss / snooze: applied at once,
+                        // not part of the Save draft. Not an accordion, so the
+                        // screen's sections stay the two they are.
+                        if (w.snoozeSettings != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: S.x3),
+                            child: SnoozeSettingsRows(
+                              settings: w.snoozeSettings!,
+                              onChanged: w.onSnoozeSettings,
+              unsupportedReason: w.snoozeUnsupportedReason,
+              exactTimingUnavailable: w.snoozeExactTimingUnavailable,
+                            ),
+                          ),
                         const SizedBox(height: S.x4),
                         // Present always; inert and dimmed when there is nothing
                         // to test or cancel, or no band to tell.

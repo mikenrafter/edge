@@ -57,6 +57,7 @@ import 'moment_follow_up.dart' show momentFollowUpCard;
 import 'illness_observation.dart';
 import 'metric_detail.dart';
 import 'natural_wake_card.dart';
+import 'snooze_card.dart';
 import 'readiness_detail.dart';
 import 'sleep_detail.dart';
 
@@ -1694,6 +1695,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       return _refreshable(ListView(padding: pad, children: [
         const SizedBox(height: S.x4),
         ?_naturalWakeCard(c),
+        ?snoozeCardFor(c),
         ?momentFollowUpCard(c),
         // No day on screen ⇒ no `todayId`, so this renders the dated form.
         // Shown here TOO: a first run, a failed read and a sync in flight are
@@ -1775,6 +1777,8 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
       ?rebuilt,
       // Natural Wake is buzzing and waiting for "I'm up": above everything.
       ?_naturalWakeCard(c),
+      // A pending main-alarm snooze, with the same "I'm up".
+      ?snoozeCardFor(c),
       ?momentFollowUpCard(c),
 
       // ── the one observation Home is allowed to make ──

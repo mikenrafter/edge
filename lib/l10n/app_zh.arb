@@ -2466,5 +2466,21 @@
   "assumedWaterTitle": "假定的一杯水",
   "assumedWaterBody": "根据饮水提醒假定，会为已喝水量增加 {amount}。可保留或移除。",
   "assumedWaterKeep": "保留",
-  "assumedWaterRemove": "移除"
+  "assumedWaterRemove": "移除",
+  "snoozeCardUntil": "已贪睡至 {time}",
+  "snoozeCardBuzzing": "闹钟再次震动",
+  "snoozeCardHint": "或双击手环",
+  "snoozeImUp": "我起床了",
+  "snoozeDismissCopy": "{taps, plural, other{双击 {taps} 次关闭闹钟——少于此数则贪睡}}",
+  "snoozeRowTaps": "关闭所需双击次数",
+  "snoozeRowWindow": "关闭时间窗",
+  "snoozeRowMinutes": "贪睡时长",
+  "snoozeRowCap": "贪睡几次后不再加强",
+  "snoozeValueTaps": "{n, plural, other{{n} 次双击}}",
+  "snoozeValueSeconds": "{s} 秒",
+  "snoozeValueMinutes": "{m} 分钟",
+  "snoozeValueCap": "{n, plural, other{{n} 次贪睡}}",
+  "snoozeUnsupported": "贪睡需要能报告闹钟如何被停止的手环（WHOOP 5/MG）",
+  "snoozeEnable": "贪睡",
+  "snoozeExactNote": "精确计时需要闹钟权限"
 }

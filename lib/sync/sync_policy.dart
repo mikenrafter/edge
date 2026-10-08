@@ -141,6 +141,18 @@ const Duration kIosBackgroundPromptLease = Duration(hours: 2);
 /// it to tell its own lease apart from a smart-wake one.
 const String kIosBackgroundPromptReason = 'ios_background';
 
+/// Reason string for the lease a pending main-alarm snooze holds.
+const String kSnoozePromptReason = 'snooze';
+
+/// The least interval gen5 accepts (it rejects 60 s and under). A 1-minute
+/// snooze therefore gets 61 s and leans on the foreground timer and the
+/// scheduled notification for the rest.
+const int kSnoozePromptMinIntervalSeconds = kSmartWakePromptIntervalSeconds;
+
+/// How long past a snooze's due time its lease runs, so a re-alarm that has to
+/// be retried (a dropped link) is still prompted for.
+const Duration kSnoozePromptTail = Duration(minutes: 15);
+
 /// One requester's ask: program the band to prompt every [intervalSeconds]
 /// for [duration]. [until] is what the engine keeps as `_highFreqUntil` and
 /// compares to decide whether a re-apply is a no-op.
@@ -169,6 +181,27 @@ class BandPromptRequest {
           until: target,
           reason: source,
         );
+
+  /// The ask of a pending main-alarm snooze: prompt every [snoozeLength] (never
+  /// below [kSnoozePromptMinIntervalSeconds], never above the 900 s background
+  /// interval), until [due] plus [kSnoozePromptTail]. A suspended iOS app is
+  /// resumed only by a band prompt, and the default 5-minute snooze would
+  /// otherwise wait out the 15-minute one.
+  factory BandPromptRequest.snooze({
+    required DateTime now,
+    required DateTime due,
+    required Duration snoozeLength,
+  }) {
+    final secs = snoozeLength.inSeconds
+        .clamp(kSnoozePromptMinIntervalSeconds, kIosBackgroundPromptIntervalSeconds);
+    final until = (due.isAfter(now) ? due : now).add(kSnoozePromptTail);
+    return BandPromptRequest(
+      intervalSeconds: secs,
+      duration: until.difference(now),
+      until: until,
+      reason: kSnoozePromptReason,
+    );
+  }
 
   /// The iOS background keep-alive's ask, leased from [now].
   BandPromptRequest.iosBackground(DateTime now)
@@ -199,18 +232,20 @@ class BandPromptRequest {
 /// smart-wake plan (already reduced to a request or null), whether the app
 /// is backgrounded on iOS, and what the engine currently has applied.
 class BandPromptPolicy {
-  /// Priority: smart wake (61 s, its own lease) > iOS background keep-alive
-  /// (900 s, 2 h) > nothing. A running background lease with more than half
+  /// Priority: smart wake (61 s, its own lease) > a pending snooze (its own
+  /// length, at least 61 s) > iOS background keep-alive (900 s, 2 h) > nothing. A running background lease with more than half
   /// of it left is returned unchanged so the engine's "same reason + same
   /// until" guard skips the write; past half-way it is renewed from [now].
   static BandPromptRequest? plan({
     required BandPromptRequest? smartWake,
+    BandPromptRequest? snooze,
     required bool iosBackgrounded,
     required String? currentReason,
     required DateTime? currentUntil,
     required DateTime now,
   }) {
     if (smartWake != null) return smartWake;
+    if (snooze != null) return snooze;
     if (!iosBackgrounded) return null;
     if (currentReason == kIosBackgroundPromptReason &&
         currentUntil != null &&

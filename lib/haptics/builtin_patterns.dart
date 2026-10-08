@@ -36,6 +36,44 @@ const String kBreathExhaleKey = 'breath.exhale';
 const String kBreathHoldKey = 'breath.hold';
 const String kBreathDoneKey = 'breath.done';
 
+/// The main alarm's snooze slots (owner spec 2026-10-07). Each is its own
+/// default pattern, none shared with a gesture cue or with the full-wake
+/// confirmation: snooze set, dismissed, a wake confirmed during a snooze
+/// ("you're up"), and the escalating re-alarm (whose default is the first
+/// snooze's pattern; SnoozeSchedule grows it per snooze).
+///
+/// Defaults (MG, 125 ms per sixteenth). Beat counts 4, 5, 6 and 3: none shares
+/// a count with a gesture cue (1 to 3 beats), with the breathing cues or with
+/// Natural Wake's three long strong buzzes.
+///  * snooze set    "N2mf R2 N2mf R2 N2mf R2 N2mf": four even, soft ticks.
+///  * dismissed     "N1f R1 N2f R1 N3ff R1 N4ff R1 N6ff": five buzzes rising
+///                  from short and firm to one long and strong ("done").
+///  * cancelled     "N6ff R2 N1mf R1 N1mf R1 N1mf R1 N1mf R1 N1mf": one long
+///                  strong buzz, then a flutter of five light ticks ("you're up").
+///  * re-alarm      the first snooze's pattern, "N4mf R3 N2mf R6 N4mf"; the
+///                  app grows it per snooze (SnoozeSchedule).
+const String kAlarmSnoozeConfirmKey = 'alarm.snooze.confirm';
+const String kAlarmDismissConfirmKey = 'alarm.dismiss.confirm';
+const String kAlarmSnoozeCancelledKey = 'alarm.snooze.cancelled';
+const String kAlarmReAlarmKey = 'alarm.snooze.realarm';
+
+const String _snoozeConfirmNotes = 'N2mf R2 N2mf R2 N2mf R2 N2mf';
+const String _dismissConfirmNotes = 'N1f R1 N2f R1 N3ff R1 N4ff R1 N6ff';
+const String _snoozeCancelledNotes =
+    'N6ff R2 N1mf R1 N1mf R1 N1mf R1 N1mf R1 N1mf';
+const String _reAlarmFirstNotes = 'N4mf R3 N2mf R6 N4mf';
+
+/// The four snooze slots, in the order they are listed.
+const List<String> kAlarmSlotKeys = [
+  kAlarmSnoozeConfirmKey,
+  kAlarmDismissConfirmKey,
+  kAlarmSnoozeCancelledKey,
+  kAlarmReAlarmKey,
+];
+
+/// Whether [slotKey] is one of the four snooze slots.
+bool isAlarmSlot(String slotKey) => kAlarmSlotKeys.contains(slotKey);
+
 /// The ten presets, in the order they are listed: key, name and notes. A
 /// pulse is a quarter note, a long pulse a half, the rest between pulses a
 /// quarter. SOS is three short, three long, three short; Hip hip hooray is two
@@ -123,6 +161,7 @@ List<String> builtInKeys() => [
       kBreathHoldKey,
       kBreathDoneKey,
       for (var n = 1; n <= kTaskerSlotCount; n++) taskerSlotKey(n),
+      ...kAlarmSlotKeys,
       for (final p in kPresets) p.$1,
     ];
 
@@ -190,6 +229,11 @@ BuzzSequence _fromNotes(String code, String id) {
   );
 }
 
+/// [code] (notes with dynamics, "N4mf R3 N2mf") as a pattern for the MG, stored
+/// under [id]: the re-alarm's escalating notes are played this way.
+BuzzSequence alarmSequenceFromNotes(String code, {required String id}) =>
+    _fromNotes(code, id);
+
 /// Whether [s] is the rhythm alert [ruleId] was seeded with before the presets
 /// (the nine count-and-gap rhythms of BuzzSequence.defaultFor, as `*` notes): a
 /// stored copy of it was never the wearer's choice and gives way to the preset.
@@ -234,6 +278,20 @@ BuiltInSpec? builtInDefault(String systemKey) {
     case kBreathDoneKey:
       return BuiltInSpec(
           systemKey, 'Breathing done', _fromPhrase(_phrase('arc47'), id));
+  }
+  switch (systemKey) {
+    case kAlarmSnoozeConfirmKey:
+      return BuiltInSpec(
+          systemKey, 'Snooze set', _fromNotes(_snoozeConfirmNotes, id));
+    case kAlarmDismissConfirmKey:
+      return BuiltInSpec(
+          systemKey, 'Alarm dismissed', _fromNotes(_dismissConfirmNotes, id));
+    case kAlarmSnoozeCancelledKey:
+      return BuiltInSpec(systemKey, 'Snooze cancelled',
+          _fromNotes(_snoozeCancelledNotes, id));
+    case kAlarmReAlarmKey:
+      return BuiltInSpec(
+          systemKey, 'Snooze re-alarm', _fromNotes(_reAlarmFirstNotes, id));
   }
   for (final (key, name, notes) in kPresets) {
     if (key == systemKey) return BuiltInSpec(key, name, _fromNotes(notes, id));

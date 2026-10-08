@@ -2495,5 +2495,21 @@
   "assumedWaterTitle": "Vaso de agua supuesto",
   "assumedWaterBody": "Suma {amount} al agua bebida, supuesto por tu recordatorio de agua. Consérvalo o quítalo.",
   "assumedWaterKeep": "Conservar",
-  "assumedWaterRemove": "Quitar"
+  "assumedWaterRemove": "Quitar",
+  "snoozeCardUntil": "Pospuesta hasta las {time}",
+  "snoozeCardBuzzing": "Tu alarma vuelve a vibrar",
+  "snoozeCardHint": "o toca dos veces la pulsera",
+  "snoozeImUp": "Ya estoy despierto",
+  "snoozeDismissCopy": "{taps, plural, =1{1 doble toque para apagar: menos es posponer} other{{taps} dobles toques para apagar: menos es posponer}}",
+  "snoozeRowTaps": "Dobles toques para apagar",
+  "snoozeRowWindow": "Ventana para apagar",
+  "snoozeRowMinutes": "Posponer durante",
+  "snoozeRowCap": "Dejar de intensificar tras",
+  "snoozeValueTaps": "{n, plural, =1{1 doble toque} other{{n} dobles toques}}",
+  "snoozeValueSeconds": "{s} s",
+  "snoozeValueMinutes": "{m} min",
+  "snoozeValueCap": "{n, plural, =1{1 pospuesta} other{{n} pospuestas}}",
+  "snoozeUnsupported": "La pospuesta necesita una banda que informe de cómo se detuvo la alarma (WHOOP 5/MG)",
+  "snoozeEnable": "Posponer",
+  "snoozeExactNote": "La hora exacta necesita el permiso de alarma"
 }
