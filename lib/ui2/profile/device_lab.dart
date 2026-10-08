@@ -47,6 +47,7 @@ import '../../util/log_file.dart';
 import '../activity/share.dart' show shareOrigin;
 import '../ui2.dart';
 import 'alarm_slot_probe_card.dart';
+import 'termination_probe_card.dart';
 import 'live_devices.dart' show LiveDevices;
 import 'motion_lab.dart';
 import 'pattern_probe_page.dart';
@@ -133,6 +134,11 @@ class DeviceLab extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(top: S.x3),
                 child: AlarmSlotProbeCard(runner: app.alarmSlotProbe),
+              ),
+            if (caps.has(Feature.developerMode))
+              Padding(
+                padding: const EdgeInsets.only(top: S.x3),
+                child: TerminationProbeCard(runner: app.terminationProbe),
               ),
           ],
         ),

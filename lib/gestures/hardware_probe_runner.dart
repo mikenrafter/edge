@@ -4,8 +4,8 @@
 // pattern probe's transcriber (the wearer plays a test, taps what they
 // felt as note and rest lengths, may play it again).
 //
-// Everything a probe learns goes into the lab log as a session (so "Copy all
-// logs" carries it), and the ECG probe's packets go into the lab's packet
+// Everything a probe learns goes into the lab log as a session (so "Save lab
+// log file" carries it), and the ECG probe's packets go into the lab's packet
 // buffer, tagged with the probe. RAM only.
 
 import 'dart:async';

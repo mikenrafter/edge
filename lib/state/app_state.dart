@@ -130,6 +130,7 @@ import '../import/noop_import.dart';
 import '../import/whoop_import.dart';
 import '../gestures/ecg_tap_begin.dart';
 import '../gestures/alarm_slot_probe.dart';
+import '../gestures/termination_probe.dart';
 import '../gestures/hardware_probe_runner.dart';
 import '../gestures/gesture_failures.dart';
 import '../gestures/lab_log.dart';
@@ -388,7 +389,8 @@ class AppState extends ChangeNotifier {
         readFailures: () => Prefs.getString(Prefs.gestureFailures, ''),
         writeFailures: (json) async => Prefs.setString(Prefs.gestureFailures, json),
         // A Device lab IMU recording owns the tap while it is armed or running.
-        labHold: () => _imuLab?.holdsActions ?? false,
+        labHold: () =>
+            (_imuLab?.holdsActions ?? false) || terminationProbe.holdsTaps,
       );
 
   /// The gestures that failed to activate, newest first, kept across
@@ -601,6 +603,32 @@ class AppState extends ChangeNotifier {
     log: _log,
     ledger: haptics.ledger,
     runExclusive: _runAlarmProbeExclusive,
+  );
+
+  /// The Device lab's termination probe (developer mode): how the WHOOP 5 / MG
+  /// band reports that haptics stopped (event 100, double tap 14, alarm
+  /// EXECUTED). Its alarm scenarios arm the spare probe slot (never the real
+  /// alarm's), run as one arm flight like [alarmSlotProbe] and put the real
+  /// alarm back through [_restoreRealAlarm]; its own alarm events never reach
+  /// [_handleAlarmEvent], and a tap during a run is held for it (`labHold`).
+  late final TerminationProbeRunner terminationProbe = TerminationProbeRunner(
+    lab: deviceLab,
+    family: () => engine.linkDeviceFamily,
+    developerMode: () => devMode,
+    isConnected: () => isConnected,
+    heldEpoch: () => alarmEpoch,
+    armBusy: () => _armFlight != null,
+    sendPattern: (effects, loop) =>
+        _probePattern(effects, loop, (status, ms) {}),
+    arm: (slot, when) => engine.setAlarmSlot(when, slot: slot),
+    read: (slot) => engine.readAlarmSlot(slot: slot),
+    clear: (slot) => engine.clearAlarmSlot(slot: slot),
+    restore: _restoreRealAlarm,
+    log: _log,
+    ledger: haptics.ledger,
+    runExclusive: _runAlarmProbeExclusive,
+    runLab: haptics.runLab,
+    clockRef: () => engine.clockRef,
   );
 
   /// One ordinary buzz for the buzz probe: still a dispatcher delivery (its
@@ -3350,7 +3378,9 @@ class AppState extends ChangeNotifier {
     // the real alarm: a fired probe alarm here would be read as the wearer's
     // alarm being spent and wipe it.
     alarmSlotProbe.onBandEvent(e);
-    if (!alarmSlotProbe.swallowsEvent(e)) {
+    terminationProbe.onBandEvent(e);
+    if (!alarmSlotProbe.swallowsEvent(e) &&
+        !terminationProbe.swallowsEvent(e)) {
       _handleAlarmEvent(e.eventId, e.tsEpoch);
     }
     // handle() never throws; the outcomes are logged per action by the
@@ -5333,7 +5363,7 @@ class AppState extends ChangeNotifier {
       } finally {
         // Kept when the probe could not confirm it left the band clean: the
         // next arm pass retries ([_recoverFromProbe]).
-        if (!alarmSlotProbe.needsRecovery) {
+        if (!alarmSlotProbe.needsRecovery && !terminationProbe.needsRecovery) {
           await prefs.remove(_kAlarmProbePendingPref);
         }
       }
@@ -5412,7 +5442,9 @@ class AppState extends ChangeNotifier {
       // A probe that was cut short (crash, kill) left its marker: clean the
       // band and put the real alarm back before anything dedupes against it.
       final pendingProbe = prefs.getInt(_kAlarmProbePendingPref);
-      if (pendingProbe != null && !alarmSlotProbe.running) {
+      if (pendingProbe != null &&
+          !alarmSlotProbe.running &&
+          !terminationProbe.running) {
         await _recoverFromProbe(prefs, pendingProbe);
       }
       final result = await armNextScheduledOccurrence(

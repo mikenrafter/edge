@@ -11,6 +11,7 @@ import 'package:openstrap_edge/gestures/lab_log.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/gestures/termination_probe.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';
+import 'package:openstrap_edge/sync/sync_policy.dart' show ClockRef;
 
 import 'alarm_slot_rig.dart' show slotSec;
 
@@ -41,6 +42,7 @@ class TerminationRig {
       restore: restore,
       log: logs.add,
       ledger: this.ledger,
+      clockRef: () => ref,
     );
     final h = held;
     if (h != null) stored[0] = h; // the wearer's alarm, gen5 id 1
@@ -50,6 +52,9 @@ class TerminationRig {
   }
 
   String? family;
+
+  /// The strap-clock correlation the fake engine reports (null: none yet).
+  ClockRef? ref;
   final int capacity;
   int? held;
   bool dev = true, connected = true, armBusy = false, restoreOk;
@@ -123,8 +128,9 @@ class TerminationRig {
       tsEpoch: ts ?? slotSec(clock.now()),
       tsSubsec: subsec,
       receivedAt: clock.now(),
-      hex: '',
+      hex: 'aa01${id.toRadixString(16)}',
       deviceId: 'd',
+      name: 'EV$id',
       decoded: decoded,
     );
   }

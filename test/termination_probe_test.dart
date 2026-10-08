@@ -26,6 +26,7 @@ import 'package:openstrap_edge/ble/ble_state.dart';
 import 'package:openstrap_edge/gestures/strap_event.dart';
 import 'package:openstrap_edge/gestures/termination_probe.dart';
 import 'package:openstrap_edge/haptics/band_queue.dart';
+import 'package:openstrap_edge/sync/sync_policy.dart' show ClockRef;
 
 import 'support/alarm_slot_rig.dart' show kAlarmSlotT0, slotEvent, slotSec;
 import 'support/termination_probe_rig.dart';
@@ -967,6 +968,53 @@ void main() {
                 .where((e) => e.eventId == 63 || e.eventId == 1),
             isEmpty);
       }, initialTime: _t0);
+    });
+  });
+
+  group('the saved report carries the evidence', () {
+    test('every band event: raw packet hex, parsed fields, raw stamp with its '
+        'sub-second, converted time, receipt, and the clockRef state', () {
+      fakeAsync((async) {
+        final now = slotSec(clock.now());
+        final rig = TerminationRig()
+          ..tapAfter = const Duration(seconds: 2)
+          ..ref = ClockRef(device: now - 7, wall: now);
+        expect(_runFor(async, rig, _S.alarmDoubleTap), isTrue);
+        final r = rig.runner.resultOf(_S.alarmDoubleTap)!;
+        final text = rig.runner.reportText();
+        for (final e in r.timeline.where((e) => e.eventId != null)) {
+          expect(e.hex, isNotEmpty);
+          expect(text, contains('packet hex: ${e.hex}'), reason: e.label);
+          expect(text, contains('raw ${e.rawEpoch}+${e.rawSubsec}/32768'));
+          expect(text, contains('event ${e.eventId}'));
+        }
+        final term = r.timeline.firstWhere((e) => e.eventId == 100);
+        expect(text, contains('haptics_termination_code=${term.causeCode}'));
+        expect(text, contains('haptics_termination=${term.cause}'));
+        expect(text, contains('drift used 7 s'));
+        expect(text, contains('clockRef at start: device ${now - 7}, wall '
+            '$now, drift 7 s'));
+        expect(text, contains('clockRef at end:'));
+        expect(term.convertedAt, isNotNull);
+        expect(text, contains('recv +${term.sinceStartMs} ms'));
+      }, initialTime: _t0);
+    });
+
+    test('no clockRef yet is said so, and the drift is taken as 0', () {
+      fakeAsync((async) {
+        final rig = TerminationRig();
+        expect(_runFor(async, rig, _S.appFinishes), isTrue);
+        final text = rig.runner.reportText();
+        expect(text, contains('clockRef at start: none'));
+        expect(text, contains('drift used 0 s'));
+      }, initialTime: _t0);
+    });
+
+    test('a mark has no packet lines; an event with no kept hex says so', () {
+      expect(_entry('pattern written').detailLines, isEmpty);
+      final rec = TimelineRecorder(start: _utc0);
+      final e = rec.addEvent(_strapEvent(100, code: 0))!;
+      expect(e.detailLines.first, 'packet hex: not available');
     });
   });
 
