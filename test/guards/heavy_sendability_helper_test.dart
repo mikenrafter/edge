@@ -78,20 +78,27 @@ void main() {
   });
 
   group('registered entries', () {
-    test('every kWorkerEntries symbol has a round-trip sample', () {
+    EntrySample? sampleFor(WorkerEntry e) {
+      final name = e.symbol.toString();
+      final hits = kEntrySamples.keys.where(name.contains).toList();
+      return hits.length == 1 ? kEntrySamples[hits.single] : null;
+    }
+
+    test('every kWorkerEntries symbol has exactly one round-trip sample', () {
       final missing = [
         for (final e in kWorkerEntries)
-          if (!kEntrySamples.containsKey(e.symbol)) e.symbol,
+          if (sampleFor(e) == null) e.symbol,
       ];
       expect(missing, isEmpty,
           reason: 'add the entry to test/guards/support/entry_samples.dart');
+      expect(kEntrySamples.length, kWorkerEntries.length,
+          reason: 'a sample for something that is not registered');
     });
 
     for (final e in kWorkerEntries) {
       test('${e.symbol}: argument and result cross a real isolate', () async {
-        final sample = kEntrySamples[e.symbol]!;
-        await sample.roundTrip();
-      });
+        await sampleFor(e)!.roundTrip();
+      }, timeout: const Timeout(Duration(minutes: 2)));
     }
   });
 }

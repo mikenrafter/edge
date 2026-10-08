@@ -1,0 +1,30 @@
+// FIXTURE: rawreader_ok_void_backfill_and_scalars
+
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<void> _backfillOnehz() async {
+    await _db.rawQuery('UPDATE decoded_onehz SET x = 1');
+  }
+
+  Future<void> migrateRr() async {
+    await _db.query('decoded_rr');
+  }
+
+  Future<int> countOnehz() async => (await _db.query('decoded_onehz')).length;
+
+  Future<bool> hasRr() async => (await _db.query('decoded_rr')).isNotEmpty;
+
+  // By NAME: a repair/ensure/backfill step may return rows to its own caller.
+  Future<List<Row>> _repairRows() => _db.query('decoded_rr');
+  Future<List<Row>> _ensureRows() => _db.query('raw_records');
+}

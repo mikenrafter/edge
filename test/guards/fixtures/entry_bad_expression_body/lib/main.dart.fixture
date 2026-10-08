@@ -1,6 +1,5 @@
-// FIXTURE: c_ok_compute_tearoff
+// FIXTURE: entry_bad_expression_body
 import 'dart:isolate';
-import 'package:fixture_dispatch/dispatch.dart';
 import 'package:openstrap_analytics/onehz.dart';
 import 'package:openstrap_edge/util/heavy.dart';
 import 'package:openstrap_edge/util/worker_entries.dart';
@@ -18,18 +17,15 @@ class DayOut {
   final double? readiness;
   const DayOut(this.readiness);
 }
-
 const kWorkerEntries = <WorkerEntry>[
-  WorkerEntry(#deriveHeavy, dispatcher: Dispatcher.compute, reason: 'fixture'),
+  WorkerEntry(#deriveHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
 ];
 
-
 @heavy
-DayOut deriveHeavy(DayArgs a) {
-  assertWorker();
-  return DayOut(readinessCompute(a.hr).value);
-}
-
+DayOut deriveHeavy(DayArgs a) => DayOut(a.hr.length.toDouble());
 class Caller {
-  Future<DayOut> via_deriveHeavy_call(int n, List<double> hr) => compute(deriveHeavy, DayArgs(n, hr));
+  Future<DayOut> via_deriveHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return deriveHeavy(a);
+  });
 }

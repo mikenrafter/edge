@@ -99,7 +99,7 @@ void main() {
       final b = HeavyBaseline.fromViolations([
         v(HeavyRule.nameMarkerMismatch),
         v(HeavyRule.rootNotRegistered),
-        v(HeavyRule.sendableGrammar),
+        v(HeavyRule.sendableShapeTestMissing),
         v(HeavyRule.platformInHeavy),
         v(origin),
       ]);

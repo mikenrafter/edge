@@ -22,6 +22,7 @@ import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/dart/element/element.dart';
+import 'package:analyzer/dart/element/nullability_suffix.dart';
 import 'package:analyzer/dart/element/type.dart';
 
 import 'package:openstrap_edge/util/worker_entries.dart' show Dispatcher;
@@ -130,6 +131,9 @@ class _Decl {
   final bannedSeen = <String>{};
   final strings = StringBuffer();
   final rowBatchIterations = <(AstNode, String)>[];
+
+  /// Iterations of stored-data collections (label = `Type.member`).
+  final storedIterations = <String>[];
 
   _Decl(this.file, this.symbol, this.container, this.element, this.node,
       this.content);
@@ -267,6 +271,7 @@ class _Scan extends RecursiveAstVisitor<void> {
     _noteDispatcher(node, el, node.methodName);
     _use(node, el, _UseKind.call);
     _rowBatchMember(node.target, node.methodName.name, node);
+    _storedMember(node.target, node.methodName.name);
     super.visitMethodInvocation(node);
   }
 
@@ -346,6 +351,106 @@ class _Scan extends RecursiveAstVisitor<void> {
     super.visitNamedType(node);
   }
 
+  // --- stored-data collections ---
+
+  static const _iterating = {
+    'forEach', 'map', 'where', 'whereType', 'fold', 'reduce', 'any', 'every',
+    'expand', 'toList', 'toSet', 'firstWhere', 'lastWhere', 'singleWhere',
+    'indexWhere', 'lastIndexWhere', 'contains', 'indexOf', 'lastIndexOf',
+    'sort', 'join', 'sublist', 'followedBy', 'takeWhile', 'skipWhile',
+    'getRange', 'cast', 'removeWhere', 'retainWhere',
+  };
+
+  bool _isSampleType(DartType? t) {
+    if (t is! InterfaceType) return false;
+    if (t.isDartCoreInt || t.isDartCoreDouble || t.isDartCoreNum) return true;
+    if (_uri(t.element) == 'dart:typed_data' &&
+        (t.element.name ?? '').endsWith('List')) {
+      return true;
+    }
+    if ((t.isDartCoreList || t.isDartCoreIterable) &&
+        t.typeArguments.isNotEmpty) {
+      return _isSampleType(t.typeArguments.first);
+    }
+    return false;
+  }
+
+  bool _isSampleCollection(DartType? t) {
+    if (t is! InterfaceType) return false;
+    if (_uri(t.element) == 'dart:typed_data' &&
+        (t.element.name ?? '').endsWith('List')) {
+      return true;
+    }
+    return (t.isDartCoreList || t.isDartCoreIterable) &&
+        t.typeArguments.isNotEmpty &&
+        _isSampleType(t.typeArguments.first);
+  }
+
+  bool _isRecordCollection(DartType? t) =>
+      t is InterfaceType &&
+      (t.isDartCoreList || t.isDartCoreIterable) &&
+      t.typeArguments.isNotEmpty &&
+      t.typeArguments.first is InterfaceType &&
+      (t.typeArguments.first as InterfaceType).isDartCoreMap;
+
+  /// A label when [e] is a stored-data collection: a sample list/typed-data
+  /// member of a configured stored-data type, or (in the configured files) a
+  /// list of day-record maps.
+  String? _storedLabel(Expression? e) {
+    while (e is ParenthesizedExpression) {
+      e = e.expression;
+    }
+    if (e == null) return null;
+    final Element? el = e is PrefixedIdentifier
+        ? e.identifier.element
+        : e is PropertyAccess
+            ? e.propertyName.element
+            : e is SimpleIdentifier
+                ? e.element
+                : null;
+    if (el is GetterElement || el is FieldElement) {
+      final enc = el!.enclosingElement;
+      if (enc is InterfaceElement &&
+          config.storedDataTypes.contains(enc.name) &&
+          _isSampleCollection(e.staticType)) {
+        return '${enc.name}.${el.name}';
+      }
+    }
+    if (config.storedDataFiles.contains(decl.file) &&
+        _isRecordCollection(e.staticType)) {
+      return 'day records';
+    }
+    return null;
+  }
+
+  void _storedMember(Expression? target, String member) {
+    if (!_iterating.contains(member)) return;
+    final l = _storedLabel(target);
+    if (l != null) decl.storedIterations.add(l);
+  }
+
+  void _storedForEach(Expression iterable) {
+    final l = _storedLabel(iterable);
+    if (l != null) decl.storedIterations.add(l);
+  }
+
+  void _storedIndexLoop(Expression? condition) {
+    if (condition is! BinaryExpression) return;
+    for (final side in [condition.leftOperand, condition.rightOperand]) {
+      Expression? target;
+      if (side is PrefixedIdentifier && side.identifier.name == 'length') {
+        target = side.prefix;
+      } else if (side is PropertyAccess && side.propertyName.name == 'length') {
+        target = side.target;
+      }
+      final l = _storedLabel(target);
+      if (l != null) {
+        decl.storedIterations.add(l);
+        return;
+      }
+    }
+  }
+
   // --- RowBatch iteration ---
 
   static const _rowBatchCheap = {'length', 'isEmpty', 'isNotEmpty'};
@@ -358,6 +463,7 @@ class _Scan extends RecursiveAstVisitor<void> {
   }
 
   void _forEachParts(Expression iterable, AstNode at) {
+    _storedForEach(iterable);
     if (_isRowBatch(iterable.staticType)) {
       decl.rowBatchIterations.add((at, 'for-in'));
     }
@@ -383,6 +489,7 @@ class _Scan extends RecursiveAstVisitor<void> {
 
   @override
   void visitSpreadElement(SpreadElement node) {
+    _storedForEach(node.expression);
     if (_isRowBatch(node.expression.staticType)) {
       decl.rowBatchIterations.add((node, 'spread'));
     }
@@ -416,6 +523,7 @@ class _Scan extends RecursiveAstVisitor<void> {
     final parts = node.forLoopParts;
     var bounded = false;
     if (parts is ForParts) {
+      _storedIndexLoop(parts.condition);
       final c = parts.condition;
       if (c is BinaryExpression) {
         bounded = _isConstOperand(c.rightOperand) || _isConstOperand(c.leftOperand);
@@ -425,6 +533,13 @@ class _Scan extends RecursiveAstVisitor<void> {
     }
     decl.loops.add(_Loop(node, bounded));
     super.visitForStatement(node);
+  }
+
+  @override
+  void visitForElement(ForElement node) {
+    final parts = node.forLoopParts;
+    if (parts is ForParts) _storedIndexLoop(parts.condition);
+    super.visitForElement(node);
   }
 
   @override
@@ -647,7 +762,9 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
     final e = d.element;
     if (e == null || e is ConstructorElement) continue;
     final name = e.name ?? '';
-    if (d.markedHeavy && !name.endsWith('Heavy')) {
+    if (d.markedHeavy &&
+        !name.endsWith('Heavy') &&
+        !config.nameAllow.any((a) => a.symbol == d.symbol && a.element == name)) {
       add(HeavyRule.nameMarkerMismatch, d.file, d.symbol, name,
           '@heavy function must be named …Heavy');
     } else if (!d.markedHeavy &&
@@ -722,6 +839,7 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
   bool allowed(_Decl d, Element e) {
     final l = _label(e);
     final n = e.name ?? '';
+    if (config.lightApi.any((a) => a.element == l)) return true;
     for (final a in config.originAllow) {
       if (a.symbol == d.symbol && (a.element == l || a.element == n)) return true;
     }
@@ -807,6 +925,14 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
       }
     }
 
+    // stored-data iteration (outside @heavy)
+    if (!d.isHeavy) {
+      for (final label in d.storedIterations) {
+        add(HeavyRule.heavyOriginOutsideHeavy, d.file, d.symbol, label,
+            'iterating stored data ($label) outside @heavy');
+      }
+    }
+
     // RowBatch iteration (outside @heavy)
     if (!d.isHeavy) {
       for (final r in d.rowBatchIterations) {
@@ -881,8 +1007,18 @@ Future<HeavyGuardResult> analyze(HeavyGuardConfig config) async {
           'registered as ${e.dispatcher}, dispatched as ${kinds.map((k) => k.name).toSet().join('/')}');
     }
 
-    // sendable grammar on the boundary types
+    // static + initialised-first
     final el = d.element;
+    if (el is ConstructorElement ||
+        (el is MethodElement && !el.isStatic)) {
+      add(HeavyRule.workerEntryNotStatic, e.file, e.symbol, name,
+          'worker entries are top-level or static functions');
+    } else if (!_startsInitialised(d.node)) {
+      add(HeavyRule.workerEntryNotInitialised, e.file, e.symbol, name,
+          'body must start with WorkerInit.ensure(…) or assertWorker()');
+    }
+
+    // sendable grammar on the boundary types
     if (el is ExecutableElement) {
       final spawn = e.dispatcher == 'spawn';
       final shapes = <String>[];
@@ -1019,6 +1155,25 @@ Set<String> _testFileNames(String root) {
     for (final f in dir.listSync(recursive: true).whereType<File>())
       f.uri.pathSegments.last,
   };
+}
+
+/// True when the function's body is a block whose FIRST statement is
+/// `WorkerInit.ensure(…)` or `assertWorker()`.
+bool _startsInitialised(AstNode decl) {
+  FunctionBody? body;
+  if (decl is FunctionDeclaration) body = decl.functionExpression.body;
+  if (decl is MethodDeclaration) body = decl.body;
+  if (body is! BlockFunctionBody) return false;
+  final stmts = body.block.statements;
+  if (stmts.isEmpty) return false;
+  final first = stmts.first;
+  if (first is! ExpressionStatement) return false;
+  final call = first.expression;
+  if (call is! MethodInvocation) return false;
+  final el = call.methodName.element;
+  if (el == null || !_uri(el).endsWith('util/worker_init.dart')) return false;
+  final l = _label(el);
+  return l == 'WorkerInit.ensure' || l == 'assertWorker';
 }
 
 // ---------------------------------------------------------------------------
@@ -1196,7 +1351,9 @@ String? _sendProblem(
   }
   if (t.isDartCoreMap) {
     final k = t.typeArguments.first;
-    if (!(k is InterfaceType && k.isDartCoreString)) {
+    if (!(k is InterfaceType &&
+        k.isDartCoreString &&
+        k.nullabilitySuffix == NullabilitySuffix.none)) {
       return 'Map key ${k.getDisplayString()} (only String keys)';
     }
     return _sendProblem(t.typeArguments[1], seen, shapes);
@@ -1262,8 +1419,34 @@ void _rawReaders(
         return e != null && _isFunctionish(e) && regSet.contains(_label(e));
       });
 
+  // Only methods whose return type exposes ROWS are readers; scalar accessors
+  // and migration/backfill/repair steps (by name) are not.
+  bool exposesRows(MethodElement m) {
+    var t = m.returnType;
+    if (t is InterfaceType &&
+        (t.isDartAsyncFuture || t.isDartAsyncFutureOr) &&
+        t.typeArguments.isNotEmpty) {
+      t = t.typeArguments.first;
+    }
+    if (t is! InterfaceType) return false;
+    if (t.isDartAsyncStream) return true;
+    return t.isDartCoreList ||
+        t.isDartCoreIterable ||
+        t.isDartCoreSet ||
+        t.isDartCoreMap ||
+        t.element.name == 'RowBatch';
+  }
+
+  final migrationName = RegExp(
+      r'^_?(backfill|repair|ensure|migrate|upgrade|retire|create|drop|onUpgrade|onCreate|onOpen)',
+      caseSensitive: false);
+  bool migration(_Decl m) => migrationName.hasMatch(m.element?.name ?? '');
+
   final reaches = {
-    for (final m in methods) m.symbol: table(m) != null || callsRegistered(m),
+    for (final m in methods)
+      m.symbol: (table(m) != null || callsRegistered(m)) &&
+          exposesRows(m.element as MethodElement) &&
+          !migration(m),
   };
   // private helpers whose every caller is registered (or itself exempt) hand
   // their rows only to a registered caller.

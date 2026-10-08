@@ -82,6 +82,26 @@ final Map<String, Expect> kExpectations = {
     elements: {HeavyRule.heavyOriginOutsideHeavy: {'Metric.fromSamples'}},
   ),
   'a_ok_allow_listed_origin': const Expect.clean(),
+  // Bounded scalar analytics helpers (config lightApi) need no @heavy.
+  'a_ok_light_api_allow_list': const Expect.clean(),
+  // Stored-data collections: Substrate-like types' sample lists, and cross-day
+  // day-record arrays in the configured files.
+  'a_bad_stored_data_iteration': const Expect(
+    {HeavyRule.heavyOriginOutsideHeavy},
+    symbols: {
+      HeavyRule.heavyOriginOutsideHeavy: {'Screen.sum', 'Screen.mean', 'Screen.count'},
+    },
+    elements: {
+      HeavyRule.heavyOriginOutsideHeavy: {'Substrate.tsSec', 'Substrate.rrMs'},
+    },
+    counts: {HeavyRule.heavyOriginOutsideHeavy: 3},
+  ),
+  'a_ok_stored_data_in_heavy': const Expect.clean(),
+  'a_bad_crossday_records_iteration': const Expect(
+    {HeavyRule.heavyOriginOutsideHeavy},
+    symbols: {HeavyRule.heavyOriginOutsideHeavy: {'meanOf'}},
+    counts: {HeavyRule.heavyOriginOutsideHeavy: 1},
+  ),
   'a_ok_heavy_calls_inner_heavy': const Expect.clean(),
 
   // ---- (b) @heavy <=> ...Heavy -----------------------------------------
@@ -150,6 +170,27 @@ final Map<String, Expect> kExpectations = {
     {HeavyRule.dispatcherClosureContract},
     symbols: {HeavyRule.dispatcherClosureContract: {'Reader.go'}},
   ),
+
+  // ---- worker contract: static, and initialised before anything else -------
+  'entry_bad_no_init': const Expect(
+    {HeavyRule.workerEntryNotInitialised},
+    symbols: {HeavyRule.workerEntryNotInitialised: {'deriveHeavy'}},
+  ),
+  'entry_bad_init_not_first': const Expect(
+    {HeavyRule.workerEntryNotInitialised},
+    symbols: {HeavyRule.workerEntryNotInitialised: {'deriveHeavy'}},
+  ),
+  'entry_bad_expression_body': const Expect(
+    {HeavyRule.workerEntryNotInitialised},
+    symbols: {HeavyRule.workerEntryNotInitialised: {'deriveHeavy'}},
+  ),
+  'entry_ok_ensure_first': const Expect.clean(),
+  'entry_bad_instance_method': const Expect(
+    {HeavyRule.workerEntryNotStatic},
+    symbols: {HeavyRule.workerEntryNotStatic: {'Worker.runHeavy'}},
+  ),
+  // A reasoned naming exception (config nameAllow) instead of renaming.
+  'b_ok_heavy_name_exception': const Expect.clean(),
 
   // ---- registry ----------------------------------------------------------
   'registry_bad_symbol_unresolved': const Expect(
@@ -224,6 +265,11 @@ final Map<String, Expect> kExpectations = {
     counts: {HeavyRule.sendableGrammar: 5},
   ),
   'sendable_ok_shape_with_roundtrip_test': const Expect.clean(),
+  // Nullable map keys are outside Map<String, S>.
+  'sendable_bad_nullable_map_key': const Expect(
+    {HeavyRule.sendableGrammar},
+    symbols: {HeavyRule.sendableGrammar: {'keyHeavy'}},
+  ),
   'sendable_ok_rowbatch_arg': const Expect.clean(),
   'sendable_bad_shape_without_test': const Expect(
     {HeavyRule.sendableShapeTestMissing},
@@ -322,6 +368,21 @@ final Map<String, Expect> kExpectations = {
     symbols: {HeavyRule.rawReaderUnregistered: {'LocalDb.latest'}},
   ),
   'rawreader_ok_unrelated_method': const Expect.clean(),
+  // Migrations / scalar accessors are not raw-row readers: only methods whose
+  // return type exposes rows count, and backfill/repair/ensure/migrate names
+  // are exempt by name.
+  'rawreader_ok_void_backfill_and_scalars': const Expect.clean(),
+  'rawreader_bad_exposes_rows_variants': const Expect(
+    {HeavyRule.rawReaderUnregistered},
+    symbols: {
+      HeavyRule.rawReaderUnregistered: {
+        'LocalDb.beats',
+        'LocalDb.firstRow',
+        'LocalDb.stream',
+      },
+    },
+    counts: {HeavyRule.rawReaderUnregistered: 3},
+  ),
 };
 
 void main() {

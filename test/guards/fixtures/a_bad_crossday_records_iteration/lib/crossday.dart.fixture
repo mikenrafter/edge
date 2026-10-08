@@ -1,0 +1,8 @@
+// Config marks this file as a stored-data file (cross-day arrays).
+double meanOf(List<Map<String, dynamic>> days) {
+  var s = 0.0;
+  for (final d in days) {
+    s += (d['x'] as num).toDouble();
+  }
+  return s;
+}

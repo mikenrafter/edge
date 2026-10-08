@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'day_curve_states.dart';
 import 'day_resume_state.dart';
 import 'minute_bills.dart';
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 /// Index of the first element of the ascending [sorted] that is >= [value]
 /// (`sorted.length` when there is none).
@@ -67,6 +69,7 @@ int firstIndexAtOrAfter(List<int> sorted, int value) {
 /// for beats that cannot be folded (unequal lists, a non-finite interval, one
 /// older than the seconds the curves still buffer) and for a base folded under
 /// another quiet cut.
+@heavy
 Uint8List? foldDayCheckpoint({
   required Uint8List? base,
   required int alreadyFolded,
@@ -92,6 +95,7 @@ Uint8List? foldDayCheckpoint({
   int? throughSec,
   double quietCutG = 0.02,
 }) {
+  WorkerAudit.entered('foldDayCheckpoint');
   final DayResumeState state;
   if (base == null) {
     if (alreadyFolded != 0) return null;

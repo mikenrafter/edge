@@ -69,6 +69,9 @@ import 'minute_bills.dart';
 import 'step_cadence.dart';
 import 'profile.dart';
 import 'substrate.dart';
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
+import '../util/worker_entries.dart' show Dispatcher;
 
 /// Analytics/bundle version — bump to force a recompute of non-finalized days.
 /// v3: Walch 2019 stager + 4-class stages (light/deep/rem), robust nocturnal HRV,
@@ -4253,6 +4256,7 @@ class DerivationEngine {
     // never returned and ALL derivation was dead until app restart. Now a
     // worker death fails the future, and the timeout below bounds the wait
     // even if no signal arrives at all.
+    WorkerAudit.dispatched(Dispatcher.spawn, 'derivation prepare');
     final isolate = await Isolate.spawn(
       derivationPrepareWorker,
       port.sendPort,
@@ -6266,8 +6270,9 @@ class DerivationEngine {
     final spans = [
       for (final s in liveSteps.spans) [s.startTs, s.endTs, s.steps],
     ];
+    WorkerAudit.dispatched(Dispatcher.run, 'kcal minutes');
     return Isolate.run(
-      () => kcalMinutesForDay(
+      () => kcalMinutesForDayHeavy(
         daySub: daySub,
         profile: profile,
         nocturnalRhr: stored.rhr,
@@ -6283,7 +6288,8 @@ class DerivationEngine {
   /// prices against the nocturnal resting HR or the one the user entered, never
   /// a daytime fallback. Pure; the offloaded second half and the warmer's
   /// rebuild both go through here so they cannot disagree.
-  static Map<String, dynamic>? kcalMinutesForDay({
+  @heavy
+  static Map<String, dynamic>? kcalMinutesForDayHeavy({
     required Substrate daySub,
     required Profile profile,
     required double? nocturnalRhr,
@@ -6293,6 +6299,7 @@ class DerivationEngine {
     DayCalculationState? state,
     ana.CalculationMode mode = ana.CalculationMode.forced,
   }) {
+    WorkerAudit.entered('kcalMinutesForDayHeavy');
     // Same state and mode as the activity pass, so this is a cache hit rather
     // than a second full ENMO series over the day.
     if (_motionMinutes(daySub, state: state, mode: mode).isEmpty) return null;
@@ -9668,6 +9675,7 @@ class DerivationEngine {
     Duration timeout,
   ) async {
     final port = ReceivePort();
+    WorkerAudit.dispatched(Dispatcher.spawn, 'day blocks');
     final isolate = await Isolate.spawn(
       _dayBlocksIsolateEntry,
       (port.sendPort, input),
@@ -9749,6 +9757,7 @@ class DerivationEngine {
     final port = ReceivePort();
     final (SendPort, FutureOr<Object?> Function()) message =
         (port.sendPort, compute);
+    WorkerAudit.dispatched(Dispatcher.cancellable, label);
     final isolate = await Isolate.spawn(
       _cancellableIsolateEntry,
       message,
@@ -9813,7 +9822,9 @@ class DerivationEngine {
 
   /// `Isolate.spawn` entry point for [_runDayBlocksCancellable]. Must be a
   /// static/top-level function taking exactly one (sendable) argument.
+  @heavy
   static void _dayBlocksIsolateEntry((SendPort, _DayBlocksInput) args) {
+    WorkerAudit.entered('_dayBlocksIsolateEntry');
     final (sendPort, input) = args;
     try {
       // Ownership move, not a copy: see [_cancellableIsolateEntry].
@@ -9832,6 +9843,7 @@ class DerivationEngine {
   /// features, steps/energy). DB reads are performed by the caller and passed
   /// in; DB writes + notifications are returned as descriptors for the caller
   /// to apply.
+  @heavy
   static _DayBlocksOutput _computeDayBlocks(_DayBlocksInput inp) {
     final daySub = inp.daySub;
     final sleepSub = inp.sleepSub;
@@ -10002,7 +10014,7 @@ class DerivationEngine {
       wake: wake,
       // Off the same inputs `applyDayActivity` priced the day from, here in the
       // isolate with them: the minutes sum to the stored active figure.
-      kcalMinutes: kcalMinutesForDay(
+      kcalMinutes: kcalMinutesForDayHeavy(
         daySub: daySub,
         profile: inp.profile,
         nocturnalRhr: inp.rhr,
@@ -10763,7 +10775,7 @@ class _DayBlocksOutput {
   final Map<String, dynamic> scalarPatch;
   final Map<String, dynamic> wake;
 
-  /// The `kcal_minutes|<day>` payload, or null (see `kcalMinutesForDay`).
+  /// The `kcal_minutes|<day>` payload, or null (see `kcalMinutesForDayHeavy`).
   final Map<String, dynamic>? kcalMinutes;
   final List<Map<String, dynamic>> suggestionsToPersist;
   final List<(String, double)> sessionHrrWrites;

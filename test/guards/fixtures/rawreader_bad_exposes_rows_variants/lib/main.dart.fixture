@@ -1,0 +1,23 @@
+// FIXTURE: rawreader_bad_exposes_rows_variants
+
+
+typedef Row = Map<String, Object?>;
+
+class Database {
+  Future<List<Row>> query(String table) async => const [];
+  Future<List<Row>> rawQuery(String sql) async => const [];
+}
+
+class LocalDb {
+  LocalDb(this._db);
+  final Database _db;
+
+  Future<List<Row>> beats() => _db.query('decoded_rr');
+
+  Future<Map<String, Object?>?> firstRow() async =>
+      (await _db.query('decoded_onehz')).first;
+
+  Stream<Row> stream() async* {
+    yield* Stream.fromIterable(await _db.query('raw_records'));
+  }
+}

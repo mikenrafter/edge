@@ -29,6 +29,12 @@ SleepUserProfile? cardioUserProfile;
 bool cardioRecordObservations = false;
 void resetCardioObservations() {}
 
+class Calories {
+  Calories._();
+  /// Bounded scalar math on two arguments: a "light" API.
+  static double? activeGateHr(double hrmax, double restingHr) => hrmax - restingHr;
+}
+
 // Compute APIs.
 Metric readinessCompute(List<double> hr) => Metric(hr.isEmpty ? null : hr.first);
 List<int> stageSleep(List<double> hr) => const [];

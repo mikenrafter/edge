@@ -17,7 +17,8 @@
 // Regenerate (shrinking, or the first time):
 //   HEAVY_GUARD_WRITE_BASELINE=1 flutter test test/guards/heavy_calc_guard_test.dart \
 //       --plain-name 'write baseline'
-// Refuses to write a baseline that grows an existing one.
+// Refuses to write a baseline that grows an existing one (HEAVY_GUARD_WRITE_BASELINE=grow
+// overrides, for a deliberate rule extension).
 
 @Timeout(Duration(minutes: 10))
 library;
@@ -168,7 +169,10 @@ void main() {
     () async {
       final file = File('$repoRoot/$_baselinePath');
       final fresh = HeavyBaseline.fromViolations((await analysis()).violations);
-      if (file.existsSync()) {
+      // `=grow` is for a deliberate rule extension (new stored-data findings,
+      // newly registered entries); the PR must say which rules grew and why.
+      if (file.existsSync() &&
+          Platform.environment['HEAVY_GUARD_WRITE_BASELINE'] != 'grow') {
         final old = HeavyBaseline.fromJson(
           (jsonDecode(file.readAsStringSync()) as Map).cast<String, Object?>(),
         );
@@ -179,7 +183,8 @@ void main() {
       file.writeAsStringSync(
           '${const JsonEncoder.withIndent('  ').convert(fresh.toJson())}\n');
     },
-    skip: Platform.environment['HEAVY_GUARD_WRITE_BASELINE'] == '1'
+    skip: const ['1', 'grow']
+            .contains(Platform.environment['HEAVY_GUARD_WRITE_BASELINE'])
         ? false
         : 'set HEAVY_GUARD_WRITE_BASELINE=1 to (re)generate the baseline',
   );

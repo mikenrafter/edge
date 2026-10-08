@@ -61,7 +61,17 @@ enum HeavyRule {
   // sendable grammar
   /// `dynamic` / `Object` / `Object?` / non-sendable type anywhere (transitively)
   /// in a worker entry's argument or result type, without `@SendableShape`.
-  sendableGrammar(baselineable: false),
+  /// Baselineable: the entries that exist today take `Map<String, dynamic>` and
+  /// plain classes; new entries must not add to the ledger.
+  sendableGrammar(baselineable: true),
+
+  /// A registered entry that is not a top-level or static function.
+  workerEntryNotStatic(baselineable: false),
+
+  /// A registered entry whose body does not START with `WorkerInit.ensure(…)`
+  /// or `assertWorker()`. Baselineable: the legacy entries cannot be given
+  /// their inputs without a behaviour change.
+  workerEntryNotInitialised(baselineable: true),
 
   /// `@SendableShape` type without a `sendable_<entry>_test.dart` round trip.
   sendableShapeTestMissing(baselineable: false),
@@ -159,6 +169,14 @@ class OriginAllow {
   const OriginAllow(this.symbol, this.element, this.reason);
 }
 
+/// A reasoned exemption for an analytics API that is bounded scalar math
+/// (a "light" API), by element label (`Calories.activeGateHr`, `needBaselineNote`).
+class LightApi {
+  final String element;
+  final String reason;
+  const LightApi(this.element, this.reason);
+}
+
 class HeavyGuardConfig {
   /// Absolute path of the package under analysis (has `.dart_tool/package_config.json`).
   final String packageRoot;
@@ -185,6 +203,25 @@ class HeavyGuardConfig {
   final List<OriginAllow> nameAllow;
   final List<String> skipFilePrefixes;
 
+  /// Types whose List / typed-data sample fields are STORED DATA: iterating them
+  /// outside `@heavy` is a `heavyOriginOutsideHeavy` finding.
+  final Set<String> storedDataTypes;
+
+  /// Files (relative to lib/) where iterating a `List<Map<…>>` of day records is
+  /// stored-data iteration (cross-day arrays).
+  final List<String> storedDataFiles;
+
+  /// Analytics APIs that are bounded scalar math: exempt from the origin rule.
+  final List<LightApi> lightApi;
+
+  // DESIGN NOTE (step 1, Sol r1 P2): worker-local constructors such as
+  // `File(path)` inside a dispatcher closure are deliberately NOT exempted. The
+  // closed sendable grammar has no File type, and the clean fix is an entry that
+  // takes the PATHS (Strings) and builds its Files inside the worker, which
+  // changes the entry signatures (production). Until then the four `File(...)`
+  // closure findings (backup encrypt/decrypt call sites) stay in the baseline,
+  // where they can only shrink.
+
   /// When set, all packages under this directory share one analysis collection
   /// (fixture worlds: dozens of tiny packages, one SDK load).
   final String? contextGroup;
@@ -200,6 +237,9 @@ class HeavyGuardConfig {
     this.originAllow = const [],
     this.nameAllow = const [],
     this.skipFilePrefixes = const [],
+    this.storedDataTypes = const {},
+    this.storedDataFiles = const [],
+    this.lightApi = const [],
     this.contextGroup,
   });
 
@@ -224,6 +264,19 @@ class HeavyGuardConfig {
     'raw_records',
     'raw_archive',
   };
+
+  static const _lightApi = [
+    LightApi('Calories.activeGateHr', 'O(1) scalar math on two numbers'),
+    LightApi('Calories.activeKcalPerS', 'O(1) scalar math on a few numbers'),
+    LightApi('Calories.restingKcalPerS', 'O(1) scalar math on a few numbers'),
+    LightApi('Calories.resolveCoeffs', 'picks a constant coefficient set by sex'),
+    LightApi('HeartRateZoneSet.zoneNumber', 'bounded lookup in a 5-zone table'),
+    LightApi('HeartRateZones.zonesFromMaxHr', 'builds a fixed 5-zone table'),
+    LightApi('HeartRateZones.reserveZones', 'builds a fixed 5-zone table'),
+    LightApi('unknownFamilyNote', 'formats one string'),
+    LightApi('needBaselineNote', 'formats one string'),
+    LightApi('StrainScorer.banisterY', 'O(1) scalar math'),
+  ];
 
   /// The real `lib/` of this repo.
   factory HeavyGuardConfig.edge(String repoRoot) => HeavyGuardConfig(
@@ -269,8 +322,82 @@ class HeavyGuardConfig {
             'asks the scheduler for a heavy derive pass; it enqueues, it does '
                 'not compute (unrelated to @heavy)',
           ),
+          OriginAllow(
+            'deriveDayBundle',
+            'deriveDayBundle',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'buildCrossDayBundle',
+            'buildCrossDayBundle',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'foldDayCheckpoint',
+            'foldDayCheckpoint',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'derivationPrepareWorker',
+            'derivationPrepareWorker',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'DerivationEngine._dayBlocksIsolateEntry',
+            '_dayBlocksIsolateEntry',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'DerivationEngine._computeDayBlocks',
+            '_computeDayBlocks',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'observeNaturalSync',
+            'observeNaturalSync',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'encryptBackupFile',
+            'encryptBackupFile',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
+          OriginAllow(
+            'decryptBackupFile',
+            'decryptBackupFile',
+            'registered legacy worker entry: the public name is used by tests, '
+                'other libraries or source-text wiring tests; renaming is '
+                'production churn',
+          ),
         ],
         skipFilePrefixes: const ['l10n/app_localizations'],
+        storedDataTypes: const {
+          'Substrate',
+          'DayBundleInput',
+          'PreparedDerivationDay',
+          'PreparedDerivationPayload',
+        },
+        storedDataFiles: const [
+          'compute/crossday_pipeline.dart',
+          'compute/crossday_input.dart',
+        ],
+        lightApi: _lightApi,
       );
 
   /// A synthetic fixture package materialised by `FixtureWorld`.
@@ -294,6 +421,12 @@ class HeavyGuardConfig {
         originAllow: const [
           OriginAllow('Arm.arm', 'resetCardioObservations', 'fixture allow-list'),
         ],
+        nameAllow: const [
+          OriginAllow('legacyDerive', 'legacyDerive', 'fixture: widely used name'),
+        ],
+        storedDataTypes: const {'Substrate'},
+        storedDataFiles: const ['crossday.dart'],
+        lightApi: const [LightApi('Calories.activeGateHr', 'fixture: scalar math')],
         contextGroup: Directory(fixtureRoot).parent.path,
       );
 }

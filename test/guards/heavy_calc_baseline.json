@@ -123,13 +123,6 @@
     {
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._foldCheckpoint",
-      "element": "foldDayCheckpoint",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._foldTail",
       "element": "DayCurveStates.continuesWith",
       "count": 1
@@ -200,13 +193,6 @@
     {
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._loadSubstrateRange",
-      "element": "derivationPrepareWorker",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._refreshCrossDayInputArtifact",
       "element": "DerivationEngine._crossDayRecord",
       "count": 1
@@ -229,13 +215,6 @@
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._runCrossDayUntimed",
-      "element": "buildCrossDayBundle",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runCrossDayUntimed",
       "element": "jsonEncode",
       "count": 1
     },
@@ -249,22 +228,8 @@
     {
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runDayBlocksCancellable",
-      "element": "DerivationEngine._dayBlocksIsolateEntry",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._runDayBundleCancellable",
       "element": "DayCalculationState.new",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._runDayBundleCancellable",
-      "element": "deriveDayBundle",
       "count": 1
     },
     {
@@ -354,22 +319,8 @@
     {
       "rule": "dispatcherClosureContract",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine.kcalMinutesForStoredDay",
-      "element": "DerivationEngine.kcalMinutesForDay",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "compute/derivation_engine.dart",
       "symbol": "runCancellableIsolate",
       "element": "compute",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.reencodeLegacyDayResults",
-      "element": "_reencodeBatch",
       "count": 1
     },
     {
@@ -377,13 +328,6 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._numericJournalInsights",
       "element": "journalNumericCorrelations",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl.breathingCoherence",
-      "element": "_breathingCoherenceCompute",
       "count": 1
     },
     {
@@ -409,20 +353,6 @@
     },
     {
       "rule": "dispatcherClosureContract",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl.spotCheck",
-      "element": "_spotCheckCompute",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "sync/dev_log_export.dart",
-      "symbol": "_zipOffIsolate",
-      "element": "_writeZip",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
       "file": "ui2/onboarding/welcome.dart",
       "symbol": "decryptToTemp",
       "element": "File.new",
@@ -430,37 +360,37 @@
     },
     {
       "rule": "dispatcherClosureContract",
-      "file": "ui2/onboarding/welcome.dart",
-      "symbol": "decryptToTemp",
-      "element": "decryptBackupFile",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
       "file": "ui2/profile/data.dart",
       "symbol": "_DataScreenState._exportEncrypted",
       "element": "File.new",
       "count": 2
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "ui2/profile/data.dart",
-      "symbol": "_DataScreenState._exportEncrypted",
-      "element": "encryptBackupFile",
-      "count": 1
-    },
-    {
-      "rule": "dispatcherClosureContract",
-      "file": "wake/natural_wake.dart",
-      "symbol": "IsolateNaturalStageObserver.observe",
-      "element": "observeNaturalSync",
-      "count": 1
     },
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/crossday_input.dart",
       "symbol": "assembleCrossDayInput",
       "element": "SeriesCodec.decodePayloadJson",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/crossday_input.dart",
+      "symbol": "assembleCrossDayInput",
+      "element": "day records",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/crossday_input.dart",
+      "symbol": "crossDayDaysToRead",
+      "element": "day records",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/crossday_input.dart",
+      "symbol": "crossDayInputCurrent",
+      "element": "day records",
       "count": 1
     },
     {
@@ -502,8 +432,15 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/crossday_pipeline.dart",
       "symbol": "_crossDayCircadian",
-      "element": "needBaselineNote",
-      "count": 2
+      "element": "day records",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/crossday_pipeline.dart",
+      "symbol": "_crossDaySri",
+      "element": "day records",
+      "count": 1
     },
     {
       "rule": "heavyOriginOutsideHeavy",
@@ -532,244 +469,6 @@
       "symbol": "_pctOfYou",
       "element": "percentileOfYou",
       "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "AnomalyDay.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "BedtimeRec.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "BrvResult.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "Chronotype.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "GlassBoxReadiness.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "IllnessDay.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "LoadState.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "Metric.toJson",
-      "count": 14
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "OverreachingConjunction.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "SessionMorningEffect.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "SleepDebt.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "SleepNeed.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "SleepPerformance.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "SocialJetlag.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "SriResult.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "StrainTarget.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "TempIllnessDay.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "WakeRec.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "breathingRateVariability",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "chronotype",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "ctlAtlTsb",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "glassBoxReadiness",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "illnessCusum",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "multivariateAnomaly",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "overreachingConjunction",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "recommendedBedtime",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "recommendedWake",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "sessionMorningEffects",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "sleepDebt",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "sleepNeed",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "sleepPerformance",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "socialJetlag",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "strainTarget",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/crossday_pipeline.dart",
-      "symbol": "buildCrossDayBundle",
-      "element": "tempIllnessFlag",
-      "count": 1
     },
     {
       "rule": "heavyOriginOutsideHeavy",
@@ -901,6 +600,13 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._attachNaps",
+      "element": "Substrate.hr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._attachNaps",
       "element": "detectNaps",
       "count": 1
     },
@@ -909,6 +615,13 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._attachWristOrientation",
       "element": "positionSeries",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._buildWakeDayFeatures",
+      "element": "Substrate.hr",
       "count": 1
     },
     {
@@ -930,13 +643,6 @@
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._buildWakeDayFeatures",
       "element": "strainScoreMetric",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._buildWakeDayFeatures",
-      "element": "unknownFamilyNote",
       "count": 1
     },
     {
@@ -978,14 +684,14 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._daytimeHrv",
-      "element": "calibrationFor",
+      "element": "Substrate.rrMs",
       "count": 1
     },
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._daytimeHrv",
-      "element": "unknownFamilyNote",
+      "element": "calibrationFor",
       "count": 1
     },
     {
@@ -1069,6 +775,34 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._refreshCheckpoint",
+      "element": "Substrate.ax",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCheckpoint",
+      "element": "Substrate.ay",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCheckpoint",
+      "element": "Substrate.az",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCheckpoint",
+      "element": "Substrate.hr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._refreshCheckpoint",
       "element": "calibrationFor",
       "count": 1
     },
@@ -1146,6 +880,34 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._streamDayTail",
+      "element": "Substrate.ax",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._streamDayTail",
+      "element": "Substrate.ay",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._streamDayTail",
+      "element": "Substrate.az",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._streamDayTail",
+      "element": "Substrate.tsSec",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine._streamDayTail",
       "element": "calibrationFor",
       "count": 1
     },
@@ -1160,14 +922,49 @@
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
       "symbol": "DerivationEngine._wakeZoneMinutes",
-      "element": "HeartRateZones.zonesFromMaxHr",
+      "element": "TimeInHeartRateZone.toRoundedMinuteMap",
       "count": 1
     },
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/derivation_engine.dart",
-      "symbol": "DerivationEngine._wakeZoneMinutes",
-      "element": "TimeInHeartRateZone.toRoundedMinuteMap",
+      "symbol": "DerivationEngine.dayHrvCurve",
+      "element": "Substrate.rrMs",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.dayRespCurve",
+      "element": "Substrate.ax",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.dayRespCurve",
+      "element": "Substrate.ay",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.dayRespCurve",
+      "element": "Substrate.az",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.dayRespCurve",
+      "element": "Substrate.rrMs",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/derivation_engine.dart",
+      "symbol": "DerivationEngine.dayRespCurve",
+      "element": "Substrate.tsSec",
       "count": 1
     },
     {
@@ -1207,20 +1004,6 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/hr_max.dart",
-      "symbol": "trainingZones",
-      "element": "HeartRateZones.reserveZones",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/hr_max.dart",
-      "symbol": "trainingZones",
-      "element": "HeartRateZones.zonesFromMaxHr",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "compute/kcal_minutes.dart",
       "symbol": "buildKcalMinutes",
       "element": "Calories.minuteEnergy",
@@ -1249,20 +1032,6 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/manual_session.dart",
-      "symbol": "zoneMinutesFor",
-      "element": "HeartRateZoneSet.zoneNumber",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/manual_session.dart",
-      "symbol": "zoneMinutesFor",
-      "element": "HeartRateZones.zonesFromMaxHr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "compute/minute_bills.dart",
       "symbol": "MinuteBills.toMetrics",
       "element": "IncrementalMinuteMetrics.fromJson",
@@ -1271,15 +1040,22 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/onehz_pipeline.dart",
-      "symbol": "_respPerWindow",
-      "element": "rsaRespRate",
+      "symbol": "_dayHrOutsideSleep",
+      "element": "DayBundleInput.dayHr",
+      "count": 2
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/onehz_pipeline.dart",
+      "symbol": "_perMinuteWakeSeries",
+      "element": "DayBundleInput.dayHr",
       "count": 1
     },
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "compute/onehz_pipeline.dart",
-      "symbol": "_strainCurve",
-      "element": "StrainScorer.banisterY",
+      "symbol": "_respPerWindow",
+      "element": "rsaRespRate",
       "count": 1
     },
     {
@@ -1305,359 +1081,163 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "_zoneTimeline",
-      "element": "HeartRateZoneSet.zoneNumber",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "BaselineState.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "Baselines.deviation",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "Baselines.foldHistory",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "BrvResult.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "Calories.dailyEnergy",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "CvhrResult.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "HrDip.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "HrvFreq.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "HrvTime.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "IrregularRhythm.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "Metric.toJson",
-      "count": 18
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "NightHrvShape.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "NocturnalRhr.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "PrsaResult.toJson",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "Readiness.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "ReadinessLnRmssd.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "RelativeOdiResult.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "RespEstimate.toJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "SleepCyclesResult.toJson",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "accelerationCapacity",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "baevskyStressIndex",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "banisterTrimp",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "breathingRateVariability",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "correctRr",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "cvhrApneaScreen",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "decelerationCapacity",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "detectSleepCycles",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "hrDip",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "hrDipFromDayTotals",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "hrvFreq",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "hrvInput",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "hrvTime",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "irregularBeatScreen",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "mdc",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "needBaselineNote",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "nightHrvShape",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "nightlySkinTemp",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "nocturnalRhr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "nocturnalRmssd",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "readinessComposite",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "readinessLnRmssd",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "respInput",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "rhrInput",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "rsaRespRate",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "sleepCyclesMetric",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "sleepSessionWindowedRmssd",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "strainScoreMetric",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "tempInput",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "unknownFamilyNote",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "compute/strain_backfill.dart",
       "symbol": "rescaledStrain",
       "element": "strainScore",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate._filterRr",
+      "element": "Substrate.rrMs",
+      "count": 2
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.accelSamples",
+      "element": "Substrate.tsSec",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.hr1hz",
+      "element": "Substrate.hr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.ax",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.ay",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.az",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.hr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.skinContact",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.skinTemp",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.spo2Ir",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.spo2Red",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.sliceIdx",
+      "element": "Substrate.tsSec",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.ax",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.ay",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.az",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.hr",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.skinContact",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.skinTemp",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.spo2Ir",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.spo2Red",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "Substrate.slice",
+      "element": "Substrate.tsSec",
+      "count": 1
+    },
+    {
+      "rule": "heavyOriginOutsideHeavy",
+      "file": "compute/substrate.dart",
+      "symbol": "calendarDays",
+      "element": "Substrate.rrMs",
       "count": 1
     },
     {
@@ -1718,27 +1298,6 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "_reencodeBatch",
-      "element": "SeriesCodec.encodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "_reencodeBatch",
-      "element": "SeriesCodec.needsReencode",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "_reencodeBatch",
-      "element": "SeriesCodec.verifyLossless",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._decode",
       "element": "SeriesCodec.decodePayloadJson",
@@ -1761,13 +1320,6 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl._intensity28d",
-      "element": "HeartRateZoneSet.zoneNumber",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._numericJournalInsights",
       "element": "journalNumericCorrelations",
       "count": 1
@@ -1777,13 +1329,6 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._submaxVo2maxFromSplits",
       "element": "vo2maxSubmaxEstimate",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl._zoneBands",
-      "element": "HeartRateZoneSet.zoneNumber",
       "count": 1
     },
     {
@@ -1833,41 +1378,6 @@
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl.getZones",
       "element": "calibrationFor",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl.getZones",
-      "element": "unknownFamilyNote",
-      "count": 2
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "_breathingCoherenceCompute",
-      "element": "cardiacCoherence",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "_breathingCoherenceCompute",
-      "element": "correctRr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "_spotCheckCompute",
-      "element": "correctRr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "_spotCheckCompute",
-      "element": "hrvTime",
       "count": 1
     },
     {
@@ -1924,13 +1434,6 @@
       "file": "data/series_codec.dart",
       "symbol": "SeriesCodec.verifyLossless",
       "element": "SeriesCodec.encodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "gps/route_math.dart",
-      "symbol": "zoneForHr",
-      "element": "HeartRateZoneSet.zoneNumber",
       "count": 1
     },
     {
@@ -1998,48 +1501,6 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "state/workout_controller.dart",
-      "symbol": "LiveWorkoutState._scoreCalories",
-      "element": "Calories.activeGateHr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "state/workout_controller.dart",
-      "symbol": "LiveWorkoutState._scoreCalories",
-      "element": "Calories.activeKcalPerS",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "state/workout_controller.dart",
-      "symbol": "LiveWorkoutState._scoreCalories",
-      "element": "Calories.resolveCoeffs",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "state/workout_controller.dart",
-      "symbol": "LiveWorkoutState._scoreCalories",
-      "element": "Calories.restingKcalPerS",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController._tickWorkout",
-      "element": "Calories.activeGateHr",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "state/workout_controller.dart",
-      "symbol": "WorkoutController._zoneFor",
-      "element": "HeartRateZoneSet.zoneNumber",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "ui2/screens/circadian_detail.dart",
       "symbol": "CircadianData.fromArtifact",
       "element": "alertnessForecast",
@@ -2102,220 +1563,10 @@
       "count": 1
     },
     {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "wake/natural_wake.dart",
-      "symbol": "observeNaturalSync",
-      "element": "CausalStager.observe",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "wake/natural_wake.dart",
-      "symbol": "observeNaturalSync",
-      "element": "CausalStagerState.fromJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "wake/natural_wake.dart",
-      "symbol": "observeNaturalSync",
-      "element": "CausalStagerState.toJson",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._addRecTsColumn",
-      "element": "raw_records",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._backfillDecodedStore",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._backfillDeviceCoverage",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._backfillRecTs",
-      "element": "raw_records",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._commitSyncBatchLocked",
-      "element": "raw_archive",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._createDecodedStore",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._createInputRev",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._createRawArchive",
-      "element": "raw_archive",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._createRaw",
-      "element": "raw_records",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._dbstatAvailable",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._dropRawStore",
-      "element": "raw_records",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._ensureBeatTimeColumn",
-      "element": "decoded_rr",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._ensureDecodedOneHzBandFields",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._ensureDeviceFamilyColumns",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._ensureSourceColumns",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
       "symbol": "LocalDb._mergeFromDbFile",
       "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._open",
-      "element": "raw_records",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._queueDecodedOneHz",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._queueNeutralOneHz",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._queueRrBeats",
-      "element": "decoded_rr",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._rebuildCanonicalDecodedStore",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._rekeyDecodedStoreByRecTs",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._rekeyStoresByDeviceId",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._relaxDecodedHrNull",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._relaxDecodedSensorNulls",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._retireDisprovenOneHzColumns",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb._thinRawArchiveVia",
-      "element": "raw_archive",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.archiveRawRecord",
-      "element": "raw_archive",
       "count": 1
     },
     {
@@ -2370,49 +1621,7 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb.decodedWindowFingerprint",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.deleteDays",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.exportDaysDb",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.firstAndLastRecordTs",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.hrSamplesInRange",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.lastDecodedRecTs",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.latestSample",
       "element": "decoded_onehz",
       "count": 1
     },
@@ -2440,13 +1649,6 @@
     {
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
-      "symbol": "LocalDb.pruneDecodedBeforeRecTs",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
       "symbol": "LocalDb.rawArchiveStats",
       "element": "raw_archive",
       "count": 1
@@ -2455,20 +1657,6 @@
       "rule": "rawReaderUnregistered",
       "file": "data/db.dart",
       "symbol": "LocalDb.rawStats",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.redriveArchivedRecords",
-      "element": "decoded_onehz",
-      "count": 1
-    },
-    {
-      "rule": "rawReaderUnregistered",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.refreshComputeFreshness",
       "element": "decoded_onehz",
       "count": 1
     },
@@ -2505,6 +1693,76 @@
       "file": "data/db.dart",
       "symbol": "LocalDb.sessionHrStats",
       "element": "decoded_onehz",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "DerivationEngine._dayBlocksIsolateEntry",
+      "element": "not sendable: _DayBlocksInput",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "DerivationEngine.kcalMinutesForDayHeavy",
+      "element": "not sendable: Substrate",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "_breathingCoherenceComputeHeavy",
+      "element": "dynamic",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "_spotCheckComputeHeavy",
+      "element": "dynamic",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "buildCrossDayBundle",
+      "element": "dynamic",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "decryptBackupFile",
+      "element": "not sendable: File",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "deriveDayBundle",
+      "element": "dynamic",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "encryptBackupFile",
+      "element": "not sendable: File",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "foldDayCheckpoint",
+      "element": "not sendable: MinuteBills?",
+      "count": 1
+    },
+    {
+      "rule": "sendableGrammar",
+      "file": "util/worker_entries.dart",
+      "symbol": "observeNaturalSync",
+      "element": "not sendable: NaturalObserveRequest",
       "count": 1
     },
     {
@@ -5642,13 +4900,6 @@
       "symbol": "DeriveScheduler.setWorkoutActive",
       "element": "onChanged()",
       "count": 3
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "compute/onehz_pipeline.dart",
-      "symbol": "deriveDayBundle",
-      "element": "calculate()",
-      "count": 1
     },
     {
       "rule": "unresolvedInvocation",
@@ -13831,6 +13082,97 @@
       "file": "wake/wake_trace_text.dart",
       "symbol": "describeWakeTrace",
       "element": "where(e)",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "DerivationEngine._dayBlocksIsolateEntry",
+      "element": "_dayBlocksIsolateEntry",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "DerivationEngine.kcalMinutesForDayHeavy",
+      "element": "kcalMinutesForDayHeavy",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "_breathingCoherenceComputeHeavy",
+      "element": "_breathingCoherenceComputeHeavy",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "_reencodeBatchHeavy",
+      "element": "_reencodeBatchHeavy",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "_spotCheckComputeHeavy",
+      "element": "_spotCheckComputeHeavy",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "_writeZipHeavy",
+      "element": "_writeZipHeavy",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "buildCrossDayBundle",
+      "element": "buildCrossDayBundle",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "decryptBackupFile",
+      "element": "decryptBackupFile",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "derivationPrepareWorker",
+      "element": "derivationPrepareWorker",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "deriveDayBundle",
+      "element": "deriveDayBundle",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "encryptBackupFile",
+      "element": "encryptBackupFile",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "foldDayCheckpoint",
+      "element": "foldDayCheckpoint",
+      "count": 1
+    },
+    {
+      "rule": "workerEntryNotInitialised",
+      "file": "util/worker_entries.dart",
+      "symbol": "observeNaturalSync",
+      "element": "observeNaturalSync",
       "count": 1
     }
   ]
