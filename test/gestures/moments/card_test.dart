@@ -109,8 +109,10 @@ void main() {
   });
 
   group('the card is laid out like a community card, minus the controls', () {
-    Future<void> both(WidgetTester t) => _pump(t,
-        momentFollowUpCardFor(enabled: true, moments: 3, assumedWater: 2));
+    Future<void> both(WidgetTester t) => _pump(
+        t,
+        momentFollowUpCardFor(
+            enabled: true, moments: 3, assumedWater: 2, onAnswer: () {}));
 
     testWidgets('a Surface holds the lines and the button', (t) async {
       await both(t);
@@ -172,10 +174,15 @@ void main() {
               (w.properties.label == 'Not now' ||
                   w.properties.label == "Don't show this again")),
           findsNothing);
-      // The only pressable thing in the card is its Answer button.
+      // The only tappable thing in the card is its Answer button (the Surface
+      // wraps itself in an inert Pressable with no onTap).
+      final tappable = find.descendant(
+          of: find.byType(Surface),
+          matching: find.byWidgetPredicate(
+              (w) => w is Pressable && w.onTap != null));
+      expect(tappable, findsOneWidget);
       expect(
-          find.descendant(
-              of: find.byType(Surface), matching: find.byType(Pressable)),
+          find.descendant(of: find.byKey(_answerKey), matching: tappable),
           findsOneWidget);
     });
   });

@@ -2397,7 +2397,6 @@
   "momentChoiceSymptom": "Symptôme",
   "momentChoiceOther": "Autre",
   "momentChoiceWater": "Eau",
-  "momentFollowUpCardTitle": "{n, plural, one{{n} élément à vérifier — moments marqués et eau supposée} other{{n} éléments à vérifier — moments marqués et eau supposée}}",
   "momentFollowUpMomentsLine": "{n, plural, one{{n} moment marqué} other{{n} moments marqués}}",
   "momentFollowUpAssumedWaterLine": "{n, plural, one{{n} eau supposée} other{{n} eau supposée}}",
   "momentFollowUpAnswer": "Répondre",

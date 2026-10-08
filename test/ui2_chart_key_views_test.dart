@@ -2,7 +2,7 @@
 // chart's own key. Synthetic fixtures; no device or personal data.
 //
 //   • day_hr_gaps      the day heart-rate chart with a hole in it: Movement,
-//                      Heart rate, Asleep, Workout and "Not recorded", with the
+//                      Heart rate, Workout and "Not recorded" (the night is no longer a key), with the
 //                      latest values under each.
 //   • day_hr_no_gaps   a fully worn day: no "Not recorded" key at all.
 //   • day_hr_on_gap    the finger on the hole: every series "—", and "Not

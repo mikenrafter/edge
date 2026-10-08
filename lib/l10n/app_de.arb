@@ -2397,7 +2397,6 @@
   "momentChoiceSymptom": "Symptom",
   "momentChoiceOther": "Sonstiges",
   "momentChoiceWater": "Wasser",
-  "momentFollowUpCardTitle": "{n, plural, one{{n} Sache zu prüfen — markierte Momente und angenommenes Wasser} other{{n} Sachen zu prüfen — markierte Momente und angenommenes Wasser}}",
   "momentFollowUpMomentsLine": "{n, plural, one{{n} markierter Moment} other{{n} markierte Momente}}",
   "momentFollowUpAssumedWaterLine": "{n, plural, one{{n} angenommenes Wasser} other{{n} angenommenes Wasser}}",
   "momentFollowUpAnswer": "Antworten",

@@ -73,7 +73,7 @@ void main() {
     databaseFactory = databaseFactoryFfi;
     SharedPreferences.setMockInitialValues({});
   });
-  setUp(() => CommunityNudge.debugNowMs = () => _t0);
+  setUp(() => CommunityNudge.debugNowMs = _t0);
   tearDown(() => CommunityNudge.debugNowMs = null);
 
   group('the preference', () {
@@ -173,11 +173,11 @@ void main() {
       await _seed(t, {Prefs.reviveCommunityCards: false});
       await _pumpNudge(t, dev: true);
       expect(_discord, findsOneWidget);
-      CommunityNudge.debugNowMs = () => _t0 + 2 * _day;
+      CommunityNudge.debugNowMs = _t0 + 2 * _day;
       await t.pumpWidget(const SizedBox());
       await _pumpNudge(t, dev: true);
       expect(_discord, findsNothing);
-      CommunityNudge.debugNowMs = () => _t0 + 15 * _day;
+      CommunityNudge.debugNowMs = _t0 + 15 * _day;
       await t.pumpWidget(const SizedBox());
       await _pumpNudge(t, dev: true);
       expect(_discord, findsOneWidget);

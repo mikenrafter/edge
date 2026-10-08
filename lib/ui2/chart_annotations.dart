@@ -17,7 +17,9 @@
 //    icon (never clustered, with journal items or other marks) but is nudged
 //    like any other icon.
 //  • The label of the focused item is drawn in ONE fixed place; it never
-//    follows the finger.
+//    follows the finger. With nothing focused that place says the main sleep's
+//    label (when there is one on the chart).
+//  • The main sleep has priority: never in a "+n", the last icon given up.
 //  • Absent is absent: nothing outside the plot, nothing non-finite and no
 //    range with a nonsense end is ever drawn or invented.
 //  • The positions are in the chart's own x domain (epoch seconds, slot index),
@@ -45,8 +47,6 @@ enum AnnotationKind {
   /// 2026-10-08). The one kind with PRIORITY: never folded into a "+n" cluster,
   /// never the icon given up first, and its label is the lane's default label
   /// while nothing is focused.
-  // STUB (RED phase): the value, icon and colour exist; the layout does not
-  // give it priority yet.
   mainSleep,
 
   /// A nap/workout range created by the marked-moment review.
@@ -242,7 +242,8 @@ class AnnotationLayout {
   /// The annotation that is focused, or null.
   final String? focusedId;
 
-  /// The static label's text — the focused annotation's label, else null.
+  /// The static label's text — the focused annotation's label, else the main
+  /// sleep's label when one is on the chart, else null.
   final String? labelText;
   final AnnotationLabelSlot labelSlot;
 }
@@ -264,8 +265,13 @@ class _Vis {
 
   bool get isRange => right != null;
 
-  /// Ranges and version marks keep their own icon: they never cluster.
-  bool get solo => isRange || a.kind == AnnotationKind.algoVersion;
+  /// Ranges, version marks and the main sleep keep their own icon: they never
+  /// cluster. The main sleep is solo even as a point (a night with no usable
+  /// end), where a plain point would fold into a neighbour's "+n".
+  bool get solo =>
+      isRange ||
+      a.kind == AnnotationKind.algoVersion ||
+      a.kind == AnnotationKind.mainSleep;
 }
 
 int _byTime(ChartAnnotation a, ChartAnnotation b) {
@@ -362,13 +368,16 @@ AnnotationLayout layoutAnnotations({
   }
 
   // Still no room: give up icons from the right (never the focused one while
-  // another can go). Their ids are reported, and a range keeps its shade.
+  // another can go, and the main sleep only after every other icon). Their ids
+  // are reported, and a range keeps its shade.
   final unplaced = <String>[];
+  bool holdsFocus(_Icon i) => i.members.any((m) => m.a.id == focusedId);
+  bool holdsNight(_Icon i) =>
+      i.members.any((m) => m.a.kind == AnnotationKind.mainSleep);
   while (!_place(icons, scale.width, scale.iconWidth)) {
-    var drop = icons.length - 1;
-    while (drop > 0 && icons[drop].members.any((m) => m.a.id == focusedId)) {
-      drop--;
-    }
+    var drop = icons.lastIndexWhere((i) => !holdsFocus(i) && !holdsNight(i));
+    if (drop < 0) drop = icons.lastIndexWhere((i) => !holdsFocus(i));
+    if (drop < 0) drop = 0;
     unplaced.addAll([for (final m in icons[drop].members) m.a.id]);
     icons.removeAt(drop);
   }
@@ -405,7 +414,14 @@ AnnotationLayout layoutAnnotations({
     ],
     unplaced: unplaced,
     focusedId: focusedId,
-    labelText: focusedId == null ? null : byId[focusedId]!.a.label,
+    labelText: focusedId != null
+        ? byId[focusedId]!.a.label
+        // Nothing focused: the night's own label is the default, if the night
+        // is on the chart at all. Never invented.
+        : [
+            for (final v in vis)
+              if (v.a.kind == AnnotationKind.mainSleep) v.a.label
+          ].firstOrNull,
   );
 }
 

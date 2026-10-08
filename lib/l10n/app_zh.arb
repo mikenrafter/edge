@@ -2397,7 +2397,6 @@
   "momentChoiceSymptom": "症状",
   "momentChoiceOther": "其他",
   "momentChoiceWater": "饮水",
-  "momentFollowUpCardTitle": "{n, plural, other{有 {n} 项待查看——标记的时刻和假定的饮水}}",
   "momentFollowUpMomentsLine": "{n, plural, other{{n} 个标记的时刻}}",
   "momentFollowUpAssumedWaterLine": "{n, plural, other{{n} 项假定的饮水}}",
   "momentFollowUpAnswer": "回答",

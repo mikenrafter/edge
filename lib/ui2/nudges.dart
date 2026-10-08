@@ -23,13 +23,13 @@ class CommunityNudge extends StatefulWidget {
   @visibleForTesting
   static void debugResetSession() => _CommunityNudgeState._sessionHidden.clear();
 
-  /// Test seam: the clock the cooldown and "last shown" stamp read, epoch
-  /// milliseconds. Null (the default) is the real clock.
+  /// Test seam: "now" for the cooldown and the "last shown" stamp, epoch
+  /// milliseconds. Null (the default) is the real clock. A value, not a
+  /// callback: the heavy-work guard rejects calling a function-typed variable.
   @visibleForTesting
-  static int Function()? debugNowMs;
+  static int? debugNowMs;
 
-  static int _nowMs() => (debugNowMs ?? _systemNowMs)();
-  static int _systemNowMs() => DateTime.now().millisecondsSinceEpoch;
+  static int _nowMs() => debugNowMs ?? DateTime.now().millisecondsSinceEpoch;
 
   @override
   State<CommunityNudge> createState() => _CommunityNudgeState();
@@ -56,8 +56,10 @@ class _CommunityNudgeState extends State<CommunityNudge> {
     if (_sessionHidden.contains(a.name)) return false;
     // Developer mode is someone deliberately testing the app, not a real
     // reader being nagged — silencing or a cooldown here would just make
-    // this unreachable on every build after the first tap.
-    if (devMode) return true;
+    // this unreachable on every build after the first tap. That is the default
+    // of the "Revive community cards" developer setting; switched off, developer
+    // mode is held to the stored dismissal and the cooldown like anyone else.
+    if (devMode && Prefs.reviveCommunityCardsOn) return true;
     if (Prefs.getBool(_dismissedKey(a), false)) return false;
     final last = Prefs.getInt(_lastShownKey(a), 0);
     return CommunityNudge._nowMs() - last > _cooldownMs;

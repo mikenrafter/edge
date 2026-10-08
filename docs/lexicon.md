@@ -41,6 +41,7 @@ in the same change that introduces it (AGENTS.md §6).
 ## Charts
 - **Annotation** — an icon plus a dashed line (point) or a shaded span (range) drawn on a chart.
 - **Cluster** — overlapping annotations drawn as `+n`; tapping steps through them.
+- **Main sleep** — the night's annotation on the day chart (`AnnotationKind.mainSleep`): the longest valid sleep entry of the day, a range from onset to wake. It has priority: never in a `+n`, the last icon given up, and its label is the chart's default label while nothing is focused. A nap is not main sleep.
 - **Algo mark** — an annotation where the algorithm version changed; never clustered.
 
 ## Haptics

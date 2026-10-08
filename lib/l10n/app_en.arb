@@ -12773,15 +12773,6 @@
   "@momentChoiceWater": {
     "description": "Quick answer for a marked moment: a glass of water (one tap adds one glass to that day)"
   },
-  "momentFollowUpCardTitle": "{n, plural, one{{n} thing to review — marked moments and assumed water} other{{n} things to review — marked moments and assumed water}}",
-  "@momentFollowUpCardTitle": {
-    "description": "Home card: how many marked moments and assumed water glasses are waiting for review; n is how many",
-    "placeholders": {
-      "n": {
-        "type": "int"
-      }
-    }
-  },
   "momentFollowUpMomentsLine": "{n, plural, one{{n} marked moment} other{{n} marked moments}}",
   "@momentFollowUpMomentsLine": {
     "description": "Home card line: how many marked moments are waiting for review; n is how many",

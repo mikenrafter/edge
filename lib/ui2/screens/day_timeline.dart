@@ -65,7 +65,6 @@ class Moment {
 
   /// What the chart annotation says when it is not the moment's [title] (the
   /// main sleep's "Main sleep 11:10 PM to 6:40 AM"). Null: use [title].
-  // STUB (RED phase): carried, not yet read by [dayAnnotations].
   final String? annotationLabel;
 
   /// What chart annotation this moment becomes, or NULL when it is not one
@@ -181,10 +180,31 @@ List<Moment> dayMoments({
   // Sleep. The onset normally sits in the PREVIOUS calendar day — a day's
   // sleep is the night that ended that morning — so it sorts to the top and
   // reads as what it is: you were already asleep when this day started.
-  for (final s in (timeline['sleep'] as List?) ?? const []) {
-    if (s is! Map) continue;
-    final on = asInt(s['onset_ts']), off = asInt(s['wake_ts']);
+  //
+  // MAIN SLEEP. One entry is the night on the chart: the longest one whose wake
+  // is after its onset, the earlier onset on a tie. `getDayTimeline` sends at
+  // most one today; the rule keeps a second entry from being a coin flip. The
+  // others stay rows in this list and are not annotated.
+  final sleeps = [
+    for (final s in (timeline['sleep'] as List?) ?? const [])
+      if (s is Map) (on: asInt(s['onset_ts']), off: asInt(s['wake_ts'])),
+  ];
+  int? mainAt;
+  for (var i = 0; i < sleeps.length; i++) {
+    final on = sleeps[i].on, off = sleeps[i].off;
+    if (on == null || off == null || off <= on) continue;
+    final best = mainAt == null ? null : sleeps[mainAt];
+    if (best == null) {
+      mainAt = i;
+      continue;
+    }
+    final len = off - on, bestLen = best.off! - best.on!;
+    if (len > bestLen || (len == bestLen && on < best.on!)) mainAt = i;
+  }
+  for (var i = 0; i < sleeps.length; i++) {
+    final on = sleeps[i].on, off = sleeps[i].off;
     if (on == null || off == null) continue;
+    final isMain = i == mainAt;
     out.add(Moment(
       at: on,
       until: off,
@@ -192,6 +212,13 @@ List<Moment> dayMoments({
       detail: '${_span(on, off)} · ${_dur((off - on) / 60)}',
       icon: LucideIcons.moon,
       color: C.blue,
+      annotationKind: isMain ? AnnotationKind.mainSleep : null,
+      // Clock times only: the onset is usually the evening before, and the
+      // chart's own axis already says which day it is.
+      annotationLabel: isMain
+          ? (l?.dayTimelineMainSleep(clockOfTs(on), clockOfTs(off)) ??
+              'Main sleep ${clockOfTs(on)} to ${clockOfTs(off)}')
+          : null,
     ));
   }
 
@@ -436,7 +463,7 @@ List<ChartAnnotation> dayAnnotations(List<Moment> moments) {
       kind: kind,
       at: m.at.toDouble(),
       until: end != null && end > m.at ? end.toDouble() : null,
-      label: m.title,
+      label: m.annotationLabel ?? m.title,
     ));
   }
   return out;
@@ -501,9 +528,10 @@ List<DayNote> dayNotes({
 // destination, two halves: the graph answers WHEN, the list answers WHAT, and
 // neither is a second copy of the other.
 //
-// FOUR LANES, and the count is the design. Heart rate is the spine — it is the
-// only thing this band measures all day at a rate worth drawing. Sleep is a
-// band across the hours it covers. Workouts are blocks on the top edge.
+// THREE LANES, and the count is the design. Heart rate is the spine — it is the
+// only thing this band measures all day at a rate worth drawing. Sleep is not a
+// lane: the night is the main-sleep annotation above the plot and a nap its
+// own annotation, so no band hides the curve. Workouts are blocks on the top edge.
 // Movement is a strip along the floor. Everything else the day holds — meals,
 // doses, notes, breathing, temperature, HRV — stays in the list rather than
 // getting a lane, because ten labelled lanes is a chart nobody reads twice and
@@ -543,7 +571,9 @@ class DayGraph {
   /// sit still, `null` is a minute we were not there for.
   final List<double?> movement;
 
-  /// Asleep and naps, as (from, to) minute of the day.
+  /// Asleep and naps, as (from, to) minute of the day. NOT drawn: the night is
+  /// a chart annotation and a nap is its own annotation. Kept because a known
+  /// night or nap is measured time ([unmeasured]) and the card's emptiness test.
   final List<(int, int, Color)> rest;
 
   /// Workouts, same units.
@@ -650,9 +680,8 @@ DayGraph dayGraph(Map<String, dynamic> timeline, {List<Object?>? hrOverride}) {
     return hi <= lo ? null : (lo, hi, col);
   }
 
-  // A nap is asleep. It gets its own name in the list below, where the
-  // distinction is worth a word; up here a second blue would be a second key
-  // for the same fact.
+  // Known sleep, night and nap, as spans. Not drawn (see [DayGraph.rest]); the
+  // spans are what keeps a night from being called "not recorded".
   final rest = <(int, int, Color)>[
     for (final s in (timeline['sleep'] as List?) ?? const [])
       if (s is Map) ?span(s['onset_ts'], s['wake_ts'], C.blue),
@@ -1022,10 +1051,9 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
   final axis = AxisSpec.of([for (final v in g.hr) ?v], ticks: 3);
   if (axis == null) return null;
 
-  final asleep = p.on(C.blue), workout = p.on(C.orange);
+  final workout = p.on(C.orange);
   final hrInk = p.on(C.red), moveInk = p.on(C.domMove);
   final hasMovement = g.movement.any((v) => v != null);
-  final asleepLabel = l?.dayTimelineAsleep ?? 'Asleep';
   final workoutLabel = l?.dayTimelineWorkout ?? 'Workout';
   final gaps = g.unmeasured;
   // The card marks the same labelled moments as the list beneath it, on the
@@ -1088,12 +1116,12 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
       ],
       // The keys this chart is read by, in the order they are read: the
       // movement stat, the heart rate, and (only when the day has a hole in it)
-      // "Not recorded", which ChartScrub appends. Asleep and Workout name the
-      // shaded stretches and appear only when the day has one.
+      // "Not recorded", which ChartScrub appends. Workout names its shaded
+      // stretch and appears only when the day has one. The night is not a key:
+      // it is the main-sleep annotation above the plot.
       legend: [
         if (hasMovement) (_movementLabel, moveInk),
         (_hrLabel, hrInk),
-        if (g.rest.isNotEmpty) (asleepLabel, asleep),
         if (g.work.isNotEmpty) (workoutLabel, workout),
       ],
       footnote: hasMovement ? _movementNote : null,
@@ -1111,7 +1139,6 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
             lane(_movementLabel, moveInk, g.movement,
                 (v) => '${(v * 100).round()}%'),
           lane(_hrLabel, hrInk, g.hr, (v) => '${v.round()} bpm'),
-          if (g.rest.isNotEmpty) shade(asleepLabel, asleep, g.rest),
           if (g.work.isNotEmpty) shade(workoutLabel, workout, g.work),
         ],
         child: Stack(children: [
@@ -1121,9 +1148,6 @@ Widget? dayGraphCard(BuildContext c, DayGraph g,
             painter: DayLanes(
               p: p,
               gaps: [for (final (a, b) in gaps) (at(a), at(b))],
-              rest: [
-                for (final (a, b, _) in g.rest) (at(a), at(b), asleep),
-              ],
               work: [
                 for (final (a, b, _) in g.work) (at(a), at(b), workout),
               ],

@@ -99,7 +99,6 @@ class Prefs {
   /// behaviour: in developer mode the Discord and Sponsor cards ignore a stored
   /// dismissal and the cooldown. OFF: developer mode honours both exactly like
   /// a normal install. Irrelevant when developer mode is off.
-  // STUB (RED phase): the key and getter exist; nothing reads them yet.
   static const String reviveCommunityCards = 'dev.revive_community_cards';
   static bool get reviveCommunityCardsOn => getBool(reviveCommunityCards, true);
 

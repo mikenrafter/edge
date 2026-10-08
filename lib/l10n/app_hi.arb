@@ -2397,7 +2397,6 @@
   "momentChoiceSymptom": "लक्षण",
   "momentChoiceOther": "अन्य",
   "momentChoiceWater": "पानी",
-  "momentFollowUpCardTitle": "{n, plural, one{समीक्षा के लिए {n} चीज़ — चिह्नित पल और अनुमानित पानी} other{समीक्षा के लिए {n} चीज़ें — चिह्नित पल और अनुमानित पानी}}",
   "momentFollowUpMomentsLine": "{n, plural, one{{n} चिह्नित पल} other{{n} चिह्नित पल}}",
   "momentFollowUpAssumedWaterLine": "{n, plural, one{{n} अनुमानित पानी} other{{n} अनुमानित पानी}}",
   "momentFollowUpAnswer": "जवाब दें",
