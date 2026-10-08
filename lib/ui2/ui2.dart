@@ -22,6 +22,7 @@ export 'paint_activity.dart';
 export 'research_refs.dart';
 export 'revision.dart';
 export 'scroll_hint.dart';
+export 'sleep_ring_model.dart';
 export 'sync_control.dart';
 export 'theme.dart';
 export 'water_display.dart';

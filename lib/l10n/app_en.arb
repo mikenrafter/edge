@@ -7391,6 +7391,53 @@
       }
     }
   },
+  "homeSleepPctOf": "{pct}% of {target}",
+  "@homeSleepPctOf": {
+    "description": "Sleep ring subtitle once a night is scored: percent of the learned sleep need.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepPctOfDefault": "{pct}% of {target} (default)",
+  "@homeSleepPctOfDefault": {
+    "description": "Sleep ring subtitle once a night is scored, when no need has been learned yet: percent of the 8 h default target, labelled as a default.",
+    "placeholders": {
+      "pct": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
+  "homeSleepOnTrack": "on track for {cycles, plural, =1{1 cycle} other{{cycles} cycles}}, {duration}",
+  "@homeSleepOnTrack": {
+    "description": "Sleep ring subtitle before a night is scored: whole sleep cycles the estimate covers, then the estimated time asleep.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String",
+        "example": "7h 30m"
+      }
+    }
+  },
+  "homeSleepNoEstimate": "No estimate",
+  "@homeSleepNoEstimate": {
+    "description": "Sleep ring value when no night is scored and there is no wake time to estimate to."
+  },
+  "homeSleepNoEstimateWhy": "No sleep scored yet, and no alarm or typical wake time to estimate from.",
+  "@homeSleepNoEstimateWhy": {
+    "description": "Why the sleep ring has no estimate."
+  },
   "homeLoadFailedTitle": "Today could not be read",
   "@homeLoadFailedTitle": {
     "description": "Title of the card shown when today's data failed to load from the database."
