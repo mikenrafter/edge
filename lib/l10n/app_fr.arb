@@ -2482,5 +2482,21 @@
   "snoozeValueCap": "{n, plural, =1{1 report} other{{n} reports}}",
   "snoozeUnsupported": "Le report nécessite un bracelet qui indique comment l'alarme a été arrêtée (WHOOP 5/MG)",
   "snoozeEnable": "Répéter",
-  "snoozeExactNote": "L’heure exacte nécessite l’autorisation d’alarme"
+  "snoozeExactNote": "L’heure exacte nécessite l’autorisation d’alarme",
+  "momentReviewHint": "Vos choix sont mis en file d'attente. Rien n'est enregistré avant d'appuyer sur Enregistrer.",
+  "momentReviewSaveCount": "{count, plural, =0{Enregistrer} one{Enregistrer 1 réponse} other{Enregistrer {count} réponses}}",
+  "momentReviewPending": "Sera enregistré : {what}",
+  "momentReviewUndo": "Annuler",
+  "momentReviewQueueIt": "Mettre cette réponse en file",
+  "momentReviewPair": "Associer à un autre repère…",
+  "momentReviewPairTitle": "Associer à un autre moment marqué",
+  "momentReviewPairNone": "Aucun autre moment sans réponse à associer.",
+  "momentReviewPairType": "Type d'entraînement : {type}",
+  "momentReviewRange": "{what} : de {start} à {end}",
+  "momentReviewItemFailed": "Non enregistré. C'est toujours en file : appuyez sur Enregistrer pour réessayer.",
+  "momentReviewRangeEnd": "La fin doit être après le début.",
+  "momentReviewRangeFuture": "Une plage ne peut pas se terminer dans le futur.",
+  "momentReviewRangeWorkoutLength": "Un entraînement doit durer entre 1 minute et 24 heures.",
+  "momentReviewRangeWorkoutOverlap": "Cela chevauche un entraînement déjà dans votre journal.",
+  "momentReviewRangeCheckFailed": "Impossible de vérifier cette paire. Réessayez."
 }

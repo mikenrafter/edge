@@ -1,4 +1,4 @@
-// The follow-up screen: each pending moment with its local time and day label
+// The follow-up screen (review): each pending moment with its local time and day label
 // and quick choices (Pills & meds, Nap, Caffeine, Alcohol, Meal, Workout,
 // Symptom, Other with an optional note), plus Skip. What each choice writes is
 // the writer's job (answer_writer_test.dart); here the writer is a fake and the
@@ -59,6 +59,12 @@ Future<_FakeWriter> _pump(WidgetTester t, List<PendingMoment> moments) async {
   return w;
 }
 
+/// Press the review's Save and let it finish: choices are queued until then.
+Future<void> _saveAll(WidgetTester t) async {
+  await t.tap(find.byKey(const ValueKey('review-save')));
+  await t.pumpAndSettle();
+}
+
 void main() {
   group('listing', () {
     testWidgets('every pending moment, with its local time and day label',
@@ -101,6 +107,9 @@ void main() {
       final w = await _pump(t, [_a, _b]);
       await t.tap(_choice(_a, MomentChoice.nap));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      expect(_row(_a), findsOneWidget, reason: 'the card stays until Save');
+      await _saveAll(t);
       expect(w.calls, hasLength(1));
       expect(w.calls.single.m.key, _a.key);
       expect(w.calls.single.choice, MomentChoice.nap);
@@ -119,6 +128,8 @@ void main() {
         final w = await _pump(t, [_a]);
         await t.tap(_choice(_a, c));
         await t.pumpAndSettle();
+        expect(w.calls, isEmpty, reason: 'queued, not applied');
+        await _saveAll(t);
         expect(w.calls.single.choice, c);
         expect(w.calls.single.value, isNull);
         expect(w.calls.single.note, isNull);
@@ -134,6 +145,8 @@ void main() {
       expect(find.byKey(ValueKey('moment-value:${_a.key}')), findsOneWidget);
       await t.tap(find.byKey(ValueKey('moment-save:${_a.key}')));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      await _saveAll(t);
       expect(w.calls.single.choice, MomentChoice.caffeine);
       expect(w.calls.single.value, isNull);
     });
@@ -146,6 +159,8 @@ void main() {
       await t.enterText(find.byKey(ValueKey('moment-value:${_a.key}')), '95');
       await t.tap(find.byKey(ValueKey('moment-save:${_a.key}')));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      await _saveAll(t);
       expect(w.calls.single.choice, MomentChoice.caffeine);
       expect(w.calls.single.value, 95);
     });
@@ -157,6 +172,8 @@ void main() {
       await t.enterText(find.byKey(ValueKey('moment-value:${_a.key}')), '2');
       await t.tap(find.byKey(ValueKey('moment-save:${_a.key}')));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      await _saveAll(t);
       expect(w.calls.single.choice, MomentChoice.alcohol);
       expect(w.calls.single.value, 2);
     });
@@ -168,6 +185,8 @@ void main() {
       await t.enterText(find.byKey(ValueKey('moment-value:${_a.key}')), 'abc');
       await t.tap(find.byKey(ValueKey('moment-save:${_a.key}')));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      await _saveAll(t);
       expect(w.calls.single.value, isNull);
     });
 
@@ -180,6 +199,8 @@ void main() {
           find.byKey(ValueKey('moment-note:${_a.key}')), 'felt dizzy');
       await t.tap(find.byKey(ValueKey('moment-save:${_a.key}')));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      await _saveAll(t);
       expect(w.calls.single.choice, MomentChoice.other);
       expect(w.calls.single.note, 'felt dizzy');
     });
@@ -190,6 +211,8 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.byKey(ValueKey('moment-save:${_a.key}')));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      await _saveAll(t);
       expect(w.calls.single.choice, MomentChoice.other);
       expect(w.calls.single.note, isNull);
     });
@@ -201,6 +224,9 @@ void main() {
       final w = await _pump(t, [_a, _b]);
       await t.tap(_skip(_b));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      expect(_row(_b), findsOneWidget);
+      await _saveAll(t);
       expect(w.calls, hasLength(1));
       expect(w.calls.single.m.key, _b.key);
       expect(w.calls.single.choice, isNull);
@@ -232,6 +258,8 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.byKey(ValueKey('moment-label-only:${_a.key}')));
       await t.pumpAndSettle();
+      expect(w.calls, isEmpty, reason: 'queued, not applied');
+      await _saveAll(t);
       expect(w.calls.single.choice, MomentChoice.workout);
       expect(w.calls.single.value, isNull);
     });

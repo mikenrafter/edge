@@ -378,6 +378,41 @@ void main() {
     });
   });
 
+  group('workout type and nap re-analysis', () {
+    test('a workout range is written as "other" unless a type was picked',
+        () async {
+      final r = _Rig();
+      await r.save(MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.workout));
+      expect(r.ranges.loggedWorkouts.single.type, 'other');
+      final r2 = _Rig();
+      await r2.save(MomentReviewQueue.empty
+          .withRange(mA, mB, MomentChoice.workout, workoutType: 'running'));
+      expect(r2.ranges.loggedWorkouts.single.type, 'running');
+    });
+
+    test('the day is re-analysed ONCE for a batch of naps, not once each',
+        () async {
+      const m1 = PendingMoment(date: '2026-10-06', hhmm: '13:00');
+      const m2 = PendingMoment(date: '2026-10-06', hhmm: '13:30');
+      const m3 = PendingMoment(date: '2026-10-06', hhmm: '15:00');
+      const m4 = PendingMoment(date: '2026-10-06', hhmm: '15:30');
+      final r = _Rig();
+      await r.save(
+          MomentReviewQueue.empty
+              .withRange(m1, m2, MomentChoice.nap)
+              .withRange(m3, m4, MomentChoice.nap),
+          moments: [m1, m2, m3, m4]);
+      expect(r.ranges.loggedNaps, hasLength(2));
+      expect(r.ranges.finished, 1);
+    });
+
+    test('no nap written, no re-analysis', () async {
+      final r = _Rig();
+      await r.save(MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.workout));
+      expect(r.ranges.finished, 0);
+    });
+  });
+
   group('Tasker, on Save only', () {
     test('each applied moment is sent once, AFTER its write', () async {
       final r = _Rig();

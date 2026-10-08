@@ -2482,5 +2482,21 @@
   "snoozeValueCap": "{n, plural, other{{n} 次贪睡}}",
   "snoozeUnsupported": "贪睡需要能报告闹钟如何被停止的手环（WHOOP 5/MG）",
   "snoozeEnable": "贪睡",
-  "snoozeExactNote": "精确计时需要闹钟权限"
+  "snoozeExactNote": "精确计时需要闹钟权限",
+  "momentReviewHint": "你的选择已排入队列。点按“保存”之前不会保存任何内容。",
+  "momentReviewSaveCount": "{count, plural, =0{保存} other{保存 {count} 条回答}}",
+  "momentReviewPending": "将保存：{what}",
+  "momentReviewUndo": "撤销",
+  "momentReviewQueueIt": "将此回答加入队列",
+  "momentReviewPair": "与另一个标记配对…",
+  "momentReviewPairTitle": "与另一个已标记的时刻配对",
+  "momentReviewPairNone": "没有其他未回答的时刻可配对。",
+  "momentReviewPairType": "锻炼类型：{type}",
+  "momentReviewRange": "{what}：{start} 至 {end}",
+  "momentReviewItemFailed": "未保存。仍在队列中——点按“保存”重试。",
+  "momentReviewRangeEnd": "结束时间必须晚于开始时间。",
+  "momentReviewRangeFuture": "时间段不能结束于未来。",
+  "momentReviewRangeWorkoutLength": "锻炼时长必须在 1 分钟到 24 小时之间。",
+  "momentReviewRangeWorkoutOverlap": "这与你记录中已有的锻炼重叠。",
+  "momentReviewRangeCheckFailed": "无法检查这一对。请重试。"
 }

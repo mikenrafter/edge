@@ -1,5 +1,5 @@
-// The follow-up screen offers Water (RED): one tap on the pill answers the
-// moment at once, with no amount field (one tap = one glass, like the old
+// The follow-up screen offers Water: one tap on the pill queues the answer
+// (applied on Save), with no amount field (one tap = one glass, like the old
 // "Log water" gesture). The writer is a fake; what the glass adds is
 // water_answer_test.dart's job.
 
@@ -75,6 +75,10 @@ void main() {
     await t.pumpAndSettle();
     expect(find.byKey(ValueKey('moment-value:${_a.key}')), findsNothing,
         reason: 'one tap = one glass; no amount prompt');
+    expect(w.calls, isEmpty, reason: 'queued, not applied');
+    expect(_row(_a), findsOneWidget, reason: 'the card stays until Save');
+    await t.tap(find.byKey(const ValueKey('review-save')));
+    await t.pumpAndSettle();
     expect(w.calls, hasLength(1));
     expect(w.calls.single.m.key, _a.key);
     expect(w.calls.single.choice, MomentChoice.water);

@@ -269,6 +269,12 @@ object NativeChannels {
                                         is Long -> intent.putExtra(k, v)
                                         is Boolean -> intent.putExtra(k, v)
                                         is String -> intent.putExtra(k, v)
+                                        // A typed dose (MOMENT_REVIEWED's
+                                        // `value`, e.g. 1.5 units). NOT yet
+                                        // tested on a device: the Dart side
+                                        // is pinned by test, this branch is
+                                        // not.
+                                        is Double -> intent.putExtra(k, v)
                                     }
                                 }
                             app.sendBroadcast(intent)

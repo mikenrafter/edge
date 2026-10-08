@@ -523,6 +523,49 @@ void main() {
     });
   });
 
+  group('the workout type in the pairing sheet', () {
+    Finder typeRow(PendingMoment m) =>
+        find.byKey(ValueKey('moment-pair-type:${m.key}'));
+
+    testWidgets('a nap pairing has no type row', (t) async {
+      final r = _Rig();
+      await r.pump(t);
+      await _tap(t, _choice(mA, MomentChoice.nap));
+      await _tap(t, _pair(mA));
+      expect(typeRow(mA), findsNothing);
+    });
+
+    testWidgets('a workout pairing offers the type, defaulting to Other',
+        (t) async {
+      final r = _Rig();
+      await r.pump(t);
+      await _tap(t, _choice(mA, MomentChoice.workout));
+      await _tap(t, _pair(mA));
+      expect(typeRow(mA), findsOneWidget);
+      expect(_in(typeRow(mA), 'Other'), findsOneWidget);
+      await _tap(t, _pairTarget(mA, mB));
+      await _tap(t, _save);
+      expect(r.ranges.loggedWorkouts.single.type, 'other');
+    });
+
+    testWidgets('picking an activity sets the type that is written',
+        (t) async {
+      final r = _Rig();
+      await r.pump(t);
+      await _tap(t, _choice(mA, MomentChoice.workout));
+      await _tap(t, _pair(mA));
+      await _tap(t, typeRow(mA));
+      await _tap(t, find.text('Running').first);
+      expect(_in(typeRow(mA), 'Running'), findsOneWidget);
+      await _tap(t, _pairTarget(mA, mB));
+      expect(_in(_range(mA), 'Running'), findsOneWidget,
+          reason: 'the paired card names the type');
+      expect(r.store.load().ranges.single.workoutType, 'running');
+      await _tap(t, _save);
+      expect(r.ranges.loggedWorkouts.single.type, 'running');
+    });
+  });
+
   group('Tasker, from the screen', () {
     testWidgets('nothing is sent while queueing, editing or undoing',
         (t) async {

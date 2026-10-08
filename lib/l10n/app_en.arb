@@ -13179,5 +13179,95 @@
   "snoozeExactNote": "Exact timing needs the alarm permission",
   "@snoozeExactNote": {
     "description": "One line under the snooze settings when Android will not let the app set exact alarms."
+  },
+  "momentReviewHint": "Your choices are queued. Nothing is saved until you press Save.",
+  "@momentReviewHint": {
+    "description": "Hint at the top of the marked-moment review: choices are queued until Save"
+  },
+  "momentReviewSaveCount": "{count, plural, =0{Save} one{Save 1 answer} other{Save {count} answers}}",
+  "@momentReviewSaveCount": {
+    "description": "Label of the review's Save button; count is how many queued items it will save (a paired range counts once)",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "momentReviewPending": "Will save: {what}",
+  "@momentReviewPending": {
+    "description": "Line on a review card showing the queued decision; what is the decision, e.g. Caffeine · 80 mg",
+    "placeholders": {
+      "what": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewUndo": "Undo",
+  "@momentReviewUndo": {
+    "description": "Button that takes a queued review decision back"
+  },
+  "momentReviewQueueIt": "Queue this answer",
+  "@momentReviewQueueIt": {
+    "description": "Button that adds the typed amount or note to the review queue (it does not save yet)"
+  },
+  "momentReviewPair": "Pair with another mark…",
+  "@momentReviewPair": {
+    "description": "Button that pairs a nap or workout mark with a second mark as its start and end"
+  },
+  "momentReviewPairTitle": "Pair with another marked moment",
+  "@momentReviewPairTitle": {
+    "description": "Title of the sheet listing the moments a nap or workout mark can be paired with"
+  },
+  "momentReviewPairNone": "No other unanswered moment to pair with.",
+  "@momentReviewPairNone": {
+    "description": "Shown in the pairing sheet when no other moment is available"
+  },
+  "momentReviewPairType": "Workout type: {type}",
+  "@momentReviewPairType": {
+    "description": "Row in the pairing sheet showing the workout type; type is an activity name",
+    "placeholders": {
+      "type": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewRange": "{what}: {start} to {end}",
+  "@momentReviewRange": {
+    "description": "Line on both cards of a paired range; what is Nap or Workout, start and end are clock times (a date is added when the end is on another day)",
+    "placeholders": {
+      "what": {
+        "type": "String"
+      },
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
+  "momentReviewItemFailed": "Not saved. It is still queued — press Save to try again.",
+  "@momentReviewItemFailed": {
+    "description": "Shown on a review card whose decision could not be saved; it stays queued"
+  },
+  "momentReviewRangeEnd": "The end has to be after the start.",
+  "@momentReviewRangeEnd": {
+    "description": "Validation error for a paired range whose end is not after its start"
+  },
+  "momentReviewRangeFuture": "A range can't end in the future.",
+  "@momentReviewRangeFuture": {
+    "description": "Validation error for a paired range that ends in the future"
+  },
+  "momentReviewRangeWorkoutLength": "A workout has to last between 1 minute and 24 hours.",
+  "@momentReviewRangeWorkoutLength": {
+    "description": "Validation error for a paired workout shorter than a minute or longer than a day"
+  },
+  "momentReviewRangeWorkoutOverlap": "That overlaps a workout already in your log.",
+  "@momentReviewRangeWorkoutOverlap": {
+    "description": "Validation error for a paired workout that overlaps a saved workout"
+  },
+  "momentReviewRangeCheckFailed": "Could not check this pair. Try again.",
+  "@momentReviewRangeCheckFailed": {
+    "description": "Error when the existing naps or workouts could not be read to check a pair"
   }
 }

@@ -124,7 +124,8 @@ class FakeRangeWriter extends ReviewRangeWriter {
   bool failNap, failWorkout;
 
   final loggedNaps = <({String dayId, int startSec, int endSec})>[];
-  final loggedWorkouts = <({int startSec, int endSec})>[];
+  final loggedWorkouts = <({int startSec, int endSec, String type})>[];
+  int finished = 0;
 
   @override
   Future<List<NapMap>> existingNaps(String dayId) async => naps[dayId] ?? const [];
@@ -141,10 +142,14 @@ class FakeRangeWriter extends ReviewRangeWriter {
   }
 
   @override
-  Future<void> logWorkout({required int startSec, required int endSec}) async {
+  Future<void> finishNaps() async => finished++;
+
+  @override
+  Future<void> logWorkout(
+      {required int startSec, required int endSec, String type = 'other'}) async {
     log.entries.add('workout:$startSec:$endSec');
     if (failWorkout) throw StateError('workout write failed');
-    loggedWorkouts.add((startSec: startSec, endSec: endSec));
+    loggedWorkouts.add((startSec: startSec, endSec: endSec, type: type));
   }
 }
 

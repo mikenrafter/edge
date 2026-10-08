@@ -174,6 +174,37 @@ void main() {
     });
   });
 
+  group('workout type', () {
+    test('a workout range keeps the picked type; a nap range has none', () {
+      final w = MomentReviewQueue.empty
+          .withRange(mA, mB, MomentChoice.workout, workoutType: 'running');
+      expect(w.ranges.single.workoutType, 'running');
+      final n = MomentReviewQueue.empty
+          .withRange(mA, mB, MomentChoice.nap, workoutType: 'running');
+      expect(n.ranges.single.workoutType, isNull);
+    });
+
+    test('no type means null (written as "other" on Save)', () {
+      final w = MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.workout);
+      expect(w.ranges.single.workoutType, isNull);
+    });
+
+    test('the type survives JSON and takes part in equality', () {
+      final q = MomentReviewQueue.empty
+          .withRange(mA, mB, MomentChoice.workout, workoutType: 'cycling');
+      final back =
+          MomentReviewQueue.fromJson(jsonDecode(jsonEncode(q.toJson())));
+      expect(back.ranges.single.workoutType, 'cycling');
+      expect(back.ranges.single, q.ranges.single);
+      expect(
+          back.ranges.single,
+          isNot(MomentReviewQueue.empty
+              .withRange(mA, mB, MomentChoice.workout)
+              .ranges
+              .single));
+    });
+  });
+
   group('stale drafts', () {
     test('dropStale keeps only what is still pending', () {
       final kg = ReviewKey.glass(gNoon);

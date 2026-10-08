@@ -2482,5 +2482,21 @@
   "snoozeValueCap": "{n, plural, =1{1 Schlummerrunde} other{{n} Schlummerrunden}}",
   "snoozeUnsupported": "Schlummern braucht ein Band, das meldet, wie der Alarm beendet wurde (WHOOP 5/MG)",
   "snoozeEnable": "Schlummern",
-  "snoozeExactNote": "Genaues Timing braucht die Wecker-Berechtigung"
+  "snoozeExactNote": "Genaues Timing braucht die Wecker-Berechtigung",
+  "momentReviewHint": "Deine Auswahl wird vorgemerkt. Nichts wird gespeichert, bis du auf Speichern tippst.",
+  "momentReviewSaveCount": "{count, plural, =0{Speichern} one{1 Antwort speichern} other{{count} Antworten speichern}}",
+  "momentReviewPending": "Wird gespeichert: {what}",
+  "momentReviewUndo": "Rückgängig",
+  "momentReviewQueueIt": "Antwort vormerken",
+  "momentReviewPair": "Mit anderer Markierung koppeln…",
+  "momentReviewPairTitle": "Mit einem anderen markierten Moment koppeln",
+  "momentReviewPairNone": "Kein anderer unbeantworteter Moment zum Koppeln.",
+  "momentReviewPairType": "Trainingsart: {type}",
+  "momentReviewRange": "{what}: {start} bis {end}",
+  "momentReviewItemFailed": "Nicht gespeichert. Es ist weiter vorgemerkt – tippe auf Speichern, um es erneut zu versuchen.",
+  "momentReviewRangeEnd": "Das Ende muss nach dem Beginn liegen.",
+  "momentReviewRangeFuture": "Ein Zeitraum kann nicht in der Zukunft enden.",
+  "momentReviewRangeWorkoutLength": "Ein Training muss zwischen 1 Minute und 24 Stunden dauern.",
+  "momentReviewRangeWorkoutOverlap": "Das überschneidet sich mit einem Training in deinem Protokoll.",
+  "momentReviewRangeCheckFailed": "Dieses Paar konnte nicht geprüft werden. Versuche es erneut."
 }

@@ -155,19 +155,62 @@ class SymptomDescription {
   /// Optional extra free text.
   final String? note;
 
-  /// RED stub: JSON for a review draft (enum ids + typed text; absent = null).
-  Map<String, Object?> toJson() => throw UnimplementedError('RED stub');
+  /// JSON for a queued review draft: enum names plus the typed text. An absent
+  /// optional part is left out.
+  Map<String, Object?> toJson() => {
+        'severity': severity.name,
+        'side': ?side?.name,
+        'kind': kind.name,
+        'kindOther': ?kindOther,
+        'area': area.name,
+        'areaOther': ?areaOther,
+        'note': ?note,
+      };
 
-  /// RED stub: null when [j] is malformed (unknown id, missing part).
-  static SymptomDescription? fromJson(Object? j) =>
-      throw UnimplementedError('RED stub');
+  /// Null when [j] is malformed (unknown enum name, a missing required part).
+  static SymptomDescription? fromJson(Object? j) {
+    if (j is! Map) return null;
+    T? pick<T extends Enum>(List<T> values, Object? name) {
+      if (name is! String) return null;
+      for (final v in values) {
+        if (v.name == name) return v;
+      }
+      return null;
+    }
 
-  /// RED stub: value equality over every field.
+    String? text(Object? v) => v is String ? v : null;
+    final sev = pick(SymptomSeverity.values, j['severity']);
+    final kind = pick(SymptomKind.values, j['kind']);
+    final area = pick(SymptomArea.values, j['area']);
+    if (sev == null || kind == null || area == null) return null;
+    final sideRaw = j['side'];
+    final side = sideRaw == null ? null : pick(SymptomSide.values, sideRaw);
+    if (sideRaw != null && side == null) return null;
+    return SymptomDescription(
+      severity: sev,
+      side: side,
+      kind: kind,
+      kindOther: text(j['kindOther']),
+      area: area,
+      areaOther: text(j['areaOther']),
+      note: text(j['note']),
+    );
+  }
+
   @override
-  bool operator ==(Object other) => throw UnimplementedError('RED stub');
+  bool operator ==(Object other) =>
+      other is SymptomDescription &&
+      other.severity == severity &&
+      other.side == side &&
+      other.kind == kind &&
+      other.kindOther == kindOther &&
+      other.area == area &&
+      other.areaOther == areaOther &&
+      other.note == note;
 
   @override
-  int get hashCode => throw UnimplementedError('RED stub');
+  int get hashCode =>
+      Object.hash(severity, side, kind, kindOther, area, areaOther, note);
 
   /// `severity kind in my area (side)` (the parenthesis left out when no side
   /// was said); English when [l] is null. Free text is trimmed.

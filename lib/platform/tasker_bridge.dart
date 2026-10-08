@@ -105,7 +105,7 @@ class TaskerBridge {
   static const Duration _minEventGap = Duration(seconds: 60);
   static DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
-  /// Tests only: pretend to be (or not to be) Android. RED stub: not read yet.
+  /// Tests only: pretend to be (or not to be) Android.
   @visibleForTesting
   static bool? debugAndroidOverride;
 
@@ -133,14 +133,16 @@ class TaskerBridge {
   static Future<bool> emitEvent(
     String event, {
     Map<String, Object> extras = const {},
-    // RED stub: false skips the 60 s gap (and leaves `_lastEmit` alone), for
-    // callers that send one broadcast per item (the moment review).
+    // false skips the 60 s gap and leaves `_lastEmit` alone, for callers that
+    // send one broadcast per item (the moment review).
     bool rateLimited = true,
   }) async {
     if (!(debugAndroidOverride ?? Platform.isAndroid)) return false;
-    final now = DateTime.now();
-    if (now.difference(_lastEmit) < _minEventGap) return false;
-    _lastEmit = now;
+    if (rateLimited) {
+      final now = DateTime.now();
+      if (now.difference(_lastEmit) < _minEventGap) return false;
+      _lastEmit = now;
+    }
     try {
       return await _ch.invokeMethod<bool>('emit_event', {
             'event': event,

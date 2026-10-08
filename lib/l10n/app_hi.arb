@@ -2482,5 +2482,21 @@
   "snoozeValueCap": "{n, plural, =1{1 स्नूज़} other{{n} स्नूज़}}",
   "snoozeUnsupported": "स्नूज़ के लिए ऐसा बैंड चाहिए जो बताए कि अलार्म कैसे रोका गया (WHOOP 5/MG)",
   "snoozeEnable": "स्नूज़",
-  "snoozeExactNote": "सटीक समय के लिए अलार्म अनुमति चाहिए"
+  "snoozeExactNote": "सटीक समय के लिए अलार्म अनुमति चाहिए",
+  "momentReviewHint": "आपके चुनाव कतार में हैं। सहेजें दबाने तक कुछ भी सहेजा नहीं जाता।",
+  "momentReviewSaveCount": "{count, plural, =0{सहेजें} one{1 उत्तर सहेजें} other{{count} उत्तर सहेजें}}",
+  "momentReviewPending": "सहेजा जाएगा: {what}",
+  "momentReviewUndo": "पूर्ववत करें",
+  "momentReviewQueueIt": "इस उत्तर को कतार में रखें",
+  "momentReviewPair": "दूसरे निशान से जोड़ें…",
+  "momentReviewPairTitle": "किसी दूसरे चिह्नित पल से जोड़ें",
+  "momentReviewPairNone": "जोड़ने के लिए कोई और बिना उत्तर वाला पल नहीं है।",
+  "momentReviewPairType": "वर्कआउट का प्रकार: {type}",
+  "momentReviewRange": "{what}: {start} से {end}",
+  "momentReviewItemFailed": "सहेजा नहीं गया। यह अभी कतार में है — दोबारा कोशिश के लिए सहेजें दबाएँ।",
+  "momentReviewRangeEnd": "अंत का समय शुरुआत के बाद होना चाहिए।",
+  "momentReviewRangeFuture": "अवधि भविष्य में खत्म नहीं हो सकती।",
+  "momentReviewRangeWorkoutLength": "वर्कआउट 1 मिनट से 24 घंटे के बीच का होना चाहिए।",
+  "momentReviewRangeWorkoutOverlap": "यह आपके लॉग में पहले से मौजूद वर्कआउट से टकराता है।",
+  "momentReviewRangeCheckFailed": "इस जोड़ी की जाँच नहीं हो सकी। दोबारा कोशिश करें।"
 }

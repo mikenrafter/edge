@@ -93,6 +93,13 @@ Future<_Fake> _pump(
   return w;
 }
 
+/// Press the review's Save and let it finish: Keep / Remove are queued until
+/// then.
+Future<void> _saveAll(WidgetTester t) async {
+  await t.tap(find.byKey(const ValueKey('review-save')));
+  await t.pumpAndSettle();
+}
+
 void main() {
   group('pendingAssumed (pure)', () {
     test('only glasses still waiting, oldest first', () {
@@ -285,6 +292,9 @@ void main() {
       final w = await _pump(t, moments: [_a], glasses: [g1, g2]);
       await t.tap(_keep(g1));
       await t.pumpAndSettle();
+      expect(w.kept, isEmpty, reason: 'queued, not applied');
+      expect(_glass(g1), findsOneWidget, reason: 'the row stays until Save');
+      await _saveAll(t);
       expect(w.kept, [g1.key]);
       expect(w.removed, isEmpty);
       expect(_glass(g1), findsNothing);
@@ -297,19 +307,26 @@ void main() {
       final w = await _pump(t, moments: [_a], glasses: [g1, g2]);
       await t.tap(_remove(g2));
       await t.pumpAndSettle();
+      expect(w.removed, isEmpty, reason: 'queued, not applied');
+      expect(_glass(g2), findsOneWidget);
+      await _saveAll(t);
       expect(w.removed, [g2.key]);
       expect(w.kept, isEmpty);
       expect(_glass(g2), findsNothing);
       expect(_glass(g1), findsOneWidget);
     });
 
-    testWidgets('a failed write keeps the row and says so', (t) async {
+    testWidgets('a failed write on Save keeps the row, says so on it, and '
+        'keeps the decision queued', (t) async {
       final w = await _pump(t, glasses: [g1]);
       w.fail = true;
       await t.tap(_remove(g1));
       await t.pumpAndSettle();
+      await _saveAll(t);
       expect(_glass(g1), findsOneWidget);
-      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.byKey(ValueKey('assumed-save-failed:${g1.key}')),
+          findsOneWidget);
+      expect(find.byKey(ValueKey('assumed-pending:${g1.key}')), findsOneWidget);
     });
 
     testWidgets('only glasses: the screen is not the empty state', (t) async {
@@ -323,6 +340,9 @@ void main() {
       await _pump(t, glasses: [g1]);
       await t.tap(_keep(g1));
       await t.pumpAndSettle();
+      expect(find.byKey(const ValueKey('moment-follow-up-empty')),
+          findsNothing, reason: 'queued only');
+      await _saveAll(t);
       expect(find.byKey(const ValueKey('moment-follow-up-empty')),
           findsOneWidget);
     });

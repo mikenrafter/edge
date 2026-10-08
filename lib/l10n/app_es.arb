@@ -2511,5 +2511,21 @@
   "snoozeValueCap": "{n, plural, =1{1 pospuesta} other{{n} pospuestas}}",
   "snoozeUnsupported": "La pospuesta necesita una banda que informe de cómo se detuvo la alarma (WHOOP 5/MG)",
   "snoozeEnable": "Posponer",
-  "snoozeExactNote": "La hora exacta necesita el permiso de alarma"
+  "snoozeExactNote": "La hora exacta necesita el permiso de alarma",
+  "momentReviewHint": "Tus elecciones quedan en cola. No se guarda nada hasta que pulses Guardar.",
+  "momentReviewSaveCount": "{count, plural, =0{Guardar} one{Guardar 1 respuesta} other{Guardar {count} respuestas}}",
+  "momentReviewPending": "Se guardará: {what}",
+  "momentReviewUndo": "Deshacer",
+  "momentReviewQueueIt": "Poner esta respuesta en cola",
+  "momentReviewPair": "Emparejar con otra marca…",
+  "momentReviewPairTitle": "Emparejar con otro momento marcado",
+  "momentReviewPairNone": "No hay otro momento sin responder para emparejar.",
+  "momentReviewPairType": "Tipo de entrenamiento: {type}",
+  "momentReviewRange": "{what}: de {start} a {end}",
+  "momentReviewItemFailed": "No se guardó. Sigue en cola: pulsa Guardar para intentarlo de nuevo.",
+  "momentReviewRangeEnd": "El final debe ser posterior al inicio.",
+  "momentReviewRangeFuture": "Un intervalo no puede terminar en el futuro.",
+  "momentReviewRangeWorkoutLength": "Un entrenamiento debe durar entre 1 minuto y 24 horas.",
+  "momentReviewRangeWorkoutOverlap": "Se solapa con un entrenamiento que ya está en tu registro.",
+  "momentReviewRangeCheckFailed": "No se pudo comprobar este par. Inténtalo de nuevo."
 }

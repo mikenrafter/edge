@@ -13,10 +13,14 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
 
+import '../../compute/manual_session.dart';
 import '../../data/assumed_water.dart';
+import '../../data/moment_label.dart' show momentLocalTime;
 import '../../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/moment_follow_ups.dart';
+import '../../gestures/moment_review_apply.dart';
+import '../../gestures/moment_review_queue.dart';
 import '../../gestures/moment_review_range.dart';
 import '../../gestures/moment_review_store.dart';
 import '../../platform/tasker_moment_export.dart';
@@ -25,8 +29,10 @@ import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../ui2.dart';
+import '../activity/catalogue.dart';
+import 'home_screen.dart' show repoOf;
 import 'journal_compose.dart' show OsTextField;
-import 'log_workout.dart' show LogWorkout;
+import 'log_workout.dart' show ActivityTypeSheet, LogWorkout, appOf;
 
 /// "N things to review — marked moments and assumed water" with an Answer
 /// button. [count] is pending moments plus assumed glasses.
@@ -158,7 +164,11 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
   }
 }
 
-/// Each pending moment with its quick choices and Skip.
+/// Each pending moment with its quick choices and Skip. Choices are QUEUED:
+/// each card keeps showing its pending decision (undoable) and nothing is
+/// written until Save, which applies the whole queue (see
+/// `gestures/moment_review_apply.dart`). The queue persists in
+/// `MomentReviewStore`.
 class MomentFollowUpScreen extends StatefulWidget {
   const MomentFollowUpScreen({
     super.key,
@@ -168,27 +178,29 @@ class MomentFollowUpScreen extends StatefulWidget {
     this.preloadedAssumed,
     this.assumedWriter = const AssumedWaterWriter(),
     this.store = const MomentReviewStore(),
-    this.rangeWriter = const ReviewRangeWriter(),
+    this.rangeWriter,
     this.exporter,
   });
-
-  /// RED stubs (not read yet). Where the queued decisions persist; where a
-  /// nap / workout range lands; and the Tasker export Save feeds (null: the
-  /// default `TaskerMomentExport()`). Save builds a `MomentReviewApplier` from
-  /// [writer], [assumedWriter], [rangeWriter] and [exporter].
-  final MomentReviewStore store;
-  final ReviewRangeWriter rangeWriter;
-  final TaskerMomentExport? exporter;
 
   /// Injected in tests; null reads them from the database.
   final List<PendingMoment>? preloaded;
 
-  /// Assumed water glasses to list among the moments (RED stub: not yet
-  /// shown). Null reads them from the database.
+  /// Assumed water glasses to list among the moments. Null reads them from the
+  /// database.
   final List<AssumedGlass>? preloadedAssumed;
   final AssumedWaterWriter assumedWriter;
   final MomentAnswerWriter writer;
   final DateTime? now;
+
+  /// Where the queued decisions persist.
+  final MomentReviewStore store;
+
+  /// Where a nap / workout range lands; null builds the real one from the
+  /// app's repository and state.
+  final ReviewRangeWriter? rangeWriter;
+
+  /// The Tasker export Save feeds; null is the default `TaskerMomentExport()`.
+  final TaskerMomentExport? exporter;
 
   @override
   State<MomentFollowUpScreen> createState() => _MomentFollowUpScreenState();
@@ -197,14 +209,22 @@ class MomentFollowUpScreen extends StatefulWidget {
 class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   List<PendingMoment>? _items;
   List<AssumedGlass> _glasses = [];
+  MomentReviewQueue _queue = MomentReviewQueue.empty;
   bool _failed = false;
   bool _busy = false;
 
   /// The choice a moment is waiting on more input for (an amount, a note, or
-  /// the workout options).
+  /// the workout options). Not yet part of the queue.
   final Map<String, MomentChoice> _open = {};
   final Map<String, TextEditingController> _text = {};
   final Map<String, _SymptomDraft> _drafts = {};
+
+  /// Review key -> why that item was not saved by the last Save. It stays
+  /// queued; editing it clears the note.
+  final Map<String, Object> _itemErrors = {};
+
+  /// Plain moment key -> why a pairing started from that card was refused.
+  final Map<String, String> _pairErrors = {};
 
   @override
   void initState() {
@@ -212,6 +232,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     if (widget.preloaded != null) {
       _items = List.of(widget.preloaded!);
       _glasses = List.of(widget.preloadedAssumed ?? const []);
+      _adoptQueue();
     } else {
       _load();
     }
@@ -247,6 +268,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
         setState(() {
           _items = f.pending(at);
           _glasses = f.pendingAssumed(at);
+          _adoptQueue();
         });
       }
     } catch (_) {
@@ -254,46 +276,51 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     }
   }
 
-  /// Keep / Remove one assumed glass. The row leaves only once the write has
-  /// landed; a failed write keeps it and says so.
-  Future<void> _storeGlass(AssumedGlass g, Future<void> Function() write) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await write();
-      if (!mounted) return;
-      setState(() => _glasses.removeWhere((x) => x.key == g.key));
-    } catch (_) {
-      if (!mounted) return;
-      final l = AppLocalizations.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(l?.momentFollowUpSaveFailed ??
-              'Could not save that answer. Try again.')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  /// Reads the stored queue and drops every draft whose moment or glass is no
+  /// longer waiting (answered elsewhere, or older than the window).
+  void _adoptQueue() {
+    final stored = widget.store.load();
+    final pending = {
+      for (final m in _items ?? const <PendingMoment>[]) ReviewKey.moment(m),
+      for (final g in _glasses) ReviewKey.glass(g),
+    };
+    _queue = stored.dropStale(pending);
+    if (_queue.length != stored.length) unawaited(widget.store.save(_queue));
   }
 
-  Future<void> _store(PendingMoment m,
-      Future<MomentAnswerResult> Function() write) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await write();
-      if (!mounted) return;
-      setState(() {
-        _items?.removeWhere((x) => x.key == m.key);
-        _open.remove(m.key);
-      });
-    } catch (_) {
-      if (!mounted) return;
-      final l = AppLocalizations.of(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(l?.momentFollowUpSaveFailed ??
-              'Could not save that answer. Try again.')));
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  /// Replace the queue, persist it at once (a kill must not lose it) and clear
+  /// the failure / pairing notes of [touched] review keys.
+  void _setQueue(MomentReviewQueue q, {Iterable<String> touched = const []}) {
+    setState(() {
+      for (final k in touched) {
+        _itemErrors.remove(k);
+        if (ReviewKey.isMoment(k)) {
+          final plain = ReviewKey.plainOf(k);
+          _pairErrors.remove(plain);
+          final r = _queue.rangeOf(plain);
+          if (r != null) _itemErrors.remove(ReviewKey.range(r));
+        }
+      }
+      _queue = q;
+    });
+    unawaited(widget.store.save(q));
+  }
+
+  void _queueMoment(PendingMoment m, ReviewDecision d) {
+    final k = ReviewKey.moment(m);
+    setState(() => _open.remove(m.key));
+    _setQueue(_queue.withDecision(k, d), touched: [k]);
+  }
+
+  void _queueGlass(AssumedGlass g, ReviewDecision d) {
+    final k = ReviewKey.glass(g);
+    _setQueue(_queue.withDecision(k, d), touched: [k]);
+  }
+
+  void _undoMoment(PendingMoment m) {
+    final k = ReviewKey.moment(m);
+    setState(() => _open.remove(m.key));
+    _setQueue(_queue.without(k), touched: [k]);
   }
 
   void _choose(PendingMoment m, MomentChoice c) {
@@ -309,41 +336,249 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
       setState(() => _open[m.key] = c);
       return;
     }
-    _store(m, () => widget.writer.answer(m, c, now: widget.now));
+    _queueMoment(m, ReviewDecision.label(c));
   }
 
-  void _save(PendingMoment m, MomentChoice c) {
+  /// "Done" on the amount / note / symptom form: queue it.
+  void _confirm(PendingMoment m, MomentChoice c) {
     if (c == MomentChoice.symptom) {
-      // Nothing is saved until severity, kind and area are said; a half
+      // Nothing is queued until severity, kind and area are said; a half
       // description is never stored.
       final d = _drafts[m.key]?.build();
       if (d == null) return;
-      _store(m, () => widget.writer.answerSymptom(m, d, now: widget.now));
+      _queueMoment(m, ReviewDecision.symptom(d));
       return;
     }
     final raw = _field(m.key).text.trim();
     if (c == MomentChoice.other) {
-      _store(m,
-          () => widget.writer.answer(m, c,
-              note: raw.isEmpty ? null : raw, now: widget.now));
+      _queueMoment(
+          m, ReviewDecision.label(c, note: raw.isEmpty ? null : raw));
       return;
     }
     // A number only when one was typed; anything else is no amount, never a
     // guessed one.
     final v = double.tryParse(raw.replaceAll(',', '.'));
-    _store(m, () => widget.writer.answer(m, c, value: v, now: widget.now));
+    _queueMoment(m, ReviewDecision.label(c, value: v));
   }
 
+  /// The "Log a workout at this time" form saves a workout on its own, so the
+  /// moment is answered right away (it is not part of the queue).
   Future<void> _logWorkout(PendingMoment m) async {
     final now = widget.now ?? DateTime.now();
     final w = workoutPrefillFor(m, now);
     final saved = await Navigator.of(context).push<bool>(MaterialPageRoute<bool>(
       builder: (_) => LogWorkout(start: w.start, end: w.end, now: widget.now),
     ));
-    if (saved == true && mounted) {
-      await _store(
-          m, () => widget.writer.answer(m, MomentChoice.workout, now: now));
+    if (saved != true || !mounted || _busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.writer.answer(m, MomentChoice.workout, now: now);
+      if (!mounted) return;
+      _open.remove(m.key);
+      _items?.removeWhere((x) => x.key == m.key);
+      _setQueue(_queue.without(ReviewKey.moment(m)),
+          touched: [ReviewKey.moment(m)]);
+    } catch (_) {
+      if (!mounted) return;
+      final l = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l?.momentFollowUpSaveFailed ??
+              'Could not save that answer. Try again.')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
+  }
+
+  ReviewRangeWriter _rangeWriter() =>
+      widget.rangeWriter ??
+      ReviewRangeWriter(repo: repoOf(context), app: appOf(context));
+
+  /// The choice a card is working on: the open form, else the queued label.
+  MomentChoice? _effectiveChoice(PendingMoment m) =>
+      _open[m.key] ?? _queue.decisionFor(ReviewKey.moment(m))?.choice;
+
+  Future<void> _pair(PendingMoment m) async {
+    final choice = _effectiveChoice(m);
+    if (choice == null || !isRangeChoice(choice)) return;
+    final candidates = [
+      for (final o in _items ?? const <PendingMoment>[])
+        if (o.key != m.key &&
+            _queue.decisionFor(ReviewKey.moment(o)) == null &&
+            _queue.rangeOf(o.key) == null)
+          o,
+    ];
+    final picked = await showModalBottomSheet<({PendingMoment other, String type})>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: P.of(context).card,
+      shape: const RoundedRectangleBorder(borderRadius: R.rXl),
+      builder: (_) => _PairSheet(
+          moment: m, candidates: candidates, workout: choice == MomentChoice.workout),
+    );
+    if (picked == null || !mounted) return;
+    final first = m.local.isAfter(picked.other.local) ? picked.other : m;
+    final second = identical(first, m) ? picked.other : m;
+    final l = AppLocalizations.of(context);
+    final writer = _rangeWriter();
+    String? refusal;
+    try {
+      final err = await checkReviewRange(writer,
+          choice: choice,
+          start: first.local,
+          end: second.local,
+          now: widget.now ?? DateTime.now());
+      if (err != null) refusal = _rangeMessage(l, choice, err);
+    } catch (_) {
+      refusal = l?.momentReviewRangeCheckFailed ??
+          'Could not check this pair. Try again.';
+    }
+    if (!mounted) return;
+    if (refusal != null) {
+      setState(() => _pairErrors[m.key] = refusal!);
+      return;
+    }
+    setState(() {
+      _open.remove(m.key);
+      _open.remove(picked.other.key);
+    });
+    _setQueue(
+        _queue.withRange(m, picked.other, choice,
+            workoutType: picked.type == 'other' ? null : picked.type),
+        touched: [ReviewKey.moment(m), ReviewKey.moment(picked.other)]);
+  }
+
+  Future<void> _save() async {
+    if (_busy || _queue.isEmpty) return;
+    setState(() => _busy = true);
+    final writer = _rangeWriter();
+    final exporter = widget.exporter;
+    final applier = MomentReviewApplier(
+        writer: widget.writer,
+        assumedWriter: widget.assumedWriter,
+        ranges: writer,
+        exporter: exporter);
+    ReviewSaveReport? report;
+    try {
+      report = await applier.apply(_queue,
+          moments: List.of(_items ?? const []),
+          glasses: List.of(_glasses),
+          now: widget.now ?? DateTime.now());
+    } catch (_) {
+      report = null; // the applier reports per item; this is a surprise
+    }
+    if (report != null) {
+      // Persist what is left even if the screen is gone.
+      await widget.store.save(report.remaining);
+    }
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (report == null) {
+        final l = AppLocalizations.of(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(l?.momentFollowUpSaveFailed ??
+                'Could not save that answer. Try again.')));
+        return;
+      }
+      _queue = report.remaining;
+      _itemErrors
+        ..clear()
+        ..addAll(report.failed);
+      for (final key in [...report.applied, ...report.alreadyAnswered]) {
+        if (key.startsWith('range:')) {
+          final r = key.substring('range:'.length).split('|');
+          for (final k in r) {
+            _items?.removeWhere((x) => x.key == k);
+            _open.remove(k);
+          }
+        } else if (ReviewKey.isMoment(key)) {
+          _items?.removeWhere((x) => x.key == ReviewKey.plainOf(key));
+          _open.remove(ReviewKey.plainOf(key));
+        } else {
+          _glasses.removeWhere((g) => ReviewKey.glass(g) == key);
+        }
+      }
+    });
+  }
+
+  String _rangeMessage(AppLocalizations? l, MomentChoice c, ManualWindowError e) {
+    final nap = c == MomentChoice.nap;
+    return switch (e) {
+      ManualWindowError.endNotAfterStart => l?.momentReviewRangeEnd ??
+          'The end has to be after the start.',
+      ManualWindowError.tooShort || ManualWindowError.tooLong => nap
+          ? (l?.napsInvalidWindow ??
+              'A nap must be between 5 minutes and 6 hours. Longer periods '
+                  'count as night sleep, which shows sleep stages.')
+          : (l?.momentReviewRangeWorkoutLength ??
+              'A workout has to last between 1 minute and 24 hours.'),
+      ManualWindowError.inFuture => l?.momentReviewRangeFuture ??
+          "A range can't end in the future.",
+      ManualWindowError.overlapsExisting => nap
+          ? (l?.napsOverlap ??
+              'This overlaps a nap already logged on this day. Remove that '
+                  'nap first.')
+          : (l?.momentReviewRangeWorkoutOverlap ??
+              'That overlaps a workout already in your log.'),
+    };
+  }
+
+  String _failureText(AppLocalizations? l, Object? error, MomentChoice? c) {
+    if (error is ManualWindowException) {
+      return _rangeMessage(l, c ?? MomentChoice.nap, error.error);
+    }
+    return l?.momentReviewItemFailed ??
+        'Not saved. It is still queued — press Save to try again.';
+  }
+
+  /// What a queued decision will do, for the card ("Caffeine · 80 mg").
+  String _what(AppLocalizations? l, ReviewDecision d) {
+    switch (d.kind) {
+      case ReviewDecisionKind.skip:
+        return l?.momentFollowUpSkip ?? 'Skip';
+      case ReviewDecisionKind.symptom:
+        return d.symptom!.describe(l);
+      case ReviewDecisionKind.keepGlass:
+        return l?.assumedWaterKeep ?? 'Keep';
+      case ReviewDecisionKind.removeGlass:
+        return l?.assumedWaterRemove ?? 'Remove';
+      case ReviewDecisionKind.label:
+        final c = d.choice!;
+        final parts = [c.localized(l)];
+        final v = d.value;
+        if (v != null) {
+          final unit = c.journalField == null
+              ? null
+              : kJournalFieldsByKey[c.journalField]?.unit;
+          final num_ = v == v.roundToDouble() ? v.round().toString() : '$v';
+          parts.add(unit == null ? num_ : '$num_ $unit');
+        }
+        if (d.note != null && d.note!.isNotEmpty) parts.add(d.note!);
+        return parts.join(' · ');
+    }
+  }
+
+  String _pending(AppLocalizations? l, ReviewDecision d) {
+    final what = _what(l, d);
+    return l?.momentReviewPending(what) ?? 'Will save: $what';
+  }
+
+  String _rangeText(AppLocalizations? l, ReviewRange r) {
+    final s = momentLocalTime(
+        r.startKey.split(' ').first, r.startKey.split(' ').last)!;
+    final e = momentLocalTime(
+        r.endKey.split(' ').first, r.endKey.split(' ').last)!;
+    final sameDay = s.year == e.year && s.month == e.month && s.day == e.day;
+    final endLabel =
+        sameDay ? r.endKey.split(' ').last : r.endKey;
+    var what = r.choice.localized(l);
+    final t = r.workoutType;
+    if (t != null && t != 'other') {
+      what = '$what (${_activityName(l, t)})';
+    }
+    final start = r.startKey.split(' ').last;
+    return l?.momentReviewRange(what, start, endLabel) ??
+        '$what: $start to $endLabel';
   }
 
   @override
@@ -351,6 +586,9 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final items = _items;
+    final nothingLeft = items != null && items.isEmpty && _glasses.isEmpty;
+    final showSave = !_failed && items != null && !nothingLeft;
+    final n = _queue.length;
     return Scaffold(
       backgroundColor: p.bg,
       body: SafeArea(
@@ -363,7 +601,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x10),
+              padding: const EdgeInsets.fromLTRB(S.x4, 0, S.x4, S.x6),
               children: [
                 if (_failed)
                   StatusCard(
@@ -376,7 +614,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                   )
                 else if (items == null)
                   const NoData(message: '…')
-                else if (items.isEmpty && _glasses.isEmpty)
+                else if (nothingLeft)
                   KeyedSubtree(
                     key: const ValueKey('moment-follow-up-empty'),
                     child: StatusCard(
@@ -387,46 +625,100 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                       icon: LucideIcons.circleCheck,
                     ),
                   )
-                else
+                else ...[
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: S.x3),
+                    child: Text(
+                        l?.momentReviewHint ??
+                            'Your choices are queued. Nothing is saved until '
+                                'you press Save.',
+                        style: F.cap.copyWith(color: p.ink2)),
+                  ),
                   for (final e in _chronological(items, _glasses)) ...[
                     if (e.glass case final g?)
                       _AssumedRow(
                         key: ValueKey('assumed-water:${g.key}'),
                         glass: g,
                         busy: _busy,
-                        onKeep: () => _storeGlass(
-                            g, () => widget.assumedWriter.keep(g)),
-                        onRemove: () => _storeGlass(
-                            g, () => widget.assumedWriter.remove(g)),
+                        pending: _queue.decisionFor(ReviewKey.glass(g)) == null
+                            ? null
+                            : _pending(l, _queue.decisionFor(ReviewKey.glass(g))!),
+                        failure: _itemErrors.containsKey(ReviewKey.glass(g))
+                            ? _failureText(l, _itemErrors[ReviewKey.glass(g)], null)
+                            : null,
+                        onKeep: () => _queueGlass(g, const ReviewDecision.keepGlass()),
+                        onRemove: () =>
+                            _queueGlass(g, const ReviewDecision.removeGlass()),
+                        onUndo: () => _setQueue(_queue.without(ReviewKey.glass(g)),
+                            touched: [ReviewKey.glass(g)]),
                       )
                     else if (e.moment case final m?)
-                    _MomentRow(
-                      key: ValueKey('moment-follow-up:${m.key}'),
-                      moment: m,
-                      open: _open[m.key],
-                      controller: _field(m.key),
-                      draft: _drafts[m.key],
-                      onDraft: () => setState(() {}),
-                      busy: _busy,
-                      onChoose: (ch) => _choose(m, ch),
-                      onSave: (ch) => _save(m, ch),
-                      onSkip: () =>
-                          _store(m, () => widget.writer.skip(m, now: widget.now)),
-                      onLogWorkout: () => _logWorkout(m),
-                      onLabelWorkout: () => _store(
-                          m,
-                          () => widget.writer
-                              .answer(m, MomentChoice.workout, now: widget.now)),
-                    ),
+                      _momentRow(c, l, m),
                     const SizedBox(height: S.x3),
                   ],
+                ],
               ],
             ),
           ),
+          if (showSave)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(S.x4, S.x2, S.x4, S.x4),
+              child: BigButton(
+                  l?.momentReviewSaveCount(n) ??
+                      (n == 0
+                          ? 'Save'
+                          : n == 1
+                              ? 'Save 1 answer'
+                              : 'Save $n answers'),
+                  key: const ValueKey('review-save'),
+                  icon: LucideIcons.check,
+                  color: C.domMind,
+                  onTap: _busy || n == 0 ? null : _save),
+            ),
         ]),
       ),
     );
   }
+
+  Widget _momentRow(BuildContext c, AppLocalizations? l, PendingMoment m) {
+    final k = ReviewKey.moment(m);
+    final d = _queue.decisionFor(k);
+    final r = _queue.rangeOf(m.key);
+    final choice = _effectiveChoice(m);
+    final err = _itemErrors[k] ?? (r == null ? null : _itemErrors[ReviewKey.range(r)]);
+    return _MomentRow(
+      key: ValueKey('moment-follow-up:${m.key}'),
+      moment: m,
+      open: _open[m.key],
+      controller: _field(m.key),
+      draft: _drafts[m.key],
+      onDraft: () => setState(() {}),
+      busy: _busy,
+      pending: r == null && d != null ? _pending(l, d) : null,
+      rangeText: r == null ? null : _rangeText(l, r),
+      failure: err == null
+          ? null
+          : _failureText(l, err, r?.choice ?? d?.choice),
+      pairError: _pairErrors[m.key],
+      canPair: r == null && choice != null && isRangeChoice(choice),
+      onChoose: (ch) => _choose(m, ch),
+      onSave: (ch) => _confirm(m, ch),
+      onSkip: () => _queueMoment(m, const ReviewDecision.skip()),
+      onUndo: () => _undoMoment(m),
+      onPair: () => _pair(m),
+      onLogWorkout: () => _logWorkout(m),
+      onLabelWorkout: () =>
+          _queueMoment(m, const ReviewDecision.label(MomentChoice.workout)),
+    );
+  }
+}
+
+/// The name of the activity with this `sessions.type` key.
+String _activityName(AppLocalizations? l, String typeKey) {
+  for (final a in allActivities) {
+    if (a.typeKey == typeKey) return a.name;
+  }
+  return MomentChoice.other.localized(l);
 }
 
 class _MomentRow extends StatelessWidget {
@@ -438,9 +730,16 @@ class _MomentRow extends StatelessWidget {
     required this.draft,
     required this.onDraft,
     required this.busy,
+    required this.pending,
+    required this.rangeText,
+    required this.failure,
+    required this.pairError,
+    required this.canPair,
     required this.onChoose,
     required this.onSave,
     required this.onSkip,
+    required this.onUndo,
+    required this.onPair,
     required this.onLogWorkout,
     required this.onLabelWorkout,
   });
@@ -453,8 +752,12 @@ class _MomentRow extends StatelessWidget {
   final _SymptomDraft? draft;
   final VoidCallback onDraft;
   final bool busy;
+
+  /// "Will save: …" for a queued decision, or the range line when paired.
+  final String? pending, rangeText, failure, pairError;
+  final bool canPair;
   final ValueChanged<MomentChoice> onChoose, onSave;
-  final VoidCallback onSkip, onLogWorkout, onLabelWorkout;
+  final VoidCallback onSkip, onUndo, onPair, onLogWorkout, onLabelWorkout;
 
   @override
   Widget build(BuildContext c) {
@@ -465,11 +768,45 @@ class _MomentRow extends StatelessWidget {
     final spec = choice?.journalField == null
         ? null
         : kJournalFieldsByKey[choice!.journalField];
+    final queued = rangeText ?? pending;
     return Surface(
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('${moment.date} · ${moment.hhmm}',
             style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
-        const SizedBox(height: S.x3),
+        if (queued != null) ...[
+          const SizedBox(height: S.x2),
+          Row(
+            key: ValueKey(
+                rangeText != null ? 'moment-range:$k' : 'moment-pending:$k'),
+            children: [
+              Icon(LucideIcons.clock, size: 16, color: p.on(C.domMind)),
+              const SizedBox(width: S.x2),
+              Expanded(
+                child: Text(queued,
+                    style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Pressable(
+              key: ValueKey('moment-undo:$k'),
+              onTap: busy ? null : onUndo,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: S.x2),
+                child: Text(l?.momentReviewUndo ?? 'Undo',
+                    style: F.cap.copyWith(color: p.ink2)),
+              ),
+            ),
+          ),
+        ],
+        if (failure != null)
+          Padding(
+            key: ValueKey('moment-save-failed:$k'),
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: Text(failure!, style: F.cap.copyWith(color: p.ink2)),
+          ),
+        const SizedBox(height: S.x1),
         Wrap(spacing: S.x2, runSpacing: S.x2, children: [
           for (final ch in MomentChoice.values)
             Pressable(
@@ -509,7 +846,7 @@ class _MomentRow extends StatelessWidget {
         ],
         if (choice != null && choice != MomentChoice.workout) ...[
           const SizedBox(height: S.x3),
-          BigButton(l?.momentFollowUpSave ?? 'Save',
+          BigButton(l?.momentReviewQueueIt ?? 'Queue this answer',
               key: ValueKey('moment-save:$k'),
               icon: LucideIcons.check,
               color: C.domMind,
@@ -528,6 +865,21 @@ class _MomentRow extends StatelessWidget {
               soft: true,
               onTap: busy ? null : onLabelWorkout),
         ],
+        if (canPair) ...[
+          const SizedBox(height: S.x2),
+          BigButton(l?.momentReviewPair ?? 'Pair with another mark…',
+              key: ValueKey('moment-pair:$k'),
+              icon: LucideIcons.link,
+              color: C.blue,
+              soft: true,
+              onTap: busy ? null : onPair),
+        ],
+        if (pairError != null)
+          Padding(
+            key: ValueKey('moment-range-error:$k'),
+            padding: const EdgeInsets.only(top: S.x2),
+            child: Text(pairError!, style: F.cap.copyWith(color: p.ink2)),
+          ),
         const SizedBox(height: S.x2),
         Align(
           alignment: Alignment.centerLeft,
@@ -542,6 +894,81 @@ class _MomentRow extends StatelessWidget {
           ),
         ),
       ]),
+    );
+  }
+}
+
+/// The moments this one can be paired with, and (for a workout) its type.
+class _PairSheet extends StatefulWidget {
+  const _PairSheet(
+      {required this.moment, required this.candidates, required this.workout});
+  final PendingMoment moment;
+  final List<PendingMoment> candidates;
+  final bool workout;
+
+  @override
+  State<_PairSheet> createState() => _PairSheetState();
+}
+
+class _PairSheetState extends State<_PairSheet> {
+  /// `sessions.type` key; "other" until the wearer picks one.
+  String _type = 'other';
+
+  Future<void> _pickType() async {
+    final a = await showModalBottomSheet<Activity>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: P.of(context).card,
+      shape: const RoundedRectangleBorder(borderRadius: R.rXl),
+      builder: (_) => const ActivityTypeSheet(),
+    );
+    if (a != null && mounted) setState(() => _type = a.typeKey);
+  }
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final k = widget.moment.key;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(S.x4),
+        child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(l?.momentReviewPairTitle ?? 'Pair with another marked moment',
+                  style: F.t2.copyWith(color: p.ink)),
+              const SizedBox(height: S.x3),
+              if (widget.workout) ...[
+                Pressable(
+                  key: ValueKey('moment-pair-type:$k'),
+                  onTap: _pickType,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x2),
+                    child: Text(
+                        l?.momentReviewPairType(_activityName(l, _type)) ??
+                            'Workout type: ${_activityName(l, _type)}',
+                        style: F.body.copyWith(color: p.ink)),
+                  ),
+                ),
+                const SizedBox(height: S.x2),
+              ],
+              if (widget.candidates.isEmpty)
+                Text(l?.momentReviewPairNone ??
+                    'No other unanswered moment to pair with.'),
+              for (final o in widget.candidates)
+                Pressable(
+                  key: ValueKey('moment-pair-target:$k:${o.key}'),
+                  onTap: () => Navigator.of(c).pop((other: o, type: _type)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: S.x3),
+                    child: Text('${o.date} · ${o.hhmm}',
+                        style: F.body.copyWith(color: p.ink)),
+                  ),
+                ),
+            ]),
+      ),
     );
   }
 }
@@ -561,20 +988,25 @@ List<_Entry> _chronological(
 
 /// An assumed glass of water, labelled as such, with Keep and Remove.
 ///
-/// Keep acknowledges it (it stays in the water total and leaves this list);
+/// Keep and Remove are QUEUED (shown as pending, undoable); on Save, Keep
+/// acknowledges it (it stays in the water total and leaves this list) and
 /// Remove subtracts exactly that glass. It offers none of the moment choices.
 class _AssumedRow extends StatelessWidget {
   const _AssumedRow({
     super.key,
     required this.glass,
     required this.busy,
+    required this.pending,
+    required this.failure,
     required this.onKeep,
     required this.onRemove,
+    required this.onUndo,
   });
 
   final AssumedGlass glass;
   final bool busy;
-  final VoidCallback onKeep, onRemove;
+  final String? pending, failure;
+  final VoidCallback onKeep, onRemove, onUndo;
 
   @override
   Widget build(BuildContext c) {
@@ -600,6 +1032,38 @@ class _AssumedRow extends StatelessWidget {
                 'Adds $amount to the water you drank, assumed from your water '
                     'reminder. Keep it or remove it.',
             style: F.cap.copyWith(color: p.ink2)),
+        if (pending != null) ...[
+          const SizedBox(height: S.x2),
+          Row(
+            key: ValueKey('assumed-pending:${glass.key}'),
+            children: [
+              Icon(LucideIcons.clock, size: 16, color: p.on(C.domMind)),
+              const SizedBox(width: S.x2),
+              Expanded(
+                child: Text(pending!,
+                    style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Pressable(
+              key: ValueKey('assumed-undo:${glass.key}'),
+              onTap: busy ? null : onUndo,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: S.x2),
+                child: Text(l?.momentReviewUndo ?? 'Undo',
+                    style: F.cap.copyWith(color: p.ink2)),
+              ),
+            ),
+          ),
+        ],
+        if (failure != null)
+          Padding(
+            key: ValueKey('assumed-save-failed:${glass.key}'),
+            padding: const EdgeInsets.only(top: S.x1),
+            child: Text(failure!, style: F.cap.copyWith(color: p.ink2)),
+          ),
         const SizedBox(height: S.x3),
         Row(children: [
           Expanded(

@@ -17,6 +17,8 @@ final _end = DateTime(2026, 10, 6, 10, 5);
 int _s(DateTime d) => d.millisecondsSinceEpoch ~/ 1000;
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('payload', () {
     test('a plain moment: kind, type, start, day. No end, no value', () {
       final p = TaskerMomentExport.payloadFor(

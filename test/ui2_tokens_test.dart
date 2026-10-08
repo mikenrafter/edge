@@ -205,6 +205,10 @@ const _notComponents = {
   // Marked-moment follow-up: the Home card is pure and the screen reads and
   // writes the database. Both are pumped in test/gestures/moments/.
   'MomentFollowUpCard', 'MomentFollowUpScreen',
+  // The searchable activity list of the Log-a-workout form, also offered by the
+  // marked-moment pairing sheet; a bottom sheet over a database-free list,
+  // pumped through both in test/gestures/moments/review/review_screen_test.dart.
+  'ActivityTypeSheet',
   // Home card bound to SnoozeController.status (a pending main-alarm snooze);
   // every state is pumped in test/alarm_snooze/snooze_ui_test.dart. The
   // settings rows are pumped there too, standalone and inside the alarm screen.

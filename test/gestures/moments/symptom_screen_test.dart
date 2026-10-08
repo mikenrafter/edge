@@ -66,6 +66,8 @@ Finder _save(PendingMoment m) => find.byKey(ValueKey('moment-save:${m.key}'));
 Finder _preview(PendingMoment m) =>
     find.byKey(ValueKey('symptom-preview:${m.key}'));
 
+final Finder _reviewSave = find.byKey(const ValueKey('review-save'));
+
 Future<_FakeWriter> _pump(WidgetTester t, List<PendingMoment> moments) async {
   final w = _FakeWriter();
   t.view.physicalSize = const Size(390 * 3, 8000 * 3);
@@ -149,6 +151,8 @@ void main() {
       final w = await _pump(t, [_a]);
       await _tap(t, _choice(_a, MomentChoice.symptom));
       await _tap(t, find.byKey(ValueKey('moment-skip:${_a.key}')));
+      expect(w.skips, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.skips, [_a.key]);
       expect(w.symptoms, isEmpty);
     });
@@ -172,6 +176,8 @@ void main() {
 
       await _tap(t, _area(_a, SymptomArea.neck));
       await _tap(t, _save(_a));
+      expect(w.symptoms, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.symptoms, hasLength(1));
     });
 
@@ -180,6 +186,8 @@ void main() {
       await _tap(t, _choice(_a, MomentChoice.symptom));
       await _required(t, _a);
       await _tap(t, _save(_a));
+      expect(w.symptoms, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.symptoms.single.m.key, _a.key);
       final d = w.symptoms.single.d;
       expect(d.severity, SymptomSeverity.moderate);
@@ -200,6 +208,8 @@ void main() {
       await _tap(t, _side(_a, SymptomSide.left));
       await _tap(t, _side(_a, SymptomSide.both));
       await _tap(t, _save(_a));
+      expect(w.symptoms, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.symptoms.single.d.side, SymptomSide.both);
     });
 
@@ -209,6 +219,9 @@ void main() {
       await _tap(t, _choice(_a, MomentChoice.symptom));
       await _required(t, _a);
       await _tap(t, _save(_a));
+      expect(find.byKey(ValueKey('moment-follow-up:${_a.key}')), findsOneWidget,
+          reason: 'queued: the card stays until Save');
+      await _tap(t, _reviewSave);
       expect(find.byKey(ValueKey('moment-follow-up:${_a.key}')), findsNothing);
       expect(find.byKey(ValueKey('moment-follow-up:${_b.key}')), findsOneWidget);
     });
@@ -221,6 +234,8 @@ void main() {
       await t.ensureVisible(note);
       await t.enterText(note, 'after the run');
       await _tap(t, _save(_a));
+      expect(w.symptoms, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.symptoms.single.d.note, 'after the run');
     });
   });
@@ -241,6 +256,8 @@ void main() {
       await t.enterText(field, 'burning');
       await t.pumpAndSettle();
       await _tap(t, _save(_a));
+      expect(w.symptoms, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       final d = w.symptoms.single.d;
       expect(d.kind, SymptomKind.other);
       expect(d.kindOther, 'burning');
@@ -260,6 +277,8 @@ void main() {
       await t.enterText(field, 'big toe');
       await t.pumpAndSettle();
       await _tap(t, _save(_a));
+      expect(w.symptoms, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.symptoms.single.d.areaOther, 'big toe');
     });
 
@@ -273,6 +292,8 @@ void main() {
       await _tap(t, _kind(_a, SymptomKind.soreness));
       expect(field, findsNothing);
       await _tap(t, _save(_a));
+      expect(w.symptoms, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.symptoms.single.d.kind, SymptomKind.soreness);
       expect(w.symptoms.single.d.kindOther, isNull);
     });
@@ -313,10 +334,12 @@ void main() {
   });
 
   group('the other choices are untouched', () {
-    testWidgets('Nap still answers at once; Caffeine still asks an amount',
+    testWidgets('Nap is still one tap (queued); Caffeine still asks an amount',
         (t) async {
       final w = await _pump(t, [_a, _b]);
       await _tap(t, _choice(_a, MomentChoice.nap));
+      expect(w.answers, isEmpty, reason: 'queued, not applied');
+      await _tap(t, _reviewSave);
       expect(w.answers, [MomentChoice.nap]);
       await _tap(t, _choice(_b, MomentChoice.caffeine));
       expect(find.byKey(ValueKey('moment-value:${_b.key}')), findsOneWidget);
