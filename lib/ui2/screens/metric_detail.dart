@@ -394,6 +394,29 @@ const _outcomeOf = {
 
 // ═══════════════════ the screen ═══════════════════
 
+/// WHERE A RELEASE SITS ON THE LINE, as annotations.
+///
+/// A break's stamp is the first day computed the NEW way, so the boundary is
+/// between two slots, not on one — half a slot left of it. A break at slot 0 is
+/// dropped: there is nothing before it in this window to be incomparable with.
+/// [daysBehind] maps a stamp (epoch seconds) to whole days before today, or
+/// null; it is a parameter so the placement is testable without a clock.
+///
+/// Domain: slot i is at i (0 … [seriesLength] - 1, the last slot is today).
+List<ChartAnnotation> heroAlgoAnnotations({
+  required List<int> algoBreaks,
+  required int seriesLength,
+  required int? Function(int epochSec) daysBehind,
+  required String label,
+}) =>
+    algoBreakAnnotations(
+      breakDaysBehind: [
+        for (final t in algoBreaks) ?daysBehind(t),
+      ],
+      seriesLength: seriesLength,
+      label: label,
+    );
+
 class MetricData {
   /// DATED points, not bare values. `metric_series` holds one row per DERIVED
   /// day rather than one per calendar day, so a compacted list lets 22 stored
@@ -1427,20 +1450,28 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
           // boundary is between two slots, not on one — half a slot left of it.
           // A break at slot 0 is dropped: there is nothing before it in this
           // window to be incomparable with.
-          final marks = <double>[
-            if (series.length > 1)
-              for (final t in algoBreaks)
-                if (daysBehind(t) case final b?
-                    when b >= 0 && b < series.length && series.length - 1 - b > 0)
-                  (series.length - 1 - b - .5) / (series.length - 1),
-          ];
+          final marks = heroAlgoAnnotations(
+            algoBreaks: algoBreaks,
+            seriesLength: series.length,
+            daysBehind: daysBehind,
+            label: l?.investigateAlgoVersionLabel ?? 'Algorithm version',
+          );
           final dim = _dimMask(d, series.length);
           return ChartFrame(
             title: spec.title,
             unit: spec.unit.isEmpty ? 'score' : spec.unit,
             height: 150,
             yAxis: axis,
-            xMarks: marks,
+            // Icon + dashed line, through the shared annotation layout so a
+            // mark can never sit on another icon. Provenance, not an event.
+            annotations: marks.isEmpty
+                ? null
+                : AnnotationSet(
+                    items: marks,
+                    domainStart: 0,
+                    domainEnd: (series.length - 1).toDouble()),
+            annotationCursor:
+                _pick == null ? null : _slotAt01(_pick!, series.length),
             // The mark's only screen-reader form, and the only thing that can
             // say what it is. Deliberately flat: a version change is
             // provenance, not an event that happened to the user.
@@ -1448,9 +1479,9 @@ class _MetricDetailState extends State<MetricDetail> with RevisionReload {
                 ? null
                 : (l?.metricDetailAlgoBreakFootnote(marks.length) ??
                     (marks.length == 1
-                        ? 'The dotted line marks a change in how these days are computed. '
+                        ? 'The dashed line marks a change in how these days are computed. '
                           'Readings before and after it come from different versions.'
-                        : 'The dotted lines mark changes in how these days are computed. '
+                        : 'The dashed lines mark changes in how these days are computed. '
                           'Readings on either side of a line come from different versions.')),
             // The window IS the span now: `series` has one slot per calendar
             // day whether or not that day derived, so both edges are dates

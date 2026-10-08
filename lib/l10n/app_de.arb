@@ -1093,7 +1093,7 @@
   "metricDetailNerdStatsSub": "Die Zahlen hinter dem Bild",
   "metricDetailDailyAverage": "Tagesdurchschnitt · {count} von {win} Tagen",
   "metricDetailLatestReading": "Letzter {value} {unit} · {asOf}",
-  "metricDetailAlgoBreakFootnote": "{n, plural, one{Die gepunktete Linie zeigt eine Änderung, wie diese Tage berechnet wurden. Messwerte auf beiden Seiten stammen aus unterschiedlichen Versionen.} other{Die gepunkteten Linien zeigen Änderungen, wie diese Tage berechnet wurden. Messwerte auf beiden Seiten einer Linie stammen aus unterschiedlichen Versionen.}}",
+  "metricDetailAlgoBreakFootnote": "{n, plural, one{Die gestrichelte Linie zeigt eine Änderung, wie diese Tage berechnet wurden. Messwerte auf beiden Seiten stammen aus unterschiedlichen Versionen.} other{Die gestrichelten Linien zeigen Änderungen, wie diese Tage berechnet wurden. Messwerte auf beiden Seiten einer Linie stammen aus unterschiedlichen Versionen.}}",
   "metricDetailDaysAgoLabel": "{n, plural, one{vor {n} Tag} other{vor {n} Tagen}}",
   "metricDetailWornChartTitle": "Getragen",
   "metricDetailHoursADayUnit": "Std./Tag",

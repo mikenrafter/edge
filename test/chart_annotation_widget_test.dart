@@ -179,6 +179,27 @@ void main() {
       expect(_label(t).data, 'L-b');
     });
 
+    testWidgets('a reach limits how far the cursor still focuses', (t) async {
+      Widget lane(double px) => _app(ChartAnnotationLane(
+            set: const AnnotationSet(
+                items: [ChartAnnotation(
+                    id: 'a',
+                    kind: AnnotationKind.moment,
+                    at: 60,
+                    label: 'L-a')],
+                domainStart: 0,
+                domainEnd: 300,
+                reach: 48),
+            cursor: px / _w,
+            plotHeight: _plotH,
+          ));
+      await t.pumpWidget(lane(100));
+      expect(_icon(t, 'a').bold, isTrue, reason: '40 px away, inside 2 icons');
+      await t.pumpWidget(lane(200));
+      expect(_icon(t, 'a').bold, isFalse, reason: '140 px away');
+      expect(find.byKey(ChartAnnotationLane.labelKey), findsNothing);
+    });
+
     testWidgets('no cursor, no focus, no label', (t) async {
       await _pumpLane(t, [_pt('a', 60)]);
       expect(find.byKey(ChartAnnotationLane.labelKey), findsNothing);
@@ -261,6 +282,31 @@ void main() {
       expect(t.getTopLeft(shade).dx - _laneLeft(t),
           moreOrLessEquals(60, epsilon: .5));
       expect(t.getSize(shade).width, moreOrLessEquals(80, epsilon: .5));
+    });
+
+    testWidgets('both ends of a range are dashed lines, the icon is at the start',
+        (t) async {
+      await _pumpLane(t, [_range('w', 60, 140)]);
+      final start = _line(t, 'w'), end = _line(t, 'w:end');
+      expect(start.x, moreOrLessEquals(60, epsilon: .5));
+      expect(end.x, moreOrLessEquals(140, epsilon: .5));
+      expect(start.dashed && end.dashed, isTrue);
+      expect(_iconCentre(t, 'w'), moreOrLessEquals(60, epsilon: 1));
+    });
+
+    testWidgets('a cut end gets no line: the range did not end at the edge',
+        (t) async {
+      await _pumpLane(t, [_range('w', 200, 500)]);
+      expect(_lines(t).map((l) => l.id), ['w']);
+      await _pumpLane(t, [_range('w', -100, 120)]);
+      expect(_lines(t).map((l) => l.id), ['w:end'],
+          reason: 'its start is off the plot, so no start line either');
+      expect(find.byKey(ChartAnnotationLane.iconKey('w')), findsOneWidget);
+    });
+
+    testWidgets('focusing a range bolds both of its lines', (t) async {
+      await _pumpLane(t, [_range('w', 60, 140)], cursorPx: 100);
+      expect(_line(t, 'w').bold && _line(t, 'w:end').bold, isTrue);
     });
 
     testWidgets('the shade takes the colour of its kind, translucent', (t) async {

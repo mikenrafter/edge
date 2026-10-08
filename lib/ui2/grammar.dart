@@ -37,7 +37,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/journal_fields.dart' show formatMinuteOfDay;
 import '../models/metric.dart';
-import 'chart_annotations.dart' show AnnotationSet;
+import 'chart_annotations.dart' show AnnotationSet, ChartAnnotationLane;
 import 'charts.dart';
 import 'scroll_hint.dart';
 import 'theme.dart';
@@ -2820,6 +2820,11 @@ class ChartFrame extends StatelessWidget {
   /// static label for the focused one. See chart_annotations.dart.
   final AnnotationSet? annotations;
 
+  /// Where the finger is, 0…1 across the plot, for a chart whose scrubbing is
+  /// not a [ChartScrub] (the frame reads a [ChartScrub]'s own position). The
+  /// nearest annotation to it is the focused one.
+  final double? annotationCursor;
+
   const ChartFrame({
     super.key,
     required this.title,
@@ -2834,6 +2839,7 @@ class ChartFrame extends StatelessWidget {
     this.series = const [],
     this.xMarks = const [],
     this.annotations,
+    this.annotationCursor,
   });
 
   /// Width and height of [s] as it will actually be laid out — including the
@@ -2848,6 +2854,41 @@ class ChartFrame extends StatelessWidget {
       maxLines: 1,
     )..layout();
     return tp.size;
+  }
+
+  /// [plot] with the annotation lane over it, when there is anything to mark.
+  /// The lane sits in a row above the plot and its dashed lines run down
+  /// through it; it is added on top of [plot], never inside the plot's own
+  /// RepaintBoundary, and it takes taps only on its icons — a touch anywhere
+  /// else reaches the scrub underneath.
+  Widget _annotated(_ChartHub hub, double inset, Widget plot) {
+    final set = annotations;
+    if (set == null || set.items.isEmpty) return plot;
+    const header = ChartAnnotationLane.header;
+    return SizedBox(
+      height: height + header,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+              left: 0, right: 0, top: header, bottom: 0, child: plot),
+          Positioned(
+            left: inset,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: ListenableBuilder(
+              listenable: hub,
+              builder: (_, _) => ChartAnnotationLane(
+                set: set,
+                cursor: hub.at ?? annotationCursor,
+                plotHeight: height,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// The chart in a sentence: what it ends on, what it spanned, and which way
@@ -2995,7 +3036,10 @@ class ChartFrame extends StatelessWidget {
               child: Center(child: empty),
             )
           else
-            SizedBox(
+            _annotated(
+              hub,
+              inset,
+              SizedBox(
               height: height,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3058,6 +3102,7 @@ class ChartFrame extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
             ),
 
           // ── x axis ──

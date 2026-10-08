@@ -462,6 +462,106 @@ Map<String, Widget> _chartCases() {
         ),
       );
     }),
+    // Journal items and a version mark on a trend: an icon and a dashed line
+    // each, a shaded range, and a crowd collapsed to one icon with "+n".
+    'chart_line_annotations': Builder(builder: (c) {
+      final p = P.of(c);
+      return Surface(
+        child: ChartFrame(
+          title: 'Resting heart rate',
+          unit: 'bpm',
+          yAxis: AxisSpec.of(rhr, floor: 40),
+          xLabels: const ['29 days ago', 'Today'],
+          footnote: 'The dashed line with the grey icon marks a change in how '
+              'these days were computed.',
+          series: rhr,
+          annotations: const AnnotationSet(
+            domainStart: 0,
+            domainEnd: 29,
+            items: [
+              ChartAnnotation(
+                  id: 'v',
+                  kind: AnnotationKind.algoVersion,
+                  at: 8.5,
+                  label: 'Algorithm version'),
+              ChartAnnotation(
+                  id: 'w',
+                  kind: AnnotationKind.water,
+                  at: 14,
+                  label: 'Drank water'),
+              ChartAnnotation(
+                  id: 'run',
+                  kind: AnnotationKind.workout,
+                  at: 18,
+                  until: 21,
+                  label: 'Evening run'),
+              ChartAnnotation(
+                  id: 's1',
+                  kind: AnnotationKind.symptom,
+                  at: 25,
+                  label: 'Headache'),
+              ChartAnnotation(
+                  id: 's2',
+                  kind: AnnotationKind.moment,
+                  at: 25.4,
+                  label: 'Marked moment'),
+            ],
+          ),
+          child: ChartScrub(
+            label: 'Resting heart rate',
+            keys: [
+              ChartKey.slots('Heart rate (bpm)', p.on(C.blue), rhr,
+                  (i, v) => '${v.round()} bpm'),
+            ],
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: LineChart(rhr, p.on(C.blue),
+                  axis: AxisSpec.of(rhr, floor: 40), dots: true),
+            ),
+          ),
+        ),
+      );
+    }),
+    // Every annotation kind's icon, resting and focused (bold).
+    'annotation_icons': Surface(
+      child: Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+        for (final k in AnnotationKind.values) ...[
+          AnnotationIcon(kind: k, bold: false),
+          AnnotationIcon(kind: k, bold: true),
+        ],
+      ]),
+    ),
+    // The lane on its own, with the cursor on the workout: its label, its
+    // shaded range and its dashed edges, over an empty plot.
+    'annotation_lane': Surface(
+      child: ChartAnnotationLane(
+        cursor: .55,
+        plotHeight: 80,
+        set: const AnnotationSet(
+          domainStart: 0,
+          domainEnd: 100,
+          items: [
+            ChartAnnotation(
+                id: 'w',
+                kind: AnnotationKind.water,
+                at: 12,
+                label: 'Drank water'),
+            ChartAnnotation(
+                id: 'run',
+                kind: AnnotationKind.workout,
+                at: 50,
+                until: 62,
+                label: 'Evening run'),
+            ChartAnnotation(
+                id: 'nap',
+                kind: AnnotationKind.nap,
+                at: 75,
+                until: 80,
+                label: 'Nap'),
+          ],
+        ),
+      ),
+    ),
     'chart_bars': Builder(builder: (c) {
       final p = P.of(c);
       return Surface(
@@ -1420,7 +1520,8 @@ Map<String, Widget> _stateCases() => {
       // The Data Explorer with nothing picked (no repository above it, so it
       // reads nothing): its scale and range tabs, the empty chart card and the
       // whole picker, which is the part that has to survive 3.1x text.
-      'explorer': const ExplorerView(),
+      // No database in a gallery: the Explorer's journal items are empty here.
+      'explorer': ExplorerView(annotationLoader: (_, _) async => const []),
       'nav_bar_no_sub': const NavBar('Component gallery'),
       // The oldest day on disk — back is dead, forward is live.
       'day_nav_oldest': DayNav(

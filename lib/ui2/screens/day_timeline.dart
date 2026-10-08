@@ -29,7 +29,7 @@ import 'package:provider/provider.dart';
 
 import '../../ble/adapters/signals.dart' show InputSignal;
 import '../../data/day_label.dart' show localDayEndSec;
-import '../../data/assumed_water.dart' show AssumedGlass;
+import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
 import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
@@ -200,6 +200,7 @@ List<Moment> dayMoments({
       detail: '${_span(on, off)} · ${_dur(n['duration_min'] as num?)}',
       icon: LucideIcons.bedDouble,
       color: C.indigo,
+      annotationKind: AnnotationKind.nap,
     ));
   }
 
@@ -224,6 +225,7 @@ List<Moment> dayMoments({
       detail: bits.join(' · '),
       icon: act?.icon ?? LucideIcons.dumbbell,
       color: act?.color ?? C.orange,
+      annotationKind: AnnotationKind.workout,
     ));
   }
 
@@ -302,6 +304,7 @@ List<Moment> dayMoments({
       ].join(' · '),
       icon: LucideIcons.utensils,
       color: C.domFood,
+      annotationKind: AnnotationKind.journal,
     ));
   }
 
@@ -312,6 +315,7 @@ List<Moment> dayMoments({
       detail: l?.dayTimelineTakenAt(clockOfTs(d.at)) ?? 'Taken at ${clockOfTs(d.at)}',
       icon: LucideIcons.pill,
       color: C.purple,
+      annotationKind: AnnotationKind.journal,
     ));
   }
 
@@ -335,6 +339,9 @@ List<Moment> dayMoments({
           '${l?.dayTimelineLastAt(clockOfTs(dayStart + min * 60)) ?? 'last at ${clockOfTs(dayStart + min * 60)}'}',
       icon: LucideIcons.notebookPen,
       color: C.domMind,
+      annotationKind: key == 'water_ml'
+          ? AnnotationKind.water
+          : AnnotationKind.journal,
     ));
   });
 
@@ -360,6 +367,26 @@ List<Moment> dayMoments({
       ].join(' · '),
       icon: LucideIcons.bookmark,
       color: C.domMind,
+      annotationKind: switch (choice) {
+        MomentChoice.water => AnnotationKind.water,
+        MomentChoice.symptom => AnnotationKind.symptom,
+        _ => AnnotationKind.moment,
+      },
+    ));
+  }
+
+  // "Assume I drank water" glasses. A removed one is a tombstone — it records
+  // that the slot was handled, not that anything happened — so it is not shown.
+  for (final g in assumedWater) {
+    if (g.state == AssumedState.removed) continue;
+    final at = g.local.millisecondsSinceEpoch ~/ 1000;
+    out.add(Moment(
+      at: at,
+      title: l?.assumedWaterTitle ?? 'Assumed glass of water',
+      detail: g.hhmm,
+      icon: LucideIcons.droplet,
+      color: C.sky,
+      annotationKind: AnnotationKind.assumedWater,
     ));
   }
 
@@ -370,8 +397,25 @@ List<Moment> dayMoments({
 /// [dayMoments] as chart annotations (domain: epoch seconds). Only moments with
 /// an [Moment.annotationKind] become one; a moment with an end later than its
 /// start is a range, anything else a point. Ids are unique and stable.
-List<ChartAnnotation> dayAnnotations(List<Moment> moments) =>
-    throw UnimplementedError('dayAnnotations');
+List<ChartAnnotation> dayAnnotations(List<Moment> moments) {
+  final used = <String, int>{};
+  final out = <ChartAnnotation>[];
+  for (final m in moments) {
+    final kind = m.annotationKind;
+    if (kind == null) continue;
+    final base = '${kind.name}:${m.at}';
+    final n = used.update(base, (v) => v + 1, ifAbsent: () => 0);
+    final end = m.until;
+    out.add(ChartAnnotation(
+      id: n == 0 ? base : '$base#$n',
+      kind: kind,
+      at: m.at.toDouble(),
+      until: end != null && end > m.at ? end.toDouble() : null,
+      label: m.title,
+    ));
+  }
+  return out;
+}
 
 /// Logged for the day, with no time on it. Same sources, opposite branch.
 List<DayNote> dayNotes({

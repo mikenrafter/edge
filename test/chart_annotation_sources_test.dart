@@ -19,6 +19,8 @@ import 'package:openstrap_edge/gestures/symptom_description.dart'
     show StoredSymptom;
 import 'package:openstrap_edge/ui2/chart_annotations.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
+import 'package:openstrap_edge/ui2/screens/metric_detail.dart'
+    show heroAlgoAnnotations;
 
 int _sec(int y, int mo, int d, [int h = 0, int mi = 0]) =>
     DateTime(y, mo, d, h, mi).millisecondsSinceEpoch ~/ 1000;
@@ -97,7 +99,8 @@ void main() {
       expect(ids(), ids());
     });
 
-    test('a mark and a journal item at the same place share one icon', () {
+    test('a mark keeps its own icon beside a journal item at the same place',
+        () {
       final mark = algoBreakAnnotations(
           breakDaysBehind: const [5], seriesLength: 30, label: 'Algo').single;
       final water = ChartAnnotation(
@@ -110,10 +113,56 @@ void main() {
         scale: const AnnotationScale(
             domainStart: 0, domainEnd: 29, width: 290),
       );
-      expect(l.items.length, 1);
-      expect(l.items.single.more, 1);
-      expect(l.items.single.memberIds, [mark.id, 'water'],
-          reason: 'the mark is older, so it is shown');
+      // Provenance is not an event: it never folds into a journal cluster.
+      expect(l.items.length, 2);
+      expect([for (final i in l.items) i.more], [0, 0]);
+      expect({for (final i in l.items) i.id}, {mark.id, 'water'});
+      // ...but it still avoids the other icon: nudged, not overlapped.
+      final a = l.items[0], b = l.items[1];
+      expect(a.footprintRight, lessThanOrEqualTo(b.iconLeft + 1e-9));
+      expect(l.items.firstWhere((i) => i.id == mark.id).x,
+          moreOrLessEquals(mark.at * 10, epsilon: 1e-9),
+          reason: 'the line stays on the boundary');
+    });
+
+    test('two marks close together are two icons, never a +n', () {
+      final marks = algoBreakAnnotations(
+          breakDaysBehind: const [5, 6], seriesLength: 30, label: 'Algo');
+      final l = layoutAnnotations(
+        annotations: marks,
+        scale: const AnnotationScale(
+            domainStart: 0, domainEnd: 29, width: 290),
+      );
+      expect(l.items.length, 2);
+      expect([for (final i in l.items) i.more], [0, 0]);
+    });
+  });
+
+  group('the metric-detail hero reads its marks from stored stamps', () {
+    test('a stamp becomes days behind today, then a slot; no clock is read',
+        () {
+      // Fake "days behind": stamp 1000 -> 3 days ago, 2000 -> 12, 3000 -> today.
+      int? behind(int t) => const {1000: 3, 2000: 12, 3000: 0}[t];
+      final a = heroAlgoAnnotations(
+        algoBreaks: const [1000, 2000, 3000, 9999],
+        seriesLength: 30,
+        daysBehind: behind,
+        label: 'Algorithm version',
+      );
+      // 9999 has no day behind (unknown stamp): never invented.
+      expect([for (final x in a) x.at], [29 - 3 - .5, 29 - 12 - .5, 29 - 0 - .5]);
+      expect(a.every((x) => x.kind == AnnotationKind.algoVersion), isTrue);
+    });
+
+    test('a stamp older than the window or at its first slot is dropped', () {
+      int? behind(int t) => t == 1 ? 6 : 40;
+      final a = heroAlgoAnnotations(
+        algoBreaks: const [1, 2],
+        seriesLength: 7,
+        daysBehind: behind,
+        label: 'x',
+      );
+      expect(a, isEmpty, reason: '6 days behind in 7 slots is slot 0');
     });
   });
 
