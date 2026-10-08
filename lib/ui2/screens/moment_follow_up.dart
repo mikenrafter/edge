@@ -34,30 +34,75 @@ import 'home_screen.dart' show repoOf;
 import 'journal_compose.dart' show OsTextField;
 import 'log_workout.dart' show ActivityTypeSheet, LogWorkout, appOf;
 
-/// "N things to review — marked moments and assumed water" with an Answer
-/// button. [count] is pending moments plus assumed glasses.
+/// Home card for what waits for review: one line "N marked moments", one line
+/// "N assumed water" (a zero line is hidden), and an Answer button. Laid out
+/// like the community cards (`_AskCard` in nudges.dart) but with no dismiss or
+/// snooze: it goes away only when the answers are in. The line icons are the
+/// chart annotations' own, so the card and the day chart speak one language.
 class MomentFollowUpCard extends StatelessWidget {
-  const MomentFollowUpCard({super.key, required this.count, this.onAnswer});
-  final int count;
+  const MomentFollowUpCard(
+      {super.key,
+      required this.moments,
+      required this.assumedWater,
+      this.onAnswer});
+
+  /// Pending marked moments, plus started ranges that only owe their
+  /// announcement (see [MomentFollowUps.reviewCounts]).
+  final int moments;
+
+  /// Assumed water glasses waiting for keep / remove.
+  final int assumedWater;
   final VoidCallback? onAnswer;
 
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
+    Widget line(String key, IconData icon, Color color, String text) => Row(
+          key: ValueKey('$key-row'),
+          children: [
+            Container(
+              key: ValueKey('$key-icon'),
+              width: 32,
+              height: 32,
+              alignment: Alignment.center,
+              decoration:
+                  BoxDecoration(color: p.wash(color), borderRadius: R.rSm),
+              child: Icon(icon, size: 16, color: p.on(color)),
+            ),
+            const SizedBox(width: S.x3),
+            Expanded(
+              child: Text(text,
+                  key: ValueKey(key),
+                  style: F.body
+                      .copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        );
     return Padding(
       padding: const EdgeInsets.only(top: S.x3),
       child: Surface(
+        key: const ValueKey('moment-follow-up-card'),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-                l?.momentFollowUpCardTitle(count) ??
-                    (count == 1
-                        ? '$count thing to review — marked moments and assumed water'
-                        : '$count things to review — marked moments and assumed water'),
-                key: const ValueKey('moment-follow-up-card'),
-                style: F.t2.copyWith(color: p.ink)),
+            if (moments > 0)
+              line(
+                  'moment-follow-up-moments',
+                  annotationIcon(AnnotationKind.moment),
+                  annotationColor(AnnotationKind.moment),
+                  l?.momentFollowUpMomentsLine(moments) ??
+                      (moments == 1
+                          ? '1 marked moment'
+                          : '$moments marked moments')),
+            if (moments > 0 && assumedWater > 0) const SizedBox(height: S.x3),
+            if (assumedWater > 0)
+              line(
+                  'moment-follow-up-water',
+                  annotationIcon(AnnotationKind.assumedWater),
+                  annotationColor(AnnotationKind.assumedWater),
+                  l?.momentFollowUpAssumedWaterLine(assumedWater) ??
+                      '$assumedWater assumed water'),
             const SizedBox(height: S.x3),
             BigButton(
               l?.momentFollowUpAnswer ?? 'Answer',
@@ -75,11 +120,13 @@ class MomentFollowUpCard extends StatelessWidget {
 /// The card, or null when the setting is off or nothing is pending. Pure.
 Widget? momentFollowUpCardFor({
   required bool enabled,
-  required int count,
+  required int moments,
+  required int assumedWater,
   VoidCallback? onAnswer,
 }) =>
-    enabled && count > 0
-        ? MomentFollowUpCard(count: count, onAnswer: onAnswer)
+    enabled && moments + assumedWater > 0
+        ? MomentFollowUpCard(
+            moments: moments, assumedWater: assumedWater, onAnswer: onAnswer)
         : null;
 
 /// Home's helper: null with no AppState above (a golden), like
@@ -104,7 +151,7 @@ class _HomeMomentCard extends StatefulWidget {
 }
 
 class _HomeMomentCardState extends State<_HomeMomentCard> {
-  int _count = 0;
+  int _moments = 0, _water = 0;
   bool _reading = false;
 
   @override
@@ -140,8 +187,13 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
       // A started range with only its announcement left has no pending mark,
       // but is still waiting for Save: it counts too.
       final review = MomentReviewService.shared..reload();
-      final n = f.reviewCount(DateTime.now(), review.queue);
-      if (mounted && n != _count) setState(() => _count = n);
+      final n = f.reviewCounts(DateTime.now(), review.queue);
+      if (mounted && (n.moments != _moments || n.assumedWater != _water)) {
+        setState(() {
+          _moments = n.moments;
+          _water = n.assumedWater;
+        });
+      }
     } catch (_) {
       // A read that failed shows no card; it does not claim there is nothing
       // to answer, and the next read tries again.
@@ -155,7 +207,8 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
     final on = widget.settings.followUpMoments;
     return momentFollowUpCardFor(
           enabled: on,
-          count: _count,
+          moments: _moments,
+          assumedWater: _water,
           onAnswer: () async {
             await Navigator.of(c).push(themedRoute<void>(
                 (_) => const MomentFollowUpScreen(),

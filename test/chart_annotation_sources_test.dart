@@ -194,18 +194,18 @@ void main() {
       return out;
     }
 
-    test('naps and workouts are typed; sleep, extremes and band events are not',
-        () {
+    test('naps, workouts and the main sleep are typed; extremes and band '
+        'events are not', () {
       final m = dayMoments(timeline: timeline());
       final byTitle = {for (final x in m) x.title: x.annotationKind};
       expect(m.where((x) => x.annotationKind == AnnotationKind.nap).length, 1);
+      expect(byTitle['Asleep'], AnnotationKind.mainSleep);
       expect(
           m.where((x) => x.annotationKind == AnnotationKind.workout).length, 1);
       // Facts about the band or arithmetic, not things the wearer logged.
-      expect(byTitle['Asleep'], isNull);
       expect(byTitle['Highest heart rate'], isNull);
       expect(byTitle['On the charger'], isNull);
-      expect(kinds(m)[null], 3);
+      expect(kinds(m)[null], 2);
     });
 
     test('a marked moment, a symptom and a water tap each get their own kind',

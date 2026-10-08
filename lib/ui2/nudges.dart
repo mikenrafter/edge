@@ -23,6 +23,14 @@ class CommunityNudge extends StatefulWidget {
   @visibleForTesting
   static void debugResetSession() => _CommunityNudgeState._sessionHidden.clear();
 
+  /// Test seam: "now" for the cooldown and the "last shown" stamp, epoch
+  /// milliseconds. Null (the default) is the real clock. A value, not a
+  /// callback: the heavy-work guard rejects calling a function-typed variable.
+  @visibleForTesting
+  static int? debugNowMs;
+
+  static int _nowMs() => debugNowMs ?? DateTime.now().millisecondsSinceEpoch;
+
   @override
   State<CommunityNudge> createState() => _CommunityNudgeState();
 }
@@ -48,33 +56,61 @@ class _CommunityNudgeState extends State<CommunityNudge> {
     if (_sessionHidden.contains(a.name)) return false;
     // Developer mode is someone deliberately testing the app, not a real
     // reader being nagged — silencing or a cooldown here would just make
-    // this unreachable on every build after the first tap.
-    if (devMode) return true;
+    // this unreachable on every build after the first tap. That is the default
+    // of the "Revive community cards" developer setting; switched off, developer
+    // mode is held to the stored dismissal and the cooldown like anyone else.
+    if (devMode && Prefs.reviveCommunityCardsOn) return true;
     if (Prefs.getBool(_dismissedKey(a), false)) return false;
     final last = Prefs.getInt(_lastShownKey(a), 0);
-    return DateTime.now().millisecondsSinceEpoch - last > _cooldownMs;
+    return CommunityNudge._nowMs() - last > _cooldownMs;
   }
 
   // Discord above the sponsor ask when both are due — joining a community
   // is a smaller thing to ask for than money.
   late List<_Ask> _asks;
 
+  List<_Ask> _eligibleNow() {
+    final devMode = context.capsRead.has(Feature.developerMode);
+    return [for (final a in _Ask.values) if (_eligible(a, devMode: devMode)) a];
+  }
+
+  // Mark an ask as seen NOW, not only on snooze/silence — otherwise the
+  // cooldown never actually starts and leaving Home without tapping anything
+  // shows the same ask again on the very next rebuild.
+  void _stamp(Iterable<_Ask> shown) {
+    for (final a in shown) {
+      Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
+    }
+  }
+
   @override
   void initState() {
     super.initState();
-    final devMode = context.capsRead.has(Feature.developerMode);
-    _asks = [for (final a in _Ask.values) if (_eligible(a, devMode: devMode)) a];
-    // Mark each shown ask as seen NOW, not only on snooze/silence — otherwise
-    // the cooldown never actually starts and leaving Home without tapping
-    // anything shows the same ask again on the very next rebuild.
-    for (final a in _asks) {
-      Prefs.setInt(_lastShownKey(a), DateTime.now().millisecondsSinceEpoch);
-    }
+    _asks = _eligibleNow();
+    _stamp(_asks);
+    Prefs.reviveCommunityCardsRevision.addListener(_reviveChanged);
+  }
+
+  @override
+  void dispose() {
+    Prefs.reviveCommunityCardsRevision.removeListener(_reviveChanged);
+    super.dispose();
+  }
+
+  // Home stays mounted under Settings, so a flip of "Revive community cards"
+  // has to move the cards already on screen. Eligibility is re-asked as for a
+  // fresh mount (stored dismissal, cooldown, and this launch's dismissals are
+  // all honoured by _eligible); only cards that newly appear start a cooldown.
+  void _reviveChanged() {
+    if (!mounted) return;
+    final next = _eligibleNow();
+    _stamp(next.where((a) => !_asks.contains(a)));
+    setState(() => _asks = next);
   }
 
   void _snooze(_Ask a) {
     _sessionHidden.add(a.name);
-    Prefs.setInt(_lastShownKey(a), DateTime.now().millisecondsSinceEpoch);
+    Prefs.setInt(_lastShownKey(a), CommunityNudge._nowMs());
     _hide(a);
   }
 

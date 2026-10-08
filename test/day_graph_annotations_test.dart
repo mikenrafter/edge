@@ -52,7 +52,8 @@ Map<String, dynamic> get _timeline => {
       'sessions': [
         {'start_ts': _ts(18), 'end_ts': _ts(19), 'type': 'running'},
       ],
-      // Asleep is NOT a logged thing: DayLanes shades it, the lane must not.
+      // The night is the MAIN-SLEEP annotation (a range, moon icon); there is
+      // no Asleep band any more. It is not a logged thing, but it is marked.
       'sleep': [
         {'onset_ts': _start - 3600, 'wake_ts': _ts(6, 30)},
       ],
@@ -341,6 +342,7 @@ void main() {
         AnnotationKind.journal,
         AnnotationKind.workout,
         AnnotationKind.nap,
+        AnnotationKind.mainSleep,
       });
       await _pumpBody(
           t,
@@ -351,7 +353,7 @@ void main() {
         expect(_icon(a.id), findsOneWidget, reason: '${a.kind.name} ${a.id}');
         expect(t.widget<AnnotationIcon>(_icon(a.id)).kind, a.kind);
       }
-      // Exactly those: the night's "Asleep" is shaded by DayLanes, not marked.
+      // Exactly those: the night is one of them (main sleep), not a band.
       expect(find.byType(AnnotationIcon), findsNWidgets(ann.length));
     });
 
@@ -364,7 +366,8 @@ void main() {
               day: _date, graph: _graph(dayStart: _start), moments: moments));
       for (final a in dayAnnotations(moments)) {
         final range = a.kind == AnnotationKind.workout ||
-            a.kind == AnnotationKind.nap;
+            a.kind == AnnotationKind.nap ||
+            a.kind == AnnotationKind.mainSleep;
         expect(_shade(a.id), range ? findsOneWidget : findsNothing,
             reason: a.id);
       }
@@ -407,7 +410,22 @@ void main() {
       }
     });
 
-    testWidgets('a day with nothing logged draws no lane', (t) async {
+    testWidgets('a day with nothing logged and no night draws no lane',
+        (t) async {
+      final moments = dayMoments(timeline: {
+        'date': _date,
+        'day_start': _start,
+      });
+      expect(dayAnnotations(moments), isEmpty);
+      await _pumpBody(
+          t,
+          TimelineData(
+              day: _date, graph: _graph(dayStart: _start), moments: moments));
+      expect(_lane, findsNothing);
+    });
+
+    testWidgets('a day with only a night: the list says Asleep, the lane '
+        'carries just the main-sleep annotation', (t) async {
       final moments = dayMoments(timeline: {
         'date': _date,
         'day_start': _start,
@@ -415,13 +433,15 @@ void main() {
           {'onset_ts': _start - 3600, 'wake_ts': _ts(6, 30)},
         ],
       });
-      expect(dayAnnotations(moments), isEmpty);
+      expect([for (final a in dayAnnotations(moments)) a.kind],
+          [AnnotationKind.mainSleep]);
       await _pumpBody(
           t,
           TimelineData(
               day: _date, graph: _graph(dayStart: _start), moments: moments));
       expect(find.text('Asleep'), findsWidgets, reason: 'the list still says it');
-      expect(_lane, findsNothing);
+      expect(_lane, findsOneWidget);
+      expect(find.byType(AnnotationIcon), findsOneWidget);
     });
 
     testWidgets('an unknown day start still lists everything, marks nothing',

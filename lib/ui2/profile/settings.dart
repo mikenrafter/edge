@@ -93,6 +93,7 @@ class _MoreSettingsState extends State<MoreSettings> {
 
   /// Home's pull-to-sync, read straight off Prefs like [_barcode].
   bool _pullToSync = Prefs.pullToSyncOn;
+  bool _reviveCommunityCards = Prefs.reviveCommunityCardsOn;
 
   String _version = '';
   int _taps = 0;
@@ -213,6 +214,11 @@ class _MoreSettingsState extends State<MoreSettings> {
       telemetry: app.telemetryConsent,
       barcodeLookup: _barcode,
       pullToSync: _pullToSync,
+      reviveCommunityCards: _reviveCommunityCards,
+      onToggleReviveCommunityCards: () {
+        Prefs.setReviveCommunityCards(!_reviveCommunityCards);
+        setState(() => _reviveCommunityCards = !_reviveCommunityCards);
+      },
       onTogglePullToSync: () {
         Prefs.setBool(Prefs.pullToSync, !_pullToSync);
         setState(() => _pullToSync = !_pullToSync);
@@ -575,6 +581,11 @@ class MoreSettingsView extends StatelessWidget {
 
   final VoidCallback? onVersionTap, onToggleDev, onGallery;
 
+  /// Developer group's "Revive community cards": on (the default) keeps the
+  /// Discord and Sponsor cards coming back in developer mode.
+  final bool reviveCommunityCards;
+  final VoidCallback? onToggleReviveCommunityCards;
+
   /// The expected sleep schedule (local clock times), or null when never set.
   /// The row is always drawn: it needs no data.
   final ExpectedSleepSchedule? expectedSleepSchedule;
@@ -640,6 +651,8 @@ class MoreSettingsView extends StatelessWidget {
     this.onVersionTap,
     this.onToggleDev,
     this.onGallery,
+    this.reviveCommunityCards = true,
+    this.onToggleReviveCommunityCards,
     this.expectedSleepSchedule,
     this.onEditSleepSchedule,
     this.relaySupported = false,
@@ -951,6 +964,15 @@ class MoreSettingsView extends StatelessWidget {
                         onTap: onDataExplorer),
                     SetRow(LucideIcons.timer, C.n500, 'Last calculation',
                         sub: lastCalculation, chevron: false),
+                    // Default ON = today's behaviour. OFF holds the Discord and
+                    // Sponsor cards to their dismissal and cooldown in dev mode.
+                    SetRow(LucideIcons.refreshCw, C.n500,
+                        'Revive community cards',
+                        sub: 'Keep the Discord and Sponsor cards coming back, '
+                            'ignoring dismissal and cooldown',
+                        value: reviveCommunityCards ? on : off,
+                        chevron: false,
+                        onTap: onToggleReviveCommunityCards),
                     SetRow(LucideIcons.code, C.n500,
                         l?.settingsDeveloperModeRowTitle ?? 'Developer mode',
                         value: on, chevron: false, onTap: onToggleDev),

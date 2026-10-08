@@ -242,9 +242,9 @@ void main() {
           expect(arb.contains('"$k":'), isTrue, reason: '$loc is missing $k');
         }
         // Not the English text copied across.
-        expect(arb.contains('"momentFollowUpCardTitle": "{n, plural, one{{n} thing to review'),
+        expect(arb.contains('"momentFollowUpMomentsLine": "{n, plural, one{{n} marked moment'),
             isFalse,
-            reason: '$loc card title is still English');
+            reason: '$loc card line is still English');
       }
     });
   });

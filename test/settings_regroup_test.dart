@@ -139,6 +139,8 @@ const Map<String, List<List<String>>> _rows = {
     ['Data Explorer'],
     // The read-only timing line for the last derive pass.
     ['Last calculation'],
+    // Default ON: developer mode keeps reviving the Discord and Sponsor cards.
+    ['Revive community cards'],
     ['Developer mode'],
   ],
 };

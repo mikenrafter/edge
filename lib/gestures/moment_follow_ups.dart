@@ -212,9 +212,23 @@ class MomentFollowUps {
   /// ranges of [queue] with no pending mark left (an owed announcement would
   /// otherwise be invisible). 0 while the setting is off.
   int reviewCount(DateTime now, MomentReviewQueue queue) {
-    if (enabledSince == null) return 0;
-    final keys = {for (final m in pending(now)) m.key};
-    return pendingCount(now) + queue.orphanRanges(keys).length;
+    final c = reviewCounts(now, queue);
+    return c.moments + c.assumedWater;
+  }
+
+  /// [reviewCount] split the way the Home card shows it: `moments` is the
+  /// pending marks plus the started ranges that only owe their announcement,
+  /// `assumedWater` the glasses waiting for keep / remove. They always add up
+  /// to [reviewCount]; both are 0 while the setting is off. Pure.
+  ({int moments, int assumedWater}) reviewCounts(
+      DateTime now, MomentReviewQueue queue) {
+    if (enabledSince == null) return (moments: 0, assumedWater: 0);
+    final marks = pending(now);
+    final keys = {for (final m in marks) m.key};
+    return (
+      moments: marks.length + queue.orphanRanges(keys).length,
+      assumedWater: pendingAssumed(now).length,
+    );
   }
 
   /// Days a moment stays pending, counted in local calendar days.

@@ -3553,6 +3553,18 @@
       }
     }
   },
+  "dayTimelineMainSleep": "Main sleep {start} to {end}",
+  "@dayTimelineMainSleep": {
+    "description": "Day timeline chart label for the night's main sleep annotation; start and end are local clock times such as 11:10 PM and 6:40 AM.",
+    "placeholders": {
+      "start": {
+        "type": "String"
+      },
+      "end": {
+        "type": "String"
+      }
+    }
+  },
   "dayTimelineLastAt": "last at {time}",
   "@dayTimelineLastAt": {
     "description": "Timeline detail suffix for the last occurrence of a timed journal field, e.g. 'last at 9:30 PM'.",
@@ -12761,9 +12773,18 @@
   "@momentChoiceWater": {
     "description": "Quick answer for a marked moment: a glass of water (one tap adds one glass to that day)"
   },
-  "momentFollowUpCardTitle": "{n, plural, one{{n} thing to review — marked moments and assumed water} other{{n} things to review — marked moments and assumed water}}",
-  "@momentFollowUpCardTitle": {
-    "description": "Home card: how many marked moments and assumed water glasses are waiting for review; n is how many",
+  "momentFollowUpMomentsLine": "{n, plural, one{{n} marked moment} other{{n} marked moments}}",
+  "@momentFollowUpMomentsLine": {
+    "description": "Home card line: how many marked moments are waiting for review; n is how many",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "momentFollowUpAssumedWaterLine": "{n, plural, one{{n} assumed water} other{{n} assumed water}}",
+  "@momentFollowUpAssumedWaterLine": {
+    "description": "Home card line: how many assumed water glasses are waiting for review; n is how many",
     "placeholders": {
       "n": {
         "type": "int"

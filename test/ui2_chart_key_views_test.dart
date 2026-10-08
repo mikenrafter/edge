@@ -2,11 +2,14 @@
 // chart's own key. Synthetic fixtures; no device or personal data.
 //
 //   • day_hr_gaps      the day heart-rate chart with a hole in it: Movement,
-//                      Heart rate, Asleep, Workout and "Not recorded", with the
+//                      Heart rate, Workout and "Not recorded" (the night is no longer a key), with the
 //                      latest values under each.
 //   • day_hr_no_gaps   a fully worn day: no "Not recorded" key at all.
 //   • day_hr_on_gap    the finger on the hole: every series "—", and "Not
 //                      recorded" says "Here".
+//   • day_hr_main_sleep a full day WITH a night and two marked moments: the
+//                      main-sleep moon, its shaded range, and its default
+//                      "Main sleep ... to ..." label above the plot.
 //   • two_series   a framed two-series chart with a gap, values under the
 //                      legend entries.
 //   • row              the row on its own, scrubbed value and scrubbed gap.
@@ -17,6 +20,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/day_label.dart';
+import 'package:openstrap_edge/data/moment_label.dart';
 import 'package:openstrap_edge/ui2/profile/gallery.dart';
 import 'package:openstrap_edge/ui2/screens/day_timeline.dart';
 import 'package:openstrap_edge/ui2/ui2.dart';
@@ -56,6 +60,37 @@ Map<String, dynamic> _timeline({required bool gaps}) => {
           : const [],
     };
 
+/// A fully worn day with a night (23:10 the evening before to 06:40) and two
+/// marked moments. The night is the main-sleep annotation; nothing is focused,
+/// so the lane's label slot says it.
+Widget _dayHrWithNight() {
+  final tl = <String, dynamic>{
+    ..._timeline(gaps: false),
+    'sleep': [
+      {'onset_ts': _start - 50 * 60, 'wake_ts': _at(6, 40)}
+    ],
+  };
+  return Builder(
+    builder: (c) => Scaffold(
+      body: ListView(children: [
+        ...timelineBody(
+          c,
+          TimelineData(
+            day: _day,
+            graph: dayGraph(tl),
+            moments: dayMoments(timeline: tl, momentLabels: [
+              MomentLabel(
+                  date: _day, hhmm: '10:30', label: 'water', answeredAtMs: 1),
+              MomentLabel(
+                  date: _day, hhmm: '16:45', label: 'symptom', answeredAtMs: 1),
+            ]),
+          ),
+        ),
+      ]),
+    ),
+  );
+}
+
 Widget _dayHr({required bool gaps}) => Builder(
       builder: (c) => Scaffold(
         body: ListView(children: [
@@ -80,6 +115,7 @@ void main() {
   final fixtures = <String, (double, Widget, _Act?)>{
     'day_hr_gaps': (900, _dayHr(gaps: true), null),
     'day_hr_no_gaps': (900, _dayHr(gaps: false), null),
+    'day_hr_main_sleep': (900, _dayHrWithNight(), null),
     // 11:45 is inside the hole (minute 705 of 1440).
     'day_hr_on_gap': (900, _dayHr(gaps: true), (t) => _tapPlot(t, 705 / 1440)),
     'day_hr_scrubbed': (900, _dayHr(gaps: true), (t) => _tapPlot(t, 15 / 24)),
