@@ -94,6 +94,9 @@ class CoachDb {
     'day_result', 'metric_series', 'baselines', 'derived_day', 'sessions',
     'notifications', 'journal', 'cycle_log', 'cycle_symptom', 'notif_fired',
     'sleep_override', 'wake_confirmation', 'wake_evidence',
+    // Journal-side tables the coach has no view over: the wearer's marked-moment
+    // answers, assumed water glasses and described symptoms.
+    'moment_label', 'assumed_water', 'symptom_entry',
     'sleep_session_candidates',
     'wake_day_features',
     'workout_suggestions', 'workout_route', 'live_coverage',

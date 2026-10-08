@@ -275,9 +275,8 @@ void main() {
           find.descendant(
               of: _glass(g1),
               matching: find.byWidgetPredicate((w) =>
-                  w.key is ValueKey &&
-                  ((w.key as ValueKey).value as String)
-                      .startsWith('moment-'))),
+                  w.key is ValueKey<String> &&
+                  (w.key as ValueKey<String>).value.startsWith('moment-'))),
           findsNothing);
     });
 

@@ -20,6 +20,8 @@ import '../../coach/coach_config.dart';
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/journal_fields.dart';
+import '../../data/water_units.dart';
+import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../state/units_controller.dart';
@@ -46,6 +48,11 @@ class _JournalComposeState extends State<JournalCompose> {
   List<JournalFieldSpec> _specs = const [];
   Map<String, JournalMetricValue> _values = {};
   Set<String> _tags = {};
+
+  /// Display-only reads next to the day: the assumed share of the water total
+  /// and the symptoms described on marked moments. Neither is written back here.
+  double _assumedMl = 0;
+  List<StoredSymptom> _symptoms = const [];
   bool _loading = true;
   bool _saving = false;
 
@@ -74,8 +81,19 @@ class _JournalComposeState extends State<JournalCompose> {
     for (final e in entries) {
       if (e['date'] == _date) today = e;
     }
+    var assumed = 0.0;
+    var symptoms = const <StoredSymptom>[];
+    try {
+      assumed = await LocalDb.assumedWaterMl(_date);
+      symptoms = await LocalDb.symptomEntries(date: _date);
+    } catch (_) {
+      // Display-only extras: a failed read shows none of them, it does not
+      // block the day's own fields.
+    }
     if (!mounted) return;
     setState(() {
+      _assumedMl = assumed;
+      _symptoms = symptoms;
       _specs = specs;
       _values = {...values};
       _tags = {...?(today?['tags'] as List?)?.map((t) => t.toString())};
@@ -248,6 +266,9 @@ class _JournalComposeState extends State<JournalCompose> {
                                       spec: s,
                                       value: _values[s.key]?.value,
                                       atMin: _values[s.key]?.atMinuteOfDay,
+                                      assumedMl: s.key == 'water_ml'
+                                          ? _assumedMl
+                                          : null,
                                       onChanged: (v) => _set(s.key, v),
                                       onTime: s.hasTime
                                           ? () => _setTime(s.key)
@@ -281,6 +302,26 @@ class _JournalComposeState extends State<JournalCompose> {
                             ),
                           ),
                         ),
+                        if (_symptoms.isNotEmpty)
+                          Section(
+                            l?.journalComposeSymptomsSection ?? 'Symptoms',
+                            Surface(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  for (final y in _symptoms)
+                                    Padding(
+                                      key: ValueKey('journal-symptom:${y.key}'),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: S.x1),
+                                      child: Text(
+                                          '${y.hhmm} · ${y.description.describe(l)}',
+                                          style: F.body.copyWith(color: p.ink)),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
                         Section(
                           // Same English text as day_timeline's section — key
                           // shared across the two files, not duplicated.
@@ -463,8 +504,8 @@ class FieldStepper extends StatelessWidget {
 
   final JournalFieldSpec spec;
 
-  /// The part of [value] that is an assumed water glass (RED stub: not yet
-  /// shown). Null or 0 = none.
+  /// The part of [value] that is an assumed water glass, shown as such under
+  /// the value. Null or 0 = none. Only meaningful for `water_ml`.
   final double? assumedMl;
 
   /// Null means the field was left blank, which is NOT zero: "no caffeine
@@ -484,6 +525,15 @@ class FieldStepper extends StatelessWidget {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final v = value;
+    // Water is the one field whose unit follows the units setting (storage is
+    // always ml); every other field is shown and stepped straight off its spec.
+    final isWater = spec.key == 'water_ml';
+    final system = isWater ? waterSystemOf(c) : UnitSystem.metric;
+    final step = isWater ? WaterUnits.stepMl(system) : spec.step;
+    final shown = v == null
+        ? null
+        : (isWater ? WaterUnits.format(v, system) : spec.formatWithUnit(v));
+    final share = isWater ? assumedShareText(c, assumedMl) : null;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: S.x2),
       child: Row(
@@ -496,9 +546,13 @@ class FieldStepper extends StatelessWidget {
                 Text(
                   v == null
                       ? (l?.journalComposeNotLogged ?? 'Not logged')
-                      : spec.formatWithUnit(v),
+                      : shown!,
                   style: F.over.copyWith(color: p.ink3),
                 ),
+                if (v != null && share != null)
+                  Text(share,
+                      key: const ValueKey('journal-water-assumed'),
+                      style: F.over.copyWith(color: p.ink3)),
                 if (v != null && v > 0 && onTime != null)
                   Pressable(
                     semanticLabel: l?.journalComposeWhenWasLastField(spec.label) ??
@@ -524,7 +578,7 @@ class FieldStepper extends StatelessWidget {
             // asserted into the correlation inputs.
             enabled: v != null,
             onTap: () {
-              final next = (v ?? 0) - spec.step;
+              final next = (v ?? 0) - step;
               onChanged(next <= 0 ? (v == 0 ? null : 0) : next);
             },
           ),
@@ -533,7 +587,7 @@ class FieldStepper extends StatelessWidget {
             icon: LucideIcons.plus,
             enabled: v == null || v < spec.max,
             onTap: () =>
-                onChanged(((v ?? 0) + spec.step).clamp(0, spec.max).toDouble()),
+                onChanged(((v ?? 0) + step).clamp(0, spec.max).toDouble()),
           ),
         ],
       ),
@@ -577,6 +631,7 @@ class OsTextField extends StatelessWidget {
     this.hint = '',
     this.lines = 1,
     this.keyboard,
+    this.onChanged,
   });
 
   final TextEditingController controller;
@@ -584,6 +639,7 @@ class OsTextField extends StatelessWidget {
   final String hint;
   final int lines;
   final TextInputType? keyboard;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext c) {
@@ -609,6 +665,7 @@ class OsTextField extends StatelessWidget {
             textField: true,
             child: TextField(
               controller: controller,
+              onChanged: onChanged,
               maxLines: lines,
               minLines: 1,
               keyboardType: keyboard,

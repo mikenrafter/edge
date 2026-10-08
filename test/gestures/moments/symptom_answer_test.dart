@@ -129,7 +129,7 @@ void main() {
       expect(s.description.side, SymptomSide.left);
       expect(s.description.kind, SymptomKind.pain);
       expect(s.description.area, SymptomArea.knees);
-      expect(s.description.describe(null), 'moderate pain in my left knees');
+      expect(s.description.describe(null), 'moderate pain in my knees (left)');
     });
 
     test('side not said is NULL, free text is kept, multi-word area ids are '
@@ -294,7 +294,7 @@ void main() {
         symptoms: [stored],
       );
       expect(m, hasLength(1));
-      expect(m.single.title, contains('moderate pain in my left knees'));
+      expect(m.single.title, contains('moderate pain in my knees (left)'));
       expect(m.single.detail, contains('10:15'));
     });
 
@@ -318,7 +318,7 @@ void main() {
         ],
         symptoms: [stored],
       );
-      expect(m[0].title, contains('moderate pain in my left knees'));
+      expect(m[0].title, contains('moderate pain in my knees (left)'));
       expect(m[1].title, contains('Symptom'));
       expect(m[1].title.contains('knees'), isFalse);
     });
@@ -354,7 +354,7 @@ void main() {
             () => Future<void>.delayed(const Duration(milliseconds: 20)));
         await t.pump();
       }
-      final knee = find.textContaining('moderate pain in my left knees');
+      final knee = find.textContaining('moderate pain in my knees (left)');
       expect(neck, findsOneWidget);
       expect(knee, findsOneWidget);
       expect(t.getTopLeft(neck).dy, lessThan(t.getTopLeft(knee).dy),

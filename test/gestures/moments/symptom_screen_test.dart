@@ -293,7 +293,7 @@ void main() {
       expect(
           find.descendant(
               of: _preview(_a),
-              matching: find.text('moderate pain in my left knees')),
+              matching: find.text('moderate pain in my knees (left)')),
           findsOneWidget);
       await _tap(t, _side(_a, SymptomSide.left));
       expect(

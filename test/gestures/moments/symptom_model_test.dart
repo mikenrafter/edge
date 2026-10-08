@@ -1,8 +1,10 @@
 // The Symptom describer's vocabulary and wording (RED).
 //
 // Answering Symptom on a marked moment describes it: severity, an optional
-// side, a kind and a body area. Rendered "<severity> <kind> in my <side>
-// <area>", side omitted when unset. Ids are persisted, so they are pinned
+// side, a kind and a body area. Rendered "<severity> <kind> in my <area>
+// (<side>)": the side goes in parentheses after the area so it never has to
+// agree with the area's number ("mild pain in my knees (left)"), and is omitted
+// when unset. Ids are persisted, so they are pinned
 // exactly; the wording lives in ARB keys (English required here; de, es, fr,
 // hi and zh follow, falling back to English until then).
 //
@@ -96,7 +98,7 @@ void main() {
   group('the sentence', () {
     test('with a side', () {
       expect(_d(side: SymptomSide.left).describe(null),
-          'moderate pain in my left knees');
+          'moderate pain in my knees (left)');
       expect(
           _d(
                   severity: SymptomSeverity.severe,
@@ -104,7 +106,7 @@ void main() {
                   kind: SymptomKind.numbness,
                   area: SymptomArea.hands)
               .describe(null),
-          'severe numbness in my right hands');
+          'severe numbness in my hands (right)');
       expect(
           _d(
                   severity: SymptomSeverity.faint,
@@ -112,7 +114,7 @@ void main() {
                   kind: SymptomKind.tingling,
                   area: SymptomArea.chest)
               .describe(null),
-          'faint tingling in my center chest');
+          'faint tingling in my chest (center)');
     });
 
     test('side unset: the side is omitted, with no double space', () {
@@ -125,9 +127,11 @@ void main() {
           'mild itchiness in my neck');
     });
 
-    test('both and all carry their word (wording is ARB-owned)', () {
-      expect(_d(side: SymptomSide.both).describe(null), contains('both'));
-      expect(_d(side: SymptomSide.all).describe(null), contains(' all '));
+    test('both and all read naturally in the parenthesis', () {
+      expect(_d(side: SymptomSide.both).describe(null),
+          'moderate pain in my knees (both)');
+      expect(_d(side: SymptomSide.all).describe(null),
+          'moderate pain in my knees (all)');
     });
 
     test('multi-word areas read as words, never ids', () {
@@ -148,7 +152,7 @@ void main() {
                   area: SymptomArea.other,
                   areaOther: ' big toe')
               .describe(null),
-          'severe burning in my right big toe');
+          'severe burning in my big toe (right)');
     });
 
     test('the optional note is not part of the sentence', () {
@@ -174,7 +178,7 @@ void main() {
         'fallback', () {
       final l = lookupAppLocalizations(const Locale('en'));
       final d = _d(side: SymptomSide.left);
-      expect(d.describe(l), 'moderate pain in my left knees');
+      expect(d.describe(l), 'moderate pain in my knees (left)');
       expect(d.describe(l), d.describe(null));
       expect(SymptomSeverity.faint.localized(l), 'faint');
       expect(SymptomSide.center.localized(l), 'center');
@@ -209,14 +213,39 @@ void main() {
       }
     });
 
-    test('the templates are the owner\'s sentence', () {
+    test('the templates are the sentence with the side in parentheses', () {
       final arb = File('lib/l10n/app_en.arb').readAsStringSync();
       expect(arb.contains('"symptomDescription": "{severity} {kind} in my {area}"'),
           isTrue);
       expect(
           arb.contains(
-              '"symptomDescriptionSided": "{severity} {kind} in my {side} {area}"'),
+              '"symptomDescriptionSided": "{severity} {kind} in my {area} ({side})"'),
           isTrue);
+    });
+  });
+
+  group('every locale carries every new key (translated, not left to fall back)',
+      () {
+    test('de, es, fr, hi and zh declare the symptom keys, the assumed-water '
+        'keys and the neutral Home card text', () {
+      final en = File('lib/l10n/app_en.arb').readAsStringSync();
+      final keys = RegExp(r'^  "((?:symptom|assumedWater|settingsWaterAssume|'
+              r'waterIncludesAssumed|journalComposeSymptoms)[A-Za-z]*)":',
+              multiLine: true)
+          .allMatches(en)
+          .map((m) => m[1]!)
+          .toList();
+      expect(keys.length, greaterThan(50));
+      for (final loc in ['de', 'es', 'fr', 'hi', 'zh']) {
+        final arb = File('lib/l10n/app_$loc.arb').readAsStringSync();
+        for (final k in keys) {
+          expect(arb.contains('"$k":'), isTrue, reason: '$loc is missing $k');
+        }
+        // Not the English text copied across.
+        expect(arb.contains('"momentFollowUpCardTitle": "{n, plural, one{{n} thing to review'),
+            isFalse,
+            reason: '$loc card title is still English');
+      }
     });
   });
 

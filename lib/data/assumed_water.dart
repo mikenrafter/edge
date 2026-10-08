@@ -7,11 +7,13 @@
 // day's `water_ml` total, so every existing reader sees it; removing it
 // subtracts exactly what it added. No gap filling: only slots, never "the hours
 // in between".
-//
-// RED-phase stub: behaviour throws until the GREEN phase implements it.
 
+import '../notify/notification_center.dart';
 import '../notify/notification_prefs.dart';
 import '../state/units_controller.dart' show UnitSystem;
+import 'day_label.dart';
+import 'db.dart';
+import 'water_units.dart';
 
 enum AssumedState {
   /// Logged by a slot, not yet reviewed.
@@ -71,8 +73,29 @@ class AssumedWater {
   /// on every local day from [lookbackDays] ago to today whose wall-clock time is
   /// not before the toggle's `waterAssumeSinceMs` and not after [now]. Empty when
   /// the reminder or the toggle is off, or when no turn-on time is known.
-  static List<DateTime> dueSlots(NotificationPrefs prefs, {required DateTime now}) =>
-      throw UnimplementedError('AssumedWater.dueSlots');
+  static List<DateTime> dueSlots(NotificationPrefs prefs, {required DateTime now}) {
+    if (!prefs.waterAssumeDrank || !prefs.waterEnabled) return const [];
+    final sinceMs = prefs.waterAssumeSinceMs;
+    if (sinceMs == null) return const []; // never guess when it was switched on
+    final slots = NotificationCenter.waterSlotMinutes(prefs);
+    if (slots.isEmpty) return const [];
+    final n = now.toLocal();
+    final since = DateTime.fromMillisecondsSinceEpoch(sinceMs);
+    // Same wall minute, [lookbackDays] calendar days back (DST-safe: built from
+    // calendar fields, never from a 24 h multiple).
+    final cutoff = DateTime(n.year, n.month, n.day - lookbackDays, n.hour, n.minute);
+    final from = since.isAfter(cutoff) ? since : cutoff;
+    final out = <DateTime>[];
+    for (var day = DateTime(from.year, from.month, from.day);
+        !day.isAfter(DateTime(n.year, n.month, n.day));
+        day = DateTime(day.year, day.month, day.day + 1)) {
+      for (final m in slots) {
+        final at = DateTime(day.year, day.month, day.day, m ~/ 60, m % 60);
+        if (!at.isBefore(from) && !at.isAfter(n)) out.add(at);
+      }
+    }
+    return out;
+  }
 
   /// Logs every due slot not already logged (ever, even if later removed) and
   /// returns how many were newly logged. Each slot logs at most once. The glass
@@ -81,8 +104,22 @@ class AssumedWater {
     NotificationPrefs prefs, {
     required DateTime now,
     required UnitSystem system,
-  }) =>
-      throw UnimplementedError('AssumedWater.catchUp');
+  }) async {
+    final due = dueSlots(prefs, now: now);
+    if (due.isEmpty) return 0;
+    final ml = WaterUnits.stepMl(system);
+    var logged = 0;
+    for (final slot in due) {
+      final fresh = await LocalDb.logAssumedWater(
+        date: dayLabelOf(slot),
+        atMin: slot.hour * 60 + slot.minute,
+        ml: ml,
+        loggedAtMs: now.millisecondsSinceEpoch,
+      );
+      if (fresh) logged++;
+    }
+    return logged;
+  }
 }
 
 /// Where keep / remove land. Overridable so the follow-up screen is testable
@@ -91,10 +128,12 @@ class AssumedWaterWriter {
   const AssumedWaterWriter();
 
   /// Acknowledge: the glass stays in the total, leaves the follow-up list.
-  Future<void> keep(AssumedGlass g) =>
-      throw UnimplementedError('AssumedWaterWriter.keep');
+  Future<void> keep(AssumedGlass g) async {
+    await LocalDb.keepAssumedWater(g);
+  }
 
   /// Remove: subtract exactly [g]'s ml, leave a tombstone.
-  Future<void> remove(AssumedGlass g) =>
-      throw UnimplementedError('AssumedWaterWriter.remove');
+  Future<void> remove(AssumedGlass g) async {
+    await LocalDb.removeAssumedWater(g);
+  }
 }

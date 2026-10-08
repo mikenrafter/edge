@@ -1,5 +1,6 @@
-// The Home card for marked moments: "You marked N moments — what were they?"
-// with an Answer button. Shown only when the setting is on and N > 0. A
+// The Home card for things waiting for review: "N things to review — marked
+// moments and assumed water" (neutral: it counts pending marked moments AND
+// assumed water glasses) with an Answer button. Shown only when the setting is on and N > 0. A
 // null-safe helper that needs no AppState (like `_naturalWakeCard`).
 
 import 'dart:io';
@@ -31,14 +32,14 @@ void main() {
 
     testWidgets('on with N pending: the question and the count', (t) async {
       await _pump(t, momentFollowUpCardFor(enabled: true, count: 3));
-      expect(find.text('You marked 3 moments — what were they?'),
+      expect(find.text('3 things to review — marked moments and assumed water'),
           findsOneWidget);
       expect(find.text('Answer'), findsOneWidget);
     });
 
-    testWidgets('one moment reads as one', (t) async {
+    testWidgets('one thing reads as one', (t) async {
       await _pump(t, momentFollowUpCardFor(enabled: true, count: 1));
-      expect(find.text('You marked 1 moment — what was it?'), findsOneWidget);
+      expect(find.text('1 thing to review — marked moments and assumed water'), findsOneWidget);
     });
 
     testWidgets('Answer calls back', (t) async {

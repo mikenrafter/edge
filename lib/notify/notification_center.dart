@@ -33,13 +33,14 @@ import '../ai/reminder_plan.dart';
 import '../data/day_label.dart';
 import '../data/journal_fields.dart';
 import '../data/med_store.dart';
+import '../data/water_units.dart';
 import 'fired_keys.dart';
 import 'alert_dispatcher.dart';
 import 'notification_event.dart';
 import 'notification_prefs.dart';
 import 'notification_service.dart';
 import '../state/feature_flags.dart';
-import '../state/units_controller.dart' show UnitSystem;
+import '../state/units_controller.dart' show UnitSystem, UnitsController;
 import 'tap_router.dart';
 
 class NotificationCenter {
@@ -431,7 +432,7 @@ class NotificationCenter {
     // instants below are wall-clock. A phone that flew somewhere would otherwise
     // keep arming Sunday 18:00 in the zone the app first launched in.
     await svc.ensureTimezone();
-    await _armWaterSlots(svc, water);
+    await _armWaterSlots(svc, water, prefs);
     if (wantWeekly) await _armWeeklyLookback(svc, weeklyFinding);
     if (windDownMin != null && prefs.phoneDeliveryEnabled('windDown')) {
       await _armWindDown(svc, windDownMin);
@@ -563,13 +564,24 @@ class NotificationCenter {
   ///
   /// Copy rule: this may nudge you to LOG a drink and nothing more. The app
   /// measures no hydration, scores none, and this text may never imply either.
-  Future<void> _armWaterSlots(NotificationService svc, List<int> slots) async {
+  Future<void> _armWaterSlots(
+    NotificationService svc,
+    List<int> slots,
+    NotificationPrefs prefs,
+  ) async {
+    UnitSystem system;
+    try {
+      system = await UnitsController.savedSystem();
+    } catch (_) {
+      system = UnitSystem.metric; // no preference store (a headless run)
+    }
+    final body = waterReminderBody(prefs, system: system);
     for (var i = 0; i < slots.length; i++) {
       await svc.scheduleDaily(
         id: NotificationService.idWaterBase + i,
         category: NotifCategory.reminders,
         title: 'Water',
-        body: 'Tap to log a glass.',
+        body: body,
         hour: slots[i] ~/ 60,
         minute: slots[i] % 60,
         route: kRouteWater,
@@ -721,7 +733,14 @@ class NotificationCenter {
   static String waterReminderBody(
     NotificationPrefs prefs, {
     required UnitSystem system,
-  }) => throw UnimplementedError('NotificationCenter.waterReminderBody');
+  }) {
+    final glass =
+        WaterUnits.format(WaterUnits.stepMl(system), system);
+    // Never a goal, a score or a "behind": the app measures no hydration.
+    return prefs.waterAssumeDrank
+        ? 'A glass ($glass) was assumed. Tap to review.'
+        : 'Tap to log a glass ($glass).';
+  }
 
   // Default waking window when quiet hours are off (so we never buzz at 3am).
   static const int _waterDayStartMin = 8 * 60; // 08:00

@@ -53,13 +53,14 @@ class NotificationPrefs {
   /// [waterIntervalMinAllowed]..[waterIntervalMaxAllowed] when scheduling.
   final int waterIntervalMin;
 
-/// "Assume I drank water": every reminder slot that fires logs one assumed
-/// glass (data/assumed_water.dart). Default OFF. RED stub: not yet persisted.
-final bool waterAssumeDrank;
+  /// "Assume I drank water": every reminder slot that fires logs one assumed
+  /// glass (data/assumed_water.dart). Default OFF. Stored in the versioned prefs
+  /// blob only (no legacy mirror key: no headless consumer reads it).
+  final bool waterAssumeDrank;
 
-/// Epoch ms the toggle was last switched on; slots before it are never
-/// assumed. Null = unknown, so nothing is assumed.
-final int? waterAssumeSinceMs;
+  /// Epoch ms the toggle was last switched on; slots before it are never
+  /// assumed. Null = unknown, so nothing is assumed.
+  final int? waterAssumeSinceMs;
 
   /// Allowed bounds for the water interval (30 min .. 6 h).
   static const int waterIntervalMinAllowed = 30;
@@ -504,6 +505,8 @@ final int? waterAssumeSinceMs;
       waterEnabled:
           rules['water']!.enabled && rules['water']!.destinations != 0,
       waterIntervalMin: waterIntervalMin ?? this.waterIntervalMin,
+      waterAssumeDrank: waterAssumeDrank ?? this.waterAssumeDrank,
+      waterAssumeSinceMs: waterAssumeSinceMs ?? this.waterAssumeSinceMs,
       autoDetectEnabled:
           rules['autoDetect']!.enabled &&
           rules['autoDetect']!.destinations != 0,
@@ -631,6 +634,8 @@ final int? waterAssumeSinceMs;
       'criticalOverridesQuiet': criticalOverridesQuiet,
       'waterEnabled': waterEnabled,
       'waterIntervalMin': waterIntervalMin,
+      'waterAssumeDrank': waterAssumeDrank,
+      'waterAssumeSinceMs': waterAssumeSinceMs,
       'autoDetectEnabled': autoDetectEnabled,
       'movementEnabled': movementEnabled,
       'medsEnabled': medsEnabled,
@@ -674,6 +679,9 @@ final int? waterAssumeSinceMs;
       waterEnabled: values['waterEnabled'] as bool? ?? defaults.waterEnabled,
       waterIntervalMin:
           values['waterIntervalMin'] as int? ?? defaults.waterIntervalMin,
+      waterAssumeDrank:
+          values['waterAssumeDrank'] as bool? ?? defaults.waterAssumeDrank,
+      waterAssumeSinceMs: values['waterAssumeSinceMs'] as int?,
       autoDetectEnabled:
           values['autoDetectEnabled'] as bool? ?? defaults.autoDetectEnabled,
       movementEnabled:

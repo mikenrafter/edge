@@ -96,6 +96,8 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       unawaited(app.maybeStopBreathingFromLiveActivity());
       app.refreshAppStatus(); // re-check OTA + admin banner on every foreground
       app.runCadenceChecks(); // evening wind-down / weekly recap nudges (best-effort)
+      // Slots of "Assume I drank water" that passed while we were away.
+      unawaited(app.catchUpAssumedWater());
       // A Siri "start breathing" App Intent may have just foregrounded an
       // already-running process (openAppWhenRun doesn't guarantee a fresh
       // launch) — the constructor-time check alone would miss that case.

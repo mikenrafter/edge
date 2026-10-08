@@ -17,6 +17,7 @@ import '../../data/assumed_water.dart';
 import '../../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/moment_follow_ups.dart';
+import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
@@ -24,7 +25,8 @@ import '../ui2.dart';
 import 'journal_compose.dart' show OsTextField;
 import 'log_workout.dart' show LogWorkout;
 
-/// "You marked N moments — what were they?" with an Answer button.
+/// "N things to review — marked moments and assumed water" with an Answer
+/// button. [count] is pending moments plus assumed glasses.
 class MomentFollowUpCard extends StatelessWidget {
   const MomentFollowUpCard({super.key, required this.count, this.onAnswer});
   final int count;
@@ -43,8 +45,8 @@ class MomentFollowUpCard extends StatelessWidget {
             Text(
                 l?.momentFollowUpCardTitle(count) ??
                     (count == 1
-                        ? 'You marked $count moment — what was it?'
-                        : 'You marked $count moments — what were they?'),
+                        ? '$count thing to review — marked moments and assumed water'
+                        : '$count things to review — marked moments and assumed water'),
                 key: const ValueKey('moment-follow-up-card'),
                 style: F.t2.copyWith(color: p.ink)),
             const SizedBox(height: S.x3),
@@ -126,7 +128,7 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
       final g = widget.settings;
       final since = g.followUpMoments ? g.followUpMomentsSince : null;
       final f = await MomentFollowUps.load(enabledSince: since);
-      final n = f.pending(DateTime.now()).length;
+      final n = f.pendingCount(DateTime.now());
       if (mounted && n != _count) setState(() => _count = n);
     } catch (_) {
       // A read that failed shows no card; it does not claim there is nothing
@@ -180,6 +182,7 @@ class MomentFollowUpScreen extends StatefulWidget {
 
 class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   List<PendingMoment>? _items;
+  List<AssumedGlass> _glasses = [];
   bool _failed = false;
   bool _busy = false;
 
@@ -187,12 +190,14 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   /// the workout options).
   final Map<String, MomentChoice> _open = {};
   final Map<String, TextEditingController> _text = {};
+  final Map<String, _SymptomDraft> _drafts = {};
 
   @override
   void initState() {
     super.initState();
     if (widget.preloaded != null) {
       _items = List.of(widget.preloaded!);
+      _glasses = List.of(widget.preloadedAssumed ?? const []);
     } else {
       _load();
     }
@@ -202,6 +207,9 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   void dispose() {
     for (final t in _text.values) {
       t.dispose();
+    }
+    for (final d in _drafts.values) {
+      d.dispose();
     }
     super.dispose();
   }
@@ -221,10 +229,34 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
       }
       final f = await MomentFollowUps.load(enabledSince: since);
       if (mounted) {
-        setState(() => _items = f.pending(widget.now ?? DateTime.now()));
+        final at = widget.now ?? DateTime.now();
+        setState(() {
+          _items = f.pending(at);
+          _glasses = f.pendingAssumed(at);
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  /// Keep / Remove one assumed glass. The row leaves only once the write has
+  /// landed; a failed write keeps it and says so.
+  Future<void> _storeGlass(AssumedGlass g, Future<void> Function() write) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await write();
+      if (!mounted) return;
+      setState(() => _glasses.removeWhere((x) => x.key == g.key));
+    } catch (_) {
+      if (!mounted) return;
+      final l = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(l?.momentFollowUpSaveFailed ??
+              'Could not save that answer. Try again.')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -255,9 +287,11 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     final needsMore =
         (c.journalField != null && c != MomentChoice.water) ||
         c == MomentChoice.other ||
+        c == MomentChoice.symptom ||
         c == MomentChoice.workout;
     if (needsMore) {
       _field(m.key).clear();
+      if (c == MomentChoice.symptom) _drafts[m.key] ??= _SymptomDraft();
       setState(() => _open[m.key] = c);
       return;
     }
@@ -265,6 +299,14 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   }
 
   void _save(PendingMoment m, MomentChoice c) {
+    if (c == MomentChoice.symptom) {
+      // Nothing is saved until severity, kind and area are said; a half
+      // description is never stored.
+      final d = _drafts[m.key]?.build();
+      if (d == null) return;
+      _store(m, () => widget.writer.answerSymptom(m, d, now: widget.now));
+      return;
+    }
     final raw = _field(m.key).text.trim();
     if (c == MomentChoice.other) {
       _store(m,
@@ -320,7 +362,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                   )
                 else if (items == null)
                   const NoData(message: '…')
-                else if (items.isEmpty)
+                else if (items.isEmpty && _glasses.isEmpty)
                   KeyedSubtree(
                     key: const ValueKey('moment-follow-up-empty'),
                     child: StatusCard(
@@ -332,12 +374,25 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                     ),
                   )
                 else
-                  for (final m in items) ...[
+                  for (final e in _chronological(items, _glasses)) ...[
+                    if (e.glass case final g?)
+                      _AssumedRow(
+                        key: ValueKey('assumed-water:${g.key}'),
+                        glass: g,
+                        busy: _busy,
+                        onKeep: () => _storeGlass(
+                            g, () => widget.assumedWriter.keep(g)),
+                        onRemove: () => _storeGlass(
+                            g, () => widget.assumedWriter.remove(g)),
+                      )
+                    else if (e.moment case final m?)
                     _MomentRow(
                       key: ValueKey('moment-follow-up:${m.key}'),
                       moment: m,
                       open: _open[m.key],
                       controller: _field(m.key),
+                      draft: _drafts[m.key],
+                      onDraft: () => setState(() {}),
                       busy: _busy,
                       onChoose: (ch) => _choose(m, ch),
                       onSave: (ch) => _save(m, ch),
@@ -366,6 +421,8 @@ class _MomentRow extends StatelessWidget {
     required this.moment,
     required this.open,
     required this.controller,
+    required this.draft,
+    required this.onDraft,
     required this.busy,
     required this.onChoose,
     required this.onSave,
@@ -377,6 +434,10 @@ class _MomentRow extends StatelessWidget {
   final PendingMoment moment;
   final MomentChoice? open;
   final TextEditingController controller;
+
+  /// The symptom being described, when Symptom is the open choice.
+  final _SymptomDraft? draft;
+  final VoidCallback onDraft;
   final bool busy;
   final ValueChanged<MomentChoice> onChoose, onSave;
   final VoidCallback onSkip, onLogWorkout, onLabelWorkout;
@@ -424,6 +485,14 @@ class _MomentRow extends StatelessWidget {
             lines: 3,
           ),
         ],
+        if (choice == MomentChoice.symptom && draft != null) ...[
+          const SizedBox(height: S.x3),
+          _SymptomDescriber(
+              key: ValueKey('symptom-describer:$k'),
+              momentKey: k,
+              draft: draft!,
+              onChanged: onDraft),
+        ],
         if (choice != null && choice != MomentChoice.workout) ...[
           const SizedBox(height: S.x3),
           BigButton(l?.momentFollowUpSave ?? 'Save',
@@ -460,5 +529,233 @@ class _MomentRow extends StatelessWidget {
         ),
       ]),
     );
+  }
+}
+
+/// One row of the follow-up list: a pending moment or an assumed glass.
+typedef _Entry = ({DateTime at, PendingMoment? moment, AssumedGlass? glass});
+
+/// Pending moments and assumed glasses in one list, oldest first.
+List<_Entry> _chronological(
+    List<PendingMoment> moments, List<AssumedGlass> glasses) {
+  final out = <_Entry>[
+    for (final m in moments) (at: m.local, moment: m, glass: null),
+    for (final g in glasses) (at: g.local, moment: null, glass: g),
+  ]..sort((a, b) => a.at.compareTo(b.at));
+  return out;
+}
+
+/// An assumed glass of water, labelled as such, with Keep and Remove.
+///
+/// Keep acknowledges it (it stays in the water total and leaves this list);
+/// Remove subtracts exactly that glass. It offers none of the moment choices.
+class _AssumedRow extends StatelessWidget {
+  const _AssumedRow({
+    super.key,
+    required this.glass,
+    required this.busy,
+    required this.onKeep,
+    required this.onRemove,
+  });
+
+  final AssumedGlass glass;
+  final bool busy;
+  final VoidCallback onKeep, onRemove;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final amount = waterText(c, glass.ml);
+    return Surface(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${glass.date} · ${glass.hhmm}',
+            style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+        const SizedBox(height: S.x2),
+        Row(children: [
+          Icon(LucideIcons.glassWater, size: 16, color: p.on(C.blue)),
+          const SizedBox(width: S.x2),
+          Expanded(
+            child: Text(l?.assumedWaterTitle ?? 'Assumed glass of water',
+                style: F.body.copyWith(color: p.ink)),
+          ),
+        ]),
+        const SizedBox(height: S.x1),
+        Text(
+            l?.assumedWaterBody(amount) ??
+                'Adds $amount to the water you drank, assumed from your water '
+                    'reminder. Keep it or remove it.',
+            style: F.cap.copyWith(color: p.ink2)),
+        const SizedBox(height: S.x3),
+        Row(children: [
+          Expanded(
+            child: BigButton(l?.assumedWaterKeep ?? 'Keep',
+                key: ValueKey('assumed-keep:${glass.key}'),
+                icon: LucideIcons.check,
+                color: C.domMind,
+                onTap: busy ? null : onKeep),
+          ),
+          const SizedBox(width: S.x2),
+          Expanded(
+            child: BigButton(l?.assumedWaterRemove ?? 'Remove',
+                key: ValueKey('assumed-remove:${glass.key}'),
+                icon: LucideIcons.trash2,
+                color: C.blue,
+                soft: true,
+                onTap: busy ? null : onRemove),
+          ),
+        ]),
+      ]),
+    );
+  }
+}
+
+/// What the wearer has picked so far for a Symptom answer.
+class _SymptomDraft {
+  SymptomSeverity? severity;
+  SymptomSide? side;
+  SymptomKind? kind;
+  SymptomArea? area;
+  final kindOther = TextEditingController();
+  final areaOther = TextEditingController();
+  final note = TextEditingController();
+
+  /// The description, or null until severity, kind and area are said (and the
+  /// free text, for "other"). Side and note are optional.
+  SymptomDescription? build() {
+    final sev = severity, k = kind, a = area;
+    if (sev == null || k == null || a == null) return null;
+    final ko = kindOther.text.trim(), ao = areaOther.text.trim(), n = note.text.trim();
+    if (k == SymptomKind.other && ko.isEmpty) return null;
+    if (a == SymptomArea.other && ao.isEmpty) return null;
+    return SymptomDescription(
+      severity: sev,
+      side: side,
+      kind: k,
+      kindOther: k == SymptomKind.other ? ko : null,
+      area: a,
+      areaOther: a == SymptomArea.other ? ao : null,
+      note: n.isEmpty ? null : n,
+    );
+  }
+
+  void dispose() {
+    kindOther.dispose();
+    areaOther.dispose();
+    note.dispose();
+  }
+}
+
+String _cap(String s) =>
+    s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+/// Severity, optional side, kind and body area as tap choices, free text for
+/// "other", an optional note and the sentence it will read as.
+class _SymptomDescriber extends StatelessWidget {
+  const _SymptomDescriber({
+    super.key,
+    required this.momentKey,
+    required this.draft,
+    required this.onChanged,
+  });
+
+  final String momentKey;
+  final _SymptomDraft draft;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    final l = AppLocalizations.of(c);
+    final k = momentKey;
+
+    Widget group<T extends Enum>(String title, String prefix, List<T> values,
+        String Function(T) label, T? picked, void Function(T) pick) {
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title.toUpperCase(), style: F.over.copyWith(color: p.ink3)),
+        const SizedBox(height: S.x2),
+        Wrap(spacing: S.x2, runSpacing: S.x2, children: [
+          for (final v in values)
+            Pressable(
+              key: ValueKey('$prefix:$k:${v.name}'),
+              onTap: () {
+                pick(v);
+                onChanged();
+              },
+              child: Pill(_cap(label(v)), picked == v ? C.domMind : C.blue),
+            ),
+        ]),
+        const SizedBox(height: S.x3),
+      ]);
+    }
+
+    final sentence = draft.build()?.describe(l);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      group<SymptomSeverity>(
+          l?.symptomDescriberSeverity ?? 'How strong?',
+          'symptom-severity',
+          SymptomSeverity.values,
+          (v) => v.localized(l),
+          draft.severity,
+          (v) => draft.severity = v),
+      // Optional: tapping the chosen side again clears it.
+      group<SymptomSide>(
+          l?.symptomDescriberSide ?? 'Which side? (optional)',
+          'symptom-side',
+          SymptomSide.values,
+          (v) => v.localized(l),
+          draft.side,
+          (v) => draft.side = draft.side == v ? null : v),
+      group<SymptomKind>(
+          l?.symptomDescriberKind ?? 'What kind?',
+          'symptom-kind',
+          SymptomKind.values,
+          (v) => v.localized(l),
+          draft.kind,
+          (v) => draft.kind = v),
+      if (draft.kind == SymptomKind.other) ...[
+        OsTextField(
+          key: ValueKey('symptom-kind-other:$k'),
+          controller: draft.kindOther,
+          label: SymptomKind.other.localized(l),
+          hint: l?.symptomDescriberKindOtherHint ?? 'Describe the kind',
+          onChanged: (_) => onChanged(),
+        ),
+        const SizedBox(height: S.x3),
+      ],
+      group<SymptomArea>(
+          l?.symptomDescriberArea ?? 'Where?',
+          'symptom-area',
+          SymptomArea.values,
+          (v) => v.localized(l),
+          draft.area,
+          (v) => draft.area = v),
+      if (draft.area == SymptomArea.other) ...[
+        OsTextField(
+          key: ValueKey('symptom-area-other:$k'),
+          controller: draft.areaOther,
+          label: SymptomArea.other.localized(l),
+          hint: l?.symptomDescriberAreaOtherHint ?? 'Describe the place',
+          onChanged: (_) => onChanged(),
+        ),
+        const SizedBox(height: S.x3),
+      ],
+      OsTextField(
+        key: ValueKey('symptom-note:$k'),
+        controller: draft.note,
+        label: l?.symptomDescriberNoteHint ?? 'Note (optional)',
+        hint: l?.symptomDescriberNoteHint ?? 'Note (optional)',
+        lines: 2,
+      ),
+      if (sentence != null) ...[
+        const SizedBox(height: S.x3),
+        Padding(
+          key: ValueKey('symptom-preview:$k'),
+          padding: EdgeInsets.zero,
+          child: Text(sentence,
+              style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+        ),
+      ],
+    ]);
   }
 }

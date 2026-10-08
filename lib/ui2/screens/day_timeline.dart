@@ -333,14 +333,19 @@ List<Moment> dayMoments({
   // Marked moments the wearer labelled. A marked moment has a real clock (the
   // minute the tap happened), so it is placed there. A skipped one has no label
   // to show, and a label this build does not know is not turned into text.
+  final symptomAt = {for (final y in symptoms) y.key: y};
   for (final m in momentLabels) {
     final choice = MomentChoice.fromId(m.label);
     final at = m.atSec;
     if (choice == null || at == null) continue;
     final note = m.note;
+    // A symptom answered with a description reads as that sentence; one
+    // answered before descriptions existed keeps its plain "Symptom".
+    final described =
+        choice == MomentChoice.symptom ? symptomAt[m.key]?.description : null;
     out.add(Moment(
       at: at,
-      title: choice.localized(l),
+      title: described?.describe(l) ?? choice.localized(l),
       detail: [
         l?.dayTimelineMarkedAt(m.hhmm) ?? 'Marked moment at ${m.hhmm}',
         if (note != null && note.isNotEmpty) note,
@@ -624,6 +629,7 @@ class TimelineData {
     final meals = await NutritionDb.entriesForDay(db, day);
     final notes = await LocalDb.journalRows(sinceDaysEpoch: day);
     final momentLabels = await LocalDb.momentLabels(date: day);
+    final symptoms = await LocalDb.symptomEntries(date: day);
 
     // Doses: one row per (medication, slot), and only the ones actually taken
     // carry a clock. A skipped dose is a real fact with no time attached, so it
@@ -656,6 +662,7 @@ class TimelineData {
         journal: journal,
         fields: fields,
         momentLabels: momentLabels,
+        symptoms: symptoms,
         l: l,
       ),
       notes: [

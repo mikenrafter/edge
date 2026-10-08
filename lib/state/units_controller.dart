@@ -31,6 +31,11 @@ class UnitsController extends ChangeNotifier {
     return UnitsController._(_parse(prefs.getString(_kUnits)));
   }
 
+  /// The persisted system, for code with no controller above it (the water
+  /// answer writer, the headless reminder arming). One key, one parser.
+  static Future<UnitSystem> savedSystem() async =>
+      _parse((await SharedPreferences.getInstance()).getString(_kUnits));
+
   static UnitSystem _parse(String? s) =>
       s == 'imperial' ? UnitSystem.imperial : UnitSystem.metric;
 

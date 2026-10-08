@@ -1491,6 +1491,28 @@ class NotificationSettingsView extends StatelessWidget {
                               onTap: () => set(prefs.copyWith(
                                   waterIntervalMin:
                                       _nextEvery(prefs.waterIntervalMin)))),
+                        // Each reminder slot logs ONE glass, marked assumed (see
+                        // data/assumed_water.dart). Dimmed while the reminder is
+                        // off, never hidden. Switching it on stamps the moment so
+                        // slots before it are never assumed.
+                        SetRow(LucideIcons.glassWater, C.teal,
+                              l?.settingsWaterAssumeRowTitle ??
+                                  'Assume I drank water',
+                              key: const ValueKey('water-assume-toggle'),
+                              enabled: prefs.waterEnabled,
+                              // One text in both states: a sub that changes
+                              // length when the reminder is switched moves
+                              // every section header below it.
+                              sub: l?.settingsWaterAssumeRowSub ??
+                                  'Each reminder logs one assumed glass',
+                              value: prefs.waterAssumeDrank ? on : off,
+                              chevron: false,
+                              onTap: () => set(prefs.waterAssumeDrank
+                                  ? prefs.copyWith(waterAssumeDrank: false)
+                                  : prefs.copyWith(
+                                      waterAssumeDrank: true,
+                                      waterAssumeSinceMs: DateTime.now()
+                                          .millisecondsSinceEpoch))),
                         // Silent until the Sleep Coach has LEARNED a bedtime.
                         row('windDown', LucideIcons.moonStar, C.indigo,
                             l?.settingsWindDownRowTitle ?? 'Wind-down',

@@ -15,6 +15,8 @@ import '../data/assumed_water.dart';
 import '../data/db.dart';
 import '../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../data/moment_label.dart';
+import '../data/water_units.dart';
+import '../state/units_controller.dart' show UnitSystem, UnitsController;
 import '../l10n/app_localizations.dart';
 import 'symptom_description.dart';
 
@@ -104,8 +106,27 @@ class MomentFollowUps {
   /// Assumed glasses still waiting for keep / remove at [now]: state
   /// `assumed`, not before the setting was enabled, within [windowDays] local
   /// calendar days, oldest first. Empty when the setting is off. Pure.
-  List<AssumedGlass> pendingAssumed(DateTime now) =>
-      throw UnimplementedError('MomentFollowUps.pendingAssumed');
+  List<AssumedGlass> pendingAssumed(DateTime now) {
+    final since = enabledSince?.toLocal();
+    if (since == null) return const [];
+    final from = DateTime(since.year, since.month, since.day, since.hour, since.minute);
+    final n = now.toLocal();
+    final cutoff =
+        DateTime(n.year, n.month, n.day - windowDays, n.hour, n.minute);
+    final out = [
+      for (final g in assumed)
+        if (g.state == AssumedState.assumed &&
+            !g.local.isBefore(from) &&
+            !g.local.isBefore(cutoff))
+          g,
+    ]..sort((a, b) => a.local.compareTo(b.local));
+    return out;
+  }
+
+  /// Everything waiting for the wearer at [now]: pending moments plus assumed
+  /// glasses. The Home card counts this.
+  int pendingCount(DateTime now) =>
+      pending(now).length + pendingAssumed(now).length;
 
   /// Days a moment stays pending, counted in local calendar days.
   static const int windowDays = 7;
@@ -166,10 +187,12 @@ class MomentFollowUps {
     final from = dayLabelOf(enabledSince);
     final rows = await LocalDb.journalRows(sinceDaysEpoch: from);
     final labels = await LocalDb.momentLabels(sinceDate: from);
+    final glasses = await LocalDb.assumedWater(sinceDate: from);
     return MomentFollowUps(
       enabledSince: enabledSince,
       marked: parseMarked(rows),
       labelled: {for (final l in labels) l.key},
+      assumed: glasses,
     );
   }
 }
@@ -195,8 +218,8 @@ class MomentAnswerWriter {
   /// Stores [choice] as the moment's label (always) and, for a dose field with a
   /// [value], adds it to that local day's journal metric. Null [value] never
   /// writes a metric. A moment that already has an answer is left alone.
-  /// Water takes no amount: it adds one glass (`water_ml`'s step, clamped to
-  /// its max) to the moment's local day.
+  /// Water takes no amount: it adds one glass (the unit-aware step, clamped to
+  /// `water_ml`'s max) to the moment's local day.
   Future<MomentAnswerResult> answer(
     PendingMoment m,
     MomentChoice choice, {
@@ -220,6 +243,11 @@ class MomentAnswerWriter {
             value, 'value', 'must be above 0 and at most ${spec.max}');
       }
     }
+    // One glass is the unit-aware step: 250 ml, or one US cup (8 fl oz) when the
+    // saved units preference is imperial. Always stored as ml.
+    final glass = choice == MomentChoice.water
+        ? WaterUnits.stepMl(await _savedSystem())
+        : null;
     final trimmed = note?.trim();
     return _store(
       MomentLabel(
@@ -233,7 +261,7 @@ class MomentAnswerWriter {
           ? field
           : (value == null ? null : field),
       // One glass: the field's own step (the + button's), clamped to its max.
-      value: choice == MomentChoice.water ? kJournalFieldsByKey[field]!.step : value,
+      value: glass ?? value,
       max: choice == MomentChoice.water ? kJournalFieldsByKey[field]!.max : null,
     );
   }
@@ -245,7 +273,38 @@ class MomentAnswerWriter {
     PendingMoment m,
     SymptomDescription d, {
     DateTime? now,
-  }) => throw UnimplementedError('MomentAnswerWriter.answerSymptom');
+  }) async {
+    String? typed(String? v) {
+      final t = v?.trim();
+      return t == null || t.isEmpty ? null : t;
+    }
+
+    if (d.kind == SymptomKind.other && typed(d.kindOther) == null) {
+      throw ArgumentError.value(d.kindOther, 'kindOther', 'Other needs text');
+    }
+    if (d.area == SymptomArea.other && typed(d.areaOther) == null) {
+      throw ArgumentError.value(d.areaOther, 'areaOther', 'Other needs text');
+    }
+    final at = (now ?? DateTime.now()).millisecondsSinceEpoch;
+    final saved = await LocalDb.answerMomentSymptom(
+      MomentLabel(
+          date: m.date,
+          hhmm: m.hhmm,
+          label: MomentChoice.symptom.id,
+          answeredAtMs: at),
+      StoredSymptom(
+          date: m.date, hhmm: m.hhmm, description: d, createdAtMs: at),
+    );
+    return saved ? MomentAnswerResult.saved : MomentAnswerResult.alreadyAnswered;
+  }
+
+  static Future<UnitSystem> _savedSystem() async {
+    try {
+      return await UnitsController.savedSystem();
+    } catch (_) {
+      return UnitSystem.metric; // no preference store (a headless/test run)
+    }
+  }
 
   /// Marks the moment answered with no label.
   Future<MomentAnswerResult> skip(PendingMoment m, {DateTime? now}) =>

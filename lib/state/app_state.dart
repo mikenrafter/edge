@@ -159,6 +159,8 @@ import '../notify/notification_service.dart';
 import '../notify/tap_router.dart';
 import '../settings/settings_repository.dart';
 import '../notify/water_buzzer.dart';
+import '../data/assumed_water.dart';
+import 'units_controller.dart' show UnitsController;
 import '../sync/background_sync.dart' show checkSyncStaleness;
 import '../sync/band_ownership.dart';
 import '../sync/high_freq_wake_window.dart';
@@ -925,6 +927,12 @@ class AppState extends ChangeNotifier {
     buzz: () => engine.buzz(),
     dispatcher: alertDispatcher,
     isConnected: () => engine.isConnected,
+    // A live app logs "Assume I drank water" at the slot itself, strap or no
+    // strap. Off (the default) it logs nothing: catch-up reads the toggle.
+    onSlot: (slot) async {
+      final now = DateTime.now();
+      await catchUpAssumedWater(now: now.isBefore(slot) ? slot : now);
+    },
   );
 
   /// Fires a strap haptic at each scheduled medication dose (best-effort, only
@@ -2677,7 +2685,36 @@ class AppState extends ChangeNotifier {
       enabled: p.waterEnabled,
       slotMinutes: NotificationCenter.waterSlotMinutes(p),
     );
+    // Launch and every change of the toggle: log the slots a dead app missed.
+    await catchUpAssumedWater(prefs: p);
   }
+
+  /// "Assume I drank water": logs every reminder slot due so far that has not
+  /// been logged yet (see [AssumedWater.catchUp]); each slot logs at most once,
+  /// ever. Runs at launch, on resume, at each slot while the app is alive and
+  /// when the toggle changes. Reads the stored prefs unless [prefs] is given;
+  /// with the toggle off it writes nothing. Best-effort: a failed write is
+  /// retried by the next run, so it never throws. Returns how many glasses were
+  /// newly logged.
+  Future<int> catchUpAssumedWater({NotificationPrefs? prefs, DateTime? now}) async {
+    try {
+      final p = prefs ?? await NotificationPrefs.load();
+      if (!p.waterAssumeDrank) return 0;
+      final n = await AssumedWater.catchUp(
+        p,
+        now: now ?? DateTime.now(),
+        system: await UnitsController.savedSystem(),
+      );
+      if (n > 0) bumpInsights(); // live Nutrition / Journal re-read the day
+      return n;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// The strap-buzz timer, for tests (its `onSlot` is the live-app hook).
+  @visibleForTesting
+  WaterBuzzer get debugWaterBuzzer => _waterBuzzer;
 
   /// Push a just-saved low-battery threshold into the device-alert pipeline.
   /// DeviceAlerts restores its threshold once per process; without this a

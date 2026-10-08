@@ -399,7 +399,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 64;
+  static const int schemaVersion = 65;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1216,6 +1216,16 @@ class LocalDb {
           // moves. _repairOpenSchema re-runs it on every open.
           await _createMomentLabel(db);
         }
+        if (oldV < 65) {
+          // Two small additive tables, no backfill (no row means "nothing was
+          // assumed" / "no symptom described"), cheap under iOS's CPU watchdog
+          // (invariant 11): the assumed water glasses of "Assume I drank water"
+          // and the structured Symptom answer of a marked moment. No
+          // kAlgoVersion bump: nothing derived reads either. _repairOpenSchema
+          // re-runs both on every open.
+          await _createAssumedWater(db);
+          await _createSymptomEntry(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1316,6 +1326,8 @@ class LocalDb {
     await _createWakeConfirmation(db);
     await _createWakeEvidence(db);
     await _createMomentLabel(db);
+    await _createAssumedWater(db);
+    await _createSymptomEntry(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -11569,7 +11581,32 @@ class LocalDb {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  // ── assumed water + symptom entries (RED stubs; schema 65 not yet made) ────
+  // ── assumed water + symptom entries (schema 65) ────────────────────────────
+
+  /// `assumed_water`: one row per "Assume I drank water" slot, keyed on the
+  /// slot's local date + minute. `ml` is what the glass ACTUALLY added to the
+  /// day's `water_ml` (less than a glass at the ceiling), which is exactly what
+  /// removing it subtracts. `state` is assumed | kept | removed; a removed row
+  /// is a tombstone so a slot is never logged twice. Additive and idempotent.
+  static Future<void> _createAssumedWater(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS assumed_water ('
+        'date TEXT NOT NULL, at_min INTEGER NOT NULL, ml REAL NOT NULL, '
+        "state TEXT NOT NULL DEFAULT 'assumed', logged_at INTEGER NOT NULL, "
+        'PRIMARY KEY (date, at_min))',
+      );
+
+  /// `symptom_entry`: the structured description of a marked moment answered
+  /// Symptom, keyed on the same local (date, hhmm) as the moment. Ids, not
+  /// words, so a language switch never orphans a row. Nothing derived reads it.
+  static Future<void> _createSymptomEntry(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS symptom_entry ('
+        'date TEXT NOT NULL, hhmm TEXT NOT NULL, severity TEXT NOT NULL, '
+        'side TEXT, kind TEXT NOT NULL, kind_other TEXT, area TEXT NOT NULL, '
+        'area_other TEXT, note TEXT, created_at INTEGER NOT NULL, '
+        'PRIMARY KEY (date, hhmm))',
+      );
+
+  static const String _waterField = 'water_ml';
 
   /// Logs one assumed glass for the slot ([date], [atMin]): adds [ml] (clamped
   /// to the field ceiling) to that day's `water_ml` and inserts the
@@ -11581,36 +11618,246 @@ class LocalDb {
     required int atMin,
     required double ml,
     required int loggedAtMs,
-  }) => throw UnimplementedError('LocalDb.logAssumedWater');
+  }) async {
+    final db = await instance;
+    final max = kJournalFieldsByKey[_waterField]!.max;
+    return db.transaction((txn) async {
+      final have = await txn.query('assumed_water',
+          columns: ['date'],
+          where: 'date = ? AND at_min = ?',
+          whereArgs: [date, atMin],
+          limit: 1);
+      if (have.isNotEmpty) return false;
+      final old = await txn.query('journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [date, _waterField],
+          limit: 1);
+      final oldVal = old.isEmpty ? 0.0 : (old.first['value'] as num).toDouble();
+      final oldAt = old.isEmpty ? null : (old.first['at_min'] as num?)?.toInt();
+      final newVal = (oldVal + ml).clamp(0.0, max).toDouble();
+      final added = newVal - oldVal;
+      if (added > 0) {
+        await txn.insert(
+            'journal_metric',
+            {
+              'date': date,
+              'field': _waterField,
+              'value': newVal,
+              'at_min': oldAt != null && oldAt > atMin ? oldAt : atMin,
+              'updated_at': loggedAtMs,
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await txn.insert('assumed_water', {
+        'date': date,
+        'at_min': atMin,
+        'ml': added > 0 ? added : 0.0,
+        // A glass that added nothing (the day was at its ceiling) has nothing
+        // to review: it is recorded as a tombstone so the slot is not retried.
+        'state': added > 0
+            ? AssumedState.assumed.name
+            : AssumedState.removed.name,
+        'logged_at': loggedAtMs,
+      });
+      return true;
+    });
+  }
 
   /// Assumed glasses by (date, atMin); removed ones only with [includeRemoved].
   static Future<List<AssumedGlass>> assumedWater({
     String? date,
     String? sinceDate,
     bool includeRemoved = false,
-  }) => throw UnimplementedError('LocalDb.assumedWater');
+  }) async {
+    final db = await instance;
+    final where = <String>[];
+    final args = <Object?>[];
+    if (date != null) {
+      where.add('date = ?');
+      args.add(date);
+    } else if (sinceDate != null) {
+      where.add('date >= ?');
+      args.add(sinceDate);
+    }
+    if (!includeRemoved) {
+      where.add('state <> ?');
+      args.add(AssumedState.removed.name);
+    }
+    final rows = await db.query('assumed_water',
+        where: where.isEmpty ? null : where.join(' AND '),
+        whereArgs: args.isEmpty ? null : args,
+        orderBy: 'date ASC, at_min ASC');
+    return [
+      for (final r in rows)
+        AssumedGlass(
+          date: r['date'] as String,
+          atMin: (r['at_min'] as num).toInt(),
+          ml: (r['ml'] as num).toDouble(),
+          // A state from a newer build reads as assumed (kept in the total,
+          // offered for review) rather than crashing the list.
+          state: AssumedState.values.firstWhere(
+              (s) => s.name == r['state'],
+              orElse: () => AssumedState.assumed),
+          loggedAtMs: (r['logged_at'] as num).toInt(),
+        ),
+    ];
+  }
 
   /// Acknowledge: state `kept`. False when the glass is not `assumed`.
-  static Future<bool> keepAssumedWater(AssumedGlass g) =>
-      throw UnimplementedError('LocalDb.keepAssumedWater');
+  static Future<bool> keepAssumedWater(AssumedGlass g) async {
+    final db = await instance;
+    final n = await db.update('assumed_water',
+        {'state': AssumedState.kept.name},
+        where: 'date = ? AND at_min = ? AND state = ?',
+        whereArgs: [g.date, g.atMin, AssumedState.assumed.name]);
+    return n > 0;
+  }
 
   /// Subtract exactly the glass's ml from the day's `water_ml` (the field row
-  /// is deleted if that leaves nothing) and tombstone it, in ONE transaction.
-  /// False, changing nothing, when it is already removed.
-  static Future<bool> removeAssumedWater(AssumedGlass g) =>
-      throw UnimplementedError('LocalDb.removeAssumedWater');
+  /// is deleted if that leaves nothing, so the day is absent again rather than
+  /// a logged zero) and tombstone it, in ONE transaction. False, changing
+  /// nothing, when it is already removed. The subtracted amount is the ROW's
+  /// `ml`, not the caller's copy, so a stale screen cannot take back too much.
+  static Future<bool> removeAssumedWater(AssumedGlass g) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final rows = await txn.query('assumed_water',
+          where: 'date = ? AND at_min = ?', whereArgs: [g.date, g.atMin], limit: 1);
+      if (rows.isEmpty ||
+          rows.first['state'] == AssumedState.removed.name) {
+        return false;
+      }
+      final ml = (rows.first['ml'] as num).toDouble();
+      final cur = await txn.query('journal_metric',
+          where: 'date = ? AND field = ?',
+          whereArgs: [g.date, _waterField],
+          limit: 1);
+      if (cur.isNotEmpty) {
+        final left = (cur.first['value'] as num).toDouble() - ml;
+        if (left <= 0) {
+          await txn.delete('journal_metric',
+              where: 'date = ? AND field = ?', whereArgs: [g.date, _waterField]);
+        } else {
+          await txn.update('journal_metric', {'value': left},
+              where: 'date = ? AND field = ?', whereArgs: [g.date, _waterField]);
+        }
+      }
+      await txn.update('assumed_water', {'state': AssumedState.removed.name},
+          where: 'date = ? AND at_min = ?', whereArgs: [g.date, g.atMin]);
+      return true;
+    });
+  }
 
   /// The part of [date]'s water total that is assumed (state assumed or kept,
   /// never above the day's total); 0 when none.
-  static Future<double> assumedWaterMl(String date) =>
-      throw UnimplementedError('LocalDb.assumedWaterMl');
+  static Future<double> assumedWaterMl(String date) async {
+    final db = await instance;
+    final sum = await db.rawQuery(
+        'SELECT COALESCE(SUM(ml), 0) AS s FROM assumed_water '
+        'WHERE date = ? AND state IN (?, ?)',
+        [date, AssumedState.assumed.name, AssumedState.kept.name]);
+    final assumed = (sum.first['s'] as num).toDouble();
+    if (assumed <= 0) return 0;
+    final total = await db.query('journal_metric',
+        columns: ['value'],
+        where: 'date = ? AND field = ?',
+        whereArgs: [date, _waterField],
+        limit: 1);
+    if (total.isEmpty) return 0;
+    final t = (total.first['value'] as num).toDouble();
+    return assumed < t ? assumed : t;
+  }
+
+  static Map<String, Object?> _symptomRow(StoredSymptom s) {
+    final d = s.description;
+    String? text(String? v) {
+      final t = v?.trim();
+      return t == null || t.isEmpty ? null : t;
+    }
+
+    return {
+      'date': s.date,
+      'hhmm': s.hhmm,
+      'severity': d.severity.id,
+      'side': d.side?.id,
+      'kind': d.kind.id,
+      'kind_other': d.kind == SymptomKind.other ? text(d.kindOther) : null,
+      'area': d.area.id,
+      'area_other': d.area == SymptomArea.other ? text(d.areaOther) : null,
+      'note': text(d.note),
+      'created_at': s.createdAtMs,
+    };
+  }
+
+  /// Stores [l] (a `symptom` label) and [s] in ONE transaction. Returns false,
+  /// writing nothing, when the moment already has an answer.
+  static Future<bool> answerMomentSymptom(MomentLabel l, StoredSymptom s) async {
+    final db = await instance;
+    return db.transaction((txn) async {
+      final have = await txn.query('moment_label',
+          columns: ['date'],
+          where: 'date = ? AND hhmm = ?',
+          whereArgs: [l.date, l.hhmm],
+          limit: 1);
+      if (have.isNotEmpty) return false;
+      await txn.insert('moment_label', _momentLabelRow(l));
+      await txn.insert('symptom_entry', _symptomRow(s),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+      return true;
+    });
+  }
 
   /// Stored symptoms, narrowed to one [date] or from [sinceDate], in
-  /// (date, hhmm) order.
+  /// (date, hhmm) order. A row naming a preset this build does not know (from a
+  /// newer build) is skipped, not invented into text.
   static Future<List<StoredSymptom>> symptomEntries({
     String? date,
     String? sinceDate,
-  }) => throw UnimplementedError('LocalDb.symptomEntries');
+  }) async {
+    final db = await instance;
+    final rows = await db.query('symptom_entry',
+        where: date != null
+            ? 'date = ?'
+            : sinceDate != null
+                ? 'date >= ?'
+                : null,
+        whereArgs: date != null
+            ? [date]
+            : sinceDate != null
+                ? [sinceDate]
+                : null,
+        orderBy: 'date ASC, hhmm ASC');
+    T? byId<T>(List<T> values, String Function(T) id, Object? v) {
+      for (final e in values) {
+        if (id(e) == v) return e;
+      }
+      return null;
+    }
+
+    final out = <StoredSymptom>[];
+    for (final r in rows) {
+      final severity =
+          byId(SymptomSeverity.values, (e) => e.id, r['severity']);
+      final kind = byId(SymptomKind.values, (e) => e.id, r['kind']);
+      final area = byId(SymptomArea.values, (e) => e.id, r['area']);
+      if (severity == null || kind == null || area == null) continue;
+      out.add(StoredSymptom(
+        date: r['date'] as String,
+        hhmm: r['hhmm'] as String,
+        description: SymptomDescription(
+          severity: severity,
+          side: byId(SymptomSide.values, (e) => e.id, r['side']),
+          kind: kind,
+          kindOther: r['kind_other'] as String?,
+          area: area,
+          areaOther: r['area_other'] as String?,
+          note: r['note'] as String?,
+        ),
+        createdAtMs: (r['created_at'] as num).toInt(),
+      ));
+    }
+    return out;
+  }
 
   // ── journal I/O ─────────────────────────────────────────────────────────────
 

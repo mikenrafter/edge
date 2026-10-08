@@ -109,10 +109,11 @@ void main() {
       expect(_row(_b), findsOneWidget);
     });
 
+    // Symptom is no longer one tap: it opens the describer
+    // (symptom_screen_test.dart).
     for (final c in [
       MomentChoice.pillsMeds,
       MomentChoice.meal,
-      MomentChoice.symptom,
     ]) {
       testWidgets('${c.label} is one tap, label only', (t) async {
         final w = await _pump(t, [_a]);

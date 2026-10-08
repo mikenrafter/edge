@@ -12683,9 +12683,9 @@
   "@momentChoiceWater": {
     "description": "Quick answer for a marked moment: a glass of water (one tap adds one glass to that day)"
   },
-  "momentFollowUpCardTitle": "{n, plural, one{You marked {n} moment — what was it?} other{You marked {n} moments — what were they?}}",
+  "momentFollowUpCardTitle": "{n, plural, one{{n} thing to review — marked moments and assumed water} other{{n} things to review — marked moments and assumed water}}",
   "@momentFollowUpCardTitle": {
-    "description": "Home card asking what the marked moments were; n is how many are waiting",
+    "description": "Home card: how many marked moments and assumed water glasses are waiting for review; n is how many",
     "placeholders": {
       "n": {
         "type": "int"
@@ -12808,5 +12808,272 @@
         "type": "String"
       }
     }
+  },
+  "symptomSeveritySevere": "severe",
+  "@symptomSeveritySevere": {
+    "description": "Symptom describer: severity \"severe\" (lower case; also used inside the sentence)"
+  },
+  "symptomSeverityModerate": "moderate",
+  "@symptomSeverityModerate": {
+    "description": "Symptom describer: severity \"moderate\" (lower case; also used inside the sentence)"
+  },
+  "symptomSeverityMild": "mild",
+  "@symptomSeverityMild": {
+    "description": "Symptom describer: severity \"mild\" (lower case; also used inside the sentence)"
+  },
+  "symptomSeverityFaint": "faint",
+  "@symptomSeverityFaint": {
+    "description": "Symptom describer: severity \"faint\" (lower case; also used inside the sentence)"
+  },
+  "symptomSideLeft": "left",
+  "@symptomSideLeft": {
+    "description": "Symptom describer: side \"left\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideRight": "right",
+  "@symptomSideRight": {
+    "description": "Symptom describer: side \"right\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideBoth": "both",
+  "@symptomSideBoth": {
+    "description": "Symptom describer: side \"both\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideCenter": "center",
+  "@symptomSideCenter": {
+    "description": "Symptom describer: side \"center\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomSideAll": "all",
+  "@symptomSideAll": {
+    "description": "Symptom describer: side \"all\" (lower case; shown in parentheses after the area)"
+  },
+  "symptomKindPain": "pain",
+  "@symptomKindPain": {
+    "description": "Symptom describer: kind \"pain\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindSwelling": "swelling",
+  "@symptomKindSwelling": {
+    "description": "Symptom describer: kind \"swelling\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindItchiness": "itchiness",
+  "@symptomKindItchiness": {
+    "description": "Symptom describer: kind \"itchiness\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindIrritation": "irritation",
+  "@symptomKindIrritation": {
+    "description": "Symptom describer: kind \"irritation\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindNumbness": "numbness",
+  "@symptomKindNumbness": {
+    "description": "Symptom describer: kind \"numbness\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindSoreness": "soreness",
+  "@symptomKindSoreness": {
+    "description": "Symptom describer: kind \"soreness\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindTingling": "tingling",
+  "@symptomKindTingling": {
+    "description": "Symptom describer: kind \"tingling\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomKindOther": "other",
+  "@symptomKindOther": {
+    "description": "Symptom describer: kind \"other\" (lower case; \"Other\" lets the wearer type their own)"
+  },
+  "symptomAreaFeet": "feet",
+  "@symptomAreaFeet": {
+    "description": "Symptom describer: body area \"feet\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaAnkles": "ankles",
+  "@symptomAreaAnkles": {
+    "description": "Symptom describer: body area \"ankles\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaCalves": "calves",
+  "@symptomAreaCalves": {
+    "description": "Symptom describer: body area \"calves\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaKnees": "knees",
+  "@symptomAreaKnees": {
+    "description": "Symptom describer: body area \"knees\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaThighs": "thighs",
+  "@symptomAreaThighs": {
+    "description": "Symptom describer: body area \"thighs\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaHips": "hips",
+  "@symptomAreaHips": {
+    "description": "Symptom describer: body area \"hips\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaGlutes": "glutes",
+  "@symptomAreaGlutes": {
+    "description": "Symptom describer: body area \"glutes\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaLowerAbdomen": "lower abdomen",
+  "@symptomAreaLowerAbdomen": {
+    "description": "Symptom describer: body area \"lower abdomen\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaLowerBack": "lower back",
+  "@symptomAreaLowerBack": {
+    "description": "Symptom describer: body area \"lower back\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaUpperAbdomen": "upper abdomen",
+  "@symptomAreaUpperAbdomen": {
+    "description": "Symptom describer: body area \"upper abdomen\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaMidBack": "mid back",
+  "@symptomAreaMidBack": {
+    "description": "Symptom describer: body area \"mid back\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaChest": "chest",
+  "@symptomAreaChest": {
+    "description": "Symptom describer: body area \"chest\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaUpperBack": "upper back",
+  "@symptomAreaUpperBack": {
+    "description": "Symptom describer: body area \"upper back\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaShoulders": "shoulders",
+  "@symptomAreaShoulders": {
+    "description": "Symptom describer: body area \"shoulders\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaArms": "arms",
+  "@symptomAreaArms": {
+    "description": "Symptom describer: body area \"arms\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaElbows": "elbows",
+  "@symptomAreaElbows": {
+    "description": "Symptom describer: body area \"elbows\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaWrists": "wrists",
+  "@symptomAreaWrists": {
+    "description": "Symptom describer: body area \"wrists\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaHands": "hands",
+  "@symptomAreaHands": {
+    "description": "Symptom describer: body area \"hands\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaNeck": "neck",
+  "@symptomAreaNeck": {
+    "description": "Symptom describer: body area \"neck\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaJaw": "jaw",
+  "@symptomAreaJaw": {
+    "description": "Symptom describer: body area \"jaw\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaFace": "face",
+  "@symptomAreaFace": {
+    "description": "Symptom describer: body area \"face\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaForehead": "forehead",
+  "@symptomAreaForehead": {
+    "description": "Symptom describer: body area \"forehead\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaSkull": "skull",
+  "@symptomAreaSkull": {
+    "description": "Symptom describer: body area \"skull\" (lower case; used inside the sentence)"
+  },
+  "symptomAreaOther": "other",
+  "@symptomAreaOther": {
+    "description": "Symptom describer: body area \"other\" (lower case; used inside the sentence)"
+  },
+  "symptomDescription": "{severity} {kind} in my {area}",
+  "@symptomDescription": {
+    "description": "Sentence for a described symptom with no side, e.g. \"mild pain in my knees\"",
+    "placeholders": {
+      "severity": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      },
+      "area": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomDescriptionSided": "{severity} {kind} in my {area} ({side})",
+  "@symptomDescriptionSided": {
+    "description": "Sentence for a described symptom with a side, e.g. \"mild pain in my knees (left)\"",
+    "placeholders": {
+      "severity": {
+        "type": "String"
+      },
+      "kind": {
+        "type": "String"
+      },
+      "area": {
+        "type": "String"
+      },
+      "side": {
+        "type": "String"
+      }
+    }
+  },
+  "symptomDescriberSeverity": "How strong?",
+  "@symptomDescriberSeverity": {
+    "description": "Symptom describer: heading of the severity choices"
+  },
+  "symptomDescriberSide": "Which side? (optional)",
+  "@symptomDescriberSide": {
+    "description": "Symptom describer: heading of the optional side choices"
+  },
+  "symptomDescriberKind": "What kind?",
+  "@symptomDescriberKind": {
+    "description": "Symptom describer: heading of the kind choices"
+  },
+  "symptomDescriberArea": "Where?",
+  "@symptomDescriberArea": {
+    "description": "Symptom describer: heading of the body-area choices"
+  },
+  "symptomDescriberKindOtherHint": "Describe the kind",
+  "@symptomDescriberKindOtherHint": {
+    "description": "Symptom describer: hint of the text field for a kind not in the list"
+  },
+  "symptomDescriberAreaOtherHint": "Describe the place",
+  "@symptomDescriberAreaOtherHint": {
+    "description": "Symptom describer: hint of the text field for an area not in the list"
+  },
+  "symptomDescriberNoteHint": "Note (optional)",
+  "@symptomDescriberNoteHint": {
+    "description": "Symptom describer: hint of the optional note field"
+  },
+  "journalComposeSymptomsSection": "Symptoms",
+  "@journalComposeSymptomsSection": {
+    "description": "Journal: heading of the symptoms described on the day's marked moments"
+  },
+  "waterIncludesAssumed": "Includes {amount} assumed",
+  "@waterIncludesAssumed": {
+    "description": "Under a water total: the part of it that was assumed by \"Assume I drank water\"; amount is already formatted with its unit",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsWaterAssumeRowTitle": "Assume I drank water",
+  "@settingsWaterAssumeRowTitle": {
+    "description": "Settings, water reminder: toggle that counts each reminder as one glass of water drunk"
+  },
+  "settingsWaterAssumeRowSub": "Each reminder logs one assumed glass",
+  "@settingsWaterAssumeRowSub": {
+    "description": "Settings, water reminder: what the assume toggle does"
+  },
+  "assumedWaterTitle": "Assumed glass of water",
+  "@assumedWaterTitle": {
+    "description": "Follow-up list: title of an assumed glass of water"
+  },
+  "assumedWaterBody": "Adds {amount} to the water you drank, assumed from your water reminder. Keep it or remove it.",
+  "@assumedWaterBody": {
+    "description": "Follow-up list: what an assumed glass does; amount is already formatted with its unit",
+    "placeholders": {
+      "amount": {
+        "type": "String"
+      }
+    }
+  },
+  "assumedWaterKeep": "Keep",
+  "@assumedWaterKeep": {
+    "description": "Follow-up list: keep an assumed glass"
+  },
+  "assumedWaterRemove": "Remove",
+  "@assumedWaterRemove": {
+    "description": "Follow-up list: remove an assumed glass"
   }
 }

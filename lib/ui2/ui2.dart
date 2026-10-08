@@ -24,3 +24,4 @@ export 'revision.dart';
 export 'scroll_hint.dart';
 export 'sync_control.dart';
 export 'theme.dart';
+export 'water_display.dart';

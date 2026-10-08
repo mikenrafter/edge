@@ -24,6 +24,7 @@ import '../../data/day_label.dart';
 import '../../data/nutrition_store.dart';
 import '../../models/metric.dart';
 import '../../data/journal_fields.dart';
+import '../../data/water_units.dart';
 import '../../state/app_state.dart';
 import '../ui2.dart';
 import '../onboarding/profile_setup.dart' show formatDay;
@@ -55,6 +56,9 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
   NutritionWindow? _week;
   Metric? _burned;
   double? _waterMl;
+
+  /// The part of [_waterMl] that came from "Assume I drank water".
+  double _assumedMl = 0;
   bool _loading = true;
 
   /// The local profile map, read once per load. Targets live here rather than
@@ -82,18 +86,21 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
     final week = await NutritionDb.window(db, days: 7);
     Metric? burned;
     double? water;
+    double assumed = 0;
     final repo = app.repo;
     if (repo != null) {
       final today = await repo.getToday();
       final daily = today['daily'];
       if (daily is Map) burned = Metric.parse(daily['calories_total']);
       water = (await repo.getJournalMetrics(_date))['water_ml']?.value;
+      assumed = water == null ? 0 : await LocalDb.assumedWaterMl(_date);
     }
     if (!stillNewest(#nutrition, t)) return;
     setState(() {
       _week = week;
       _burned = burned;
       _waterMl = water;
+      _assumedMl = assumed;
       _profile = {...?app.user};
       _loading = false;
     });
@@ -135,12 +142,13 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
     if (repo == null || _writingWater) return;
     _writingWater = true;
     final spec = _waterSpec;
+    final step = WaterUnits.stepMl(waterSystemOf(context, listen: false));
     final v = _waterMl;
     double? next;
     if (dir > 0) {
-      next = ((v ?? 0) + spec.step).clamp(0, spec.max).toDouble();
+      next = ((v ?? 0) + step).clamp(0, spec.max).toDouble();
     } else {
-      final down = (v ?? 0) - spec.step;
+      final down = (v ?? 0) - step;
       next = down <= 0 ? (v == 0 ? null : 0.0) : down;
     }
     setState(() => _waterMl = next);
@@ -271,6 +279,7 @@ class _NutritionScreenState extends State<NutritionScreen> with RevisionReload {
               !_writingWater;
           return _WaterRow(
             ml: _waterMl,
+            assumedMl: _assumedMl,
             onDown: (!live || _waterMl == null) ? null : () => _stepWater(-1),
             onUp: (!live || (_waterMl ?? 0) >= _waterSpec.max)
                 ? null
@@ -941,11 +950,14 @@ class _Mean extends StatelessWidget {
 /// the whole row, and water needs two targets pointing opposite ways. Nothing
 /// else about it departs from that row's shape.
 class _WaterRow extends StatelessWidget {
-  const _WaterRow({required this.ml, this.onDown, this.onUp});
+  const _WaterRow({required this.ml, this.assumedMl = 0, this.onDown, this.onUp});
 
   /// Null is NOT logged, which is a different answer from a logged zero and
   /// reads differently here: "Not logged" against "0.0 L".
   final double? ml;
+
+  /// The assumed part of [ml], shown as such.
+  final double assumedMl;
   final VoidCallback? onDown, onUp;
 
   @override
@@ -967,24 +979,33 @@ class _WaterRow extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+            if (assumedShareText(c, assumedMl) case final share?)
+              Text(share,
+                  key: const ValueKey('nutrition-water-assumed'),
+                  style: F.over.copyWith(color: p.ink3),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
           ]),
         ),
         _WaterStep(LucideIcons.minus, onDown),
         // Fixed width so the number does not shove the buttons sideways as it
         // steps through 0.8 → 1.0 → 1.2.
         SizedBox(
-          width: 78,
-          child: Text(
+          width: 96,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
             // NEVER a bare em-dash. An absent value says the word; a dash is a
             // shrug the reader has to interpret, and the suite pins this.
             ml == null
                 ? (l?.nutritionNoneYet ?? 'None yet')
-                : '${(ml! / 1000).toStringAsFixed(1)} L',
+                : waterText(c, ml!),
             textAlign: TextAlign.center,
             style: ml == null
                 ? F.cap.copyWith(color: p.ink3)
                 : F.n24.copyWith(color: p.ink),
             maxLines: 1,
+          ),
           ),
         ),
         _WaterStep(LucideIcons.plus, onUp),
