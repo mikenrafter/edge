@@ -1,0 +1,49 @@
+// FIXTURE: a_ok_stored_data_in_heavy
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#sumHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+class Substrate {
+  final List<int> tsSec;
+  final List<double> rrMs;
+  final List<String> flags;
+  const Substrate(this.tsSec, this.rrMs, this.flags);
+}
+
+@heavy
+DayOut sumHeavy(DayArgs a) {
+  assertWorker();
+  final s = Substrate([for (final h in a.hr) h.toInt()], a.hr, const []);
+  var t = 0.0;
+  for (final x in s.tsSec) {
+    t += x;
+  }
+  for (var i = 0; i < s.rrMs.length; i++) {
+    t += s.rrMs[i];
+  }
+  return DayOut(t + s.rrMs.fold(0.0, (a, b) => a + b));
+}
+class Caller {
+  Future<DayOut> via_sumHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return sumHeavy(a);
+  });
+}

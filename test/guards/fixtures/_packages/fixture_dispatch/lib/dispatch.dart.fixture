@@ -1,0 +1,12 @@
+// Stand-ins for Flutter's `compute` and the engine's cancellable dispatcher.
+import 'dart:async';
+
+Future<R> compute<M, R>(R Function(M) callback, M message) async =>
+    callback(message);
+
+Future<R> runCancellable<R>(
+  FutureOr<R> Function() work,
+  Duration timeout, {
+  required String label,
+}) async =>
+    work();

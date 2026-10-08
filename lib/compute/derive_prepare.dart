@@ -8,6 +8,8 @@ import '../data/coverage_resolver.dart';
 import '../data/day_checkpoint.dart';
 import 'day_resume_state.dart';
 import 'substrate.dart';
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 /// A day whose substrate was loaded WITHOUT the beats the stored checkpoint
 /// already folded: [cp] resumes it, [state] is [cp]'s blob decoded, and `decoded_rr`
@@ -337,7 +339,9 @@ int localNextMidnightSecForDayLabel(String dayId) {
   return DateTime(d.year, d.month, d.day + 1).millisecondsSinceEpoch ~/ 1000;
 }
 
+@heavy
 void derivationPrepareWorker(SendPort mainSendPort) {
+  WorkerAudit.entered('derivationPrepareWorker');
   final port = ReceivePort();
   final state = _PrepareAccumulator();
   String? targetDay;
@@ -366,6 +370,14 @@ void derivationPrepareWorker(SendPort mainSendPort) {
           .map((e) => e.toString())
           .toList();
       state.addRawPage(hexes);
+      return;
+    }
+    if (type == 'audit') {
+      // Test-only (never sent in production): report to the test's audit port.
+      // The top-of-function `entered` ran before the port was known, so the
+      // start of this worker is reported here, on the handshake.
+      WorkerAudit.adopt(message['port'] as SendPort?);
+      WorkerAudit.entered('derivationPrepareWorker');
       return;
     }
     if (type == 'config') {

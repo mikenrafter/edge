@@ -1,0 +1,40 @@
+// FIXTURE: a_ok_heavy_calls_inner_heavy
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#deriveDayHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+@heavy
+DayOut deriveDayHeavy(DayArgs a) {
+  assertWorker();
+  return DayOut(rollupHeavy(a.hr));
+}
+
+// Inner heavy: reachable only from heavy functions, so it needs no registry entry.
+@heavy
+double rollupHeavy(List<double> hr) {
+  return readinessCompute(hr).value ?? 0;
+}
+class Caller {
+  Future<DayOut> via_deriveDayHeavy_call(int n, List<double> hr) => Isolate.run(() {
+    final a = DayArgs(n, hr);
+    return deriveDayHeavy(a);
+  });
+}

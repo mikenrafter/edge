@@ -1,0 +1,5 @@
+// FIXTURE: live_bad_no_budget_test
+import 'package:openstrap_edge/util/heavy.dart';
+
+@live
+int cheapTick(int x) => x;

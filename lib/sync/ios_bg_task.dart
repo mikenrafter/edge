@@ -37,6 +37,8 @@ import '../widget/widget_service.dart';
 import 'background_sync.dart';
 import 'headless_gate.dart';
 
+bool _platformIsIOS() => Platform.isIOS;
+
 class IosBgTask {
   static const _ch = MethodChannel('openstrap/bg_task');
   static const _kProfileKey = 'local_profile_json'; // matches AppState._kProfile
@@ -63,9 +65,10 @@ class IosBgTask {
   }
 
   /// Register the method call handler. Call once at startup from main().
-  /// No-op on Android.
-  static Future<void> init() async {
-    if (!Platform.isIOS) return;
+  /// No-op unless [isIOS] says so (design 02, rev 6: the platform check is an
+  /// injectable seam so the real handler can be driven on a CI host).
+  static Future<void> install({bool Function() isIOS = _platformIsIOS}) async {
+    if (!isIOS()) return;
     _ch.setMethodCallHandler((call) async {
       if (call.method != 'run') return null;
       // BGAppRefreshTask passes {'mode': 'sync'} → LIGHT profile (sync only).
@@ -74,6 +77,9 @@ class IosBgTask {
       return _run(syncOnly: mode == 'sync');
     });
   }
+
+  /// Production entry point (main.dart): [install] with the real platform check.
+  static Future<void> init() => install();
 
   @visibleForTesting
   static Future<bool> runForTest({required bool syncOnly}) =>

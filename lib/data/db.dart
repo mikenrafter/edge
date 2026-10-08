@@ -50,6 +50,8 @@ import 'models.dart';
 import 'nutrition_store.dart';
 import 'observation.dart';
 import 'series_codec.dart';
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 /// The outcome of a database rebuild: why the old file would not open, where it
 /// was parked, and how many rows came back per table.
@@ -11265,7 +11267,7 @@ class LocalDb {
       for (final row in rows)
         (row['payload_json'] is String) ? row['payload_json'] as String : '',
     ];
-    final prepared = await Isolate.run(() => _reencodeBatch(payloads));
+    final prepared = await Isolate.run(() => _reencodeBatchHeavy(payloads));
     // The window the compare-and-set below exists to close: the rows were read,
     // the encode took real time, and nothing has been locked yet. A test drives
     // a competing write through here rather than racing a sleep against it —
@@ -13211,7 +13213,9 @@ class LocalDb {
 /// (see `verifyLossless` — this OVERWRITES durable user data, and a day past
 /// `rawRetentionDays` has no substrate left to re-derive from), or an encode
 /// that did not actually shrink the row.
-List<String?> _reencodeBatch(List<String> payloads) {
+@heavy
+List<String?> _reencodeBatchHeavy(List<String> payloads) {
+  WorkerAudit.entered('_reencodeBatchHeavy');
   final out = <String?>[];
   for (final pj in payloads) {
     if (pj.isEmpty ||

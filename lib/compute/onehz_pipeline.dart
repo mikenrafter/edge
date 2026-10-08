@@ -45,6 +45,8 @@ import 'day_calculation_state.dart';
 // and a second copy here would be the exact drift SLP-09's timezone guard is
 // about.
 import 'substrate.dart' show tzOffsetSecondsAt;
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 const MetricCfg _skinTempAdcCfg = MetricCfg(
   minVal: 1.0,
@@ -342,11 +344,13 @@ class DayBundleInput {
 /// Pure: takes the serialized [DayBundleInput] map, returns a plain JSON map (the
 /// full derived bundle). Call directly + synchronously in tests, or via
 /// `Isolate.run(() => deriveDayBundle(input))` in production.
+@heavy
 Map<String, dynamic> deriveDayBundle(
   Map<String, dynamic> inputJson, {
   DayCalculationState? state,
   CalculationMode mode = CalculationMode.forced,
 }) {
+  WorkerAudit.entered('deriveDayBundle');
   final d = DayBundleInput.fromJson(inputJson);
   T memo<T>(String key, Object? dependencies, T Function() calculate) =>
       state == null

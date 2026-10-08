@@ -1,0 +1,7 @@
+// FIXTURE: a_ok_light_api_allow_list
+import 'package:openstrap_analytics/onehz.dart';
+
+// Bounded scalar helpers from the analytics package need no @heavy.
+class Gate {
+  double? gate(double hrmax, double rhr) => Calories.activeGateHr(hrmax, rhr);
+}

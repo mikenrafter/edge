@@ -1,0 +1,9 @@
+// FIXTURE: a_bad_analytics_in_widget_build
+import 'package:openstrap_analytics/onehz.dart';
+
+class FakeWidget {
+  Metric build(Object context) {
+    final hr = <double>[60, 61];
+    return readinessCompute(hr);
+  }
+}

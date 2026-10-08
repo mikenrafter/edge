@@ -41,6 +41,8 @@ import 'dart:math' as math;
 import 'package:openstrap_analytics/onehz.dart';
 
 import '../state/control_operations.dart' show ExpectedSleepSchedule;
+import '../util/heavy.dart';
+import '../util/worker_audit.dart';
 
 // ── constants ───────────────────────────────────────────────────────────────
 
@@ -397,7 +399,9 @@ class IsolateNaturalStageObserver implements NaturalStageObserver {
 /// The pure body of an observation. Public so tests can compare it with the
 /// isolate's answer; production reaches it only through
 /// [IsolateNaturalStageObserver].
+@heavy
 NaturalObserveResult observeNaturalSync(NaturalObserveRequest r) {
+  WorkerAudit.entered('observeNaturalSync');
   // A state this analytics version did not write reads as null: start fresh
   // (costs a warm-up) rather than trust a guess.
   var state = CausalStagerState.fromJson(r.priorState);

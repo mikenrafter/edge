@@ -1,0 +1,21 @@
+// FIXTURE: registry_bad_not_heavy
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+
+@sendable
+class DayArgs {
+  final int nowEpochMs;
+  final List<double> hr;
+  const DayArgs(this.nowEpochMs, this.hr);
+}
+
+@sendable
+class DayOut {
+  final double? readiness;
+  const DayOut(this.readiness);
+}
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#plainWorker, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+DayOut plainWorker(DayArgs a) => DayOut(a.nowEpochMs.toDouble());

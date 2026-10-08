@@ -1,0 +1,23 @@
+// FIXTURE: sendable_ok_rowbatch_arg
+import 'dart:isolate';
+import 'package:openstrap_analytics/onehz.dart';
+import 'package:openstrap_edge/util/heavy.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+import 'package:openstrap_edge/util/raw_readers.dart';
+const kWorkerEntries = <WorkerEntry>[
+  WorkerEntry(#batchHeavy, dispatcher: Dispatcher.run, reason: 'fixture'),
+];
+
+typedef Row = Map<String, Object?>;
+
+// RowBatch is sendable by definition (immutable), so it needs no @SendableShape.
+@heavy
+double batchHeavy(RowBatch<Row> rows) {
+  assertWorker();
+  return rows.length.toDouble();
+}
+
+class Caller {
+  Future<double> go(RowBatch<Row> rows) => Isolate.run(() => batchHeavy(rows));
+}
