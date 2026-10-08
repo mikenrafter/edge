@@ -304,6 +304,20 @@ void main() {
       expect(v, greaterThan(102));
     });
 
+    test('the empty-input repin (artifact_fraction null, not 1.0, with no beats) '
+        'is its own version: a (day, 103) row finalized under the bf1be19 pin '
+        'must not be served as if derived under 0fc5768 (AGENTS 3.4)', () {
+      expect(v, 104);
+      expect(kAnalyticsPin, '0fc57682b988c44cb5943c6e39a0746167388d46');
+      final lines = src.substring(0, m.start).split('\n');
+      final entry = lines.lastWhere((l) => RegExp(r'^//\s*v104\b').hasMatch(l));
+      final at = lines.indexOf(entry);
+      final text = lines.sublist(at).where((l) => l.startsWith('//')).join('\n');
+      expect(text, contains('0fc57682'));
+      expect(text, contains('artifact_fraction'));
+      expect(text, contains('v103'));
+    });
+
     test('the changelog entry sits directly above the constant, names the '
         'version and the diagnostics', () {
       expect(v, greaterThan(102), reason: 'bumped: the entry below is a new one');

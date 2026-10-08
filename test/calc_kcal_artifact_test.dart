@@ -270,9 +270,9 @@ void main() {
 
   group('no output change', () {
     test('the artifact itself bumps nothing: 101 was the incremental repin\'s '
-        'bump, 102 the streamed day RR\'s and 103 the PRV diagnostics\', not '
-        'this artifact\'s', () {
-      expect(kAlgoVersion, 103);
+        'bump, 102 the streamed day RR\'s, 103 the PRV diagnostics\' and 104 their '
+        'empty-input repin, not this artifact\'s', () {
+      expect(kAlgoVersion, 104);
     });
 
     test('the analytics pin carries minuteEnergy (7334289 and its '

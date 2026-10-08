@@ -11,7 +11,7 @@
 //     reads as one;
 //   * (Phase 1 only) NO day_result payload change. The PRV diagnostics item
 //     that followed (test/prv_diagnostics/) changed the payload on purpose:
-//     kAlgoVersion 102 -> 103 and the analytics pin moved, so the version
+//     kAlgoVersion 102 -> 103 (and 104 for the empty-input repin) and the analytics pin moved, so the version
 //     test below now pins THAT state.
 //
 // Fed through InvestigateData exactly as the repository shapes it
@@ -140,8 +140,8 @@ void main() {
 
   group('no derived output changes (R4)', () {
     test('kAlgoVersion and both sibling pins are exactly what the PRV '
-        'diagnostics change set (v103)', () {
-      expect(kAlgoVersion, 103);
+        'diagnostics change set (v103) and its empty-input repin (v104)', () {
+      expect(kAlgoVersion, 104);
       expect(kAnalyticsPin, '0fc57682b988c44cb5943c6e39a0746167388d46');
       expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
     });

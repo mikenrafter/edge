@@ -1815,7 +1815,13 @@ import '../util/worker_entries.dart' show Dispatcher;
 // `git show 0fc57682b988c44cb5943c6e39a0746167388d46:lib/src/onehz/clinical/irregular_diagnostics.dart`. The day
 // checkpoint layout moved 3 -> 4 with it (the screen state gained counters), so
 // no old checkpoint is resumed with counts it never kept.
-const int kAlgoVersion = 103;
+// v104: analytics 0fc57682 - PRV diagnostics artifact_fraction is null (not 1.0)
+// when the corrector saw no beats; a separate version so finalized v103 rows from
+// the bf1be198 pin are recomputed. v103 stays as written above: a (day, 103) row
+// finalized by a build on the bf1be198 pin holds artifact_fraction 1.0 for a day
+// or night with no beats, and without this bump the 0fc57682 build would serve it
+// as if derived under the new pin (AGENTS 3.4). No verdict or figure changes.
+const int kAlgoVersion = 104;
 /// The sibling SHAs this version was derived against, asserted against
 /// pubspec.yaml in test/db_serve_version_and_reads_test.dart.
 ///
