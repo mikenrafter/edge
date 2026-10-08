@@ -195,6 +195,9 @@ const _notComponents = {
   // band alarms; every state it draws is pumped in
   // alarm_slot_probe_panel_test.dart with a fake runner.
   'AlarmSlotProbeCard',
+  // Same for the termination probe: bound to a live runner that arms a real
+  // band alarm; every state is pumped in termination_probe_panel_test.dart.
+  'TerminationProbeCard',
   // Home card bound to WakeController.naturalBuzzing; shown only while a
   // Natural Wake repeat runs. Both states are pumped in
   // natural_wake_card_test.dart.
