@@ -17,9 +17,10 @@
 // ([bandIdle]), never from the touch itself.
 // No sample is persisted (invariant 14): the packets are consumed and dropped
 // here. The one thing kept is the session's strap-clock INTERVAL (see
-// [EcgGestureRecord]): turning the stream on makes the band save raw ECG that
-// ordinary history sync delivers later, and the receiving side needs the
-// interval to label those packets as gesture contact, never a reading.
+// [EcgGestureRecord]): with the wearer's Keep waveform on, turning the stream on
+// makes the band save raw ECG that ordinary history sync delivers later, and
+// the receiving side needs the interval to label those packets as gesture
+// contact, never a reading. With it off the band saves nothing.
 //
 // Time. Every touch decision is on the stream's own (strap) sample clock, and
 // only on it: a packet's strap time is its NEWEST sample and its samples run

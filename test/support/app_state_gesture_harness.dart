@@ -119,7 +119,7 @@ class ActionChannel {
 /// [begins]; every begin() is remembered with the persist flag the gesture
 /// passed.
 class SpyEcg extends EcgController {
-  SpyEcg._(this._t, this.guardStore)
+  SpyEcg._(this._t, this.guardStore, bool keep)
       : super(
           transport: _t,
           guard: guardStore,
@@ -127,12 +127,19 @@ class SpyEcg extends EcgController {
           busyReason: () => null,
           holdScreen: (o) async {},
           releaseScreen: (o) async {},
+          keepWaveform: () => keep,
         );
 
-  factory SpyEcg(List<String> order, {bool remembersWrist = true}) {
+  /// [keep] is the wearer's "Keep waveform" choice, which also decides whether
+  /// a gesture's PREPARE asks the band for its raw save.
+  factory SpyEcg(
+    List<String> order, {
+    bool remembersWrist = true,
+    bool keep = false,
+  }) {
     final guard = MemoryEcgGuardStore();
     if (remembersWrist) guard.wrists[kSerial] = EcgWrist.left;
-    return SpyEcg._(_SpyTransport(order), guard);
+    return SpyEcg._(_SpyTransport(order), guard, keep);
   }
 
   final _SpyTransport _t;
@@ -198,7 +205,7 @@ class _SpyTransport implements EcgTransport {
     bool rawSave = true,
   }) async {
     order.add('ecg:prepare');
-    const members = ['selectWrist', 'filteredOn', 'rawSaveOn'];
+    final members = ['selectWrist', 'filteredOn', if (rawSave) 'rawSaveOn'];
     prepares.add(members);
     return _ok(members);
   }
