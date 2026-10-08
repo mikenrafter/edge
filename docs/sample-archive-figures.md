@@ -1,30 +1,33 @@
-# Spectral archive — size figures (reference)
+# Sample archive — size figures (reference)
 
 Measured 2026-10-07 on one owner export (one device, 3 full days of 1 Hz data,
 aggregates only; no raw values recorded). Full days = 2026-10-03 and 10-04,
-averaged. Codec v1. Re-measure if the codec, quanta or signal set change.
+averaged. Codec v2 (quantized hr and skin temp, 2026-10-08 re-measure of the
+same export; the v1 lossy-DCT figures are kept below under History). Re-measure if the codec, quanta or signal set change.
 
 ## Storage per full day and per year
 
 | what is stored | bytes/day | MB/year | vs archive |
 |---|---|---|---|
-| **Spectral archive, shipped default** (hr + skin temp lossy DCT, accel per-minute pyramid only) | 36,183 | **13.2** | 1× |
-| Spectral archive with lossless-at-0.004 g accel (option) | 189,614 | 69.2 | 5.2× |
-| Lossless (zigzag delta + deflate) of the same 5 signals | 210,572 | 76.9 | 5.8× |
-| Raw samples, 8 B each, 5 signals (hr, ax, ay, az, skin temp) | 3,455,340 | 1,261 | 95.5× |
-| `decoded_onehz` as actually stored in SQLite (all columns + PK index; ≈140 B/row) | ≈12,080,000 | ≈4,410 | ≈334× |
+| **Sample archive, shipped default** (hr + skin temp quantized, accel per-minute pyramid only) | 42,936 | **15.7** | 1× |
+| Sample archive with lossless-at-0.004 g accel (option) | 196,367 | 71.7 | 4.6× |
+| Lossless (zigzag delta + deflate) of the same 5 signals | 210,572 | 76.9 | 4.9× |
+| Raw samples, 8 B each, 5 signals (hr, ax, ay, az, skin temp) | 3,455,340 | 1,261 | 80.5× |
+| `decoded_onehz` as actually stored in SQLite (all columns + PK index; ≈140 B/row) | ≈12,080,000 | ≈4,410 | ≈281× |
 
 Notes:
 - `decoded_onehz` holds more columns than the five archived signals, and
   `decoded_rr` (beats) is not included in any row above; the 334× compares the
   archive to what the app keeps today for the retention window, not like for like.
-- The honest like-for-like coefficient is **5.8× vs lossless** of the same five
-  signals; it is lossy (hr/temp within the codec's bounds: hr rms ≈0.8 bpm, max
-  ≤3 bpm; temp rms ≈0.034 °C, max ≤0.15 °C) and accel keeps only the per-minute
+- The honest like-for-like coefficient is **4.9× vs lossless** of the same five
+  signals; it is lossy (hr: step 2.8 bpm, |error| ≤ 1.4, rms ≈0.81; skin temp:
+  step 0.12 °C, |error| ≤ 0.06, rms ≈0.034) and accel keeps only the per-minute
   count/min/mean/max envelope (per-second acceleration is not kept).
-- Per signal vs lossless: skin temp 5.1–5.3×, hr 1.6×, accel lossy DCT 0.98–1.10× (no gain ⇒ not used).
-- hr + skin temp alone: 20.6 KB/day vs 56.6 KB lossless (2.75×), vs 1.38 MB raw (67×).
-- The summary pyramid is ≈3.8 KB per hr signal-day (about a quarter of the hr archive).
+- Per signal vs lossless (pyramid included): hr 1.35×, skin temp 3.2×.
+- hr + skin temp alone: 27.3 KB/day vs 56.6 KB lossless, vs 1.38 MB raw.
+- The summary pyramid is ≈3.8 KB per hr signal-day (about a quarter of the hr archive) and ≈4.0 KB per skin-temp signal-day (over a third of it).
+- Measured per full day (10-03 / 10-04): hr 16,242 / 16,547 B (rms 0.81, max 1.4),
+  skin temp 10,801 / 11,071 B (rms 0.035, max 0.06), accel pyramid-only 15,686 / 15,524 B.
 
 ## Compute and memory
 
@@ -40,11 +43,16 @@ Memory figures are calculated from sizes, not profiled. A heap measurement of a
 chart load (raw vs pyramid) has not been done yet.
 
 ## History
+- 2026-10-08: codec v2 replaces the lossy DCT for hr and skin temp with plain
+  quantization. Sizes grew (hr 13.8 -> 16.4 KB, temp 6.7 -> 10.9 KB per day; total
+  36.2 -> 42.9 KB/day) in exchange for a tighter worst case (1.4 bpm / 0.06 C instead
+  of 3 bpm / 0.15 C), per-sample error accounting and a much simpler codec. v1
+  parts still decode.
 - Synthetic fixtures promised 2.7–5.5× on hr; real beat-to-beat variability is broadband ⇒ 1.6×.
 - Owner narrowed the lossy codec to hr + skin temp; accel defaults to pyramid-only (2026-10-07).
-- Source report: edge.research/spectral-real-data-2026-10-07.md (outside the repo).
+- Source report: edge.research/spectral-real-data-2026-10-07.md (outside the repo; written under the old name "spectral").
 
-## Like-for-like: the same accuracy without the spectral codec (2026-10-08)
+## Like-for-like: the same accuracy without the DCT codec (2026-10-08)
 
 Same export, same full days. "Plain" = quantize each sample to a step that gives
 the codec's error, then zigzag-delta varint + deflate -9, gaps as run-lengths;
@@ -62,18 +70,18 @@ Two ways to match accuracy:
 
 | B/day (10-03 / 10-04) | hr | skin temp | accel pyramid | total | MB/yr |
 |---|---|---|---|---|---|
-| Spectral archive (shipped) | 13,800 / 14,000 | 6,577 / 6,826 | 15,662 / 15,500 | **36,039 / 36,326** | **13.2** |
+| DCT archive (v1, replaced by the rms-matched plain row) | 13,800 / 14,000 | 6,577 / 6,826 | 15,662 / 15,500 | **36,039 / 36,326** | **13.2** |
 | Plain, max-matched | 10,863 / 10,926 | 7,259 / 7,513 | 14,553 / 14,509 | 32,675 / 32,948 | 12.0 |
 | Plain, rms-matched | 15,672 / 15,983 | 10,827 / 11,465 | 14,553 / 14,509 | 41,052 / 41,957 | 15.2 |
 | Plain, lossless at native quantum (+pyramid) | 25,227 / 25,923 | 39,038 / 39,503 | 14,553 / 14,509 | 78,818 / 79,935 | 29.0 |
 
 Reading it:
-- At equal accuracy the spectral codec is within about ±12 % of plain
+- At equal accuracy the DCT codec was within about ±12 % of plain
   quantize-and-deflate: ≈12 % smaller than rms-matched plain (which has a better
   worst case), ≈10 % larger than max-matched plain (same worst case).
 - Nearly all of the saving versus lossless (≈2.2×) and versus raw comes from
   (1) storing only to the needed accuracy and (2) keeping only the per-minute
-  envelope for the accelerometer — neither needs the spectral transform.
+  envelope for the accelerometer — neither needs the transform.
 - What the transform still offers: progressive refinement (coarse coefficients
   first, for long chart views) and a smooth reconstruction. What it costs:
   codec complexity, per-block (not per-sample) error accounting, encode time.

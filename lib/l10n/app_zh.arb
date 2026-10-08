@@ -2467,6 +2467,6 @@
   "assumedWaterBody": "根据饮水提醒假定，会为已喝水量增加 {amount}。可保留或移除。",
   "assumedWaterKeep": "保留",
   "assumedWaterRemove": "移除",
-  "spectralLoadingDetail": "正在加载细节…",
-  "spectralApproximation": "近似值（已归档）"
+  "sampleArchiveLoadingDetail": "正在加载细节…",
+  "sampleArchiveApproximation": "近似值（已归档）"
 }

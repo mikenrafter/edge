@@ -1,8 +1,8 @@
-// DEV-ONLY harness: the spectral experiment table on a REAL export.
+// DEV-ONLY harness: the sample experiment table on a REAL export.
 //
 //   OPENSTRAP_REAL_DB=/path/to/openstrap_export.db \
 //   OPENSTRAP_REAL_REPORT=/path/to/report.md \
-//   TZ=UTC flutter test test/spectral/spectral_real_data_test.dart
+//   TZ=UTC flutter test test/sample/sample_real_data_test.dart
 //
 // Skipped when OPENSTRAP_REAL_DB is unset (CI, normal runs). The database is
 // opened READ-ONLY from wherever it lives: it is never copied into the repo and
@@ -17,9 +17,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
-import 'package:openstrap_edge/data/spectral_codec.dart';
+import 'package:openstrap_edge/data/sample_codec.dart';
 
-import '../support/spectral_fixtures.dart';
+import '../support/sample_fixtures.dart';
 
 const _signals = ['hr', 'ax', 'ay', 'az', 'skin_temp_c'];
 
@@ -35,6 +35,7 @@ void main() {
     var totAd = 0, totSt = 0, totLl = 0, totRaw = 0;
     // Per day: the archive option totals the owner is choosing between.
     final perDay = <String, Map<String, int>>{};
+    final quantLines = <String>[];
     try {
       final span = (await db.rawQuery(
               'SELECT MIN(rec_ts) AS a, MAX(rec_ts) AS b, COUNT(*) AS n '
@@ -46,11 +47,11 @@ void main() {
           (r['d'] as String?) ?? ''
       ];
       lines
-        ..add('# Spectral archive on a real export (aggregate numbers only)')
+        ..add('# Sample archive on a real export (aggregate numbers only)')
         ..add('')
         ..add('- rows: ${span['n']}, devices: ${devices.length}, '
             'TZ=${Platform.environment['TZ'] ?? 'system'}, '
-            'codec v${SpectralCodec.codecVersion}')
+            'codec v${SampleCodec.codecVersion}')
         ..add('- "lossless" = deflate of zigzag first-differences at the '
             "signal's native quantum; \"raw\" = 8 B per valid sample")
         ..add('- adaptive = default mode; static = fixed 240 s blocks; '
@@ -93,33 +94,47 @@ void main() {
             final x = series[s]!;
             final n = validCount(x);
             if (n == 0) continue;
-            final spec = SpectralCodec.specs[s]!;
+            final spec = SampleCodec.specs[s]!;
             final sw = Stopwatch()..start();
-            final ad = SpectralCodec.encode(s, x);
+            final ad = SampleCodec.encode(s, x);
             final enc = sw.elapsedMilliseconds / 1000;
-            final st = SpectralCodec.encode(s, x, mode: SpectralMode.staticBlocks);
+            final st = SampleCodec.encode(s, x, mode: SampleMode.staticBlocks);
             for (final e in [ad, st]) {
-              final m = errorOf(x, SpectralCodec.decode(e.blob));
+              final m = errorOf(x, SampleCodec.decode(e.blob));
               expect(m.rms, lessThanOrEqualTo(spec.maxRms), reason: '$day $s');
               expect(m.max, lessThanOrEqualTo(spec.maxAbs), reason: '$day $s');
             }
             final isAccel = s == 'ax' || s == 'ay' || s == 'az';
+            SampleEncoding? qz;
+            if (spec.step != null) {
+              qz = SampleCodec.encode(s, x, mode: SampleMode.quantized);
+              final m = errorOf(x, SampleCodec.decode(qz.blob));
+              expect(m.max, lessThanOrEqualTo(spec.step! / 2 + 1e-9),
+                  reason: '$day $s quantized');
+              quantLines.add('| ${dev.isEmpty ? 'primary' : dev} | $day | $s | '
+                  '$n | ${qz.stats.bytes} | '
+                  '${(losslessBytes(x, spec.quantum) / qz.stats.bytes).toStringAsFixed(2)}x | '
+                  '${(n * 8 / qz.stats.bytes).toStringAsFixed(1)}x | '
+                  '${qz.stats.summaryBytes} | '
+                  '${qz.stats.rmsErr.toStringAsFixed(3)} | '
+                  '${qz.stats.maxErr.toStringAsFixed(3)} |');
+            }
             var lqB = 0, pyB = 0;
             if (isAccel) {
-              final lq = SpectralCodec.encode(s, x, mode: SpectralMode.losslessAtQuantum);
-              final back = SpectralCodec.decode(lq.blob);
+              final lq = SampleCodec.encode(s, x, mode: SampleMode.losslessAtQuantum);
+              final back = SampleCodec.decode(lq.blob);
               for (var i = 0; i < x.length; i++) {
                 expect(back[i], x[i] == null ? isNull : (x[i]! / spec.quantum).round() * spec.quantum,
                     reason: '$day $s slot $i lossless');
               }
-              final py = SpectralCodec.encode(s, x, mode: SpectralMode.pyramidOnly);
+              final py = SampleCodec.encode(s, x, mode: SampleMode.pyramidOnly);
               lqB = lq.stats.bytes;
               pyB = py.stats.bytes;
             }
             final dm = perDay.putIfAbsent(day, () => {});
             dm['n_$s'] = n;
-            if (s == 'hr') dm['hr'] = ad.stats.bytes;
-            if (s == 'skin_temp_c') dm['temp'] = ad.stats.bytes;
+            if (s == 'hr') dm['hr'] = qz!.stats.bytes;
+            if (s == 'skin_temp_c') dm['temp'] = qz!.stats.bytes;
             if (isAccel) {
               dm['accelLossless'] = (dm['accelLossless'] ?? 0) + lqB;
               dm['accelPyramid'] = (dm['accelPyramid'] ?? 0) + pyB;
@@ -150,9 +165,17 @@ void main() {
       }
       lines
         ..add('')
+        ..add('## Quantized codec (the archive default for hr and skin temp)')
+        ..add('')
+        ..add('| device | day | signal | valid | bytes | vs lossless | vs raw | '
+            'pyramid B | rms | max |')
+        ..add('|---|---|---|---|---|---|---|---|---|---|')
+        ..addAll(quantLines);
+      lines
+        ..add('')
         ..add('## Archive options per day (bytes; accel = ax+ay+az)')
         ..add('')
-        ..add('| day | hr lossy | temp lossy | accel lossless-at-q | '
+        ..add('| day | hr quantized | temp quantized | accel lossless-at-q | '
             'accel pyramid-only | accel lossy DCT (ref) | TOTAL, lossless accel | '
             'TOTAL, pyramid accel |')
         ..add('|---|---|---|---|---|---|---|---|');

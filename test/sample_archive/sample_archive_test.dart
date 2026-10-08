@@ -1,4 +1,4 @@
-// SpectralArchiver (RED): reads decoded_onehz, writes spectral_archive before
+// SampleArchiver (RED): reads decoded_onehz, writes spectral_archive before
 // the raw prune, never overwrites a fuller archive, never fabricates.
 //
 // All dates are fixed (TZ=UTC in the test run; days are LOCAL day ids from
@@ -14,11 +14,11 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/spectral_archive.dart';
-import 'package:openstrap_edge/data/spectral_codec.dart';
+import 'package:openstrap_edge/data/sample_archive.dart';
+import 'package:openstrap_edge/data/sample_codec.dart';
 
 import '../support/dart_source.dart';
-import '../support/spectral_fixtures.dart';
+import '../support/sample_fixtures.dart';
 
 const _day1 = '2026-10-03';
 const _day2 = '2026-10-04';
@@ -73,17 +73,17 @@ void main() {
 
   test('archiveDay writes one row per signal that has data, stamped with the '
       'injected clock and the live codec version', () async {
-    await _freshDb('spectral_a1.db');
+    await _freshDb('sample_a1.db');
     await _seed(_d1);
-    final n = await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-    final rows = await SpectralArchiver.rows(_day1);
+    final n = await SampleArchiver.archiveDay(_day1, nowSec: _now);
+    final rows = await SampleArchiver.rows(_day1);
     expect(n, 5);
-    expect(rows.map((r) => r.signal).toSet(), SpectralArchiver.signals.toSet());
+    expect(rows.map((r) => r.signal).toSet(), SampleArchiver.signals.toSet());
     for (final r in rows) {
       expect(r.createdAt, _now);
-      expect(r.codecVersion, SpectralCodec.codecVersion);
+      expect(r.codecVersion, SampleCodec.codecVersion);
       expect(r.dayId, _day1);
-      final spec = SpectralCodec.specs[r.signal]!;
+      final spec = SampleCodec.specs[r.signal]!;
       expect(r.rmsErr, lessThanOrEqualTo(spec.maxRms));
       expect(r.maxErr, lessThanOrEqualTo(spec.maxAbs));
     }
@@ -91,26 +91,26 @@ void main() {
 
   test('a signal with zero valid samples gets NO row (no flat fabricated '
       'line)', () async {
-    await _freshDb('spectral_a2.db');
+    await _freshDb('sample_a2.db');
     await _seed(_d1, withTemp: false);
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-    final rows = await SpectralArchiver.rows(_day1);
+    await SampleArchiver.archiveDay(_day1, nowSec: _now);
+    final rows = await SampleArchiver.rows(_day1);
     expect(rows.map((r) => r.signal), isNot(contains('skin_temp_c')));
     expect(rows.map((r) => r.signal), containsAll(['hr', 'ax']));
-    expect(await SpectralArchiver.reconstruct(_day1, 'skin_temp_c'), isNull);
+    expect(await SampleArchiver.reconstruct(_day1, 'skin_temp_c'), isNull);
   });
 
   test('n_valid equals the non-null count; the reconstruction is null exactly '
       'where the table has NULL or no row, and within bounds elsewhere',
       () async {
-    await _freshDb('spectral_a3.db');
+    await _freshDb('sample_a3.db');
     await _seed(_d1);
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now);
+    await SampleArchiver.archiveDay(_day1, nowSec: _now);
     final truth = fixtureDay()['hr']!.sublist(0, 7200);
     final row =
-        (await SpectralArchiver.rows(_day1)).firstWhere((r) => r.signal == 'hr');
+        (await SampleArchiver.rows(_day1)).firstWhere((r) => r.signal == 'hr');
     expect(row.nValid, validCount(truth));
-    final r = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
+    final r = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
     expect(r.length, localDayLengthSec(_day1));
     for (var i = 0; i < truth.length; i++) {
       expect(r[i] == null, truth[i] == null, reason: 'slot $i');
@@ -125,7 +125,7 @@ void main() {
 
   test('hr == 0 (the off-skin sentinel) and hr NULL are both ABSENT in the '
       'archive, not 0 bpm', () async {
-    await _freshDb('spectral_a4.db');
+    await _freshDb('sample_a4.db');
     final db = await LocalDb.instance;
     for (var i = 0; i < 600; i++) {
       final ts = _d1 + i;
@@ -134,8 +134,8 @@ void main() {
         'hr': i < 100 ? 0 : (i < 200 ? null : 70),
       });
     }
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-    final r = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
+    await SampleArchiver.archiveDay(_day1, nowSec: _now);
+    final r = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
     for (var i = 0; i < 200; i++) {
       expect(r[i], isNull, reason: 'slot $i');
     }
@@ -143,12 +143,12 @@ void main() {
   });
 
   test('archiveDay is idempotent: same rows, byte-identical blobs', () async {
-    await _freshDb('spectral_a5.db');
+    await _freshDb('sample_a5.db');
     await _seed(_d1);
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-    final a = await SpectralArchiver.rows(_day1);
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now + 500);
-    final b = await SpectralArchiver.rows(_day1);
+    await SampleArchiver.archiveDay(_day1, nowSec: _now);
+    final a = await SampleArchiver.rows(_day1);
+    await SampleArchiver.archiveDay(_day1, nowSec: _now + 500);
+    final b = await SampleArchiver.rows(_day1);
     expect(b.length, a.length);
     for (var i = 0; i < a.length; i++) {
       expect(b[i].blob, a[i].blob);
@@ -157,16 +157,16 @@ void main() {
 
   test('a later archive built from FEWER valid samples never replaces a '
       'fuller one', () async {
-    await _freshDb('spectral_a6.db');
+    await _freshDb('sample_a6.db');
     await _seed(_d1);
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-    final full = (await SpectralArchiver.rows(_day1))
+    await SampleArchiver.archiveDay(_day1, nowSec: _now);
+    final full = (await SampleArchiver.rows(_day1))
         .firstWhere((r) => r.signal == 'hr');
     final db = await LocalDb.instance;
     await db.delete('decoded_onehz',
         where: 'rec_ts < ?', whereArgs: [_d1 + 3600]); // the raw prune ate half
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now + 500);
-    final after = (await SpectralArchiver.rows(_day1))
+    await SampleArchiver.archiveDay(_day1, nowSec: _now + 500);
+    final after = (await SampleArchiver.rows(_day1))
         .firstWhere((r) => r.signal == 'hr');
     expect(after.nValid, full.nValid);
     expect(after.blob, full.blob);
@@ -175,14 +175,14 @@ void main() {
 
   test('archiveBefore archives every day with a row below the cutoff, the '
       'straddling day WHOLE, and leaves later days alone', () async {
-    await _freshDb('spectral_a7.db');
+    await _freshDb('sample_a7.db');
     await _seed(_d1);
     await _seed(_d2);
     final cutoff = _d2 + 3600; // day 1 is wholly before, day 2 straddles
-    final n = await SpectralArchiver.archiveBefore(cutoff, nowSec: _now);
+    final n = await SampleArchiver.archiveBefore(cutoff, nowSec: _now);
     expect(n, 10);
-    expect(await SpectralArchiver.rows(_day1), hasLength(5));
-    final d2 = await SpectralArchiver.rows(_day2);
+    expect(await SampleArchiver.rows(_day1), hasLength(5));
+    final d2 = await SampleArchiver.rows(_day2);
     expect(d2, hasLength(5));
     final truth = fixtureDay()['hr']!.sublist(0, 7200);
     expect(d2.firstWhere((r) => r.signal == 'hr').nValid, validCount(truth),
@@ -190,29 +190,29 @@ void main() {
             'included - they still exist');
     // A day entirely after the cutoff is not touched.
     await _seed(localDayStartSec('2026-10-05')!);
-    await SpectralArchiver.archiveBefore(cutoff, nowSec: _now);
-    expect(await SpectralArchiver.rows('2026-10-05'), isEmpty);
+    await SampleArchiver.archiveBefore(cutoff, nowSec: _now);
+    expect(await SampleArchiver.rows('2026-10-05'), isEmpty);
   });
 
   test('the raw prune leaves the archive intact and still readable', () async {
-    await _freshDb('spectral_a8.db');
+    await _freshDb('sample_a8.db');
     await _seed(_d1);
-    await SpectralArchiver.archiveBefore(_d1 + 86400, nowSec: _now);
-    final before = await SpectralArchiver.reconstruct(_day1, 'hr');
+    await SampleArchiver.archiveBefore(_d1 + 86400, nowSec: _now);
+    final before = await SampleArchiver.reconstruct(_day1, 'hr');
     await LocalDb.pruneDecodedBeforeRecTs(_d1 + 86400);
     final db = await LocalDb.instance;
     expect(await db.query('decoded_onehz'), isEmpty);
-    expect(await SpectralArchiver.rows(_day1), hasLength(5));
-    expect(await SpectralArchiver.reconstruct(_day1, 'hr'), before);
+    expect(await SampleArchiver.rows(_day1), hasLength(5));
+    expect(await SampleArchiver.reconstruct(_day1, 'hr'), before);
   });
 
   test('summary(): the LOD pyramid straight from the archive matches the '
       'table true stats; no coefficient decode', () async {
-    await _freshDb('spectral_a9.db');
+    await _freshDb('sample_a9.db');
     await _seed(_d1);
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now);
+    await SampleArchiver.archiveDay(_day1, nowSec: _now);
     final truth = fixtureDay()['hr']!.sublist(0, 7200);
-    final lv = (await SpectralArchiver.summary(_day1, 'hr'))!;
+    final lv = (await SampleArchiver.summary(_day1, 'hr'))!;
     expect(lv.map((l) => l.cellSeconds).toList(),
         [60, 900, 3600, localDayLengthSec(_day1)]);
     final day = lv.last.cells.single;
@@ -223,16 +223,16 @@ void main() {
     // Hours after the recorded 2 h hold no samples: honest empty cells.
     expect(lv[2].cells[5].count, 0);
     expect(lv[2].cells[5].mean, isNull);
-    expect(await SpectralArchiver.summary(_day2, 'hr'), isNull);
+    expect(await SampleArchiver.summary(_day2, 'hr'), isNull);
   });
 
   test('reconstruct(maxOrder:) gives a coarse view that is still null in '
       'gaps', () async {
-    await _freshDb('spectral_a10.db');
+    await _freshDb('sample_a10.db');
     await _seed(_d1);
-    await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-    final full = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
-    final coarse = (await SpectralArchiver.reconstruct(_day1, 'hr', maxOrder: 0))!;
+    await SampleArchiver.archiveDay(_day1, nowSec: _now);
+    final full = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
+    final coarse = (await SampleArchiver.reconstruct(_day1, 'hr', maxOrder: 0))!;
     expect(coarse.length, full.length);
     for (var i = 0; i < full.length; i++) {
       expect(coarse[i] == null, full[i] == null, reason: 'slot $i');
@@ -241,7 +241,7 @@ void main() {
 
   test('the encode runs off the UI isolate (invariant 10)', () {
     final src = stripCommentsAndStrings(
-        File('lib/data/spectral_archive.dart').readAsStringSync());
+        File('lib/data/sample_archive.dart').readAsStringSync());
     expect(src, contains('Isolate.run('));
   });
 }

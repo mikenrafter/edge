@@ -2467,6 +2467,6 @@
   "assumedWaterBody": "Ajoute {amount} à l'eau bue, supposé par votre rappel d'eau. Conservez-le ou supprimez-le.",
   "assumedWaterKeep": "Garder",
   "assumedWaterRemove": "Supprimer",
-  "spectralLoadingDetail": "Chargement du détail…",
-  "spectralApproximation": "Approximatif (archivé)"
+  "sampleArchiveLoadingDetail": "Chargement du détail…",
+  "sampleArchiveApproximation": "Approximatif (archivé)"
 }

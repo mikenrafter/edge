@@ -15,12 +15,12 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/spectral_codec.dart';
+import 'package:openstrap_edge/data/sample_codec.dart';
 
 Future<String> _path(String name) async =>
     p.join(await databaseFactory.getDatabasesPath(), name);
 
-Uint8List _good() => SpectralCodec.encode(
+Uint8List _good() => SampleCodec.encode(
         'hr', <double?>[70.0, 71.0, 72.0, ...List<double?>.filled(1000, null)]).blob;
 
 Future<void> _seedV67(String name) async {

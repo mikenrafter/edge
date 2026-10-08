@@ -1,4 +1,4 @@
-// Structural guards for the spectral archive (invariants 3, 9, 10, 13).
+// Structural guards for the sample archive (invariants 3, 9, 10, 13).
 //
 // "Compute never reads the archive" and "the coach cannot see it" are
 // regression pins that pass today (the feature does not exist yet) and must
@@ -15,18 +15,22 @@ Iterable<File> _dartFiles(String dir) => Directory(dir)
     .whereType<File>()
     .where((f) => f.path.endsWith('.dart'));
 
-/// Spectral-related findings in one file's code (comments and strings
+/// Sample-related findings in one file's code (comments and strings
 /// blanked), after allowing the single write-side entry point.
-List<String> spectralReads(String raw) {
+List<String> sampleReads(String raw) {
   final code = stripCommentsAndStrings(raw);
   final out = <String>[];
-  for (final m in RegExp(r'SpectralArchiver\s*\.\s*(\w+)').allMatches(code)) {
-    if (m.group(1) != 'archiveBefore') out.add('SpectralArchiver.${m.group(1)}');
+  for (final m in RegExp(r'SampleArchiver\s*\.\s*(\w+)').allMatches(code)) {
+    if (m.group(1) != 'archiveBefore') out.add('SampleArchiver.${m.group(1)}');
   }
-  final rest = code.replaceAll(RegExp(r'SpectralArchiver\s*\.\s*archiveBefore'), '');
-  for (final m in RegExp(r'\bSpectral\w*|\bspectral\w*').allMatches(rest)) {
+  final rest = code.replaceAll(RegExp(r'SampleArchiver\s*\.\s*archiveBefore'), '');
+  for (final m in RegExp(r'\bSample(Archiver|Codec|Mode|Stats|Encoding|Header|SignalSpec|'
+          r'Segment|Level|Refinement|PartSummary|Zone|Lock|Lerp|Detail|'
+          r'ArchiveRow|DayStatus|Carved)\b|'
+          r'\b(sampleBytes|sampleCoverage|sampleNextPart|sampleCarveRunner|'
+          r'importSamplePart|carveSamplePart\w*)\b').allMatches(rest)) {
     final w = m.group(0)!;
-    if (w == 'SpectralArchiver') continue; // the import `show` clause
+    if (w == 'SampleArchiver') continue; // the import `show` clause
     out.add(w);
   }
   // The table named inside a SQL string (strings are blanked above).
@@ -57,17 +61,17 @@ String _body(String code, String signature) {
 void main() {
   group('the guard itself detects what it guards', () {
     test('a decode, a table read, a reconstruct all trip it', () {
-      expect(spectralReads('final d = SpectralCodec.decode(b);'), isNotEmpty);
-      expect(spectralReads("db.rawQuery('SELECT * FROM spectral_archive');"),
+      expect(sampleReads('final d = SampleCodec.decode(b);'), isNotEmpty);
+      expect(sampleReads("db.rawQuery('SELECT * FROM spectral_archive');"),
           isNotEmpty);
-      expect(spectralReads('await SpectralArchiver.reconstruct(d, s);'),
-          contains('SpectralArchiver.reconstruct'));
+      expect(sampleReads('await SampleArchiver.reconstruct(d, s);'),
+          contains('SampleArchiver.reconstruct'));
     });
     test('the one write-side call is allowed', () {
       expect(
-          spectralReads("import '../data/spectral_archive.dart' "
-              "show SpectralArchiver;\n"
-              'await SpectralArchiver.archiveBefore(c, nowSec: n);'),
+          sampleReads("import '../data/sample_archive.dart' "
+              "show SampleArchiver;\n"
+              'await SampleArchiver.archiveBefore(c, nowSec: n);'),
           isEmpty);
     });
   });
@@ -78,7 +82,7 @@ void main() {
         'archiver reader', () {
       final bad = <String>[];
       for (final f in _dartFiles('lib/compute')) {
-        final hits = spectralReads(f.readAsStringSync());
+        final hits = sampleReads(f.readAsStringSync());
         if (hits.isNotEmpty) bad.add('${f.path}: $hits');
       }
       expect(bad, isEmpty);
@@ -86,18 +90,18 @@ void main() {
 
     test('nor does lib/coach, and the coach SQL guard refuses the table', () {
       for (final f in _dartFiles('lib/coach')) {
-        expect(spectralReads(f.readAsStringSync()), isEmpty, reason: f.path);
+        expect(sampleReads(f.readAsStringSync()), isEmpty, reason: f.path);
       }
       expect(() => CoachDb.guardAndPrepare('SELECT * FROM spectral_archive'),
           throwsA(isA<SqlGuardError>()));
     });
 
     test('the table is created in db.dart and read only by '
-        'lib/data/spectral_archive.dart outside it', () {
+        'lib/data/sample_archive.dart outside it', () {
       final readers = <String>[];
       for (final f in _dartFiles('lib')) {
-        if (f.path.endsWith('lib/data/spectral_archive.dart') ||
-            f.path.endsWith('lib/data/spectral_import.dart') ||
+        if (f.path.endsWith('lib/data/sample_archive.dart') ||
+            f.path.endsWith('lib/data/sample_import.dart') ||
             f.path.endsWith('lib/data/db.dart')) {
           continue;
         }
@@ -121,10 +125,10 @@ void main() {
         File('lib/compute/derivation_engine.dart').readAsStringSync());
     String bodyOf() => _body(engine, 'Future<void> _pruneOldDecoded');
 
-    test('_pruneOldDecoded calls SpectralArchiver.archiveBefore with the same '
+    test('_pruneOldDecoded calls SampleArchiver.archiveBefore with the same '
         'cutoff, before pruneDecodedBeforeRecTs', () {
       final body = bodyOf();
-      final a = body.indexOf('SpectralArchiver.archiveBefore');
+      final a = body.indexOf('SampleArchiver.archiveBefore');
       final p = body.indexOf('pruneDecodedBeforeRecTs');
       expect(a, isNonNegative, reason: 'archive hook missing');
       expect(p, isNonNegative);
@@ -136,13 +140,13 @@ void main() {
         'try/catch (the prune enforces rawRetentionDays)', () {
       final body = bodyOf();
       expect(body,
-          matches(RegExp(r'try\s*\{[^{}]*SpectralArchiver\.archiveBefore[^{}]*\}\s*catch')));
+          matches(RegExp(r'try\s*\{[^{}]*SampleArchiver\.archiveBefore[^{}]*\}\s*catch')));
     });
 
     test('the hook only runs after the cutoff decision (no archive when the '
         'prune is withheld for an under-derived day)', () {
       final body = bodyOf();
-      final a = body.indexOf('SpectralArchiver.archiveBefore');
+      final a = body.indexOf('SampleArchiver.archiveBefore');
       final guard = body.indexOf('if (cutoffSec == null) return');
       expect(guard, isNonNegative);
       expect(a, greaterThan(guard));
@@ -152,7 +156,7 @@ void main() {
         '(an offload landing mid-archive skips the prune)', () {
       final body = bodyOf();
       final rev = body.indexOf('decodedRevSumBefore');
-      final a = body.indexOf('SpectralArchiver.archiveBefore');
+      final a = body.indexOf('SampleArchiver.archiveBefore');
       final pr = body.indexOf('pruneDecodedBeforeRecTs');
       expect(rev, isNonNegative, reason: 'revision never read');
       expect(rev, lessThan(a));
@@ -162,8 +166,8 @@ void main() {
 
     test('the only compute-layer reference is that call', () {
       final f = File('lib/compute/derivation_engine.dart').readAsStringSync();
-      expect(spectralReads(f), isEmpty);
-      expect(f, contains('SpectralArchiver.archiveBefore'));
+      expect(sampleReads(f), isEmpty);
+      expect(f, contains('SampleArchiver.archiveBefore'));
     });
   });
 }

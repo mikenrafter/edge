@@ -1,4 +1,4 @@
-// Spectral archive, review round 2 (RED): the defects Sol found, pinned.
+// Sample archive, review round 2 (RED): the defects Sol found, pinned.
 //
 //   P1 coverage   an archive must never lose a slot it once held, and must add
 //                 slots that arrive later - by coverage, not by count
@@ -20,8 +20,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/spectral_archive.dart';
-import 'package:openstrap_edge/data/spectral_codec.dart';
+import 'package:openstrap_edge/data/sample_archive.dart';
+import 'package:openstrap_edge/data/sample_codec.dart';
 
 const _day1 = '2026-10-03';
 const _day2 = '2026-10-04';
@@ -88,7 +88,7 @@ void main() {
     databaseFactory = databaseFactoryFfi;
     _d1 = localDayStartSec(_day1)!;
     _d2 = localDayStartSec(_day2)!;
-    _tmp = await Directory.systemTemp.createTemp('openstrap_spectral2_');
+    _tmp = await Directory.systemTemp.createTemp('openstrap_sample2_');
     PathProviderPlatform.instance = _FakePathProvider(_tmp.path);
   });
   tearDownAll(() async {
@@ -99,47 +99,47 @@ void main() {
   group('P1 coverage: an archive never loses a slot it held', () {
     test('archive 0-99, prune 0-49, backfill 100-150: the union survives '
         '(slots 0-49 are NOT nulled by a bigger-count replacement)', () async {
-      await _freshDb('spectral2_cov1.db');
+      await _freshDb('sample2_cov1.db');
       await _put(_d1, 0, 100);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
       final db = await LocalDb.instance;
       await db.delete('decoded_onehz',
           where: 'rec_ts < ?', whereArgs: [_d1 + 50]);
       await _put(_d1, 100, 151);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now + 1);
-      final r = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
+      await SampleArchiver.archiveDay(_day1, nowSec: _now + 1);
+      final r = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
       _expectSlots(r, 0, 151, _truthHr);
       expect(r[151], isNull);
-      final lv = (await SpectralArchiver.summary(_day1, 'hr'))!;
+      final lv = (await SampleArchiver.summary(_day1, 'hr'))!;
       expect(lv.last.cells.single.count, 151,
           reason: 'the pyramid describes the union too');
     });
 
     test('equal-or-smaller new data is still archived: 0-99 archived, 0-49 '
         'pruned, 100-149 arrive (50 new samples, count would tie)', () async {
-      await _freshDb('spectral2_cov2.db');
+      await _freshDb('sample2_cov2.db');
       await _put(_d1, 0, 100);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
       final db = await LocalDb.instance;
       await db.delete('decoded_onehz',
           where: 'rec_ts < ?', whereArgs: [_d1 + 50]);
       await _put(_d1, 100, 150);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now + 1);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now + 1);
       // The raw for 100-149 is pruned next; what the archive holds is all
       // that is left.
       await db.delete('decoded_onehz');
-      final r = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
+      final r = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
       _expectSlots(r, 0, 150, _truthHr);
     });
 
     test('a slot is never double-archived and a re-run with nothing new '
         'writes nothing (parts are append-only)', () async {
-      await _freshDb('spectral2_cov3.db');
+      await _freshDb('sample2_cov3.db');
       await _put(_d1, 0, 300);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-      final a = await SpectralArchiver.rows(_day1);
-      expect(await SpectralArchiver.archiveDay(_day1, nowSec: _now + 5), 0);
-      final b = await SpectralArchiver.rows(_day1);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
+      final a = await SampleArchiver.rows(_day1);
+      expect(await SampleArchiver.archiveDay(_day1, nowSec: _now + 5), 0);
+      final b = await SampleArchiver.rows(_day1);
       expect(b.length, a.length);
       for (var i = 0; i < a.length; i++) {
         expect(b[i].part, a[i].part);
@@ -147,9 +147,9 @@ void main() {
         expect(b[i].createdAt, _now);
       }
       await _put(_d1, 300, 320);
-      expect(await SpectralArchiver.archiveDay(_day1, nowSec: _now + 9), 1,
+      expect(await SampleArchiver.archiveDay(_day1, nowSec: _now + 9), 1,
           reason: 'only hr has new samples: one new part');
-      final c = await SpectralArchiver.rows(_day1);
+      final c = await SampleArchiver.rows(_day1);
       expect(c.where((r) => r.signal == 'hr').map((r) => r.part).toList(),
           [0, 1]);
       expect(c.firstWhere((r) => r.part == 1).nValid, 20,
@@ -157,14 +157,14 @@ void main() {
     });
 
     test('each part is certified on its own: rms/max inside the spec', () async {
-      await _freshDb('spectral2_cov4.db');
+      await _freshDb('sample2_cov4.db');
       await _put(_d1, 0, 500);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
       final db = await LocalDb.instance;
       await db.delete('decoded_onehz', where: 'rec_ts < ?', whereArgs: [_d1 + 250]);
       await _put(_d1, 500, 900);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now + 1);
-      for (final r in await SpectralArchiver.rows(_day1)) {
+      await SampleArchiver.archiveDay(_day1, nowSec: _now + 1);
+      for (final r in await SampleArchiver.rows(_day1)) {
         expect(r.rmsErr, lessThanOrEqualTo(1.0));
         expect(r.maxErr, lessThanOrEqualTo(3.0));
       }
@@ -174,37 +174,37 @@ void main() {
   group('P1 devices: never merged', () {
     test('two devices over the same seconds archive separately, each '
         'reconstructs its own readings', () async {
-      await _freshDb('spectral2_dev1.db');
+      await _freshDb('sample2_dev1.db');
       await _put(_d1, 0, 300, hr: 60, ramp: false, ax: 0.1); // primary
       await _put(_d1, 0, 300, device: _second, hr: 150, ramp: false);
       // ax lossless so the primary's ax has samples to read back (the default
       // accel mode may be pyramid-only).
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now, modes: {
-        ...SpectralArchiver.defaultModes,
-        'ax': SpectralMode.losslessAtQuantum,
+      await SampleArchiver.archiveDay(_day1, nowSec: _now, modes: {
+        ...SampleArchiver.defaultModes,
+        'ax': SampleMode.losslessAtQuantum,
       });
-      final prim = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
-      final sec = (await SpectralArchiver.reconstruct(_day1, 'hr',
+      final prim = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
+      final sec = (await SampleArchiver.reconstruct(_day1, 'hr',
           deviceId: _second))!;
       _expectSlots(prim, 0, 300, (_) => 60);
       _expectSlots(sec, 0, 300, (_) => 150);
       // The secondary never reported ax: no archive for it, and the primary's
       // ax is untouched by the secondary's NULL.
-      expect(await SpectralArchiver.reconstruct(_day1, 'ax', deviceId: _second),
+      expect(await SampleArchiver.reconstruct(_day1, 'ax', deviceId: _second),
           isNull);
-      _expectSlots((await SpectralArchiver.reconstruct(_day1, 'ax'))!, 0, 300,
+      _expectSlots((await SampleArchiver.reconstruct(_day1, 'ax'))!, 0, 300,
           (_) => 0.1, tol: 0.1);
-      final rows = await SpectralArchiver.rows(_day1);
+      final rows = await SampleArchiver.rows(_day1);
       expect(rows.map((r) => r.deviceId).toSet(), {'', _second});
     });
 
     test('summaries are per device too', () async {
-      await _freshDb('spectral2_dev2.db');
+      await _freshDb('sample2_dev2.db');
       await _put(_d1, 0, 120, hr: 60, ramp: false);
       await _put(_d1, 0, 120, device: _second, hr: 150, ramp: false);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-      final a = (await SpectralArchiver.summary(_day1, 'hr'))!;
-      final b = (await SpectralArchiver.summary(_day1, 'hr', deviceId: _second))!;
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
+      final a = (await SampleArchiver.summary(_day1, 'hr'))!;
+      final b = (await SampleArchiver.summary(_day1, 'hr', deviceId: _second))!;
       expect(a.last.cells.single.max, 60);
       expect(b.last.cells.single.min, 150);
     });
@@ -213,11 +213,11 @@ void main() {
   group('P1 delete: "delete this day" removes the archive', () {
     test('deleteDays drops every codec version and the status rows of that '
         'day, and only that day', () async {
-      await _freshDb('spectral2_del.db');
+      await _freshDb('sample2_del.db');
       await _put(_d1, 0, 200);
       await _put(_d2, 0, 200);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-      await SpectralArchiver.archiveDay(_day2, nowSec: _now);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
+      await SampleArchiver.archiveDay(_day2, nowSec: _now);
       final db = await LocalDb.instance;
       await db.insert('spectral_archive', {
         'day_id': _day1,
@@ -236,9 +236,9 @@ void main() {
           isEmpty);
       expect(await db.query('spectral_archive_status', where: 'day_id = ?', whereArgs: [_day1]),
           isEmpty);
-      expect(await SpectralArchiver.reconstruct(_day1, 'hr'), isNull);
-      expect(await SpectralArchiver.rows(_day2), isNotEmpty);
-      expect(await SpectralArchiver.status(_day2), isNotEmpty);
+      expect(await SampleArchiver.reconstruct(_day1, 'hr'), isNull);
+      expect(await SampleArchiver.rows(_day2), isNotEmpty);
+      expect(await SampleArchiver.status(_day2), isNotEmpty);
     });
   });
 
@@ -252,9 +252,9 @@ void main() {
 
     test('a restore from a backup file brings the archive rows back',
         () async {
-      await _freshDb('spectral2_restore.db');
+      await _freshDb('sample2_restore.db');
       final srcPath =
-          p.join(await databaseFactory.getDatabasesPath(), 'spectral2_src.db');
+          p.join(await databaseFactory.getDatabasesPath(), 'sample2_src.db');
       await databaseFactory.deleteDatabase(srcPath);
       final src = await databaseFactory.openDatabase(srcPath);
       await src.execute('CREATE TABLE spectral_archive ('
@@ -268,7 +268,7 @@ void main() {
           "day_id TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', "
           'outcome TEXT NOT NULL, reason TEXT, updated_at INTEGER NOT NULL, '
           'PRIMARY KEY (day_id, device_id))');
-      final good = SpectralCodec.encode('hr', [70.0, 71.0, 72.0]).blob;
+      final good = SampleCodec.encode('hr', [70.0, 71.0, 72.0]).blob;
       await src.insert('spectral_archive', {
         'day_id': _day1, 'device_id': '', 'signal': 'hr', 'codec_version': 1,
         'part': 0, 'blob': good, 'n_valid': 3,
@@ -280,19 +280,19 @@ void main() {
       });
       await src.close();
       await LocalDb.importFromDbFile(srcPath);
-      final rows = await SpectralArchiver.rows(_day1);
+      final rows = await SampleArchiver.rows(_day1);
       expect(rows.single.blob, good);
-      expect((await SpectralArchiver.status(_day1)).single.outcome, 'ok');
+      expect((await SampleArchiver.status(_day1)).single.outcome, 'ok');
       await databaseFactory.deleteDatabase(srcPath);
     });
 
     test('exportDaysDb carries the selected days archive and status, and '
         'only those days', () async {
-      await _freshDb('spectral2_export.db');
+      await _freshDb('sample2_export.db');
       await _put(_d1, 0, 200);
       await _put(_d2, 0, 200);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-      await SpectralArchiver.archiveDay(_day2, nowSec: _now);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
+      await SampleArchiver.archiveDay(_day2, nowSec: _now);
       final out = await LocalDb.exportDaysDb({_day1});
       final o = await databaseFactory.openDatabase(out);
       try {
@@ -315,11 +315,11 @@ void main() {
       () {
     test('the guarded prune refuses when the input revision moved; the next '
         'pass archives the straggler and then prunes', () async {
-      await _freshDb('spectral2_race.db');
+      await _freshDb('sample2_race.db');
       await _put(_d1, 0, 600);
       final cutoff = _d1 + 86400;
       final rev0 = await LocalDb.decodedRevSumBefore(cutoff);
-      await SpectralArchiver.archiveBefore(cutoff, nowSec: _now);
+      await SampleArchiver.archiveBefore(cutoff, nowSec: _now);
       // An old record lands in a window the archive already read.
       final db = await LocalDb.instance;
       await db.insert('decoded_onehz', {
@@ -333,10 +333,10 @@ void main() {
       // Next derive: fresh revision, archive picks the straggler up, prune ok.
       final rev1 = await LocalDb.decodedRevSumBefore(cutoff);
       expect(rev1, isNot(rev0));
-      await SpectralArchiver.archiveBefore(cutoff, nowSec: _now + 1);
+      await SampleArchiver.archiveBefore(cutoff, nowSec: _now + 1);
       expect(await LocalDb.pruneDecodedBeforeRecTs(cutoff, expectedRevSum: rev1),
           greaterThan(0));
-      final r = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
+      final r = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
       expect(r[700], isNotNull);
       expect((r[700]! - 111).abs(), lessThanOrEqualTo(3));
       _expectSlots(r, 0, 600, _truthHr);
@@ -344,7 +344,7 @@ void main() {
 
     test('a guarded prune with an unchanged revision deletes exactly as the '
         'plain prune does', () async {
-      await _freshDb('spectral2_race2.db');
+      await _freshDb('sample2_race2.db');
       await _put(_d1, 0, 100);
       final cutoff = _d1 + 86400;
       final rev = await LocalDb.decodedRevSumBefore(cutoff);
@@ -354,7 +354,7 @@ void main() {
     });
 
     test('the plain prune (no expectation) is unchanged', () async {
-      await _freshDb('spectral2_race3.db');
+      await _freshDb('sample2_race3.db');
       await _put(_d1, 0, 100);
       expect(await LocalDb.pruneDecodedBeforeRecTs(_d1 + 86400), greaterThan(0));
     });
@@ -363,7 +363,7 @@ void main() {
   group('per-day outcome is persisted', () {
     test('ok for a normal day; empty when rows exist but no signal has a '
         'valid sample; nothing at all for a day with no rows', () async {
-      await _freshDb('spectral2_status1.db');
+      await _freshDb('sample2_status1.db');
       await _put(_d1, 0, 100);
       // day 2: rows, but every archived column NULL / hr 0 (off-skin).
       final db = await LocalDb.instance;
@@ -373,51 +373,51 @@ void main() {
           'counter': i, 'hr': 0,
         });
       }
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-      await SpectralArchiver.archiveDay(_day2, nowSec: _now);
-      await SpectralArchiver.archiveDay('2026-10-05', nowSec: _now);
-      final s1 = (await SpectralArchiver.status(_day1)).single;
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
+      await SampleArchiver.archiveDay(_day2, nowSec: _now);
+      await SampleArchiver.archiveDay('2026-10-05', nowSec: _now);
+      final s1 = (await SampleArchiver.status(_day1)).single;
       expect(s1.outcome, 'ok');
       expect(s1.deviceId, '');
       expect(s1.updatedAt, _now);
-      expect((await SpectralArchiver.status(_day2)).single.outcome, 'empty');
-      expect(await SpectralArchiver.status('2026-10-05'), isEmpty,
+      expect((await SampleArchiver.status(_day2)).single.outcome, 'empty');
+      expect(await SampleArchiver.status('2026-10-05'), isEmpty,
           reason: 'absent input has no status row at all');
     });
 
     test('a failed archive is recorded with its reason, does not throw out of '
         'archiveBefore, and a later success flips it to ok', () async {
-      await _freshDb('spectral2_status2.db');
+      await _freshDb('sample2_status2.db');
       await _put(_d1, 0, 100);
-      SpectralArchiver.debugBeforeEncode = (_) => throw StateError('boom');
+      SampleArchiver.debugBeforeEncode = (_) => throw StateError('boom');
       try {
-        final n = await SpectralArchiver.archiveBefore(_d1 + 86400, nowSec: _now);
+        final n = await SampleArchiver.archiveBefore(_d1 + 86400, nowSec: _now);
         expect(n, 0);
       } finally {
-        SpectralArchiver.debugBeforeEncode = null;
+        SampleArchiver.debugBeforeEncode = null;
       }
-      final st = (await SpectralArchiver.status(_day1)).single;
+      final st = (await SampleArchiver.status(_day1)).single;
       expect(st.outcome, 'failed');
       expect(st.reason, contains('boom'));
-      expect(await SpectralArchiver.rows(_day1), isEmpty);
-      await SpectralArchiver.archiveBefore(_d1 + 86400, nowSec: _now + 10);
-      final ok = (await SpectralArchiver.status(_day1)).single;
+      expect(await SampleArchiver.rows(_day1), isEmpty);
+      await SampleArchiver.archiveBefore(_d1 + 86400, nowSec: _now + 10);
+      final ok = (await SampleArchiver.status(_day1)).single;
       expect(ok.outcome, 'ok');
       expect(ok.reason, isNull);
       expect(ok.updatedAt, _now + 10);
     });
 
     test('a non-finite stored value is absent, not a crash', () async {
-      await _freshDb('spectral2_inf.db');
+      await _freshDb('sample2_inf.db');
       await _put(_d1, 0, 100);
       final db = await LocalDb.instance;
       await db.rawUpdate('UPDATE decoded_onehz SET hr = 9e999 WHERE rec_ts = ?',
           [_d1 + 10]);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
-      final r = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
+      await SampleArchiver.archiveDay(_day1, nowSec: _now);
+      final r = (await SampleArchiver.reconstruct(_day1, 'hr'))!;
       expect(r[10], isNull);
       expect(r[11], isNotNull);
-      expect((await SpectralArchiver.status(_day1)).single.outcome, 'ok');
+      expect((await SampleArchiver.status(_day1)).single.outcome, 'ok');
     });
   });
 }

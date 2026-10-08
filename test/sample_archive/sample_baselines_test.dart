@@ -2,7 +2,7 @@
 // anyone trusts a comparison table built on them. These pass today (no codec).
 import 'package:flutter_test/flutter_test.dart';
 
-import '../support/spectral_fixtures.dart';
+import '../support/sample_fixtures.dart';
 
 void main() {
   test('fixture days are deterministic and gapped', () {

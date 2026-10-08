@@ -2496,6 +2496,6 @@
   "assumedWaterBody": "Suma {amount} al agua bebida, supuesto por tu recordatorio de agua. Consérvalo o quítalo.",
   "assumedWaterKeep": "Conservar",
   "assumedWaterRemove": "Quitar",
-  "spectralLoadingDetail": "Cargando detalle…",
-  "spectralApproximation": "Aproximado (archivado)"
+  "sampleArchiveLoadingDetail": "Cargando detalle…",
+  "sampleArchiveApproximation": "Aproximado (archivado)"
 }

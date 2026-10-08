@@ -1,22 +1,22 @@
-// SpectralCodec (RED): the pure block-DCT codec's contract. Every test fails
+// SampleCodec (RED): the pure block-DCT codec's contract. Every test fails
 // today because the codec is a throwing stub.
 //
-// Signals are synthetic and seeded (test/support/spectral_fixtures.dart); no
+// Signals are synthetic and seeded (test/support/sample_fixtures.dart); no
 // test reads a clock.
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:openstrap_edge/data/spectral_codec.dart';
+import 'package:openstrap_edge/data/sample_codec.dart';
 
-import '../support/spectral_fixtures.dart';
+import '../support/sample_fixtures.dart';
 
-List<double?> _decode(SpectralEncoding e) => SpectralCodec.decode(e.blob);
+List<double?> _decode(SampleEncoding e) => SampleCodec.decode(e.blob);
 
 /// Bounds hold, measured here independently of the codec's own stats.
 void _expectWithin(String signal, List<double?> orig, List<double?> recon) {
-  final spec = SpectralCodec.specs[signal]!;
+  final spec = SampleCodec.specs[signal]!;
   expect(recon.length, orig.length);
   final e = errorOf(orig, recon);
   expect(e.rms, lessThanOrEqualTo(spec.maxRms), reason: '$signal rms');
@@ -37,7 +37,7 @@ void main() {
         () {
       final s = List<double?>.generate(
           3600, (t) => 70 + 15 * math.sin(2 * math.pi * t / 1800));
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       _expectWithin('hr', s, _decode(e));
       expect(e.stats.coefficientCount * 20, lessThan(e.stats.nValid),
           reason: 'a pure low-frequency sine needs <5% of the coefficients');
@@ -49,9 +49,9 @@ void main() {
         'size claim is a sane ceiling', () {
       final s = List<double?>.generate(
           4000, (t) => (t >= 1000 && t < 2500) ? 140.0 : 60.0);
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       _expectWithin('hr', s, _decode(e));
-      printOnFailure('step: spectral ${e.stats.bytes} B vs lossless '
+      printOnFailure('step: sample ${e.stats.bytes} B vs lossless '
           '${losslessBytes(s, 1.0)} B');
       expect(e.stats.bytes, lessThan(4000 * 8 ~/ 20)); // < 5% of 8 B/sample
     });
@@ -61,14 +61,14 @@ void main() {
       final rnd = math.Random(99);
       final s = List<double?>.generate(
           2048, (_) => (70 + (rnd.nextDouble() - .5) * 40).roundToDouble());
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       _expectWithin('hr', s, _decode(e));
       expect(e.stats.maxErr, lessThanOrEqualTo(3.0));
     });
 
     test('sleep-like HR day with gaps: bounds hold and the mask is exact', () {
       final s = fixtureDay()['hr']!;
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       final d = _decode(e);
       _expectMaskExact(s, d);
       _expectWithin('hr', s, d);
@@ -77,18 +77,18 @@ void main() {
     for (final sig in ['hr', 'ax', 'ay', 'az', 'skin_temp_c']) {
       test('$sig: per-signal bound honoured on a full gapped day', () {
         final s = fixtureDay()[sig]!;
-        final e = SpectralCodec.encode(sig, s);
+        final e = SampleCodec.encode(sig, s);
         _expectWithin(sig, s, _decode(e));
         _expectMaskExact(s, _decode(e));
       });
     }
 
     test('the spec table is what the contract says', () {
-      expect(SpectralCodec.specs.keys.toSet(),
+      expect(SampleCodec.specs.keys.toSet(),
           {'hr', 'ax', 'ay', 'az', 'skin_temp_c'});
-      expect(SpectralCodec.specs['hr']!.maxRms, 1.0);
-      expect(SpectralCodec.specs['hr']!.maxAbs, 3.0);
-      for (final s in SpectralCodec.specs.values) {
+      expect(SampleCodec.specs['hr']!.maxRms, 1.0);
+      expect(SampleCodec.specs['hr']!.maxAbs, 3.0);
+      for (final s in SampleCodec.specs.values) {
         expect(s.blockSeconds, 240);
         expect(s.blockSeconds % 60, 0);
         expect(s.maxCoefficients, greaterThanOrEqualTo(60),
@@ -103,7 +103,7 @@ void main() {
   group('gaps are absence, never data', () {
     test('all-null encodes to a valid blob and decodes all-null', () {
       final s = List<double?>.filled(1000, null);
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       expect(e.stats.nValid, 0);
       expect(e.stats.coefficientCount, 0);
       expect(_decode(e), s);
@@ -112,7 +112,7 @@ void main() {
     test('a lone valid sample in a sea of null, at a block edge', () {
       for (final at in [0, 255, 256, 511, 999]) {
         final s = List<double?>.filled(1000, null)..[at] = 77.0;
-        final d = _decode(SpectralCodec.encode('hr', s));
+        final d = _decode(SampleCodec.encode('hr', s));
         _expectMaskExact(s, d);
         expect((d[at]! - 77.0).abs(), lessThanOrEqualTo(3.0));
       }
@@ -123,7 +123,7 @@ void main() {
       final trail = List<double?>.generate(900, (t) => t > 800 ? null : 70.0);
       final alt = List<double?>.generate(900, (t) => t.isEven ? 65.0 : null);
       for (final s in [lead, trail, alt]) {
-        _expectMaskExact(s, _decode(SpectralCodec.encode('hr', s)));
+        _expectMaskExact(s, _decode(SampleCodec.encode('hr', s)));
       }
     });
 
@@ -131,7 +131,7 @@ void main() {
         'a level shift across a gap is not smoothed into it', () {
       final s = List<double?>.generate(
           2000, (t) => (t >= 900 && t < 1100) ? null : (t < 1000 ? 60.0 : 130.0));
-      final d = _decode(SpectralCodec.encode('hr', s));
+      final d = _decode(SampleCodec.encode('hr', s));
       for (var t = 900; t < 1100; t++) {
         expect(d[t], isNull);
       }
@@ -140,7 +140,7 @@ void main() {
 
     test('stats.nValid counts exactly the non-null samples', () {
       final s = fixtureDay()['hr']!;
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       expect(e.stats.nValid, validCount(s));
       expect(e.stats.nSamples, s.length);
     });
@@ -150,7 +150,7 @@ void main() {
       for (final len in [82800, 90000]) {
         final s = List<double?>.generate(
             len, (t) => t > len - 50 ? 80.0 : (t % 1000 < 20 ? null : 70.0));
-        final d = _decode(SpectralCodec.encode('hr', s));
+        final d = _decode(SampleCodec.encode('hr', s));
         expect(d.length, len);
         _expectMaskExact(s, d);
       }
@@ -164,8 +164,8 @@ void main() {
     test('segments tile the valid runs exactly: none spans a gap, none '
         'overlaps, none covers a null', () {
       final s = fixtureDay()['hr']!;
-      final blob = SpectralCodec.encode('hr', s).blob;
-      final segs = SpectralCodec.segments(blob);
+      final blob = SampleCodec.encode('hr', s).blob;
+      final segs = SampleCodec.segments(blob);
       final covered = List<bool>.filled(s.length, false);
       for (final g in segs) {
         expect(g.length, greaterThan(0));
@@ -178,12 +178,12 @@ void main() {
       for (var i = 0; i < s.length; i++) {
         expect(covered[i], s[i] != null, reason: 'slot $i');
       }
-      expect(SpectralCodec.readHeader(blob).segmentCount, segs.length);
+      expect(SampleCodec.readHeader(blob).segmentCount, segs.length);
     });
 
     test('lengths are multiples of 60 s except the tail of a valid run', () {
       final s = fixtureDay()['hr']!;
-      final segs = SpectralCodec.segments(SpectralCodec.encode('hr', s).blob);
+      final segs = SampleCodec.segments(SampleCodec.encode('hr', s).blob);
       for (final g in segs) {
         final end = g.start + g.length;
         final runEnds = end == s.length || s[end] == null;
@@ -196,10 +196,10 @@ void main() {
     test('every segment honours the coefficient cap AND the error bound '
         '(a segment closes rather than exceed either)', () {
       final s = fixtureDay()['hr']!;
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       final d = _decode(e);
-      final spec = SpectralCodec.specs['hr']!;
-      for (final g in SpectralCodec.segments(e.blob)) {
+      final spec = SampleCodec.specs['hr']!;
+      for (final g in SampleCodec.segments(e.blob)) {
         expect(g.coefficientCount, lessThanOrEqualTo(spec.maxCoefficients));
         final o = s.sublist(g.start, g.start + g.length);
         final r = d.sublist(g.start, g.start + g.length);
@@ -210,12 +210,12 @@ void main() {
     });
 
     test('smooth data grows long segments; a step forces a split', () {
-      final smooth = SpectralCodec.segments(
-          SpectralCodec.encode('hr', sine(3600)).blob);
+      final smooth = SampleCodec.segments(
+          SampleCodec.encode('hr', sine(3600)).blob);
       expect(smooth.map((g) => g.length).reduce(math.max), greaterThan(900),
           reason: 'a slow sine fits in a long segment');
       final step = List<double?>.generate(3600, (t) => t < 1800 ? 60.0 : 140.0);
-      final segs = SpectralCodec.segments(SpectralCodec.encode('hr', step).blob);
+      final segs = SampleCodec.segments(SampleCodec.encode('hr', step).blob);
       expect(segs.where((g) => g.start < 1800 && g.start + g.length > 1800),
           isEmpty,
           reason: 'no segment may straddle the step (it would not fit the '
@@ -227,17 +227,17 @@ void main() {
       final rnd = math.Random(4);
       final s = List<double?>.generate(
           1200, (_) => (70 + (rnd.nextDouble() - .5) * 60).roundToDouble());
-      final e = SpectralCodec.encode('hr', s);
+      final e = SampleCodec.encode('hr', s);
       _expectWithin('hr', s, _decode(e));
-      for (final g in SpectralCodec.segments(e.blob)) {
+      for (final g in SampleCodec.segments(e.blob)) {
         expect(g.length, lessThanOrEqualTo(120));
       }
     });
 
     test('fewer segments than static blocks on smooth data', () {
       final s = sine(7200);
-      final a = SpectralCodec.encode('hr', s);
-      final b = SpectralCodec.encode('hr', s, mode: SpectralMode.staticBlocks);
+      final a = SampleCodec.encode('hr', s);
+      final b = SampleCodec.encode('hr', s, mode: SampleMode.staticBlocks);
       expect(a.stats.segmentCount, lessThan(b.stats.segmentCount));
     });
   });
@@ -245,18 +245,18 @@ void main() {
   group('static-block baseline mode', () {
     test('within bounds, mask exact, header says staticBlocks', () {
       final s = fixtureDay()['hr']!;
-      final e = SpectralCodec.encode('hr', s, mode: SpectralMode.staticBlocks);
+      final e = SampleCodec.encode('hr', s, mode: SampleMode.staticBlocks);
       final d = _decode(e);
       _expectMaskExact(s, d);
       _expectWithin('hr', s, d);
-      expect(SpectralCodec.readHeader(e.blob).mode, SpectralMode.staticBlocks);
+      expect(SampleCodec.readHeader(e.blob).mode, SampleMode.staticBlocks);
     });
 
     test('segments sit inside 240 s windows aligned to the day index and '
         'are clipped by gaps', () {
       final s = fixtureDay()['hr']!;
-      final e = SpectralCodec.encode('hr', s, mode: SpectralMode.staticBlocks);
-      for (final g in SpectralCodec.segments(e.blob)) {
+      final e = SampleCodec.encode('hr', s, mode: SampleMode.staticBlocks);
+      for (final g in SampleCodec.segments(e.blob)) {
         expect(g.start ~/ 240, (g.start + g.length - 1) ~/ 240,
             reason: 'segment @${g.start} crosses a block edge');
         for (var i = g.start; i < g.start + g.length; i++) {
@@ -267,10 +267,10 @@ void main() {
 
     test('is deterministic and decodes on an isolate', () async {
       final s = fixtureDay()['skin_temp_c']!;
-      final a = SpectralCodec.encode('skin_temp_c', s,
-          mode: SpectralMode.staticBlocks).blob;
-      final b = await Isolate.run(() => SpectralCodec.encode('skin_temp_c', s,
-          mode: SpectralMode.staticBlocks).blob);
+      final a = SampleCodec.encode('skin_temp_c', s,
+          mode: SampleMode.staticBlocks).blob;
+      final b = await Isolate.run(() => SampleCodec.encode('skin_temp_c', s,
+          mode: SampleMode.staticBlocks).blob);
       expect(b, a);
     });
   });
@@ -287,7 +287,7 @@ void main() {
     test('levels are 60 s, 900 s, 3600 s and one whole-series cell', () {
       for (final len in [kDay, 82800, 90000, 1000]) {
         final s = List<double?>.generate(len, (t) => 70.0 + (t ~/ 600) % 5);
-        final lv = SpectralCodec.summary(SpectralCodec.encode('hr', s).blob);
+        final lv = SampleCodec.summary(SampleCodec.encode('hr', s).blob);
         expect(lv.map((l) => l.cellSeconds), [60, 900, 3600, len]);
         expect(lv.last.cells, hasLength(1));
         for (final l in lv.take(3)) {
@@ -299,8 +299,8 @@ void main() {
     test('count, min, mean, max come from the RAW samples (hr: min/max are '
         'exactly the true extremes)', () {
       final s = fixtureDay()['hr']!;
-      final lv = SpectralCodec.summary(SpectralCodec.encode('hr', s).blob);
-      final q = SpectralCodec.specs['hr']!.quantum;
+      final lv = SampleCodec.summary(SampleCodec.encode('hr', s).blob);
+      final q = SampleCodec.specs['hr']!.quantum;
       for (final l in lv) {
         for (var i = 0; i < l.cells.length; i++) {
           final c = l.cells[i];
@@ -318,7 +318,7 @@ void main() {
     test('a gap is honoured: an all-null cell has count 0 and NO stats', () {
       final s = List<double?>.generate(
           1800, (t) => (t >= 600 && t < 1500) ? null : 70.0);
-      final lv = SpectralCodec.summary(SpectralCodec.encode('hr', s).blob);
+      final lv = SampleCodec.summary(SampleCodec.encode('hr', s).blob);
       final minute = lv.first.cells;
       for (var i = 10; i < 25; i++) {
         expect(minute[i].count, 0);
@@ -336,7 +336,7 @@ void main() {
       // 1-second +45 bpm spike: the bound (max err 3) forces the codec to keep
       // it, but the pyramid must not depend on that; it is raw by contract.
       final s = List<double?>.filled(600, 60.0)..[300] = 105.0;
-      final lv = SpectralCodec.summary(SpectralCodec.encode('hr', s).blob);
+      final lv = SampleCodec.summary(SampleCodec.encode('hr', s).blob);
       expect(lv.first.cells[5].max, 105.0);
       expect(lv.first.cells[5].min, 60.0);
       expect(lv.first.cells[5].mean, closeTo((59 * 60 + 105) / 60, 0.25));
@@ -344,8 +344,8 @@ void main() {
 
     test('levels agree with each other', () {
       final s = fixtureDay()['skin_temp_c']!;
-      final lv = SpectralCodec.summary(SpectralCodec.encode('skin_temp_c', s).blob);
-      final q = SpectralCodec.specs['skin_temp_c']!.quantum;
+      final lv = SampleCodec.summary(SampleCodec.encode('skin_temp_c', s).blob);
+      final q = SampleCodec.specs['skin_temp_c']!.quantum;
       for (var li = 1; li < lv.length; li++) {
         final fine = lv[li - 1], coarse = lv[li];
         for (var ci = 0; ci < coarse.cells.length; ci++) {
@@ -368,11 +368,11 @@ void main() {
 
     test('the pyramid is readable from the prefix before the first '
         'coefficient', () {
-      final blob = SpectralCodec.encode('hr', fixtureDay()['hr']!).blob;
-      final h = SpectralCodec.readHeader(blob);
+      final blob = SampleCodec.encode('hr', fixtureDay()['hr']!).blob;
+      final h = SampleCodec.readHeader(blob);
       final prefix = Uint8List.sublistView(blob, 0, h.coefficientOffset);
-      final a = SpectralCodec.summary(prefix);
-      final b = SpectralCodec.summary(blob);
+      final a = SampleCodec.summary(prefix);
+      final b = SampleCodec.summary(blob);
       expect(a.length, b.length);
       for (var i = 0; i < a.length; i++) {
         expect(a[i].cellSeconds, b[i].cellSeconds);
@@ -385,19 +385,19 @@ void main() {
   group('LOD: coarse decode (low-order coefficients first)', () {
     test('never invents a value in a gap, at any order', () {
       final s = fixtureDay()['hr']!;
-      final blob = SpectralCodec.encode('hr', s).blob;
+      final blob = SampleCodec.encode('hr', s).blob;
       for (final order in [0, 1, 4, 16, 10000]) {
-        _expectMaskExact(s, SpectralCodec.decodeCoarse(blob, maxOrder: order));
+        _expectMaskExact(s, SampleCodec.decodeCoarse(blob, maxOrder: order));
       }
     });
 
     test('order 0 is piecewise constant per segment and sits at the segment '
         'mean', () {
       final s = fixtureDay()['hr']!;
-      final blob = SpectralCodec.encode('hr', s).blob;
-      final c = SpectralCodec.decodeCoarse(blob, maxOrder: 0);
-      final q = SpectralCodec.specs['hr']!.quantum;
-      for (final g in SpectralCodec.segments(blob)) {
+      final blob = SampleCodec.encode('hr', s).blob;
+      final c = SampleCodec.decodeCoarse(blob, maxOrder: 0);
+      final q = SampleCodec.specs['hr']!.quantum;
+      for (final g in SampleCodec.segments(blob)) {
         final seg = c.sublist(g.start, g.start + g.length);
         expect(seg.toSet().length, 1, reason: 'constant in segment @${g.start}');
         final truthMean = s.sublist(g.start, g.start + g.length)
@@ -409,16 +409,16 @@ void main() {
     test('error never grows as more orders are read; enough orders equal the '
         'full decode', () {
       final s = fixtureDay()['hr']!;
-      final blob = SpectralCodec.encode('hr', s).blob;
-      final q = SpectralCodec.specs['hr']!.quantum;
+      final blob = SampleCodec.encode('hr', s).blob;
+      final q = SampleCodec.specs['hr']!.quantum;
       var prev = double.infinity;
       for (final order in [0, 2, 8, 32, 10000]) {
-        final e = errorOf(s, SpectralCodec.decodeCoarse(blob, maxOrder: order));
+        final e = errorOf(s, SampleCodec.decodeCoarse(blob, maxOrder: order));
         expect(e.rms, lessThanOrEqualTo(prev + q), reason: 'order $order');
         prev = e.rms;
       }
-      expect(SpectralCodec.decodeCoarse(blob, maxOrder: 10000),
-          SpectralCodec.decode(blob));
+      expect(SampleCodec.decodeCoarse(blob, maxOrder: 10000),
+          SampleCodec.decode(blob));
     });
   });
 
@@ -426,12 +426,12 @@ void main() {
     test('rmsErr / maxErr / bytes equal what an independent decode measures',
         () {
       final s = fixtureDay()['skin_temp_c']!;
-      final e = SpectralCodec.encode('skin_temp_c', s);
+      final e = SampleCodec.encode('skin_temp_c', s);
       final m = errorOf(s, _decode(e));
       expect(e.stats.rmsErr, closeTo(m.rms, 1e-9));
       expect(e.stats.maxErr, closeTo(m.max, 1e-9));
       expect(e.stats.bytes, e.blob.length);
-      expect(e.stats.segmentCount, SpectralCodec.segments(e.blob).length);
+      expect(e.stats.segmentCount, SampleCodec.segments(e.blob).length);
       expect(e.stats.summaryBytes, greaterThan(0));
       expect(e.stats.summaryBytes, lessThan(e.stats.bytes));
     });
@@ -440,19 +440,19 @@ void main() {
   group('determinism and isolates', () {
     test('same input, byte-identical blob, twice', () {
       final s = fixtureDay()['hr']!;
-      final a = SpectralCodec.encode('hr', s).blob;
-      final b = SpectralCodec.encode('hr', List<double?>.of(s)).blob;
+      final a = SampleCodec.encode('hr', s).blob;
+      final b = SampleCodec.encode('hr', List<double?>.of(s)).blob;
       expect(a, b);
     });
 
     test('encode on a worker isolate gives the same bytes and decode agrees',
         () async {
       final s = fixtureDay()['ax']!;
-      final here = SpectralCodec.encode('ax', s).blob;
-      final there = await Isolate.run(() => SpectralCodec.encode('ax', s).blob);
+      final here = SampleCodec.encode('ax', s).blob;
+      final there = await Isolate.run(() => SampleCodec.encode('ax', s).blob);
       expect(there, here);
-      final d = await Isolate.run(() => SpectralCodec.decode(here));
-      expect(d, SpectralCodec.decode(here));
+      final d = await Isolate.run(() => SampleCodec.decode(here));
+      expect(d, SampleCodec.decode(here));
     });
   });
 
@@ -460,15 +460,15 @@ void main() {
     test('carries codec version, block size, quantizer step, signal id, length '
         'and valid count', () {
       final s = fixtureDay()['ay']!;
-      final blob = SpectralCodec.encode('ay', s).blob;
-      final h = SpectralCodec.readHeader(blob);
-      final spec = SpectralCodec.specs['ay']!;
-      expect(h.codecVersion, SpectralCodec.codecVersion);
-      expect(h.codecVersion, 1);
+      final blob = SampleCodec.encode('ay', s).blob;
+      final h = SampleCodec.readHeader(blob);
+      final spec = SampleCodec.specs['ay']!;
+      expect(h.codecVersion, SampleCodec.codecVersion);
+      expect(h.codecVersion, 2);
       expect(h.signal, 'ay');
       expect(h.blockSeconds, spec.blockSeconds);
-      expect(h.mode, SpectralMode.adaptive);
-      expect(h.segmentCount, SpectralCodec.segments(blob).length);
+      expect(h.mode, SampleMode.adaptive);
+      expect(h.segmentCount, SampleCodec.segments(blob).length);
       expect(h.coefficientOffset, greaterThan(0));
       expect(h.coefficientOffset, lessThan(blob.length));
       expect(h.quantum, spec.quantum);
@@ -477,7 +477,7 @@ void main() {
     });
 
     test('an unknown codec version is refused, never guessed at', () {
-      final blob = SpectralCodec.encode('hr', [70.0, 71.0, 72.0]).blob;
+      final blob = SampleCodec.encode('hr', [70.0, 71.0, 72.0]).blob;
       // Find the version by comparing against a re-stamped copy: bump every
       // byte in the first 8 in turn until readHeader reports a different
       // version, then assert decode refuses that blob.
@@ -485,24 +485,24 @@ void main() {
       for (var i = 0; i < 8 && stamped == null; i++) {
         final c = Uint8List.fromList(blob)..[i] = blob[i] + 1;
         try {
-          if (SpectralCodec.readHeader(c).codecVersion != 1) stamped = c;
+          if (SampleCodec.readHeader(c).codecVersion != SampleCodec.codecVersion) stamped = c;
         } on FormatException {
           // that byte was the magic, keep looking
         }
       }
       expect(stamped, isNotNull, reason: 'a version field in the first 8 bytes');
-      expect(() => SpectralCodec.decode(stamped!),
+      expect(() => SampleCodec.decode(stamped!),
           throwsA(isA<FormatException>()));
     });
 
     test('bad magic and a truncated body are FormatException', () {
-      final blob = SpectralCodec.encode('hr', fixtureDay()['hr']!).blob;
-      expect(() => SpectralCodec.decode(Uint8List.fromList([1, 2, 3])),
+      final blob = SampleCodec.encode('hr', fixtureDay()['hr']!).blob;
+      expect(() => SampleCodec.decode(Uint8List.fromList([1, 2, 3])),
           throwsA(isA<FormatException>()));
-      expect(() => SpectralCodec.decode(Uint8List(0)),
+      expect(() => SampleCodec.decode(Uint8List(0)),
           throwsA(isA<FormatException>()));
       expect(
-          () => SpectralCodec.decode(
+          () => SampleCodec.decode(
               Uint8List.sublistView(blob, 0, blob.length ~/ 2)),
           throwsA(isA<FormatException>()));
     });
@@ -510,14 +510,14 @@ void main() {
 
   group('refusals', () {
     test('an unknown signal id is an ArgumentError', () {
-      expect(() => SpectralCodec.encode('step_count', [1.0, 2.0]),
+      expect(() => SampleCodec.encode('step_count', [1.0, 2.0]),
           throwsArgumentError);
     });
 
     test('NaN and infinity are not "absent": refused, not stored', () {
-      expect(() => SpectralCodec.encode('hr', [70.0, double.nan]),
+      expect(() => SampleCodec.encode('hr', [70.0, double.nan]),
           throwsArgumentError);
-      expect(() => SpectralCodec.encode('hr', [70.0, double.infinity]),
+      expect(() => SampleCodec.encode('hr', [70.0, double.infinity]),
           throwsArgumentError);
     });
   });
@@ -530,7 +530,7 @@ void main() {
     const pyramidBudget = 8 * 1024; // per signal-day, included in the above
 
     test('a full gapped HR day fits $hrBudget bytes', () {
-      final e = SpectralCodec.encode('hr', fixtureDay()['hr']!);
+      final e = SampleCodec.encode('hr', fixtureDay()['hr']!);
       printOnFailure('hr day: ${e.stats.bytes} B, coeffs ${e.stats.coefficientCount}');
       expect(e.stats.bytes, lessThanOrEqualTo(hrBudget));
     });
@@ -538,7 +538,7 @@ void main() {
     test('the summary pyramid costs at most $pyramidBudget bytes per signal '
         'per day', () {
       fixtureDay().forEach((sig, s) {
-        final b = SpectralCodec.encode(sig, s).stats.summaryBytes;
+        final b = SampleCodec.encode(sig, s).stats.summaryBytes;
         printOnFailure('$sig pyramid: $b B');
         expect(b, lessThanOrEqualTo(pyramidBudget), reason: sig);
       });
@@ -547,7 +547,7 @@ void main() {
     test('all five signals of a day fit $dayBudget bytes together', () {
       var total = 0;
       fixtureDay().forEach((sig, s) {
-        final b = SpectralCodec.encode(sig, s).stats.bytes;
+        final b = SampleCodec.encode(sig, s).stats.bytes;
         printOnFailure('$sig: $b B');
         total += b;
       });

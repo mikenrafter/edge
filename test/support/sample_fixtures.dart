@@ -1,4 +1,4 @@
-// Synthetic 1 Hz day signals and the two comparison baselines for the spectral
+// Synthetic 1 Hz day signals and the two comparison baselines for the sample
 // archive experiment. SYNTHETIC: no repo fixture holds a real day of 1 Hz HR,
 // accel or skin temperature (test/fixtures/two_device_day.json is a few rows;
 // day_stream_fixture.dart's synthAccel is white noise while moving). Every
@@ -9,7 +9,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
-import 'package:openstrap_edge/data/spectral_codec.dart';
+import 'package:openstrap_edge/data/sample_codec.dart';
 
 import 'day_stream_fixture.dart' show synthAccel;
 
@@ -240,12 +240,12 @@ int losslessBytes(List<double?> v, double quantum) {
 }
 
 String fmtRow(String signal, int nValid, int lossless, int nth, int nthBytes,
-    SpectralStats s) {
+    SampleStats s) {
   String r(num a) => a.toStringAsFixed(1);
   return '${signal.padRight(12)} valid=${nValid.toString().padLeft(6)}  '
       'lossless=${lossless.toString().padLeft(7)}B  '
       'every-${nth.toString().padRight(3)}=${nthBytes.toString().padLeft(7)}B  '
-      'spectral=${s.bytes.toString().padLeft(7)}B  '
+      'sample=${s.bytes.toString().padLeft(7)}B  '
       'ratio-vs-lossless=${r(lossless / s.bytes)}x  '
       'rms=${s.rmsErr.toStringAsFixed(3)} max=${s.maxErr.toStringAsFixed(3)}  '
       'coeffs=${s.coefficientCount}';

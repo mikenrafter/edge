@@ -38,8 +38,9 @@ import '../gestures/symptom_description.dart';
 import 'assumed_water.dart';
 import 'day_label.dart';
 import 'journal_fields.dart';
-import 'spectral_codec.dart' show SpectralCodec;
-import 'spectral_import.dart' show importSpectralPart;
+import 'sample_codec.dart' show SampleCodec;
+import 'sample_import.dart' show importSamplePart;
+import 'sample_lock.dart' show SampleLock;
 import 'live_coverage_policy.dart';
 import 'med_store.dart';
 import 'moment_label.dart';
@@ -1234,24 +1235,24 @@ class LocalDb {
         if (oldV < 66) {
           // One additive side table, no backfill (no row means "nothing was
           // archived"), cheap under iOS's CPU watchdog (invariant 11): the
-          // lossy spectral archive of the 1 Hz signals. No kAlgoVersion bump:
+          // lossy sample archive of the 1 Hz signals. No kAlgoVersion bump:
           // nothing derived reads it (a reconstruction is an approximation,
           // invariant 3). _repairOpenSchema re-runs it on every open.
-          await _createSpectralArchive(db);
+          await _createSampleArchive(db);
         }
         if (oldV < 67) {
           // The 66 table merged devices and held one blob per signal-day.
-          // _createSpectralArchive rebuilds an old-shape table additively
+          // _createSampleArchive rebuilds an old-shape table additively
           // (rows keep their bytes: primary device, part 0) and
-          // _createSpectralStatus adds the per-day outcome ledger.
-          await _createSpectralArchive(db);
-          await _createSpectralStatus(db);
+          // _createSampleStatus adds the per-day outcome ledger.
+          await _createSampleArchive(db);
+          await _createSampleStatus(db);
         }
         if (oldV < 68) {
           // origin_sec / n_slots / slot_sec: a part's absolute origin, so
-          // coverage reconciles across time zones. _createSpectralArchive adds
+          // coverage reconciles across time zones. _createSampleArchive adds
           // the columns and gives legacy parts their origin (see there).
-          await _createSpectralArchive(db);
+          await _createSampleArchive(db);
         }
       },
       onOpen: (db) async {
@@ -1355,8 +1356,8 @@ class LocalDb {
     await _createMomentLabel(db);
     await _createAssumedWater(db);
     await _createSymptomEntry(db);
-    await _createSpectralArchive(db);
-    await _createSpectralStatus(db);
+    await _createSampleArchive(db);
+    await _createSampleStatus(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -9295,8 +9296,8 @@ class LocalDb {
         await _createComputeState(db);
         await _createPrimitiveArtifacts(db);
         await _createLiveCoverage(db);
-        await _createSpectralArchive(db);
-        await _createSpectralStatus(db);
+        await _createSampleArchive(db);
+        await _createSampleStatus(db);
       },
     );
 
@@ -9815,7 +9816,7 @@ class LocalDb {
       throw const FileSystemException('Backup file not found');
     }
     if (await sniffFile(path) != ImportContainer.gzip) {
-      return _mergeFromDbFile(path);
+      return SampleLock.run(() => _mergeFromDbFile(path));
     }
     final work = await Directory.systemTemp.createTemp('openstrap_restore_');
     try {
@@ -9826,7 +9827,7 @@ class LocalDb {
           'That file is not an OpenStrap database.',
         );
       }
-      return await _mergeFromDbFile(inflated);
+      return await SampleLock.run(() => _mergeFromDbFile(inflated));
     } finally {
       // The inflated copy is a full second copy of the database, so it goes
       // whether the import worked or not.
@@ -10177,8 +10178,8 @@ class LocalDb {
                 if (t == 'spectral_archive') {
                   // Never REPLACE: part numbers are local allocation order, so
                   // a matching key says nothing about matching bytes. Reconcile
-                  // by absolute coverage (spectral_import.dart).
-                  if (await importSpectralPart(txn, row)) copied++;
+                  // by absolute coverage (sample_import.dart).
+                  if (await importSamplePart(txn, row)) copied++;
                   continue;
                 }
                 batch.insert(
@@ -11652,22 +11653,28 @@ class LocalDb {
         'PRIMARY KEY (date, at_min))',
       );
 
-  /// `spectral_archive`: error-bounded block-DCT blobs of the 1 Hz
-  /// `decoded_onehz` signals, written by `SpectralArchiver` immediately BEFORE
+  /// `spectral_archive`: the sample archive - error-bounded blobs of the 1 Hz
+  /// `decoded_onehz` signals (hr and skin temperature quantized to a step, the
+  /// accelerometer pyramid-only by default; codec version 1 blobs are the old
+  /// lossy DCT and still read). The table keeps its original name, `spectral_
+  /// archive` and `spectral_archive_status`, because renaming a table is a
+  /// migration this experiment does not need; every Dart symbol says "sample
+  /// archive". Written by `SampleArchiver` immediately BEFORE
   /// the raw prune and never pruned. Keyed per (local day, DEVICE, signal,
   /// codec version, PART): devices are never merged (the live table is keyed by
   /// device_id too), and a day's archive is a set of append-only PARTS with
   /// disjoint coverage, so a later pass adds the slots that arrived since
   /// without ever re-encoding (and thereby losing) what an earlier part held.
-  /// `rms_err` / `max_err` are the MEASURED reconstruction error of that part,
+  /// `rms_err` / `max_err` are the reconstruction error of that part (rms
+  /// measured; max the exact bound, step / 2 for a quantized part),
   /// `n_valid` the count of real samples in it. Read only by
-  /// `lib/data/spectral_archive.dart` - never by derivation or the coach.
+  /// `lib/data/sample_archive.dart` - never by derivation or the coach.
   ///
   /// Schema 66 created it without `device_id` / `part`; an old-shape table is
   /// rebuilt in place (rows keep their bytes: primary device, part 0).
   /// Idempotent, and a crash between the rename and the copy self-heals on the
   /// next open.
-  static Future<void> _createSpectralArchive(Database db) async {
+  static Future<void> _createSampleArchive(Database db) async {
     const old = '_spectral_archive_v66';
     final have = await _columnsOf(db, 'spectral_archive');
     if (have.isNotEmpty && !have.contains('device_id')) {
@@ -11717,7 +11724,7 @@ class LocalDb {
       final day = r['day_id'] as String;
       var n = localDayLengthSec(day) ?? 86400;
       try {
-        n = SpectralCodec.readHeader(
+        n = SampleCodec.readHeader(
                 Uint8List.fromList((r['blob'] as List).cast<int>()))
             .length;
       } catch (_) {
@@ -11735,7 +11742,7 @@ class LocalDb {
   /// (local day, device): ok | empty (rows existed, no signal had a valid
   /// sample) | failed (with a reason). A day with no decoded rows has no row at
   /// all, so a failed archive is distinguishable from absent input.
-  static Future<void> _createSpectralStatus(Database db) => db.execute(
+  static Future<void> _createSampleStatus(Database db) => db.execute(
         'CREATE TABLE IF NOT EXISTS spectral_archive_status ('
         "day_id TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', "
         'outcome TEXT NOT NULL, reason TEXT, updated_at INTEGER NOT NULL, '
@@ -12873,7 +12880,7 @@ class LocalDb {
   /// The sum of `input_rev` over every 15-minute bucket at or below the one
   /// holding [cutoffSec]: it moves whenever a `decoded_onehz` / `decoded_rr`
   /// row at or before the cutoff is inserted, replaced or deleted (the
-  /// triggers in [_createInputRev]). Read before the spectral archive pass and
+  /// triggers in [_createInputRev]). Read before the sample archive pass and
   /// handed to [pruneDecodedBeforeRecTs] as `expectedRevSum`, it proves that
   /// nothing landed behind the archive between its read and the delete.
   static Future<int> decodedRevSumBefore(int cutoffSec) async {

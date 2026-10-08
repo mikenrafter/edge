@@ -1,10 +1,10 @@
 // Accelerometer archive options (RED): the owner narrowed the lossy DCT to hr
 // and skin temperature. ax/ay/az get either
-//   (a) SpectralMode.losslessAtQuantum - delta + deflate, exact relative to the
+//   (a) SampleMode.losslessAtQuantum - delta + deflate, exact relative to the
 //       0.004 g quantum recorded in the header, or
-//   (b) SpectralMode.pyramidOnly - the validity mask and the TRUE summary
+//   (b) SampleMode.pyramidOnly - the validity mask and the TRUE summary
 //       pyramid (count/min/mean/max per level), no samples at all,
-// behind a per-signal choice (SpectralArchiver.defaultModes / modes: param).
+// behind a per-signal choice (SampleArchiver.defaultModes / modes: param).
 // All round-2 guarantees (parts, per-device, coverage union) must keep holding.
 import 'dart:isolate';
 import 'dart:math' as math;
@@ -16,20 +16,20 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
-import 'package:openstrap_edge/data/spectral_archive.dart';
-import 'package:openstrap_edge/data/spectral_codec.dart';
-import 'package:openstrap_edge/data/spectral_progressive.dart';
+import 'package:openstrap_edge/data/sample_archive.dart';
+import 'package:openstrap_edge/data/sample_codec.dart';
+import 'package:openstrap_edge/data/sample_progressive.dart';
 
-import '../support/spectral_fixtures.dart';
+import '../support/sample_fixtures.dart';
 
 const _q = 0.004;
-const _lossless = SpectralMode.losslessAtQuantum;
-const _pyr = SpectralMode.pyramidOnly;
+const _lossless = SampleMode.losslessAtQuantum;
+const _pyr = SampleMode.pyramidOnly;
 const _day1 = '2026-10-03';
 const _now = 1791000000;
 
-Uint8List _enc(String s, List<double?> v, SpectralMode m) =>
-    SpectralCodec.encode(s, v, mode: m).blob;
+Uint8List _enc(String s, List<double?> v, SampleMode m) =>
+    SampleCodec.encode(s, v, mode: m).blob;
 
 double _snap(double v) => (v / _q).round() * _q;
 
@@ -47,8 +47,8 @@ void main() {
         'header names the mode and the quantum', () {
       for (final axis in [0, 1, 2]) {
         final s = withGaps(correlatedAccel(axis), 30 + axis);
-        final e = SpectralCodec.encode('ax', s, mode: _lossless);
-        final d = SpectralCodec.decode(e.blob);
+        final e = SampleCodec.encode('ax', s, mode: _lossless);
+        final d = SampleCodec.decode(e.blob);
         expect(d.length, s.length);
         for (var i = 0; i < s.length; i++) {
           if (s[i] == null) {
@@ -57,11 +57,11 @@ void main() {
             expect(d[i], _snap(s[i]!), reason: 'slot $i');
           }
         }
-        final h = SpectralCodec.readHeader(e.blob);
+        final h = SampleCodec.readHeader(e.blob);
         expect(h.mode, _lossless);
         expect(h.quantum, _q);
         expect(h.segmentCount, 0);
-        expect(SpectralCodec.segments(e.blob), isEmpty);
+        expect(SampleCodec.segments(e.blob), isEmpty);
         expect(e.stats.coefficientCount, 0);
         expect(e.stats.maxErr, lessThanOrEqualTo(_q / 2 + 1e-12));
       }
@@ -79,7 +79,7 @@ void main() {
         List<double?>.generate(90000, (t) => t.isEven ? 1.0 : null),
       ];
       for (final s in cases) {
-        final d = SpectralCodec.decode(_enc('ax', s, _lossless));
+        final d = SampleCodec.decode(_enc('ax', s, _lossless));
         expect(d.length, s.length);
         for (var i = 0; i < s.length; i++) {
           expect(d[i], s[i] == null ? isNull : _snap(s[i]!), reason: 'slot $i');
@@ -97,7 +97,7 @@ void main() {
     test('costs no more than the plain delta+deflate baseline plus its mask '
         'and pyramid (the reference figure for "accel lossless")', () {
       final s = withGaps(correlatedAccel(0), 31);
-      final e = SpectralCodec.encode('ax', s, mode: _lossless);
+      final e = SampleCodec.encode('ax', s, mode: _lossless);
       final payload = e.stats.bytes - e.stats.summaryBytes;
       expect(payload, lessThanOrEqualTo((losslessBytes(s, _q) * 1.05).ceil() + 64));
     });
@@ -105,29 +105,29 @@ void main() {
     test('the pyramid is the same raw pyramid the lossy codec stores', () {
       final s = withGaps(correlatedAccel(2), 9);
       List<(int, double?, double?, double?)> flat(Uint8List b) => [
-            for (final l in SpectralCodec.summary(b))
+            for (final l in SampleCodec.summary(b))
               for (final c in l.cells) (c.count, c.min, c.mean, c.max)
           ];
       expect(flat(_enc('az', s, _lossless)),
-          flat(_enc('az', s, SpectralMode.adaptive)));
+          flat(_enc('az', s, SampleMode.adaptive)));
     });
 
     test('decodeCoarse and progressive degrade to the one exact step', () {
       final blob = _enc('ax', withGaps(correlatedAccel(0), 3), _lossless);
-      expect(SpectralCodec.decodeCoarse(blob, maxOrder: 0),
-          SpectralCodec.decode(blob));
-      final steps = SpectralCodec.progressive(blob).toList();
+      expect(SampleCodec.decodeCoarse(blob, maxOrder: 0),
+          SampleCodec.decode(blob));
+      final steps = SampleCodec.progressive(blob).toList();
       expect(steps, hasLength(1));
       expect(steps.single.isFull, isTrue);
-      expect(steps.single.samples, SpectralCodec.decode(blob));
+      expect(steps.single.samples, SampleCodec.decode(blob));
     });
 
     test('truncated or corrupted lossless blobs are FormatException', () {
       final blob = _enc('ax', withGaps(correlatedAccel(0), 3), _lossless);
-      expect(() => SpectralCodec.decode(Uint8List.sublistView(blob, 0, blob.length ~/ 2)),
+      expect(() => SampleCodec.decode(Uint8List.sublistView(blob, 0, blob.length ~/ 2)),
           throwsA(isA<FormatException>()));
       final bad = Uint8List.fromList(blob)..[blob.length - 3] ^= 0xff;
-      expect(() => SpectralCodec.decode(bad), throwsA(anything));
+      expect(() => SampleCodec.decode(bad), throwsA(anything));
     });
   });
 
@@ -136,16 +136,16 @@ void main() {
         'header names the mode', () {
       final s = withGaps(correlatedAccel(0), 31);
       final blob = _enc('ax', s, _pyr);
-      expect(SpectralCodec.hasSamples(blob), isFalse);
-      expect(SpectralCodec.hasSamples(_enc('ax', s, _lossless)), isTrue);
-      expect(SpectralCodec.hasSamples(_enc('hr', [70.0], SpectralMode.adaptive)),
+      expect(SampleCodec.hasSamples(blob), isFalse);
+      expect(SampleCodec.hasSamples(_enc('ax', s, _lossless)), isTrue);
+      expect(SampleCodec.hasSamples(_enc('hr', [70.0], SampleMode.adaptive)),
           isTrue);
-      expect(() => SpectralCodec.decode(blob), throwsA(isA<FormatException>()));
-      expect(() => SpectralCodec.decodeCoarse(blob, maxOrder: 3),
+      expect(() => SampleCodec.decode(blob), throwsA(isA<FormatException>()));
+      expect(() => SampleCodec.decodeCoarse(blob, maxOrder: 3),
           throwsA(isA<FormatException>()));
-      expect(SpectralCodec.readHeader(blob).mode, _pyr);
-      expect(SpectralCodec.segments(blob), isEmpty);
-      final runs = SpectralCodec.validRuns(blob);
+      expect(SampleCodec.readHeader(blob).mode, _pyr);
+      expect(SampleCodec.segments(blob), isEmpty);
+      final runs = SampleCodec.validRuns(blob);
       final covered = List<bool>.filled(s.length, false);
       for (final (a, b) in runs) {
         for (var i = a; i < b; i++) {
@@ -160,7 +160,7 @@ void main() {
     test('the pyramid is TRUE raw count/min/mean/max (min/max exact at the '
         'quantum, mean within q/2), gaps count 0 with no stats', () {
       final s = withGaps(correlatedAccel(1), 12);
-      final lv = SpectralCodec.summary(_enc('ay', s, _pyr));
+      final lv = SampleCodec.summary(_enc('ay', s, _pyr));
       expect(lv.map((l) => l.cellSeconds), [60, 900, 3600, s.length]);
       for (final l in lv) {
         for (var i = 0; i < l.cells.length; i++) {
@@ -182,8 +182,8 @@ void main() {
 
     test('tiny: far smaller than the lossless blob, and bounded', () {
       final s = withGaps(correlatedAccel(0), 31);
-      final p = SpectralCodec.encode('ax', s, mode: _pyr);
-      final l = SpectralCodec.encode('ax', s, mode: _lossless);
+      final p = SampleCodec.encode('ax', s, mode: _pyr);
+      final l = SampleCodec.encode('ax', s, mode: _lossless);
       expect(p.stats.bytes, lessThan(l.stats.bytes ~/ 5));
       expect(p.stats.bytes, lessThanOrEqualTo(8 * 1024));
       expect(p.stats.coefficientCount, 0);
@@ -195,25 +195,25 @@ void main() {
     test('all-null and empty inputs encode', () {
       for (final n in [0, 1, 500]) {
         final blob = _enc('ax', List<double?>.filled(n, null), _pyr);
-        expect(SpectralCodec.readHeader(blob).nValid, 0);
-        expect(SpectralCodec.hasSamples(blob), isFalse);
+        expect(SampleCodec.readHeader(blob).nValid, 0);
+        expect(SampleCodec.hasSamples(blob), isFalse);
       }
     });
   });
 
-  group('SpectralDetail: lossless parts carry no approximation label', () {
+  group('SampleDetail: lossless parts carry no approximation label', () {
     test('exact vs approximate', () {
       final blob = _enc('ax', withGaps(correlatedAccel(0), 3), _lossless);
-      final full = SpectralCodec.progressive(blob).last;
-      final exact = SpectralDetail.of(full, exact: true);
+      final full = SampleCodec.progressive(blob).last;
+      final exact = SampleDetail.of(full, exact: true);
       expect(exact.isApproximation, isFalse);
       expect(exact.labelKey, isNull);
       expect(exact.isLoadingDetail, isFalse);
       final i = full.samples.indexWhere((e) => e != null);
       expect(exact.readout(i), full.samples[i]);
-      final lossy = SpectralDetail.of(full);
+      final lossy = SampleDetail.of(full);
       expect(lossy.isApproximation, isTrue);
-      expect(lossy.labelKey, 'spectralApproximation');
+      expect(lossy.labelKey, 'sampleArchiveApproximation');
     });
   });
 
@@ -245,83 +245,83 @@ void main() {
       await b.commit(noResult: true);
     }
 
-    test('defaults: hr and skin temperature are lossy DCT; the three accel '
+    test('defaults: hr and skin temperature are quantized; the three accel '
         'axes share one non-DCT mode', () {
-      expect(SpectralArchiver.defaultModes['hr'], SpectralMode.adaptive);
-      expect(SpectralArchiver.defaultModes['skin_temp_c'], SpectralMode.adaptive);
+      expect(SampleArchiver.defaultModes['hr'], SampleMode.quantized);
+      expect(SampleArchiver.defaultModes['skin_temp_c'], SampleMode.quantized);
       final a = {
-        for (final s in ['ax', 'ay', 'az']) SpectralArchiver.defaultModes[s]
+        for (final s in ['ax', 'ay', 'az']) SampleArchiver.defaultModes[s]
       };
       expect(a, hasLength(1));
       // Recommended default from the real-data numbers (see the report):
       // pyramid-only costs ~15 KB/day for all three axes against ~170 KB/day
       // lossless, and the samples feed nothing.
       expect(a.single, _pyr);
-      expect(SpectralArchiver.defaultModes.keys.toSet(),
-          SpectralArchiver.signals.toSet());
+      expect(SampleArchiver.defaultModes.keys.toSet(),
+          SampleArchiver.signals.toSet());
     });
 
     test('lossless accel: parts are exact, isExact, no approximation; hr '
         'stays lossy and approximate', () async {
-      await freshDb('spectral_accel1.db');
+      await freshDb('sample_accel1.db');
       await seed(0, 400);
-      await SpectralArchiver.archiveDay(_day1,
-          nowSec: _now, modes: {...SpectralArchiver.defaultModes, 'ax': _lossless, 'ay': _lossless, 'az': _lossless});
-      final rows = await SpectralArchiver.rows(_day1);
+      await SampleArchiver.archiveDay(_day1,
+          nowSec: _now, modes: {...SampleArchiver.defaultModes, 'ax': _lossless, 'ay': _lossless, 'az': _lossless});
+      final rows = await SampleArchiver.rows(_day1);
       expect(rows.where((r) => r.signal == 'ax').single.mode, _lossless);
-      expect(rows.where((r) => r.signal == 'hr').single.mode, SpectralMode.adaptive);
-      final r = (await SpectralArchiver.reconstruct(_day1, 'ax'))!;
+      expect(rows.where((r) => r.signal == 'hr').single.mode, SampleMode.quantized);
+      final r = (await SampleArchiver.reconstruct(_day1, 'ax'))!;
       for (var i = 0; i < 400; i++) {
         expect(r[i], _snap(0.5 + (i % 25) * 0.004), reason: 'slot $i');
       }
       expect(r[400], isNull);
-      expect(await SpectralArchiver.isExact(_day1, 'ax'), isTrue);
-      expect(await SpectralArchiver.isExact(_day1, 'hr'), isFalse);
+      expect(await SampleArchiver.isExact(_day1, 'ax'), isTrue);
+      expect(await SampleArchiver.isExact(_day1, 'hr'), isFalse);
       expect(rows.firstWhere((x) => x.signal == 'ax').maxErr,
           lessThanOrEqualTo(_q / 2 + 1e-12));
     });
 
     test('pyramid-only accel: no samples (reconstruct null, not exact), true '
         'summary present, coverage still dedupes the next pass', () async {
-      await freshDb('spectral_accel2.db');
+      await freshDb('sample_accel2.db');
       await seed(0, 600);
-      final modes = {...SpectralArchiver.defaultModes, 'ax': _pyr, 'ay': _pyr, 'az': _pyr};
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now, modes: modes);
-      expect(await SpectralArchiver.reconstruct(_day1, 'ax'), isNull);
-      expect(await SpectralArchiver.isExact(_day1, 'ax'), isFalse);
-      final lv = (await SpectralArchiver.summary(_day1, 'ay'))!;
+      final modes = {...SampleArchiver.defaultModes, 'ax': _pyr, 'ay': _pyr, 'az': _pyr};
+      await SampleArchiver.archiveDay(_day1, nowSec: _now, modes: modes);
+      expect(await SampleArchiver.reconstruct(_day1, 'ax'), isNull);
+      expect(await SampleArchiver.isExact(_day1, 'ax'), isFalse);
+      final lv = (await SampleArchiver.summary(_day1, 'ay'))!;
       expect(lv.last.cells.single.count, 600);
       expect(lv.last.cells.single.min, closeTo(-0.25, _q));
-      final row = (await SpectralArchiver.rows(_day1)).firstWhere((r) => r.signal == 'ax');
+      final row = (await SampleArchiver.rows(_day1)).firstWhere((r) => r.signal == 'ax');
       expect(row.mode, _pyr);
       expect(row.rmsErr, 0);
       expect(row.maxErr, 0);
-      expect(await SpectralArchiver.archiveDay(_day1, nowSec: _now + 1, modes: modes), 0,
+      expect(await SampleArchiver.archiveDay(_day1, nowSec: _now + 1, modes: modes), 0,
           reason: 'nothing new anywhere: nothing written');
       await seed(600, 650);
-      expect(await SpectralArchiver.archiveDay(_day1, nowSec: _now + 2, modes: modes), 5,
+      expect(await SampleArchiver.archiveDay(_day1, nowSec: _now + 2, modes: modes), 5,
           reason: 'one new part per signal that has new slots');
-      final lv2 = (await SpectralArchiver.summary(_day1, 'ay'))!;
+      final lv2 = (await SampleArchiver.summary(_day1, 'ay'))!;
       expect(lv2.last.cells.single.count, 650);
-      expect((await SpectralArchiver.status(_day1)).single.outcome, 'ok');
+      expect((await SampleArchiver.status(_day1)).single.outcome, 'ok');
     });
 
     test('round-2 guarantees hold for lossless parts: partial prune then '
         'backfill loses no slot; devices stay separate', () async {
-      await freshDb('spectral_accel3.db');
-      final modes = {...SpectralArchiver.defaultModes, 'ax': _lossless};
+      await freshDb('sample_accel3.db');
+      final modes = {...SampleArchiver.defaultModes, 'ax': _lossless};
       await seed(0, 100);
       await seed(0, 100, device: 'oura-x', ax: 1.5, ramp: false);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now, modes: modes);
+      await SampleArchiver.archiveDay(_day1, nowSec: _now, modes: modes);
       final db = await LocalDb.instance;
       await db.delete('decoded_onehz', where: 'rec_ts < ?', whereArgs: [d1 + 50]);
       await seed(100, 151);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now + 1, modes: modes);
-      final r = (await SpectralArchiver.reconstruct(_day1, 'ax'))!;
+      await SampleArchiver.archiveDay(_day1, nowSec: _now + 1, modes: modes);
+      final r = (await SampleArchiver.reconstruct(_day1, 'ax'))!;
       for (var i = 0; i < 151; i++) {
         expect(r[i], _snap(0.5 + (i % 25) * 0.004), reason: 'slot $i');
       }
-      final o = (await SpectralArchiver.reconstruct(_day1, 'ax', deviceId: 'oura-x'))!;
+      final o = (await SampleArchiver.reconstruct(_day1, 'ax', deviceId: 'oura-x'))!;
       expect(o[10], _snap(1.5));
       expect(o[120], isNull);
     });
@@ -329,20 +329,20 @@ void main() {
     test('a signal whose mode changes between passes keeps both parts: a '
         'pyramid-only part is summary-only, the later lossless part has '
         'samples for ITS slots, the summary counts the union', () async {
-      await freshDb('spectral_accel4.db');
+      await freshDb('sample_accel4.db');
       await seed(0, 200);
-      await SpectralArchiver.archiveDay(_day1,
-          nowSec: _now, modes: {...SpectralArchiver.defaultModes, 'ax': _pyr});
+      await SampleArchiver.archiveDay(_day1,
+          nowSec: _now, modes: {...SampleArchiver.defaultModes, 'ax': _pyr});
       await seed(200, 260);
-      await SpectralArchiver.archiveDay(_day1,
+      await SampleArchiver.archiveDay(_day1,
           nowSec: _now + 1,
-          modes: {...SpectralArchiver.defaultModes, 'ax': _lossless});
-      final r = (await SpectralArchiver.reconstruct(_day1, 'ax'))!;
+          modes: {...SampleArchiver.defaultModes, 'ax': _lossless});
+      final r = (await SampleArchiver.reconstruct(_day1, 'ax'))!;
       expect(r[100], isNull, reason: 'the pyramid-only slots have no samples');
       expect(r[230], _snap(0.5 + (230 % 25) * 0.004));
-      expect((await SpectralArchiver.summary(_day1, 'ax'))!.last.cells.single.count,
+      expect((await SampleArchiver.summary(_day1, 'ax'))!.last.cells.single.count,
           260);
-      expect(await SpectralArchiver.isExact(_day1, 'ax'), isTrue,
+      expect(await SampleArchiver.isExact(_day1, 'ax'), isTrue,
           reason: 'every part that carries samples is lossless');
     });
   });

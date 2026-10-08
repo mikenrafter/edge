@@ -13076,12 +13076,12 @@
   "@assumedWaterRemove": {
     "description": "Follow-up list: remove an assumed glass"
   },
-  "spectralLoadingDetail": "Loading detail…",
-  "@spectralLoadingDetail": {
+  "sampleArchiveLoadingDetail": "Loading detail…",
+  "@sampleArchiveLoadingDetail": {
     "description": "Label on a long-range chart while its curve is still being refined from a coarse view to full detail; no precise value is shown until it disappears."
   },
-  "spectralApproximation": "Approximate (archived)",
-  "@spectralApproximation": {
-    "description": "Label kept on an archived long-range chart even at full detail: the curve is a reconstruction from a lossy archive, not a measurement."
+  "sampleArchiveApproximation": "Approximate (archived)",
+  "@sampleArchiveApproximation": {
+    "description": "Label kept on an archived long-range chart even at full detail: the curve is read back from an archive that stores rounded values, not a measurement."
   }
 }

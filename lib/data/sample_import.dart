@@ -1,4 +1,4 @@
-// spectral_import.dart - coverage bookkeeping shared by the archiver and the
+// sample_import.dart - coverage bookkeeping shared by the archiver and the
 // backup-restore path, and the coverage-aware import of one archive part.
 //
 // PARTS ARE POSITIONAL, ORIGINS ARE ABSOLUTE. A part's slots are seconds from
@@ -13,7 +13,7 @@
 //   * skipped when every second it holds is already covered (idempotent);
 //   * inserted verbatim under a FRESH local part number when none is;
 //   * carved otherwise: only the 60 s pyramid cells whose valid seconds are all
-//     uncovered come in (SpectralCodec.restrict), as a new part. Seconds in a
+//     uncovered come in (SampleCodec.restrict), as a new part. Seconds in a
 //     boundary cell that is only partly covered are not imported - the price of
 //     carving a coded blob without the raw.
 // The carve (a decode + re-encode) runs in a worker isolate; the reads and the
@@ -26,23 +26,22 @@ import 'dart:typed_data';
 
 import 'package:sqflite/sqflite.dart';
 
-import 'spectral_codec.dart';
-import 'spectral_zone.dart';
+import 'sample_codec.dart';
+import 'sample_zone.dart';
 
 /// Where the carve runs. [Isolate.run] in production; a test swaps it to
 /// record that the work is handed off.
-Future<R> Function<R>(FutureOr<R> Function()) spectralCarveRunner = Isolate.run;
+Future<R> Function<R>(FutureOr<R> Function()) sampleCarveRunner = Isolate.run;
 
-Uint8List spectralBytes(Object? v) =>
+Uint8List sampleBytes(Object? v) =>
     v is Uint8List ? v : Uint8List.fromList((v as List).cast<int>());
 
 /// Per signal, which seconds of [start, end) are already covered by archived
-/// parts of [device] (any day label), as a 0/1 mask indexed from [start].
-/// Unreadable parts are ignored.
-Future<Map<String, Uint8List>> spectralCoverage(
+/// parts of [device] (any day label, any readable codec version), as a 0/1 mask
+/// indexed from [start]. Unreadable parts are ignored.
+Future<Map<String, Uint8List>> sampleCoverage(
   DatabaseExecutor ex, {
   required String device,
-  required int version,
   required int start,
   required int end,
   String? signal,
@@ -52,14 +51,14 @@ Future<Map<String, Uint8List>> spectralCoverage(
   final rows = await ex.query(
     'spectral_archive',
     columns: const ['day_id', 'signal', 'blob', 'origin_sec'],
-    where: 'device_id = ? AND codec_version = ?'
+    where: 'device_id = ? AND codec_version IN '
+        '(${SampleCodec.readableVersions.join(',')})'
         '${signal == null ? '' : ' AND signal = ?'} '
         'AND ((origin_sec IS NOT NULL AND origin_sec < ? '
         'AND origin_sec + n_slots * slot_sec > ?) '
         'OR (origin_sec IS NULL AND day_id = ?))',
     whereArgs: [
       device,
-      version,
       ?signal,
       end,
       start,
@@ -68,11 +67,11 @@ Future<Map<String, Uint8List>> spectralCoverage(
   );
   for (final r in rows) {
     final o = (r['origin_sec'] as num?)?.toInt() ??
-        SpectralZone.current.startOf(r['day_id'] as String);
+        SampleZone.current.startOf(r['day_id'] as String);
     final mask = out.putIfAbsent(
         r['signal'] as String, () => Uint8List(end - start));
     try {
-      for (final (a, b) in SpectralCodec.validRuns(spectralBytes(r['blob']))) {
+      for (final (a, b) in SampleCodec.validRuns(sampleBytes(r['blob']))) {
         final lo = o + a < start ? start : o + a;
         final hi = o + b > end ? end : o + b;
         for (var t = lo; t < hi; t++) {
@@ -87,7 +86,7 @@ Future<Map<String, Uint8List>> spectralCoverage(
 }
 
 /// The next free local part number of a (day, device, signal, version) key.
-Future<int> spectralNextPart(DatabaseExecutor ex, String day, String device,
+Future<int> sampleNextPart(DatabaseExecutor ex, String day, String device,
     String signal, int version) async {
   final r = await ex.rawQuery(
       'SELECT MAX(part) AS m FROM spectral_archive WHERE day_id = ? '
@@ -98,28 +97,27 @@ Future<int> spectralNextPart(DatabaseExecutor ex, String day, String device,
 }
 
 /// Reconcile one incoming `spectral_archive` row with what [ex] holds. Returns
-/// true when a row was written.
-Future<bool> importSpectralPart(DatabaseExecutor ex, Map<String, Object?> row,
+/// true when a row was written. Run it INSIDE the transaction that writes: the
+/// coverage it reads and the part number it allocates (MAX + 1, plain INSERT)
+/// are then the ones the insert sees.
+Future<bool> importSamplePart(DatabaseExecutor ex, Map<String, Object?> row,
     {void Function(String)? log}) async {
   final day = row['day_id'] as String;
   final dev = (row['device_id'] as String?) ?? '';
   final sig = row['signal'] as String;
   final ver = (row['codec_version'] as num).toInt();
-  final blob = spectralBytes(row['blob']);
+  final blob = sampleBytes(row['blob']);
   final origin = (row['origin_sec'] as num?)?.toInt() ??
-      SpectralZone.current.startOf(day);
+      SampleZone.current.startOf(day);
+  final readable = SampleCodec.readableVersions.contains(ver);
 
-  late final SpectralHeader h;
+  late final SampleHeader h;
   late final List<(int, int)> runs;
   try {
-    h = SpectralCodec.readHeader(blob);
-    if (ver == SpectralCodec.codecVersion) {
-      runs = SpectralCodec.validRuns(blob);
-    } else {
-      runs = const [];
-    }
+    h = SampleCodec.readHeader(blob);
+    runs = readable ? SampleCodec.validRuns(blob) : const [];
   } on FormatException catch (e) {
-    log?.call('spectral import: unreadable part $day/$dev/$sig skipped: $e');
+    log?.call('sample import: unreadable part $day/$dev/$sig skipped: $e');
     return false;
   }
 
@@ -130,7 +128,7 @@ Future<bool> importSpectralPart(DatabaseExecutor ex, Map<String, Object?> row,
       'device_id': dev,
       'signal': sig,
       'codec_version': ver,
-      'part': await spectralNextPart(ex, day, dev, sig, ver),
+      'part': await sampleNextPart(ex, day, dev, sig, ver),
       'blob': b,
       'n_valid': nValid,
       'rms_err': rms,
@@ -144,16 +142,17 @@ Future<bool> importSpectralPart(DatabaseExecutor ex, Map<String, Object?> row,
   }
 
   double num0(String k) => (row[k] as num?)?.toDouble() ?? 0;
-  if (ver != SpectralCodec.codecVersion) {
-    // An opaque blob of another codec version: coverage cannot be read, so it
-    // is kept as its own part rather than guessed at.
+  if (!readable) {
+    // An opaque blob of a version this build cannot read: coverage cannot be
+    // read, so it is kept as its own part rather than guessed at - once. The
+    // same (device, signal, origin, bytes) arriving again is the same part.
+    if (await _held(ex, day, dev, sig, ver, origin, blob)) return false;
     return insert(blob, (row['n_valid'] as num?)?.toInt() ?? 0, num0('rms_err'),
         num0('max_err'), h.length);
   }
 
-  final cover = (await spectralCoverage(ex,
+  final cover = (await sampleCoverage(ex,
           device: dev,
-          version: ver,
           start: origin,
           end: origin + h.length,
           signal: sig,
@@ -174,7 +173,14 @@ Future<bool> importSpectralPart(DatabaseExecutor ex, Map<String, Object?> row,
   if (overlapped == 0) {
     return insert(blob, h.nValid, num0('rms_err'), num0('max_err'), h.length);
   }
-  final carved = await carveSpectralPart(blob, coveredMinute,
+  if (ver != SampleCodec.codecVersion) {
+    // An older generation (the lossy DCT) is read, never re-encoded: carving
+    // it would be a silent re-encode. Part-covered, so it is left out.
+    log?.call('sample import: version $ver part $day/$dev/$sig overlaps '
+        'archived seconds and cannot be carved; skipped');
+    return false;
+  }
+  final carved = await carveSamplePart(blob, coveredMinute,
       valid: valid,
       rmsErr: row['rms_err'],
       maxErr: row['max_err']);
@@ -183,9 +189,34 @@ Future<bool> importSpectralPart(DatabaseExecutor ex, Map<String, Object?> row,
       carved.blob, carved.nValid, carved.rmsErr, carved.maxErr, h.length);
 }
 
+/// Whether [ex] already holds a part with exactly these bytes for this device,
+/// signal, codec version and absolute origin.
+Future<bool> _held(DatabaseExecutor ex, String day, String dev, String sig,
+    int ver, int origin, Uint8List blob) async {
+  final rows = await ex.query('spectral_archive',
+      columns: const ['blob'],
+      where: 'device_id = ? AND signal = ? AND codec_version = ? AND '
+          '((origin_sec IS NOT NULL AND origin_sec = ?) OR '
+          '(origin_sec IS NULL AND day_id = ?))',
+      whereArgs: [dev, sig, ver, origin, day]);
+  for (final r in rows) {
+    final b = sampleBytes(r['blob']);
+    if (b.length != blob.length) continue;
+    var same = true;
+    for (var i = 0; i < b.length; i++) {
+      if (b[i] != blob[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return true;
+  }
+  return false;
+}
+
 /// A carved part, ready to insert. Plain data, so it crosses isolates.
-class SpectralCarved {
-  const SpectralCarved(this.blob, this.nValid, this.rmsErr, this.maxErr);
+class SampleCarved {
+  const SampleCarved(this.blob, this.nValid, this.rmsErr, this.maxErr);
   final Uint8List blob;
   final int nValid;
   final double rmsErr;
@@ -197,7 +228,7 @@ class SpectralCarved {
 /// sendable values only; the closure captures nothing else, so no database
 /// handle is dragged across. [valid] is the incoming part's valid-slot count
 /// and [rmsErr] / [maxErr] its stored bounds (absent reads as 0).
-Future<SpectralCarved?> carveSpectralPart(
+Future<SampleCarved?> carveSamplePart(
   Uint8List blob,
   Set<int> coveredMinutes, {
   required int valid,
@@ -206,7 +237,7 @@ Future<SpectralCarved?> carveSpectralPart(
 }) {
   final rms = (rmsErr as num?)?.toDouble() ?? 0;
   final max = (maxErr as num?)?.toDouble() ?? 0;
-  return spectralCarveRunner(() => carveSpectralPartSync(
+  return sampleCarveRunner(() => carveSamplePartSync(
       blob, coveredMinutes, valid: valid, rmsErr: rms, maxErr: max));
 }
 
@@ -220,19 +251,19 @@ Future<SpectralCarved?> carveSpectralPart(
 ///     whole's, so rms_subset <= rms_whole * sqrt(valid_whole / valid_kept),
 ///     and never above the max; plus this re-encode's rms (Minkowski). The
 ///     whole's rms is NOT copied: the subset can be rougher than the whole.
-SpectralCarved? carveSpectralPartSync(
+SampleCarved? carveSamplePartSync(
   Uint8List blob,
   Set<int> coveredMinutes, {
   required int valid,
   required double rmsErr,
   required double maxErr,
 }) {
-  final enc = SpectralCodec.restrict(blob, (m) => !coveredMinutes.contains(m));
+  final enc = SampleCodec.restrict(blob, (m) => !coveredMinutes.contains(m));
   if (enc == null) return null;
   final kept = enc.stats.nValid;
   final subsetRms = kept == 0 || valid == 0
       ? 0.0
       : math.min(rmsErr * math.sqrt(valid / kept), maxErr);
-  return SpectralCarved(enc.blob, kept, subsetRms + enc.stats.rmsErr,
+  return SampleCarved(enc.blob, kept, subsetRms + enc.stats.rmsErr,
       maxErr + enc.stats.maxErr);
 }

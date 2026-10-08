@@ -1,28 +1,43 @@
-// spectral_codec.dart — EXPERIMENT (branch explore/spectral-archive): a lossy,
-// error-bounded block-DCT codec for the 1 Hz `decoded_onehz` signals, so a long
-// record can outlive `rawRetentionDays` at much higher fidelity than the daily
-// scalars alone.
+// sample_codec.dart — EXPERIMENT (branch explore/spectral-archive): the codec
+// of the sample archive, an error-bounded store of the 1 Hz `decoded_onehz`
+// signals, so a long record can outlive `rawRetentionDays` at a fraction of its
+// size.
+//
+// CODEC VERSION 2 (current). hr and skin temperature use
+// [SampleMode.quantized]: each valid sample is rounded to a step (hr 2.8 bpm,
+// skin temperature 0.12 C), stored as zigzag deltas + deflate, gaps as the
+// validity mask's run lengths, the step in the header. The error is at most
+// step / 2 per sample EXACTLY (that is the part's max error); the RMS is
+// measured from the actual samples. The accelerometer is pyramid-only by
+// default (or lossless at 0.004 g). On real data the lossy DCT below bought
+// only about 10 % at equal accuracy (docs/sample-archive-figures.md,
+// "Like-for-like"), so it is no longer used by the archiver.
+//
+// CODEC VERSION 1 (read-only). Parts written before the swap are the lossy DCT
+// described next (adaptive / static modes) and keep decoding. They are never
+// re-encoded: a carve of a version-1 part is refused. The DCT encoders remain
+// as non-default modes for the experiment harness and the baselines.
 //
 // DESIGN (pinned by the tests, challenged in the report):
 //   * SEGMENT transform, not a whole-day Fourier series: DCT-II per segment (no
 //     periodicity assumption, so a step costs one segment, not the day). Two
 //     segmentations, both emitted by the same codec:
-//       - [SpectralMode.adaptive] (default): a segment grows in 1-minute
-//         extensions while it still fits BOTH [SpectralSignalSpec
+//       - [SampleMode.adaptive] (default): a segment grows in 1-minute
+//         extensions while it still fits BOTH [SampleSignalSpec
 //         .maxCoefficients] and the error allowance (maxRms / maxAbs); when the
 //         next minute would not fit, the segment closes and a new one starts.
 //         Segments are variable-length, never span a gap, and are multiples of
 //         60 s except the last segment of a valid run (a run's tail).
-//       - [SpectralMode.staticBlocks]: fixed [SpectralSignalSpec.blockSeconds]
+//       - [SampleMode.staticBlocks]: fixed [SampleSignalSpec.blockSeconds]
 //         (240 s) windows over the day index, clipped to valid runs. The
 //         comparison baseline for the experiment harness.
 //   * The encoder keeps the FEWEST coefficients per segment that still meet the
-//     signal's error bound ([SpectralSignalSpec.maxRms] / [maxAbs]). The DCT is
+//     signal's error bound ([SampleSignalSpec.maxRms] / [maxAbs]). The DCT is
 //     orthonormal, so the coefficients are chosen by the squared error each
 //     removes once quantized (a SPARSE choice, not a low-pass prefix: a signal
 //     with a fast periodic component costs a couple of coefficients, not all of
 //     them), the DC term always first. Coefficients are quantized with
-//     [SpectralSignalSpec.quantum]. The bound is a HARD
+//     [SampleSignalSpec.quantum]. The bound is a HARD
 //     contract: on a signal the transform cannot compress (white noise) the
 //     encoder spends bytes until the bound holds, it never returns a blob that
 //     violates it.
@@ -32,22 +47,22 @@
 //     reconstruction), gaps honoured (count 0 => no stats), readable without
 //     touching a coefficient; and (b) each segment's coefficients stored in
 //     ascending order, so a reader can stop at any order
-//     ([SpectralCodec.decodeCoarse], [SpectralCodec.progressive]). Layout:
+//     ([SampleCodec.decodeCoarse], [SampleCodec.progressive]). Layout:
 //     header, validity mask, pyramid, segment table (each section raw-deflate),
-//     then the coefficient section (see [SpectralHeader.coefficientOffset]);
+//     then the coefficient section (see [SampleHeader.coefficientOffset]);
 //     everything before the coefficients is readable from that prefix alone.
 //   * Two NON-DCT modes exist for signals that do not compress under a
 //     smoothness transform (the accelerometer axes, ~1.0x vs lossless on real
-//     data): [SpectralMode.losslessAtQuantum] (round to the header's quantum,
+//     data): [SampleMode.losslessAtQuantum] (round to the header's quantum,
 //     then first/second differences + deflate; EXACT relative to that quantum,
 //     max error quantum / 2, so a reader may show it without the approximation
-//     label) and [SpectralMode.pyramidOnly] (the validity mask and the true
+//     label) and [SampleMode.pyramidOnly] (the validity mask and the true
 //     summary pyramid, no samples; `decode` refuses it). Same container, same
 //     version: the mode byte of the header says which.
 //   * Absence is never interpolated or imputed (AGENTS invariant 3). Missing
 //     seconds are stored as a run-length validity mask; only valid runs are
 //     transformed; decode returns null exactly where the input had null.
-//   * The reported [SpectralStats] error is MEASURED by decoding, not estimated.
+//   * The reported [SampleStats] error is MEASURED by decoding, not estimated.
 //   * Deterministic (same input, same bytes, on any isolate) and PURE: no I/O
 //     beyond dart:typed_data and dart:io's in-memory zlib, no plugins, no
 //     clock. Safe on any isolate. The encoder's fit check and the decoder run
@@ -62,12 +77,13 @@ import 'dart:typed_data';
 
 /// One signal's tolerances. [quantum] is the coefficient quantizer step (stored
 /// in the blob header so a future build can still read an old blob).
-class SpectralSignalSpec {
-  const SpectralSignalSpec({
+class SampleSignalSpec {
+  const SampleSignalSpec({
     required this.id,
     required this.quantum,
     required this.maxRms,
     required this.maxAbs,
+    this.step,
     this.blockSeconds = 240,
     this.maxCoefficients = 64,
   });
@@ -81,6 +97,11 @@ class SpectralSignalSpec {
   /// Per-sample absolute error bound, in the signal's own unit.
   final double maxAbs;
 
+  /// [SampleMode.quantized] sample step: every sample is stored as
+  /// `round(v / step)`, so the error is at most step / 2 and its RMS about
+  /// step / sqrt(12). Null for a signal that has no such mode.
+  final double? step;
+
   /// Static-mode window; a multiple of 60.
   final int blockSeconds;
 
@@ -90,14 +111,14 @@ class SpectralSignalSpec {
   final int maxCoefficients;
 }
 
-enum SpectralMode {
+enum SampleMode {
   /// Lossy DCT, adaptive segments (the default).
   adaptive,
 
   /// Lossy DCT, fixed 240 s blocks (comparison baseline).
   staticBlocks,
 
-  /// LOSSLESS RELATIVE TO THE STORED QUANTUM (`SpectralHeader.quantum`): every
+  /// LOSSLESS RELATIVE TO THE STORED QUANTUM (`SampleHeader.quantum`): every
   /// valid sample is rounded to the nearest multiple of the quantum and stored
   /// exactly (first/second differences + deflate). The reconstruction error is
   /// at most quantum / 2 and the stored value is exactly `round(v / q) * q`.
@@ -106,12 +127,21 @@ enum SpectralMode {
   /// The validity mask and the true summary pyramid only: NO samples. Nothing
   /// can be reconstructed from it.
   pyramidOnly,
+
+  /// Plain quantization: each valid sample is rounded to the nearest multiple
+  /// of the header's [SampleHeader.step] (a coarser grid than the pyramid's
+  /// [SampleHeader.quantum]) and stored as zigzag deltas + deflate. Gaps are
+  /// the validity mask's run lengths. The per-sample error is at most
+  /// step / 2, exactly, so the part's max error IS step / 2; the RMS is
+  /// measured from the actual samples. Appended last so the mode bytes of
+  /// older blobs keep their meaning.
+  quantized,
 }
 
 /// What an encode measured about itself. All errors are in the signal's unit
 /// and are measured against the decoded blob, over valid samples only.
-class SpectralStats {
-  const SpectralStats({
+class SampleStats {
+  const SampleStats({
     required this.nSamples,
     required this.nValid,
     required this.coefficientCount,
@@ -139,20 +169,21 @@ class SpectralStats {
   final double maxErr;
 }
 
-class SpectralEncoding {
-  const SpectralEncoding(this.blob, this.stats);
+class SampleEncoding {
+  const SampleEncoding(this.blob, this.stats);
   final Uint8List blob;
-  final SpectralStats stats;
+  final SampleStats stats;
 }
 
 /// The versioned header every blob starts with (readable without decoding).
-class SpectralHeader {
-  const SpectralHeader({
+class SampleHeader {
+  const SampleHeader({
     required this.codecVersion,
     required this.signal,
     required this.mode,
     required this.blockSeconds,
     required this.quantum,
+    required this.step,
     required this.length,
     required this.nValid,
     required this.segmentCount,
@@ -161,12 +192,17 @@ class SpectralHeader {
 
   final int codecVersion;
   final String signal;
-  final SpectralMode mode;
+  final SampleMode mode;
 
   /// The static window the blob was written with (informational in adaptive
   /// mode; kept so the header is self-describing).
   final int blockSeconds;
   final double quantum;
+
+  /// The sample grid of a [SampleMode.quantized] blob (and of a
+  /// [SampleMode.losslessAtQuantum] one, where it equals [quantum]). Version
+  /// 1 blobs have no such field; it reads as [quantum].
+  final double step;
 
   /// Sample slots in the series (seconds in the local day: 82800 / 86400 /
   /// 90000 on a DST day — never assume 86400).
@@ -180,8 +216,8 @@ class SpectralHeader {
 }
 
 /// One transform segment: slots [start, start + length) of the series.
-class SpectralSegment {
-  const SpectralSegment(this.start, this.length, this.coefficientCount);
+class SampleSegment {
+  const SampleSegment(this.start, this.length, this.coefficientCount);
   final int start, length;
 
   /// Coefficients stored for this segment (DC included).
@@ -199,16 +235,16 @@ class LodCell {
 /// One pyramid level. Cell i covers slots [i*cellSeconds, (i+1)*cellSeconds)
 /// (the last cell may be partial). The top level has ONE cell covering the
 /// whole series, so its [cellSeconds] equals the series length.
-class SpectralLevel {
-  const SpectralLevel(this.cellSeconds, this.cells);
+class SampleLevel {
+  const SampleLevel(this.cellSeconds, this.cells);
   final int cellSeconds;
   final List<LodCell> cells;
 }
 
 /// One step of progressive decoding: every segment decoded with orders
 /// 0..[maxOrder] only. [isFull] marks the last step, which equals [decode].
-class SpectralRefinement {
-  const SpectralRefinement(this.maxOrder, this.isFull, this.samples);
+class SampleRefinement {
+  const SampleRefinement(this.maxOrder, this.isFull, this.samples);
   final int maxOrder;
   final bool isFull;
 
@@ -217,18 +253,24 @@ class SpectralRefinement {
 }
 
 /// One part's pyramid together with the absolute second its slot 0 is.
-class SpectralPartSummary {
-  const SpectralPartSummary(this.originSec, this.levels);
+class SamplePartSummary {
+  const SamplePartSummary(this.originSec, this.levels);
   final int originSec;
-  final List<SpectralLevel> levels;
+  final List<SampleLevel> levels;
 }
 
-class SpectralCodec {
-  SpectralCodec._();
+class SampleCodec {
+  SampleCodec._();
 
-  /// Bumped whenever the byte layout or the reconstruction changes. A blob of
-  /// any other version is refused by [decode], never guessed at.
-  static const int codecVersion = 1;
+  /// The version [encode] writes. Bumped whenever the byte layout or the
+  /// reconstruction changes. Version 2 adds the header's sample [step] and
+  /// [SampleMode.quantized] (hr and skin temperature no longer use the DCT).
+  static const int codecVersion = 2;
+
+  /// Versions [decode] and the readers understand. A version-1 part (lossy
+  /// DCT) written before the swap keeps decoding; it is never re-encoded. Any
+  /// other version is refused, never guessed at.
+  static const Set<int> readableVersions = {1, 2};
 
   /// Longest adaptive segment, in 60 s extensions (30 x 60 = 30 min).
   static const int _maxExtensions = 30;
@@ -247,17 +289,21 @@ class SpectralCodec {
   /// deliberately NOT here: ratios of raw ADC channels and monotone counters
   /// are not what a smoothness transform is for (a lossless / run-length
   /// archive could cover them later).
-  static const Map<String, SpectralSignalSpec> specs = {
-    'hr': SpectralSignalSpec(
-        id: 'hr', quantum: 0.5, maxRms: 1.0, maxAbs: 3.0),
-    'ax': SpectralSignalSpec(
+  static const Map<String, SampleSignalSpec> specs = {
+    'hr': SampleSignalSpec(
+        id: 'hr', quantum: 0.5, maxRms: 1.0, maxAbs: 3.0, step: 2.8),
+    'ax': SampleSignalSpec(
         id: 'ax', quantum: 0.004, maxRms: 0.02, maxAbs: 0.10),
-    'ay': SpectralSignalSpec(
+    'ay': SampleSignalSpec(
         id: 'ay', quantum: 0.004, maxRms: 0.02, maxAbs: 0.10),
-    'az': SpectralSignalSpec(
+    'az': SampleSignalSpec(
         id: 'az', quantum: 0.004, maxRms: 0.02, maxAbs: 0.10),
-    'skin_temp_c': SpectralSignalSpec(
-        id: 'skin_temp_c', quantum: 0.01, maxRms: 0.05, maxAbs: 0.15),
+    'skin_temp_c': SampleSignalSpec(
+        id: 'skin_temp_c',
+        quantum: 0.01,
+        maxRms: 0.05,
+        maxAbs: 0.15,
+        step: 0.12),
   };
 
   // ── encode ─────────────────────────────────────────────────────────────────
@@ -265,15 +311,23 @@ class SpectralCodec {
   /// Encode [samples] (index = second slot of the local day, null = absent).
   /// Throws [ArgumentError] for an unknown [signal] or a non-finite value
   /// (NaN is not "absent"; null is).
-  static SpectralEncoding encode(String signal, List<double?> samples,
-          {SpectralMode mode = SpectralMode.adaptive}) =>
+  static SampleEncoding encode(String signal, List<double?> samples,
+          {SampleMode mode = SampleMode.adaptive}) =>
       _encode(signal, samples, mode);
 
-  static SpectralEncoding _encode(
-      String signal, List<double?> samples, SpectralMode mode,
-      {Uint8List? pyramid}) {
+  static SampleEncoding _encode(
+      String signal, List<double?> samples, SampleMode mode,
+      {Uint8List? pyramid, bool measuredMax = false}) {
     final spec = specs[signal];
     if (spec == null) throw ArgumentError.value(signal, 'signal', 'unknown');
+    final step = spec.step;
+    if (mode == SampleMode.quantized && step == null) {
+      throw ArgumentError.value(
+          mode, 'mode', 'no sample step is defined for $signal');
+    }
+    // The sample grid this blob's header records.
+    final sampleStep =
+        mode == SampleMode.quantized ? step! : spec.quantum;
     final n = samples.length;
     var nValid = 0;
     for (final v in samples) {
@@ -302,10 +356,10 @@ class SpectralCodec {
     final tables = _Tables();
     final segs = <_Seg>[];
     final lossy =
-        mode == SpectralMode.adaptive || mode == SpectralMode.staticBlocks;
+        mode == SampleMode.adaptive || mode == SampleMode.staticBlocks;
     if (lossy) {
       for (final (a, b) in runs) {
-        if (mode == SpectralMode.adaptive) {
+        if (mode == SampleMode.adaptive) {
           _segmentRunAdaptive(samples, a, b, spec, tables, segs);
         } else {
           _segmentRunStatic(samples, a, b, spec, tables, segs);
@@ -353,8 +407,9 @@ class SpectralCodec {
         ..varint(gapBytes.length)
         ..bytes(gapBytes)
         ..bytes(vals.take());
-    } else if (mode == SpectralMode.losslessAtQuantum) {
-      coef.bytes(_losslessPayload(samples, spec.quantum));
+    } else if (mode == SampleMode.losslessAtQuantum ||
+        mode == SampleMode.quantized) {
+      coef.bytes(_losslessPayload(samples, sampleStep));
     }
 
     final maskZ = _deflate(mask.take());
@@ -370,6 +425,7 @@ class SpectralCodec {
       ..bytes(signal.codeUnits)
       ..varint(spec.blockSeconds)
       ..f64(spec.quantum)
+      ..f64(sampleStep)
       ..varint(n)
       ..varint(nValid)
       ..varint(segs.length)
@@ -386,7 +442,7 @@ class SpectralCodec {
     // Measure, don't estimate: decode what was just written. A pyramid-only
     // blob has no reconstruction, hence no error to measure (reported as 0).
     var sq = 0.0, mx = 0.0;
-    if (mode != SpectralMode.pyramidOnly) {
+    if (mode != SampleMode.pyramidOnly) {
       final back = decode(blob);
       for (var i = 0; i < n; i++) {
         final o = samples[i];
@@ -396,9 +452,9 @@ class SpectralCodec {
         if (d > mx) mx = d;
       }
     }
-    return SpectralEncoding(
+    return SampleEncoding(
       blob,
-      SpectralStats(
+      SampleStats(
         nSamples: n,
         nValid: nValid,
         coefficientCount: segs.fold<int>(0, (a, g) => a + g.idx.length),
@@ -406,13 +462,16 @@ class SpectralCodec {
         summaryBytes: pyrZ.length,
         bytes: blob.length,
         rmsErr: nValid == 0 ? 0 : math.sqrt(sq / nValid),
-        maxErr: mx,
+        // A quantized part's bound is exact by construction: step / 2.
+        maxErr: mode == SampleMode.quantized && !measuredMax
+            ? sampleStep / 2
+            : mx,
       ),
     );
   }
 
   static void _segmentRunAdaptive(List<double?> s, int a, int b,
-      SpectralSignalSpec spec, _Tables t, List<_Seg> out) {
+      SampleSignalSpec spec, _Tables t, List<_Seg> out) {
     var pos = a;
     while (pos < b) {
       final rem = b - pos;
@@ -428,7 +487,7 @@ class SpectralCodec {
         // Cannot happen (a one-minute segment holds up to 64 coefficients and
         // the quantizer alone is inside the bound), but never emit a blob that
         // violates the contract.
-        throw StateError('spectral: even a 1-minute segment misses the bound');
+        throw StateError('sample archive: even a 1-minute segment misses the bound');
       }
       while (lo < jmax) {
         final next = math.min(lo * 2, jmax);
@@ -454,14 +513,14 @@ class SpectralCodec {
   }
 
   static void _segmentRunStatic(List<double?> s, int a, int b,
-      SpectralSignalSpec spec, _Tables t, List<_Seg> out) {
+      SampleSignalSpec spec, _Tables t, List<_Seg> out) {
     final w = spec.blockSeconds;
     var pos = a;
     while (pos < b) {
       final end = math.min(b, (pos ~/ w + 1) * w);
       final seg = _fit(s, pos, end - pos, spec, 1 << 30, t);
       if (seg == null) {
-        throw StateError('spectral: static block misses the bound');
+        throw StateError('sample archive: static block misses the bound');
       }
       out.add(seg);
       pos = end;
@@ -470,7 +529,7 @@ class SpectralCodec {
 
   /// The fewest coefficients (<= [cap]) that bring slots [start, start+n) of
   /// [s] inside the spec's bounds, or null when none do.
-  static _Seg? _fit(List<double?> s, int start, int n, SpectralSignalSpec spec,
+  static _Seg? _fit(List<double?> s, int start, int n, SampleSignalSpec spec,
       int cap, _Tables t) {
     final q = spec.quantum;
     final x = Float64List(n);
@@ -543,12 +602,12 @@ class SpectralCodec {
   /// Successive refinements for progressive loading: one step per entry of
   /// [orders] (strictly increasing; entries at or above the largest order
   /// stored fold into the final step), then a final full-detail step
-  /// ([SpectralRefinement.isFull]) whose samples equal [decode] exactly. Lazy:
+  /// ([SampleRefinement.isFull]) whose samples equal [decode] exactly. Lazy:
   /// nothing is decoded until the next step is pulled, so a caller can pull one
   /// step per frame or per isolate hop. Step k equals
   /// `decodeCoarse(blob, maxOrder: orders[k])`. Throws [ArgumentError] for
   /// negative or non-increasing [orders].
-  static Iterable<SpectralRefinement> progressive(Uint8List blob,
+  static Iterable<SampleRefinement> progressive(Uint8List blob,
       {List<int> orders = const [0, 2, 8, 32]}) sync* {
     for (var i = 0; i < orders.length; i++) {
       if (orders[i] < 0 || (i > 0 && orders[i] <= orders[i - 1])) {
@@ -562,15 +621,15 @@ class SpectralCodec {
     }
     for (final o in orders) {
       if (o >= top) break;
-      yield SpectralRefinement(o, false, _decode(p, o));
+      yield SampleRefinement(o, false, _decode(p, o));
     }
-    yield SpectralRefinement(top, true, _decode(p, 1 << 30));
+    yield SampleRefinement(top, true, _decode(p, 1 << 30));
   }
 
   /// Exactly step [step] of [progressive] (0-based), decoding only that step,
   /// or null when [step] is past the final one. For callers that run each
   /// refinement in its own isolate hop (a generator cannot cross isolates).
-  static SpectralRefinement? refinementAt(Uint8List blob,
+  static SampleRefinement? refinementAt(Uint8List blob,
       {List<int> orders = const [0, 2, 8, 32], required int step}) {
     for (var i = 0; i < orders.length; i++) {
       if (orders[i] < 0 || (i > 0 && orders[i] <= orders[i - 1])) {
@@ -585,21 +644,21 @@ class SpectralCodec {
     final partial = [for (final o in orders) if (o < top) o];
     if (step < 0 || step > partial.length) return null;
     if (step < partial.length) {
-      return SpectralRefinement(partial[step], false, _decode(p, partial[step]));
+      return SampleRefinement(partial[step], false, _decode(p, partial[step]));
     }
-    return SpectralRefinement(top, true, _decode(p, 1 << 30));
+    return SampleRefinement(top, true, _decode(p, 1 << 30));
   }
 
   /// The summary pyramid, levels ordered 60 s, 900 s, 3600 s, whole series.
-  /// Reads only the prefix up to [SpectralHeader.coefficientOffset]. Count,
+  /// Reads only the prefix up to [SampleHeader.coefficientOffset]. Count,
   /// min, mean, max are from the RAW samples, stored at [quantum] resolution
   /// (so mean is within quantum/2 of the true mean, and min/max equal the true
   /// extremes rounded to the quantum — never taken from the reconstruction).
-  static List<SpectralLevel> summary(Uint8List blob) {
+  static List<SampleLevel> summary(Uint8List blob) {
     final h = _head(blob);
     final r = _R(_inflate(blob, h.pyrAt, h.pyrLen));
     final q = h.header.quantum;
-    final out = <SpectralLevel>[];
+    final out = <SampleLevel>[];
     try {
       var prevMean = 0;
       for (final cs in _levelSeconds(h.header.length)) {
@@ -617,26 +676,26 @@ class SpectralCodec {
           final hi = mean + r.varint();
           cells.add(LodCell(count, lo * q, mean * q, hi * q));
         }
-        out.add(SpectralLevel(cs, cells));
+        out.add(SampleLevel(cs, cells));
       }
     } on RangeError {
-      throw const FormatException('spectral: truncated pyramid');
+      throw const FormatException('sample archive: truncated pyramid');
     }
     return out;
   }
 
   /// The segment table, in slot order. Same [FormatException] rules.
-  static List<SpectralSegment> segments(Uint8List blob) {
+  static List<SampleSegment> segments(Uint8List blob) {
     final h = _head(blob);
-    if (h.header.mode == SpectralMode.losslessAtQuantum ||
-        h.header.mode == SpectralMode.pyramidOnly) {
+    if (h.header.mode != SampleMode.adaptive &&
+        h.header.mode != SampleMode.staticBlocks) {
       return const [];
     }
     final raw = _segTable(blob, h);
     final starts = _segmentStarts(blob, h, raw);
     return [
       for (var i = 0; i < raw.length; i++)
-        SpectralSegment(starts[i], raw[i].$1, raw[i].$2)
+        SampleSegment(starts[i], raw[i].$1, raw[i].$2)
     ];
   }
 
@@ -645,14 +704,14 @@ class SpectralCodec {
   static List<(int, int)> validRuns(Uint8List blob) =>
       _validRuns(blob, _head(blob));
 
-  /// False for a [SpectralMode.pyramidOnly] blob (no samples to decode).
+  /// False for a [SampleMode.pyramidOnly] blob (no samples to decode).
   static bool hasSamples(Uint8List blob) =>
-      _head(blob).header.mode != SpectralMode.pyramidOnly;
+      _head(blob).header.mode != SampleMode.pyramidOnly;
 
   /// The header alone. It reports whatever codec version the bytes carry (only
   /// [decode] and friends refuse a version they do not know) and throws
   /// [FormatException] for bad magic or a prefix shorter than it declares.
-  static SpectralHeader readHeader(Uint8List blob) => _head(blob).header;
+  static SampleHeader readHeader(Uint8List blob) => _head(blob).header;
 
   // ── internals ──────────────────────────────────────────────────────────────
 
@@ -671,7 +730,7 @@ class SpectralCodec {
     } on FormatException {
       rethrow;
     } catch (e) {
-      throw FormatException('spectral: corrupt section ($e)');
+      throw FormatException('sample archive: corrupt section ($e)');
     }
   }
 
@@ -679,16 +738,17 @@ class SpectralCodec {
     try {
       final r = _R(blob);
       for (final m in _magic) {
-        if (r.byte() != m) throw const FormatException('spectral: bad magic');
+        if (r.byte() != m) throw const FormatException('sample archive: bad magic');
       }
       final version = r.byte();
       final modeByte = r.byte();
-      if (modeByte >= SpectralMode.values.length) {
-        throw const FormatException('spectral: bad mode');
+      if (modeByte >= SampleMode.values.length) {
+        throw const FormatException('sample archive: bad mode');
       }
       final sig = String.fromCharCodes(r.take(r.byte()));
       final blockSeconds = r.varint();
       final quantum = r.f64();
+      final step = version >= 2 ? r.f64() : quantum;
       final length = r.varint();
       final nValid = r.varint();
       final segCount = r.varint();
@@ -701,15 +761,16 @@ class SpectralCodec {
       final segAt = pyrAt + pyrLen;
       final coefAt = segAt + segLen;
       if (coefAt > blob.length) {
-        throw const FormatException('spectral: truncated header sections');
+        throw const FormatException('sample archive: truncated header sections');
       }
       return _Head(
-        SpectralHeader(
+        SampleHeader(
           codecVersion: version,
           signal: sig,
-          mode: SpectralMode.values[modeByte],
+          mode: SampleMode.values[modeByte],
           blockSeconds: blockSeconds,
           quantum: quantum,
+          step: step,
           length: length,
           nValid: nValid,
           segmentCount: segCount,
@@ -718,7 +779,7 @@ class SpectralCodec {
         maskAt, maskLen, pyrAt, pyrLen, segAt, segLen, coefAt, coefLen,
       );
     } on RangeError {
-      throw const FormatException('spectral: truncated header');
+      throw const FormatException('sample archive: truncated header');
     }
   }
 
@@ -729,7 +790,7 @@ class SpectralCodec {
         for (var i = 0; i < h.header.segmentCount; i++) (r.varint(), r.varint())
       ];
     } on RangeError {
-      throw const FormatException('spectral: truncated segment table');
+      throw const FormatException('sample archive: truncated segment table');
     }
   }
 
@@ -746,10 +807,10 @@ class SpectralCodec {
         valid = !valid;
       }
     } on RangeError {
-      throw const FormatException('spectral: truncated mask');
+      throw const FormatException('sample archive: truncated mask');
     }
     if (pos != h.header.length) {
-      throw const FormatException('spectral: mask does not cover the series');
+      throw const FormatException('sample archive: mask does not cover the series');
     }
     return runs;
   }
@@ -763,34 +824,35 @@ class SpectralCodec {
       var pos = a;
       while (pos < b) {
         if (si >= raw.length) {
-          throw const FormatException('spectral: segments end early');
+          throw const FormatException('sample archive: segments end early');
         }
         starts.add(pos);
         pos += raw[si].$1;
         si++;
       }
       if (pos != b) {
-        throw const FormatException('spectral: segment crosses a gap');
+        throw const FormatException('sample archive: segment crosses a gap');
       }
     }
     if (si != raw.length) {
-      throw const FormatException('spectral: surplus segments');
+      throw const FormatException('sample archive: surplus segments');
     }
     return starts;
   }
 
   static _Parsed _parse(Uint8List blob) {
     final h = _head(blob);
-    if (h.header.codecVersion != codecVersion) {
+    if (!readableVersions.contains(h.header.codecVersion)) {
       throw FormatException(
-          'spectral: unsupported codec version ${h.header.codecVersion}');
+          'sample archive: unsupported codec version ${h.header.codecVersion}');
     }
     if (blob.length != h.coefAt + h.coefLen) {
-      throw const FormatException('spectral: truncated or trailing bytes');
+      throw const FormatException('sample archive: truncated or trailing bytes');
     }
     final mode = h.header.mode;
-    if (mode == SpectralMode.pyramidOnly) return _Parsed(h, const [], null);
-    if (mode == SpectralMode.losslessAtQuantum) {
+    if (mode == SampleMode.pyramidOnly) return _Parsed(h, const [], null);
+    if (mode == SampleMode.losslessAtQuantum ||
+        mode == SampleMode.quantized) {
       return _Parsed(h, const [], _losslessInts(blob, h), _validRuns(blob, h));
     }
     final raw = _segTable(blob, h);
@@ -803,12 +865,12 @@ class SpectralCodec {
       final vr = _R(Uint8List.sublistView(r.data, r.pos + gapLen));
       for (var i = 0; i < raw.length; i++) {
         final n = raw[i].$1;
-        if (raw[i].$2 < 1) throw const FormatException('spectral: empty segment');
+        if (raw[i].$2 < 1) throw const FormatException('sample archive: empty segment');
         final idx = <int>[], val = <int>[];
         var prev = -1;
         for (var e = 0; e < raw[i].$2; e++) {
           final k = prev + 1 + gr.varint();
-          if (k >= n) throw const FormatException('spectral: bad coefficient');
+          if (k >= n) throw const FormatException('sample archive: bad coefficient');
           idx.add(k);
           val.add(vr.zigzag());
           prev = k;
@@ -816,16 +878,18 @@ class SpectralCodec {
         segs.add(_Seg(starts[i], n, idx, val));
       }
     } on RangeError {
-      throw const FormatException('spectral: truncated coefficients');
+      throw const FormatException('sample archive: truncated coefficients');
     }
     return _Parsed(h, segs, null);
   }
 
   static List<double?> _decode(_Parsed p, int maxOrder) {
-    final q = p.head.header.quantum;
-    if (p.head.header.mode == SpectralMode.pyramidOnly) {
+    // The DCT coefficient quantum, or the sample grid of a quantized /
+    // lossless blob (the same number for lossless).
+    final q = p.ints != null ? p.head.header.step : p.head.header.quantum;
+    if (p.head.header.mode == SampleMode.pyramidOnly) {
       throw const FormatException(
-          'spectral: a pyramid-only blob holds no samples');
+          'sample archive: a pyramid-only blob holds no samples');
     }
     final out = List<double?>.filled(p.head.header.length, null);
     final ks = p.ints;
@@ -993,7 +1057,7 @@ class SpectralCodec {
     try {
       final order = r.byte();
       if (order != 1 && order != 2) {
-        throw const FormatException('spectral: bad predictor');
+        throw const FormatException('sample archive: bad predictor');
       }
       var p1 = 0, p2 = 0;
       for (var i = 0; i < n; i++) {
@@ -1004,9 +1068,9 @@ class SpectralCodec {
         p1 = k;
       }
     } on RangeError {
-      throw const FormatException('spectral: truncated samples');
+      throw const FormatException('sample archive: truncated samples');
     }
-    if (r.hasMore) throw const FormatException('spectral: trailing samples');
+    if (r.hasMore) throw const FormatException('sample archive: trailing samples');
     return ks;
   }
 
@@ -1110,12 +1174,12 @@ class SpectralCodec {
   /// re-encoded from its own reconstruction, so the result is a second
   /// generation (its error vs the original raw is at most the original's plus
   /// the returned stats' error). Null when nothing is kept.
-  static SpectralEncoding? restrict(
+  static SampleEncoding? restrict(
       Uint8List blob, bool Function(int minute) keepMinute) {
     final h = _head(blob);
     if (h.header.codecVersion != codecVersion) {
-      throw FormatException(
-          'spectral: unsupported codec version ${h.header.codecVersion}');
+      throw FormatException('sample archive: a version ${h.header.codecVersion} '
+          'part is read, never re-encoded');
     }
     final head = h.header;
     final q = head.quantum;
@@ -1124,7 +1188,7 @@ class SpectralCodec {
         minute.length, (j) => minute[j].count > 0 && keepMinute(j));
     if (!kept.any((k) => k)) return null;
     final mode = head.mode;
-    final decoded = mode == SpectralMode.pyramidOnly ? null : decode(blob);
+    final decoded = mode == SampleMode.pyramidOnly ? null : decode(blob);
     final samples = List<double?>.filled(head.length, null);
     for (final (a, b) in _validRuns(blob, h)) {
       for (var i = a; i < b; i++) {
@@ -1141,7 +1205,8 @@ class SpectralCodec {
           null
     ];
     return _encode(head.signal, samples, mode,
-        pyramid: _pyramidFromMinutes(cells, head.length, q));
+        pyramid: _pyramidFromMinutes(cells, head.length, q),
+        measuredMax: true);
   }
 
   /// Merge the pyramids of parts with DISJOINT coverage onto one absolute grid
@@ -1150,7 +1215,7 @@ class SpectralCodec {
   /// extremes, the mean is count-weighted; the 900 s / 3600 s / whole-series
   /// levels are aggregated from the merged 60 s cells, so a part whose own
   /// hour grid was shifted still lands correctly. One part passes through.
-  static List<SpectralLevel> mergeSummaries(List<SpectralPartSummary> parts) {
+  static List<SampleLevel> mergeSummaries(List<SamplePartSummary> parts) {
     if (parts.isEmpty) throw ArgumentError('no parts');
     if (parts.length == 1) return parts.single.levels;
     final o0 = parts.map((p) => p.originSec).reduce(math.min);
@@ -1158,7 +1223,7 @@ class SpectralCodec {
     for (final p in parts) {
       end = math.max(end, p.originSec + p.levels.last.cellSeconds);
       if ((p.originSec - o0) % 60 != 0) {
-        throw StateError('spectral: part origins are not minute-aligned');
+        throw StateError('sample archive: part origins are not minute-aligned');
       }
     }
     final total = end - o0;
@@ -1193,11 +1258,11 @@ class SpectralCodec {
       return n == 0 ? const LodCell(0, null, null, null) : LodCell(n, a, s / n, b);
     }
 
-    final out = <SpectralLevel>[];
+    final out = <SampleLevel>[];
     for (final cs in _levelSeconds(total)) {
       final nCells = _cellCount(total, cs);
       final per = cs == total ? nMin : cs ~/ 60;
-      out.add(SpectralLevel(cs, [
+      out.add(SampleLevel(cs, [
         for (var i = 0; i < nCells; i++)
           cell(Iterable<int>.generate(
               math.max(0, math.min(per, nMin - i * per)), (k) => i * per + k)),
@@ -1224,7 +1289,7 @@ class _Seg {
 class _Head {
   _Head(this.header, this.maskAt, this.maskLen, this.pyrAt, this.pyrLen,
       this.segAt, this.segLen, this.coefAt, this.coefLen);
-  final SpectralHeader header;
+  final SampleHeader header;
   final int maskAt, maskLen, pyrAt, pyrLen, segAt, segLen, coefAt, coefLen;
 }
 
@@ -1307,7 +1372,7 @@ class _R {
       v |= (b & 0x7f) << shift;
       if (b < 0x80) return v;
       shift += 7;
-      if (shift > 56) throw const FormatException('spectral: bad varint');
+      if (shift > 56) throw const FormatException('sample archive: bad varint');
     }
   }
 

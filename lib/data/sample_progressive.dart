@@ -1,9 +1,9 @@
-// spectral_progressive.dart — EXPERIMENT (branch explore/spectral-archive): the
+// sample_progressive.dart — EXPERIMENT (branch explore/spectral-archive): the
 // pure parts of progressive loading for long chart views.
 //
 //   [refineStream]   successive refinements, decoded OFF the UI isolate
-//   [SpectralLerp]   sample-by-sample animation between two decoded curves
-//   [SpectralDetail] what the chart may claim at the current level
+//   [SampleLerp]   sample-by-sample animation between two decoded curves
+//   [SampleDetail] what the chart may claim at the current level
 //
 // A reconstruction is an approximation (invariant 3). While it is not the full
 // level the chart says so and shows no precise number readout.
@@ -11,25 +11,30 @@
 import 'dart:isolate';
 import 'dart:typed_data';
 
-import 'spectral_codec.dart' show SpectralCodec, SpectralRefinement;
+import 'sample_codec.dart' show SampleCodec, SampleRefinement;
 
+/// LONG VIEWS use the summary pyramid (`SampleArchiver.summary`), which needs
+/// no decode at all. A quantized part (codec version 2: hr, skin temperature)
+/// has no coefficient ladder, so its refinement is ONE full step; an old
+/// version-1 DCT part still refines through [orders].
+///
 /// Refinements of [blob], each produced off the UI isolate (one `Isolate.run`
 /// hop per step). Emits exactly the steps of
-/// `SpectralCodec.progressive(blob, orders: orders)`, in order, then closes.
+/// `SampleCodec.progressive(blob, orders: orders)`, in order, then closes.
 /// Cancelling the subscription stops further steps.
-Stream<SpectralRefinement> refineStream(Uint8List blob,
+Stream<SampleRefinement> refineStream(Uint8List blob,
     {List<int> orders = const [0, 2, 8, 32]}) async* {
   for (var k = 0;; k++) {
     final r = await Isolate.run(
-        () => SpectralCodec.refinementAt(blob, orders: orders, step: k));
+        () => SampleCodec.refinementAt(blob, orders: orders, step: k));
     if (r == null) return;
     yield r;
     if (r.isFull) return;
   }
 }
 
-class SpectralLerp {
-  SpectralLerp._();
+class SampleLerp {
+  SampleLerp._();
 
   /// The animation frame between two decoded curves of one series.
   ///
@@ -60,22 +65,22 @@ class SpectralLerp {
 }
 
 /// What the chart may say at a given refinement level.
-class SpectralDetail {
-  const SpectralDetail(this.step, {required this.isFull, this.exact = false});
+class SampleDetail {
+  const SampleDetail(this.step, {required this.isFull, this.exact = false});
 
   /// A lossless-at-quantum archive part: not an approximation.
   final bool exact;
 
   /// Wraps a refinement. [exact] marks a LOSSLESS-at-quantum archive part: it
   /// is not an approximation and carries no approximation label.
-  factory SpectralDetail.of(SpectralRefinement r, {bool exact = false}) =>
-      SpectralDetail(r, isFull: r.isFull, exact: exact);
+  factory SampleDetail.of(SampleRefinement r, {bool exact = false}) =>
+      SampleDetail(r, isFull: r.isFull, exact: exact);
 
-  final SpectralRefinement? step;
+  final SampleRefinement? step;
   final bool isFull;
 
   /// True until the full level has arrived: the chart shows a "loading detail"
-  /// label (l10n key `spectralLoadingDetail`).
+  /// label (l10n key `sampleArchiveLoadingDetail`).
   bool get isLoadingDetail => !isFull;
 
   /// True for every LOSSY reconstruction at ANY refinement: full detail removes
@@ -83,12 +88,12 @@ class SpectralDetail {
   /// lossless-at-quantum part ([exact]).
   bool get isApproximation => !exact;
 
-  /// The l10n key of the label the chart must show: `spectralLoadingDetail`
-  /// until the full level has arrived, `spectralApproximation` after; null for
+  /// The l10n key of the label the chart must show: `sampleArchiveLoadingDetail`
+  /// until the full level has arrived, `sampleArchiveApproximation` after; null for
   /// an exact part, which needs no label.
   String? get labelKey => exact
       ? null
-      : (isFull ? 'spectralApproximation' : 'spectralLoadingDetail');
+      : (isFull ? 'sampleArchiveApproximation' : 'sampleArchiveLoadingDetail');
 
   /// The numeric readout for slot [i] (e.g. a scrub tooltip), or null when the
   /// chart may not claim a number: null while loading detail, null in a gap,
