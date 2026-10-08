@@ -521,7 +521,13 @@ class DayGraph {
     this.movement = const [],
     this.rest = const [],
     this.work = const [],
+    this.dayStart,
   });
+
+  /// Epoch seconds of the local day's start; the annotation domain runs
+  /// `dayStart` .. `dayStart + slots * 60`. Null when unknown.
+  // RED STUB (day-graph-annotations): accepted, not yet filled by [dayGraph].
+  final int? dayStart;
 
   /// Beats per minute, one slot per minute of the day, `null` where nothing
   /// was recorded.
@@ -1000,7 +1006,9 @@ const _movementNote = 'Movement is the share of each 5 minutes in which your '
 /// for, and a frame with an axis and no line under it reads as a measurement
 /// of zero. A day like that is entirely carried by the list underneath, which
 /// is the right shape for it — a handful of things that happened, in order.
-Widget? dayGraphCard(BuildContext c, DayGraph g) {
+Widget? dayGraphCard(BuildContext c, DayGraph g,
+    // RED STUB (day-graph-annotations): accepted, not yet drawn.
+    {List<ChartAnnotation> annotations = const []}) {
   if (!g.hasCurve) return null;
   final p = P.of(c);
   final l = AppLocalizations.of(c);
