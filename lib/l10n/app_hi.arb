@@ -1422,6 +1422,7 @@
   "homeSleepPctOf": "{target} का {pct}%",
   "homeSleepPctOfDefault": "{target} का {pct}% (डिफ़ॉल्ट)",
   "homeSleepOnTrack": "{cycles, plural, =1{1 चक्र} other{{cycles} चक्र}} की राह पर, {duration}",
+  "homeSleepOnTrackDefault": "{cycles, plural, =1{1 चक्र} other{{cycles} चक्र}} की राह पर, {duration} · लक्ष्य {target} (डिफ़ॉल्ट)",
   "homeSleepNoEstimate": "कोई अनुमान नहीं",
   "homeSleepNoEstimateWhy": "अभी तक कोई रात स्कोर नहीं हुई है, और अनुमान के लिए कोई अलार्म या सामान्य जागने का समय नहीं है।",
   "homeLoadFailedTitle": "आज का डेटा पढ़ा नहीं जा सका",

@@ -26,6 +26,8 @@
 // data layer. They live here rather than in a fourth file because there are
 // only three of them and they are read together.
 
+import 'dart:async';
+
 import 'package:clock/clock.dart' as pc;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -956,6 +958,11 @@ class RingTrio extends StatelessWidget {
     return HomeRingKind.values.any((k) => _ringOf(k, d, null, at).why == null);
   }
 
+  /// Whether the sleep ring can estimate tonight's sleep, and so has something
+  /// to draw even when nothing else on the day does.
+  static bool hasSleepEstimate(HomeData d, {DateTime? now}) =>
+      _ringOf(HomeRingKind.sleep, d, null, now ?? pc.clock.now()).estimated;
+
   @override
   Widget build(BuildContext c) {
     final p = P.of(c);
@@ -1161,9 +1168,17 @@ _RingState _ringOf(
           final est = hm(m.estimateMin);
           return _RingState(k, label, LucideIcons.moon, C.blue,
               value: est,
-              sub: l?.homeSleepOnTrack(m.cycles!, est) ??
-                  'on track for ${m.cycles} '
-                      '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est',
+              // The ring is filled against the target, so the default says
+              // so here too — it is never passed off as this user's need.
+              sub: m.targetIsDefault
+                  ? (l?.homeSleepOnTrackDefault(
+                          m.cycles!, est, hm(m.targetMin)) ??
+                      'on track for ${m.cycles} '
+                          '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'
+                          ' · target ${hm(m.targetMin)} (default)')
+                  : (l?.homeSleepOnTrack(m.cycles!, est) ??
+                      'on track for ${m.cycles} '
+                          '${m.cycles == 1 ? 'cycle' : 'cycles'}, $est'),
               frac: m.sweep,
               estimated: true);
         case SleepRingPhase.none:
@@ -1739,7 +1754,8 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with RevisionReload {
+class _HomeScreenState extends State<HomeScreen>
+    with RevisionReload, WidgetsBindingObserver {
   HomeData? _d;
   bool _loading = true;
 
@@ -1758,9 +1774,46 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
   /// history that their band has never produced data is the wrong answer to it.
   bool _failed = false;
 
+  /// Fires on each minute boundary so the sleep ring's estimate (wake minus
+  /// now) does not freeze at the minute the screen was built.
+  Timer? _tick;
+
+  void _armTick() {
+    _tick?.cancel();
+    final n = pc.clock.now();
+    final next = DateTime(n.year, n.month, n.day, n.hour, n.minute + 1);
+    _tick = Timer(next.difference(n), () {
+      if (!mounted) return;
+      setState(() {});
+      _armTick();
+    });
+  }
+
+  /// Nothing to keep fresh while the app is in the background; it catches up
+  /// the moment it is back.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (mounted) setState(() {});
+      _armTick();
+    } else {
+      _tick?.cancel();
+      _tick = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _tick?.cancel();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _armTick();
     if (widget.data != null) {
       _d = widget.data;
       _loading = false;
@@ -1977,7 +2030,7 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
     // them apart: whether this install has ever scored a night. "No band
     // recordings processed yet" said to someone with three months of history is
     // the first-run answer to a gap, and it is wrong.
-    final bare = d.readiness.isEmpty &&
+    final noData = d.readiness.isEmpty &&
         d.sleepMin.isEmpty &&
         d.strain.isEmpty &&
         d.rhr.isEmpty &&
@@ -1994,6 +2047,10 @@ class _HomeScreenState extends State<HomeScreen> with RevisionReload {
                 alarm: nextAlarmOf(c) ?? d.nextAlarm,
                 schedule: sleepScheduleOf(c) ?? d.sleepSchedule)
             : d;
+    // A day with no measured data is not bare when tonight's estimate can be
+    // made: a saved schedule or an armed alarm is something to show.
+    final bare =
+        noData && !(isToday && RingTrio.hasSleepEstimate(ringData, now: widget.now));
 
     // No sync button on this card either: Home's one sync control is the
     // only place Home starts a sync.

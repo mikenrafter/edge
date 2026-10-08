@@ -10,6 +10,7 @@ const _keys = [
   'homeSleepPctOf',
   'homeSleepPctOfDefault',
   'homeSleepOnTrack',
+  'homeSleepOnTrackDefault',
   'homeSleepNoEstimate',
   'homeSleepNoEstimateWhy',
 ];
@@ -47,5 +48,9 @@ void main() {
     expect(onTrack, contains('{cycles, plural'));
     expect(onTrack, contains('=1{1 cycle}'));
     expect(onTrack, contains('{duration}'));
+    final onTrackDefault = j['homeSleepOnTrackDefault'] as String;
+    expect(onTrackDefault, contains('{cycles, plural'));
+    expect(onTrackDefault, contains('{target}'));
+    expect(onTrackDefault, contains('(default)'));
   });
 }

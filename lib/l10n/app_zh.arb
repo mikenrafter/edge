@@ -1422,6 +1422,7 @@
   "homeSleepPctOf": "{target} 的 {pct}%",
   "homeSleepPctOfDefault": "{target} 的 {pct}%（默认）",
   "homeSleepOnTrack": "有望达到 {cycles} 个周期，{duration}",
+  "homeSleepOnTrackDefault": "有望达到 {cycles} 个周期，{duration} · 目标 {target}（默认）",
   "homeSleepNoEstimate": "暂无估算",
   "homeSleepNoEstimateWhy": "尚无已评分的夜晚，也没有闹钟或常规起床时间可供估算。",
   "homeLoadFailedTitle": "今日数据读取失败",

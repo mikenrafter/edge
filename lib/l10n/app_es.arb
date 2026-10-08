@@ -1422,6 +1422,7 @@
   "homeSleepPctOf": "{pct} % de {target}",
   "homeSleepPctOfDefault": "{pct} % de {target} (predeterminado)",
   "homeSleepOnTrack": "en camino a {cycles, plural, =1{1 ciclo} other{{cycles} ciclos}}, {duration}",
+  "homeSleepOnTrackDefault": "en camino a {cycles, plural, =1{1 ciclo} other{{cycles} ciclos}}, {duration} · objetivo {target} (predeterminado)",
   "homeSleepNoEstimate": "Sin estimación",
   "homeSleepNoEstimateWhy": "Aún no hay una noche puntuada y no hay alarma ni hora habitual de despertar para estimar.",
   "homeLoadFailedTitle": "No se pudo leer el día de hoy",

@@ -7430,6 +7430,23 @@
       }
     }
   },
+  "homeSleepOnTrackDefault": "on track for {cycles, plural, =1{1 cycle} other{{cycles} cycles}}, {duration} · target {target} (default)",
+  "@homeSleepOnTrackDefault": {
+    "description": "Sleep ring subtitle before a night is scored when the target is the 8 h default (no need learned yet): the estimate, then the default target, labelled as a default.",
+    "placeholders": {
+      "cycles": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String",
+        "example": "7h 30m"
+      },
+      "target": {
+        "type": "String",
+        "example": "8h 00m"
+      }
+    }
+  },
   "homeSleepNoEstimate": "No estimate",
   "@homeSleepNoEstimate": {
     "description": "Sleep ring value when no night is scored and there is no wake time to estimate to."

@@ -457,6 +457,33 @@ void main() {
       expect(m.wakeAt, DateTime(2026, 10, 9, 7, 0));
     });
 
+    test('the 24 h horizon is compared in full: exactly 24 h is accepted', () {
+      final m = _unslept(
+        now: _evening,
+        schedule: _schedule,
+        alarm: _evening.add(const Duration(hours: 24)),
+      );
+      expect(m.wakeSource, WakeSource.alarm);
+    });
+
+    test('24 h and one second away is rejected', () {
+      final m = _unslept(
+        now: _evening,
+        schedule: _schedule,
+        alarm: _evening.add(const Duration(hours: 24, seconds: 1)),
+      );
+      expect(m.wakeSource, WakeSource.schedule);
+    });
+
+    test('24 h 0 m 59 s away is rejected (not truncated to 24 h 0 m)', () {
+      final m = _unslept(
+        now: _evening,
+        schedule: _schedule,
+        alarm: _evening.add(const Duration(hours: 24, seconds: 59)),
+      );
+      expect(m.wakeSource, WakeSource.schedule);
+    });
+
     test('a wake at exactly now rolls to the next day\'s wake', () {
       final now = DateTime(2026, 10, 9, 7, 0);
       final m = _unslept(now: now, schedule: _schedule);

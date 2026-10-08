@@ -14,6 +14,7 @@
 // Both are pinned below: a slept night is never an empty bar, and the need
 // reaches the ring from both loaders.
 
+import 'package:clock/clock.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -29,6 +30,9 @@ import 'package:openstrap_edge/ui2/ui2.dart';
 
 final _evening = DateTime(2026, 10, 8, 22, 0);
 const _schedule = ExpectedSleepSchedule(onsetMinute: 1380, wakeMinute: 420);
+
+/// The unslept sub-line's tail when the target is the 8 h default.
+const _dflt = ' · target 8h 00m (default)';
 
 const _stages = SleepStageMin(deep: 70, rem: 95, light: 277, awake: 30);
 
@@ -413,7 +417,7 @@ void main() {
       addTearDown(app.dispose);
       app.sleepOperations.schedule = _schedule;
       await pumpHome(t, app);
-      expect(find.text('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
     testWidgets('an armed alarm beats the schedule wake', (t) async {
@@ -423,7 +427,7 @@ void main() {
       app.device.alarmEpoch =
           DateTime(2026, 10, 9, 6, 30).millisecondsSinceEpoch ~/ 1000;
       await pumpHome(t, app);
-      expect(find.text('on track for 5 cycles, 7h 30m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 7h 30m$_dflt'), findsOneWidget);
     });
 
     testWidgets('an alarm already past is ignored', (t) async {
@@ -433,7 +437,7 @@ void main() {
       app.device.alarmEpoch =
           DateTime(2026, 10, 8, 21, 0).millisecondsSinceEpoch ~/ 1000;
       await pumpHome(t, app);
-      expect(find.text('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
     testWidgets('with nothing saved and nothing armed there is no estimate',
@@ -442,6 +446,116 @@ void main() {
       addTearDown(app.dispose);
       await pumpHome(t, app);
       expect(find.text('No estimate'), findsOneWidget);
+    });
+  });
+
+  group('a day with no measured data still shows the estimate', () {
+    Future<void> pumpBare(WidgetTester t, AppState app) async {
+      t.view.physicalSize = const Size(390 * 3, 1600 * 3);
+      t.view.devicePixelRatio = 3;
+      addTearDown(t.view.reset);
+      await t.pumpWidget(MaterialApp(
+        theme: buildTheme(Brightness.light),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: ChangeNotifierProvider<AppState>.value(
+          value: app,
+          child: Scaffold(
+            body: HomeScreen(hour: 22, now: _evening, data: const HomeData()),
+          ),
+        ),
+      ));
+      for (var i = 0; i < 10; i++) {
+        await t.pump(const Duration(milliseconds: 20));
+      }
+    }
+
+    testWidgets('a saved schedule and no readiness/strain/sleep: rings, not '
+        'the "Nothing derived yet" card', (t) async {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      app.sleepOperations.schedule = _schedule;
+      await pumpBare(t, app);
+      expect(find.text('Nothing derived yet'), findsNothing);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
+    });
+
+    testWidgets('nothing to estimate from: the status card, as before',
+        (t) async {
+      final app = AppState.forTesting();
+      addTearDown(app.dispose);
+      await pumpBare(t, app);
+      expect(find.text('Nothing derived yet'), findsOneWidget);
+      expect(find.text('No estimate'), findsNothing);
+    });
+  });
+
+  group('the estimate follows the clock while the screen stays open', () {
+    final base = DateTime(2026, 10, 9, 2, 0, 30);
+
+    testWidgets('it re-reads the clock on each minute boundary — no injected '
+        'now', (t) async {
+      var fake = base;
+      await withClock(Clock(() => fake), () async {
+        final app = AppState.forTesting();
+        addTearDown(app.dispose);
+        app.sleepOperations.schedule = _schedule;
+        t.view.physicalSize = const Size(390 * 3, 1600 * 3);
+        t.view.devicePixelRatio = 3;
+        addTearDown(t.view.reset);
+        await t.pumpWidget(MaterialApp(
+          theme: buildTheme(Brightness.light),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChangeNotifierProvider<AppState>.value(
+            value: app,
+            child: Scaffold(
+              body: HomeScreen(hour: 2, data: _unslept()),
+            ),
+          ),
+        ));
+        await t.pump(const Duration(milliseconds: 20));
+        // 02:00:30 -> wake 07:00 is 4 h 59 m.
+        expect(find.text('4h 59m'), findsWidgets);
+
+        // Half a minute later the next boundary has passed.
+        fake = base.add(const Duration(seconds: 30));
+        await t.pump(const Duration(seconds: 30));
+        // 02:01:00 -> 4 h 59 m still; one more minute is 4 h 58 m.
+        fake = base.add(const Duration(seconds: 90));
+        await t.pump(const Duration(seconds: 60));
+        expect(find.text('4h 58m'), findsWidgets);
+        expect(find.text('4h 59m'), findsNothing);
+
+        // Half an hour on, with nothing but the passing minutes.
+        for (var i = 0; i < 30; i++) {
+          fake = fake.add(const Duration(minutes: 1));
+          await t.pump(const Duration(minutes: 1));
+        }
+        expect(find.text('4h 28m'), findsWidgets);
+      });
+    });
+
+    testWidgets('it stops ticking once the screen is gone', (t) async {
+      var fake = base;
+      await withClock(Clock(() => fake), () async {
+        final app = AppState.forTesting();
+        addTearDown(app.dispose);
+        await t.pumpWidget(MaterialApp(
+          theme: buildTheme(Brightness.light),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: ChangeNotifierProvider<AppState>.value(
+            value: app,
+            child: Scaffold(body: HomeScreen(hour: 2, data: _unslept())),
+          ),
+        ));
+        await t.pump(const Duration(milliseconds: 20));
+        await t.pumpWidget(const SizedBox());
+        // A timer left behind would be reported as pending by the framework.
+        fake = fake.add(const Duration(minutes: 5));
+        await t.pump(const Duration(minutes: 5));
+      });
     });
   });
 
@@ -465,7 +579,7 @@ void main() {
         'yym"', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
       expect(find.text('8h 00m'), findsNWidgets(1));
-      expect(find.text('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
     testWidgets('one cycle is singular', (t) async {
@@ -474,7 +588,21 @@ void main() {
         _unslept(schedule: _schedule),
         now: DateTime(2026, 10, 9, 5, 20),
       );
-      expect(find.text('on track for 1 cycle, 1h 40m'), findsOneWidget);
+      expect(find.text('on track for 1 cycle, 1h 40m$_dflt'), findsOneWidget);
+    });
+
+    testWidgets('a LEARNED need is the denominator: no "(default)" tail',
+        (t) async {
+      await _pump(t, _unslept(schedule: _schedule, need: _min(540)));
+      expect(find.text('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      expect(find.textContaining('default'), findsNothing);
+    });
+
+    testWidgets('the DEFAULT denominator is visibly labelled on the unslept '
+        'sub-line too', (t) async {
+      await _pump(t, _unslept(schedule: _schedule));
+      expect(find.textContaining('(default)'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
     testWidgets('an estimate has no percentage and no "(default)" label '
@@ -491,7 +619,7 @@ void main() {
           alarm: DateTime(2026, 10, 9, 6, 30),
         ),
       );
-      expect(find.text('on track for 5 cycles, 7h 30m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 7h 30m$_dflt'), findsOneWidget);
     });
 
     testWidgets('coach bedtime beats the schedule onset', (t) async {
@@ -503,7 +631,7 @@ void main() {
               value: 22 * 60 + 30, confidence: .7, tier: MetricTier.estimate),
         ),
       );
-      expect(find.text('on track for 5 cycles, 8h 30m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 30m$_dflt'), findsOneWidget);
     });
 
     testWidgets('schedule onset beats learned onset; learned alone still '
@@ -512,12 +640,12 @@ void main() {
         t,
         _unslept(schedule: _schedule, learnedOnset: 23 * 60 + 30),
       );
-      expect(find.text('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
       await _pump(
         t,
         _unslept(learnedOnset: 23 * 60 + 30, learnedWake: 7 * 60 + 30),
       );
-      expect(find.text('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
     testWidgets('a user cycle length (hook) changes the cycle count',
@@ -527,14 +655,14 @@ void main() {
         cycleLenMin: 100,
       );
       await _pump(t, d);
-      expect(find.text('on track for 4 cycles, 8h 00m'), findsOneWidget);
+      expect(find.text('on track for 4 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
     testWidgets('the estimate depends only on the injected now — time passing '
         'in the test changes nothing', (t) async {
       await _pump(t, _unslept(schedule: _schedule));
       await t.pump(const Duration(hours: 3));
-      expect(find.text('on track for 5 cycles, 8h 00m'), findsOneWidget);
+      expect(find.text('on track for 5 cycles, 8h 00m$_dflt'), findsOneWidget);
     });
 
     testWidgets('spoken text carries the estimate sentence', (t) async {
@@ -542,7 +670,7 @@ void main() {
       await _pump(t, _unslept(schedule: _schedule));
       expect(
         find.bySemanticsLabel(
-            RegExp(r'Sleep\. 8h 00m\. on track for 5 cycles, 8h 00m')),
+            RegExp(r'Sleep\. 8h 00m\. on track for 5 cycles, 8h 00m · target 8h 00m \(default\)')),
         findsOneWidget,
       );
       h.dispose();

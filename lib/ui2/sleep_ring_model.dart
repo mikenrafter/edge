@@ -87,7 +87,7 @@ const int _minCycleLenMin = 60, _maxCycleLenMin = 150;
 
 /// An alarm further away than this is not tonight's wake (a weekday alarm seen
 /// from Friday evening), so the typical schedule answers instead.
-const int _maxAlarmHorizonMin = 24 * 60;
+const int _maxAlarmHorizonMicros = 24 * 3600 * 1000000;
 
 SleepRingModel sleepRingModel({
   required DateTime now,
@@ -120,7 +120,7 @@ SleepRingModel sleepRingModel({
   WakeSource? wakeSource;
   if (nextAlarm != null &&
       nextAlarm.isAfter(now) &&
-      nextAlarm.difference(now).inMinutes <= _maxAlarmHorizonMin) {
+      nextAlarm.difference(now).inMicroseconds <= _maxAlarmHorizonMicros) {
     wake = nextAlarm.toLocal();
     wakeSource = WakeSource.alarm;
   } else if (schedule != null) {
