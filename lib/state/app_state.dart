@@ -4976,7 +4976,22 @@ class AppState extends ChangeNotifier {
       AndroidBackground.openOemAutostartSettings();
 
   Future<void> unpair() async {
+    _unpairing = true;
+    try {
+      await _unpairBand();
+    } finally {
+      // After the disconnect (and its state callbacks) completed: nothing of
+      // the forgotten band's alarm may be left in the quiet machinery.
+      _unpairing = false;
+      _resetQuiet();
+    }
+  }
+
+  Future<void> _unpairBand() async {
     await _endSnooze('unpaired');
+    // The forgotten band's alarm gets no episode, whatever calls back later.
+    final forgotten = alarmEpoch;
+    if (forgotten != null) _quietDoneEpoch = forgotten;
     await _sync.unpairSession();
     await PairedDevice.clear();
     pairedIsMaverick = false;
@@ -5467,6 +5482,11 @@ class AppState extends ChangeNotifier {
   @visibleForTesting
   Future<void> debugLoadAlarmSchedule() => _loadAlarmSchedule();
 
+  /// The explicit wake-acknowledgement path's native cancel. Tests only.
+  @visibleForTesting
+  Future<bool> debugCancelNativeAlarmForWake(DateTime wakeAt) =>
+      _cancelNativeAlarmForWake(wakeAt);
+
   /// What arming the band does to the app's books (no band write). Tests only.
   @visibleForTesting
   Future<void> debugOnArmed(DateTime when, int epoch) => _onArmed(when, epoch);
@@ -5736,6 +5756,9 @@ class AppState extends ChangeNotifier {
     haptics.expectQuiet(at);
   }
 
+  /// True while [unpair] runs: the forgotten band's alarm builds no episode.
+  bool _unpairing = false;
+
   /// THE teardown: ends the episode. Withdraws the expectation, closes the
   /// window, cancels the timer. [done]: this alarm never gets another window.
   /// Safe in any state (and when the haptics service was never built).
@@ -5776,8 +5799,14 @@ class AppState extends ChangeNotifier {
     final armed = alarmEpoch;
     if (_quietEpoch != null &&
         ((!_quietOpen && armed != _quietEpoch) ||
-            (_quietOpen && armed != null && armed != _quietEpoch))) {
+            (_quietOpen &&
+                ((armed != null && armed != _quietEpoch) ||
+                    (armed == null && !_quietFired))))) {
       _resetQuiet();
+    }
+    if (_unpairing) {
+      _resetQuiet(); // a callback during unpair must not rebuild it
+      return;
     }
     final epoch = _quietEpoch ?? armed;
     if (epoch == null || epoch == _quietDoneEpoch) {
@@ -6873,9 +6902,6 @@ class AppState extends ChangeNotifier {
         // Same persistence gap on the strap-driven clear (event 59): state was
         // nulled but `alarm_epoch` stayed on disk and came back on next launch.
         _clearArmedAlarmState();
-        // No alarm any more: an episode that never saw it fire is over (one
-        // that did keeps its window until the stop).
-        if (!_quietFired) _resetQuiet(done: true);
         _log('[alarm] cleared (event $id).');
         break;
     }
@@ -6886,6 +6912,11 @@ class AppState extends ChangeNotifier {
   /// `firedAt` deliberately survives `disable()`, so the fired-notification's
   /// dedupeKey still resolves after this runs.
   void _clearArmedAlarmState() {
+    // Every local disarm (all schedule days off, a wake acknowledgement,
+    // Cancel-all) and the band's own event 59 land here: an alarm that never
+    // fired is gone, so its quiet episode is over. One that fired keeps its
+    // window until the stop.
+    if (!_quietFired) _resetQuiet(done: true);
     _savedAlarm = null;
     device.alarmEpoch = null;
     _alarm.disable();

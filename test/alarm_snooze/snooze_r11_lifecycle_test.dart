@@ -199,6 +199,36 @@ void main() {
       newAlarm: false,
     ),
     (
+      name: 'every schedule day disabled (the local disarm succeeds)',
+      act: (c) async {
+        c.rig.engine.allowUserDisable = true;
+        await c.rig.app.debugArmNextAlarmOccurrence();
+      },
+      immediate: true,
+      mustRun: true,
+      newAlarm: false,
+    ),
+    (
+      name: 'the wearer acknowledges the wake (native alarm cancelled)',
+      act: (c) async {
+        c.rig.engine.allowUserDisable = true;
+        await c.rig.app.debugCancelNativeAlarmForWake(c.t);
+      },
+      immediate: true,
+      mustRun: true,
+      newAlarm: false,
+    ),
+    (
+      name: 'the alarm vanishes from the books and no event reaches us',
+      act: (c) async {
+        c.rig.engine.state.alarmEpoch = null;
+        await c.tick();
+      },
+      immediate: true,
+      mustRun: true,
+      newAlarm: false,
+    ),
+    (
       name: 'the app is disposed',
       act: (c) => c.rig.dispose(),
       immediate: true,
@@ -211,7 +241,7 @@ void main() {
     group('state: ${state.name}', () {
       for (final e in exits) {
         test('exit: ${e.name}', () async {
-          rig = await SnoozeBandRig.open(start: kStart);
+          rig = await SnoozeBandRig.open(start: kStart, wireState: true);
           final t = kStart.add(const Duration(minutes: 1));
           final c = Ctx(rig, t);
           rig.app.debugMonotonic = () => c.mono;

@@ -28,6 +28,7 @@ import 'dart:typed_data';
 import 'package:openstrap_edge/alarm/snooze/snooze_schedule.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_settings.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/models.dart' show DeviceState;
 import 'package:openstrap_edge/notify/notification_prefs.dart';
 import 'package:openstrap_edge/ble/ble_engine.dart';
 import 'package:openstrap_edge/ble/ble_state.dart';
@@ -69,9 +70,10 @@ class SnoozeBandEngine extends BleEngine {
   SnoozeBandEngine({
     required DateTime Function() clock,
     required EventSink onEvent,
+    void Function(DeviceState)? onState,
   }) : super(
           onRecord: (_, _) async {},
-          onState: (_) {},
+          onState: onState ?? (_) {},
           clock: clock,
           onEvent: onEvent,
         );
@@ -184,6 +186,7 @@ class SnoozeBandRig {
     this.autoEnd = AutoEnd.queueOnly,
     this.autoEndLimit = 60,
     bool unlimitedBudget = false,
+    bool wireState = false,
   })  : clock = clock ??
             TestClock(DateTime.fromMillisecondsSinceEpoch(
                 (start ?? DateTime.now()).millisecondsSinceEpoch ~/ 1000 *
@@ -192,6 +195,11 @@ class SnoozeBandRig {
     engine = SnoozeBandEngine(
       clock: this.clock.call,
       onEvent: (e) => app.debugOnLiveEvent(e),
+      // Production's own state callback (connection changes, the lot) when
+      // asked: the default rig swallows engine state, as before.
+      onState: wireState
+          ? (s) => app.debugFeedEngineState(LocalDb.kPrimaryDeviceId, s)
+          : null,
     );
     app = AppState.forTesting(
       engine: engine,
@@ -234,6 +242,7 @@ class SnoozeBandRig {
     int autoEndLimit = 60,
     bool? snooze = true,
     Map<String, Object?> settings = const {},
+    bool wireState = false,
   }) async {
     await LocalDb.instance;
     await NotificationPrefs.load();
@@ -243,7 +252,8 @@ class SnoozeBandRig {
         clock: clock,
         generation: generation,
         autoEnd: autoEnd,
-        autoEndLimit: autoEndLimit);
+        autoEndLimit: autoEndLimit,
+        wireState: wireState);
     if (snooze != null || settings.isNotEmpty) {
       await rig.app.setSnoozeSettings(SnoozeSettings.fromJson({
         ...rig.app.snoozeSettings.toJson(),
