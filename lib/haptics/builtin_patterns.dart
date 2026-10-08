@@ -253,8 +253,17 @@ bool isLegacyAlertDefault(String ruleId, BuzzSequence s) {
       s.durationsMs.join(',') == taps.durationsMs.join(',');
 }
 
+// builtInDefault is pure and compiling a long rhythm costs milliseconds (the
+// whole store is ~150 ms to seed), and every settings read seeds the store; the
+// result is computed once per key.
+final Map<String, BuiltInSpec?> _defaults = {};
+
 /// The seeded default for [systemKey], or null for a key that is not built in.
-BuiltInSpec? builtInDefault(String systemKey) {
+BuiltInSpec? builtInDefault(String systemKey) => _defaults.containsKey(systemKey)
+    ? _defaults[systemKey]
+    : _defaults[systemKey] = _buildDefault(systemKey);
+
+BuiltInSpec? _buildDefault(String systemKey) {
   final id = systemPatternId(systemKey);
   switch (systemKey) {
     case kGestureStartKey:

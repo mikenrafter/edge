@@ -99,6 +99,7 @@ import '../ui2/sources/source_views.dart' show SourceViews;
 import '../data/db.dart';
 import '../ecg/ble_ecg_transport.dart';
 import '../ecg/ecg_controller.dart';
+import '../ecg/ecg_cues.dart' show kEcgCueRule;
 import '../ecg/ecg_guard_store.dart';
 import '../ecg/ecg_models.dart';
 import '../ecg/ecg_recovery.dart';
@@ -261,18 +262,24 @@ class AppState extends ChangeNotifier {
     await prefs.setBool(_kEcgKeepWaveform, on);
   }
 
-  /// An ECG cue slot (`ecg.*`) as one dispatcher delivery on the band queue.
-  /// It rides the `breath` alert rule: like a breathing cue it belongs to a
-  /// session the wearer is in the middle of, so quiet hours do not hold it.
-  /// The wearer's pattern for the slot is read just before it plays.
+  /// An ECG cue slot (`ecg.*`) as one band-only dispatcher delivery under
+  /// [kEcgCueRule]. It is deliberately NOT an alert rule with preferences: the
+  /// breathing alerts' on/off, phone destination and quiet hours do not apply
+  /// to a reading the wearer is in the middle of, and no phone notification is
+  /// ever made. It still plays through the cue slots, so the band queue and the
+  /// haptic budget govern it. The wearer's pattern is read just before it plays.
   Future<void> _playEcgCue(String slot) async {
     await _gestures.loadCues();
     if (_disposed) return;
-    await _dispatchBandAlert(
-      'breath',
-      deliver: (_, _) async =>
+    final now = DateTime.now();
+    await alertDispatcher.dispatch(
+      kEcgCueRule,
+      eventId: 'ecg:$slot:${now.microsecondsSinceEpoch}',
+      sourceTime: now,
+      historical: false,
+      bandTimeout: const Duration(seconds: 10),
+      bandDelivery: () async =>
           _disposed ? BuzzDelivery.rejected : gestureCues.slot(slot),
-      deliverTimeout: const Duration(seconds: 10),
     );
   }
 

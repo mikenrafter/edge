@@ -2346,7 +2346,7 @@
   "ecgCleanupIncomplete": "Le bracelet génère peut-être encore. Il sera arrêté à la prochaine connexion.",
   "ecgLivePreview": "Aperçu du signal en direct",
   "ecgBandReported": "Résultat rapporté par le bracelet",
-  "ecgNotDiagnosis": "La catégorie vient du bracelet. Ce n’est pas un diagnostic.",
+  "ecgNotDiagnosis": "La catégorie vient du bracelet. C’est un dépistage, pas un examen médical.",
   "ecgCategorySinus": "Rythme régulier, rien signalé",
   "ecgCategoryLowHr": "Fréquence cardiaque basse",
   "ecgCategoryPossibleAfib": "Rythme irrégulier signalé",

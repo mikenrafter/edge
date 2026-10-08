@@ -115,6 +115,17 @@ void main() {
     });
   });
 
+  group('seeding cost', () {
+    test('a default is computed once per key: seeding the store on every '
+        'settings read was ~150 ms, and the six ECG cues made it ~50% slower, '
+        'which tipped timing-sensitive gesture tests into a DB lock', () {
+      for (final k in [...kEcgCueKeys, kGestureStartKey, 'preset.sos']) {
+        expect(identical(builtInDefault(k), builtInDefault(k)), isTrue,
+            reason: k);
+      }
+    });
+  });
+
   group('the ECG confusable set', () {
     test('one set holds all six ECG slots', () {
       final set = kConfusableSets.where((s) => s.contains('ecg.started'));

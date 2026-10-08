@@ -181,7 +181,7 @@ void main() {
     });
 
     testWidgets(
-      'completed offers view and done, and says it is not a diagnosis',
+      'completed offers view and done, and says it is a screen, not a medical test',
       (t) async {
         final log = <String>[];
         await _pump(
@@ -195,7 +195,7 @@ void main() {
           ),
         );
         expect(_allText(t), contains('Reading saved'));
-        expect(_allText(t), contains('not a diagnosis'));
+        expect(_allText(t), contains('not a medical test'));
         await t.tap(find.text('View reading'));
         await t.tap(find.text('Done'));
         expect(log, ['view', 'done']);
@@ -400,7 +400,7 @@ void main() {
         expect(text, contains('Analyze now'));
         expect(text, contains('77 bpm'));
         expect(text, contains('Left wrist'));
-        expect(text, contains('not a diagnosis'));
+        expect(text, contains('not a medical test'));
         expect(text.toLowerCase(), isNot(contains('lead i')));
       },
     );

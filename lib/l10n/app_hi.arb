@@ -2346,7 +2346,7 @@
   "ecgCleanupIncomplete": "बैंड अभी भी डेटा बना सकता है। अगली बार कनेक्ट होने पर इसे रोका जाएगा।",
   "ecgLivePreview": "लाइव सिग्नल पूर्वावलोकन",
   "ecgBandReported": "बैंड द्वारा रिपोर्ट किया गया परिणाम",
-  "ecgNotDiagnosis": "श्रेणी बैंड से आती है। यह निदान नहीं है।",
+  "ecgNotDiagnosis": "श्रेणी बैंड से आती है। यह एक स्क्रीनिंग है, चिकित्सा जांच नहीं।",
   "ecgCategorySinus": "नियमित लय, कुछ चिह्नित नहीं",
   "ecgCategoryLowHr": "कम हृदय गति",
   "ecgCategoryPossibleAfib": "अनियमित लय चिह्नित",

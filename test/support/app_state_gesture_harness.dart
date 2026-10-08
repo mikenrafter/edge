@@ -193,7 +193,10 @@ class _SpyTransport implements EcgTransport {
   Future<void> cancelHistory(EcgLeaseHandle lease) async {}
   @override
   Future<EcgCommandListResult> prepare(
-      EcgLeaseHandle lease, EcgWrist wrist) async {
+    EcgLeaseHandle lease,
+    EcgWrist wrist, {
+    bool rawSave = true,
+  }) async {
     order.add('ecg:prepare');
     const members = ['selectWrist', 'filteredOn', 'rawSaveOn'];
     prepares.add(members);

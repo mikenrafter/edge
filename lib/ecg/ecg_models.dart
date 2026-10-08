@@ -211,7 +211,7 @@ class EcgReading {
 
   /// Why a [EcgReadingStatus.partial] stopped: 'paused' (app backgrounded) or
   /// 'timeout' or 'disconnected'. Null for every other status. Column
-  /// `stop_reason` (schema 65).
+  /// `stop_reason` (schema 66).
   final String? stopReason;
 
   const EcgReading({

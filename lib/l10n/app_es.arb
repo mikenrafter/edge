@@ -2375,7 +2375,7 @@
   "ecgCleanupIncomplete": "La banda puede seguir generando. Se detendrá en la próxima conexión.",
   "ecgLivePreview": "Vista previa de la señal",
   "ecgBandReported": "Resultado informado por la banda",
-  "ecgNotDiagnosis": "La categoría la da la banda. Esto no es un diagnóstico.",
+  "ecgNotDiagnosis": "La categoría la da la banda. Es un cribado, no una prueba médica.",
   "ecgCategorySinus": "Ritmo regular, nada marcado",
   "ecgCategoryLowHr": "Frecuencia cardíaca baja",
   "ecgCategoryPossibleAfib": "Ritmo irregular marcado",

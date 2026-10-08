@@ -14,6 +14,8 @@
 // Reuses the scripted transport and frame builders of
 // test/ecg_controller_test.dart (importing a test file runs none of its tests).
 
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ecg/ecg_controller.dart';
 import 'package:openstrap_edge/ecg/ecg_guard_store.dart';
@@ -35,6 +37,9 @@ class FRig {
   bool keep = false;
   bool failSave = false;
   bool throwingCue = false;
+
+  /// Holds every save() until completed (null: no hold).
+  Completer<void>? holdSave;
   var now = 1787823754000;
   late final EcgController c;
 
@@ -43,6 +48,7 @@ class FRig {
       transport: t,
       guard: guard,
       save: (r, p) async {
+        if (holdSave != null) await holdSave!.future;
         if (failSave) throw StateError('disk full');
         saved.add((r, p));
       },
@@ -283,12 +289,23 @@ void main() {
       expect(r.saved.single.$2.map((p) => p.sequence), [2, 3, 4]);
     });
 
-    test('the choice is read when the result is SAVED, so switching it on '
-        'during the reading counts', () async {
+    test('the choice is fixed when the reading BEGINS (it also decides whether '
+        'the band records raw), so switching it on later changes nothing',
+        () async {
       final r = FRig();
       await r.c.begin(EcgWrist.right);
       await r.record(2, firstSeq: 2);
       r.keep = true;
+      await r.finishGood(seq: 4);
+      expect(r.saved.single.$2, isEmpty);
+    });
+
+    test('and switching it off later does not drop what the wearer asked to '
+        'keep', () async {
+      final r = FRig()..keep = true;
+      await r.c.begin(EcgWrist.right);
+      await r.record(2, firstSeq: 2);
+      r.keep = false;
       await r.finishGood(seq: 4);
       expect(r.saved.single.$2, hasLength(3));
     });

@@ -4,8 +4,9 @@
 // The rules are the ones in lib/ui2/screens/beats.dart's header: a SCREEN,
 // never a diagnosis and never AF detection; no arrhythmia vocabulary; "not
 // screened" distinct from "nothing flagged"; a result with nothing flagged
-// never reads as being cleared. "diagnos" may appear only inside the
-// disclaimer phrases "cannot diagnose" / "not a diagnosis".
+// never reads as being cleared. The owner spec bans diagnosis words
+// user-facing, so there is NO exemption: the stem "diagnos" appears nowhere,
+// the disclaimer included ("This is a screen, not a medical test").
 //
 // The links: every URL lives in ONE constant (kEcgLinks) that
 // scripts/check_ecg_links.sh reads. Run the script to see they resolve (a unit
@@ -43,12 +44,8 @@ const kBannedScreenerWords = [
   'severe',
 ];
 
-/// What is left of [text] to check: lowercased, the two permitted disclaimer
-/// phrases removed.
-String forBanCheck(String text) => text
-    .toLowerCase()
-    .replaceAll('cannot diagnose', '')
-    .replaceAll('not a diagnosis', '');
+/// [text] lowercased. No phrase is exempt.
+String forBanCheck(String text) => text.toLowerCase();
 
 /// The banned things found in [text] (empty when clean), including the
 /// stand-alone word "af" and any other use of "diagnos".
@@ -107,9 +104,11 @@ void main() {
       ]) {
         expect(bannedIn(bad), isNotEmpty, reason: bad);
       }
+      // No exemption for the old disclaimer wording either.
       expect(bannedIn('This is a screen. It cannot diagnose a condition.'),
-          isEmpty);
-      expect(bannedIn('The result is not a diagnosis.'), isEmpty);
+          contains('diagnos'));
+      expect(bannedIn('The result is not a diagnosis.'), contains('diagnos'));
+      expect(bannedIn('This is a screen, not a medical test.'), isEmpty);
     });
 
     test('"not screened" is its own thing: the states where nothing was '

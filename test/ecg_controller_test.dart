@@ -91,6 +91,9 @@ class FakeTransport implements EcgTransport {
   Completer<void>? holdCleanup;
   int syncRequests = 0;
 
+  /// The rawSave flag of every PREPARE, in order.
+  final rawSaves = <bool>[];
+
   @override
   bool get isReady => ready;
   @override
@@ -135,8 +138,12 @@ class FakeTransport implements EcgTransport {
 
   @override
   Future<EcgCommandListResult> prepare(
-      EcgLeaseHandle lease, EcgWrist wrist) async {
+    EcgLeaseHandle lease,
+    EcgWrist wrist, {
+    bool rawSave = true,
+  }) async {
     calls.add('prepare:${wrist.name}');
+    rawSaves.add(rawSave);
     return prepareResult ?? _ok(['selectWrist', 'filteredOn', 'rawSaveOn']);
   }
 

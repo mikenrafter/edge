@@ -1135,13 +1135,19 @@ class BleEngine implements AlarmBandWriter {
     await _awaitHistoryLifecycleQuiescence();
   }
 
-  static List<_EcgMember> _ecgPrepareMembers(WristSelection wrist) => [
+  static List<_EcgMember> _ecgPrepareMembers(
+    WristSelection wrist, {
+    bool rawSave = true,
+  }) => [
         ('selectWrist', Cmd.selectWrist,
             (seq, band) => cmdSelectWrist(seq, wrist, profile: band)),
         ('filteredOn', Cmd.toggleLabradorFiltered,
             (seq, band) => cmdLabradorFiltered(seq, true, profile: band)),
-        ('rawSaveOn', Cmd.toggleLabradorRawSave,
-            (seq, band) => cmdLabradorRawSave(seq, true, profile: band)),
+        // The band's raw-save keeps the recording for ordinary history sync to
+        // store (ecg_raw_packet): only when the wearer chose to keep it.
+        if (rawSave)
+          ('rawSaveOn', Cmd.toggleLabradorRawSave,
+              (seq, band) => cmdLabradorRawSave(seq, true, profile: band)),
       ];
 
   static List<_EcgMember> _ecgStartMembers(LabradorOperation op) => [
@@ -1166,11 +1172,14 @@ class BleEngine implements AlarmBandWriter {
         (seq, band) => cmdLabradorRawSave(seq, false, profile: band)),
   ];
 
-  /// PREPARE: 123 wrist, 139 filtered ON, 125 raw-save ON. Attempt-all; the
-  /// caller accepts only when every member succeeded.
+  /// PREPARE: 123 wrist, 139 filtered ON and, unless [rawSave] is false, 125
+  /// raw-save ON. Attempt-all; the caller accepts only when every member
+  /// succeeded.
   Future<List<EcgCommandOutcome>> ecgPrepare(
-          EcgLease lease, WristSelection wrist) =>
-      _runEcgList(lease, _ecgPrepareMembers(wrist));
+    EcgLease lease,
+    WristSelection wrist, {
+    bool rawSave = true,
+  }) => _runEcgList(lease, _ecgPrepareMembers(wrist, rawSave: rawSave));
 
   /// START: 20 abort-history (unconditional), 124 generation START.
   Future<List<EcgCommandOutcome>> ecgStart(EcgLease lease) =>

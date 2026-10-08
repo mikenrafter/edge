@@ -8,8 +8,8 @@
 // anything, no severity words. "Not screened" (the band could not read it, the
 // recording stopped early, the link failed) is a different thing from "nothing
 // flagged" and the text says so; a result with nothing flagged never says the
-// wearer is cleared. The one place the word "diagnos" may occur is the
-// disclaimer ("cannot diagnose", "not a diagnosis").
+// wearer is cleared. No diagnosis words at all, the disclaimer included: it
+// says "This is a screen, not a medical test."
 
 /// One state on the page.
 class EcgScreenerEntry {
@@ -147,7 +147,7 @@ List<EcgScreenerEntry> ecgScreenerEntries() => const [
 /// The lines at the top of the screener page: a screen, not a diagnosis; a
 /// result with nothing flagged is not a clearance; it ends in a person.
 const String kEcgScreenerIntro =
-    'This is a screen. It cannot diagnose a condition.\n\n'
+    'This is a screen, not a medical test.\n\n'
     'A result with nothing flagged does not mean you were cleared, and the '
     'screen cannot rule anything out. A result that was not screened says '
     'nothing at all.\n\n'

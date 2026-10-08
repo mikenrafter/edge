@@ -75,8 +75,16 @@ class BleEngineEcgTransport implements EcgTransport {
 
   @override
   Future<EcgCommandListResult> prepare(
-          EcgLeaseHandle lease, EcgWrist wrist) async =>
-      _wrap(await engine.ecgPrepare(lease.token as EcgLease, wrist.selection));
+    EcgLeaseHandle lease,
+    EcgWrist wrist, {
+    bool rawSave = true,
+  }) async => _wrap(
+    await engine.ecgPrepare(
+      lease.token as EcgLease,
+      wrist.selection,
+      rawSave: rawSave,
+    ),
+  );
 
   @override
   Future<EcgCommandListResult> start(EcgLeaseHandle lease) async =>

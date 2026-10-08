@@ -322,6 +322,27 @@ void main() {
       },
     );
 
+    test('PREPARE with raw save off (Keep waveform off): 123 and 139 only, no '
+        '125 — the band does not record the waveform', () async {
+      final l = _Link()..answerAll();
+      final lease = l.engine.ecgAcquire()!;
+      final out =
+          await l.engine.ecgPrepare(lease, WristSelection.right, rawSave: false);
+      expect(l.opcodes, [123, 139]);
+      expect(out.map((o) => o.label), ['selectWrist', 'filteredOn']);
+      expect(out.every((o) => o.written && o.succeeded), isTrue);
+    });
+
+    test('CLEANUP still switches raw save OFF (125 00), whatever PREPARE did',
+        () async {
+      final l = _Link()..answerAll();
+      final lease = l.engine.ecgAcquire()!;
+      await l.engine.ecgPrepare(lease, WristSelection.right, rawSave: false);
+      expect(l.opcodes, [123, 139]);
+      await l.engine.ecgCleanup(lease);
+      expect(l.opcodes.sublist(2), contains(125));
+    });
+
     test('PREPARE left selects 01 02', () async {
       final l = _Link()..answerAll();
       await l.engine.ecgPrepare(l.engine.ecgAcquire()!, WristSelection.left);

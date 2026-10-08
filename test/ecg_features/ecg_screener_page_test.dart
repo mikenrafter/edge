@@ -42,12 +42,12 @@ void main() {
     }
   });
 
-  testWidgets('a permanent line, not a tooltip: this is a screen, it cannot '
-      'diagnose, and nothing flagged does not mean you were cleared', (t) async {
+  testWidgets('a permanent line, not a tooltip: this is a screen, not a '
+      'medical test, and nothing flagged does not mean you were cleared', (t) async {
     await _pump(t, const EcgScreenerScreen());
     final text = _allText(t).toLowerCase();
     expect(text, contains('this is a screen'));
-    expect(text, contains('cannot diagnose'));
+    expect(text, contains('this is a screen, not a medical test'));
     expect(text, contains('does not mean you were cleared'));
     expect(text, contains('see a clinician'));
   });

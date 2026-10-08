@@ -708,7 +708,7 @@ class EcgCaptureBody extends StatelessWidget {
             const SizedBox(height: S.x2),
             body(
               l?.ecgNotDiagnosis ??
-                  'The category comes from the band. This is not a diagnosis.',
+                  'The category comes from the band. This is a screen, not a medical test.',
             ),
             if (s.metrics.isNotEmpty) ...[
               const SizedBox(height: S.x4),
@@ -986,7 +986,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
                   const SizedBox(height: S.x3),
                   Text(
                     l?.ecgNotDiagnosis ??
-                        'The category comes from the band. This is not a diagnosis.',
+                        'The category comes from the band. This is a screen, not a medical test.',
                     style: F.cap.copyWith(color: p.ink3),
                   ),
                 ],

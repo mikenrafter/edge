@@ -2346,7 +2346,7 @@
   "ecgCleanupIncomplete": "Das Band misst möglicherweise weiter. Es wird bei der nächsten Verbindung gestoppt.",
   "ecgLivePreview": "Live-Signalvorschau",
   "ecgBandReported": "Vom Band gemeldetes Ergebnis",
-  "ecgNotDiagnosis": "Die Kategorie stammt vom Band. Das ist keine Diagnose.",
+  "ecgNotDiagnosis": "Die Kategorie stammt vom Band. Das ist ein Screening, kein medizinischer Test.",
   "ecgCategorySinus": "Regelmäßiger Rhythmus, nichts markiert",
   "ecgCategoryLowHr": "Niedrige Herzfrequenz",
   "ecgCategoryPossibleAfib": "Unregelmäßiger Rhythmus markiert",

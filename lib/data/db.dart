@@ -399,7 +399,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 65;
+  static const int schemaVersion = 66;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1216,7 +1216,7 @@ class LocalDb {
           // moves. _repairOpenSchema re-runs it on every open.
           await _createMomentLabel(db);
         }
-        if (oldV < 65) {
+        if (oldV < 66) {
           // ECG results (ecg-features): one nullable column, why a partial
           // reading stopped. Through _createEcgTables so the rung and the
           // every-open repair share one definition; no backfill, nothing
@@ -2407,7 +2407,7 @@ class LocalDb {
     // an older build gains it; the CREATE above deliberately keeps the old
     // shape so a fresh install and an upgrade run the same code.
     await _addColumnIfMissing(db, 'ecg_raw_packet', 'origin', 'TEXT');
-    // v65. Why a partial reading stopped ('paused' | 'timeout' |
+    // v66. Why a partial reading stopped ('paused' | 'timeout' |
     // 'disconnected'); NULL for every other status. By ALTER for the same
     // reason as `origin`.
     await _addColumnIfMissing(db, 'ecg_reading', 'stop_reason', 'TEXT');

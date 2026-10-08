@@ -1,11 +1,12 @@
 // ECG features, phase 1 (RED): the additive, idempotent migration for the
-// ECG result store, schema 64 -> 65.
+// ECG result store, schema 65 -> 66.
 //
 // ASSUMED (lib/data/db.dart):
-//   * LocalDb.schemaVersion >= 65. The ECG rung is `if (oldV < 65)`. This
-//     branch's cumulative base is 64 (moment_label); if another feature merges
-//     first and takes 65 the ECG rung moves up and nothing else here changes:
-//     the assertions below are on the column, not on the number.
+//   * LocalDb.schemaVersion >= 66. The ECG rung is `if (oldV < 66)`. This
+//     branch's cumulative base is 65 (assumed_water + symptom_entry); if
+//     another feature merges first and takes 66 the ECG rung moves up and
+//     nothing else here changes: the assertions below are on the column, not
+//     on the number.
 //   * One new nullable column, `ecg_reading.stop_reason TEXT` (why a partial
 //     stopped: 'paused' | 'timeout'). NO new table: a result is an
 //     `ecg_reading` row, its state is the existing `status` column (now also
@@ -13,7 +14,7 @@
 //     The waveform is the existing `ecg_reading_packet` rows, present only when
 //     kept.
 //   * Added through `_createEcgTables` (CREATE ... IF NOT EXISTS +
-//     `_addColumnIfMissing`), so the `oldV < 65` rung and `_repairOpenSchema`
+//     `_addColumnIfMissing`), so the `oldV < 66` rung and `_repairOpenSchema`
 //     share one definition and a re-run is a no-op (invariant 11). No backfill,
 //     nothing read: cheap under iOS's CPU watchdog. No kAlgoVersion bump:
 //     nothing derived moves.
@@ -29,7 +30,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 Future<String> _path(String name) async =>
     p.join(await databaseFactory.getDatabasesPath(), name);
 
-// ecg_reading exactly as schema 64 left it: no stop_reason.
+// ecg_reading exactly as schema 65 left it: no stop_reason.
 const _legacyReading = '''
 CREATE TABLE ecg_reading (
   id TEXT PRIMARY KEY, device_id TEXT NOT NULL, source TEXT NOT NULL,
@@ -110,15 +111,15 @@ void main() {
     }
   });
 
-  test('schemaVersion is at least 65', () {
-    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(65));
+  test('schemaVersion is at least 66', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(66));
   });
 
-  test('upgrade from v64 reaches the live version, adds stop_reason, keeps '
+  test('upgrade from v65 reaches the live version, adds stop_reason, keeps '
       'the legacy reading readable', () async {
-    const name = 'openstrap_ecg_result_64.db';
+    const name = 'openstrap_ecg_result_65.db';
     created.add(name);
-    await _seed(name, version: 64);
+    await _seed(name, version: 65);
     final db = await _open(name);
     expect(await _userVersion(db), LocalDb.schemaVersion);
     _expectShape(await _stopReasonCols(db));
@@ -132,9 +133,9 @@ void main() {
 
   test('a database that ALREADY has the column (a same-version merged build) '
       'upgrades without error and still has exactly one', () async {
-    const name = 'openstrap_ecg_result_64_has_col.db';
+    const name = 'openstrap_ecg_result_65_has_col.db';
     created.add(name);
-    await _seed(name, version: 64, withColumn: true);
+    await _seed(name, version: 65, withColumn: true);
     final db = await _open(name);
     expect(await _userVersion(db), LocalDb.schemaVersion);
     _expectShape(await _stopReasonCols(db));
@@ -145,7 +146,7 @@ void main() {
       'one column, the row untouched, every time', () async {
     const name = 'openstrap_ecg_result_reopen.db';
     created.add(name);
-    await _seed(name, version: 64);
+    await _seed(name, version: 65);
     for (var i = 0; i < 3; i++) {
       final db = await _open(name);
       _expectShape(await _stopReasonCols(db));

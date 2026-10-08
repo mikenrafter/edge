@@ -2346,7 +2346,7 @@
   "ecgCleanupIncomplete": "手环可能仍在生成数据。下次连接时将停止。",
   "ecgLivePreview": "实时信号预览",
   "ecgBandReported": "手环报告的结果",
-  "ecgNotDiagnosis": "类别由手环给出。这不是诊断。",
+  "ecgNotDiagnosis": "类别由手环给出。这是筛查，不是医学检测。",
   "ecgCategorySinus": "节律规则，未标记",
   "ecgCategoryLowHr": "心率过低",
   "ecgCategoryPossibleAfib": "标记为节律不规则",

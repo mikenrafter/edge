@@ -24,8 +24,26 @@
 // and no inconclusive/complete outcome is an alarm.
 
 import '../haptics/builtin_patterns.dart';
+import '../notify/alert_rule.dart';
 import 'ecg_controller.dart';
 import 'ecg_models.dart';
+
+/// How an ECG cue is delivered: band only, live, never a phone notification and
+/// never a fallback to one, and NOT governed by any alert preference (the
+/// breathing alerts' on/off, destinations or quiet hours do not apply: the
+/// wearer is in the middle of a reading they started, and the slot they
+/// assigned is what plays). It still goes through the band queue and the
+/// haptic budget like every other band job.
+const AlertRule kEcgCueRule = AlertRule(
+  id: 'ecg_cue',
+  kind: 'ecg',
+  destinations: AlertRule.band,
+  executionMode: AlertExecutionMode.phoneLive,
+  historicalReplay: AlertHistoricalReplay.liveOnly,
+  fallback: AlertFallback.none,
+  staleAfter: Duration(seconds: 15),
+  channelPolicyId: 'ecg_cue',
+);
 
 class EcgCueTracker {
   bool _started = false;
