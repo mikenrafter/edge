@@ -4,7 +4,8 @@
 // CLEANUP into the same ordered trace as the band's haptic writes.
 //
 // Pinned: begin() is called with persist: false (a gesture never leaves an ECG
-// reading behind, invariant 14) and PREPARE always carries the raw-save member
+// reading behind, invariant 14) and PREPARE carries the raw-save member only
+// when the wearer keeps the waveform
 // (the ECG method has one path, the Fast mode is retired); the start cue is the first
 // thing the band gets, PREPARE and START then run back to back with no haptic
 // write between them; a capture the gesture did not start is left alone; an
@@ -36,11 +37,11 @@ void main() {
   late SpyEcg spy;
   late GestureRig rig;
 
-  Future<void> start({bool wrist = true}) async {
+  Future<void> start({bool wrist = true, bool keep = false}) async {
     order = <String>[];
     channel = ActionChannel(order: order);
     addTearDown(channel.dispose);
-    spy = SpyEcg(order, remembersWrist: wrist);
+    spy = SpyEcg(order, remembersWrist: wrist, keep: keep);
     rig = GestureRig(ecg: spy, order: order);
     addTearDown(rig.dispose);
     // Last in, first out: a stream still up ends here (the poll sees the drop
@@ -58,8 +59,20 @@ void main() {
 
   Future<void> streamUp() => until(() => order.contains('ecg:start'));
 
-  test('begin(persist: false), PREPARE with the raw-save member', () async {
+  test('begin(persist: false), PREPARE WITHOUT the raw-save member while '
+      'Keep waveform is off (the band records nothing to sync back)', () async {
     await start();
+    rig.doubleTap();
+    await streamUp();
+    expect(spy.begins, [false]);
+    expect(spy.prepares, [
+      ['selectWrist', 'filteredOn']
+    ]);
+  });
+
+  test('begin(persist: false), PREPARE with the raw-save member when Keep '
+      'waveform is on', () async {
+    await start(keep: true);
     rig.doubleTap();
     await streamUp();
     expect(spy.begins, [false]);

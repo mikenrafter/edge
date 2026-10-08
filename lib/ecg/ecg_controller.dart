@@ -399,14 +399,11 @@ class EcgController extends ChangeNotifier {
       // Subscribe BEFORE any generation write: the first post-START packet
       // can arrive at the write/response boundary.
       _sub ??= transport.events.listen(_onEvent);
-      // A reading asks the band to keep the raw recording only if the wearer
-      // keeps the waveform; the tap-counting gesture keeps its raw save (its
-      // packets are tagged as gesture contact when history delivers them).
-      final prep = await transport.prepare(
-        lease,
-        wrist,
-        rawSave: _persist ? _keep : true,
-      );
+      // The band keeps the raw recording (for history sync to store in
+      // ecg_raw_packet) only if the wearer keeps the waveform. That holds for
+      // the tap-counting gesture too: off, it records nothing and no
+      // gesture-tagged raw rows are stored; on, they are tagged as before.
+      final prep = await transport.prepare(lease, wrist, rawSave: _keep);
       if (_stale(epoch)) return;
       stage('prepare answered (${prep.allSucceeded ? 'accepted' : 'refused'})');
       if (!prep.allSucceeded) {

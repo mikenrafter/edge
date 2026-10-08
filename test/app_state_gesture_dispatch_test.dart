@@ -267,8 +267,9 @@ void main() {
       await until(() => rig.cues.contains('confirm'));
       expect(channel.performed, ['media_play_pause']);
       expect(rig.cues, ['start', 'confirm']);
-      expect(order.where((e) => e == 'band:rawSave').length, 2,
-          reason: 'raw-save ON in PREPARE and OFF in CLEANUP');
+      expect(order.where((e) => e == 'band:rawSave').length, 1,
+          reason: 'Keep waveform is off: no raw-save ON in PREPARE, only the '
+              'OFF in CLEANUP');
     }, timeout: const Timeout(Duration(seconds: 40)));
   });
 

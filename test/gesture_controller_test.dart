@@ -229,7 +229,8 @@ void main() {
       // Start, one follow-up (2 to 3) and the confirm.
       await until(() => h.order.where((l) => l == 'cue').length == 3);
       expect(h.ecg.begins, [false], reason: 'never persisted');
-      expect(h.ecg.prepares.single, contains('rawSaveOn'));
+      expect(h.ecg.prepares.single, isNot(contains('rawSaveOn')),
+          reason: 'Keep waveform is off: no raw save for a gesture either');
       await until(() => !h.controller.ecgTapActive);
       await settleMs(50);
     });

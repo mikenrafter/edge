@@ -8,9 +8,10 @@
 //   * a reading (persist: true) with Keep waveform OFF: PREPARE has no
 //     raw-save member (rawSave: false); ON: it does;
 //   * the choice is taken once, when the reading begins;
-//   * the tap-counting gesture (persist: false) keeps its raw-save member: its
-//     packets are tagged as gesture contact (ecg_raw_packet.origin) and the
-//     receiving side already knows how to label them;
+//   * the tap-counting gesture (persist: false) follows the same choice (owner
+//     decision): off, its PREPARE has no raw-save member, so the band records
+//     nothing and no gesture-tagged ecg_raw_packet rows are stored; on, the
+//     packets are tagged as gesture contact as before;
 //   * the CLEANUP list still switches raw-save OFF whatever PREPARE did.
 
 import 'package:flutter_test/flutter_test.dart';
@@ -53,12 +54,13 @@ void main() {
       expect(r.t.rawSaves, [false]);
     });
 
-    test('the tap-counting gesture keeps its raw-save member regardless',
+    test('the tap-counting gesture follows the same choice: off, no raw '
+        'save and so no gesture-tagged raw rows; on, today\'s behaviour',
         () async {
       for (final keep in [false, true]) {
         final r = FRig()..keep = keep;
         await r.c.begin(EcgWrist.right, persist: false);
-        expect(r.t.rawSaves, [true], reason: 'keep=$keep');
+        expect(r.t.rawSaves, [keep], reason: 'keep=$keep');
       }
     });
   });
