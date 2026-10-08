@@ -13269,5 +13269,29 @@
   "momentReviewRangeCheckFailed": "Could not check this pair. Try again.",
   "@momentReviewRangeCheckFailed": {
     "description": "Error when the existing naps or workouts could not be read to check a pair"
+  },
+  "settingsTaskerMomentExportTitle": "Send reviewed moments to Tasker",
+  "@settingsTaskerMomentExportTitle": {
+    "description": "Switch in Automation: send the marked-moment review's answers to Tasker"
+  },
+  "settingsTaskerMomentExportSub": "When you save the review of your marked moments, sends each one to Tasker: what it was, when, and any amount you typed. This is health information, so it goes to Tasker only and stays off until you turn it on.",
+  "@settingsTaskerMomentExportSub": {
+    "description": "Explains what the switch sends (health information) and that it is off by default and goes to Tasker only"
+  },
+  "momentReviewPersistFailed": "Could not store your choices on this phone. They are kept while the app is open but may be lost if it closes.",
+  "@momentReviewPersistFailed": {
+    "description": "Warning on the marked-moment review when the phone did not confirm storing the queued choices"
+  },
+  "momentReviewAmountInvalid": "Type a number above 0 (within the usual range), or leave it empty.",
+  "@momentReviewAmountInvalid": {
+    "description": "Error under the amount field of a marked moment when the typed value is not a usable number"
+  },
+  "momentReviewAmbiguous": "This time came round twice when the clocks went back, so it cannot be paired with another mark.",
+  "@momentReviewAmbiguous": {
+    "description": "Shown on a nap or workout mark made in the hour that repeats when the clocks go back; it cannot be paired"
+  },
+  "momentReviewResume": "Saved so far. Press Save to finish this pair.",
+  "@momentReviewResume": {
+    "description": "Note on a paired range whose first half was saved and whose rest is still to do"
   }
 }

@@ -2498,5 +2498,11 @@
   "momentReviewRangeFuture": "时间段不能结束于未来。",
   "momentReviewRangeWorkoutLength": "锻炼时长必须在 1 分钟到 24 小时之间。",
   "momentReviewRangeWorkoutOverlap": "这与你记录中已有的锻炼重叠。",
-  "momentReviewRangeCheckFailed": "无法检查这一对。请重试。"
+  "momentReviewRangeCheckFailed": "无法检查这一对。请重试。",
+  "settingsTaskerMomentExportTitle": "将已回顾的时刻发送给 Tasker",
+  "settingsTaskerMomentExportSub": "保存对已标记时刻的回顾时，会把每一项发送给 Tasker：是什么、何时，以及你输入的数量。这是健康信息，因此只发送给 Tasker，并且在你开启之前保持关闭。",
+  "momentReviewPersistFailed": "无法把你的选择存到这部手机上。应用打开期间会保留，但关闭后可能丢失。",
+  "momentReviewAmountInvalid": "请输入大于 0 的数字（在常规范围内），或留空。",
+  "momentReviewAmbiguous": "时钟回拨时这个时间出现了两次，因此无法与另一个标记配对。",
+  "momentReviewResume": "目前已保存。点按“保存”完成这一对。"
 }

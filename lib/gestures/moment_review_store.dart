@@ -27,9 +27,10 @@ class MomentReviewStore {
     }
   }
 
-  /// Writes [q]. An empty queue leaves no draft behind. The write reaches the
-  /// preference cache before the first await, so a read right after sees it.
-  Future<void> save(MomentReviewQueue q) async {
-    Prefs.setString(prefKey, q.isEmpty ? '' : jsonEncode(q.toJson()));
-  }
+  /// Writes [q] and returns the platform's own answer: false when there is no
+  /// storage, the write was refused, or it threw. An empty queue leaves no draft
+  /// behind. The write reaches the preference cache before the first await, so
+  /// a read right after sees it even before the platform confirms.
+  Future<bool> save(MomentReviewQueue q) =>
+      Prefs.setStringAcked(prefKey, q.isEmpty ? '' : jsonEncode(q.toJson()));
 }

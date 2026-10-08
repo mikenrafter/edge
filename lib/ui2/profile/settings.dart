@@ -2152,6 +2152,7 @@ class _AutomationSettingsState extends State<AutomationSettings> {
   String? _token;
   bool _copied = false;
   bool _taskerOn = Prefs.taskerConnectionOn;
+  bool _momentExportOn = Prefs.taskerMomentExportOn;
 
   @override
   void initState() {
@@ -2173,13 +2174,20 @@ class _AutomationSettingsState extends State<AutomationSettings> {
     setState(() => _taskerOn = on);
   }
 
+  void _setMomentExportOn(bool on) {
+    Prefs.setBool(Prefs.taskerMomentExport, on);
+    setState(() => _momentExportOn = on);
+  }
+
   @override
   Widget build(BuildContext c) => AutomationSettingsView(
       token: _token,
       copied: _copied,
       onCopy: _copy,
       taskerOn: _taskerOn,
-      onTaskerOn: _setTaskerOn);
+      onTaskerOn: _setTaskerOn,
+      momentExportOn: _momentExportOn,
+      onMomentExportOn: _setMomentExportOn);
 }
 
 /// The Automation screen without its token fetch, so it can be pumped headless.
@@ -2191,7 +2199,9 @@ class AutomationSettingsView extends StatelessWidget {
       this.copied = false,
       this.onCopy,
       this.taskerOn = true,
-      this.onTaskerOn});
+      this.onTaskerOn,
+      this.momentExportOn = false,
+      this.onMomentExportOn});
   final String? token;
   final bool copied;
   final VoidCallback? onCopy;
@@ -2201,6 +2211,13 @@ class AutomationSettingsView extends StatelessWidget {
   /// dimmed, with the hint "Turn on Tasker first".
   final bool taskerOn;
   final ValueChanged<bool>? onTaskerOn;
+
+  /// "Send reviewed moments to Tasker" (key `tasker-moment-export`, Android
+  /// only, OFF by default): consent to send the marked-moment review's health
+  /// answers, to Tasker only. Drawn but disabled while the Tasker connection is
+  /// off, like the other Tasker rows.
+  final bool momentExportOn;
+  final ValueChanged<bool>? onMomentExportOn;
 
   @override
   Widget build(BuildContext c) {
@@ -2235,6 +2252,24 @@ class AutomationSettingsView extends StatelessWidget {
                                 'band, and lets the Broadcast to Tasker '
                                 'gesture action reach them. Off, all of it '
                                 'stops.',
+                      ),
+                      SwitchRow(
+                        l?.settingsTaskerMomentExportTitle ??
+                            'Send reviewed moments to Tasker',
+                        momentExportOn && taskerOn,
+                        onMomentExportOn,
+                        key: const ValueKey('tasker-moment-export'),
+                        enabled: taskerOn,
+                        sub: (l?.settingsTaskerMomentExportSub ??
+                                'When you save the review of your marked '
+                                    'moments, sends each one to Tasker: what '
+                                    'it was, when, and any amount you typed. '
+                                    'This is health information, so it goes '
+                                    'to Tasker only and is off until you turn '
+                                    'it on.') +
+                            (taskerOn
+                                ? ''
+                                : '\n${l?.taskerTurnOnFirst ?? 'Turn on Tasker first'}'),
                       ),
                     ],
                   ),

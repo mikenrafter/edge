@@ -105,6 +105,9 @@ class TaskerBridge {
   static const Duration _minEventGap = Duration(seconds: 60);
   static DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// Tasker's Android package: the only recipient of health-carrying events.
+  static const String taskerPackage = 'net.dinglisch.android.taskerm';
+
   /// Tests only: pretend to be (or not to be) Android.
   @visibleForTesting
   static bool? debugAndroidOverride;
@@ -136,6 +139,10 @@ class TaskerBridge {
     // false skips the 60 s gap and leaves `_lastEmit` alone, for callers that
     // send one broadcast per item (the moment review).
     bool rateLimited = true,
+    // Restricts the broadcast to ONE receiving app (NativeChannels.kt calls
+    // Intent.setPackage). Null keeps the open broadcast every automation app
+    // (Tasker, Automate, MacroDroid) can listen to.
+    String? package,
   }) async {
     if (!(debugAndroidOverride ?? Platform.isAndroid)) return false;
     if (rateLimited) {
@@ -147,6 +154,7 @@ class TaskerBridge {
       return await _ch.invokeMethod<bool>('emit_event', {
             'event': event,
             'extras': extras,
+            'package': ?package,
           }) ??
           false;
     } catch (_) {

@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/data/assumed_water.dart';
 import 'package:openstrap_edge/gestures/moment_follow_ups.dart';
 import 'package:openstrap_edge/gestures/moment_review_queue.dart';
+import 'package:openstrap_edge/gestures/moment_review_service.dart';
 import 'package:openstrap_edge/gestures/moment_review_store.dart';
 import 'package:openstrap_edge/platform/tasker_moment_export.dart';
 import 'package:openstrap_edge/state/prefs.dart';
@@ -56,6 +57,7 @@ class _Rig {
   final sent = <Map<String, Object>>[];
   bool taskerOn = true;
   final store = const MomentReviewStore();
+  late final service = MomentReviewService(store: store);
 
   late final exporter = TaskerMomentExport(
       connectionOn: () => taskerOn,
@@ -75,7 +77,7 @@ class _Rig {
           writer: writer,
           assumedWriter: glasses,
           rangeWriter: ranges,
-          store: store,
+          service: service,
           exporter: exporter,
           now: reviewNow,
         ),

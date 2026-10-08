@@ -125,6 +125,24 @@ class Prefs {
   static const String taskerConnection = 'tasker_connection';
   static bool get taskerConnectionOn => getBool(taskerConnection, true);
 
+  /// "Send reviewed moments to Tasker": consent for the marked-moment review's
+  /// MOMENT_REVIEWED broadcast. Those answers are health information (a
+  /// medication, a dose, a symptom), so unlike the Tasker connection this is OFF
+  /// until somebody turns it on, and it is a separate switch from it.
+  static const String taskerMomentExport = 'tasker_moment_export';
+  static bool get taskerMomentExportOn => getBool(taskerMomentExport, false);
+
+  /// setString with the platform's own acknowledgement: false when there is no
+  /// storage or the write was refused or threw (see [setBoolAcked]). The cache
+  /// is updated before the first await, so a read right after sees the value.
+  static Future<bool> setStringAcked(String key, String value) async {
+    try {
+      return await _sp?.setString(key, value) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// The gestures that failed to activate, one JSON string (see
   /// gestures/gesture_failures.dart); bounded to the newest 20.
   static const String gestureFailures = 'gesture_failures';

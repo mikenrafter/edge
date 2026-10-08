@@ -155,6 +155,8 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       await Prefs.ensureLoaded();
       Prefs.setBool(Prefs.taskerConnection, true);
+      // Round 2: health answers need their own consent (off by default).
+      Prefs.setBool(Prefs.taskerMomentExport, true);
       calls.clear();
       TaskerBridge.debugAndroidOverride = true;
       TaskerBridge.debugResetRateLimit();

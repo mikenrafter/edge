@@ -2527,5 +2527,11 @@
   "momentReviewRangeFuture": "Un intervalo no puede terminar en el futuro.",
   "momentReviewRangeWorkoutLength": "Un entrenamiento debe durar entre 1 minuto y 24 horas.",
   "momentReviewRangeWorkoutOverlap": "Se solapa con un entrenamiento que ya está en tu registro.",
-  "momentReviewRangeCheckFailed": "No se pudo comprobar este par. Inténtalo de nuevo."
+  "momentReviewRangeCheckFailed": "No se pudo comprobar este par. Inténtalo de nuevo.",
+  "settingsTaskerMomentExportTitle": "Enviar a Tasker los momentos revisados",
+  "settingsTaskerMomentExportSub": "Al guardar la revisión de tus momentos marcados, envía cada uno a Tasker: qué fue, cuándo y la cantidad que escribiste. Es información de salud, así que va solo a Tasker y sigue desactivado hasta que lo actives.",
+  "momentReviewPersistFailed": "No se pudieron guardar tus elecciones en este teléfono. Se conservan mientras la app esté abierta, pero pueden perderse si se cierra.",
+  "momentReviewAmountInvalid": "Escribe un número mayor que 0 (dentro del rango habitual) o déjalo vacío.",
+  "momentReviewAmbiguous": "Esta hora ocurrió dos veces al retrasar el reloj, así que no se puede emparejar con otra marca.",
+  "momentReviewResume": "Guardado hasta ahora. Pulsa Guardar para terminar este par."
 }

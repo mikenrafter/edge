@@ -37,18 +37,26 @@ class ReviewedItem {
 }
 
 class TaskerMomentExport {
-  /// [connectionOn] null reads `Prefs.taskerConnectionOn` (and sends nothing
-  /// while the preferences are not loaded: an outbound call is never made on a
-  /// guessed consent). [emit] null calls
-  /// `TaskerBridge.emitEvent(event, extras: ..., rateLimited: false)`.
+  /// [connectionOn] null reads the consent: the Tasker connection AND the
+  /// separate "Send reviewed moments to Tasker" switch (off by default), both
+  /// at send time; nothing is sent while the preferences are not loaded (an
+  /// outbound call is never made on a guessed consent). [emit] null calls
+  /// `TaskerBridge.emitEvent(event, extras: ..., rateLimited: false,
+  /// package: Tasker's)` so only Tasker can receive it.
   TaskerMomentExport({
     bool Function()? connectionOn,
     Future<bool> Function(String event, Map<String, Object> extras)? emit,
   })  : _connectionOn =
-            connectionOn ?? (() => Prefs.loaded && Prefs.taskerConnectionOn),
+            connectionOn ??
+                (() =>
+                    Prefs.loaded &&
+                    Prefs.taskerConnectionOn &&
+                    Prefs.taskerMomentExportOn),
         _emit = emit ??
-            ((event, extras) =>
-                TaskerBridge.emitEvent(event, extras: extras, rateLimited: false));
+            ((event, extras) => TaskerBridge.emitEvent(event,
+                extras: extras,
+                rateLimited: false,
+                package: TaskerBridge.taskerPackage));
 
   final bool Function() _connectionOn;
   final Future<bool> Function(String event, Map<String, Object> extras) _emit;

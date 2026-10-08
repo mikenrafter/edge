@@ -68,10 +68,41 @@ enum MomentChoice {
 }
 
 /// A marked moment as read off a journal day: local date + wall-clock minute.
+/// Whether [t]'s wall-clock minute exists twice in the local zone (the clocks
+/// went back and that minute came round again). Checked against the same
+/// minute an hour either side; under a zone without DST it is always false.
+bool wallMinuteIsAmbiguous(DateTime t) {
+  bool same(DateTime o) =>
+      o.year == t.year &&
+      o.month == t.month &&
+      o.day == t.day &&
+      o.hour == t.hour &&
+      o.minute == t.minute;
+  return same(t.add(const Duration(hours: 1))) ||
+      same(t.subtract(const Duration(hours: 1)));
+}
+
 typedef MarkedMoment = ({String date, String hhmm});
 
 class PendingMoment {
-  const PendingMoment({required this.date, required this.hhmm});
+  const PendingMoment(
+      {required this.date,
+      required this.hhmm,
+      this.epochSec,
+      this.ambiguous = false});
+
+  /// The mark's own absolute time (epoch seconds), when it was recorded (a
+  /// `moment-at` tag, written for marks in a repeated hour).
+  final int? epochSec;
+
+  /// True when only the wall-clock minute is known and that minute happened
+  /// twice (clocks went back): its order and length cannot be told.
+  final bool ambiguous;
+
+  /// Epoch seconds of this mark: the recorded absolute time, else the wall
+  /// clock. For an [ambiguous] mark without one this is a guess; never use it to
+  /// order or measure a range.
+  int get sec => epochSec ?? local.millisecondsSinceEpoch ~/ 1000;
 
   /// 'YYYY-MM-DD', local.
   final String date;
@@ -81,8 +112,11 @@ class PendingMoment {
 
   String get key => '$date $hhmm';
 
-  /// The moment as a LOCAL DateTime (the wall clock it was marked on).
-  DateTime get local => momentLocalTime(date, hhmm)!;
+  /// The moment as a LOCAL DateTime: the recorded instant when there is one,
+  /// else the wall clock it was marked on.
+  DateTime get local => epochSec != null
+      ? DateTime.fromMillisecondsSinceEpoch(epochSec! * 1000)
+      : momentLocalTime(date, hhmm)!;
 }
 
 class MomentFollowUps {
@@ -91,7 +125,42 @@ class MomentFollowUps {
     this.marked = const [],
     this.labelled = const {},
     this.assumed = const [],
+    this.absolute = const {},
+    this.isAmbiguous,
   });
+
+  /// `PendingMoment.key` -> epoch seconds, from `moment-at` tags.
+  final Map<String, int> absolute;
+
+  /// Whether a wall-clock minute happened twice; null is the real zone's answer.
+  final bool Function(DateTime wall)? isAmbiguous;
+
+  static final _tagAt = RegExp(r'^moment-at ([01]\d|2[0-3]):([0-5]\d) (\d{1,12})$');
+
+  /// The `moment-at HH:mm <epoch seconds>` tags of journal rows, by moment key.
+  /// A mark made in a repeated hour (clocks went back) also records when it
+  /// really happened; without it its order against another mark in that hour is
+  /// unknowable.
+  static Map<String, int> parseAbsolute(List<Map<String, dynamic>> journalRows) {
+    final out = <String, int>{};
+    for (final r in journalRows) {
+      final date = r['date'];
+      final raw = r['tags_json'];
+      if (date is! String || raw is! String) continue;
+      Object? tags;
+      try {
+        tags = jsonDecode(raw);
+      } catch (_) {
+        continue;
+      }
+      if (tags is! List) continue;
+      for (final t in tags) {
+        final m = t is String ? _tagAt.firstMatch(t) : null;
+        if (m != null) out['$date ${m[1]}:${m[2]}'] = int.parse(m[3]!);
+      }
+    }
+    return out;
+  }
 
   /// When the setting was switched on; null = off, nothing is pending.
   final DateTime? enabledSince;
@@ -149,7 +218,14 @@ class MomentFollowUps {
     for (final m in marked) {
       final at = momentLocalTime(m.date, m.hhmm);
       if (at == null || at.isBefore(from) || at.isBefore(cutoff)) continue;
-      final p = PendingMoment(date: m.date, hhmm: m.hhmm);
+      final key = '${m.date} ${m.hhmm}';
+      final epoch = absolute[key];
+      final p = PendingMoment(
+        date: m.date,
+        hhmm: m.hhmm,
+        epochSec: epoch,
+        ambiguous: epoch == null && (isAmbiguous ?? wallMinuteIsAmbiguous)(at),
+      );
       if (labelled.contains(p.key) || !seen.add(p.key)) continue;
       out.add((at, p));
     }
@@ -191,6 +267,7 @@ class MomentFollowUps {
     return MomentFollowUps(
       enabledSince: enabledSince,
       marked: parseMarked(rows),
+      absolute: parseAbsolute(rows),
       labelled: {for (final l in labels) l.key},
       assumed: glasses,
     );
@@ -304,6 +381,12 @@ class MomentAnswerWriter {
     } catch (_) {
       return UnitSystem.metric; // no preference store (a headless/test run)
     }
+  }
+
+  /// Whether this moment already has an answer (a skip counts).
+  Future<bool> isAnswered(PendingMoment m) async {
+    final labels = await LocalDb.momentLabels(date: m.date);
+    return labels.any((l) => l.key == m.key);
   }
 
   /// Marks the moment answered with no label.

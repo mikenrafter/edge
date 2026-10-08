@@ -126,7 +126,52 @@ class ReviewRange {
       {required this.choice,
       required this.startKey,
       required this.endKey,
-      this.workoutType});
+      this.workoutType,
+      this.startSec,
+      this.endSec,
+      this.attempting = false,
+      this.windowWritten = false,
+      this.startLabelled = false,
+      this.endLabelled = false,
+      this.announced = false});
+
+  /// Absolute epoch seconds of the two marks, fixed at pairing. Ordering and
+  /// length come from these, never from re-reading wall-clock minutes (which
+  /// repeat when the clocks go back).
+  final int? startSec, endSec;
+
+  /// Progress of Save on this range, persisted so a half-done range resumes
+  /// after leaving the screen or a restart: about to write the window (recorded
+  /// BEFORE the write, so a crash leaves a trace) / the window is written /
+  /// each end is labelled / Tasker has been told.
+  final bool attempting, windowWritten, startLabelled, endLabelled, announced;
+
+  /// Save has started on this range: it can no longer be undone, only finished.
+  bool get inProgress => attempting || windowWritten;
+
+  /// Nothing left to do.
+  bool get finished =>
+      windowWritten && startLabelled && endLabelled && announced;
+
+  ReviewRange copyWith(
+          {bool? attempting,
+          bool? windowWritten,
+          bool? startLabelled,
+          bool? endLabelled,
+          bool? announced}) =>
+      ReviewRange(
+        choice: choice,
+        startKey: startKey,
+        endKey: endKey,
+        workoutType: workoutType,
+        startSec: startSec,
+        endSec: endSec,
+        attempting: attempting ?? this.attempting,
+        windowWritten: windowWritten ?? this.windowWritten,
+        startLabelled: startLabelled ?? this.startLabelled,
+        endLabelled: endLabelled ?? this.endLabelled,
+        announced: announced ?? this.announced,
+      );
 
   /// Nap or Workout.
   final MomentChoice choice;
@@ -142,10 +187,19 @@ class ReviewRange {
       other.choice == choice &&
       other.startKey == startKey &&
       other.endKey == endKey &&
-      other.workoutType == workoutType;
+      other.workoutType == workoutType &&
+      other.startSec == startSec &&
+      other.endSec == endSec &&
+      other.attempting == attempting &&
+      other.windowWritten == windowWritten &&
+      other.startLabelled == startLabelled &&
+      other.endLabelled == endLabelled &&
+      other.announced == announced;
 
   @override
-  int get hashCode => Object.hash(choice, startKey, endKey, workoutType);
+  int get hashCode => Object.hash(choice, startKey, endKey, workoutType,
+      startSec, endSec, attempting, windowWritten, startLabelled, endLabelled,
+      announced);
 }
 
 /// Choices that can pair two moments into a range.
@@ -193,6 +247,10 @@ class MomentReviewQueue {
       throw ArgumentError.value(
           d.kind, 'd', 'does not fit ${moment ? 'a moment' : 'an assumed glass'}');
     }
+    final v = d.value;
+    if (v != null && !v.isFinite) {
+      throw ArgumentError.value(v, 'd', 'an amount has to be a finite number');
+    }
     return MomentReviewQueue(
       decisions: {...decisions, reviewKey: d},
       ranges: moment ? _without(ReviewKey.plainOf(reviewKey)) : ranges,
@@ -227,7 +285,13 @@ class MomentReviewQueue {
     if (a.key == b.key) {
       throw ArgumentError.value(b.key, 'b', 'a moment cannot pair with itself');
     }
-    final first = a.local.isAfter(b.local) ? b : a;
+    if (a.ambiguous || b.ambiguous) {
+      throw ArgumentError.value(
+          a.ambiguous ? a.key : b.key,
+          'moment',
+          'its minute happened twice and its real time is unknown');
+    }
+    final first = a.sec > b.sec ? b : a;
     final second = identical(first, a) ? b : a;
     final kept = [
       for (final r in ranges)
@@ -247,8 +311,31 @@ class MomentReviewQueue {
             choice: choice,
             startKey: first.key,
             endKey: second.key,
+            startSec: first.sec,
+            endSec: second.sec,
             workoutType: choice == MomentChoice.workout ? workoutType : null),
       ],
+    );
+  }
+
+  /// Replaces the range with the same ends by [updated] (or adds it), so a
+  /// progress mark is never lost. Nothing else in the queue changes.
+  MomentReviewQueue withRangeProgress(ReviewRange updated) {
+    final same = [
+      for (final r in ranges)
+        if (r.startKey == updated.startKey && r.endKey == updated.endKey) r
+    ];
+    return MomentReviewQueue(
+      decisions: decisions,
+      ranges: same.isEmpty
+          ? [...ranges, updated]
+          : [
+              for (final r in ranges)
+                if (r.startKey == updated.startKey && r.endKey == updated.endKey)
+                  updated
+                else
+                  r
+            ],
     );
   }
 
@@ -261,10 +348,15 @@ class MomentReviewQueue {
           for (final e in decisions.entries)
             if (pendingReviewKeys.contains(e.key)) e.key: e.value,
         },
+        // A range that Save has started outlives its marks leaving the pending
+        // list: they leave because Save labelled them, and what is left (the
+        // other label, the announcement) still has to happen.
         ranges: [
           for (final r in ranges)
-            if (pendingReviewKeys.contains('moment:${r.startKey}') &&
-                pendingReviewKeys.contains('moment:${r.endKey}'))
+            if (r.inProgress
+                ? !r.finished
+                : (pendingReviewKeys.contains('moment:${r.startKey}') &&
+                    pendingReviewKeys.contains('moment:${r.endKey}')))
               r,
         ],
       );
@@ -280,6 +372,13 @@ class MomentReviewQueue {
               'start': r.startKey,
               'end': r.endKey,
               'type': ?r.workoutType,
+              'startSec': ?r.startSec,
+              'endSec': ?r.endSec,
+              if (r.attempting) 'attempting': true,
+              if (r.windowWritten) 'written': true,
+              if (r.startLabelled) 'startLabelled': true,
+              if (r.endLabelled) 'endLabelled': true,
+              if (r.announced) 'announced': true,
             },
         ],
       };
@@ -300,16 +399,26 @@ class MomentReviewQueue {
         if (c == null || !isRangeChoice(c) || s is! String || e is! String) {
           continue;
         }
-        final sl = _plainTime(s), el = _plainTime(e);
-        if (sl == null || el == null || !sl.isBefore(el)) continue;
+        // Order is NOT checked from the wall-clock keys: on the night the clocks
+        // go back the start's minute can read later than the end's.
+        if (_plainTime(s) == null || _plainTime(e) == null || s == e) continue;
         if (used.contains(s) || used.contains(e)) continue;
+        int? secOf(Object? v) => v is int ? v : (v is num ? v.toInt() : null);
+        bool flag(String k) => r[k] == true;
         used..add(s)..add(e);
         ranges.add(ReviewRange(
             choice: c,
             startKey: s,
             endKey: e,
             workoutType:
-                c == MomentChoice.workout && t is String ? t : null));
+                c == MomentChoice.workout && t is String ? t : null,
+            startSec: secOf(r['startSec']),
+            endSec: secOf(r['endSec']),
+            attempting: flag('attempting'),
+            windowWritten: flag('written'),
+            startLabelled: flag('startLabelled'),
+            endLabelled: flag('endLabelled'),
+            announced: flag('announced')));
       }
     }
     final decisions = <String, ReviewDecision>{};

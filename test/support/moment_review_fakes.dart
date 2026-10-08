@@ -48,6 +48,13 @@ class FakeAnswerWriter extends MomentAnswerWriter {
   /// Moment keys that report alreadyAnswered.
   Set<String> already;
 
+  /// Moments answered through this fake (so a later check sees them).
+  final answeredNow = <String>{};
+
+  @override
+  Future<bool> isAnswered(PendingMoment m) async =>
+      already.contains(m.key) || answeredNow.contains(m.key);
+
   final answers = <({String key, MomentChoice choice, double? value, String? note})>[];
   final skips = <String>[];
   final symptoms = <String>[];
@@ -64,6 +71,7 @@ class FakeAnswerWriter extends MomentAnswerWriter {
       {double? value, String? note, DateTime? now}) async {
     log.entries.add('answer:${m.key}:${choice.id}');
     final r = _res(m);
+    if (r == MomentAnswerResult.saved) answeredNow.add(m.key);
     answers.add((key: m.key, choice: choice, value: value, note: note));
     return r;
   }
@@ -72,6 +80,7 @@ class FakeAnswerWriter extends MomentAnswerWriter {
   Future<MomentAnswerResult> skip(PendingMoment m, {DateTime? now}) async {
     log.entries.add('skip:${m.key}');
     final r = _res(m);
+    if (r == MomentAnswerResult.saved) answeredNow.add(m.key);
     skips.add(m.key);
     return r;
   }

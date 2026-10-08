@@ -262,6 +262,15 @@ object NativeChannels {
                             result.success(false)
                         } else {
                             val intent = Intent("$EVENT_ACTION_PREFIX$name")
+                            // A health-carrying event (MOMENT_REVIEWED) names the
+                            // one app that may receive it; without this the
+                            // implicit broadcast reaches every app on the phone.
+                            // SYNC_COMPLETE sends no package and stays open to
+                            // Tasker, Automate and MacroDroid. NOT yet tested on
+                            // a device.
+                            call.argument<String>("package")
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { intent.setPackage(it) }
                             call.argument<Map<String, Any>>("extras")
                                 ?.forEach { (k, v) ->
                                     when (v) {

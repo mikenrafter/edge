@@ -22,7 +22,7 @@ import '../../gestures/moment_follow_ups.dart';
 import '../../gestures/moment_review_apply.dart';
 import '../../gestures/moment_review_queue.dart';
 import '../../gestures/moment_review_range.dart';
-import '../../gestures/moment_review_store.dart';
+import '../../gestures/moment_review_service.dart';
 import '../../platform/tasker_moment_export.dart';
 import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
@@ -177,7 +177,7 @@ class MomentFollowUpScreen extends StatefulWidget {
     this.now,
     this.preloadedAssumed,
     this.assumedWriter = const AssumedWaterWriter(),
-    this.store = const MomentReviewStore(),
+    this.service,
     this.rangeWriter,
     this.exporter,
   });
@@ -192,8 +192,9 @@ class MomentFollowUpScreen extends StatefulWidget {
   final MomentAnswerWriter writer;
   final DateTime? now;
 
-  /// Where the queued decisions persist.
-  final MomentReviewStore store;
+  /// The shared owner of the queue (edits, Saves, storage). Null is the
+  /// app-wide one; tests pass their own.
+  final MomentReviewService? service;
 
   /// Where a nap / workout range lands; null builds the real one from the
   /// app's repository and state.
@@ -209,7 +210,8 @@ class MomentFollowUpScreen extends StatefulWidget {
 class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   List<PendingMoment>? _items;
   List<AssumedGlass> _glasses = [];
-  MomentReviewQueue _queue = MomentReviewQueue.empty;
+  late final MomentReviewService _svc;
+  MomentReviewQueue get _queue => _svc.queue;
   bool _failed = false;
   bool _busy = false;
 
@@ -226,9 +228,18 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   /// Plain moment key -> why a pairing started from that card was refused.
   final Map<String, String> _pairErrors = {};
 
+  /// Plain moment keys whose typed amount was refused.
+  final Set<String> _amountErrors = {};
+
+  void _onService() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    _svc = widget.service ?? MomentReviewService.shared;
+    _svc.reload();
     if (widget.preloaded != null) {
       _items = List.of(widget.preloaded!);
       _glasses = List.of(widget.preloadedAssumed ?? const []);
@@ -236,10 +247,12 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     } else {
       _load();
     }
+    _svc.addListener(_onService);
   }
 
   @override
   void dispose() {
+    _svc.removeListener(_onService);
     for (final t in _text.values) {
       t.dispose();
     }
@@ -268,59 +281,62 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
         setState(() {
           _items = f.pending(at);
           _glasses = f.pendingAssumed(at);
-          _adoptQueue();
         });
+        _adoptQueue();
       }
     } catch (_) {
       if (mounted) setState(() => _failed = true);
     }
   }
 
-  /// Reads the stored queue and drops every draft whose moment or glass is no
-  /// longer waiting (answered elsewhere, or older than the window).
+  /// Drops every stored draft whose moment or glass is no longer waiting
+  /// (answered elsewhere, or older than the window). A range Save already
+  /// started is kept: it is finished, not dropped.
   void _adoptQueue() {
-    final stored = widget.store.load();
     final pending = {
       for (final m in _items ?? const <PendingMoment>[]) ReviewKey.moment(m),
       for (final g in _glasses) ReviewKey.glass(g),
     };
-    _queue = stored.dropStale(pending);
-    if (_queue.length != stored.length) unawaited(widget.store.save(_queue));
+    unawaited(_svc.adopt(pending));
   }
 
-  /// Replace the queue, persist it at once (a kill must not lose it) and clear
-  /// the failure / pairing notes of [touched] review keys.
-  void _setQueue(MomentReviewQueue q, {Iterable<String> touched = const []}) {
+  /// Edit the shared queue (it persists at once, a kill must not lose it) and
+  /// clear the failure / pairing notes of [touched] review keys.
+  void _edit(MomentReviewQueue Function(MomentReviewQueue q) f,
+      {Iterable<String> touched = const []}) {
     setState(() {
       for (final k in touched) {
         _itemErrors.remove(k);
         if (ReviewKey.isMoment(k)) {
           final plain = ReviewKey.plainOf(k);
           _pairErrors.remove(plain);
+          _amountErrors.remove(plain);
           final r = _queue.rangeOf(plain);
           if (r != null) _itemErrors.remove(ReviewKey.range(r));
         }
       }
-      _queue = q;
     });
-    unawaited(widget.store.save(q));
+    unawaited(_svc.edit(f));
   }
 
   void _queueMoment(PendingMoment m, ReviewDecision d) {
     final k = ReviewKey.moment(m);
     setState(() => _open.remove(m.key));
-    _setQueue(_queue.withDecision(k, d), touched: [k]);
+    _edit((q) => q.withDecision(k, d), touched: [k]);
   }
 
   void _queueGlass(AssumedGlass g, ReviewDecision d) {
     final k = ReviewKey.glass(g);
-    _setQueue(_queue.withDecision(k, d), touched: [k]);
+    _edit((q) => q.withDecision(k, d), touched: [k]);
   }
 
   void _undoMoment(PendingMoment m) {
     final k = ReviewKey.moment(m);
+    // A range Save has started cannot be taken back (its window is saved): it
+    // can only be finished.
+    if (_queue.rangeOf(m.key)?.inProgress == true) return;
     setState(() => _open.remove(m.key));
-    _setQueue(_queue.without(k), touched: [k]);
+    _edit((q) => q.without(k), touched: [k]);
   }
 
   void _choose(PendingMoment m, MomentChoice c) {
@@ -355,9 +371,18 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
           m, ReviewDecision.label(c, note: raw.isEmpty ? null : raw));
       return;
     }
-    // A number only when one was typed; anything else is no amount, never a
-    // guessed one.
+    // A number only when one was typed; text that is not a number is no amount,
+    // never a guessed one. A number that cannot be used (not finite, zero or
+    // negative, above the field's maximum) is refused here, where it can still
+    // be fixed, rather than failing at Save.
     final v = double.tryParse(raw.replaceAll(',', '.'));
+    final max = c.journalField == null
+        ? null
+        : kJournalFieldsByKey[c.journalField]?.max;
+    if (v != null && (!v.isFinite || v <= 0 || (max != null && v > max))) {
+      setState(() => _amountErrors.add(m.key));
+      return;
+    }
     _queueMoment(m, ReviewDecision.label(c, value: v));
   }
 
@@ -376,7 +401,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
       if (!mounted) return;
       _open.remove(m.key);
       _items?.removeWhere((x) => x.key == m.key);
-      _setQueue(_queue.without(ReviewKey.moment(m)),
+      _edit((q) => q.without(ReviewKey.moment(m)),
           touched: [ReviewKey.moment(m)]);
     } catch (_) {
       if (!mounted) return;
@@ -403,6 +428,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     final candidates = [
       for (final o in _items ?? const <PendingMoment>[])
         if (o.key != m.key &&
+            !o.ambiguous &&
             _queue.decisionFor(ReviewKey.moment(o)) == null &&
             _queue.rangeOf(o.key) == null)
           o,
@@ -410,13 +436,16 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     final picked = await showModalBottomSheet<({PendingMoment other, String type})>(
       context: context,
       isScrollControlled: true,
+      // Up to most of the screen; the candidates scroll inside it.
+      constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85),
       backgroundColor: P.of(context).card,
       shape: const RoundedRectangleBorder(borderRadius: R.rXl),
       builder: (_) => _PairSheet(
           moment: m, candidates: candidates, workout: choice == MomentChoice.workout),
     );
     if (picked == null || !mounted) return;
-    final first = m.local.isAfter(picked.other.local) ? picked.other : m;
+    final first = m.sec > picked.other.sec ? picked.other : m;
     final second = identical(first, m) ? picked.other : m;
     final l = AppLocalizations.of(context);
     final writer = _rangeWriter();
@@ -441,8 +470,8 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
       _open.remove(m.key);
       _open.remove(picked.other.key);
     });
-    _setQueue(
-        _queue.withRange(m, picked.other, choice,
+    _edit(
+        (q) => q.withRange(m, picked.other, choice,
             workoutType: picked.type == 'other' ? null : picked.type),
         touched: [ReviewKey.moment(m), ReviewKey.moment(picked.other)]);
   }
@@ -450,29 +479,28 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   Future<void> _save() async {
     if (_busy || _queue.isEmpty) return;
     setState(() => _busy = true);
-    final writer = _rangeWriter();
-    final exporter = widget.exporter;
-    final applier = MomentReviewApplier(
-        writer: widget.writer,
-        assumedWriter: widget.assumedWriter,
-        ranges: writer,
-        exporter: exporter);
     ReviewSaveReport? report;
     try {
-      report = await applier.apply(_queue,
+      final applier = MomentReviewApplier(
+          writer: widget.writer,
+          assumedWriter: widget.assumedWriter,
+          ranges: _rangeWriter(),
+          exporter: widget.exporter);
+      // Through the shared owner: it runs after any Save already running, on
+      // the queue as it is then, and merges the outcome into the queue as it is
+      // when it ends (a newer screen's drafts are never overwritten).
+      report = await _svc.save(applier,
           moments: List.of(_items ?? const []),
           glasses: List.of(_glasses),
           now: widget.now ?? DateTime.now());
     } catch (_) {
       report = null; // the applier reports per item; this is a surprise
-    }
-    if (report != null) {
-      // Persist what is left even if the screen is gone.
-      await widget.store.save(report.remaining);
+    } finally {
+      // Never left set, whatever happened above.
+      if (mounted) _busy = false;
     }
     if (!mounted) return;
     setState(() {
-      _busy = false;
       if (report == null) {
         final l = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -480,7 +508,6 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                 'Could not save that answer. Try again.')));
         return;
       }
-      _queue = report.remaining;
       _itemErrors
         ..clear()
         ..addAll(report.failed);
@@ -526,6 +553,11 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
   String _failureText(AppLocalizations? l, Object? error, MomentChoice? c) {
     if (error is ManualWindowException) {
       return _rangeMessage(l, c ?? MomentChoice.nap, error.error);
+    }
+    if (error is AmbiguousMarkException) {
+      return l?.momentReviewAmbiguous ??
+          'This time came round twice when the clocks went back, so it cannot '
+              'be paired with another mark.';
     }
     return l?.momentReviewItemFailed ??
         'Not saved. It is still queued — press Save to try again.';
@@ -626,6 +658,17 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                     ),
                   )
                 else ...[
+                  if (_svc.persistFailed)
+                    Padding(
+                      key: const ValueKey('moment-persist-failed'),
+                      padding: const EdgeInsets.only(bottom: S.x3),
+                      child: Text(
+                          l?.momentReviewPersistFailed ??
+                              'Could not store your choices on this phone. '
+                                  'They are kept while the app is open but may '
+                                  'be lost if it closes.',
+                          style: F.cap.copyWith(color: p.ink)),
+                    ),
                   Padding(
                     padding: const EdgeInsets.only(bottom: S.x3),
                     child: Text(
@@ -649,7 +692,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                         onKeep: () => _queueGlass(g, const ReviewDecision.keepGlass()),
                         onRemove: () =>
                             _queueGlass(g, const ReviewDecision.removeGlass()),
-                        onUndo: () => _setQueue(_queue.without(ReviewKey.glass(g)),
+                        onUndo: () => _edit((q) => q.without(ReviewKey.glass(g)),
                             touched: [ReviewKey.glass(g)]),
                       )
                     else if (e.moment case final m?)
@@ -700,7 +743,14 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
           ? null
           : _failureText(l, err, r?.choice ?? d?.choice),
       pairError: _pairErrors[m.key],
-      canPair: r == null && choice != null && isRangeChoice(choice),
+      canPair: r == null &&
+          !m.ambiguous &&
+          choice != null &&
+          isRangeChoice(choice),
+      ambiguousNote: m.ambiguous && choice != null && isRangeChoice(choice),
+      amountError: _amountErrors.contains(m.key),
+      resumeNote: r != null && r.inProgress && err == null,
+      canUndo: r?.inProgress != true,
       onChoose: (ch) => _choose(m, ch),
       onSave: (ch) => _confirm(m, ch),
       onSkip: () => _queueMoment(m, const ReviewDecision.skip()),
@@ -735,6 +785,10 @@ class _MomentRow extends StatelessWidget {
     required this.failure,
     required this.pairError,
     required this.canPair,
+    required this.ambiguousNote,
+    required this.amountError,
+    required this.resumeNote,
+    required this.canUndo,
     required this.onChoose,
     required this.onSave,
     required this.onSkip,
@@ -756,6 +810,17 @@ class _MomentRow extends StatelessWidget {
   /// "Will save: …" for a queued decision, or the range line when paired.
   final String? pending, rangeText, failure, pairError;
   final bool canPair;
+
+  /// The mark's minute happened twice and its real time is unknown: no pairing,
+  /// and the card says why.
+  final bool ambiguousNote;
+
+  /// The typed amount was refused.
+  final bool amountError;
+
+  /// A started range waiting to be finished (no undo).
+  final bool resumeNote;
+  final bool canUndo;
   final ValueChanged<MomentChoice> onChoose, onSave;
   final VoidCallback onSkip, onUndo, onPair, onLogWorkout, onLabelWorkout;
 
@@ -787,6 +852,7 @@ class _MomentRow extends StatelessWidget {
               ),
             ],
           ),
+          if (canUndo)
           Align(
             alignment: Alignment.centerLeft,
             child: Pressable(
@@ -800,6 +866,15 @@ class _MomentRow extends StatelessWidget {
             ),
           ),
         ],
+        if (resumeNote)
+          Padding(
+            key: ValueKey('moment-range-resume:$k'),
+            padding: const EdgeInsets.only(bottom: S.x2),
+            child: Text(
+                l?.momentReviewResume ??
+                    'Saved so far. Press Save to finish this pair.',
+                style: F.cap.copyWith(color: p.ink2)),
+          ),
         if (failure != null)
           Padding(
             key: ValueKey('moment-save-failed:$k'),
@@ -825,6 +900,16 @@ class _MomentRow extends StatelessWidget {
                 'Amount in ${spec.unit} (optional)',
             keyboard: const TextInputType.numberWithOptions(decimal: true),
           ),
+          if (amountError)
+            Padding(
+              key: ValueKey('moment-amount-error:$k'),
+              padding: const EdgeInsets.only(top: S.x1),
+              child: Text(
+                  l?.momentReviewAmountInvalid ??
+                      'Type a number above 0 (within the usual range), or '
+                          'leave it empty.',
+                  style: F.cap.copyWith(color: p.ink2)),
+            ),
         ],
         if (choice == MomentChoice.other) ...[
           const SizedBox(height: S.x3),
@@ -874,6 +959,16 @@ class _MomentRow extends StatelessWidget {
               soft: true,
               onTap: busy ? null : onPair),
         ],
+        if (ambiguousNote)
+          Padding(
+            key: ValueKey('moment-pair-ambiguous:$k'),
+            padding: const EdgeInsets.only(top: S.x2),
+            child: Text(
+                l?.momentReviewAmbiguous ??
+                    'This time came round twice when the clocks went back, so '
+                        'it cannot be paired with another mark.',
+                style: F.cap.copyWith(color: p.ink2)),
+          ),
         if (pairError != null)
           Padding(
             key: ValueKey('moment-range-error:$k'),
@@ -957,16 +1052,26 @@ class _PairSheetState extends State<_PairSheet> {
               if (widget.candidates.isEmpty)
                 Text(l?.momentReviewPairNone ??
                     'No other unanswered moment to pair with.'),
-              for (final o in widget.candidates)
-                Pressable(
-                  key: ValueKey('moment-pair-target:$k:${o.key}'),
-                  onTap: () => Navigator.of(c).pop((other: o, type: _type)),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: S.x3),
-                    child: Text('${o.date} · ${o.hhmm}',
-                        style: F.body.copyWith(color: p.ink)),
-                  ),
+              // A week of marks can be longer than the screen: scroll.
+              Flexible(
+                child: ListView(
+                  key: const ValueKey('moment-pair-list'),
+                  shrinkWrap: true,
+                  children: [
+                    for (final o in widget.candidates)
+                      Pressable(
+                        key: ValueKey('moment-pair-target:$k:${o.key}'),
+                        onTap: () =>
+                            Navigator.of(c).pop((other: o, type: _type)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: S.x3),
+                          child: Text('${o.date} · ${o.hhmm}',
+                              style: F.body.copyWith(color: p.ink)),
+                        ),
+                      ),
+                  ],
                 ),
+              ),
             ]),
       ),
     );

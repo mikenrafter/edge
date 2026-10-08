@@ -56,9 +56,14 @@ ManualWindowError? validateReviewRange({
 }
 
 /// [validateReviewRange] against what [w] already holds, plus [alsoNaps] /
-/// [alsoSpans] (windows written earlier in the same Save). The window itself is
-/// never an obstacle: a retry after a failed label finds what the first try
-/// wrote and rewrites the same row. May throw (the reads can fail).
+/// [alsoSpans] (windows written earlier in the same Save). May throw (the reads
+/// can fail).
+///
+/// Nothing existing is exempt, with one exception: when [ownAttempt] is true
+/// (Save recorded that it was about to write this window, then was cut off) the
+/// row that is EXACTLY this window (same start and end, and for a workout the id
+/// derived from its start) is the operation's own and is ignored. A saved entry
+/// that merely starts at the same minute is somebody else's and is an overlap.
 Future<ManualWindowError?> checkReviewRange(
   ReviewRangeWriter w, {
   required MomentChoice choice,
@@ -67,6 +72,7 @@ Future<ManualWindowError?> checkReviewRange(
   required DateTime now,
   List<NapMap> alsoNaps = const [],
   List<SessionSpan> alsoSpans = const [],
+  bool ownAttempt = false,
 }) async {
   final startSec = start.millisecondsSinceEpoch ~/ 1000;
   final endSec = end.millisecondsSinceEpoch ~/ 1000;
@@ -80,7 +86,8 @@ Future<ManualWindowError?> checkReviewRange(
         !d.isAfter(DateTime(end.year, end.month, end.day));
         d = DateTime(d.year, d.month, d.day + 1)) {
       for (final n in await w.existingNaps(dayLabelOf(d))) {
-        final same = (n['start'] as num).toInt() == startSec &&
+        final same = ownAttempt &&
+            (n['start'] as num).toInt() == startSec &&
             (n['end'] as num).toInt() == endSec;
         if (!same) naps.add(n);
       }
@@ -91,7 +98,11 @@ Future<ManualWindowError?> checkReviewRange(
     spans
       ..addAll([
         for (final sp in await w.sessionSpans())
-          if (sp.id != own) sp
+          if (!(ownAttempt &&
+              sp.id == own &&
+              sp.startSec == startSec &&
+              sp.endSec == endSec))
+            sp
       ])
       ..addAll(alsoSpans);
   }

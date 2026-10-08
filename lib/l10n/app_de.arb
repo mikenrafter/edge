@@ -2498,5 +2498,11 @@
   "momentReviewRangeFuture": "Ein Zeitraum kann nicht in der Zukunft enden.",
   "momentReviewRangeWorkoutLength": "Ein Training muss zwischen 1 Minute und 24 Stunden dauern.",
   "momentReviewRangeWorkoutOverlap": "Das überschneidet sich mit einem Training in deinem Protokoll.",
-  "momentReviewRangeCheckFailed": "Dieses Paar konnte nicht geprüft werden. Versuche es erneut."
+  "momentReviewRangeCheckFailed": "Dieses Paar konnte nicht geprüft werden. Versuche es erneut.",
+  "settingsTaskerMomentExportTitle": "Überprüfte Momente an Tasker senden",
+  "settingsTaskerMomentExportSub": "Wenn du die Überprüfung deiner markierten Momente speicherst, wird jeder einzelne an Tasker gesendet: was es war, wann, und jede eingegebene Menge. Das sind Gesundheitsdaten, deshalb gehen sie nur an Tasker und bleiben aus, bis du sie einschaltest.",
+  "momentReviewPersistFailed": "Deine Auswahl konnte nicht auf diesem Telefon gespeichert werden. Sie bleibt, solange die App offen ist, kann aber verloren gehen, wenn sie schließt.",
+  "momentReviewAmountInvalid": "Gib eine Zahl über 0 ein (im üblichen Bereich) oder lass das Feld leer.",
+  "momentReviewAmbiguous": "Diese Uhrzeit kam beim Zurückstellen der Uhr zweimal vor und kann deshalb nicht mit einer anderen Markierung gekoppelt werden.",
+  "momentReviewResume": "Bisher gespeichert. Tippe auf Speichern, um dieses Paar abzuschließen."
 }

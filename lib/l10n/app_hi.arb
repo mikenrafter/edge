@@ -2498,5 +2498,11 @@
   "momentReviewRangeFuture": "अवधि भविष्य में खत्म नहीं हो सकती।",
   "momentReviewRangeWorkoutLength": "वर्कआउट 1 मिनट से 24 घंटे के बीच का होना चाहिए।",
   "momentReviewRangeWorkoutOverlap": "यह आपके लॉग में पहले से मौजूद वर्कआउट से टकराता है।",
-  "momentReviewRangeCheckFailed": "इस जोड़ी की जाँच नहीं हो सकी। दोबारा कोशिश करें।"
+  "momentReviewRangeCheckFailed": "इस जोड़ी की जाँच नहीं हो सकी। दोबारा कोशिश करें।",
+  "settingsTaskerMomentExportTitle": "समीक्षा किए गए पल Tasker को भेजें",
+  "settingsTaskerMomentExportSub": "जब आप चिह्नित पलों की समीक्षा सहेजते हैं, हर पल Tasker को भेजा जाता है: वह क्या था, कब, और आपने जो मात्रा लिखी। यह स्वास्थ्य जानकारी है, इसलिए यह केवल Tasker को जाती है और आपके चालू करने तक बंद रहती है।",
+  "momentReviewPersistFailed": "आपके चुनाव इस फ़ोन पर सहेजे नहीं जा सके। ऐप खुली रहने तक वे रहेंगे, पर बंद होने पर खो सकते हैं।",
+  "momentReviewAmountInvalid": "0 से ऊपर की संख्या लिखें (सामान्य सीमा के भीतर) या खाली छोड़ दें।",
+  "momentReviewAmbiguous": "घड़ी पीछे करने पर यह समय दो बार आया, इसलिए इसे किसी दूसरे निशान से जोड़ा नहीं जा सकता।",
+  "momentReviewResume": "अब तक सहेजा गया। इस जोड़ी को पूरा करने के लिए सहेजें दबाएँ।"
 }

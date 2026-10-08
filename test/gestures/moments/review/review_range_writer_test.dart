@@ -92,16 +92,39 @@ void main() {
         reason: 'the end day does not also get it (it would double-count)');
   });
 
-  test('writing the same range twice is one row (retry-safe)', () async {
+  test('a retry after a failed label is one row, not an overlap with itself',
+      () async {
     final q = MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.nap);
-    final a = applierFor(_Repo());
-    await a.apply(q, moments: [mA, mB], glasses: const [], now: reviewNow);
-    // The first try's row is now an "existing nap": a retry must not trip
-    // over its own window.
-    final again =
-        await a.apply(q, moments: [mA, mB], glasses: const [], now: reviewNow);
+    final repo = _Repo();
+    final writer = FakeAnswerWriter(failOn: {mB.key});
+    MomentReviewApplier mk() => MomentReviewApplier(
+        writer: writer,
+        assumedWriter: FakeGlassWriter(),
+        ranges: ReviewRangeWriter(repo: repo),
+        exporter: TaskerMomentExport(connectionOn: () => false));
+    final first = await mk()
+        .apply(q, moments: [mA, mB], glasses: const [], now: reviewNow);
+    expect(first.failed, hasLength(1));
+    writer.failOn = {};
+    // The row the first try stored is now "an existing nap": the retry must
+    // resume from its recorded progress, not validate against it.
+    final again = await mk().apply(first.remaining,
+        moments: [mB], glasses: const [], now: reviewNow);
     expect(again.failed, isEmpty);
     expect(await LocalDb.napEdits('2026-10-06'), hasLength(1));
+  });
+
+  test('re-applying a range that was NOT recorded as attempted does see its '
+      'own stored row as an overlap (no blanket exemption)', () async {
+    final q = MomentReviewQueue.empty.withRange(mA, mB, MomentChoice.nap);
+    await LocalDb.putNapEdit(
+        dayId: '2026-10-06',
+        startTs: sec(2026, 10, 6, 9, 15),
+        endTs: sec(2026, 10, 6, 10, 5),
+        source: 'manual');
+    final rep = await applierFor(_Repo())
+        .apply(q, moments: [mA, mB], glasses: const [], now: reviewNow);
+    expect(rep.failed, hasLength(1));
   });
 
   test('existingNaps: the day\'s merged naps plus stored manual edits',
