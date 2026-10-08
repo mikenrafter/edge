@@ -40,6 +40,7 @@ import '../../state/app_state.dart';
 import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../state/locale_controller.dart';
+import '../../state/acked_bool.dart';
 import '../../state/prefs.dart';
 import '../../state/units_controller.dart';
 import '../../telemetry/health_uploader.dart';
@@ -2162,9 +2163,16 @@ class _AutomationSettingsState extends State<AutomationSettings> {
   @override
   void initState() {
     super.initState();
+    _consent.pending.addListener(_onConsentPending);
     TaskerBridge.authToken().then((t) {
       if (mounted) setState(() => _token = t);
     });
+  }
+
+  @override
+  void dispose() {
+    _consent.pending.removeListener(_onConsentPending);
+    super.dispose();
   }
 
   Future<void> _copy() async {
@@ -2179,18 +2187,23 @@ class _AutomationSettingsState extends State<AutomationSettings> {
     setState(() => _taskerOn = on);
   }
 
-  /// Consent is a durable choice: it is changed with the acknowledged write.
-  /// If the platform refuses, the cache is put back to what is actually stored
-  /// and the switch shows that, with a message. A failed switch-OFF must never
-  /// look like it worked: after a restart consent would be back ON.
+  late final AckedBool _consent = AckedBool.forKey(Prefs.taskerMomentExport);
+
+  void _onConsentPending() {
+    if (mounted) setState(() {});
+  }
+
+  /// Consent is a durable choice: it is changed with the acknowledged write,
+  /// one write at a time (the switch is disabled while one waits). If the
+  /// platform refuses, `AckedBool` puts the cache back to the last CONFIRMED
+  /// value, whether or not this screen is still there; the switch then shows
+  /// what is stored, with a message. A failed switch-OFF must never look like it
+  /// worked: after a restart consent would be back ON.
   Future<void> _setMomentExportOn(bool on) async {
-    final was = _momentExportOn;
-    final ok =
-        await (widget.setBoolAcked ?? Prefs.setBoolAcked)(Prefs.taskerMomentExport, on);
-    if (!ok) Prefs.setBool(Prefs.taskerMomentExport, was);
-    if (!mounted) return;
+    final ok = await _consent.set(on, write: widget.setBoolAcked);
+    if (ok == null || !mounted) return;
     setState(() {
-      _momentExportOn = ok ? on : was;
+      _momentExportOn = Prefs.taskerMomentExportOn;
       _momentExportError = !ok;
     });
   }
@@ -2204,7 +2217,8 @@ class _AutomationSettingsState extends State<AutomationSettings> {
       onTaskerOn: _setTaskerOn,
       momentExportOn: _momentExportOn,
       onMomentExportOn: _setMomentExportOn,
-      momentExportError: _momentExportError);
+      momentExportError: _momentExportError,
+      momentExportBusy: _consent.pending.value);
 }
 
 /// The Automation screen without its token fetch, so it can be pumped headless.
@@ -2219,7 +2233,8 @@ class AutomationSettingsView extends StatelessWidget {
       this.onTaskerOn,
       this.momentExportOn = false,
       this.onMomentExportOn,
-      this.momentExportError = false});
+      this.momentExportError = false,
+      this.momentExportBusy = false});
   final String? token;
   final bool copied;
   final VoidCallback? onCopy;
@@ -2239,6 +2254,9 @@ class AutomationSettingsView extends StatelessWidget {
 
   /// The last change of that switch could not be stored (it shows what is).
   final bool momentExportError;
+
+  /// A write of that switch waits for its acknowledgement: it is inert.
+  final bool momentExportBusy;
 
   @override
   Widget build(BuildContext c) {
@@ -2280,7 +2298,7 @@ class AutomationSettingsView extends StatelessWidget {
                         momentExportOn && taskerOn,
                         onMomentExportOn,
                         key: const ValueKey('tasker-moment-export'),
-                        enabled: taskerOn,
+                        enabled: taskerOn && !momentExportBusy,
                         sub: (l?.settingsTaskerMomentExportSub ??
                                 'When you save the review of your marked '
                                     'moments, sends each one to Tasker: what '

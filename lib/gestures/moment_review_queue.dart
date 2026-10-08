@@ -146,6 +146,19 @@ class ReviewRange {
   /// each end is labelled / Tasker has been told.
   final bool attempting, windowWritten, startLabelled, endLabelled, announced;
 
+  /// Whether [other] is the same pairing decision: same choice, workout type,
+  /// marks and times. Progress marks are not part of it. This is the range's
+  /// identity: a Save carries it from its snapshot, and anything made meanwhile
+  /// under the same marks (another choice or workout type) is a different
+  /// decision that the Save must leave alone.
+  bool sameDecision(ReviewRange other) =>
+      other.choice == choice &&
+      other.workoutType == workoutType &&
+      other.startKey == startKey &&
+      other.endKey == endKey &&
+      other.startSec == startSec &&
+      other.endSec == endSec;
+
   /// Save has started on this range: it can no longer be undone, only finished.
   bool get inProgress => attempting || windowWritten;
 

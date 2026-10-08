@@ -156,8 +156,10 @@ class MomentReviewService extends ChangeNotifier {
         onProgress: (r) async {
           // A range undone while Save was still checking it stays undone: the
           // attempt (recorded before the write) is refused.
-          final held = _queue.ranges
-              .any((x) => x.startKey == r.startKey && x.endKey == r.endKey);
+          // Identity, not just the two marks: another screen may have replaced
+          // the pair (same marks, other choice) while this Save was checking,
+          // and that newer decision must not be overwritten.
+          final held = _queue.ranges.any((x) => x.sameDecision(r));
           if (!held && r.attempting && !r.windowWritten) {
             throw const RangeWithdrawnException();
           }
@@ -183,16 +185,14 @@ class MomentReviewService extends ChangeNotifier {
         final was = snapshot.ranges
             .where((r) => ReviewKey.range(r) == key)
             .firstOrNull;
-        // Only the range this Save worked on: a different one queued under the
-        // same marks since (another choice or workout type) stays.
+        // Only the range this Save worked on: a different decision queued under
+        // the same marks since stays.
         q = MomentReviewQueue(
           decisions: q.decisions,
           ranges: [
             for (final r in q.ranges)
               if (ReviewKey.range(r) != key ||
-                  (was != null &&
-                      (r.choice != was.choice ||
-                          r.workoutType != was.workoutType)))
+                  (was != null && !r.sameDecision(was)))
                 r,
           ],
         );
@@ -208,11 +208,16 @@ class MomentReviewService extends ChangeNotifier {
     }
     // A failed range keeps what the Save got done (even if it was re-added).
     for (final r in report.remaining.ranges) {
-      final held = q.ranges
-          .any((x) => x.startKey == r.startKey && x.endKey == r.endKey);
-      // Progress is kept even if the range was dropped meanwhile (the window is
+      final held = q.ranges.where(
+          (x) => x.startKey == r.startKey && x.endKey == r.endKey);
+      // A different decision under the same marks is newer: leave it. Progress
+      // of THIS range is kept even if it was dropped meanwhile (the window is
       // already written); a range that never started is not brought back.
-      if (held || r.inProgress) q = q.withRangeProgress(r);
+      if (held.isNotEmpty) {
+        if (held.first.sameDecision(r)) q = q.withRangeProgress(r);
+      } else if (r.inProgress) {
+        q = q.withRangeProgress(r);
+      }
     }
     return q;
   }
