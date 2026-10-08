@@ -14,15 +14,11 @@
 //  J  (partial 5) a confirmation counts only at or after the fire (60 s slack)
 //
 // Contract used where the production API is new: the settings JSON field
-// `enabled` (default false); the app's playback window is measured on the
-// app's injected wake clock (so these tests move it with the rig's TestClock).
-
-import 'dart:async';
+// `enabled` (default false). (Round 8 removed the app-playback attribution
+// tests of group B: the quiet window, snooze_r8_test.dart, replaces them.)
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_controller.dart';
-import 'package:openstrap_edge/haptics/builtin_patterns.dart';
-import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
 
 import 'snooze_band_rig.dart';
@@ -156,56 +152,6 @@ void main() {
       rig.clock.advance(kSec * 5);
       await rig.terminate(HapticsTermination.userDoubleTap);
       expect(rig.app.snooze.consumesDoubleTaps, isTrue);
-    });
-
-    test('a termination while the app plays its OWN pattern (a gesture cue, '
-        'Natural Wake, breathing) is that pattern ending: no snooze, the fire '
-        'is not used up', () async {
-      await open(autoEnd: AutoEnd.real);
-      await rig.fire(stamp: t0);
-      rig.clock.advance(kSec * 2);
-      // Any band job that is not the snooze's: the band answers it with its
-      // own `expired` termination, as it does for everything it plays.
-      await rig.app.gestureCues.slot(kGestureConfirmKey);
-      await rig.settle();
-      expect(await storedState(), isNull,
-          reason: 'our own cue ending was taken for the alarm expiring: a '
-              'phantom snooze, and the real stop is then thrown away');
-      expect(rig.count(Played.snoozeConfirm), 0);
-
-      rig.clock.advance(kSec * 30); // well past any tail
-      await rig.terminate(HapticsTermination.expired);
-      expect(await storedState(), isNotNull,
-          reason: 'the real expiry, long after our playback, still snoozes');
-    });
-
-    test('...a band job IN FLIGHT: a termination heard meanwhile and the '
-        'moment after it ends is ignored; later one counts', () async {
-      await open();
-      await rig.fire(stamp: t0);
-      rig.clock.advance(kSec * 2);
-
-      final hold = Completer<void>();
-      final job = rig.app.haptics.runJob(1, (token) async {
-        await token.write(() async => true);
-        await hold.future;
-        return BuzzDelivery.complete;
-      }, timeout: const Duration(seconds: 60));
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-
-      await rig.terminate(HapticsTermination.expired, quick: true);
-      expect(await storedState(), isNull, reason: 'a job is in flight');
-
-      hold.complete();
-      await job;
-      await rig.terminate(HapticsTermination.userDoubleTap, quick: true);
-      expect(rig.app.snooze.consumesDoubleTaps, isFalse,
-          reason: 'within the short tail after the job ended');
-      expect(await storedState(), isNull);
-
-      rig.clock.advance(kSec * 30);
-      await rig.terminate(HapticsTermination.expired);
-      expect(await storedState(), isNotNull);
     });
 
     test('control: an `unknown` cause on a capable band is a valid stop '

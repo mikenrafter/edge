@@ -252,6 +252,12 @@ class HapticsService {
 
   void endLab() => _queue.endLab();
 
+  /// A quiet window (plain jobs held, not dropped): see
+  /// [BandHapticQueue.beginQuiet].
+  void beginQuiet() => _queue.beginQuiet();
+  void endQuiet() => _queue.endQuiet();
+  bool get quietOpen => _queue.quietOpen;
+
   Future<bool> runLab(Future<void> Function() body) => _queue.runLab(body);
 
   /// With the Device lab open, the touch counter's and the gestures' buzzes are

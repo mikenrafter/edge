@@ -2,12 +2,8 @@
 // .md). RED. Real AppState, engine, haptics queue and stores on the rig
 // (snooze_band_rig.dart); phone notifications read off the platform channel.
 //
-//  1  (P1) a PREVIOUS app playback's tail never swallows the native alarm's
-//     stop: tails are clipped at the fire F. A cue that ended at F-2 s still
-//     has its tail running at F+1 s; the wearer's genuine stop stamped F+1 s
-//     (heard at F+8 s) is the alarm's stop. The cue's own buffered expiry
-//     (stamped before F) and a playback that started at/after F are still
-//     attributed to the app.
+//  (Item 1, the previous playback's tail, was removed in round 8 with the
+//  attribution machinery: see snooze_r8_test.dart.)
 //  2  (P2) "I'm up" (the Home card calls the controller directly) ends the
 //     chain for the band queue too: a re-alarm queued behind another pattern
 //     never plays after it.
@@ -22,7 +18,6 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_controller.dart';
 import 'package:openstrap_edge/alarm/snooze/snooze_settings.dart';
-import 'package:openstrap_edge/haptics/builtin_patterns.dart';
 import 'package:openstrap_edge/notify/buzz_sequence.dart';
 import 'package:openstrap_edge/notify/notification_service.dart';
 import 'package:openstrap_protocol/openstrap_protocol.dart';
@@ -31,7 +26,6 @@ import 'snooze_band_rig.dart';
 import 'snooze_fakes.dart';
 import 'snooze_notification_spy.dart';
 import 'snooze_r3_support.dart';
-import 'snooze_r4_support.dart' show until;
 
 void main() {
   snoozeSuiteSetup('openstrap_snooze_r5_test.db');
@@ -52,121 +46,6 @@ void main() {
     rig = await SnoozeBandRig.open(settings: settings);
     t0 = rig.clock.now;
   }
-
-  /// The app's own cue plays and ends. Returns when it ended (app clock).
-  Future<DateTime> ownCueEnds() async {
-    final before = rig.writes.length;
-    await rig.app.gestureCues.slot(kGestureConfirmKey);
-    await rig.settle();
-    expect(rig.writes.length, greaterThan(before),
-        reason: 'precondition: the cue reached the band');
-    return rig.clock.now;
-  }
-
-  group('1 a previous playback\'s tail is clipped at the fire', () {
-    test('the review\'s case: a cue ends at F-2 s, the alarm fires at F, '
-        'the genuine stop stamped F+1 s (inside the old cue\'s tail) is '
-        'heard at F+8 s: it is the alarm\'s stop', () async {
-      await open();
-      await ownCueEnds();
-      rig.clock.advance(kSec * 2);
-      t0 = rig.clock.now; // F
-      await rig.fire(stamp: t0);
-
-      rig.clock.advance(kSec * 8); // heard at F + 8 s: no app pattern playing
-      await rig.terminate(HapticsTermination.userDoubleTap,
-          stamp: t0.add(kSec * 1));
-      // Heard 7 s after it happened, its 4 s dismiss window is already over
-      // (measured from the stop): with no second tap it becomes the snooze.
-      expect(await storedState(), isNotNull,
-          reason: 'the old cue\'s tail swallowed the wearer\'s stop: no '
-              'dismiss window, and no band snooze follows');
-    });
-
-    test('...an expiry stop in the same place starts the snooze', () async {
-      await open();
-      await ownCueEnds();
-      rig.clock.advance(kSec * 2);
-      t0 = rig.clock.now;
-      await rig.fire(stamp: t0);
-      rig.clock.advance(kSec * 8);
-      await rig.terminate(HapticsTermination.expired,
-          stamp: t0.add(kSec * 1));
-      expect(await storedState(), isNotNull,
-          reason: 'the alarm\'s stop was discarded as the old cue ending');
-    });
-
-    test('control (round 4): the old cue\'s OWN buffered expiry, stamped '
-        'F-1 s, still does not consume the fire; the genuine stop does',
-        () async {
-      await open();
-      final ended = await ownCueEnds();
-      rig.clock.advance(kSec * 2);
-      t0 = rig.clock.now;
-      await rig.fire(stamp: t0);
-      rig.clock.advance(kSec * 5);
-      await rig.terminate(HapticsTermination.expired,
-          stamp: ended.add(kSec * 1)); // F - 1 s
-      expect(await storedState(), isNull);
-      rig.clock.advance(kSec * 3);
-      await rig.terminate(HapticsTermination.expired,
-          stamp: t0.add(kSec * 6));
-      expect(await storedState(), isNotNull);
-    });
-
-    test('a pattern that SPANS the fire (F-1 s .. F+2 s): its expiry '
-        'stamped F+2 s, heard at F+8 s after the queue released, is our '
-        'pattern ending and does not consume the fire; the genuine stop '
-        'afterwards does', () async {
-      await open();
-      final hold = Completer<void>();
-      final job = rig.app.haptics.runJob(1, (token) async {
-        await token.write(() async => true);
-        await hold.future;
-        return BuzzDelivery.complete;
-      }, timeout: const Duration(seconds: 60));
-      await Future<void>.delayed(const Duration(milliseconds: 100));
-      rig.clock.advance(kSec * 1);
-      t0 = rig.clock.now; // F: the pattern started at F - 1 s
-      await rig.fire(stamp: t0);
-      rig.clock.advance(kSec * 2); // the pattern ends at F + 2 s
-      hold.complete();
-      await job;
-      expect(await until(() => !rig.app.haptics.playing), isTrue,
-          reason: 'precondition: the band is free of the pattern');
-
-      rig.clock.advance(kSec * 6); // heard at F + 8 s, past the tail
-      await rig.terminate(HapticsTermination.expired,
-          stamp: t0.add(kSec * 2));
-      expect(await storedState(), isNull,
-          reason: 'the part of the pattern after the fire was dropped from '
-              'its interval: its own expiry was taken for the alarm\'s stop');
-
-      rig.clock.advance(kSec * 4);
-      await rig.terminate(HapticsTermination.expired,
-          stamp: t0.add(kSec * 12));
-      expect(await storedState(), isNotNull);
-    });
-
-    test('control: a playback that STARTED after F is attributed by its '
-        'own interval + tail: its late expiry does not consume the fire',
-        () async {
-      await open();
-      t0 = rig.clock.now;
-      await rig.fire(stamp: t0);
-      rig.clock.advance(kSec * 2);
-      final ended = await ownCueEnds(); // plays and ends at F + 2 s
-      rig.clock.advance(kSec * 6); // heard at F + 8 s, past the tail
-      await rig.terminate(HapticsTermination.expired,
-          stamp: ended.add(kSec * 1)); // F + 3 s, inside cue + tail
-      expect(await storedState(), isNull,
-          reason: 'our own cue ending (started after the fire)');
-      rig.clock.advance(kSec * 3);
-      await rig.terminate(HapticsTermination.expired,
-          stamp: t0.add(kSec * 12));
-      expect(await storedState(), isNotNull);
-    });
-  });
 
   group('2 "I\'m up" ends the chain for the band queue', () {
     test('a re-alarm queued behind another pattern never plays once the '

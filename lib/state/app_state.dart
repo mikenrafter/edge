@@ -725,8 +725,7 @@ class AppState extends ChangeNotifier {
         allowLong: () => Prefs.allowLongHaptics,
         commandLimit: () => Prefs.hapticCommandLimit,
         log: _log,
-      ))
-    ..onBusyChanged = _onHapticsBusy;
+      ));
   HapticsService? _hapticsForTesting;
 
   /// A rhythm the user just tapped out, played back for them. Still one
@@ -2496,6 +2495,8 @@ class AppState extends ChangeNotifier {
     _sync.dispose();
     _alarmGraceTimer?.cancel();
     _alarmGraceTimer = null;
+    _quietTimer?.cancel();
+    _quietTimer = null;
     wake.dispose();
     _wakeOrchestrator.dispose(); // ends any Natural repeat
     _snooze?.status.removeListener(_onSnoozeStatus);
@@ -5667,9 +5668,72 @@ class AppState extends ChangeNotifier {
   /// counts as that alarm's stop.
   static const Duration kSnoozeAlarmWindow = Duration(minutes: 5);
 
-  /// How long after our own band playback ends a termination is still taken as
-  /// that playback ending (the band reports it a moment later).
-  static const Duration kAppPlaybackTail = Duration(seconds: 3);
+  // ── the quiet window ───────────────────────────────────────────────────────
+  // The app's own band patterns must not overlap the native alarm: a pattern's
+  // HAPTICS_TERMINATED could be heard as the alarm's. So, with snooze on and an
+  // alarm armed for T, plain app haptics are HELD (never dropped) in the band
+  // queue from T - [kQuietLead] until the native stop is handled, or, when none
+  // arrives, T + [kNativeAlarmDuration] + [kQuietTrail]. Gesture jobs and alarm
+  // jobs are not held. Snooze off: no window.
+
+  static const Duration kQuietLead = Duration(seconds: 10);
+
+  /// The band's native alarm runs this long when nobody stops it.
+  static const Duration kNativeAlarmDuration = Duration(seconds: 30);
+  static const Duration kQuietTrail = Duration(seconds: 5);
+
+  /// The alarm time (epoch seconds) whose window is open, and the last one
+  /// whose window ended (it never reopens).
+  int? _quietEpoch;
+  int? _quietDoneEpoch;
+  Timer? _quietTimer;
+
+  /// Opens, keeps or closes the window as the clock, the armed alarm and the
+  /// snooze switch say, and sets a timer for its next edge. Idempotent.
+  void _syncQuietWindow() {
+    if (_disposed) return;
+    _quietTimer?.cancel();
+    _quietTimer = null;
+    if (!_snoozeOn) {
+      _closeQuietWindow(done: false);
+      return;
+    }
+    final epoch = _quietEpoch ?? alarmEpoch;
+    if (epoch == null || epoch == _quietDoneEpoch) return;
+    final t = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
+    final now = _wakeNow();
+    final start = t.subtract(kQuietLead);
+    final end = t.add(kNativeAlarmDuration + kQuietTrail);
+    if (now.isBefore(start)) {
+      _quietTimer = Timer(start.difference(now), _syncQuietWindow);
+      return;
+    }
+    if (!now.isBefore(end)) {
+      _quietEpoch = epoch;
+      _closeQuietWindow();
+      return;
+    }
+    if (_quietEpoch == null) {
+      _quietEpoch = epoch;
+      haptics.beginQuiet();
+      _log('[snooze] quiet window opened for the alarm at '
+          '${t.toIso8601String()}: app patterns wait.');
+    }
+    _quietTimer = Timer(end.difference(now), _syncQuietWindow);
+  }
+
+  /// Ends the window (the native stop was handled, it ran out, snooze went
+  /// off): held patterns go. [done]: it never reopens for the same alarm.
+  void _closeQuietWindow({bool done = true}) {
+    _quietTimer?.cancel();
+    _quietTimer = null;
+    final epoch = _quietEpoch;
+    if (epoch == null) return;
+    _quietEpoch = null;
+    if (done) _quietDoneEpoch = epoch;
+    haptics.endQuiet();
+    _log('[snooze] quiet window closed.');
+  }
 
   /// How long past its due time a fire that was never stopped (nothing heard)
   /// keeps its lease and backstop.
@@ -5699,59 +5763,9 @@ class AppState extends ChangeNotifier {
   bool _alarmClockUnset = false;
 
   /// The fire stamp a VALID stop has already been taken for. A fire is the
-  /// stop of AT MOST ONE termination. An `error`, or a termination while the
-  /// app plays its own pattern, never consumes it.
+  /// stop of AT MOST ONE termination. An `error`, or a termination stamped
+  /// before the fire, never consumes it.
   DateTime? _consumedFireAt;
-
-  /// The app's recent band playbacks (start, end), in the app's wake clock:
-  /// the newest few. A termination is attributed to them by its EVENT time.
-  final List<(DateTime, DateTime)> _appPlaybacks = [];
-  DateTime? _appPlaybackStartedAt;
-
-  void _onHapticsBusy(bool busy) {
-    final now = _wakeNow();
-    if (busy) {
-      _appPlaybackStartedAt ??= now;
-      return;
-    }
-    _appPlaybacks.add((_appPlaybackStartedAt ?? now, now));
-    _appPlaybackStartedAt = null;
-    if (_appPlaybacks.length > 32) _appPlaybacks.removeAt(0);
-  }
-
-  /// Whether [phoneTime] lies in one of the app's playbacks (or within
-  /// [kAppPlaybackTail] after it ended).
-  ///
-  /// A playback that began before the native alarm fired ([fire]) has only its
-  /// TAIL clipped at the fire (covered: [start, max(end, min(end + tail,
-  /// fire))]): the wearer's genuine stop just after the fire is not the old
-  /// pattern ending, but a pattern that spans the fire keeps its part after it.
-  /// One that began at or after the fire keeps its full interval and tail.
-  ///
-  /// With [wholeSecond] (an event stamp: the strap's RTC counts whole seconds)
-  /// the comparison is made at the stamp's precision: a playback's start is
-  /// floored to its second, so a stamp covers [s, s+1) and a cue begun at
-  /// F+2.1 s whose expiry is stamped F+2 s is still attributed to it.
-  bool _insideAppPlayback(DateTime phoneTime, DateTime fire,
-      {bool wholeSecond = false}) {
-    DateTime from(DateTime start) => wholeSecond
-        ? start.subtract(Duration(
-            milliseconds: start.millisecond, microseconds: start.microsecond))
-        : start;
-    final open = _appPlaybackStartedAt;
-    if (open != null && !phoneTime.isBefore(from(open))) return true;
-    for (final (rawStart, end) in _appPlaybacks) {
-      final start = from(rawStart);
-      // Covered: [start, end] whole, plus the tail, clipped at the fire. A
-      // playback that spans the fire keeps its post-fire part up to its end.
-      var last = end.add(kAppPlaybackTail);
-      if (start.isBefore(fire) && last.isAfter(fire)) {
-        last = end.isAfter(fire) ? end : fire;
-      }
-      if (!phoneTime.isBefore(start) && !phoneTime.isAfter(last)) return true;
-    }
-    return false;
-  }
 
   /// strap RTC to phone: `phone = strap + driftSec` ([ClockRef]); 0 until the
   /// engine correlated the clocks.
@@ -5915,6 +5929,7 @@ class AppState extends ChangeNotifier {
   /// snooze never saw has a lease and a backstop too).
   Future<void> _endSnooze(String why) async {
     _snoozeChain++; // a re-alarm still queued for the band is dropped
+    _closeQuietWindow(done: false); // Cancel-all, unpair, switched off
     final had = _snooze != null ||
         _fireGuardDue != null ||
         _snoozeBackstopFor != null;
@@ -5985,6 +6000,7 @@ class AppState extends ChangeNotifier {
         minutes: s.minutes,
         cap: s.cap);
     notifyListeners();
+    _syncQuietWindow();
     if (was && !_snoozeSettings.enabled) await _endSnooze('switched off');
     try {
       await _snoozeStore.saveSettings(_snoozeSettings);
@@ -6008,6 +6024,7 @@ class AppState extends ChangeNotifier {
       if (_disposed) return;
       _snoozeSettings = loaded;
       notifyListeners();
+      _syncQuietWindow();
       if (!loaded.enabled) {
         if (await _snoozeStore.loadState() != null) {
           await _snoozeStore.saveState(null);
@@ -6069,8 +6086,9 @@ class AppState extends ChangeNotifier {
 
   /// A termination is the native alarm's stop when it is VALID (the wearer's
   /// double tap, the alarm expiring, or an unreadable cause on a band that
-  /// reports causes: fail toward waking; never an `error`, never our own
-  /// playback ending), it ended an alarm that fired just before
+  /// reports causes: fail toward waking; never an `error`), it is stamped at or
+  /// after the fire (our own patterns are kept out of the way by the quiet
+  /// window), it ended an alarm that fired just before
   /// ([kSnoozeAlarmWindow]; a stop delivered minutes late after a reconnect
   /// still correlates), in ONE clock domain, and that fire has not already
   /// been taken. Only then is the fire consumed. Natural Wake's repeat flag is
@@ -6107,24 +6125,19 @@ class AppState extends ChangeNotifier {
     final unset = bandAt == null || _nativeFireClockUnset;
     final fire = unset ? (_nativeFireReceivedAt ?? fired) : fired;
     final stop = unset ? receivedAt : _strapToPhone(bandAt);
-    // Our own playback ending is told apart by the stop's EVENT time when it
-    // has a usable stamp (however late or promptly it was heard), and by
-    // RECEIPT only in receipt-time mode. Tails are clipped at the fire either
-    // way; a receipt-time fire is the fire's receipt time.
-    if (_insideAppPlayback(stop, fire, wholeSecond: !unset)) {
-      _log('[snooze] stop ($cause) ${unset ? 'heard' : 'stamped'} inside the '
-          'app\'s own playback (or just after): that is our pattern ending, '
-          'not the alarm.');
-      return;
-    }
+    // The alarm's stop is the first valid termination at or after the fire: one
+    // stamped before it ended something else (the quiet window keeps our own
+    // patterns from overlapping the alarm, so there is nothing to attribute to
+    // the app). In receipt-time mode both are receipt times.
     final since = stop.difference(fire);
-    if (since > kSnoozeAlarmWindow || since < const Duration(minutes: -1)) {
+    if (since > kSnoozeAlarmWindow || since.isNegative) {
       _log('[snooze] stop ($cause) ${since.inSeconds} s from the native alarm: '
           'not its stop.');
       return;
     }
     _consumedFireAt = fired;
     _alarmClockUnset = unset;
+    _closeQuietWindow(); // the native stop is handled: our patterns may play
     await snooze.onAlarmStopped(parsed, at: stop, fire: fire);
     if (snooze.status.value.phase == SnoozePhase.idle) {
       // Confirmed awake (or ended at once): nothing is pending any more.
@@ -6245,6 +6258,7 @@ class AppState extends ChangeNotifier {
     // not wait on anything below that can return early (no wake plan armed, no
     // link). It never throws.
     try {
+      _syncQuietWindow();
       await _snooze?.tick();
       await _checkFireGuard();
     } catch (e) {
@@ -6501,6 +6515,7 @@ class AppState extends ChangeNotifier {
     _pendingArm = null;
     _savedAlarm = epoch;
     device.alarmEpoch = epoch; // optimistic display
+    _syncQuietWindow();
     _alarm.set(epoch, DateTime.now().millisecondsSinceEpoch); // await event 56
     if (early) _alarm.confirmed = true;
     if (!isRetry) _alarmAutoRetried = false; // a fresh arm gets its one retry

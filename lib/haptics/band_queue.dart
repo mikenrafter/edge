@@ -462,6 +462,7 @@ class BandHapticQueue {
   _Job? _running;
   bool _busy = false;
   int _labs = 0;
+  int _quiet = 0;
   Timer? _wake;
   _Job? _restLogged;
 
@@ -516,8 +517,46 @@ class BandHapticQueue {
     if (_labs == 0) return;
     _labs--;
     if (_labs != 0) return;
-    final held = _waiting.where((j) => j.held).toList();
-    log?.call('Band queue: lab closed, releasing ${held.length} alerts');
+    _releaseHeld('lab closed');
+  }
+
+  /// A quiet window is open: plain jobs (not lab, alarm or gesture jobs) are
+  /// HELD, never dropped, until [endQuiet]. The same hold as the lab's: the job
+  /// does not start, its start deadline and the dispatcher's own delivery
+  /// deadline are suspended, and both restart in full when it is released.
+  /// Counted. The snooze uses it around the native alarm so that no app pattern
+  /// of ours can end (and be heard) while the alarm's own stop is awaited.
+  void beginQuiet() {
+    _quiet++;
+    if (_quiet != 1) return;
+    final held = _waiting.where(_quietHolds).toList();
+    log?.call('Band queue: quiet window open, holding ${held.length} alerts');
+    held.forEach(_hold);
+  }
+
+  /// The quiet window closed (safe to call more often than [beginQuiet]).
+  void endQuiet() {
+    if (_quiet == 0) return;
+    _quiet--;
+    if (_quiet != 0) return;
+    _releaseHeld('quiet window closed');
+  }
+
+  /// True while a quiet window is open.
+  bool get quietOpen => _quiet > 0;
+
+  bool _quietHolds(_Job j) => !j.lab && !j.alarm && j.gesture == null;
+
+  /// Releases every held job nothing holds any more: they start their wait
+  /// over and go on.
+  void _releaseHeld(String why) {
+    final held = _waiting
+        .where((j) =>
+            j.held &&
+            !(_labs > 0 && !j.lab) &&
+            !(_quiet > 0 && _quietHolds(j)))
+        .toList();
+    log?.call('Band queue: $why, releasing ${held.length} alerts');
     for (final j in held) {
       j.held = false;
       j.deadline = clock.now().add(j.startBy);
@@ -689,6 +728,7 @@ class BandHapticQueue {
         !lab &&
         (pending > 0 ||
             labOpen ||
+            (quietOpen && !alarm && gesture == null) ||
             ledger.commandsLeft(clock.now()) < commands)) {
       log?.call('Band queue: rejected a job that could not start immediately');
       return Future<BuzzDelivery>.value(BuzzDelivery.rejected);
@@ -722,7 +762,7 @@ class BandHapticQueue {
     } else {
       _waiting.add(j);
     }
-    if (labOpen && !lab) {
+    if (labOpen && !lab || quietOpen && _quietHolds(j)) {
       _hold(j);
     } else if (j.expires) {
       j.expiry = Timer(startBy, () => _expire(j));
@@ -763,7 +803,11 @@ class BandHapticQueue {
       }
       // Lab jobs sit first; a held job means the lab is open and no lab job is
       // waiting: the band stays idle for the lab.
-      if (j.held) break;
+      if (j.held) {
+        if (_labs > 0) break;
+        i++; // only a quiet window holds it: alarm and gesture jobs go on
+        continue;
+      }
       if (j.wasHeld && (j.hold?.isStale?.call() ?? false)) {
         // Held through the lab and out of date by now: the alert's own rule
         // says it is no longer worth playing.
