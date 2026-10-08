@@ -29,6 +29,7 @@ import 'package:provider/provider.dart';
 
 import '../../ble/adapters/signals.dart' show InputSignal;
 import '../../data/day_label.dart' show localDayEndSec;
+import '../../data/assumed_water.dart' show AssumedGlass, AssumedState;
 import '../../data/db.dart';
 import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
@@ -58,7 +59,13 @@ class Moment {
     this.until,
     this.detail = '',
     this.eventId,
+    this.annotationKind,
   });
+
+  /// What chart annotation this moment becomes, or NULL when it is not one
+  /// (sleep, band events, the day's extremes — facts about the band or the
+  /// arithmetic, not things the wearer logged).
+  final AnnotationKind? annotationKind;
 
   /// Epoch seconds. The ONLY sort key — nothing on this page is ranked.
   final int at;
@@ -159,6 +166,7 @@ List<Moment> dayMoments({
   List<JournalFieldSpec> fields = const [],
   List<MomentLabel> momentLabels = const [],
   List<StoredSymptom> symptoms = const [],
+  List<AssumedGlass> assumedWater = const [],
   AppLocalizations? l,
 }) {
   final out = <Moment>[];
@@ -192,6 +200,7 @@ List<Moment> dayMoments({
       detail: '${_span(on, off)} · ${_dur(n['duration_min'] as num?)}',
       icon: LucideIcons.bedDouble,
       color: C.indigo,
+      annotationKind: AnnotationKind.nap,
     ));
   }
 
@@ -216,6 +225,7 @@ List<Moment> dayMoments({
       detail: bits.join(' · '),
       icon: act?.icon ?? LucideIcons.dumbbell,
       color: act?.color ?? C.orange,
+      annotationKind: AnnotationKind.workout,
     ));
   }
 
@@ -294,6 +304,7 @@ List<Moment> dayMoments({
       ].join(' · '),
       icon: LucideIcons.utensils,
       color: C.domFood,
+      annotationKind: AnnotationKind.journal,
     ));
   }
 
@@ -304,6 +315,7 @@ List<Moment> dayMoments({
       detail: l?.dayTimelineTakenAt(clockOfTs(d.at)) ?? 'Taken at ${clockOfTs(d.at)}',
       icon: LucideIcons.pill,
       color: C.purple,
+      annotationKind: AnnotationKind.journal,
     ));
   }
 
@@ -311,6 +323,13 @@ List<Moment> dayMoments({
   // landed, which is the sleep-relevant fact about both.
   final dayStart = asInt(timeline['day_start']);
   final specs = {for (final f in fields) f.key: f};
+  // A dose answered from a marked moment writes the label AND adds to its
+  // journal field at the same minute: one event, and the moment is it.
+  final answered = <String>{
+    for (final m in momentLabels)
+      if (MomentChoice.fromId(m.label)?.journalField case final f?)
+        '$f@${m.hhmm}',
+  };
   journal.forEach((key, v) {
     final min = v.atMinuteOfDay;
     if (min == null || dayStart == null) return;
@@ -318,15 +337,30 @@ List<Moment> dayMoments({
     final n = v.value == v.value.roundToDouble()
         ? v.value.round().toString()
         : v.value.toStringAsFixed(1);
+    // The stored minute is WALL-CLOCK, so the instant is built from calendar
+    // fields: dayStart + min * 60 is elapsed time and is an hour off on a 23 h
+    // or 25 h day.
+    final d0 = DateTime.fromMillisecondsSinceEpoch(dayStart * 1000);
+    final at =
+        DateTime(d0.year, d0.month, d0.day, min ~/ 60, min % 60)
+                .millisecondsSinceEpoch ~/
+            1000;
+    final hhmm = '${(min ~/ 60).toString().padLeft(2, '0')}:'
+        '${(min % 60).toString().padLeft(2, '0')}';
     out.add(Moment(
-      at: dayStart + min * 60,
+      at: at,
       title: spec?.label ?? key.replaceAll('_', ' '),
       // "last one at" is the stored meaning, and saying just "at" would turn a
       // total plus one timestamp into a single event that never happened.
       detail: '$n${spec == null || spec.unit.isEmpty ? '' : ' ${spec.unit}'} · '
-          '${l?.dayTimelineLastAt(clockOfTs(dayStart + min * 60)) ?? 'last at ${clockOfTs(dayStart + min * 60)}'}',
+          '${l?.dayTimelineLastAt(clockOfTs(at)) ?? 'last at ${clockOfTs(at)}'}',
       icon: LucideIcons.notebookPen,
       color: C.domMind,
+      // The water total is an aggregate of assumed glasses and water taps,
+      // which are annotated from their own records; it is never a third event.
+      annotationKind: key == 'water_ml' || answered.contains('$key@$hhmm')
+          ? null
+          : AnnotationKind.journal,
     ));
   });
 
@@ -352,10 +386,53 @@ List<Moment> dayMoments({
       ].join(' · '),
       icon: LucideIcons.bookmark,
       color: C.domMind,
+      annotationKind: switch (choice) {
+        MomentChoice.water => AnnotationKind.water,
+        MomentChoice.symptom => AnnotationKind.symptom,
+        _ => AnnotationKind.moment,
+      },
+    ));
+  }
+
+  // "Assume I drank water" glasses. A removed one is a tombstone — it records
+  // that the slot was handled, not that anything happened — so it is not shown.
+  for (final g in assumedWater) {
+    if (g.state == AssumedState.removed) continue;
+    final at = g.local.millisecondsSinceEpoch ~/ 1000;
+    out.add(Moment(
+      at: at,
+      title: l?.assumedWaterTitle ?? 'Assumed glass of water',
+      detail: g.hhmm,
+      icon: LucideIcons.droplet,
+      color: C.sky,
+      annotationKind: AnnotationKind.assumedWater,
     ));
   }
 
   out.sort((a, b) => a.at.compareTo(b.at));
+  return out;
+}
+
+/// [dayMoments] as chart annotations (domain: epoch seconds). Only moments with
+/// an [Moment.annotationKind] become one; a moment with an end later than its
+/// start is a range, anything else a point. Ids are unique and stable.
+List<ChartAnnotation> dayAnnotations(List<Moment> moments) {
+  final used = <String, int>{};
+  final out = <ChartAnnotation>[];
+  for (final m in moments) {
+    final kind = m.annotationKind;
+    if (kind == null) continue;
+    final base = '${kind.name}:${m.at}';
+    final n = used.update(base, (v) => v + 1, ifAbsent: () => 0);
+    final end = m.until;
+    out.add(ChartAnnotation(
+      id: n == 0 ? base : '$base#$n',
+      kind: kind,
+      at: m.at.toDouble(),
+      until: end != null && end > m.at ? end.toDouble() : null,
+      label: m.title,
+    ));
+  }
   return out;
 }
 

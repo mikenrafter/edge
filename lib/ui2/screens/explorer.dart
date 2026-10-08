@@ -9,7 +9,8 @@
 // TWO SCALES. Daily: the Trends catalogue (`kMetricCatalogue`) over 7 d, 30 d,
 // 6 mo, 1 y or a custom span, one point per local day. Day: one day's lanes
 // (heart rate, HRV, breathing, skin temperature, movement, active energy) on a
-// clock, with sleep and workout bands behind them.
+// clock, with a sleep band behind them and workouts and naps as annotation
+// ranges.
 //
 // GAPS STAY GAPS. A day or a stretch with no reading breaks the line there:
 // nothing is interpolated, and a metric with nothing in view draws no line at
@@ -39,6 +40,7 @@ import '../../state/prefs.dart';
 import '../ui2.dart';
 import 'home_screen.dart';
 import 'metric_catalogue.dart';
+import 'explorer_annotations.dart';
 import 'metric_detail.dart' show specOf;
 
 /// What the Explorer remembers, in the app prefs with the other UI selections.
@@ -58,7 +60,7 @@ class ExplorePlotLine {
   const ExplorePlotLine(this.key, this.color, this.runs);
 }
 
-/// The plot: sleep and workout bands, then each line. A run breaks wherever
+/// The plot: the sleep band, then each line. A run breaks wherever
 /// the data does; a run of one point is a dot, since a polyline cannot show it.
 class ExplorePlotPainter extends CustomPainter {
   final List<ExplorePlotLine> lines;
@@ -194,8 +196,14 @@ class ExplorerScreen extends StatelessWidget {
 
 class ExplorerView extends StatefulWidget {
   /// [today] ('YYYY-MM-DD', local) is injectable for tests; null is the real one.
-  const ExplorerView({super.key, this.today});
+  const ExplorerView({super.key, this.today, this.annotationLoader});
   final String? today;
+
+  /// Reads the journal items drawn on the chart for the local days
+  /// `from`..`to` ([loadAnnotations] when null). Injectable so tests need no
+  /// database; a failing loader leaves the chart without annotations, never
+  /// without its lines.
+  final AnnotationLoader? annotationLoader;
 
   /// The RepaintBoundary around the plot painter (§4.11). The scrub cursor sits
   /// OUTSIDE it, so dragging a finger repaints the cursor and never the plot.
@@ -223,6 +231,12 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
   final Map<String, List<ChartPoint>> _hist = {};
   final Map<String, Map<String, dynamic>> _timelines = {};
   final Map<String, Map<String, dynamic>?> _cals = {};
+
+  /// How far the finger may be from an item and still focus it: two icons.
+  static const double _annReach = 48;
+
+  // Journal items for what is on screen, by "from..to". Epoch-second domain.
+  final Map<String, List<ChartAnnotation>> _ann = {};
 
   // The day grid is expensive to build and the same for every frame.
   ExploreWindow? _win;
@@ -277,6 +291,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
   /// finishing late cannot put older data back (see [RevisionReload.beginRead]).
   /// The loading flag is cleared on every path that commits or fails.
   Future<void> _load({bool refresh = false}) async {
+    _ensureAnnotations();
     final t = beginRead(#explore);
     final day = _dayLabel;
     final charts = <String, List<ChartPoint>>{};
@@ -289,11 +304,18 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
         // `Future.sync`: a repository that throws before it returns a future
         // (the base class's stubs do) fails like any other read.
         if (_day) {
-          if (_intra.any((k) => k != 'calories') &&
+          // The timeline serves every lane but calories AND the day's naps,
+          // which are drawn whichever metrics are picked. With only calories
+          // it is read for the naps alone, so a failure costs the naps and
+          // never the calorie chart.
+          if (_intra.isNotEmpty &&
               (refresh || !_timelines.containsKey(day))) {
+            final lanes = _intra.any((k) => k != 'calories');
             need.add(Future.sync(() => repo.getDayTimeline(day)).then((m) {
               timeline = m;
               readTimeline = true;
+            }, onError: (Object e) {
+              if (lanes) throw e;
             }));
           }
           if (_intra.contains('calories') &&
@@ -346,6 +368,25 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
     }
   }
 
+  /// The local days the chart shows, as `from`/`to` labels.
+  (String, String) get _annSpan =>
+      _day ? (_dayLabel, _dayLabel) : (_window.from, _window.to);
+
+  /// Reads the journal items for [_annSpan] when they have not been read (or
+  /// when [force]d). Newest read wins; a failure is an empty list.
+  void _ensureAnnotations({bool force = false}) {
+    final (from, to) = _annSpan;
+    final key = '$from..$to';
+    if (!force && _ann.containsKey(key)) return;
+    final t = beginRead(#exploreAnnotations);
+    final load = widget.annotationLoader ??
+        ((a, b) => loadAnnotations(a, b, l: AppLocalizations.of(context)));
+    Future.sync(() => load(from, to)).then((items) {
+      if (!stillNewest(#exploreAnnotations, t)) return;
+      setState(() => _ann[key] = items);
+    }, onError: (_) {});
+  }
+
   /// A derive or an import landed: what was read may be out of date. The other
   /// scale's reads are dropped (read again when it is shown); this one is
   /// re-read in place.
@@ -357,6 +398,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
       _timelines.clear();
       _cals.clear();
     }
+    _ann.clear();
     if (_picks.isNotEmpty) _load(refresh: true);
   }
 
@@ -402,6 +444,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
   void _setRange(ExploreRange r) {
     setState(() => _range = r);
     Prefs.setString(kExploreRangePref, encodeExploreRange(r));
+    _ensureAnnotations();
   }
 
   Future<void> _pickCustom() async {
@@ -423,6 +466,7 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
     });
     Prefs.setString(
         kExploreRangePref, encodeExploreRange(_range, from: _from, to: _to));
+    _ensureAnnotations();
   }
 
   /// A different day is read afresh each time: a day already seen may have been
@@ -641,13 +685,17 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
     final int dayStart = _day ? localDayStartSec(_dayLabel)! : 0;
     final int dayEnd = _day ? localDayEndSec(_dayLabel)! : 0;
     final timeline = _timelines[_dayLabel];
+    // Sleep is the only shaded band. Workouts and naps are annotation ranges
+    // (below), read whichever metrics are picked.
     final bands = _day && timeline != null
-        ? exploreBands(timeline, dayStart: dayStart, dayEnd: dayEnd)
+        ? [
+            for (final b
+                in exploreBands(timeline, dayStart: dayStart, dayEnd: dayEnd))
+              if (b.kind == ExploreBandKind.sleep) b,
+          ]
         : const <ExploreBand>[];
-    final asleep = bands.where((b) => b.kind != ExploreBandKind.workout).toList();
-    final worked = bands.where((b) => b.kind == ExploreBandKind.workout).toList();
+    final asleep = bands;
     final asleepLabel = l?.dayTimelineAsleep ?? 'Asleep';
-    final workoutLabel = l?.dayTimelineWorkout ?? 'Workout';
 
     ChartKey shade(String label, Color color, List<ExploreBand> spans) =>
         ChartKey(label, p.on(color),
@@ -694,17 +742,57 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
           ),
     ];
 
+    // Journal items: water, moments, symptoms, workouts, naps and the rest, as
+    // icons with dashed lines; workouts and naps are shaded ranges.
+    final span = _annSpan;
+    final raw = _ann['${span.$1}..${span.$2}'] ?? const <ChartAnnotation>[];
+    final AnnotationSet? marks;
+    if (_day) {
+      final items = [
+        ...raw,
+        if (timeline != null)
+          ...napAnnotations(_dayLabel, timeline,
+              l: AppLocalizations.of(c)),
+      ];
+      marks = items.isEmpty
+          ? null
+          : AnnotationSet(
+              items: items,
+              domainStart: dayStart.toDouble(),
+              domainEnd: dayEnd.toDouble(),
+              reach: _annReach);
+    } else {
+      // A daily point sits in the middle of its day's slot (i + .5, of
+      // `length` slots), so the marks do too.
+      final items = [
+        for (final a in dailyAnnotations(raw, w!.days))
+          ChartAnnotation(
+              id: a.id,
+              kind: a.kind,
+              at: a.at + .5,
+              until: a.until == null ? null : a.until! + .5,
+              label: a.label),
+      ];
+      marks = items.isEmpty
+          ? null
+          : AnnotationSet(
+              items: items,
+              domainStart: 0,
+              domainEnd: w.length.toDouble(),
+              reach: _annReach);
+    }
+
     return Surface(
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         ChartFrame(
           title: title,
           unit: l?.exploreUnitNormalised ?? 'Normalised',
           height: 200,
+          annotations: marks,
           xLabels: xLabels,
           legend: [
             for (final m in picked) (m.label, p.on(m.color)),
             if (asleep.isNotEmpty) (asleepLabel, p.on(C.blue)),
-            if (worked.isNotEmpty) (workoutLabel, p.on(C.orange)),
           ],
           child: ChartScrub(
             label: title,
@@ -717,7 +805,6 @@ class _ExplorerViewState extends State<ExplorerView> with RevisionReload {
                 },
                     latest: m.hasData ? m.line!.runs.last.last.at : null),
               if (asleep.isNotEmpty) shade(asleepLabel, C.blue, asleep),
-              if (worked.isNotEmpty) shade(workoutLabel, C.orange, worked),
             ],
             // The boundary holds the painter and not the cursor, which the
             // scrub draws above it.

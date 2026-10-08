@@ -26,6 +26,7 @@
 // data layer. They live here rather than in a fourth file because there are
 // only three of them and they are read together.
 
+import 'package:clock/clock.dart' as pkg_clock;
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:provider/provider.dart';
@@ -590,7 +591,7 @@ String axisDay(int? epochSec,
 int? daysBehind(int? epochSec) {
   if (epochSec == null) return null;
   return calendarDaysBetween(
-      DateTime.fromMillisecondsSinceEpoch(epochSec * 1000), DateTime.now());
+      DateTime.fromMillisecondsSinceEpoch(epochSec * 1000), pkg_clock.clock.now());
 }
 
 /// The withheld-rollup reason inside a `getInsights()` result, or null when the

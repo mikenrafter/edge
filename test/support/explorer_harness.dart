@@ -41,6 +41,8 @@ import 'package:openstrap_edge/state/prefs.dart';
 import 'package:openstrap_edge/state/units_controller.dart';
 import 'package:openstrap_edge/theme/theme_controller.dart';
 import 'package:openstrap_edge/ui2/screens/explorer.dart';
+import 'package:openstrap_edge/ui2/screens/explorer_annotations.dart'
+    show AnnotationLoader;
 import 'package:openstrap_edge/ui2/ui2.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -184,6 +186,10 @@ Future<void> pumpExplorer(
   double height = 3000,
   double scale = 1,
   String today = kToday,
+
+  /// The journal items drawn on the chart. Empty by default: no test here
+  /// opens a database.
+  AnnotationLoader? annotationLoader,
 }) async {
   t.view.devicePixelRatio = 1;
   t.view.physicalSize = Size(width, height);
@@ -194,7 +200,11 @@ Future<void> pumpExplorer(
     app,
     ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [ExplorerView(today: today)],
+      children: [
+        ExplorerView(
+            today: today,
+            annotationLoader: annotationLoader ?? (_, _) async => const []),
+      ],
     ),
     scale: scale,
   ));
