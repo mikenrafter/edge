@@ -22,6 +22,7 @@ const kExpected = <String, Dispatcher>{
   '_reencodeBatchHeavy': Dispatcher.run,
   '_spotCheckComputeHeavy': Dispatcher.run,
   '_breathingCoherenceComputeHeavy': Dispatcher.run,
+  'ecgFormatPageHeavy': Dispatcher.run,
   '_writeZipHeavy': Dispatcher.run,
   'observeNaturalSync': Dispatcher.run,
   'encryptBackupFile': Dispatcher.run,

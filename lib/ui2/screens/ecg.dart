@@ -31,7 +31,7 @@ import '../../state/capabilities.dart';
 import '../../state/capabilities_scope.dart';
 import '../../theme/theme_switcher.dart' show themedRoute;
 import '../../util/log_file.dart'
-    show LogResultSaver, LogSaveFailed, logFileName, saveLogFileResult;
+    show LogChunkSaver, LogSaveFailed, logFileName, saveLogChunksResult;
 import '../profile/profile.dart' show SwitchRow;
 import '../ui2.dart';
 import 'coach.dart';
@@ -136,7 +136,7 @@ EcgExportEnv _defaultExportEnv() => EcgExportEnv(
 Future<String?> _runEcgExport({
   required EcgExportEnv? env,
   required EcgReadingSource? source,
-  required LogResultSaver? save,
+  required LogChunkSaver? save,
   String? readingId,
 }) async {
   try {
@@ -151,11 +151,15 @@ Future<String?> _runEcgExport({
       outcomeTableVersion: kEcgOutcomeTableVersion,
       exportedAt: at,
     );
-    final text = readingId == null
-        ? await buildEcgLogAll(header: header, source: src)
-        : await buildEcgLogFor(header: header, source: src, readingId: readingId);
-    final saver = save ?? ((name, text) => saveLogFileResult(name, text));
-    final res = await saver(logFileName('ecg', at), text);
+    // The bulk log streams page by page (formatted in a worker, appended to the
+    // file as it arrives); one reading's group is a single small chunk.
+    final chunks = readingId == null
+        ? ecgLogChunksAll(header: header, source: src)
+        : Stream<String>.value(
+            await buildEcgLogFor(header: header, source: src, readingId: readingId),
+          );
+    final saver = save ?? ((name, c) => saveLogChunksResult(name, c));
+    final res = await saver(logFileName('ecg', at), chunks);
     return res is LogSaveFailed ? res.reason : null;
   } catch (err) {
     return '$err';
@@ -239,11 +243,18 @@ class EcgEntryCard extends StatelessWidget {
 
 // ═══════════════════ home: history + Take ECG ═══════════════════
 
+/// The route name of every Details screen; a delete pops back through them all.
+const String _kEcgDetailRoute = 'EcgDetailScreen';
+
+/// Bumped when readings were deleted behind the list's back (a delete from a
+/// Details screen the list is not awaiting), so the list reloads.
+final ValueNotifier<int> _ecgHistoryChanged = ValueNotifier<int>(0);
+
 class EcgHomeScreen extends StatefulWidget {
   /// Design 04 R7: the seams "Export ECG logs" runs through (tests hand in
   /// fakes; defaults are the real LocalDb source, the platform share sheet and
   /// the wall clock).
-  final LogResultSaver? saveLog;
+  final LogChunkSaver? saveLog;
   final EcgReadingSource? exportSource;
   final EcgExportEnv? exportEnv;
   const EcgHomeScreen({
@@ -266,7 +277,14 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
   @override
   void initState() {
     super.initState();
+    _ecgHistoryChanged.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    _ecgHistoryChanged.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -314,7 +332,7 @@ class _EcgHomeScreenState extends State<EcgHomeScreen> {
     final data = await EcgDetailData.load(id);
     if (!c.mounted || data == null) return;
     await Navigator.of(c).push(
-      themedRoute((_) => EcgDetailScreen(data: data), name: 'EcgDetailScreen'),
+      themedRoute((_) => EcgDetailScreen(data: data), name: _kEcgDetailRoute),
     );
     if (mounted) await _load();
   }
@@ -666,7 +684,7 @@ class _EcgCaptureScreenState extends State<EcgCaptureScreen>
                             await Navigator.of(c).pushReplacement(
                               themedRoute(
                                 (_) => EcgDetailScreen(data: data),
-                                name: 'EcgDetailScreen',
+                                name: _kEcgDetailRoute,
                               ),
                             );
                           },
@@ -970,15 +988,24 @@ class EcgCaptureBody extends StatelessWidget {
           ],
         );
       case EcgCapturePhase.inconclusiveRetry:
+        // The saved attempt's own outcome (kind and reasons) leads: a first
+        // terminal the band called inconclusive can still be Not readable once
+        // its noise mask is read (AGENTS 3.8). The retry stays either way.
+        final o = s.outcome;
         return ListView(
           children: [
             const SizedBox(height: S.x6),
-            title(l?.ecgInconclusiveTitle ?? 'Inconclusive'),
-            const SizedBox(height: S.x2),
-            body(
-              l?.ecgInconclusiveRetryHint ??
-                  'The band could not decide. You can try once more.',
-            ),
+            if (o != null)
+              _EcgOutcomeBlock(outcome: o)
+            else
+              title(l?.ecgInconclusiveTitle ?? 'Inconclusive'),
+            if (o == null || o.kind == EcgOutcomeKind.inconclusive) ...[
+              const SizedBox(height: S.x2),
+              body(
+                l?.ecgInconclusiveRetryHint ??
+                    'The band could not decide. You can try once more.',
+              ),
+            ],
             const SizedBox(height: S.x6),
             button(l?.ecgTryOnceMore ?? 'Try once more', onRetry),
             if (s.readingId != null) ...[
@@ -1139,7 +1166,7 @@ class EcgDetailScreen extends StatefulWidget {
   /// Design 04 seams: deleting the whole attempt group (default
   /// LocalDb.deleteEcgReading), and the export path.
   final Future<void> Function(String id)? onDelete;
-  final LogResultSaver? saveLog;
+  final LogChunkSaver? saveLog;
   final EcgReadingSource? exportSource;
   final EcgExportEnv? exportEnv;
   const EcgDetailScreen({
@@ -1262,7 +1289,14 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
     if (ok != true || !c.mounted) return;
     final id = widget.data.reading.id;
     await (widget.onDelete ?? (x) => LocalDb.deleteEcgReading(x))(id);
-    if (c.mounted) Navigator.of(c).pop();
+    // The whole group is gone, so no Details route (this one, or the later
+    // attempt it was opened from) may keep showing it: go back to the list and
+    // tell the list to reload.
+    _ecgHistoryChanged.value++;
+    if (!c.mounted) return;
+    Navigator.of(c).popUntil(
+      (r) => r.settings.name != _kEcgDetailRoute || r.isFirst,
+    );
   }
 
   /// Export this reading's whole attempt group as one log file. The busy flag
@@ -1295,7 +1329,7 @@ class _EcgDetailScreenState extends State<EcgDetailScreen> {
     final data = await EcgDetailData.load(id);
     if (!c.mounted || data == null) return;
     await Navigator.of(c).push(
-      themedRoute((_) => EcgDetailScreen(data: data), name: 'EcgDetailScreen'),
+      themedRoute((_) => EcgDetailScreen(data: data), name: _kEcgDetailRoute),
     );
   }
 

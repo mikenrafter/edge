@@ -4,7 +4,7 @@
 //   * AppState hands the controller the provenance providers (band firmware,
 //     app version, UTC offset), and still saves through saveEcgResult;
 //   * the screens export through the real path: logFileName + saveLogFileResult
-//     (default), buildEcgLogAll / buildEcgLogFor, LocalDbEcgSource;
+//     (default), ecgLogChunksAll / buildEcgLogFor, LocalDbEcgSource;
 //   * the home list reads the default (superseded-hiding) list; the detail data
 //     loads the whole attempt group;
 //   * the Details accordion is not tied to the Nerd stats setting;
@@ -62,10 +62,10 @@ void main() {
   });
 
   group('the screens', () {
-    test('export through logFileName + saveLogFileResult, by default', () {
-      expect(ecg.contains('saveLogFileResult'), isTrue);
+    test('export through logFileName + saveLogChunksResult, by default', () {
+      expect(ecg.contains('saveLogChunksResult'), isTrue);
       expect(ecg.contains('logFileName('), isTrue);
-      expect(ecg.contains('buildEcgLogAll('), isTrue);
+      expect(ecg.contains('ecgLogChunksAll('), isTrue);
       expect(ecg.contains('buildEcgLogFor('), isTrue);
       expect(ecg.contains('LocalDbEcgSource'), isTrue);
     });

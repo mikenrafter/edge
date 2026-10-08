@@ -143,6 +143,22 @@ void main() {
       r.dispose();
     });
 
+    test('a first terminal with result 6 and a noise mask offers the retry but '
+        'its outcome is Not readable with the noise reason (what the screen '
+        'must show)', () async {
+      final r = CRig();
+      await r.c.begin(EcgWrist.right);
+      await r.record(2);
+      await r.terminal(result: 6, avgHr: 70, unreadable: 0x02);
+      expect(r.c.state.phase, EcgCapturePhase.inconclusiveRetry);
+      expect(r.c.state.outcome?.kind, EcgOutcomeKind.notReadable);
+      expect(
+        [for (final x in r.c.state.outcome!.reasons) x.id],
+        contains(EcgReasonId.significantNoise),
+      );
+      r.dispose();
+    });
+
     test('with Keep waveform OFF an attempt is still saved, with no packets '
         'but its derived statistics', () async {
       final r = CRig();

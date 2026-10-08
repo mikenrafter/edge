@@ -22,10 +22,14 @@
 //   inner_hex... see below).
 
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ecg/ecg_export.dart';
 import 'package:openstrap_edge/ecg/ecg_models.dart';
+import 'package:openstrap_edge/util/worker_audit.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
+import 'package:openstrap_edge/util/worker_entries.dart';
 
 import 'support/cardio_fixtures.dart';
 
@@ -267,7 +271,7 @@ void main() {
       final b = cardioReading(id: 'B', startTs: kC0 + 100, attemptGroup: 'A', attempt: 2);
       final src = FakeEcgSource([a, b], packets: {'B': [cardioPacket(1)]});
       final block = formatEcgReading(b, [cardioPacket(1)]);
-      final all = await buildEcgLogAll(header: kHeader, source: src);
+      final all = await ecgLogChunksAll(header: kHeader, source: src).join();
       final one = await buildEcgLogFor(header: kHeader, source: src, readingId: 'B');
       expect(all, contains(block));
       expect(one, contains(block));
@@ -300,7 +304,7 @@ void main() {
         'once', () async {
       final all = many(450);
       final src = FakeEcgSource(all);
-      final text = await buildEcgLogAll(header: kHeader, source: src);
+      final text = await ecgLogChunksAll(header: kHeader, source: src).join();
       final ids = [for (final b in _blocks(text)) _kv(b)['id']!];
       final want = ([...all]..sort((x, y) {
               final c = x.startTs.compareTo(y.startTs);
@@ -319,8 +323,8 @@ void main() {
 
     test('a small page size changes nothing', () async {
       final all = many(23);
-      final a = await buildEcgLogAll(header: kHeader, source: FakeEcgSource(all));
-      final b = await buildEcgLogAll(header: kHeader, source: FakeEcgSource(all), pageSize: 7);
+      final a = await ecgLogChunksAll(header: kHeader, source: FakeEcgSource(all)).join();
+      final b = await ecgLogChunksAll(header: kHeader, source: FakeEcgSource(all), pageSize: 7).join();
       expect(b, a);
     });
 
@@ -329,13 +333,13 @@ void main() {
       final a = cardioReading(id: 'A');
       final b = cardioReading(id: 'B', startTs: kC0 + 100);
       final src = FakeEcgSource([a, b], packets: {'A': [cardioPacket(0), cardioPacket(1)]});
-      final blocks = _blocks(await buildEcgLogAll(header: kHeader, source: src));
+      final blocks = _blocks(await ecgLogChunksAll(header: kHeader, source: src).join());
       expect(blocks[0], contains('packets: 2'));
       expect(blocks[1], contains('packets: not kept'));
     });
 
     test('an empty store is a header and no readings', () async {
-      final text = await buildEcgLogAll(header: kHeader, source: FakeEcgSource([]));
+      final text = await ecgLogChunksAll(header: kHeader, source: FakeEcgSource([])).join();
       expect(text, startsWith(formatEcgHeader(kHeader)));
       expect(_blocks(text), isEmpty);
     });
@@ -366,6 +370,179 @@ void main() {
         readingId: 'old',
       );
       expect([for (final b in _blocks(text)) _kv(b)['id']], ['old']);
+    });
+  });
+
+
+  group('never drop evidence (Sol r1)', () {
+    Map<String, Object?> bad(String id, {int startTs = kC0, String status = 'mystery'}) =>
+        cardioReading(id: id, startTs: startTs).toRow()..['status'] = status;
+
+    test('a row with an unknown status is exported with its raw columns and '
+        'an `outcome: unparseable (reason)` line - not skipped', () async {
+      final src = FakeEcgSource(
+        [cardioReading(id: 'good', startTs: kC0 + 100)],
+        rawRows: [bad('weird')],
+      );
+      final text = await ecgLogChunksAll(header: kHeader, source: src).join();
+      final blocks = _blocks(text);
+      expect([for (final b in blocks) _kv(b)['id']], ['weird', 'good']);
+      final kv = _kv(blocks.first);
+      expect(kv['outcome'], startsWith('unparseable ('));
+      expect(kv['outcome'], contains('mystery'));
+      expect(kv['status'], 'mystery', reason: 'the raw column, as stored');
+      expect(kv['result_code'], '1');
+      expect(kv['start_ts'], '$kC0');
+      expect(_kv(blocks.last)['outcome_kind'], isNotNull);
+    });
+
+    test('an unknown category and an unknown wrist are unparseable too, and '
+        'say which', () async {
+      final r = cardioReading(id: 'x').toRow()
+        ..['category'] = 'sparkles'
+        ..['wrist'] = 'ankle';
+      final text = await ecgLogChunksAll(
+        header: kHeader,
+        source: FakeEcgSource(const [], rawRows: [r]),
+      ).join();
+      final kv = _kv(_blocks(text).single);
+      expect(kv['outcome'], contains('sparkles'));
+      expect(kv['outcome'], contains('ankle'));
+    });
+
+    test('an unparseable row keeps its kept packets', () async {
+      final r = bad('weird');
+      final text = formatEcgRow(r, [EcgPacketCodec.toRow(cardioPacket(0))]);
+      expect(text, contains('packets: 1'));
+      expect(text, contains('inner_hex='));
+    });
+
+    test('a FULL page of unparseable rows followed by good ones: paging goes '
+        'on and every row is exported', () async {
+      final badRows = [
+        for (var i = 0; i < 6; i++) bad('bad$i', startTs: kC0 + i),
+      ];
+      final good = [
+        for (var i = 0; i < 5; i++) cardioReading(id: 'good$i', startTs: kC0 + 100 + i),
+      ];
+      final src = FakeEcgSource(good, rawRows: badRows);
+      final text = await ecgLogChunksAll(header: kHeader, source: src, pageSize: 3).join();
+      final ids = [for (final b in _blocks(text)) _kv(b)['id']];
+      expect(ids, [
+        for (var i = 0; i < 6; i++) 'bad$i',
+        for (var i = 0; i < 5; i++) 'good$i',
+      ]);
+      expect(src.pageCalls.length, greaterThanOrEqualTo(4));
+    });
+  });
+
+  group('the bulk log is formatted in a registered worker (Sol r1)', () {
+    final fixtures = [
+      for (var i = 0; i < 23; i++)
+        cardioReading(
+          id: 'r${(23 - i).toString().padLeft(3, '0')}',
+          startTs: kC0 + (i ~/ 3) * 60,
+          attemptGroup: i % 5 == 0 ? 'g$i' : null,
+          attempt: i % 5 == 0 ? 1 : null,
+          maskAny: i % 4 == 0 ? 2 : null,
+        ),
+    ];
+    final packets = {
+      'r010': [cardioPacket(0), EcgAcceptedPacket.placeholder(1), cardioPacket(2)],
+    };
+
+    String expectedLikeBefore() {
+      final sorted = [...fixtures]..sort((a, b) {
+          final c = a.startTs.compareTo(b.startTs);
+          return c != 0 ? c : a.id.compareTo(b.id);
+        });
+      final out = StringBuffer(formatEcgHeader(kHeader));
+      for (final r in sorted) {
+        out
+          ..writeln()
+          ..write(formatEcgReading(r, packets[r.id] ?? const []));
+      }
+      return out.toString();
+    }
+
+    test('the bytes are exactly what the single-string formatter wrote', () async {
+      for (final size in [200, 7, 1]) {
+        final text = await ecgLogChunksAll(
+          header: kHeader,
+          source: FakeEcgSource(fixtures, packets: packets),
+          pageSize: size,
+        ).join();
+        expect(text, expectedLikeBefore(), reason: 'pageSize $size');
+      }
+    });
+
+    test('it arrives as chunks - the header, then one per page - never one '
+        'giant string', () async {
+      final chunks = await ecgLogChunksAll(
+        header: kHeader,
+        source: FakeEcgSource(fixtures, packets: packets),
+        pageSize: 7,
+      ).toList();
+      expect(chunks.first, formatEcgHeader(kHeader));
+      expect(chunks.length, 1 + 4, reason: 'header + ceil(23 / 7) pages');
+    });
+
+    test('each page is formatted by the registered entry, in a worker '
+        'isolate', () async {
+      final entries = <EntryEvent>[];
+      final dispatches = <DispatchEvent>[];
+      WorkerAudit.onEntry = entries.add;
+      WorkerAudit.onDispatch = dispatches.add;
+      addTearDown(WorkerAudit.reset);
+      await ecgLogChunksAll(
+        header: kHeader,
+        source: FakeEcgSource(fixtures, packets: packets),
+        pageSize: 7,
+      ).join();
+      await pumpEventQueue();
+      expect(entries.where((e) => e.entry == 'ecgFormatPageHeavy'), hasLength(4));
+      expect(
+        entries.every((e) => e.isolateId != WorkerAudit.currentIsolateId),
+        isTrue,
+        reason: 'formatting ran off the calling isolate',
+      );
+      expect(dispatches.where((d) => d.kind == Dispatcher.run), hasLength(4));
+      expect(
+        kWorkerEntries.any((e) => e.symbol == #ecgFormatPageHeavy),
+        isTrue,
+      );
+    });
+
+    test('the per-reading export formats through the same row formatter, on '
+        'the calling isolate', () async {
+      final entries = <EntryEvent>[];
+      WorkerAudit.onEntry = entries.add;
+      addTearDown(WorkerAudit.reset);
+      final one = await buildEcgLogFor(
+        header: kHeader,
+        source: FakeEcgSource(fixtures, packets: packets),
+        readingId: 'r010',
+      );
+      expect(one, contains(formatEcgReading(
+        fixtures.firstWhere((r) => r.id == 'r010'),
+        packets['r010']!,
+      )));
+      expect(entries, isEmpty, reason: 'bounded: no worker round trip');
+    });
+
+    test('an Isolate.run of the entry is deterministic (same page, same text)',
+        () async {
+      final rows = [for (final r in fixtures.take(5)) r.toRow()];
+      final page = EcgRawPage(rows, [for (final _ in rows) const []]);
+      final inputs = WorkerInputs(
+        nowEpochMs: kHeader.exportedAt.millisecondsSinceEpoch,
+        zoneId: 'UTC',
+        localeTag: 'en',
+      );
+      final a = await Isolate.run(() => ecgFormatPageHeavy(inputs, page));
+      final b = await Isolate.run(() => ecgFormatPageHeavy(inputs, page));
+      expect(a, b);
+      expect(a, contains('id: r023'));
     });
   });
 

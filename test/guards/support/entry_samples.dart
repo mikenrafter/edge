@@ -28,6 +28,8 @@ import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
+import 'package:openstrap_edge/ecg/ecg_export.dart';
+import 'package:openstrap_edge/util/worker_init.dart';
 import 'package:openstrap_edge/import/backup_crypto.dart';
 import 'package:openstrap_edge/wake/natural_wake.dart';
 
@@ -153,6 +155,28 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       await expectIsolateRoundTrip<(List<String>, double?)>((['00'], 0.1));
       await expectIsolateRoundTrip<Map<String, dynamic>>(
           {'coherence': 0.4, 'present': true});
+    },
+  ),
+  'ecgFormatPageHeavy': (
+    roundTrip: () async {
+      // Raw sqlite rows (ints, text, NULLs, a BLOB) and the worker inputs in;
+      // the text of the page out. The @SendableShape round trip itself is in
+      // test/ecg_transparency/sendable_ecgFormatPageHeavy_test.dart.
+      final rows = <Map<String, Object?>>[
+        {'id': 'x', 'start_ts': 1, 'status': 'mystery', 'rms_uv': 1.5, 'v': null},
+      ];
+      final page = EcgRawPage(rows, [
+        [
+          {
+            'sequence': 1,
+            'samples': Uint8List.fromList([1, 0, 2, 0]),
+            'inner_hex': '00',
+            'is_placeholder': 0,
+          },
+        ],
+      ]);
+      const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
+      await _sameInWorker(() => ecgFormatPageHeavy(inputs, page));
     },
   ),
   '_writeZipHeavy': (

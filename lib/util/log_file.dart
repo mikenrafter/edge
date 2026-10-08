@@ -12,10 +12,11 @@ import 'package:share_plus/share_plus.dart';
 /// How a screen saves a log; injectable so widgets are tested with a fake.
 typedef LogFileSaver = Future<bool> Function(String fileName, String text);
 
-/// How a screen saves a log when it must say WHY a save failed (design 04
-/// R7''); injectable so widgets are tested with a fake.
-typedef LogResultSaver = Future<LogSaveResult> Function(
-    String fileName, String text);
+/// How a screen saves a log that arrives in pieces (an export too large to hold
+/// as one string) and must say WHY a save failed (design 04 R7''); injectable
+/// so widgets are tested with a fake.
+typedef LogChunkSaver = Future<LogSaveResult> Function(
+    String fileName, Stream<String> chunks);
 
 /// The outcome of [saveLogFileResult]: written and shared, or failed with a
 /// reason a person can read.
@@ -66,20 +67,56 @@ Future<bool> saveLogFile(
   return r is LogSaveOk;
 }
 
-/// [saveLogFile] with a reason (design 04 R7''). The one write path: UTF-8
-/// [text] to `<dir>/<fileName>`, then [share]. Never a throw: a failure
-/// returns [LogSaveFailed] carrying the error's text.
+/// [saveLogFile] with a reason (design 04 R7''): [text] as the one chunk of
+/// [saveLogChunksResult], which is the one write path. Never a throw.
 Future<LogSaveResult> saveLogFileResult(
   String fileName,
   String text, {
   Rect? origin,
   Directory? dir,
   Future<void> Function(String path)? share,
+}) =>
+    saveLogChunksResult(
+      fileName,
+      Stream<String>.value(text),
+      origin: origin,
+      dir: dir,
+      share: share,
+    );
+
+/// The one write path: UTF-8 [chunks] appended to `<dir>/<fileName>` as each
+/// arrives (the next is not asked for until the last is on disk, so memory
+/// stays one chunk), then the path handed to [share]. Never a throw: a failure,
+/// in the stream, the write or the share, returns [LogSaveFailed] carrying the
+/// error's text, and a half-written file is deleted rather than shared.
+Future<LogSaveResult> saveLogChunksResult(
+  String fileName,
+  Stream<String> chunks, {
+  Rect? origin,
+  Directory? dir,
+  Future<void> Function(String path)? share,
 }) async {
+  File? file;
   try {
     final d = dir ?? await getTemporaryDirectory();
-    final file = File('${d.path}/$fileName');
-    await file.writeAsString(text, flush: true);
+    final f = file = File('${d.path}/$fileName');
+    final out = await f.open(mode: FileMode.write);
+    try {
+      await for (final c in chunks) {
+        await out.writeString(c);
+      }
+      await out.flush();
+    } finally {
+      await out.close();
+    }
+  } catch (e) {
+    try {
+      // A stream or a write that failed leaves a partial log; it is not offered.
+      if (file != null && await file.exists()) await file.delete();
+    } catch (_) {}
+    return LogSaveFailed('$e');
+  }
+  try {
     await (share ??
         (p) => Share.shareXFiles(
               [XFile(p, mimeType: 'text/plain')],

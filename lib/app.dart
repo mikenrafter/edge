@@ -144,7 +144,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // Runs even when `locale:` above has a user override — Flutter still
       // calls this callback, just with [locale.locale] as the sole
       // "device" candidate instead of the real device list, so an override
-      // resolves through the same language-match path below and comes back
+      // resolves through the same language-match path (resolveAppLocale) and comes back
       // unchanged (LocaleController only ever holds a bare language code
       // that's already in supportedLocales). Flutter's own default
       // resolution falls back to supportedLocales.first when nothing
@@ -153,14 +153,7 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       // language only (none of our locales carry a country/script code)
       // and fall back to English explicitly instead of leaving that to
       // alphabetical luck.
-      localeListResolutionCallback: (deviceLocales, supported) {
-        for (final deviceLocale in deviceLocales ?? const <Locale>[]) {
-          for (final s in supported) {
-            if (s.languageCode == deviceLocale.languageCode) return s;
-          }
-        }
-        return const Locale('en');
-      },
+      localeListResolutionCallback: resolveAppLocale,
       // Any touch is foreground activity: it restarts the 30 s idle wait before
       // Home/Health artifacts are warmed (Calculations power mode).
       builder: (context, child) => Listener(

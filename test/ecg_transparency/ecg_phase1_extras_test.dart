@@ -7,6 +7,8 @@
 //   * every saved attempt can be opened from the capture screen, and a result
 //     that is not a rhythm offers another reading.
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/findings.dart';
@@ -104,6 +106,32 @@ void main() {
       );
     });
 
+    test('no override: the whole preferred-language list, not just the first '
+        'entry - [pt-BR, es] reads Spanish (the app shows Spanish)', () async {
+      final l = await LocaleController.currentStrings(
+        osLocales: const [Locale('pt', 'BR'), Locale('es')],
+      );
+      expect(l.localeName, 'es');
+      // The UI resolver is the same function: the two cannot disagree.
+      expect(
+        resolveAppLocale(
+          const [Locale('pt', 'BR'), Locale('es')],
+          AppLocalizations.supportedLocales,
+        ),
+        const Locale('es'),
+      );
+      expect(
+        resolveAppLocale(const [Locale('pt')], AppLocalizations.supportedLocales),
+        const Locale('en'),
+        reason: 'nothing matches: English, not the alphabetically first arb',
+      );
+    });
+
+    test('the app\'s MaterialApp resolves through the same function', () {
+      final app = File('lib/app.dart').readAsStringSync();
+      expect(app.contains('localeListResolutionCallback: resolveAppLocale'), isTrue);
+    });
+
     test('an override the app no longer ships falls back, never throws',
         () async {
       SharedPreferences.setMockInitialValues({'locale_override': 'xx'});
@@ -189,6 +217,44 @@ void main() {
         )),
       );
       expect(_allText(t), isNot(contains('77 bpm')));
+    });
+
+    testWidgets('a first terminal that saved as Not readable (result 6 with a '
+        'noise mask) says so on the retry screen, with its reason AND the '
+        'retry', (t) async {
+      await _pump(
+        t,
+        _body(const EcgCaptureState(
+          phase: EcgCapturePhase.inconclusiveRetry,
+          readingId: 'att',
+          outcome: _noisy,
+        )),
+      );
+      final text = _allText(t);
+      expect(text, contains('Not readable'));
+      expect(text, isNot(contains('Inconclusive')));
+      expect(text, contains('· Significant noise'));
+      expect(find.text('Try once more'), findsOneWidget);
+      expect(find.text('View reading'), findsOneWidget);
+    });
+
+    testWidgets('a retry screen whose outcome is Inconclusive keeps its '
+        'words and the retry', (t) async {
+      await _pump(
+        t,
+        _body(const EcgCaptureState(
+          phase: EcgCapturePhase.inconclusiveRetry,
+          readingId: 'att',
+          outcome: EcgOutcome(
+            kind: EcgOutcomeKind.inconclusive,
+            resultCode: 6,
+            avgHr: 70,
+            mask: 0,
+          ),
+        )),
+      );
+      expect(_allText(t), contains('Inconclusive'));
+      expect(find.text('Try once more'), findsOneWidget);
     });
 
     testWidgets('a first inconclusive that was saved can be viewed',

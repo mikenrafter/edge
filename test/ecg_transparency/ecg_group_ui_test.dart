@@ -185,8 +185,8 @@ void main() {
           data: EcgDetailData(reading: c, packets: const [], attempts: [a, b, c]),
           exportSource: source,
           exportEnv: _env,
-          saveLog: (name, text) async {
-            saved.add((name, text));
+          saveLog: (name, chunks) async {
+            saved.add((name, await chunks.join()));
             return const LogSaveOk();
           },
         ),
@@ -215,7 +215,7 @@ void main() {
           data: EcgDetailData(reading: c, packets: const [], attempts: [a, b, c]),
           exportSource: FakeEcgSource([a, b, c]),
           exportEnv: _env,
-          saveLog: (name, text) async => const LogSaveFailed('no share target'),
+          saveLog: (name, chunks) async => const LogSaveFailed('no share target'),
         ),
       );
       await t.tap(find.byKey(const ValueKey('ecg-export-reading')));

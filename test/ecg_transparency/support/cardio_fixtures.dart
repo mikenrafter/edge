@@ -200,41 +200,58 @@ final EcgExportHeader kHeader = EcgExportHeader(
   exportedAt: DateTime.utc(2026, 10, 8, 12, 0, 0),
 );
 
-/// An in-memory [EcgReadingSource]. [pageCalls] records every page request so
-/// a test can prove the export paged through everything.
+/// An in-memory [EcgReadingSource] over raw ROW maps (what the table holds).
+/// [rawRows] are extra rows taken as they are (a row the app cannot parse,
+/// say). [pageCalls] records every page request so a test can prove the export
+/// paged through everything.
 class FakeEcgSource implements EcgReadingSource {
-  FakeEcgSource(this.all, {Map<String, List<EcgAcceptedPacket>>? packets})
-    : _packets = packets ?? {};
-  final List<EcgReading> all;
+  FakeEcgSource(
+    List<EcgReading> all, {
+    Map<String, List<EcgAcceptedPacket>>? packets,
+    List<Map<String, Object?>> rawRows = const [],
+  }) : _rows = [for (final r in all) r.toRow(), ...rawRows],
+       _packets = packets ?? {};
+  final List<Map<String, Object?>> _rows;
   final Map<String, List<EcgAcceptedPacket>> _packets;
   final pageCalls = <({String? afterId, int limit})>[];
 
-  int _cmp(EcgReading a, EcgReading b) {
-    final c = a.startTs.compareTo(b.startTs);
-    return c != 0 ? c : a.id.compareTo(b.id);
+  int _cmp(Map<String, Object?> a, Map<String, Object?> b) {
+    final c = (a['start_ts'] as int).compareTo(b['start_ts'] as int);
+    return c != 0 ? c : (a['id'] as String).compareTo(b['id'] as String);
   }
 
   @override
-  Future<List<EcgReading>> page({EcgReading? after, required int limit}) async {
+  Future<List<Map<String, Object?>>> pageRows({
+    EcgPageCursor? after,
+    required int limit,
+  }) async {
     pageCalls.add((afterId: after?.id, limit: limit));
-    final sorted = [...all]..sort(_cmp);
+    final sorted = [..._rows]..sort(_cmp);
     final rest = after == null
         ? sorted
-        : [for (final r in sorted) if (_cmp(r, after) > 0) r];
+        : [
+            for (final r in sorted)
+              if ((r['start_ts'] as int) > after.startTs ||
+                  ((r['start_ts'] as int) == after.startTs &&
+                      (r['id'] as String).compareTo(after.id) > 0))
+                r,
+          ];
     return rest.take(limit).toList();
   }
 
   @override
-  Future<List<EcgAcceptedPacket>> packets(String readingId) async =>
-      _packets[readingId] ?? const [];
+  Future<List<Map<String, Object?>>> packetRows(String readingId) async => [
+    for (final p in _packets[readingId] ?? const <EcgAcceptedPacket>[])
+      EcgPacketCodec.toRow(p),
+  ];
 
   @override
-  Future<List<EcgReading>> attempts(String readingId) async {
-    final me = all.firstWhere((r) => r.id == readingId);
-    final g = me.attemptGroup;
+  Future<List<Map<String, Object?>>> attemptRows(String readingId) async {
+    final me = _rows.firstWhere((r) => r['id'] == readingId);
+    final g = me['attempt_group'];
     if (g == null) return [me];
-    return [for (final r in all) if (r.attemptGroup == g) r]
-      ..sort((a, b) => (a.attempt ?? 0).compareTo(b.attempt ?? 0));
+    return [for (final r in _rows) if (r['attempt_group'] == g) r]
+      ..sort((a, b) => ((a['attempt'] as int?) ?? 0).compareTo((b['attempt'] as int?) ?? 0));
   }
 }
 

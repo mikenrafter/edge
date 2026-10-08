@@ -123,6 +123,13 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
         'WorkerInit.ensure',
   ),
   WorkerEntry(
+    #ecgFormatPageHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'ECG export: formats one page of stored reading rows into log '
+        'text; meets the contract (WorkerInit.ensure first, sendable '
+        'WorkerInputs + @SendableShape row maps in, String out)',
+  ),
+  WorkerEntry(
     #_writeZipHeavy,
     dispatcher: Dispatcher.run,
     reason: 'dev-log zip writer (file I/O only); legacy: no WorkerInit.ensure',
@@ -187,16 +194,16 @@ const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
     file: 'ui2/screens/ecg.dart',
     symbol: '_runEcgExport',
-    source: "saver(logFileName('ecg', at), text)",
+    source: "saver(logFileName('ecg', at), chunks)",
     ordinal: 2,
-    reason: 'injected log saver (saveLogFileResult in production, invariant 16)',
+    reason: 'injected log saver (saveLogChunksResult in production, invariant 16)',
   ),
   UnresolvedOk(
     file: 'util/log_file.dart',
-    symbol: 'saveLogFileResult',
+    symbol: 'saveLogChunksResult',
     source: "(share ?? (p) => Share.shareXFiles( [XFile(p, mimeType: 'text/plain')], subject: 'OpenStrap log', sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1), ))(file.path)",
     ordinal: 0,
-    reason: 'injected share seam (moved here from saveLogFile, now a thin wrapper); one platform share call',
+    reason: 'injected share seam (the one write path; saveLogFile and saveLogFileResult are thin wrappers); one platform share call',
   ),
   UnresolvedOk(
     file: 'util/worker_audit.dart',

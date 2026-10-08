@@ -6,6 +6,7 @@
 // share})` writes UTF-8 to <dir>/<fileName>, hands the path to [share], never
 // throws; the reason carries the error's text; never the clipboard.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
@@ -98,6 +99,55 @@ void main() {
     final body = src.substring(i, src.indexOf('\n}\n', i));
     expect(body.contains('saveLogFileResult('), isTrue);
     expect(body.contains('writeAsString'), isFalse);
+  });
+
+
+  group('saveLogChunksResult: written as it arrives (Sol r1)', () {
+    test('the chunks are on disk one by one, in order, byte-exact; the path is '
+        'shared once at the end', () async {
+      final shared = <String>[];
+      final gate = Completer<void>();
+      final seen = <String>[];
+      final file = File('${tmp.path}/c.txt');
+      Stream<String> chunks() async* {
+        yield 'header µV\n';
+        // The first chunk is already in the file before the second exists.
+        seen.add(file.readAsStringSync());
+        await gate.future;
+        yield 'second ✓\n';
+      }
+
+      final done = saveLogChunksResult('c.txt', chunks(), dir: tmp, share: (p) async => shared.add(p));
+      await pumpEventQueue();
+      gate.complete();
+      final r = await done;
+      expect(r, isA<LogSaveOk>());
+      expect(seen, ['header µV\n']);
+      expect(file.readAsStringSync(), 'header µV\nsecond ✓\n');
+      expect(shared, [file.path]);
+    });
+
+    test('a stream that fails midway is failed(reason): nothing shared, no '
+        'half-file left behind', () async {
+      final shared = <String>[];
+      Stream<String> chunks() async* {
+        yield 'first\n';
+        throw StateError('db went away');
+      }
+
+      final r = await saveLogChunksResult('p.txt', chunks(), dir: tmp, share: (p) async => shared.add(p));
+      expect(r, isA<LogSaveFailed>());
+      expect((r as LogSaveFailed).reason, contains('db went away'));
+      expect(shared, isEmpty);
+      expect(File('${tmp.path}/p.txt').existsSync(), isFalse);
+    });
+
+    test('saveLogFileResult is the same write path (one chunk)', () {
+      final src = File('lib/util/log_file.dart').readAsStringSync();
+      final i = src.indexOf('Future<LogSaveResult> saveLogFileResult(');
+      final body = src.substring(i, src.indexOf('\n}\n', i));
+      expect(body.contains('saveLogChunksResult('), isTrue);
+    });
   });
 
   test('neither ECG export file touches the clipboard (invariant 16)', () {

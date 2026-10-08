@@ -100,8 +100,8 @@ void main() {
         t,
         EcgHomeScreen(
           exportEnv: _env,
-          saveLog: (name, text) async {
-            saved.add((name, text));
+          saveLog: (name, chunks) async {
+            saved.add((name, await chunks.join()));
             return const LogSaveOk();
           },
         ),
@@ -135,7 +135,7 @@ void main() {
         t,
         EcgHomeScreen(
           exportEnv: _env,
-          saveLog: (name, text) async => const LogSaveFailed('disk full'),
+          saveLog: (name, chunks) async => const LogSaveFailed('disk full'),
         ),
         ready: find.byType(EcgReadingRow),
       );

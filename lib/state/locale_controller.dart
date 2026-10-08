@@ -9,6 +9,24 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_localizations.dart';
 
+/// THE app-language resolver: the first preferred language (in the OS's
+/// order) the app ships, matched by language code (none of our locales carry a
+/// country or script), else English. Both the MaterialApp and text composed
+/// without a BuildContext (a notification) call this, so they cannot show
+/// different languages. Flutter's own default would fall back to
+/// `supported.first`, whichever .arb sorts first, not English.
+Locale resolveAppLocale(
+  Iterable<Locale>? preferred,
+  Iterable<Locale> supported,
+) {
+  for (final p in preferred ?? const <Locale>[]) {
+    for (final s in supported) {
+      if (s.languageCode == p.languageCode) return s;
+    }
+  }
+  return const Locale('en');
+}
+
 class LocaleController extends ChangeNotifier {
   static const String _kLocale = 'locale_override'; // language code, e.g. 'es'
 
@@ -32,9 +50,12 @@ class LocaleController extends ChangeNotifier {
 
   /// The app's strings in the language the app shows right now, for text that
   /// is composed without a BuildContext (a notification, built by the
-  /// derivation engine). The wearer's override first, else the OS language,
-  /// else English: the same order the app itself follows.
-  static Future<AppLocalizations> currentStrings() async {
+  /// derivation engine). The wearer's override first, else the first OS
+  /// preferred language the app ships, else English: the same order the app
+  /// itself follows.
+  static Future<AppLocalizations> currentStrings({
+    List<Locale>? osLocales,
+  }) async {
     final supported = {
       for (final l in AppLocalizations.supportedLocales) l.languageCode,
     };
@@ -45,8 +66,12 @@ class LocaleController extends ChangeNotifier {
       // No preferences (a bare test host): follow the OS.
     }
     if (!supported.contains(code)) {
-      final os = PlatformDispatcher.instance.locale.languageCode;
-      code = supported.contains(os) ? os : 'en';
+      // No (valid) override: the same resolution the app itself runs over the
+      // OS's whole preferred-language list.
+      code = resolveAppLocale(
+        osLocales ?? PlatformDispatcher.instance.locales,
+        AppLocalizations.supportedLocales,
+      ).languageCode;
     }
     return lookupAppLocalizations(Locale(code!));
   }
