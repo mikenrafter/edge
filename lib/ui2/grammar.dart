@@ -37,6 +37,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../data/journal_fields.dart' show formatMinuteOfDay;
 import '../models/metric.dart';
+import 'chart_annotations.dart' show AnnotationSet;
 import 'charts.dart';
 import 'scroll_hint.dart';
 import 'theme.dart';
@@ -2815,6 +2816,10 @@ class ChartFrame extends StatelessWidget {
   /// a measured line. It does not take taps.
   final List<double> xMarks;
 
+  /// Journal items and provenance marks: icon + dashed line, shaded ranges, one
+  /// static label for the focused one. See chart_annotations.dart.
+  final AnnotationSet? annotations;
+
   const ChartFrame({
     super.key,
     required this.title,
@@ -2828,6 +2833,7 @@ class ChartFrame extends StatelessWidget {
     this.empty,
     this.series = const [],
     this.xMarks = const [],
+    this.annotations,
   });
 
   /// Width and height of [s] as it will actually be laid out — including the

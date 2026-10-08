@@ -29,6 +29,7 @@ import 'package:provider/provider.dart';
 
 import '../../ble/adapters/signals.dart' show InputSignal;
 import '../../data/day_label.dart' show localDayEndSec;
+import '../../data/assumed_water.dart' show AssumedGlass;
 import '../../data/db.dart';
 import '../../data/journal_fields.dart';
 import '../../data/local_repository.dart';
@@ -58,7 +59,13 @@ class Moment {
     this.until,
     this.detail = '',
     this.eventId,
+    this.annotationKind,
   });
+
+  /// What chart annotation this moment becomes, or NULL when it is not one
+  /// (sleep, band events, the day's extremes — facts about the band or the
+  /// arithmetic, not things the wearer logged).
+  final AnnotationKind? annotationKind;
 
   /// Epoch seconds. The ONLY sort key — nothing on this page is ranked.
   final int at;
@@ -159,6 +166,7 @@ List<Moment> dayMoments({
   List<JournalFieldSpec> fields = const [],
   List<MomentLabel> momentLabels = const [],
   List<StoredSymptom> symptoms = const [],
+  List<AssumedGlass> assumedWater = const [],
   AppLocalizations? l,
 }) {
   final out = <Moment>[];
@@ -358,6 +366,12 @@ List<Moment> dayMoments({
   out.sort((a, b) => a.at.compareTo(b.at));
   return out;
 }
+
+/// [dayMoments] as chart annotations (domain: epoch seconds). Only moments with
+/// an [Moment.annotationKind] become one; a moment with an end later than its
+/// start is a range, anything else a point. Ids are unique and stable.
+List<ChartAnnotation> dayAnnotations(List<Moment> moments) =>
+    throw UnimplementedError('dayAnnotations');
 
 /// Logged for the day, with no time on it. Same sources, opposite branch.
 List<DayNote> dayNotes({
