@@ -134,6 +134,11 @@ a hotspot.
 15. **Dangerous opcodes are never auto-sent** (`dangerousCmds`, gated in
     `ble/ble_engine.dart` wherever a write checks it): force-trim, reboot,
     power-cycle, firmware load.
+16. **Device lab reports are shared as log files, never as strings on the
+    clipboard.** Every Device lab page and runner saves its report through the
+    existing path (`logFileName` + `saveLogFile` in `util/log_file.dart`, the
+    platform share sheet). No "Copy report" control, no `Clipboard.setData`
+    (`log_no_clipboard_guard_test`, `device_lab_no_clipboard_guard_test`).
 
 ## 4. Recurring bug patterns — what actually ships broken here
 
