@@ -56,6 +56,15 @@ class DayRrState {
     );
   }
 
+  /// [irregular24h] and the evidence behind it (beat counts, the corrector's
+  /// corrected / dropped, per-window counts incl. the open window): equal to
+  /// `irregularBeatScreenDetailed(correctRr(all)...)`. `.toJson()` is the
+  /// envelope persisted as `clinical.irregular_24h`. RED STUB (PRV
+  /// diagnostics): the green phase builds it from the corrector's snapshot
+  /// counts and `IrregularScreenState.evaluateDetailed`.
+  IrregularScreenResult irregular24hDetailed() =>
+      throw UnimplementedError('PRV diagnostics: red stub');
+
   void write(ResumeWriter w) {
     w.i64(_beats);
     w.optF64(_lastTsMs);

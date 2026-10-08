@@ -30,6 +30,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 import '../../data/day_label.dart';
 import '../../data/db.dart';
 import '../../data/local_repository.dart';
+import '../../compute/prv_export.dart';
 import '../../l10n/app_localizations.dart';
 import '../ui2.dart';
 import 'day_timeline.dart';
@@ -217,7 +218,12 @@ class Investigate extends StatefulWidget {
   /// caller did before a day could be asked for.
   final String? day;
 
-  const Investigate(this.metricKey, {super.key, this.data, this.day});
+  /// The 'hrv' page's "Export PRV log" control saves through this (clock, app
+  /// version, saver). Null means the platform defaults. RED STUB: not read yet.
+  final PrvExportEnv? prvExport;
+
+  const Investigate(this.metricKey,
+      {super.key, this.data, this.day, this.prvExport});
 
   @override
   State<Investigate> createState() => _InvestigateState();
