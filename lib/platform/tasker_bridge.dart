@@ -105,6 +105,15 @@ class TaskerBridge {
   static const Duration _minEventGap = Duration(seconds: 60);
   static DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// Tests only: pretend to be (or not to be) Android. RED stub: not read yet.
+  @visibleForTesting
+  static bool? debugAndroidOverride;
+
+  /// Tests only: forget the last emit time.
+  @visibleForTesting
+  static void debugResetRateLimit() =>
+      _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
+
   /// Fire an OUTBOUND automation event: an Android broadcast the user's Tasker
   /// (or Automate, or MacroDroid) profile can trigger on.
   ///
@@ -124,8 +133,11 @@ class TaskerBridge {
   static Future<bool> emitEvent(
     String event, {
     Map<String, Object> extras = const {},
+    // RED stub: false skips the 60 s gap (and leaves `_lastEmit` alone), for
+    // callers that send one broadcast per item (the moment review).
+    bool rateLimited = true,
   }) async {
-    if (!Platform.isAndroid) return false;
+    if (!(debugAndroidOverride ?? Platform.isAndroid)) return false;
     final now = DateTime.now();
     if (now.difference(_lastEmit) < _minEventGap) return false;
     _lastEmit = now;

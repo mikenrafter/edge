@@ -155,6 +155,20 @@ class SymptomDescription {
   /// Optional extra free text.
   final String? note;
 
+  /// RED stub: JSON for a review draft (enum ids + typed text; absent = null).
+  Map<String, Object?> toJson() => throw UnimplementedError('RED stub');
+
+  /// RED stub: null when [j] is malformed (unknown id, missing part).
+  static SymptomDescription? fromJson(Object? j) =>
+      throw UnimplementedError('RED stub');
+
+  /// RED stub: value equality over every field.
+  @override
+  bool operator ==(Object other) => throw UnimplementedError('RED stub');
+
+  @override
+  int get hashCode => throw UnimplementedError('RED stub');
+
   /// `severity kind in my area (side)` (the parenthesis left out when no side
   /// was said); English when [l] is null. Free text is trimmed.
   String describe(AppLocalizations? l) {

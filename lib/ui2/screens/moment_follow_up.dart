@@ -17,6 +17,9 @@ import '../../data/assumed_water.dart';
 import '../../data/journal_fields.dart' show kJournalFieldsByKey;
 import '../../gestures/gesture_settings.dart';
 import '../../gestures/moment_follow_ups.dart';
+import '../../gestures/moment_review_range.dart';
+import '../../gestures/moment_review_store.dart';
+import '../../platform/tasker_moment_export.dart';
 import '../../gestures/symptom_description.dart';
 import '../../l10n/app_localizations.dart';
 import '../../state/app_state.dart';
@@ -164,7 +167,18 @@ class MomentFollowUpScreen extends StatefulWidget {
     this.now,
     this.preloadedAssumed,
     this.assumedWriter = const AssumedWaterWriter(),
+    this.store = const MomentReviewStore(),
+    this.rangeWriter = const ReviewRangeWriter(),
+    this.exporter,
   });
+
+  /// RED stubs (not read yet). Where the queued decisions persist; where a
+  /// nap / workout range lands; and the Tasker export Save feeds (null: the
+  /// default `TaskerMomentExport()`). Save builds a `MomentReviewApplier` from
+  /// [writer], [assumedWriter], [rangeWriter] and [exporter].
+  final MomentReviewStore store;
+  final ReviewRangeWriter rangeWriter;
+  final TaskerMomentExport? exporter;
 
   /// Injected in tests; null reads them from the database.
   final List<PendingMoment>? preloaded;
