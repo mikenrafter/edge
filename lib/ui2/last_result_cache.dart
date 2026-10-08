@@ -100,7 +100,7 @@ class LastResultCache {
       if (row == null || epoch != LocalDb.wipeEpoch) return null;
       final v = jsonDecode(row.payload);
       if (v is! T) return null;
-      ReadPerf.lastResultRead(key, row.payload.length, v);
+      ReadPerf.lastResultRead(key, row.payload, v);
       final at = DateTime.fromMillisecondsSinceEpoch(row.computedAt);
       // A newer result put while the table was read stays.
       if (!_m.containsKey(key)) _store(key, v, at, epoch, row.sig);
@@ -117,7 +117,7 @@ class LastResultCache {
     _store(key, value, at, LocalDb.wipeEpoch, sig);
     final json = _encode(value);
     if (json == null) return;
-    ReadPerf.lastResultPut(key, json.length);
+    ReadPerf.lastResultPut(key, json);
     _enqueue(() => LocalDb.putLastResult(
         key, at.millisecondsSinceEpoch, json, maxRows,
         sig: sig));

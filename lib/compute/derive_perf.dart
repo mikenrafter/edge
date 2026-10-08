@@ -3,7 +3,6 @@
 // the numbers are testable. Nothing here changes a metric; it only reports.
 
 import 'dart:async' show Zone, runZoned;
-import 'dart:convert' show utf8;
 import 'dart:typed_data' show Uint8List;
 
 /// The three phases of one day's derivation.
@@ -99,7 +98,7 @@ class DerivePerf {
   /// byte sum).
   void addCountLazy(String name, int Function() value) {
     if (!enabled) return;
-    addCount(name, value());
+    _counts[name] = (_counts[name] ?? 0) + value();
   }
 
   /// Runs [body] and books its wall time to [name], also when it throws.
@@ -227,16 +226,15 @@ abstract final class ReadPerf {
           : runZoned(body, zoneValues: {_readerKey: reader});
 
   /// Books one stored payload handed out: [stored] is the column as read (its
-  /// length is the byte count, O(1)), [decoded] the graph returned. A null
+  /// UTF-8 length is the byte count), [decoded] the graph returned. A null
   /// [decoded] books nothing: an absent or undecodable row is not a read. The
-  /// node walk runs only when the sink is enabled.
+  /// byte count and the node walk run only when the sink is enabled.
   static void payload(Object? stored, Object? decoded) {
     final p = sink;
     if (p == null || decoded == null) return;
     final reader = Zone.current[_readerKey] as String? ?? 'other';
-    final bytes = stored is String ? stored.length : 0;
     p.addCount('payload_reads_$reader', 1);
-    p.addCount('payload_bytes_$reader', bytes);
+    p.addCountLazy('payload_bytes_$reader', () => _bytesOf(stored));
     p.addCountLazy('payload_nodes_$reader', () => payloadNodeCount(decoded));
   }
 
@@ -244,7 +242,7 @@ abstract final class ReadPerf {
   static void crossday(Object? stored, Object? decoded) {
     final p = sink;
     if (p == null || decoded == null) return;
-    p.addCount('crossday_payload_bytes', stored is String ? stored.length : 0);
+    p.addCountLazy('crossday_payload_bytes', () => _bytesOf(stored));
     p.addCountLazy('crossday_payload_nodes', () => payloadNodeCount(decoded));
   }
 
@@ -254,24 +252,52 @@ abstract final class ReadPerf {
     return i < 0 ? key : key.substring(0, i);
   }
 
-  /// A `last_result` row written: [bytes] is the encoded length.
-  static void lastResultPut(String key, int bytes) {
+  static int _bytesOf(Object? stored) => stored is String ? utf8Length(stored) : 0;
+
+  /// A `last_result` row written: [json] is the encoded text.
+  static void lastResultPut(String key, String json) {
     final p = sink;
     if (p == null) return;
     final k = kindOf(key);
     p.addCount('last_result_puts_$k', 1);
-    p.addCount('last_result_put_bytes_$k', bytes);
+    p.addCountLazy('last_result_put_bytes_$k', () => utf8Length(json));
   }
 
   /// A `last_result` row read from the table (a memory hit is not one).
-  static void lastResultRead(String key, int bytes, Object? decoded) {
+  static void lastResultRead(String key, String payload, Object? decoded) {
     final p = sink;
     if (p == null) return;
     final k = kindOf(key);
     p.addCount('last_result_reads_$k', 1);
-    p.addCount('last_result_read_bytes_$k', bytes);
+    p.addCountLazy('last_result_read_bytes_$k', () => utf8Length(payload));
     p.addCountLazy('last_result_read_nodes_$k', () => payloadNodeCount(decoded));
   }
+}
+
+/// The length of [s] in UTF-8 bytes, without encoding it (no allocation). A
+/// lone surrogate counts 3, as `utf8.encode` writes U+FFFD for it.
+int utf8Length(String s) {
+  var n = 0;
+  final len = s.length;
+  for (var i = 0; i < len; i++) {
+    final c = s.codeUnitAt(i);
+    if (c < 0x80) {
+      n += 1;
+    } else if (c < 0x800) {
+      n += 2;
+    } else if (c >= 0xD800 && c <= 0xDBFF && i + 1 < len) {
+      final d = s.codeUnitAt(i + 1);
+      if (d >= 0xDC00 && d <= 0xDFFF) {
+        n += 4;
+        i++;
+      } else {
+        n += 3;
+      }
+    } else {
+      n += 3;
+    }
+  }
+  return n;
 }
 
 /// Number of values in a decoded JSON graph: every map, every list and every
@@ -302,7 +328,7 @@ int rowsByteEstimate(Iterable<Map<String, Object?>> rows) {
       if (v is num) {
         n += 8;
       } else if (v is String) {
-        n += utf8.encode(v).length;
+        n += utf8Length(v);
       } else if (v is Uint8List) {
         n += v.length;
       }

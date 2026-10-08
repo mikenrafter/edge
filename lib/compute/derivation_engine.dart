@@ -7004,7 +7004,8 @@ class DerivationEngine {
         : const <String, CrossDayKept>{};
     final fullRows = await LocalDb.dayResultsByIds(crossDayDaysToRead(meta, kept));
     perf.addCount('crossday_payload_rows', fullRows.length);
-    perf.addCount('crossday_payload_chars', fullRows.fold(0, (n, r) {
+    // Measured only when the perf instance is enabled (a walk over every row).
+    perf.addCountLazy('crossday_payload_chars', () => fullRows.fold(0, (n, r) {
       final p = r['payload_json'];
       return n + (p is String ? p.length : 0);
     }));
