@@ -107,6 +107,13 @@ a hotspot.
    `data/day_label.dart`; never `DateTime.now().toUtc()...substring(0,10)`. Epoch
    timestamps (rec_ts, session bounds, prune cutoffs) are absolute — do not
    "fix" those to local. Day-length arithmetic must not assume 86400 s (DST).
+   **Being migrated (design 01, owner-approved 2026-10-08):** a day label
+   becomes the wearer's local date in the zone *recorded at the time*
+   (`zone_span`; unknown ⇒ nearest known zone), not the phone's current zone.
+   After a westward zone change the label never goes backwards: the later day
+   continues until the new zone's date passes it. `day_label.dart` stays the
+   only label API (delegating to `CalendarPolicy`). Until that phase lands,
+   the code above is the behaviour.
 8. **One source per concern.** One raw decode point (`substrate.dart`), one sleep
    segmentation, one readiness, one frame-ingest path (`RecordGate`), one
    notification emitter (`NotificationCenter.emit`). A second path is the bug.
@@ -268,3 +275,30 @@ every metric path, idempotence under repeated derivation, flag reset on failure
 paths, transaction ordering and durability around BLE sync, isolate boundaries,
 migration safety, and anything that could display a number the data does not
 support.
+
+## 6. Design rules (for new code; existing code converges gradually)
+
+Adopted 2026-10-08 (design 03). New code follows these now; refactors of old
+code happen one cluster at a time, each with a design note first.
+
+- **Deep modules, one interface per concern.** Similar actions go through ONE
+  module: writing a journal day, posting a band haptic, persisting a pref with
+  acknowledgement. A second hand-rolled copy is a finding.
+- **One owner per mutable state.** Each piece of mutable state has exactly one
+  owner, named in its file header. Concurrent access goes through that owner's
+  lock or queue. A caller never reads, modifies and writes back state it does
+  not own (no `getJournal` then `postJournal` at a call site).
+- **Atomic actions.** Use one DB transaction where possible. Otherwise prepare,
+  validate, then switch over (write the new thing, then swap a pointer or flag).
+  Every exit path cleans up: no orphaned files, timers or listeners.
+- **Results, not booleans.** Operations that can be refused or fail return a
+  sealed result (`Ok | Refused(reason) | Failed(error)`), not a bool plus a log
+  line. Exceptions that remain are documented on the API.
+- **One lexicon.** Domain terms are defined in `docs/lexicon.md`; names follow
+  it. A new term is added there in the same change that introduces it.
+- **Rationale comments at decisions.** Comment *why* at the point a choice is
+  made; don't narrate what the code does.
+- **Time and heavy work.** Instants vs days vs wall times vs strap clock vs
+  monotonic time are separate domains (design 01). Work whose cost grows with
+  stored data is `@heavy` and runs only through a registered worker
+  (design 02). Guards for both land in phases.
