@@ -63,3 +63,11 @@ step is exempt only through the explicit `kMigrationMethods` list in the guard
 config (empty today: no row-returning migration step exists). The remaining keys
 are the existing row-returning readers (stager, sample, batch and day readers);
 they become registered `RowBatch` readers or persisted artifacts later.
+
+## Merge into the cumulative branch (2026-10-08) — baseline regenerated, 2,059 → 2,083
+The guard landed in the same cumulative merge window as the sample archive
+(lib/data/sample_*.dart), which predates the guard on its own branch. Its 24
+occurrences (mostly unresolvedInvocation callback calls, plus heavyOriginOutsideHeavy
+in the archiver/codec) were baselined instead of being moved into registered
+worker entries. FOLLOW-UP: register the archive's encode/carve work as @heavy
+entries (it already runs on Isolate.run) so these keys shrink out.

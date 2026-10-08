@@ -365,6 +365,55 @@
     },
     {
       "rule": "dispatcherClosureContract",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver._archiveDevice",
+      "element": "SampleCodec.encode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.reconstructWithOrigin",
+      "element": "List.filled",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.reconstructWithOrigin",
+      "element": "SampleCodec.decode",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.reconstructWithOrigin",
+      "element": "SampleCodec.decodeCoarse",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.reconstructWithOrigin",
+      "element": "max",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.reconstructWithOrigin",
+      "element": "min",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
+      "file": "data/sample_progressive.dart",
+      "symbol": "refineStream",
+      "element": "SampleCodec.refinementAt",
+      "count": 1
+    },
+    {
+      "rule": "dispatcherClosureContract",
       "file": "ui2/onboarding/welcome.dart",
       "symbol": "decryptToTemp",
       "element": "File.new",
@@ -5156,6 +5205,125 @@
       "file": "data/nutrition_store.dart",
       "symbol": "_sum",
       "element": "pick(e)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver._archiveDayLocked",
+      "element": "log?.call('sample archive of $dayId/\"$dev\" failed: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver._archiveDevice",
+      "element": "debugBeforeEncode?.call(s)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver._archiveDevice",
+      "element": "debugBeforeWrite?.call()",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver._parts",
+      "element": "zone.startOf(dayId)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.archiveBefore",
+      "element": "log?.call('sample archive of $day skipped: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.archiveBefore",
+      "element": "zone.dayOf(m)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.archiveBefore",
+      "element": "zone.endOf(day)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.archiveDay",
+      "element": "zone.endOf(dayId)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.archiveDay",
+      "element": "zone.startOf(dayId)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_archive.dart",
+      "symbol": "SampleArchiver.rows",
+      "element": "zone.startOf(r['day_id'] as String)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_codec.dart",
+      "symbol": "SampleCodec.restrict",
+      "element": "keepMinute(j)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_import.dart",
+      "symbol": "carveSamplePart",
+      "element": "sampleCarveRunner(() => carveSamplePartSync( blob, coveredMinutes, valid: valid, rmsErr: rms, maxErr: max))",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_import.dart",
+      "symbol": "importSamplePart",
+      "element": "SampleZone.current.startOf(day)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_import.dart",
+      "symbol": "importSamplePart",
+      "element": "log?.call('sample import: unreadable part $day/$dev/$sig skipped: $e')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_import.dart",
+      "symbol": "importSamplePart",
+      "element": "log?.call('sample import: version $ver part $day/$dev/$sig overlaps ' 'archived seconds and cannot be carved; skipped')",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_import.dart",
+      "symbol": "sampleCoverage",
+      "element": "SampleZone.current.startOf(r['day_id'] as String)",
+      "count": 1
+    },
+    {
+      "rule": "unresolvedInvocation",
+      "file": "data/sample_lock.dart",
+      "symbol": "SampleLock.run",
+      "element": "job()",
       "count": 1
     },
     {
