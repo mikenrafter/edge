@@ -36,6 +36,14 @@
 //     header, validity mask, pyramid, segment table (each section raw-deflate),
 //     then the coefficient section (see [SpectralHeader.coefficientOffset]);
 //     everything before the coefficients is readable from that prefix alone.
+//   * Two NON-DCT modes exist for signals that do not compress under a
+//     smoothness transform (the accelerometer axes, ~1.0x vs lossless on real
+//     data): [SpectralMode.losslessAtQuantum] (round to the header's quantum,
+//     then first/second differences + deflate; EXACT relative to that quantum,
+//     max error quantum / 2, so a reader may show it without the approximation
+//     label) and [SpectralMode.pyramidOnly] (the validity mask and the true
+//     summary pyramid, no samples; `decode` refuses it). Same container, same
+//     version: the mode byte of the header says which.
 //   * Absence is never interpolated or imputed (AGENTS invariant 3). Missing
 //     seconds are stored as a run-length validity mask; only valid runs are
 //     transformed; decode returns null exactly where the input had null.
@@ -82,7 +90,23 @@ class SpectralSignalSpec {
   final int maxCoefficients;
 }
 
-enum SpectralMode { adaptive, staticBlocks }
+enum SpectralMode {
+  /// Lossy DCT, adaptive segments (the default).
+  adaptive,
+
+  /// Lossy DCT, fixed 240 s blocks (comparison baseline).
+  staticBlocks,
+
+  /// LOSSLESS RELATIVE TO THE STORED QUANTUM (`SpectralHeader.quantum`): every
+  /// valid sample is rounded to the nearest multiple of the quantum and stored
+  /// exactly (first/second differences + deflate). The reconstruction error is
+  /// at most quantum / 2 and the stored value is exactly `round(v / q) * q`.
+  losslessAtQuantum,
+
+  /// The validity mask and the true summary pyramid only: NO samples. Nothing
+  /// can be reconstructed from it.
+  pyramidOnly,
+}
 
 /// What an encode measured about itself. All errors are in the signal's unit
 /// and are measured against the decoded blob, over valid samples only.
@@ -265,11 +289,15 @@ class SpectralCodec {
 
     final tables = _Tables();
     final segs = <_Seg>[];
-    for (final (a, b) in runs) {
-      if (mode == SpectralMode.adaptive) {
-        _segmentRunAdaptive(samples, a, b, spec, tables, segs);
-      } else {
-        _segmentRunStatic(samples, a, b, spec, tables, segs);
+    final lossy =
+        mode == SpectralMode.adaptive || mode == SpectralMode.staticBlocks;
+    if (lossy) {
+      for (final (a, b) in runs) {
+        if (mode == SpectralMode.adaptive) {
+          _segmentRunAdaptive(samples, a, b, spec, tables, segs);
+        } else {
+          _segmentRunStatic(samples, a, b, spec, tables, segs);
+        }
       }
     }
 
@@ -307,10 +335,15 @@ class SpectralCodec {
       }
     }
     final gapBytes = gaps.take();
-    final coef = _W()
-      ..varint(gapBytes.length)
-      ..bytes(gapBytes)
-      ..bytes(vals.take());
+    final coef = _W();
+    if (lossy) {
+      coef
+        ..varint(gapBytes.length)
+        ..bytes(gapBytes)
+        ..bytes(vals.take());
+    } else if (mode == SpectralMode.losslessAtQuantum) {
+      coef.bytes(_losslessPayload(samples, spec.quantum));
+    }
 
     final maskZ = _deflate(mask.take());
     final pyrZ = _deflate(pyramid);
@@ -320,7 +353,7 @@ class SpectralCodec {
     final out = _W()
       ..bytes(_magic)
       ..byte(codecVersion)
-      ..byte(mode == SpectralMode.adaptive ? 0 : 1)
+      ..byte(mode.index)
       ..byte(signal.length)
       ..bytes(signal.codeUnits)
       ..varint(spec.blockSeconds)
@@ -338,15 +371,18 @@ class SpectralCodec {
       ..bytes(coefZ);
     final blob = out.take();
 
-    // Measure, don't estimate: decode what was just written.
-    final back = decode(blob);
+    // Measure, don't estimate: decode what was just written. A pyramid-only
+    // blob has no reconstruction, hence no error to measure (reported as 0).
     var sq = 0.0, mx = 0.0;
-    for (var i = 0; i < n; i++) {
-      final o = samples[i];
-      if (o == null) continue;
-      final d = (back[i]! - o).abs();
-      sq += d * d;
-      if (d > mx) mx = d;
+    if (mode != SpectralMode.pyramidOnly) {
+      final back = decode(blob);
+      for (var i = 0; i < n; i++) {
+        final o = samples[i];
+        if (o == null) continue;
+        final d = (back[i]! - o).abs();
+        sq += d * d;
+        if (d > mx) mx = d;
+      }
     }
     return SpectralEncoding(
       blob,
@@ -580,6 +616,10 @@ class SpectralCodec {
   /// The segment table, in slot order. Same [FormatException] rules.
   static List<SpectralSegment> segments(Uint8List blob) {
     final h = _head(blob);
+    if (h.header.mode == SpectralMode.losslessAtQuantum ||
+        h.header.mode == SpectralMode.pyramidOnly) {
+      return const [];
+    }
     final raw = _segTable(blob, h);
     final starts = _segmentStarts(blob, h, raw);
     return [
@@ -592,6 +632,10 @@ class SpectralCodec {
   /// slots it holds samples for), from the prefix alone.
   static List<(int, int)> validRuns(Uint8List blob) =>
       _validRuns(blob, _head(blob));
+
+  /// False for a [SpectralMode.pyramidOnly] blob (no samples to decode).
+  static bool hasSamples(Uint8List blob) =>
+      _head(blob).header.mode != SpectralMode.pyramidOnly;
 
   /// The header alone. It reports whatever codec version the bytes carry (only
   /// [decode] and friends refuse a version they do not know) and throws
@@ -627,7 +671,9 @@ class SpectralCodec {
       }
       final version = r.byte();
       final modeByte = r.byte();
-      if (modeByte > 1) throw const FormatException('spectral: bad mode');
+      if (modeByte >= SpectralMode.values.length) {
+        throw const FormatException('spectral: bad mode');
+      }
       final sig = String.fromCharCodes(r.take(r.byte()));
       final blockSeconds = r.varint();
       final quantum = r.f64();
@@ -649,7 +695,7 @@ class SpectralCodec {
         SpectralHeader(
           codecVersion: version,
           signal: sig,
-          mode: modeByte == 0 ? SpectralMode.adaptive : SpectralMode.staticBlocks,
+          mode: SpectralMode.values[modeByte],
           blockSeconds: blockSeconds,
           quantum: quantum,
           length: length,
@@ -730,6 +776,11 @@ class SpectralCodec {
     if (blob.length != h.coefAt + h.coefLen) {
       throw const FormatException('spectral: truncated or trailing bytes');
     }
+    final mode = h.header.mode;
+    if (mode == SpectralMode.pyramidOnly) return _Parsed(h, const [], null);
+    if (mode == SpectralMode.losslessAtQuantum) {
+      return _Parsed(h, const [], _losslessInts(blob, h), _validRuns(blob, h));
+    }
     final raw = _segTable(blob, h);
     final starts = _segmentStarts(blob, h, raw);
     final r = _R(_inflate(blob, h.coefAt, h.coefLen));
@@ -755,12 +806,26 @@ class SpectralCodec {
     } on RangeError {
       throw const FormatException('spectral: truncated coefficients');
     }
-    return _Parsed(h, segs);
+    return _Parsed(h, segs, null);
   }
 
   static List<double?> _decode(_Parsed p, int maxOrder) {
     final q = p.head.header.quantum;
+    if (p.head.header.mode == SpectralMode.pyramidOnly) {
+      throw const FormatException(
+          'spectral: a pyramid-only blob holds no samples');
+    }
     final out = List<double?>.filled(p.head.header.length, null);
+    final ks = p.ints;
+    if (ks != null) {
+      var k = 0;
+      for (final (a, b) in p.runs) {
+        for (var i = a; i < b; i++) {
+          out[i] = ks[k++] * q;
+        }
+      }
+      return out;
+    }
     final t = _Tables();
     for (final g in p.segs) {
       var take = 0;
@@ -883,6 +948,56 @@ class SpectralCodec {
     return (yr, yi);
   }
 
+  // ── lossless at the quantum ────────────────────────────────────────────────
+
+  /// First byte: predictor order (1 or 2); then one zigzag varint residual per
+  /// valid slot, in slot order, over the quantized integers round(v / q).
+  /// Whichever order deflates smaller wins (ties: 1).
+  static Uint8List _losslessPayload(List<double?> s, double q) {
+    final ks = <int>[
+      for (final v in s)
+        if (v != null) (v / q).round()
+    ];
+    Uint8List build(int order) {
+      final w = _W()..byte(order);
+      var p1 = 0, p2 = 0;
+      for (final k in ks) {
+        final pred = order == 1 ? p1 : 2 * p1 - p2;
+        w.zigzag(k - pred);
+        p2 = p1;
+        p1 = k;
+      }
+      return w.take();
+    }
+
+    final a = build(1), b = build(2);
+    return _deflate(b).length < _deflate(a).length ? b : a;
+  }
+
+  static List<int> _losslessInts(Uint8List blob, _Head h) {
+    final r = _R(_inflate(blob, h.coefAt, h.coefLen));
+    final n = h.header.nValid;
+    final ks = List<int>.filled(n, 0);
+    try {
+      final order = r.byte();
+      if (order != 1 && order != 2) {
+        throw const FormatException('spectral: bad predictor');
+      }
+      var p1 = 0, p2 = 0;
+      for (var i = 0; i < n; i++) {
+        final pred = order == 1 ? p1 : 2 * p1 - p2;
+        final k = pred + r.zigzag();
+        ks[i] = k;
+        p2 = p1;
+        p1 = k;
+      }
+    } on RangeError {
+      throw const FormatException('spectral: truncated samples');
+    }
+    if (r.hasMore) throw const FormatException('spectral: trailing samples');
+    return ks;
+  }
+
   // ── pyramid ────────────────────────────────────────────────────────────────
 
   static Uint8List _pyramidBytes(List<double?> s, double q) {
@@ -935,9 +1050,15 @@ class _Head {
 }
 
 class _Parsed {
-  _Parsed(this.head, this.segs);
+  _Parsed(this.head, this.segs, this.ints, [this.runs = const []]);
   final _Head head;
   final List<_Seg> segs;
+
+  /// Lossless blobs: the quantized integer of every valid slot, in slot order.
+  final List<int>? ints;
+
+  /// Lossless blobs: the valid runs the integers fill.
+  final List<(int, int)> runs;
 }
 
 /// Per-length trig tables, built once per encode/decode call.

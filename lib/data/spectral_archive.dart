@@ -61,6 +61,9 @@ class SpectralArchiveRow {
   final double rmsErr;
   final double maxErr;
   final int createdAt;
+
+  /// How this part was encoded (read from the blob header).
+  SpectralMode get mode => SpectralCodec.readHeader(blob).mode;
 }
 
 /// How the last archive attempt for one (day, device) went. A day with no
@@ -88,6 +91,32 @@ class SpectralArchiver {
   /// 86 400-row result on the calling isolate.
   static const int _chunkSeconds = 3 * 3600;
 
+  /// Which codec each archived signal gets. hr and skin temperature are lossy
+  /// DCT; the accelerometer axes are the owner's choice between lossless at
+  /// their quantum and pyramid-only.
+  static const Map<String, SpectralMode> defaultModes = {
+    'hr': SpectralMode.adaptive,
+    'skin_temp_c': SpectralMode.adaptive,
+    'ax': SpectralMode.pyramidOnly,
+    'ay': SpectralMode.pyramidOnly,
+    'az': SpectralMode.pyramidOnly,
+  };
+
+  /// True when every part of this device-day signal that carries samples is
+  /// [SpectralMode.losslessAtQuantum] (so it may be shown without the
+  /// approximation label).
+  static Future<bool> isExact(String dayId, String signal,
+      {String deviceId = ''}) async {
+    var any = false;
+    for (final b in await _blobs(dayId, deviceId, signal)) {
+      final mode = SpectralCodec.readHeader(b).mode;
+      if (mode == SpectralMode.pyramidOnly) continue;
+      if (mode != SpectralMode.losslessAtQuantum) return false;
+      any = true;
+    }
+    return any;
+  }
+
   /// Test seam: runs on the calling isolate right before a signal is encoded
   /// (a closure cannot cross into the encoding isolate).
   @visibleForTesting
@@ -102,7 +131,9 @@ class SpectralArchiver {
   /// A day or device that fails is skipped, recorded in the status table and
   /// reported through [log]; the rest still run.
   static Future<int> archiveBefore(int cutoffSec,
-      {required int nowSec, void Function(String)? log}) async {
+      {required int nowSec,
+      void Function(String)? log,
+      Map<String, SpectralMode>? modes}) async {
     final db = await LocalDb.instance;
     var written = 0;
     var from = 1; // rec_ts <= 0 is not a real record time
@@ -115,7 +146,8 @@ class SpectralArchiver {
       if (m == null) break;
       final day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(m * 1000));
       try {
-        written += await archiveDay(day, nowSec: nowSec, log: log);
+        written += await archiveDay(day,
+            nowSec: nowSec, log: log, modes: modes);
       } catch (e) {
         log?.call('spectral archive of $day skipped: $e');
         await _setStatus(db, day, '', 'failed', '$e', nowSec);
@@ -131,7 +163,9 @@ class SpectralArchiver {
   /// A device that fails is recorded (`failed` + reason) and does not stop the
   /// others; nothing is thrown for it.
   static Future<int> archiveDay(String dayId,
-      {required int nowSec, void Function(String)? log}) async {
+      {required int nowSec,
+      void Function(String)? log,
+      Map<String, SpectralMode>? modes}) async {
     final start = localDayStartSec(dayId);
     final end = localDayEndSec(dayId);
     if (start == null || end == null) {
@@ -148,7 +182,8 @@ class SpectralArchiver {
     var written = 0;
     for (final dev in devices) {
       try {
-        written += await _archiveDevice(db, dayId, dev, start, end, nowSec);
+        written += await _archiveDevice(
+            db, dayId, dev, start, end, nowSec, modes ?? defaultModes);
       } catch (e) {
         log?.call('spectral archive of $dayId/"$dev" failed: $e');
         await _setStatus(db, dayId, dev, 'failed', '$e', nowSec);
@@ -158,7 +193,7 @@ class SpectralArchiver {
   }
 
   static Future<int> _archiveDevice(Database db, String dayId, String dev,
-      int start, int end, int nowSec) async {
+      int start, int end, int nowSec, Map<String, SpectralMode> modes) async {
     final len = end - start;
     final series = {
       for (final s in signals) s: Float64List(len)..fillRange(0, len, double.nan)
@@ -237,7 +272,8 @@ class SpectralArchiver {
       final out = <String, (Uint8List, int, double, double)>{};
       for (final e in work.entries) {
         final samples = <double?>[for (final v in e.value) v.isNaN ? null : v];
-        final enc = SpectralCodec.encode(e.key, samples);
+        final enc = SpectralCodec.encode(e.key, samples,
+            mode: modes[e.key] ?? SpectralMode.adaptive);
         out[e.key] = (
           enc.blob,
           enc.stats.nValid,
@@ -346,15 +382,24 @@ class SpectralArchiver {
 
   /// The reconstruction of one signal of one device-day (null elements =
   /// absent): every part overlaid (parts never overlap), or null when no
-  /// archive exists. With [maxOrder] a coarse view (still null in every gap).
-  /// For display/export only - an approximation, never a measurement.
+  /// archive with samples exists (a signal archived pyramid-only has none).
+  /// With [maxOrder] a coarse view (still null in every gap). For
+  /// display/export only. A lossy part is an approximation, never a
+  /// measurement; a [SpectralMode.losslessAtQuantum] part is exact relative to
+  /// its quantum (see [isExact]).
   static Future<List<double?>?> reconstruct(String dayId, String signal,
       {String deviceId = '', int? maxOrder}) async {
     final blobs = await _blobs(dayId, deviceId, signal);
     if (blobs.isEmpty) return null;
+    // A pyramid-only part holds no samples: skipped, never decoded to nulls.
+    final withSamples = [
+      for (final b in blobs)
+        if (SpectralCodec.hasSamples(b)) b
+    ];
+    if (withSamples.isEmpty) return null;
     return Isolate.run(() {
       List<double?>? out;
-      for (final b in blobs) {
+      for (final b in withSamples) {
         final d = maxOrder == null
             ? SpectralCodec.decode(b)
             : SpectralCodec.decodeCoarse(b, maxOrder: maxOrder);

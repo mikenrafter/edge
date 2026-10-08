@@ -61,11 +61,15 @@ class SpectralLerp {
 
 /// What the chart may say at a given refinement level.
 class SpectralDetail {
-  const SpectralDetail(this.step, {required this.isFull});
+  const SpectralDetail(this.step, {required this.isFull, this.exact = false});
 
-  /// Wraps a refinement.
-  factory SpectralDetail.of(SpectralRefinement r) =>
-      SpectralDetail(r, isFull: r.isFull);
+  /// A lossless-at-quantum archive part: not an approximation.
+  final bool exact;
+
+  /// Wraps a refinement. [exact] marks a LOSSLESS-at-quantum archive part: it
+  /// is not an approximation and carries no approximation label.
+  factory SpectralDetail.of(SpectralRefinement r, {bool exact = false}) =>
+      SpectralDetail(r, isFull: r.isFull, exact: exact);
 
   final SpectralRefinement? step;
   final bool isFull;
@@ -74,14 +78,17 @@ class SpectralDetail {
   /// label (l10n key `spectralLoadingDetail`).
   bool get isLoadingDetail => !isFull;
 
-  /// Always true: a reconstruction is never a measurement, at ANY refinement.
-  /// Full detail removes the "loading" caveat, not the "approximate" one.
-  bool get isApproximation => true;
+  /// True for every LOSSY reconstruction at ANY refinement: full detail removes
+  /// the "loading" caveat, not the "approximate" one. False only for a
+  /// lossless-at-quantum part ([exact]).
+  bool get isApproximation => !exact;
 
   /// The l10n key of the label the chart must show: `spectralLoadingDetail`
-  /// until the full level has arrived, `spectralApproximation` after.
-  String get labelKey =>
-      isFull ? 'spectralApproximation' : 'spectralLoadingDetail';
+  /// until the full level has arrived, `spectralApproximation` after; null for
+  /// an exact part, which needs no label.
+  String? get labelKey => exact
+      ? null
+      : (isFull ? 'spectralApproximation' : 'spectralLoadingDetail');
 
   /// The numeric readout for slot [i] (e.g. a scrub tooltip), or null when the
   /// chart may not claim a number: null while loading detail, null in a gap,

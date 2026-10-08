@@ -104,6 +104,33 @@ void main() {
         'static-240s=${b.stats.bytes}B (segments=${b.stats.segmentCount})');
   });
 
+  test('accelerometer options on the synthetic fixture (reported): lossless '
+      'at the 0.004 g quantum vs pyramid-only vs lossy DCT', () {
+    var ll = 0, py = 0, dct = 0;
+    for (final sig in ['ax', 'ay', 'az']) {
+      final s = day[sig]!;
+      final spec = SpectralCodec.specs[sig]!;
+      final a = SpectralCodec.encode(sig, s, mode: SpectralMode.losslessAtQuantum);
+      final b = SpectralCodec.encode(sig, s, mode: SpectralMode.pyramidOnly);
+      final c = SpectralCodec.encode(sig, s);
+      final back = SpectralCodec.decode(a.blob);
+      for (var i = 0; i < s.length; i++) {
+        expect(back[i], s[i] == null ? isNull : (s[i]! / spec.quantum).round() * spec.quantum);
+      }
+      expect(b.stats.bytes, lessThan(a.stats.bytes));
+      ll += a.stats.bytes;
+      py += b.stats.bytes;
+      dct += c.stats.bytes;
+    }
+    final hr = SpectralCodec.encode('hr', day['hr']!).stats.bytes;
+    final temp = SpectralCodec.encode('skin_temp_c', day['skin_temp_c']!).stats.bytes;
+    rows.add('accel (ax+ay+az), synthetic: lossless-at-q=${ll}B  '
+        'pyramid-only=${py}B  lossy-DCT=${dct}B');
+    rows.add('TOTAL/day synthetic: hr ${hr}B + temp ${temp}B + accel lossless '
+        '${ll}B = ${hr + temp + ll}B | with accel pyramid-only ${py}B = '
+        '${hr + temp + py}B');
+  });
+
   test('five signals together: bytes/day for adaptive vs static', () {
     var ad = 0, st = 0;
     day.forEach((sig, s) {

@@ -21,6 +21,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/data/spectral_archive.dart';
+import 'package:openstrap_edge/data/spectral_codec.dart';
 
 const _day1 = '2026-10-03';
 const _day2 = '2026-10-04';
@@ -176,7 +177,12 @@ void main() {
       await _freshDb('spectral2_dev1.db');
       await _put(_d1, 0, 300, hr: 60, ramp: false, ax: 0.1); // primary
       await _put(_d1, 0, 300, device: _second, hr: 150, ramp: false);
-      await SpectralArchiver.archiveDay(_day1, nowSec: _now);
+      // ax lossless so the primary's ax has samples to read back (the default
+      // accel mode may be pyramid-only).
+      await SpectralArchiver.archiveDay(_day1, nowSec: _now, modes: {
+        ...SpectralArchiver.defaultModes,
+        'ax': SpectralMode.losslessAtQuantum,
+      });
       final prim = (await SpectralArchiver.reconstruct(_day1, 'hr'))!;
       final sec = (await SpectralArchiver.reconstruct(_day1, 'hr',
           deviceId: _second))!;

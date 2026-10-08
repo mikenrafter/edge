@@ -33,6 +33,8 @@ void main() {
         options: OpenDatabaseOptions(readOnly: true));
     final lines = <String>[];
     var totAd = 0, totSt = 0, totLl = 0, totRaw = 0;
+    // Per day: the archive option totals the owner is choosing between.
+    final perDay = <String, Map<String, int>>{};
     try {
       final span = (await db.rawQuery(
               'SELECT MIN(rec_ts) AS a, MAX(rec_ts) AS b, COUNT(*) AS n '
@@ -57,8 +59,9 @@ void main() {
         ..add('')
         ..add('| device | day | signal | valid / slots | raw B | lossless B | '
             'every-N (N) | static B | adaptive B | vs lossless | vs raw | '
-            'segs | coeffs | pyramid B | rms | max | enc s |')
-        ..add('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+            'segs | coeffs | pyramid B | rms | max | enc s | '
+            'lossless-at-q B | pyramid-only B |')
+        ..add('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
       var day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(
           (span['a'] as int) * 1000));
       final last = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(
@@ -100,6 +103,28 @@ void main() {
               expect(m.rms, lessThanOrEqualTo(spec.maxRms), reason: '$day $s');
               expect(m.max, lessThanOrEqualTo(spec.maxAbs), reason: '$day $s');
             }
+            final isAccel = s == 'ax' || s == 'ay' || s == 'az';
+            var lqB = 0, pyB = 0;
+            if (isAccel) {
+              final lq = SpectralCodec.encode(s, x, mode: SpectralMode.losslessAtQuantum);
+              final back = SpectralCodec.decode(lq.blob);
+              for (var i = 0; i < x.length; i++) {
+                expect(back[i], x[i] == null ? isNull : (x[i]! / spec.quantum).round() * spec.quantum,
+                    reason: '$day $s slot $i lossless');
+              }
+              final py = SpectralCodec.encode(s, x, mode: SpectralMode.pyramidOnly);
+              lqB = lq.stats.bytes;
+              pyB = py.stats.bytes;
+            }
+            final dm = perDay.putIfAbsent(day, () => {});
+            dm['n_$s'] = n;
+            if (s == 'hr') dm['hr'] = ad.stats.bytes;
+            if (s == 'skin_temp_c') dm['temp'] = ad.stats.bytes;
+            if (isAccel) {
+              dm['accelLossless'] = (dm['accelLossless'] ?? 0) + lqB;
+              dm['accelPyramid'] = (dm['accelPyramid'] ?? 0) + pyB;
+              dm['accelDct'] = (dm['accelDct'] ?? 0) + ad.stats.bytes;
+            }
             final ll = losslessBytes(x, spec.quantum);
             final nth = keepEveryNth(x, spec.quantum, spec.maxRms, spec.maxAbs);
             final raw = n * 8;
@@ -116,12 +141,35 @@ void main() {
                 '${ad.stats.summaryBytes} | '
                 '${ad.stats.rmsErr.toStringAsFixed(3)} | '
                 '${ad.stats.maxErr.toStringAsFixed(3)} | '
-                '${enc.toStringAsFixed(1)} |');
+                '${enc.toStringAsFixed(1)} | '
+                '${isAccel ? lqB : '-'} | ${isAccel ? pyB : '-'} |');
           }
         }
         if (day == last) break;
         day = dayLabelOf(DateTime.fromMillisecondsSinceEpoch(hi * 1000));
       }
+      lines
+        ..add('')
+        ..add('## Archive options per day (bytes; accel = ax+ay+az)')
+        ..add('')
+        ..add('| day | hr lossy | temp lossy | accel lossless-at-q | '
+            'accel pyramid-only | accel lossy DCT (ref) | TOTAL, lossless accel | '
+            'TOTAL, pyramid accel |')
+        ..add('|---|---|---|---|---|---|---|---|');
+      var sumL = 0, sumP = 0, sumH = 0, sumT = 0, sumAL = 0, sumAP = 0;
+      perDay.forEach((d, m) {
+        final hr = m['hr'] ?? 0, t = m['temp'] ?? 0;
+        final al = m['accelLossless'] ?? 0, ap = m['accelPyramid'] ?? 0;
+        sumH += hr;
+        sumT += t;
+        sumAL += al;
+        sumAP += ap;
+        sumL += hr + t + al;
+        sumP += hr + t + ap;
+        lines.add('| $d | $hr | $t | $al | $ap | ${m['accelDct'] ?? 0} | '
+            '${hr + t + al} | ${hr + t + ap} |');
+      });
+      lines.add('| ALL | $sumH | $sumT | $sumAL | $sumAP | - | $sumL | $sumP |');
       lines
         ..add('')
         ..add('Totals over all rows above: raw $totRaw B, lossless $totLl B, '
