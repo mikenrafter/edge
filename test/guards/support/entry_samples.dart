@@ -24,6 +24,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/crossday_pipeline.dart';
 import 'package:openstrap_edge/compute/day_checkpoint_fold.dart';
+import 'package:openstrap_edge/compute/day_curve_states.dart';
+import 'package:openstrap_edge/compute/day_rr_state.dart';
+import 'package:openstrap_edge/compute/day_tail_fold.dart';
+import 'package:openstrap_edge/compute/resume_bytes.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
@@ -81,6 +85,36 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       final blob = fold();
       if (blob != null) await expectIsolateRoundTrip<Uint8List>(blob);
       await _sameInWorker(fold, json: (Uint8List? b) => b?.toList());
+    },
+  ),
+  'foldDayTailHeavy': (
+    roundTrip: () async {
+      // Empty checkpoint states (as their resume bytes) and a short tail in; the
+      // persisted envelopes, curves and the tail out. The @SendableShape round
+      // trip itself is in test/sendable_foldDayTailHeavy_test.dart.
+      Uint8List bytes(void Function(ResumeWriter) write) {
+        final w = ResumeWriter();
+        write(w);
+        return w.takeBytes();
+      }
+
+      final input = DayTailInput(
+        rrState: bytes(DayRrState().write),
+        curvesState: bytes(DayCurveStates(cut: 0.02).write),
+        tailRr: const [812.0, 805.0, 790.0],
+        tailTs: const [1760000001000.0, 1760000002000.0, 1760000003000.0],
+        accTs: const [1760000000, 1760000001, 1760000002, 1760000003],
+        ax: const [0.0, 0.1, 0.0, 0.1],
+        ay: const [0.0, 0.0, 0.1, 0.1],
+        az: const [1.0, 1.0, 0.99, 1.0],
+        onsetSec: 1760000000,
+        offsetSec: 1760003600,
+      );
+      const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
+      await _sameInWorker(() => foldDayTailHeavy(inputs, input),
+          json: (DayTailResult? r) => r == null
+              ? null
+              : [r.irregular, r.hrv, r.resp, r.daytime, r.tailRr, r.tailTs]);
     },
   ),
   'kcalMinutesForDayHeavy': (
