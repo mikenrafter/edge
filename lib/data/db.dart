@@ -247,6 +247,9 @@ class LocalDb {
     'metric_series_version',
     'baselines',
     'raw_archive',
+    // Built once from decoded rows that no longer exist.
+    'spectral_archive',
+    'spectral_archive_status',
     'device_coverage',
     'signal_priority',
     'sync_cursor',
@@ -399,7 +402,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 66;
+  static const int schemaVersion = 67;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -1234,6 +1237,14 @@ class LocalDb {
           // invariant 3). _repairOpenSchema re-runs it on every open.
           await _createSpectralArchive(db);
         }
+        if (oldV < 67) {
+          // The 66 table merged devices and held one blob per signal-day.
+          // _createSpectralArchive rebuilds an old-shape table additively
+          // (rows keep their bytes: primary device, part 0) and
+          // _createSpectralStatus adds the per-day outcome ledger.
+          await _createSpectralArchive(db);
+          await _createSpectralStatus(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
@@ -1337,6 +1348,7 @@ class LocalDb {
     await _createAssumedWater(db);
     await _createSymptomEntry(db);
     await _createSpectralArchive(db);
+    await _createSpectralStatus(db);
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
@@ -9275,6 +9287,8 @@ class LocalDb {
         await _createComputeState(db);
         await _createPrimitiveArtifacts(db);
         await _createLiveCoverage(db);
+        await _createSpectralArchive(db);
+        await _createSpectralStatus(db);
       },
     );
 
@@ -9447,6 +9461,14 @@ class LocalDb {
         where: 'day_id = ?',
         whereArgs: [dayId],
       );
+      // The day's lossy archive (it outlives the raw it was built from) and
+      // its outcome ledger.
+      await copyRows('spectral_archive', where: 'day_id = ?', whereArgs: [dayId]);
+      await copyRows(
+        'spectral_archive_status',
+        where: 'day_id = ?',
+        whereArgs: [dayId],
+      );
     }
     // Custom journal field definitions are not day-scoped, so they ride along
     // whole. Without them an exported day carries numbers under keys like
@@ -9560,6 +9582,11 @@ class LocalDb {
       await deleteByIn(txn, 'sleep_override', 'day_id', sorted);
       await deleteByIn(txn, 'wake_confirmation', 'day_id', sorted);
       await deleteByIn(txn, 'sleep_nap', 'day_id', sorted);
+      // The lossy archive of the day's 1 Hz health signals (every device, part
+      // and codec version) and its outcome ledger: "delete this day" must not
+      // leave a readable reconstruction behind.
+      await deleteByIn(txn, 'spectral_archive', 'day_id', sorted);
+      await deleteByIn(txn, 'spectral_archive_status', 'day_id', sorted);
     });
     return deleted;
   }
@@ -9851,6 +9878,12 @@ class LocalDb {
       'events',
       'decoded_onehz',
       'decoded_rr',
+      // The lossy archive of the 1 Hz signals - the only trace of a day once
+      // its decoded rows are pruned - and the ledger of how each day's archive
+      // went. Parts are append-only, so a REPLACE of the same key restores the
+      // same bytes.
+      'spectral_archive',
+      'spectral_archive_status',
       // The only copy of what a paired sensor measured during a session — the
       // band cannot re-deliver it, so a restore that skipped it loses it.
       'external_hr',
@@ -11604,19 +11637,61 @@ class LocalDb {
         'PRIMARY KEY (date, at_min))',
       );
 
-  /// `spectral_archive`: one error-bounded block-DCT blob per (local day,
-  /// signal, codec version) of the 1 Hz `decoded_onehz` signals, written by
-  /// `SpectralArchiver` immediately BEFORE the raw prune and never pruned.
-  /// `rms_err` / `max_err` are the MEASURED reconstruction error, `n_valid` the
-  /// count of real samples it was built from. Read only by
+  /// `spectral_archive`: error-bounded block-DCT blobs of the 1 Hz
+  /// `decoded_onehz` signals, written by `SpectralArchiver` immediately BEFORE
+  /// the raw prune and never pruned. Keyed per (local day, DEVICE, signal,
+  /// codec version, PART): devices are never merged (the live table is keyed by
+  /// device_id too), and a day's archive is a set of append-only PARTS with
+  /// disjoint coverage, so a later pass adds the slots that arrived since
+  /// without ever re-encoding (and thereby losing) what an earlier part held.
+  /// `rms_err` / `max_err` are the MEASURED reconstruction error of that part,
+  /// `n_valid` the count of real samples in it. Read only by
   /// `lib/data/spectral_archive.dart` - never by derivation or the coach.
-  static Future<void> _createSpectralArchive(Database db) => db.execute(
-        'CREATE TABLE IF NOT EXISTS spectral_archive ('
-        'day_id TEXT NOT NULL, signal TEXT NOT NULL, '
-        'codec_version INTEGER NOT NULL, blob BLOB NOT NULL, '
-        'n_valid INTEGER NOT NULL, rms_err REAL NOT NULL, '
-        'max_err REAL NOT NULL, created_at INTEGER NOT NULL, '
-        'PRIMARY KEY (day_id, signal, codec_version))',
+  ///
+  /// Schema 66 created it without `device_id` / `part`; an old-shape table is
+  /// rebuilt in place (rows keep their bytes: primary device, part 0).
+  /// Idempotent, and a crash between the rename and the copy self-heals on the
+  /// next open.
+  static Future<void> _createSpectralArchive(Database db) async {
+    const old = '_spectral_archive_v66';
+    final have = await _columnsOf(db, 'spectral_archive');
+    if (have.isNotEmpty && !have.contains('device_id')) {
+      await db.execute('DROP TABLE IF EXISTS $old');
+      await db.execute('ALTER TABLE spectral_archive RENAME TO $old');
+    }
+    await db.execute(
+      'CREATE TABLE IF NOT EXISTS spectral_archive ('
+      "day_id TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', "
+      'signal TEXT NOT NULL, codec_version INTEGER NOT NULL, '
+      'part INTEGER NOT NULL DEFAULT 0, blob BLOB NOT NULL, '
+      'n_valid INTEGER NOT NULL, rms_err REAL NOT NULL, '
+      'max_err REAL NOT NULL, created_at INTEGER NOT NULL, '
+      'PRIMARY KEY (day_id, device_id, signal, codec_version, part))',
+    );
+    final leftover = await db.rawQuery(
+      "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+      [old],
+    );
+    if (leftover.isNotEmpty) {
+      await db.execute(
+        'INSERT OR IGNORE INTO spectral_archive(day_id, device_id, signal, '
+        'codec_version, part, blob, n_valid, rms_err, max_err, created_at) '
+        "SELECT day_id, '', signal, codec_version, 0, blob, n_valid, rms_err, "
+        'max_err, created_at FROM $old',
+      );
+      await db.execute('DROP TABLE $old');
+    }
+  }
+
+  /// `spectral_archive_status`: the outcome of the last archive attempt per
+  /// (local day, device): ok | empty (rows existed, no signal had a valid
+  /// sample) | failed (with a reason). A day with no decoded rows has no row at
+  /// all, so a failed archive is distinguishable from absent input.
+  static Future<void> _createSpectralStatus(Database db) => db.execute(
+        'CREATE TABLE IF NOT EXISTS spectral_archive_status ('
+        "day_id TEXT NOT NULL, device_id TEXT NOT NULL DEFAULT '', "
+        'outcome TEXT NOT NULL, reason TEXT, updated_at INTEGER NOT NULL, '
+        'PRIMARY KEY (day_id, device_id))',
       );
 
   /// `symptom_entry`: the structured description of a marked moment answered
@@ -12747,15 +12822,47 @@ class LocalDb {
 
   // ── decoded retention ───────────────────────────────────────────────────────
 
+  /// The sum of `input_rev` over every 15-minute bucket at or below the one
+  /// holding [cutoffSec]: it moves whenever a `decoded_onehz` / `decoded_rr`
+  /// row at or before the cutoff is inserted, replaced or deleted (the
+  /// triggers in [_createInputRev]). Read before the spectral archive pass and
+  /// handed to [pruneDecodedBeforeRecTs] as `expectedRevSum`, it proves that
+  /// nothing landed behind the archive between its read and the delete.
+  static Future<int> decodedRevSumBefore(int cutoffSec) async {
+    final db = await instance;
+    return _revSumBefore(db, cutoffSec);
+  }
+
+  static Future<int> _revSumBefore(DatabaseExecutor db, int cutoffSec) async {
+    final r = await db.rawQuery(
+      'SELECT COALESCE(SUM(rev), 0) AS r FROM input_rev WHERE bucket <= ?',
+      [cutoffSec ~/ 900],
+    );
+    return r.isEmpty ? 0 : (r.first['r'] as num?)?.toInt() ?? 0;
+  }
+
   /// Delete decoded substrate / structured band signals / events whose RECORD
   /// TIME (epoch seconds) is strictly before [cutoffSec].
-  static Future<int> pruneDecodedBeforeRecTs(int cutoffSec) async {
+  ///
+  /// With [expectedRevSum] (from [decodedRevSumBefore]) the delete runs only if
+  /// the input revision at or before [cutoffSec] is still that value, checked
+  /// INSIDE the transaction; otherwise NOTHING is deleted and -1 is returned
+  /// (a record landed after the caller last looked; the next pass retries).
+  /// Without it behaviour is unchanged.
+  static Future<int> pruneDecodedBeforeRecTs(int cutoffSec,
+      {int? expectedRevSum}) async {
     final db = await instance;
     // `deleted` used to just stay 0 forever - none of the txn.delete() calls'
     // return values (rows actually deleted) were ever added to it, so the
     // caller's `if (deleted > 0) log(...)` never fired even on a real prune.
+    var skipped = false;
     int deleted = 0;
     await db.transaction((txn) async {
+      if (expectedRevSum != null &&
+          await _revSumBefore(txn, cutoffSec) != expectedRevSum) {
+        skipped = true;
+        return;
+      }
       // decoded_rr shares the rec_ts key, so a plain rec_ts range delete covers
       // every beat in the window — no counter subquery, no orphan sweep (there
       // are no counter-orphans once parent and child are keyed the same way).
@@ -12817,7 +12924,7 @@ class LocalDb {
       // ponytail: unbounded, so give it its own multi-year cutoff if a real
       // install's table ever shows up big.
     });
-    return deleted;
+    return skipped ? -1 : deleted;
   }
 
   /// Bytes SQLite is holding in the free page list — deleted, reusable, and

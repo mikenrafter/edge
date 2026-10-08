@@ -7375,13 +7375,27 @@ class DerivationEngine {
     // failure here must not hold the prune, which is what enforces
     // `rawRetentionDays`. `created_at` is the data-edge second, not a wall
     // clock.
+    //
+    // RACE: an offload can land during this pass behind a window the archive
+    // already read. The input revision at or before the cutoff is read BEFORE
+    // the archive and the delete runs only if it is unchanged (checked inside
+    // the delete's transaction); otherwise nothing is pruned this pass and the
+    // next one archives the straggler first. If the archive itself threw there
+    // is nothing to protect, so the prune is unguarded exactly as before.
+    int? revSum;
     try {
+      revSum = await LocalDb.decodedRevSumBefore(cutoffSec);
       await SpectralArchiver.archiveBefore(cutoffSec,
           nowSec: dataNowSec, log: _log);
     } catch (e) {
+      revSum = null;
       _log('spectral archive skipped: $e');
     }
-    final deleted = await LocalDb.pruneDecodedBeforeRecTs(cutoffSec);
+    final deleted =
+        await LocalDb.pruneDecodedBeforeRecTs(cutoffSec, expectedRevSum: revSum);
+    if (deleted < 0) {
+      _log('prune deferred: records landed behind the archive pass');
+    }
     if (deleted > 0) {
       _log('pruned $deleted decoded rows with rec_ts < $cutoffSec');
     }

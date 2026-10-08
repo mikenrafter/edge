@@ -13079,5 +13079,9 @@
   "spectralLoadingDetail": "Loading detail…",
   "@spectralLoadingDetail": {
     "description": "Label on a long-range chart while its curve is still being refined from a coarse view to full detail; no precise value is shown until it disappears."
+  },
+  "spectralApproximation": "Approximate (archived)",
+  "@spectralApproximation": {
+    "description": "Label kept on an archived long-range chart even at full detail: the curve is a reconstruction from a lossy archive, not a measurement."
   }
 }

@@ -74,6 +74,15 @@ class SpectralDetail {
   /// label (l10n key `spectralLoadingDetail`).
   bool get isLoadingDetail => !isFull;
 
+  /// Always true: a reconstruction is never a measurement, at ANY refinement.
+  /// Full detail removes the "loading" caveat, not the "approximate" one.
+  bool get isApproximation => true;
+
+  /// The l10n key of the label the chart must show: `spectralLoadingDetail`
+  /// until the full level has arrived, `spectralApproximation` after.
+  String get labelKey =>
+      isFull ? 'spectralApproximation' : 'spectralLoadingDetail';
+
   /// The numeric readout for slot [i] (e.g. a scrub tooltip), or null when the
   /// chart may not claim a number: null while loading detail, null in a gap,
   /// otherwise the full-level value.

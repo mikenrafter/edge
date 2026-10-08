@@ -147,6 +147,18 @@ void main() {
       expect(a, greaterThan(guard));
     });
 
+    test('the prune is guarded by the input revision read BEFORE the archive '
+        '(an offload landing mid-archive skips the prune)', () {
+      final body = bodyOf();
+      final rev = body.indexOf('decodedRevSumBefore');
+      final a = body.indexOf('SpectralArchiver.archiveBefore');
+      final pr = body.indexOf('pruneDecodedBeforeRecTs');
+      expect(rev, isNonNegative, reason: 'revision never read');
+      expect(rev, lessThan(a));
+      expect(body, matches(RegExp(r'pruneDecodedBeforeRecTs\([^)]*expectedRevSum')));
+      expect(pr, greaterThan(a));
+    });
+
     test('the only compute-layer reference is that call', () {
       final f = File('lib/compute/derivation_engine.dart').readAsStringSync();
       expect(spectralReads(f), isEmpty);

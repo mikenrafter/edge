@@ -2467,5 +2467,6 @@
   "assumedWaterBody": "आपके पानी रिमाइंडर से अनुमानित: पिए गए पानी में {amount} जुड़ता है। रखें या हटाएँ।",
   "assumedWaterKeep": "रखें",
   "assumedWaterRemove": "हटाएँ",
-  "spectralLoadingDetail": "विवरण लोड हो रहा है…"
+  "spectralLoadingDetail": "विवरण लोड हो रहा है…",
+  "spectralApproximation": "अनुमानित (संग्रहीत)"
 }

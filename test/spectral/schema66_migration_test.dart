@@ -65,15 +65,17 @@ Future<void> _expectShape(Database db) async {
     for (final c in await db.rawQuery('PRAGMA table_info(spectral_archive)'))
       c['name'] as String: c,
   };
+  // Shape as of schema 67 (device_id and part joined the key there; see
+  // schema67_migration_test.dart). The 66 rung is still what creates the table.
   expect(cols.keys.toSet(), {
-    'day_id', 'signal', 'codec_version', 'blob', 'n_valid', 'rms_err',
-    'max_err', 'created_at',
+    'day_id', 'device_id', 'signal', 'codec_version', 'part', 'blob',
+    'n_valid', 'rms_err', 'max_err', 'created_at',
   });
   expect(cols['day_id']!['type'], 'TEXT');
   expect(cols['day_id']!['pk'], 1);
-  expect(cols['signal']!['pk'], 2);
+  expect(cols['signal']!['pk'], 3);
   expect(cols['codec_version']!['type'], 'INTEGER');
-  expect(cols['codec_version']!['pk'], 3);
+  expect(cols['codec_version']!['pk'], 4);
   expect(cols['blob']!['type'], 'BLOB');
   expect(cols['n_valid']!['type'], 'INTEGER');
   expect(cols['rms_err']!['type'], 'REAL');
@@ -109,8 +111,8 @@ void main() {
     }
   });
 
-  test('schemaVersion is 66', () {
-    expect(LocalDb.schemaVersion, 66);
+  test('schemaVersion is at least 66', () {
+    expect(LocalDb.schemaVersion, greaterThanOrEqualTo(66));
   });
 
   test('upgrade from v65 reaches 66, adds the table EMPTY (no backfill), '

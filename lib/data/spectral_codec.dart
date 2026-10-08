@@ -588,6 +588,11 @@ class SpectralCodec {
     ];
   }
 
+  /// The valid runs `[start, end)` of the series the blob describes (the
+  /// slots it holds samples for), from the prefix alone.
+  static List<(int, int)> validRuns(Uint8List blob) =>
+      _validRuns(blob, _head(blob));
+
   /// The header alone. It reports whatever codec version the bytes carry (only
   /// [decode] and friends refuse a version they do not know) and throws
   /// [FormatException] for bad magic or a prefix shorter than it declares.

@@ -187,6 +187,17 @@ void main() {
       expect(d.readout(g), isNull);
     });
 
+    test('a value read at FULL refinement is still labelled an approximation '
+        '(a reconstruction is never shown as a measurement)', () {
+      final steps = SpectralCodec.progressive(blob()).toList();
+      for (final r in steps) {
+        final d = SpectralDetail.of(r);
+        expect(d.isApproximation, isTrue);
+      }
+      expect(SpectralDetail.of(steps.first).labelKey, 'spectralLoadingDetail');
+      expect(SpectralDetail.of(steps.last).labelKey, 'spectralApproximation');
+    });
+
     test('exactly one step of a progression is not loading', () {
       final flags = [
         for (final r in SpectralCodec.progressive(blob()))
@@ -202,6 +213,8 @@ void main() {
           as Map<String, dynamic>;
       expect(arb['spectralLoadingDetail'], isA<String>());
       expect(arb['spectralLoadingDetail'], isNotEmpty);
+      expect(arb['spectralApproximation'], isA<String>());
+      expect(arb['spectralApproximation'], isNotEmpty);
     });
   });
 }
