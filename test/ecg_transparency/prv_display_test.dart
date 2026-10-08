@@ -142,7 +142,7 @@ void main() {
     test('kAlgoVersion and both sibling pins are exactly what the PRV '
         'diagnostics change set (v103)', () {
       expect(kAlgoVersion, 103);
-      expect(kAnalyticsPin, 'bf1be1981ed4fcd2ecd9958f0e0c742859eea20f');
+      expect(kAnalyticsPin, '0fc57682b988c44cb5943c6e39a0746167388d46');
       expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
     });
 

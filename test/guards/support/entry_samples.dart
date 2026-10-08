@@ -25,9 +25,8 @@ import 'package:openstrap_edge/compute/derivation_engine.dart';
 import 'package:openstrap_edge/compute/crossday_pipeline.dart';
 import 'package:openstrap_edge/compute/day_checkpoint_fold.dart';
 import 'package:openstrap_edge/compute/day_curve_states.dart';
-import 'package:openstrap_edge/compute/day_rr_state.dart';
+import 'package:openstrap_edge/compute/day_resume_state.dart';
 import 'package:openstrap_edge/compute/day_tail_fold.dart';
-import 'package:openstrap_edge/compute/resume_bytes.dart';
 import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
@@ -89,18 +88,12 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
   ),
   'foldDayTailHeavy': (
     roundTrip: () async {
-      // Empty checkpoint states (as their resume bytes) and a short tail in; the
+      // Empty checkpoint states (as a checkpoint blob) and a short tail in; the
       // persisted envelopes, curves and the tail out. The @SendableShape round
       // trip itself is in test/sendable_foldDayTailHeavy_test.dart.
-      Uint8List bytes(void Function(ResumeWriter) write) {
-        final w = ResumeWriter();
-        write(w);
-        return w.takeBytes();
-      }
-
       final input = DayTailInput(
-        rrState: bytes(DayRrState().write),
-        curvesState: bytes(DayCurveStates(cut: 0.02).write),
+        checkpoint:
+            encodeDayResumeState(DayResumeState(curves: DayCurveStates(cut: 0.02))),
         tailRr: const [812.0, 805.0, 790.0],
         tailTs: const [1760000001000.0, 1760000002000.0, 1760000003000.0],
         accTs: const [1760000000, 1760000001, 1760000002, 1760000003],

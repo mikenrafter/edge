@@ -1806,11 +1806,13 @@ import '../util/worker_entries.dart' show Dispatcher;
 // final OPEN window and what became of it, sustained share seen vs required),
 // the thresholds, and, for an abstention, the gate that stopped it. The
 // verdicts and figures themselves do not change; the payload does, so every
-// stored day re-derives. Comes from analytics bf1be1981ed4fcd2ecd9958f0e0c742859eea20f
+// stored day re-derives. Comes from analytics 0fc57682b988c44cb5943c6e39a0746167388d46
+// (bf1be1981ed4fcd2ecd9958f0e0c742859eea20f plus the empty-input fix: the artifact
+// fraction is absent, not 1.0, when the corrector saw no beats)
 // (`irregularBeatScreenDetailed`, `IrregularScreenState.evaluateDetailed`,
 // state checkpoint version 2) on mikenrafter/openstrap-analytics
 // feat/prv-diagnostics, repinned below; verified present with
-// `git show bf1be1981ed4fcd2ecd9958f0e0c742859eea20f:lib/src/onehz/clinical/irregular_diagnostics.dart`. The day
+// `git show 0fc57682b988c44cb5943c6e39a0746167388d46:lib/src/onehz/clinical/irregular_diagnostics.dart`. The day
 // checkpoint layout moved 3 -> 4 with it (the screen state gained counters), so
 // no old checkpoint is resumed with counts it never kept.
 const int kAlgoVersion = 103;
@@ -2011,7 +2013,10 @@ const int kAlgoVersion = 103;
 // REPIN @ bf1be19 (feat/prv-diagnostics, on aa67997): the screen's
 // diagnostics (v103). The verdict code is the same; the payload carries the
 // evidence behind it.
-const String kAnalyticsPin = 'bf1be1981ed4fcd2ecd9958f0e0c742859eea20f';
+// REPIN @ 0fc5768 (same branch, on bf1be19): the diagnostics' artifact fraction
+// is absent when the corrector saw no beats (no "100% artifacts" beside zero
+// beats). Verdicts unchanged; v103 is unreleased, so there is no second bump.
+const String kAnalyticsPin = '0fc57682b988c44cb5943c6e39a0746167388d46';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both
@@ -5977,12 +5982,13 @@ class DerivationEngine {
         edgeMs: rrFoldEdgeMs(probe.cp.cpRecTs),
       );
       final from = resumed.folded;
-      // The states cross as their resume bytes: the worker advances its own
-      // decoded copies, so the caller's `resumed` is never touched, and a fold
-      // killed by the timeout leaves nothing behind.
-      final input = DayTailInput.fromStates(
-        rr: resumed.rr,
-        curves: resumed.curves,
+      // The worker decodes the STORED checkpoint blob itself: `resumed` came
+      // from exactly these bytes and its streaming parts are not changed here,
+      // so nothing is serialised on this isolate. It folds its own copies, so
+      // `resumed` stays untouched and a fold killed by the timeout leaves
+      // nothing behind.
+      final input = DayTailInput(
+        checkpoint: probe.cp.state,
         tailRr: tail.rrMs,
         tailTs: tail.rrTsMs,
         accTs: sub.tsSec.sublist(from),

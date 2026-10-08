@@ -45,7 +45,6 @@ import 'package:openstrap_edge/compute/day_resume_state.dart';
 import 'package:openstrap_edge/compute/day_rr_state.dart';
 import 'package:openstrap_edge/compute/day_tail_fold.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart';
-import 'package:openstrap_edge/compute/resume_bytes.dart';
 import 'package:openstrap_edge/util/worker_init.dart';
 
 import 'support/day_stream_fixture.dart';
@@ -53,18 +52,6 @@ import 'support/day_stream_fixture.dart';
 const _start = 1760000000;
 const _boundary = _start + 3 * 3600;
 const _inputs = WorkerInputs(nowEpochMs: _start * 1000, zoneId: 'UTC', localeTag: 'en');
-
-Uint8List _rrBytes(DayRrState s) {
-  final w = ResumeWriter();
-  s.write(w);
-  return w.takeBytes();
-}
-
-Uint8List _curveBytes(DayCurveStates s) {
-  final w = ResumeWriter();
-  s.write(w);
-  return w.takeBytes();
-}
 
 /// The tail a fold is asked to advance over.
 typedef _Tail = ({
@@ -108,11 +95,10 @@ Map<String, Object?> _fields(DayTailResult r) => {
 
 String _text(Map<String, Object?>? m) => jsonEncode(m);
 
-DayTailInput _input(DayRrState rr, DayCurveStates curves, _Tail t,
+DayTailInput _input(Uint8List checkpoint, _Tail t,
         {required int onsetSec, required int offsetSec}) =>
-    DayTailInput.fromStates(
-      rr: rr,
-      curves: curves,
+    DayTailInput(
+      checkpoint: checkpoint,
       tailRr: t.rr,
       tailTs: t.ts,
       accTs: t.accTs,
@@ -122,6 +108,10 @@ DayTailInput _input(DayRrState rr, DayCurveStates curves, _Tail t,
       onsetSec: onsetSec,
       offsetSec: offsetSec,
     );
+
+/// The blob of states that have folded nothing (a day's first fold).
+Uint8List _emptyBlob() =>
+    encodeDayResumeState(DayResumeState(curves: DayCurveStates(cut: 0.02)));
 
 /// The production dispatcher, the way the engine will call the entry.
 Future<DayTailResult?> _viaWorker(DayTailInput input, {Duration? timeout}) =>
@@ -203,9 +193,8 @@ void main() {
           onsetSec: onset, offsetSec: offset);
       expect(want, isNotNull, reason: 'fixture: the inline fold continues');
 
-      final theirs = decodeDayResumeState(blob)!;
-      final got = await _viaWorker(_input(theirs.rr, theirs.curves, tail,
-          onsetSec: onset, offsetSec: offset));
+      final got =
+          await _viaWorker(_input(blob, tail, onsetSec: onset, offsetSec: offset));
       expect(got, isNotNull);
       expect(_text(_fields(got!)), _text(want));
 
@@ -224,31 +213,26 @@ void main() {
     test('is the same on a second run (same inputs, same output)', () async {
       final s = decodeDayResumeState(blob)!;
       final tail = resumedTail(s);
-      final input =
-          _input(s.rr, s.curves, tail, onsetSec: onset, offsetSec: offset);
+      final input = _input(blob, tail, onsetSec: onset, offsetSec: offset);
       final a = await _viaWorker(input);
       final b = await _viaWorker(input);
       expect(a, isNotNull);
       expect(_text(_fields(b!)), _text(_fields(a!)));
     });
 
-    test("never touches the caller's states or the bytes it was given",
-        () async {
+    test('never touches the checkpoint bytes it was given (the worker folds '
+        'its own decoded copies)', () async {
       final s = decodeDayResumeState(blob)!;
       final tail = resumedTail(s);
-      final rrBefore = _rrBytes(s.rr);
-      final curvesBefore = _curveBytes(s.curves);
-      final input =
-          _input(s.rr, s.curves, tail, onsetSec: onset, offsetSec: offset);
-      final sentRr = Uint8List.fromList(input.rrState);
-      final sentCurves = Uint8List.fromList(input.curvesState);
+      final stored = Uint8List.fromList(blob);
+      final input = _input(stored, tail, onsetSec: onset, offsetSec: offset);
 
       expect(await _viaWorker(input), isNotNull);
 
-      expect(_rrBytes(s.rr), rrBefore);
-      expect(_curveBytes(s.curves), curvesBefore);
-      expect(input.rrState, sentRr);
-      expect(input.curvesState, sentCurves);
+      expect(input.checkpoint, blob);
+      expect(stored, blob);
+      expect(encodeDayResumeState(decodeDayResumeState(stored)!), blob,
+          reason: 'still decodes to the very same states');
     });
 
     test('a tail the state cannot continue abstains (null), as inline does',
@@ -268,36 +252,24 @@ void main() {
           isNull,
           reason: 'fixture: the inline fold abstains on this tail');
 
-      final theirs = decodeDayResumeState(blob)!;
       expect(
-          await _viaWorker(_input(theirs.rr, theirs.curves, behind,
-              onsetSec: onset, offsetSec: offset)),
+          await _viaWorker(
+              _input(blob, behind, onsetSec: onset, offsetSec: offset)),
           isNull);
     });
 
-    test('unreadable state bytes abstain (null), never half read', () async {
+    test('an unreadable checkpoint abstains (null), never half read', () async {
       final s = decodeDayResumeState(blob)!;
       final tail = resumedTail(s);
-      final ok = _input(s.rr, s.curves, tail, onsetSec: onset, offsetSec: offset);
-      DayTailInput with_({Uint8List? rr, Uint8List? curves}) => DayTailInput(
-            rrState: rr ?? ok.rrState,
-            curvesState: curves ?? ok.curvesState,
-            tailRr: ok.tailRr,
-            tailTs: ok.tailTs,
-            accTs: ok.accTs,
-            ax: ok.ax,
-            ay: ok.ay,
-            az: ok.az,
-            onsetSec: ok.onsetSec,
-            offsetSec: ok.offsetSec,
-          );
-      expect(await _viaWorker(with_(rr: Uint8List.fromList([1, 2, 3]))), isNull);
-      expect(await _viaWorker(with_(curves: Uint8List(0))), isNull);
-      expect(
-          await _viaWorker(
-              with_(rr: Uint8List.sublistView(ok.rrState, 0, ok.rrState.length - 5))),
-          isNull,
-          reason: 'a truncated state');
+      Future<DayTailResult?> with_(Uint8List bytes) =>
+          _viaWorker(_input(bytes, tail, onsetSec: onset, offsetSec: offset));
+      expect(await with_(Uint8List.fromList([1, 2, 3])), isNull);
+      expect(await with_(Uint8List(0)), isNull);
+      expect(await with_(Uint8List.sublistView(blob, 0, blob.length - 5)), isNull,
+          reason: 'a truncated blob');
+      final flipped = Uint8List.fromList(blob);
+      flipped[flipped.length ~/ 2] ^= 0xff;
+      expect(await with_(flipped), isNull, reason: 'a damaged blob (checksum)');
     });
   });
 
@@ -315,9 +287,8 @@ void main() {
       final want = _inline(DayRrState(), DayCurveStates(cut: 0.02), tail,
           onsetSec: onset, offsetSec: offset);
       expect(want, isNotNull);
-      final got = await _viaWorker(_input(
-          DayRrState(), DayCurveStates(cut: 0.02), tail,
-          onsetSec: onset, offsetSec: offset));
+      final got = await _viaWorker(
+          _input(_emptyBlob(), tail, onsetSec: onset, offsetSec: offset));
       expect(got, isNotNull);
       expect(_text(_fields(got!)), _text(want));
     });
@@ -338,38 +309,29 @@ void main() {
           isNull,
           reason: 'fixture: `continuesWith` refuses it');
       expect(
-          await _viaWorker(_input(DayRrState(), DayCurveStates(cut: 0.02), tail,
-              onsetSec: onset, offsetSec: offset)),
+          await _viaWorker(
+              _input(_emptyBlob(), tail, onsetSec: onset, offsetSec: offset)),
           isNull);
     });
   });
 
   group('CANCELLATION: a fold killed by its timeout leaves nothing behind', () {
-    test('TimeoutException, no value, the caller\'s states and bytes unchanged',
-        () async {
+    test('TimeoutException, no value, the checkpoint bytes unchanged', () async {
       final s = decodeDayResumeState(blob)!;
       final tail = resumedTail(s);
-      final rrBefore = _rrBytes(s.rr);
-      final curvesBefore = _curveBytes(s.curves);
-      final input =
-          _input(s.rr, s.curves, tail, onsetSec: onset, offsetSec: offset);
-      final sentRr = Uint8List.fromList(input.rrState);
-      final sentCurves = Uint8List.fromList(input.curvesState);
+      final stored = Uint8List.fromList(blob);
+      final input = _input(stored, tail, onsetSec: onset, offsetSec: offset);
 
-      // 1 ms cannot cover starting the isolate, decoding two multi-hour states
-      // and folding the tail: the fold is killed mid-way, as the engine's
-      // per-day timeout kills it on a throttled background wake.
+      // 1 ms cannot cover starting the isolate, decoding a multi-hour
+      // checkpoint and folding the tail: the fold is killed mid-way, as the
+      // engine's per-day timeout kills it on a throttled background wake.
       await expectLater(
         _viaWorker(input, timeout: const Duration(milliseconds: 1)),
         throwsA(isA<TimeoutException>()),
       );
       await Future<void>.delayed(const Duration(milliseconds: 100));
 
-      expect(_rrBytes(s.rr), rrBefore,
-          reason: 'the worker folded its own copy, never the caller\'s');
-      expect(_curveBytes(s.curves), curvesBefore);
-      expect(input.rrState, sentRr);
-      expect(input.curvesState, sentCurves);
+      expect(stored, blob, reason: 'the worker folded its own copy');
 
       // And the very same input folds fine afterwards: nothing was consumed.
       final again = await _viaWorker(input);

@@ -406,7 +406,8 @@ class _InvestigateState extends State<Investigate> {
           return l?.investigatePrvWhyArtifact(
                   pct(beats['artifact_fraction']), pct(th['max_artifact'])) ??
               'Too much artifact: ${pct(beats['artifact_fraction'])} of beats '
-                  'rejected, ${pct(th['max_artifact'])} allowed';
+                  'classified as artifacts (corrected or dropped), '
+                  '${pct(th['max_artifact'])} allowed';
         case 'no_successive_pairs':
           return l?.investigatePrvWhyNoPairs ??
               'No successive usable beats to compare';
@@ -451,7 +452,8 @@ class _InvestigateState extends State<Investigate> {
         (l?.investigatePrvBeatsAnalysed(scope) ?? 'Beats analysed, $scope',
             n(beats['nn_kept'])),
         (l?.investigatePrvArtifactShare(scope) ??
-            'Share of beats rejected by cleaning, $scope',
+            'Share of beats classified as artifacts (corrected or dropped), '
+                '$scope',
             pct(beats['artifact_fraction'])),
         ...extra,
         (l?.investigatePrvWindowsTotal(scope) ?? 'Windows, all, $scope',
@@ -487,13 +489,22 @@ class _InvestigateState extends State<Investigate> {
                 : '—'),
       ]),
     ];
-    if (all.every((r) => r.$2 == '—')) return const [];
+    final hasEvidence = !all.every((r) => r.$2 == '—');
+    // A day from before the diagnostics (v103) holds a verdict and no evidence,
+    // and cannot gain any (its raw rows are pruned): the log still exports what
+    // it has and says "not recorded" for the rest.
+    final screen24h = d.heart['irregular_24h'];
+    final hasVerdict = sleepPlain['flag'] != null ||
+        (screen24h is Map && screen24h['value'] is Map);
+    if (!hasEvidence && !hasVerdict) return const [];
     return [
       const SizedBox(height: S.x3),
-      MonoTable(
-          l?.investigatePrvEvidenceTitle ?? 'Irregular-rhythm screen evidence',
-          all),
-      const SizedBox(height: S.x2),
+      if (hasEvidence)
+        MonoTable(
+            l?.investigatePrvEvidenceTitle ??
+                'Irregular-rhythm screen evidence',
+            all),
+      if (hasEvidence) const SizedBox(height: S.x2),
       _prvExportRow(c, d),
     ];
   }

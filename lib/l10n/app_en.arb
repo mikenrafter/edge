@@ -13968,9 +13968,9 @@
       }
     }
   },
-  "investigatePrvArtifactShare": "Share of beats rejected by cleaning, {scope}",
+  "investigatePrvArtifactShare": "Share of beats classified as artifacts (corrected or dropped), {scope}",
   "@investigatePrvArtifactShare": {
-    "description": "Design 04 PRV diagnostics: Share of beats rejected by cleaning, {scope}",
+    "description": "Design 04 PRV diagnostics: Share of beats classified as artifacts (corrected or dropped), {scope}",
     "placeholders": {
       "scope": {
         "type": "String"
@@ -14074,9 +14074,9 @@
       }
     }
   },
-  "investigatePrvWhyArtifact": "Too much artifact: {seen} of beats rejected, {allowed} allowed",
+  "investigatePrvWhyArtifact": "Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
   "@investigatePrvWhyArtifact": {
-    "description": "Design 04 PRV diagnostics: Too much artifact: {seen} of beats rejected, {allowed} allowed",
+    "description": "Design 04 PRV diagnostics: Too much artifact: {seen} of beats classified as artifacts (corrected or dropped), {allowed} allowed",
     "placeholders": {
       "seen": {
         "type": "String"

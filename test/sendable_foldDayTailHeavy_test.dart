@@ -3,7 +3,7 @@
 // entry whose result carries `Map<String, dynamic>` JSON envelopes is outside
 // the closed grammar and owes a real Isolate.run round trip).
 //
-// Pins: `DayTailInput` (state bytes + the tail) crosses into a worker and
+// Pins: `DayTailInput` (the stored checkpoint blob + the tail) crosses into a worker and
 // `DayTailResult` (the persisted irregular-screen envelope with its PRV
 // diagnostics, the curves, the daytime HRV, the tail) comes back, intact in both
 // directions, and the worker answers with what the same call on this isolate
@@ -11,28 +11,20 @@
 
 import 'dart:convert';
 import 'dart:isolate';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/compute/day_curve_states.dart';
-import 'package:openstrap_edge/compute/day_rr_state.dart';
+import 'package:openstrap_edge/compute/day_resume_state.dart';
 import 'package:openstrap_edge/compute/day_tail_fold.dart';
-import 'package:openstrap_edge/compute/resume_bytes.dart';
 import 'package:openstrap_edge/util/worker_init.dart';
 
 import 'guards/support/sendability.dart';
 
 const _inputs = WorkerInputs(nowEpochMs: 1760000000000, zoneId: 'UTC', localeTag: 'en');
 
-Uint8List _empty(void Function(ResumeWriter) write) {
-  final w = ResumeWriter();
-  write(w);
-  return w.takeBytes();
-}
-
 DayTailInput _input() => DayTailInput(
-      rrState: _empty(DayRrState().write),
-      curvesState: _empty(DayCurveStates(cut: 0.02).write),
+      checkpoint:
+          encodeDayResumeState(DayResumeState(curves: DayCurveStates(cut: 0.02))),
       tailRr: const [812.0, 805.0, 790.0],
       tailTs: const [1760000001000.0, 1760000002000.0, 1760000003000.0],
       accTs: const [1760000000, 1760000001, 1760000002, 1760000003],
@@ -44,8 +36,7 @@ DayTailInput _input() => DayTailInput(
     );
 
 Object? _inputShape(DayTailInput i) => [
-      i.rrState,
-      i.curvesState,
+      i.checkpoint,
       i.tailRr,
       i.tailTs,
       i.accTs,

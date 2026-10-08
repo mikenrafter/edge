@@ -2,27 +2,28 @@
 // worker (design 02). Replaces the inline closure `DerivationEngine._foldTail`
 // handed to `_runIsolateCancellable`, which was not a registered entry.
 //
-// The states cross as their resume bytes (`ResumeWriter`), so the worker folds
-// its own decoded copies: the caller's objects are never touched and a fold
-// killed by the dispatcher's timeout leaves nothing behind.
+// The worker is handed the STORED checkpoint blob (the bytes the engine already
+// holds: the resumed state was decoded from them and its streaming parts are
+// never changed in the calling isolate) and decodes it itself. Nothing O(data)
+// is serialised on the calling isolate (AGENTS 3.10; test/day_tail_fold_no_ui_
+// serialise_test.dart). The worker folds its own decoded copies, so the caller's
+// state is never touched and a fold killed by the dispatcher's timeout leaves
+// nothing behind.
 
 import 'dart:typed_data';
 
-import 'day_curve_states.dart';
-import 'resume_bytes.dart';
-import 'day_rr_state.dart';
+import 'day_resume_state.dart';
 import '../util/heavy.dart';
 import '../util/worker_audit.dart';
 import '../util/worker_init.dart';
 
-/// What [foldDayTailHeavy] reads: the checkpoint's streaming states as their
-/// resume bytes (the worker advances its own decoded copies; the caller's
-/// objects are never touched) and the tail the states are advanced over.
+/// What [foldDayTailHeavy] reads: the stored day checkpoint blob (its streaming
+/// RR state and day curves are the states to advance) and the tail they are
+/// advanced over.
 @sendable
 class DayTailInput {
   const DayTailInput({
-    required this.rrState,
-    required this.curvesState,
+    required this.checkpoint,
     required this.tailRr,
     required this.tailTs,
     required this.accTs,
@@ -33,42 +34,9 @@ class DayTailInput {
     required this.offsetSec,
   });
 
-  /// Packs [rr] and [curves] (their resume bytes) with the tail.
-  factory DayTailInput.fromStates({
-    required DayRrState rr,
-    required DayCurveStates curves,
-    required List<double> tailRr,
-    required List<double> tailTs,
-    required List<int> accTs,
-    required List<double> ax,
-    required List<double> ay,
-    required List<double> az,
-    required int onsetSec,
-    required int offsetSec,
-  }) {
-    final rrW = ResumeWriter();
-    rr.write(rrW);
-    final curvesW = ResumeWriter();
-    curves.write(curvesW);
-    return DayTailInput(
-      rrState: rrW.takeBytes(),
-      curvesState: curvesW.takeBytes(),
-      tailRr: tailRr,
-      tailTs: tailTs,
-      accTs: accTs,
-      ax: ax,
-      ay: ay,
-      az: az,
-      onsetSec: onsetSec,
-      offsetSec: offsetSec,
-    );
-  }
-
-  /// `DayRrState.write` bytes.
-  final Uint8List rrState;
-
-  /// `DayCurveStates.write` bytes.
-  final Uint8List curvesState;
+  /// The stored `DayCheckpoint.state` the resumed pass was decoded from
+  /// (`encodeDayResumeState` bytes), exactly as stored.
+  final Uint8List checkpoint;
 
   /// Beats after the checkpoint: interval (ms) and stamp (epoch ms).
   final List<double> tailRr;
@@ -117,15 +85,10 @@ DayTailResult? foldDayTailHeavy(WorkerInputs inputs, DayTailInput input) {
   WorkerInit.ensure(inputs);
   assertWorker();
   WorkerAudit.entered('foldDayTailHeavy');
-  final DayRrState rr;
-  final DayCurveStates curves;
-  try {
-    rr = DayRrState.read(ResumeReader(input.rrState));
-    curves = DayCurveStates.read(ResumeReader(input.curvesState));
-  } on FormatException {
-    // Never half read: the caller reads the day's whole beats instead.
-    return null;
-  }
+  // Never half read: an unreadable blob is the caller's full pass.
+  final state = decodeDayResumeState(input.checkpoint);
+  if (state == null) return null;
+  final rr = state.rr, curves = state.curves;
   final (tailRr, tailTs, accTs) = (input.tailRr, input.tailTs, input.accTs);
   // The first beats of a day, whose rows went with the pass before.
   if (!curves.continuesWith(tailTs, accTs)) return null;
