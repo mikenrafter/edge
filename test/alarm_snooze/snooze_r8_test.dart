@@ -24,6 +24,9 @@ import 'snooze_band_rig.dart';
 import 'snooze_r3_support.dart';
 import 'snooze_r4_support.dart';
 
+/// Fixed: nothing here reads the system clock.
+final DateTime _start = DateTime(2026, 10, 7, 6, 0, 0);
+
 void main() {
   snoozeSuiteSetup('openstrap_snooze_r8_test.db');
 
@@ -34,7 +37,7 @@ void main() {
 
   /// An alarm armed 30 s from now.
   Future<void> open({bool? snooze = true}) async {
-    rig = await SnoozeBandRig.open(snooze: snooze);
+    rig = await SnoozeBandRig.open(snooze: snooze, start: _start);
     t0 = rig.clock.now.add(kSec * 30);
     rig.engine.state.alarmEpoch = secOf(t0);
   }
@@ -71,7 +74,9 @@ void main() {
       var heard = false;
       for (var i = 0; i < 100 && !heard; i++) {
         heard = await storedState() != null;
-        if (!heard) await Future<void>.delayed(const Duration(milliseconds: 50));
+        if (!heard) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
       }
       expect(heard, isTrue, reason: 'the stop was heard');
 
@@ -102,9 +107,9 @@ void main() {
       expect(hapticWrites(rig), greaterThan(0));
     });
 
-    test('before T-10 s a cue plays at once (control)', () async {
+    test('well before T-10 s a cue plays at once (control)', () async {
       await open();
-      rig.clock.at(t0.subtract(kSec * 15));
+      rig.clock.at(t0.subtract(kSec * 30));
       await tick();
       final cue = requestCue();
       expect(await cue.timeout(const Duration(seconds: 20)),
@@ -148,7 +153,7 @@ void main() {
     });
 
     test('no alarm armed: no window', () async {
-      rig = await SnoozeBandRig.open();
+      rig = await SnoozeBandRig.open(start: _start);
       rig.engine.state.alarmEpoch = null;
       await tick();
       final cue = requestCue();
@@ -159,7 +164,7 @@ void main() {
 
   group('attribution: the first valid termination stamped at or after F', () {
     Future<void> openFired() async {
-      rig = await SnoozeBandRig.open();
+      rig = await SnoozeBandRig.open(start: _start);
       t0 = rig.clock.now;
       await rig.fire(stamp: t0);
     }
@@ -217,7 +222,7 @@ void main() {
 
     test('(d) unset strap clock on the fire: receipt time; an old stamp is '
         'not "before F"', () async {
-      rig = await SnoozeBandRig.open();
+      rig = await SnoozeBandRig.open(start: _start);
       t0 = rig.clock.now;
       await rig.fire(stamp: kUnsetStrap);
       rig.clock.advance(kSec * 8);

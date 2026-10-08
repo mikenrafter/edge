@@ -51,6 +51,7 @@ class HapticsService {
     void Function(String line)? log,
     BandCommandLedger? ledger,
     int Function()? commandLimit,
+    DateTime Function()? planningNow,
   })  : _allowLong = allowLong,
         _now = now ?? (() => clock.now()),
         ledger = ledger ?? BandCommandLedger(limit: commandLimit) {
@@ -61,6 +62,7 @@ class HapticsService {
       log: log,
       minGap: () => Duration(milliseconds: profile?.minVibrationGapMs ?? 0),
       onBusyChanged: (b) => onBusyChanged?.call(b),
+      planningNow: planningNow,
     );
   }
 
@@ -257,6 +259,7 @@ class HapticsService {
   void beginQuiet() => _queue.beginQuiet();
   void endQuiet() => _queue.endQuiet();
   bool get quietOpen => _queue.quietOpen;
+  void expectQuiet(DateTime? startsAt) => _queue.expectQuiet(startsAt);
 
   Future<bool> runLab(Future<void> Function() body) => _queue.runLab(body);
 

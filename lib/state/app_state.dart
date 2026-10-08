@@ -725,6 +725,7 @@ class AppState extends ChangeNotifier {
         allowLong: () => Prefs.allowLongHaptics,
         commandLimit: () => Prefs.hapticCommandLimit,
         log: _log,
+        planningNow: _wakeNow,
       ));
   HapticsService? _hapticsForTesting;
 
@@ -2495,8 +2496,7 @@ class AppState extends ChangeNotifier {
     _sync.dispose();
     _alarmGraceTimer?.cancel();
     _alarmGraceTimer = null;
-    _quietTimer?.cancel();
-    _quietTimer = null;
+    _closeQuietWindow(done: false);
     wake.dispose();
     _wakeOrchestrator.dispose(); // ends any Natural repeat
     _snooze?.status.removeListener(_onSnoozeStatus);
@@ -3486,6 +3486,7 @@ class AppState extends ChangeNotifier {
     await LocalDb.refreshComputeFreshness();
     final alarmPrefs = await SharedPreferences.getInstance();
     _savedAlarm = alarmPrefs.getInt('alarm_epoch');
+    _syncQuietWindow(); // a restart inside the window: the alarm is known now
     // Seed the confirmation machine from what the last session (foreground OR
     // headless — background_sync.dart writes the same two keys) actually
     // learned, so a relaunch doesn't forget a confirmed headless arm and
@@ -4769,6 +4770,10 @@ class AppState extends ChangeNotifier {
     // structurally blank for everyone who paired once, and every per-family
     // metric abstains for a reason that is our bookkeeping, not the band's.
     // Change-gated: this handler fires ~1 Hz during live HR.
+    if (s.connection != _quietSeenConnection) {
+      _quietSeenConnection = s.connection;
+      _syncQuietWindow(); // a link that came back inside the window
+    }
     if (s.generation != null && s.generation != _lastSeenGeneration) {
       _lastSeenGeneration = s.generation;
       unawaited(LocalDb.upsertDevice(adapterId: s.generation));
@@ -5386,6 +5391,7 @@ class AppState extends ChangeNotifier {
       final onDisk = prefs.getInt('alarm_epoch');
       if (onDisk != _savedAlarm) {
         _savedAlarm = onDisk;
+        _syncQuietWindow();
         if (onDisk != null) {
           _alarm.set(onDisk, DateTime.now().millisecondsSinceEpoch);
           _alarm.confirmed = prefs.getBool('alarm_epoch_confirmed') ?? false;
@@ -5688,38 +5694,88 @@ class AppState extends ChangeNotifier {
   int? _quietDoneEpoch;
   Timer? _quietTimer;
 
+  /// Monotonic elapsed time (wall-clock changes do not move it). Tests only.
+  @visibleForTesting
+  Duration Function() debugMonotonic = () => _realMonotonic.elapsed;
+  static final Stopwatch _realMonotonic = Stopwatch()..start();
+
+  /// Monotonic reading at which the open window began, and the length planned
+  /// for it then.
+  Duration _quietMonoAt = Duration.zero;
+  Duration _quietPlanned = Duration.zero;
+  DateTime? _quietExpectedAt;
+  String? _quietSeenConnection;
+
+  /// Slack on top of the planned length before the monotonic bound closes it.
+  static const Duration kQuietSlack = Duration(seconds: 2);
+
+  /// Tells the band queue when the next window opens (null: none), so a plain
+  /// job that could still be playing then waits. Only on change.
+  void _expectQuiet(DateTime? at) {
+    if (at == _quietExpectedAt) return;
+    _quietExpectedAt = at;
+    haptics.expectQuiet(at);
+  }
+
   /// Opens, keeps or closes the window as the clock, the armed alarm and the
-  /// snooze switch say, and sets a timer for its next edge. Idempotent.
+  /// snooze switch say, and sets a timer for its next edge. Idempotent. An
+  /// open window never outlives its planned length in MONOTONIC time, and
+  /// closes when the wall clock leaves [T - lead, T + duration + trail]
+  /// (a clock set back must not keep a hold).
   void _syncQuietWindow() {
     if (_disposed) return;
     _quietTimer?.cancel();
     _quietTimer = null;
     if (!_snoozeOn) {
       _closeQuietWindow(done: false);
+      _expectQuiet(null);
       return;
     }
-    final epoch = _quietEpoch ?? alarmEpoch;
-    if (epoch == null || epoch == _quietDoneEpoch) return;
-    final t = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
     final now = _wakeNow();
+    final open = _quietEpoch;
+    final epoch = open ?? alarmEpoch;
+    if (epoch == null || epoch == _quietDoneEpoch) {
+      _expectQuiet(null);
+      return;
+    }
+    final t = DateTime.fromMillisecondsSinceEpoch(epoch * 1000);
     final start = t.subtract(kQuietLead);
     final end = t.add(kNativeAlarmDuration + kQuietTrail);
+    if (open != null) {
+      final elapsed = debugMonotonic() - _quietMonoAt;
+      if (!now.isBefore(end) || elapsed >= _quietPlanned + kQuietSlack) {
+        _closeQuietWindow(); // ran its length (either clock): over
+        _expectQuiet(null);
+        return;
+      }
+      if (now.isBefore(start)) {
+        _closeQuietWindow(done: false); // the clock went back: not open now
+      } else {
+        final byWall = end.difference(now);
+        final byMono = _quietPlanned + kQuietSlack - elapsed;
+        _quietTimer = Timer(byWall < byMono ? byWall : byMono, _syncQuietWindow);
+        return;
+      }
+    }
     if (now.isBefore(start)) {
+      _expectQuiet(start);
       _quietTimer = Timer(start.difference(now), _syncQuietWindow);
       return;
     }
     if (!now.isBefore(end)) {
-      _quietEpoch = epoch;
-      _closeQuietWindow();
+      _quietDoneEpoch = epoch;
+      _expectQuiet(null);
       return;
     }
-    if (_quietEpoch == null) {
-      _quietEpoch = epoch;
-      haptics.beginQuiet();
-      _log('[snooze] quiet window opened for the alarm at '
-          '${t.toIso8601String()}: app patterns wait.');
-    }
-    _quietTimer = Timer(end.difference(now), _syncQuietWindow);
+    _quietExpectedAt = null; // beginQuiet clears the queue's expectation itself:
+    // withdrawing it first would let a waiting job start before the hold
+    _quietEpoch = epoch;
+    _quietMonoAt = debugMonotonic();
+    _quietPlanned = end.difference(now);
+    haptics.beginQuiet();
+    _log('[snooze] quiet window opened for the alarm at '
+        '${t.toIso8601String()}: app patterns wait.');
+    _quietTimer = Timer(_quietPlanned + kQuietSlack, _syncQuietWindow);
   }
 
   /// Ends the window (the native stop was handled, it ran out, snooze went
@@ -6137,7 +6193,12 @@ class AppState extends ChangeNotifier {
     }
     _consumedFireAt = fired;
     _alarmClockUnset = unset;
-    _closeQuietWindow(); // the native stop is handled: our patterns may play
+    // The native stop is handled: our patterns may play. Whether or not the
+    // window had opened yet, this alarm's is over.
+    final qe = _quietEpoch ?? alarmEpoch;
+    if (qe != null) _quietDoneEpoch = qe;
+    _closeQuietWindow();
+    _expectQuiet(null);
     await snooze.onAlarmStopped(parsed, at: stop, fire: fire);
     if (snooze.status.value.phase == SnoozePhase.idle) {
       // Confirmed awake (or ended at once): nothing is pending any more.

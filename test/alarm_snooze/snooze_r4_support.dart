@@ -22,13 +22,12 @@ Future<void> switchSnoozeOff(SnoozeBandRig rig) => rig.app.setSnoozeSettings(
     SnoozeSettings.fromJson(
         {...rig.app.snoozeSettings.toJson(), 'enabled': false}));
 
-/// Polls (real time) until [cond] holds; false on timeout.
-Future<bool> until(bool Function() cond,
-    {Duration timeout = const Duration(seconds: 5)}) async {
-  final end = DateTime.now().add(timeout);
-  while (!cond()) {
-    if (DateTime.now().isAfter(end)) return false;
+/// Polls (event-loop turns, no clock reads) until [cond] holds; false after
+/// [turns] polls.
+Future<bool> until(bool Function() cond, {int turns = 500}) async {
+  for (var i = 0; i < turns; i++) {
+    if (cond()) return true;
     await Future<void>.delayed(const Duration(milliseconds: 10));
   }
-  return true;
+  return cond();
 }

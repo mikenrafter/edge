@@ -401,6 +401,10 @@ class _Job {
 
   /// True while the open lab keeps this job from starting.
   bool held = false;
+
+  /// True once the open LAB held this job: only then does the alert's own
+  /// freshness rule drop it on release. A quiet window never drops anything.
+  bool heldByLab = false;
   bool wasHeld = false;
 
   /// True once the job found no room in the window and had to wait for it.
@@ -425,7 +429,13 @@ class BandHapticQueue {
     this.log,
     this.minGap,
     this.onBusyChanged,
-  });
+    DateTime Function()? planningNow,
+  }) : _planningNow = planningNow;
+
+  /// The clock the quiet-window expectation ([expectQuiet]) is read against:
+  /// the app's wake clock (an injected one in tests), else the package clock.
+  final DateTime Function()? _planningNow;
+  DateTime _planNow() => _planningNow?.call() ?? clock.now();
 
   final BandCommandLedger ledger;
 
@@ -506,6 +516,7 @@ class BandHapticQueue {
       if (j.gesture != null) {
         _drop(j, why: 'could not play now (the lab opened)');
       } else {
+        j.heldByLab = true;
         _hold(j);
       }
     }
@@ -529,6 +540,7 @@ class BandHapticQueue {
   void beginQuiet() {
     _quiet++;
     if (_quiet != 1) return;
+    _quietAhead = null; // it is open now
     final held = _waiting.where(_quietHolds).toList();
     log?.call('Band queue: quiet window open, holding ${held.length} alerts');
     held.forEach(_hold);
@@ -545,6 +557,35 @@ class BandHapticQueue {
   /// True while a quiet window is open.
   bool get quietOpen => _quiet > 0;
 
+  /// A quiet window will open at [startsAt] (null: none is expected). Until
+  /// then a plain job that could still be playing at that moment, by its
+  /// planned end (its timeout, its settle and the write grace after now), is
+  /// HELD: it would otherwise play across the native alarm. Held, not dropped:
+  /// it goes when the window ends, or when the expectation is withdrawn.
+  void expectQuiet(DateTime? startsAt) {
+    if (startsAt == _quietAhead) return;
+    final withdrawn =
+        startsAt == null || (_quietAhead != null && startsAt.isAfter(_quietAhead!));
+    _quietAhead = startsAt;
+    if (withdrawn) {
+      _releaseHeld('quiet window no longer expected');
+    } else {
+      _pump();
+    }
+  }
+
+  DateTime? _quietAhead;
+
+  /// A plain job that would still be running when the expected window opens.
+  bool _deferred(_Job j) {
+    final ahead = _quietAhead;
+    final limit = j.timeout;
+    if (ahead == null || _quiet > 0 || limit == null || !_quietHolds(j)) {
+      return false;
+    }
+    return _planNow().add(limit + j.settle + kBandWriteGrace).isAfter(ahead);
+  }
+
   bool _quietHolds(_Job j) => !j.lab && !j.alarm && j.gesture == null;
 
   /// Releases every held job nothing holds any more: they start their wait
@@ -554,7 +595,8 @@ class BandHapticQueue {
         .where((j) =>
             j.held &&
             !(_labs > 0 && !j.lab) &&
-            !(_quiet > 0 && _quietHolds(j)))
+            !(_quiet > 0 && _quietHolds(j)) &&
+            !_deferred(j))
         .toList();
     log?.call('Band queue: $why, releasing ${held.length} alerts');
     for (final j in held) {
@@ -763,6 +805,7 @@ class BandHapticQueue {
       _waiting.add(j);
     }
     if (labOpen && !lab || quietOpen && _quietHolds(j)) {
+      j.heldByLab = labOpen && !lab;
       _hold(j);
     } else if (j.expires) {
       j.expiry = Timer(startBy, () => _expire(j));
@@ -801,6 +844,7 @@ class BandHapticQueue {
         _drop(j, why: 'was no longer wanted');
         continue;
       }
+      if (!j.held && _deferred(j)) _hold(j); // could play across the window
       // Lab jobs sit first; a held job means the lab is open and no lab job is
       // waiting: the band stays idle for the lab.
       if (j.held) {
@@ -808,7 +852,7 @@ class BandHapticQueue {
         i++; // only a quiet window holds it: alarm and gesture jobs go on
         continue;
       }
-      if (j.wasHeld && (j.hold?.isStale?.call() ?? false)) {
+      if (j.heldByLab && (j.hold?.isStale?.call() ?? false)) {
         // Held through the lab and out of date by now: the alert's own rule
         // says it is no longer worth playing.
         _drop(j, why: 'went stale while the lab was open');
