@@ -47,6 +47,14 @@ class AmbiguousMarkException implements Exception {
   String toString() => 'AmbiguousMarkException: $momentKey happened twice';
 }
 
+/// Thrown by an `onProgress` callback when the progress it was handed could not
+/// be stored: Save stops that range before its next write and reports it.
+class ProgressNotPersistedException implements Exception {
+  const ProgressNotPersistedException();
+  @override
+  String toString() => 'ProgressNotPersistedException';
+}
+
 /// Thrown by an `onProgress` callback to say the range was withdrawn (undone)
 /// while Save was still checking it: nothing more is written for it, and it is
 /// neither applied nor failed.
@@ -132,6 +140,8 @@ class MomentReviewApplier {
               try {
                 await onProgress?.call(next);
               } on RangeWithdrawnException {
+                rethrow;
+              } on ProgressNotPersistedException {
                 rethrow;
               } catch (_) {/* progress is best effort; the report has it too */}
             }),
@@ -267,6 +277,11 @@ class MomentReviewApplier {
       // The attempt is recorded BEFORE the write, so a crash in between leaves
       // a trace the next Save can recognise as its own.
       await step(cur.copyWith(attempting: true));
+      // Looked at once more, right before the write: nothing may have been
+      // answered while the checks and the recording above were in flight.
+      if (await writer.isAnswered(s) || await writer.isAnswered(e)) {
+        return const _Done.already();
+      }
       if (nap) {
         await ranges.logNap(
             dayId: dayLabelOf(start), startSec: startSec, endSec: endSec);
@@ -288,7 +303,19 @@ class MomentReviewApplier {
     Future<void> label(PendingMoment? m, bool done, bool isStart) async {
       if (done) return;
       if (m == null) {
-        conflict = true;
+        // Not listed any more. If it carries OUR label, a cut-off Save answered
+        // it just before it could record that: take it as done. Anything else
+        // is somebody else's answer.
+        final key = isStart ? r.startKey : r.endKey;
+        final sp = key.split(' ');
+        final mine = await writer.labelOf(sp.first, sp.last) == r.choice.id;
+        if (mine) {
+          await step(isStart
+              ? cur.copyWith(startLabelled: true)
+              : cur.copyWith(endLabelled: true));
+        } else {
+          conflict = true;
+        }
         return;
       }
       final res = await writer.answer(m, r.choice, now: now);

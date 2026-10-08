@@ -2504,5 +2504,7 @@
   "momentReviewPersistFailed": "Impossible de conserver vos choix sur ce téléphone. Ils sont gardés tant que l'app est ouverte, mais peuvent être perdus si elle se ferme.",
   "momentReviewAmountInvalid": "Saisissez un nombre supérieur à 0 (dans la plage habituelle) ou laissez vide.",
   "momentReviewAmbiguous": "Cette heure est survenue deux fois au retour à l'heure d'hiver : elle ne peut pas être associée à un autre repère.",
-  "momentReviewResume": "Enregistré jusqu'ici. Appuyez sur Enregistrer pour terminer cette paire."
+  "momentReviewResume": "Enregistré jusqu'ici. Appuyez sur Enregistrer pour terminer cette paire.",
+  "momentReviewProgressNotSaved": "Impossible d'enregistrer l'avancement de cette paire : elle a été arrêtée. Appuyez sur Enregistrer pour réessayer.",
+  "settingsTaskerMomentExportSaveFailed": "Impossible d'enregistrer ce changement. Le bouton montre ce qui est enregistré."
 }

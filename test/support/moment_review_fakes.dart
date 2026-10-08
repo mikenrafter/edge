@@ -55,6 +55,12 @@ class FakeAnswerWriter extends MomentAnswerWriter {
   Future<bool> isAnswered(PendingMoment m) async =>
       already.contains(m.key) || answeredNow.contains(m.key);
 
+  /// Key -> label id of what this fake stored.
+  final labels = <String, String>{};
+
+  @override
+  Future<String?> labelOf(String date, String hhmm) async => labels['$date $hhmm'];
+
   final answers = <({String key, MomentChoice choice, double? value, String? note})>[];
   final skips = <String>[];
   final symptoms = <String>[];
@@ -71,7 +77,10 @@ class FakeAnswerWriter extends MomentAnswerWriter {
       {double? value, String? note, DateTime? now}) async {
     log.entries.add('answer:${m.key}:${choice.id}');
     final r = _res(m);
-    if (r == MomentAnswerResult.saved) answeredNow.add(m.key);
+    if (r == MomentAnswerResult.saved) {
+      answeredNow.add(m.key);
+      labels[m.key] = choice.id;
+    }
     answers.add((key: m.key, choice: choice, value: value, note: note));
     return r;
   }

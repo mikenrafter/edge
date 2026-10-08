@@ -2533,5 +2533,7 @@
   "momentReviewPersistFailed": "No se pudieron guardar tus elecciones en este teléfono. Se conservan mientras la app esté abierta, pero pueden perderse si se cierra.",
   "momentReviewAmountInvalid": "Escribe un número mayor que 0 (dentro del rango habitual) o déjalo vacío.",
   "momentReviewAmbiguous": "Esta hora ocurrió dos veces al retrasar el reloj, así que no se puede emparejar con otra marca.",
-  "momentReviewResume": "Guardado hasta ahora. Pulsa Guardar para terminar este par."
+  "momentReviewResume": "Guardado hasta ahora. Pulsa Guardar para terminar este par.",
+  "momentReviewProgressNotSaved": "No se pudo registrar el avance de este par, así que se detuvo. Pulsa Guardar para intentarlo de nuevo.",
+  "settingsTaskerMomentExportSaveFailed": "No se pudo guardar ese cambio. El interruptor muestra lo que está guardado."
 }

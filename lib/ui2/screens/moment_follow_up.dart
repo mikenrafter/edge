@@ -137,7 +137,10 @@ class _HomeMomentCardState extends State<_HomeMomentCard> {
       final g = widget.settings;
       final since = g.followUpMoments ? g.followUpMomentsSince : null;
       final f = await MomentFollowUps.load(enabledSince: since);
-      final n = f.pendingCount(DateTime.now());
+      // A started range with only its announcement left has no pending mark,
+      // but is still waiting for Save: it counts too.
+      final review = MomentReviewService.shared..reload();
+      final n = f.reviewCount(DateTime.now(), review.queue);
       if (mounted && n != _count) setState(() => _count = n);
     } catch (_) {
       // A read that failed shows no card; it does not claim there is nothing
@@ -397,12 +400,16 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     if (saved != true || !mounted || _busy) return;
     setState(() => _busy = true);
     try {
-      await widget.writer.answer(m, MomentChoice.workout, now: now);
+      // Through the queue owner, in its one critical section with Saves.
+      await _svc.answerDirect(
+          m, () => widget.writer.answer(m, MomentChoice.workout, now: now));
       if (!mounted) return;
       _open.remove(m.key);
       _items?.removeWhere((x) => x.key == m.key);
-      _edit((q) => q.without(ReviewKey.moment(m)),
-          touched: [ReviewKey.moment(m)]);
+      setState(() {
+        _itemErrors.remove(ReviewKey.moment(m));
+        _pairErrors.remove(m.key);
+      });
     } catch (_) {
       if (!mounted) return;
       final l = AppLocalizations.of(context);
@@ -554,6 +561,11 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     if (error is ManualWindowException) {
       return _rangeMessage(l, c ?? MomentChoice.nap, error.error);
     }
+    if (error is ProgressNotPersistedException) {
+      return l?.momentReviewProgressNotSaved ??
+          'Could not record progress on this pair, so it was stopped. Press '
+              'Save to try again.';
+    }
     if (error is AmbiguousMarkException) {
       return l?.momentReviewAmbiguous ??
           'This time came round twice when the clocks went back, so it cannot '
@@ -618,7 +630,11 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
     final p = P.of(c);
     final l = AppLocalizations.of(c);
     final items = _items;
-    final nothingLeft = items != null && items.isEmpty && _glasses.isEmpty;
+    final orphans = items == null
+        ? const <ReviewRange>[]
+        : _queue.orphanRanges({for (final m in items) m.key});
+    final nothingLeft =
+        items != null && items.isEmpty && _glasses.isEmpty && orphans.isEmpty;
     final showSave = !_failed && items != null && !nothingLeft;
     final n = _queue.length;
     return Scaffold(
@@ -699,6 +715,20 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
                       _momentRow(c, l, m),
                     const SizedBox(height: S.x3),
                   ],
+                  // Started ranges with nothing left to answer: only their
+                  // announcement is owed. Save is what finishes them.
+                  for (final r in orphans) ...[
+                    _OrphanRangeCard(
+                      key: ValueKey('moment-range-orphan:${r.startKey}|${r.endKey}'),
+                      text: _rangeText(l, r),
+                      note: _itemErrors.containsKey(ReviewKey.range(r))
+                          ? _failureText(
+                              l, _itemErrors[ReviewKey.range(r)], r.choice)
+                          : (l?.momentReviewResume ??
+                              'Saved so far. Press Save to finish this pair.'),
+                    ),
+                    const SizedBox(height: S.x3),
+                  ],
                 ],
               ],
             ),
@@ -751,6 +781,7 @@ class _MomentFollowUpScreenState extends State<MomentFollowUpScreen> {
       amountError: _amountErrors.contains(m.key),
       resumeNote: r != null && r.inProgress && err == null,
       canUndo: r?.inProgress != true,
+      locked: r?.inProgress == true,
       onChoose: (ch) => _choose(m, ch),
       onSave: (ch) => _confirm(m, ch),
       onSkip: () => _queueMoment(m, const ReviewDecision.skip()),
@@ -789,6 +820,7 @@ class _MomentRow extends StatelessWidget {
     required this.amountError,
     required this.resumeNote,
     required this.canUndo,
+    required this.locked,
     required this.onChoose,
     required this.onSave,
     required this.onSkip,
@@ -821,6 +853,10 @@ class _MomentRow extends StatelessWidget {
   /// A started range waiting to be finished (no undo).
   final bool resumeNote;
   final bool canUndo;
+
+  /// The mark belongs to a range Save has started: it is finished as part of
+  /// that range, so its own answer / Skip / pairing controls are inert.
+  final bool locked;
   final ValueChanged<MomentChoice> onChoose, onSave;
   final VoidCallback onSkip, onUndo, onPair, onLogWorkout, onLabelWorkout;
 
@@ -886,7 +922,7 @@ class _MomentRow extends StatelessWidget {
           for (final ch in MomentChoice.values)
             Pressable(
               key: ValueKey('moment-choice:$k:${ch.id}'),
-              onTap: busy ? null : () => onChoose(ch),
+              onTap: busy || locked ? null : () => onChoose(ch),
               child: Pill(ch.localized(l), choice == ch ? C.domMind : C.blue),
             ),
         ]),
@@ -935,20 +971,20 @@ class _MomentRow extends StatelessWidget {
               key: ValueKey('moment-save:$k'),
               icon: LucideIcons.check,
               color: C.domMind,
-              onTap: busy ? null : () => onSave(choice)),
+              onTap: busy || locked ? null : () => onSave(choice)),
         ],
         if (choice == MomentChoice.workout) ...[
           const SizedBox(height: S.x3),
           BigButton(l?.momentFollowUpLogWorkout ?? 'Log a workout at this time',
               key: ValueKey('moment-log-workout:$k'),
               icon: LucideIcons.dumbbell,
-              onTap: busy ? null : onLogWorkout),
+              onTap: busy || locked ? null : onLogWorkout),
           const SizedBox(height: S.x2),
           BigButton(l?.momentFollowUpLabelOnly ?? 'Just label it',
               key: ValueKey('moment-label-only:$k'),
               color: C.blue,
               soft: true,
-              onTap: busy ? null : onLabelWorkout),
+              onTap: busy || locked ? null : onLabelWorkout),
         ],
         if (canPair) ...[
           const SizedBox(height: S.x2),
@@ -957,7 +993,7 @@ class _MomentRow extends StatelessWidget {
               icon: LucideIcons.link,
               color: C.blue,
               soft: true,
-              onTap: busy ? null : onPair),
+              onTap: busy || locked ? null : onPair),
         ],
         if (ambiguousNote)
           Padding(
@@ -980,7 +1016,7 @@ class _MomentRow extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: Pressable(
             key: ValueKey('moment-skip:$k'),
-            onTap: busy ? null : onSkip,
+            onTap: busy || locked ? null : onSkip,
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: S.x2),
               child: Text(l?.momentFollowUpSkip ?? 'Skip',
@@ -988,6 +1024,32 @@ class _MomentRow extends StatelessWidget {
             ),
           ),
         ),
+      ]),
+    );
+  }
+}
+
+/// A started range none of whose marks is left to answer: it shows what it is
+/// and that Save finishes it (the owed announcement, nothing else).
+class _OrphanRangeCard extends StatelessWidget {
+  const _OrphanRangeCard({super.key, required this.text, required this.note});
+  final String text, note;
+
+  @override
+  Widget build(BuildContext c) {
+    final p = P.of(c);
+    return Surface(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(LucideIcons.clock, size: 16, color: p.on(C.domMind)),
+          const SizedBox(width: S.x2),
+          Expanded(
+            child: Text(text,
+                style: F.body.copyWith(color: p.ink, fontWeight: FontWeight.w600)),
+          ),
+        ]),
+        const SizedBox(height: S.x1),
+        Text(note, style: F.cap.copyWith(color: p.ink2)),
       ]),
     );
   }

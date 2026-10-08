@@ -2142,7 +2142,11 @@ class _EditProfileViewState extends State<EditProfileView> {
 // ships carries facts about the SYNC and no metric at all.
 
 class AutomationSettings extends StatefulWidget {
-  const AutomationSettings({super.key});
+  const AutomationSettings({super.key, this.setBoolAcked});
+
+  /// The acknowledged boolean write for the consent switch; null is
+  /// `Prefs.setBoolAcked`. Tests inject a refusing one.
+  final Future<bool> Function(String key, bool value)? setBoolAcked;
 
   @override
   State<AutomationSettings> createState() => _AutomationSettingsState();
@@ -2153,6 +2157,7 @@ class _AutomationSettingsState extends State<AutomationSettings> {
   bool _copied = false;
   bool _taskerOn = Prefs.taskerConnectionOn;
   bool _momentExportOn = Prefs.taskerMomentExportOn;
+  bool _momentExportError = false;
 
   @override
   void initState() {
@@ -2174,9 +2179,20 @@ class _AutomationSettingsState extends State<AutomationSettings> {
     setState(() => _taskerOn = on);
   }
 
-  void _setMomentExportOn(bool on) {
-    Prefs.setBool(Prefs.taskerMomentExport, on);
-    setState(() => _momentExportOn = on);
+  /// Consent is a durable choice: it is changed with the acknowledged write.
+  /// If the platform refuses, the cache is put back to what is actually stored
+  /// and the switch shows that, with a message. A failed switch-OFF must never
+  /// look like it worked: after a restart consent would be back ON.
+  Future<void> _setMomentExportOn(bool on) async {
+    final was = _momentExportOn;
+    final ok =
+        await (widget.setBoolAcked ?? Prefs.setBoolAcked)(Prefs.taskerMomentExport, on);
+    if (!ok) Prefs.setBool(Prefs.taskerMomentExport, was);
+    if (!mounted) return;
+    setState(() {
+      _momentExportOn = ok ? on : was;
+      _momentExportError = !ok;
+    });
   }
 
   @override
@@ -2187,7 +2203,8 @@ class _AutomationSettingsState extends State<AutomationSettings> {
       taskerOn: _taskerOn,
       onTaskerOn: _setTaskerOn,
       momentExportOn: _momentExportOn,
-      onMomentExportOn: _setMomentExportOn);
+      onMomentExportOn: _setMomentExportOn,
+      momentExportError: _momentExportError);
 }
 
 /// The Automation screen without its token fetch, so it can be pumped headless.
@@ -2201,7 +2218,8 @@ class AutomationSettingsView extends StatelessWidget {
       this.taskerOn = true,
       this.onTaskerOn,
       this.momentExportOn = false,
-      this.onMomentExportOn});
+      this.onMomentExportOn,
+      this.momentExportError = false});
   final String? token;
   final bool copied;
   final VoidCallback? onCopy;
@@ -2218,6 +2236,9 @@ class AutomationSettingsView extends StatelessWidget {
   /// off, like the other Tasker rows.
   final bool momentExportOn;
   final ValueChanged<bool>? onMomentExportOn;
+
+  /// The last change of that switch could not be stored (it shows what is).
+  final bool momentExportError;
 
   @override
   Widget build(BuildContext c) {
@@ -2271,6 +2292,16 @@ class AutomationSettingsView extends StatelessWidget {
                                 ? ''
                                 : '\n${l?.taskerTurnOnFirst ?? 'Turn on Tasker first'}'),
                       ),
+                      if (momentExportError)
+                        Padding(
+                          key: const ValueKey('tasker-moment-export-error'),
+                          padding: const EdgeInsets.only(bottom: S.x2),
+                          child: Text(
+                              l?.settingsTaskerMomentExportSaveFailed ??
+                                  'Could not save that change. The switch shows '
+                                      'what is stored.',
+                              style: F.over.copyWith(color: p.ink)),
+                        ),
                     ],
                   ),
                 SettingsAccordion(

@@ -18,6 +18,7 @@ import '../data/moment_label.dart';
 import '../data/water_units.dart';
 import '../state/units_controller.dart' show UnitSystem, UnitsController;
 import '../l10n/app_localizations.dart';
+import 'moment_review_queue.dart';
 import 'symptom_description.dart';
 
 /// One quick answer. The id is persisted in `moment_label.label`.
@@ -68,18 +69,28 @@ enum MomentChoice {
 }
 
 /// A marked moment as read off a journal day: local date + wall-clock minute.
-/// Whether [t]'s wall-clock minute exists twice in the local zone (the clocks
-/// went back and that minute came round again). Checked against the same
-/// minute an hour either side; under a zone without DST it is always false.
-bool wallMinuteIsAmbiguous(DateTime t) {
-  bool same(DateTime o) =>
-      o.year == t.year &&
-      o.month == t.month &&
-      o.day == t.day &&
-      o.hour == t.hour &&
-      o.minute == t.minute;
-  return same(t.add(const Duration(hours: 1))) ||
-      same(t.subtract(const Duration(hours: 1)));
+/// Whether [t]'s wall-clock minute (year..minute fields) happens twice in the
+/// zone: the clocks went back and that minute came round again.
+///
+/// Found from the zone's real offsets, not a fixed hour (Lord Howe goes back 30
+/// minutes): every offset in force within a day and a half either side is a
+/// candidate; the minute is read as each one would, and counts as an instant only
+/// if the zone really was on that offset then. Two instants means repeated.
+/// [offsetAt] is the zone seam (a UTC instant's offset from UTC); null is the
+/// device's zone.
+bool wallMinuteIsAmbiguous(DateTime t,
+    {Duration Function(DateTime utcInstant)? offsetAt}) {
+  final off = offsetAt ?? (DateTime u) => u.toLocal().timeZoneOffset;
+  final wall = DateTime.utc(t.year, t.month, t.day, t.hour, t.minute);
+  final offsets = <Duration>{
+    for (var h = -36; h <= 36; h++) off(wall.add(Duration(hours: h))),
+  };
+  final instants = <int>{};
+  for (final o in offsets) {
+    final at = wall.subtract(o);
+    if (off(at) == o) instants.add(at.millisecondsSinceEpoch);
+  }
+  return instants.length > 1;
 }
 
 typedef MarkedMoment = ({String date, String hhmm});
@@ -196,6 +207,15 @@ class MomentFollowUps {
   /// glasses. The Home card counts this.
   int pendingCount(DateTime now) =>
       pending(now).length + pendingAssumed(now).length;
+
+  /// What the Home card counts: pending marks and glasses plus the started
+  /// ranges of [queue] with no pending mark left (an owed announcement would
+  /// otherwise be invisible). 0 while the setting is off.
+  int reviewCount(DateTime now, MomentReviewQueue queue) {
+    if (enabledSince == null) return 0;
+    final keys = {for (final m in pending(now)) m.key};
+    return pendingCount(now) + queue.orphanRanges(keys).length;
+  }
 
   /// Days a moment stays pending, counted in local calendar days.
   static const int windowDays = 7;
@@ -381,6 +401,15 @@ class MomentAnswerWriter {
     } catch (_) {
       return UnitSystem.metric; // no preference store (a headless/test run)
     }
+  }
+
+  /// The label id stored for the mark at [date] [hhmm] (null: none, or a skip).
+  Future<String?> labelOf(String date, String hhmm) async {
+    final labels = await LocalDb.momentLabels(date: date);
+    for (final l in labels) {
+      if (l.key == '$date $hhmm') return l.label;
+    }
+    return null;
   }
 
   /// Whether this moment already has an answer (a skip counts).

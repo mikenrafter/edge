@@ -2504,5 +2504,7 @@
   "momentReviewPersistFailed": "无法把你的选择存到这部手机上。应用打开期间会保留，但关闭后可能丢失。",
   "momentReviewAmountInvalid": "请输入大于 0 的数字（在常规范围内），或留空。",
   "momentReviewAmbiguous": "时钟回拨时这个时间出现了两次，因此无法与另一个标记配对。",
-  "momentReviewResume": "目前已保存。点按“保存”完成这一对。"
+  "momentReviewResume": "目前已保存。点按“保存”完成这一对。",
+  "momentReviewProgressNotSaved": "无法记录这一对的进度，因此已停止。点按“保存”重试。",
+  "settingsTaskerMomentExportSaveFailed": "无法保存该更改。开关显示的是已保存的状态。"
 }

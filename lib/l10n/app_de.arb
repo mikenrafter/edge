@@ -2504,5 +2504,7 @@
   "momentReviewPersistFailed": "Deine Auswahl konnte nicht auf diesem Telefon gespeichert werden. Sie bleibt, solange die App offen ist, kann aber verloren gehen, wenn sie schließt.",
   "momentReviewAmountInvalid": "Gib eine Zahl über 0 ein (im üblichen Bereich) oder lass das Feld leer.",
   "momentReviewAmbiguous": "Diese Uhrzeit kam beim Zurückstellen der Uhr zweimal vor und kann deshalb nicht mit einer anderen Markierung gekoppelt werden.",
-  "momentReviewResume": "Bisher gespeichert. Tippe auf Speichern, um dieses Paar abzuschließen."
+  "momentReviewResume": "Bisher gespeichert. Tippe auf Speichern, um dieses Paar abzuschließen.",
+  "momentReviewProgressNotSaved": "Der Fortschritt dieses Paars konnte nicht festgehalten werden, deshalb wurde es angehalten. Tippe auf Speichern, um es erneut zu versuchen.",
+  "settingsTaskerMomentExportSaveFailed": "Die Änderung konnte nicht gespeichert werden. Der Schalter zeigt, was gespeichert ist."
 }

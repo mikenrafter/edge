@@ -13293,5 +13293,13 @@
   "momentReviewResume": "Saved so far. Press Save to finish this pair.",
   "@momentReviewResume": {
     "description": "Note on a paired range whose first half was saved and whose rest is still to do"
+  },
+  "momentReviewProgressNotSaved": "Could not record progress on this pair, so it was stopped. Press Save to try again.",
+  "@momentReviewProgressNotSaved": {
+    "description": "Shown on a paired range that was stopped because its progress could not be stored; it stays queued"
+  },
+  "settingsTaskerMomentExportSaveFailed": "Could not save that change. The switch shows what is stored.",
+  "@settingsTaskerMomentExportSaveFailed": {
+    "description": "Shown under the send-reviewed-moments-to-Tasker switch when the phone refused to store the change; the switch shows the stored state"
   }
 }

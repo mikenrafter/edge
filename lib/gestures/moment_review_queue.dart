@@ -243,6 +243,10 @@ class MomentReviewQueue {
     if (!moment && !ReviewKey.isGlass(reviewKey)) {
       throw ArgumentError.value(reviewKey, 'reviewKey', 'not a review key');
     }
+    // A mark of a range Save has started is finished as part of that range.
+    if (moment && _startedRangeOf(ReviewKey.plainOf(reviewKey)) != null) {
+      return this;
+    }
     if (d.forMoment != moment) {
       throw ArgumentError.value(
           d.kind, 'd', 'does not fit ${moment ? 'a moment' : 'an assumed glass'}');
@@ -257,8 +261,14 @@ class MomentReviewQueue {
     );
   }
 
-  /// Undo. Removing either end of a range dissolves the whole range. Unknown
-  /// key: unchanged.
+  ReviewRange? _startedRangeOf(String momentKey) {
+    final r = rangeOf(momentKey);
+    return r != null && r.inProgress ? r : null;
+  }
+
+  /// Undo. Removing either end of an unstarted range dissolves the whole range.
+  /// Unknown key, or a mark of a range Save has started (its window is saved:
+  /// it can only be finished): unchanged.
   MomentReviewQueue without(String reviewKey) {
     if (decisions.containsKey(reviewKey)) {
       return MomentReviewQueue(
@@ -266,6 +276,7 @@ class MomentReviewQueue {
     }
     if (ReviewKey.isMoment(reviewKey)) {
       final plain = ReviewKey.plainOf(reviewKey);
+      if (_startedRangeOf(plain) != null) return this;
       if (rangeOf(plain) != null) {
         return MomentReviewQueue(decisions: decisions, ranges: _without(plain));
       }
@@ -290,6 +301,9 @@ class MomentReviewQueue {
           a.ambiguous ? a.key : b.key,
           'moment',
           'its minute happened twice and its real time is unknown');
+    }
+    if (_startedRangeOf(a.key) != null || _startedRangeOf(b.key) != null) {
+      return this;
     }
     final first = a.sec > b.sec ? b : a;
     final second = identical(first, a) ? b : a;
@@ -360,6 +374,18 @@ class MomentReviewQueue {
               r,
         ],
       );
+
+  /// Started, unfinished ranges none of whose marks is still pending (the list
+  /// has only unanswered marks): what is left of them (an owed announcement) is
+  /// Save's job and needs a card of its own.
+  List<ReviewRange> orphanRanges(Set<String> pendingMomentKeys) => [
+        for (final r in ranges)
+          if (r.inProgress &&
+              !r.finished &&
+              !pendingMomentKeys.contains(r.startKey) &&
+              !pendingMomentKeys.contains(r.endKey))
+            r,
+      ];
 
   Map<String, Object?> toJson() => {
         'decisions': {
