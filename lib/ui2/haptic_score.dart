@@ -1,101 +1,191 @@
-// A haptic pattern drawn as one line of music: a single pitch, so every note
-// sits on the same staff line; note values are the beats' lengths and rests
-// are the gaps; dynamics (mp, mf, f, ff) are written under the notes. The app
-// logo stands where the clef would be.
+// A haptic pattern drawn as music: a three-line staff, 4/4, one pitch, so
+// every note sits in the same space and every rest on the middle line. Note
+// values are the beats' lengths and rests are the gaps; dynamics (mp, mf, f,
+// ff) are written under the notes. A double bar opens the score and another
+// closes it; what does not fit the row wraps by whole measures.
 //
-// The logo is an SVG (flutter_svg is a dependency). The rebrand is pending, so
-// the asset path is one constant to swap. The layout is ScoreLayout (pure); this
-// file only paints it.
+// Colour is command: every band command the pattern is sent as has its own
+// colour, cycling a palette, and the notes one command plays share it, so the
+// wearer sees where one command ends and the next begins (a variable wait sits
+// there) and how many commands the pattern spends. Rests stay ink. Which
+// command plays which note is decided in haptics/haptic_player.dart
+// (bandCommandOfEntries), the same plan that is sent and budgeted; this file
+// only paints it.
+//
+// Where the clef would be, the pattern's length is written as "~x.xs". The
+// layout is ScoreLayout (pure); this file paints it.
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../gestures/pattern_transcript.dart';
+import '../haptics/haptic_compiler.dart' show maxRuntimeFor;
+import '../haptics/haptic_player.dart'
+    show bandCommandOfEntries, scoreDurationMs;
+import '../haptics/haptic_profile.dart';
 import '../haptics/score_layout.dart';
 import '../l10n/app_localizations.dart';
 import '../notify/buzz_sequence.dart';
 import 'theme.dart';
 
-/// The logo drawn in place of a clef. Replace this file for the rebrand.
-const String kClefLogoAsset = 'assets/brand/clef_logo.svg';
+/// The colour of band command [command] (0 based) on theme [p]: a palette
+/// that cycles, every entry at least 3:1 against the card in light and dark.
+/// Consecutive commands, and a command and the one after a full cycle, differ.
+Color commandColor(int command, P p) {
+  final accents = _kCommandAccents;
+  return p.on(accents[command % accents.length]);
+}
 
-const double _kStaffHeight = 30;
-const double _kDynamicsHeight = 16;
+// Hues far apart, so neighbours never look alike. p.on() brings each to a
+// readable contrast on the card in light and dark.
+const List<Color> _kCommandAccents = [
+  C.blue,
+  C.orange,
+  C.green,
+  C.purple,
+  C.pink,
+  C.teal,
+  C.yellow,
+  C.red,
+];
 
-/// Paints the staff line, the notes, rests, ties and dots of [layout].
+/// Paints the staff lines, bars, notes, rests, ties and dots of [layout].
 class HapticScorePainter extends CustomPainter {
-  const HapticScorePainter(this.layout, {required this.ink});
+  const HapticScorePainter(this.layout,
+      {required this.ink, required this.commandColor});
 
   final ScoreLayout layout;
   final Color ink;
 
+  /// The colour of command n; notes with no command are drawn in [ink].
+  final Color Function(int command) commandColor;
+
+  Color _of(ScoreGlyph g) =>
+      g.command == null ? ink : commandColor(g.command!);
+
   @override
   void paint(Canvas canvas, Size size) {
-    final y = size.height / 2;
-    final line = Paint()
+    final m = layout.metrics;
+    // When a measure did not fit at full size the whole score is smaller, so
+    // every size below (staff spacing, heads, stems, flags, ties, dots, bars
+    // and every stroke width) is its full size times the layout's scale.
+    final k = layout.scale;
+    final s = layout.staffSpace;
+    final bw = layout.doubleBarWidth;
+    final r = s * .55;
+    final lineP = Paint()
       ..color = ink.withValues(alpha: .35)
-      ..strokeWidth = 1;
-    canvas.drawLine(Offset(0, y), Offset(size.width, y), line);
+      ..strokeWidth = 1 * k;
+    final bar = Paint()
+      ..color = ink.withValues(alpha: .6)
+      ..strokeWidth = 1 * k;
+    final heavy = Paint()
+      ..color = ink.withValues(alpha: .6)
+      ..strokeWidth = 2.4 * k;
 
-    final w = layout.unitWidth;
-    final r = (w * .9).clamp(2.0, 3.5);
-    final stroke = Paint()
-      ..color = ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
-    final fill = Paint()..color = ink;
-    final tie = Paint()
-      ..color = ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    ScoreGlyph? prev;
-    for (final g in layout.glyphs) {
-      final cx = g.x + r;
-      if (g.rest) {
-        _rest(canvas, g, cx, y, r, stroke, fill);
+    for (final line in layout.lines) {
+      // The staff starts after the room kept for the length, on every line.
+      final from = line.left + m.leadWidth;
+      for (final y in line.staffY) {
+        canvas.drawLine(Offset(from, y), Offset(line.right, y), lineP);
+      }
+      final top = line.staffY.first, bottom = line.staffY.last;
+      void vbar(double x, Paint p) =>
+          canvas.drawLine(Offset(x, top), Offset(x, bottom), p);
+      final first = line.measures.first;
+      if (line.startDoubleBar) {
+        // Thin then thick, just before the first measure.
+        vbar(first.x - bw + 1 * k, bar);
+        vbar(first.x - 1.2 * k, heavy);
       } else {
-        final head = Rect.fromCenter(
-            center: Offset(cx, y), width: r * 2.2, height: r * 1.6);
-        final open = g.value == NoteValue.half || g.value == NoteValue.whole;
-        canvas.drawOval(head, open ? stroke : fill);
-        if (g.value != NoteValue.whole) {
-          final stemX = cx + r * 1.1;
-          final top = y - r * 4.5;
-          canvas.drawLine(Offset(stemX, y), Offset(stemX, top), stroke);
-          final flags = g.value == NoteValue.sixteenth
-              ? 2
-              : g.value == NoteValue.eighth
-                  ? 1
-                  : 0;
-          for (var i = 0; i < flags; i++) {
-            final fy = top + i * r * 1.1;
-            canvas.drawLine(
-                Offset(stemX, fy), Offset(stemX + r * 1.6, fy + r * 1.4), stroke);
-          }
-        }
-        if (g.dotted) {
-          canvas.drawCircle(Offset(cx + r * 2, y - r * .3), 1.1, fill);
-        }
-        if (g.tiedFromPrev && prev != null) {
-          final from = prev.x + r;
-          final path = Path()
-            ..moveTo(from, y + r)
-            ..quadraticBezierTo((from + cx) / 2, y + r * 3, cx, y + r);
-          canvas.drawPath(path, tie);
+        vbar(first.x, bar);
+      }
+      for (final ms in line.measures) {
+        final x = ms.x + ms.width;
+        if (line.endDoubleBar && ms == line.measures.last) {
+          vbar(x, bar);
+          vbar(x + bw - 1.2 * k, heavy);
+        } else {
+          vbar(x, bar);
         }
       }
-      prev = g;
     }
+
+    final fill = Paint()..style = PaintingStyle.fill;
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2 * k
+      ..strokeCap = StrokeCap.round;
+
+    double headX(ScoreGlyph g) =>
+        g.x + (g.width - (g.dotted ? m.dotWidth * k : 0)) / 2;
+
+    final glyphs = layout.glyphs;
+    for (var i = 0; i < glyphs.length; i++) {
+      final g = glyphs[i];
+      final cx = headX(g);
+      final y = g.y;
+      if (g.rest) {
+        _rest(canvas, g, cx, y, r, stroke..color = ink, fill..color = ink);
+        continue;
+      }
+      final color = _of(g);
+      stroke.color = color;
+      fill.color = color;
+      final head =
+          Rect.fromCenter(center: Offset(cx, y), width: r * 2.2, height: r * 1.6);
+      final open = g.value == NoteValue.half || g.value == NoteValue.whole;
+      canvas.drawOval(head, open ? stroke : fill);
+      if (g.value != NoteValue.whole) {
+        final stemX = cx + r * 1.1;
+        final stemTop = y - 3.5 * s;
+        canvas.drawLine(Offset(stemX, y), Offset(stemX, stemTop), stroke);
+        final flags = g.value == NoteValue.sixteenth
+            ? 2
+            : g.value == NoteValue.eighth
+                ? 1
+                : 0;
+        for (var f = 0; f < flags; f++) {
+          final fy = stemTop + f * r * 1.1;
+          canvas.drawLine(
+              Offset(stemX, fy), Offset(stemX + r * 1.6, fy + r * 1.4), stroke);
+        }
+      }
+      if (g.dotted) {
+        canvas.drawCircle(Offset(cx + r * 2, y - r * .3), 1.1 * k, fill);
+      }
+      if (g.tiedToNext) {
+        // The tie under the heads: to the next piece, or to the end of the
+        // line when that one starts the next line.
+        final next = i + 1 < glyphs.length ? glyphs[i + 1] : null;
+        final toX = next != null && next.line == g.line
+            ? headX(next)
+            : layout.lines[g.line].right - 2 * k;
+        _tie(canvas, cx, toX, y + r, r, stroke);
+      }
+      if (g.tiedFromPrev && i > 0 && glyphs[i - 1].line != g.line) {
+        // The other half of a tie that wrapped: from the line's start.
+        _tie(canvas, layout.lines[g.line].measures.first.x + 2 * k, cx, y + r, r,
+            stroke);
+      }
+    }
+  }
+
+  void _tie(Canvas canvas, double from, double to, double y, double r,
+      Paint stroke) {
+    final path = Path()
+      ..moveTo(from, y)
+      ..quadraticBezierTo((from + to) / 2, y + r * 2, to, y);
+    canvas.drawPath(path, stroke);
   }
 
   void _rest(Canvas canvas, ScoreGlyph g, double cx, double y, double r,
       Paint stroke, Paint fill) {
     switch (g.value) {
       case NoteValue.whole:
-        canvas.drawRect(Rect.fromLTWH(cx - r, y, r * 2, r * .8), fill);
+        // Hangs from the line above the middle one.
+        canvas.drawRect(Rect.fromLTWH(cx - r, y - r * 1.6, r * 2, r * .8), fill);
       case NoteValue.half:
+        // Sits on the middle line.
         canvas.drawRect(Rect.fromLTWH(cx - r, y - r * .8, r * 2, r * .8), fill);
       default:
         final n = g.value == NoteValue.quarter ? 3 : 2;
@@ -106,7 +196,7 @@ class HapticScorePainter extends CustomPainter {
         canvas.drawPath(path, stroke);
     }
     if (g.dotted) {
-      canvas.drawCircle(Offset(cx + r * 1.6, y - r * .3), 1.1, fill);
+      canvas.drawCircle(Offset(cx + r * 1.6, y - r * .3), 1.1 * layout.scale, fill);
     }
   }
 
@@ -116,11 +206,20 @@ class HapticScorePainter extends CustomPainter {
 }
 
 class HapticScore extends StatelessWidget {
-  const HapticScore(this.pattern, {super.key, this.unitMs = 125});
+  const HapticScore(this.pattern,
+      {super.key, this.unitMs = 125, this.profile, this.allowLong = false});
 
   final BuzzSequence pattern;
 
-  /// Milliseconds per sixteenth, for the spoken length.
+  /// The connected band's haptic vocabulary; null on a 4.0. With it the notes
+  /// are coloured by the command that plays them (`bandCommandOfEntries`).
+  final HapticDeviceProfile? profile;
+
+  /// Whether the 10 s cap is lifted (it decides how a long rhythm is sent).
+  final bool allowLong;
+
+  /// Milliseconds per sixteenth of the notes a tapped rhythm is drawn as (the
+  /// printed length is not from this: it is how long the rhythm plays).
   final int unitMs;
 
   // "1.5", "2", "0.75": up to two decimals, none that are zero.
@@ -129,9 +228,11 @@ class HapticScore extends StatelessWidget {
     return s.replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
-  String _label(AppLocalizations? l, List<PatternEntry> entries, int units) {
+  // "2.0": the one decimal the printed length has.
+  static String _tenths(int ms) => (ms / 1000).toStringAsFixed(1);
+
+  String _label(AppLocalizations? l, List<PatternEntry> entries, int ms) {
     final notes = entries.where((e) => e.note).length;
-    final ms = units * unitMs;
     final notesText = l?.hapticScoreNotes(notes) ??
         (notes == 1 ? '1 note' : '$notes notes');
     final lengthText = ms == 1000
@@ -144,46 +245,69 @@ class HapticScore extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = P.of(context);
+    final l = AppLocalizations.of(context);
     final entries = scoreEntriesOf(pattern, unitMs: unitMs);
+    // One duration for the printed and the spoken length, and the commands the
+    // notes are coloured by: both from the plan this band is actually sent
+    // (its device, its cap), see haptics/haptic_player.dart.
+    final cap = maxRuntimeFor(allowLong: allowLong);
+    final ms = scoreDurationMs(pattern, profile, maxRuntime: cap);
+    final commands =
+        bandCommandOfEntries(pattern, entries, profile, maxRuntime: cap);
+
+    // The printed length is a label on a drawing, not running text: it grows
+    // with the text size up to a point, then the drawing keeps its size.
+    final lengthText =
+        l?.hapticScoreLength(_tenths(ms)) ?? '~${_tenths(ms)}s';
+    final scaler = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.2);
+    final lengthStyle = F.over.copyWith(color: p.ink2);
+    final measured = TextPainter(
+      text: TextSpan(text: lengthText, style: lengthStyle),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final metrics = ScoreMetrics(leadWidth: measured.width + S.x2);
+    measured.dispose();
+
     return Semantics(
       container: true,
       excludeSemantics: true,
-      label: _label(
-        AppLocalizations.of(context),
-        entries,
-        entries.fold<int>(0, (n, e) => n + e.length),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            key: const ValueKey('haptic-score-clef'),
-            width: 20,
-            height: _kStaffHeight,
-            child: SvgPicture.asset(
-              kClefLogoAsset,
-              colorFilter: ColorFilter.mode(p.ink2, BlendMode.srcIn),
-            ),
-          ),
-          const SizedBox(width: S.x2),
-          Expanded(
-            child: LayoutBuilder(builder: (context, box) {
-              final units = entries.fold<int>(0, (n, e) => n + e.length);
-              final unitWidth = box.maxWidth.isFinite && units > 0
-                  ? (box.maxWidth / units).clamp(2.0, 10.0)
-                  : 8.0;
-              final layout = ScoreLayout.of(entries, unitWidth: unitWidth);
-              return SizedBox(
-                height: _kStaffHeight + _kDynamicsHeight,
+      label: _label(l, entries, ms),
+      child: LayoutBuilder(builder: (context, box) {
+        final width = box.maxWidth.isFinite ? box.maxWidth : 600.0;
+        final layout = ScoreLayout.fit(entries,
+            width: width, metrics: metrics, commands: commands);
+        // The drawing is as laid out (smaller when a measure did not fit, see
+        // ScoreLayout.scale); the "~x.xs" text beside it keeps its size, so
+        // the row is at least as tall as the text and the drawing is centred
+        // in it.
+        final s = layout.staffSpace;
+        final labelH = 4 * metrics.staffSpace;
+        final height = layout.height > labelH ? layout.height : labelH;
+        final dy = (height - layout.height) / 2;
+        return SizedBox(
+          width: box.maxWidth.isFinite ? width : layout.contentWidth,
+          height: height,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                left: 0,
+                top: dy,
+                width: width,
+                height: layout.height,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
                     CustomPaint(
                       key: const ValueKey('haptic-score-staff'),
-                      size: Size(
-                        box.maxWidth.isFinite ? box.maxWidth : layout.width,
-                        _kStaffHeight,
+                      size: Size(width, layout.height),
+                      painter: HapticScorePainter(
+                        layout,
+                        ink: p.ink,
+                        commandColor: (c) => commandColor(c, p),
                       ),
-                      painter: HapticScorePainter(layout, ink: p.ink),
                     ),
                     for (final g in layout.glyphs)
                       if (!g.rest &&
@@ -192,17 +316,42 @@ class HapticScore extends StatelessWidget {
                           g.dynamic != PatternDynamic.any)
                         Positioned(
                           left: g.x,
-                          top: _kStaffHeight,
-                          child: Text(g.dynamic!.code,
-                              style: F.over.copyWith(color: p.ink3)),
+                          top: layout.lines[g.line].staffY[2] + s * .2,
+                          width: g.width,
+                          height: s * 1.8,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(g.dynamic!.code,
+                                textScaler: TextScaler.noScaling,
+                                style: F.over.copyWith(color: p.ink3)),
+                          ),
                         ),
                   ],
                 ),
-              );
-            }),
+              ),
+              if (layout.lines.isNotEmpty)
+                Positioned(
+                  left: 0,
+                  top: (dy + layout.lines.first.staffY[1] - labelH / 2)
+                      .clamp(0.0, height - labelH),
+                  width: metrics.leadWidth - S.x1,
+                  height: labelH,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      lengthText,
+                      maxLines: 1,
+                      softWrap: false,
+                      textScaler: scaler,
+                      style: lengthStyle,
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ],
-      ),
+        );
+      }),
     );
   }
 }

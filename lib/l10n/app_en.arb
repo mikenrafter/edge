@@ -13369,5 +13369,124 @@
   "settingsTaskerMomentExportSaveFailed": "Could not save that change. The switch shows what is stored.",
   "@settingsTaskerMomentExportSaveFailed": {
     "description": "Shown under the send-reviewed-moments-to-Tasker switch when the phone refused to store the change; the switch shows the stored state"
+  },
+  "hapticsPresetsGeneral": "General",
+  "@hapticsPresetsGeneral": {
+    "description": "Title of the group of the ten general presets on the Patterns tab of the Haptics screen"
+  },
+  "hapticsNewFromTaps": "New from taps",
+  "@hapticsNewFromTaps": {
+    "description": "Button under the Haptics title that records a new pattern by tapping"
+  },
+  "hapticsNewFromNotes": "New from notes",
+  "@hapticsNewFromNotes": {
+    "description": "Button under the Haptics title that writes a new pattern as notes"
+  },
+  "hapticsCommandsCount": "{n, plural, one{1 command} other{{n} commands}}",
+  "@hapticsCommandsCount": {
+    "description": "Spoken count of the band commands a haptic pattern is sent as",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsRowSemantics": "{name}, {length}, {commands}",
+  "@hapticsRowSemantics": {
+    "description": "Screen-reader label of a haptic pattern row: its name, its length, then its command count",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "length": {
+        "type": "String"
+      },
+      "commands": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticScoreLength": "~{value}s",
+  "@hapticScoreLength": {
+    "description": "Total length printed on the staff of a haptic pattern; value is a number with one decimal such as 1.5",
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "hapticsCommandLimitTitle": "Band haptic limit",
+  "@hapticsCommandLimitTitle": {
+    "description": "Title of the control that sets how many haptic commands the band may be sent in 2 minutes"
+  },
+  "hapticsCommandLimitBody": "{n} commands in any 2 minutes. A precaution we chose to spare the motor and the battery, not a limit of the band. Alerts wait for room; a gesture without room is not acted on.",
+  "@hapticsCommandLimitBody": {
+    "description": "Explains the haptic command limit; n is the limit",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsCommandLimitSaving": "Saving…",
+  "@hapticsCommandLimitSaving": {
+    "description": "Shown on the command-limit control while the new limit is being written"
+  },
+  "hapticsCommandLimitFailed": "Could not save that change. The limit stays at {n}.",
+  "@hapticsCommandLimitFailed": {
+    "description": "Shown on the command-limit control when the write was refused; n is the limit still in force",
+    "placeholders": {
+      "n": {
+        "type": "int"
+      }
+    }
+  },
+  "hapticsYourPatterns": "Your patterns",
+  "@hapticsYourPatterns": {
+    "description": "Heading of the group of the wearer's own patterns on the Haptics screen"
+  },
+  "hapticsSafety": "Safety",
+  "@hapticsSafety": {
+    "description": "Heading of the Safety group on the Haptics Band tab"
+  },
+  "hapticsTest": "Test",
+  "@hapticsTest": {
+    "description": "Heading of the Test group on the Haptics Band tab"
+  },
+  "hapticsCalibration": "Calibration",
+  "@hapticsCalibration": {
+    "description": "Heading of the Calibration group on the Haptics Band tab (developer mode)"
+  },
+  "hapticsSectionAlerts": "Alerts",
+  "@hapticsSectionAlerts": {
+    "description": "Heading of the alert slots group on the Haptics screen"
+  },
+  "hapticsSectionApps": "Apps and automation",
+  "@hapticsSectionApps": {
+    "description": "Heading of the apps and automation slots group on the Haptics screen"
+  },
+  "hapticsSectionTasker": "Tasker",
+  "@hapticsSectionTasker": {
+    "description": "Heading of the Tasker slots group on the Haptics screen (Tasker is a product name)"
+  },
+  "hapticsSectionActivity": "Activity",
+  "@hapticsSectionActivity": {
+    "description": "Heading of the workout slots group on the Haptics screen"
+  },
+  "hapticsSectionGestures": "Gestures",
+  "@hapticsSectionGestures": {
+    "description": "Heading of the gesture cues group on the Haptics screen"
+  },
+  "hapticsSectionBreathing": "Breathing",
+  "@hapticsSectionBreathing": {
+    "description": "Heading of the breathing cues group on the Haptics screen"
+  },
+  "hapticsSectionAlarm": "Alarm snooze",
+  "@hapticsSectionAlarm": {
+    "description": "Heading of the alarm snooze cues group on the Haptics screen"
+  },
+  "hapticsSectionEcg": "ECG",
+  "@hapticsSectionEcg": {
+    "description": "Heading of the ECG cues group on the Haptics screen"
   }
 }

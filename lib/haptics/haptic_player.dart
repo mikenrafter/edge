@@ -10,7 +10,7 @@
 // complete, rejected (nothing written) or partial (some written, a later one
 // was not).
 
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show listEquals, visibleForTesting;
 
 import '../gestures/pattern_transcript.dart';
 import '../notify/buzz_sequence.dart';
@@ -55,6 +55,17 @@ class _Cmd {
   final int delayMs;
   final int spanMs;
   final int waitMs;
+}
+
+// The pulses of [es]: runs of adjacent notes (the unit tapsFromNotes presses).
+int _pulsesIn(List<PatternEntry> es) {
+  var n = 0;
+  var inNote = false;
+  for (final e in es) {
+    if (e.note && !inNote) n++;
+    inNote = e.note;
+  }
+  return n;
 }
 
 _Cmd _cmdOf(HapticStep s, int unitMs) {
@@ -120,15 +131,70 @@ Future<BuzzDelivery> playHapticPlan(
 );
 
 // What a sequence plays on a band with [profile], and how long it is felt.
+//
+// [target] is the notes the commands were made for (the score the plan answers
+// to) and [noteOwners] the command that plays each NOTE entry of it, in order
+// (null: no command plays it). Decided where the plan is built (the compiler
+// for a compiled one, [_fromBaked] for a stored one), so the colouring never
+// reconstructs it. [stored] says the commands are the rule's saved plan.
+//
+// [feltMs] is what the writes and their waits are sized by; [runtimeMs] is how
+// long the plan is felt, which the runtime cap judges and the row prints. They
+// agree except for a stored plan saved before its runtime was recorded, which
+// is written as its commands and delays add up but felt as long as its profile
+// says its rests are.
 class _Resolved {
-  const _Resolved(this.cmds, this.feltMs);
+  const _Resolved(this.cmds, this.feltMs,
+      {int? runtimeMs,
+      required this.target,
+      required this.noteOwners,
+      this.stored = false})
+      : runtimeMs = runtimeMs ?? feltMs;
   final List<_Cmd> cmds;
   final int feltMs;
+  final int runtimeMs;
+  final List<PatternEntry> target;
+  final List<int?> noteOwners;
+  final bool stored;
 }
 
-_Resolved _fromPlan(HapticPlan plan, HapticDeviceProfile profile) =>
+// [pulseOwners] (one per pulse of [target]) as one owner per note entry: the
+// notes of a pulse share its command.
+List<int?> _noteOwners(List<PatternEntry> target, List<int?> pulseOwners) {
+  final out = <int?>[];
+  var pulse = -1;
+  var inNote = false;
+  for (final e in target) {
+    if (e.note) {
+      if (!inNote) pulse++;
+      out.add(pulse < pulseOwners.length ? pulseOwners[pulse] : null);
+    }
+    inNote = e.note;
+  }
+  return out;
+}
+
+_Resolved _fromPlan(
+        HapticPlan plan, HapticDeviceProfile profile, List<PatternEntry> target) =>
     _Resolved([for (final s in plan.steps) _cmdOf(s, profile.unitMs)],
-        plan.runtimeMs);
+        plan.runtimeMs,
+        target: target, noteOwners: _noteOwners(target, plan.pulseOwners));
+
+// The notes a rule's commands answer to: its notes when they read, else its
+// taps as notes (what the score shows, see scoreEntriesOf).
+List<PatternEntry> _targetOf(BuzzSequence s, HapticDeviceProfile profile) {
+  final code = s.notes;
+  if (code != null) {
+    try {
+      return PatternTranscript.parseCode(code).entries;
+    } on FormatException {
+      // The taps.
+    } on ArgumentError {
+      // Same.
+    }
+  }
+  return notesFromTaps(s, unitMs: profile.unitMs);
+}
 
 // The stored plan of a rule saved for this profile, as commands. A step no
 // phrase of the profile matches is still played as stored, with a fixed wait.
@@ -136,6 +202,7 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
   final steps = s.bakedSteps;
   if (steps == null || steps.isEmpty || s.profileId != profile.id) return null;
   final cmds = <_Cmd>[];
+  final perCommand = <int>[];
   var felt = 0;
   for (final b in steps) {
     final match = _phraseOf(b, profile);
@@ -147,22 +214,44 @@ _Resolved? _fromBaked(BuzzSequence s, HapticDeviceProfile profile) {
       span,
       match == null ? _kUnknownMs : span + _kEndedGraceMs,
     ));
+    // A step no phrase matches is counted as one pulse.
+    perCommand.add(match == null ? 1 : _pulsesIn(match.min));
     felt += span + b.delayMs;
   }
   // The runtime recorded when the plan was saved is the better estimate of how
-  // long it plays. When it is longer than the commands add up to (a command no
+  // long it plays, but it only ever lengthens it ([_atLeast]): one shorter than
+  // the commands add up to is not what plays. When it is longer (a command no
   // phrase matches is sized at a flat 3 s), the difference is the last
   // command's: the band is held that much longer after the last write.
-  final stored = s.bakedRuntimeMs;
-  if (stored != null && stored > felt) {
+  final stored = _atLeast(s.bakedRuntimeMs, felt);
+  if (stored > felt) {
     final extra = stored - felt;
     final last = cmds.removeLast();
     cmds.add(_Cmd(last.effects, last.loop, last.delayMs, last.spanMs + extra,
         last.waitMs + extra + _kSettleMarginMs));
     felt = stored;
   }
-  return _Resolved(cmds, felt);
+  // A stored plan keeps no positions: its commands share the target's pulses
+  // in order, as many as each phrase has (allocatePulses; the last takes any
+  // left). Right whenever the plan plays the pulses it was saved with, which a
+  // plan compiled from these notes does; if the notes were edited without
+  // recompiling it can shift a note by a command. What is sent and counted is
+  // never affected, only the picture.
+  final target = _targetOf(s, profile);
+  final pulses = _pulsesIn(target);
+  return _Resolved(cmds, felt,
+      // Shown and capped by how long the plan is felt: the number the sender
+      // holds the band for, or, for a rule with no recorded runtime, what its
+      // profile makes it (the picker's figure).
+      runtimeMs: _atLeast(bakedRuntimeMsFor(s, profile), felt),
+      target: target,
+      noteOwners: _noteOwners(target, allocatePulses(perCommand, pulses)),
+      stored: true);
 }
+
+// [ms], or [recorded] when there is one and it is longer.
+int _atLeast(int? recorded, int ms) =>
+    recorded != null && recorded > ms ? recorded : ms;
 
 // The phrase of [profile] a stored command is, if any.
 HapticPhrase? _phraseOf(BakedStep b, HapticDeviceProfile profile) {
@@ -210,17 +299,73 @@ int? bakedRuntimeMsFor(BuzzSequence s, HapticDeviceProfile? profile) {
 // lifted): the notes, then the taps, are compiled under the cap as if there
 // were no stored plan. Null when nothing compiles (no stored plan, and over
 // [maxRuntime] or empty; a null [maxRuntime] lifts the cap).
+//
+// The answer is a pure function of (sequence, profile, cap), and compiling a
+// rhythm costs milliseconds, so it is remembered: the staff and the row of
+// every pattern ask on each rebuild, and a delivery asks again for the same
+// rule. A small least-recently-used map, keyed by the sequence's value.
 _Resolved? _resolve(
+  BuzzSequence s,
+  HapticDeviceProfile profile,
+  Duration? maxRuntime,
+) {
+  final key = _ResolveKey(s, profile, maxRuntime);
+  if (_cache.containsKey(key)) {
+    final hit = _cache.remove(key);
+    _cache[key] = hit; // most recently used goes last
+    return hit;
+  }
+  final made = _resolveUncached(s, profile, maxRuntime);
+  _cache[key] = made;
+  if (_cache.length > _kCacheSize) _cache.remove(_cache.keys.first);
+  return made;
+}
+
+/// How many resolved plans are kept.
+const int _kCacheSize = 64;
+
+class _ResolveKey {
+  const _ResolveKey(this.s, this.profile, this.cap);
+  final BuzzSequence s;
+  // A profile is a fixed measured table: compared by identity.
+  final HapticDeviceProfile profile;
+  final Duration? cap;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ResolveKey &&
+      other.s == s &&
+      identical(other.profile, profile) &&
+      other.cap == cap;
+
+  @override
+  int get hashCode => Object.hash(s, identityHashCode(profile), cap);
+}
+
+final Map<_ResolveKey, _Resolved?> _cache = {};
+int _compiles = 0;
+
+/// How many times a rhythm was compiled (not served from the cache) in this
+/// isolate; the seam the cache tests count by.
+@visibleForTesting
+int get debugCompileCount => _compiles;
+
+/// How many resolved plans are held now (never more than 64).
+@visibleForTesting
+int get debugResolveCacheSize => _cache.length;
+
+@visibleForTesting
+void debugClearResolveCache() => _cache.clear();
+
+_Resolved? _resolveUncached(
   BuzzSequence s,
   HapticDeviceProfile profile,
   Duration? maxRuntime,
 ) {
   final baked = _fromBaked(s, profile);
   if (baked != null) {
-    final runtime = bakedRuntimeMsFor(s, profile);
-    if (maxRuntime == null ||
-        runtime == null ||
-        runtime <= maxRuntime.inMilliseconds) {
+    // The cap judges how long the plan is felt, not the runtime as recorded.
+    if (maxRuntime == null || baked.runtimeMs <= maxRuntime.inMilliseconds) {
       return baked;
     }
   }
@@ -232,6 +377,7 @@ _Resolved? _resolve(
           e.note &&
           e.dynamic != PatternDynamic.mf &&
           e.dynamic != PatternDynamic.any);
+      _compiles++;
       final plan = compile(
         entries,
         profile,
@@ -241,15 +387,18 @@ _Resolved? _resolve(
         priority: s.priority,
         maxRuntimeMs: maxRuntime?.inMilliseconds,
       );
-      if (plan != null) return _fromPlan(plan, profile);
+      if (plan != null) return _fromPlan(plan, profile, entries);
     } on FormatException {
       // Unreadable notes: fall back to the taps.
     } on ArgumentError {
       // Same.
     }
   }
+  _compiles++;
   final plan = planForTaps(s, profile, maxRuntime: maxRuntime);
-  return plan == null ? null : _fromPlan(plan, profile);
+  return plan == null
+      ? null
+      : _fromPlan(plan, profile, notesFromTaps(s, unitMs: profile.unitMs));
 }
 
 /// Delivers [s] to a band. With a [profile] it plays the rule's stored plan,
@@ -301,6 +450,109 @@ List<BakedStep>? bandStepsFor(
     for (final c in resolved.cmds)
       BakedStep(effects: c.effects, loop: c.loop, delayMs: c.delayMs),
   ];
+}
+
+/// Which band command plays each of [entries] (the notes and rests that draw
+/// [s], see `scoreEntriesOf`): the index of the command in the list a delivery
+/// of [s] writes, the same list [bandSequenceCommands] counts and
+/// [bandStepsFor] returns, or null for a rest and for a note no command plays.
+/// This is the one place the score is split into commands; the staff colours
+/// by it and nothing in the UI works the split out again.
+///
+/// The answer is part of the resolved plan ([_resolve]), made where the plan
+/// is built:
+///  * a plan compiled just now says which command plays each pulse
+///    (HapticPlan.pulseOwners);
+///  * a stored plan shares the pulses out in order (see [_fromBaked]);
+///  * no profile (a 4.0), or a rhythm the cap leaves to the taps: every tap is
+///    one command. A rhythm written as notes has one tap per run of notes; a
+///    tapped one has one per note, even when rounding to sixteenths makes two
+///    taps' notes touch.
+/// If the plan answers to another rhythm than [entries] (a rule whose notes
+/// were made for another band), nothing is claimed: no note gets a command.
+List<int?> bandCommandOfEntries(
+  BuzzSequence s,
+  List<PatternEntry> entries,
+  HapticDeviceProfile? profile, {
+  Duration? maxRuntime = kMaxHapticRuntime,
+}) {
+  final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
+  final List<int?> owners;
+  if (resolved == null) {
+    owners = _tapOwners(s, entries);
+  } else if (_sameRhythm(resolved.target, entries)) {
+    owners = resolved.noteOwners;
+  } else {
+    owners = const [];
+  }
+  final out = <int?>[];
+  var k = 0;
+  for (final e in entries) {
+    if (!e.note) {
+      out.add(null);
+    } else {
+      out.add(k < owners.length ? owners[k] : null);
+      k++;
+    }
+  }
+  return out;
+}
+
+// Whether two scores are the same rhythm: the same notes and rests of the same
+// lengths. How loud a note is written does not change which command plays it
+// (a tapped rhythm compiles to `*` notes, the rule's notes may say mf).
+bool _sameRhythm(List<PatternEntry> a, List<PatternEntry> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].note != b[i].note || a[i].length != b[i].length) return false;
+  }
+  return true;
+}
+
+// The command of each note entry of [entries] when the band is sent the taps of
+// [s]: tap n is command n. Notes written as notes were made into taps run by
+// run (tapsFromNotes); taps tapped out give one note each.
+List<int?> _tapOwners(BuzzSequence s, List<PatternEntry> entries) {
+  final fromNotes = s.notes != null && _readable(s.notes!);
+  final out = <int?>[];
+  var tap = -1;
+  var inNote = false;
+  for (final e in entries) {
+    if (e.note) {
+      if (!fromNotes || !inNote) tap++;
+      out.add(tap < s.length ? tap : null);
+    }
+    inNote = e.note;
+  }
+  return out;
+}
+
+bool _readable(String code) {
+  try {
+    PatternTranscript.parseCode(code);
+    return true;
+  } on FormatException {
+    return false;
+  } on ArgumentError {
+    return false;
+  }
+}
+
+/// How long [s] plays, in ms, as it is actually sent: the felt length of the
+/// resolved plan (a stored plan's commands on [profile], lengthened to the
+/// runtime recorded with it only when that is longer; a rule saved before the
+/// runtime was recorded is sized from [profile] as the picker does), or on a band with no profile, or
+/// when the cap leaves the rhythm to the taps, the time the taps take. The
+/// same [_resolve] as the commands, so the printed and spoken length follow the
+/// device and the long-sequence switch.
+int scoreDurationMs(
+  BuzzSequence s,
+  HapticDeviceProfile? profile, {
+  Duration? maxRuntime = kMaxHapticRuntime,
+}) {
+  final resolved = profile == null ? null : _resolve(s, profile, maxRuntime);
+  if (resolved == null) return s.playTime.inMilliseconds;
+  return resolved.runtimeMs;
 }
 
 /// How long a delivery of [s] may take: the sequence's own transport timeout,

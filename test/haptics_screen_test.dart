@@ -2,8 +2,11 @@
 // pattern on a slot.
 //
 // Spec (laid out as sub-tabs since Oct 4, see test/haptics_tabs_test.dart;
-// the groups below are the same, each on its tab): "Your patterns" and "Presets"
-// (Patterns tab), then Safety / Test / Calibration unchanged (Band tab). The
+// the groups below are the same, each on its tab): "Your patterns", then the
+// built-ins in accordions by slot section (General first: the ten presets;
+// see test/haptics_display_test.dart) on the Patterns tab, then Safety / Test /
+// Calibration (Band tab). The two create buttons are no longer in Your patterns:
+// they are one pinned row above the tabs (haptics_display_test.dart). The
 // "Where patterns are used" slots, now on the Alerts, Activity and Cues tabs, list the
 // haptic SLOTS grouped by section (Alerts, Gestures, Wake/Alarm, Workout, ...)
 // under a header row each, no separator between sections (the accordion already
@@ -27,7 +30,8 @@
 //     builds it (preset name, or "Your: <name>" for a stored pattern of the
 //     wearer's), so the view stays a pure function.
 //   * Accordion titles and ids: "Your patterns" / `haptics_your_patterns`,
-//     "Presets" / `haptics_presets`; each slot section a group of its own,
+//     "General" / `haptics_presets_general` (the ten presets; one group per slot
+//     section after it, `haptics_presets_<sectionId>`); each slot section a group of its own,
 //     `haptics_slots_<sectionId>` ("Where patterns are used" is gone).
 //   * Keys: a slot row `haptic-slot:<slotKey>`; a section header
 //     NO in-list header or separator between two sections any more
@@ -84,49 +88,52 @@ Future<void> _tapKey(WidgetTester t, String key) async {
 
 void main() {
   group('sub-tabs and their accordions', () {
-    testWidgets('Your patterns and Presets on the Patterns tab, the unchanged '
+    testWidgets('Your patterns and General on the Patterns tab, the unchanged '
         'Safety and Test on the Band tab', (t) async {
       await pumpHub(t, HubCalls(), patterns: [_mine, _presetOne]);
-      expect(sectionTitles(t), ['Your patterns', 'Presets']);
+      expect(sectionTitles(t), ['Your patterns', 'General']);
       await openHapticsTab(t, 'band');
       expect(sectionTitles(t), ['Safety', 'Test']);
     });
 
     testWidgets('Calibration still comes last, in developer mode only', (t) async {
       await pumpHub(t, HubCalls(), devMode: true);
-      expect(sectionTitles(t), ['Your patterns', 'Presets']);
+      // No built-ins in the list: a group with nothing in it is not shown.
+      expect(sectionTitles(t), ['Your patterns']);
       await openHapticsTab(t, 'band');
       expect(sectionTitles(t).first, 'Safety');
       expect(sectionTitles(t).last, 'Calibration');
     });
 
     testWidgets('the saved patterns are under Your patterns and the presets '
-        'under Presets, not the other way round', (t) async {
+        'under General, not the other way round', (t) async {
       await pumpHub(t, HubCalls(),
           patterns: [_mine, _mine2, _presetOne, _presetSos]);
       for (final id in ['a', 'b']) {
         expect(_in('Your patterns', find.byKey(ValueKey('haptic-pattern:$id'))),
             findsOneWidget);
-        expect(_in('Presets', find.byKey(ValueKey('haptic-pattern:$id'))),
+        expect(_in('General', find.byKey(ValueKey('haptic-pattern:$id'))),
             findsNothing);
       }
       for (final id in ['sys.p1', 'sys.p2']) {
-        expect(_in('Presets', find.byKey(ValueKey('haptic-pattern:$id'))),
+        expect(_in('General', find.byKey(ValueKey('haptic-pattern:$id'))),
             findsOneWidget);
         expect(_in('Your patterns', find.byKey(ValueKey('haptic-pattern:$id'))),
             findsNothing);
       }
     });
 
-    testWidgets('Your patterns keeps its empty state and the two ways to make '
-        'one', (t) async {
+    testWidgets('Your patterns keeps its empty state; the two ways to make '
+        'one are the pinned row, not rows in it', (t) async {
       await pumpHub(t, HubCalls(), profile: kMg);
       expect(_in('Your patterns', find.textContaining('No saved patterns')),
           findsOneWidget);
       expect(_in('Your patterns', find.byKey(const ValueKey('haptics-new-taps'))),
-          findsOneWidget);
+          findsNothing);
       expect(_in('Your patterns', find.byKey(const ValueKey('haptics-new-notes'))),
-          findsOneWidget);
+          findsNothing);
+      expect(find.byKey(const ValueKey('haptics-new-taps')), findsOneWidget);
+      expect(find.byKey(const ValueKey('haptics-new-notes')), findsOneWidget);
     });
 
     testWidgets('Safety and Test content is unchanged, Safety before Test',
@@ -144,10 +151,10 @@ void main() {
     });
 
     testWidgets('the accordions are remembered under stable ids', (t) async {
-      await pumpHub(t, HubCalls());
+      await pumpHub(t, HubCalls(), patterns: [_presetOne]);
       final ids = {for (final a in accordions(t)) a.title: a.id};
       expect(ids['Your patterns'], 'haptics_your_patterns');
-      expect(ids['Presets'], 'haptics_presets');
+      expect(ids['General'], 'haptics_presets_general');
       await openHapticsTab(t, 'band');
       expect([for (final a in accordions(t)) a.id],
           ['haptics_safety', 'haptics_test']);

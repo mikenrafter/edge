@@ -11,10 +11,12 @@
 //    onReplace, onRename, onDelete, onDeviceLab}); every callback is a plain
 //    `void Function` (or Future<bool> for onPlay) so a test closure fits.
 //    `usageOf(id)` is how many alerts and channels hold the pattern (A).
-//  - SettingsAccordion titles: Patterns, Safety, Test, and Calibration only
-//    when devMode.
-//  - a pattern row is keyed `haptic-pattern:<id>`, shows the name, the notes
-//    code and "N commands . ~X s" (middle dot), or "Taps" without notes. Its
+//  - SettingsAccordion titles: Your patterns and one per section of built-ins
+//    (General ...), Safety, Test, and Calibration only when devMode.
+//  - a pattern row is keyed `haptic-pattern:<id>` and shows the name and the
+//    staff (with its "~x.xs"); the notes code and the "N commands . ~X s" line
+//    are gone from the screen and live in its semantics label
+//    (test/haptics_display_test.dart). Its
 //    sheet (`haptic-pattern-sheet`) has `haptic-action-preview|edit|rerecord|
 //    rename|delete`; edit is absent without a profile. Delete asks in an
 //    AlertDialog (Delete / Cancel) and names the usage as "Used by N alerts"
@@ -199,11 +201,12 @@ void main() {
   });
 
   group('the hub: groups', () {
-    testWidgets('Patterns tab: Your patterns and Presets; Band tab: Safety and '
-        'Test; Calibration only in dev mode', (t) async {
+    testWidgets('Patterns tab: Your patterns (no built-ins listed here, so no '
+        'other group); Band tab: Safety and Test; Calibration only in dev mode',
+        (t) async {
       final c = _Calls();
       await pumpTall(t, _hub(c, profile: _mg));
-      expect(sectionTitles(t), ['Your patterns', 'Presets']);
+      expect(sectionTitles(t), ['Your patterns']);
       await expectAllSectionsExpanded(t, 'Haptics > Patterns');
       await openHapticsTab(t, 'band');
       expect(sectionTitles(t), ['Safety', 'Test']);
@@ -235,7 +238,7 @@ void main() {
   });
 
   group('the hub: Patterns', () {
-    testWidgets('empty store: an empty-state text and the two new rows',
+    testWidgets('empty store: an empty-state text and the two create buttons',
         (t) async {
       await pumpTall(t, _hub(_Calls(), profile: _mg));
       expect(find.textContaining('No saved patterns'), findsOneWidget);
@@ -245,7 +248,7 @@ void main() {
       expect(find.text('New from notes'), findsOneWidget);
     });
 
-    testWidgets('rows show name, notes code and the command count and time',
+    testWidgets('rows show the name and the staff, in the order given',
         (t) async {
       await pumpTall(
           t, _hub(_Calls(), patterns: [_evening, _morning], profile: _mg));
@@ -254,26 +257,29 @@ void main() {
       expect(row, findsOneWidget);
       expect(find.descendant(of: row, matching: find.text('Morning')),
           findsOneWidget);
+      // The notes code and the "2 commands . ~X s" line are not drawn.
       expect(
         find.descendant(of: row, matching: find.textContaining('N4mf R1 N4mf')),
-        findsOneWidget,
+        findsNothing,
       );
-      final line = t
-          .widget<Text>(find.descendant(
-              of: row, matching: find.textContaining('2 commands')))
-          .data!;
-      expect(line, matches(RegExp(r'2 commands · ~\d+(\.\d+)? s')));
+      expect(find.descendant(of: row, matching: find.textContaining('commands')),
+          findsNothing);
+      // No recorded runtime, so the plan is sized from the profile as the
+      // picker does: 47 (500 ms) + a 300 ms wait (6 sixteenths) + 14 (500 ms).
+      expect(find.descendant(of: row, matching: find.text('~1.8s')),
+          findsOneWidget);
       // The list keeps the order it is given.
       expect(t.getTopLeft(find.text('Evening')).dy,
           lessThan(t.getTopLeft(find.text('Morning')).dy));
     });
 
-    testWidgets('a pattern with no notes says Taps', (t) async {
+    testWidgets('a pattern with no notes says neither Taps nor a count',
+        (t) async {
       await pumpTall(t, _hub(_Calls(), patterns: [_tapsOnly], profile: _mg));
       final row = find.byKey(const ValueKey('haptic-pattern:c'));
       // Exact: the name "Taps only" also contains the word.
       expect(find.descendant(of: row, matching: find.text('Taps')),
-          findsOneWidget);
+          findsNothing);
       expect(find.descendant(of: row, matching: find.textContaining('commands')),
           findsNothing);
     });

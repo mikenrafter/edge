@@ -199,6 +199,8 @@ Widget hubView(
   HapticDeviceProfile? profile,
   bool devMode = false,
   Map<String, String> slotNames = const {},
+  int commandLimit = 30,
+  ValueChanged<int>? onCommandLimit,
 }) {
   final named = <Symbol, dynamic>{
     #patterns: patterns,
@@ -207,6 +209,9 @@ Widget hubView(
     #allowLong: false,
     #devMode: devMode,
     #commandsLeft: 30,
+    // The limit in force, and what moving it calls (Band tab, Safety).
+    #commandLimit: commandLimit,
+    #onCommandLimit: onCommandLimit,
     #queued: 0,
     #bandConnected: true,
     #onPlay: (BuzzSequence s) async {
@@ -262,6 +267,8 @@ Future<void> pumpHub(
   HapticDeviceProfile? profile,
   bool devMode = false,
   Map<String, String> slotNames = const {},
+  int commandLimit = 30,
+  ValueChanged<int>? onCommandLimit,
 }) =>
     pumpTall(
       t,
@@ -271,6 +278,8 @@ Future<void> pumpHub(
         profile: profile,
         devMode: devMode,
         slotNames: slotNames,
+        commandLimit: commandLimit,
+        onCommandLimit: onCommandLimit,
       ),
     );
 
