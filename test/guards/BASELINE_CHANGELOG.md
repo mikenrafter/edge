@@ -113,3 +113,14 @@ The `rawReaderUnregistered` v3 narrowing removed nothing from the real tree: the
 baselined readers return `Map` rows, or `List<Sample>` (`samplesInRange`), which v3
 still treats as rows. (The worker_audit hook fingerprint in `kUnresolvedOk` was
 refreshed for the new `id:` argument; it is not a baseline key.)
+
+## legacyInlineDispatch sleep-staging
+`DerivationEngine` hands the sleep-staging closure (label `sleep-staging
+<yyyy-mm-dd>`) to `_runIsolateCancellable`. It runs inline code, not a registered
+entry (baselined `dispatcherClosureContract`), so the dispatcher audit cannot
+require an entry report for it. The exception is the anchored pattern in
+`test/guards/support/legacy_inline_dispatches.dart`; nothing may report under its
+token. Delete the entry when the closure becomes a registered entry.
+
+## legacyInlineDispatch crossday-input
+The same for the cross-day input closure (exact label `crossday-input`).

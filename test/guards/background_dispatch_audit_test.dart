@@ -36,6 +36,8 @@
 @Timeout(Duration(minutes: 10))
 library;
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:openstrap_edge/ble/ios_ble_restore.dart';
 import 'package:openstrap_edge/compute/calc_power_policy.dart';
@@ -58,6 +60,7 @@ import '../support/day_stream_fixture.dart';
 import '../support/incremental_day_fixture.dart';
 import '../support/fake_power_source.dart';
 import 'support/dispatch_correlation.dart';
+import 'support/legacy_inline_dispatches.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -122,10 +125,11 @@ void main() {
     'sample reconstruct': 'reconstructSamplePartsHeavy',
   };
   // Cancellable dispatches whose closure runs inline code rather than a
-  // registered entry (legacy, baselined as dispatcherClosureContract). They are
-  // still checked for dispatcher kind and for stray reports, but cannot be
-  // required to have run an entry.
-  const legacyInlineLabels = ['sleep-staging', 'crossday-input'];
+  // registered entry: the shrink-only list in support/legacy_inline_dispatches.dart
+  // (exact or anchored labels; changelog note per entry; stale entries fail
+  // below). They are still checked for dispatcher kind, id uniqueness and stray
+  // reports, but cannot be required to have run an entry.
+  const legacyInline = kLegacyInlineDispatches;
   const cancellableEntries = {
     'deriveDayBundle',
     'buildCrossDayBundle',
@@ -179,7 +183,7 @@ void main() {
             entryOfLabel: entryOfLabel,
             dispatcherOf: registered,
             cancellableEntries: cancellableEntries,
-            legacyInlineLabels: legacyInlineLabels),
+            legacyInline: legacyInline),
         isEmpty,
         reason: '$path: dispatches vs the entry reports they caused');
   }
@@ -248,11 +252,124 @@ void main() {
             entryOfLabel: entryOfLabel,
             dispatcherOf: registered,
             cancellableEntries: cancellableEntries,
-            legacyInlineLabels: legacyInlineLabels,
+            legacyInline: legacyInline,
           );
       expect(run('sleep-staging 2026-01-10'), isEmpty);
       expect(run('crossday-input'), isEmpty);
       expect(run('crossday'), isNotEmpty);
+    });
+
+    // Sol r1 P2, reproduction 1: an open prefix let new work ride the exemption.
+    test('(P2a) crossday-input-new-work is NOT the legacy crossday-input: zero '
+        'reports under its token fails, an unrelated valid report elsewhere '
+        'does not help', () {
+      final problems = dispatchCorrelationProblems([
+        dispatch(1, Dispatcher.cancellable, 'crossday-input-new-work'),
+        dispatch(2, Dispatcher.cancellable, 'derive day'),
+      ], [
+        report('deriveDayBundle', 2),
+      ],
+          entryOfLabel: entryOfLabel,
+          dispatcherOf: registered,
+          cancellableEntries: cancellableEntries,
+          legacyInline: legacyInline);
+      expect(problems, hasLength(1), reason: '$problems');
+      expect(problems.single, contains('crossday-input-new-work'));
+      // And the sleep-staging pattern is a date, not a prefix.
+      expect(
+          dispatchCorrelationProblems(
+              [dispatch(1, Dispatcher.cancellable, 'sleep-staging-extra x')],
+              const [],
+              entryOfLabel: entryOfLabel,
+              dispatcherOf: registered,
+              cancellableEntries: cancellableEntries,
+              legacyInline: legacyInline),
+          isNotEmpty);
+    });
+
+    // Sol r1 P2, reproduction 2: widening the allowlist turned a missing-report
+    // failure into a pass. An unanchored entry is refused outright; an anchored
+    // one is a list change that the changelog check (below) catches.
+    test('(P2b) an open-prefix allowlist entry is refused, not honoured', () {
+      expect(
+          () => dispatchCorrelationProblems(
+                [dispatch(1, Dispatcher.cancellable, 'derive day')],
+                const [],
+                entryOfLabel: entryOfLabel,
+                dispatcherOf: registered,
+                cancellableEntries: cancellableEntries,
+                legacyInline: const [
+                  LegacyInlineDispatch('derive-day', 'derive day', 'x'),
+                ],
+              ),
+          throwsArgumentError);
+      expect(
+          () => dispatchCorrelationProblems(
+                const [],
+                const [],
+                entryOfLabel: entryOfLabel,
+                dispatcherOf: registered,
+                cancellableEntries: cancellableEntries,
+                legacyInline: const [
+                  LegacyInlineDispatch('derive-day', r'^derive day', 'x'),
+                ],
+              ),
+          throwsArgumentError);
+    });
+
+    test('(P2c) a new allowlist entry without a changelog note is a problem; '
+        'a documented one is not', () {
+      const added = LegacyInlineDispatch('derive-day', r'^derive day$', 'x');
+      const log = '# changelog\n\n## legacyInlineDispatch sleep-staging\n'
+          'note\n\n## legacyInlineDispatch crossday-input\nnote\n';
+      expect(legacyInlineListProblems(kLegacyInlineDispatches, log), isEmpty);
+      final grown = legacyInlineListProblems([...kLegacyInlineDispatches, added], log);
+      expect(grown, hasLength(1), reason: '$grown');
+      expect(grown.single, contains('derive-day'));
+      expect(
+          legacyInlineListProblems(
+              [...kLegacyInlineDispatches, added],
+              '$log\n## legacyInlineDispatch derive-day\nwhy\n'),
+          isEmpty);
+      expect(legacyInlineListProblems([added, added], '$log## legacyInlineDispatch derive-day\n'),
+          isNotEmpty, reason: 'duplicate ids');
+    });
+
+    test('(P2d) a legacy inline dispatch runs no entry: a report under its '
+        'token from an unrelated entry fails', () {
+      final problems = dispatchCorrelationProblems([
+        dispatch(1, Dispatcher.cancellable, 'crossday-input'),
+      ], [
+        report('buildCrossDayBundle', 1),
+      ],
+          entryOfLabel: entryOfLabel,
+          dispatcherOf: registered,
+          cancellableEntries: cancellableEntries,
+          legacyInline: legacyInline);
+      expect(problems, hasLength(1), reason: '$problems');
+      expect(problems.single, contains('legacy inline'));
+    });
+
+    // Sol r1 P3: ids collapsed into a set let a reused token satisfy two
+    // dispatches with one report.
+    test('(P3a) two dispatches sharing an id fail, even with a report', () {
+      final problems = check([
+        dispatch(3, Dispatcher.run, 'kcal minutes'),
+        dispatch(3, Dispatcher.run, 'kcal minutes'),
+      ], [
+        report('kcalMinutesForDayHeavy', 3),
+      ]);
+      expect(problems, isNotEmpty);
+      expect(problems.join('\n'), contains('more than one dispatch'));
+    });
+
+    test('(P3b) a non-positive dispatch id fails', () {
+      for (final id in [0, -1]) {
+        final problems =
+            check([dispatch(id, Dispatcher.run, 'kcal minutes')],
+                [report('kcalMinutesForDayHeavy', id)]);
+        expect(problems.join('\n'), contains('non-positive id'), reason: 'id $id');
+      }
     });
 
     test('(b3) a report under no token, or under a token no dispatch has, '
@@ -304,6 +421,30 @@ void main() {
     });
   });
 
+  group('legacy inline allowlist', () {
+    test('every entry is anchored and has its BASELINE_CHANGELOG note', () {
+      final changelog =
+          File('test/guards/BASELINE_CHANGELOG.md').readAsStringSync();
+      expect(legacyInlineListProblems(kLegacyInlineDispatches, changelog),
+          isEmpty);
+    });
+
+    test('no entry is stale: a full two-day background derive dispatches a '
+        'label for each', () async {
+      await _seedLaterDay(start, seconds);
+      await _saveMode(CalcPowerMode.balanced);
+      expect(await IosBgTask.runForTest(syncOnly: false), isTrue);
+      await pumpEventQueue();
+      final stale = [
+        for (final l in kLegacyInlineDispatches)
+          if (!dispatches.any((d) => l.matches(d.label))) l.id
+      ];
+      expect(stale, isEmpty,
+          reason: 'never dispatched (delete the entry and add a shrink note): '
+              '${[for (final d in dispatches) d.label]}');
+    });
+  });
+
   test('detector self-test: a DIRECT call of a registered entry on this isolate '
       'is seen, as this isolate', () {
     deriveDayBundle(copyDay(incrementalDay()));
@@ -318,12 +459,7 @@ void main() {
     // past the 3-day raw retention, so the full-history pass archives the old day
     // (SampleArchiver.archiveBefore, called from the engine's raw prune) before
     // its rows go.
-    final later = DateTime.utc(2026, 1, 16, 8).millisecondsSinceEpoch ~/ 1000;
-    await writeSeconds(
-        synthBeats(SynthBeats(seed: 6, startSec: later, seconds: seconds)),
-        synthAccel(8, later, later + seconds + 60),
-        later,
-        later + seconds);
+    await _seedLaterDay(start, seconds);
     await _saveMode(CalcPowerMode.balanced);
     expect(await IosBgTask.runForTest(syncOnly: false), isTrue);
     expect(await SampleArchiver.rows('2026-01-10'), isNotEmpty,
@@ -398,4 +534,16 @@ void main() {
 Future<void> _saveMode(CalcPowerMode mode) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setString('calc_power_mode', mode.name);
+}
+
+/// A second 3-hour block six days after the seeded day (the data edge moves past
+/// the 3-day raw retention, so a full-history pass prunes and archives the first
+/// day, and the cross-day stage has two days to work with).
+Future<void> _seedLaterDay(int firstStart, int seconds) async {
+  final later = DateTime.utc(2026, 1, 16, 8).millisecondsSinceEpoch ~/ 1000;
+  await writeSeconds(
+      synthBeats(SynthBeats(seed: 6, startSec: later, seconds: seconds)),
+      synthAccel(8, later, later + seconds + 60),
+      later,
+      later + seconds);
 }

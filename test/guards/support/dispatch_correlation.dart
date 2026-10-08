@@ -6,10 +6,12 @@
 //   * for each dispatch: the entries reported under its id contain the entry its
 //     label maps to (`entryOfLabel`), whose registered dispatcher kind is the
 //     dispatch's kind (`dispatcherOf`); an unmapped dispatch must be cancellable
-//     and have a cancellable entry under ITS id, unless its label starts with
-//     one of `legacyInlineLabels`: dispatches whose closure runs inline code, no
-//     registered entry (baselined `dispatcherClosureContract` keys; listing one
-//     here is the debt, and it shrinks out when the closure becomes an entry);
+//     and have a cancellable entry under ITS id, unless its label matches an
+//     entry of `legacyInline` (legacy_inline_dispatches.dart: exact or anchored
+//     labels only, a shrink-only debt list): such a dispatch runs inline code,
+//     so NOTHING may report under its token;
+//   * dispatch ids are positive and unique (a reused token would let one report
+//     satisfy two dispatches);
 //   * every entry report carries a dispatch id, and that id is one of the
 //     dispatches (an entry that ran under no token, or under a token no dispatch
 //     has, is a problem).
@@ -21,16 +23,29 @@
 import 'package:openstrap_edge/util/worker_audit.dart';
 import 'package:openstrap_edge/util/worker_entries.dart';
 
+import 'legacy_inline_dispatches.dart';
+
 List<String> dispatchCorrelationProblems(
   List<DispatchEvent> dispatches,
   List<EntryEvent> entries, {
   required Map<String, String> entryOfLabel,
   required Map<String, Dispatcher> dispatcherOf,
   required Set<String> cancellableEntries,
-  List<String> legacyInlineLabels = const [],
+  List<LegacyInlineDispatch> legacyInline = const [],
 }) {
+  for (final l in legacyInline) {
+    l.requireAnchored();
+  }
   final problems = <String>[];
-  final ids = {for (final d in dispatches) d.id};
+  final ids = <int>{};
+  for (final d in dispatches) {
+    if (d.id <= 0) {
+      problems.add('dispatch "${d.label}" has a non-positive id ${d.id}');
+    } else if (!ids.add(d.id)) {
+      problems.add('dispatch id ${d.id} is used by more than one dispatch '
+          '("${d.label}" among them)');
+    }
+  }
   for (final e in entries) {
     final id = e.dispatchId;
     if (id == null) {
@@ -58,8 +73,13 @@ List<String> dispatchCorrelationProblems(
       if (d.kind != Dispatcher.cancellable) {
         problems.add('$tag is unmapped and not cancellable');
       }
-      final legacy = legacyInlineLabels.any(d.label.startsWith);
-      if (!legacy && mine.intersection(cancellableEntries).isEmpty) {
+      final legacy = legacyInline.any((l) => l.matches(d.label));
+      if (legacy) {
+        if (mine.isNotEmpty) {
+          problems.add('$tag is a legacy inline closure but entries reported '
+              'under its token: $mine');
+        }
+      } else if (mine.intersection(cancellableEntries).isEmpty) {
         problems.add('$tag ran no cancellable pipeline entry under its own '
             'token (saw $mine)');
       }
