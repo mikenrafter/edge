@@ -150,6 +150,55 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
 /// Fingerprinted unresolved invocations. Shrink-only.
 const List<UnresolvedOk> kUnresolvedOk = <UnresolvedOk>[
   UnresolvedOk(
+    file: 'ecg/ecg_controller.dart',
+    symbol: 'EcgController._asked',
+    source: 'provider?.call()',
+    ordinal: 0,
+    reason: 'injected provider seam: returns the band/device context for one capture; bounded, no stored-data loop',
+  ),
+  UnresolvedOk(
+    file: 'ecg/ecg_controller.dart',
+    symbol: 'EcgController._offsetAt',
+    source: 'utcOffsetMin?.call(epochMs)',
+    ordinal: 0,
+    reason: 'injected UTC-offset seam (design 01): one scalar lookup per saved reading',
+  ),
+  UnresolvedOk(
+    file: 'ui2/screens/ecg.dart',
+    symbol: '_EcgDetailScreenState._delete',
+    source: '(widget.onDelete ?? (x) => LocalDb.deleteEcgReading(x))(id)',
+    ordinal: 0,
+    reason: 'injected delete seam for tests; production deletes one attempt group in a transaction',
+  ),
+  UnresolvedOk(
+    file: 'ui2/screens/ecg.dart',
+    symbol: '_runEcgExport',
+    source: 'e.appVersion()',
+    ordinal: 1,
+    reason: 'injected export environment: app version string',
+  ),
+  UnresolvedOk(
+    file: 'ui2/screens/ecg.dart',
+    symbol: '_runEcgExport',
+    source: 'e.now()',
+    ordinal: 0,
+    reason: 'injected export environment: the export clock (no real time in tests)',
+  ),
+  UnresolvedOk(
+    file: 'ui2/screens/ecg.dart',
+    symbol: '_runEcgExport',
+    source: "saver(logFileName('ecg', at), text)",
+    ordinal: 2,
+    reason: 'injected log saver (saveLogFileResult in production, invariant 16)',
+  ),
+  UnresolvedOk(
+    file: 'util/log_file.dart',
+    symbol: 'saveLogFileResult',
+    source: "(share ?? (p) => Share.shareXFiles( [XFile(p, mimeType: 'text/plain')], subject: 'OpenStrap log', sharePositionOrigin: origin ?? const Rect.fromLTWH(0, 0, 1, 1), ))(file.path)",
+    ordinal: 0,
+    reason: 'injected share seam (moved here from saveLogFile, now a thin wrapper); one platform share call',
+  ),
+  UnresolvedOk(
     file: 'util/worker_audit.dart',
     symbol: 'WorkerAudit.dispatched',
     source: 'hook(DispatchEvent(kind, label, currentIsolateId, StackTrace.current))',
