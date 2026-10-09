@@ -41,6 +41,7 @@ void main() {
         '--files', 'lib/a.dart',
         '--test-cmd', 'dart test',
         '--out', out.path,
+        if (!extra.contains('--guard-pattern') && !extra.contains('--tests')) '--no-guards',
         ...extra,
       ];
 
@@ -64,6 +65,23 @@ void main() {
     expect(code, 64);
     expect(err.toString(), contains('--sha'));
     expect(err.toString(), contains('Usage'));
+  });
+
+  test('a whole-suite audit that does not classify its source guards is a usage error', () async {
+    final runner = tests();
+    final code = await runCli(
+        ['--repo', fx.root, '--sha', sha, '--files', 'lib/a.dart', '--out', out.path],
+        runner: runner, out: stdout_, err: err);
+    expect(code, 64);
+    expect(err.toString(), contains('--no-guards'));
+    expect(runner.calls, isEmpty);
+    expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
+  });
+
+  test('the report says how the source guards were classified', () async {
+    await run(tests());
+    final json = jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map<String, dynamic>;
+    expect((json['meta'] as Map)['guardPolicy'], 'none-declared');
   });
 
   test('a whole audit: results written outside the export, export gone, checkout untouched', () async {

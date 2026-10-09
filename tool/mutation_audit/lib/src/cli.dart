@@ -85,6 +85,7 @@ Future<int> runCli(
             files: config.files,
             tests: config.tests,
             guardPatterns: config.guardPatterns,
+            guardPolicy: config.guardPolicy,
             timeoutSeconds: config.timeout.inSeconds,
             maxMutants: config.maxMutants,
             sample: config.sample,

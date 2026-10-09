@@ -28,7 +28,7 @@ process runner is a fake that answers from the file contents it sees.
 ```
 dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
   [--test-cmd "<cmd>"] [--tests <file>...] [--max-mutants N] [--sample N --seed S] \
-  [--timeout seconds] [--guard-pattern <glob>...] [--allow-override <path>...] \
+  [--timeout seconds] (--guard-pattern <glob>... | --no-guards) [--allow-override <path>...] \
   [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] --out <dir>
 ```
 
@@ -57,6 +57,50 @@ nix develop /path/to/edge -c dart run mutation_audit --repo /path/to/edge --sha 
 (or put `nix develop <repo> -c` inside `--test-cmd` and `--setup-cmd`). A fresh export has no
 package config: the setup command (`flutter pub get` / `dart pub get`) runs in it first.
 Results go to `--out`, which must be outside the export.
+
+## Source guards: classify them or say there are none
+
+A source guard is a test that reads source text (`File('lib/...').readAsStringSync()`, the
+`test/support/dart_source*.dart` scanner) instead of running code. When a mutant makes one fail,
+that is not runtime coverage, so such failures are reported as `killed-by-guard-only` and stay out
+of the score.
+
+A whole-suite audit (no `--tests`) therefore has to say how its guards are classified, or the
+tool refuses to start (exit 64):
+
+- `--guard-pattern <glob>...`: suites matching any glob are guards. A pattern without `/` matches
+  the file name; one with `/` matches the path or any suffix of it.
+- `--no-guards`: the author states that no test of this suite scans source text. Recorded in the
+  report as `guardPolicy: none-declared`. Cannot be combined with `--guard-pattern`.
+- an explicit `--tests` list needs neither (`guardPolicy: subset`); the author picked the tests.
+
+The report records the policy (`meta.guardPolicy`, `meta.guardPatterns`; Markdown "Source guards").
+
+Defaults for this repository, found by grepping `test/` for tests that read `lib/` text and by the
+naming convention of the guard tests (`<!-- guard-patterns:edge -->` is read by a test that checks
+these globs against real file names):
+
+<!-- guard-patterns:edge -->
+```
+test/guards/**
+*_guard_test.dart
+*_guards_test.dart
+*_wiring_test.dart
+*_structural_test.dart
+*_inventory_test.dart
+*_audit_test.dart
+no_*_test.dart
+```
+<!-- /guard-patterns:edge -->
+
+These are file-level: a guard that lives inside a mostly-runtime test file is not caught, and
+a matched file loses all of its tests as kill credit (the safe direction: the score can only go
+down). Test files that use the shared source scanner but are not matched are listed with
+`grep -rlE "support/dart_source(_lexical)?\.dart" test | sort`; when mutating code those files
+cover, either pass `--tests` with the runtime tests you mean, or add the file to `--guard-pattern`.
+
+`openstrap-analytics` has no test that scans source text (its file reads are data fixtures), so
+audit it with `--no-guards`.
 
 ## Mutation operators (one documented rule each)
 

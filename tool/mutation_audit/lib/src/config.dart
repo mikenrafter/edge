@@ -26,6 +26,7 @@ class AuditConfig {
     this.seed,
     this.timeout = const Duration(seconds: 300),
     this.guardPatterns = const [],
+    this.noGuards = false,
     this.allowOverrides = const [],
     this.flakyTests = const [],
     this.setupCmd,
@@ -47,6 +48,20 @@ class AuditConfig {
   final Duration timeout;
   final List<String> guardPatterns, allowOverrides;
 
+  /// `--no-guards`: the author states that no test of this suite scans source
+  /// text, so none is classified as a guard.
+  final bool noGuards;
+
+  /// How source guards were classified: `patterns` (`--guard-pattern`),
+  /// `none-declared` (`--no-guards`) or `subset` (an explicit `--tests` list,
+  /// nothing classified). Recorded in the report: a source guard that fails
+  /// is not runtime coverage, and a run that never classified any cannot say.
+  String get guardPolicy => noGuards
+      ? 'none-declared'
+      : guardPatterns.isNotEmpty
+          ? 'patterns'
+          : 'subset';
+
   /// Test keys (`suite::name`) known to be flaky: failures are re-run alone.
   final List<String> flakyTests;
 
@@ -67,7 +82,8 @@ class AuditConfig {
 ///
 /// `--repo <path> --sha <rev> --files <glob>... --test-cmd "<cmd>"
 /// [--tests <file>...] [--max-mutants N] [--sample N --seed S]
-/// [--timeout seconds] [--guard-pattern <glob>...] [--allow-override <path>...]
+/// [--timeout seconds] [--guard-pattern <glob>... | --no-guards]
+/// [--allow-override <path>...]
 /// [--flaky-test <key>...] [--setup-cmd "<cmd>"] [--env KEY=VALUE...]
 /// --out <dir>`
 ///
@@ -120,18 +136,30 @@ AuditConfig parseAuditArgs(List<String> args) {
     if (at <= 0) throw UsageError('--env wants KEY=VALUE, got "$pair"');
     env[pair.substring(0, at)] = pair.substring(at + 1);
   }
+  final guardPatterns = list('guard-pattern');
+  final noGuards = r['no-guards'] as bool;
+  if (noGuards && guardPatterns.isNotEmpty) {
+    throw UsageError('--no-guards contradicts --guard-pattern: pick one');
+  }
+  final tests = list('tests');
+  if (tests.isEmpty && guardPatterns.isEmpty && !noGuards) {
+    throw UsageError('a whole-suite audit must say which tests are source guards: pass '
+        '--guard-pattern <glob>... (their failures are not kills), or --no-guards to state that '
+        'no test scans source text, or limit the run with --tests');
+  }
   return AuditConfig(
     repo: repo,
     sha: sha,
     files: files,
     testCmd: (r['test-cmd'] as String?) ?? defaultTestCommand(repo),
     outDir: outDir,
-    tests: list('tests'),
+    tests: tests,
     maxMutants: number('max-mutants'),
     sample: sample,
     seed: seed,
     timeout: Duration(seconds: number('timeout', min: 1) ?? 300),
-    guardPatterns: list('guard-pattern'),
+    guardPatterns: guardPatterns,
+    noGuards: noGuards,
     allowOverrides: list('allow-override'),
     flakyTests: r['flaky-test'] as List<String>,
     setupCmd: r['setup-cmd'] as String?,
@@ -153,6 +181,9 @@ ArgParser _parser() => ArgParser()
   ..addOption('timeout', help: 'Per-run timeout in seconds (default 300).')
   ..addMultiOption('guard-pattern',
       splitCommas: false, help: 'Globs of source-guard tests; their failures are not kills.')
+  ..addFlag('no-guards',
+      negatable: false,
+      help: 'State that no test scans source text (needed for a whole-suite audit without --guard-pattern).')
   ..addMultiOption('allow-override',
       splitCommas: false, help: 'A path override that may stay (the audited sibling).')
   ..addMultiOption('flaky-test', splitCommas: false, help: 'A test key suite::name to re-run when it fails.')

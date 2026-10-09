@@ -51,6 +51,7 @@ class AuditMeta {
     required this.finishedAt,
     required this.candidateMutants,
     this.env = const {},
+    this.guardPolicy = 'unspecified',
   });
   final String toolVersion, repo, sha, testCmd;
   final DependencyConfig dependencies;
@@ -65,6 +66,9 @@ class AuditMeta {
 
   /// The environment given to child processes (on top of the parent's).
   final Map<String, String> env;
+
+  /// `patterns`, `none-declared` or `subset` (see [AuditConfig.guardPolicy]).
+  final String guardPolicy;
 }
 
 /// The whole result of one audit.
@@ -107,6 +111,7 @@ class AuditResults {
           'files': meta.files,
           'tests': meta.tests,
           'guardPatterns': meta.guardPatterns,
+          'guardPolicy': meta.guardPolicy,
           'timeoutSeconds': meta.timeoutSeconds,
           'maxMutants': meta.maxMutants,
           'sample': meta.sample,
@@ -160,6 +165,8 @@ class AuditResults {
       ..writeln('- Command: `${meta.testCmd}`'
           '${meta.tests.isEmpty ? '' : ' on ${meta.tests.map((t) => '`$t`').join(', ')}'}')
       ..writeln('- Files: ${meta.files.map((f) => '`$f`').join(', ')}')
+      ..writeln('- Source guards: ${meta.guardPolicy}'
+          '${meta.guardPatterns.isEmpty ? '' : ' (${meta.guardPatterns.map((g) => '`$g`').join(', ')})'}')
       ..writeln('- Baseline: ${meta.baseline.passed ? 'passed' : 'FAILED'}, '
           '${meta.baseline.testsRun} tests, ${_seconds(meta.baseline.duration)}')
       ..writeln('- Mutants: ${meta.candidateMutants} candidates, ${results.length} run '
