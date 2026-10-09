@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -198,6 +199,60 @@ void main() {
     expect(code, 65);
     expect(err.toString(), contains('not an allowed sibling'));
     expect(runner.calls, isEmpty);
+  });
+
+  group('Ctrl-C', () {
+    test('during a mutant run: the process is reaped, then the export goes; exit 130, no results', () async {
+      final interrupts = StreamController<ProcessSignal>();
+      final log = <String>[];
+      String? cwd;
+      final runner = FakeProcessRunner((call) async {
+        if (call.argv.first == 'dart' && call.argv[1] == 'pub') return const ProcessOutcome(exitCode: 0);
+        final src = File(p.join(call.cwd, 'lib/a.dart')).readAsStringSync();
+        if (src == lib) return outcomeOf(passing());
+        cwd = call.cwd;
+        interrupts.add(ProcessSignal.sigint);
+        await call.cancel!.whenCancelled;
+        // Reaping the tree takes a few turns; the export must still be there.
+        for (var i = 0; i < 20; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        log.add('reaped; export exists: ${Directory(call.cwd).existsSync()}');
+        return outcomeOf(StreamBuilder().loaded('test/a_test.dart'), exitCode: -15, cancelled: true);
+      });
+      final code = await runCli(args(), runner: runner, out: stdout_, err: err, interrupts: interrupts.stream);
+      expect(code, 130, reason: err.toString());
+      expect(err.toString(), contains('interrupted'));
+      expect(log, ['reaped; export exists: true']);
+      expect(Directory(cwd!).existsSync(), isFalse);
+      expect(await fx.worktrees(), isNot(contains(cwd)));
+      expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse, reason: 'a partial audit is not written as a result');
+      expect(runner.calls.where((c) => c.argv[1] != 'pub'), hasLength(2), reason: 'baseline and the cancelled mutant; no more');
+      await interrupts.close();
+    });
+
+    test('during setup: exit 130 and the baseline never starts', () async {
+      final interrupts = StreamController<ProcessSignal>();
+      final runner = FakeProcessRunner((call) async {
+        interrupts.add(ProcessSignal.sigterm);
+        await call.cancel!.whenCancelled;
+        return const ProcessOutcome(exitCode: -15, cancelled: true);
+      });
+      final code = await runCli(args(), runner: runner, out: stdout_, err: err, interrupts: interrupts.stream);
+      expect(code, 130);
+      expect(runner.calls, hasLength(1));
+      expect(runner.calls.first.argv, ['dart', 'pub', 'get']);
+      expect(await fx.worktrees(), isNot(contains(runner.calls.first.cwd)));
+      await interrupts.close();
+    });
+
+    test('the same token reaches the setup command and every test run', () async {
+      final runner = tests();
+      await run(runner);
+      final tokens = runner.calls.map((c) => c.cancel).toSet();
+      expect(tokens, hasLength(1));
+      expect(tokens.single, isNotNull);
+    });
   });
 
   group('the dependency config is re-read after setup', () {

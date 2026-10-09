@@ -214,6 +214,96 @@ void main() {
     });
   });
 
+  group('cancellation', () {
+    test('every child run gets the token, the baseline and the reruns included', () async {
+      final token = CancelToken();
+      final runner = FakeProcessRunner((call) {
+        if (current() == source) return outcomeOf(StreamBuilder().loaded('test/a_test.dart').pass('test/a_test.dart', 'flaky one').done());
+        if (call.argv.contains('--name')) return outcomeOf(StreamBuilder().loaded('test/a_test.dart').fail('test/a_test.dart', 'flaky one').done(success: false), exitCode: 1);
+        return outcomeOf(StreamBuilder().loaded('test/a_test.dart').fail('test/a_test.dart', 'flaky one').done(success: false), exitCode: 1);
+      });
+      await AuditRunner(runner: runner).run(
+          config: config(flaky: ['test/a_test.dart::flaky one']),
+          root: root.path,
+          mutants: [mutant('<', '<=')],
+          cancel: token);
+      expect(runner.calls, hasLength(3));
+      expect(runner.calls.map((c) => c.cancel), everyElement(same(token)));
+    });
+
+    test('cancelled during a mutant run: the file is restored, nothing else runs, InterruptedError', () async {
+      final token = CancelToken();
+      String? seenDuringRun;
+      final runner = FakeProcessRunner((call) {
+        if (current() == source) return outcomeOf(passing());
+        seenDuringRun = current();
+        token.cancel();
+        // The runner reaps the process tree and reports the run as cancelled.
+        return outcomeOf(StreamBuilder().loaded('test/a_test.dart'), exitCode: -15, cancelled: true);
+      });
+      await expectLater(
+          AuditRunner(runner: runner).run(
+              config: config(),
+              root: root.path,
+              mutants: [mutant('<', '<='), mutant('>', '>=')],
+              cancel: token),
+          throwsA(isA<InterruptedError>()));
+      expect(seenDuringRun, isNot(source), reason: 'the first mutant was applied when it was cancelled');
+      expect(current(), source, reason: 'restored byte for byte before the error leaves the runner');
+      expect(runner.calls, hasLength(2), reason: 'baseline and the one cancelled run: no second mutant');
+    });
+
+    test('a cancelled run is never classified (not as a survivor, not as a load failure)', () async {
+      final token = CancelToken();
+      final runner = FakeProcessRunner((call) {
+        if (current() == source) return outcomeOf(passing());
+        token.cancel();
+        return outcomeOf(passing(), cancelled: true);
+      });
+      await expectLater(
+          AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')], cancel: token),
+          throwsA(isA<InterruptedError>()));
+    });
+
+    test('cancelled between mutants: the next one is never written', () async {
+      final token = CancelToken();
+      final written = <String>[];
+      final runner = FakeProcessRunner((call) {
+        written.add(current());
+        if (current() != source) token.cancel(); // the signal arrives while mutant 1 is running, which then finishes
+        return outcomeOf(passing());
+      });
+      await expectLater(
+          AuditRunner(runner: runner).run(
+              config: config(), root: root.path, mutants: [mutant('<', '<='), mutant('>', '>=')], cancel: token),
+          throwsA(isA<InterruptedError>()));
+      expect(written, hasLength(2));
+      expect(current(), source);
+    });
+
+    test('cancelled during the baseline: InterruptedError, not a failed baseline', () async {
+      final token = CancelToken();
+      final runner = FakeProcessRunner((call) {
+        token.cancel();
+        return outcomeOf(StreamBuilder().loaded('test/a_test.dart'), exitCode: -15, cancelled: true);
+      });
+      await expectLater(
+          AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')], cancel: token),
+          throwsA(isA<InterruptedError>()));
+      expect(runner.calls, hasLength(1));
+      expect(current(), source);
+    });
+
+    test('a token that is already cancelled runs nothing', () async {
+      final token = CancelToken()..cancel();
+      final runner = byFile();
+      await expectLater(
+          AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')], cancel: token),
+          throwsA(isA<InterruptedError>()));
+      expect(runner.calls, isEmpty);
+    });
+  });
+
   group('environment', () {
     test('every child process gets TZ=UTC by default and the configured env otherwise', () async {
       final runner = byFile();

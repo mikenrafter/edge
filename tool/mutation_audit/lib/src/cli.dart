@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'audit_runner.dart';
@@ -23,7 +24,9 @@ class _SetupFailed implements Exception {
 /// results outside the export, dispose of the export. Returns the exit code:
 /// 0 ran (whatever the mutants did), 64 usage error (usage on [err]), 65 the
 /// baseline failed or a path override was refused, 70 internal / export error,
-/// 130 interrupted.
+/// 130 interrupted (SIGINT or SIGTERM): the running tests were stopped and
+/// reaped, the mutated file restored and the export removed, in that order;
+/// no results are written.
 Future<int> runCli(
   List<String> args, {
   ProcessRunner? runner,
@@ -50,8 +53,8 @@ Future<int> runCli(
     return await withDisposableExport<int>(
       repo: config.repo,
       sha: config.sha,
-      interrupts: interrupts ?? _sigint(),
-      body: (export) async {
+      interrupts: interrupts ?? _signals(),
+      body: (export, cancel) async {
         final startedAt = clock();
         // Preflight: refuse a pinned commit that already carries an override.
         final before = await resolveDependencyConfig(export.path,
@@ -60,7 +63,8 @@ Future<int> runCli(
         final setup = config.setupCmd ?? defaultSetupCommand(export.path);
         if (setup.isNotEmpty) {
           final done = await processes.run(splitCommand(setup),
-              workingDirectory: export.path, environment: config.env);
+              workingDirectory: export.path, environment: config.env, cancel: cancel);
+          if (done.cancelled || cancel.isCancelled) throw InterruptedError();
           if (done.exitCode != 0) {
             throw _SetupFailed('"$setup" failed (exit code ${done.exitCode}): ${done.stderr.trim()}');
           }
@@ -81,7 +85,7 @@ Future<int> runCli(
             maxMutants: config.maxMutants, sample: config.sample, seed: config.seed);
 
         final run = await AuditRunner(runner: processes)
-            .run(config: config, root: export.path, mutants: selected);
+            .run(config: config, root: export.path, mutants: selected, cancel: cancel);
         final results = AuditResults(
           AuditMeta(
             toolVersion: _toolVersion,
@@ -145,10 +149,21 @@ Future<int> runCli(
   }
 }
 
-Stream<ProcessSignal>? _sigint() {
-  try {
-    return ProcessSignal.sigint.watch();
-  } on SignalException {
-    return null;
-  }
+/// Ctrl-C and SIGTERM as one stream (a platform without one just lacks it).
+/// Watching them replaces the default "die now", which is the point: the
+/// export and the child processes are cleaned up first.
+Stream<ProcessSignal> _signals() {
+  final controller = StreamController<ProcessSignal>();
+  final subscriptions = <StreamSubscription<ProcessSignal>>[];
+  controller.onListen = () {
+    for (final signal in [ProcessSignal.sigint, ProcessSignal.sigterm]) {
+      try {
+        subscriptions.add(signal.watch().listen(controller.add));
+      } on SignalException {
+        // not supported here
+      }
+    }
+  };
+  controller.onCancel = () => Future.wait(subscriptions.map((s) => s.cancel()));
+  return controller.stream;
 }

@@ -5,6 +5,8 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
+import 'process_runner.dart';
+
 /// The export target is, contains or lies inside the developer checkout.
 class UnsafeExportTarget implements Exception {
   UnsafeExportTarget(this.message);
@@ -164,41 +166,40 @@ String _resolveLoosely(String path) {
 }
 
 /// Creates the export, runs [body] with it, and disposes of it afterwards:
-/// when [body] returns, when it throws, and when [interrupts] emits (Ctrl-C):
-/// then the export is disposed of, [body] is abandoned, and an
-/// [InterruptedError] is thrown. The export is removed before the future
-/// completes.
+/// when [body] returns, when it throws, and when [interrupts] emits (Ctrl-C,
+/// SIGTERM).
+///
+/// An interrupt does NOT abandon [body]: it cancels the [CancelToken] handed
+/// to the body, and the export stays until the body has stopped what it
+/// started (reaped the child processes, restored the mutated file) and
+/// returned or thrown. Only then is the export removed, and
+/// [InterruptedError] is thrown (also when the body had just finished).
+///
+/// The interrupt subscription is made first, before anything is created, so a
+/// signal during the (slow) creation of the export is not lost: the body is
+/// not run and the half-made export is removed.
 Future<T> withDisposableExport<T>({
   required String repo,
   required String sha,
-  required Future<T> Function(DisposableExport export) body,
+  required Future<T> Function(DisposableExport export, CancelToken cancel) body,
   String? parentDir,
   String? exportDir,
   Stream<ProcessSignal>? interrupts,
 }) async {
-  final export = await DisposableExport.create(
-      repo: repo, sha: sha, parentDir: parentDir, exportDir: exportDir);
-  final interrupted = Completer<void>();
-  final subscription = interrupts?.listen((_) {
-    if (!interrupted.isCompleted) interrupted.complete();
-  });
+  final cancel = CancelToken();
+  final subscription = interrupts?.listen((_) => cancel.cancel());
+  DisposableExport? export;
   try {
-    final work = body(export)..ignore();
-    final first = await Future.any<Object?>([
-      work.then<Object?>((value) => _Finished<T>(value)),
-      interrupted.future.then<Object?>((_) => null),
-    ]);
-    if (first is _Finished<T>) return first.value;
-    throw InterruptedError();
+    export = await DisposableExport.create(
+        repo: repo, sha: sha, parentDir: parentDir, exportDir: exportDir);
+    if (cancel.isCancelled) throw InterruptedError();
+    final value = await body(export, cancel);
+    if (cancel.isCancelled) throw InterruptedError();
+    return value;
   } finally {
     await subscription?.cancel();
-    await export.dispose();
+    await export?.dispose();
   }
-}
-
-class _Finished<T> {
-  _Finished(this.value);
-  final T value;
 }
 
 /// The run was interrupted by a signal.

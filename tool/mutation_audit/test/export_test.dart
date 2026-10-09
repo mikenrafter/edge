@@ -225,7 +225,7 @@ void main() {
       final result = await withDisposableExport<int>(
           repo: fx.root,
           sha: firstSha,
-          body: (e) async {
+          body: (e, cancel) async {
             seen = e.path;
             expect(Directory(e.path).existsSync(), isTrue);
             return 42;
@@ -241,7 +241,7 @@ void main() {
           withDisposableExport<void>(
               repo: fx.root,
               sha: firstSha,
-              body: (e) async {
+              body: (e, cancel) async {
                 seen = e.path;
                 throw StateError('boom');
               }),
@@ -250,25 +250,115 @@ void main() {
       expect(await fx.worktrees(), isNot(contains(seen)));
     });
 
-    test('removes it on Ctrl-C, abandons the body and throws InterruptedError', () async {
-      final interrupts = StreamController<ProcessSignal>();
-      final started = Completer<String>();
-      final never = Completer<void>();
-      final run = withDisposableExport<void>(
-          repo: fx.root,
-          sha: firstSha,
-          interrupts: interrupts.stream,
-          body: (e) async {
-            started.complete(e.path);
-            await never.future;
-          });
-      final path = await started.future;
-      expect(Directory(path).existsSync(), isTrue);
-      interrupts.add(ProcessSignal.sigint);
-      await expectLater(run, throwsA(isA<InterruptedError>()));
-      expect(Directory(path).existsSync(), isFalse);
-      expect(await fx.worktrees(), isNot(contains(path)));
-      await interrupts.close();
+    group('Ctrl-C', () {
+      test('cancels the token; the export is removed only AFTER the body has cleaned up and returned', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        final started = Completer<String>();
+        final log = <String>[];
+        String? path;
+        final run = withDisposableExport<void>(
+            repo: fx.root,
+            sha: firstSha,
+            interrupts: interrupts.stream,
+            body: (e, cancel) async {
+              path = e.path;
+              started.complete(e.path);
+              await cancel.whenCancelled;
+              log.add('body saw the cancel');
+              // Reaping the process tree and restoring files takes a while.
+              for (var i = 0; i < 20; i++) {
+                await Future<void>.delayed(Duration.zero);
+              }
+              log.add('export still there during cleanup: ${Directory(e.path).existsSync()}');
+              log.add('cleanup done');
+            });
+        await started.future;
+        expect(Directory(path!).existsSync(), isTrue);
+        interrupts.add(ProcessSignal.sigint);
+        await expectLater(run, throwsA(isA<InterruptedError>()));
+        expect(log, ['body saw the cancel', 'export still there during cleanup: true', 'cleanup done']);
+        expect(Directory(path!).existsSync(), isFalse);
+        expect(await fx.worktrees(), isNot(contains(path)));
+        await interrupts.close();
+      });
+
+      test('SIGTERM is an interrupt too', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        final run = withDisposableExport<void>(
+            repo: fx.root,
+            sha: firstSha,
+            interrupts: interrupts.stream,
+            body: (e, cancel) async {
+              interrupts.add(ProcessSignal.sigterm);
+              await cancel.whenCancelled;
+            });
+        await expectLater(run, throwsA(isA<InterruptedError>()));
+        await interrupts.close();
+      });
+
+      test('a body that ignores the token is waited for, never deleted from under', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        var existedAtEnd = false;
+        final started = Completer<void>();
+        final run = withDisposableExport<void>(
+            repo: fx.root,
+            sha: firstSha,
+            interrupts: interrupts.stream,
+            body: (e, cancel) async {
+              started.complete();
+              await cancel.whenCancelled;
+              for (var i = 0; i < 50; i++) {
+                await Future<void>.delayed(Duration.zero); // not looking at the token any more
+              }
+              existedAtEnd = Directory(e.path).existsSync();
+            });
+        await started.future;
+        interrupts.add(ProcessSignal.sigint);
+        await expectLater(run, throwsA(isA<InterruptedError>()));
+        expect(existedAtEnd, isTrue);
+        await interrupts.close();
+      });
+
+      test('the handler is installed before the export is created: an immediate signal is not lost', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        var ran = false;
+        final run = withDisposableExport<void>(
+            repo: fx.root,
+            sha: firstSha,
+            interrupts: interrupts.stream,
+            body: (e, cancel) async {
+              ran = true;
+            });
+        expect(interrupts.hasListener, isTrue, reason: 'subscribed synchronously, before the first await');
+        interrupts.add(ProcessSignal.sigint);
+        await expectLater(run, throwsA(isA<InterruptedError>()));
+        expect(ran, isFalse, reason: 'no work starts after the signal');
+        expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
+        await interrupts.close();
+      });
+
+      test('the subscription is dropped afterwards', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        await withDisposableExport<void>(
+            repo: fx.root, sha: firstSha, interrupts: interrupts.stream, body: (e, cancel) async {});
+        expect(interrupts.hasListener, isFalse);
+        await interrupts.close();
+      });
+
+      test('a signal that arrives after the body returned still ends in InterruptedError (exit 130)', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        final run = withDisposableExport<int>(
+            repo: fx.root,
+            sha: firstSha,
+            interrupts: interrupts.stream,
+            body: (e, cancel) async {
+              interrupts.add(ProcessSignal.sigint);
+              await Future<void>.delayed(Duration.zero);
+              return 5;
+            });
+        await expectLater(run, throwsA(isA<InterruptedError>()));
+        await interrupts.close();
+      });
     });
 
     test('an unsafe target is refused before the body runs', () async {
@@ -278,7 +368,7 @@ void main() {
               repo: fx.root,
               sha: firstSha,
               exportDir: fx.root,
-              body: (e) async {
+              body: (e, cancel) async {
                 ran = true;
               }),
           throwsA(isA<UnsafeExportTarget>()));

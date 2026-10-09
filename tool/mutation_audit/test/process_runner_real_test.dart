@@ -55,6 +55,31 @@ void main() {
     expect(outcome.timedOut, isFalse);
   });
 
+  test('a cancelled run stops a TERM-ignoring tree and returns once it is gone', () async {
+    final path = script('''
+trap '' TERM
+sleep 120 &
+echo "gc=\$!"
+wait''');
+    final token = CancelToken();
+    final running = runner.run(['sh', path], workingDirectory: dir.path, cancel: token);
+    // Real time, bounded: wait for the child to say it is up, then cancel.
+    final deadline = DateTime.now().add(const Duration(seconds: 10));
+    while (!File(p.join(dir.path, 'up')).existsSync() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      if (File(path).existsSync()) break; // the script is already written; give it a moment to start
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    token.cancel();
+    final outcome = await running;
+    final gc = grandchild(outcome);
+    addTearDown(() => Process.killPid(gc, ProcessSignal.sigkill));
+    expect(outcome.cancelled, isTrue);
+    expect(outcome.timedOut, isFalse);
+    expect(dead(gc), isTrue);
+    expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
+  }, timeout: const Timeout(Duration(seconds: 20)));
+
   group('a timeout stops the whole tree, with a TERM that is ignored', () {
     test('the wrapper exits at once, a TERM-ignoring child keeps the pipe open', () async {
       final path = script('''
