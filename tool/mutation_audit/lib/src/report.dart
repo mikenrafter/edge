@@ -94,7 +94,7 @@ class AuditResults {
   /// The JSON document: `meta` (SHAs, dependency config, command, options,
   /// baseline, times), `counts`, `score`, and `mutants`: per mutant `id`,
   /// `file`, `line`, `column`, `operator`, `original`, `mutated`, `status`,
-  /// `killingTests`, `guardTests`, `reruns` (`test`, `confirmed`),
+  /// `killingTests` (keys), `killers` (`test`, `kind`: assertion | exception), `guardTests`, `reruns` (`test`, `confirmed`),
   /// `durationMs`, `detail`.
   Map<String, Object?> toJson() => {
         'meta': {
@@ -128,6 +128,9 @@ class AuditResults {
               ...r.mutant.toJson(),
               'status': r.classification.status.id,
               'killingTests': r.classification.killingTests,
+              'killers': [
+                for (final k in r.classification.killers) {'test': k.key, 'kind': k.kind.id}
+              ],
               'guardTests': r.classification.guardTests,
               'reruns': [
                 for (final x in r.classification.reruns) {'test': x.testKey, 'confirmed': x.confirmed}
@@ -139,11 +142,11 @@ class AuditResults {
       };
 
   /// The Markdown summary: header with SHAs and command, a counts table by
-  /// status, the score, then survivors, killed-by-guard-only, compile-invalid,
+  /// status, the score, then killed (with the kind of each killing test), survivors, killed-by-guard-only, compile-invalid,
   /// timeout and load-failure mutants as tables (file:line, operator, change),
   /// and per file killed/survived counts. The score is a percentage with one
   /// decimal (`50.0%`), or the words `no score` when it is undefined.
-  /// Section headings: `## Survivors`, `## Killed by guards only`,
+  /// Section headings: `## Killed`, `## Survivors`, `## Killed by guards only`,
   /// `## Compile-invalid`, `## Timeouts`, `## Load failures`, `## By file`.
   String renderMarkdown() {
     final b = StringBuffer();
@@ -180,7 +183,7 @@ class AuditResults {
       ..writeln('|---|---|');
     counts.forEach((status, n) => b.writeln('| $status | $n |'));
 
-    void section(String title, MutantStatus status, {bool tests = false}) {
+    void section(String title, MutantStatus status, {bool tests = false, bool killers = false}) {
       b
         ..writeln()
         ..writeln('## $title')
@@ -191,12 +194,14 @@ class AuditResults {
         return;
       }
       b
-        ..writeln('| location | operator | change | ${tests ? 'tests' : 'detail'} |')
+        ..writeln('| location | operator | change | ${tests || killers ? 'tests' : 'detail'} |')
         ..writeln('|---|---|---|---|');
       for (final r in rows) {
         final m = r.mutant;
         final c = r.classification;
-        final extra = tests
+        final extra = killers
+            ? [for (final k in c.killers) '${k.key} (${k.kind.id})'].join('<br>')
+            : tests
             ? c.guardTests.join('<br>')
             : [
                 if (c.detail.isNotEmpty) c.detail,
@@ -207,6 +212,7 @@ class AuditResults {
       }
     }
 
+    section('Killed', MutantStatus.killed, killers: true);
     section('Survivors', MutantStatus.survived);
     section('Killed by guards only', MutantStatus.killedByGuardOnly, tests: true);
     section('Compile-invalid', MutantStatus.compileInvalid);

@@ -84,6 +84,26 @@ List<int> f(int a, int b) {
       expectParses(mutatedSource(src, m));
     });
 
+    test('+1 on the largest 64-bit literal would wrap: only -1 is produced', () {
+      const src = 'bool f(int x) => x < 9223372036854775807;\n';
+      expect(changes(src, MutationOperator.intLiteral), ['9223372036854775807 -> 9223372036854775806']);
+    });
+
+    test('every produced literal is exactly the original +-1, never a wrapped value', () {
+      const src = 'bool f(int x) => x < 9223372036854775807 || x > 9223372036854775806 || x == 0;\n';
+      for (final m in only(src, MutationOperator.intLiteral)) {
+        final diff = (BigInt.parse(m.mutated) - BigInt.parse(m.original)).abs();
+        expect(diff, BigInt.one, reason: '${m.original} -> ${m.mutated}');
+        expect(BigInt.parse(m.mutated) >= BigInt.from(-1), isTrue);
+        expect(BigInt.parse(m.mutated) <= BigInt.parse('9223372036854775807'), isTrue);
+      }
+    });
+
+    test('the smallest 64-bit literal (a unary minus on 2^63) and a literal beyond 64 bits are left alone', () {
+      expect(only('bool f(int x) => x > -9223372036854775808;\n', MutationOperator.intLiteral), isEmpty);
+      expect(only('bool f(double x) => x < 9223372036854775808;\n', MutationOperator.intLiteral), isEmpty);
+    });
+
     test('literals that are not direct operands of a comparison are left alone', () {
       const src = '''
 int f(int x, List<int> xs) {

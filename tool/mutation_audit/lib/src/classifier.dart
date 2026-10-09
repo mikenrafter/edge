@@ -73,11 +73,29 @@ class RerunRecord {
   final bool confirmed;
 }
 
+/// How a killing test failed: an assertion (`TestFailure`, the reporter's
+/// `failure` result) or any other exception (`error`). Both kill; the report
+/// says which, because a crash is weaker evidence than a failed expectation.
+enum FailureKind {
+  assertion('assertion'),
+  exception('exception');
+
+  const FailureKind(this.id);
+  final String id;
+}
+
+/// A confirmed failing non-guard test and how it failed.
+class KillingTest {
+  const KillingTest(this.key, this.kind);
+  final String key;
+  final FailureKind kind;
+}
+
 /// The verdict on one mutant run.
 class Classification {
   const Classification({
     required this.status,
-    this.killingTests = const [],
+    this.killers = const [],
     this.guardTests = const [],
     this.reruns = const [],
     this.detail = '',
@@ -85,8 +103,11 @@ class Classification {
 
   final MutantStatus status;
 
-  /// Keys (`suite::name`) of the confirmed non-guard failures, in finish order.
-  final List<String> killingTests;
+  /// The confirmed non-guard failures, in finish order, with their kind.
+  final List<KillingTest> killers;
+
+  /// Keys (`suite::name`) of [killers].
+  List<String> get killingTests => [for (final k in killers) k.key];
 
   /// Keys of confirmed failures of guard tests.
   final List<String> guardTests;
@@ -135,7 +156,7 @@ Future<Classification> classifyRun(
   final failed = [for (final t in run.tests) if (t.failed) t];
   var passedAfterRerun = 0;
   final reruns = <RerunRecord>[];
-  final killing = <String>[];
+  final killing = <KillingTest>[];
   final guardFailures = <String>[];
   for (final t in failed) {
     var confirmed = true;
@@ -147,15 +168,20 @@ Future<Classification> classifyRun(
       if (!confirmed) passedAfterRerun++;
     }
     if (!confirmed) continue;
-    ((guards?.matches(t) ?? false) ? guardFailures : killing).add(t.key);
+    if (guards?.matches(t) ?? false) {
+      guardFailures.add(t.key);
+    } else {
+      killing.add(KillingTest(
+          t.key, t.result == TestResult.failure ? FailureKind.assertion : FailureKind.exception));
+    }
   }
   if (killing.isNotEmpty) {
     return Classification(
       status: MutantStatus.killed,
-      killingTests: killing,
+      killers: killing,
       guardTests: guardFailures,
       reruns: reruns,
-      detail: _firstLine(failed.firstWhere((t) => t.key == killing.first).errors),
+      detail: _firstLine(failed.firstWhere((t) => t.key == killing.first.key).errors),
     );
   }
   if (guardFailures.isNotEmpty) {

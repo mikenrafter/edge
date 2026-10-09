@@ -44,6 +44,20 @@ void main() {
       expect(c.killingTests, ['$suite::b']);
     });
 
+    test('the kind of each killer is recorded: assertion for a TestFailure, exception otherwise', () async {
+      final s = StreamBuilder()
+          .loaded(suite)
+          .fail(suite, 'asserts')
+          .throws(suite, 'crashes', 'RangeError: bad')
+          .done(success: false);
+      final c = await classify(s, exitCode: 1);
+      expect([for (final k in c.killers) (k.key, k.kind)], [
+        ('$suite::asserts', FailureKind.assertion),
+        ('$suite::crashes', FailureKind.exception),
+      ]);
+      expect(c.killingTests, ['$suite::asserts', '$suite::crashes']);
+    });
+
     test('every failing test is listed, in the order they finished', () async {
       final s = StreamBuilder()
           .loaded(suite)

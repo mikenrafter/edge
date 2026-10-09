@@ -24,11 +24,20 @@ Mutant mutant(int line, String original, String mutated,
     );
 
 MutantResult result(Mutant m, MutantStatus s,
-        {List<String> killing = const [], List<String> guard = const [], List<RerunRecord> reruns = const [], String detail = '', int ms = 100}) =>
+        {List<String> killing = const [],
+        List<KillingTest>? killers,
+        List<String> guard = const [],
+        List<RerunRecord> reruns = const [],
+        String detail = '',
+        int ms = 100}) =>
     MutantResult(
       mutant: m,
       classification: Classification(
-          status: s, killingTests: killing, guardTests: guard, reruns: reruns, detail: detail),
+          status: s,
+          killers: killers ?? [for (final k in killing) KillingTest(k, FailureKind.assertion)],
+          guardTests: guard,
+          reruns: reruns,
+          detail: detail),
       duration: Duration(milliseconds: ms),
     );
 
@@ -58,7 +67,10 @@ AuditMeta meta() => AuditMeta(
 
 AuditResults sample() => AuditResults(meta(), [
       result(mutant(1, '<', '<='), MutantStatus.killed, killing: ['test/a_test.dart::lt boundary']),
-      result(mutant(2, '>', '>='), MutantStatus.killed, killing: ['test/a_test.dart::gt boundary']),
+      result(mutant(2, '>', '>='), MutantStatus.killed, killers: [
+        const KillingTest('test/a_test.dart::gt boundary', FailureKind.exception),
+        const KillingTest('test/b_test.dart::gt other', FailureKind.assertion),
+      ]),
       result(mutant(3, '==', '!='), MutantStatus.survived),
       result(mutant(4, '&&', '||', op: MutationOperator.logical), MutantStatus.killedByGuardOnly,
           guard: ['test/guards/g_test.dart::no heavy calc']),
@@ -147,6 +159,9 @@ void main() {
         'mutated': '<=',
         'status': 'killed',
         'killingTests': ['test/a_test.dart::lt boundary'],
+        'killers': [
+          {'test': 'test/a_test.dart::lt boundary', 'kind': 'assertion'}
+        ],
         'guardTests': <Object?>[],
         'reruns': <Object?>[],
         'durationMs': 100,
@@ -158,6 +173,16 @@ void main() {
       expect(ms.last['reruns'], [
         {'test': 'test/a_test.dart::flaky', 'confirmed': false}
       ]);
+    });
+
+    test('each killer carries its kind: an assertion or an exception', () {
+      final ms = (json['mutants'] as List).cast<Map<String, Object?>>();
+      expect(ms[1]['killers'], [
+        {'test': 'test/a_test.dart::gt boundary', 'kind': 'exception'},
+        {'test': 'test/b_test.dart::gt other', 'kind': 'assertion'},
+      ]);
+      expect(ms[1]['killingTests'], ['test/a_test.dart::gt boundary', 'test/b_test.dart::gt other']);
+      expect(ms[2]['killers'], isEmpty);
     });
 
     test('mutants keep the order they were given', () {
@@ -195,6 +220,15 @@ void main() {
       expect(survivors, contains('`==`'));
       expect(survivors, contains('`!=`'));
       expect(survivors, contains('lib/a.dart:9'));
+    });
+
+    test('kills are listed with the kind of each killing test', () {
+      expect(md, contains('## Killed\n'));
+      final killed = md.substring(md.indexOf('## Killed\n'), md.indexOf('## Survivors'));
+      expect(killed, contains('lib/a.dart:1'));
+      expect(killed, contains('test/a_test.dart::lt boundary (assertion)'));
+      expect(killed, contains('test/a_test.dart::gt boundary (exception)'));
+      expect(killed, contains('test/b_test.dart::gt other (assertion)'));
     });
 
     test('guard-only mutants are listed apart from kills and survivors', () {

@@ -66,6 +66,9 @@ const _relationalSwap = {
   TokenType.BANG_EQ: '==',
 };
 
+final _minInt64 = BigInt.parse('-9223372036854775808');
+final _maxInt64 = BigInt.parse('9223372036854775807');
+
 class _Collector extends RecursiveAstVisitor<void> {
   _Collector(this.source, this.file, this.lineInfo) {
     var ascii = true;
@@ -167,8 +170,14 @@ class _Collector extends RecursiveAstVisitor<void> {
     if (!RegExp(r'^\d+$').hasMatch(lexeme)) return;
     final value = e.value;
     if (value == null) return;
-    _add(MutationOperator.intLiteral, e.offset, e.end, '${value - 1}');
-    _add(MutationOperator.intLiteral, e.offset, e.end, '${value + 1}');
+    // BigInt: `value + 1` on the largest 64-bit literal wraps to the smallest
+    // and would be "a different mutant" that is really nonsense. A replacement
+    // outside the signed 64-bit range is skipped.
+    for (final delta in const [-1, 1]) {
+      final replacement = BigInt.from(value) + BigInt.from(delta);
+      if (replacement < _minInt64 || replacement > _maxInt64) continue;
+      _add(MutationOperator.intLiteral, e.offset, e.end, '$replacement');
+    }
   }
 
   void _negate(Expression condition) {
