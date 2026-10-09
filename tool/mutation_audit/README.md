@@ -40,7 +40,8 @@ dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
   [--timeout seconds] [--guard-pattern <glob>...] [--scanner <glob>...] \
   [--runtime-allowlist <file>] [--no-guards] [--allow-override <path>...] \
   [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] [--setup-leaves <glob>...] \
-  [--no-sandbox] [--sandbox-ro <path>...] [--heartbeat seconds] --out <dir>
+  [--no-sandbox] [--sandbox-ro <path>...] [--heartbeat seconds] \
+  [--memory-max <size> | --no-memory-cap] [--tmpfs-size <size>] --out <dir>
 ```
 
 `--test-cmd` defaults to `flutter test --no-pub --reporter json` for a Flutter package and
@@ -299,9 +300,10 @@ kills.)
 
 Precedence, first match wins:
 
-1. run timed out -> `timeout`
-2. a suite failed to load with a compiler diagnostic -> `compile-invalid` (nothing else in the run counts)
-3. failed tests: a test that failed by the test framework's own timeout is set aside first (below).
+1. a process of the run was killed by the memory cgroup (`--memory-max`) -> `resource-limit` (before everything else: a killed test looks like a failing one)
+2. run timed out -> `timeout`
+3. a suite failed to load with a compiler diagnostic -> `compile-invalid` (nothing else in the run counts)
+4. failed tests: a test that failed by the test framework's own timeout is set aside first (below).
    Ambiguous ones (known flaky, or no `error` event) are re-run alone once (below).
    Confirmed failures that match a guard pattern are guard failures; any other confirmed failure
    -> `killed` (assertion or exception both count; the report says which for each killing test).
@@ -349,6 +351,48 @@ A kill needs a repeated, attributable failure of that very test. An `unresolved`
 mutant `unconfirmed` (reported with the reason in the `Unconfirmed` section, outside the score)
 unless another test was confirmed, in which case the confirmed kill stands. With no rerun possible
 the failure is `unresolved` too.
+
+## Memory limits
+
+Nothing else bounds what one run allocates, and with no swap the machine's own OOM killer would pick a
+victim anywhere (an unrelated process of yours). So every SANDBOXED test run (baseline, mutant, rerun;
+not setup or the warm-up, which are not in the sandbox) is put in a transient cgroup scope:
+
+```
+systemd-run --user --scope --quiet -p MemoryMax=<bytes> -p MemorySwapMax=0 -p OOMPolicy=continue -- \
+  sh -c '<report>' mutaudit-cap  bwrap ... -- <test command>
+```
+
+- `--memory-max <size>` (default `4G`; `512M`, `6g`, plain bytes; `0` = no limit). The scope is a cgroup with
+  a hard limit and no swap, so a run over it gets the cgroup's own OOM kill (`oom_kill` in `memory.events`),
+  which kills a process of that scope only. Everything the run starts is charged to it: heap, page cache,
+  and the pages of tmpfs mounts, including the export overlay.
+- The `sh` wrapper runs the command, then prints one stderr line
+  `mutaudit-memory: peak=<bytes> oom_kill=<n> max=<bytes>` from the scope's `memory.peak`, `memory.events`
+  and `memory.max`, and exits with the command's status. The tool takes the line out of the run's stderr.
+  Why a wrapper: a scope that ends normally is unloaded at once and its counters are gone; and with the
+  default `OOMPolicy=stop` systemd stops the whole scope on an OOM kill, the wrapper included, so it would
+  never report (both checked by hand). A run that timed out or was cancelled, or whose wrapper was killed,
+  has no line: its peak and kill count stay unknown (`null`), nothing is guessed.
+- **Fail closed.** Before the export is made, the tool starts a scope with the limit around `true` and checks
+  that its cgroup says `memory.max` = the limit (a session without the memory controller delegated accepts
+  the property and enforces nothing). If `systemd-run --user` is missing, has no user manager, or the limit
+  is not enforced, the audit stops with exit 70 and the reason. `--no-memory-cap` runs without the limit and
+  without the check (and `--memory-max 0` and `--no-sandbox` mean no cap too); the report then says
+  `memory: NOT CAPPED (<reason>)` in `meta.isolation.memory.reason` and in `summary.md`.
+- **`resource-limit`.** A run in which the scope reports `oom_kill > 0` is classified before anything else
+  and is never a kill, whatever the test stream shows (a test that "failed" may be the one that was killed;
+  a killed helper may leave a clean-looking stream). It is counted, listed under "Resource limits" with its
+  peak, left out of the score like a timeout, and shown on the progress line. A rerun that hits the limit
+  is `unresolved`. A baseline that hits it stops the audit (exit 65) and says to raise `--memory-max`.
+- **Peaks.** `memoryPeakBytes` is recorded per mutant (the largest of its run and its reruns) in
+  `results.json` and `progress.jsonl`, for the baseline in `meta.baseline`, and shown on the stderr lines
+  (`... 2m10s, peak 812M; elapsed ...`, `baseline done in ...: 41 tests passed, peak 1.2G`). The key is
+  absent when no run reported one (no cap).
+- **tmpfs.** Each tmpfs mount of the sandbox (`/tmp`, `/var/tmp`, `/run`, `/dev/shm`, HOME) is sized with
+  `bwrap --size` (`--tmpfs-size <size>`, default `1G`; bubblewrap's default is 50% of RAM each). The export
+  overlay (`--tmp-overlay`) is a tmpfs too and bubblewrap cannot size it; its pages are charged to the
+  scope, so `MemoryMax` is what bounds it. With `--no-memory-cap` nothing does, and the report says so.
 
 ## Timeouts and cancellation
 
@@ -595,5 +639,6 @@ failed, `detail`), `unisolated` (true for every mutant of a `--no-sandbox` audit
 (each killing test with its kind), Survivors, Killed by guards only, Compile-invalid, Timeouts, Load
 failures, Unconfirmed, and a per-file table.
 
-Statuses: `killed`, `killed-by-guard-only`, `survived`, `compile-invalid`, `timeout`, `load-failure`,
-`skipped`, `unconfirmed`.
+Statuses: `killed`, `killed-by-guard-only`, `survived`, `compile-invalid`, `timeout`, `resource-limit`, `load-failure`,
+`skipped`, `unconfirmed`. `resource-limit` is reported like `timeout`: its own summary section, its own count,
+outside the score; a rerun that hits the limit is `unresolved`.

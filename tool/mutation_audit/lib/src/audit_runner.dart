@@ -6,6 +6,7 @@ import 'command.dart';
 import 'config.dart';
 import 'export.dart' show InterruptedError;
 import 'export_integrity.dart';
+import 'memory_cap.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
 import 'progress.dart';
@@ -138,6 +139,10 @@ class AuditRunner {
         before: isolated ? await integrity?.view() : null);
     if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
     BaselineFailedError failed(String message) => BaselineFailedError(message, argv: command, outcome: outcome);
+    if (hitMemoryLimit(outcome)) {
+      throw failed('the baseline run hit the memory limit (${memoryLimitDetail(outcome)}); the limit is '
+          '${config.memoryMax == 0 ? 'off' : formatBytes(config.memoryMax)}: try a higher --memory-max');
+    }
     if (outcome.timedOut) {
       throw failed('the baseline run timed out after ${config.timeout.inSeconds} s');
     }
@@ -161,8 +166,9 @@ class AuditRunner {
           '${outcome.stderr.trim().isEmpty ? '' : ', ${outcome.stderr.trim().split('\n').first}'})');
     }
     if (ran == 0) throw failed('the baseline ran no test');
-    done('$ran ${ran == 1 ? 'test' : 'tests'} passed');
-    return BaselineSummary(passed: true, testsRun: ran, duration: outcome.elapsed);
+    final peak = outcome.memoryPeakBytes;
+    done('$ran ${ran == 1 ? 'test' : 'tests'} passed${peak == null ? '' : ', peak ${formatBytes(peak)}'}');
+    return BaselineSummary(passed: true, testsRun: ran, duration: outcome.elapsed, memoryPeakBytes: peak);
   }
 
   /// [runBaseline] first (its [BaselineFailedError] propagates before any
@@ -196,9 +202,11 @@ class AuditRunner {
       final applied = await applier.apply(mutant);
       late final Classification classification;
       late final Duration elapsed;
+      int? peak;
       try {
         // The reference for this mutant's runs: the export with the mutant applied.
         final before = isolated ? await integrity?.view(mutatedFile: mutant.file) : null;
+        int? higher(int? a, int? b) => a == null ? b : b == null ? a : (a > b ? a : b);
         Future<ProcessOutcome> alone(TestOutcome failed) async {
           progress.line('[$index/$total] rerun ${failed.key}');
           final began = progress.now();
@@ -212,8 +220,14 @@ class AuditRunner {
             position: '[$index/$total]',
             before: before,
           );
+          peak = higher(peak, outcome.memoryPeakBytes);
+          final memory = [
+            if (hitMemoryLimit(outcome)) 'memory limit',
+            if (outcome.memoryPeakBytes != null) 'peak ${formatBytes(outcome.memoryPeakBytes!)}',
+          ];
           progress.line('[$index/$total] rerun ${failed.key}: '
-              '${outcome.timedOut ? 'timed out' : outcome.cancelled ? 'cancelled' : 'exit ${outcome.exitCode}'} '
+              '${outcome.timedOut ? 'timed out' : outcome.cancelled ? 'cancelled' : 'exit ${outcome.exitCode}'}'
+              '${memory.isEmpty ? '' : ' (${memory.join(', ')})'} '
               'in ${ProgressReporter.formatDuration(progress.now().difference(began))}');
           return outcome;
         }
@@ -227,6 +241,7 @@ class AuditRunner {
             position: '[$index/$total]',
             before: before);
         if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
+        peak = higher(peak, outcome.memoryPeakBytes);
         classification =
             await classifyRun(outcome, guards: matcher, flakyTests: flaky, rerun: alone, root: root);
         if (cancel?.isCancelled ?? false) throw InterruptedError();
@@ -237,8 +252,8 @@ class AuditRunner {
       // A signal that landed while the file was being put back.
       if (cancel != null && cancel.isCancelled) throw InterruptedError();
       results.add(MutantResult(
-          mutant: mutant, classification: classification, duration: elapsed, isolated: isolated));
-      progress.mutantFinished(index, total, mutant, classification);
+          mutant: mutant, classification: classification, duration: elapsed, isolated: isolated, memoryPeakBytes: peak));
+      progress.mutantFinished(index, total, mutant, classification, memoryPeakBytes: peak);
     }
     if (cancel != null && cancel.isCancelled) throw InterruptedError();
     return (baseline: baseline, results: results);

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:args/args.dart';
 
 import 'command.dart';
+import 'memory_cap.dart';
+import 'sandbox.dart' show Sandbox;
 
 /// A command line that cannot be run (missing or malformed option).
 class UsageError implements Exception {
@@ -37,7 +39,12 @@ class AuditConfig {
     this.sandboxReadOnly = const [],
     this.setupLeaves = const [],
     this.heartbeat = const Duration(seconds: 60),
+    this.memoryMax = defaultMemoryMax,
+    this.noMemoryCap = false,
+    this.tmpfsSize = Sandbox.defaultTmpfsSize,
   });
+
+  static const defaultMemoryMax = 4 * 1024 * 1024 * 1024;
 
   /// The developer repository and the pinned commit to audit.
   final String repo, sha;
@@ -103,6 +110,17 @@ class AuditConfig {
   /// (`--heartbeat <seconds>`); zero turns the heartbeat off.
   final Duration heartbeat;
 
+  /// `--memory-max`: bytes of memory (and no swap) one sandboxed test run may
+  /// use, enforced by a transient systemd user scope; 0: no limit.
+  final int memoryMax;
+
+  /// `--no-memory-cap`: no limit, and no check that one can be set. The report
+  /// says so; without it a missing `systemd-run --user` stops the audit.
+  final bool noMemoryCap;
+
+  /// `--tmpfs-size`: bytes each of the sandbox's tmpfs mounts may hold.
+  final int tmpfsSize;
+
   /// Where results.json and summary.md go (never inside the export).
   final String outDir;
 }
@@ -115,6 +133,7 @@ class AuditConfig {
 /// [--allow-override <path>...]
 /// [--flaky-test <key>...] [--setup-cmd "<cmd>"] [--env KEY=VALUE...]
 /// [--no-sandbox] [--sandbox-ro <path>...] [--heartbeat seconds]
+/// [--memory-max size | --no-memory-cap] [--tmpfs-size size]
 /// --out <dir>`
 ///
 /// `--files`, `--tests`, `--guard-pattern`, `--allow-override`, `--flaky-test`
@@ -179,6 +198,16 @@ AuditConfig parseAuditArgs(List<String> args) {
   if (allowlist != null && !File(allowlist).existsSync()) {
     throw UsageError('--runtime-allowlist $allowlist is not a file');
   }
+  int size(String name, int fallback, {int min = 0}) {
+    final v = r[name] as String?;
+    if (v == null) return fallback;
+    final n = parseByteSize(v);
+    if (n == null || n < min) {
+      throw UsageError('--$name must be a size like 512M or 4G${min > 0 ? ' (at least $min bytes)' : ' (0 for none)'}, got "$v"');
+    }
+    return n;
+  }
+
   return AuditConfig(
     repo: repo,
     sha: sha,
@@ -202,6 +231,9 @@ AuditConfig parseAuditArgs(List<String> args) {
     sandboxReadOnly: list('sandbox-ro'),
     setupLeaves: list('setup-leaves'),
     heartbeat: Duration(seconds: number('heartbeat') ?? 60),
+    memoryMax: size('memory-max', AuditConfig.defaultMemoryMax),
+    noMemoryCap: r['no-memory-cap'] as bool,
+    tmpfsSize: size('tmpfs-size', Sandbox.defaultTmpfsSize, min: 1),
   );
 }
 
@@ -245,6 +277,12 @@ ArgParser _parser() => ArgParser()
       help: 'A host path the sandboxed toolchain must read (mounted read-only at the same path; the sandbox root is '
           'minimal). The base system, the pub cache, FLUTTER_ROOT, PATH entries and the package config roots are '
           'found by themselves.')
+  ..addOption('memory-max',
+      help: 'Memory one sandboxed test run may use, no swap (systemd-run --user scope; e.g. 512M, 4G; default 4G, 0 = no limit).')
+  ..addFlag('no-memory-cap',
+      negatable: false,
+      help: 'Run without the memory limit and without checking that it can be set (needed where systemd-run --user does not work). Recorded in the report.')
+  ..addOption('tmpfs-size', help: 'Size limit of each tmpfs mount in the sandbox (default 1G).')
   ..addOption('heartbeat',
       help: 'Seconds between "still running" lines on stderr while a child run is in progress (default 60, 0 = off).')
   ..addOption('out', help: 'Directory for results.json and summary.md (outside the export).');

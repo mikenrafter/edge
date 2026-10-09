@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'classifier.dart';
+import 'memory_cap.dart' show formatBytes;
 import 'mutant.dart';
 import 'process_runner.dart';
 import 'reporter_parser.dart';
@@ -143,14 +144,14 @@ class ProgressReporter {
   /// `[i/N] <status> (<k> killing, <d> discounted) <t>; elapsed <t>; ETA <t>`,
   /// the log line, and the mean for the next ETA. The duration is the wall
   /// time of the mutant: its run, its reruns, the classification.
-  void mutantFinished(int index, int total, Mutant m, Classification c) {
+  void mutantFinished(int index, int total, Mutant m, Classification c, {int? memoryPeakBytes}) {
     final t = now();
     final took = t.difference(_mutantStartedAt ?? t);
     _mutantTime += took;
     final left = total > index ? total - index : 0;
     final eta = Duration(microseconds: _mutantTime.inMicroseconds * left ~/ (index < 1 ? 1 : index));
     line('[$index/$total] ${c.status.id} (${c.killers.length} killing, ${c.discounted.length} discounted) '
-        '${formatDuration(took)}; elapsed ${formatDuration(t.difference(_mutantsBeganAt ?? t))}; '
+        '${formatDuration(took)}${memoryPeakBytes == null ? '' : ', peak ${formatBytes(memoryPeakBytes)}'}; elapsed ${formatDuration(t.difference(_mutantsBeganAt ?? t))}; '
         'ETA ${formatDuration(eta)}');
     _log({
       'type': 'mutant',
@@ -167,6 +168,7 @@ class ProgressReporter {
       ],
       'discounted': c.guardTests,
       'durationMs': took.inMilliseconds,
+      if (memoryPeakBytes != null) 'memoryPeakBytes': memoryPeakBytes,
     });
   }
 

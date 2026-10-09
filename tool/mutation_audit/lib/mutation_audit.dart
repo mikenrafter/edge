@@ -11,6 +11,7 @@ export 'src/export.dart';
 export 'src/export_integrity.dart';
 export 'src/generator.dart';
 export 'src/guards.dart';
+export 'src/memory_cap.dart';
 export 'src/mutant.dart';
 export 'src/native_assets.dart';
 export 'src/process_runner.dart';

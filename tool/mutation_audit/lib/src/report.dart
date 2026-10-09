@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'classifier.dart';
 import 'export.dart';
 import 'guards.dart';
+import 'memory_cap.dart' show formatBytes;
 import 'mutant.dart';
 import 'process_runner.dart';
 
@@ -16,7 +17,12 @@ class MutantResult {
     required this.classification,
     required this.duration,
     this.isolated = false,
+    this.memoryPeakBytes,
   });
+
+  /// The highest memory use among this mutant's runs (its run and its reruns)
+  /// in bytes; null when no run reported one (no memory cap).
+  final int? memoryPeakBytes;
 
   /// The runs of this mutant were sandboxed. A kill with this false is
   /// `unisolated`: whatever an earlier run left could have caused it.
@@ -33,15 +39,29 @@ class BaselineSummary {
     required this.passed,
     required this.testsRun,
     required this.duration,
+    this.memoryPeakBytes,
   });
   final bool passed;
   final int testsRun;
   final Duration duration;
+
+  /// The baseline run's peak memory in bytes (null: not measured).
+  final int? memoryPeakBytes;
 }
 
 /// How the test runs were isolated.
 class IsolationInfo {
-  const IsolationInfo({required this.mode, this.network = false, this.binds = const [], this.symlinks = const {}, this.skipped = const {}, this.bwrap});
+  const IsolationInfo({
+    required this.mode,
+    this.network = false,
+    this.binds = const [],
+    this.symlinks = const {},
+    this.skipped = const {},
+    this.bwrap,
+    this.memoryMaxBytes,
+    this.memoryUncappedReason,
+    this.tmpfsSizeBytes,
+  });
 
   /// `--no-sandbox`: nothing separates one run from the next, so every kill is
   /// `unisolated` (something an earlier run left could have caused it).
@@ -51,7 +71,10 @@ class IsolationInfo {
         binds = const [],
         symlinks = const {},
         skipped = const {},
-        bwrap = null;
+        bwrap = null,
+        memoryMaxBytes = null,
+        memoryUncappedReason = '--no-sandbox',
+        tmpfsSizeBytes = null;
 
   /// `bubblewrap` or `none`.
   final String mode;
@@ -72,6 +95,14 @@ class IsolationInfo {
   /// `bwrap --version`, when known.
   final String? bwrap;
 
+  /// The per-run memory limit in bytes (cgroup `MemoryMax`, no swap); null: the
+  /// runs were not capped, and [memoryUncappedReason] says why.
+  final int? memoryMaxBytes;
+  final String? memoryUncappedReason;
+
+  /// Bytes each tmpfs mount of the sandbox may hold (null: not limited / no sandbox).
+  final int? tmpfsSizeBytes;
+
   bool get sandboxed => mode != 'none';
 
   Map<String, Object?> toJson() => {
@@ -81,6 +112,13 @@ class IsolationInfo {
         'symlinks': symlinks,
         'skipped': skipped,
         'bwrap': bwrap,
+        'memory': {
+          'cap': memoryMaxBytes == null ? 'none' : 'cgroup',
+          'maxBytes': memoryMaxBytes,
+          'swapMaxBytes': memoryMaxBytes == null ? null : 0,
+          'reason': memoryUncappedReason,
+        },
+        'tmpfsSizeBytes': tmpfsSizeBytes,
       };
 }
 
@@ -191,6 +229,7 @@ class AuditResults {
             'passed': meta.baseline.passed,
             'testsRun': meta.baseline.testsRun,
             'durationMs': meta.baseline.duration.inMilliseconds,
+            if (meta.baseline.memoryPeakBytes != null) 'memoryPeakBytes': meta.baseline.memoryPeakBytes,
           },
           'startedAt': meta.startedAt.toUtc().toIso8601String(),
           'finishedAt': meta.finishedAt.toUtc().toIso8601String(),
@@ -223,6 +262,7 @@ class AuditResults {
               'frameworkTimeouts': r.classification.frameworkTimeouts,
               'unisolated': !r.isolated,
               'durationMs': r.duration.inMilliseconds,
+              if (r.memoryPeakBytes != null) 'memoryPeakBytes': r.memoryPeakBytes,
               'detail': r.classification.detail,
             },
         ],
@@ -235,7 +275,7 @@ class AuditResults {
   /// and per file killed/survived counts. The score is a percentage with one
   /// decimal (`50.0%`), or the words `no score` when it is undefined.
   /// Section headings: `## Killed`, `## Survivors`, `## Killed by guards only`,
-  /// `## Compile-invalid`, `## Timeouts`, `## Load failures`, `## Unconfirmed`, `## By file`.
+  /// `## Compile-invalid`, `## Timeouts`, `## Resource limits`, `## Load failures`, `## Unconfirmed`, `## By file`.
   String renderMarkdown() {
     final b = StringBuffer();
     final s = score;
@@ -328,6 +368,7 @@ class AuditResults {
     section('Killed by guards only', MutantStatus.killedByGuardOnly, tests: true);
     section('Compile-invalid', MutantStatus.compileInvalid);
     section('Timeouts', MutantStatus.timeout);
+    section('Resource limits', MutantStatus.resourceLimit);
     section('Load failures', MutantStatus.loadFailure);
     section('Unconfirmed', MutantStatus.unconfirmed);
 
@@ -353,9 +394,22 @@ String _isolationLine(IsolationInfo i) => i.sandboxed
     ? '- Isolation: ${i.mode}${i.bwrap == null ? '' : ' (${i.bwrap})'}: every run in its own sandbox (read-only host, '
         'overlay export discarded after the run, fresh /tmp and HOME, own pid namespace'
         '${i.network ? '' : ', no network'}); read-only binds: '
-        '${i.binds.isEmpty ? 'nothing' : i.binds.map((c) => '`$c`').join(', ')}'
+        '${i.binds.isEmpty ? 'nothing' : i.binds.map((c) => '`$c`').join(', ')}\n'
+        '  - ${_memoryLine(i)}'
     : '- Isolation: NONE (--no-sandbox): nothing separates one run from the next, so every kill is unisolated '
         '(an earlier run could have left the state that made a test fail)';
+
+String _memoryLine(IsolationInfo i) {
+  final max = i.memoryMaxBytes;
+  final tmpfs = i.tmpfsSizeBytes == null
+      ? ''
+      : '; tmpfs ${formatBytes(i.tmpfsSizeBytes!)} each (the export overlay is a tmpfs bubblewrap cannot size: '
+          '${max == null ? 'NOTHING bounds it' : 'the cgroup limit bounds it'})';
+  return max == null
+      ? 'memory: NOT CAPPED (${i.memoryUncappedReason}): a runaway run can use all memory, and with no swap the host\'s '
+          'OOM killer may pick another process$tmpfs'
+      : 'memory: cgroup MemoryMax ${formatBytes(max)}, no swap, per run (a run over it is `resource-limit`, never a kill)$tmpfs';
+}
 
 String _guardLine(GuardReport? g) {
   if (g == null) return '- Source-scanning suites: not recorded';

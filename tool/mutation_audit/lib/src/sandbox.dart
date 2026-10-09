@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'memory_cap.dart';
 import 'native_assets.dart';
 import 'process_runner.dart';
 import 'run_log.dart';
@@ -56,7 +57,18 @@ class Sandbox {
     this.unshareNet = true,
     this.tmpDirs = const ['/tmp', '/var/tmp', '/run'],
     this.skipped = const {},
+    this.tmpfsSize = defaultTmpfsSize,
   });
+
+  /// The size limit of each tmpfs mount unless told otherwise.
+  static const defaultTmpfsSize = 1024 * 1024 * 1024;
+
+  /// Bytes each tmpfs mount (`/tmp`, `/var/tmp`, `/run`, `/dev/shm`, HOME) may
+  /// hold (`bwrap --size`, which sizes the next `--tmpfs` only). The overlay
+  /// the export lives on is a tmpfs too (`--tmp-overlay`), but bubblewrap
+  /// cannot size that one; its pages are charged to the run's memory cgroup, so
+  /// [MemoryCap] bounds it.
+  final int tmpfsSize;
 
   /// Paths [discover] would have bound and did not, with the reason.
   final Map<String, String> skipped;
@@ -110,9 +122,9 @@ class Sandbox {
       if (unshareNet) '--unshare-net',
       '--die-with-parent',
       '--new-session',
-      for (final t in tmpDirs) ...['--tmpfs', t],
-      '--tmpfs', '/dev/shm',
-      '--tmpfs', home,
+      for (final t in tmpDirs) ...['--size', '$tmpfsSize', '--tmpfs', t],
+      '--size', '$tmpfsSize', '--tmpfs', '/dev/shm',
+      '--size', '$tmpfsSize', '--tmpfs', home,
       // After the tmpfs mounts: a bind or a link under /tmp, /run or HOME
       // needs the directory that replaced the host's.
       for (final b in _binds()) ...['--ro-bind', b, b],
@@ -184,6 +196,7 @@ class Sandbox {
     List<String> command = const [],
     String bwrap = 'bwrap',
     HostPaths? host,
+    int tmpfsSize = defaultTmpfsSize,
   }) {
     final env = environment ?? Platform.environment;
     final h = host ?? const SystemHostPaths();
@@ -287,7 +300,13 @@ class Sandbox {
       }
     }
     return Sandbox(
-        bwrap: bwrap, exportPath: exportPath, home: home, binds: bound, symlinks: symlinks, skipped: skipped);
+        bwrap: bwrap,
+        exportPath: exportPath,
+        home: home,
+        binds: bound,
+        symlinks: symlinks,
+        skipped: skipped,
+        tmpfsSize: tmpfsSize);
   }
 
   /// Package roots outside [exportPath] named by `.dart_tool/package_config.json`
@@ -459,13 +478,17 @@ class SystemHostPaths implements HostPaths {
   }
 }
 
-/// A [ProcessRunner] that runs every command inside [sandbox]. Timeouts and
+/// A [ProcessRunner] that runs every command inside [sandbox], and inside
+/// [memoryCap]'s scope when there is one. Timeouts and
 /// cancellation are the inner runner's: it stops the bubblewrap process and
 /// everything it can see below it; the PID namespace takes whatever is left.
 class SandboxedProcessRunner implements ProcessRunner {
-  SandboxedProcessRunner(this.inner, this.sandbox);
+  SandboxedProcessRunner(this.inner, this.sandbox, {this.memoryCap});
   final ProcessRunner inner;
   final Sandbox sandbox;
+
+  /// The per-run memory limit (null: none).
+  final MemoryCap? memoryCap;
 
   @override
   Future<ProcessOutcome> run(
@@ -475,11 +498,15 @@ class SandboxedProcessRunner implements ProcessRunner {
     Map<String, String>? environment,
     CancelToken? cancel,
     RunObserver? observer,
-  }) =>
-      inner.run(sandbox.wrap(argv, workingDirectory: workingDirectory),
-          workingDirectory: workingDirectory,
-          timeout: timeout,
-          environment: environment,
-          cancel: cancel,
-          observer: observer);
+  }) async {
+    final wrapped = sandbox.wrap(argv, workingDirectory: workingDirectory);
+    final cap = memoryCap;
+    final outcome = await inner.run(cap == null ? wrapped : cap.wrap(wrapped),
+        workingDirectory: workingDirectory,
+        timeout: timeout,
+        environment: environment,
+        cancel: cancel,
+        observer: observer);
+    return cap == null ? outcome : cap.read(outcome);
+  }
 }

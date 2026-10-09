@@ -178,7 +178,7 @@ void main() {
       expect(byStatus, {'<': 'resource-limit', '>': 'survived'});
       expect((r['counts'] as Map)['resource-limit'], 1);
       expect(r['score'], 0, reason: 'killed 0 of (killed + survived) 1: the limit hit is no kill and not in the denominator');
-      final limited = (r['mutants'] as List).cast<Map>().firstWhere((m) => m['status'] == 'resource-limit');
+      final limited = (r['mutants'] as List).cast<Map<String, dynamic>>().firstWhere((m) => m['status'] == 'resource-limit');
       expect(limited['killingTests'], isEmpty);
       expect(limited['memoryPeakBytes'], 4 * gib);
       expect(File(p.join(out.path, 'summary.md')).readAsStringSync(), contains('## Resource limits'));

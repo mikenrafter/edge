@@ -2,6 +2,7 @@ import 'package:glob/glob.dart';
 import 'package:path/path.dart' as p;
 
 import 'guards.dart';
+import 'memory_cap.dart' show formatBytes;
 import 'process_runner.dart';
 import 'reporter_parser.dart';
 
@@ -22,6 +23,11 @@ enum MutantStatus {
 
   /// The run hit its timeout.
   timeout('timeout'),
+
+  /// The memory cgroup the run was in killed a process (`--memory-max`). The
+  /// run proves nothing: a killed test process looks like a failing test, so
+  /// it is never a kill. Reported like a timeout, outside the score.
+  resourceLimit('resource-limit'),
 
   /// A suite failed to load for another reason, or the run produced no usable
   /// reporter stream.
@@ -214,6 +220,12 @@ Future<Classification> classifyRun(
   SingleTestRunner? rerun,
   String? root,
 }) async {
+  // First: whatever else the stream shows, a process of this run was killed
+  // for its memory (a test that "failed" may be the one that died), so the run
+  // is no evidence either way.
+  if (hitMemoryLimit(outcome)) {
+    return Classification(status: MutantStatus.resourceLimit, detail: 'the run hit the memory limit (${memoryLimitDetail(outcome)})');
+  }
   if (outcome.timedOut) {
     return const Classification(status: MutantStatus.timeout, detail: 'the test run timed out');
   }
@@ -335,6 +347,7 @@ RerunRecord interpretRerun(ProcessOutcome again, TestOutcome failed, {String? ro
   RerunRecord unresolved(String why) =>
       RerunRecord(failed.key, result: RerunResult.unresolved, detail: why);
   if (again.cancelled) return unresolved('the rerun was cancelled');
+  if (hitMemoryLimit(again)) return unresolved('the rerun hit the memory limit (${memoryLimitDetail(again)}); a failure there confirms nothing');
   if (again.timedOut) return unresolved('the rerun timed out');
   final run = parseReporterStream(again.stdoutLines, root: root);
   for (final e in run.loadErrors) {
@@ -387,3 +400,13 @@ String _firstMessageLine(String message) => message.split('\n').first.trim();
 
 String _firstLine(List<TestError> errors) =>
     errors.isEmpty ? '' : _firstMessageLine(errors.first.message);
+
+/// The run's memory cgroup killed a process.
+bool hitMemoryLimit(ProcessOutcome outcome) => (outcome.oomKills ?? 0) > 0;
+
+/// `2 processes killed by the cgroup OOM killer, peak 4.0G`.
+String memoryLimitDetail(ProcessOutcome outcome) {
+  final n = outcome.oomKills ?? 0, peak = outcome.memoryPeakBytes;
+  return '$n ${n == 1 ? 'process' : 'processes'} killed by the cgroup OOM killer'
+      '${peak == null ? '' : ', peak ${formatBytes(peak)}'}';
+}

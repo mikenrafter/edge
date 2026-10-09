@@ -55,6 +55,8 @@ class ProcessOutcome {
     this.elapsed = Duration.zero,
     this.lingeringStopped = 0,
     this.survivors = const [],
+    this.memoryPeakBytes,
+    this.oomKills,
   });
 
   final int exitCode;
@@ -86,6 +88,29 @@ class ProcessOutcome {
   final List<String> survivors;
 
   bool get cleanupFailed => survivors.isNotEmpty;
+
+  /// The highest memory use of the run's cgroup (bytes), when it ran in a
+  /// memory-limited scope that reported it; else null (unknown, not zero).
+  final int? memoryPeakBytes;
+
+  /// How many processes the cgroup's OOM killer killed in the run: 0 means the
+  /// scope said none, null that nothing is known (no limit, or no report).
+  final int? oomKills;
+
+  /// This outcome with [stderr] and the memory facts of a limited scope.
+  ProcessOutcome withMemory({required String stderr, int? peakBytes, int? oomKills}) => ProcessOutcome(
+        exitCode: exitCode,
+        stdoutLines: stdoutLines,
+        stderr: stderr,
+        timedOut: timedOut,
+        cancelled: cancelled,
+        outputComplete: outputComplete,
+        elapsed: elapsed,
+        lingeringStopped: lingeringStopped,
+        survivors: survivors,
+        memoryPeakBytes: peakBytes,
+        oomKills: oomKills,
+      );
 }
 
 /// Runs a command to completion. The real one spawns a process; tests inject a

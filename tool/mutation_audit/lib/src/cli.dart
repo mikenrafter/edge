@@ -14,6 +14,7 @@ import 'export.dart';
 import 'export_integrity.dart';
 import 'generator.dart';
 import 'guards.dart';
+import 'memory_cap.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
 import 'progress.dart';
@@ -68,6 +69,7 @@ Future<int> runCli(
   Stream<ProcessSignal>? interrupts,
   Future<void> Function(DisposableExport export)? disposer,
   Future<String> Function()? sandboxProbe,
+  Future<void> Function(MemoryCap cap)? memoryProbe,
   Map<String, String>? sandboxEnvironment,
 }) async {
   final sink = out ?? stdout;
@@ -110,6 +112,26 @@ Future<int> runCli(
           : withLogTail(e.message, tail: output, logPath: saveLog(config.outDir, 'probe.log', output)));
       return 70;
     }
+  }
+  // The memory cap is checked the same way: no working systemd-run --user, no
+  // audit, unless the user says it may run uncapped.
+  MemoryCap? memoryCap;
+  String? uncappedReason;
+  if (config.noSandbox) {
+    uncappedReason = '--no-sandbox';
+  } else if (config.noMemoryCap) {
+    uncappedReason = '--no-memory-cap';
+  } else if (config.memoryMax == 0) {
+    uncappedReason = '--memory-max 0';
+  } else {
+    final cap = MemoryCap(maxBytes: config.memoryMax);
+    try {
+      await (memoryProbe ?? MemoryCap.probe)(cap);
+    } on MemoryCapUnavailable catch (e) {
+      errSink.writeln(e.message);
+      return 70;
+    }
+    memoryCap = cap;
   }
   final processes = runner ?? const SystemProcessRunner();
   // Results are staged inside the output directory while the body runs and
@@ -265,12 +287,12 @@ Future<int> runCli(
         // toolchain must read are known.
         final Sandbox? sandbox = config.noSandbox
             ? null
-            : Sandbox.discover(export.path, environment: sandboxEnvironment, command: splitCommand(config.testCmd), extraReadOnly: [
+            : Sandbox.discover(export.path, environment: sandboxEnvironment, command: splitCommand(config.testCmd), tmpfsSize: config.tmpfsSize, extraReadOnly: [
                 for (final o in deps.pathOverrides)
                   if (o.resolvedPath != null) o.resolvedPath!,
                 ...config.sandboxReadOnly,
               ]);
-        final testRunner = sandbox == null ? processes : SandboxedProcessRunner(processes, sandbox);
+        final testRunner = sandbox == null ? processes : SandboxedProcessRunner(processes, sandbox, memoryCap: memoryCap);
 
         final candidates = <Mutant>[];
         for (final file in files) {
@@ -290,6 +312,9 @@ Future<int> runCli(
           'selected': selected.length,
           'candidates': candidates.length,
           'files': config.files,
+          'memoryMaxBytes': memoryCap?.maxBytes,
+          'memoryUncappedReason': uncappedReason,
+          'tmpfsSizeBytes': sandbox?.tmpfsSize,
           'startedAt': startedAt.toUtc().toIso8601String(),
         });
 
@@ -341,7 +366,10 @@ Future<int> runCli(
                     binds: sandbox.binds,
                     symlinks: sandbox.symlinks,
                     skipped: sandbox.skipped,
-                    bwrap: bwrapVersion),
+                    bwrap: bwrapVersion,
+                    memoryMaxBytes: memoryCap?.maxBytes,
+                    memoryUncappedReason: uncappedReason,
+                    tmpfsSizeBytes: sandbox.tmpfsSize),
           ),
           run.results,
         );
