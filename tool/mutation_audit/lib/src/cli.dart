@@ -63,8 +63,14 @@ Future<int> runCli(
         final setup = config.setupCmd ?? defaultSetupCommand(export.path);
         if (setup.isNotEmpty) {
           final done = await processes.run(splitCommand(setup),
-              workingDirectory: export.path, environment: config.env, cancel: cancel);
+              workingDirectory: export.path,
+              environment: config.env,
+              timeout: config.timeout,
+              cancel: cancel);
           if (done.cancelled || cancel.isCancelled) throw InterruptedError();
+          if (done.timedOut) {
+            throw _SetupFailed('"$setup" timed out after ${config.timeout.inSeconds} s and was stopped');
+          }
           if (done.exitCode != 0) {
             throw _SetupFailed('"$setup" failed (exit code ${done.exitCode}): ${done.stderr.trim()}');
           }

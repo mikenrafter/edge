@@ -201,6 +201,15 @@ void main() {
     expect(runner.calls, isEmpty);
   });
 
+  test('the setup command is bounded by the timeout too; a timed-out setup is an export/internal error', () async {
+    final runner = FakeProcessRunner((call) => const ProcessOutcome(exitCode: -9, timedOut: true));
+    final code = await run(runner, ['--timeout', '42']);
+    expect(code, 70);
+    expect(err.toString(), contains('timed out after 42 s'));
+    expect(runner.calls, hasLength(1));
+    expect(runner.calls.single.timeout, const Duration(seconds: 42));
+  });
+
   group('Ctrl-C', () {
     test('during a mutant run: the process is reaped, then the export goes; exit 130, no results', () async {
       final interrupts = StreamController<ProcessSignal>();
