@@ -234,7 +234,7 @@ void main() {
     final u = auditUsage();
     for (final o in [
       '--repo', '--sha', '--files', '--test-cmd', '--tests', '--max-mutants', '--sample', '--seed',
-      '--timeout', '--guard-pattern', '--no-guards', '--runtime-allowlist', '--scanner', '--allow-override', '--flaky-test', '--setup-cmd', '--env', '--out',
+      '--timeout', '--guard-pattern', '--no-guards', '--runtime-allowlist', '--scanner', '--allow-override', '--flaky-test', '--setup-cmd', '--env', '--cache-dir', '--out',
     ]) {
       expect(u, contains(o));
     }

@@ -340,6 +340,26 @@ void main() {
     expect(runner.calls.single.timeout, const Duration(seconds: 42));
   });
 
+  test('a run that moves HEAD (a test committed) stops the audit with exit 70 and no results', () async {
+    var n = 0;
+    final runner = FakeProcessRunner((call) {
+      if (call.argv.length >= 2 && call.argv[1] == 'pub') return const ProcessOutcome(exitCode: 0);
+      if (n++ == 1) {
+        final r = Process.runSync(
+            'git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'x'],
+            workingDirectory: call.cwd);
+        expect(r.exitCode, 0, reason: '${r.stderr}');
+      }
+      return outcomeOf(passing());
+    });
+    final code = await run(runner, ['--setup-cmd', '']);
+    expect(code, 70, reason: err.toString());
+    expect(err.toString(), contains('HEAD moved'));
+    expect(err.toString(), contains('audit was stopped'));
+    expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
+    expect(File(p.join(fx.root, 'lib/a.dart')).readAsStringSync(), lib, reason: 'the developer checkout is untouched');
+  });
+
   group('Ctrl-C', () {
     test('during a mutant run: the process is reaped, then the export goes; exit 130, no results', () async {
       final interrupts = StreamController<ProcessSignal>();
@@ -540,7 +560,8 @@ packages:
     test('the report carries what setup resolved, not the preflight', () async {
       const config = '{"configVersion":2,"packages":[{"name":"analytics","rootUri":"file:///x","packageUri":"lib/"}]}';
       final runner = settingUp({'pubspec.lock': lockGit, '.dart_tool/package_config.json': config});
-      expect(await run(runner, ['--max-mutants', '1']), 0, reason: err.toString());
+      // pubspec.lock is untracked and not ignored in this fixture: declared, because setup made it.
+      expect(await run(runner, ['--max-mutants', '1', '--cache-dir', 'pubspec.lock']), 0, reason: err.toString());
       final meta = (jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map)['meta'] as Map;
       final deps = meta['dependencies'] as Map;
       expect(deps['pubspecLockSha256'], sha256.convert(utf8.encode(lockGit)).toString());
@@ -549,6 +570,14 @@ packages:
       final before = meta['dependenciesBeforeSetup'] as Map;
       expect(before['pubspecLockSha256'], isNull, reason: 'the export had no lock before setup');
       expect(before['packageConfigSha256'], isNull);
+    });
+
+    test('a file setup leaves untracked and not ignored stops the audit (exit 70) unless declared with --cache-dir', () async {
+      final runner = settingUp({'pubspec.lock': lockGit});
+      expect(await run(runner, ['--max-mutants', '1']), 70);
+      expect(err.toString(), contains('pubspec.lock'));
+      expect(err.toString(), contains('--cache-dir'));
+      expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
     });
 
     test('a lock that setup created with a path package is refused, before the baseline', () async {

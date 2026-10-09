@@ -10,6 +10,7 @@ import 'classifier.dart' show GuardMatcher;
 import 'command.dart';
 import 'config.dart';
 import 'export.dart';
+import 'export_state.dart';
 import 'generator.dart';
 import 'guards.dart';
 import 'mutant.dart';
@@ -156,7 +157,8 @@ Future<int> runCli(
         final selected = selectMutants(candidates,
             maxMutants: config.maxMutants, sample: config.sample, seed: config.seed);
 
-        final run = await AuditRunner(runner: processes)
+        final stateGuard = ExportStateGuard(root: export.path, cacheDirs: config.cacheDirs);
+        final run = await AuditRunner(runner: processes, stateGuard: stateGuard)
             .run(config: config, root: export.path, mutants: selected, cancel: cancel, guards: guards);
         final results = AuditResults(
           AuditMeta(
@@ -196,6 +198,7 @@ Future<int> runCli(
             finishedAt: clock(),
             candidateMutants: candidates.length,
             env: config.env,
+            stateCaches: stateGuard.cacheDirs,
           ),
           run.results,
         );
@@ -237,6 +240,9 @@ Future<int> runCli(
     return 70;
   } on _SetupFailed catch (e) {
     errSink.writeln(e.message);
+    return 70;
+  } on ExportStateError catch (e) {
+    errSink.writeln('${e.message}; the audit was stopped');
     return 70;
   } on RestoreFailedError catch (e) {
     errSink.writeln(e.message);

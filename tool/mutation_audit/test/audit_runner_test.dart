@@ -344,7 +344,8 @@ void main() {
     test('every child process gets TZ=UTC by default and the configured env otherwise', () async {
       final runner = byFile();
       await AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')]);
-      expect(runner.calls.map((c) => c.environment), everyElement({'TZ': 'UTC'}));
+      Map<String, String?> without(Call c) => {for (final e in c.environment!.entries) if (!const {'TMPDIR', 'TMP', 'TEMP'}.contains(e.key)) e.key: e.value};
+      expect(runner.calls.map(without), everyElement({'TZ': 'UTC'}));
       final other = byFile();
       await AuditRunner(runner: other).run(
           config: AuditConfig(
@@ -352,7 +353,7 @@ void main() {
               env: const {'TZ': 'Asia/Tokyo', 'A': 'b'}),
           root: root.path,
           mutants: [mutant('<', '<=')]);
-      expect(other.calls.map((c) => c.environment), everyElement({'TZ': 'Asia/Tokyo', 'A': 'b'}));
+      expect(other.calls.map(without), everyElement({'TZ': 'Asia/Tokyo', 'A': 'b'}));
     });
   });
 

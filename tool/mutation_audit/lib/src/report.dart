@@ -15,10 +15,15 @@ class MutantResult {
     required this.mutant,
     required this.classification,
     required this.duration,
+    this.stateRestored = 0,
   });
   final Mutant mutant;
   final Classification classification;
   final Duration duration;
+
+  /// How many files of the export the runs of this mutant (the run and its
+  /// confirming reruns) left changed and had to be put back.
+  final int stateRestored;
 }
 
 /// The unmutated baseline run.
@@ -56,7 +61,10 @@ class AuditMeta {
     this.guardPolicy = 'unspecified',
     this.guards,
     this.dependenciesBeforeSetup,
+    this.stateCaches = const [],
   });
+  /// Paths the runs may change without being restored (build caches).
+  final List<String> stateCaches;
   final String toolVersion, repo, sha, testCmd;
 
   /// What the export resolved its dependencies from AFTER the setup command
@@ -124,6 +132,7 @@ class AuditResults {
           'files': meta.files,
           'tests': meta.tests,
           'guardPatterns': meta.guardPatterns,
+          'stateCaches': meta.stateCaches,
           'guardPolicy': meta.guardPolicy,
           'guards': meta.guards?.toJson(),
           'timeoutSeconds': meta.timeoutSeconds,
@@ -165,6 +174,7 @@ class AuditResults {
                   }
               ],
               'frameworkTimeouts': r.classification.frameworkTimeouts,
+              'stateRestored': r.stateRestored,
               'durationMs': r.duration.inMilliseconds,
               'detail': r.classification.detail,
             },
@@ -197,6 +207,9 @@ class AuditResults {
       ..writeln('- Mutants: ${meta.candidateMutants} candidates, ${results.length} run '
           '(max ${meta.maxMutants ?? 'unbounded'}, sample ${meta.sample ?? 'none'}, seed ${meta.seed ?? 'none'})')
       ..writeln('- Timeout: ${meta.timeoutSeconds} s per run; environment ${_env(meta.env)}')
+      ..writeln('- Export state: ${results.where((r) => r.stateRestored > 0).length} of ${results.length} '
+          'mutants left files that were put back (${results.fold<int>(0, (n, r) => n + r.stateRestored)} in all); '
+          'caches that may change: ${meta.stateCaches.isEmpty ? 'none recorded' : meta.stateCaches.map((c) => '`$c`').join(', ')}')
       ..writeln('- Started ${meta.startedAt.toUtc().toIso8601String()}, '
           'finished ${meta.finishedAt.toUtc().toIso8601String()}')
       ..writeln('- Dependencies (after setup): pubspec.lock `${meta.dependencies.lockSha256 ?? 'absent'}`, '

@@ -167,6 +167,7 @@ void main() {
         'discounted': <Object?>[],
         'reruns': <Object?>[],
         'frameworkTimeouts': <Object?>[],
+        'stateRestored': 0,
         'durationMs': 100,
         'detail': '',
       });

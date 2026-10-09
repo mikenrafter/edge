@@ -33,6 +33,7 @@ class AuditConfig {
     this.flakyTests = const [],
     this.setupCmd,
     this.env = const {'TZ': 'UTC'},
+    this.cacheDirs = const [],
   });
 
   /// The developer repository and the pinned commit to audit.
@@ -77,6 +78,11 @@ class AuditConfig {
   /// Environment for every child process (setup, baseline, mutants), on top of
   /// the parent's. Default `TZ=UTC`: the tests of both repos assume it.
   final Map<String, String> env;
+
+  /// Root-relative directories or files (globs) that may change between runs
+  /// without being restored, on top of the defaults (`.dart_tool`, `build`,
+  /// `.flutter-plugins*`, `.packages`): build caches the test tool reuses.
+  final List<String> cacheDirs;
 
   /// Where results.json and summary.md go (never inside the export).
   final String outDir;
@@ -172,6 +178,7 @@ AuditConfig parseAuditArgs(List<String> args) {
     flakyTests: r['flaky-test'] as List<String>,
     setupCmd: r['setup-cmd'] as String?,
     env: env,
+    cacheDirs: list('cache-dir'),
   );
 }
 
@@ -202,6 +209,10 @@ ArgParser _parser() => ArgParser()
   ..addMultiOption('flaky-test', splitCommas: false, help: 'A test key suite::name to re-run when it fails.')
   ..addOption('setup-cmd', help: 'Run once in the export before the baseline ("" for none).')
   ..addMultiOption('env', splitCommas: false, help: 'KEY=VALUE for child processes (default TZ=UTC).')
+  ..addMultiOption('cache-dir',
+      splitCommas: false,
+      help: 'A directory or file (glob, repo-relative) that may change between runs, '
+          'besides .dart_tool, build, .flutter-plugins*, .packages.')
   ..addOption('out', help: 'Directory for results.json and summary.md (outside the export).');
 
 /// `--files a b c` means `--files a --files b --files c`: the list options take

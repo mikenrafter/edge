@@ -33,7 +33,7 @@ dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
   [--test-cmd "<cmd>"] [--tests <file>...] [--max-mutants N] [--sample N --seed S] \
   [--timeout seconds] [--guard-pattern <glob>...] [--scanner <glob>...] \
   [--runtime-allowlist <file>] [--no-guards] [--allow-override <path>...] \
-  [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] --out <dir>
+  [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] [--cache-dir <path>...] --out <dir>
 ```
 
 `--test-cmd` defaults to `flutter test --reporter json` for a Flutter package and
@@ -317,6 +317,32 @@ the developer checkout or any other worktree of it (`git worktree list`), symlin
 parent directory inside a checkout is refused before anything is created in it. The result
 directory must be outside the export. The baseline must pass first. Each mutant is restored byte
 for byte and the restore is re-read. The export is removed on success, failure, Ctrl-C and SIGTERM.
+
+### Nothing carries over between runs
+
+All runs of an audit (mutants and confirming reruns) share one export, so what a test run leaves in
+it could reach the next run and turn a non-kill into a kill or the reverse. Three things prevent that:
+
+- **Export state.** After setup and the baseline the export is snapshotted: `git status
+  --porcelain=v1 --untracked-files=all` must be empty (else exit 70, naming the files: setup must not
+  change tracked files or leave untracked, non-ignored ones; declare such a file with `--cache-dir`),
+  HEAD is recorded, and a content-hash manifest is taken of the ignored files outside the caches. After
+  EVERY run (mutant or rerun) the export is put back: tracked files and the index from HEAD
+  (`git restore --source=HEAD --staged --worktree`, the file carrying the mutation excluded while a
+  rerun still needs it), untracked non-ignored files and directories removed (`git clean -fd`,
+  never `-x`), ignored files outside the caches that a run ADDED deleted. Ignored files outside the
+  caches that a run CHANGED or REMOVED cannot be put back (no copy is kept), a moved HEAD cannot be
+  undone, and a tree that is still dirty after the restore means it did not work: each of these stops
+  the audit with exit 70 (the mutated file is still restored first, no results are published).
+- **Caches** are the declared channel between runs and are not looked at: `.dart_tool`, `build`,
+  `.flutter-plugins`, `.flutter-plugins-dependencies`, `.packages`, plus every `--cache-dir <path or
+  glob>` (repeatable, repo-relative, anchored at the root: `lib/build/x` is not covered by `build`).
+- **Temporary files.** Every run gets a fresh `TMPDIR` (also `TMP` and `TEMP`, which `Directory.systemTemp`
+  follows) in a directory of its own under the system temp directory, outside the export; it is
+  deleted when the run ends. These override any `--env TMPDIR=...`. `HOME` is not changed.
+
+`results.json` has `stateRestored` per mutant (how many files its runs left changed and had to be put
+back; 0 means the tests left nothing) and `meta.stateCaches`; `summary.md` counts them.
 
 ### Dependency configuration and path overrides
 
