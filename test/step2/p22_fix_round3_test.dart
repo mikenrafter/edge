@@ -19,9 +19,9 @@ const _name = 'p22_fix_round3.db';
 String _d(int i) => DateTime.utc(2025, 1, 1 + i).toIso8601String().substring(0, 10);
 
 final class _HandClock implements BundleClock {
-  DateTime at = DateTime.utc(2026, 1, 1);
+  Duration at = Duration.zero;
   @override
-  DateTime now() => at;
+  Duration elapsed() => at;
 }
 
 void main() {
@@ -58,7 +58,7 @@ void main() {
     unawaited(Future.wait(calls).then((_) => finished = true));
     for (var i = 0; i < 100000 && !finished; i++) {
       if (store.debugFlightCount == 0 && store.debugReservedRequests > 0) {
-        clock.at = clock.at.add(const Duration(seconds: 6));
+        clock.at += const Duration(seconds: 6);
       }
       await Future<void>.delayed(Duration.zero);
     }

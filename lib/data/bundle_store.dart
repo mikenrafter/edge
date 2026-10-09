@@ -428,16 +428,18 @@ Object? _freeze(Object? value) {
   return value;
 }
 
-/// The time the admission wait is measured against. An interface so a test can
-/// move it by hand instead of waiting.
+/// The time the admission wait is measured against. Monotonic, because the
+/// wait is an elapsed duration and a wall-clock correction must not end it early
+/// or stretch it (design 01). An interface so a test can move it by hand.
 abstract interface class BundleClock {
-  DateTime now();
+  Duration elapsed();
 }
 
 final class SystemBundleClock implements BundleClock {
   const SystemBundleClock();
+  static final Stopwatch _watch = Stopwatch()..start();
   @override
-  DateTime now() => DateTime.now();
+  Duration elapsed() => _watch.elapsed;
 }
 
 /// Where a chunk is decoded. An interface and not a function-typed field, so
@@ -1006,7 +1008,8 @@ class BundleStore {
   /// Throws [BundleRetryable] when no room appears. Returns the read of the
   /// final attempt (stale if the row moved meanwhile) with its reservation.
   Future<_PayloadRead> _admit(_Prepared prepared, _PayloadRead read) async {
-    final deadline = _clock.now().add(queueWait);
+    final started = _clock.elapsed();
+    bool waiting() => _clock.elapsed() - started < queueWait;
     while (true) {
       final text = read.text;
       if (text == null) return read;
@@ -1017,7 +1020,7 @@ class BundleStore {
       }
       final length = text.length;
       read.text = null;
-      while (!_fits(length) && _clock.now().isBefore(deadline)) {
+      while (!_fits(length) && waiting()) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }
       if (!_fits(length)) throw BundleRetryable(prepared.source);
