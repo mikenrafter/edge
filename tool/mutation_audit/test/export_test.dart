@@ -337,6 +337,35 @@ void main() {
         await interrupts.close();
       });
 
+      test('the handler stays installed while the export is being removed', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        var listenedDuringDispose = false;
+        String? path;
+        final run = withDisposableExport<int>(
+          repo: fx.root,
+          sha: firstSha,
+          interrupts: interrupts.stream,
+          body: (e, cancel) async {
+            path = e.path;
+            return 7;
+          },
+          disposer: (e) async {
+            listenedDuringDispose = interrupts.hasListener;
+            interrupts.add(ProcessSignal.sigint); // Ctrl-C while `git worktree remove` runs
+            for (var i = 0; i < 10; i++) {
+              await Future<void>.delayed(Duration.zero);
+            }
+            await e.dispose();
+          },
+        );
+        await expectLater(run, throwsA(isA<InterruptedError>()),
+            reason: 'a signal during cleanup is still an interrupt: exit 130, after the cleanup');
+        expect(listenedDuringDispose, isTrue, reason: 'default SIGINT handling would kill the process mid-removal');
+        expect(Directory(path!).existsSync(), isFalse);
+        expect(await fx.worktrees(), isNot(contains(path)));
+        await interrupts.close();
+      });
+
       test('the subscription is dropped afterwards', () async {
         final interrupts = StreamController<ProcessSignal>();
         await withDisposableExport<void>(

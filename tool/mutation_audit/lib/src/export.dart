@@ -173,7 +173,11 @@ String _resolveLoosely(String path) {
 /// to the body, and the export stays until the body has stopped what it
 /// started (reaped the child processes, restored the mutated file) and
 /// returned or thrown. Only then is the export removed, and
-/// [InterruptedError] is thrown (also when the body had just finished).
+/// [InterruptedError] is thrown (also when the body had just finished, and
+/// when the signal came while the export was being removed: the handler stays
+/// installed until the removal is done).
+///
+/// [disposer] replaces `export.dispose()` (a seam for tests).
 ///
 /// The interrupt subscription is made first, before anything is created, so a
 /// signal during the (slow) creation of the export is not lost: the body is
@@ -185,21 +189,29 @@ Future<T> withDisposableExport<T>({
   String? parentDir,
   String? exportDir,
   Stream<ProcessSignal>? interrupts,
+  Future<void> Function(DisposableExport export)? disposer,
 }) async {
   final cancel = CancelToken();
   final subscription = interrupts?.listen((_) => cancel.cancel());
   DisposableExport? export;
+  late final T value;
   try {
     export = await DisposableExport.create(
         repo: repo, sha: sha, parentDir: parentDir, exportDir: exportDir);
     if (cancel.isCancelled) throw InterruptedError();
-    final value = await body(export, cancel);
-    if (cancel.isCancelled) throw InterruptedError();
-    return value;
+    value = await body(export, cancel);
   } finally {
-    await subscription?.cancel();
-    await export?.dispose();
+    // The handler outlives the removal: with it gone, a Ctrl-C during
+    // `git worktree remove` would take the default action and orphan the export.
+    try {
+      if (export != null) await (disposer ?? (e) => e.dispose())(export);
+    } finally {
+      await subscription?.cancel();
+    }
   }
+  // A signal at any point, cleanup included, is an interrupt (exit 130).
+  if (cancel.isCancelled) throw InterruptedError();
+  return value;
 }
 
 /// The run was interrupted by a signal.
