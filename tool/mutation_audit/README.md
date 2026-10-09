@@ -365,6 +365,24 @@ parent directory inside a checkout is refused before anything is created in it. 
 directory must be outside the export. The baseline must pass first. Each mutant is restored byte
 for byte and the restore is re-read. The export is removed on success, failure, Ctrl-C and SIGTERM.
 
+### Threat model
+
+Isolation exists to stop **accidental** interference: the project's own tests leaving files, temp
+data, databases, environment state or processes behind that make a later mutant pass or fail for a
+reason other than its mutation. It is **not a security boundary** and assumes the tests and the host
+are not adversarial. Known gaps accepted under this model:
+
+- A host Unix socket or FIFO that appears inside a bound directory after discovery (or under `/usr`,
+  which is not scanned) is reachable through the read-only bind. The project's tests do not talk to
+  host services this way.
+- A directory inside a non-store bind that cannot be listed is not scanned.
+- Writes deep inside an ignored directory that move no root-level mtime are not seen by the host
+  tripwire; the overlay keeps them off the host regardless.
+
+Correctness of classification is held to a stricter standard than isolation: a failure is only a
+kill when it is attributable, repeated where ambiguous, not a framework timeout, not a setup hook
+and not from a source-scanning suite outside the reviewed allowlist.
+
 ### Isolation: every test run in its own bubblewrap sandbox
 
 All runs of an audit (the baseline, every mutant, every confirming rerun) share one export, so what a
