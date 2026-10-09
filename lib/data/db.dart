@@ -183,6 +183,12 @@ abstract final class DerivedFingerprint {
   }
 }
 
+/// Test seam, an interface and not a function field so the heavy-calc guard
+/// resolves the call.
+abstract interface class FreshnessWriteProbe {
+  Future<void> beforeWrite();
+}
+
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
@@ -11315,17 +11321,6 @@ class LocalDb {
     return value is String ? value : null;
   }
 
-  /// Whether there is a current-day input whose freshness can change. A
-  /// history-only repository fallback already walks the day bundles in
-  /// bounded chunks; projecting every historical payload first would decode
-  /// the same rows twice without changing today's activity state.
-  static Future<bool> hasFreshnessInputForToday(String today) async {
-    if (await dayResultMeta(today) != null) return true;
-    if (await wakeDayFeaturesMeta(today) != null) return true;
-    final latest = (await rawStats())['max_rec_ts'] as num?;
-    return latest != null && _localDayLabelFromEpoch(latest.toInt()) == today;
-  }
-
   // ── "raw changed since last derive" ─────────────────────────────────────────
   //
   // A manual sync derives only days whose input changed. The input a derive
@@ -11815,7 +11810,86 @@ class LocalDb {
 
   static String localDayLabelNow() => todayLabel();
 
-  static Future<void> refreshComputeFreshness() async {
+  /// Freshness computations started by [refreshComputeFreshness] (test readout).
+  @visibleForTesting
+  static int debugFreshnessRuns = 0;
+
+  /// Awaited by a freshness run after it has read its inputs and before it
+  /// writes. Null in production; a test parks a run here.
+  @visibleForTesting
+  static FreshnessWriteProbe? debugBeforeFreshnessWrite;
+
+  static bool _freshnessRunning = false;
+  static Completer<void>? _freshnessNext;
+
+  /// THE owner of the `compute_freshness` rows `capture`, `today` and
+  /// `crossday`. Runs never overlap: a call made while one is running joins ONE
+  /// trailing run that starts after the call, so an older run (parked on a slow
+  /// decode) can not land its writes after a newer one, and every caller
+  /// returns after a run that began after it was made. The gate, getToday,
+  /// startup and the demo clear all come through here.
+  static Future<void> refreshComputeFreshness() {
+    if (_freshnessRunning) {
+      return (_freshnessNext ??= Completer<void>()).future;
+    }
+    final first = Completer<void>();
+    unawaited(_freshnessLoop(first));
+    return first.future;
+  }
+
+  static Future<void> _freshnessLoop(Completer<void> first) async {
+    _freshnessRunning = true;
+    var current = first;
+    try {
+      while (true) {
+        try {
+          debugFreshnessRuns++;
+          await _computeAndWriteFreshness();
+          current.complete();
+        } catch (e, st) {
+          current.completeError(e, st);
+        }
+        final next = _freshnessNext;
+        if (next == null) break;
+        _freshnessNext = null;
+        current = next;
+      }
+    } finally {
+      _freshnessRunning = false;
+    }
+  }
+
+  /// One metadata row and its projection from the SAME revision, or null when
+  /// the day's row is gone. The projection is fenced by the store; the meta row
+  /// is read earlier, so a replacement between the two is detected by comparing
+  /// revisions and the meta is re-read, never mixed with the other revision.
+  /// An existing row whose payload does not decode keeps its own meta (its
+  /// readiness column still counts).
+  static Future<({Map<String, dynamic> row, BundleRead read})?>
+  _freshnessRead(String dayId, Map<String, dynamic> row) async {
+    var current = row;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final read = await BundleStore.shared.project(
+        BundleSource.day(dayId),
+        ProjectionId.freshness,
+      );
+      if (read is BundleOk) {
+        if (read.key.rev == (current['rev'] as num?)?.toInt() &&
+            read.key.k2 == (current['algo_version'] as num?)?.toInt()) {
+          return (row: current, read: read);
+        }
+      } else if (read is BundleAbsent && read.undecodable) {
+        final fresh = await dayResultMeta(dayId);
+        return fresh == null ? null : (row: fresh, read: read);
+      }
+      final fresh = await dayResultMeta(dayId);
+      if (fresh == null) return null; // deleted since the scan began
+      current = fresh;
+    }
+    throw BundleRetryable(BundleSource.day(dayId));
+  }
+
+  static Future<void> _computeAndWriteFreshness() async {
     final raw = await rawStats();
     final recent = await recentDayResultMetas(30);
     final rolling = await baselineMeta('rolling');
@@ -11828,14 +11902,14 @@ class LocalDb {
     String? latestRecoveryDay;
     int? latestRecoveryComputedAt;
     Map<String, dynamic>? todayRow;
-    for (final row in recent) {
+    for (var row in recent) {
       final dayId = (row['day_id'] ?? row['date'])?.toString();
       if (dayId == null || dayId.isEmpty) continue;
+      final paired = await _freshnessRead(dayId, row);
+      if (paired == null) continue; // deleted while it was being read
+      row = paired.row;
+      final read = paired.read;
       if (dayId == today && todayRow == null) todayRow = row;
-      final read = await BundleStore.shared.project(
-        BundleSource.day(dayId),
-        ProjectionId.freshness,
-      );
       if (read is BundleOk && read.view.owned('skipped') == true) continue;
       final readiness = read is BundleOk
           ? read.view.owned('scalars.readiness')
@@ -11878,6 +11952,7 @@ class LocalDb {
     final overnightState = overnightReady
         ? 'ready'
         : (rawReachedToday ? 'building' : 'missing');
+    await debugBeforeFreshnessWrite?.beforeWrite();
     await putComputeFreshness(
       'capture',
       jsonEncode({

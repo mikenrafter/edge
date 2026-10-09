@@ -35,7 +35,14 @@ String _d(int i) => DateTime.utc(2025, 1, 1 + i).toIso8601String().substring(0, 
 /// Per chunk, how many payloads carry [marker].
 List<int> _marked(P22Lane lane, String marker) => [
   for (final c in lane.chunks)
-    c.payloadJson.where((p) => p.contains('"p22_marker":"$marker"')).length,
+    // Full decodes only: the freshness refresh (P2.3) projects the same rows
+    // through the same lane, and that is not the walk being counted here.
+    <int>[
+      for (var i = 0; i < c.payloadJson.length; i++)
+        if (c.projections[i] == 'full' &&
+            c.payloadJson[i].contains('"p22_marker":"$marker"'))
+          i,
+    ].length,
 ].where((n) => n > 0).toList();
 
 int _count(P22Lane lane, String needle) => lane.chunks.fold(
@@ -162,12 +169,22 @@ void main() {
         () async {
       await seedWalk(sleepAtNewestIndex: 4); // the fifth newest
 
-      await repo.getToday();
+      // A day reader for today (no row of its own) falls back to the walk.
+      await repo.getDayHrv(p22Today());
 
       final chunks = _marked(lane, 'walk');
       expect(chunks, everyElement(lessThanOrEqualTo(3)));
       expect(chunks.fold(0, (a, b) => a + b), inInclusiveRange(5, 6),
           reason: 'two chunks of 3, not all 14');
+    });
+
+    test('getToday does not walk: the freshness row names the night, so one '
+        'bundle is decoded (P2.3)', () async {
+      await seedWalk(sleepAtNewestIndex: 4);
+
+      await repo.getToday();
+
+      expect(_marked(lane, 'walk').fold(0, (a, b) => a + b), 1);
     });
 
     test('a second walk decodes nothing; a newer row costs one decode',

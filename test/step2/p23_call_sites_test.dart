@@ -37,8 +37,15 @@ const _db = 'p23_call_sites.db';
 /// Files in lib/ (relative) that may call `LocalDb.refreshComputeFreshness`
 /// directly, with the reason. Shrink-only: a listed file that stops calling
 /// must be deleted from here.
+///
+/// Ordering is enforced where the rows are written, not at each caller:
+/// `refreshComputeFreshness` is the single serialised owner of the three
+/// `compute_freshness` rows (runs never overlap; a call joins one trailing run
+/// that starts after it), so a reader or a startup call can not land an older
+/// state after the gate's. A reader or a headless process has no coordinator to
+/// reach, which is why they call the owner and not the gate.
 const Map<String, String> _directCallers = {
-  'data/db.dart': 'the definition',
+  'data/db.dart': 'the definition (the serialised owner)',
   'state/publish_gate.dart': 'PublishGate.standard: step (1) of the loop',
   'state/app_state.dart': 'startup (initState-time freshness; no bump follows)',
   'demo/demo_data_generator.dart': 'the demo clear: a static helper with no coordinator',
@@ -92,6 +99,22 @@ void main() {
           reason: 'a publish path that bypasses the PublishGate: route it');
       expect(_directCallers.keys.toSet().difference(callers), isEmpty,
           reason: 'delete these lines from _directCallers (shrink-only)');
+    });
+
+    test('the freshness rows have no writer outside the owner (and the sync commit path for capture)', () {
+      for (final key in const ['capture', 'today', 'crossday']) {
+        var writers = 0;
+        for (final f in Directory('lib').listSync(recursive: true)) {
+          if (f is! File || !f.path.endsWith('.dart')) continue;
+          final raw = File(f.path).readAsStringSync();
+          writers += RegExp("putComputeFreshness\\(\\s*'$key'").allMatches(raw).length;
+        }
+        // `capture` is also advanced by the sync commit path
+        // (`_writeCaptureFreshness`, a merge of two fields); `today` and
+        // `crossday` have the owner alone.
+        expect(writers, key == 'capture' ? 2 : 1,
+            reason: 'compute_freshness.$key writers');
+      }
     });
 
     test('DeriveCoordinator neither refreshes freshness nor evicts the cache '

@@ -222,6 +222,12 @@ PairedDevice? healedPairing(PairedDevice? current, String? reportedSerial) {
   return PairedDevice(current.remoteId, clean, generation: current.generation);
 }
 
+/// Test seam for the rollup rebuild after a backup import (an interface, not a
+/// function field, so the heavy-calc guard resolves the call).
+abstract interface class ImportRollupProbe {
+  Future<void> finalize(Profile profile);
+}
+
 class AppState extends ChangeNotifier {
   late final BleEngine engine;
 
@@ -1313,11 +1319,10 @@ class AppState extends ChangeNotifier {
       onProgress: onProgress,
     );
     lastNoopImport = res;
-    // The rows are durable — tell the screens that read them. Without this an
-    // import landed days, sessions and journal rows into a database every live
-    // tab had already finished reading, and the only way to see them was to
-    // relaunch the app.
-    bumpInsights();
+    // The rows are durable — publish: freshness first (Home's getToday reads
+    // it), then the revision bump that tells the screens to re-read. A bare
+    // bump left Home's stamped "missing" row in place until a restart.
+    await _deriveCoordinator.publishNow();
     notifyListeners();
     return res.days;
   }
@@ -1346,7 +1351,7 @@ class AppState extends ChangeNotifier {
       onProgress: onProgress,
     );
     lastWhoopImport = res;
-    bumpInsights(); // see importNoopCsv — imported rows have to reach the tabs
+    await _deriveCoordinator.publishNow(); // see importNoopCsv
     notifyListeners();
     return res.days;
   }
@@ -1358,6 +1363,10 @@ class AppState extends ChangeNotifier {
   /// reporting only the row count would claim a success the user does not have.
   String? importRollupError;
 
+  /// Replaces the rollup rebuild after a backup import. Tests only.
+  @visibleForTesting
+  ImportRollupProbe? debugFinalizeImport;
+
   Future<int> importEdgeBackup(String path) async {
     importRollupError = null;
     // Gzipped auto-backups (`.db.gz`) are inflated INSIDE importFromDbFile —
@@ -1367,11 +1376,17 @@ class AppState extends ChangeNotifier {
     final counts = await LocalDb.importFromDbFile(path);
     // Imported rows include derived day_result/metric_series → refresh rollups.
     try {
-      await _derive.finalizeImport(_profile);
+      final probe = debugFinalizeImport;
+      if (probe != null) {
+        await probe.finalize(_profile);
+      } else {
+        await _derive.finalizeImport(_profile);
+      }
     } catch (e) {
       importRollupError = '$e';
     }
-    bumpInsights(); // see importNoopCsv — imported rows have to reach the tabs
+    // The merged rows are committed whether or not the rollup rebuild threw.
+    await _deriveCoordinator.publishNow(); // see importNoopCsv
     notifyListeners();
     // DAYS, not rows. `_days` is a distinct day_id count taken from the source
     // file; the caller reports "N days imported" and a row total is not that.

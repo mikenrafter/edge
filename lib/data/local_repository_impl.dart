@@ -323,24 +323,23 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getToday() => ReadPerf.reading('getToday', () async {
-    // Refresh a stale/missing row when today's inputs can change its answer.
-    // With history only, the fallback below already walks the latest bundles;
-    // projecting those same historical payloads here would decode them twice.
+    // Refresh when the row is missing OR when its `today_day` is no longer the
+    // real local day. The row is stamped by the last derive, so an app left
+    // running over midnight (band on the charger, or an imported-only user)
+    // kept serving yesterday's finished bundle as today. A cold repository with
+    // history only must refresh too: that is what finds the prior night, and
+    // skipping it answered an empty Home. The refresh goes through the single
+    // freshness owner (`LocalDb.refreshComputeFreshness` never overlaps itself).
     var todayDay = await LocalDb.computeFreshnessStringField(
       'today',
       r'$.today_day',
     );
     if (todayDay != _todayLocalLabel()) {
-      final today = _todayLocalLabel();
-      final hasFreshnessRow = await LocalDb.computeFreshness('today') != null;
-      if (hasFreshnessRow ||
-          await LocalDb.hasFreshnessInputForToday(today)) {
-        await LocalDb.refreshComputeFreshness();
-        todayDay = await LocalDb.computeFreshnessStringField(
-          'today',
-          r'$.today_day',
-        );
-      }
+      await LocalDb.refreshComputeFreshness();
+      todayDay = await LocalDb.computeFreshnessStringField(
+        'today',
+        r'$.today_day',
+      );
     }
     final todayFresh = await _freshness('today');
     todayDay ??= _todayLocalLabel();

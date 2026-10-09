@@ -91,7 +91,12 @@ class PublishGate {
     _ensureRunning();
   }
 
+  /// Request a publish and wait for it. A run already in flight finishes
+  /// first, so this caller always gets a run (and a bump) of its own that
+  /// starts after the call: the end-of-pass and import publishes are never
+  /// absorbed by a per-day run that began earlier.
   Future<void> publishAndWait() async {
+    await idle;
     request();
     await idle;
   }
@@ -112,17 +117,24 @@ class PublishGate {
 
   Future<void> _drain() async {
     while (!_disposed && _completedSequence < _sequence) {
-      var requestSequence = _sequence;
+      // Only the sequence captured BEFORE a refresh is acknowledged by the bump
+      // that follows it: a request that arrives later (during the second
+      // refresh, the warm or the revalidation warm) is newer than the freshness
+      // that run wrote, and gets a trailing run of its own.
+      var captured = _sequence;
       _runs++;
       await _refresh();
       if (_disposed) return;
-      var refreshedForMovement = false;
-      if (_sequence != requestSequence) {
+      if (_sequence != captured) {
+        // A commit landed during the refresh: the freshness may predate it.
+        captured = _sequence;
         await _refresh();
         if (_disposed) return;
-        requestSequence = _sequence;
-        refreshedForMovement = true;
       }
+      // Only a request made while the warm runs folds into this run; one that
+      // arrived during the refreshes above is behind `captured` and gets the
+      // trailing run.
+      final warmStart = _sequence;
       Map<String, int> before = const {};
       try {
         before = await _steps.servedRevisions();
@@ -132,13 +144,12 @@ class PublishGate {
       }
       if (_disposed) return;
 
-      // A later commit may have landed while freshness or warming was in
-      // flight. Refresh again before warming its changed sources and publish
-      // one coherent revision for the combined commits.
-      if (_sequence != requestSequence) {
-        if (!refreshedForMovement) await _refresh();
+      if (_sequence != warmStart) {
+        // A commit landed during the warm: refresh again, then warm only the
+        // sources whose revision changed.
+        captured = _sequence;
+        await _refresh();
         if (_disposed) return;
-        requestSequence = _sequence;
         try {
           final after = await _steps.servedRevisions();
           final changed = <String>{
@@ -151,9 +162,10 @@ class PublishGate {
         }
       }
       if (_disposed) return;
-      _completedSequence = _sequence;
+      _completedSequence = captured;
       _steps.bump();
-      // Requests raised by the bump get their own trailing refresh.
+      // Anything requested after `captured` (including from the bump itself)
+      // is still ahead of `_completedSequence`: the loop runs it next.
     }
   }
 
@@ -224,11 +236,16 @@ final class HomeWarmSet {
       'today',
       r'$.overnight_day',
     );
-    final metas = await LocalDb.recentDayResultMetas(14);
-    final days = metas.map((r) => r['date']?.toString()).whereType<String>().toSet();
     final bundles = <BundleSource>[];
-    if (days.contains(today)) bundles.add(BundleSource.day(today));
-    if (overnight != null && days.contains(overnight) && overnight != today) {
+    if (await LocalDb.dayResultMeta(today) != null) {
+      bundles.add(BundleSource.day(today));
+    }
+    // The freshness row's selected night is resolved by its own key: it may be
+    // older than the newest rows (the freshness scan reads 30), and getToday
+    // reads exactly that day.
+    if (overnight != null &&
+        overnight != today &&
+        await LocalDb.dayResultMeta(overnight) != null) {
       bundles.add(BundleSource.day(overnight));
     }
     if (await LocalDb.baselineMeta('crossday') != null) {
@@ -291,13 +308,19 @@ class StartupWarm {
   /// failure). Never throws.
   Future<WarmResult?> run() async {
     if (_headless) return null;
+    // One deadline for both stages: a slow resolution leaves the warm only
+    // what remains of the 3 s, not a fresh 3 s of its own.
     try {
-      final set = await _steps.resolve().timeout(_timeout);
-      final sources = set.bundles.take(_maxPayloads).toList();
-      if (sources.isEmpty) return null;
-      return await _steps.warm(sources, _maxSourceBytes).timeout(_timeout);
+      return await _resolveAndWarm().timeout(_timeout);
     } catch (_) {
       return null;
     }
+  }
+
+  Future<WarmResult?> _resolveAndWarm() async {
+    final set = await _steps.resolve();
+    final sources = set.bundles.take(_maxPayloads).toList();
+    if (sources.isEmpty) return null;
+    return _steps.warm(sources, _maxSourceBytes);
   }
 }

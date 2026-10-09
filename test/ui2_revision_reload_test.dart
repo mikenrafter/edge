@@ -205,7 +205,9 @@ void main() {
       // The method body, to its `return` — long enough to hold the whole of
       // any of the three, short enough not to reach the next one.
       final body = src.substring(at, at + 2600);
-      expect(body, contains('bumpInsights()'),
+      // `publishNow()` is the gate's refresh + bump: it raises the same signal
+      // after rewriting the freshness Home reads (P2.3).
+      expect(body, anyOf(contains('bumpInsights()'), contains('publishNow()')),
           reason: '$m writes durable rows and no screen is told');
     }
   });

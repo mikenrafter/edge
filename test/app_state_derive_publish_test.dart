@@ -53,8 +53,7 @@ void main() {
   });
 
   group('per-day publish coalescing', () {
-    test('a day commit publishes before the pass returns, and the end-of-pass '
-        'request gets its own publish after the in-flight refresh',
+    test('a day commits: the revision moves before the pass returns',
         () async {
       final app = make();
       final gate = Completer<void>();
@@ -68,20 +67,20 @@ void main() {
       expect(app.insightsRevision.value, 2, reason: 'end-of-pass publish');
     });
 
-    test('ten days in one burst: one publish and one trailing flush ~1.5 s '
-        'later; the end-of-pass request is folded into the first publish', () async {
+    test('ten days in one burst: one immediate bump, one trailing flush ~1.5 s '
+        'later, plus the end-of-pass bump = 3', () async {
       final app = make();
       app.debugDeriveRun =
           deriveHook(days: [for (var i = 10; i >= 1; i--) 'd$i']);
       final revs = RevisionLog(app);
       await app.debugAfterDrain();
       await settleMs(300);
-      expect(revs.bumps, 1,
-          reason: 'end-of-pass request joins the running publish');
-      await until(() => revs.bumps >= 2, within: const Duration(seconds: 4));
-      expect(revs.bumps, 2);
+      expect(revs.bumps, 2,
+          reason: 'immediate day publish + end of pass; trailing flush waits');
+      await until(() => revs.bumps >= 3, within: const Duration(seconds: 4));
+      expect(revs.bumps, 3);
       await settleMs(300);
-      expect(revs.bumps, 2, reason: 'nothing further');
+      expect(revs.bumps, 3, reason: 'nothing further');
     }, timeout: const Timeout(Duration(seconds: 20)));
 
     test('a pass that commits no day publishes only at the end', () async {
@@ -101,7 +100,7 @@ void main() {
       await app.debugAfterDrain();
       await settleMs(200);
       final afterFirst = revs.bumps;
-      expect(afterFirst, 1);
+      expect(afterFirst, 2);
       await app.debugAfterDrain();
       await settleMs(200);
       expect(revs.bumps, afterFirst + 1, reason: 'only the end-of-pass bump');

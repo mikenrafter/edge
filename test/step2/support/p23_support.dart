@@ -213,10 +213,11 @@ Map<String, P23Seed> p23Scenarios() => {
   },
 };
 
-/// The body of `refreshComputeFreshness` in lib/data/db.dart, comments and
+/// The body of the freshness computation (`_computeAndWriteFreshness`, behind
+/// the serialised `refreshComputeFreshness`) in lib/data/db.dart, comments and
 /// string literals stripped (so only identifiers and calls are left).
 String p23RefreshBody(String strippedDbSource) {
-  final at = strippedDbSource.indexOf('refreshComputeFreshness()');
+  final at = strippedDbSource.indexOf('_computeAndWriteFreshness() async');
   final open = strippedDbSource.indexOf('{', at);
   var depth = 0;
   for (var i = open; i < strippedDbSource.length; i++) {
