@@ -16,6 +16,7 @@ import 'guards.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
 import 'report.dart';
+import 'run_log.dart';
 import 'sandbox.dart';
 import 'selection.dart';
 import 'source_facts.dart' show defaultSourceRoots;
@@ -29,8 +30,10 @@ class GuardPolicyError implements Exception {
 }
 
 class _SetupFailed implements Exception {
-  _SetupFailed(this.message);
+  _SetupFailed(this.message, {this.argv = const [], this.outcome});
   final String message;
+  final List<String> argv;
+  final ProcessOutcome? outcome;
 }
 
 /// Runs the whole tool: parse arguments, export the pinned commit, check the
@@ -87,7 +90,10 @@ Future<int> runCli(
     try {
       bwrapVersion = await (sandboxProbe ?? () => Sandbox.probe(command: splitCommand(config.testCmd)))();
     } on SandboxUnavailable catch (e) {
-      errSink.writeln(e.message);
+      final output = e.output;
+      errSink.writeln(output == null
+          ? e.message
+          : withLogTail(e.message, tail: output, logPath: saveLog(config.outDir, 'probe.log', output)));
       return 70;
     }
   }
@@ -131,11 +137,13 @@ Future<int> runCli(
                 '(${done.survivors.join(', ')})');
           }
           if (done.cancelled || cancel.isCancelled) throw InterruptedError();
+          final setupArgv = splitCommand(setup);
           if (done.timedOut) {
-            throw _SetupFailed('"$setup" timed out after ${config.timeout.inSeconds} s and was stopped');
+            throw _SetupFailed('"$setup" timed out after ${config.timeout.inSeconds} s and was stopped',
+                argv: setupArgv, outcome: done);
           }
           if (done.exitCode != 0) {
-            throw _SetupFailed('"$setup" failed (exit code ${done.exitCode}): ${done.stderr.trim()}');
+            throw _SetupFailed('"$setup" failed (exit code ${done.exitCode})', argv: setupArgv, outcome: done);
           }
         }
         await integrity.requirePinned('after setup');
@@ -276,7 +284,7 @@ Future<int> runCli(
     errSink.writeln(e.message);
     return 65;
   } on BaselineFailedError catch (e) {
-    errSink.writeln(e.message);
+    errSink.writeln(_withSavedLog(e.message, config.outDir, 'baseline.log', e.argv, e.outcome));
     return 65;
   } on InterruptedError {
     errSink.writeln('interrupted; the export was removed');
@@ -288,7 +296,7 @@ Future<int> runCli(
     errSink.writeln(e.message);
     return 70;
   } on _SetupFailed catch (e) {
-    errSink.writeln(e.message);
+    errSink.writeln(_withSavedLog(e.message, config.outDir, 'setup.log', e.argv, e.outcome));
     return 70;
   } on CleanupFailedError catch (e) {
     errSink.writeln('${e.message}; the audit was stopped');
@@ -311,6 +319,15 @@ Future<int> runCli(
   } finally {
     staged?.discard();
   }
+}
+
+/// [message] for a failed run, with the end of its output and the path of the
+/// `<outDir>/<name>` that holds all of it (the export is about to be removed,
+/// so this is the only trace of what the run printed).
+String _withSavedLog(String message, String outDir, String name, List<String> argv, ProcessOutcome? outcome) {
+  if (outcome == null) return message;
+  return withLogTail(message,
+      tail: failureTail(outcome), logPath: saveLog(outDir, name, renderRunLog(argv, outcome)));
 }
 
 /// Ctrl-C and SIGTERM as one stream (a platform without one just lacks it).

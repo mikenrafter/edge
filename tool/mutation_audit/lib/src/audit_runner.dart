@@ -13,8 +13,13 @@ import 'reporter_parser.dart';
 
 /// The unmutated tree does not pass its own tests: nothing can be concluded.
 class BaselineFailedError implements Exception {
-  BaselineFailedError(this.message);
+  BaselineFailedError(this.message, {this.argv = const [], this.outcome});
   final String message;
+
+  /// The command that ran and what it produced (null: no run to show). The
+  /// command line saves it as `baseline.log`.
+  final List<String> argv;
+  final ProcessOutcome? outcome;
   @override
   String toString() => 'BaselineFailedError: $message';
 }
@@ -108,36 +113,38 @@ class AuditRunner {
   /// (naming the first failing test or load error) otherwise.
   Future<BaselineSummary> runBaseline(AuditConfig config, String root, {CancelToken? cancel}) async {
     if (cancel != null && cancel.isCancelled) throw InterruptedError();
-    final outcome = await _exec(buildTestCommand(config.testCmd, tests: config.tests),
+    final command = buildTestCommand(config.testCmd, tests: config.tests);
+    final outcome = await _exec(command,
         config: config,
         root: root,
         cancel: cancel,
         during: 'the baseline run',
         before: isolated ? await integrity?.view() : null);
     if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
+    BaselineFailedError failed(String message) => BaselineFailedError(message, argv: command, outcome: outcome);
     if (outcome.timedOut) {
-      throw BaselineFailedError('the baseline run timed out after ${config.timeout.inSeconds} s');
+      throw failed('the baseline run timed out after ${config.timeout.inSeconds} s');
     }
     final run = parseReporterStream(outcome.stdoutLines, root: root);
     for (final e in run.loadErrors) {
-      throw BaselineFailedError('a suite does not load: ${e.suite}: ${e.message.split('\n').first}');
+      throw failed('a suite does not load: ${e.suite}: ${e.message.split('\n').first}');
     }
     for (final f in run.setupFailures) {
-      throw BaselineFailedError(
+      throw failed(
           'the baseline fails in a hook: ${f.suite}: ${f.name}: ${f.message.split('\n').first}');
     }
     for (final t in run.tests) {
       if (t.failed) {
         final why = t.errors.isEmpty ? '' : ': ${t.errors.first.message.split('\n').first}';
-        throw BaselineFailedError('the baseline fails: ${t.key}$why');
+        throw failed('the baseline fails: ${t.key}$why');
       }
     }
     final ran = run.tests.where((t) => !t.skipped).length;
     if (outcome.exitCode != 0 || !run.sawDone || !run.doneSuccess) {
-      throw BaselineFailedError('the baseline run is not clean (exit code ${outcome.exitCode}'
+      throw failed('the baseline run is not clean (exit code ${outcome.exitCode}'
           '${outcome.stderr.trim().isEmpty ? '' : ', ${outcome.stderr.trim().split('\n').first}'})');
     }
-    if (ran == 0) throw BaselineFailedError('the baseline ran no test');
+    if (ran == 0) throw failed('the baseline ran no test');
     return BaselineSummary(passed: true, testsRun: ran, duration: outcome.elapsed);
   }
 

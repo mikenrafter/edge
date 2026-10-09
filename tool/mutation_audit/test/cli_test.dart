@@ -400,6 +400,75 @@ void main() {
     expect(await fx.worktrees(), isNot(contains(runner.calls.first.cwd)));
   });
 
+  group('a failed baseline or setup leaves its whole output behind', () {
+    List<String> numbered(String what, int n) => [for (var i = 1; i <= n; i++) '$what line $i'];
+
+    test('baseline: the full stdout and stderr are in <out>/baseline.log; the error shows the tail and the path', () async {
+      final runner = FakeProcessRunner((call) => call.argv[1] == 'pub'
+          ? const ProcessOutcome(exitCode: 0)
+          : ProcessOutcome(exitCode: 1, stdoutLines: numbered('out', 100), stderr: '${numbered('err', 100).join('\n')}\n'));
+      expect(await run(runner), 65);
+      final log = File(p.join(out.path, 'baseline.log'));
+      expect(log.existsSync(), isTrue);
+      final text = log.readAsStringSync();
+      for (final line in [...numbered('out', 100), ...numbered('err', 100)]) {
+        expect(text, contains('$line\n'), reason: line);
+      }
+      expect(text, contains('exit code: 1'));
+      expect(text, contains('dart test'), reason: 'the command that ran');
+      final shown = err.toString();
+      expect(shown, contains('baseline run is not clean'));
+      expect(shown, contains(log.path));
+      expect(shown, contains('err line 100'));
+      expect(shown, contains('err line 61'));
+      expect(shown, isNot(contains('err line 50\n')), reason: 'only the last 40 lines');
+      expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
+    });
+
+    test('baseline: with an empty stderr the tail comes from stdout', () async {
+      final runner = FakeProcessRunner((call) => call.argv[1] == 'pub'
+          ? const ProcessOutcome(exitCode: 0)
+          : ProcessOutcome(exitCode: 2, stdoutLines: numbered('out', 5)));
+      expect(await run(runner), 65);
+      expect(err.toString(), allOf(contains('out line 5'), contains('baseline.log')));
+    });
+
+    test('baseline: a failing test is still named, and its log is saved too', () async {
+      final runner = FakeProcessRunner((call) => call.argv[1] == 'pub'
+          ? const ProcessOutcome(exitCode: 0)
+          : outcomeOf(failing('broken'), exitCode: 1));
+      expect(await run(runner), 65);
+      expect(err.toString(), allOf(contains('broken'), contains('baseline.log')));
+      expect(File(p.join(out.path, 'baseline.log')).readAsStringSync(), contains('broken'));
+    });
+
+    test('baseline: a timeout saves what the run printed', () async {
+      final runner = FakeProcessRunner((call) => call.argv[1] == 'pub'
+          ? const ProcessOutcome(exitCode: 0)
+          : ProcessOutcome(exitCode: -9, timedOut: true, stdoutLines: numbered('out', 3), stderr: 'hung\n'));
+      expect(await run(runner), 65);
+      expect(err.toString(), contains('timed out'));
+      expect(File(p.join(out.path, 'baseline.log')).readAsStringSync(), allOf(contains('out line 3'), contains('hung')));
+    });
+
+    test('setup: a failing setup command saves <out>/setup.log, shows the tail and the path', () async {
+      final runner = FakeProcessRunner((call) => ProcessOutcome(
+          exitCode: 1, stdoutLines: numbered('out', 60), stderr: '${numbered('err', 60).join('\n')}\n'));
+      expect(await run(runner), 70);
+      final log = File(p.join(out.path, 'setup.log'));
+      expect(log.existsSync(), isTrue);
+      expect(log.readAsStringSync(), allOf(contains('out line 1\n'), contains('err line 1\n'), contains('err line 60\n')));
+      expect(err.toString(), allOf(contains('failed (exit code 1)'), contains(log.path), contains('err line 60'), isNot(contains('err line 10\n'))));
+      expect(File(p.join(out.path, 'baseline.log')).existsSync(), isFalse);
+    });
+
+    test('a passing baseline writes no log', () async {
+      expect(await run(tests(), ['--max-mutants', '1', '--setup-cmd', '']), 0);
+      expect(File(p.join(out.path, 'baseline.log')).existsSync(), isFalse);
+      expect(File(p.join(out.path, 'setup.log')).existsSync(), isFalse);
+    });
+  });
+
   test('an active path override exits 65 before anything runs', () async {
     await fx.commit({
       'pubspec.yaml': 'name: demo\nenvironment:\n  sdk: ^3.0.0\ndependency_overrides:\n  analytics:\n    path: ../analytics\n',

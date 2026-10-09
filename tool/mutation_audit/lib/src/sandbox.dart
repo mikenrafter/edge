@@ -5,13 +5,18 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 
 import 'process_runner.dart';
+import 'run_log.dart';
 
 /// bubblewrap is missing, or a probe sandbox does not behave (no unprivileged
 /// user namespaces, an overlay that keeps writes). The audit cannot isolate
 /// its runs: it stops unless `--no-sandbox` was given.
 class SandboxUnavailable implements Exception {
-  SandboxUnavailable(this.message);
+  SandboxUnavailable(this.message, {this.output});
   final String message;
+
+  /// The whole output of the probe run that failed (command, exit code,
+  /// stdout, stderr), when there was one; the command line saves it.
+  final String? output;
   @override
   String toString() => 'SandboxUnavailable: $message';
 }
@@ -338,15 +343,16 @@ class Sandbox {
       final sandbox = discover(export, environment: environment, bwrap: bwrap, command: command);
       final script = 'echo x > "\$PWD/probe-export" && echo x > "/tmp/$mark" && echo x > "\$HOME/$mark" && echo ok';
       final ProcessResult r;
+      final argv = sandbox.wrap(['sh', '-c', script], workingDirectory: export);
       try {
-        final argv = sandbox.wrap(['sh', '-c', script], workingDirectory: export);
         r = await Process.run(argv.first, argv.sublist(1), workingDirectory: export, environment: environment);
       } on ProcessException catch (e) {
         throw SandboxUnavailable('the probe sandbox could not be started: ${e.message}');
       }
       if (r.exitCode != 0 || (r.stdout as String).trim() != 'ok') {
         throw SandboxUnavailable('the probe sandbox did not run (exit ${r.exitCode}): ${_first(r.stderr)}. '
-            'bubblewrap needs unprivileged user namespaces; pass --no-sandbox to run without isolation');
+            'bubblewrap needs unprivileged user namespaces; pass --no-sandbox to run without isolation',
+            output: _log(argv, r));
       }
       final leaked = [
         if (dir.listSync().isNotEmpty) 'the export',
@@ -382,11 +388,17 @@ class Sandbox {
       throw SandboxUnavailable('"$program --version" did not finish in the probe sandbox');
     }
     if (r.exitCode != 0) {
-      throw SandboxUnavailable('"$program"${toolchain ? ' --version' : ''} does not run in the minimal sandbox root '
+      throw SandboxUnavailable(
+          '"$program"${toolchain ? ' --version' : ''} does not run in the minimal sandbox root '
           '(exit ${r.exitCode}: ${_first(r.stderr)}); what it needs from the host must be on PATH, in FLUTTER_ROOT '
-          'or listed with --sandbox-ro. The binds were: ${sandbox.binds.join(', ')}');
+          'or listed with --sandbox-ro. The binds were: ${sandbox.binds.join(', ')}',
+          output: _log(argv, r));
     }
   }
+
+  static String _log(List<String> argv, ProcessResult r) => renderRunLog(
+      argv,
+      ProcessOutcome(exitCode: r.exitCode, stdoutLines: const LineSplitter().convert('${r.stdout}'), stderr: '${r.stderr}'));
 
   static String _first(Object? text) {
     final t = '$text'.trim();

@@ -155,6 +155,22 @@ void main() {
     });
   });
 
+  group('an aborting probe leaves its output behind', () {
+    test('the sandbox output goes to <out>/probe.log; the error shows its tail and the path', () async {
+      final output = [for (var i = 1; i <= 80; i++) 'probe line $i'].join('\n');
+      final code = await run(tests(), const [], () async => throw SandboxUnavailable('"flutter --version" does not run', output: output));
+      expect(code, 70);
+      final log = File(p.join(out.path, 'probe.log'));
+      expect(log.readAsStringSync(), allOf(contains('probe line 1\n'), contains('probe line 80')));
+      expect(err.toString(), allOf(contains('does not run'), contains(log.path), contains('probe line 80'), isNot(contains('probe line 10\n'))));
+    });
+
+    test('a probe error without output writes no log', () async {
+      expect(await run(tests(), const [], () async => throw SandboxUnavailable('nope')), 70);
+      expect(File(p.join(out.path, 'probe.log')).existsSync(), isFalse);
+    });
+  });
+
   group('--no-sandbox', () {
     test('is explicit: no probe, nothing wrapped, the report says isolation none and every mutant is unisolated', () async {
       final runner = tests();

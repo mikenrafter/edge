@@ -489,7 +489,19 @@ touch /mutaudit_root_write 2>/dev/null && echo ROOTWRITE || echo rootro
       final b = fake('[ "\$1" = --version ] && { echo "bubblewrap 0.0"; exit 0; }\necho "bwrap: No permissions to create new namespace" >&2\nexit 1');
       await expectLater(
           Sandbox.probe(bwrap: b),
-          throwsA(isA<SandboxUnavailable>().having((e) => e.message, 'message', contains('No permissions to create new namespace'))));
+          throwsA(isA<SandboxUnavailable>()
+              .having((e) => e.message, 'message', contains('No permissions to create new namespace'))
+              .having((e) => e.output, 'output', allOf(contains('exit code: 1'), contains('No permissions to create new namespace')))));
+    });
+
+    test('a toolchain program that fails in the probe sandbox: the full output travels with the error', () async {
+      final b = fake('[ "\$1" = --version ] && { echo "bubblewrap 0.0"; exit 0; }\n'
+          'case "\$*" in *probe-export*) echo ok; exit 0;; esac\n'
+          'echo "stdout of the tool"; echo "stderr of the tool" >&2; exit 3');
+      final tool = File(p.join(dir.path, 'flutter'))..writeAsStringSync('#!/bin/sh\n');
+      await expectLater(
+          Sandbox.probe(bwrap: b, command: [tool.path]),
+          throwsA(isA<SandboxUnavailable>().having((e) => e.output, 'output', allOf(contains('stdout of the tool'), contains('stderr of the tool'), contains('exit code: 3')))));
     });
 
     test('a bwrap that does not isolate (runs the command as is) is caught by the write check', () async {
