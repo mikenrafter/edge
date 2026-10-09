@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'support/git_fixture.dart';
+import 'support/package_config.dart';
 
 /// Sol r5 #3: the detector used to drop an import whose file did not exist
 /// yet (a setup-generated helper) and call the suite a runtime suite. Now an
@@ -21,6 +22,7 @@ void main() {
     write('pubspec.yaml', 'name: demo\nenvironment:\n  sdk: ^3.5.0\n');
     write('lib/a.dart', 'int a = 1;\n');
     write('test/support/plain.dart', 'int plain() => 1;\n');
+    writeDemoConfig(root.path);
   });
   tearDown(() => root.deleteSync(recursive: true));
 
@@ -46,6 +48,7 @@ void main() {
     test('package:<path dependency inside the export>/... of a missing file', () {
       write('pubspec.yaml', 'name: demo\ndependencies:\n  helper:\n    path: packages/helper\n');
       write('packages/helper/pubspec.yaml', 'name: helper\n');
+      writeConfig(root.path, {'demo': ('../', 'lib/'), 'helper': ('../packages/helper', 'lib/')});
       expect(why("import 'package:helper/missing.dart';").join(' '), contains('[unresolved-import]'));
     });
 

@@ -10,6 +10,7 @@ import 'package:test/test.dart';
 import 'support/events.dart';
 import 'support/fakes.dart';
 import 'support/git_fixture.dart';
+import 'support/package_config.dart';
 
 /// A tiny pure-dart package: one comparison, one test file.
 const lib = 'bool lt(int a, int b) => a < b;\nbool gt(int a, int b) => a > b;\n';
@@ -284,6 +285,58 @@ void main() {
       expect(err.toString(), contains('test/support/generated.dart'));
       expect(runner.calls.where((c) => c.argv.length > 1 && c.argv[1] != 'pub'), isEmpty, reason: 'no baseline ran');
       expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
+    });
+  });
+
+  group('the prepared package config decides what package: imports run', () {
+    const scanner = "import 'dart:io';\nString src() => File('lib/a.dart').readAsStringSync();\n";
+
+    /// lib/h.dart is harmless, src/h.dart scans; setup writes the config [mapping]; the suite
+    /// `test/map_test.dart` imports package:demo/h.dart and fails when `<=` is applied.
+    Future<(String, FakeProcessRunner)> mapped(String? mapping) async {
+      await fx.commit({
+        'lib/h.dart': 'int h() => 1;\n',
+        'src/h.dart': scanner,
+        'test/map_test.dart': "import 'package:demo/h.dart';\nvoid main() {}\n",
+      }, 'two candidates for package:demo/h.dart');
+      final runner = FakeProcessRunner((call) {
+        if (call.argv.length >= 2 && call.argv[1] == 'pub') {
+          if (mapping != null) writeConfig(call.cwd, {'demo': ('../', mapping)});
+          return const ProcessOutcome(exitCode: 0);
+        }
+        final src = File(p.join(call.cwd, 'lib/a.dart')).readAsStringSync();
+        final b = StreamBuilder().loaded('test/map_test.dart').pass('test/a_test.dart', 'ok');
+        if (src.contains('a <= b')) b.fail('test/map_test.dart', 'uses h');
+        return outcomeOf(b.done(success: !src.contains('a <= b')), exitCode: src.contains('a <= b') ? 1 : 0);
+      });
+      return (await fx.head(), runner);
+    }
+
+    Map<String, dynamic> lt() => ((jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map)['mutants'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((m) => '${m['original']}->${m['mutated']}' == '<-><=');
+
+    test('setup maps demo to src/: the scanner there makes the suite a guard (the pubspec would have said lib/)', () async {
+      final (pinned, runner) = await mapped('src/');
+      final code = await runCli(args(const ['--tests', 'test/map_test.dart'], pinned), runner: runner, out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      expect(lt()['status'], 'killed-by-guard-only');
+      expect(((lt()['discounted'] as List).single as Map)['reasons'].toString(), contains('src/h.dart'));
+    });
+
+    test('setup maps demo to lib/: the harmless file is what runs, the suite stays a runtime suite', () async {
+      final (pinned, runner) = await mapped('lib/');
+      final code = await runCli(args(const ['--tests', 'test/map_test.dart'], pinned), runner: runner, out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      expect(lt()['status'], 'killed');
+    });
+
+    test('setup writes no package config: importing the audited package is scanning evidence (package-mapping)', () async {
+      final (pinned, runner) = await mapped(null);
+      final code = await runCli(args(const ['--tests', 'test/map_test.dart'], pinned), runner: runner, out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      expect(lt()['status'], 'killed-by-guard-only');
+      expect(((lt()['discounted'] as List).single as Map)['reasons'].toString(), contains('[package-mapping]'));
     });
   });
 

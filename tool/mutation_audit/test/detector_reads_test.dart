@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'support/git_fixture.dart';
+import 'support/package_config.dart';
 
 /// Finding 1 (review round 3): a suite that builds its source path in a
 /// variable, from Platform.script, or in a helper function must still be
@@ -126,7 +127,10 @@ void main() {
   });
 
   group('code under a source root is inspected like any other (strict)', () {
-    setUp(() => write('pubspec.yaml', 'name: demo\n'));
+    setUp(() {
+      write('pubspec.yaml', 'name: demo\n');
+      writeDemoConfig(root.path);
+    });
 
     test('a tool/ helper that builds the path at run time is a site, whatever its callers show', () {
       write('tool/h.dart', "import 'dart:io';\nString read() => File(['lib', 'a.dart'].join('/')).readAsStringSync();\n");

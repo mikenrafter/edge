@@ -116,6 +116,10 @@ class SourceScanDetector {
         final sites = [...facts.sites];
         for (final uri in facts.uris) {
           final r = _resolve(path, uri);
+          if (r.mapping != null) {
+            sites.add(SourceSite(facts.uriLines[uri] ?? 1, 'package-mapping',
+                "'$uri': ${r.mapping}; which directory it runs is unknown"));
+          }
           if (r.file != null) imports.add(r.file!);
           if (r.missing != null) {
             // A file that is not there is a file nobody read: it could be a
@@ -135,37 +139,47 @@ class SourceScanDetector {
   /// absent, or lies outside the export). `dart:`, other packages (hosted, git,
   /// outside the export) and other schemes are not part of the repository:
   /// both fields null.
-  ({String? file, String? missing}) _resolve(String from, String uri) {
-    const ignored = (file: null, missing: null);
+  ({String? file, String? missing, String? mapping}) _resolve(String from, String uri) {
+    const ignored = (file: null, missing: null, mapping: null);
     String? next;
     if (uri.startsWith('dart:')) return ignored;
     if (uri.startsWith('package:')) {
       final rest = uri.substring('package:'.length);
       final slash = rest.indexOf('/');
       if (slash < 0) return ignored;
-      final dir = _packages[rest.substring(0, slash)];
+      final name = rest.substring(0, slash);
+      final broken = _packages.broken[name];
+      if (broken != null) return (file: null, missing: null, mapping: broken);
+      final dir = _packages.lib[name];
       if (dir == null) return ignored;
       next = _relative(p.join(dir, rest.substring(slash + 1)));
     } else if (!uri.contains(':') || uri.startsWith('file:')) {
       next = _relative(p.join(p.dirname(from), uri.startsWith('file:') ? Uri.parse(uri).toFilePath() : uri));
-      if (next == null) return (file: null, missing: 'it lies outside the export');
+      if (next == null) return (file: null, missing: 'it lies outside the export', mapping: null);
     } else {
       return ignored;
     }
-    if (next == null) return (file: null, missing: 'it lies outside the export');
+    if (next == null) return (file: null, missing: 'it lies outside the export', mapping: null);
     if (!next.endsWith('.dart')) return ignored;
-    return File(p.join(root, next)).existsSync() ? (file: next, missing: null) : (file: null, missing: 'no such file');
+    return File(p.join(root, next)).existsSync()
+        ? (file: next, missing: null, mapping: null)
+        : (file: null, missing: 'no such file', mapping: null);
   }
 
-  /// Package name -> its package directory (root-relative, `lib` included) for
-  /// the audited package, every path dependency that lies inside the export
-  /// (pubspec.yaml and pubspec_overrides.yaml) and every package the package
-  /// config names inside the export (`.dart_tool/package_config.json`: setup
-  /// writes it, so generated packages are there). Hosted and git packages are
-  /// not in the export; a path dependency that points out of it is refused
-  /// elsewhere (path overrides).
-  late final Map<String, String> _packages = () {
-    final out = <String, String>{};
+  /// Which directory each package of the export runs from.
+  ///
+  /// The resolved `.dart_tool/package_config.json` (setup writes it, and it is
+  /// what the compiler uses) is AUTHORITATIVE: a package it maps to a place
+  /// inside the export is read from there (`rootUri` + `packageUri`), whatever
+  /// the pubspec suggests. The pubspecs only say which packages are EXPECTED to
+  /// be in the export (the audited package and the path dependencies inside
+  /// it, pubspec.yaml and pubspec_overrides.yaml). An expected package the
+  /// config cannot map (no config, an unreadable one, no entry, two entries that
+  /// disagree, a root that is not a file location) is `broken`: importing it is
+  /// scanning evidence (`package-mapping`), because there is no way to tell
+  /// what code it runs. Packages the config places outside the export, and
+  /// packages nothing says are ours, are not part of the repository.
+  late final _PackageMap _packages = () {
     Object? load(String name) {
       final f = File(p.join(root, name));
       if (!f.existsSync()) return null;
@@ -176,8 +190,9 @@ class SourceScanDetector {
       }
     }
 
+    final expected = <String>{};
     final main = load('pubspec.yaml');
-    if (main is YamlMap && main['name'] is String) out[main['name'] as String] = 'lib';
+    if (main is YamlMap && main['name'] is String) expected.add(main['name'] as String);
     for (final doc in [main, load('pubspec_overrides.yaml')]) {
       if (doc is! YamlMap) continue;
       for (final section in ['dependencies', 'dev_dependencies', 'dependency_overrides']) {
@@ -188,31 +203,83 @@ class SourceScanDetector {
           final path = spec is YamlMap ? spec['path'] : null;
           if (e.key is! String || path is! String) continue;
           final rel = _relative(p.join(root, path));
-          if (rel != null && rel.isNotEmpty) out.putIfAbsent(e.key as String, () => p.join(rel, 'lib'));
+          if (rel != null && rel.isNotEmpty) expected.add(e.key as String);
         }
       }
     }
-    final config = File(p.join(root, '.dart_tool', 'package_config.json'));
-    if (config.existsSync()) {
+
+    final lib = <String, String>{};
+    final broken = <String, String>{};
+    final configFile = File(p.join(root, '.dart_tool', 'package_config.json'));
+    Object? config;
+    String? configProblem;
+    if (!configFile.existsSync()) {
+      configProblem = 'there is no .dart_tool/package_config.json (setup did not write one)';
+    } else {
       try {
-        final doc = jsonDecode(config.readAsStringSync());
-        final packages = doc is Map ? doc['packages'] : null;
-        if (packages is List) {
-          final base = Uri.directory(p.join(root, '.dart_tool'));
-          for (final pkg in packages) {
-            if (pkg is! Map || pkg['name'] is! String || pkg['rootUri'] is! String) continue;
-            final dir = base.resolve(pkg['rootUri'] as String);
-            if (dir.scheme != 'file') continue;
-            final lib = _relative(p.join(dir.toFilePath(), (pkg['packageUri'] as String?) ?? 'lib/'));
-            if (lib != null) out.putIfAbsent(pkg['name'] as String, () => lib);
-          }
-        }
+        config = jsonDecode(configFile.readAsStringSync());
       } on FormatException {
-        // an unreadable config names nothing
+        configProblem = '.dart_tool/package_config.json is not valid JSON';
+      }
+      if (configProblem == null && !(config is Map && config['packages'] is List)) {
+        configProblem = '.dart_tool/package_config.json has no packages list';
       }
     }
-    return out;
+    if (configProblem != null) {
+      return _PackageMap(lib, {for (final n in expected) n: 'package:$n cannot be mapped to a directory: $configProblem'});
+    }
+    final seen = <String, String?>{}; // name -> the directory its first entry gave (null: outside the export)
+    final base = Uri.directory(p.join(root, '.dart_tool'));
+    for (final pkg in (config as Map)['packages'] as List) {
+      final name = pkg is Map ? pkg['name'] : null;
+      if (name is! String) continue;
+      String? dir; // root-relative package directory, null outside the export
+      var problem = '';
+      final rootUri = pkg['rootUri'];
+      if (rootUri is! String) {
+        problem = 'its entry has no rootUri';
+      } else {
+        try {
+          final rootDir = base.resolve(rootUri.endsWith('/') ? rootUri : '$rootUri/');
+          if (rootDir.scheme != 'file') {
+            problem = 'its rootUri ($rootUri) is not a file location';
+          } else {
+            final packageUri = pkg['packageUri'];
+            final full = rootDir.resolve(packageUri is String ? (packageUri.endsWith('/') ? packageUri : '$packageUri/') : 'lib/');
+            dir = _relative(p.normalize(full.toFilePath()));
+          }
+        } on FormatException {
+          problem = 'its rootUri ($rootUri) cannot be parsed';
+        }
+      }
+      if (problem.isNotEmpty) {
+        broken[name] = 'package:$name cannot be mapped to a directory: $problem';
+        continue;
+      }
+      if (seen.containsKey(name) && seen[name] != dir) {
+        broken[name] = 'package:$name cannot be mapped to a directory: package_config.json lists it twice with different roots';
+      }
+      seen.putIfAbsent(name, () => dir);
+      if (dir != null) lib[name] = dir;
+    }
+    for (final n in expected) {
+      if (!seen.containsKey(n) && !broken.containsKey(n)) {
+        broken[n] = 'package:$n cannot be mapped to a directory: package_config.json does not list it';
+      }
+    }
+    for (final n in broken.keys) {
+      lib.remove(n);
+    }
+    return _PackageMap(lib, broken);
   }();
+}
+
+/// Package name -> root-relative directory (the `packageUri` one) for packages
+/// inside the export, and the packages that cannot be mapped, with the reason.
+class _PackageMap {
+  _PackageMap(this.lib, this.broken);
+  final Map<String, String> lib;
+  final Map<String, String> broken;
 }
 
 class _FileFacts {

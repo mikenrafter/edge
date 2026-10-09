@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
 
 import 'support/git_fixture.dart';
+import 'support/package_config.dart';
 
 /// Finding 2 (review round 3): the import graph followed only one plain
 /// `import '...';` per line. It must follow every URI of every import, export
@@ -22,6 +23,7 @@ void main() {
     write('lib/a.dart', 'int a = 1;\n');
     write('test/support/reader.dart', "import 'dart:io';\nString src() => File('lib/a.dart').readAsStringSync();\n");
     write('test/support/plain.dart', 'int plain() => 1;\n');
+    writeDemoConfig(root.path);
   });
   tearDown(() => root.deleteSync(recursive: true));
 
@@ -107,12 +109,14 @@ void main() {
       write('pubspec.yaml', 'name: demo\ndependencies:\n  helper:\n    path: packages/helper\n');
       write('packages/helper/pubspec.yaml', 'name: helper\n');
       write('packages/helper/lib/h.dart', "import 'dart:io';\nString s() => File('lib/a.dart').readAsStringSync();\n");
+      writeConfig(root.path, {'demo': ('../', 'lib/'), 'helper': ('../packages/helper', 'lib/')});
       expect(why("import 'package:helper/h.dart';"), isNotEmpty);
     });
 
     test('a path dependency from dependency_overrides and dev_dependencies is followed', () {
       write('pubspec.yaml',
           'name: demo\ndev_dependencies:\n  h1:\n    path: packages/h1\ndependency_overrides:\n  h2:\n    path: packages/h2\n');
+      writeConfig(root.path, {'demo': ('../', 'lib/'), 'h1': ('../packages/h1', 'lib/'), 'h2': ('../packages/h2', 'lib/')});
       for (final n in ['h1', 'h2']) {
         write('packages/$n/lib/h.dart', "import 'dart:io';\nString s() => File('lib/a.dart').readAsStringSync();\n");
         expect(why("import 'package:$n/h.dart';"), isNotEmpty, reason: n);
@@ -128,8 +132,9 @@ void main() {
       expect(why("import 'package:demo/missing.dart';").join(' '), contains('unresolved-import'));
     });
 
-    test('no pubspec: package: URIs are ignored', () {
+    test('no pubspec and no package config: package: URIs name nothing known and are ignored', () {
       File(p.join(root.path, 'pubspec.yaml')).deleteSync();
+      File(p.join(root.path, '.dart_tool', 'package_config.json')).deleteSync();
       write('lib/testing/reader.dart', "import 'dart:io';\nString s() => File('lib/a.dart').readAsStringSync();\n");
       expect(why("import 'package:demo/testing/reader.dart';"), isEmpty);
     });
