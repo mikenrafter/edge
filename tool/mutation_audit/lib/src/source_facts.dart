@@ -11,7 +11,7 @@ class SourceSite {
   final int line;
 
   /// Short rule id: `source-path`, `path-not-literal`, `read-call`,
-  /// `Platform.script`, `cwd`, `unparsable`.
+  /// `Platform.script`, `cwd`, `process-launch`, `unparsable`.
   final String rule;
   final String detail;
 
@@ -50,6 +50,8 @@ const defaultSourceRoots = ['lib', 'tool', 'packages', 'bin'];
 /// - `Platform.script`, `Platform.packageConfig`, `Isolate.resolvePackageUri`,
 ///   `Isolate.packageConfig`, and `Directory.current` / `Uri.base` (the bases
 ///   of paths built at run time);
+/// - `Process.run` / `runSync` / `start` (also prefixed, aliased or torn off):
+///   a subprocess reads whatever it is told to and is not followed;
 /// - any string literal that starts at a source root (`lib/...`,
 ///   `../lib/...`, `${x}/lib/...`), and a `join` whose first part is a root;
 /// - a file with syntax errors (it cannot be checked).
@@ -70,6 +72,7 @@ SourceFacts analyseSourceReads(String text, {required List<String> sourceRoots})
 }
 
 const _fsClasses = {'File', 'Directory', 'Link'};
+const _launchCalls = {'run', 'runSync', 'start'};
 const _readCalls = {
   'readAsString', 'readAsStringSync', 'readAsBytes', 'readAsBytesSync', 'readAsLines',
   'readAsLinesSync', 'openRead', 'list', 'listSync',
@@ -81,6 +84,7 @@ class _Scope extends RecursiveAstVisitor<void> {
   final Map<String, int> declared = {};
   final Map<String, Expression> initializers = {};
   final Set<String> fsAliases = {..._fsClasses};
+  final Set<String> processAliases = {'Process'};
 
   final List<String> uris = [];
 
@@ -180,6 +184,7 @@ class _Scope extends RecursiveAstVisitor<void> {
   void visitGenericTypeAlias(GenericTypeAlias node) {
     final t = node.type;
     if (t is NamedType && _fsClasses.contains(t.name.lexeme)) fsAliases.add(node.name.lexeme);
+    if (t is NamedType && t.name.lexeme == 'Process') processAliases.add(node.name.lexeme);
     super.visitGenericTypeAlias(node);
   }
 
@@ -359,10 +364,20 @@ class _Finder extends RecursiveAstVisitor<void> {
     super.visitInstanceCreationExpression(node);
   }
 
+  /// `Process`, `io.Process` or an alias of it.
+  bool _isProcess(Expression? t) =>
+      (t is SimpleIdentifier && scope.processAliases.contains(t.name)) ||
+      (t is PrefixedIdentifier && scope.processAliases.contains(t.identifier.name)) ||
+      (t is PropertyAccess && scope.processAliases.contains(t.propertyName.name));
+
   @override
   void visitMethodInvocation(MethodInvocation node) {
     final c = _constructionOf(node);
-    if (c != null) {
+    if (_launchCalls.contains(node.methodName.name) && _isProcess(node.realTarget)) {
+      // A child process can read anything (grep, cat, git): its arguments are
+      // not followed.
+      _site(node, 'process-launch', '${_snip(node)}: a subprocess can read source; its arguments are not followed');
+    } else if (c != null) {
       if (c.ctor == 'new' && node.argumentList.arguments.isEmpty) {
         _site(node, 'path-not-literal', '${_snip(node)}: the path is not a compile-time string literal');
       } else {
@@ -387,6 +402,8 @@ class _Finder extends RecursiveAstVisitor<void> {
       _site(node, 'Platform.script', '${_snip(node)}: a path relative to the running script');
     } else if (prefix == 'Isolate' && name == 'packageConfig') {
       _site(node, 'Platform.script', '${_snip(node)}: the package configuration locates source');
+    } else if (_launchCalls.contains(name) && scope.processAliases.contains(prefix)) {
+      _site(node, 'process-launch', '${_snip(node)}: a tear-off of a subprocess launch');
     } else if (prefix == 'Directory' && name == 'current') {
       _location(node, 'Directory.current');
     } else if (prefix == 'Uri' && name == 'base') {
@@ -408,6 +425,8 @@ class _Finder extends RecursiveAstVisitor<void> {
       _site(node, 'Platform.script', '${_snip(node)}: a path relative to the running script');
     } else if (targetName == 'Isolate' && name == 'packageConfig') {
       _site(node, 'Platform.script', '${_snip(node)}: the package configuration locates source');
+    } else if (_launchCalls.contains(name) && _isProcess(t)) {
+      _site(node, 'process-launch', '${_snip(node)}: a tear-off of a subprocess launch');
     } else if (targetName == 'Directory' && name == 'current') {
       _location(node, 'Directory.current');
     } else if (targetName == 'Uri' && name == 'base') {

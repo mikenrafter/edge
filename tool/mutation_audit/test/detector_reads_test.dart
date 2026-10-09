@@ -81,6 +81,14 @@ void main() {
         "const d = 'lib';\nvoid scan(String p) {}\nvoid main() { scan('\$d/a.dart'); }");
     flagged('a join that resolves to a source path handed to any consumer',
         "const d = 'tool';\nvoid scan(String p) {}\nvoid main() { scan(p.join(d, 'x.dart')); }");
+    flagged('Process.run', "Future<void> main() async { await Process.run('grep', ['-r', 'x', 'lib']); }", rule: 'process-launch');
+    flagged('Process.runSync', "void main() { Process.runSync('cat', ['a']); }", rule: 'process-launch');
+    flagged('Process.start', "Future<void> main() async { await Process.start('sh', ['-c', 'cat lib/*']); }", rule: 'process-launch');
+    flagged('a prefixed io.Process.run', "import 'dart:io' as io;\nvoid main() { io.Process.runSync('cat', ['a']); }", rule: 'process-launch');
+    flagged('a new-style prefixed import with show', "import 'dart:io' as proc show Process;\nvoid main() { proc.Process.run('x', []); }", rule: 'process-launch');
+    flagged('a tear-off of run', 'void main() { final r = Process.run; r(\'cat\', []); }', rule: 'process-launch');
+    flagged('a prefixed tear-off', "import 'dart:io' as io;\nvoid main() { final s = io.Process.start; s('cat', []); }", rule: 'process-launch');
+    flagged('a typedef for Process', "typedef P = Process;\nvoid main() { P.runSync('cat', []); }", rule: 'process-launch');
     flagged('a file with syntax errors cannot be checked', 'void main( {{{');
   });
 
@@ -95,6 +103,8 @@ void main() {
     clean('a Directory of fixtures', "void main() { Directory('test/fixtures').listSync(); }");
     clean('a File held in a variable, built from a literal fixture',
         "void main() { final f = File('test/fixtures/x.json'); f.readAsStringSync(); }");
+    clean('Process.killPid is not a launch', 'void main() { Process.killPid(1, ProcessSignal.sigterm); }');
+    clean('another run() is not a launch', 'void main(dynamic z) { z.run(() {}); z.start(); }');
     clean('a source path only inside a comment', "// File('lib/a.dart')\nvoid main() {}");
     clean('a string that merely contains lib/', "void main() { print('see the lib/ folder'); }");
     clean('a property that happens to be called list', 'void main(dynamic s) { print(s.list); }');

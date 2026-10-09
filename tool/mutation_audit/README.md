@@ -109,6 +109,9 @@ c. it, or a helper it imports, may read source text. Each reachable Dart file is
      initialised with one): its path is unknown;
    - `[Platform.script]` `Platform.script`, `Platform.packageConfig`, `Isolate.resolvePackageUri`,
      `Isolate.packageConfig`;
+   - `[process-launch]` `Process.run`, `Process.runSync`, `Process.start` (also `io.Process.run`, an
+     alias, a tear-off): a subprocess (`grep`, `cat`, `git`) reads whatever it is told to, and its
+     arguments are not followed;
    - `[cwd]` `Directory.current`, `Uri.base`: the bases of paths built at run time;
    - `[unparsable]` a file with syntax errors.
 
