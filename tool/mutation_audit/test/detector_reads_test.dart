@@ -97,6 +97,7 @@ void main() {
         "void main() { final f = File('test/fixtures/x.json'); f.readAsStringSync(); }");
     clean('a source path only inside a comment', "// File('lib/a.dart')\nvoid main() {}");
     clean('a string that merely contains lib/', "void main() { print('see the lib/ folder'); }");
+    clean('a property that happens to be called list', 'void main(dynamic s) { print(s.list); }');
     clean('a library name that is not a root', "void main() { File('test/library/x.json').readAsStringSync(); }");
   });
 

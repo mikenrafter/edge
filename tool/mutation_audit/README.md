@@ -129,7 +129,10 @@ c. it, or a helper it imports, may read source text. Each reachable Dart file is
 
 A suite file that is not in the export cannot be checked and counts as source-scanning. The rules are
 wide on purpose: a runtime suite wrongly taken for a scanner only loses kill credit, a scanner
-taken for runtime would inflate the score.
+taken for runtime would inflate the score. On this repository (1004 suites) 252 are detected, a
+superset of the 129 the earlier text-based detector found (no suite was lost): the 63 that import
+the shared scanners, the suites that read `lib/`, and the suites that build a path at run time or
+read through a helper.
 
 ### The reviewed runtime allowlist
 

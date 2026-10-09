@@ -393,7 +393,7 @@ class _Finder extends RecursiveAstVisitor<void> {
       _location(node, 'Uri.base');
     } else if (scope.fsAliases.contains(prefix) && (name == 'new' || name == 'fromUri' || name == 'fromRawPath')) {
       _site(node, 'path-not-literal', '${_snip(node)}: a constructor tear-off hides the path');
-    } else if (_readCalls.contains(name) && node.parent is! MethodInvocation) {
+    } else if (name != 'list' && _readCalls.contains(name) && node.parent is! MethodInvocation) {
       _site(node, 'read-call', '$name: a tear-off of a read; the path is unknown');
     }
     super.visitPrefixedIdentifier(node);
