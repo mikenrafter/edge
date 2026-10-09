@@ -245,7 +245,12 @@ class SourceScanDetector {
             problem = 'its rootUri ($rootUri) is not a file location';
           } else {
             final packageUri = pkg['packageUri'];
-            final full = rootDir.resolve(packageUri is String ? (packageUri.endsWith('/') ? packageUri : '$packageUri/') : 'lib/');
+            // As Dart reads it (package_config's package_config_json.dart): the
+            // packageUri is resolved against the rootUri; omitted or empty, the
+            // package root itself is the package directory (not lib/).
+            final full = packageUri is String && packageUri.isNotEmpty
+                ? rootDir.resolve(packageUri.endsWith('/') ? packageUri : '$packageUri/')
+                : rootDir;
             dir = _relative(p.normalize(full.toFilePath()));
           }
         } on FormatException {

@@ -72,6 +72,51 @@ void main() {
     });
   });
 
+  group('packageUri is resolved against rootUri the way Dart does', () {
+    // package_config 3.0.0, package_config_json.dart: an omitted packageUri is the
+    // package root itself, and an empty one resolves to the root too.
+    void raw(String entry) => File(p.join(root.path, '.dart_tool/package_config.json'))
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"configVersion":2,"packages":[$entry]}');
+
+    setUp(() {
+      write('lib/h.dart', harmless);
+      write('h.dart', scanner);
+    });
+
+    test('omitted packageUri: package:demo/h.dart is ./h.dart (a scanner), not lib/h.dart', () {
+      raw('{"name":"demo","rootUri":"../"}');
+      final r = why("import 'package:demo/h.dart';").join('\n');
+      expect(r, contains('may read source'));
+      expect(r, contains('h.dart:2'));
+      expect(r, isNot(contains('lib/h.dart')));
+      expect(r, isNot(anyOf(contains('unresolved-import'), contains('package-mapping'))));
+    });
+
+    test('empty packageUri: the root as well', () {
+      raw('{"name":"demo","rootUri":"../","packageUri":""}');
+      expect(why("import 'package:demo/h.dart';").join('\n'), contains('may read source'));
+    });
+
+    test('explicit lib/ stays lib/ (harmless): the scanner at the root is not what runs', () {
+      raw('{"name":"demo","rootUri":"../","packageUri":"lib/"}');
+      expect(why("import 'package:demo/h.dart';"), isEmpty);
+    });
+
+    test('a packageUri without the trailing slash, and one that climbs out of nothing, are read like Dart reads them', () {
+      raw('{"name":"demo","rootUri":"../","packageUri":"lib"}');
+      expect(why("import 'package:demo/h.dart';"), isEmpty, reason: 'lib -> lib/');
+    });
+
+    test('the same for a path dependency whose entry has no packageUri', () {
+      write('pubspec.yaml', 'name: demo\ndependencies:\n  helper:\n    path: packages/helper\n');
+      write('packages/helper/h.dart', scanner);
+      write('packages/helper/lib/h.dart', harmless);
+      raw('{"name":"demo","rootUri":"../","packageUri":"lib/"},{"name":"helper","rootUri":"../packages/helper"}');
+      expect(why("import 'package:helper/h.dart';").join('\n'), contains('packages/helper/h.dart'));
+    });
+  });
+
   group('no usable mapping is scanning evidence (rule package-mapping)', () {
     test('there is no package config', () {
       write('lib/h.dart', harmless);

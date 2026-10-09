@@ -133,7 +133,7 @@ c. it, or a helper it imports, may read source text. Each reachable Dart file is
      ignored;
    - `[package-mapping]` an import of a `package:` the detector cannot map to a directory. Which
      directory `package:demo/h.dart` runs is decided by the resolved `.dart_tool/package_config.json`
-     (`rootUri` + `packageUri`, e.g. `src/` instead of `lib/`), which setup writes and the compiler uses;
+     (`rootUri` + `packageUri`, resolved as Dart does: `packageUri` against `rootUri`; omitted or empty, the package root itself, not `lib/`), which setup writes and the compiler uses;
      it is AUTHORITATIVE and overrides whatever the pubspec suggests. The pubspecs only say which
      packages are expected to be in the export (the audited package, path dependencies inside it). If the
      config is missing, is not JSON, does not list such a package, lists it twice with different roots, or
