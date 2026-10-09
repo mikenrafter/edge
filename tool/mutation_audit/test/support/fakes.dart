@@ -4,8 +4,11 @@ import 'package:mutation_audit/mutation_audit.dart';
 
 /// One call the fake runner saw.
 class Call {
-  Call(this.argv, this.cwd, this.timeout, [this.environment]);
+  Call(this.argv, this.cwd, this.timeout, [this.environment, this.cancel]);
   final Map<String, String>? environment;
+
+  /// The token the caller wants the run to honour (null: not cancellable).
+  final CancelToken? cancel;
   final List<String> argv;
   final String cwd;
   final Duration? timeout;
@@ -28,8 +31,9 @@ class FakeProcessRunner implements ProcessRunner {
     required String workingDirectory,
     Duration? timeout,
     Map<String, String>? environment,
+    CancelToken? cancel,
   }) async {
-    final call = Call(argv, workingDirectory, timeout, environment);
+    final call = Call(argv, workingDirectory, timeout, environment, cancel);
     calls.add(call);
     _inFlight++;
     if (_inFlight > maxInFlight) maxInFlight = _inFlight;
