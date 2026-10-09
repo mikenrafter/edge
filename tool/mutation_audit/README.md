@@ -197,11 +197,13 @@ Precedence, first match wins:
 
 1. run timed out -> `timeout`
 2. a suite failed to load with a compiler diagnostic -> `compile-invalid` (nothing else in the run counts)
-3. failed tests: ambiguous ones (known flaky, or no `error` event) are re-run alone once (below).
+3. failed tests: a test that failed by the test framework's own timeout is set aside first (below).
+   Ambiguous ones (known flaky, or no `error` event) are re-run alone once (below).
    Confirmed failures that match a guard pattern are guard failures; any other confirmed failure
    -> `killed` (assertion or exception both count; the report says which for each killing test).
    Otherwise, a failure that could not be confirmed -> `unconfirmed`; otherwise only guard
-   failures -> `killed-by-guard-only`
+   failures -> `killed-by-guard-only`; otherwise, if every remaining failure is a framework timeout
+   -> `timeout`
 4. a load error left (exception at load, missing file), or a failed `setUpAll` / `tearDownAll`
    hook -> `load-failure`. A hook is never a test and never a kill: when `setUpAll` fails the
    tests of its group do not run at all (checked against a real run, fixture `real_setup_all.jsonl`)
@@ -209,6 +211,22 @@ Precedence, first match wins:
 6. at least one non-skipped test passed -> `survived`; otherwise `skipped`
 
 Score = killed / (killed + survived); everything else is outside the denominator.
+
+### Framework timeouts are evidence of a hang, never a kill
+
+`package:test` (and `flutter_test`, which runs on it) fails a test that outlives its `Timeout`
+with an error event `TimeoutException after 0:00:30.000000: Test timed out after 30 seconds.` and a
+failed result (`test_api` `Invoker.heartbeat`; real output in `test/fixtures/real_timeout.jsonl`). The
+tool recognises that message exactly (`TestError.isFrameworkTimeout`: `TimeoutException after
+<h:mm:ss[.f]>: Test timed out after <n> <unit>`), in the mutant run and in reruns:
+
+- such a test is not a kill and is not re-run; it is listed in `frameworkTimeouts` of the mutant
+  (results.json) and in the summary as "timed out by the test framework (not a kill)";
+- a rerun in which the test fails that way is `unresolved` (it does not confirm anything);
+- if nothing else is left (no kill, no unconfirmed failure, no guard failure), the mutant is
+  `timeout`; next to a real kill the kill stands;
+- a `TimeoutException` the test's own code throws (`Future not completed`, from `Future.timeout`) has a
+  different message and is an ordinary exception failure.
 
 ### Reruns (the rule that keeps a non-kill from being counted as a kill)
 

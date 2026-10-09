@@ -166,6 +166,7 @@ void main() {
         'guardTests': <Object?>[],
         'discounted': <Object?>[],
         'reruns': <Object?>[],
+        'frameworkTimeouts': <Object?>[],
         'durationMs': 100,
         'detail': '',
       });
@@ -446,5 +447,20 @@ void main() {
       }
       expect(Directory(export).listSync(), isEmpty);
     });
+  });
+
+  test('framework timeouts are listed per mutant in the JSON and the summary, as not-a-kill', () {
+    final r = AuditResults(meta(), [
+      MutantResult(
+        mutant: mutant(1, '<', '<='),
+        classification: const Classification(
+            status: MutantStatus.timeout,
+            frameworkTimeouts: ['test/a_test.dart::hangs'],
+            detail: 'test/a_test.dart::hangs: the test framework timed out the test'),
+        duration: Duration.zero,
+      ),
+    ]);
+    expect((r.toJson()['mutants'] as List).single['frameworkTimeouts'], ['test/a_test.dart::hangs']);
+    expect(r.renderMarkdown(), contains('timed out by the test framework (not a kill): test/a_test.dart::hangs'));
   });
 }

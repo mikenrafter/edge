@@ -11,7 +11,20 @@ class TestError {
   const TestError(this.message, this.stackTrace, {required this.isFailure});
   final String message, stackTrace;
   final bool isFailure;
+
+  /// The test framework's own timeout: package:test's invoker (flutter_test
+  /// runs on it too) fails a test that outlives its `Timeout` with
+  /// `TimeoutException after <duration>: Test timed out after <n> <unit>.`
+  /// (test_api 0.7.x `Invoker.heartbeat`; checked against a real
+  /// `dart test --reporter json` run, fixture `real_timeout.jsonl`). It says
+  /// the test hung. A `TimeoutException` the test's own code throws (`Future not
+  /// completed`) has another message and is an ordinary exception.
+  bool get isFrameworkTimeout => _frameworkTimeout.hasMatch(message);
 }
+
+final _frameworkTimeout = RegExp(
+    r'^TimeoutException after -?\d+:\d{2}:\d{2}(?:\.\d+)?: Test timed out after \d+ \w+',
+    multiLine: true);
 
 /// One finished, visible test.
 class TestOutcome {
@@ -42,6 +55,9 @@ class TestOutcome {
   String get key => '$suite::$name';
 
   bool get failed => result != TestResult.success;
+
+  /// The test failed by the test framework's timeout (any of its errors).
+  bool get hitFrameworkTimeout => errors.any((e) => e.isFrameworkTimeout);
 }
 
 /// A suite that could not be loaded (compile error, exception at load, missing

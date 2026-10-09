@@ -145,6 +145,7 @@ class Classification {
     this.killers = const [],
     this.discounted = const [],
     this.reruns = const [],
+    this.frameworkTimeouts = const [],
     this.detail = '',
   });
 
@@ -164,6 +165,10 @@ class Classification {
   List<String> get guardTests => [for (final d in discounted) d.key];
   final List<RerunRecord> reruns;
 
+  /// Keys of tests that failed by the test framework's own timeout: evidence
+  /// of a hang, never a kill and never a confirmation.
+  final List<String> frameworkTimeouts;
+
   /// One line saying why (the first compiler diagnostic, the load error, ...).
   final String detail;
 }
@@ -182,6 +187,10 @@ class Classification {
 ///    unresolved. Confirmed failures that match [guards] are guard failures,
 ///    the rest kill: any kill -> killed; otherwise any unresolved failure ->
 ///    unconfirmed; otherwise only guard failures -> killedByGuardOnly.
+///    A test that failed by the test framework's own timeout
+///    ([TestError.isFrameworkTimeout]) is neither a kill nor re-run: it goes
+///    to [Classification.frameworkTimeouts]; a rerun that ends that way is
+///    unresolved. If nothing else is left, the mutant is a timeout.
 /// 4. load errors left (exception at load, missing file), or a failed
 ///    `setUpAll` / `tearDownAll` hook (the environment broke; hooks are never
 ///    tests, so never kills) -> loadFailure.
@@ -215,7 +224,14 @@ Future<Classification> classifyRun(
   final killing = <KillingTest>[];
   final guardFailures = <DiscountedFailure>[];
   final unresolved = <RerunRecord>[];
+  final timeouts = <String>[];
   for (final t in failed) {
+    if (t.hitFrameworkTimeout) {
+      // The test hung past its Timeout: that says nothing about the mutant
+      // being noticed, so it neither kills nor is worth re-running to confirm.
+      timeouts.add(t.key);
+      continue;
+    }
     RerunRecord? record;
     final ambiguous = flakyTests.contains(t.key) || t.errors.isEmpty;
     if (ambiguous) {
@@ -243,6 +259,7 @@ Future<Classification> classifyRun(
       killers: killing,
       discounted: guardFailures,
       reruns: reruns,
+      frameworkTimeouts: timeouts,
       detail: _firstLine(failed.firstWhere((t) => t.key == killing.first.key).errors),
     );
   }
@@ -253,12 +270,25 @@ Future<Classification> classifyRun(
       status: MutantStatus.unconfirmed,
       discounted: guardFailures,
       reruns: reruns,
+      frameworkTimeouts: timeouts,
       detail: '${unresolved.first.testKey}: ${unresolved.first.detail}',
     );
   }
   if (guardFailures.isNotEmpty) {
     return Classification(
-        status: MutantStatus.killedByGuardOnly, discounted: guardFailures, reruns: reruns);
+        status: MutantStatus.killedByGuardOnly,
+        discounted: guardFailures,
+        reruns: reruns,
+        frameworkTimeouts: timeouts);
+  }
+  if (timeouts.isNotEmpty) {
+    // Every remaining failure is the test framework's own timeout.
+    return Classification(
+        status: MutantStatus.timeout,
+        reruns: reruns,
+        frameworkTimeouts: timeouts,
+        detail: '${timeouts.first}: the test framework timed out the test'
+            '${timeouts.length > 1 ? ' (and ${timeouts.length - 1} more)' : ''}');
   }
 
   if (run.loadErrors.isNotEmpty) {
@@ -311,10 +341,17 @@ RerunRecord interpretRerun(ProcessOutcome again, TestOutcome failed, {String? ro
   }
   final same = [for (final t in run.tests) if (t.key == failed.key && !t.skipped) t];
   if (same.isEmpty) return unresolved('the test did not run in the rerun');
-  final failedAgain = [for (final t in same) if (t.failed && t.errors.isNotEmpty) t];
+  final failedAgain = [
+    for (final t in same)
+      if (t.failed && t.errors.isNotEmpty && !t.hitFrameworkTimeout) t
+  ];
   if (same.any((t) => t.failed)) {
-    return failedAgain.isNotEmpty
-        ? RerunRecord(failed.key, result: RerunResult.failedAgain, kind: _kindOf(failedAgain.first))
+    if (failedAgain.isNotEmpty) {
+      return RerunRecord(failed.key, result: RerunResult.failedAgain, kind: _kindOf(failedAgain.first));
+    }
+    // A hang under the test framework's timeout is not the failure it had.
+    return same.any((t) => t.hitFrameworkTimeout)
+        ? unresolved('the test hit the test framework timeout in the rerun (a hang does not confirm a failure)')
         : unresolved('the test failed again without an error event');
   }
   if (!again.outputComplete || !run.sawDone || !run.doneSuccess) {

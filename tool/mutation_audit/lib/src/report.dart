@@ -110,7 +110,7 @@ class AuditResults {
   /// The JSON document: `meta` (SHAs, dependency config, command, options,
   /// baseline, times), `counts`, `score`, and `mutants`: per mutant `id`,
   /// `file`, `line`, `column`, `operator`, `original`, `mutated`, `status`,
-  /// `killingTests` (keys), `killers` (`test`, `kind`: assertion | exception in the mutant run, `confirmedKind`: the same for the confirming rerun, null if none), `guardTests`, `reruns` (`test`, `confirmed`: failed again alone, `result`: failed-again | passed-alone | unresolved, `detail`),
+  /// `killingTests` (keys), `killers` (`test`, `kind`: assertion | exception in the mutant run, `confirmedKind`: the same for the confirming rerun, null if none), `guardTests`, `reruns` (`test`, `confirmed`: failed again alone, `result`: failed-again | passed-alone | unresolved, `detail`), `frameworkTimeouts` (keys of tests the test framework timed out: not kills),
   /// `durationMs`, `detail`.
   Map<String, Object?> toJson() => {
         'meta': {
@@ -164,6 +164,7 @@ class AuditResults {
                     'detail': x.detail
                   }
               ],
+              'frameworkTimeouts': r.classification.frameworkTimeouts,
               'durationMs': r.duration.inMilliseconds,
               'detail': r.classification.detail,
             },
@@ -241,9 +242,13 @@ class AuditResults {
                 for (final k in c.killers)
                   '${k.key} (${k.kind.id}${k.confirmedKind == null ? '' : '; rerun: ${k.confirmedKind!.id}'})',
                 for (final d in c.discounted) 'discounted: ${why(d)}',
+                for (final t in c.frameworkTimeouts) 'timed out by the test framework (not a kill): $t',
               ].join('<br>')
             : tests
-            ? c.discounted.map(why).join('<br>')
+            ? [
+                for (final d in c.discounted) why(d),
+                for (final t in c.frameworkTimeouts) 'timed out by the test framework (not a kill): $t',
+              ].join('<br>')
             : [
                 if (c.detail.isNotEmpty) c.detail,
                 for (final x in c.reruns)
@@ -252,6 +257,7 @@ class AuditResults {
                     RerunResult.passedAlone => 'passed alone',
                     RerunResult.unresolved => 'not confirmed (${x.detail})',
                   }}',
+                for (final t in c.frameworkTimeouts) 'timed out by the test framework (not a kill): $t',
               ].join('<br>');
         b.writeln('| ${m.file}:${m.line} | ${m.operator.id} | `${_cell(m.original)}` -> `${_cell(m.mutated)}` '
             '| ${_cell(extra)} |');
