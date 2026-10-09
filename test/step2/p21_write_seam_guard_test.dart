@@ -42,26 +42,78 @@ const _allowed = <String, Map<String, Set<String>>>{
 
 const _dbFile = 'lib/data/db.dart';
 
-/// Writers that name their table by variable or interpolation, so the literal
-/// scan cannot see which tables they reach. Each is pinned by (file, member)
-/// with why it is acceptable. `wipeAll` and `_mergeFromDbFileBody` DO reach
-/// `day_result` and `baselines`, by design, and are the only ones that do.
+/// Every call site that names its table, or its whole statement, by anything
+/// but a plain string literal: `db.insert(t, ...)`, `connection.update('$t', v)`,
+/// `db.execute(sql)`, `'DELETE FROM $t'`. The scan is conservative on purpose: it
+/// reads the first positional argument of insert / update / delete / rawInsert /
+/// rawUpdate / rawDelete / execute on ANY receiver, so a new spelling cannot
+/// slip past it, and every hit has to be vouched for here by file and member.
+/// DATA entries write rows (only `wipeAll` and `_mergeFromDbFileBody` can reach
+/// `day_result` or `baselines`, by design); SCHEMA entries are DDL; NOT SQL
+/// entries are collection or helper calls that merely share a method name.
 const _pinnedDynamicWriters = <String, String>{
   'lib/data/db.dart LocalDb.wipeAll':
-      'empties every table from sqlite_master (the honest "delete everything")',
+      'DATA: empties every table from sqlite_master (the honest "delete everything"); reaches day_result and baselines by design',
   'lib/data/db.dart LocalDb._mergeFromDbFileBody':
-      'restore and salvage: walks _restoreTables / _salvageTables',
+      'DATA: restore and salvage walk _restoreTables / _salvageTables; reaches day_result and baselines by design',
   'lib/data/db.dart LocalDb.deleteDays':
-      'deleteByIn(txn, <literal table>, ...) helper plus the fixed session '
-      'child-table list',
+      'DATA: deleteByIn(txn, <literal table>, ...) helper (day_result is allow-listed by the literal scan) and the fixed session child-table loop',
   'lib/data/db.dart LocalDb.exportDaysDb':
-      'writes the EXPORT file, not the store; fixed table list',
+      'DATA: writes the EXPORT file, not the store; fixed table list',
   'lib/data/db.dart LocalDb.pruneSupersededIntermediates':
-      'fixed list of derived-intermediate tables (not day_result)',
+      'DATA: fixed list sleep_session_candidates, wake_day_features',
+  'lib/data/db.dart LocalDb.upsertDevice':
+      'DATA: UPDATE device; only a column fragment is interpolated',
+  'lib/data/db.dart LocalDb.deleteEvents':
+      'DATA: DELETE FROM events; only the placeholder list is interpolated',
+  'lib/ui2/screens/nutrition_screen.dart _NutritionScreenState._confirmDelete':
+      'DATA: NutritionDb.delete(db, id) takes a database handle first; food tables only',
   'lib/data/db.dart LocalDb._rekeyTableByDevice':
-      'schema-ladder re-key of the decoded tables, fixed names',
+      'SCHEMA: ladder re-key of the decoded tables, fixed names',
   'lib/data/db.dart LocalDb._rekeyByDeviceIdV51':
-      'schema-ladder re-key of the decoded tables, fixed names',
+      'SCHEMA: ladder re-key of the decoded tables, fixed names',
+  'lib/data/db.dart LocalDb._migrateLegacyTable':
+      'SCHEMA: ALTER ... RENAME of the legacy sync tables, fixed names',
+  'lib/data/db.dart LocalDb._addColumnIfMissing':
+      'SCHEMA: ALTER TABLE ADD COLUMN (also used for day_result skipped/partial); DDL, no row is written',
+  'lib/data/db.dart LocalDb._repairOpenSchema':
+      'SCHEMA: DROP INDEX IF EXISTS on a fixed list',
+  'lib/data/db.dart LocalDb._rebuildCanonicalDecodedStore':
+      'SCHEMA: DROP INDEX on the decoded tables',
+  'lib/data/db.dart LocalDb._ensureCoachViews':
+      'SCHEMA: DROP VIEW IF EXISTS on the coach views',
+  'lib/data/db.dart LocalDb._createSampleArchive':
+      'SCHEMA: DROP TABLE IF EXISTS of retired archive tables',
+  'lib/data/db.dart LocalDb._createInputRev':
+      'SCHEMA: CREATE TRIGGER on decoded_onehz / decoded_rr',
+  'lib/data/db.dart LocalDb._createLiveCoverage':
+      'SCHEMA: CREATE TABLE with interpolated defaults',
+  'lib/data/db.dart LocalDb._createMetricSeriesVersion':
+      'SCHEMA: ALTER TABLE metric_series_version ADD COLUMN',
+  'lib/data/db.dart LocalDb._createDecodedStore':
+      'SCHEMA: CREATE TABLE / INDEX for the decoded tables',
+  'lib/data/db.dart LocalDb._relaxDecodedSensorNulls':
+      'SCHEMA: decoded table rebuild',
+  'lib/data/db.dart LocalDb._relaxDecodedHrNull':
+      'SCHEMA: decoded table rebuild',
+  'lib/data/db.dart LocalDb._createEvents':
+      'SCHEMA: CREATE TABLE events',
+  'lib/data/db.dart LocalDb._createBandSignals':
+      'SCHEMA: CREATE TABLE band signal tables',
+  'lib/data/db.dart LocalDb._createBandBacklog':
+      'SCHEMA: CREATE TABLE band_backlog',
+  'lib/data/db.dart LocalDb._createRawArchive':
+      'SCHEMA: CREATE TABLE raw_archive',
+  'lib/import/whoop_import.dart WhoopImporter._importResolvedCsvs':
+      'NOT SQL: Map.update(key, fn, ifAbsent:)',
+  'lib/ui2/screens/day_timeline.dart dayAnnotations':
+      'NOT SQL: Map.update(key, fn, ifAbsent:)',
+  'lib/coach/coach_engine.dart CoachEngine._updateIndex':
+      'NOT SQL: List.insert(0, meta)',
+  'lib/state/app_state.dart AppState._log':
+      'NOT SQL: List.insert(0, line)',
+  'lib/data/sample_import.dart importSamplePart':
+      'NOT SQL: a local helper named insert(blob, ...) for spectral_archive parts',
 };
 
 /// Plain-string lists that mention `day_result` or `baselines`, each with why
@@ -297,18 +349,6 @@ class LocalDb {
       );
     });
 
-    test('literal-table writes and plain List.insert are not dynamic', () {
-      const src = '''
-class A {
-  void f(Database db, List<int> xs) {
-    db.insert('journal', {});
-    xs.insert(0, 1);
-  }
-}
-''';
-      expect(scanDynamicWriters(src), isEmpty);
-    });
-
     test('a table-name list naming day_result or baselines is flagged '
         'outside the pinned declarations', () {
       const src = '''
@@ -366,14 +406,94 @@ class A {
       expect(dyn('await db.rawUpdate(buildSql(t), args);'), ['LocalDb.f']);
     });
 
-    test('literal tables, literal SQL and collection methods are not dynamic',
-        () {
+    test('only a plain string literal first argument is static', () {
       expect(dyn("await db.insert('journal', {});"), isEmpty);
       expect(dyn("await db.execute('CREATE TABLE x (a INT)');"), isEmpty);
       expect(dyn("await db.rawUpdate('UPDATE journal SET a = 1');"), isEmpty);
-      expect(dyn('args.insert(0, 1);'), isEmpty);
+      expect(dyn("await db.update('a' 'b', {});"), isEmpty,
+          reason: 'adjacent plain literals are one plain literal');
       expect(dyn("final m = <String, int>{}; m.update('k', (v) => v + 1);"),
           isEmpty);
+      // Anything else is a call site to pin, whatever its spelling.
+      expect(dyn('args.insert(0, 1);'), ['LocalDb.f']);
+      expect(dyn('await db.insert(t, {});'), ['LocalDb.f']);
+      expect(dyn("await db.insert('\${t}', {});"), ['LocalDb.f']);
+      expect(dyn("await db.insert('a' 'b\$t', {});"), ['LocalDb.f']);
+      expect(dyn('await db.insert(table(), {});'), ['LocalDb.f']);
+      expect(dyn("await db.insert(await name(), {});"), ['LocalDb.f']);
+    });
+
+    test('named-only calls have no positional table argument', () {
+      expect(dyn('await dir.delete(recursive: true);'), isEmpty);
+      expect(dyn('await store.delete(key: k);'), isEmpty);
+    });
+
+    // Sol review r3.
+    test("an interpolated quoted table argument: connection.update('\$t', v)",
+        () {
+      expect(dyn("await connection.update('\$t', values);"), ['LocalDb.f']);
+      expect(dyn('await connection.update("\${t}", values);'), ['LocalDb.f']);
+    });
+
+    test('a handle-looking first argument is not exempt: a String named db',
+        () {
+      expect(dyn("final String db = 'day_result'; await connection.update(db, values);"),
+          ['LocalDb.f']);
+      expect(dyn('await x.delete(txn, 1);'), ['LocalDb.f']);
+    });
+
+    test('ifAbsent: anywhere in the arguments suppresses nothing', () {
+      expect(
+        dyn("await connection.update(t, values, whereArgs: ['ifAbsent:']);"),
+        ['LocalDb.f'],
+      );
+      expect(
+        dyn("await connection.update(t, (values..update('k', (v) => v, "
+            'ifAbsent: () => 1)));'),
+        ['LocalDb.f'],
+      );
+      // And a LITERAL write containing a Map.update still reads as the write.
+      final sites = scanWriters(
+        "class A { void f() { db.update('day_result', "
+        "(values..update('k', (v) => v, ifAbsent: () => 1)), where: 'a = ?'); } }",
+      );
+      expect([for (final w in sites) '${w.verb} ${w.table}'],
+          ['update day_result']);
+    });
+
+    test('dynamic SQL with quoted schema prefixes and quoted interpolations',
+        () {
+      for (final sql in const [
+        'UPDATE "main"."\$t" SET a = 1',
+        'UPDATE [main].[\$t] SET a = 1',
+        'UPDATE `main`.`\$t` SET a = 1',
+        'UPDATE main."\$t" SET a = 1',
+        'DELETE FROM "\${t}"',
+        'INSERT OR IGNORE INTO "main"."\${t}" (a) VALUES (1)',
+      ]) {
+        expect(
+          [for (final w in scanDynamicWriters(
+            "import 'package:sqflite/sqflite.dart';\n"
+            "class LocalDb { void f(dynamic c, String t) { var s = '$sql'; } }",
+          )) w.member],
+          ['LocalDb.f'],
+          reason: sql,
+        );
+      }
+    });
+
+    test('literal-table SQL accepts every quoting of a schema prefix', () {
+      List<String> hits(String sql) => [
+        for (final w in scanWriters(
+          "class A { void f() { db.execute('$sql'); } }",
+        ))
+          '${w.verb} ${w.table}',
+      ];
+      expect(hits('UPDATE [main].[day_result] SET a = 1'), ['update day_result']);
+      expect(hits('UPDATE `main`.`baselines` SET a = 1'), ['update baselines']);
+      expect(hits('UPDATE main."day_result" SET a = 1'), ['update day_result']);
+      expect(hits('UPDATE "main".day_result SET a = 1'), ['update day_result']);
+      expect(hits('DELETE FROM [main].[baselines]'), ['delete baselines']);
     });
 
     test('a file with no database in sight is not scanned for variable '

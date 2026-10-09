@@ -13,6 +13,10 @@
 // text (`codeOnly` from dart_source_lexical.dart blanks strings, so braces
 // inside SQL do not count). Offsets are preserved throughout.
 
+import 'package:analyzer/dart/analysis/utilities.dart';
+import 'package:analyzer/dart/ast/ast.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
+
 import '../../support/dart_source_lexical.dart';
 
 /// One write to `day_result` or `baselines` found in a source file.
@@ -299,63 +303,121 @@ class DynamicWriteSite {
   String toString() => '$member (line $line)';
 }
 
-/// A write method called on ANY receiver, with a first argument that is not a
-/// string or number literal: `connection.update(t, values)`,
-/// `(await open()).delete(\n t,`, `batch.insert(t, ...)`; or a raw-SQL method
-/// handed something that is not a string literal (`db.execute(sql)`). A first
-/// argument that is a named argument (`delete(recursive: true)`), a database
-/// handle (`NutritionDb.delete(db, id)`) or a `Map.update` (`ifAbsent:`) is not
-/// a table name.
-final _dynamicApi = RegExp(
-  r'''\.\s*(?:insert|update|delete)\s*\(\s*'''
-  r'''(?!['"\d\-])(?!r['"])(?!await\b)(?!(?:db|txn|tx|database|executor|batch)\b)'''
-  r'''(?![A-Za-z_]\w*\s*:)[A-Za-z_(]'''
-  r'''|\.\s*(?:rawInsert|rawUpdate|rawDelete|execute)\s*\(\s*(?!['"])(?!r['"])[A-Za-z_(]''',
-);
-
-/// A write statement whose table is interpolated, with any conflict clause and
-/// any identifier quoting.
+/// Statements that write, interpolating their table: any conflict clause, any
+/// identifier quoting (also on the `main.` schema prefix), `$t` or `${t}`.
 final _dynamicSql = RegExp(
   r'\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|'
   r'UPDATE\s+(?:OR\s+(?:REPLACE|ROLLBACK|ABORT|FAIL|IGNORE)\s+)?|DELETE\s+FROM)\s*'
-  r'(?:["`\[])?\s*(?:main\s*\.\s*)?(?:["`\[])?\$',
+  r'(?:["`\[]?main["`\]]?\s*\.\s*)?["`\[]?\s*\$',
   caseSensitive: false,
 );
 
-/// Whether [text] mentions anything a database write needs. A variable
-/// receiver is only meaningful in a file that has a database in sight.
+/// Whether [text] mentions anything a database write needs. A receiver is only
+/// meaningful in a file that has a database in sight.
 final _dbInSight = RegExp(
   r'package:sqflite|\bLocalDb\b|\bDatabase\b|\bTransaction\b|\bBatch\b|'
   r'\bDatabaseExecutor\b',
 );
 
-/// Writes in [src] whose table is not a literal. The receiver is not looked at:
-/// the method name and the shape of the first argument decide. Any of them can
-/// reach `day_result` or `baselines` without [scanWriters] seeing it, so each
-/// must be pinned.
+const _writeMethods = {
+  'insert',
+  'update',
+  'delete',
+  'rawInsert',
+  'rawUpdate',
+  'rawDelete',
+  'execute',
+};
+
+class _DynamicCalls extends RecursiveAstVisitor<void> {
+  _DynamicCalls(this.unit, this.out);
+  final CompilationUnit unit;
+  final List<DynamicWriteSite> out;
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (_writeMethods.contains(node.methodName.name)) {
+      final positional = [
+        for (final a in node.argumentList.arguments)
+          if (a is! NamedExpression) a,
+      ];
+      // sqflite's table (or statement) is the first POSITIONAL argument. Only a
+      // plain string literal, with no interpolation, names it statically;
+      // anything else (a variable, an interpolated string, a call, a number) is
+      // a call site somebody has to vouch for.
+      if (positional.isNotEmpty && !_isPlainString(positional.first)) {
+        out.add(DynamicWriteSite(
+          member: _enclosingMember(node),
+          line: unit.lineInfo.getLocation(node.offset).lineNumber,
+        ));
+      }
+    }
+    super.visitMethodInvocation(node);
+  }
+}
+
+bool _isPlainString(Expression e) => switch (e) {
+  SimpleStringLiteral() => true,
+  AdjacentStrings(:final strings) => strings.every(_isPlainString),
+  ParenthesizedExpression(:final expression) => _isPlainString(expression),
+  _ => false,
+};
+
+String _enclosingMember(AstNode node) {
+  AstNode? member;
+  String? owner;
+  for (AstNode? n = node; n != null; n = n.parent) {
+    if (n is MethodDeclaration ||
+        n is FieldDeclaration ||
+        n is ConstructorDeclaration ||
+        (n is FunctionDeclaration && n.parent is CompilationUnit) ||
+        n is TopLevelVariableDeclaration) {
+      member = n;
+    }
+    owner ??= switch (n) {
+      ClassDeclaration() => n.namePart.typeName.lexeme,
+      MixinDeclaration() => n.name.lexeme,
+      EnumDeclaration() => n.namePart.typeName.lexeme,
+      ExtensionDeclaration() => n.name?.lexeme ?? 'extension',
+      _ => null,
+    };
+  }
+  final name = switch (member) {
+    MethodDeclaration(:final name) => name.lexeme,
+    FunctionDeclaration(:final name) => name.lexeme,
+    ConstructorDeclaration(:final name, :final typeName) =>
+      name?.lexeme ?? typeName?.name ?? '<ctor>',
+    FieldDeclaration(:final fields) => fields.variables.first.name.lexeme,
+    _ => '<top>',
+  };
+  return owner == null ? name : '$owner.$name';
+}
+
+/// Every call site of a write method (insert, update, delete, rawInsert,
+/// rawUpdate, rawDelete, execute) on ANY receiver whose first positional
+/// argument is not a plain string literal, plus every string that interpolates
+/// a table into a write statement. Found on the parsed AST, so spelling,
+/// receiver names and argument nesting do not matter. Each must be pinned in the
+/// guard with a reason. Only files with a database in sight are scanned.
 List<DynamicWriteSite> scanDynamicWriters(String src) {
   final text = blankComments(src);
   if (!_dbInSight.hasMatch(text)) return const [];
   final out = <DynamicWriteSite>[];
-  final code = codeOnly(src);
-  bool mapUpdate(Match m) {
-    final paren = text.indexOf('(', m.start);
-    final close = closingOf(code, paren);
-    return close > 0 && text.substring(paren, close).contains('ifAbsent:');
-  }
-
-  final offsets = <int>{
-    for (final m in _dynamicApi.allMatches(text))
-      if (!mapUpdate(m)) m.start,
-    for (final m in _dynamicSql.allMatches(text)) m.start,
-  }.toList()..sort();
-  for (final at in offsets) {
+  final unit = parseString(content: src, throwIfDiagnostics: false).unit;
+  unit.accept(_DynamicCalls(unit, out));
+  // A statement built with its table interpolated, wherever it ends up.
+  for (final m in _dynamicSql.allMatches(text)) {
     out.add(DynamicWriteSite(
-      member: memberAtOffset(src, at),
-      line: lineOf(text, at),
+      member: memberAtOffset(src, m.start),
+      line: lineOf(text, m.start),
     ));
   }
-  return out;
+  // A call and the statement inside it are one site.
+  final seen = <int>{};
+  return [
+    for (final w in out)
+      if (seen.add(w.line)) w,
+  ];
 }
 
 /// A declaration of a list or set of table names that names `day_result` or
