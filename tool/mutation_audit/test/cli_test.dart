@@ -360,6 +360,21 @@ void main() {
     expect(File(p.join(fx.root, 'lib/a.dart')).readAsStringSync(), lib, reason: 'the developer checkout is untouched');
   });
 
+  test('a run whose processes could not all be stopped ends the audit with exit 70 and says so', () async {
+    var n = 0;
+    final runner = FakeProcessRunner((call) {
+      if (call.argv.length >= 2 && call.argv[1] == 'pub') return const ProcessOutcome(exitCode: 0);
+      if (n++ == 0) return outcomeOf(passing());
+      return ProcessOutcome(exitCode: 0, stdoutLines: outcomeOf(passing()).stdoutLines, survivors: const ['pid 4242 (start 77)']);
+    });
+    final code = await run(runner, ['--setup-cmd', '']);
+    expect(code, 70, reason: err.toString());
+    expect(err.toString(), contains('pid 4242'));
+    expect(err.toString(), contains('audit was stopped'));
+    expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
+    expect(runner.calls.where((c) => c.argv[1] != 'pub'), hasLength(2));
+  });
+
   group('Ctrl-C', () {
     test('during a mutant run: the process is reaped, then the export goes; exit 130, no results', () async {
       final interrupts = StreamController<ProcessSignal>();

@@ -134,6 +134,10 @@ Future<int> runCli(
               environment: config.env,
               timeout: config.timeout,
               cancel: cancel);
+          if (done.cleanupFailed) {
+            throw CleanupFailedError('"$setup" left processes that SIGKILL did not remove '
+                '(${done.survivors.join(', ')})');
+          }
           if (done.cancelled || cancel.isCancelled) throw InterruptedError();
           if (done.timedOut) {
             throw _SetupFailed('"$setup" timed out after ${config.timeout.inSeconds} s and was stopped');
@@ -240,6 +244,9 @@ Future<int> runCli(
     return 70;
   } on _SetupFailed catch (e) {
     errSink.writeln(e.message);
+    return 70;
+  } on CleanupFailedError catch (e) {
+    errSink.writeln('${e.message}; the audit was stopped');
     return 70;
   } on ExportStateError catch (e) {
     errSink.writeln('${e.message}; the audit was stopped');

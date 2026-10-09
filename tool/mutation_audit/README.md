@@ -284,7 +284,14 @@ The same cleanup runs on EVERY path, a normal finish included: after the child h
 output has closed, any captured process that is still alive (a helper that redirected its output and
 kept running, a server) is stopped (SIGTERM, grace, SIGKILL, identity-checked) before `run()` returns,
 so one mutant's run cannot affect the next. The outcome records how many processes other than the
-child had to be stopped (`lingeringStopped`, 0 for a clean run; it counts on timeout and cancel too).
+child that were stopped (`lingeringStopped`, 0 for a clean run; it counts on timeout and cancel too). It
+counts CONFIRMED EXITS, not signals sent.
+
+If a captured process is still alive after the last SIGKILL round (uninterruptible sleep, a process
+nothing can remove), the outcome lists it in `survivors` (`cleanupFailed`) and the audit does not go
+on: a later run could not be told apart from that process. The audit stops with exit 70, naming the
+survivors, the mutated file is restored first, and no results are published. The same applies to the
+setup command, the baseline, mutant runs and confirming reruns.
 
 The end-to-end signal test starts the tool as `dart bin/mutation_audit.dart`; run it that way (or
 from a compiled executable) when the signal has to reach the tool itself.

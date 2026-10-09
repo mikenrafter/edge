@@ -65,6 +65,10 @@ class AuditRunner {
         // unique to this run: leftovers here cannot reach another run
       }
     }
+    if (outcome.cleanupFailed) {
+      throw CleanupFailedError('${argv.join(' ')} left processes that SIGKILL did not remove '
+          '(${outcome.survivors.join(', ')}); a later run could not be told apart from them');
+    }
     final guard = stateGuard;
     if (guard != null && tally != null && !outcome.cancelled && !(cancel?.isCancelled ?? false)) {
       tally.restored += await guard.restore(keep: keep);

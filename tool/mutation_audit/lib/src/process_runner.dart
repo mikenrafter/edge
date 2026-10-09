@@ -19,6 +19,16 @@ class CancelToken {
   }
 }
 
+/// A run left processes alive that could not be stopped (SIGKILL did not
+/// remove them). Nothing after this point is isolated from this run: the
+/// audit stops.
+class CleanupFailedError implements Exception {
+  CleanupFailedError(this.message);
+  final String message;
+  @override
+  String toString() => 'CleanupFailedError: $message';
+}
+
 /// What one command run produced.
 class ProcessOutcome {
   const ProcessOutcome({
@@ -30,6 +40,7 @@ class ProcessOutcome {
     this.outputComplete = true,
     this.elapsed = Duration.zero,
     this.lingeringStopped = 0,
+    this.survivors = const [],
   });
 
   final int exitCode;
@@ -50,9 +61,17 @@ class ProcessOutcome {
   final Duration elapsed;
 
   /// How many processes other than the child itself were still alive when the
-  /// run was over and had to be stopped by the runner (on every path: a normal
-  /// finish, a timeout, a cancellation).
+  /// run was over and were stopped by the runner (on every path: a normal
+  /// finish, a timeout, a cancellation). Counted by CONFIRMED EXIT, not by
+  /// signal sent.
   final int lingeringStopped;
+
+  /// Captured processes (by identity) that were still alive after the final
+  /// SIGKILL round. Not empty means the cleanup failed: something of this run
+  /// is still running and could affect the next one.
+  final List<String> survivors;
+
+  bool get cleanupFailed => survivors.isNotEmpty;
 }
 
 /// Runs a command to completion. The real one spawns a process; tests inject a
@@ -227,7 +246,8 @@ class SystemProcessRunner implements ProcessRunner {
     // behind that no longer hold the pipes (a detached helper, a server): they
     // would run on into the next mutant. They are stopped on every path.
     final stopped = await _stop(family);
-    final lingering = stopped.where((pid) => pid != child.pid).length;
+    final lingering = stopped.exited.where((m) => m.pid != child.pid).length;
+    final survivors = [for (final m in stopped.survivors) m.toString()];
 
     if (winner == _Ended.finished) {
       return ProcessOutcome(
@@ -236,6 +256,7 @@ class SystemProcessRunner implements ProcessRunner {
         stderr: stderr.text(),
         elapsed: clock.elapsed,
         lingeringStopped: lingering,
+        survivors: survivors,
       );
     }
 
@@ -254,6 +275,7 @@ class SystemProcessRunner implements ProcessRunner {
       outputComplete: complete,
       elapsed: clock.elapsed,
       lingeringStopped: lingering,
+      survivors: survivors,
     );
   }
 
@@ -267,17 +289,24 @@ class SystemProcessRunner implements ProcessRunner {
     }
   }
 
-  /// SIGTERM the captured family, give it [termGrace], SIGKILL what is left.
-  /// Returns the pids that were sent a signal (the child's too, if it was alive).
-  Future<Set<int>> _stop(_Family family) async {
-    final signalled = <int>{};
+  /// SIGTERM the captured family, give it [termGrace], SIGKILL what is left
+  /// (up to five rounds), then look once more. Says which processes were sent
+  /// a signal and are gone ([_Stopped.exited]: confirmed exits, not signals
+  /// sent) and which are still alive at the end ([_Stopped.survivors]).
+  Future<_Stopped> _stop(_Family family) async {
+    final signalled = <int, ProcIdentity>{};
     void send(ProcIdentity member, ProcessSignal signal) {
-      if (host.signal(member, signal)) signalled.add(member.pid);
+      if (host.signal(member, signal)) signalled[member.pid] = member;
     }
+
+    _Stopped done(List<ProcIdentity> left) => _Stopped([
+          for (final m in signalled.values)
+            if (!left.any((l) => l.pid == m.pid && l.start == m.start)) m,
+        ], left);
 
     await family.idle();
     final first = await family.refresh();
-    if (first.isEmpty) return signalled;
+    if (first.isEmpty) return done(const []);
     for (final member in first.reversed) {
       send(member, ProcessSignal.sigterm);
     }
@@ -286,7 +315,7 @@ class SystemProcessRunner implements ProcessRunner {
     unawaited(grace.fired.then((_) => graceOver = true));
     try {
       while (!graceOver) {
-        if ((await family.refresh()).isEmpty) return signalled;
+        if ((await family.refresh()).isEmpty) return done(const []);
         final tick = host.alarm(pollEvery);
         await Future.any<void>([tick.fired, grace.fired]);
         tick.cancel();
@@ -298,15 +327,20 @@ class SystemProcessRunner implements ProcessRunner {
     // the survivors forked meanwhile) before each round.
     for (var round = 0; round < 5; round++) {
       final left = await family.refresh();
-      if (left.isEmpty) return signalled;
+      if (left.isEmpty) return done(const []);
       for (final member in left.reversed) {
         send(member, ProcessSignal.sigkill);
       }
       final tick = host.alarm(pollEvery);
       await tick.fired;
     }
-    return signalled;
+    return done(await family.refresh());
   }
+}
+
+class _Stopped {
+  _Stopped(this.exited, this.survivors);
+  final List<ProcIdentity> exited, survivors;
 }
 
 /// The processes that belong to one child: captured by identity and never

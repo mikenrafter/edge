@@ -133,4 +133,45 @@ void main() {
       expect((await run()).lingeringStopped, 0);
     });
   });
+
+  group('a cleanup that does not succeed is reported, not hidden', () {
+    test('a process that survives SIGKILL is a survivor, the run says the cleanup failed, and it is not counted as stopped', () async {
+      late FakeProc stuck, polite;
+      host.script = (h) {
+        h.print('before');
+        stuck = h.spawn(ignoresTerm: true, holdsOutput: true)..unkillable = true;
+        polite = h.spawn(holdsOutput: true);
+      };
+      final o = await run(timeout: const Duration(seconds: 10));
+      expect(o.timedOut, isTrue);
+      expect(stuck.alive, isTrue);
+      expect(polite.alive, isFalse);
+      expect(o.cleanupFailed, isTrue);
+      expect(o.survivors, hasLength(1));
+      expect(o.survivors.single, contains('pid ${stuck.pid}'));
+      expect(o.lingeringStopped, 1, reason: 'only the process that really exited: signals are not exits');
+    });
+
+    test('after a normal finish too', () async {
+      late FakeProc stuck;
+      host.script = (h) {
+        stuck = h.spawn(holdsOutput: false)..unkillable = true;
+        h.at(const Duration(seconds: 2), () => h.rootExits(0));
+      };
+      final o = await run();
+      expect(o.timedOut, isFalse);
+      expect(o.exitCode, 0);
+      expect(o.cleanupFailed, isTrue);
+      expect(o.survivors.single, contains('pid ${stuck.pid}'));
+      expect(o.lingeringStopped, 0);
+    });
+
+    test('a clean cleanup reports no survivor', () async {
+      host.script = (h) => h.spawn(holdsOutput: true);
+      final o = await run(timeout: const Duration(seconds: 5));
+      expect(o.cleanupFailed, isFalse);
+      expect(o.survivors, isEmpty);
+      expect(o.lingeringStopped, 1);
+    });
+  });
 }

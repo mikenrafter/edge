@@ -466,4 +466,47 @@ void main() {
     });
   });
 
+  group('a cleanup that failed stops the audit', () {
+    test('survivors after a mutant run: CleanupFailedError, no further run, the file is restored', () async {
+      var n = 0;
+      final runner = FakeProcessRunner((call) {
+        if (n++ == 0) return outcomeOf(passing());
+        return ProcessOutcome(
+            exitCode: 0,
+            stdoutLines: outcomeOf(passing()).stdoutLines,
+            timedOut: true,
+            survivors: const ['pid 4242 (start 77)']);
+      });
+      await expectLater(
+          AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<='), mutant('>', '>=')]),
+          throwsA(isA<CleanupFailedError>().having((e) => e.message, 'message', contains('pid 4242'))));
+      expect(runner.calls, hasLength(2), reason: 'baseline and the first mutant; nothing after');
+      expect(current(), source);
+    });
+
+    test('survivors after a confirming rerun stop the audit too', () async {
+      var n = 0;
+      final runner = FakeProcessRunner((call) {
+        final i = n++;
+        if (i == 0) return outcomeOf(passing());
+        if (i == 1) {
+          return outcomeOf(StreamBuilder().loaded('test/a_test.dart').test('test/a_test.dart', 'lt', result: TestResult.failure).done(success: false), exitCode: 1);
+        }
+        return ProcessOutcome(exitCode: 1, survivors: const ['pid 9 (start 1)']);
+      });
+      await expectLater(
+          AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')]),
+          throwsA(isA<CleanupFailedError>()));
+      expect(current(), source);
+    });
+
+    test('survivors after the baseline stop the audit before any mutant', () async {
+      final runner = FakeProcessRunner((call) => ProcessOutcome(
+          exitCode: 0, stdoutLines: outcomeOf(passing()).stdoutLines, survivors: const ['pid 5 (start 2)']));
+      await expectLater(
+          AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')]),
+          throwsA(isA<CleanupFailedError>()));
+      expect(runner.calls, hasLength(1));
+    });
+  });
 }
