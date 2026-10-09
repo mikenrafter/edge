@@ -14,17 +14,59 @@ import 'support/git_fixture.dart';
 /// The real tool, a real SIGINT. The fake test command passes on the
 /// unmutated tree; once the mutant is applied it starts a TERM-ignoring
 /// `sleep` and waits. Bounded by timeouts, not by sleeps.
+///
+/// Two variants: `--no-sandbox` (the process family is found by identity; the
+/// sleeper's pid comes through a file) and the default, bubblewrap (the fake
+/// test lives in the export and nothing it writes is visible on the host, so
+/// the sleeper is found by its unique command line in /proc).
+String? _noBwrap() {
+  try {
+    final r = Process.runSync('bwrap', ['--ro-bind', '/', '/', '--unshare-pid', '--die-with-parent', 'true']);
+    return r.exitCode == 0 ? null : 'bubblewrap cannot create a sandbox here';
+  } on ProcessException {
+    return 'bubblewrap (bwrap) is not installed';
+  }
+}
+
 void main() {
   late GitFixture fx;
   late Directory work;
   Process? tool;
   int? sleeper;
+  // Unique per test process: found in /proc/*/cmdline.
+  final sleepMarker = '9$pid.5';
 
+  int? findSleeper() {
+    for (final e in Directory('/proc').listSync(followLinks: false)) {
+      final n = int.tryParse(p.basename(e.path));
+      if (n == null) continue;
+      try {
+        if (File('${e.path}/cmdline').readAsStringSync().contains('sleep\u0000$sleepMarker')) return n;
+      } on FileSystemException {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  late String passingJsonl;
   setUp(() async {
+    passingJsonl = '${passing().build().join('\n')}\n';
     fx = await GitFixture.create({
       'pubspec.yaml': 'name: demo\nenvironment:\n  sdk: ^3.0.0\n',
       'lib/a.dart': 'bool lt(int a, int b) => a < b;\n',
       'test/a_test.dart': '// faked\n',
+      // For the sandboxed variant: /tmp is not visible inside, the export is.
+      'fake/passing.jsonl': passingJsonl,
+      'fake/fake_test.sh': '''
+#!/bin/sh
+if grep -q 'a <= b' lib/a.dart; then
+  trap '' TERM
+  sleep $sleepMarker &
+  wait
+fi
+cat fake/passing.jsonl
+''',
     });
     work = scratch('mutaudit_e2e_');
   });
@@ -42,7 +84,7 @@ void main() {
     return text.substring(text.lastIndexOf(')') + 2).startsWith('Z');
   }
 
-  Future<void> interruptedAudit(ProcessSignal signal) async {
+  Future<void> interruptedAudit(ProcessSignal signal, {required bool sandbox}) async {
     File(p.join(work.path, 'passing.jsonl')).writeAsStringSync('${passing().build().join('\n')}\n');
     File(p.join(work.path, 'fake_test.sh')).writeAsStringSync('''
 #!/bin/sh
@@ -65,8 +107,9 @@ cat "\$PASSING"
           '--repo', fx.root,
           '--sha', sha,
           '--files', 'lib/a.dart',
-          '--test-cmd', 'sh ${p.join(work.path, 'fake_test.sh')}',
+          '--test-cmd', sandbox ? 'sh fake/fake_test.sh' : 'sh ${p.join(work.path, 'fake_test.sh')}',
           '--setup-cmd', '',
+          if (!sandbox) '--no-sandbox',
           '--no-guards',
           '--timeout', '120',
           '--env', 'MARK=${mark.path}',
@@ -80,11 +123,12 @@ cat "\$PASSING"
 
     // Real time, bounded: the tool has to compile, export and reach the mutant.
     final deadline = DateTime.now().add(const Duration(seconds: 90));
-    while (!(mark.existsSync() && mark.readAsStringSync().trim().isNotEmpty)) {
+    bool started() => sandbox ? findSleeper() != null : mark.existsSync() && mark.readAsStringSync().trim().isNotEmpty;
+    while (!started()) {
       expect(DateTime.now().isBefore(deadline), isTrue, reason: 'the mutant run never started: $stderr');
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
-    sleeper = int.parse(mark.readAsStringSync().trim());
+    sleeper = sandbox ? findSleeper() : int.parse(mark.readAsStringSync().trim());
     expect(dead(sleeper!), isFalse);
 
     tool!.kill(signal);
@@ -98,11 +142,21 @@ cat "\$PASSING"
     expect(File(p.join(fx.root, 'lib/a.dart')).readAsStringSync(), 'bool lt(int a, int b) => a < b;\n');
   }
 
-  test('SIGINT while a mutant is running: tests reaped, file restored, export removed, exit 130',
-      () => interruptedAudit(ProcessSignal.sigint),
+  test('SIGINT while a mutant is running (--no-sandbox): tests reaped, file restored, export removed, exit 130',
+      () => interruptedAudit(ProcessSignal.sigint, sandbox: false),
       timeout: const Timeout(Duration(seconds: 180)));
 
-  test('SIGTERM does the same',
-      () => interruptedAudit(ProcessSignal.sigterm),
+  test('SIGTERM does the same (--no-sandbox)',
+      () => interruptedAudit(ProcessSignal.sigterm, sandbox: false),
+      timeout: const Timeout(Duration(seconds: 180)));
+
+  test('SIGINT while a sandboxed mutant run is going: the sandbox and its TERM-ignoring sleeper are gone, exit 130',
+      () => interruptedAudit(ProcessSignal.sigint, sandbox: true),
+      skip: _noBwrap(),
+      timeout: const Timeout(Duration(seconds: 180)));
+
+  test('SIGTERM does the same (sandboxed)',
+      () => interruptedAudit(ProcessSignal.sigterm, sandbox: true),
+      skip: _noBwrap(),
       timeout: const Timeout(Duration(seconds: 180)));
 }

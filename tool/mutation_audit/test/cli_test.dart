@@ -43,6 +43,8 @@ void main() {
         '--files', 'lib/a.dart',
         '--test-cmd', 'dart test',
         '--out', out.path,
+        // The sandbox has its own tests (cli_sandbox_test.dart); here the fake runner sees plain commands.
+        '--no-sandbox',
         ...extra,
       ];
 
@@ -354,7 +356,7 @@ void main() {
     });
     final code = await run(runner, ['--setup-cmd', '']);
     expect(code, 70, reason: err.toString());
-    expect(err.toString(), contains('HEAD moved'));
+    expect(err.toString(), contains('HEAD of the export is'));
     expect(err.toString(), contains('audit was stopped'));
     expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
     expect(File(p.join(fx.root, 'lib/a.dart')).readAsStringSync(), lib, reason: 'the developer checkout is untouched');
@@ -576,7 +578,7 @@ packages:
       const config = '{"configVersion":2,"packages":[{"name":"analytics","rootUri":"file:///x","packageUri":"lib/"}]}';
       final runner = settingUp({'pubspec.lock': lockGit, '.dart_tool/package_config.json': config});
       // pubspec.lock is untracked and not ignored in this fixture: declared, because setup made it.
-      expect(await run(runner, ['--max-mutants', '1', '--cache-dir', 'pubspec.lock']), 0, reason: err.toString());
+      expect(await run(runner, ['--max-mutants', '1', '--setup-leaves', 'pubspec.lock']), 0, reason: err.toString());
       final meta = (jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map)['meta'] as Map;
       final deps = meta['dependencies'] as Map;
       expect(deps['pubspecLockSha256'], sha256.convert(utf8.encode(lockGit)).toString());
@@ -587,11 +589,12 @@ packages:
       expect(before['packageConfigSha256'], isNull);
     });
 
-    test('a file setup leaves untracked and not ignored stops the audit (exit 70) unless declared with --cache-dir', () async {
+    test('a file setup leaves untracked and not ignored stops the audit (exit 70) unless declared with --setup-leaves', () async {
       final runner = settingUp({'pubspec.lock': lockGit});
       expect(await run(runner, ['--max-mutants', '1']), 70);
       expect(err.toString(), contains('pubspec.lock'));
-      expect(err.toString(), contains('--cache-dir'));
+      expect(err.toString(), contains('not clean after setup'));
+      expect(err.toString(), contains('--setup-leaves'));
       expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
     });
 

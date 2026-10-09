@@ -167,7 +167,7 @@ void main() {
         'discounted': <Object?>[],
         'reruns': <Object?>[],
         'frameworkTimeouts': <Object?>[],
-        'stateRestored': 0,
+        'unisolated': true,
         'durationMs': 100,
         'detail': '',
       });
@@ -177,6 +177,64 @@ void main() {
       expect(ms.last['reruns'], [
         {'test': 'test/a_test.dart::flaky', 'confirmed': false, 'result': 'passed-alone', 'kind': null, 'detail': ''}
       ]);
+    });
+
+    test('isolation: without a sandbox every mutant is unisolated and the meta says none', () {
+      final isolation = (json['meta'] as Map)['isolation'] as Map;
+      expect(isolation['mode'], 'none');
+      expect(isolation['network'], isTrue);
+      expect((json['mutants'] as List).cast<Map<String, Object?>>().map((m) => m['unisolated']), everyElement(isTrue));
+      expect(json['meta'], isNot(contains('stateCaches')));
+    });
+
+    test('isolation: with bubblewrap the meta lists what was bound read-only and no mutant is unisolated', () {
+      final boxed = AuditResults(
+          AuditMeta(
+            toolVersion: '0.1.0',
+            repo: '/dev/edge',
+            sha: sha,
+            dependencies: meta().dependencies,
+            testCmd: 'dart test',
+            files: const ['lib/a.dart'],
+            tests: const [],
+            guardPatterns: const [],
+            timeoutSeconds: 1,
+            maxMutants: null,
+            sample: null,
+            seed: null,
+            baseline: const BaselineSummary(passed: true, testsRun: 1, duration: Duration.zero),
+            startedAt: DateTime.utc(2026),
+            finishedAt: DateTime.utc(2026),
+            candidateMutants: 1,
+            isolation: const IsolationInfo(mode: 'bubblewrap', readOnlyUnderHome: ['/home/dev/.pub-cache'], bwrap: 'bubblewrap 0.12.0'),
+          ),
+          [
+            MutantResult(
+                mutant: mutant(1, '<', '<='),
+                classification: const Classification(status: MutantStatus.killed, killers: [KillingTest('t::x', FailureKind.assertion)]),
+                duration: Duration.zero,
+                isolated: true)
+          ]);
+      final j = boxed.toJson();
+      final isolation = (j['meta'] as Map)['isolation'] as Map;
+      expect(isolation, {
+        'mode': 'bubblewrap',
+        'network': false,
+        'readOnlyUnderHome': ['/home/dev/.pub-cache'],
+        'bwrap': 'bubblewrap 0.12.0',
+      });
+      expect(((j['mutants'] as List).single as Map)['unisolated'], isFalse);
+      final md = boxed.renderMarkdown();
+      expect(md, contains('- Isolation: bubblewrap'));
+      expect(md, contains('/home/dev/.pub-cache'));
+      expect(md, isNot(contains('unisolated')));
+    });
+
+    test('isolation: without a sandbox the Markdown says so, up top and on every kill', () {
+      final md = sample().renderMarkdown();
+      expect(md, contains('- Isolation: NONE (--no-sandbox)'));
+      final killed = md.split('## Killed')[1].split('## Survivors')[0];
+      expect('unisolated'.allMatches(killed).length, 2, reason: 'one per killed mutant');
     });
 
     test('each killer carries its kind: an assertion or an exception', () {

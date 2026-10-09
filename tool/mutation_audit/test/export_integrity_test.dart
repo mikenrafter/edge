@@ -74,6 +74,16 @@ void main() {
       await expectLater(integrity().requireClean('after setup'), stops('stray.txt'));
     });
 
+    test('setupOutputs exempt more paths, by glob: a lock the project does not commit, a generated directory', () async {
+      write('pubspec.lock', 'x');
+      write('gen/deep/out.dart', 'x');
+      await expectLater(integrity().requireClean('after setup'), stops('pubspec.lock'));
+      final ig = ExportIntegrity(root: root, pinnedSha: sha, setupOutputs: ['pubspec.lock', 'gen']);
+      await ig.requireClean('after setup');
+      write('lib/a.dart', 'changed\n');
+      await expectLater(ig.requireClean('after setup'), stops('lib/a.dart'));
+    });
+
     test('HEAD elsewhere stops it before the status is looked at', () async {
       await expectLater(integrity('0' * 40).requireClean('after setup'), stops('after setup'));
     });

@@ -5,7 +5,7 @@ import 'classifier.dart';
 import 'command.dart';
 import 'config.dart';
 import 'export.dart' show InterruptedError;
-import 'export_state.dart';
+import 'export_integrity.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
 import 'report.dart';
@@ -20,47 +20,65 @@ class BaselineFailedError implements Exception {
 }
 
 /// Runs the baseline and then every mutant, one at a time.
+///
+/// Isolation is the runner's business, not this class's: with a sandbox
+/// ([isolated]) every run is launched in bubblewrap by [runner], so nothing a
+/// run does reaches the next one. What this class adds is the proof: with an
+/// [integrity] check, the host export is compared with what it was before the
+/// run, after EVERY run (baseline, mutant, rerun), and the audit stops
+/// ([ExportStateError]) when it differs. Without a sandbox only the pinned
+/// commit is enforced after every run (the runs may leave files).
 class AuditRunner {
   AuditRunner({
     required this.runner,
     this.applierFor = MutationApplier.new,
-    this.stateGuard,
+    this.integrity,
+    this.isolated = false,
     String? tempParent,
   }) : tempParent = tempParent ?? Directory.systemTemp.path;
   final ProcessRunner runner;
 
-  /// Keeps the export's test-visible state the same before every run (null: not checked).
-  final ExportStateGuard? stateGuard;
+  /// Checks after every run that the export on the host is what it was before
+  /// (null: not checked, as without a sandbox).
+  final ExportIntegrity? integrity;
 
-  /// Where the per-run temporary directories are made (outside the export).
+  /// The runs are sandboxed: the sandbox owns the temporary directory. Recorded
+  /// on every result.
+  final bool isolated;
+
+  /// Where the per-run temporary directories are made without a sandbox
+  /// (outside the export).
   final String tempParent;
 
-  /// One test-tool run with its own `TMPDIR` (also `TMP`, `TEMP`: what
-  /// `Directory.systemTemp` follows), created before and deleted after, so
-  /// nothing a run leaves in a temporary directory reaches another run. With a
-  /// [stateGuard] and a [tally], the export is put back afterwards ([keep]:
-  /// the tracked file carrying the mutation, which stays as it is).
+  /// One test-tool run. Without a sandbox it gets its own `TMPDIR` (also
+  /// `TMP`, `TEMP`: what `Directory.systemTemp` follows), created before and
+  /// deleted after; with one, `/tmp` is a fresh tmpfs already. With an
+  /// [integrity] check the host export must be [before] (the view taken just
+  /// before the run) when it is over: [during] names the run in the error.
   Future<ProcessOutcome> _exec(
     List<String> argv, {
     required AuditConfig config,
     required String root,
+    required String during,
     CancelToken? cancel,
-    Set<String> keep = const {},
-    _Tally? tally,
+    ExportView? before,
   }) async {
-    final tmp = Directory(tempParent).createTempSync('mutaudit_run_');
+    final tmp = isolated ? null : Directory(tempParent).createTempSync('mutaudit_run_');
     final ProcessOutcome outcome;
     try {
       outcome = await runner.run(
         argv,
         workingDirectory: root,
         timeout: config.timeout,
-        environment: {...config.env, 'TMPDIR': tmp.path, 'TMP': tmp.path, 'TEMP': tmp.path},
+        environment: {
+          ...config.env,
+          if (tmp != null) ...{'TMPDIR': tmp.path, 'TMP': tmp.path, 'TEMP': tmp.path},
+        },
         cancel: cancel,
       );
     } finally {
       try {
-        if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+        if (tmp != null && tmp.existsSync()) tmp.deleteSync(recursive: true);
       } on FileSystemException {
         // unique to this run: leftovers here cannot reach another run
       }
@@ -69,9 +87,14 @@ class AuditRunner {
       throw CleanupFailedError('${argv.join(' ')} left processes that SIGKILL did not remove '
           '(${outcome.survivors.join(', ')}); a later run could not be told apart from them');
     }
-    final guard = stateGuard;
-    if (guard != null && tally != null && !outcome.cancelled && !(cancel?.isCancelled ?? false)) {
-      tally.restored += await guard.restore(keep: keep);
+    final check = integrity;
+    if (check != null && !outcome.cancelled && !(cancel?.isCancelled ?? false)) {
+      if (!isolated) {
+        // Unsandboxed runs may leave files; they may not move the audited commit.
+        await check.requirePinned('after $during');
+      } else if (before != null) {
+        await check.verifyUnchanged(before, during: during);
+      }
     }
     return outcome;
   }
@@ -86,7 +109,11 @@ class AuditRunner {
   Future<BaselineSummary> runBaseline(AuditConfig config, String root, {CancelToken? cancel}) async {
     if (cancel != null && cancel.isCancelled) throw InterruptedError();
     final outcome = await _exec(buildTestCommand(config.testCmd, tests: config.tests),
-        config: config, root: root, cancel: cancel);
+        config: config,
+        root: root,
+        cancel: cancel,
+        during: 'the baseline run',
+        before: isolated ? await integrity?.view() : null);
     if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
     if (outcome.timedOut) {
       throw BaselineFailedError('the baseline run timed out after ${config.timeout.inSeconds} s');
@@ -133,8 +160,6 @@ class AuditRunner {
     GuardMatcher? guards,
   }) async {
     final baseline = await runBaseline(config, root, cancel: cancel);
-    // The reference state: from here every run must start from it.
-    await stateGuard?.snapshot();
     final applier = applierFor(root);
     final matcher = guards ?? GuardMatcher(config.guardPatterns);
     final flaky = config.flakyTests.toSet();
@@ -142,22 +167,22 @@ class AuditRunner {
 
     for (final mutant in mutants) {
       if (cancel != null && cancel.isCancelled) throw InterruptedError();
-      final tally = _Tally();
-      Future<ProcessOutcome> alone(TestOutcome failed) => _exec(
-            buildTestCommand(config.testCmd, tests: [failed.suite], fullName: failed.name),
-            config: config,
-            root: root,
-            cancel: cancel,
-            keep: {mutant.file},
-            tally: tally,
-          );
-
       final applied = await applier.apply(mutant);
       late final Classification classification;
       late final Duration elapsed;
       try {
+        // The reference for this mutant's runs: the export with the mutant applied.
+        final before = isolated ? await integrity?.view(mutatedFile: mutant.file) : null;
+        Future<ProcessOutcome> alone(TestOutcome failed) => _exec(
+              buildTestCommand(config.testCmd, tests: [failed.suite], fullName: failed.name),
+              config: config,
+              root: root,
+              cancel: cancel,
+              during: 'the rerun of ${failed.key} for mutant ${mutant.id}',
+              before: before,
+            );
         final outcome = await _exec(buildTestCommand(config.testCmd, tests: config.tests),
-            config: config, root: root, cancel: cancel, keep: {mutant.file}, tally: tally);
+            config: config, root: root, cancel: cancel, during: 'the run of mutant ${mutant.id}', before: before);
         if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
         classification =
             await classifyRun(outcome, guards: matcher, flakyTests: flaky, rerun: alone, root: root);
@@ -168,17 +193,10 @@ class AuditRunner {
       }
       // A signal that landed while the file was being put back.
       if (cancel != null && cancel.isCancelled) throw InterruptedError();
-      // The mutated file is back: the whole tree must now be the snapshot.
-      final guard = stateGuard;
-      if (guard != null) tally.restored += await guard.restore();
       results.add(MutantResult(
-          mutant: mutant, classification: classification, duration: elapsed, stateRestored: tally.restored));
+          mutant: mutant, classification: classification, duration: elapsed, isolated: isolated));
     }
     if (cancel != null && cancel.isCancelled) throw InterruptedError();
     return (baseline: baseline, results: results);
   }
-}
-
-class _Tally {
-  int restored = 0;
 }

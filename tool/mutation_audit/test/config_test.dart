@@ -23,6 +23,23 @@ void main() {
       ];
 
   group('parseAuditArgs', () {
+    test('the sandbox is on by default; --no-sandbox turns it off', () {
+      expect(parseAuditArgs(required()).noSandbox, isFalse);
+      expect(parseAuditArgs(required(['--no-sandbox'])).noSandbox, isTrue);
+    });
+
+    test('--sandbox-ro and --setup-leaves repeat and take lists', () {
+      final c = parseAuditArgs(required(['--sandbox-ro', '/h/a', '/h/b', '--setup-leaves', 'pubspec.lock', 'gen/**']));
+      expect(c.sandboxReadOnly, ['/h/a', '/h/b']);
+      expect(c.setupLeaves, ['pubspec.lock', 'gen/**']);
+      expect(parseAuditArgs(required()).sandboxReadOnly, isEmpty);
+      expect(parseAuditArgs(required()).setupLeaves, isEmpty);
+    });
+
+    test('--cache-dir is gone: the sandbox discards writes, nothing is a cache any more', () {
+      expect(() => parseAuditArgs(required(['--cache-dir', 'build'])), throwsA(isA<UsageError>()));
+    });
+
     test('the required options alone, with defaults', () {
       final c = parseAuditArgs(required());
       expect(c.repo, repo.path);
@@ -234,7 +251,7 @@ void main() {
     final u = auditUsage();
     for (final o in [
       '--repo', '--sha', '--files', '--test-cmd', '--tests', '--max-mutants', '--sample', '--seed',
-      '--timeout', '--guard-pattern', '--no-guards', '--runtime-allowlist', '--scanner', '--allow-override', '--flaky-test', '--setup-cmd', '--env', '--cache-dir', '--out',
+      '--timeout', '--guard-pattern', '--no-guards', '--runtime-allowlist', '--scanner', '--allow-override', '--flaky-test', '--setup-cmd', '--env', '--no-sandbox', '--sandbox-ro', '--setup-leaves', '--out',
     ]) {
       expect(u, contains(o));
     }

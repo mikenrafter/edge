@@ -210,11 +210,13 @@ class Sandbox {
   /// Runs a tiny command in a real sandbox and checks that it holds: bubblewrap
   /// is installed, user namespaces are allowed, and a write to the export, to
   /// `/tmp` and to `$HOME` is gone on the host afterwards. Throws
-  /// [SandboxUnavailable] with the reason otherwise.
-  static Future<void> probe({String bwrap = 'bwrap', Map<String, String>? environment}) async {
+  /// [SandboxUnavailable] with the reason otherwise. Returns `bwrap --version`.
+  static Future<String> probe({String bwrap = 'bwrap', Map<String, String>? environment}) async {
+    final String version;
     try {
       final v = await Process.run(bwrap, ['--version']);
       if (v.exitCode != 0) throw SandboxUnavailable('"$bwrap --version" failed (exit ${v.exitCode}): ${_first(v.stderr)}');
+      version = '${v.stdout}'.trim();
     } on ProcessException catch (e) {
       throw SandboxUnavailable('bubblewrap ("$bwrap") cannot be run: ${e.message}. Install it, or pass '
           '--no-sandbox to run without isolation (every kill is then reported as unisolated)');
@@ -245,6 +247,7 @@ class Sandbox {
         File('/tmp/$mark').deleteSync(recursive: false);
         throw SandboxUnavailable('the probe sandbox let a write through to ${leaked.join(', ')}; refusing to rely on it');
       }
+      return version;
     } finally {
       dir.deleteSync(recursive: true);
     }

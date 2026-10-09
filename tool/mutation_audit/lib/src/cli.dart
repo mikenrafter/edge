@@ -10,12 +10,13 @@ import 'classifier.dart' show GuardMatcher;
 import 'command.dart';
 import 'config.dart';
 import 'export.dart';
-import 'export_state.dart';
+import 'export_integrity.dart';
 import 'generator.dart';
 import 'guards.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
 import 'report.dart';
+import 'sandbox.dart';
 import 'selection.dart';
 import 'source_facts.dart' show defaultSourceRoots;
 
@@ -49,6 +50,8 @@ Future<int> runCli(
   DateTime Function()? now,
   Stream<ProcessSignal>? interrupts,
   Future<void> Function(DisposableExport export)? disposer,
+  Future<String> Function()? sandboxProbe,
+  Map<String, String>? sandboxEnvironment,
 }) async {
   final sink = out ?? stdout;
   final errSink = err ?? stderr;
@@ -77,6 +80,17 @@ Future<int> runCli(
       return 64;
     }
   }
+  // Isolation is not optional: no bubblewrap, no audit (unless the user says
+  // so with --no-sandbox, which the report then carries on every kill).
+  String? bwrapVersion;
+  if (!config.noSandbox) {
+    try {
+      bwrapVersion = await (sandboxProbe ?? () => Sandbox.probe())();
+    } on SandboxUnavailable catch (e) {
+      errSink.writeln(e.message);
+      return 70;
+    }
+  }
   final processes = runner ?? const SystemProcessRunner();
   // Results are staged inside the output directory while the body runs and
   // published (renamed) only after the export has been removed and no signal
@@ -92,6 +106,10 @@ Future<int> runCli(
       disposer: disposer,
       body: (export, cancel) async {
         final startedAt = clock();
+        // Every moment the export could have moved off the pinned commit is
+        // checked: here, after setup, after the baseline and after every run.
+        final integrity = ExportIntegrity(root: export.path, pinnedSha: export.sha, setupOutputs: config.setupLeaves);
+        await integrity.requirePinned('before setup');
         // Preflight: refuse a pinned commit that already carries an override.
         final before = await resolveDependencyConfig(export.path,
             repo: export.repo, allowedOverrides: config.allowOverrides);
@@ -146,12 +164,27 @@ Future<int> runCli(
             throw _SetupFailed('"$setup" failed (exit code ${done.exitCode}): ${done.stderr.trim()}');
           }
         }
+        await integrity.requirePinned('after setup');
         // Setup may have created or rewritten the lock, the overrides file or
         // the package config: check again and record what is really in use.
         final deps = setup.isEmpty
             ? before
             : await resolveDependencyConfig(export.path,
                 repo: export.repo, allowedOverrides: config.allowOverrides);
+        // From here every run starts from this tree plus one mutant.
+        await integrity.requireClean('after setup');
+
+        // Everything from here on runs in the sandbox (setup could not: it
+        // needs the network). The package config exists now, so the roots the
+        // toolchain must read are known.
+        final Sandbox? sandbox = config.noSandbox
+            ? null
+            : Sandbox.discover(export.path, environment: sandboxEnvironment, extraReadOnly: [
+                for (final o in deps.pathOverrides)
+                  if (o.resolvedPath != null) o.resolvedPath!,
+                ...config.sandboxReadOnly,
+              ]);
+        final testRunner = sandbox == null ? processes : SandboxedProcessRunner(processes, sandbox);
 
         final candidates = <Mutant>[];
         for (final file in files) {
@@ -161,8 +194,7 @@ Future<int> runCli(
         final selected = selectMutants(candidates,
             maxMutants: config.maxMutants, sample: config.sample, seed: config.seed);
 
-        final stateGuard = ExportStateGuard(root: export.path, cacheDirs: config.cacheDirs);
-        final run = await AuditRunner(runner: processes, stateGuard: stateGuard)
+        final run = await AuditRunner(runner: testRunner, integrity: integrity, isolated: sandbox != null)
             .run(config: config, root: export.path, mutants: selected, cancel: cancel, guards: guards);
         final results = AuditResults(
           AuditMeta(
@@ -202,7 +234,13 @@ Future<int> runCli(
             finishedAt: clock(),
             candidateMutants: candidates.length,
             env: config.env,
-            stateCaches: stateGuard.cacheDirs,
+            isolation: sandbox == null
+                ? const IsolationInfo.none()
+                : IsolationInfo(
+                    mode: 'bubblewrap',
+                    network: !sandbox.unshareNet,
+                    readOnlyUnderHome: sandbox.readOnly,
+                    bwrap: bwrapVersion),
           ),
           run.results,
         );

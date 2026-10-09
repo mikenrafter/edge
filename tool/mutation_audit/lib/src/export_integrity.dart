@@ -1,11 +1,18 @@
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:glob/glob.dart';
 import 'package:path/path.dart' as p;
 
-import 'export_state.dart' show ExportStateError;
-
-export 'export_state.dart' show ExportStateError;
+/// The export on the host is not what the audit needs it to be (a moved HEAD,
+/// a dirty start, a change a sandboxed run should not have been able to make).
+/// The audit stops: nothing after this point could be trusted.
+class ExportStateError implements Exception {
+  ExportStateError(this.message);
+  final String message;
+  @override
+  String toString() => 'ExportStateError: $message';
+}
 
 /// What setup leaves in a fresh export that is not ignored by every project's
 /// `.gitignore` (root-relative, first path segment).
@@ -86,9 +93,13 @@ class ExportView {
 /// not move its modification time is out of its sight (the overlay is what
 /// keeps it out of the host).
 class ExportIntegrity {
-  ExportIntegrity({required this.root, required this.pinnedSha});
+  ExportIntegrity({required this.root, required this.pinnedSha, this.setupOutputs = const []});
   final String root;
   final String pinnedSha;
+
+  /// Root-relative globs setup may leave in the export, on top of
+  /// [setupArtifacts].
+  final List<String> setupOutputs;
 
   /// HEAD is the pinned commit. [when] says which moment this is.
   Future<void> requirePinned(String when) async {
@@ -103,14 +114,24 @@ class ExportIntegrity {
   /// ([setupArtifacts]).
   Future<void> requireClean(String when) async {
     await requirePinned(when);
+    final exempt = [for (final g in [...setupArtifacts, ...setupOutputs]) Glob(_clean(g), context: p.posix)];
+    bool exemptPath(String rel) {
+      final parts = p.posix.split(rel);
+      for (var i = 1; i <= parts.length; i++) {
+        final prefix = parts.take(i).join('/');
+        if (exempt.any((g) => g.matches(prefix))) return true;
+      }
+      return false;
+    }
+
     final dirty = [
       for (final s in (await _view()).status)
-        if (!setupArtifacts.contains(p.posix.split(s.substring(3)).first)) s.substring(3),
+        if (!exemptPath(s.substring(3))) s.substring(3),
     ]..sort();
     if (dirty.isNotEmpty) {
       throw ExportStateError('the export is not clean $when (git status): ${_list(dirty)}; every run must start '
           'from the pinned commit with only the mutant applied, so setup must not change tracked files or '
-          'leave untracked ones that are not ignored');
+          'leave untracked ones that are not ignored (declare what setup legitimately leaves with --setup-leaves)');
     }
   }
 
@@ -175,6 +196,17 @@ class ExportIntegrity {
       FileSystemEntityType.directory => 'dir:${s.modified.microsecondsSinceEpoch}',
       _ => '${s.size}b:${s.modified.microsecondsSinceEpoch}',
     };
+  }
+
+  static String _clean(String c) {
+    var v = c.trim();
+    while (v.startsWith('./')) {
+      v = v.substring(2);
+    }
+    while (v.endsWith('/')) {
+      v = v.substring(0, v.length - 1);
+    }
+    return v;
   }
 
   String _list(List<String> items) =>

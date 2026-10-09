@@ -285,8 +285,8 @@ echo looked
       return f.path;
     }
 
-    test('passes with the real thing', () async {
-      await Sandbox.probe();
+    test('passes with the real thing and reports the version', () async {
+      expect(await Sandbox.probe(), startsWith('bubblewrap'));
     }, skip: skip);
 
     test('a missing bwrap is "unavailable", and says how to go on', () async {

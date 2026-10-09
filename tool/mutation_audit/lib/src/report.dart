@@ -15,15 +15,16 @@ class MutantResult {
     required this.mutant,
     required this.classification,
     required this.duration,
-    this.stateRestored = 0,
+    this.isolated = false,
   });
+
+  /// The runs of this mutant were sandboxed. A kill with this false is
+  /// `unisolated`: whatever an earlier run left could have caused it.
+  final bool isolated;
   final Mutant mutant;
   final Classification classification;
   final Duration duration;
 
-  /// How many files of the export the runs of this mutant (the run and its
-  /// confirming reruns) left changed and had to be put back.
-  final int stateRestored;
 }
 
 /// The unmutated baseline run.
@@ -36,6 +37,40 @@ class BaselineSummary {
   final bool passed;
   final int testsRun;
   final Duration duration;
+}
+
+/// How the test runs were isolated.
+class IsolationInfo {
+  const IsolationInfo({required this.mode, this.network = false, this.readOnlyUnderHome = const [], this.bwrap});
+
+  /// `--no-sandbox`: nothing separates one run from the next, so every kill is
+  /// `unisolated` (something an earlier run left could have caused it).
+  const IsolationInfo.none()
+      : mode = 'none',
+        network = true,
+        readOnlyUnderHome = const [],
+        bwrap = null;
+
+  /// `bubblewrap` or `none`.
+  final String mode;
+
+  /// The runs could reach the network.
+  final bool network;
+
+  /// Host paths under `$HOME` the toolchain was given read-only.
+  final List<String> readOnlyUnderHome;
+
+  /// `bwrap --version`, when known.
+  final String? bwrap;
+
+  bool get sandboxed => mode != 'none';
+
+  Map<String, Object?> toJson() => {
+        'mode': mode,
+        'network': network,
+        'readOnlyUnderHome': readOnlyUnderHome,
+        'bwrap': bwrap,
+      };
 }
 
 /// Everything about the run that is not a mutant.
@@ -61,10 +96,11 @@ class AuditMeta {
     this.guardPolicy = 'unspecified',
     this.guards,
     this.dependenciesBeforeSetup,
-    this.stateCaches = const [],
+    this.isolation = const IsolationInfo.none(),
   });
-  /// Paths the runs may change without being restored (build caches).
-  final List<String> stateCaches;
+
+  /// How the runs were isolated from each other.
+  final IsolationInfo isolation;
   final String toolVersion, repo, sha, testCmd;
 
   /// What the export resolved its dependencies from AFTER the setup command
@@ -132,7 +168,7 @@ class AuditResults {
           'files': meta.files,
           'tests': meta.tests,
           'guardPatterns': meta.guardPatterns,
-          'stateCaches': meta.stateCaches,
+          'isolation': meta.isolation.toJson(),
           'guardPolicy': meta.guardPolicy,
           'guards': meta.guards?.toJson(),
           'timeoutSeconds': meta.timeoutSeconds,
@@ -174,7 +210,7 @@ class AuditResults {
                   }
               ],
               'frameworkTimeouts': r.classification.frameworkTimeouts,
-              'stateRestored': r.stateRestored,
+              'unisolated': !r.isolated,
               'durationMs': r.duration.inMilliseconds,
               'detail': r.classification.detail,
             },
@@ -207,9 +243,7 @@ class AuditResults {
       ..writeln('- Mutants: ${meta.candidateMutants} candidates, ${results.length} run '
           '(max ${meta.maxMutants ?? 'unbounded'}, sample ${meta.sample ?? 'none'}, seed ${meta.seed ?? 'none'})')
       ..writeln('- Timeout: ${meta.timeoutSeconds} s per run; environment ${_env(meta.env)}')
-      ..writeln('- Export state: ${results.where((r) => r.stateRestored > 0).length} of ${results.length} '
-          'mutants left files that were put back (${results.fold<int>(0, (n, r) => n + r.stateRestored)} in all); '
-          'caches that may change: ${meta.stateCaches.isEmpty ? 'none recorded' : meta.stateCaches.map((c) => '`$c`').join(', ')}')
+      ..writeln(_isolationLine(meta.isolation))
       ..writeln('- Started ${meta.startedAt.toUtc().toIso8601String()}, '
           'finished ${meta.finishedAt.toUtc().toIso8601String()}')
       ..writeln('- Dependencies (after setup): pubspec.lock `${meta.dependencies.lockSha256 ?? 'absent'}`, '
@@ -252,6 +286,7 @@ class AuditResults {
         String why(DiscountedFailure d) => '${d.key} (${d.reasons.join('; ')})';
         final extra = killers
             ? [
+                if (!r.isolated) 'unisolated',
                 for (final k in c.killers)
                   '${k.key} (${k.kind.id}${k.confirmedKind == null ? '' : '; rerun: ${k.confirmedKind!.id}'})',
                 for (final d in c.discounted) 'discounted: ${why(d)}',
@@ -302,6 +337,14 @@ class AuditResults {
     return b.toString();
   }
 }
+
+String _isolationLine(IsolationInfo i) => i.sandboxed
+    ? '- Isolation: ${i.mode}${i.bwrap == null ? '' : ' (${i.bwrap})'}: every run in its own sandbox (read-only host, '
+        'overlay export discarded after the run, fresh /tmp and HOME, own pid namespace'
+        '${i.network ? '' : ', no network'}); read-only under HOME: '
+        '${i.readOnlyUnderHome.isEmpty ? 'nothing' : i.readOnlyUnderHome.map((c) => '`$c`').join(', ')}'
+    : '- Isolation: NONE (--no-sandbox): nothing separates one run from the next, so every kill is unisolated '
+        '(an earlier run could have left the state that made a test fail)';
 
 String _guardLine(GuardReport? g) {
   if (g == null) return '- Source-scanning suites: not recorded';

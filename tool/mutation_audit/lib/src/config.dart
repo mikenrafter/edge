@@ -33,7 +33,9 @@ class AuditConfig {
     this.flakyTests = const [],
     this.setupCmd,
     this.env = const {'TZ': 'UTC'},
-    this.cacheDirs = const [],
+    this.noSandbox = false,
+    this.sandboxReadOnly = const [],
+    this.setupLeaves = const [],
   });
 
   /// The developer repository and the pinned commit to audit.
@@ -79,10 +81,20 @@ class AuditConfig {
   /// the parent's. Default `TZ=UTC`: the tests of both repos assume it.
   final Map<String, String> env;
 
-  /// Root-relative directories or files (globs) that may change between runs
-  /// without being restored, on top of the defaults (`.dart_tool`, `build`,
-  /// `.flutter-plugins*`, `.packages`): build caches the test tool reuses.
-  final List<String> cacheDirs;
+  /// `--no-sandbox`: run the tests directly. Nothing then separates one run
+  /// from the next; the report says `isolation: none` and every kill is
+  /// `unisolated`.
+  final bool noSandbox;
+
+  /// Root-relative paths (globs) that setup may leave in the export without
+  /// being committed or ignored (`pubspec.lock` in a project that does not
+  /// track it), on top of `.dart_tool`, `build`, `.flutter-plugins*` and
+  /// `.packages`. They are exempt from the "export is clean after setup" check.
+  final List<String> setupLeaves;
+
+  /// Extra host paths the sandboxed toolchain may read under `$HOME` (only
+  /// paths under `$HOME` need it: the rest of the host is visible read-only).
+  final List<String> sandboxReadOnly;
 
   /// Where results.json and summary.md go (never inside the export).
   final String outDir;
@@ -95,6 +107,7 @@ class AuditConfig {
 /// [--timeout seconds] [--guard-pattern <glob>... | --no-guards]
 /// [--allow-override <path>...]
 /// [--flaky-test <key>...] [--setup-cmd "<cmd>"] [--env KEY=VALUE...]
+/// [--no-sandbox] [--sandbox-ro <path>...]
 /// --out <dir>`
 ///
 /// `--files`, `--tests`, `--guard-pattern`, `--allow-override`, `--flaky-test`
@@ -178,7 +191,9 @@ AuditConfig parseAuditArgs(List<String> args) {
     flakyTests: r['flaky-test'] as List<String>,
     setupCmd: r['setup-cmd'] as String?,
     env: env,
-    cacheDirs: list('cache-dir'),
+    noSandbox: r['no-sandbox'] as bool,
+    sandboxReadOnly: list('sandbox-ro'),
+    setupLeaves: list('setup-leaves'),
   );
 }
 
@@ -209,16 +224,24 @@ ArgParser _parser() => ArgParser()
   ..addMultiOption('flaky-test', splitCommas: false, help: 'A test key suite::name to re-run when it fails.')
   ..addOption('setup-cmd', help: 'Run once in the export before the baseline ("" for none).')
   ..addMultiOption('env', splitCommas: false, help: 'KEY=VALUE for child processes (default TZ=UTC).')
-  ..addMultiOption('cache-dir',
+  ..addFlag('no-sandbox',
+      negatable: false,
+      help: 'Run the tests directly, without bubblewrap. Nothing then separates one run from the next: '
+          'the report says isolation none and every kill is unisolated.')
+  ..addMultiOption('setup-leaves',
       splitCommas: false,
-      help: 'A directory or file (glob, repo-relative) that may change between runs, '
-          'besides .dart_tool, build, .flutter-plugins*, .packages.')
+      help: 'A path (glob, repo-relative) that setup may leave untracked or changed in the export, besides '
+          '.dart_tool, build, .flutter-plugins*, .packages (e.g. pubspec.lock when the project does not commit it).')
+  ..addMultiOption('sandbox-ro',
+      splitCommas: false,
+      help: 'A host path under \$HOME the sandboxed toolchain must read (mounted read-only). The pub cache, '
+          'FLUTTER_ROOT, PATH entries and the package config roots are found by themselves.')
   ..addOption('out', help: 'Directory for results.json and summary.md (outside the export).');
 
 /// `--files a b c` means `--files a --files b --files c`: the list options take
 /// every following word up to the next option.
 const _variadic = {
-  '--files', '--tests', '--guard-pattern', '--scanner', '--allow-override', '--flaky-test', '--env',
+  '--files', '--tests', '--guard-pattern', '--scanner', '--allow-override', '--flaky-test', '--env', '--sandbox-ro', '--setup-leaves',
 };
 
 List<String> _spreadVariadic(List<String> args) {
