@@ -362,6 +362,52 @@ void main() {
     expect(File(p.join(fx.root, 'lib/a.dart')).readAsStringSync(), lib, reason: 'the developer checkout is untouched');
   });
 
+  group('the pinned commit is verified at every step (exit 70 on a mismatch)', () {
+    late String other;
+    setUp(() async {
+      other = await fx.commit({'lib/b.dart': '// later commit\n'}, 'later');
+    });
+
+    void checkout(String cwd) {
+      final r = Process.runSync('git', ['checkout', '-q', '--detach', other], workingDirectory: cwd);
+      expect(r.exitCode, 0, reason: '${r.stderr}');
+    }
+
+    test('a setup command that checks out another commit stops the audit before the baseline', () async {
+      final runner = FakeProcessRunner((call) {
+        if (call.argv.length >= 2 && call.argv[1] == 'pub') {
+          checkout(call.cwd);
+          return const ProcessOutcome(exitCode: 0);
+        }
+        return outcomeOf(passing());
+      });
+      final code = await runCli(args(const [], sha), runner: runner, out: stdout_, err: err);
+      expect(code, 70, reason: err.toString());
+      expect(err.toString(), allOf(contains(other), contains(sha), contains('after setup')));
+      expect(runner.calls, hasLength(1), reason: 'only the setup command ran');
+      expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
+      expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
+    });
+
+    test('a baseline run that moves HEAD stops the audit before any mutant', () async {
+      final runner = FakeProcessRunner((call) {
+        checkout(call.cwd);
+        return outcomeOf(passing());
+      });
+      final code = await runCli(args(const ['--setup-cmd', ''], sha), runner: runner, out: stdout_, err: err);
+      expect(code, 70, reason: err.toString());
+      expect(err.toString(), allOf(contains(other), contains('baseline')));
+      expect(runner.calls, hasLength(1));
+    });
+
+    test('--sha may name a branch or a short sha: the pin is the commit it resolves to', () async {
+      final runner = tests();
+      final code = await runCli(args(const ['--setup-cmd', '', '--max-mutants', '1'], 'main'), runner: runner, out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      expect((jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map)['meta']['sha'], other);
+    });
+  });
+
   test('a run whose processes could not all be stopped ends the audit with exit 70 and says so', () async {
     var n = 0;
     final runner = FakeProcessRunner((call) {
