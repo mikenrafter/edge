@@ -43,7 +43,7 @@ void main() {
   });
 
   List<String> args([List<String> extra = const []]) =>
-      ['--repo', fx.root, '--sha', sha, '--files', 'lib/a.dart', '--test-cmd', 'dart test', '--out', out.path, ...extra];
+      ['--repo', fx.root, '--sha', sha, '--files', 'lib/a.dart', '--test-cmd', 'dart test', '--out', out.path, '--no-memory-cap', ...extra];
 
   Future<int> run(FakeProcessRunner runner, [List<String> extra = const [], Stream<ProcessSignal>? interrupts]) => runCli(
         args(extra),

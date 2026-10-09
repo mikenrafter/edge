@@ -182,6 +182,8 @@ ProcessOutcome outcomeOf(
   bool outputComplete = true,
   String stderr = '',
   Duration elapsed = const Duration(seconds: 1),
+  int? oomKills,
+  int? memoryPeakBytes,
 }) =>
     ProcessOutcome(
       exitCode: exitCode,
@@ -191,6 +193,8 @@ ProcessOutcome outcomeOf(
       cancelled: cancelled,
       outputComplete: outputComplete,
       elapsed: elapsed,
+      oomKills: oomKills,
+      memoryPeakBytes: memoryPeakBytes,
     );
 
 /// A run in which everything passes.

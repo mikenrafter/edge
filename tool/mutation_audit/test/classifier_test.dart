@@ -559,6 +559,56 @@ void main() {
     });
   });
 
+  group('the memory limit (cgroup OOM kill)', () {
+    const mib = 1024 * 1024;
+    ProcessOutcome oom(StreamBuilder s, {int kills = 1, int exitCode = 137, bool timedOut = false}) =>
+        outcomeOf(s, exitCode: exitCode, timedOut: timedOut, oomKills: kills, memoryPeakBytes: 4096 * mib);
+
+    test('a run in which the cgroup killed a process is resource-limit, never a kill, however it failed', () async {
+      final c = await classifyRun(oom(failing('g fails')));
+      expect(c.status, MutantStatus.resourceLimit);
+      expect(c.killers, isEmpty);
+      expect(c.detail, allOf(contains('memory limit'), contains('1 process'), contains('4.0G')));
+    });
+
+    test('also when the rest of the stream looks like a clean pass (a killed helper must not hide)', () async {
+      final c = await classifyRun(oom(passing(), exitCode: 0));
+      expect(c.status, MutantStatus.resourceLimit);
+    });
+
+    test('ahead of a timeout, a load failure and a compile error: the run is not evidence of anything', () async {
+      expect((await classifyRun(oom(failing('x'), timedOut: true))).status, MutantStatus.resourceLimit);
+      final noLoad = StreamBuilder().loadError('test/a_test.dart', 'lib/a.dart:1:1: Error: nope').done(success: false);
+      expect((await classifyRun(oom(noLoad))).status, MutantStatus.resourceLimit);
+    });
+
+    test('no kills reported (zero) or unknown (null): classified as before', () async {
+      expect((await classifyRun(outcomeOf(failing('g fails'), exitCode: 1, oomKills: 0))).status, MutantStatus.killed);
+      expect((await classifyRun(outcomeOf(failing('g fails'), exitCode: 1))).status, MutantStatus.killed);
+    });
+
+    test('the run is not re-run to "confirm" anything', () async {
+      var reruns = 0;
+      final c = await classifyRun(oom(failing('g fails')), flakyTests: {'test/a_test.dart::g fails'}, rerun: (t) async {
+        reruns++;
+        return failsAgain(t);
+      });
+      expect(c.status, MutantStatus.resourceLimit);
+      expect(reruns, 0);
+    });
+
+    test('a rerun that hit the limit is unresolved, with the reason: the failure is not confirmed', () async {
+      final c = await classifyRun(outcomeOf(failing('flaky'), exitCode: 1),
+          flakyTests: {'test/a_test.dart::flaky'},
+          rerun: (t) async => outcomeOf(StreamBuilder().loaded(suite).fail(suite, 'flaky').done(success: false),
+              exitCode: 137, oomKills: 1, memoryPeakBytes: 4096 * mib));
+      expect(c.status, MutantStatus.unconfirmed);
+      expect(c.killers, isEmpty);
+      expect(c.reruns.single.result, RerunResult.unresolved);
+      expect(c.reruns.single.detail, contains('memory limit'));
+    });
+  });
+
   test('MutantStatus ids are the report vocabulary', () {
     expect(MutantStatus.values.map((s) => s.id), [
       'killed',
@@ -566,6 +616,7 @@ void main() {
       'survived',
       'compile-invalid',
       'timeout',
+      'resource-limit',
       'load-failure',
       'skipped',
       'unconfirmed',

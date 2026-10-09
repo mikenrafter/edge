@@ -89,6 +89,40 @@ void main() {
     return -1;
   }
 
+  group('tmpfs mounts are size-limited (bwrap --size, immediately before --tmpfs)', () {
+    const gib = 1024 * 1024 * 1024;
+
+    test('every --tmpfs has --size BYTES right before it: 1G by default', () {
+      final a = wrap(sandbox());
+      final tmpfs = [for (var i = 0; i < a.length; i++) if (a[i] == '--tmpfs') i];
+      expect(tmpfs, hasLength(5), reason: '/tmp /var/tmp /run /dev/shm and HOME');
+      for (final i in tmpfs) {
+        expect(a.sublist(i - 2, i), ['--size', '$gib'], reason: 'before ${a[i + 1]}');
+      }
+    });
+
+    test('--size is never given to anything else (bwrap applies it to the next --tmpfs only)', () {
+      final a = wrap(sandbox());
+      for (var i = 0; i < a.length; i++) {
+        if (a[i] == '--size') expect(a[i + 2], '--tmpfs');
+      }
+      expect(a.where((x) => x == '--size'), hasLength(a.where((x) => x == '--tmpfs').length));
+    });
+
+    test('the size is configurable', () {
+      final a = wrap(Sandbox(exportPath: export, home: home, tmpfsSize: 256 * 1024 * 1024));
+      expect(a.where((x) => x == '${256 * 1024 * 1024}'), hasLength(5));
+      expect(a, isNot(contains('$gib')));
+    });
+
+    test('the export overlay has no --size of its own: bwrap cannot size --tmp-overlay (its pages are charged to the cgroup)', () {
+      final a = wrap(sandbox());
+      final o = a.indexOf('--tmp-overlay');
+      expect(a[o - 2], '--overlay-src');
+      expect(a[o - 1], export);
+    });
+  });
+
   group('the root is minimal: the host is not bound', () {
     test('there is no bind of / (host sockets, other users\' files and services stay out of reach)', () {
       final a = wrap(sandbox(binds: ['/nix/store', '/usr']));

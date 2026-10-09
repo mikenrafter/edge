@@ -91,6 +91,7 @@ void main() {
         'survived': 2,
         'compile-invalid': 1,
         'timeout': 1,
+        'resource-limit': 0,
         'load-failure': 1,
         'skipped': 1,
         'unconfirmed': 0,
@@ -224,6 +225,8 @@ void main() {
         'symlinks': {'/lib64': 'usr/lib64'},
         'skipped': <String, String>{},
         'bwrap': 'bubblewrap 0.12.0',
+        'memory': {'cap': 'none', 'maxBytes': null, 'swapMaxBytes': null, 'reason': null},
+        'tmpfsSizeBytes': null,
       });
       expect(((j['mutants'] as List).single as Map)['unisolated'], isFalse);
       final md = boxed.renderMarkdown();
@@ -530,5 +533,99 @@ void main() {
     ]);
     expect((r.toJson()['mutants'] as List).single['frameworkTimeouts'], ['test/a_test.dart::hangs']);
     expect(r.renderMarkdown(), contains('timed out by the test framework (not a kill): test/a_test.dart::hangs'));
+  });
+
+  group('memory: the limit, the peaks, resource-limit', () {
+    const mib = 1024 * 1024, gib = 1024 * mib;
+
+    AuditMeta metaWith(IsolationInfo isolation, {BaselineSummary? baseline}) => AuditMeta(
+          toolVersion: '0.1.0',
+          repo: '/dev/edge',
+          sha: sha,
+          dependencies: meta().dependencies,
+          testCmd: 'dart test',
+          files: const ['lib/a.dart'],
+          tests: const [],
+          guardPatterns: const [],
+          timeoutSeconds: 1,
+          maxMutants: null,
+          sample: null,
+          seed: null,
+          baseline: baseline ?? const BaselineSummary(passed: true, testsRun: 1, duration: Duration.zero, memoryPeakBytes: 700 * mib),
+          startedAt: DateTime.utc(2026),
+          finishedAt: DateTime.utc(2026),
+          candidateMutants: 2,
+          isolation: isolation,
+        );
+
+    MutantResult limited(Mutant m, {int? peak}) => MutantResult(
+          mutant: m,
+          classification: const Classification(status: MutantStatus.resourceLimit, detail: 'the run hit the memory limit (1 process killed, peak 4.0G)'),
+          duration: const Duration(seconds: 9),
+          isolated: true,
+          memoryPeakBytes: peak,
+        );
+
+    final capped = AuditResults(
+        metaWith(const IsolationInfo(mode: 'bubblewrap', bwrap: 'bubblewrap 0.12.0', memoryMaxBytes: 4 * gib, tmpfsSizeBytes: gib)),
+        [
+          limited(mutant(1, '<', '<='), peak: 4 * gib),
+          MutantResult(
+              mutant: mutant(2, '>', '>='),
+              classification: const Classification(status: MutantStatus.survived),
+              duration: Duration.zero,
+              isolated: true,
+              memoryPeakBytes: 300 * mib),
+          MutantResult(
+              mutant: mutant(3, '==', '!='),
+              classification: const Classification(status: MutantStatus.killed, killers: [KillingTest('t::x', FailureKind.assertion)]),
+              duration: Duration.zero,
+              isolated: true),
+        ]);
+
+    test('resource-limit is counted, reported in its own section, and outside the score (like a timeout)', () {
+      expect(capped.counts['resource-limit'], 1);
+      expect(capped.score, closeTo(1 / 2, 1e-12), reason: 'killed 1, survived 1; the limit hit is in neither');
+      final md = capped.renderMarkdown();
+      expect(md, contains('## Resource limits'));
+      expect(md.split('## Resource limits')[1].split('## Load failures')[0], allOf(contains('lib/a.dart:1'), contains('memory limit')));
+      expect(md, contains('| resource-limit | 1 |'));
+    });
+
+    test('results.json: the peak per mutant (null when unknown), the baseline peak, the status', () {
+      final j = capped.toJson();
+      final ms = (j['mutants'] as List).cast<Map<String, Object?>>();
+      expect(ms.map((m) => m['status']), ['resource-limit', 'survived', 'killed']);
+      expect(ms.map((m) => m['memoryPeakBytes']), [4 * gib, 300 * mib, null]);
+      expect((j['meta'] as Map)['baseline'], containsPair('memoryPeakBytes', 700 * mib));
+    });
+
+    test('results.json: the isolation records the cap and the tmpfs size', () {
+      final isolation = ((capped.toJson()['meta'] as Map)['isolation'] as Map);
+      expect(isolation['memory'], {'cap': 'cgroup', 'maxBytes': 4 * gib, 'swapMaxBytes': 0, 'reason': null});
+      expect(isolation['tmpfsSizeBytes'], gib);
+    });
+
+    test('an uncapped run says why, in the JSON and up top in the Markdown', () {
+      for (final reason in ['--no-memory-cap', '--memory-max 0']) {
+        final r = AuditResults(
+            metaWith(IsolationInfo(mode: 'bubblewrap', tmpfsSizeBytes: gib, memoryUncappedReason: reason)), const []);
+        final isolation = (r.toJson()['meta'] as Map)['isolation'] as Map;
+        expect(isolation['memory'], {'cap': 'none', 'maxBytes': null, 'swapMaxBytes': null, 'reason': reason});
+        expect(r.renderMarkdown(), allOf(contains('memory: NOT CAPPED ($reason)'), contains('swap')));
+      }
+    });
+
+    test('a capped run says so in the Markdown: size, no swap, the tmpfs size, and what bounds the overlay', () {
+      final md = capped.renderMarkdown();
+      expect(md, contains('memory: cgroup MemoryMax 4.0G, no swap'));
+      expect(md, contains('tmpfs 1.0G each'));
+      expect(md, contains('overlay'));
+    });
+
+    test('--no-sandbox: no sandbox, so no cap, and the JSON says that', () {
+      final isolation = (sample().toJson()['meta'] as Map)['isolation'] as Map;
+      expect(isolation['memory'], {'cap': 'none', 'maxBytes': null, 'swapMaxBytes': null, 'reason': '--no-sandbox'});
+    });
   });
 }

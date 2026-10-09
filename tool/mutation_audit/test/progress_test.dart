@@ -142,6 +142,35 @@ void main() {
     });
   });
 
+  group('memory on the mutant lines', () {
+    test('the end line shows the peak when it is known; resource-limit is a status like any other', () async {
+      final r = reporter();
+      r.mutantStarted(1, 2, mutant());
+      await time.advance(const Duration(seconds: 4));
+      r.mutantFinished(1, 2, mutant(), const Classification(status: MutantStatus.survived), memoryPeakBytes: 812 * 1024 * 1024);
+      r.mutantStarted(2, 2, mutant());
+      await time.advance(const Duration(seconds: 6));
+      r.mutantFinished(2, 2, mutant(), const Classification(status: MutantStatus.resourceLimit), memoryPeakBytes: 4 * 1024 * 1024 * 1024);
+      expect(lines[1], endsWith('[1/2] survived (0 killing, 0 discounted) 4.0s, peak 812M; elapsed 4.0s; ETA 4.0s'));
+      expect(lines[3], endsWith('[2/2] resource-limit (0 killing, 0 discounted) 6.0s, peak 4.0G; elapsed 10s; ETA 0.0s'));
+    });
+
+    test('progress.jsonl carries memoryPeakBytes when known, and leaves the key out when not', () {
+      final dir = scratch('mutaudit_progress_mem_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final path = p.join(dir.path, 'progress.jsonl');
+      final r = reporter(logPath: path);
+      r.mutantStarted(1, 2, mutant());
+      r.mutantFinished(1, 2, mutant(), const Classification(status: MutantStatus.survived), memoryPeakBytes: 123456);
+      r.mutantStarted(2, 2, mutant());
+      r.mutantFinished(2, 2, mutant(), const Classification(status: MutantStatus.resourceLimit));
+      final rows = [for (final l in File(path).readAsLinesSync()) jsonDecode(l) as Map<String, dynamic>];
+      expect(rows[0]['memoryPeakBytes'], 123456);
+      expect(rows[1].containsKey('memoryPeakBytes'), isFalse);
+      expect(rows[1]['status'], 'resource-limit');
+    });
+  });
+
   group('heartbeat', () {
     test('every interval while the run is in progress, with pid, counts from the stream and the last test; none after', () async {
       final r = reporter();

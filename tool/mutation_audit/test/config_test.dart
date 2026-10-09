@@ -46,6 +46,29 @@ void main() {
       }
     });
 
+    test('--memory-max: 4G per run by default, sizes with suffixes, 0 = no cap; --tmpfs-size 1G; --no-memory-cap', () {
+      final d = parseAuditArgs(required());
+      expect(d.memoryMax, 4 * 1024 * 1024 * 1024);
+      expect(d.tmpfsSize, 1024 * 1024 * 1024);
+      expect(d.noMemoryCap, isFalse);
+      expect(parseAuditArgs(required(['--memory-max', '512M'])).memoryMax, 512 * 1024 * 1024);
+      expect(parseAuditArgs(required(['--memory-max', '6g'])).memoryMax, 6 * 1024 * 1024 * 1024);
+      expect(parseAuditArgs(required(['--memory-max', '0'])).memoryMax, 0);
+      expect(parseAuditArgs(required(['--tmpfs-size', '256M'])).tmpfsSize, 256 * 1024 * 1024);
+      expect(parseAuditArgs(required(['--no-memory-cap'])).noMemoryCap, isTrue);
+    });
+
+    test('--memory-max and --tmpfs-size refuse what is not a size; a tmpfs of 0 bytes is not a limit', () {
+      for (final flag in ['--memory-max', '--tmpfs-size']) {
+        for (final bad in ['lots', '-1', '1.5G', '']) {
+          expect(() => parseAuditArgs(required([flag, bad])),
+              throwsA(isA<UsageError>().having((e) => e.message, 'message', contains(flag))),
+              reason: '$flag $bad');
+        }
+      }
+      expect(() => parseAuditArgs(required(['--tmpfs-size', '0'])), throwsA(isA<UsageError>()));
+    });
+
     test('--cache-dir is gone: the sandbox discards writes, nothing is a cache any more', () {
       expect(() => parseAuditArgs(required(['--cache-dir', 'build'])), throwsA(isA<UsageError>()));
     });
