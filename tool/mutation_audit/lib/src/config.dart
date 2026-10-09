@@ -81,7 +81,7 @@ class AuditConfig {
 AuditConfig parseAuditArgs(List<String> args) {
   final ArgResults r;
   try {
-    r = _parser().parse(args);
+    r = _parser().parse(_spreadVariadic(args));
   } on FormatException catch (e) {
     throw UsageError(e.message);
   }
@@ -159,6 +159,26 @@ ArgParser _parser() => ArgParser()
   ..addOption('setup-cmd', help: 'Run once in the export before the baseline ("" for none).')
   ..addMultiOption('env', splitCommas: false, help: 'KEY=VALUE for child processes (default TZ=UTC).')
   ..addOption('out', help: 'Directory for results.json and summary.md (outside the export).');
+
+/// `--files a b c` means `--files a --files b --files c`: the list options take
+/// every following word up to the next option.
+const _variadic = {'--files', '--tests', '--guard-pattern', '--allow-override', '--flaky-test', '--env'};
+
+List<String> _spreadVariadic(List<String> args) {
+  final out = <String>[];
+  String? open;
+  for (final a in args) {
+    if (a.startsWith('--')) {
+      open = _variadic.contains(a) ? a : null;
+      out.add(a);
+    } else if (open != null && out.isNotEmpty && !out.last.startsWith('--')) {
+      out..add(open)..add(a);
+    } else {
+      out.add(a);
+    }
+  }
+  return out;
+}
 
 /// Splits on commas that are not inside `{...}`.
 List<String> _splitTopLevel(String value) {

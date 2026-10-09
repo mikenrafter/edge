@@ -80,6 +80,22 @@ void main() {
       expect(c.files, ['lib/a.dart', 'lib/b.dart', 'lib/c.dart']);
     });
 
+    test('list options take every following word up to the next option', () {
+      final c = parseAuditArgs([
+        '--repo', repo.path, '--sha', 's', '--out', '/o',
+        '--files', 'lib/a.dart', 'lib/b.dart',
+        '--tests', 'test/a_test.dart', 'test/b_test.dart', 'test/c_test.dart',
+        '--timeout', '9',
+      ]);
+      expect(c.files, ['lib/a.dart', 'lib/b.dart']);
+      expect(c.tests, ['test/a_test.dart', 'test/b_test.dart', 'test/c_test.dart']);
+      expect(c.timeout, const Duration(seconds: 9));
+    });
+
+    test('a stray word after a single-value option is still refused', () {
+      expect(() => parseAuditArgs(required(['--timeout', '9', 'stray'])), throwsA(isA<UsageError>()));
+    });
+
     test('commas inside braces of a glob do not split', () {
       final c = parseAuditArgs(required(['--files', 'lib/{a,b}.dart,lib/c.dart']));
       expect(c.files, ['lib/**.dart', 'lib/{a,b}.dart', 'lib/c.dart']);
