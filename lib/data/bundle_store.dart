@@ -484,6 +484,8 @@ class BundleStore {
   int _projectionBytes = 0;
   int _activeRequests = 0;
   int _activeBytes = 0;
+  int _reservedRequests = 0;
+  int _reservedBytes = 0;
   bool _pumpScheduled = false;
   bool _pumping = false;
   StoreGeneration? _seenGeneration;
@@ -566,23 +568,29 @@ class BundleStore {
     if (prepared == null) return const BundleAbsent();
     final early = _cachedOrJoined(prepared);
     if (early != null) return early;
-    final payload = await _readPayload(prepared);
+    var payload = await _readPayload(prepared);
     // A row that moved after the meta read is a changed row, not a missing one:
     // Stale sends the caller back to the meta, which answers an honest absence
     // if the row is really gone.
     if (payload.stale) return const BundleStale();
-    final text = payload.text;
-    if (text == null) return const BundleAbsent();
+    if (payload.text == null) return const BundleAbsent();
     // Another reader may have cached or started this key while we awaited the
     // payload; a second flight under one key would overwrite the first and
     // make both completions look stale.
     final raced = _cachedOrJoined(prepared);
     if (raced != null) return raced;
-    await _awaitCapacity(text, warm: false, source: source);
-    final waited = _cachedOrJoined(prepared);
-    if (waited != null) return waited;
-    final flight = _newFlight(prepared, text, warm: false);
-    return _withFreshAsOf(flight.done.future, prepared.asOfMs);
+    payload = await _admit(prepared, payload);
+    try {
+      if (payload.stale) return const BundleStale();
+      final text = payload.text;
+      if (text == null) return const BundleAbsent();
+      final waited = _cachedOrJoined(prepared);
+      if (waited != null) return waited;
+      final flight = _newFlight(prepared, text, warm: false, reservation: payload.reservation);
+      return _withFreshAsOf(flight.done.future, prepared.asOfMs);
+    } finally {
+      _release(payload.reservation); // no-op once the flight took it over
+    }
   }
 
   /// [readOnce], and when it answers [BundleStale] one more attempt that starts
@@ -635,64 +643,102 @@ class BundleStore {
     }
     final maxRows = chunkRows.clamp(1, maxChunkRows);
     var next = 0;
-    ({int index, _Prepared source, String payload})? carry;
-    while (carry != null || next < prepared.length) {
-      final batch = <({int index, _Prepared source, String payload})>[];
-      var bytes = 0;
-      while (batch.length < maxRows) {
-        var item = carry;
-        carry = null;
-        if (item == null) {
-          if (next >= prepared.length) break;
-          final p = prepared[next++];
-          final payload = await _readPayload(p.source);
-          if (payload.stale) {
-            results[p.index] = const BundleStale();
-            continue;
+    _ReadItem? carry;
+    try {
+      while (carry != null || next < prepared.length) {
+        final batch = <_ReadItem>[];
+        var bytes = 0;
+        ({int index, _Prepared source, _PayloadRead read})? boundary;
+        try {
+          while (batch.length < maxRows) {
+            var item = carry;
+            carry = null;
+            if (item == null) {
+              if (next >= prepared.length) break;
+              final p = prepared[next++];
+              final read = await _readPayload(p.source);
+              if (read.stale) {
+                results[p.index] = const BundleStale();
+                continue;
+              }
+              final text = read.text;
+              if (text == null) {
+                results[p.index] = const BundleAbsent();
+                continue;
+              }
+              if (batch.isNotEmpty && bytes + text.length > chunkSourceBytes) {
+                boundary = (index: p.index, source: p.source, read: read);
+                break;
+              }
+              final admitted = await _admit(p.source, read);
+              if (admitted.stale || admitted.text == null) {
+                _release(admitted.reservation);
+                results[p.index] = admitted.stale ? const BundleStale() : const BundleAbsent();
+                continue;
+              }
+              item = (index: p.index, source: p.source, read: admitted);
+            }
+            batch.add(item);
+            bytes += item.read.text!.length;
           }
-          final text = payload.text;
-          if (text == null) {
-            results[p.index] = const BundleAbsent();
-            continue;
+          // Every member's flight (or cache entry) is captured BEFORE anything
+          // is awaited: a publish that clears the flight table mid-batch must
+          // not make a later member look up a flight that is no longer there.
+          final waits = <int, Future<BundleRead>>{};
+          var started = false;
+          for (final item in batch) {
+            final early = _cachedOrJoined(item.source);
+            if (early != null) {
+              _release(item.read.reservation);
+              waits[item.index] = early;
+              continue;
+            }
+            final flight = _newFlight(
+              item.source,
+              item.read.text!,
+              warm: false,
+              schedule: false,
+              reservation: item.read.reservation,
+            );
+            started = true;
+            waits[item.index] = _withFreshAsOf(flight.done.future, item.source.asOfMs);
           }
-          item = (index: p.index, source: p.source, payload: text);
+          if (started) _schedulePump();
+          // Errors are kept as values: the carry's admission below may throw
+          // while these are still running.
+          final settled = Future.wait(waits.values).then<Object>(
+            (r) => r,
+            onError: (Object e, StackTrace st) => (e, st),
+          );
+          if (boundary != null) {
+            // The payload that did not fit this chunk is admitted now, behind
+            // the chunk just queued (which makes progress while it waits for
+            // room), and carried with its reservation into the next chunk.
+            final b = boundary;
+            final admitted = await _admit(b.source, b.read);
+            if (admitted.stale || admitted.text == null) {
+              _release(admitted.reservation);
+              results[b.index] = admitted.stale ? const BundleStale() : const BundleAbsent();
+            } else {
+              carry = (index: b.index, source: b.source, read: admitted);
+            }
+          }
+          final answers = await settled;
+          if (answers is (Object, StackTrace)) {
+            Error.throwWithStackTrace(answers.$1, answers.$2);
+          }
+          var k = 0;
+          for (final index in waits.keys) {
+            results[index] = (answers as List<BundleRead>)[k++];
+          }
+        } finally {
+          for (final item in batch) {
+            _release(item.read.reservation); // no-op for queued members
+          }
         }
-        if (batch.isNotEmpty && bytes + item.payload.length > chunkSourceBytes) {
-          carry = item; // starts the next chunk; its text is already read
-          break;
-        }
-        await _awaitCapacity(
-          item.payload,
-          warm: false,
-          source: item.source.source,
-          extraRequests: batch.length,
-          extraBytes: bytes,
-        );
-        batch.add(item);
-        bytes += item.payload.length;
       }
-      if (batch.isEmpty) continue;
-      // Every member's flight (or cache entry) is captured BEFORE anything is
-      // awaited: a publish that clears the flight table mid-batch must not make
-      // a later member look up a flight that is no longer there.
-      final waits = <int, Future<BundleRead>>{};
-      var started = false;
-      for (final item in batch) {
-        final early = _cachedOrJoined(item.source);
-        if (early != null) {
-          waits[item.index] = early;
-          continue;
-        }
-        final flight = _newFlight(item.source, item.payload, warm: false, schedule: false);
-        started = true;
-        waits[item.index] = _withFreshAsOf(flight.done.future, item.source.asOfMs);
-      }
-      if (started) _schedulePump();
-      final answers = await Future.wait(waits.values);
-      var k = 0;
-      for (final index in waits.keys) {
-        results[index] = answers[k++];
-      }
+    } finally {
+      _release(carry?.read.reservation);
     }
     for (final entry in joined.entries) {
       final answer = await entry.value;
@@ -724,8 +770,8 @@ class BundleStore {
       if (text != null) payloads.add((source: p, payload: text));
     }
     final neededBytes = payloads.fold<int>(0, (n, p) => n + p.payload.length);
-    if (_activeRequests + _pending.length + payloads.length > maxQueuedRequests + 1 ||
-        _activeBytes + _pending.fold<int>(0, (n, f) => n + f.sourceBytes) + neededBytes > maxSourceBytesInFlight) {
+    if (_activeRequests + _pending.length + _reservedRequests + payloads.length > maxQueuedRequests + 1 ||
+        _heldBytes + neededBytes > maxSourceBytesInFlight) {
       return const WarmRefusedBusy();
     }
     for (final p in payloads) {
@@ -787,6 +833,19 @@ class BundleStore {
   @visibleForTesting
   Iterable<BundleView> get debugCachedViews => [..._full.values, ..._projections.values];
 
+  /// Admitted-but-not-yet-queued requests and source bytes.
+  @visibleForTesting
+  int get debugReservedRequests => _reservedRequests;
+  @visibleForTesting
+  int get debugReservedBytes => _reservedBytes;
+
+  /// Source bytes counted against the budget: running, queued and reserved.
+  @visibleForTesting
+  int get debugSourceBytesHeld => _heldBytes;
+
+  int get _heldBytes =>
+      _activeBytes + _pending.fold<int>(0, (n, f) => n + f.sourceBytes) + _reservedBytes;
+
   /// Flights registered and not yet removed.
   @visibleForTesting
   int get debugFlightCount => _flights.length;
@@ -833,7 +892,7 @@ class BundleStore {
       final result = await LocalDb.dayPayload(prepared.source.k1, prepared.key.k2, expectedRev: prepared.key.rev);
       return switch (result) {
         DayPayloadOk(:final payloadJson) => _counted(payloadJson),
-        DayPayloadAbsent() || DayPayloadStale() => const _PayloadRead.stale(),
+        DayPayloadAbsent() || DayPayloadStale() => _PayloadRead.stale(),
       };
     }
     final db = await LocalDb.instance;
@@ -843,7 +902,7 @@ class BundleStore {
       [prepared.source.k1],
     );
     if (rows.isEmpty || (rows.first['rev'] as num).toInt() != prepared.key.rev) {
-      return const _PayloadRead.stale();
+      return _PayloadRead.stale();
     }
     final value = rows.first['payload_json'];
     return _counted(value is String ? value : null);
@@ -873,33 +932,68 @@ class BundleStore {
     return view;
   }
 
-  _BundleFlight _newFlight(_Prepared source, String payload, {required bool warm, bool schedule = true}) {
+  /// Registers and queues a flight. A [reservation] taken at admission turns
+  /// into this queue entry in the same synchronous step, so the bytes are never
+  /// counted twice or not at all.
+  _BundleFlight _newFlight(
+    _Prepared source,
+    String payload, {
+    required bool warm,
+    bool schedule = true,
+    _Reservation? reservation,
+  }) {
     final flight = _BundleFlight(source, payload, warm);
     _flights[source.key] = flight;
     _pending.add(flight);
+    _release(reservation);
     if (schedule) _schedulePump();
     return flight;
   }
 
-  /// [extraRequests] / [extraBytes] are payloads the caller has read and will
-  /// queue together with this one but has not queued yet.
-  Future<void> _awaitCapacity(
-    String payload, {
-    required bool warm,
-    required BundleSource source,
-    int extraRequests = 0,
-    int extraBytes = 0,
-  }) async {
-    final bytes = payload.length + extraBytes;
-    bool available() => _activeRequests + _pending.length + extraRequests < maxQueuedRequests + 1 &&
-        _activeBytes + _pending.fold<int>(0, (n, f) => n + f.sourceBytes) + bytes <= maxSourceBytesInFlight;
-    if (available()) return;
-    if (warm) throw BundleRetryable(source);
+  bool _fits(int bytes) =>
+      _activeRequests + _pending.length + _reservedRequests < maxQueuedRequests + 1 &&
+      _heldBytes + bytes <= maxSourceBytesInFlight;
+
+  /// Admission is a reservation: the capacity check and the claim are one
+  /// synchronous step, so nothing can take the room in between. The claim is
+  /// released by [_newFlight] (it becomes the queue entry) or [_release].
+  _Reservation? _tryReserve(int bytes) {
+    if (!_fits(bytes)) return null;
+    _reservedRequests++;
+    _reservedBytes += bytes;
+    return _Reservation(bytes);
+  }
+
+  void _release(_Reservation? r) {
+    if (r == null || !r.held) return;
+    r.held = false;
+    _reservedRequests--;
+    _reservedBytes -= r.bytes;
+  }
+
+  /// Reserves room for [read]'s text, waiting up to [queueWait] for it. The text
+  /// is NOT held while waiting: it is dropped and read again once the size is
+  /// known to fit, so waiting readers do not pile up unbudgeted source strings.
+  /// Throws [BundleRetryable] when no room appears. Returns the read of the
+  /// final attempt (stale if the row moved meanwhile) with its reservation.
+  Future<_PayloadRead> _admit(_Prepared prepared, _PayloadRead read) async {
     final deadline = DateTime.now().add(queueWait);
-    while (!available() && DateTime.now().isBefore(deadline)) {
-      await Future<void>.delayed(const Duration(milliseconds: 5));
+    while (true) {
+      final text = read.text;
+      if (text == null) return read;
+      final reservation = _tryReserve(text.length);
+      if (reservation != null) {
+        read.reservation = reservation;
+        return read;
+      }
+      final length = text.length;
+      read.text = null;
+      while (!_fits(length) && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      if (!_fits(length)) throw BundleRetryable(prepared.source);
+      read = await _readPayload(prepared);
     }
-    if (!available()) throw BundleRetryable(source);
   }
 
   void _schedulePump() {
@@ -924,13 +1018,8 @@ class BundleStore {
           final next = _pending.first;
           final nextBytes = next.sourceBytes;
           if (batch.isNotEmpty && sourceBytes + nextBytes > chunkSourceBytes) break;
-          if (_activeRequests + _pending.length > maxQueuedRequests + 1 ||
-              _activeBytes + _pending.fold<int>(0, (n, f) => n + f.sourceBytes) > maxSourceBytesInFlight) {
-            _pending.remove(next);
-            if (identical(_flights[next.source.key], next)) _flights.remove(next.source.key);
-            next.done.completeError(BundleRetryable(next.source.source));
-            continue;
-          }
+          // No capacity check here: every queued flight was admitted by a
+          // reservation (or the warm check), so none is rejected after the fact.
           batch.add(_pending.removeAt(0));
           sourceBytes += nextBytes;
         }
@@ -1051,11 +1140,23 @@ class BundleStore {
 /// Outcome of fetching a payload text: the text, a stale marker, or neither
 /// (a stored payload that is not text).
 final class _PayloadRead {
-  const _PayloadRead(this.text) : stale = false;
-  const _PayloadRead.stale() : text = null, stale = true;
-  final String? text;
+  _PayloadRead(this.text) : stale = false;
+  _PayloadRead.stale() : text = null, stale = true;
+
+  /// Dropped (set null) while the owner waits for room, see [BundleStore._admit].
+  String? text;
   final bool stale;
+  _Reservation? reservation;
 }
+
+/// Source bytes claimed at admission, until the flight is queued.
+final class _Reservation {
+  _Reservation(this.bytes);
+  final int bytes;
+  bool held = true;
+}
+
+typedef _ReadItem = ({int index, _Prepared source, _PayloadRead read});
 
 /// Test seam, an interface and not a function field so the heavy-calc guard
 /// resolves the call: runs between the meta read and the payload read of one
