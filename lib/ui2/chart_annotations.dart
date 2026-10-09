@@ -18,7 +18,8 @@
 //    like any other icon.
 //  • The label of the focused item is drawn in ONE fixed place; it never
 //    follows the finger. With nothing focused that place says the main sleep's
-//    label (when there is one on the chart).
+//    label (when there is one on the chart). With several main sleeps on the
+//    chart, the first by x, then oldest, then id.
 //  • The main sleep has priority: never in a "+n", the last icon given up.
 //  • Absent is absent: nothing outside the plot, nothing non-finite and no
 //    range with a nonsense end is ever drawn or invented.
@@ -243,7 +244,8 @@ class AnnotationLayout {
   final String? focusedId;
 
   /// The static label's text — the focused annotation's label, else the main
-  /// sleep's label when one is on the chart, else null.
+  /// sleep's label when one is on the chart, else null. With several main
+  /// sleeps on the chart the default is the first by x, then oldest, then id.
   final String? labelText;
   final AnnotationLabelSlot labelSlot;
 }
@@ -285,7 +287,9 @@ int _byX(_Vis a, _Vis b) {
 }
 
 List<_Vis> _visible(List<ChartAnnotation> items, AnnotationScale s) {
-  if (!s.usable) return const [];
+  // A growable list, not `const []`: the caller sorts it in place. An unusable
+  // scale (no width, empty or inverted domain) shows nothing.
+  if (!s.usable) return <_Vis>[];
   final out = <_Vis>[];
   for (final a in items) {
     if (!a.at.isFinite) continue;
@@ -475,7 +479,10 @@ String? pickAnnotationFocus({
 
 /// Steps the focus [delta] places through every annotation in layout order
 /// (icons left to right, a cluster's members oldest to newest). Clamped at the
-/// ends; an unknown [current] counts as no focus.
+/// ends; an unknown [current] counts as no focus. From no focus a positive
+/// [delta] lands on the first stop and a negative one on the last. A [delta] of
+/// 0 is not a step: from no focus it returns the LAST stop (current behaviour,
+/// not a promise; callers step by +1 or -1).
 String? stepAnnotationFocus(
   AnnotationLayout layout,
   String? current,

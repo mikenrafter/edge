@@ -292,17 +292,6 @@ final List<_Spec> _forced = [
 
 // ── small helpers ───────────────────────────────────────────────────────────
 
-/// SUSPECTED BUG (reported, lib untouched): `layoutAnnotations` throws
-/// `UnsupportedError: Cannot modify an unmodifiable list` for EVERY scale that
-/// is not `usable` (width 0 / NaN / infinite, empty or inverted domain), even
-/// with no annotations: `_visible` returns a `const []` and the caller sorts
-/// it. The header says nothing outside the plot is ever drawn, so an unusable
-/// scale should lay out nothing. L0 below carries the `skip:`; every other law
-/// that lays out skips those charts while this is true. Flip it to false when
-/// the code is fixed and L0 stops being skipped.
-const bool _unusableScaleThrows = true;
-bool _cannotLayout(_Chart c) => _unusableScaleThrows && !_usable(c.scale);
-
 void _ok(bool cond, String Function() why) {
   if (!cond) fail(why());
 }
@@ -367,7 +356,6 @@ void main() {
     forAll<_Spec>('L1 placed icons never overlap and stay inside the plot',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final iw = c.scale.iconWidth, bw = c.scale.badgeWidth;
       for (final i in l.items) {
@@ -390,7 +378,6 @@ void main() {
         'L2 every visible occurrence is in exactly one icon or unplaced',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final visIds = [for (final v in c.vis) v.a.id]..sort();
       final flat = [for (final i in l.items) ...i.memberIds, ...l.unplaced]
@@ -412,7 +399,6 @@ void main() {
     forAll<_Spec>('L3 a point is drawn at its true x, a range at its clipped ends',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final s = c.scale;
       for (final i in l.items) {
@@ -466,7 +452,6 @@ void main() {
     forAll<_Spec>('L4 the main sleep is never clustered, last dropped, outranks focus',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       nightLaw(c, c.layout, 'focus ${c.focus}');
       // Focus on an ordinary visible item: the night still outranks it.
       final ordinary = [
@@ -482,7 +467,6 @@ void main() {
     forAll<_Spec>('L5 the label is the focused one, else the main sleep, else none',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final night = ([
         for (final v in c.vis)
@@ -511,7 +495,6 @@ void main() {
     forAll<_Spec>('L6 a valid range never clusters and keeps a shade', _specGen,
         (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final ranges = {
         for (final v in c.vis)
@@ -535,7 +518,6 @@ void main() {
 
     forAll<_Spec>('L6b an algorithm-version mark never clusters', _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final marks = {
         for (final v in c.vis)
@@ -562,17 +544,11 @@ void main() {
       expect(l.unplaced, isEmpty);
       expect(l.focusedId, isNull);
       expect(l.labelText, isNull, reason: 'and invents nothing');
-    },
-        examples: _forced,
-        skip: 'SUSPECTED BUG: layoutAnnotations throws UnsupportedError '
-            '(sorts a const []) for any unusable scale, e.g. width 0 or a NaN '
-            'domain; minimal input: no annotations, '
-            'AnnotationScale(domainStart: 0, domainEnd: 1, width: 0)');
+    }, examples: _forced);
 
     forAll<_Spec>('L11 a range shade spans its visible clipped extent',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final s = c.scale;
       for (final v in c.vis.where((v) => v.isRange)) {
@@ -606,7 +582,6 @@ void main() {
       final (spec, (k, m)) = arg;
       final a = math.pow(2, k).toDouble(), b = m * .25;
       final base = _build(spec, snap: true);
-      if (_cannotLayout(base)) return;
       final moved = _build(spec, snap: true, map: (v) => a * v + b);
       final d = _diff(base.layout, moved.layout, 1e-9);
       _ok(d == null, () => 'v -> ${a}v + $b changed the layout: $d\n'
@@ -640,7 +615,6 @@ void main() {
         ), (arg) {
       final (spec, (a, b)) = arg;
       final base = _build(spec);
-      if (_cannotLayout(base)) return;
       if (!_generic(base)) {
         genericSkipped++;
         return;
@@ -744,7 +718,6 @@ void main() {
         (arg) {
       final (spec, ((size, forward), (curMode, curIdx))) = arg;
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final seq = [for (final i in l.items) ...i.memberIds];
       final delta = forward ? size : -size;
@@ -781,7 +754,9 @@ void main() {
     forAll<_Spec>('L9 clusters are the greedy runs of ordinary points under the first width that fits',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
+      // Nothing is visible on an unusable scale (L0); the sweep below needs a
+      // finite width to terminate.
+      if (!_usable(c.scale)) return;
       final l = c.layout;
       final iw = c.scale.iconWidth, bw = c.scale.badgeWidth;
       final ordinary = [
@@ -851,7 +826,6 @@ void main() {
     forAll<_Spec>('L10 the shown member is the focused one, else the oldest; focus keeps membership',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       final f = c.visibleFocus;
       for (final i in l.items) {
@@ -885,7 +859,6 @@ void main() {
     forAll<_Spec>('L13 stepping visits icons left to right, a cluster oldest to newest',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final l = c.layout;
       for (var k = 1; k < l.items.length; k++) {
         _ok(l.items[k - 1].x <= l.items[k].x + 1e-9 &&
@@ -919,7 +892,6 @@ void main() {
     forAll<_Spec>('L14 the order the annotations arrive in changes nothing',
         _specGen, (spec) {
       final c = _build(spec);
-      if (_cannotLayout(c)) return;
       final n = c.items.length;
       final rotated = [...c.items.skip(n ~/ 2), ...c.items.take(n ~/ 2)];
       for (final order in [c.items.reversed.toList(), rotated]) {
@@ -927,6 +899,37 @@ void main() {
         _ok(d == null, () => 'reordered input changed the layout: $d');
       }
     }, examples: _forced);
+  });
+
+  group('regressions', () {
+    // layoutAnnotations used to sort a `const []` for an unusable scale and
+    // threw UnsupportedError ("Cannot modify an unmodifiable list"), even with
+    // no annotations. An unusable scale is absent, not an error.
+    test('an unusable scale does not crash the layout (const-list sort)', () {
+      final items = [
+        const ChartAnnotation(
+            id: 'n', kind: AnnotationKind.mainSleep, at: 5, label: 'Night'),
+        const ChartAnnotation(
+            id: 'm', kind: AnnotationKind.moment, at: 5, label: 'M'),
+      ];
+      for (final scale in const [
+        AnnotationScale(domainStart: 0, domainEnd: 1, width: 0),
+        AnnotationScale(domainStart: 0, domainEnd: 0, width: 100),
+        AnnotationScale(domainStart: 0, domainEnd: 10, width: double.nan),
+        AnnotationScale(domainStart: 0, domainEnd: double.nan, width: 100),
+        AnnotationScale(domainStart: 10, domainEnd: 0, width: double.infinity),
+      ]) {
+        for (final list in [const <ChartAnnotation>[], items]) {
+          final l = layoutAnnotations(
+              annotations: list, scale: scale, focusId: 'm');
+          expect(l.items, isEmpty);
+          expect(l.shades, isEmpty);
+          expect(l.unplaced, isEmpty);
+          expect(l.focusedId, isNull);
+          expect(l.labelText, isNull);
+        }
+      }
+    });
   });
 
   group('known out-of-contract input', () {

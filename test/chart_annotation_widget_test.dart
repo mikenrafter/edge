@@ -70,6 +70,29 @@ Text _label(WidgetTester t) =>
 
 void main() {
   _dailyRangeTests();
+  testWidgets(
+      'a lane laid out at zero width draws nothing and does not throw '
+      '(layout used to sort a const list)', (t) async {
+    await t.pumpWidget(MaterialApp(
+      theme: buildTheme(Brightness.light),
+      home: Scaffold(
+        body: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 0,
+            child: ChartAnnotationLane(
+              set: _set([_pt('a', 60)]),
+              cursor: 0.5,
+              plotHeight: _plotH,
+            ),
+          ),
+        ),
+      ),
+    ));
+    await t.pump();
+    expect(t.takeException(), isNull);
+    expect(find.byKey(ChartAnnotationLane.iconKey('a')), findsNothing);
+  });
   group('icon and dashed line', () {
     testWidgets('every item has an icon of its kind on its own x', (t) async {
       await _pumpLane(t, [
