@@ -22,6 +22,7 @@ import '../compute/derive_scheduler.dart';
 import '../compute/periodic_calculation_policy.dart';
 import '../compute/profile.dart';
 import '../data/db.dart';
+import '../data/bundle_store.dart';
 import '../data/local_repository.dart';
 import '../data/local_repository_impl.dart';
 import '../telemetry/health_uploader.dart';
@@ -603,7 +604,7 @@ class DeriveCoordinator {
         _log('[derive] session rescore failed: $e');
       }
       await LocalDb.refreshComputeFreshness();
-      LocalRepositoryImpl.invalidateBundleMemo();
+      BundleStore.shared.invalidateAll();
       bumpInsights();
       _notify(); // screens re-fetch from the derived store
       // Warm the slow screen artifacts (journal insights, weekday effect, the

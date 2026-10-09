@@ -385,6 +385,19 @@ class HeavyGuardConfig {
         migrationMethods: kMigrationMethods,
         originAllow: const [
           OriginAllow(
+            '_bundleViewCurve',
+            'SeriesCodec.decodeCurve',
+            'one stored curve, ≤1,440 points, 0.375 ms measured; design 02 '
+                'step 2 §4.3 BundleView.curve',
+          ),
+          OriginAllow(
+            '_bundleExpand',
+            'SeriesCodec.decodeCurve',
+            'owned(path) expands only the requested curve in production; '
+                'whole-graph materialiseLegacy is test-only and nonrevisioned '
+                'legacy payload expansion runs in decodeDayPayloadsHeavy',
+          ),
+          OriginAllow(
             'WorkerInit.ensure',
             'resetCardioObservations',
             'ensure only re-arms the analytics ambient globals from plain '

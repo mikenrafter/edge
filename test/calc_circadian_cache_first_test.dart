@@ -23,7 +23,7 @@
 //     when it lands.
 //   * Stale (signature moved): the stored entry is drawn at once under an
 //     "As of" label, the warm is enqueued, and the fresh result replaces it.
-//   * Decodes are counted by LocalRepositoryImpl.debugBundleDecodes (see
+//   * Decodes are counted by BundleStore.debugDecodeDispatches (see
 //     bundle_memo_test.dart).
 
 import 'dart:convert';
@@ -36,6 +36,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/bundle_store.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 import 'package:openstrap_edge/state/app_state.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
@@ -121,7 +122,8 @@ void main() {
       await _seedNights(10);
     });
     LastResultCache.instance.clear();
-    LocalRepositoryImpl.debugResetBundleMemo();
+    BundleStore.shared.invalidateAll();
+    BundleStore.debugResetDecodeDispatches();
     return repo;
   }
 
@@ -140,12 +142,13 @@ void main() {
       await LastResultCache.instance.flush();
     });
     // The warm itself may decode; the OPEN must not.
-    LocalRepositoryImpl.debugResetBundleMemo();
+    BundleStore.shared.invalidateAll();
+    BundleStore.debugResetDecodeDispatches();
 
     await t.pumpWidget(perfApp(_app(repo), const CircadianDetail()));
     await settle(t, n: 25);
 
-    expect(LocalRepositoryImpl.debugBundleDecodes, 0,
+    expect(BundleStore.debugDecodeDispatches, 0,
         reason: 'a fresh stored artifact is shown as is: no getDaySleepV2 x42 '
             'and no getDayHeart x7 on the main isolate');
     expect(find.text('Body clock'), findsOneWidget);
@@ -166,12 +169,13 @@ void main() {
       await LastResultCache.instance.flush();
     });
     LastResultCache.instance.clearMemory();
-    LocalRepositoryImpl.debugResetBundleMemo();
+    BundleStore.shared.invalidateAll();
+    BundleStore.debugResetDecodeDispatches();
 
     await t.pumpWidget(perfApp(_app(repo), const CircadianDetail()));
     await settle(t, n: 25);
 
-    expect(LocalRepositoryImpl.debugBundleDecodes, 0);
+    expect(BundleStore.debugDecodeDispatches, 0);
     expect(find.text('No nights to plot yet'), findsNothing);
   });
 
@@ -215,11 +219,12 @@ void main() {
     expect(t.takeException(), isNull);
 
     // A later open of the same page is warm: no decode of its own.
-    LocalRepositoryImpl.debugResetBundleMemo();
+    BundleStore.shared.invalidateAll();
+    BundleStore.debugResetDecodeDispatches();
     await t.pumpWidget(const SizedBox());
     await t.pumpWidget(perfApp(_app(repo), const CircadianDetail()));
     await settle(t, n: 25);
-    expect(LocalRepositoryImpl.debugBundleDecodes, 0);
+    expect(BundleStore.debugDecodeDispatches, 0);
   });
 
   testWidgets('a STALE stored artifact is not trusted: it is drawn labelled, '
@@ -232,7 +237,8 @@ void main() {
           .put<Map<String, dynamic>>(_key, value!, sig: 'not-the-current-one');
       await LastResultCache.instance.flush();
     });
-    LocalRepositoryImpl.debugResetBundleMemo();
+    BundleStore.shared.invalidateAll();
+    BundleStore.debugResetDecodeDispatches();
 
     await t.pumpWidget(perfApp(_app(repo), const CircadianDetail()));
     await settleWarm(t, repo);

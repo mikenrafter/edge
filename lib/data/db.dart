@@ -9249,6 +9249,20 @@ class LocalDb {
     return rows.isEmpty ? null : _withDate(rows.first);
   }
 
+  /// Payload-free recent served-day rows, newest first, for BundleStore readers.
+  static Future<List<Map<String, dynamic>>> recentDayResultMetas(int limit) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT r.day_id AS date, r.algo_version, r.computed_at, r.finalized, '
+      'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness, r.window_json, '
+      'COALESCE(v.rev, 0) AS rev FROM day_result r $_servedDayJoin '
+      "LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version "
+      'ORDER BY r.day_id DESC LIMIT ?',
+      [limit],
+    );
+    return rows;
+  }
+
   /// Payload-free read of the served `day_result` row for [dayId]: every column
   /// except `payload_json`, plus `rev` (`COALESCE(row_rev.rev, 0)`), under
   /// [_servedAlgoCeiling]. Null when absent.

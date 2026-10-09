@@ -1208,13 +1208,6 @@
     {
       "rule": "heavyOriginOutsideHeavy",
       "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl._decode",
-      "element": "SeriesCodec.decodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._encodeTrace",
       "element": "SeriesCodec.encodeCurve",
       "count": 1

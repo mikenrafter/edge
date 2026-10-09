@@ -116,6 +116,7 @@ import '../gps/gps_source.dart';
 import '../gps/route_tracker.dart';
 import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
+import '../data/bundle_store.dart';
 import '../data/series_codec.dart';
 import '../notify/battery_forecast.dart';
 import '../notify/buzz_sequence.dart';
@@ -4037,7 +4038,7 @@ class AppState extends ChangeNotifier {
     // Memory only: every one of these rebuilds from the database or a full
     // recompute, so nothing a screen or a derive shows can change.
     _derive.trimForBackground();
-    LocalRepositoryImpl.invalidateBundleMemo();
+    BundleStore.shared.invalidateAll();
     return _sync.pauseForBackground();
   }
 

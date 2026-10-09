@@ -123,6 +123,7 @@ void main() {
     'sample encode': 'encodeSampleSignalsHeavy',
     'sample carve': 'carveSamplePartHeavy',
     'sample reconstruct': 'reconstructSamplePartsHeavy',
+    'bundle decode': 'decodeDayPayloadsHeavy',
   };
   // Cancellable dispatches whose closure runs inline code rather than a
   // registered entry: the shrink-only list in support/legacy_inline_dispatches.dart

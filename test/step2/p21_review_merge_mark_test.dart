@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/bundle_store.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 
 import 'support/p21_support.dart';
@@ -81,7 +82,7 @@ void main() {
       'partial': 0,
       'rmssd': 55.0,
     });
-    LocalRepositoryImpl.debugResetBundleMemo();
+    BundleStore.shared.invalidateAll();
     final repo = LocalRepositoryImpl(getProfileMap: () => const {});
     expect((await repo.getDayHrv(_day))['rmssd'], 55, reason: 'warm the memo');
     final before = LocalDb.storeGeneration;

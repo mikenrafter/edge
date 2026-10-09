@@ -41,6 +41,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:openstrap_edge/compute/derivation_engine.dart' show kAlgoVersion;
 import 'package:openstrap_edge/data/day_label.dart';
 import 'package:openstrap_edge/data/db.dart';
+import 'package:openstrap_edge/data/bundle_store.dart';
 import 'package:openstrap_edge/data/local_repository_impl.dart';
 
 import 'support/last_result_db.dart';
@@ -103,24 +104,25 @@ void main() {
     await g1FreshDb(_db);
     await LocalDb.instance;
     repo = LocalRepositoryImpl(getProfileMap: () => const {});
-    LocalRepositoryImpl.debugResetBundleMemo();
+    BundleStore.shared.invalidateAll();
+    BundleStore.debugResetDecodeDispatches();
   });
   tearDownAll(() => g1DropDb(_db));
 
   test('a miss decodes once; every later read of the same row is a hit',
       () async {
     await _seed(_day(0));
-    expect(LocalRepositoryImpl.debugBundleDecodes, 0);
+    expect(BundleStore.debugDecodeDispatches, 0);
 
     expect(await _rmssd(repo, _day(0)), 55);
-    expect(LocalRepositoryImpl.debugBundleDecodes, 1, reason: 'the miss');
+    expect(BundleStore.debugDecodeDispatches, 1, reason: 'the miss');
 
     for (var i = 0; i < 3; i++) {
       expect(await _rmssd(repo, _day(0)), 55);
     }
-    expect(LocalRepositoryImpl.debugBundleDecodes, 1, reason: 'hits decode '
+    expect(BundleStore.debugDecodeDispatches, 1, reason: 'hits decode '
         'nothing');
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 1);
+    expect(BundleStore.shared.debugCachedKeys.length, 1);
   });
 
   test('Sleep detail\'s double read of one night decodes once '
@@ -128,7 +130,7 @@ void main() {
     await _seed(_day(0));
     await repo.getDaySleepV2(_day(0));
     await repo.getDayTimeline(_day(0));
-    expect(LocalRepositoryImpl.debugBundleDecodes, 1);
+    expect(BundleStore.debugDecodeDispatches, 1);
   });
 
   test('the latest-bundle walk (today with no row of its own) is memoised',
@@ -140,11 +142,11 @@ void main() {
     }
     final today = todayLabel();
     await repo.getDayHrv(today);
-    final first = LocalRepositoryImpl.debugBundleDecodes;
+    final first = BundleStore.debugDecodeDispatches;
     expect(first, greaterThanOrEqualTo(1));
     await repo.getDayHrv(today);
     await repo.getDayHrv(today);
-    expect(LocalRepositoryImpl.debugBundleDecodes, first,
+    expect(BundleStore.debugDecodeDispatches, first,
         reason: 'the second and third walks decode nothing');
   });
 
@@ -152,14 +154,14 @@ void main() {
       () async {
     await _seed(_day(0), rmssd: 55);
     expect(await _rmssd(repo, _day(0)), 55);
-    expect(LocalRepositoryImpl.debugBundleDecodes, 1);
+    expect(BundleStore.debugDecodeDispatches, 1);
 
     await _seed(_day(0), rmssd: 61, computedAt: _seedAt + 5000);
     expect(await _rmssd(repo, _day(0)), 61,
         reason: 'never the older decode of a replaced row');
-    expect(LocalRepositoryImpl.debugBundleDecodes, 2);
+    expect(BundleStore.debugDecodeDispatches, 2);
     expect(await _rmssd(repo, _day(0)), 61);
-    expect(LocalRepositoryImpl.debugBundleDecodes, 2, reason: 'and now a hit');
+    expect(BundleStore.debugDecodeDispatches, 2, reason: 'and now a hit');
   });
 
   test('the algo version is part of the key: a newer-version sibling row is '
@@ -174,13 +176,13 @@ void main() {
   test('a publish invalidates', () async {
     await _seed(_day(0));
     await _rmssd(repo, _day(0));
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 1);
+    expect(BundleStore.shared.debugCachedKeys.length, 1);
 
-    LocalRepositoryImpl.invalidateBundleMemo();
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 0);
+    BundleStore.shared.invalidateAll();
+    expect(BundleStore.shared.debugCachedKeys.length, 0);
 
     await _rmssd(repo, _day(0));
-    expect(LocalRepositoryImpl.debugBundleDecodes, 2,
+    expect(BundleStore.debugDecodeDispatches, 2,
         reason: 'decoded again after the publish');
   });
 
@@ -189,46 +191,41 @@ void main() {
     // is pinned structurally, the behaviour above.
     final src = _read('lib/state/derive_coordinator.dart');
     final publish = _bodyAfter(src, 'void _publishDay()');
-    expect(publish, contains('invalidateBundleMemo'),
+    expect(publish, contains('LocalRepositoryImpl.invalidateBundleMemo'),
         reason: 'the per-day publish drops the memo before screens re-read');
-    expect('invalidateBundleMemo'.allMatches(src).length, greaterThanOrEqualTo(2),
-        reason: 'the end-of-pass publish (afterDrain) drops it too');
+    final repositorySrc = _read('lib/data/local_repository_impl.dart');
+    expect(repositorySrc,
+        contains('static void invalidateBundleMemo() => BundleStore.shared.invalidateAll()'),
+        reason: 'the compatibility name routes eviction to BundleStore');
   });
 
-  test('never more than 32 entries; least recently used goes first',
-      () async {
+  test('small bundles remain cached under the byte budget', () async {
     for (var i = 0; i < 40; i++) {
       await _seed(_day(i));
     }
-    for (var i = 0; i < 32; i++) {
-      await _rmssd(repo, _day(i));
-    }
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 32);
-    expect(LocalRepositoryImpl.debugBundleDecodes, 32);
-
-    await _rmssd(repo, _day(0)); // hit: day 0 is now the most recent
-    expect(LocalRepositoryImpl.debugBundleDecodes, 32);
-
-    await _rmssd(repo, _day(32)); // the 33rd: evicts the LEAST recent (day 1)
-    expect(LocalRepositoryImpl.debugBundleDecodes, 33);
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 32);
-
-    await _rmssd(repo, _day(0)); // kept
-    expect(LocalRepositoryImpl.debugBundleDecodes, 33, reason: 'day 0 survived');
-    await _rmssd(repo, _day(1)); // evicted
-    expect(LocalRepositoryImpl.debugBundleDecodes, 34, reason: 'day 1 went');
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 32);
-
     for (var i = 0; i < 40; i++) {
       await _rmssd(repo, _day(i));
-      expect(LocalRepositoryImpl.debugBundleMemoLength, lessThanOrEqualTo(32));
     }
+    expect(BundleStore.shared.debugCachedKeys, hasLength(40));
+    expect(BundleStore.shared.debugCacheBytes,
+        lessThanOrEqualTo(BundleStore.cacheByteBudget));
+    expect(BundleStore.debugDecodeDispatches, 40);
+
+    await _rmssd(repo, _day(0));
+    expect(BundleStore.debugDecodeDispatches, 40, reason: 'a cache hit');
+
+    for (var i = 40; i < 60; i++) {
+      await _seed(_day(i));
+      await _rmssd(repo, _day(i));
+    }
+    expect(BundleStore.shared.debugCacheBytes,
+        lessThanOrEqualTo(BundleStore.cacheByteBudget));
   });
 
   test('a refused frozen write does not invalidate', () async {
     await _seed(_day(0), rmssd: 55, finalized: true);
     expect(await _rmssd(repo, _day(0)), 55);
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 1);
+    expect(BundleStore.shared.debugCachedKeys.length, 1);
 
     // Frozen-row guard: a derive over a finalized (day, version) row is refused, no throw.
     await LocalDb.putDayResult(
@@ -241,10 +238,10 @@ void main() {
     expect((await LocalDb.dayResult(_day(0)))!['computed_at'], _seedAt,
         reason: 'the guard refused it');
 
-    expect(LocalRepositoryImpl.debugBundleMemoLength, 1,
+    expect(BundleStore.shared.debugCachedKeys.length, 1,
         reason: 'nothing changed, so nothing is dropped');
     expect(await _rmssd(repo, _day(0)), 55);
-    expect(LocalRepositoryImpl.debugBundleDecodes, 1, reason: 'still a hit');
+    expect(BundleStore.debugDecodeDispatches, 1, reason: 'still a hit');
   });
 
   test('an accepted override write over a frozen row IS a miss with the new '
@@ -260,7 +257,7 @@ void main() {
       reason: DayResultWrite.userOverride,
     );
     expect(await _rmssd(repo, _day(0)), 72);
-    expect(LocalRepositoryImpl.debugBundleDecodes, 2);
+    expect(BundleStore.debugDecodeDispatches, 2);
   });
 
   test('a wipe drops the memo: a re-seeded row with the very same key is '
