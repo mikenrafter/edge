@@ -267,6 +267,28 @@ void main() {
       expect(c.status, MutantStatus.survived);
     });
 
+    test('the kind of the confirming rerun is carried next to the original kind', () async {
+      // Crashed in the mutant run, failed an assertion when run alone.
+      final s = StreamBuilder().loaded(suite).throws(suite, 'flaky', 'Bad state: x').done(success: false);
+      final c = await classify(s,
+          exitCode: 1, flaky: {'$suite::flaky'}, rerun: (t) async => failsAgain(t));
+      expect(c.status, MutantStatus.killed);
+      expect(c.killers.single.kind, FailureKind.exception, reason: 'the original kind is kept');
+      expect(c.killers.single.confirmedKind, FailureKind.assertion);
+      expect(c.reruns.single.kind, FailureKind.assertion);
+      // And the other way round.
+      final s2 = StreamBuilder().loaded(suite).fail(suite, 'flaky').done(success: false);
+      final c2 = await classify(s2, exitCode: 1, flaky: {'$suite::flaky'}, rerun: (t) async => outcomeOf(
+          StreamBuilder().loaded(suite).throws(suite, 'flaky').done(success: false), exitCode: 1));
+      expect(c2.killers.single.kind, FailureKind.assertion);
+      expect(c2.killers.single.confirmedKind, FailureKind.exception);
+    });
+
+    test('a kill that needed no rerun has no confirmed kind', () async {
+      final c = await classify(failing('g fails'), exitCode: 1);
+      expect(c.killers.single.confirmedKind, isNull);
+    });
+
     test('a mystery failure that fails again WITH an error is confirmed; without one it is not', () async {
       final s = StreamBuilder().loaded(suite).test(suite, 'mystery', result: TestResult.failure).done(success: false);
       final confirmed = await classify(s, exitCode: 1, rerun: (t) async => failsAgain(t));

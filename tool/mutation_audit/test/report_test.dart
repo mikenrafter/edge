@@ -69,7 +69,7 @@ AuditResults sample() => AuditResults(meta(), [
       result(mutant(1, '<', '<='), MutantStatus.killed, killing: ['test/a_test.dart::lt boundary']),
       result(mutant(2, '>', '>='), MutantStatus.killed, killers: [
         const KillingTest('test/a_test.dart::gt boundary', FailureKind.exception),
-        const KillingTest('test/b_test.dart::gt other', FailureKind.assertion),
+        const KillingTest('test/b_test.dart::gt other', FailureKind.assertion, confirmedKind: FailureKind.exception),
       ]),
       result(mutant(3, '==', '!='), MutantStatus.survived),
       result(mutant(4, '&&', '||', op: MutationOperator.logical), MutantStatus.killedByGuardOnly,
@@ -161,7 +161,7 @@ void main() {
         'status': 'killed',
         'killingTests': ['test/a_test.dart::lt boundary'],
         'killers': [
-          {'test': 'test/a_test.dart::lt boundary', 'kind': 'assertion'}
+          {'test': 'test/a_test.dart::lt boundary', 'kind': 'assertion', 'confirmedKind': null}
         ],
         'guardTests': <Object?>[],
         'reruns': <Object?>[],
@@ -172,15 +172,15 @@ void main() {
       expect(ms[3]['guardTests'], ['test/guards/g_test.dart::no heavy calc']);
       expect(ms[4]['detail'], contains('Error: nope'));
       expect(ms.last['reruns'], [
-        {'test': 'test/a_test.dart::flaky', 'confirmed': false, 'result': 'passed-alone', 'detail': ''}
+        {'test': 'test/a_test.dart::flaky', 'confirmed': false, 'result': 'passed-alone', 'kind': null, 'detail': ''}
       ]);
     });
 
     test('each killer carries its kind: an assertion or an exception', () {
       final ms = (json['mutants'] as List).cast<Map<String, Object?>>();
       expect(ms[1]['killers'], [
-        {'test': 'test/a_test.dart::gt boundary', 'kind': 'exception'},
-        {'test': 'test/b_test.dart::gt other', 'kind': 'assertion'},
+        {'test': 'test/a_test.dart::gt boundary', 'kind': 'exception', 'confirmedKind': null},
+        {'test': 'test/b_test.dart::gt other', 'kind': 'assertion', 'confirmedKind': 'exception'},
       ]);
       expect(ms[1]['killingTests'], ['test/a_test.dart::gt boundary', 'test/b_test.dart::gt other']);
       expect(ms[2]['killers'], isEmpty);
@@ -254,7 +254,7 @@ void main() {
       expect(killed, contains('lib/a.dart:1'));
       expect(killed, contains('test/a_test.dart::lt boundary (assertion)'));
       expect(killed, contains('test/a_test.dart::gt boundary (exception)'));
-      expect(killed, contains('test/b_test.dart::gt other (assertion)'));
+      expect(killed, contains('test/b_test.dart::gt other (assertion; rerun: exception)'));
     });
 
     test('guard-only mutants are listed apart from kills and survivors', () {
@@ -288,7 +288,7 @@ void main() {
       final json = results.toJson()['mutants'] as List;
       expect((json[1] as Map)['status'], 'unconfirmed');
       expect(((json[1] as Map)['reruns'] as List).single,
-          {'test': 'test/a_test.dart::flaky', 'confirmed': false, 'result': 'unresolved', 'detail': 'the rerun timed out'});
+          {'test': 'test/a_test.dart::flaky', 'confirmed': false, 'result': 'unresolved', 'kind': null, 'detail': 'the rerun timed out'});
     });
 
     test('a per-file table of kills and survivors', () {

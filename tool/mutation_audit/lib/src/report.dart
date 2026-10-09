@@ -104,7 +104,7 @@ class AuditResults {
   /// The JSON document: `meta` (SHAs, dependency config, command, options,
   /// baseline, times), `counts`, `score`, and `mutants`: per mutant `id`,
   /// `file`, `line`, `column`, `operator`, `original`, `mutated`, `status`,
-  /// `killingTests` (keys), `killers` (`test`, `kind`: assertion | exception), `guardTests`, `reruns` (`test`, `confirmed`: failed again alone, `result`: failed-again | passed-alone | unresolved, `detail`),
+  /// `killingTests` (keys), `killers` (`test`, `kind`: assertion | exception in the mutant run, `confirmedKind`: the same for the confirming rerun, null if none), `guardTests`, `reruns` (`test`, `confirmed`: failed again alone, `result`: failed-again | passed-alone | unresolved, `detail`),
   /// `durationMs`, `detail`.
   Map<String, Object?> toJson() => {
         'meta': {
@@ -141,12 +141,18 @@ class AuditResults {
               'status': r.classification.status.id,
               'killingTests': r.classification.killingTests,
               'killers': [
-                for (final k in r.classification.killers) {'test': k.key, 'kind': k.kind.id}
+                for (final k in r.classification.killers) {'test': k.key, 'kind': k.kind.id, 'confirmedKind': k.confirmedKind?.id}
               ],
               'guardTests': r.classification.guardTests,
               'reruns': [
                 for (final x in r.classification.reruns)
-                  {'test': x.testKey, 'confirmed': x.confirmed, 'result': x.result.id, 'detail': x.detail}
+                  {
+                    'test': x.testKey,
+                    'confirmed': x.confirmed,
+                    'result': x.result.id,
+                    'kind': x.kind?.id,
+                    'detail': x.detail
+                  }
               ],
               'durationMs': r.duration.inMilliseconds,
               'detail': r.classification.detail,
@@ -219,7 +225,10 @@ class AuditResults {
         final m = r.mutant;
         final c = r.classification;
         final extra = killers
-            ? [for (final k in c.killers) '${k.key} (${k.kind.id})'].join('<br>')
+            ? [
+                for (final k in c.killers)
+                  '${k.key} (${k.kind.id}${k.confirmedKind == null ? '' : '; rerun: ${k.confirmedKind!.id}'})'
+              ].join('<br>')
             : tests
             ? c.guardTests.join('<br>')
             : [

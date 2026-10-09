@@ -86,9 +86,12 @@ enum RerunResult {
 
 /// One rerun and what it showed.
 class RerunRecord {
-  const RerunRecord(this.testKey, {required this.result, this.detail = ''});
+  const RerunRecord(this.testKey, {required this.result, this.detail = '', this.kind});
   final String testKey;
   final RerunResult result;
+
+  /// How the test failed in the rerun (only for [RerunResult.failedAgain]).
+  final FailureKind? kind;
 
   /// Why the rerun is [RerunResult.unresolved] (empty otherwise).
   final String detail;
@@ -110,9 +113,14 @@ enum FailureKind {
 
 /// A confirmed failing non-guard test and how it failed.
 class KillingTest {
-  const KillingTest(this.key, this.kind);
+  const KillingTest(this.key, this.kind, {this.confirmedKind});
   final String key;
+
+  /// How it failed in the mutant run.
   final FailureKind kind;
+
+  /// How it failed when re-run alone to confirm it; null when it was not re-run.
+  final FailureKind? confirmedKind;
 }
 
 /// The verdict on one mutant run.
@@ -189,12 +197,13 @@ Future<Classification> classifyRun(
   final guardFailures = <String>[];
   final unresolved = <RerunRecord>[];
   for (final t in failed) {
+    RerunRecord? record;
     final ambiguous = flakyTests.contains(t.key) || t.errors.isEmpty;
     if (ambiguous) {
       // A failure is a kill only when it is attributable (it carried an error
       // event) or when running that test alone shows it failing again. Not
       // being able to run it alone is not confirmation.
-      final record = rerun == null
+      record = rerun == null
           ? RerunRecord(t.key, result: RerunResult.unresolved, detail: 'no rerun available')
           : interpretRerun(await rerun(t), t, root: root);
       reruns.add(record);
@@ -205,8 +214,7 @@ Future<Classification> classifyRun(
     if (guards?.matches(t) ?? false) {
       guardFailures.add(t.key);
     } else {
-      killing.add(KillingTest(
-          t.key, t.result == TestResult.failure ? FailureKind.assertion : FailureKind.exception));
+      killing.add(KillingTest(t.key, _kindOf(t), confirmedKind: record?.kind));
     }
   }
   if (killing.isNotEmpty) {
@@ -283,9 +291,10 @@ RerunRecord interpretRerun(ProcessOutcome again, TestOutcome failed, {String? ro
   }
   final same = [for (final t in run.tests) if (t.key == failed.key && !t.skipped) t];
   if (same.isEmpty) return unresolved('the test did not run in the rerun');
+  final failedAgain = [for (final t in same) if (t.failed && t.errors.isNotEmpty) t];
   if (same.any((t) => t.failed)) {
-    return same.any((t) => t.failed && t.errors.isNotEmpty)
-        ? RerunRecord(failed.key, result: RerunResult.failedAgain)
+    return failedAgain.isNotEmpty
+        ? RerunRecord(failed.key, result: RerunResult.failedAgain, kind: _kindOf(failedAgain.first))
         : unresolved('the test failed again without an error event');
   }
   if (!again.outputComplete || !run.sawDone || !run.doneSuccess) {
@@ -294,6 +303,9 @@ RerunRecord interpretRerun(ProcessOutcome again, TestOutcome failed, {String? ro
   }
   return RerunRecord(failed.key, result: RerunResult.passedAlone);
 }
+
+FailureKind _kindOf(TestOutcome t) =>
+    t.result == TestResult.failure ? FailureKind.assertion : FailureKind.exception;
 
 final _compilerDiagnostic = RegExp(r':\d+:\d+: Error:');
 
