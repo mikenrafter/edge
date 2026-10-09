@@ -11,7 +11,7 @@ class SourceSite {
   final int line;
 
   /// Short rule id: `source-path`, `path-not-literal`, `read-call`,
-  /// `Platform.script`, `unparsable`.
+  /// `Platform.script`, `cwd`, `unparsable`.
   final String rule;
   final String detail;
 
@@ -20,8 +20,12 @@ class SourceSite {
 
 /// What reading one Dart file as an AST showed.
 class SourceFacts {
-  const SourceFacts(this.sites);
+  const SourceFacts(this.sites, [this.uris = const []]);
   final List<SourceSite> sites;
+
+  /// Every URI of every import, export and part directive, the URIs of
+  /// conditional configurations (`if (dart.library.io) 'b.dart'`) included.
+  final List<String> uris;
 }
 
 /// The top-level directories whose text counts as source whatever is mutated.
@@ -44,7 +48,8 @@ const defaultSourceRoots = ['lib', 'tool', 'packages', 'bin'];
 ///   construction (or a `final` variable initialised with one) is a site: its
 ///   path is unknown;
 /// - `Platform.script`, `Platform.packageConfig`, `Isolate.resolvePackageUri`,
-///   `Isolate.packageConfig`;
+///   `Isolate.packageConfig`, and `Directory.current` / `Uri.base` (the bases
+///   of paths built at run time);
 /// - any string literal that starts at a source root (`lib/...`,
 ///   `../lib/...`, `${x}/lib/...`), and a `join` whose first part is a root;
 /// - a file with syntax errors (it cannot be checked).
@@ -61,7 +66,7 @@ SourceFacts analyseSourceReads(String text, {required List<String> sourceRoots})
   parsed.unit.accept(scope);
   final finder = _Finder(scope, sourceRoots.toSet(), parsed.lineInfo);
   parsed.unit.accept(finder);
-  return SourceFacts(finder.sites);
+  return SourceFacts(finder.sites, scope.uris);
 }
 
 const _fsClasses = {'File', 'Directory', 'Link'};
@@ -76,6 +81,34 @@ class _Scope extends RecursiveAstVisitor<void> {
   final Map<String, int> declared = {};
   final Map<String, Expression> initializers = {};
   final Set<String> fsAliases = {..._fsClasses};
+
+  final List<String> uris = [];
+
+  void _uri(StringLiteral? uri) {
+    final v = uri?.stringValue;
+    if (v != null && !uris.contains(v)) uris.add(v);
+  }
+
+  @override
+  void visitExportDirective(ExportDirective node) {
+    _uri(node.uri);
+    for (final c in node.configurations) {
+      _uri(c.uri);
+    }
+    super.visitExportDirective(node);
+  }
+
+  @override
+  void visitPartDirective(PartDirective node) {
+    _uri(node.uri);
+    super.visitPartDirective(node);
+  }
+
+  @override
+  void visitPartOfDirective(PartOfDirective node) {
+    _uri(node.uri);
+    super.visitPartOfDirective(node);
+  }
 
   /// Prefixes (null: unprefixed) under which `package:path/path.dart` is imported.
   final Set<String?> pathPrefixes = {};
@@ -152,6 +185,10 @@ class _Scope extends RecursiveAstVisitor<void> {
 
   @override
   void visitImportDirective(ImportDirective node) {
+    _uri(node.uri);
+    for (final c in node.configurations) {
+      _uri(c.uri);
+    }
     if (node.uri.stringValue == 'package:path/path.dart') pathPrefixes.add(node.prefix?.name);
     super.visitImportDirective(node);
   }
@@ -336,11 +373,9 @@ class _Finder extends RecursiveAstVisitor<void> {
           '${node.methodName.name}(): the receiver is not a File/Directory/Link with a known path');
     } else if (node.methodName.name == 'resolvePackageUri') {
       _site(node, 'Platform.script', '${_snip(node)}: resolves a package to a source location');
-    } else if (node.methodName.name == 'join' && _isPathJoin(node) && node.argumentList.arguments.isNotEmpty) {
-      final first = _eval(node.argumentList.arguments.first);
-      if (first != null && _sourceReach(first) != null) {
-        _site(node, 'source-path', '${_snip(node)}: starts at the source root "$first"');
-      }
+    } else if (node.methodName.name == 'join' && _isPathJoin(node)) {
+      final v = _eval(node);
+      if (v != null && _startsAtRoot(v)) _site(node, 'source-path', '${_snip(node)}: builds "$v", a path under a source root');
     }
     super.visitMethodInvocation(node);
   }
@@ -352,6 +387,10 @@ class _Finder extends RecursiveAstVisitor<void> {
       _site(node, 'Platform.script', '${_snip(node)}: a path relative to the running script');
     } else if (prefix == 'Isolate' && name == 'packageConfig') {
       _site(node, 'Platform.script', '${_snip(node)}: the package configuration locates source');
+    } else if (prefix == 'Directory' && name == 'current') {
+      _location(node, 'Directory.current');
+    } else if (prefix == 'Uri' && name == 'base') {
+      _location(node, 'Uri.base');
     } else if (scope.fsAliases.contains(prefix) && (name == 'new' || name == 'fromUri' || name == 'fromRawPath')) {
       _site(node, 'path-not-literal', '${_snip(node)}: a constructor tear-off hides the path');
     } else if (_readCalls.contains(name) && node.parent is! MethodInvocation) {
@@ -369,37 +408,58 @@ class _Finder extends RecursiveAstVisitor<void> {
       _site(node, 'Platform.script', '${_snip(node)}: a path relative to the running script');
     } else if (targetName == 'Isolate' && name == 'packageConfig') {
       _site(node, 'Platform.script', '${_snip(node)}: the package configuration locates source');
+    } else if (targetName == 'Directory' && name == 'current') {
+      _location(node, 'Directory.current');
+    } else if (targetName == 'Uri' && name == 'base') {
+      _location(node, 'Uri.base');
     }
     super.visitPropertyAccess(node);
   }
 
   // ----- string literals -----
 
+  /// [value] is (or starts with) a path at a source root: `lib`, `lib/x`,
+  /// `./lib/x`, `../lib/x`, `a/../lib/x`; an absolute path through one.
   bool _startsAtRoot(String value) {
-    var v = value;
-    while (v.startsWith('./') || v.startsWith('../')) {
-      v = v.substring(v.startsWith('./') ? 2 : 3);
+    if (!value.contains('/') && !roots.contains(value)) return false;
+    final n = p.posix.normalize(value);
+    final segments = n.split('/').where((s) => s.isNotEmpty && s != '.').toList();
+    while (segments.isNotEmpty && segments.first == '..') {
+      segments.removeAt(0);
     }
-    return roots.any((r) => v.startsWith('$r/'));
+    if (segments.isEmpty) return false;
+    return n.startsWith('/') ? segments.any(roots.contains) : roots.contains(segments.first);
   }
+
+  /// Where the program runs from: a base for paths built at run time.
+  void _location(AstNode node, String what) =>
+      _site(node, 'cwd', '${_snip(node)}: $what is a base for paths built at run time');
 
   @override
   void visitSimpleStringLiteral(SimpleStringLiteral node) {
     if (node.parent is Directive || node.parent is Configuration) return;
-    if (_startsAtRoot(node.value)) _site(node, 'source-path', '${_snip(node)}: a path that starts at a source root');
+    if (node.value.contains('/') && _startsAtRoot(node.value)) _site(node, 'source-path', '${_snip(node)}: a path that starts at a source root');
     super.visitSimpleStringLiteral(node);
   }
 
   @override
   void visitStringInterpolation(StringInterpolation node) {
-    final els = node.elements;
-    for (var i = 0; i < els.length; i++) {
-      final el = els[i];
-      if (el is! InterpolationString) continue;
-      final starts = i == 0 ? _startsAtRoot(el.value) : roots.any((r) => el.value.startsWith('/$r/'));
-      if (starts) {
-        _site(node, 'source-path', '${_snip(node)}: a path that goes through a source root');
-        break;
+    final resolved = _eval(node);
+    if (resolved != null) {
+      if (_startsAtRoot(resolved)) {
+        _site(node, 'source-path', '${_snip(node)}: builds "$resolved", a path under a source root');
+      }
+    } else {
+      // Not resolvable: the parts that are literal still show a root.
+      final els = node.elements;
+      for (var i = 0; i < els.length; i++) {
+        final el = els[i];
+        if (el is! InterpolationString) continue;
+        final starts = i == 0 ? _startsAtRoot(el.value) : roots.any((r) => el.value.startsWith('/$r/'));
+        if (starts) {
+          _site(node, 'source-path', '${_snip(node)}: a path that goes through a source root');
+          break;
+        }
       }
     }
     super.visitStringInterpolation(node);

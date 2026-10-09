@@ -80,9 +80,17 @@ A suite is source-scanning when any of these holds:
 
 a. it matches a `--guard-pattern` (additional globs; the file-name patterns below are a good
    start for edge);
-b. it imports (directly, or through helper files of the repository, followed transitively and never
-   into `lib/`) a shared source scanner: `**/dart_source*.dart` by default (edge:
-   `test/support/dart_source.dart`, `test/support/dart_source_lexical.dart`), plus `--scanner <glob>...`;
+b. it imports a shared source scanner, directly or through any chain of files in the export:
+   `**/dart_source*.dart` by default (edge: `test/support/dart_source.dart`,
+   `test/support/dart_source_lexical.dart`), plus `--scanner <glob>...`. The import graph is read
+   from the AST, not from text: EVERY URI of every `import` / `export` / `part` is followed,
+   including all URIs of conditional directives (`import 'a.dart' if (dart.library.io) 'b.dart';`
+   follows `a.dart` and `b.dart`) and any number of directives on one line. Relative URIs,
+   `package:<the audited package>/x.dart` (resolved to `lib/x.dart`) and `package:<p>/x.dart` of a
+   path dependency that lies inside the export (read from `pubspec.yaml` and
+   `pubspec_overrides.yaml`) are resolved; hosted, git and outside-the-export packages and `dart:`
+   are not part of the repository. Files under `lib/`, `tool/` and the other source roots are
+   followed too: where a file lives never proves what it does;
 c. it, or a helper it imports, may read source text. Each reachable Dart file is parsed to an AST
    (`package:analyzer`) and every one of these is a site (reported as `file:line [rule] code`):
 
@@ -101,7 +109,17 @@ c. it, or a helper it imports, may read source text. Each reachable Dart file is
      initialised with one): its path is unknown;
    - `[Platform.script]` `Platform.script`, `Platform.packageConfig`, `Isolate.resolvePackageUri`,
      `Isolate.packageConfig`;
+   - `[cwd]` `Directory.current`, `Uri.base`: the bases of paths built at run time;
    - `[unparsable]` a file with syntax errors.
+
+   Files under a source root (`lib/helper.dart` reached by `package:` or relative import) are the
+   product, and the product reads files at run time (database, exports, preferences). They are
+   inspected for what only a source reader shows (`[source-path]`, `[Platform.script]`,
+   `[unparsable]`) and not for non-literal `File(path)` / read calls / `[cwd]`: otherwise any test that
+   reaches the app's data layer would be a "scanner" (793 of 1004 suites on edge). A helper in `lib/`
+   that takes the path as a parameter is judged at the call site, because the test code that passes
+   the path is inspected in full (a constant that resolves under a source root is a site wherever it
+   is handed to).
 
    A literal path to something that is clearly not source (`test/fixtures/x.json`, `/tmp/x`,
    `pubspec.yaml`) is not a site. Comments and `import`/`export`/`part` URIs are not sites. When in

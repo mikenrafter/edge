@@ -75,6 +75,12 @@ void main() {
     flagged('a source literal handed to a helper', "void scan(String p) {}\nvoid main() { scan('lib/a.dart'); }",
         rule: 'source-path');
     flagged('a join that starts at a source root', "void main() { final x = p.join('lib', 'a.dart'); print(x); }");
+    flagged('Directory.current is the base of run-time paths', 'void main() { print(Directory.current.path); }', rule: 'cwd');
+    flagged('Uri.base', 'void main() { print(Uri.base); }', rule: 'cwd');
+    flagged('an interpolation that resolves to a source root path handed to any consumer',
+        "const d = 'lib';\nvoid scan(String p) {}\nvoid main() { scan('\$d/a.dart'); }");
+    flagged('a join that resolves to a source path handed to any consumer',
+        "const d = 'tool';\nvoid scan(String p) {}\nvoid main() { scan(p.join(d, 'x.dart')); }");
     flagged('a file with syntax errors cannot be checked', 'void main( {{{');
   });
 
@@ -90,7 +96,6 @@ void main() {
     clean('a File held in a variable, built from a literal fixture',
         "void main() { final f = File('test/fixtures/x.json'); f.readAsStringSync(); }");
     clean('a source path only inside a comment', "// File('lib/a.dart')\nvoid main() {}");
-    clean('Directory.current without a read', 'void main() { print(Directory.current.path); }');
     clean('a string that merely contains lib/', "void main() { print('see the lib/ folder'); }");
     clean('a library name that is not a root', "void main() { File('test/library/x.json').readAsStringSync(); }");
   });
@@ -106,6 +111,33 @@ void main() {
       final m = SourceScanDetector(root: root.path).reasons('test/many_test.dart');
       expect(m.length, lessThan(8));
       expect(m.join('\n'), contains('more'));
+    });
+  });
+
+  group('code under a source root is inspected for source reads only', () {
+    test('lib/ code that reads a user-chosen file at run time does not make its importers scanners', () {
+      write('pubspec.yaml', 'name: demo\n');
+      write('lib/io.dart', "import 'dart:io';\nString load(String path) => File(path).readAsStringSync();\nString b() => Directory.current.path;\n");
+      write('test/runtime_test.dart', "import 'package:demo/io.dart';\nvoid main() { load('test/fixtures/x.json'); }\n");
+      expect(SourceScanDetector(root: root.path).reasons('test/runtime_test.dart'), isEmpty);
+    });
+
+    test('lib/ code that reads a literal source path does', () {
+      write('pubspec.yaml', 'name: demo\n');
+      write('lib/io.dart', "import 'dart:io';\nString me() => File('lib/a.dart').readAsStringSync();\n");
+      write('test/scan_test.dart', "import 'package:demo/io.dart';\nvoid main() { me(); }\n");
+      final why = SourceScanDetector(root: root.path).reasons('test/scan_test.dart');
+      expect(why.join(' '), contains('lib/io.dart:2'));
+    });
+
+    test('lib/ code with Platform.script or a syntax error does', () {
+      write('pubspec.yaml', 'name: demo\n');
+      write('lib/s.dart', 'Object where() => Platform.script;\n');
+      write('lib/bad.dart', 'void f( {{{\n');
+      write('test/s_test.dart', "import 'package:demo/s.dart';\nvoid main() {}\n");
+      write('test/bad_test.dart', "import 'package:demo/bad.dart';\nvoid main() {}\n");
+      expect(SourceScanDetector(root: root.path).reasons('test/s_test.dart'), isNotEmpty);
+      expect(SourceScanDetector(root: root.path).reasons('test/bad_test.dart'), isNotEmpty);
     });
   });
 }

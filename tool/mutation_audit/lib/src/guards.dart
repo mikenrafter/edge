@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:glob/glob.dart';
 import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 import 'reporter_parser.dart';
 import 'source_facts.dart';
@@ -24,8 +25,10 @@ const defaultScannerGlobs = ['**/dart_source*.dart'];
 /// Decides, by reading the test files of an export, which suites scan source
 /// text instead of running code.
 ///
-/// A suite is source-scanning when it, or any Dart file it imports from the
-/// repository (relative imports, followed transitively, never into `lib/`):
+/// A suite is source-scanning when it, or any Dart file it reaches in the
+/// export (every URI of every import / export / part, conditional ones
+/// included; relative, `package:<this package>/` as `lib/`, path dependencies
+/// inside the export; helpers under `lib/` and the other source roots too):
 ///
 /// - is one of the shared scanners ([scannerGlobs]), or
 /// - contains a file-system read that may reach source: the file is parsed to
@@ -102,18 +105,80 @@ class SourceScanDetector {
   _FileFacts? _factsOf(String path) => _facts.putIfAbsent(path, () {
         final file = File(p.join(root, path));
         if (!file.existsSync()) return null;
-        final text = file.readAsStringSync();
-        final imports = <String>[];
-        for (final m in _directive.allMatches(text)) {
-          final uri = m.group(2)!;
-          if (uri.startsWith('dart:') || uri.startsWith('package:')) continue;
-          final next = _relative(p.join(p.dirname(path), uri));
-          if (next == null || !next.endsWith('.dart')) continue;
-          if (sourceRoots.any((r) => next == r || next.startsWith('$r/'))) continue;
-          if (File(p.join(root, next)).existsSync()) imports.add(next);
-        }
-        return _FileFacts(analyseSourceReads(text, sourceRoots: sourceRoots).sites, imports);
+        final facts = analyseSourceReads(file.readAsStringSync(), sourceRoots: sourceRoots);
+        // Every URI of every directive, conditional ones included, whatever
+        // lies behind it: location never proves a file does not read source.
+        final imports = <String>[
+          for (final uri in facts.uris)
+            if (_resolve(path, uri) case final next?) next,
+        ];
+        // Code under a source root is the product, not a test: it reads files
+        // at run time all the time (the database, exports, preferences). It is
+        // inspected for what only a source reader does (literal source paths,
+        // the script location, a syntax error); a non-literal path there is
+        // judged where the test hands it one. See the README.
+        final sourceSide = sourceRoots.any((r) => path.startsWith('$r/'));
+        final sites = sourceSide
+            ? [for (final s in facts.sites) if (const {'source-path', 'Platform.script', 'unparsable'}.contains(s.rule)) s]
+            : facts.sites;
+        return _FileFacts(sites, imports);
       });
+
+  /// The root-relative Dart file [uri] (written in [from]) names, if it is in
+  /// the export: relative URIs, `package:<this package>/...` (-> lib/),
+  /// `package:<path dependency inside the export>/...`. Other packages and
+  /// `dart:` are not part of the repository.
+  String? _resolve(String from, String uri) {
+    String? next;
+    if (uri.startsWith('dart:')) return null;
+    if (uri.startsWith('package:')) {
+      final rest = uri.substring('package:'.length);
+      final slash = rest.indexOf('/');
+      if (slash < 0) return null;
+      final dir = _packages[rest.substring(0, slash)];
+      if (dir == null) return null;
+      next = _relative(p.join(dir, 'lib', rest.substring(slash + 1)));
+    } else if (!uri.contains(':') || uri.startsWith('file:')) {
+      next = _relative(p.join(p.dirname(from), uri.startsWith('file:') ? Uri.parse(uri).toFilePath() : uri));
+    }
+    if (next == null || !next.endsWith('.dart')) return null;
+    return File(p.join(root, next)).existsSync() ? next : null;
+  }
+
+  /// Package name -> directory (root-relative; `.` for the audited package)
+  /// for the audited package and every path dependency that lies inside the
+  /// export. Hosted and git packages are not in the export; a path dependency
+  /// that points out of it is refused elsewhere (path overrides).
+  late final Map<String, String> _packages = () {
+    final out = <String, String>{};
+    Object? load(String name) {
+      final f = File(p.join(root, name));
+      if (!f.existsSync()) return null;
+      try {
+        return loadYaml(f.readAsStringSync());
+      } on YamlException {
+        return null;
+      }
+    }
+
+    final main = load('pubspec.yaml');
+    if (main is YamlMap && main['name'] is String) out[main['name'] as String] = '.';
+    for (final doc in [main, load('pubspec_overrides.yaml')]) {
+      if (doc is! YamlMap) continue;
+      for (final section in ['dependencies', 'dev_dependencies', 'dependency_overrides']) {
+        final deps = doc[section];
+        if (deps is! YamlMap) continue;
+        for (final e in deps.entries) {
+          final spec = e.value;
+          final path = spec is YamlMap ? spec['path'] : null;
+          if (e.key is! String || path is! String) continue;
+          final rel = _relative(p.join(root, path));
+          if (rel != null && rel.isNotEmpty) out.putIfAbsent(e.key as String, () => rel);
+        }
+      }
+    }
+    return out;
+  }();
 }
 
 class _FileFacts {
@@ -124,8 +189,6 @@ class _FileFacts {
 
 /// Sites shown per file in a reason; the rest are counted.
 const _maxSites = 3;
-
-final _directive = RegExp(r'''^\s*(import|export|part)\s+['"]([^'"]+)['"][^;]*;''', multiLine: true);
 
 /// The reviewed list of tests that run code although their suite looks like a
 /// source scanner. See [parse].
