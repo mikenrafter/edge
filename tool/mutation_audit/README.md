@@ -229,10 +229,13 @@ original order.
 ## Outcome classification
 
 A per-test `setUp` / `tearDown` exception is reported by the framework under the test's own name, so
-it counts as that test failing with an `exception` kill. The baseline passed, so the mutant broke the
-setup: the suite did detect the mutation. It is not evidence that the test's *assertions* cover the
-mutated code, which is why the report keeps the kind of every killer; evidence for deleting a test
-should rest on its `assertion` kills. (`setUpAll` / `tearDownAll` failures are setup failures, never
+it counts as that test failing with an `exception` kill. A passing baseline does **not** prove the
+mutant caused it: setup bounded by `Future.timeout` can time out under unrelated CPU contention and
+look the same. Exception kills are therefore weaker evidence: they may be environmental and they
+never show that the test's *assertions* cover the mutated code. The report keeps the kind of every
+killer; evidence for deleting a test must rest on its `assertion` kills only, and an audit's
+exception-only kills should be read with that caveat (an unmutated control rerun of those tests is
+a possible future refinement). (`setUpAll` / `tearDownAll` failures are setup failures, never
 kills.)
 
 Precedence, first match wins:
