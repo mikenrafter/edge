@@ -8,6 +8,7 @@ export 'src/cli.dart';
 export 'src/command.dart';
 export 'src/config.dart';
 export 'src/export.dart';
+export 'src/export_integrity.dart';
 export 'src/export_state.dart';
 export 'src/generator.dart';
 export 'src/guards.dart';
