@@ -8,7 +8,7 @@ import 'support/events.dart';
 import 'support/fakes.dart';
 import 'support/git_fixture.dart';
 
-const source = 'bool lt(int a, int b) => a < b;\nbool gt(int a, int b) => a > b;\n';
+const source = 'bool lt(int a, int b) { return a < b; }\nbool gt(int a, int b) { return a > b; }\n';
 
 Mutant mutant(String original, String mutated, {int occurrence = 0}) {
   var at = -1;
@@ -203,6 +203,22 @@ void main() {
       final run = await AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: const []);
       expect(run.results, isEmpty);
       expect(runner.calls, hasLength(1));
+    });
+  });
+
+  group('environment', () {
+    test('every child process gets TZ=UTC by default and the configured env otherwise', () async {
+      final runner = byFile();
+      await AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')]);
+      expect(runner.calls.map((c) => c.environment), everyElement({'TZ': 'UTC'}));
+      final other = byFile();
+      await AuditRunner(runner: other).run(
+          config: AuditConfig(
+              repo: '/r', sha: 's', files: const ['lib/a.dart'], testCmd: 'dart test', outDir: '/o',
+              env: const {'TZ': 'Asia/Tokyo', 'A': 'b'}),
+          root: root.path,
+          mutants: [mutant('<', '<=')]);
+      expect(other.calls.map((c) => c.environment), everyElement({'TZ': 'Asia/Tokyo', 'A': 'b'}));
     });
   });
 

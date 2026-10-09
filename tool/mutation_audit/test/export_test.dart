@@ -266,6 +266,28 @@ packages:
       expect(a.lockSha256, isNot(c.lockSha256));
     });
 
+    test('a git package whose description has path "." is a git pin, not a path override', () async {
+      // `path: "."` there is the folder inside the git repository.
+      write('pubspec.yaml', 'name: demo\n');
+      write('pubspec.lock', gitLock);
+      final c = await resolveDependencyConfig(export.path, repo: fx.root);
+      expect(c.pathOverrides, isEmpty);
+      expect(c.gitDependencies, hasLength(1));
+    });
+
+    test('the real edge lock file is not refused', () async {
+      final real = File('../../pubspec.lock');
+      if (!real.existsSync()) {
+        markTestSkipped('run from tool/mutation_audit inside the edge checkout');
+        return;
+      }
+      write('pubspec.yaml', 'name: demo\n');
+      write('pubspec.lock', real.readAsStringSync());
+      final c = await resolveDependencyConfig(export.path, repo: fx.root);
+      expect(c.pathOverrides, isEmpty);
+      expect(c.gitDependencies, isNotEmpty, reason: 'the sibling packages are pinned from git');
+    });
+
     test('pubspec_overrides.yaml with a path is refused, and hashed when allowed', () async {
       write('pubspec.yaml', 'name: demo\n');
       write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ../analytics\n');

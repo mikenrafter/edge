@@ -39,6 +39,7 @@ void main() {
       expect(c.allowOverrides, isEmpty);
       expect(c.flakyTests, isEmpty);
       expect(c.setupCmd, isNull);
+      expect(c.env, {'TZ': 'UTC'});
     });
 
     test('a flutter repo defaults to flutter test', () {
@@ -57,6 +58,7 @@ void main() {
         '--allow-override', '../analytics',
         '--flaky-test', 'test/a_test.dart::t',
         '--setup-cmd', 'dart pub get --offline',
+        '--env', 'FOO=bar=baz', '--env', 'TZ=Europe/Berlin',
       ]));
       expect(c.testCmd, 'dart test -j 1');
       expect(c.tests, ['test/a_test.dart', 'test/b_test.dart', 'test/c_test.dart']);
@@ -67,6 +69,7 @@ void main() {
       expect(c.allowOverrides, ['../analytics']);
       expect(c.flakyTests, ['test/a_test.dart::t']);
       expect(c.setupCmd, 'dart pub get --offline');
+      expect(c.env, {'TZ': 'Europe/Berlin', 'FOO': 'bar=baz'});
     });
 
     test('--files repeats and takes commas', () {
@@ -75,6 +78,11 @@ void main() {
         '--files', 'lib/a.dart,lib/b.dart', '--files', 'lib/c.dart',
       ]);
       expect(c.files, ['lib/a.dart', 'lib/b.dart', 'lib/c.dart']);
+    });
+
+    test('commas inside braces of a glob do not split', () {
+      final c = parseAuditArgs(required(['--files', 'lib/{a,b}.dart,lib/c.dart']));
+      expect(c.files, ['lib/**.dart', 'lib/{a,b}.dart', 'lib/c.dart']);
     });
 
     test('an empty --setup-cmd means no setup', () {
@@ -104,6 +112,7 @@ void main() {
         ['--seed', 'x'],
         ['--timeout', '0'],
         ['--timeout', 'soon'],
+        ['--env', 'NOEQUALS'],
       ]) {
         expect(() => parseAuditArgs(required(bad)), throwsA(isA<UsageError>()), reason: bad.join(' '));
       }
@@ -124,7 +133,7 @@ void main() {
     final u = auditUsage();
     for (final o in [
       '--repo', '--sha', '--files', '--test-cmd', '--tests', '--max-mutants', '--sample', '--seed',
-      '--timeout', '--guard-pattern', '--allow-override', '--flaky-test', '--setup-cmd', '--out',
+      '--timeout', '--guard-pattern', '--allow-override', '--flaky-test', '--setup-cmd', '--env', '--out',
     ]) {
       expect(u, contains(o));
     }

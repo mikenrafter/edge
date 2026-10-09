@@ -8,10 +8,6 @@ export of a pinned commit, and classifies the outcome from the JSON test reporte
 Standalone Dart package: it is not a dependency of the app, and the app's
 `flutter analyze` skips it (`analysis_options.yaml` excludes `tool/mutation_audit/**`).
 
-**Status: red phase.** The public API is in place with throwing stubs
-(`UnimplementedError`) and the tests describe the whole contract; they fail until
-the green phase lands.
-
 ## Running the tests
 
 From the repository root, inside the repo flake (it provides the Dart SDK):
@@ -41,6 +37,26 @@ dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
 `--setup-cmd` runs once in the export before the baseline (default: `flutter pub get`
 / `dart pub get`; `""` skips it). Exit codes: 0 ran, 64 usage, 65 baseline failed or
 path override refused, 70 export/internal error, 130 interrupted.
+
+`--env KEY=VALUE` (repeatable) sets variables for every child process on top of the
+parent's environment; the default is `TZ=UTC`, which the tests of both repos assume.
+
+The tool does not know about nix. The test command is run with the `PATH` of whoever
+started the tool, so wrap the tool in the shell of the repository being audited:
+
+```
+cd tool/mutation_audit
+nix develop /path/to/analytics -c dart run mutation_audit --repo /path/to/analytics --sha <sha> \
+  --files lib/src/onehz/incremental_core.dart \
+  --tests test/onehz/incremental/int_histogram_test.dart --max-mutants 8 --out /tmp/mutation/analytics
+nix develop /path/to/edge -c dart run mutation_audit --repo /path/to/edge --sha <sha> \
+  --files lib/ui2/chart_annotations.dart --tests test/properties/annotation_layout_laws_test.dart \
+  --max-mutants 5 --out /tmp/mutation/edge
+```
+
+(or put `nix develop <repo> -c` inside `--test-cmd` and `--setup-cmd`). A fresh export has no
+package config: the setup command (`flutter pub get` / `dart pub get`) runs in it first.
+Results go to `--out`, which must be outside the export.
 
 ## Mutation operators (one documented rule each)
 

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 /// Result of one test as the JSON reporter states it.
 enum TestResult { success, failure, error }
 
@@ -73,5 +75,91 @@ class ReporterRun {
 /// print, allSuites, done). Never throws on odd input: lines that are not JSON
 /// objects go to [ReporterRun.nonJsonLines]; events about unknown test ids are
 /// ignored; a test that started but never finished is not in [ReporterRun.tests].
-ReporterRun parseReporterStream(Iterable<String> lines) =>
-    throw UnimplementedError('parseReporterStream');
+ReporterRun parseReporterStream(Iterable<String> lines) {
+  final suites = <int, String>{};
+  final started = <int, _Started>{};
+  final tests = <TestOutcome>[];
+  final loadErrors = <LoadError>[];
+  final nonJson = <String>[];
+  var sawDone = false, doneSuccess = false;
+
+  for (final line in lines) {
+    if (line.trim().isEmpty) continue;
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(line);
+    } on FormatException {
+      nonJson.add(line);
+      continue;
+    }
+    if (decoded is! Map<String, dynamic>) {
+      nonJson.add(line);
+      continue;
+    }
+    final time = (decoded['time'] as num?)?.toInt() ?? 0;
+    switch (decoded['type']) {
+      case 'suite':
+        final suite = decoded['suite'];
+        if (suite is Map<String, dynamic> && suite['id'] is int) {
+          suites[suite['id'] as int] = '${suite['path'] ?? ''}';
+        }
+      case 'testStart':
+        final test = decoded['test'];
+        if (test is Map<String, dynamic> && test['id'] is int) {
+          started[test['id'] as int] =
+              _Started('${test['name']}', test['suiteID'] as int?, time);
+        }
+      case 'print':
+        started[decoded['testID']]?.printed.add('${decoded['message']}');
+      case 'error':
+        started[decoded['testID']]?.errors.add(TestError(
+            '${decoded['error']}', '${decoded['stackTrace'] ?? ''}',
+            isFailure: decoded['isFailure'] == true));
+      case 'testDone':
+        final t = started.remove(decoded['testID']);
+        if (t == null) continue;
+        final result = switch (decoded['result']) {
+          'success' => TestResult.success,
+          'failure' => TestResult.failure,
+          _ => TestResult.error,
+        };
+        final suite = suites[t.suiteId] ?? '';
+        if (t.name.startsWith('loading ')) {
+          if (result != TestResult.success) {
+            loadErrors.add(LoadError(suite, t.errors.map((e) => e.message).join('\n')));
+          }
+        } else if (decoded['hidden'] == true && result == TestResult.success) {
+          // plumbing, not a test
+        } else {
+          tests.add(TestOutcome(
+            suite: suite,
+            name: t.name,
+            result: result,
+            skipped: decoded['skipped'] == true,
+            errors: t.errors,
+            printed: t.printed,
+            durationMs: time - t.startTime,
+          ));
+        }
+      case 'done':
+        sawDone = true;
+        doneSuccess = decoded['success'] == true;
+    }
+  }
+  return ReporterRun(
+    tests: tests,
+    loadErrors: loadErrors,
+    sawDone: sawDone,
+    doneSuccess: doneSuccess,
+    nonJsonLines: nonJson,
+  );
+}
+
+class _Started {
+  _Started(this.name, this.suiteId, this.startTime);
+  final String name;
+  final int? suiteId;
+  final int startTime;
+  final List<TestError> errors = [];
+  final List<String> printed = [];
+}

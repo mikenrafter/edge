@@ -1,3 +1,6 @@
+import 'package:glob/glob.dart';
+import 'package:path/path.dart' as p;
+
 import 'process_runner.dart';
 import 'reporter_parser.dart';
 
@@ -34,10 +37,27 @@ enum MutantStatus {
 /// a `/` matches the file name only; one with a `/` matches the path or any
 /// suffix of it (so `test/guards/**` matches `/abs/repo/test/guards/a_test.dart`).
 class GuardMatcher {
-  GuardMatcher(this.patterns);
+  GuardMatcher(this.patterns)
+      : _globs = [for (final pattern in patterns) (pattern.contains('/'), Glob(pattern, context: p.posix))];
   final List<String> patterns;
+  final List<(bool, Glob)> _globs;
 
-  bool matches(TestOutcome test) => throw UnimplementedError('GuardMatcher.matches');
+  bool matches(TestOutcome test) {
+    final segments = test.suite.split('/').where((s) => s.isNotEmpty).toList();
+    if (segments.isEmpty) return false;
+    for (final (withSlash, glob) in _globs) {
+      if (!withSlash) {
+        if (glob.matches(segments.last)) return true;
+        continue;
+      }
+      // The path itself or any suffix of it (an absolute prefix is not part of
+      // the pattern's business).
+      for (var i = 0; i < segments.length; i++) {
+        if (glob.matches(segments.sublist(i).join('/'))) return true;
+      }
+    }
+    return false;
+  }
 }
 
 /// Runs one failed test alone (same mutant, same working tree) and returns its
@@ -96,5 +116,80 @@ Future<Classification> classifyRun(
   GuardMatcher? guards,
   Set<String> flakyTests = const {},
   SingleTestRunner? rerun,
-}) =>
-    throw UnimplementedError('classifyRun');
+}) async {
+  if (outcome.timedOut) {
+    return const Classification(status: MutantStatus.timeout, detail: 'the test run timed out');
+  }
+  final run = parseReporterStream(outcome.stdoutLines);
+
+  final compile = [for (final e in run.loadErrors) if (_isCompileError(e.message)) e];
+  if (compile.isNotEmpty) {
+    return Classification(
+        status: MutantStatus.compileInvalid, detail: _diagnostic(compile.first.message));
+  }
+
+  final failed = [for (final t in run.tests) if (t.failed) t];
+  var passedAfterRerun = 0;
+  final reruns = <RerunRecord>[];
+  final killing = <String>[];
+  final guardFailures = <String>[];
+  for (final t in failed) {
+    var confirmed = true;
+    final ambiguous = flakyTests.contains(t.key) || t.errors.isEmpty;
+    if (ambiguous && rerun != null) {
+      final again = await rerun(t);
+      confirmed = again == null || again.failed;
+      reruns.add(RerunRecord(t.key, confirmed: confirmed));
+      if (!confirmed) passedAfterRerun++;
+    }
+    if (!confirmed) continue;
+    ((guards?.matches(t) ?? false) ? guardFailures : killing).add(t.key);
+  }
+  if (killing.isNotEmpty) {
+    return Classification(
+      status: MutantStatus.killed,
+      killingTests: killing,
+      guardTests: guardFailures,
+      reruns: reruns,
+      detail: _firstLine(failed.firstWhere((t) => t.key == killing.first).errors),
+    );
+  }
+  if (guardFailures.isNotEmpty) {
+    return Classification(
+        status: MutantStatus.killedByGuardOnly, guardTests: guardFailures, reruns: reruns);
+  }
+
+  if (run.loadErrors.isNotEmpty) {
+    return Classification(
+        status: MutantStatus.loadFailure,
+        reruns: reruns,
+        detail: _firstMessageLine(run.loadErrors.first.message));
+  }
+  if (!run.sawDone || (failed.isEmpty && outcome.exitCode != 0)) {
+    final why = outcome.stderr.trim().isNotEmpty
+        ? outcome.stderr.trim().split('\n').first
+        : (!run.sawDone ? 'no reporter output (exit code ${outcome.exitCode})' : 'exit code ${outcome.exitCode}');
+    return Classification(status: MutantStatus.loadFailure, reruns: reruns, detail: why);
+  }
+
+  final passed = run.tests.where((t) => !t.failed && !t.skipped).length + passedAfterRerun;
+  return Classification(
+      status: passed > 0 ? MutantStatus.survived : MutantStatus.skipped, reruns: reruns);
+}
+
+final _compilerDiagnostic = RegExp(r':\d+:\d+: Error:');
+
+bool _isCompileError(String message) =>
+    _compilerDiagnostic.hasMatch(message) || message.contains('Compilation failed');
+
+String _diagnostic(String message) {
+  for (final line in message.split('\n')) {
+    if (_compilerDiagnostic.hasMatch(line)) return line.trim();
+  }
+  return _firstMessageLine(message);
+}
+
+String _firstMessageLine(String message) => message.split('\n').first.trim();
+
+String _firstLine(List<TestError> errors) =>
+    errors.isEmpty ? '' : _firstMessageLine(errors.first.message);

@@ -1,4 +1,9 @@
-import 'dart:io' show ProcessSignal;
+import 'dart:async';
+import 'dart:io';
+
+import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
+import 'package:yaml/yaml.dart';
 
 /// The export target is, contains or lies inside the developer checkout.
 class UnsafeExportTarget implements Exception {
@@ -50,13 +55,79 @@ class DisposableExport {
     required String sha,
     String? parentDir,
     String? exportDir,
-  }) =>
-      throw UnimplementedError('DisposableExport.create');
+  }) async {
+    final String repoPath;
+    try {
+      repoPath = Directory(repo).resolveSymbolicLinksSync();
+    } on FileSystemException catch (e) {
+      throw ExportFailed('cannot read repository $repo: ${e.message}');
+    }
+    if (exportDir != null) {
+      final target = _resolveLoosely(exportDir);
+      if (p.equals(target, repoPath) || p.isWithin(repoPath, target) || p.isWithin(target, repoPath)) {
+        throw UnsafeExportTarget('$exportDir is, contains or lies inside the developer checkout $repoPath');
+      }
+    }
+    final resolved = await _git(repoPath, ['rev-parse', '--verify', '--quiet', '$sha^{commit}']);
+    if (resolved.exitCode != 0) {
+      throw ExportFailed('cannot resolve "$sha" in $repoPath: ${_text(resolved.stderr)}');
+    }
+    final full = _text(resolved.stdout);
+
+    Directory? created;
+    final String path;
+    if (exportDir != null) {
+      path = _resolveLoosely(exportDir);
+    } else {
+      final parent = parentDir == null ? Directory.systemTemp : Directory(parentDir);
+      created = parent.createTempSync('mutation_audit_');
+      path = created.resolveSymbolicLinksSync();
+    }
+    final added = await _git(repoPath, ['worktree', 'add', '--detach', path, full]);
+    if (added.exitCode != 0) {
+      if (created != null && created.existsSync()) created.deleteSync(recursive: true);
+      await _git(repoPath, ['worktree', 'prune']);
+      throw ExportFailed('git worktree add failed: ${_text(added.stderr)}');
+    }
+    return DisposableExport._(repoPath, full, path);
+  }
 
   /// Removes the worktree registration (`git worktree remove --force` and
   /// prune) and the directory. Idempotent; never throws for an export that is
   /// already gone.
-  Future<void> dispose() => throw UnimplementedError('DisposableExport.dispose');
+  Future<void> dispose() async {
+    await _git(repo, ['worktree', 'remove', '--force', path]);
+    final dir = Directory(path);
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
+    await _git(repo, ['worktree', 'prune']);
+  }
+}
+
+Future<ProcessResult> _git(String repo, List<String> args) =>
+    Process.run('git', ['-C', repo, ...args]);
+
+String _text(Object? out) => '$out'.trim();
+
+/// An absolute, symlink-resolved spelling of [path] even when the last parts
+/// do not exist yet: the deepest existing ancestor is resolved, the rest
+/// appended.
+String _resolveLoosely(String path) {
+  final absolute = p.normalize(p.absolute(path));
+  var existing = absolute;
+  final rest = <String>[];
+  while (!FileSystemEntity.isDirectorySync(existing) && !FileSystemEntity.isLinkSync(existing)) {
+    final parent = p.dirname(existing);
+    if (parent == existing) break;
+    rest.insert(0, p.basename(existing));
+    existing = parent;
+  }
+  var base = existing;
+  try {
+    base = Directory(existing).resolveSymbolicLinksSync();
+  } on FileSystemException {
+    // keep the normalised spelling
+  }
+  return p.joinAll([base, ...rest]);
 }
 
 /// Creates the export, runs [body] with it, and disposes of it afterwards:
@@ -71,8 +142,31 @@ Future<T> withDisposableExport<T>({
   String? parentDir,
   String? exportDir,
   Stream<ProcessSignal>? interrupts,
-}) =>
-    throw UnimplementedError('withDisposableExport');
+}) async {
+  final export = await DisposableExport.create(
+      repo: repo, sha: sha, parentDir: parentDir, exportDir: exportDir);
+  final interrupted = Completer<void>();
+  final subscription = interrupts?.listen((_) {
+    if (!interrupted.isCompleted) interrupted.complete();
+  });
+  try {
+    final work = body(export)..ignore();
+    final first = await Future.any<Object?>([
+      work.then<Object?>((value) => _Finished<T>(value)),
+      interrupted.future.then<Object?>((_) => null),
+    ]);
+    if (first is _Finished<T>) return first.value;
+    throw InterruptedError();
+  } finally {
+    await subscription?.cancel();
+    await export.dispose();
+  }
+}
+
+class _Finished<T> {
+  _Finished(this.value);
+  final T value;
+}
 
 /// The run was interrupted by a signal.
 class InterruptedError implements Exception {
@@ -132,5 +226,64 @@ Future<DependencyConfig> resolveDependencyConfig(
   String exportPath, {
   required String repo,
   List<String> allowedOverrides = const [],
-}) =>
-    throw UnimplementedError('resolveDependencyConfig');
+}) async {
+  String? hashOf(String name) {
+    final file = File(p.join(exportPath, name));
+    return file.existsSync() ? sha256.convert(file.readAsBytesSync()).toString() : null;
+  }
+
+  YamlMap? load(String name) {
+    final file = File(p.join(exportPath, name));
+    if (!file.existsSync()) return null;
+    final doc = loadYaml(file.readAsStringSync());
+    return doc is YamlMap ? doc : null;
+  }
+
+  final overrides = <PathOverride>[];
+  void overridesFrom(String name) {
+    final entries = load(name)?['dependency_overrides'];
+    if (entries is! YamlMap) return;
+    for (final e in entries.entries) {
+      final value = e.value;
+      if (value is YamlMap && value['path'] != null) {
+        overrides.add(PathOverride('${e.key}', '${value['path']}', name));
+      }
+    }
+  }
+
+  overridesFrom('pubspec_overrides.yaml');
+  overridesFrom('pubspec.yaml');
+
+  final git = <GitDependency>[];
+  final packages = load('pubspec.lock')?['packages'];
+  if (packages is YamlMap) {
+    for (final e in packages.entries) {
+      final pkg = e.value;
+      if (pkg is! YamlMap) continue;
+      final description = pkg['description'];
+      if (description is! YamlMap) continue;
+      if (pkg['source'] == 'git') {
+        git.add(GitDependency('${e.key}', '${description['url']}', '${description['resolved-ref']}'));
+      } else if (pkg['source'] == 'path') {
+        // Only a `source: path` package is an override. A git package's
+        // `description.path` is the folder inside that git repository.
+        overrides.add(PathOverride('${e.key}', '${description['path']}', 'pubspec.lock'));
+      }
+    }
+  }
+
+  String target(String path) => p.normalize(p.absolute(p.join(repo, path)));
+  final allowed = {for (final a in allowedOverrides) target(a)};
+  for (final o in overrides) {
+    if (!allowed.contains(target(o.path))) {
+      throw PathOverrideRefused(
+          '${o.source} redirects ${o.package} to ${o.path}; pass --allow-override for the audited sibling');
+    }
+  }
+  return DependencyConfig(
+    lockSha256: hashOf('pubspec.lock'),
+    overridesFileSha256: hashOf('pubspec_overrides.yaml'),
+    pathOverrides: overrides,
+    gitDependencies: git,
+  );
+}
