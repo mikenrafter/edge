@@ -64,14 +64,17 @@ const _pinnedDynamicWriters = <String, String>{
       'schema-ladder re-key of the decoded tables, fixed names',
 };
 
-/// Declarations of plain-string lists that mention `day_result` or `baselines`.
-/// The two merge lists feed the dynamic writer; the coach list is a DENY list;
-/// `_nightBlocks` names payload keys (`baselines` is a bundle block there).
-const _pinnedTableLists = <String>{
-  'lib/data/db.dart LocalDb._restoreTables',
-  'lib/data/db.dart LocalDb._salvageTables',
-  'lib/coach/coach_db.dart CoachDb.reservedTableNames',
-  'lib/compute/sleep_blank.dart <top>',
+/// Plain-string lists that mention `day_result` or `baselines`, each with why
+/// it cannot become a writer. The two merge lists feed the dynamic writer.
+const _pinnedTableLists = <String, String>{
+  'lib/data/db.dart LocalDb._restoreTables': 'feeds _mergeFromDbFileBody',
+  'lib/data/db.dart LocalDb._salvageTables': 'feeds _mergeFromDbFileBody',
+  'lib/data/db.dart LocalDb.schemaHealth':
+      'requiredTables: read side, only checked against sqlite_master',
+  'lib/coach/coach_db.dart CoachDb.reservedTableNames':
+      'a DENY list for coach SQL',
+  'lib/compute/sleep_blank.dart <top>':
+      '_nightBlocks names payload keys ("baselines" is a bundle block)',
 };
 
 /// The text of member [name] in comment-blanked [code]: signature through the
@@ -321,6 +324,97 @@ class A {
       );
     });
 
+    // Sol review r2, finding 2.
+    List<String> dyn(String body) => [
+      for (final w in scanDynamicWriters(
+        "import 'package:sqflite/sqflite.dart';\n"
+        'class LocalDb {\n  static Future<void> f(dynamic connection, '
+        'String t, List args) async {\n$body\n  }\n}\n',
+      ))
+        w.member,
+    ];
+
+    test('detection does not depend on the receiver name', () {
+      expect(
+        dyn("final t0 = 'day_result'; await connection.update(t0, {'a': 1});"),
+        ['LocalDb.f'],
+      );
+      expect(dyn('await handle2.insert(t, {});'), ['LocalDb.f']);
+      expect(dyn('await (await openThing()).delete(t);'), ['LocalDb.f']);
+      expect(dyn('await batchLike.insert(\n t,\n {});'), ['LocalDb.f']);
+    });
+
+    test('raw SQL writers: interpolated table with a conflict clause, quoted '
+        'identifier, or a non-literal statement', () {
+      for (final c in const ['REPLACE', 'ROLLBACK', 'ABORT', 'FAIL', 'IGNORE']) {
+        expect(
+          dyn("await db.rawUpdate('UPDATE OR $c \$t SET readiness = ?', args);"),
+          ['LocalDb.f'],
+          reason: c,
+        );
+        expect(
+          dyn("await db.execute('INSERT OR $c INTO \$t (a) VALUES (1)');"),
+          ['LocalDb.f'],
+          reason: c,
+        );
+      }
+      expect(dyn("await db.rawDelete('DELETE FROM \"\$t\"');"), ['LocalDb.f']);
+      expect(dyn("await db.rawUpdate('UPDATE [\$t] SET a = 1');"), ['LocalDb.f']);
+      expect(dyn("await db.rawInsert('REPLACE INTO \${t} (a) VALUES (1)');"),
+          ['LocalDb.f']);
+      expect(dyn('await db.execute(sql);'), ['LocalDb.f']);
+      expect(dyn('await db.rawUpdate(buildSql(t), args);'), ['LocalDb.f']);
+    });
+
+    test('literal tables, literal SQL and collection methods are not dynamic',
+        () {
+      expect(dyn("await db.insert('journal', {});"), isEmpty);
+      expect(dyn("await db.execute('CREATE TABLE x (a INT)');"), isEmpty);
+      expect(dyn("await db.rawUpdate('UPDATE journal SET a = 1');"), isEmpty);
+      expect(dyn('args.insert(0, 1);'), isEmpty);
+      expect(dyn("final m = <String, int>{}; m.update('k', (v) => v + 1);"),
+          isEmpty);
+    });
+
+    test('a file with no database in sight is not scanned for variable '
+        'receivers', () {
+      const src = '''
+class Queue {
+  void f(List<int> xs, int at) {
+    xs.insert(at, 1);
+  }
+}
+''';
+      expect(scanDynamicWriters(src), isEmpty);
+    });
+
+    test('typed and inline literals are table lists too', () {
+      List<String> lists(String body) => [
+        for (final l in scanTableLists('class A {\n$body\n}\n')) l.member,
+      ];
+      expect(lists("static const x = <String>['journal', 'day_result'];"),
+          ['A.x']);
+      expect(lists("static final y = const <String>{'baselines'};"), ['A.y']);
+      expect(lists("static const z = const ['a', 'baselines'];"), ['A.z']);
+      expect(
+        lists("void f() { for (final t in const <String>['day_result']) {} }"),
+        ['A.f'],
+      );
+      expect(lists("void g() { run(const ['baselines', 'x']); }"), ['A.g']);
+      expect(lists("List<String> h() => <String>['day_result'];"), ['A.h']);
+    });
+
+    test('an index expression, a map and an unrelated list are not table '
+        'lists', () {
+      List<String> lists(String body) => [
+        for (final l in scanTableLists('class A {\n$body\n}\n')) l.member,
+      ];
+      expect(lists("Object f(Map b) => b['baselines'];"), isEmpty);
+      expect(lists("Object g() => {'baselines': 1};"), isEmpty);
+      expect(lists("static const x = <String>['journal'];"), isEmpty);
+      expect(lists("Object h(List b) => b[0]['day_result'];"), isEmpty);
+    });
+
     test('every dynamic writer in lib/ is one of the pinned ones', () {
       final found = <String>{};
       for (final f in Directory('lib').listSync(recursive: true)) {
@@ -369,7 +463,7 @@ class A {
           named.add('${f.path} ${l.member}');
         }
       }
-      expect(named, _pinnedTableLists,
+      expect(named, _pinnedTableLists.keys.toSet(),
           reason: 'a new list of table names that includes day_result or '
               'baselines is a new way to reach them dynamically');
     });

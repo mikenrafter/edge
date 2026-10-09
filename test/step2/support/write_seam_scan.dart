@@ -215,7 +215,13 @@ String _memberAt(String code, int offset) {
       if (!notNames.contains(m[1])) return m[1]!;
     }
     const filler = {'async', 'sync', 'get', 'set', 'static', 'const', 'final'};
-    for (final w in RegExp(r'[A-Za-z_]\w*').allMatches(h).toList().reversed) {
+    // A typed literal's `<String>` is not the member's name.
+    var bare = h;
+    for (var prev = ''; prev != bare;) {
+      prev = bare;
+      bare = bare.replaceAll(RegExp(r'<[^<>]*>'), '');
+    }
+    for (final w in RegExp(r'[A-Za-z_]\w*').allMatches(bare).toList().reversed) {
       if (!filler.contains(w[0])) return w[0]!;
     }
     return '<unknown>';
@@ -293,25 +299,54 @@ class DynamicWriteSite {
   String toString() => '$member (line $line)';
 }
 
+/// A write method called on ANY receiver, with a first argument that is not a
+/// string or number literal: `connection.update(t, values)`,
+/// `(await open()).delete(\n t,`, `batch.insert(t, ...)`; or a raw-SQL method
+/// handed something that is not a string literal (`db.execute(sql)`). A first
+/// argument that is a named argument (`delete(recursive: true)`), a database
+/// handle (`NutritionDb.delete(db, id)`) or a `Map.update` (`ifAbsent:`) is not
+/// a table name.
 final _dynamicApi = RegExp(
-  r'\b(?:db|txn|tx|batch|database|executor|handle|dst|dest)\s*\.\s*'
-  r'''(?:insert|update|delete)\s*\(\s*(?!['"])[A-Za-z_]\w*\s*[,)]''',
+  r'''\.\s*(?:insert|update|delete)\s*\(\s*'''
+  r'''(?!['"\d\-])(?!r['"])(?!await\b)(?!(?:db|txn|tx|database|executor|batch)\b)'''
+  r'''(?![A-Za-z_]\w*\s*:)[A-Za-z_(]'''
+  r'''|\.\s*(?:rawInsert|rawUpdate|rawDelete|execute)\s*\(\s*(?!['"])(?!r['"])[A-Za-z_(]''',
 );
 
+/// A write statement whose table is interpolated, with any conflict clause and
+/// any identifier quoting.
 final _dynamicSql = RegExp(
-  r'\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)\s+'
-  r'(?:["`\[])?\$',
+  r'\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|'
+  r'UPDATE\s+(?:OR\s+(?:REPLACE|ROLLBACK|ABORT|FAIL|IGNORE)\s+)?|DELETE\s+FROM)\s*'
+  r'(?:["`\[])?\s*(?:main\s*\.\s*)?(?:["`\[])?\$',
   caseSensitive: false,
 );
 
-/// Writes in [src] whose table is not a literal: `db.insert(t, ...)`,
-/// `txn.delete(\n t,`, `'DELETE FROM \$t'`. Any of them can reach `day_result`
-/// or `baselines` without [scanWriters] seeing it, so each must be pinned.
+/// Whether [text] mentions anything a database write needs. A variable
+/// receiver is only meaningful in a file that has a database in sight.
+final _dbInSight = RegExp(
+  r'package:sqflite|\bLocalDb\b|\bDatabase\b|\bTransaction\b|\bBatch\b|'
+  r'\bDatabaseExecutor\b',
+);
+
+/// Writes in [src] whose table is not a literal. The receiver is not looked at:
+/// the method name and the shape of the first argument decide. Any of them can
+/// reach `day_result` or `baselines` without [scanWriters] seeing it, so each
+/// must be pinned.
 List<DynamicWriteSite> scanDynamicWriters(String src) {
   final text = blankComments(src);
+  if (!_dbInSight.hasMatch(text)) return const [];
   final out = <DynamicWriteSite>[];
+  final code = codeOnly(src);
+  bool mapUpdate(Match m) {
+    final paren = text.indexOf('(', m.start);
+    final close = closingOf(code, paren);
+    return close > 0 && text.substring(paren, close).contains('ifAbsent:');
+  }
+
   final offsets = <int>{
-    for (final m in _dynamicApi.allMatches(text)) m.start,
+    for (final m in _dynamicApi.allMatches(text))
+      if (!mapUpdate(m)) m.start,
     for (final m in _dynamicSql.allMatches(text)) m.start,
   }.toList()..sort();
   for (final at in offsets) {
@@ -333,16 +368,35 @@ class TableListSite {
   String toString() => '$member (line $line)';
 }
 
-final _listDecl = RegExp(r'=\s*(?:const\s*)?[\[{]');
+/// A list or set literal, typed or not, const or not: `[`/`{` after an optional
+/// `const` and an optional `<String>`.
+final _listLiteral = RegExp(
+  r'(?:\bconst\s*)?(?:<\s*String\s*>\s*)?[\[{]',
+);
 
-/// Assignments of a literal list or set of plain strings, such as
-/// `static const x = [...]` or `Set<String> y = {...}`, whose items include
-/// `'day_result'` or `'baselines'`.
+/// Assignments, arguments and loop sources that are a literal list or set of
+/// plain strings, such as `static const x = [...]`, `<String>{...}`,
+/// `run(const ['a', 'b'])` or `for (t in const <String>[...])`, whose items
+/// include `'day_result'` or `'baselines'`. An index expression (`b['x']`) and
+/// a map are not.
 List<TableListSite> scanTableLists(String src) {
   final text = blankComments(src);
   final code = codeOnly(src);
   final out = <TableListSite>[];
-  for (final m in _listDecl.allMatches(text)) {
+  for (final m in _listLiteral.allMatches(text)) {
+    // `[` right after an identifier, `)` or `]` is an index, not a literal.
+    var b = m.start - 1;
+    while (b >= 0 && ' \t\n'.contains(text[b])) {
+      b--;
+    }
+    final isIndex = b >= 0 &&
+        m.start > 0 &&
+        RegExp(r'[\w)\]]').hasMatch(text[b]) &&
+        !RegExp(r'\b(?:in|return|const|await|yield|case)$')
+            .hasMatch(text.substring(0, b + 1)) &&
+        !m[0]!.startsWith('const') &&
+        !m[0]!.startsWith('<');
+    if (isIndex) continue;
     final open = m.end - 1;
     final close = closingOf(code, open);
     if (close < 0) continue;
