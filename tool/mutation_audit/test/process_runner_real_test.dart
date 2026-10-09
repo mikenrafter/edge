@@ -141,4 +141,40 @@ wait''');
       expect(dead(gc), isTrue);
     }, timeout: const Timeout(Duration(seconds: 20)));
   });
+
+  group('a normal finish leaves nothing behind (isolation between mutants)', () {
+    test('the child exits 0 and its detached helper, which let go of the pipes, is stopped before run() returns', () async {
+      final path = script('''
+sleep 213 >/dev/null 2>&1 </dev/null &
+echo "gc=\$!"
+exit 0''');
+      final outcome = await runner.run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 10));
+      final gc = grandchild(outcome);
+      addTearDown(() => Process.killPid(gc, ProcessSignal.sigkill));
+      expect(outcome.timedOut, isFalse, reason: 'it finished normally: the pipes closed');
+      expect(outcome.exitCode, 0);
+      expect(dead(gc), isTrue, reason: 'still running after run() returned would leak into the next mutant');
+      expect(outcome.lingeringStopped, 1);
+    }, timeout: const Timeout(Duration(seconds: 20)));
+
+    test('a helper that ignores TERM gets KILL', () async {
+      final path = script('''
+( trap '' TERM; exec sleep 214 ) >/dev/null 2>&1 </dev/null &
+echo "gc=\$!"
+exit 0''');
+      final outcome = await runner.run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 10));
+      final gc = grandchild(outcome);
+      addTearDown(() => Process.killPid(gc, ProcessSignal.sigkill));
+      expect(outcome.timedOut, isFalse);
+      expect(dead(gc), isTrue);
+      expect(outcome.lingeringStopped, 1);
+      expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
+    }, timeout: const Timeout(Duration(seconds: 20)));
+
+    test('a clean child leaves nothing to stop', () async {
+      final path = script('echo one; exit 0');
+      final outcome = await runner.run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 10));
+      expect(outcome.lingeringStopped, 0);
+    });
+  });
 }

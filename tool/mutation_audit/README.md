@@ -277,6 +277,12 @@ session of its own; on a timeout the runner
 5. waits at most 2 s for the output streams to close, then stops reading and reports
    `outputComplete: false` instead of hanging.
 
+The same cleanup runs on EVERY path, a normal finish included: after the child has exited and its
+output has closed, any captured process that is still alive (a helper that redirected its output and
+kept running, a server) is stopped (SIGTERM, grace, SIGKILL, identity-checked) before `run()` returns,
+so one mutant's run cannot affect the next. The outcome records how many processes other than the
+child had to be stopped (`lingeringStopped`, 0 for a clean run; it counts on timeout and cancel too).
+
 The end-to-end signal test starts the tool as `dart bin/mutation_audit.dart`; run it that way (or
 from a compiled executable) when the signal has to reach the tool itself.
 

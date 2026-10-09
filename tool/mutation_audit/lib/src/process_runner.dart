@@ -29,6 +29,7 @@ class ProcessOutcome {
     this.cancelled = false,
     this.outputComplete = true,
     this.elapsed = Duration.zero,
+    this.lingeringStopped = 0,
   });
 
   final int exitCode;
@@ -47,6 +48,11 @@ class ProcessOutcome {
   /// [stdoutLines] may be cut short.
   final bool outputComplete;
   final Duration elapsed;
+
+  /// How many processes other than the child itself were still alive when the
+  /// run was over and had to be stopped by the runner (on every path: a normal
+  /// finish, a timeout, a cancellation).
+  final int lingeringStopped;
 }
 
 /// Runs a command to completion. The real one spawns a process; tests inject a
@@ -137,7 +143,10 @@ abstract class ProcessHost {
 /// handed out again in the meantime is never signalled. (Between that read and
 /// the kill there is a window of microseconds that no portable API closes.)
 /// Then the streams get at most [drainGrace] to close before the runner stops
-/// waiting for them.
+/// waiting for them. The same cleanup runs when the child finished normally:
+/// whatever it left alive (a detached helper that let go of the pipes) is
+/// stopped before [run] returns, so one mutant's run cannot leak into the next;
+/// [ProcessOutcome.lingeringStopped] says how many there were.
 class SystemProcessRunner implements ProcessRunner {
   const SystemProcessRunner({
     this.host = const SystemProcessHost(),
@@ -214,17 +223,22 @@ class SystemProcessRunner implements ProcessRunner {
     sampling = false;
     sampler?.cancel();
 
+    // The child is gone on a normal finish, but it may have left processes
+    // behind that no longer hold the pipes (a detached helper, a server): they
+    // would run on into the next mutant. They are stopped on every path.
+    final stopped = await _stop(family);
+    final lingering = stopped.where((pid) => pid != child.pid).length;
+
     if (winner == _Ended.finished) {
-      await family.idle();
       return ProcessOutcome(
         exitCode: await exit,
         stdoutLines: stdout.lines(),
         stderr: stderr.text(),
         elapsed: clock.elapsed,
+        lingeringStopped: lingering,
       );
     }
 
-    await _stop(family);
     // The root is gone (or unkillable); the streams get a bounded time to close.
     final code = await _withinDrain(exit) ?? -9;
     await _withinDrain(Future.wait<Object?>([stdout.closed, stderr.closed]));
@@ -239,6 +253,7 @@ class SystemProcessRunner implements ProcessRunner {
       cancelled: winner == _Ended.cancelled,
       outputComplete: complete,
       elapsed: clock.elapsed,
+      lingeringStopped: lingering,
     );
   }
 
@@ -253,18 +268,25 @@ class SystemProcessRunner implements ProcessRunner {
   }
 
   /// SIGTERM the captured family, give it [termGrace], SIGKILL what is left.
-  Future<void> _stop(_Family family) async {
+  /// Returns the pids that were sent a signal (the child's too, if it was alive).
+  Future<Set<int>> _stop(_Family family) async {
+    final signalled = <int>{};
+    void send(ProcIdentity member, ProcessSignal signal) {
+      if (host.signal(member, signal)) signalled.add(member.pid);
+    }
+
     await family.idle();
     final first = await family.refresh();
+    if (first.isEmpty) return signalled;
     for (final member in first.reversed) {
-      host.signal(member, ProcessSignal.sigterm);
+      send(member, ProcessSignal.sigterm);
     }
     final grace = host.alarm(termGrace);
     var graceOver = false;
     unawaited(grace.fired.then((_) => graceOver = true));
     try {
       while (!graceOver) {
-        if ((await family.refresh()).isEmpty) return;
+        if ((await family.refresh()).isEmpty) return signalled;
         final tick = host.alarm(pollEvery);
         await Future.any<void>([tick.fired, grace.fired]);
         tick.cancel();
@@ -276,13 +298,14 @@ class SystemProcessRunner implements ProcessRunner {
     // the survivors forked meanwhile) before each round.
     for (var round = 0; round < 5; round++) {
       final left = await family.refresh();
-      if (left.isEmpty) return;
+      if (left.isEmpty) return signalled;
       for (final member in left.reversed) {
-        host.signal(member, ProcessSignal.sigkill);
+        send(member, ProcessSignal.sigkill);
       }
       final tick = host.alarm(pollEvery);
       await tick.fired;
     }
+    return signalled;
   }
 }
 
