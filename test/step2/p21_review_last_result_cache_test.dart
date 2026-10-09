@@ -25,6 +25,13 @@ import '../support/last_result_db.dart';
 
 const _db = 'p21_review_last_result_cache.db';
 
+class _Hold implements WriteThroughGate {
+  _Hold(this._done);
+  final Completer<void> _done;
+  @override
+  Future<void> beforeWriteThrough() => _done.future;
+}
+
 LastResultCache _mk() {
   final c = LastResultCache();
   addTearDown(c.flush);
@@ -34,7 +41,7 @@ LastResultCache _mk() {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() async => g1FreshDb(_db));
-  tearDown(() => LastResultCache.debugBeforeWriteThrough = null);
+  tearDown(() => LastResultCache.debugWriteThroughGate = null);
   tearDownAll(() => g1DropDb(_db));
 
   group('read() on a closed store', () {
@@ -173,7 +180,7 @@ void main() {
         'write-through: no restamp, a miss', () async {
       await LocalDb.instance;
       final hold = Completer<void>();
-      LastResultCache.debugBeforeWriteThrough = () => hold.future;
+      LastResultCache.debugWriteThroughGate = _Hold(hold);
       final c = _mk();
 
       c.put<Map<String, dynamic>>('k', {'a': 1});
@@ -192,7 +199,7 @@ void main() {
         'still bound and a hit', () async {
       await LocalDb.close();
       final hold = Completer<void>();
-      LastResultCache.debugBeforeWriteThrough = () => hold.future;
+      LastResultCache.debugWriteThroughGate = _Hold(hold);
       final c = _mk();
 
       c.put<Map<String, dynamic>>('k', {'a': 1});

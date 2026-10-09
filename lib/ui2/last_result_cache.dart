@@ -51,6 +51,14 @@ class _Entry {
   ({int wipeEpoch, int openCount}) generation;
 }
 
+/// Tests only: a point in a put's write-through where a test can stand still.
+/// An interface method, not a function-typed field, so the heavy-calc guard
+/// resolves the call instead of counting an unresolved invocation.
+@visibleForTesting
+abstract class WriteThroughGate {
+  Future<void> beforeWriteThrough();
+}
+
 class LastResultCache {
   LastResultCache(
       {this.capacity = 32, DateTime Function()? now, this.maxRows = 200})
@@ -64,7 +72,7 @@ class LastResultCache {
   /// Tests only: awaited at the start of every put's write-through, before the
   /// store is touched. Null in production.
   @visibleForTesting
-  static Future<void> Function()? debugBeforeWriteThrough;
+  static WriteThroughGate? debugWriteThroughGate;
 
   /// The table's bound.
   final int maxRows;
@@ -143,7 +151,7 @@ class LastResultCache {
     if (json == null) return;
     ReadPerf.lastResultPut(key, json);
     _enqueue(() async {
-      await debugBeforeWriteThrough?.call();
+      await debugWriteThroughGate?.beforeWriteThrough();
       // Opens the store if the put came first. That open moves the generation,
       // and it is the only thing allowed to: see the restamp below.
       await LocalDb.instance;
