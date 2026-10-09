@@ -108,22 +108,31 @@ String _joinAdjacentLiterals(String s) => s.replaceAllMapped(
   (m) => m[1] == m[3] ? ' ${m[2]} ' : m[0]!,
 );
 
-const _tables = r'(day_result|baselines)';
+/// A table identifier as SQL lets it be spelled: bare, or quoted with double
+/// quotes, backticks or square brackets, optionally behind a `main.` schema.
+/// The lookahead keeps `day_result_other` and `"day_resultx"` out.
+const _quote = '["`\\[]';
+const _quoteEnd = '["`\\]]';
+const _tables = '(?:$_quote?main$_quoteEnd?\\s*\\.\\s*)?$_quote?(day_result|baselines)'
+    '$_quoteEnd?(?![A-Za-z0-9_])';
 
+/// INSERT [OR x] INTO, REPLACE INTO, UPDATE [OR x], DELETE FROM. `UPDATE OF col
+/// ON t` (a trigger header) has no table right after UPDATE, so it never matches.
 final _sqlWrite = RegExp(
-  r'\b(INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)'
-  '\\s+$_tables\\b',
+  r'\b(INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|'
+  r'UPDATE\s+(?:OR\s+(?:REPLACE|ROLLBACK|ABORT|FAIL|IGNORE)\s+)?|DELETE\s+FROM)'
+  '\\s*$_tables',
   caseSensitive: false,
 );
 
 /// `insert('t'`, `update('t'`, `delete('t'`, and the `deleteByIn(txn, 't'` helper.
 final _apiWrite = RegExp(
   '\\b(insert|update|delete|deleteByIn)\\s*\\(\\s*(?:\\w+\\s*,\\s*)?'
-  '[\'"]$_tables[\'"]',
+  '[\'"](day_result|baselines)[\'"]',
 );
 
 String _verbOf(String word) {
-  final w = word.toLowerCase();
+  final w = word.trim().toLowerCase();
   if (w.startsWith('insert') || w.startsWith('replace')) return 'insert';
   if (w.startsWith('update')) return 'update';
   return 'delete';
@@ -137,14 +146,16 @@ List<WriteSite> scanWriters(String src) {
   }
   final code = codeOnly(src);
   final hits = <({int at, String verb, String table, String text})>[];
+  final literalEnds = _literalEnds(text);
   for (final m in _sqlWrite.allMatches(text)) {
-    // To the end of the string literal, so a raw UPDATE carries its SET list.
-    final endQuote = text.indexOf(RegExp('[\'"]'), m.end);
+    // To the end of the Dart string literal the SQL sits in, so a raw UPDATE
+    // carries its SET list whatever quotes the identifiers use.
+    final end = literalEnds.firstWhere((e) => e > m.end, orElse: () => m.end);
     hits.add((
       at: m.start,
       verb: _verbOf(m[1]!),
       table: m[2]!.toLowerCase(),
-      text: text.substring(m.start, endQuote < 0 ? m.end : endQuote),
+      text: text.substring(m.start, end),
     ));
   }
   for (final m in _apiWrite.allMatches(text)) {
@@ -234,7 +245,8 @@ Set<String>? updatedColumns(WriteSite site) {
     ).firstMatch(t);
     if (set == null) return {'<unparsed raw update>'};
     return {
-      for (final m in RegExp(r'(\w+)\s*=').allMatches(set[1]!)) m[1]!,
+      for (final m in RegExp(r'["`\[]?(\w+)["`\]]?\s*=').allMatches(set[1]!))
+        m[1]!,
     };
   }
   final brace = t.indexOf('{');
@@ -242,4 +254,110 @@ Set<String>? updatedColumns(WriteSite site) {
   final close = closingOf(t, brace);
   final map = close < 0 ? t.substring(brace) : t.substring(brace, close + 1);
   return {for (final m in RegExp('[\'"](\\w+)[\'"]\\s*:').allMatches(map)) m[1]!};
+}
+
+/// `Class.member` enclosing [offset] of [src] (offsets as in [blankComments]).
+String memberAtOffset(String src, int offset) => _memberAt(codeOnly(src), offset);
+
+/// End offsets (the closing quote) of every Dart string literal in [text],
+/// ascending. [text] has its comments blanked already.
+List<int> _literalEnds(String text) {
+  final ends = <int>[];
+  final n = text.length;
+  var i = 0;
+  while (i < n) {
+    final ch = text[i];
+    if (ch == "'" || ch == '"') {
+      final raw = i > 0 && text[i - 1] == 'r';
+      final quote = text.startsWith(ch * 3, i) ? ch * 3 : ch;
+      i += quote.length;
+      while (i < n && !text.startsWith(quote, i)) {
+        i += (!raw && text[i] == '\\') ? 2 : 1;
+      }
+      ends.add(i);
+      i += quote.length;
+    } else {
+      i++;
+    }
+  }
+  return ends;
+}
+
+/// A write to a table the scan cannot name: the table is a variable, or is
+/// interpolated into the SQL.
+class DynamicWriteSite {
+  const DynamicWriteSite({required this.member, required this.line});
+  final String member;
+  final int line;
+  @override
+  String toString() => '$member (line $line)';
+}
+
+final _dynamicApi = RegExp(
+  r'\b(?:db|txn|tx|batch|database|executor|handle|dst|dest)\s*\.\s*'
+  r'''(?:insert|update|delete)\s*\(\s*(?!['"])[A-Za-z_]\w*\s*[,)]''',
+);
+
+final _dynamicSql = RegExp(
+  r'\b(?:INSERT\s+(?:OR\s+\w+\s+)?INTO|REPLACE\s+INTO|UPDATE|DELETE\s+FROM)\s+'
+  r'(?:["`\[])?\$',
+  caseSensitive: false,
+);
+
+/// Writes in [src] whose table is not a literal: `db.insert(t, ...)`,
+/// `txn.delete(\n t,`, `'DELETE FROM \$t'`. Any of them can reach `day_result`
+/// or `baselines` without [scanWriters] seeing it, so each must be pinned.
+List<DynamicWriteSite> scanDynamicWriters(String src) {
+  final text = blankComments(src);
+  final out = <DynamicWriteSite>[];
+  final offsets = <int>{
+    for (final m in _dynamicApi.allMatches(text)) m.start,
+    for (final m in _dynamicSql.allMatches(text)) m.start,
+  }.toList()..sort();
+  for (final at in offsets) {
+    out.add(DynamicWriteSite(
+      member: memberAtOffset(src, at),
+      line: lineOf(text, at),
+    ));
+  }
+  return out;
+}
+
+/// A declaration of a list or set of table names that names `day_result` or
+/// `baselines`.
+class TableListSite {
+  const TableListSite({required this.member, required this.line});
+  final String member;
+  final int line;
+  @override
+  String toString() => '$member (line $line)';
+}
+
+final _listDecl = RegExp(r'=\s*(?:const\s*)?[\[{]');
+
+/// Assignments of a literal list or set of plain strings (`static const x =
+/// [...]`, `Set<String> y = {...}`) whose items include `'day_result'` or
+/// `'baselines'`.
+List<TableListSite> scanTableLists(String src) {
+  final text = blankComments(src);
+  final code = codeOnly(src);
+  final out = <TableListSite>[];
+  for (final m in _listDecl.allMatches(text)) {
+    final open = m.end - 1;
+    final close = closingOf(code, open);
+    if (close < 0) continue;
+    final body = text.substring(open, close);
+    // Only literals made of plain strings: a map of values or a call is not a
+    // table list.
+    final stripped = body
+        .replaceAll(RegExp(r"""['"]\w+['"]"""), '')
+        .replaceAll(RegExp(r'[\s,\[\]{}]'), '');
+    if (stripped.isEmpty && RegExp('[\'"](day_result|baselines)[\'"]').hasMatch(body)) {
+      out.add(TableListSite(
+        member: memberAtOffset(src, open),
+        line: lineOf(text, m.start),
+      ));
+    }
+  }
+  return out;
 }
