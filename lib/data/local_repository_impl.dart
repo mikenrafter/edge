@@ -94,7 +94,7 @@ class LocalRepositoryImpl extends LocalRepository {
       for (var j = 0; j < chunk.length; j++) {
         final read = reads[j];
         if (read is! BundleOk) continue;
-        final b = _readerMap(read.view);
+        final b = _readerMap(read);
         final at = _BundleAt(b, read.asOfMs);
         newest ??= at;
         if (b['skipped'] == true) continue;
@@ -135,17 +135,21 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<_BundleAt> _crossDayArtifactAt() async {
     final read = await BundleStore.shared.read(const BundleSource.baseline('crossday'));
     if (read is! BundleOk) return const _BundleAt(null, null);
-    return _BundleAt(_readerMap(read.view), read.asOfMs);
+    return _BundleAt(_readerMap(read, crossday: true), read.asOfMs);
   }
 
   Future<Map<String, dynamic>?> _freshness(String key) async {
     final row = await LocalDb.computeFreshness(key);
-    return BundleStore.shared.decodeStoredPayload(row?['payload_json']);
+    final out = await BundleStore.shared.decodeStoredPayload(row?['payload_json']);
+    ReadPerf.payload(row?['payload_json'], out); // small row, outside the revisioned lane
+    return out;
   }
 
   Future<Map<String, dynamic>?> _wakeFeatures(String dayId) async {
     final row = await LocalDb.wakeDayFeatures(dayId, kAlgoVersion);
-    return BundleStore.shared.decodeStoredPayload(row?['payload_json']);
+    final out = await BundleStore.shared.decodeStoredPayload(row?['payload_json']);
+    ReadPerf.payload(row?['payload_json'], out);
+    return out;
   }
 
   String _todayLocalLabel() => LocalDb.localDayLabelNow();
@@ -171,7 +175,7 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<_BundleAt> _bundleAtForDate(String date) async {
     final exact = await BundleStore.shared.read(BundleSource.day(date));
     if (exact is BundleOk) {
-      return _BundleAt(_readerMap(exact.view), exact.asOfMs);
+      return _BundleAt(_readerMap(exact), exact.asOfMs);
     }
     return _isTodayLabel(date)
         ? await _latestBundleAt()
@@ -180,11 +184,21 @@ class LocalRepositoryImpl extends LocalRepository {
 
   Future<Map<String, dynamic>?> _readBundle(String date) async {
     final read = await BundleStore.shared.read(BundleSource.day(date));
-    return read is BundleOk ? _readerMap(read.view) : null;
+    return read is BundleOk ? _readerMap(read) : null;
   }
 
-  static Map<String, dynamic> _readerMap(BundleView view) =>
-      _BundleReaderMap(view, '', view.debugFrozenRoot as Map);
+  /// The reader-facing map of a store read. Books the read to the calling
+  /// reader's counters ([ReadPerf]; a null sink records nothing).
+  static Map<String, dynamic> _readerMap(BundleOk read, {bool crossday = false}) {
+    final view = read.view;
+    ReadPerf.bundleRead(
+      sourceBytes: view.sourceBytes,
+      nodes: view.nodes,
+      cacheHit: read.fromCache,
+      crossday: crossday,
+    );
+    return _BundleReaderMap(view, '', view.debugFrozenRoot as Map);
+  }
 
   /// Pull a sub-map by dotted path (e.g. 'clinical.hrv_time').
   Map<String, dynamic>? _sub(Map<String, dynamic>? b, String path) {
@@ -4128,6 +4142,9 @@ class LocalRepositoryImpl extends LocalRepository {
       final reads = await BundleStore.shared.readAll(
         [for (final r in ordered) BundleSource.day(r['date'] as String)],
         projection: ProjectionId.cycleScalars,
+        // Payload text for 120 days is fetched three at a time and released
+        // after each chunk; the walk never holds all of it at once.
+        chunkRows: 3,
       );
       final dates = <String>[];
       final temps = <double?>[];
@@ -4135,7 +4152,7 @@ class LocalRepositoryImpl extends LocalRepository {
         final read = reads[i];
         final Map<String, dynamic> b;
         if (read is BundleOk) {
-          b = _readerMap(read.view);
+          b = _readerMap(read);
         } else if (read is BundleAbsent && read.undecodable) {
           // The row still establishes a derived day for the overlay. Its
           // malformed payload supplies no metrics, so keep the date with nulls.
@@ -4535,10 +4552,13 @@ final class _BundleReaderMap extends MapBase<String, dynamic> {
     if (!_source.containsKey(key)) return null;
     final path = _child(key);
     final raw = _source[key];
-    if (raw is Map && !_isCurve(path)) {
-      return _BundleReaderMap(_view, path, raw);
-    }
-    return _view.owned(path);
+    // Memoised in [_changed] on first access: a child handed out once must be
+    // the same object next time, or `out['a']['b']['c'] = x` followed by a
+    // re-read would lose the write. Copying the whole graph at the boundary
+    // instead would expand every curve on the UI isolate.
+    return _changed[key] = raw is Map && !_isCurve(path)
+        ? _BundleReaderMap(_view, path, raw)
+        : _view.owned(path);
   }
 
   @override

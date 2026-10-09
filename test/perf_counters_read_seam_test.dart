@@ -100,54 +100,115 @@ void main() {
   tearDownAll(() => g1DropDb(_db));
 
   group('repository readers', () {
-    test('a cold reader dispatches one worker decode', () async {
+    // The counters are worker-derived (the decode lane measures the stored
+    // text and the decoded graph), booked under the repository method that
+    // asked, and a cache hit books the size of the entry it was served from.
+    test('a cold reader books one payload with its bytes and nodes under its '
+        'own name, and one worker decode', () async {
       await _seedDay();
+      final sink = ReadPerf.sink = _sink();
+
       await repo.getDayHrv(_day);
+
+      final c = _counts(sink);
+      expect(c['payload_reads_getDayHrv'], 1);
+      expect(c['payload_bytes_getDayHrv'], _dayJson.length);
+      expect(c['payload_nodes_getDayHrv'], 10);
+      expect(c['payload_cache_misses_getDayHrv'], 1);
+      expect(c.containsKey('payload_cache_hits_getDayHrv'), isFalse);
+      expect(c.keys.where((k) => k.endsWith('_getDayStrain')), isEmpty,
+          reason: 'a reader that was not called books nothing');
       expect(BundleStore.debugDecodeDispatches, 1);
       expect(BundleStore.shared.debugCachedKeys, hasLength(1));
     });
 
-    test('a cache hit does not dispatch another decode', () async {
+    test('a cache hit is a read too: same size, booked as a hit, and no '
+        'second decode', () async {
       await _seedDay();
+      final sink = ReadPerf.sink = _sink();
+
       await repo.getDayHrv(_day);
       await repo.getDayHrv(_day);
-      expect(BundleStore.debugDecodeDispatches, 1);
+
+      expect(BundleStore.debugDecodeDispatches, 1, reason: 'second is a hit');
+      final c = _counts(sink);
+      expect(c['payload_reads_getDayHrv'], 2);
+      expect(c['payload_bytes_getDayHrv'], 2 * _dayJson.length);
+      expect(c['payload_nodes_getDayHrv'], 20);
+      expect(c['payload_cache_misses_getDayHrv'], 1);
+      expect(c['payload_cache_hits_getDayHrv'], 1);
     });
 
-    test('two readers share one cached row', () async {
+    test('two readers of one row keep separate counters and share one decode',
+        () async {
       await _seedDay();
+      final sink = ReadPerf.sink = _sink();
+
       await repo.getDayHrv(_day);
       await repo.getDayStrain(_day);
+
+      final c = _counts(sink);
+      expect(c['payload_reads_getDayHrv'], 1);
+      expect(c['payload_bytes_getDayHrv'], _dayJson.length);
+      expect(c['payload_reads_getDayStrain'], 1,
+          reason: 'no cross-day artifact stored: one payload');
+      expect(c['payload_bytes_getDayStrain'], _dayJson.length);
+      expect(c['payload_cache_hits_getDayStrain'], 1);
       expect(BundleStore.debugDecodeDispatches, 1);
     });
 
-    test('day and crossday payloads each use the worker', () async {
+    test('the cross-day artifact is counted on its own and under the reader',
+        () async {
       await _seedDay();
       await LocalDb.putBaseline('crossday', _crossJson);
+      final sink = ReadPerf.sink = _sink();
+
       await repo.getDayStrain(_day);
+
+      final c = _counts(sink);
+      expect(c['crossday_payload_bytes'], _crossJson.length);
+      expect(c['crossday_payload_nodes'], 3);
+      expect(c['payload_reads_getDayStrain'], 2, reason: 'day bundle + crossday');
+      expect(c['payload_bytes_getDayStrain'], _dayJson.length + _crossJson.length);
+      expect(c['payload_nodes_getDayStrain'], 13);
       expect(BundleStore.debugDecodeDispatches, 2);
     });
 
-    test('an absent row dispatches no decode', () async {
+    test('an absent row books nothing (no payload, no zero-byte read) and '
+        'decodes nothing', () async {
+      final sink = ReadPerf.sink = _sink();
+
       await repo.getDayHrv('2025-01-01');
+
+      expect(_counts(sink).keys.where((k) => k.startsWith('payload_')), isEmpty);
       expect(BundleStore.debugDecodeDispatches, 0);
+    });
+
+    test('an entry whose size the worker did not measure books the read but '
+        'no bytes or nodes (never a zero)', () {
+      final sink = ReadPerf.sink = _sink();
+
+      ReadPerf.bundleRead(sourceBytes: null, nodes: null, cacheHit: false);
+
+      final c = _counts(sink);
+      expect(c['payload_reads_other'], 1);
+      expect(c.keys.where((k) => k.contains('bytes') || k.contains('nodes')), isEmpty);
     });
 
     test('disabled: a null sink or a disabled DerivePerf records nothing and the '
         'reader returns the same answer', () async {
       await _seedDay();
+      final enabled = ReadPerf.sink = _sink();
       final want = await repo.getDayHrv(_day);
-      expect(BundleStore.debugDecodeDispatches, 1);
+      expect(_counts(enabled), isNotEmpty,
+          reason: 'guard: the enabled run counts something');
 
       BundleStore.shared.invalidateAll();
-      BundleStore.debugResetDecodeDispatches();
       ReadPerf.sink = null;
       expect(await repo.getDayHrv(_day), want);
-      expect(BundleStore.debugDecodeDispatches, 1);
 
       final off = ReadPerf.sink = DerivePerf(nowMs: () => 0, enabled: false);
       BundleStore.shared.invalidateAll();
-      BundleStore.debugResetDecodeDispatches();
       expect(await repo.getDayHrv(_day), want);
       expect(off.summary()['counts'], isEmpty);
     });

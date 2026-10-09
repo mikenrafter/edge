@@ -37,7 +37,7 @@ import '../util/heavy.dart';
 import '../util/worker_audit.dart';
 import '../util/worker_entries.dart' show Dispatcher;
 import '../util/worker_init.dart';
-import '../compute/derive_perf.dart' show payloadNodeCount;
+import '../compute/derive_perf.dart' show payloadNodeCount, utf8Length;
 import 'db.dart';
 import 'day_payload_read.dart';
 import 'series_codec.dart';
@@ -123,10 +123,19 @@ sealed class BundleRead {
 
 /// The row exists, its decode is current for [key], and [view] holds it.
 final class BundleOk extends BundleRead {
-  const BundleOk({required this.view, required this.key, required this.asOfMs});
+  const BundleOk({
+    required this.view,
+    required this.key,
+    required this.asOfMs,
+    this.fromCache = false,
+  });
 
   final BundleView view;
   final BundleKey key;
+
+  /// True when the memo answered (no payload moved, nothing was decoded); false
+  /// for a read that decoded or joined a decode in flight. Read-perf only.
+  final bool fromCache;
 
   /// `computed_at` (day) or `updated_at` (baseline) of the row, read FRESH from
   /// the meta on every call; never cached with the bundle.
@@ -162,12 +171,23 @@ final class BundleRetryable implements Exception {
 final class BundleView {
   /// Wraps an already frozen compact [root]. Test and store use only.
   @visibleForTesting
-  BundleView.frozen(this._root, {required this.estimatedBytes});
+  BundleView.frozen(
+    this._root, {
+    required this.estimatedBytes,
+    this.nodes,
+    this.sourceBytes,
+  });
 
   final Object? _root;
 
   /// `64 + 24 x nodes + 2 x string characters`, computed in the worker.
   final int estimatedBytes;
+
+  /// `payloadNodeCount` of the decoded graph and the UTF-8 length of the stored
+  /// payload it came from, both counted in the worker. Null when the producer
+  /// did not measure them (read-perf books nothing then, never a zero).
+  final int? nodes;
+  final int? sourceBytes;
 
   /// Nodes copied for callers since [debugResetCopiedNodes]: every
   /// [owned] / [curve] / [materialiseLegacy] adds the size of what it returned.
@@ -295,12 +315,20 @@ class DecodedChunk {
     required this.graphs,
     required this.estimatedBytes,
     required this.nodes,
+    this.sourceBytes = const [],
   });
 
   /// The frozen compact graph, or null when the text is not a JSON object.
   final List<Object?> graphs;
   final List<int> estimatedBytes;
+
+  /// Per graph: the nodes of the decoded graph plus one for the root reference
+  /// that the cache estimate counts.
   final List<int> nodes;
+
+  /// Per graph: the UTF-8 length of the stored text, measured here so the UI
+  /// isolate never scans a payload for the read-perf counters. May be empty.
+  final List<int> sourceBytes;
 }
 
 /// WORKER ENTRY: parses payloads, freezes compact graphs and accounts bytes.
@@ -318,6 +346,7 @@ DecodedChunk decodeDayPayloadsHeavy(
   final graphs = <Object?>[];
   final bytes = <int>[];
   final nodes = <int>[];
+  final sourceBytes = <int>[];
   for (var i = 0; i < input.payloadJson.length; i++) {
     Object? decoded;
     try {
@@ -329,6 +358,7 @@ DecodedChunk decodeDayPayloadsHeavy(
       graphs.add(null);
       bytes.add(0);
       nodes.add(0);
+      sourceBytes.add(0);
       continue;
     }
     final root = decoded.cast<String, dynamic>();
@@ -369,8 +399,14 @@ DecodedChunk decodeDayPayloadsHeavy(
     graphs.add(_freeze(graph));
     bytes.add(estimated);
     nodes.add(count);
+    sourceBytes.add(utf8Length(input.payloadJson[i]));
   }
-  return DecodedChunk(graphs: graphs, estimatedBytes: bytes, nodes: nodes);
+  return DecodedChunk(
+    graphs: graphs,
+    estimatedBytes: bytes,
+    nodes: nodes,
+    sourceBytes: sourceBytes,
+  );
 }
 
 final class _FrozenSequence {
@@ -477,6 +513,15 @@ class BundleStore {
   static const int maxQueuedRequests = 16;
   static const int maxSourceBytesInFlight = 4 * 1024 * 1024;
 
+  /// Test seam; null in production.
+  @visibleForTesting
+  BundleReadProbe? debugProbe;
+
+  /// Payload texts handed out of the database by this store. A test compares it
+  /// with the payloads the lane has received to bound what is held undecoded.
+  @visibleForTesting
+  int debugPayloadReads = 0;
+
   static BundleStore _shared = BundleStore();
 
   /// The store every repository reader goes through.
@@ -510,26 +555,33 @@ class BundleStore {
   static void debugResetShared() => _shared = BundleStore();
 
   /// One attempt: meta first, then the cache, a joined flight, or a new decode.
-  /// May answer [BundleStale] (a joiner of a rejected flight, or a completion
-  /// the fence rejected). It never caches or returns a rejected decode.
+  /// May answer [BundleStale] (a joiner of a rejected flight, a completion the
+  /// fence rejected, or a row that changed between the meta and the payload
+  /// read). It never caches or returns a rejected decode.
   Future<BundleRead> readOnce(
     BundleSource source, {
     ProjectionId projection = ProjectionId.full,
   }) async {
     final prepared = await _prepare(source, projection);
     if (prepared == null) return const BundleAbsent();
-    final hit = _get(prepared.key);
-    if (hit != null) {
-      return BundleOk(view: hit, key: prepared.key, asOfMs: prepared.asOfMs);
-    }
-    final existing = _flights[prepared.key];
-    if (existing != null) {
-      return _withFreshAsOf(existing.done.future, prepared.asOfMs);
-    }
+    final early = _cachedOrJoined(prepared);
+    if (early != null) return early;
     final payload = await _readPayload(prepared);
-    if (payload == null) return const BundleAbsent();
-    await _awaitCapacity(payload, warm: false, source: source);
-    final flight = _newFlight(prepared, payload, warm: false);
+    // A row that moved after the meta read is a changed row, not a missing one:
+    // Stale sends the caller back to the meta, which answers an honest absence
+    // if the row is really gone.
+    if (payload.stale) return const BundleStale();
+    final text = payload.text;
+    if (text == null) return const BundleAbsent();
+    // Another reader may have cached or started this key while we awaited the
+    // payload; a second flight under one key would overwrite the first and
+    // make both completions look stale.
+    final raced = _cachedOrJoined(prepared);
+    if (raced != null) return raced;
+    await _awaitCapacity(text, warm: false, source: source);
+    final waited = _cachedOrJoined(prepared);
+    if (waited != null) return waited;
+    final flight = _newFlight(prepared, text, warm: false);
     return _withFreshAsOf(flight.done.future, prepared.asOfMs);
   }
 
@@ -552,6 +604,10 @@ class BundleStore {
 
   /// Several sources, decoded in chunks of at most [chunkRows] payloads (and the
   /// byte budget), in request order. Results are in the same order.
+  ///
+  /// Payload text is fetched one chunk at a time, through the same admission as
+  /// [readOnce], and released when the chunk completes: a 120-day walk never
+  /// holds 120 source strings.
   Future<List<BundleRead>> readAll(
     List<BundleSource> sources, {
     ProjectionId projection = ProjectionId.full,
@@ -560,61 +616,90 @@ class BundleStore {
     if (sources.isEmpty) return const [];
     final results = List<BundleRead?>.filled(sources.length, null);
     final prepared = <({int index, _Prepared source})>[];
+    // Flights other readers started: held by handle, awaited at the end, so
+    // waiting on one never delays starting the rest. An error is kept as a
+    // value until then (nothing listens to the future in between).
+    final joined = <int, Future<Object>>{};
     for (var i = 0; i < sources.length; i++) {
       final item = await _prepare(sources[i], projection);
       if (item == null) {
         results[i] = const BundleAbsent();
         continue;
       }
-      final hit = _get(item.key);
-      if (hit != null) {
-        results[i] = BundleOk(view: hit, key: item.key, asOfMs: item.asOfMs);
-      } else if (_flights[item.key] case final existing?) {
-        results[i] = await _withFreshAsOf(existing.done.future, item.asOfMs);
+      final early = _cachedOrJoined(item);
+      if (early != null) {
+        joined[i] = early.then<Object>((r) => r, onError: (Object e, StackTrace st) => (e, st));
       } else {
         prepared.add((index: i, source: item));
       }
     }
-    final misses = <({int index, _Prepared source, String payload})>[];
-    for (final p in prepared) {
-      final payload = await _readPayload(p.source);
-      if (payload == null) {
-        results[p.index] = const BundleAbsent();
-      } else {
-        misses.add((index: p.index, source: p.source, payload: payload));
-      }
-    }
     final maxRows = chunkRows.clamp(1, maxChunkRows);
-    var offset = 0;
-    while (offset < misses.length) {
+    var next = 0;
+    ({int index, _Prepared source, String payload})? carry;
+    while (carry != null || next < prepared.length) {
       final batch = <({int index, _Prepared source, String payload})>[];
       var bytes = 0;
-      while (offset < misses.length && batch.length < maxRows) {
-        final next = misses[offset];
-        final nextBytes = next.payload.length;
-        if (batch.isNotEmpty && bytes + nextBytes > chunkSourceBytes) break;
-        batch.add(next);
-        bytes += nextBytes;
-        offset++;
-      }
-      final flights = <_BundleFlight>[];
-      for (final item in batch) {
-        final existing = _flights[item.source.key];
-        if (existing != null) {
-          results[item.index] = await _withFreshAsOf(existing.done.future, item.source.asOfMs);
-        } else {
-          flights.add(_newFlight(item.source, item.payload, warm: false, schedule: false));
-        }
-      }
-      if (flights.isNotEmpty) {
-        _schedulePump();
-        for (final item in batch) {
-          if (results[item.index] == null) {
-            final f = _flights[item.source.key];
-            if (f != null) results[item.index] = await _withFreshAsOf(f.done.future, item.source.asOfMs);
+      while (batch.length < maxRows) {
+        var item = carry;
+        carry = null;
+        if (item == null) {
+          if (next >= prepared.length) break;
+          final p = prepared[next++];
+          final payload = await _readPayload(p.source);
+          if (payload.stale) {
+            results[p.index] = const BundleStale();
+            continue;
           }
+          final text = payload.text;
+          if (text == null) {
+            results[p.index] = const BundleAbsent();
+            continue;
+          }
+          item = (index: p.index, source: p.source, payload: text);
         }
+        if (batch.isNotEmpty && bytes + item.payload.length > chunkSourceBytes) {
+          carry = item; // starts the next chunk; its text is already read
+          break;
+        }
+        await _awaitCapacity(
+          item.payload,
+          warm: false,
+          source: item.source.source,
+          extraRequests: batch.length,
+          extraBytes: bytes,
+        );
+        batch.add(item);
+        bytes += item.payload.length;
       }
+      if (batch.isEmpty) continue;
+      // Every member's flight (or cache entry) is captured BEFORE anything is
+      // awaited: a publish that clears the flight table mid-batch must not make
+      // a later member look up a flight that is no longer there.
+      final waits = <int, Future<BundleRead>>{};
+      var started = false;
+      for (final item in batch) {
+        final early = _cachedOrJoined(item.source);
+        if (early != null) {
+          waits[item.index] = early;
+          continue;
+        }
+        final flight = _newFlight(item.source, item.payload, warm: false, schedule: false);
+        started = true;
+        waits[item.index] = _withFreshAsOf(flight.done.future, item.source.asOfMs);
+      }
+      if (started) _schedulePump();
+      final answers = await Future.wait(waits.values);
+      var k = 0;
+      for (final index in waits.keys) {
+        results[index] = answers[k++];
+      }
+    }
+    for (final entry in joined.entries) {
+      final answer = await entry.value;
+      if (answer is (Object, StackTrace)) {
+        Error.throwWithStackTrace(answer.$1, answer.$2);
+      }
+      results[entry.key] = answer as BundleRead;
     }
     for (var i = 0; i < results.length; i++) {
       if (results[i] is BundleStale) {
@@ -635,7 +720,7 @@ class BundleStore {
     }
     final payloads = <({_Prepared source, String payload})>[];
     for (final p in prepared) {
-      final text = await _readPayload(p);
+      final text = (await _readPayload(p)).text;
       if (text != null) payloads.add((source: p, payload: text));
     }
     final neededBytes = payloads.fold<int>(0, (n, p) => n + p.payload.length);
@@ -666,22 +751,31 @@ class BundleStore {
     for (final key in _flights.keys.toList()) {
       if (key.kind == 'day_result' && set.contains(key.k1)) _flights.remove(key);
     }
-    final retained = <_BundleFlight>[];
-    for (final flight in _pending) {
+    _dropPending((flight) {
       final key = flight.source.key;
-      if (key.kind != 'day_result' || !set.contains(key.k1)) retained.add(flight);
-    }
-    _pending
-      ..clear()
-      ..addAll(retained);
+      return key.kind == 'day_result' && set.contains(key.k1);
+    });
   }
+
   void invalidateAll() {
     _full.clear();
     _projections.clear();
     _fullBytes = 0;
     _projectionBytes = 0;
     _flights.clear(); // detach: their own completion will fail its fence.
-    _pending.clear();
+    _dropPending((_) => true);
+  }
+
+  /// Removes queued flights and answers each with [BundleStale]: a reader that
+  /// joined one is waiting on its `done`, and a flight that never reaches the
+  /// lane would leave it waiting forever. Stale sends the reader back to the
+  /// meta, so it decodes the current revision.
+  void _dropPending(bool Function(_BundleFlight flight) test) {
+    final dropped = _pending.where(test).toList();
+    _pending.removeWhere(test);
+    for (final flight in dropped) {
+      if (!flight.done.isCompleted) flight.done.complete(const BundleStale());
+    }
   }
 
   /// Keys currently cached (full and projection caches), oldest first.
@@ -729,12 +823,17 @@ class BundleStore {
     );
   }
 
-  Future<String?> _readPayload(_Prepared prepared) async {
+  /// The payload text for [prepared], fenced on its revision. Stale when the
+  /// row changed or vanished since the meta read (a replace, a delete, a newer
+  /// served version); [_PayloadRead.text] is null only for a payload that is not
+  /// text.
+  Future<_PayloadRead> _readPayload(_Prepared prepared) async {
+    await debugProbe?.afterMeta(prepared.source);
     if (prepared.source.kind == 'day_result') {
       final result = await LocalDb.dayPayload(prepared.source.k1, prepared.key.k2, expectedRev: prepared.key.rev);
       return switch (result) {
-        DayPayloadOk(:final payloadJson) => payloadJson,
-        DayPayloadAbsent() || DayPayloadStale() => null,
+        DayPayloadOk(:final payloadJson) => _counted(payloadJson),
+        DayPayloadAbsent() || DayPayloadStale() => const _PayloadRead.stale(),
       };
     }
     final db = await LocalDb.instance;
@@ -743,9 +842,28 @@ class BundleStore {
       "LEFT JOIN row_rev v ON v.kind = 'baselines' AND v.k1 = b.key AND v.k2 = 0 WHERE b.key = ?",
       [prepared.source.k1],
     );
-    if (rows.isEmpty || (rows.first['rev'] as num).toInt() != prepared.key.rev) return null;
+    if (rows.isEmpty || (rows.first['rev'] as num).toInt() != prepared.key.rev) {
+      return const _PayloadRead.stale();
+    }
     final value = rows.first['payload_json'];
-    return value is String ? value : null;
+    return _counted(value is String ? value : null);
+  }
+
+  _PayloadRead _counted(String? text) {
+    if (text != null) debugPayloadReads++;
+    return _PayloadRead(text);
+  }
+
+  /// A cache hit, or the done-future of a flight already running for the key.
+  /// Null when this reader has to start the decode.
+  Future<BundleRead>? _cachedOrJoined(_Prepared prepared) {
+    final hit = _get(prepared.key);
+    if (hit != null) {
+      return Future.value(BundleOk(view: hit, key: prepared.key, asOfMs: prepared.asOfMs, fromCache: true));
+    }
+    final existing = _flights[prepared.key];
+    if (existing != null) return _withFreshAsOf(existing.done.future, prepared.asOfMs);
+    return null;
   }
 
   BundleView? _get(BundleKey key) {
@@ -763,9 +881,17 @@ class BundleStore {
     return flight;
   }
 
-  Future<void> _awaitCapacity(String payload, {required bool warm, required BundleSource source}) async {
-    final bytes = payload.length;
-    bool available() => _activeRequests + _pending.length < maxQueuedRequests + 1 &&
+  /// [extraRequests] / [extraBytes] are payloads the caller has read and will
+  /// queue together with this one but has not queued yet.
+  Future<void> _awaitCapacity(
+    String payload, {
+    required bool warm,
+    required BundleSource source,
+    int extraRequests = 0,
+    int extraBytes = 0,
+  }) async {
+    final bytes = payload.length + extraBytes;
+    bool available() => _activeRequests + _pending.length + extraRequests < maxQueuedRequests + 1 &&
         _activeBytes + _pending.fold<int>(0, (n, f) => n + f.sourceBytes) + bytes <= maxSourceBytesInFlight;
     if (available()) return;
     if (warm) throw BundleRetryable(source);
@@ -836,7 +962,14 @@ class BundleStore {
               f.done.complete(const BundleAbsent(undecodable: true));
               continue;
             }
-            final view = BundleView.frozen(graph, estimatedBytes: decoded.estimatedBytes[i]);
+            final view = BundleView.frozen(
+              graph,
+              estimatedBytes: decoded.estimatedBytes[i],
+              // The worker's count includes the root reference of the cache
+              // estimate; the read-perf node count is the graph's own.
+              nodes: decoded.nodes[i] - 1,
+              sourceBytes: i < decoded.sourceBytes.length ? decoded.sourceBytes[i] : null,
+            );
             if (view.estimatedBytes <= oversizeBytes) _put(f.source.key, view);
             if (identical(_flights[f.source.key], f)) _flights.remove(f.source.key);
             f.done.complete(BundleOk(view: view, key: f.source.key, asOfMs: f.source.asOfMs));
@@ -910,9 +1043,25 @@ class BundleStore {
 
   static Future<BundleRead> _withFreshAsOf(Future<BundleRead> future, int? asOf) async {
     final r = await future;
-    if (r is BundleOk) return BundleOk(view: r.view, key: r.key, asOfMs: asOf);
+    if (r is BundleOk) return BundleOk(view: r.view, key: r.key, asOfMs: asOf, fromCache: r.fromCache);
     return r;
   }
+}
+
+/// Outcome of fetching a payload text: the text, a stale marker, or neither
+/// (a stored payload that is not text).
+final class _PayloadRead {
+  const _PayloadRead(this.text) : stale = false;
+  const _PayloadRead.stale() : text = null, stale = true;
+  final String? text;
+  final bool stale;
+}
+
+/// Test seam, an interface and not a function field so the heavy-calc guard
+/// resolves the call: runs between the meta read and the payload read of one
+/// attempt, where a writer can commit.
+abstract interface class BundleReadProbe {
+  Future<void> afterMeta(BundleSource source);
 }
 
 final class _Prepared {

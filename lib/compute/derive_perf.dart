@@ -238,6 +238,33 @@ abstract final class ReadPerf {
     p.addCountLazy('payload_nodes_$reader', () => payloadNodeCount(decoded));
   }
 
+  /// Books one bundle handed out by the BundleStore under the requesting reader.
+  /// [sourceBytes] (stored UTF-8 length) and [nodes] (decoded graph nodes) are
+  /// counted in the decode worker and travel with the cached view, so a hit
+  /// books the same size as the miss that filled it; [cacheHit] says whether
+  /// anything was decoded for this read. A null measurement books nothing,
+  /// never a zero. [crossday] also books the artifact's own counters.
+  static void bundleRead({
+    required int? sourceBytes,
+    required int? nodes,
+    required bool cacheHit,
+    bool crossday = false,
+  }) {
+    final p = sink;
+    if (p == null) return;
+    final reader = Zone.current[_readerKey] as String? ?? 'other';
+    p.addCount('payload_reads_$reader', 1);
+    p.addCount(cacheHit ? 'payload_cache_hits_$reader' : 'payload_cache_misses_$reader', 1);
+    if (sourceBytes != null) {
+      p.addCount('payload_bytes_$reader', sourceBytes);
+      if (crossday) p.addCount('crossday_payload_bytes', sourceBytes);
+    }
+    if (nodes != null) {
+      p.addCount('payload_nodes_$reader', nodes);
+      if (crossday) p.addCount('crossday_payload_nodes', nodes);
+    }
+  }
+
   /// The cross-day artifact on its own (it is decoded on every call).
   static void crossday(Object? stored, Object? decoded) {
     final p = sink;
