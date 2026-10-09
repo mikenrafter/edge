@@ -428,6 +428,18 @@ Object? _freeze(Object? value) {
   return value;
 }
 
+/// The time the admission wait is measured against. An interface so a test can
+/// move it by hand instead of waiting.
+abstract interface class BundleClock {
+  DateTime now();
+}
+
+final class SystemBundleClock implements BundleClock {
+  const SystemBundleClock();
+  @override
+  DateTime now() => DateTime.now();
+}
+
 /// Where a chunk is decoded. An interface and not a function-typed field, so
 /// the heavy-calc guard resolves the call (see `write-through test gate`).
 abstract interface class BundleDecodeLane {
@@ -472,9 +484,12 @@ class BundleStore {
   BundleStore({
     BundleDecodeLane lane = const IsolateBundleDecodeLane(),
     this.queueWait = const Duration(seconds: 5),
-  }) : _lane = lane;
+    BundleClock clock = const SystemBundleClock(),
+  }) : _lane = lane,
+       _clock = clock;
 
   final BundleDecodeLane _lane;
+  final BundleClock _clock;
 
   final LinkedHashMap<BundleKey, BundleView> _full = LinkedHashMap();
   final LinkedHashMap<BundleKey, BundleView> _projections = LinkedHashMap();
@@ -666,9 +681,23 @@ class BundleStore {
                 results[p.index] = const BundleAbsent();
                 continue;
               }
-              if (batch.isNotEmpty && bytes + text.length > chunkSourceBytes) {
-                boundary = (index: p.index, source: p.source, read: read);
-                break;
+              // A walk never waits for admission while it holds reservations it
+              // has not queued: another walk may hold the rest of the slots in
+              // the same state and nothing would free one. So a payload that
+              // does not fit this chunk, or finds no room right now, is handled
+              // after the chunk is queued (see [boundary] below).
+              if (batch.isNotEmpty) {
+                final reservation = bytes + text.length > chunkSourceBytes
+                    ? null
+                    : _tryReserve(text.length);
+                if (reservation == null) {
+                  boundary = (index: p.index, source: p.source, read: read);
+                  break;
+                }
+                read.reservation = reservation;
+                batch.add((index: p.index, source: p.source, read: read));
+                bytes += text.length;
+                continue;
               }
               final admitted = await _admit(p.source, read);
               if (admitted.stale || admitted.text == null) {
@@ -977,7 +1006,7 @@ class BundleStore {
   /// Throws [BundleRetryable] when no room appears. Returns the read of the
   /// final attempt (stale if the row moved meanwhile) with its reservation.
   Future<_PayloadRead> _admit(_Prepared prepared, _PayloadRead read) async {
-    final deadline = DateTime.now().add(queueWait);
+    final deadline = _clock.now().add(queueWait);
     while (true) {
       final text = read.text;
       if (text == null) return read;
@@ -988,7 +1017,7 @@ class BundleStore {
       }
       final length = text.length;
       read.text = null;
-      while (!_fits(length) && DateTime.now().isBefore(deadline)) {
+      while (!_fits(length) && _clock.now().isBefore(deadline)) {
         await Future<void>.delayed(const Duration(milliseconds: 5));
       }
       if (!_fits(length)) throw BundleRetryable(prepared.source);
