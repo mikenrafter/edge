@@ -47,14 +47,96 @@ void main() {
     test('test files follow, then the single-test filter', () {
       expect(buildTestCommand('dart test', tests: ['test/a_test.dart', 'test/b_test.dart']),
           ['dart', 'test', '--reporter', 'json', 'test/a_test.dart', 'test/b_test.dart']);
-      expect(buildTestCommand('dart test', tests: ['test/a_test.dart'], plainName: 'g fails'),
-          ['dart', 'test', '--reporter', 'json', 'test/a_test.dart', '--plain-name', 'g fails']);
+      expect(buildTestCommand('dart test', tests: ['test/a_test.dart'], fullName: 'g fails'),
+          ['dart', 'test', '--reporter', 'json', 'test/a_test.dart', '--name', r'^g fails$']);
     });
 
     test('a test name with spaces and quotes stays one argument', () {
-      final argv = buildTestCommand('dart test', plainName: 'it\'s "odd" name');
-      expect(argv.last, 'it\'s "odd" name');
-      expect(argv[argv.length - 2], '--plain-name');
+      final argv = buildTestCommand('dart test', fullName: 'it\'s "odd" name');
+      expect(argv.last, r'''^it's "odd" name$''');
+      expect(argv[argv.length - 2], '--name');
+    });
+  });
+
+  group('the single-test selector is the whole name, anchored and escaped', () {
+    String selector(String name) {
+      final argv = buildTestCommand('dart test', fullName: name);
+      expect(argv[argv.length - 2], '--name');
+      return argv.last;
+    }
+
+    test('regex metacharacters in the name are escaped', () {
+      final sel = selector(r'lt (a<b) [x]+ costs $5 | a.b? {1} ^');
+      final re = RegExp(sel);
+      expect(re.hasMatch(r'lt (a<b) [x]+ costs $5 | a.b? {1} ^'), isTrue);
+      expect(re.hasMatch(r'lt (a<b) [x]+ costs $5 | aXb? {1} ^'), isFalse, reason: 'the dot is a dot');
+    });
+
+    test('a name that is a prefix or suffix of another test selects only itself', () {
+      final re = RegExp(selector('g adds'));
+      expect(re.hasMatch('g adds'), isTrue);
+      expect(re.hasMatch('g adds two'), isFalse);
+      expect(re.hasMatch('other g adds'), isFalse);
+      expect(re.hasMatch('g adds\nmore'), isFalse);
+    });
+
+    test('names that differ only in a regex-significant way do not collide', () {
+      final re = RegExp(selector('a|b'));
+      expect(re.hasMatch('a'), isFalse);
+      expect(re.hasMatch('b'), isFalse);
+      expect(re.hasMatch('a|b'), isTrue);
+    });
+  });
+
+  group('rerun: only the failed suite runs', () {
+    List<String> rerun(String cmd) =>
+        buildTestCommand(cmd, tests: ['test/failed_test.dart'], fullName: 'x');
+
+    test('suite files embedded in the test command are dropped', () {
+      expect(rerun('flutter test test/a_test.dart test/b_test.dart'),
+          ['flutter', 'test', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    test('directories and a bare test directory are dropped', () {
+      expect(rerun('flutter test test/ integration_test'),
+          ['flutter', 'test', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+      expect(rerun('dart test test/unit'), ['dart', 'test', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    test('name selectors embedded in the test command are dropped, in every spelling', () {
+      for (final cmd in [
+        'dart test --name foo',
+        'dart test -n foo',
+        'dart test --plain-name foo',
+        'dart test -N foo',
+        'dart test --name=foo',
+        'dart test --plain-name=foo',
+      ]) {
+        final argv = rerun(cmd);
+        expect(argv.where((a) => a == 'foo' || a.contains('foo')), isEmpty, reason: cmd);
+        expect(argv.where((a) => a == '--name'), hasLength(1), reason: cmd);
+      }
+    });
+
+    test('other options and their values survive', () {
+      expect(rerun('flutter test --tags slow -j 2 --timeout 60s test/a_test.dart --dart-define X=1 --no-pub'),
+          ['flutter', 'test', '--tags', 'slow', '-j', '2', '--timeout', '60s', '--dart-define', 'X=1', '--no-pub',
+           '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    test('a path that is the value of a value option is not a suite', () {
+      expect(rerun('flutter test --dart-define-from-file env/ci.json test/a_test.dart'),
+          ['flutter', 'test', '--dart-define-from-file', 'env/ci.json', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    test('a wrapper before the subcommand is kept', () {
+      expect(rerun('fvm flutter test test/a_test.dart'),
+          ['fvm', 'flutter', 'test', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    test('without a single-test filter the command is left exactly as given', () {
+      expect(buildTestCommand('flutter test test/a_test.dart --name foo', tests: ['test/b_test.dart']),
+          ['flutter', 'test', 'test/a_test.dart', '--name', 'foo', '--reporter', 'json', 'test/b_test.dart']);
     });
   });
 

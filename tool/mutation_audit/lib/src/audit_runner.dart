@@ -76,7 +76,7 @@ class AuditRunner {
 
     Future<TestOutcome?> alone(TestOutcome failed) async {
       final outcome = await runner.run(
-        buildTestCommand(config.testCmd, tests: [failed.suite], plainName: failed.name),
+        buildTestCommand(config.testCmd, tests: [failed.suite], fullName: failed.name),
         workingDirectory: root,
         timeout: config.timeout,
         environment: config.env,

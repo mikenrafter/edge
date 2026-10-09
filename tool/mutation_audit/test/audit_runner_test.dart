@@ -236,7 +236,7 @@ void main() {
       final runner = FakeProcessRunner((call) {
         calls.add((call.argv, current()));
         final mutated = current() != source;
-        final alone = call.argv.contains('--plain-name');
+        final alone = call.argv.contains('--name');
         if (mutated && !alone) {
           return outcomeOf(StreamBuilder().loaded('test/a_test.dart').fail('test/a_test.dart', 'flaky one').done(success: false), exitCode: 1);
         }
@@ -248,7 +248,7 @@ void main() {
           mutants: [mutant('<', '<=')]);
       expect(calls, hasLength(3), reason: 'baseline, mutant run, one rerun');
       final (argv, content) = calls.last;
-      expect(argv, containsAllInOrder(['test/a_test.dart', '--plain-name', 'flaky one']));
+      expect(argv, containsAllInOrder(['test/a_test.dart', '--name', r'^flaky one$']));
       expect(content, isNot(source), reason: 'the rerun happens with the mutant applied');
       final c = run.results.single.classification;
       expect(c.status, MutantStatus.survived);
