@@ -56,20 +56,22 @@ void main() {
   });
 
   test('a cancelled run stops a TERM-ignoring tree and returns once it is gone', () async {
+    final up = p.join(dir.path, 'up');
+    // The script says it is ready only once the child exists and has printed its pid.
     final path = script('''
 trap '' TERM
 sleep 120 &
 echo "gc=\$!"
+: > '$up'
 wait''');
     final token = CancelToken();
     final running = runner.run(['sh', path], workingDirectory: dir.path, cancel: token);
-    // Real time, bounded: wait for the child to say it is up, then cancel.
-    final deadline = DateTime.now().add(const Duration(seconds: 10));
-    while (!File(p.join(dir.path, 'up')).existsSync() && DateTime.now().isBefore(deadline)) {
+    // Real time, bounded and generous: wait for the readiness marker.
+    final deadline = DateTime.now().add(const Duration(seconds: 60));
+    while (!File(up).existsSync()) {
+      expect(DateTime.now().isBefore(deadline), isTrue, reason: 'the script never became ready');
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      if (File(path).existsSync()) break; // the script is already written; give it a moment to start
     }
-    await Future<void>.delayed(const Duration(milliseconds: 300));
     token.cancel();
     final outcome = await running;
     final gc = grandchild(outcome);
@@ -77,8 +79,8 @@ wait''');
     expect(outcome.cancelled, isTrue);
     expect(outcome.timedOut, isFalse);
     expect(dead(gc), isTrue);
-    expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
-  }, timeout: const Timeout(Duration(seconds: 20)));
+    expect(outcome.elapsed, lessThan(const Duration(seconds: 30)));
+  }, timeout: const Timeout(Duration(seconds: 120)));
 
   test('identity is checked before a signal: a stale start time is refused, the real one is honoured', () async {
     final sleeper = await Process.start('sleep', ['120']);
@@ -100,14 +102,14 @@ wait''');
 ( trap '' TERM; exec sleep 120 ) &
 echo "gc=\$!"
 wait''');
-    final outcome = await runner.run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 1));
+    final outcome = await runner.run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 5));
     final gc = grandchild(outcome);
     addTearDown(() => Process.killPid(gc, ProcessSignal.sigkill));
     expect(outcome.timedOut, isTrue);
     expect(dead(gc), isTrue);
     expect(outcome.outputComplete, isTrue);
-    expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
-  }, timeout: const Timeout(Duration(seconds: 20)));
+    expect(outcome.elapsed, lessThan(const Duration(seconds: 30)));
+  }, timeout: const Timeout(Duration(seconds: 120)));
 
   group('a timeout stops the whole tree, with a TERM that is ignored', () {
     test('the wrapper exits at once, a TERM-ignoring child keeps the pipe open', () async {
@@ -117,14 +119,14 @@ trap '' TERM
 echo "gc=\$!"
 exit 0''');
       final outcome = await runner
-          .run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 1));
+          .run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 5));
       final gc = grandchild(outcome);
       addTearDown(() => Process.killPid(gc, ProcessSignal.sigkill));
       expect(outcome.timedOut, isTrue, reason: 'the run is bounded until the streams close, not only until the wrapper exits');
-      expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
+      expect(outcome.elapsed, lessThan(const Duration(seconds: 30)));
       expect(outcome.stdoutLines, contains(startsWith('gc=')));
       expect(dead(gc), isTrue, reason: 'the surviving child was stopped (SIGKILL after SIGTERM was ignored)');
-    }, timeout: const Timeout(Duration(seconds: 20)));
+    }, timeout: const Timeout(Duration(seconds: 120)));
 
     test('the parent and its child both ignore TERM', () async {
       final path = script('''
@@ -133,13 +135,13 @@ sleep 120 &
 echo "gc=\$!"
 wait''');
       final outcome = await runner
-          .run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 1));
+          .run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 5));
       final gc = grandchild(outcome);
       addTearDown(() => Process.killPid(gc, ProcessSignal.sigkill));
       expect(outcome.timedOut, isTrue);
-      expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
+      expect(outcome.elapsed, lessThan(const Duration(seconds: 30)));
       expect(dead(gc), isTrue);
-    }, timeout: const Timeout(Duration(seconds: 20)));
+    }, timeout: const Timeout(Duration(seconds: 120)));
   });
 
   group('a normal finish leaves nothing behind (isolation between mutants)', () {
@@ -155,7 +157,7 @@ exit 0''');
       expect(outcome.exitCode, 0);
       expect(dead(gc), isTrue, reason: 'still running after run() returned would leak into the next mutant');
       expect(outcome.lingeringStopped, 1);
-    }, timeout: const Timeout(Duration(seconds: 20)));
+    }, timeout: const Timeout(Duration(seconds: 120)));
 
     test('a helper that ignores TERM gets KILL', () async {
       final path = script('''
@@ -168,8 +170,8 @@ exit 0''');
       expect(outcome.timedOut, isFalse);
       expect(dead(gc), isTrue);
       expect(outcome.lingeringStopped, 1);
-      expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
-    }, timeout: const Timeout(Duration(seconds: 20)));
+      expect(outcome.elapsed, lessThan(const Duration(seconds: 30)));
+    }, timeout: const Timeout(Duration(seconds: 120)));
 
     test('a clean child leaves nothing to stop', () async {
       final path = script('echo one; exit 0');

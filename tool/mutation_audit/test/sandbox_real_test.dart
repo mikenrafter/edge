@@ -1,4 +1,5 @@
 @TestOn('linux')
+@Timeout(Duration(minutes: 3))
 library;
 
 import 'dart:io';
@@ -280,13 +281,17 @@ touch /mutaudit_root_write 2>/dev/null && echo ROOTWRITE || echo rootro
       if (dir.existsSync()) dir.deleteSync(recursive: true);
     });
 
-    Future<ProcessOutcome> write(ProcessRunner r) => sh(r, 'echo MUTANT-RUN-ONE | socat -T 3 -u - UNIX-CONNECT:${dir.path}/sock');
-    Future<ProcessOutcome> read(ProcessRunner r) => sh(r, 'socat -T 3 -u UNIX-CONNECT:${dir.path}/sock -');
+    Future<ProcessOutcome> write(ProcessRunner r) => sh(r, 'echo MUTANT-RUN-ONE | socat -T 20 -u - UNIX-CONNECT:${dir.path}/sock');
+    Future<ProcessOutcome> read(ProcessRunner r) => sh(r, 'socat -T 20 -u UNIX-CONNECT:${dir.path}/sock -');
 
     test('control: without the sandbox a run connects, writes, and a later run reads the greeting', () async {
       final one = await write(runner);
       expect(one.exitCode, 0, reason: one.stderr);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      // The server's side of the connection is handled on this isolate: wait for it, bounded.
+      final deadline = DateTime.now().add(const Duration(seconds: 30));
+      while (received.isEmpty && DateTime.now().isBefore(deadline)) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
       expect(received.join(), contains('MUTANT-RUN-ONE'));
       final two = await read(runner);
       expect(two.stdoutLines.join(), contains('GREETING-$id'));
@@ -465,7 +470,8 @@ touch /mutaudit_root_write 2>/dev/null && echo ROOTWRITE || echo rootro
       if (Process.runSync('sh', ['-c', 'command -v flutter']).exitCode == 0) {
         expect(await Sandbox.probe(command: ['flutter', 'test']), startsWith('bubblewrap'));
       }
-    }, skip: skip);
+      // Each probe is bounded by 120 s inside; the test must outlast two of them.
+    }, skip: skip, timeout: const Timeout(Duration(minutes: 6)));
 
     test('a test command whose program the minimal root cannot find is "unavailable", naming the program and the way out', () async {
       await expectLater(
