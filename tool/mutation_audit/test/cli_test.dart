@@ -385,6 +385,88 @@ void main() {
       await interrupts.close();
     });
 
+    group('results are published only after the export is gone (finding 6)', () {
+      File old(String name) => File(p.join(out.path, name));
+
+      test('a signal while the export is being removed: exit 130, the earlier pair is untouched, nothing new, no temporaries', () async {
+        old('results.json').writeAsStringSync('OLD RESULTS');
+        old('summary.md').writeAsStringSync('OLD SUMMARY');
+        final interrupts = StreamController<ProcessSignal>();
+        final code = await runCli(args(['--setup-cmd', '']),
+            runner: tests(),
+            out: stdout_,
+            err: err,
+            interrupts: interrupts.stream,
+            disposer: (e) async {
+              interrupts.add(ProcessSignal.sigint);
+              await Future<void>.delayed(Duration.zero);
+              await e.dispose();
+            });
+        expect(code, 130, reason: err.toString());
+        expect(old('results.json').readAsStringSync(), 'OLD RESULTS');
+        expect(old('summary.md').readAsStringSync(), 'OLD SUMMARY');
+        expect(out.listSync().map((e) => p.basename(e.path)).toSet(), {'results.json', 'summary.md'});
+        expect(stdout_.toString(), isNot(contains('mutants run')), reason: 'nothing was reported as done');
+        await interrupts.close();
+      });
+
+      test('a signal while the export is being removed, with no earlier results: the directory stays empty', () async {
+        final interrupts = StreamController<ProcessSignal>();
+        final code = await runCli(args(['--setup-cmd', '']),
+            runner: tests(),
+            out: stdout_,
+            err: err,
+            interrupts: interrupts.stream,
+            disposer: (e) async {
+              interrupts.add(ProcessSignal.sigterm);
+              await Future<void>.delayed(Duration.zero);
+              await e.dispose();
+            });
+        expect(code, 130);
+        expect(out.listSync(), isEmpty);
+        await interrupts.close();
+      });
+
+      test('while the export is still there the results are staged, not published', () async {
+        final seen = <String>[];
+        final code = await runCli(args(['--setup-cmd', '']),
+            runner: tests(),
+            out: stdout_,
+            err: err,
+            now: () => DateTime.utc(2026, 10, 9, 8),
+            disposer: (e) async {
+              seen.addAll(out.listSync().map((x) => p.basename(x.path)));
+              await e.dispose();
+            });
+        expect(code, 0, reason: err.toString());
+        expect(seen, isNot(contains('results.json')));
+        expect(seen, isNot(contains('summary.md')));
+        expect(seen, everyElement(endsWith('.tmp')), reason: 'staged inside the output directory, so the final rename stays on one file system');
+        expect(old('results.json').existsSync(), isTrue);
+        expect(old('summary.md').existsSync(), isTrue);
+        expect(out.listSync().map((e) => p.basename(e.path)), isNot(contains(endsWith('.tmp'))));
+        expect(stdout_.toString(), contains('mutants run'));
+      });
+
+      test('a removal that fails publishes nothing and leaves the earlier pair', () async {
+        old('results.json').writeAsStringSync('OLD RESULTS');
+        old('summary.md').writeAsStringSync('OLD SUMMARY');
+        final code = await runCli(args(['--setup-cmd', '']),
+            runner: tests(),
+            out: stdout_,
+            err: err,
+            now: () => DateTime.utc(2026, 10, 9, 8),
+            disposer: (e) async {
+              await e.dispose();
+              throw ExportFailed('cannot remove the export');
+            });
+        expect(code, 70);
+        expect(old('results.json').readAsStringSync(), 'OLD RESULTS');
+        expect(old('summary.md').readAsStringSync(), 'OLD SUMMARY');
+        expect(out.listSync().map((e) => p.basename(e.path)).toSet(), {'results.json', 'summary.md'});
+      });
+    });
+
     test('the same token reaches the setup command and every test run', () async {
       final runner = tests();
       await run(runner);

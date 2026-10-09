@@ -295,10 +295,15 @@ captured one is not told apart, and `ps` gives no session ids.
 SIGINT and SIGTERM are caught before the export is created. They cancel a token that is handed to the
 audit loop and every child run: no further mutant is written, the active process tree is stopped as
 above, the mutated file is restored and verified, and only then is the export removed (the signal
-never abandons work that is still running in the export). No results are written for an interrupted
-audit (the result files are written as `*.tmp` and renamed into place only if no signal has arrived;
-a signal anywhere, the removal of the export included, is exit 130); the signal handlers stay
-installed until the export is gone. Because the child is in its own session, the terminal's Ctrl-C reaches
+never abandons work that is still running in the export). No results are published for an interrupted
+audit, and publication comes last: while the audit runs the two result files are staged as
+`results.json.tmp` and `summary.md.tmp` inside `--out`; they are renamed into place only after the
+export has been removed successfully and no signal has arrived, so a signal anywhere (the removal of
+the export included) is exit 130 with the staged files deleted and any earlier `results.json` /
+`summary.md` pair left exactly as it was. A removal that fails (exit 70) publishes nothing either.
+The signal handlers stay installed until the export is gone; the instant between that and the
+rename (two synchronous renames) has no handler, and a signal in it kills the tool and leaves the
+`*.tmp` files (a hard kill between the two renames could leave one new file). Because the child is in its own session, the terminal's Ctrl-C reaches
 the tool only; a `kill -9` of the tool itself cannot clean up and leaves the children running.
 
 ## Safety

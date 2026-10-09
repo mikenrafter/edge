@@ -308,20 +308,43 @@ String _env(Map<String, String> env) =>
 /// A table cell: pipes and newlines would break the row.
 String _cell(String text) => text.replaceAll('|', r'\|').replaceAll('\n', ' ');
 
-/// Writes `results.json` and `summary.md` into [outDir] (created if needed).
-/// Throws [ArgumentError] when [outDir] is, or is inside, [exportPath]: the
-/// export is disposable. Returns the two paths.
-///
-/// Publication is atomic and cancellation-aware: both files are written as
-/// `*.tmp` next to their targets and renamed into place only if [cancel] has
-/// not fired by then; otherwise the temporaries are removed and
-/// [InterruptedError] is thrown. [afterTempFiles] is a test seam.
-Future<({String json, String markdown})> writeResults(
+/// Results written as `*.tmp` files inside the output directory, waiting to be
+/// published. [publish] renames them into place (they are beside their targets,
+/// so the rename stays on one file system); [discard] removes whatever is left.
+/// Nothing earlier in the directory is touched until [publish].
+class StagedResults {
+  StagedResults._(this.json, this.markdown, this._tmpJson, this._tmpMarkdown);
+
+  /// Where the two files will be after [publish].
+  final String json, markdown;
+  final File _tmpJson, _tmpMarkdown;
+
+  /// Renames the temporaries over the targets (nothing awaits between the two
+  /// renames). Call [discard] afterwards in a `finally`.
+  void publish() {
+    _tmpJson.renameSync(json);
+    _tmpMarkdown.renameSync(markdown);
+  }
+
+  /// Removes the temporaries that are still there (all of them, unless
+  /// [publish] ran).
+  void discard() {
+    for (final tmp in [_tmpJson, _tmpMarkdown]) {
+      if (tmp.existsSync()) tmp.deleteSync();
+    }
+  }
+}
+
+/// Writes `results.json.tmp` and `summary.md.tmp` into [outDir] (created if
+/// needed) without publishing them. Throws [ArgumentError] when [outDir] is, or
+/// is inside, [exportPath]: the export is disposable. Throws
+/// [InterruptedError] when [cancel] has fired; on any failure the temporaries
+/// written so far are removed. An earlier pair in [outDir] is not touched.
+Future<StagedResults> stageResults(
   AuditResults results, {
   required String outDir,
   required String exportPath,
   CancelToken? cancel,
-  Future<void> Function()? afterTempFiles,
 }) async {
   final out = p.normalize(p.absolute(outDir));
   final export = p.normalize(p.absolute(exportPath));
@@ -332,23 +355,36 @@ Future<({String json, String markdown})> writeResults(
   await Directory(out).create(recursive: true);
   final jsonPath = p.join(out, 'results.json');
   final markdownPath = p.join(out, 'summary.md');
-  // Write beside the targets, publish by rename: an interrupted audit leaves
-  // neither a half-written file nor a partial result, and an earlier run's
-  // results stay as they were.
-  final tmpJson = File('$jsonPath.tmp');
-  final tmpMarkdown = File('$markdownPath.tmp');
+  final staged = StagedResults._(jsonPath, markdownPath, File('$jsonPath.tmp'), File('$markdownPath.tmp'));
   try {
-    await tmpJson.writeAsString('${const JsonEncoder.withIndent('  ').convert(results.toJson())}\n');
-    await tmpMarkdown.writeAsString(results.renderMarkdown());
+    await staged._tmpJson.writeAsString('${const JsonEncoder.withIndent('  ').convert(results.toJson())}\n');
+    await staged._tmpMarkdown.writeAsString(results.renderMarkdown());
+  } catch (_) {
+    staged.discard();
+    rethrow;
+  }
+  return staged;
+}
+
+/// Stages and publishes at once: both files are written as `*.tmp` next to
+/// their targets and renamed into place only if [cancel] has not fired by then;
+/// otherwise the temporaries are removed and [InterruptedError] is thrown.
+/// [afterTempFiles] is a test seam. (The command line does not use this: it
+/// stages with [stageResults] and publishes after the export is removed.)
+Future<({String json, String markdown})> writeResults(
+  AuditResults results, {
+  required String outDir,
+  required String exportPath,
+  CancelToken? cancel,
+  Future<void> Function()? afterTempFiles,
+}) async {
+  final staged = await stageResults(results, outDir: outDir, exportPath: exportPath, cancel: cancel);
+  try {
     await afterTempFiles?.call();
     if (cancel != null && cancel.isCancelled) throw InterruptedError();
-    // Nothing awaits between the two renames.
-    tmpJson.renameSync(jsonPath);
-    tmpMarkdown.renameSync(markdownPath);
+    staged.publish();
   } finally {
-    for (final tmp in [tmpJson, tmpMarkdown]) {
-      if (tmp.existsSync()) tmp.deleteSync();
-    }
+    staged.discard();
   }
-  return (json: jsonPath, markdown: markdownPath);
+  return (json: staged.json, markdown: staged.markdown);
 }

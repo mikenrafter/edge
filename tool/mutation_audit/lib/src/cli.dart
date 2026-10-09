@@ -38,7 +38,8 @@ class _SetupFailed implements Exception {
 /// baseline failed or a path override was refused, 70 internal / export error,
 /// 130 interrupted (SIGINT or SIGTERM): the running tests were stopped and
 /// reaped, the mutated file restored and the export removed, in that order;
-/// no results are written.
+/// no results are published (they are staged in the output directory and
+/// renamed into place only after the export is gone and no signal arrived).
 Future<int> runCli(
   List<String> args, {
   ProcessRunner? runner,
@@ -46,6 +47,7 @@ Future<int> runCli(
   StringSink? err,
   DateTime Function()? now,
   Stream<ProcessSignal>? interrupts,
+  Future<void> Function(DisposableExport export)? disposer,
 }) async {
   final sink = out ?? stdout;
   final errSink = err ?? stderr;
@@ -61,11 +63,18 @@ Future<int> runCli(
     return 64;
   }
   final processes = runner ?? const SystemProcessRunner();
+  // Results are staged inside the output directory while the body runs and
+  // published (renamed) only after the export has been removed and no signal
+  // has arrived: a signal during removal must not leave fresh results next to
+  // exit code 130.
+  StagedResults? staged;
+  String? summaryLine;
   try {
-    return await withDisposableExport<int>(
+    final code = await withDisposableExport<int>(
       repo: config.repo,
       sha: config.sha,
       interrupts: interrupts ?? _signals(),
+      disposer: disposer,
       body: (export, cancel) async {
         final startedAt = clock();
         // Preflight: refuse a pinned commit that already carries an override.
@@ -170,16 +179,24 @@ Future<int> runCli(
           ),
           run.results,
         );
-        final written = await writeResults(results,
+        staged = await stageResults(results,
             outDir: config.outDir, exportPath: export.path, cancel: cancel);
-        sink
-          ..writeln('mutation audit of ${export.sha}: ${results.results.length} of '
-              '${candidates.length} mutants run')
-          ..writeln(results.counts.entries.map((e) => '${e.key}=${e.value}').join(' '))
-          ..writeln(written.markdown);
+        summaryLine = 'mutation audit of ${export.sha}: ${results.results.length} of '
+            '${candidates.length} mutants run\n'
+            '${results.counts.entries.map((e) => '${e.key}=${e.value}').join(' ')}';
         return 0;
       },
     );
+    // The export is gone and no signal arrived (withDisposableExport throws
+    // InterruptedError otherwise): now the results become visible.
+    final ready = staged;
+    if (ready != null) {
+      ready.publish();
+      sink
+        ..writeln(summaryLine)
+        ..writeln(ready.markdown);
+    }
+    return code;
   } on GuardPolicyError catch (e) {
     errSink.writeln(e.message);
     return 64;
@@ -210,6 +227,8 @@ Future<int> runCli(
   } on FormatException catch (e) {
     errSink.writeln('${e.message}: ${e.source}');
     return 70;
+  } finally {
+    staged?.discard();
   }
 }
 
