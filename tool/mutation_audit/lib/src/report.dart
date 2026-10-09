@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'classifier.dart';
 import 'export.dart';
 import 'mutant.dart';
+import 'process_runner.dart';
 
 /// The verdict on one mutant, with the evidence.
 class MutantResult {
@@ -282,20 +283,44 @@ String _cell(String text) => text.replaceAll('|', r'\|').replaceAll('\n', ' ');
 /// Writes `results.json` and `summary.md` into [outDir] (created if needed).
 /// Throws [ArgumentError] when [outDir] is, or is inside, [exportPath]: the
 /// export is disposable. Returns the two paths.
+///
+/// Publication is atomic and cancellation-aware: both files are written as
+/// `*.tmp` next to their targets and renamed into place only if [cancel] has
+/// not fired by then; otherwise the temporaries are removed and
+/// [InterruptedError] is thrown. [afterTempFiles] is a test seam.
 Future<({String json, String markdown})> writeResults(
   AuditResults results, {
   required String outDir,
   required String exportPath,
+  CancelToken? cancel,
+  Future<void> Function()? afterTempFiles,
 }) async {
   final out = p.normalize(p.absolute(outDir));
   final export = p.normalize(p.absolute(exportPath));
   if (p.equals(out, export) || p.isWithin(export, out)) {
     throw ArgumentError.value(outDir, 'outDir', 'must be outside the disposable export $exportPath');
   }
+  if (cancel != null && cancel.isCancelled) throw InterruptedError();
   await Directory(out).create(recursive: true);
   final jsonPath = p.join(out, 'results.json');
   final markdownPath = p.join(out, 'summary.md');
-  await File(jsonPath).writeAsString('${const JsonEncoder.withIndent('  ').convert(results.toJson())}\n');
-  await File(markdownPath).writeAsString(results.renderMarkdown());
+  // Write beside the targets, publish by rename: an interrupted audit leaves
+  // neither a half-written file nor a partial result, and an earlier run's
+  // results stay as they were.
+  final tmpJson = File('$jsonPath.tmp');
+  final tmpMarkdown = File('$markdownPath.tmp');
+  try {
+    await tmpJson.writeAsString('${const JsonEncoder.withIndent('  ').convert(results.toJson())}\n');
+    await tmpMarkdown.writeAsString(results.renderMarkdown());
+    await afterTempFiles?.call();
+    if (cancel != null && cancel.isCancelled) throw InterruptedError();
+    // Nothing awaits between the two renames.
+    tmpJson.renameSync(jsonPath);
+    tmpMarkdown.renameSync(markdownPath);
+  } finally {
+    for (final tmp in [tmpJson, tmpMarkdown]) {
+      if (tmp.existsSync()) tmp.deleteSync();
+    }
+  }
   return (json: jsonPath, markdown: markdownPath);
 }

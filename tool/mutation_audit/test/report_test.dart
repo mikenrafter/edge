@@ -324,6 +324,57 @@ void main() {
       expect((jsonDecode(File(paths.json).readAsStringSync()) as Map)['mutants'], isEmpty);
     });
 
+    group('publication is cancellation-aware', () {
+      List<String> files(String dir) {
+        if (!Directory(dir).existsSync()) return [];
+        return [for (final e in Directory(dir).listSync()) p.basename(e.path)]..sort();
+      }
+
+      test('a normal write leaves exactly the two files, no temporaries', () async {
+        final out = p.join(fx.parent, 'out');
+        await writeResults(sample(), outDir: out, exportPath: p.join(fx.parent, 'export'), cancel: CancelToken());
+        expect(files(out), ['results.json', 'summary.md']);
+      });
+
+      test('cancelled before: nothing is written, InterruptedError', () async {
+        final out = p.join(fx.parent, 'out');
+        final token = CancelToken()..cancel();
+        await expectLater(
+            writeResults(sample(), outDir: out, exportPath: p.join(fx.parent, 'export'), cancel: token),
+            throwsA(isA<InterruptedError>()));
+        expect(files(out), isEmpty);
+      });
+
+      test('cancelled while the files are being written: no results files, no temporaries left', () async {
+        final out = p.join(fx.parent, 'out');
+        final token = CancelToken();
+        await expectLater(
+            writeResults(sample(),
+                outDir: out,
+                exportPath: p.join(fx.parent, 'export'),
+                cancel: token,
+                afterTempFiles: () async => token.cancel()),
+            throwsA(isA<InterruptedError>()));
+        expect(files(out), isEmpty);
+      });
+
+      test('a cancelled write leaves a previous run\'s results alone', () async {
+        final out = p.join(fx.parent, 'out');
+        await writeResults(AuditResults(meta(), const []), outDir: out, exportPath: p.join(fx.parent, 'export'));
+        final before = File(p.join(out, 'results.json')).readAsStringSync();
+        final token = CancelToken();
+        await expectLater(
+            writeResults(sample(),
+                outDir: out,
+                exportPath: p.join(fx.parent, 'export'),
+                cancel: token,
+                afterTempFiles: () async => token.cancel()),
+            throwsA(isA<InterruptedError>()));
+        expect(File(p.join(out, 'results.json')).readAsStringSync(), before);
+        expect(files(out), ['results.json', 'summary.md']);
+      });
+    });
+
     test('refuses an out dir that is the export or inside it', () async {
       final export = p.join(fx.parent, 'export');
       Directory(export).createSync();

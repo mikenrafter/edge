@@ -47,6 +47,18 @@ AuditConfig config({
       timeout: timeout,
     );
 
+/// Cancels the token while the file is being put back.
+class _CancellingApplier extends MutationApplier {
+  _CancellingApplier(super.root, this.token);
+  final CancelToken token;
+
+  @override
+  Future<void> restore(AppliedMutation applied) async {
+    token.cancel();
+    await super.restore(applied);
+  }
+}
+
 void main() {
   late Directory root;
   late File file;
@@ -292,6 +304,30 @@ void main() {
           throwsA(isA<InterruptedError>()));
       expect(runner.calls, hasLength(1));
       expect(current(), source);
+    });
+
+    test('a signal during the final restore still ends in InterruptedError, not in results', () async {
+      final token = CancelToken();
+      final runner = byFile();
+      await expectLater(
+          AuditRunner(runner: runner, applierFor: (r) => _CancellingApplier(r, token)).run(
+              config: config(), root: root.path, mutants: [mutant('<', '<=')], cancel: token),
+          throwsA(isA<InterruptedError>()));
+      expect(current(), source, reason: 'the restore itself completed');
+    });
+
+    test('a signal during the restore of an earlier mutant stops before the next one', () async {
+      final token = CancelToken();
+      final written = <String>[];
+      final runner = FakeProcessRunner((call) {
+        written.add(current());
+        return outcomeOf(passing());
+      });
+      await expectLater(
+          AuditRunner(runner: runner, applierFor: (r) => _CancellingApplier(r, token)).run(
+              config: config(), root: root.path, mutants: [mutant('<', '<='), mutant('>', '>=')], cancel: token),
+          throwsA(isA<InterruptedError>()));
+      expect(written, hasLength(2), reason: 'baseline and the first mutant; the second never ran');
     });
 
     test('a token that is already cancelled runs nothing', () async {

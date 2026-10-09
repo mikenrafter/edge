@@ -116,7 +116,8 @@ Future<int> runCli(
           ),
           run.results,
         );
-        final written = await writeResults(results, outDir: config.outDir, exportPath: export.path);
+        final written = await writeResults(results,
+            outDir: config.outDir, exportPath: export.path, cancel: cancel);
         sink
           ..writeln('mutation audit of ${export.sha}: ${results.results.length} of '
               '${candidates.length} mutants run')

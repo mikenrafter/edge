@@ -240,6 +240,40 @@ void main() {
       await interrupts.close();
     });
 
+    test('while the report is being written: exit 130, no results files, export removed', () async {
+      final interrupts = StreamController<ProcessSignal>();
+      var clockCalls = 0;
+      final runner = tests();
+      final code = await runCli(args(['--setup-cmd', '']),
+          runner: runner,
+          out: stdout_,
+          err: err,
+          interrupts: interrupts.stream,
+          // The second reading is `finishedAt`, taken right before the results are written.
+          now: () {
+            if (++clockCalls == 2) interrupts.add(ProcessSignal.sigint);
+            return DateTime.utc(2026, 10, 9, 8);
+          });
+      expect(code, 130, reason: err.toString());
+      expect(Directory(out.path).listSync(), isEmpty);
+      expect(await fx.worktrees(), isNot(contains(runner.calls.first.cwd)));
+      await interrupts.close();
+    });
+
+    test('after the last mutant, before the report: exit 130, no results', () async {
+      final interrupts = StreamController<ProcessSignal>();
+      final runner = FakeProcessRunner((call) {
+        final src = File(p.join(call.cwd, 'lib/a.dart')).readAsStringSync();
+        if (src != lib) interrupts.add(ProcessSignal.sigint); // arrives, the run itself completes
+        return outcomeOf(passing());
+      });
+      final code = await runCli(args(['--setup-cmd', '', '--max-mutants', '1']),
+          runner: runner, out: stdout_, err: err, interrupts: interrupts.stream);
+      expect(code, 130);
+      expect(Directory(out.path).listSync(), isEmpty);
+      await interrupts.close();
+    });
+
     test('during setup: exit 130 and the baseline never starts', () async {
       final interrupts = StreamController<ProcessSignal>();
       final runner = FakeProcessRunner((call) async {

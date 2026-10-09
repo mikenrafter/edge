@@ -18,8 +18,11 @@ class BaselineFailedError implements Exception {
 
 /// Runs the baseline and then every mutant, one at a time.
 class AuditRunner {
-  AuditRunner({required this.runner});
+  AuditRunner({required this.runner, this.applierFor = MutationApplier.new});
   final ProcessRunner runner;
+
+  /// Creates the applier for a root (a seam for tests).
+  final MutationApplier Function(String root) applierFor;
 
   /// Runs the configured tests on the untouched tree under [root]. Passes only
   /// when the process exited 0, a `done` event with success arrived, nothing
@@ -79,7 +82,7 @@ class AuditRunner {
     CancelToken? cancel,
   }) async {
     final baseline = await runBaseline(config, root, cancel: cancel);
-    final applier = MutationApplier(root);
+    final applier = applierFor(root);
     final guards = GuardMatcher(config.guardPatterns);
     final flaky = config.flakyTests.toSet();
     final results = <MutantResult>[];
@@ -112,7 +115,10 @@ class AuditRunner {
       } finally {
         await applier.restore(applied);
       }
+      // A signal that landed while the file was being put back.
+      if (cancel != null && cancel.isCancelled) throw InterruptedError();
     }
+    if (cancel != null && cancel.isCancelled) throw InterruptedError();
     return (baseline: baseline, results: results);
   }
 }
