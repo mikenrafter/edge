@@ -114,26 +114,64 @@ class ReporterRun {
 /// reported relative to it: Flutter prints absolute paths, and a test key must
 /// not depend on where the disposable export happened to be.
 ReporterRun parseReporterStream(Iterable<String> lines, {String? root}) {
-  final suites = <int, String>{};
-  final started = <int, _Started>{};
-  final tests = <TestOutcome>[];
-  final loadErrors = <LoadError>[];
-  final setupFailures = <SetupFailure>[];
-  final nonJson = <String>[];
-  var sawDone = false, doneSuccess = false;
+  final parser = ReporterStreamParser(root: root);
+  lines.forEach(parser.addLine);
+  return parser.snapshot();
+}
 
-  for (final line in lines) {
-    if (line.trim().isEmpty) continue;
+/// [parseReporterStream] as it is fed: one line at a time, as the run writes
+/// them. The audit reads the finished stream with it, and the heartbeat reads
+/// the counters of a run that is still going, so there is one set of rules for
+/// what counts as a test.
+class ReporterStreamParser {
+  ReporterStreamParser({this.root});
+  final String? root;
+
+  final _suites = <int, String>{};
+  final _started = <int, _Started>{};
+  final _tests = <TestOutcome>[];
+  final _loadErrors = <LoadError>[];
+  final _setupFailures = <SetupFailure>[];
+  final _nonJson = <String>[];
+  var _sawDone = false, _doneSuccess = false;
+  int _passed = 0, _failed = 0, _skipped = 0;
+  String? _lastTest;
+
+  /// Finished, visible tests so far (what [ReporterRun.tests] will hold).
+  int get testsDone => _tests.length;
+
+  /// Of those: succeeded and ran, failed or errored, skipped.
+  int get passed => _passed;
+  int get failed => _failed;
+  int get skipped => _skipped;
+
+  /// The name of the visible test that started last, finished or not: when a
+  /// run hangs, this is where. Loading pseudo-tests and set-up / tear-down
+  /// hooks are not tests.
+  String? get lastTest => _lastTest;
+
+  /// Everything read so far as a [ReporterRun] (a copy; feeding may go on).
+  ReporterRun snapshot() => ReporterRun(
+        tests: List.of(_tests),
+        loadErrors: List.of(_loadErrors),
+        setupFailures: List.of(_setupFailures),
+        sawDone: _sawDone,
+        doneSuccess: _doneSuccess,
+        nonJsonLines: List.of(_nonJson),
+      );
+
+  void addLine(String line) {
+    if (line.trim().isEmpty) return;
     final Object? decoded;
     try {
       decoded = jsonDecode(line);
     } on FormatException {
-      nonJson.add(line);
-      continue;
+      _nonJson.add(line);
+      return;
     }
     if (decoded is! Map<String, dynamic>) {
-      nonJson.add(line);
-      continue;
+      _nonJson.add(line);
+      return;
     }
     final time = (decoded['time'] as num?)?.toInt() ?? 0;
     switch (decoded['type']) {
@@ -141,64 +179,66 @@ ReporterRun parseReporterStream(Iterable<String> lines, {String? root}) {
         final suite = decoded['suite'];
         if (suite is Map<String, dynamic> && suite['id'] is int) {
           final path = '${suite['path'] ?? ''}';
-          suites[suite['id'] as int] =
-              root != null && p.isWithin(root, path) ? p.relative(path, from: root) : path;
+          final base = root;
+          _suites[suite['id'] as int] =
+              base != null && p.isWithin(base, path) ? p.relative(path, from: base) : path;
         }
       case 'testStart':
         final test = decoded['test'];
         if (test is Map<String, dynamic> && test['id'] is int) {
-          started[test['id'] as int] =
-              _Started('${test['name']}', test['suiteID'] as int?, time);
+          final name = '${test['name']}';
+          _started[test['id'] as int] = _Started(name, test['suiteID'] as int?, time);
+          if (!name.startsWith('loading ') && !_hookName.hasMatch(name)) _lastTest = name;
         }
       case 'print':
-        started[decoded['testID']]?.printed.add('${decoded['message']}');
+        _started[decoded['testID']]?.printed.add('${decoded['message']}');
       case 'error':
-        started[decoded['testID']]?.errors.add(TestError(
+        _started[decoded['testID']]?.errors.add(TestError(
             '${decoded['error']}', '${decoded['stackTrace'] ?? ''}',
             isFailure: decoded['isFailure'] == true));
       case 'testDone':
-        final t = started.remove(decoded['testID']);
-        if (t == null) continue;
+        final t = _started.remove(decoded['testID']);
+        if (t == null) return;
         final result = switch (decoded['result']) {
           'success' => TestResult.success,
           'failure' => TestResult.failure,
           _ => TestResult.error,
         };
-        final suite = suites[t.suiteId] ?? '';
+        final suite = _suites[t.suiteId] ?? '';
         if (t.name.startsWith('loading ')) {
           if (result != TestResult.success) {
-            loadErrors.add(LoadError(suite, t.errors.map((e) => e.message).join('\n')));
+            _loadErrors.add(LoadError(suite, t.errors.map((e) => e.message).join('\n')));
           }
         } else if (_hookName.hasMatch(t.name)) {
           if (result != TestResult.success) {
-            setupFailures.add(SetupFailure(suite, t.name, t.errors.map((e) => e.message).join('\n')));
+            _setupFailures.add(SetupFailure(suite, t.name, t.errors.map((e) => e.message).join('\n')));
           }
         } else if (decoded['hidden'] == true && result == TestResult.success) {
           // plumbing, not a test
         } else {
-          tests.add(TestOutcome(
+          final skipped = decoded['skipped'] == true;
+          if (result != TestResult.success) {
+            _failed++;
+          } else if (skipped) {
+            _skipped++;
+          } else {
+            _passed++;
+          }
+          _tests.add(TestOutcome(
             suite: suite,
             name: t.name,
             result: result,
-            skipped: decoded['skipped'] == true,
+            skipped: skipped,
             errors: t.errors,
             printed: t.printed,
             durationMs: time - t.startTime,
           ));
         }
       case 'done':
-        sawDone = true;
-        doneSuccess = decoded['success'] == true;
+        _sawDone = true;
+        _doneSuccess = decoded['success'] == true;
     }
   }
-  return ReporterRun(
-    tests: tests,
-    loadErrors: loadErrors,
-    setupFailures: setupFailures,
-    sawDone: sawDone,
-    doneSuccess: doneSuccess,
-    nonJsonLines: nonJson,
-  );
 }
 
 class _Started {

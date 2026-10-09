@@ -22,7 +22,7 @@ nix develop ../.. -c dart analyze
 The export tests use the real `git` binary on throwaway repositories under the
 system temp directory. The audit logic is tested against a fake process runner that
 answers from the file contents it sees, and the process runner against a fake host with
-a virtual clock (no sleeps). Two files use real children, bounded by timeouts: `process_runner_real_test.dart` (small
+a virtual clock (no sleeps), and the progress output (lines, ETA, heartbeat) against a fake clock and fake timers that move only when the test says so. Two files use real children, bounded by timeouts: `process_runner_real_test.dart` (small
 shell scripts that ignore SIGTERM and hold the pipes) and `sigint_e2e_test.dart` (the real
 tool, a real SIGINT / SIGTERM, a throwaway repo; Linux only). Four more use real bubblewrap
 (`sandbox_real_test.dart`: a fake test command writes everywhere a run can write and the next run
@@ -40,7 +40,7 @@ dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
   [--timeout seconds] [--guard-pattern <glob>...] [--scanner <glob>...] \
   [--runtime-allowlist <file>] [--no-guards] [--allow-override <path>...] \
   [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] [--setup-leaves <glob>...] \
-  [--no-sandbox] [--sandbox-ro <path>...] --out <dir>
+  [--no-sandbox] [--sandbox-ro <path>...] [--heartbeat seconds] --out <dir>
 ```
 
 `--test-cmd` defaults to `flutter test --no-pub --reporter json` for a Flutter package and
@@ -84,6 +84,55 @@ nix develop /path/to/edge -c dart run mutation_audit --repo /path/to/edge --sha 
 bubblewrap (`bwrap` on `PATH`; both repo flakes put it there). A fresh export has no
 package config: the setup command (`flutter pub get` / `dart pub get`) runs in it first.
 Results go to `--out`, which must be outside the export.
+
+## Following a run
+
+A long audit (hours) prints progress, so a slow run can be told from a hung one. Everything
+goes to stderr, one timestamped line per event (UTC, `2026-10-09T08:01:15Z ...`), unbuffered:
+
+```
+export created: <path> at <sha>
+setup start / setup done in 1m30s
+warm-up start / warm-up done in 12s
+detection done: 41 suites, 6 flagged, 2 allowlisted
+mutants generated: 812 candidates, 60 selected (seed 7)
+baseline start / baseline done in 3m02s: 41 tests passed
+[1/60] <id> lib/a.dart:12 relational '<'→'<='
+[1/60] killed (2 killing, 1 discounted) 2m10s; elapsed 2m10s; ETA 2h09m50s
+```
+
+Per mutant there is a start line and an end line; a rerun of a failed test gets its own
+start and end line in between. `elapsed` counts from the first mutant, `ETA` is the mean
+duration of the mutants finished so far times the number left.
+
+**Heartbeat.** While any child run is in progress (setup, warm-up, baseline, a mutant, a
+rerun), every 60 s (`--heartbeat <seconds>`; `0` turns it off) a line says it is alive:
+
+```
+… still running mutant [3/60] for 4m00s (pid 123456): 212 tests done (210 passed, 2 failed), last: g boundary case
+```
+
+The counts come from the JSON reporter stream, parsed as it arrives (`ReporterStreamParser`;
+`parseReporterStream` is the same parser fed all at once); `last` is the test that started
+last, which for a hung run is where it hangs. Setup and the warm-up print no test events, so
+their counts stay 0; the pid and the growing time are the signal there. With a sandbox the pid
+is the wrapper's.
+
+**`progress.jsonl`** in `--out`: a first `{"type":"meta","partial":true,...}` line (tool version,
+repo, sha, seed, selected and candidate counts, files, start time), then one
+`{"type":"mutant","partial":true,...}` object per finished mutant (`index`, `total`, `id`, `file`,
+`line`, `operator`, `status`, `killers` with their `kind`, `discounted` test keys, `durationMs`:
+wall time of the mutant including reruns). Each line is appended and flushed to disk when the
+mutant ends; a new run starts the file afresh. It is a PARTIAL, diagnostic file, not a result: it is
+kept after an abort or Ctrl-C (that is what it is for), and a run that completes leaves it next to
+the results unchanged. `results.json` and `summary.md` keep their rules: staged, and published only
+by a run that finished and removed its export. A failed baseline leaves the meta line.
+
+```
+tail -f <out>/progress.jsonl                     # one JSON object per finished mutant
+tail -f <log of the tool's stderr>               # phases, mutants, heartbeat
+jq -c '[.index,.status,.durationMs]' <out>/progress.jsonl
+```
 
 ## Source guards: found in the export, never counted as kills
 

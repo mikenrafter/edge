@@ -36,6 +36,7 @@ class AuditConfig {
     this.noSandbox = false,
     this.sandboxReadOnly = const [],
     this.setupLeaves = const [],
+    this.heartbeat = const Duration(seconds: 60),
   });
 
   /// The developer repository and the pinned commit to audit.
@@ -98,6 +99,10 @@ class AuditConfig {
   /// config roots are there.
   final List<String> sandboxReadOnly;
 
+  /// How often a child run in progress prints a "still running" line to stderr
+  /// (`--heartbeat <seconds>`); zero turns the heartbeat off.
+  final Duration heartbeat;
+
   /// Where results.json and summary.md go (never inside the export).
   final String outDir;
 }
@@ -109,7 +114,7 @@ class AuditConfig {
 /// [--timeout seconds] [--guard-pattern <glob>... | --no-guards]
 /// [--allow-override <path>...]
 /// [--flaky-test <key>...] [--setup-cmd "<cmd>"] [--env KEY=VALUE...]
-/// [--no-sandbox] [--sandbox-ro <path>...]
+/// [--no-sandbox] [--sandbox-ro <path>...] [--heartbeat seconds]
 /// --out <dir>`
 ///
 /// `--files`, `--tests`, `--guard-pattern`, `--allow-override`, `--flaky-test`
@@ -196,6 +201,7 @@ AuditConfig parseAuditArgs(List<String> args) {
     noSandbox: r['no-sandbox'] as bool,
     sandboxReadOnly: list('sandbox-ro'),
     setupLeaves: list('setup-leaves'),
+    heartbeat: Duration(seconds: number('heartbeat') ?? 60),
   );
 }
 
@@ -239,6 +245,8 @@ ArgParser _parser() => ArgParser()
       help: 'A host path the sandboxed toolchain must read (mounted read-only at the same path; the sandbox root is '
           'minimal). The base system, the pub cache, FLUTTER_ROOT, PATH entries and the package config roots are '
           'found by themselves.')
+  ..addOption('heartbeat',
+      help: 'Seconds between "still running" lines on stderr while a child run is in progress (default 60, 0 = off).')
   ..addOption('out', help: 'Directory for results.json and summary.md (outside the export).');
 
 /// `--files a b c` means `--files a --files b --files c`: the list options take

@@ -14,6 +14,7 @@ export 'src/guards.dart';
 export 'src/mutant.dart';
 export 'src/native_assets.dart';
 export 'src/process_runner.dart';
+export 'src/progress.dart';
 export 'src/report.dart';
 export 'src/sandbox.dart';
 export 'src/reporter_parser.dart';

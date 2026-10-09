@@ -77,7 +77,7 @@ void main() {
     final id1 = mutant('<', '<=').id, id2 = mutant('>', '>=').id;
     expect(messages(), [
       'baseline start',
-      'baseline done in 10s: 1 tests passed',
+      'baseline done in 10s: 1 test passed',
       "[1/2] $id1 lib/a.dart:1 relational '<'→'<='",
       '[1/2] killed (1 killing, 0 discounted) 10s; elapsed 10s; ETA 10s',
       "[2/2] $id2 lib/a.dart:2 relational '>'→'>='",
@@ -183,7 +183,7 @@ void main() {
     test('heartbeat 0 disables it, however long the run', () async {
       await AuditRunner(runner: streaming(stays: const Duration(hours: 2)), progress: reporter(heartbeat: Duration.zero))
           .runBaseline(config(), root.path);
-      expect(messages(), ['baseline start', 'baseline done in 2h00m00s: 1 tests passed']);
+      expect(messages(), ['baseline start', 'baseline done in 2h00m00s: 1 test passed']);
     });
 
     test('a cancelled run stops its heartbeat too', () async {

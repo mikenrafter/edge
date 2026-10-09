@@ -38,6 +38,11 @@ void main() {
     out.deleteSync(recursive: true);
   });
 
+  /// What is in the output directory besides progress.jsonl, the partial
+  /// diagnostic log that stays after an abort (cli_progress_test.dart): these
+  /// tests are about results and their temporaries.
+  List<String> outNames() => [for (final e in out.listSync()) p.basename(e.path)]..remove('progress.jsonl');
+
   List<String> args([List<String> extra = const [], String? at]) => [
         '--repo', fx.root,
         '--sha', at ?? sha,
@@ -659,7 +664,7 @@ void main() {
             return DateTime.utc(2026, 10, 9, 8);
           });
       expect(code, 130, reason: err.toString());
-      expect(Directory(out.path).listSync(), isEmpty);
+      expect(outNames(), isEmpty);
       expect(await fx.worktrees(), isNot(contains(runner.calls.first.cwd)));
       await interrupts.close();
     });
@@ -674,7 +679,7 @@ void main() {
       final code = await runCli(args(['--setup-cmd', '', '--max-mutants', '1']),
           runner: runner, out: stdout_, err: err, interrupts: interrupts.stream);
       expect(code, 130);
-      expect(Directory(out.path).listSync(), isEmpty);
+      expect(outNames(), isEmpty);
       await interrupts.close();
     });
 
@@ -713,7 +718,7 @@ void main() {
         expect(code, 130, reason: err.toString());
         expect(old('results.json').readAsStringSync(), 'OLD RESULTS');
         expect(old('summary.md').readAsStringSync(), 'OLD SUMMARY');
-        expect(out.listSync().map((e) => p.basename(e.path)).toSet(), {'results.json', 'summary.md'});
+        expect(outNames().toSet(), {'results.json', 'summary.md'});
         expect(stdout_.toString(), isNot(contains('mutants run')), reason: 'nothing was reported as done');
         await interrupts.close();
       });
@@ -731,7 +736,7 @@ void main() {
               await e.dispose();
             });
         expect(code, 130);
-        expect(out.listSync(), isEmpty);
+        expect(outNames(), isEmpty);
         await interrupts.close();
       });
 
@@ -743,7 +748,7 @@ void main() {
             err: err,
             now: () => DateTime.utc(2026, 10, 9, 8),
             disposer: (e) async {
-              seen.addAll(out.listSync().map((x) => p.basename(x.path)));
+              seen.addAll(outNames());
               await e.dispose();
             });
         expect(code, 0, reason: err.toString());
@@ -752,7 +757,7 @@ void main() {
         expect(seen, everyElement(endsWith('.tmp')), reason: 'staged inside the output directory, so the final rename stays on one file system');
         expect(old('results.json').existsSync(), isTrue);
         expect(old('summary.md').existsSync(), isTrue);
-        expect(out.listSync().map((e) => p.basename(e.path)), isNot(contains(endsWith('.tmp'))));
+        expect(outNames(), isNot(contains(endsWith('.tmp'))));
         expect(stdout_.toString(), contains('mutants run'));
       });
 
@@ -771,7 +776,7 @@ void main() {
         expect(code, 70);
         expect(old('results.json').readAsStringSync(), 'OLD RESULTS');
         expect(old('summary.md').readAsStringSync(), 'OLD SUMMARY');
-        expect(out.listSync().map((e) => p.basename(e.path)).toSet(), {'results.json', 'summary.md'});
+        expect(outNames().toSet(), {'results.json', 'summary.md'});
       });
     });
 

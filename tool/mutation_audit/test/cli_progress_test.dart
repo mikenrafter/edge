@@ -98,9 +98,9 @@ void main() {
       'detection done: 1 suites, 0 flagged, 0 allowlisted',
       'mutants generated: 2 candidates, 1 selected (seed 7)',
       'baseline start',
-      'baseline done in 10s: 1 tests passed',
+      'baseline done in 10s: 1 test passed',
     ]);
-    expect(shape[9], matches(RegExp(r"^\[1/1\] lib/a\.dart:\d+:relational:[0-9a-f]+ lib/a\.dart:1 relational '.'→'.+'$")));
+    expect(shape[9], matches(RegExp(r"^\[1/1\] lib/a\.dart:\d+:relational:[0-9a-f]+ lib/a\.dart:\d+ relational '.'→'.+'$")));
     expect(shape[10], matches(RegExp(r'^\[1/1\] (killed|survived) \(\d killing, 0 discounted\) 10s; elapsed 10s; ETA 0\.0s$')));
     // The timestamps are the injected clock's: 10 s per run.
     expect(lines[1], startsWith('2026-10-09T08:00:00Z setup start'));
@@ -151,6 +151,18 @@ void main() {
       expect(await run(tests(takes: const Duration(seconds: 100)), ['--no-sandbox', '--max-mutants', '1']), 0, reason: err.toString());
       expect(time.pending, 0);
     });
+  });
+
+  test('a stderr that cannot be written (closed pipe) does not stop the audit', () async {
+    final code = await runCli(args(['--no-sandbox', '--setup-cmd', '', '--max-mutants', '1']),
+        runner: tests(),
+        out: stdout_,
+        err: _BrokenSink(),
+        now: () => DateTime.utc(2026, 10, 9, 8),
+        progressNow: time.now,
+        heartbeatAlarm: time.alarm);
+    expect(code, 0);
+    expect(outFiles(), ['progress.jsonl', 'results.json', 'summary.md']);
   });
 
   group('progress.jsonl', () {
@@ -216,4 +228,15 @@ void main() {
       expect(progressRows().map((r) => r['index']), [null, 1]);
     });
   });
+}
+
+class _BrokenSink implements StringSink {
+  @override
+  void write(Object? object) => throw const FileSystemException('Broken pipe');
+  @override
+  void writeAll(Iterable<Object?> objects, [String separator = '']) => write(null);
+  @override
+  void writeCharCode(int charCode) => write(null);
+  @override
+  void writeln([Object? object = '']) => write(null);
 }

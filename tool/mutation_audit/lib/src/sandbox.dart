@@ -474,7 +474,12 @@ class SandboxedProcessRunner implements ProcessRunner {
     Duration? timeout,
     Map<String, String>? environment,
     CancelToken? cancel,
+    RunObserver? observer,
   }) =>
       inner.run(sandbox.wrap(argv, workingDirectory: workingDirectory),
-          workingDirectory: workingDirectory, timeout: timeout, environment: environment, cancel: cancel);
+          workingDirectory: workingDirectory,
+          timeout: timeout,
+          environment: environment,
+          cancel: cancel,
+          observer: observer);
 }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
 
 import 'audit_runner.dart';
 import 'applier.dart';
@@ -15,6 +16,7 @@ import 'generator.dart';
 import 'guards.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
+import 'progress.dart';
 import 'report.dart';
 import 'run_log.dart';
 import 'native_assets.dart';
@@ -49,12 +51,20 @@ class _SetupFailed implements Exception {
 /// reaped, the mutated file restored and the export removed, in that order;
 /// no results are published (they are staged in the output directory and
 /// renamed into place only after the export is gone and no signal arrived).
+///
+/// Progress goes to [err] (timestamped phase lines, a line per mutant, a
+/// heartbeat while a child runs; see [ProgressReporter]) and to
+/// `<out>/progress.jsonl`, a partial file that stays after an abort. Its time
+/// is [progressNow] and its timers [heartbeatAlarm] (real ones by default; the
+/// results' own timestamps come from [now]).
 Future<int> runCli(
   List<String> args, {
   ProcessRunner? runner,
   StringSink? out,
   StringSink? err,
   DateTime Function()? now,
+  DateTime Function()? progressNow,
+  Alarm Function(Duration after)? heartbeatAlarm,
   Stream<ProcessSignal>? interrupts,
   Future<void> Function(DisposableExport export)? disposer,
   Future<String> Function()? sandboxProbe,
@@ -116,6 +126,28 @@ Future<int> runCli(
       disposer: disposer,
       body: (export, cancel) async {
         final startedAt = clock();
+        // progress.jsonl is a file in the output directory; an output directory
+        // inside the export would dirty the tree being audited (and is refused
+        // when the results are staged anyway).
+        final out = p.normalize(p.absolute(config.outDir)), exportDir = p.normalize(p.absolute(export.path));
+        final progress = ProgressReporter(
+          now: progressNow ?? DateTime.now,
+          // One writeln per line, nothing buffered by the tool: stderr writes are
+          // synchronous on POSIX (a flush() here would bind the stream and make
+          // the next write throw). A stderr that cannot be written (closed pipe)
+          // must not stop an audit.
+          write: (line) {
+            try {
+              errSink.writeln(line);
+            } on Object {
+              // progress is best effort
+            }
+          },
+          heartbeat: config.heartbeat,
+          alarm: heartbeatAlarm,
+          logPath: p.equals(out, exportDir) || p.isWithin(exportDir, out) ? null : p.join(out, 'progress.jsonl'),
+        );
+        progress.line('export created: ${export.path} at ${export.sha}');
         // Every moment the export could have moved off the pinned commit is
         // checked: here, after setup, after the baseline and after every run.
         final integrity = ExportIntegrity(root: export.path, pinnedSha: export.sha, setupOutputs: config.setupLeaves);
@@ -131,11 +163,15 @@ Future<int> runCli(
         final scannerGlobs = [...defaultScannerGlobs, ...config.scanners];
         final setup = config.setupCmd ?? defaultSetupCommand(export.path);
         if (setup.isNotEmpty) {
-          final done = await processes.run(splitCommand(setup),
-              workingDirectory: export.path,
-              environment: config.env,
-              timeout: config.timeout,
-              cancel: cancel);
+          final setupDone = progress.step('setup');
+          final done = await progress.tracked(
+              'setup',
+              (observer) => processes.run(splitCommand(setup),
+                  workingDirectory: export.path,
+                  environment: config.env,
+                  timeout: config.timeout,
+                  cancel: cancel,
+                  observer: observer));
           if (done.cleanupFailed) {
             throw CleanupFailedError('"$setup" left processes that SIGKILL did not remove '
                 '(${done.survivors.join(', ')})');
@@ -149,6 +185,7 @@ Future<int> runCli(
           if (done.exitCode != 0) {
             throw _SetupFailed('"$setup" failed (exit code ${done.exitCode})', argv: setupArgv, outcome: done);
           }
+          setupDone();
         }
         // The sandbox has no network, and a build hook may need it (sqlite3's
         // downloads a prebuilt library): the hooks are built now, outside it.
@@ -157,8 +194,15 @@ Future<int> runCli(
         final hooks = config.noSandbox ? const <String>[] : packagesWithBuildHooks(export.path);
         if (hooks.isNotEmpty) {
           final warmup = buildWarmupCommand(config.testCmd);
-          final done = await processes.run(warmup,
-              workingDirectory: export.path, environment: config.env, timeout: config.timeout, cancel: cancel);
+          final warmupDone = progress.step('warm-up');
+          final done = await progress.tracked(
+              'warm-up',
+              (observer) => processes.run(warmup,
+                  workingDirectory: export.path,
+                  environment: config.env,
+                  timeout: config.timeout,
+                  cancel: cancel,
+                  observer: observer));
           if (done.cleanupFailed) {
             throw CleanupFailedError('"${warmup.join(' ')}" left processes that SIGKILL did not remove '
                 '(${done.survivors.join(', ')})');
@@ -170,6 +214,7 @@ Future<int> runCli(
                 '${config.timeout.inSeconds} s and was stopped',
                 argv: warmup, outcome: done, log: 'warmup.log');
           }
+          warmupDone();
         }
         await integrity.requirePinned('after setup');
         // Setup may have created or rewritten the lock, the overrides file or
@@ -212,6 +257,9 @@ Future<int> runCli(
         }
 
 
+        progress.line('detection done: ${suites.length} suites, ${scanning.length} flagged, '
+            '${overrides.length} allowlisted');
+
         // Everything from here on runs in the sandbox (setup could not: it
         // needs the network). The package config exists now, so the roots the
         // toolchain must read are known.
@@ -232,7 +280,20 @@ Future<int> runCli(
         final selected = selectMutants(candidates,
             maxMutants: config.maxMutants, sample: config.sample, seed: config.seed);
 
-        final run = await AuditRunner(runner: testRunner, integrity: integrity, isolated: sandbox != null)
+        progress.line('mutants generated: ${candidates.length} candidates, ${selected.length} selected '
+            '(${config.seed == null ? 'no seed' : 'seed ${config.seed}'})');
+        progress.writeMeta({
+          'toolVersion': _toolVersion,
+          'repo': export.repo,
+          'sha': export.sha,
+          'seed': config.seed,
+          'selected': selected.length,
+          'candidates': candidates.length,
+          'files': config.files,
+          'startedAt': startedAt.toUtc().toIso8601String(),
+        });
+
+        final run = await AuditRunner(runner: testRunner, integrity: integrity, isolated: sandbox != null, progress: progress)
             .run(config: config, root: export.path, mutants: selected, cancel: cancel, guards: guards);
         final results = AuditResults(
           AuditMeta(

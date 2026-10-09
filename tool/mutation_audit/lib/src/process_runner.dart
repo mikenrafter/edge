@@ -29,6 +29,20 @@ class CleanupFailedError implements Exception {
   String toString() => 'CleanupFailedError: $message';
 }
 
+/// A look at a run while it is going on (the heartbeat's input). Both
+/// callbacks are best effort: whatever they throw is dropped, so a watcher can
+/// never break a run or lose its output.
+class RunObserver {
+  const RunObserver({this.onStart, this.onStdoutLine});
+
+  /// The child started; this is its pid.
+  final void Function(int pid)? onStart;
+
+  /// One complete line of the child's stdout, as it arrives (a last line
+  /// without a newline arrives when the stream closes).
+  final void Function(String line)? onStdoutLine;
+}
+
 /// What one command run produced.
 class ProcessOutcome {
   const ProcessOutcome({
@@ -81,13 +95,15 @@ abstract class ProcessRunner {
   /// when [timeout] passes -- counted until the process has exited AND its
   /// output has closed -- or when [cancel] is cancelled, and says which in
   /// the outcome. Returns only once the stopped processes are gone (or could
-  /// not be killed: then [ProcessOutcome.outputComplete] is false).
+  /// not be killed: then [ProcessOutcome.outputComplete] is false). [observer]
+  /// sees the pid and the stdout lines while the run is going on.
   Future<ProcessOutcome> run(
     List<String> argv, {
     required String workingDirectory,
     Duration? timeout,
     Map<String, String>? environment,
     CancelToken? cancel,
+    RunObserver? observer,
   });
 }
 
@@ -195,6 +211,7 @@ class SystemProcessRunner implements ProcessRunner {
     Duration? timeout,
     Map<String, String>? environment,
     CancelToken? cancel,
+    RunObserver? observer,
   }) async {
     final clock = Stopwatch()..start();
     if (cancel != null && cancel.isCancelled) {
@@ -207,7 +224,12 @@ class SystemProcessRunner implements ProcessRunner {
       return ProcessOutcome(exitCode: 127, stderr: e.toString(), elapsed: clock.elapsed);
     }
 
-    final stdout = _Collector(child.stdout);
+    try {
+      observer?.onStart?.call(child.pid);
+    } on Object {
+      // a watcher must not break the run
+    }
+    final stdout = _Collector(child.stdout, onLine: observer?.onStdoutLine);
     final stderr = _Collector(child.stderr);
     final family = _Family(host, child.pid, host.identityOf(child.pid)?.start, child.ownsSession);
     final exit = child.exitCode.then((code) {
@@ -480,9 +502,19 @@ enum _Ended { finished, timeout, cancelled }
 
 /// Reads one stream into memory and can stop reading at any time.
 class _Collector {
-  _Collector(Stream<List<int>> source) {
+  _Collector(Stream<List<int>> source, {void Function(String line)? onLine}) {
+    if (onLine != null) {
+      // Bytes are decoded and split as they arrive (a character or a line may
+      // straddle two chunks); the full text is still kept for the outcome.
+      final lineSink = _LineSink(onLine);
+      final splitter = const LineSplitter().startChunkedConversion(lineSink);
+      _lines = const Utf8Decoder(allowMalformed: true).startChunkedConversion(splitter);
+    }
     _subscription = source.listen(
-      _bytes.add,
+      (chunk) {
+        _bytes.add(chunk);
+        _lines?.add(chunk);
+      },
       onDone: _close,
       onError: (Object _) => _close(),
       cancelOnError: true,
@@ -492,11 +524,15 @@ class _Collector {
   final BytesBuilder _bytes = BytesBuilder(copy: false);
   final Completer<void> _done = Completer<void>();
   late final StreamSubscription<List<int>> _subscription;
+  ByteConversionSink? _lines;
 
   Future<void> get closed => _done.future;
   bool get isClosed => _done.isCompleted;
 
   void _close() {
+    // The end of the stream ends a last line that has no newline.
+    _lines?.close();
+    _lines = null;
     if (!_done.isCompleted) _done.complete();
   }
 
@@ -505,6 +541,24 @@ class _Collector {
 
   String text() => utf8.decode(_bytes.toBytes(), allowMalformed: true);
   List<String> lines() => const LineSplitter().convert(text());
+}
+
+/// Hands each line to [onLine]; what the callback throws is dropped.
+class _LineSink implements Sink<String> {
+  _LineSink(this.onLine);
+  final void Function(String line) onLine;
+
+  @override
+  void add(String line) {
+    try {
+      onLine(line);
+    } on Object {
+      // a watcher must not break the run
+    }
+  }
+
+  @override
+  void close() {}
 }
 
 /// The real thing: `Process.start`, `/proc` (or `ps`), `kill`.
@@ -640,6 +694,9 @@ class _RealChild implements ChildProcess {
   @override
   Future<int> get exitCode => _process.exitCode;
 }
+
+/// A real timer as an [Alarm] (the default for everything that waits).
+Alarm systemAlarm(Duration after) => _TimerAlarm(after);
 
 class _TimerAlarm implements Alarm {
   _TimerAlarm(Duration after) {

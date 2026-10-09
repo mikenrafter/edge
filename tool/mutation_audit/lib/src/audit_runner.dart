@@ -8,6 +8,7 @@ import 'export.dart' show InterruptedError;
 import 'export_integrity.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
+import 'progress.dart';
 import 'report.dart';
 import 'reporter_parser.dart';
 
@@ -40,8 +41,14 @@ class AuditRunner {
     this.integrity,
     this.isolated = false,
     String? tempParent,
-  }) : tempParent = tempParent ?? Directory.systemTemp.path;
+    ProgressReporter? progress,
+  })  : tempParent = tempParent ?? Directory.systemTemp.path,
+        progress = progress ?? ProgressReporter.silent();
   final ProcessRunner runner;
+
+  /// Where the phase lines, the per-mutant lines and the heartbeat go (silent
+  /// by default).
+  final ProgressReporter progress;
 
   /// Checks after every run that the export on the host is what it was before
   /// (null: not checked, as without a sandbox).
@@ -65,21 +72,28 @@ class AuditRunner {
     required AuditConfig config,
     required String root,
     required String during,
+    required String phase,
+    String? position,
     CancelToken? cancel,
     ExportView? before,
   }) async {
     final tmp = isolated ? null : Directory(tempParent).createTempSync('mutaudit_run_');
     final ProcessOutcome outcome;
     try {
-      outcome = await runner.run(
-        argv,
-        workingDirectory: root,
-        timeout: config.timeout,
-        environment: {
-          ...config.env,
-          if (tmp != null) ...{'TMPDIR': tmp.path, 'TMP': tmp.path, 'TEMP': tmp.path},
-        },
-        cancel: cancel,
+      outcome = await progress.tracked(
+        phase,
+        (observer) => runner.run(
+          argv,
+          workingDirectory: root,
+          timeout: config.timeout,
+          environment: {
+            ...config.env,
+            if (tmp != null) ...{'TMPDIR': tmp.path, 'TMP': tmp.path, 'TEMP': tmp.path},
+          },
+          cancel: cancel,
+          observer: observer,
+        ),
+        position: position,
       );
     } finally {
       try {
@@ -114,11 +128,13 @@ class AuditRunner {
   Future<BaselineSummary> runBaseline(AuditConfig config, String root, {CancelToken? cancel}) async {
     if (cancel != null && cancel.isCancelled) throw InterruptedError();
     final command = buildTestCommand(config.testCmd, tests: config.tests);
+    final done = progress.step('baseline');
     final outcome = await _exec(command,
         config: config,
         root: root,
         cancel: cancel,
         during: 'the baseline run',
+        phase: 'baseline',
         before: isolated ? await integrity?.view() : null);
     if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
     BaselineFailedError failed(String message) => BaselineFailedError(message, argv: command, outcome: outcome);
@@ -145,6 +161,7 @@ class AuditRunner {
           '${outcome.stderr.trim().isEmpty ? '' : ', ${outcome.stderr.trim().split('\n').first}'})');
     }
     if (ran == 0) throw failed('the baseline ran no test');
+    done('$ran ${ran == 1 ? 'test' : 'tests'} passed');
     return BaselineSummary(passed: true, testsRun: ran, duration: outcome.elapsed);
   }
 
@@ -172,24 +189,43 @@ class AuditRunner {
     final flaky = config.flakyTests.toSet();
     final results = <MutantResult>[];
 
-    for (final mutant in mutants) {
+    for (final (i, mutant) in mutants.indexed) {
       if (cancel != null && cancel.isCancelled) throw InterruptedError();
+      final index = i + 1, total = mutants.length;
+      progress.mutantStarted(index, total, mutant);
       final applied = await applier.apply(mutant);
       late final Classification classification;
       late final Duration elapsed;
       try {
         // The reference for this mutant's runs: the export with the mutant applied.
         final before = isolated ? await integrity?.view(mutatedFile: mutant.file) : null;
-        Future<ProcessOutcome> alone(TestOutcome failed) => _exec(
-              buildTestCommand(config.testCmd, tests: [failed.suite], fullName: failed.name),
-              config: config,
-              root: root,
-              cancel: cancel,
-              during: 'the rerun of ${failed.key} for mutant ${mutant.id}',
-              before: before,
-            );
+        Future<ProcessOutcome> alone(TestOutcome failed) async {
+          progress.line('[$index/$total] rerun ${failed.key}');
+          final began = progress.now();
+          final outcome = await _exec(
+            buildTestCommand(config.testCmd, tests: [failed.suite], fullName: failed.name),
+            config: config,
+            root: root,
+            cancel: cancel,
+            during: 'the rerun of ${failed.key} for mutant ${mutant.id}',
+            phase: 'rerun ${failed.key}',
+            position: '[$index/$total]',
+            before: before,
+          );
+          progress.line('[$index/$total] rerun ${failed.key}: '
+              '${outcome.timedOut ? 'timed out' : outcome.cancelled ? 'cancelled' : 'exit ${outcome.exitCode}'} '
+              'in ${ProgressReporter.formatDuration(progress.now().difference(began))}');
+          return outcome;
+        }
+
         final outcome = await _exec(buildTestCommand(config.testCmd, tests: config.tests),
-            config: config, root: root, cancel: cancel, during: 'the run of mutant ${mutant.id}', before: before);
+            config: config,
+            root: root,
+            cancel: cancel,
+            during: 'the run of mutant ${mutant.id}',
+            phase: 'mutant',
+            position: '[$index/$total]',
+            before: before);
         if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
         classification =
             await classifyRun(outcome, guards: matcher, flakyTests: flaky, rerun: alone, root: root);
@@ -202,6 +238,7 @@ class AuditRunner {
       if (cancel != null && cancel.isCancelled) throw InterruptedError();
       results.add(MutantResult(
           mutant: mutant, classification: classification, duration: elapsed, isolated: isolated));
+      progress.mutantFinished(index, total, mutant, classification);
     }
     if (cancel != null && cancel.isCancelled) throw InterruptedError();
     return (baseline: baseline, results: results);

@@ -286,7 +286,8 @@ void main() {
     });
 
     test('a log that cannot be written is said once on the progress stream and does not stop the audit', () {
-      final r = reporter(logPath: p.join(dir.path, 'no', 'such', 'dir', 'progress.jsonl'));
+      File(p.join(dir.path, 'file.txt')).writeAsStringSync('');
+      final r = reporter(logPath: p.join(dir.path, 'file.txt', 'progress.jsonl'));
       r.writeMeta({'sha': 'x'});
       r.mutantStarted(1, 1, mutant());
       r.mutantFinished(1, 1, mutant(), const Classification(status: MutantStatus.survived));
