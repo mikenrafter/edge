@@ -134,6 +134,90 @@ void main() {
           ['fvm', 'flutter', 'test', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
     });
 
+    test('--coverage is a flag for flutter test: the path after it is a suite and goes', () {
+      expect(rerun('flutter test --coverage test/other_test.dart'),
+          ['flutter', 'test', '--coverage', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    test('--coverage takes a directory for dart test: that value stays, the suite goes', () {
+      expect(rerun('dart test --coverage cov test/other_test.dart'),
+          ['dart', 'test', '--coverage', 'cov', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    test('every positional after the test subcommand is a suite, path-like or not', () {
+      expect(rerun('flutter test specs'), ['flutter', 'test', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+      expect(rerun('dart test unit integration widgets'),
+          ['dart', 'test', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+      expect(rerun('flutter test --no-pub specs --tags slow other'),
+          ['flutter', 'test', '--no-pub', '--tags', 'slow', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
+    // The option tables of `flutter test --help` and `dart test --help`
+    // (Flutter 3.41.6 / package:test 1.31.1), copied here on purpose: the test
+    // is the check on the table in command.dart.
+    const flutterValue = [
+      '-d', '--device-id', '-D', '--dart-define', '--dart-define-from-file', '--device-user', '--flavor',
+      '--name', '--plain-name', '-t', '--tags', '-x', '--exclude-tags', '--coverage-path',
+      '--coverage-package', '-j', '--concurrency', '--test-randomize-ordering-seed', '--total-shards',
+      '--shard-index', '-r', '--reporter', '--file-reporter', '--timeout', '--dds-port',
+    ];
+    const flutterFlags = [
+      '-h', '--help', '-v', '--verbose', '--pub', '--no-pub', '--track-widget-creation',
+      '--no-track-widget-creation', '--start-paused', '--fail-fast', '--no-fail-fast', '--run-skipped',
+      '--no-run-skipped', '--coverage', '--merge-coverage', '--branch-coverage', '--update-goldens',
+      '--test-assets', '--no-test-assets', '--ignore-timeouts', '--wasm', '--dds', '--no-dds',
+    ];
+    const dartValue = [
+      '-n', '--name', '-N', '--plain-name', '-t', '--tags', '-x', '--exclude-tags', '-p', '--platform',
+      '-c', '--compiler', '-P', '--preset', '-j', '--concurrency', '--total-shards', '--shard-index',
+      '--timeout', '--suite-load-timeout', '--coverage', '--coverage-path', '--coverage-package',
+      '--test-randomize-ordering-seed', '-r', '--reporter', '--file-reporter',
+    ];
+    const dartFlags = [
+      '-h', '--help', '--version', '--run-skipped', '--no-run-skipped', '--ignore-timeouts',
+      '--pause-after-load', '--debug', '--branch-coverage', '--chain-stack-traces',
+      '--no-chain-stack-traces', '--no-retry', '--fail-fast', '--no-fail-fast', '--verbose-trace',
+      '--js-trace', '--color', '--no-color',
+    ];
+    const nameSelectors = {'-n', '--name', '-N', '--plain-name'};
+
+    for (final (tool, valued, flags) in [
+      ('flutter', flutterValue, flutterFlags),
+      ('dart', dartValue, dartFlags),
+    ]) {
+      group('option arity of $tool test', () {
+        for (final option in valued) {
+          test('$option takes a value: the value stays (or goes with the name selectors), a suite after it goes', () {
+            final argv = rerun('$tool test $option VALUE test/other_test.dart specs');
+            expect(argv, isNot(contains('test/other_test.dart')), reason: option);
+            expect(argv, isNot(contains('specs')), reason: option);
+            if (nameSelectors.contains(option)) {
+              expect(argv, isNot(contains('VALUE')), reason: option);
+              // Only the rerun's own anchored --name is left.
+              expect(argv.where((a) => a == option), hasLength(option == '--name' ? 1 : 0), reason: option);
+            } else {
+              expect(argv, containsAllInOrder([option, 'VALUE']), reason: option);
+            }
+          });
+        }
+        for (final option in flags) {
+          test('$option is a flag: it stays, the word after it is a suite and goes', () {
+            final argv = rerun('$tool test $option test/other_test.dart specs');
+            expect(argv, contains(option), reason: option);
+            expect(argv, isNot(contains('test/other_test.dart')), reason: option);
+            expect(argv, isNot(contains('specs')), reason: option);
+          });
+        }
+      });
+    }
+
+    test('an option written --name=value or with an attached short value takes no following word', () {
+      expect(rerun('dart test --coverage=cov test/other_test.dart'),
+          ['dart', 'test', '--coverage=cov', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+      expect(rerun('dart test -j4 test/other_test.dart'),
+          ['dart', 'test', '-j4', '--reporter', 'json', 'test/failed_test.dart', '--name', '^x\$']);
+    });
+
     test('without a single-test filter the command is left exactly as given', () {
       expect(buildTestCommand('flutter test test/a_test.dart --name foo', tests: ['test/b_test.dart']),
           ['flutter', 'test', 'test/a_test.dart', '--name', 'foo', '--reporter', 'json', 'test/b_test.dart']);

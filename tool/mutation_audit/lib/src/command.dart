@@ -57,8 +57,9 @@ List<String> splitCommand(String command) {
 /// `--name`: `--plain-name` is a substring match and would also run every test
 /// whose name merely contains it. A run for one test is a rerun of one suite,
 /// so suite selectors (files, directories) and name selectors (`--name`,
-/// `-n`, `--plain-name`, `-N`) embedded in [testCmd] are dropped first; other
-/// options and their values stay. Without [fullName] [testCmd] is used as given.
+/// `-n`, `--plain-name`, `-N`) embedded in [testCmd] are dropped first (every
+/// positional after `test` is a suite); other options and their values stay,
+/// using the real option arities (see [flutterTestValueOptions]). Without [fullName] [testCmd] is used as given.
 List<String> buildTestCommand(
   String testCmd, {
   List<String> tests = const [],
@@ -74,36 +75,54 @@ List<String> buildTestCommand(
   return argv;
 }
 
-/// Options of `dart test` / `flutter test` that take a separate value.
-const _valueOptions = {
-  '-n', '--name', '-N', '--plain-name', '-t', '--tags', '-x', '--exclude-tags', '-r', '--reporter',
-  '--file-reporter', '-p', '--platform', '-j', '--concurrency', '--timeout', '--total-shards',
-  '--shard-index', '--test-randomize-ordering-seed', '--coverage', '--coverage-path',
-  '--dart-define', '--dart-define-from-file', '-d', '--device-id', '--flavor', '--pub-serve',
+/// Options that take a value, from `flutter test --help` (Flutter 3.41.6) and
+/// `dart test --help` (package:test 1.31.1). Everything else is a flag. The
+/// two tools differ: `--coverage` is a flag for flutter and takes a directory
+/// for dart. A value option written `--opt=value`, or a short one with the
+/// value attached (`-j4`), takes no following word.
+const flutterTestValueOptions = {
+  '-d', '--device-id', '-D', '--dart-define', '--dart-define-from-file', '--device-user', '--flavor',
+  '--name', '--plain-name', '-t', '--tags', '-x', '--exclude-tags', '--coverage-path',
+  '--coverage-package', '-j', '--concurrency', '--test-randomize-ordering-seed', '--total-shards',
+  '--shard-index', '-r', '--reporter', '--file-reporter', '--timeout', '--dds-port',
+};
+const dartTestValueOptions = {
+  '-n', '--name', '-N', '--plain-name', '-t', '--tags', '-x', '--exclude-tags', '-p', '--platform',
+  '-c', '--compiler', '-P', '--preset', '-j', '--concurrency', '--total-shards', '--shard-index',
+  '--timeout', '--suite-load-timeout', '--coverage', '--coverage-path', '--coverage-package',
+  '--test-randomize-ordering-seed', '-r', '--reporter', '--file-reporter',
 };
 const _nameOptions = {'-n', '--name', '-N', '--plain-name'};
 
-/// Removes suite selectors (positional paths after the `test` subcommand) and
-/// name selectors from [argv].
+/// Removes every suite selector (every positional argument after the `test`
+/// subcommand) and every name selector from [argv].
+///
+/// Without a `test` subcommand (a custom runner) the structure is unknown:
+/// only name selectors and path-like words (`*.dart`, containing `/`) go.
 List<String> _withoutSelectors(List<String> argv) {
   final subcommand = argv.indexOf('test');
-  final out = <String>[...argv.take(subcommand < 0 ? 1 : subcommand + 1)];
-  for (var i = subcommand < 0 ? 1 : subcommand + 1; i < argv.length; i++) {
+  final known = subcommand >= 0;
+  final start = known ? subcommand + 1 : 1;
+  final valued = argv.take(start).any((a) => a == 'flutter' || a.endsWith('/flutter'))
+      ? flutterTestValueOptions
+      : dartTestValueOptions;
+  final out = <String>[...argv.take(start)];
+  for (var i = start; i < argv.length; i++) {
     final a = argv[i];
-    if (a.startsWith('-')) {
+    if (a.startsWith('-') && a != '-') {
       final eq = a.indexOf('=');
       final name = eq < 0 ? a : a.substring(0, eq);
+      final takesNext = eq < 0 && valued.contains(a) && i + 1 < argv.length;
       if (_nameOptions.contains(name)) {
-        if (eq < 0) i++; // its value
+        if (takesNext) i++; // its value goes with it
         continue;
       }
       out.add(a);
-      if (eq < 0 && _valueOptions.contains(a) && i + 1 < argv.length) out.add(argv[++i]);
+      if (takesNext) out.add(argv[++i]);
       continue;
     }
-    // A positional argument. dart/flutter test take only suite paths here.
-    final looksLikePath = a.endsWith('.dart') || a.contains('/') || a == 'test' || a == 'integration_test';
-    if (!looksLikePath) out.add(a);
+    // A positional: a suite file or directory.
+    if (!known && !(a.endsWith('.dart') || a.contains('/'))) out.add(a);
   }
   return out;
 }
