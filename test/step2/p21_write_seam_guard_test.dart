@@ -49,7 +49,9 @@ const _dbFile = 'lib/data/db.dart';
 /// rawUpdate / rawDelete / execute on ANY receiver, so a new spelling cannot
 /// slip past it, and every hit has to be vouched for here by file and member.
 /// DATA entries write rows (only `wipeAll` and `_mergeFromDbFileBody` can reach
-/// `day_result` or `baselines`, by design); SCHEMA entries are DDL; NOT SQL
+/// `day_result` or `baselines`, by design); MIGRATION entries copy a bounded set
+/// of rows of the named non-derived tables during a schema step; SCHEMA entries
+/// are DDL only; NOT SQL
 /// entries are collection or helper calls that merely share a method name.
 const _pinnedDynamicWriters = <String, String>{
   'lib/data/db.dart LocalDb.wipeAll':
@@ -69,9 +71,9 @@ const _pinnedDynamicWriters = <String, String>{
   'lib/ui2/screens/nutrition_screen.dart _NutritionScreenState._confirmDelete':
       'DATA: NutritionDb.delete(db, id) takes a database handle first; food tables only',
   'lib/data/db.dart LocalDb._rekeyTableByDevice':
-      'SCHEMA: ladder re-key of the decoded tables, fixed names',
+      'MIGRATION (bounded row writes): decoded_onehz / decoded_rr / samples re-key, rows copied into a temp table and swapped in',
   'lib/data/db.dart LocalDb._rekeyByDeviceIdV51':
-      'SCHEMA: ladder re-key of the decoded tables, fixed names',
+      'MIGRATION (bounded row writes): decoded tables re-key by device id, rows copied into a temp table',
   'lib/data/db.dart LocalDb._migrateLegacyTable':
       'SCHEMA: ALTER ... RENAME of the legacy sync tables, fixed names',
   'lib/data/db.dart LocalDb._addColumnIfMissing':
@@ -79,13 +81,13 @@ const _pinnedDynamicWriters = <String, String>{
   'lib/data/db.dart LocalDb._repairOpenSchema':
       'SCHEMA: DROP INDEX IF EXISTS on a fixed list',
   'lib/data/db.dart LocalDb._rebuildCanonicalDecodedStore':
-      'SCHEMA: DROP INDEX on the decoded tables',
+      'MIGRATION (bounded row writes): decoded_onehz / decoded_rr canonical rebuild, rows copied (also drops duplicate indexes)',
   'lib/data/db.dart LocalDb._ensureCoachViews':
       'SCHEMA: DROP VIEW IF EXISTS on the coach views',
   'lib/data/db.dart LocalDb._createSampleArchive':
-      'SCHEMA: DROP TABLE IF EXISTS of retired archive tables',
+      'MIGRATION (bounded row writes): spectral_archive only; drops retired archive tables and gives legacy parts their origin (UPDATE / INSERT OR IGNORE)',
   'lib/data/db.dart LocalDb._createInputRev':
-      'SCHEMA: CREATE TRIGGER on decoded_onehz / decoded_rr',
+      'SCHEMA: CREATE TRIGGER on decoded_onehz / decoded_rr (the triggers later write input_rev only)',
   'lib/data/db.dart LocalDb._createLiveCoverage':
       'SCHEMA: CREATE TABLE with interpolated defaults',
   'lib/data/db.dart LocalDb._createMetricSeriesVersion':
@@ -93,9 +95,9 @@ const _pinnedDynamicWriters = <String, String>{
   'lib/data/db.dart LocalDb._createDecodedStore':
       'SCHEMA: CREATE TABLE / INDEX for the decoded tables',
   'lib/data/db.dart LocalDb._relaxDecodedSensorNulls':
-      'SCHEMA: decoded table rebuild',
+      'MIGRATION (bounded row writes): decoded_onehz rebuild with nullable sensor columns, rows copied',
   'lib/data/db.dart LocalDb._relaxDecodedHrNull':
-      'SCHEMA: decoded table rebuild',
+      'MIGRATION (bounded row writes): decoded_onehz rebuild with nullable hr, rows copied',
   'lib/data/db.dart LocalDb._createEvents':
       'SCHEMA: CREATE TABLE events',
   'lib/data/db.dart LocalDb._createBandSignals':
@@ -480,6 +482,30 @@ class A {
           reason: sql,
         );
       }
+    });
+
+    test('API writes are matched on the decoded string value of the table '
+        'argument, whatever its spelling', () {
+      List<String> api(String call) => [
+        for (final w in scanWriters(
+          'class A { void f() { $call; } }',
+        ))
+          '${w.verb} ${w.table}',
+      ];
+      expect(api("connection.update(('day_result'), {'a': 1})"),
+          ['update day_result']);
+      expect(api("connection.delete(r'baselines')"), ['delete baselines']);
+      expect(api("connection.delete('day_' 'result')"), ['delete day_result']);
+      expect(api("connection.insert(('base' 'lines'), {})"),
+          ['insert baselines']);
+      expect(api("connection.insert(\"baselines\", {})"), ['insert baselines']);
+      expect(api("deleteByIn(txn, ('day_result'), 'day_id', ids)"),
+          ['delete day_result']);
+      expect(api("connection.insert('''day_result''', {})"),
+          ['insert day_result']);
+      // Not ours.
+      expect(api("connection.update('day_result_other', {})"), isEmpty);
+      expect(api("connection.insert(('journal'), {})"), isEmpty);
     });
 
     test('literal-table SQL accepts every quoting of a schema prefix', () {

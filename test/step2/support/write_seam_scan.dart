@@ -129,11 +129,43 @@ final _sqlWrite = RegExp(
   caseSensitive: false,
 );
 
-/// `insert('t'`, `update('t'`, `delete('t'`, and the `deleteByIn(txn, 't'` helper.
-final _apiWrite = RegExp(
-  '\\b(insert|update|delete|deleteByIn)\\s*\\(\\s*(?:\\w+\\s*,\\s*)?'
-  '[\'"](day_result|baselines)[\'"]',
-);
+/// Candidate API writes: insert / update / delete / deleteByIn calls, any
+/// receiver. Which table they name is decided by [_literalTable].
+class _LiteralApiWrites extends RecursiveAstVisitor<void> {
+  _LiteralApiWrites(this.out);
+  final List<MethodInvocation> out;
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (const {'insert', 'update', 'delete', 'deleteByIn'}
+        .contains(node.methodName.name)) {
+      out.add(node);
+    }
+    super.visitMethodInvocation(node);
+  }
+}
+
+/// The decoded text of [e] when it is a string with no interpolation, looking
+/// through parentheses and adjacent literals; null otherwise.
+String? _stringValue(Expression e) => switch (e) {
+  ParenthesizedExpression(:final expression) => _stringValue(expression),
+  StringLiteral() => e.stringValue,
+  _ => null,
+};
+
+/// `day_result` or `baselines` when [call] writes one of them by a literal
+/// table argument. The table is the first positional argument, or the second
+/// for the `deleteByIn(txn, table, ...)` helper.
+String? _literalTable(MethodInvocation call) {
+  final positional = [
+    for (final a in call.argumentList.arguments)
+      if (a is! NamedExpression) a,
+  ];
+  final at = call.methodName.name == 'deleteByIn' ? 1 : 0;
+  if (positional.length <= at) return null;
+  final v = _stringValue(positional[at]);
+  return v == 'day_result' || v == 'baselines' ? v : null;
+}
 
 String _verbOf(String word) {
   final w = word.trim().toLowerCase();
@@ -145,7 +177,9 @@ String _verbOf(String word) {
 /// Every write to `day_result` / `baselines` in [src].
 List<WriteSite> scanWriters(String src) {
   final text = _joinAdjacentLiterals(blankComments(src));
-  if (!text.contains('day_result') && !text.contains('baselines')) {
+  // Cheap pre-filter: a write needs one of these words somewhere.
+  if (!RegExp('insert|update|delete|replace', caseSensitive: false)
+      .hasMatch(text)) {
     return const [];
   }
   final code = codeOnly(src);
@@ -162,21 +196,30 @@ List<WriteSite> scanWriters(String src) {
       text: text.substring(m.start, end),
     ));
   }
-  for (final m in _apiWrite.allMatches(text)) {
-    final paren = text.indexOf('(', m.start);
-    final close = closingOf(code, paren);
+  // API writes are decided on the parsed AST, from the DECODED value of the
+  // table argument: parentheses, raw strings, triple quotes and adjacent
+  // literals all spell the same table.
+  final unit = parseString(content: src, throwIfDiagnostics: false).unit;
+  final apiCalls = <MethodInvocation>[];
+  unit.accept(_LiteralApiWrites(apiCalls));
+  final apiMembers = <int, String>{};
+  for (final call in apiCalls) {
+    final table = _literalTable(call);
+    if (table == null) continue;
+    final name = call.methodName.name;
     hits.add((
-      at: m.start,
-      verb: _verbOf(m[1]!),
-      table: m[2]!,
-      text: close < 0 ? m[0]! : text.substring(m.start, close + 1),
+      at: call.methodName.offset,
+      verb: _verbOf(name),
+      table: table,
+      text: src.substring(call.methodName.offset, call.end),
     ));
+    apiMembers[call.methodName.offset] = _enclosingMember(call);
   }
   hits.sort((a, b) => a.at.compareTo(b.at));
   return [
     for (final h in hits)
       WriteSite(
-        member: _memberAt(code, h.at),
+        member: apiMembers[h.at] ?? _memberAt(code, h.at),
         table: h.table,
         verb: h.verb,
         line: lineOf(code, h.at),
