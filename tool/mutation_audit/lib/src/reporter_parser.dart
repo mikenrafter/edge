@@ -23,7 +23,7 @@ class TestError {
 }
 
 final _frameworkTimeout = RegExp(
-    r'^TimeoutException after -?\d+:\d{2}:\d{2}(?:\.\d+)?: Test timed out after \d+ \w+',
+    r'^TimeoutException after -?\d+:\d{2}:\d{2}(?:\.\d+)?: Test timed out after \d+(?:\.\d+)? \w+',
     multiLine: true);
 
 /// One finished, visible test.

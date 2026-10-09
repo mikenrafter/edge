@@ -27,6 +27,10 @@ void main() {
         timedOut,
         'TimeoutException after 0:00:00.050000: Test timed out after 0 seconds.',
         'TimeoutException after 0:10:00.000000: Test timed out after 10 minutes.',
+        // test_api formats a sub-second or fractional timeout with a decimal
+        // (Sol r9): a 500 ms Timeout is reported as "0.5 seconds".
+        'TimeoutException after 0:00:00.500000: Test timed out after 0.5 seconds.',
+        'TimeoutException after 0:01:30.000000: Test timed out after 1.5 minutes.',
       ]) {
         expect(const TestError('', '', isFailure: false).isFrameworkTimeout, isFalse);
         expect(TestError(m, '', isFailure: false).isFrameworkTimeout, isTrue, reason: m);
