@@ -139,8 +139,9 @@ void main() {
   });
 
   group('no derived output changes (R4)', () {
-    test('kAlgoVersion and both sibling pins are exactly what the PRV '
-        'diagnostics change set (v103) and its empty-input repin (v104)', () {
+    test('kAlgoVersion stays at the PRV diagnostics empty-input repin (v104); '
+        'the analytics pin moved on to its reader-hardening descendant with no '
+        'output change', () {
       expect(kAlgoVersion, 104);
       expect(kAnalyticsPin, 'bf79e847a8a6ec6dd949bb8fbb7b7ad2ca05d108');
       expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
