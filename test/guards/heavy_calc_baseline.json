@@ -1200,13 +1200,6 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.refreshComputeFreshness",
-      "element": "SeriesCodec.decodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._encodeTrace",
       "element": "SeriesCodec.encodeCurve",
@@ -1813,20 +1806,6 @@
       "symbol": "LocalDb.reencodeLegacyDayResults",
       "element": "jsonEncode",
       "count": 2
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.refreshComputeFreshness",
-      "element": "SeriesCodec.decodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.refreshComputeFreshness",
-      "element": "jsonEncode",
-      "count": 3
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
@@ -9435,13 +9414,6 @@
       "file": "state/derive_coordinator.dart",
       "symbol": "DeriveCoordinator._profile",
       "element": "_profileOf()",
-      "count": 1
-    },
-    {
-      "rule": "unresolvedInvocation",
-      "file": "state/derive_coordinator.dart",
-      "symbol": "DeriveCoordinator._publishDay",
-      "element": "() async { try { await LocalDb.refreshComputeFreshness(); } catch (e) { _log('[derive] freshness refresh failed: $e'); } if (_disposed) return; LocalRepositoryImpl.invalidateBundleMemo(); bumpInsights(); }()",
       "count": 1
     },
     {

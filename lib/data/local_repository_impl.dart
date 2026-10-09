@@ -323,21 +323,32 @@ class LocalRepositoryImpl extends LocalRepository {
 
   @override
   Future<Map<String, dynamic>> getToday() => ReadPerf.reading('getToday', () async {
-    // Refresh when the row is missing OR when its `today_day` is no longer the
-    // real local day. The row is stamped by the last derive, so an app left
-    // running over midnight (band on the charger, or an imported-only user)
-    // kept serving yesterday's finished bundle as today: yesterday's steps,
-    // kcal and strain on Home, yesterday's date in the greeting, and the
-    // frozen headline matching so the readiness went un-flagged too.
-    var todayFresh = await _freshness('today');
-    if (todayFresh == null ||
-        todayFresh['today_day']?.toString() != _todayLocalLabel()) {
-      await LocalDb.refreshComputeFreshness();
-      todayFresh = await _freshness('today');
+    // Refresh a stale/missing row when today's inputs can change its answer.
+    // With history only, the fallback below already walks the latest bundles;
+    // projecting those same historical payloads here would decode them twice.
+    var todayDay = await LocalDb.computeFreshnessStringField(
+      'today',
+      r'$.today_day',
+    );
+    if (todayDay != _todayLocalLabel()) {
+      final today = _todayLocalLabel();
+      final hasFreshnessRow = await LocalDb.computeFreshness('today') != null;
+      if (hasFreshnessRow ||
+          await LocalDb.hasFreshnessInputForToday(today)) {
+        await LocalDb.refreshComputeFreshness();
+        todayDay = await LocalDb.computeFreshnessStringField(
+          'today',
+          r'$.today_day',
+        );
+      }
     }
-    final todayDay = todayFresh?['today_day']?.toString() ?? _todayLocalLabel();
+    final todayFresh = await _freshness('today');
+    todayDay ??= _todayLocalLabel();
     final todayBundle = await _bundle(todayDay);
-    final overnightBundle = await _latestBundle();
+    final overnightDay = todayFresh?['overnight_day']?.toString();
+    final overnightBundle = overnightDay == null
+        ? await _latestBundle()
+        : await _bundle(overnightDay);
     final overnightState =
         todayFresh?['overnight_state']?.toString() ?? 'missing';
     final activityState =

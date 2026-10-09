@@ -272,6 +272,8 @@ BundleView p22View(String payloadJson, {ProjectionId projection = ProjectionId.f
   return BundleView.frozen(
     out.graphs.single,
     estimatedBytes: out.estimatedBytes.single,
+    nodes: out.nodes.single - 1,
+    sourceBytes: out.sourceBytes.single,
   );
 }
 

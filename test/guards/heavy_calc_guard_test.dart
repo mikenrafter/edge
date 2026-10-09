@@ -163,8 +163,6 @@ void main() {
       expect(
         found,
         containsAll(<String>[
-          // SeriesCodec.decodePayloadJson over a payload_json row.
-          'data/db.dart :: LocalDb.refreshComputeFreshness',
           // SeriesCodec.encodePayloadJson and the payload_json column.
           'data/db.dart :: LocalDb.putDayResult',
         ]),

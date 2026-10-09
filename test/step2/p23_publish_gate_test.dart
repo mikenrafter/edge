@@ -11,10 +11,8 @@
 // database). Part 2 runs the standard wiring over a real database and a
 // recording decode lane.
 //
-// NOT pinned, an open question for the green commit: a request that arrives
-// during step (1) is folded into the same run (revalidate, warm the
-// difference, bump once) as the text says; the freshness row of that run was
-// computed before the later commit. See the report.
+// A request during refresh or warming causes one freshness refresh after the
+// later commit, then revalidates and warms only changed sources before one bump.
 
 import 'dart:async';
 import 'dart:convert';
@@ -49,7 +47,7 @@ void main() {
     });
 
     test('requests during the refresh are folded: one refresh in flight, one '
-        'bump', () {
+        'bump after a second freshness refresh', () {
       fakeAsync((async) {
         final r = P23Rig()..holdRefresh = Completer<void>();
         r.gate.request();
@@ -62,9 +60,29 @@ void main() {
         r.holdRefresh!.complete();
         async.flushMicrotasks();
 
-        expect(r.count('refresh'), 1);
+        expect(r.count('refresh'), 2);
         expect(r.count('bump'), 1);
         expect(r.maxInFlight, 1);
+        expect(r.events.indexOf('refresh', 1), lessThan(r.events.indexOf('bump')));
+        r.gate.dispose();
+      });
+    });
+
+    test('a commit during step (1) gets a second freshness refresh before the '
+        'single bump', () {
+      fakeAsync((async) {
+        final r = P23Rig()..holdRefresh = Completer<void>();
+        r.gate.request();
+        async.flushMicrotasks();
+        r.gate.request();
+        async.flushMicrotasks();
+
+        r.holdRefresh!.complete();
+        async.flushMicrotasks();
+
+        expect(r.events, ['refresh', 'refresh', 'revs', 'warm:A,B', 'bump']);
+        expect(r.count('bump'), 1);
+        expect(r.count('refresh'), 2);
         r.gate.dispose();
       });
     });
@@ -88,7 +106,7 @@ void main() {
         async.flushMicrotasks();
 
         expect(r.events, [
-          'refresh', 'revs', 'warm:A,B',
+          'refresh', 'revs', 'warm:A,B', 'refresh',
           'revs', 'warm:A,C', // A changed, C is new, B is untouched
           'bump',
         ]);
@@ -207,11 +225,7 @@ void main() {
       fakeAsync((async) {
         final r = P23Rig()..holdWarm = Completer<void>();
         final gate = PublishGate(
-          refreshFreshness: r.refresh,
-          servedRevisions: r.served,
-          warm: r.warm,
-          bump: r.bump,
-          log: r.logs.add,
+          steps: r,
           warmBudget: const Duration(milliseconds: 300),
         );
         gate.request();
@@ -341,13 +355,15 @@ void main() {
       freshnessAtBump = [];
       gate = PublishGate.standard(
         store: store,
-        log: logs.add,
-        bump: () {
+        effects: P23Effects(
+          onLog: logs.add,
+          onBump: () {
           cachedAtBump.add(cachedFull());
           // The bump is synchronous; read the durable rows asynchronously and
           // let the test await them through `idle`.
           p23FreshnessRows(db).then(freshnessAtBump.add);
-        },
+          },
+        ),
       );
     });
     tearDown(() async {

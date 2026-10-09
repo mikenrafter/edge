@@ -11,6 +11,8 @@ import 'l10n/app_localizations.dart';
 import 'notify/notification_service.dart';
 import 'notify/tap_router.dart';
 import 'state/app_state.dart';
+import 'state/publish_gate.dart';
+import 'data/bundle_store.dart';
 import 'state/locale_controller.dart';
 import 'state/prefs.dart';
 import 'telemetry/telemetry_service.dart';
@@ -59,6 +61,18 @@ class _OpenStrapAppState extends State<OpenStrapApp> with WidgetsBindingObserver
       if (app.isPaired) app.openSession();
       // A cold start into the foreground has no `resumed` transition.
       unawaited(app.noteAppOpened());
+      unawaited(Future<void>.delayed(const Duration(milliseconds: 250), () async {
+        if (!mounted) return;
+        final lifecycle = WidgetsBinding.instance.lifecycleState;
+        final headless = WidgetsBinding.instance.platformDispatcher.views.isEmpty ||
+            lifecycle == AppLifecycleState.detached ||
+            lifecycle == AppLifecycleState.paused ||
+            lifecycle == AppLifecycleState.hidden;
+        await StartupWarm(
+          headless: headless,
+          steps: LocalStartupWarmSteps(store: BundleStore.shared),
+        ).run();
+      }));
     });
   }
 

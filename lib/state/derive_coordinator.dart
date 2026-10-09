@@ -10,6 +10,7 @@
 // other concerns (steps, health export, recovery-ready push, disk reclaim);
 // those arrive as callbacks. It holds no reference to AppState.
 import 'dart:async';
+import 'dart:developer' as developer;
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:clock/clock.dart';
@@ -21,7 +22,6 @@ import '../compute/derive_outcome.dart';
 import '../compute/derive_scheduler.dart';
 import '../compute/periodic_calculation_policy.dart';
 import '../compute/profile.dart';
-import '../data/db.dart';
 import '../data/bundle_store.dart';
 import '../data/local_repository.dart';
 import '../data/local_repository_impl.dart';
@@ -49,6 +49,20 @@ typedef RescanHook = Future<int> Function({
   void Function(List<String> days)? onScopeDays,
   void Function(String day, int index, int total)? onDayDone,
 });
+
+final class _CoordinatorPublishGateEffects implements PublishGateEffects {
+  _CoordinatorPublishGateEffects(this._revision);
+
+  final ValueNotifier<int> _revision;
+
+  @override
+  void publishBump() {
+    _revision.value = _revision.value + 1;
+  }
+
+  @override
+  void publishLog(String line) => developer.log(line, name: 'publish');
+}
 
 class DeriveCoordinator {
   DeriveCoordinator({
@@ -110,11 +124,15 @@ class DeriveCoordinator {
 
   /// P2.3 stub: the serialised publish loop every freshness write and revision
   /// bump goes through.
-  PublishGate get publishGate =>
-      _publishGateOverride ?? (throw UnimplementedError('P2.3 PublishGate'));
+  late final PublishGate _publishGate = _publishGateOverride ??
+      PublishGate.standard(
+        store: BundleStore.shared,
+        effects: _CoordinatorPublishGateEffects(insightsRevision),
+      );
+  PublishGate get publishGate => _publishGate;
 
   /// P2.3 stub: request a publish and wait until the gate is idle.
-  Future<void> publishNow() => throw UnimplementedError('P2.3 publishNow');
+  Future<void> publishNow() => publishGate.publishAndWait();
 
   // The host is gone, or this coordinator has been disposed (which, under
   // AppState, only ever happens after the host flag is set).
@@ -249,16 +267,7 @@ class DeriveCoordinator {
   );
 
   void _publishDay() {
-    unawaited(() async {
-      try {
-        await LocalDb.refreshComputeFreshness();
-      } catch (e) {
-        _log('[derive] freshness refresh failed: $e');
-      }
-      if (_disposed) return;
-      LocalRepositoryImpl.invalidateBundleMemo();
-      bumpInsights();
-    }());
+    if (!_disposed) publishGate.request();
   }
 
   /// First usable render: revision bump -> the Home commit that consumed it.
@@ -510,6 +519,7 @@ class DeriveCoordinator {
     _sweepTimer?.cancel();
     _sweepTimer = null;
     scheduler.dispose();
+    publishGate.dispose();
     _artifactWarmer?.dispose();
     _dayPublisher.dispose();
     insightsRevision.dispose();
@@ -615,9 +625,7 @@ class DeriveCoordinator {
       } catch (e) {
         _log('[derive] session rescore failed: $e');
       }
-      await LocalDb.refreshComputeFreshness();
-      BundleStore.shared.invalidateAll();
-      bumpInsights();
+      await publishNow();
       _notify(); // screens re-fetch from the derived store
       // Warm the slow screen artifacts (journal insights, weekday effect, the
       // night's beats, workouts, circadian) in the background, AFTER the

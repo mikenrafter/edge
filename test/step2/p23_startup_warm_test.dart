@@ -25,6 +25,20 @@ HomeWarmSet _set(int n) => HomeWarmSet(
   windowDays: const [],
 );
 
+class _WarmSteps implements StartupWarmSteps {
+  _WarmSteps({required this.onWarm, required this.onResolve});
+
+  final Future<WarmResult> Function(List<BundleSource>, int) onWarm;
+  final Future<HomeWarmSet> Function() onResolve;
+
+  @override
+  Future<WarmResult> warm(List<BundleSource> sources, int maxSourceBytes) =>
+      onWarm(sources, maxSourceBytes);
+
+  @override
+  Future<HomeWarmSet> resolve() => onResolve();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   p21RestoreClockAfterEach();
@@ -41,15 +55,17 @@ void main() {
       Future<HomeWarmSet> Function()? resolve,
     }) => StartupWarm(
       headless: headless,
-      resolve: resolve ?? () async {
-        resolved++;
-        return _set(sources);
-      },
-      warm: warm ?? (s, b) async {
-        warmed.add(s);
-        budgets.add(b);
-        return WarmDone(s.length);
-      },
+      steps: _WarmSteps(
+        onResolve: resolve ?? () async {
+          resolved++;
+          return _set(sources);
+        },
+        onWarm: warm ?? (s, b) async {
+          warmed.add(s);
+          budgets.add(b);
+          return WarmDone(s.length);
+        },
+      ),
     );
 
     setUp(() {

@@ -2260,8 +2260,7 @@ class AppState extends ChangeNotifier {
         _log('[wake] re-deriving $day after the confirmation failed: $error');
         return;
       }
-      await LocalDb.refreshComputeFreshness();
-      if (!_disposed) bumpInsights();
+      await _deriveCoordinator.publishNow();
     } catch (e) {
       _log('[wake] re-deriving after the confirmation failed: $e');
     }
@@ -3219,8 +3218,7 @@ class AppState extends ChangeNotifier {
       );
       final error = _derive.snapshot()['last_error'];
       if (error != null) throw StateError('$error');
-      await LocalDb.refreshComputeFreshness();
-      bumpInsights();
+      await _deriveCoordinator.publishNow();
       return n;
     } catch (e) {
       _log('[derive] reanalyze failed: $e');
@@ -3277,8 +3275,7 @@ class AppState extends ChangeNotifier {
       await _derive.rederiveAfterSleepEdit(_profile, day);
       final error = _derive.snapshot()['last_error'];
       if (error != null) throw StateError('$error');
-      await LocalDb.refreshComputeFreshness();
-      bumpInsights();
+      await _deriveCoordinator.publishNow();
       return await repo?.getDaySleep(day) ?? <String, Object?>{};
     } finally { reanalyzing = false; notifyListeners(); }
   }
@@ -3309,8 +3306,7 @@ class AppState extends ChangeNotifier {
           await _derive.rebuildHistoryWithPriority(_profile, days: days);
       final error = _derive.snapshot()['last_error'];
       if (error != null) throw StateError('$error');
-      await LocalDb.refreshComputeFreshness();
-      bumpInsights();
+      await _deriveCoordinator.publishNow();
       return (result['days'] as List).length;
     } finally {
       reanalyzing = false;
@@ -3406,10 +3402,9 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       await _derive.run(_profile, force: true);
-      await LocalDb.refreshComputeFreshness();
+      await _deriveCoordinator.publishNow();
       // The day_result rows just changed — without this no RevisionReload screen
       // re-reads, so an override/nap edit only showed up after a restart.
-      bumpInsights();
     } catch (e) {
       _log('[derive] sleep-override re-derive failed: $e');
       rethrow;
@@ -3435,14 +3430,13 @@ class AppState extends ChangeNotifier {
 
   Future<int> deleteDays(Set<String> dayIds) async {
     final deleted = await LocalDb.deleteDays(dayIds);
-    await LocalDb.refreshComputeFreshness();
+    if (deleted > 0) await _deriveCoordinator.publishNow();
     lastSynced = await LocalDb.latestSample();
     // Deleting days is a durable write like any other, so the screens holding a
     // cached read have to be told. `notifyListeners()` alone leaves a
     // RevisionReload screen showing days that are gone until some unrelated
     // bump or a restart — and this is the one write where the stale copy is of
     // data the user explicitly asked to destroy.
-    if (deleted > 0) bumpInsights();
     notifyListeners();
     return deleted;
   }

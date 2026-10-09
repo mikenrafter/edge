@@ -173,7 +173,7 @@ void main() {
     expect(await _rmssd(repo, _day(0)), 70);
   });
 
-  test('a publish invalidates', () async {
+  test('explicit store invalidation evicts cached reads', () async {
     await _seed(_day(0));
     await _rmssd(repo, _day(0));
     expect(BundleStore.shared.debugCachedKeys.length, 1);
@@ -186,13 +186,12 @@ void main() {
         reason: 'decoded again after the publish');
   });
 
-  test('the publish path is wired to it (DeriveCoordinator)', () {
-    // `_publishDay` is private and driven by a timer-coalesced pass; the wiring
-    // is pinned structurally, the behaviour above.
+  test('the publish path keeps the revision-keyed cache (DeriveCoordinator)', () {
     final src = _read('lib/state/derive_coordinator.dart');
     final publish = _bodyAfter(src, 'void _publishDay()');
-    expect(publish, contains('LocalRepositoryImpl.invalidateBundleMemo'),
-        reason: 'the per-day publish drops the memo before screens re-read');
+    expect(publish, contains('publishGate.request()'));
+    expect(publish, isNot(contains('invalidateBundleMemo')),
+        reason: 'a committed row moves its revision key; the gate warms the new key');
     final repositorySrc = _read('lib/data/local_repository_impl.dart');
     expect(repositorySrc,
         contains('static void invalidateBundleMemo() => BundleStore.shared.invalidateAll()'),

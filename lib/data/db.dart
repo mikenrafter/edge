@@ -37,6 +37,7 @@ export 'day_checkpoint.dart' show DayCheckpoint;
 import '../gestures/symptom_description.dart';
 import 'assumed_water.dart';
 import 'day_label.dart';
+import 'bundle_store.dart';
 import 'day_payload_read.dart';
 import 'journal_fields.dart';
 import 'sample_codec.dart' show SampleCodec;
@@ -11182,6 +11183,32 @@ class LocalDb {
     return rows.isEmpty ? null : rows.first;
   }
 
+  /// Payload-free baseline metadata for warm-set and freshness readers.
+  static Future<Map<String, dynamic>?> baselineMeta(String key) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT b.key, b.updated_at, COALESCE(v.rev, 0) AS rev '
+      'FROM baselines b LEFT JOIN row_rev v '
+      "ON v.kind = 'baselines' AND v.k1 = b.key AND v.k2 = 0 WHERE b.key = ?",
+      [key],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Payload-free lookup used by the Home warm set.
+  static Future<Map<String, dynamic>?> wakeDayFeaturesMeta(String dayId) async {
+    final db = await instance;
+    final rows = await db.query(
+      'wake_day_features',
+      columns: ['day_id', 'algo_version', 'computed_at'],
+      where: 'day_id = ? AND algo_version <= ?',
+      whereArgs: [dayId, _servedAlgoCeiling],
+      orderBy: 'algo_version DESC',
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
+
   /// One string field of a baseline's JSON payload, read inside SQLite so the
   /// payload is neither returned nor decoded in Dart. Null when the row, the
   /// field or valid JSON is missing.
@@ -11270,6 +11297,33 @@ class LocalDb {
       limit: 1,
     );
     return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Reads one scalar string from a freshness payload inside SQLite, without
+  /// moving or decoding the small JSON row on the caller isolate.
+  static Future<String?> computeFreshnessStringField(
+    String key,
+    String path,
+  ) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT json_extract(payload_json, ?) AS value '
+      'FROM compute_freshness WHERE key = ?',
+      [path, key],
+    );
+    final value = rows.isEmpty ? null : rows.first['value'];
+    return value is String ? value : null;
+  }
+
+  /// Whether there is a current-day input whose freshness can change. A
+  /// history-only repository fallback already walks the day bundles in
+  /// bounded chunks; projecting every historical payload first would decode
+  /// the same rows twice without changing today's activity state.
+  static Future<bool> hasFreshnessInputForToday(String today) async {
+    if (await dayResultMeta(today) != null) return true;
+    if (await wakeDayFeaturesMeta(today) != null) return true;
+    final latest = (await rawStats())['max_rec_ts'] as num?;
+    return latest != null && _localDayLabelFromEpoch(latest.toInt()) == today;
   }
 
   // ── "raw changed since last derive" ─────────────────────────────────────────
@@ -11763,9 +11817,9 @@ class LocalDb {
 
   static Future<void> refreshComputeFreshness() async {
     final raw = await rawStats();
-    final recent = await recentDayResults(30);
-    final rolling = await baseline('rolling');
-    final cross = await baseline('crossday');
+    final recent = await recentDayResultMetas(30);
+    final rolling = await baselineMeta('rolling');
+    final cross = await baselineMeta('crossday');
     final today = localDayLabelNow();
     final latestRawTs = (raw['max_rec_ts'] as num?)?.toInt();
     final todayWake = await wakeDayFeatures(today);
@@ -11775,19 +11829,22 @@ class LocalDb {
     int? latestRecoveryComputedAt;
     Map<String, dynamic>? todayRow;
     for (final row in recent) {
-      final dayId = row['day_id']?.toString();
+      final dayId = (row['day_id'] ?? row['date'])?.toString();
       if (dayId == null || dayId.isEmpty) continue;
       if (dayId == today && todayRow == null) todayRow = row;
-      final decoded =
-          SeriesCodec.decodePayloadJson(row['payload_json']) ??
-          const <String, dynamic>{};
-      if (decoded['skipped'] == true) continue;
-      final scalars = ((decoded['scalars'] as Map?) ?? const {})
-          .cast<String, dynamic>();
+      final read = await BundleStore.shared.project(
+        BundleSource.day(dayId),
+        ProjectionId.freshness,
+      );
+      if (read is BundleOk && read.view.owned('skipped') == true) continue;
+      final readiness = read is BundleOk
+          ? read.view.owned('scalars.readiness')
+          : null;
       if (latestOvernightDay == null) {
-        final sleep =
-            ((decoded['sleep'] as Map?)?['accounting'] as Map?)?['value'];
-        final flags = decoded['flags'];
+        final sleep = read is BundleOk
+            ? read.view.owned('sleep.accounting.value')
+            : null;
+        final flags = read is BundleOk ? read.view.owned('flags') : null;
         final hasSleep = sleep is Map && sleep['tst_sec'] != null;
         final noSleep = flags is List && flags.contains('NO_SLEEP_DETECTED');
         if (hasSleep || noSleep) {
@@ -11796,7 +11853,7 @@ class LocalDb {
         }
       }
       if (latestRecoveryDay == null &&
-          ((row['readiness'] as num?) != null || scalars['readiness'] is num)) {
+          ((row['readiness'] as num?) != null || readiness is num)) {
         latestRecoveryDay = dayId;
         latestRecoveryComputedAt = (row['computed_at'] as num?)?.toInt();
       }
@@ -11806,6 +11863,9 @@ class LocalDb {
         break;
       }
     }
+    // The scan may have crossed a concurrent delete or replacement. Use the
+    // current payload-free row for today's activity and timestamp fields.
+    todayRow = await dayResultMeta(today);
     final todayComputedAt = (todayRow?['computed_at'] as num?)?.toInt();
     final wakeComputedAt = (todayWake?['computed_at'] as num?)?.toInt();
     final activityReady = todayRow != null || todayWake != null;

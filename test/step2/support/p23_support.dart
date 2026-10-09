@@ -229,7 +229,7 @@ String p23RefreshBody(String strippedDbSource) {
 }
 
 /// Fake steps that record what the gate does, in order.
-class P23Rig {
+class P23Rig implements PublishGateSteps {
   final events = <String>[];
   final logs = <String>[];
   int inFlight = 0;
@@ -255,7 +255,8 @@ class P23Rig {
     if (inFlight > maxInFlight) maxInFlight = inFlight;
   }
 
-  Future<void> refresh() async {
+  @override
+  Future<void> refreshFreshness() async {
     await _enter('refresh');
     try {
       await holdRefresh?.future;
@@ -265,7 +266,8 @@ class P23Rig {
     }
   }
 
-  Future<Map<String, int>> served() async {
+  @override
+  Future<Map<String, int>> servedRevisions() async {
     events.add('revs');
     if (revsThrow != null) throw revsThrow!;
     final i = _revCalls < revs.length ? _revCalls : revs.length - 1;
@@ -273,6 +275,7 @@ class P23Rig {
     return revs[i];
   }
 
+  @override
   Future<void> warm(Set<String> ids) async {
     await _enter('warm:${(ids.toList()..sort()).join(',')}');
     try {
@@ -283,19 +286,29 @@ class P23Rig {
     }
   }
 
+  @override
   void bump() {
     events.add('bump');
     onBump?.call();
   }
 
-  late final PublishGate gate = PublishGate(
-    refreshFreshness: refresh,
-    servedRevisions: served,
-    warm: warm,
-    bump: bump,
-    log: logs.add,
-  );
+  @override
+  void log(String line) => logs.add(line);
+
+  late final PublishGate gate = PublishGate(steps: this);
 
   int count(String prefix) => events.where((e) => e.startsWith(prefix)).length;
 }
 
+class P23Effects implements PublishGateEffects {
+  P23Effects({required this.onBump, required this.onLog});
+
+  final void Function() onBump;
+  final void Function(String line) onLog;
+
+  @override
+  void publishBump() => onBump();
+
+  @override
+  void publishLog(String line) => onLog(line);
+}

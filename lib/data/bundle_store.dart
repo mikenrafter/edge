@@ -379,6 +379,33 @@ DecodedChunk decodeDayPayloadsHeavy(
               if (scalars.containsKey(key)) key: scalars[key],
           },
         };
+    } else if (input.projections[i] == 'freshness') {
+      final rawScalars = root['scalars'];
+      final scalars = rawScalars is Map
+          ? rawScalars
+          : const <String, dynamic>{};
+      final rawSleep = root['sleep'];
+      final sleep = rawSleep is Map ? rawSleep : const <String, dynamic>{};
+      final rawAccounting = sleep['accounting'];
+      final accounting = rawAccounting is Map
+          ? rawAccounting
+          : const <String, dynamic>{};
+      final rawValue = accounting['value'];
+      final value = rawValue is Map ? rawValue : const <String, dynamic>{};
+      graph = {
+        if (root.containsKey('skipped')) 'skipped': root['skipped'],
+        if (scalars.containsKey('readiness'))
+          'scalars': {'readiness': scalars['readiness']},
+        if (sleep['accounting'] is Map && accounting.containsKey('value'))
+          'sleep': {
+            'accounting': {
+              'value': {
+                if (value.containsKey('tst_sec')) 'tst_sec': value['tst_sec'],
+              },
+            },
+          },
+        if (root.containsKey('flags')) 'flags': root['flags'],
+      };
     } else if (input.projections[i] == 'legacy') {
       graph = SeriesCodec.decodePayload(root.cast<String, dynamic>());
     } else {
@@ -556,6 +583,13 @@ class BundleStore {
 
   @visibleForTesting
   static void debugResetDecodeDispatches() => debugDecodeDispatches = 0;
+
+  /// The current source revision, read from metadata without fetching a
+  /// payload. Missing sources have no revision.
+  Future<int?> sourceRevision(BundleSource source) async {
+    final prepared = await _prepare(source, ProjectionId.full);
+    return prepared?.key.rev;
+  }
 
   /// Decodes a non-revisioned small payload on the same worker entry. P2.3
   /// replaces these compatibility readers with keyed projections.
@@ -796,7 +830,7 @@ class BundleStore {
   ///
   /// P2.3: [maxSourceBytes] caps the source text a warm may decode (sources are
   /// taken in order until the next would pass it; the rest are skipped, not
-  /// refused). RED STUB: ignored until the green commit.
+  /// refused).
   Future<WarmResult> warm(Iterable<BundleSource> sources, {int? maxSourceBytes}) async {
     final prepared = <_Prepared>[];
     for (final source in sources) {
@@ -805,11 +839,17 @@ class BundleStore {
       prepared.add(p);
     }
     final payloads = <({_Prepared source, String payload})>[];
+    var sourceBytes = 0;
     for (final p in prepared) {
       final text = (await _readPayload(p)).text;
-      if (text != null) payloads.add((source: p, payload: text));
+      if (text == null) continue;
+      if (maxSourceBytes != null && sourceBytes + text.length > maxSourceBytes) {
+        break;
+      }
+      payloads.add((source: p, payload: text));
+      sourceBytes += text.length;
     }
-    final neededBytes = payloads.fold<int>(0, (n, p) => n + p.payload.length);
+    final neededBytes = sourceBytes;
     if (_activeRequests + _pending.length + _reservedRequests + payloads.length > maxQueuedRequests + 1 ||
         _heldBytes + neededBytes > maxSourceBytesInFlight) {
       return const WarmRefusedBusy();
@@ -819,13 +859,15 @@ class BundleStore {
     }
     if (payloads.isNotEmpty) _schedulePump();
     // Await the flights so callers can rely on the warm being complete.
-    final fs = [for (final p in payloads) _flights[p.source.key]];
-    var decoded = 0;
-    for (final f in fs) {
-      if (f == null) continue;
-      final result = await f.done.future;
-      if (result is BundleOk) decoded++;
-    }
+    final fs = [
+      for (final p in payloads)
+        ?_flights[p.source.key],
+    ];
+    final results = await Future.wait(
+      [for (final flight in fs) flight.done.future],
+      eagerError: false,
+    );
+    final decoded = results.whereType<BundleOk>().length;
     return WarmDone(decoded);
   }
 
