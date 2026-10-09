@@ -37,6 +37,7 @@ export 'day_checkpoint.dart' show DayCheckpoint;
 import '../gestures/symptom_description.dart';
 import 'assumed_water.dart';
 import 'day_label.dart';
+import 'day_payload_read.dart';
 import 'journal_fields.dart';
 import 'sample_codec.dart' show SampleCodec;
 import 'sample_import.dart' show importSamplePart;
@@ -9158,6 +9159,34 @@ class LocalDb {
     );
     return rows.isEmpty ? null : _withDate(rows.first);
   }
+
+  // ── P2.1 RED STUBS (design 02 step 2, revision identity and write seam) ────
+  // Throwing placeholders so the red tests compile and fail on behaviour. The
+  // green commit replaces each body; none of these may ship as written.
+
+  /// Payload-free read of the served `day_result` row for [dayId]: every column
+  /// except `payload_json`, plus `rev` (`COALESCE(row_rev.rev, 0)`), under
+  /// [_servedAlgoCeiling]. Null when absent.
+  static Future<Map<String, dynamic>?> dayResultMeta(String dayId) async =>
+      throw UnimplementedError('P2.1: LocalDb.dayResultMeta');
+
+  /// The stored payload of exactly ([dayId], [algoVersion]), provided the row's
+  /// revision still equals [expectedRev] (the one the caller's meta read saw).
+  static Future<DayPayloadRead> dayPayload(
+    String dayId,
+    int algoVersion, {
+    required int expectedRev,
+  }) async => throw UnimplementedError('P2.1: LocalDb.dayPayload');
+
+  /// `(wipeEpoch, openCount)`: changes whenever the store was wiped, rebuilt,
+  /// merged into or reopened. Read synchronously on every cache lookup.
+  static ({int wipeEpoch, int openCount}) get storeGeneration =>
+      throw UnimplementedError('P2.1: LocalDb.storeGeneration');
+
+  /// The demo-data delete, moved here from `DemoDataGenerator.purge` so every
+  /// `day_result` write sits inside `LocalDb`.
+  static Future<void> purgeDemoRows() async =>
+      throw UnimplementedError('P2.1: LocalDb.purgeDemoRows');
 
   /// The most recent day (highest day_id label), latest version, or null.
   static Future<Map<String, dynamic>?> latestDayResult() async {
