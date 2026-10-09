@@ -94,10 +94,17 @@ void main() {
     });
 
     test('other source roots: the directory of a mutated file counts as source', () {
-      write('bin/tool.dart', 'void main() {}\n');
-      write('test/bin_test.dart', "import 'dart:io';\nvoid main() { File('bin/tool.dart').readAsStringSync(); }\n");
-      expect(detector().reasons('test/bin_test.dart'), isEmpty);
-      expect(detector(roots: ['lib', 'bin']).reasons('test/bin_test.dart'), isNotEmpty);
+      write('scripts/tool.dart', 'void main() {}\n');
+      write('test/scripts_test.dart', "import 'dart:io';\nvoid main() { File('scripts/tool.dart').readAsStringSync(); }\n");
+      expect(detector().reasons('test/scripts_test.dart'), isEmpty);
+      expect(detector(roots: ['lib', 'scripts']).reasons('test/scripts_test.dart'), isNotEmpty);
+    });
+
+    test('tool/, packages/ and bin/ are source roots whatever is mutated', () {
+      for (final d in ['tool', 'packages', 'bin']) {
+        write('test/${d}_test.dart', "import 'dart:io';\nvoid main() { File('$d/x.dart').readAsStringSync(); }\n");
+        expect(detector().reasons('test/${d}_test.dart'), isNotEmpty, reason: d);
+      }
     });
 
     test('a suite that cannot be read is treated as a scanner (nothing can be checked)', () {

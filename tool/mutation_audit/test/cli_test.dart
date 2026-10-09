@@ -107,7 +107,7 @@ void main() {
         expect(lt['killingTests'], isEmpty);
         final d = (lt['discounted'] as List).single as Map;
         expect(d['test'], 'test/scan_test.dart::wiring greps lib');
-        expect((d['reasons'] as List).join(' '), contains('reads files under lib'));
+        expect((d['reasons'] as List).join(' '), contains('may read source'));
         expect(status(results(), '>->>=')['status'], 'killed', reason: 'a runtime failure still kills');
       }
     });

@@ -455,7 +455,7 @@ void main() {
       expect(c.status, MutantStatus.killedByGuardOnly);
       expect(c.killingTests, isEmpty);
       expect(c.guardTests, ['test/scan_test.dart::wiring']);
-      expect(c.discounted.single.reasons.join(' '), contains('reads files under lib'));
+      expect(c.discounted.single.reasons.join(' '), contains('may read source: test/scan_test.dart:'));
     });
 
     test('the same failure counts once the reviewed allowlist says the test runs code', () async {

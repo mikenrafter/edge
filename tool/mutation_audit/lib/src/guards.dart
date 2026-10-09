@@ -4,6 +4,7 @@ import 'package:glob/glob.dart';
 import 'package:path/path.dart' as p;
 
 import 'reporter_parser.dart';
+import 'source_facts.dart';
 
 /// A failing test that was not counted as a kill, and why.
 class DiscountedFailure {
@@ -27,29 +28,34 @@ const defaultScannerGlobs = ['**/dart_source*.dart'];
 /// repository (relative imports, followed transitively, never into `lib/`):
 ///
 /// - is one of the shared scanners ([scannerGlobs]), or
-/// - reads files under a source root (`File('lib/...')`, `Directory('lib')`,
-///   `p.join('lib', ...)`, any string literal that starts with `lib/`).
+/// - contains a file-system read that may reach source: the file is parsed to
+///   an AST and any `File` / `Directory` / `Link` whose path is not a
+///   compile-time string outside the source roots, any read call on an
+///   unknown receiver, `Platform.script`, or a literal path that starts at a
+///   source root is a site (see [analyseSourceReads]). The reason names
+///   file:line and the rule.
 ///
 /// This is deliberately wide: a suite wrongly taken for a scanner only loses
 /// kill credit, a scanner taken for runtime would inflate the score.
 class SourceScanDetector {
   SourceScanDetector({
     required this.root,
-    this.sourceRoots = const ['lib'],
+    List<String> sourceRoots = const ['lib'],
     this.scannerGlobs = defaultScannerGlobs,
-  });
+  }) : sourceRoots = [
+          ...{...defaultSourceRoots, ...sourceRoots}
+        ];
 
   final String root;
 
-  /// Top-level directories whose text counts as source (always `lib`, plus the
-  /// directories of the files being mutated).
+  /// Top-level directories whose text counts as source: [defaultSourceRoots]
+  /// plus the directories of the files being mutated.
   final List<String> sourceRoots;
   final List<String> scannerGlobs;
 
   final Map<String, List<String>> _cache = {};
   final Map<String, _FileFacts?> _facts = {};
   late final List<Glob> _scanners = [for (final g in scannerGlobs) Glob(g, context: p.posix)];
-  late final RegExp _reads = _readPattern(sourceRoots);
 
   /// Reasons why [suite] (root-relative, `/`-separated) is source-scanning;
   /// empty when nothing says so.
@@ -73,9 +79,11 @@ class SourceScanDetector {
       if (_scanners.any((g) => g.matches(path))) {
         out.add(own ? 'is a source scanner ($path)' : 'imports source scanner $path$where');
       }
-      if (facts.reads) {
-        final roots = sourceRoots.join('/ or ');
-        out.add(own ? 'reads files under $roots/' : 'reads files under $roots/ (in $path$where)');
+      for (final site in facts.sites.take(_maxSites)) {
+        out.add('may read source: ${site.describe(path)}${own ? '' : ' (helper reached via ${[start, ...via, path].join(' -> ')})'}');
+      }
+      if (facts.sites.length > _maxSites) {
+        out.add('may read source: ${facts.sites.length - _maxSites} more sites in $path');
       }
       for (final next in facts.imports) {
         if (seen.add(next)) queue.add((next, own ? via : [...via, path]));
@@ -95,8 +103,6 @@ class SourceScanDetector {
         final file = File(p.join(root, path));
         if (!file.existsSync()) return null;
         final text = file.readAsStringSync();
-        // Importing code from lib/ is not reading its text.
-        final body = text.replaceAll(_directive, '');
         final imports = <String>[];
         for (final m in _directive.allMatches(text)) {
           final uri = m.group(2)!;
@@ -106,29 +112,20 @@ class SourceScanDetector {
           if (sourceRoots.any((r) => next == r || next.startsWith('$r/'))) continue;
           if (File(p.join(root, next)).existsSync()) imports.add(next);
         }
-        return _FileFacts(_reads.hasMatch(body), imports);
+        return _FileFacts(analyseSourceReads(text, sourceRoots: sourceRoots).sites, imports);
       });
 }
 
 class _FileFacts {
-  _FileFacts(this.reads, this.imports);
-  final bool reads;
+  _FileFacts(this.sites, this.imports);
+  final List<SourceSite> sites;
   final List<String> imports;
 }
 
-final _directive = RegExp(r'''^\s*(import|export|part)\s+['"]([^'"]+)['"][^;]*;''', multiLine: true);
+/// Sites shown per file in a reason; the rest are counted.
+const _maxSites = 3;
 
-/// A string literal that starts at a source root, a source root passed to
-/// File / Directory / join, or an interpolated path that goes through one.
-RegExp _readPattern(List<String> roots) {
-  final r = roots.map(RegExp.escape).join('|');
-  return RegExp(
-    '''['"](?:\\./|\\.\\./)*(?:$r)/'''
-    '''|\\}/(?:$r)/'''
-    '''|(?:File|Directory)\\s*\\([^;]*?['"](?:$r)['"]'''
-    '''|join\\(\\s*['"](?:$r)['"]''',
-  );
-}
+final _directive = RegExp(r'''^\s*(import|export|part)\s+['"]([^'"]+)['"][^;]*;''', multiLine: true);
 
 /// The reviewed list of tests that run code although their suite looks like a
 /// source scanner. See [parse].

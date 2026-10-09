@@ -83,15 +83,35 @@ a. it matches a `--guard-pattern` (additional globs; the file-name patterns belo
 b. it imports (directly, or through helper files of the repository, followed transitively and never
    into `lib/`) a shared source scanner: `**/dart_source*.dart` by default (edge:
    `test/support/dart_source.dart`, `test/support/dart_source_lexical.dart`), plus `--scanner <glob>...`;
-c. it, or a helper it imports, reads files under a source root: a string literal that starts with
-   `lib/` (or `./lib/`, `../lib/`, `${...}/lib/`), `File(...)` / `Directory(...)` / `p.join(...)` given
-   `'lib'`. The source roots are `lib` plus the top-level directory of every file being mutated.
-   `import` / `export` / `part` lines are not reads.
+c. it, or a helper it imports, may read source text. Each reachable Dart file is parsed to an AST
+   (`package:analyzer`) and every one of these is a site (reported as `file:line [rule] code`):
+
+   - `[path-not-literal]` a `File(...)`, `Directory(...)` or `Link(...)` (also `new`, `io.File`,
+     `.fromUri`, `File.new` tear-offs, a `typedef` of them) whose path is not a compile-time string:
+     a variable that is not a `final`/`const` declared once with a resolvable initializer, a
+     parameter, a call, `Directory.current.path`, an interpolation of any of those. Strings,
+     interpolation, `+`, adjacent strings, such constants and `package:path` `join` are resolved;
+     nothing else is;
+   - `[source-path]` a path that resolves under a source root (`lib`, `tool`, `packages`, `bin` and the
+     top-level directory of every mutated file), after normalisation (`test/../lib/a` is `lib/a`),
+     absolute paths included (any segment); the package root itself (`.`, `..`, `/`); any string
+     literal that starts at a root (`lib/...`, `../lib/...`, `${x}/lib/...`); a `join` that starts at one;
+   - `[read-call]` `readAsString*`, `readAsBytes*`, `readAsLines*`, `openRead`, `list`, `listSync` on a
+     receiver that is not itself a `File`/`Directory`/`Link` construction (or a `final` variable
+     initialised with one): its path is unknown;
+   - `[Platform.script]` `Platform.script`, `Platform.packageConfig`, `Isolate.resolvePackageUri`,
+     `Isolate.packageConfig`;
+   - `[unparsable]` a file with syntax errors.
+
+   A literal path to something that is clearly not source (`test/fixtures/x.json`, `/tmp/x`,
+   `pubspec.yaml`) is not a site. Comments and `import`/`export`/`part` URIs are not sites. When in
+   doubt the rule says scanning; the allowlist below is the only way to grant runtime credit. A
+   reason lists up to three sites per file and counts the rest. `Process.run` and friends are not
+   inspected: a test that shells out to read source is not detected.
 
 A suite file that is not in the export cannot be checked and counts as source-scanning. The rules are
 wide on purpose: a runtime suite wrongly taken for a scanner only loses kill credit, a scanner
-taken for runtime would inflate the score. On this repository (1004 suites) 129 are detected,
-among them all 62 that import the shared scanners and `test/ecg_tap_runtime_test.dart`.
+taken for runtime would inflate the score.
 
 ### The reviewed runtime allowlist
 

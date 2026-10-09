@@ -16,6 +16,7 @@ import 'mutant.dart';
 import 'process_runner.dart';
 import 'report.dart';
 import 'selection.dart';
+import 'source_facts.dart' show defaultSourceRoots;
 
 const _toolVersion = '0.1.0';
 
@@ -74,7 +75,7 @@ Future<int> runCli(
         // Source guards: found by reading the export, before anything runs.
         final files = expandFileGlobs(export.path, config.files);
         final suites = expandTestSelectors(export.path, config.tests);
-        final sourceRoots = {'lib', ...files.map((f) => f.split('/').first).where((d) => !d.endsWith('.dart'))}.toList();
+        final sourceRoots = {...defaultSourceRoots, ...files.map((f) => f.split('/').first).where((d) => !d.endsWith('.dart'))}.toList();
         final scannerGlobs = [...defaultScannerGlobs, ...config.scanners];
         final detector =
             SourceScanDetector(root: export.path, sourceRoots: sourceRoots, scannerGlobs: scannerGlobs);

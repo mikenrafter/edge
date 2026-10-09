@@ -15,3 +15,4 @@ export 'src/process_runner.dart';
 export 'src/report.dart';
 export 'src/reporter_parser.dart';
 export 'src/selection.dart';
+export 'src/source_facts.dart';
