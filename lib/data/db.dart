@@ -331,6 +331,12 @@ class LocalDb {
       // Published BEFORE the salvage so `_mergeFromDbFile`'s own `instance`
       // resolves to the new file instead of re-entering this method.
       _db = fresh;
+      // A rebuild replaces the store by itself, whether or not the salvage that
+      // follows commits a page (it may not even open its source). Marking here
+      // makes the transition differ from [generationAfterFirstOpen]'s plain
+      // first-open prediction, so a cache cannot mistake a rebuild for the
+      // ordinary open it was waiting for.
+      _markStoreReplaced();
       var salvaged = const <String, int>{};
       try {
         // `_days` is the importer's bookkeeping key, not a table. The rebuild
@@ -357,6 +363,10 @@ class LocalDb {
       return fresh;
     }
   }
+
+  /// True while a usable handle is cached. A cache stamping a value reads it to
+  /// learn whether the next open would be the FIRST one after its stamp.
+  static bool get isStoreOpen => _db?.isOpen ?? false;
 
   static Future<void> close() async {
     if (_db != null) {

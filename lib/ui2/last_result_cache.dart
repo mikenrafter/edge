@@ -61,6 +61,11 @@ class LastResultCache {
 
   final int capacity;
 
+  /// Tests only: awaited at the start of every put's write-through, before the
+  /// store is touched. Null in production.
+  @visibleForTesting
+  static Future<void> Function()? debugBeforeWriteThrough;
+
   /// The table's bound.
   final int maxRows;
   DateTime Function() _now;
@@ -129,11 +134,16 @@ class LastResultCache {
   void put<T>(String key, T value, {String? sig}) {
     final at = _now();
     final putGeneration = LocalDb.storeGeneration;
+    // Only a put made while the store was CLOSED can be waiting for its first
+    // open. On an open store the stamp is already the real generation, and any
+    // later change to it is a reopen or a replacement, never a catch-up.
+    final storeWasClosed = !LocalDb.isStoreOpen;
     final entry = _store(key, value, at, putGeneration, sig);
     final json = _encode(value);
     if (json == null) return;
     ReadPerf.lastResultPut(key, json);
     _enqueue(() async {
+      await debugBeforeWriteThrough?.call();
       // Opens the store if the put came first. That open moves the generation,
       // and it is the only thing allowed to: see the restamp below.
       await LocalDb.instance;
@@ -146,7 +156,8 @@ class LastResultCache {
       // this put's (a newer put for the key keeps its own stamp and value). A
       // wipe, merge, rebuild or reopen that crossed the write leaves the old
       // stamp, so the entry misses. An unconditional restamp would revive it.
-      if (putGeneration != opened &&
+      if (storeWasClosed &&
+          putGeneration != opened &&
           opened == LocalDb.generationAfterFirstOpen(putGeneration) &&
           LocalDb.storeGeneration == opened &&
           identical(_m[key], entry)) {

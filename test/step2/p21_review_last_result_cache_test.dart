@@ -11,7 +11,12 @@
 //     query, then discarded the row it had just read because the generation
 //     moved. It now captures the generation after the store is open.
 
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:openstrap_edge/data/db.dart';
 import 'package:openstrap_edge/ui2/last_result_cache.dart';
@@ -29,6 +34,7 @@ LastResultCache _mk() {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() async => g1FreshDb(_db));
+  tearDown(() => LastResultCache.debugBeforeWriteThrough = null);
   tearDownAll(() => g1DropDb(_db));
 
   group('read() on a closed store', () {
@@ -118,6 +124,83 @@ void main() {
       await c.flush();
       expect(c.get<Map<String, dynamic>>('a')?.value, {'v': 1});
       expect(c.get<Map<String, dynamic>>('b')?.value, {'v': 2});
+    });
+  });
+
+  // Sol review r2, finding 1.
+  group('a pending put is never restamped across anything but its own open',
+      () {
+    const bricked = 'p21_review_lrc_bricked.db';
+
+    tearDown(() async {
+      await g1DropDb(bricked);
+      for (final f in Directory(await databaseFactory.getDatabasesPath())
+          .listSync()) {
+        if (f is File && f.path.contains('$bricked.unopenable')) f.deleteSync();
+      }
+    });
+
+    test('the first open fails, the rebuild salvages nothing: the pending '
+        'put\'s entry misses', () async {
+      await LocalDb.close();
+      final path = p.join(await databaseFactory.getDatabasesPath(), bricked);
+      await databaseFactory.deleteDatabase(path);
+      // The wrong shape makes the ladder's index creation throw; nothing in
+      // the file is salvageable, so the salvage commits no page.
+      final seed = await databaseFactory.openDatabase(path,
+          options: OpenDatabaseOptions(
+              version: 2,
+              onCreate: (d, _) =>
+                  d.execute('CREATE TABLE metric_series (bogus INTEGER)')));
+      await seed.close();
+      LocalDb.lastRebuild = null;
+      LocalDb.dbName = bricked;
+      final c = _mk();
+
+      c.put<Map<String, dynamic>>('k', {'a': 1}); // store closed
+      await c.flush();
+
+      expect(LocalDb.lastRebuild, isNotNull, reason: 'the open really bricked');
+      expect(LocalDb.lastRebuild!.salvaged.values.fold<int>(0, (a, b) => a + b),
+          0,
+          reason: 'nothing was salvaged: no merge page, no merge mark');
+      expect(c.get<Map<String, dynamic>>('k'), isNull,
+          reason: 'the store was REPLACED by the rebuild; the fresh-file open '
+              'must not look like a plain first open');
+    });
+
+    test('put on an OPEN store, ordinary close and reopen before the '
+        'write-through: no restamp, a miss', () async {
+      await LocalDb.instance;
+      final hold = Completer<void>();
+      LastResultCache.debugBeforeWriteThrough = () => hold.future;
+      final c = _mk();
+
+      c.put<Map<String, dynamic>>('k', {'a': 1});
+      await LocalDb.close();
+      await LocalDb.instance; // an ordinary reopen
+      hold.complete();
+      await c.flush();
+
+      expect(c.get<Map<String, dynamic>>('k'), isNull,
+          reason: 'the store was open at put(); nothing about this put was '
+              'bound to a first open');
+      expect((await LocalDb.lastResult('k'))?.payload, '{"a":1}');
+    });
+
+    test('put on a CLOSED store, an ordinary open by someone else first: '
+        'still bound and a hit', () async {
+      await LocalDb.close();
+      final hold = Completer<void>();
+      LastResultCache.debugBeforeWriteThrough = () => hold.future;
+      final c = _mk();
+
+      c.put<Map<String, dynamic>>('k', {'a': 1});
+      await LocalDb.instance; // the first open after the put
+      hold.complete();
+      await c.flush();
+
+      expect(c.get<Map<String, dynamic>>('k')?.value, {'a': 1});
     });
   });
 }
