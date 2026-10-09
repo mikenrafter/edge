@@ -1,6 +1,8 @@
 // publish_gate.dart — P2.3 (design 02, step 2, section 4.5).
 import 'dart:async';
 
+import 'package:clock/clock.dart';
+
 import '../data/db.dart';
 import '../data/bundle_store.dart';
 
@@ -65,11 +67,22 @@ class PublishGate {
   PublishGate({
     required PublishGateSteps steps,
     Duration warmBudget = const Duration(seconds: 2),
+    Duration retryDelay = const Duration(seconds: 1),
   }) : _steps = steps,
-       _warmBudget = warmBudget;
+       _warmBudget = warmBudget,
+       _retryDelay = retryDelay;
 
   final PublishGateSteps _steps;
   final Duration _warmBudget;
+  final Duration _retryDelay;
+
+  /// A sequence whose freshness refresh failed is retried this many times (the
+  /// bump still happens on every attempt) and then given up: the next request
+  /// starts afresh, but nothing loops on its own.
+  static const int _maxRetries = 1;
+  int _retries = 0;
+  Timer? _retryTimer;
+  Completer<void>? _retryWake;
   int _sequence = 0;
   int _runs = 0;
   bool _disposed = false;
@@ -88,6 +101,7 @@ class PublishGate {
   void request() {
     if (_disposed) return;
     _sequence++;
+    _wakeRetry(); // a new request is itself the retry
     _ensureRunning();
   }
 
@@ -101,7 +115,24 @@ class PublishGate {
     await idle;
   }
 
-  void dispose() => _disposed = true;
+  void dispose() {
+    _disposed = true;
+    _wakeRetry();
+  }
+
+  Future<void> _sleepBeforeRetry() {
+    final wake = _retryWake = Completer<void>();
+    _retryTimer = Timer(_retryDelay, _wakeRetry);
+    return wake.future;
+  }
+
+  void _wakeRetry() {
+    _retryTimer?.cancel();
+    _retryTimer = null;
+    final wake = _retryWake;
+    _retryWake = null;
+    if (wake != null && !wake.isCompleted) wake.complete();
+  }
 
   void _ensureRunning() {
     if (_disposed || _running != null) return;
@@ -123,12 +154,15 @@ class PublishGate {
       // that run wrote, and gets a trailing run of its own.
       var captured = _sequence;
       _runs++;
-      await _refresh();
+      // Whether the LAST refresh of this run wrote: a failed one leaves the
+      // freshness older than `captured`, and the sequence must not be
+      // acknowledged on its behalf.
+      var refreshed = await _refresh();
       if (_disposed) return;
       if (_sequence != captured) {
         // A commit landed during the refresh: the freshness may predate it.
         captured = _sequence;
-        await _refresh();
+        refreshed = await _refresh();
         if (_disposed) return;
       }
       // Only a request made while the warm runs folds into this run; one that
@@ -148,7 +182,7 @@ class PublishGate {
         // A commit landed during the warm: refresh again, then warm only the
         // sources whose revision changed.
         captured = _sequence;
-        await _refresh();
+        refreshed = await _refresh();
         if (_disposed) return;
         try {
           final after = await _steps.servedRevisions();
@@ -162,18 +196,34 @@ class PublishGate {
         }
       }
       if (_disposed) return;
-      _completedSequence = captured;
+      // A failed refresh still bumps (4.5: nothing may suppress the bump), but
+      // the sequence stays pending and is retried once after a short delay;
+      // when the retries are spent it is acknowledged so the loop ends.
+      final retry = !refreshed && _retries < _maxRetries;
+      if (!retry) {
+        _completedSequence = captured;
+        _retries = 0;
+      }
       _steps.bump();
       // Anything requested after `captured` (including from the bump itself)
       // is still ahead of `_completedSequence`: the loop runs it next.
+      if (retry) {
+        _retries++;
+        // A request made since `captured` (or by the bump) is the retry.
+        if (_sequence == captured) await _sleepBeforeRetry();
+        if (_disposed) return;
+      }
     }
   }
 
-  Future<void> _refresh() async {
+  /// True when the freshness was written.
+  Future<bool> _refresh() async {
     try {
       await _steps.refreshFreshness();
+      return true;
     } catch (e) {
       _steps.log('[publish] freshness refresh failed: $e');
+      return false;
     }
   }
 
@@ -192,10 +242,12 @@ class PublishGate {
     required BundleStore store,
     required PublishGateEffects effects,
     Duration warmBudget = const Duration(seconds: 2),
+    Duration retryDelay = const Duration(seconds: 1),
   }) {
     return PublishGate(
       steps: LocalPublishGateSteps(store: store, effects: effects),
       warmBudget: warmBudget,
+      retryDelay: retryDelay,
     );
   }
 
@@ -309,16 +361,20 @@ class StartupWarm {
   Future<WarmResult?> run() async {
     if (_headless) return null;
     // One deadline for both stages: a slow resolution leaves the warm only
-    // what remains of the 3 s, not a fresh 3 s of its own.
+    // what remains of the 3 s, not a fresh 3 s of its own. `Future.timeout`
+    // abandons the work but does not cancel it, so the continuation checks the
+    // deadline itself (on a monotonic watch) before it starts the warm.
+    final watch = clock.stopwatch()..start();
     try {
-      return await _resolveAndWarm().timeout(_timeout);
+      return await _resolveAndWarm(watch).timeout(_timeout);
     } catch (_) {
       return null;
     }
   }
 
-  Future<WarmResult?> _resolveAndWarm() async {
+  Future<WarmResult?> _resolveAndWarm(Stopwatch watch) async {
     final set = await _steps.resolve();
+    if (watch.elapsed >= _timeout) return null; // run() has already answered null
     final sources = set.bundles.take(_maxPayloads).toList();
     if (sources.isEmpty) return null;
     return _steps.warm(sources, _maxSourceBytes);

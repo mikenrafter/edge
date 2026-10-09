@@ -11833,7 +11833,11 @@ class LocalDb {
       return (_freshnessNext ??= Completer<void>()).future;
     }
     final first = Completer<void>();
-    unawaited(_freshnessLoop(first));
+    // The loop is process-wide state, not the first caller's: it runs in the
+    // root zone, so a caller's zone (a fake-async or guarded zone that stops
+    // scheduling, or a zone torn down mid-run) can never strand the latch below
+    // and with it every later caller. Callers still resume in their own zones.
+    unawaited(Zone.root.runUnary(_freshnessLoop, first));
     return first.future;
   }
 
