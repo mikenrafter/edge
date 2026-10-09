@@ -18,7 +18,10 @@
 // breaks the chain" comes to.
 //
 // Bytes are canonical: what is written is a function of the beats and rows
-// folded, never of how they were chunked. Rings are written from their live
+// folded, never of how they were chunked, with one exception: a chunk with no
+// beats yet keeps no rows (a beatless stretch costs no bytes), so after a
+// beatless first chunk the stored rows can differ from one fold of the whole
+// day while every curve still reads the same. Rings are written from their live
 // head, and the seconds the accelerometer buffers keep only what a later beat
 // can still read (see [_floorSec]).
 

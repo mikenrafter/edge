@@ -2276,6 +2276,29 @@ void main() {
       expect(weak, isEmpty, reason: weak.join('\n'));
     });
   });
+  // Exhaustive over a small grid rather than generated: the contract is a
+  // single inequality, so every boundary can be visited. Without the bound a
+  // corrupt count would allocate before the read fails (Sol C2 r1 P1).
+  test('ResumeReader.count accepts a length exactly when it fits the unread bytes', () {
+    const hostile = [-1, -0x80000000, 0x7fffffff, 1 << 20, 1 << 30];
+    for (var per = 1; per <= 9; per++) {
+      for (var left = 0; left <= 40; left++) {
+        final fit = left ~/ per;
+        for (final n in {0, fit - 1, fit, fit + 1, ...hostile}) {
+          final w = ResumeWriter()..i32(n);
+          w.bytes(Uint8List(left), left);
+          final r = ResumeReader(w.takeBytes());
+          final ok = n >= 0 && n * per <= left;
+          final tag = 'per=$per left=$left n=$n';
+          if (ok) {
+            expect(r.count(per), n, reason: tag);
+          } else {
+            expect(() => r.count(per), throwsFormatException, reason: tag);
+          }
+        }
+      }
+    }
+  });
   // Last in the file on purpose: it reads what every comparison above counted.
   test('persisted-text rounding-boundary cases stay rare', () {
     // Each persisted figure can differ from the batch's only across a rounding
