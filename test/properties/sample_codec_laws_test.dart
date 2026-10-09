@@ -510,7 +510,17 @@ List<(int, int)> _runs(List<double?> x) {
   return out;
 }
 
-String _runsText(List<(int, int)> r) => r.take(6).join(',');
+/// The COMPLETE run lists must be equal; only the failure message is shortened.
+void _expectRuns(List<(int, int)> got, List<(int, int)> want, String label) {
+  var i = 0;
+  while (i < got.length && i < want.length && got[i] == want[i]) {
+    i++;
+  }
+  if (i == got.length && i == want.length) return;
+  String at(List<(int, int)> r) => i < r.length ? '${r[i]}' : 'end';
+  fail('$label: valid runs differ at run $i (got ${got.length} runs, want '
+      '${want.length}): got ${at(got)}, want ${at(want)}');
+}
 
 /// The summary the contract promises for [x] at [q]: per level, per cell, the
 /// count and the true extremes rounded to the quantum.
@@ -547,14 +557,16 @@ void _expectSummary(List<double?> x, double q, List<SampleLevel> got,
       }
       expect(cell.min, (lo! / q).round() * q, reason: '$where min');
       expect(cell.max, (hi! / q).round() * q, reason: '$where max');
+      // At EVERY level the encoder builds the cell from the raw samples
+      // (`_pyramidBytes`, sum accumulated in slot order), so the stored mean is
+      // exactly the true mean rounded to the quantum, not merely near it.
+      // The mean is kept inside the stored extremes (a cell of one value on a
+      // rounding tie must not report a mean beside its own min and max):
+      //   meanQ = min(hiQ, max(loQ, (sum / count / q).round()))
       final mean = sum / count;
-      final m = cell.mean!;
-      _ok((m - mean).abs() <= q / 2 + 1e-9,
-          () => '$where: mean $m is not within q/2 of the true $mean');
-      _ok((m / q - (m / q).roundToDouble()).abs() < 1e-6,
-          () => '$where: mean $m is not a multiple of the quantum');
-      _ok(m >= cell.min! && m <= cell.max!,
-          () => '$where: mean $m outside [${cell.min}, ${cell.max}]');
+      final loQ = (lo / q).round(), hiQ = (hi / q).round();
+      expect(cell.mean, math.min(hiQ, math.max(loQ, (mean / q).round())) * q,
+          reason: '$where mean (true $mean, q $q)');
     }
   }
 }
@@ -630,8 +642,7 @@ void main() {
       expect(SampleCodec.hasSamples(c.blob), isFalse);
       expect(SampleCodec.readHeader(c.blob).mode, SampleMode.pyramidOnly);
       expect(SampleCodec.segments(c.blob), isEmpty);
-      expect(SampleCodec.validRuns(c.blob), _runs(c.x),
-          reason: 'the mask survives');
+      _expectRuns(SampleCodec.validRuns(c.blob), _runs(c.x), _show(c));
       _expectSummary(c.x, c.spec.quantum, c.summary, _show(c));
     });
 
@@ -645,8 +656,7 @@ void main() {
             () => '${_show(c)}: slot $i input ${c.x[i]} decoded ${d[i]}');
       }
       final runs = SampleCodec.validRuns(c.blob);
-      _ok(_runsText(runs) == _runsText(_runs(c.x)) && runs.length == _runs(c.x).length,
-          () => '${_show(c)}: valid runs ${_runsText(runs)} != ${_runsText(_runs(c.x))}');
+      _expectRuns(runs, _runs(c.x), _show(c));
       expect(SampleCodec.readHeader(c.blob).nValid, c.nValid);
       expect(c.enc.stats.nValid, c.nValid);
     });
@@ -754,13 +764,30 @@ void main() {
           final to = cs == len ? len : math.min(len, from + cs);
           var count = 0;
           double? lo, hi;
+          var weighted = 0.0; // sum of (rounded minute mean, in q) * count
           for (var j = from ~/ 60; j * 60 < to; j++) {
             if (!c.kept.contains(j)) continue;
             count += m0[j].count;
             if (lo == null || m0[j].min! < lo) lo = m0[j].min;
             if (hi == null || m0[j].max! > hi) hi = m0[j].max;
+            weighted += (m0[j].mean! / q).round() * m0[j].count;
           }
           final cell = got[li].cells[i];
+          // CONTRACT (`SampleCodec._pyramidFromMinutes`, "quantized cells in,
+          // coarser levels aggregated from them"): a carved coarser mean is the
+          // count-weighted mean of the ROUNDED minute means, rounded again and
+          // kept inside [min, max]:
+          //   sum += c.meanQ * c.count;
+          //   mean = min(hi, max(lo, (sum / count).round()));
+          // so it can differ from the original raw-based mean by up to a
+          // quantum. The oracle reproduces that aggregation exactly.
+          final wantMean = count == 0
+              ? null
+              : math.min((hi! / q).round(),
+                      math.max((lo! / q).round(), (weighted / count).round())) *
+                  q;
+          expect(cell.mean, wantMean,
+              reason: '${_show(c)} level $cs cell $i mean');
           expect(cell.count, count, reason: '${_show(c)} level $cs cell $i count');
           expect(cell.min, lo, reason: '${_show(c)} level $cs cell $i min');
           expect(cell.max, hi, reason: '${_show(c)} level $cs cell $i max');
@@ -899,7 +926,7 @@ void main() {
           expect(part.blob, SampleCodec.encode(e.key, e.value, mode: mode).blob,
               reason: '${e.key}: the entry is the codec on null-for-NaN');
           final runs = SampleCodec.validRuns(part.blob);
-          expect(runs.length, _runs(e.value).length, reason: '${e.key}: runs');
+          _expectRuns(runs, _runs(e.value), e.key);
           if (SampleCodec.hasSamples(part.blob)) {
             final d = SampleCodec.decode(part.blob);
             for (var i = 0; i < nan.length; i++) {
