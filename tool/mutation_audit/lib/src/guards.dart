@@ -112,15 +112,10 @@ class SourceScanDetector {
           for (final uri in facts.uris)
             if (_resolve(path, uri) case final next?) next,
         ];
-        // Code under a source root is the product, not a test: it reads files
-        // at run time all the time (the database, exports, preferences). It is
-        // inspected for what only a source reader does (literal source paths,
-        // the script location, a syntax error); a non-literal path there is
-        // judged where the test hands it one. See the README.
-        final sourceSide = sourceRoots.any((r) => path.startsWith('$r/'));
-        final sites = sourceSide
-            ? [for (final s in facts.sites) if (const {'source-path', 'Platform.script', 'unparsable'}.contains(s.rule)) s]
-            : facts.sites;
+        // Strict everywhere, files under a source root included: a helper there
+        // that builds a path at run time may read source whatever its callers
+        // show. Runtime credit comes only from the reviewed allowlist.
+        final sites = facts.sites;
         return _FileFacts(sites, imports);
       });
 
@@ -190,26 +185,68 @@ class _FileFacts {
 /// Sites shown per file in a reason; the rest are counted.
 const _maxSites = 3;
 
+/// One reviewed line of the runtime allowlist.
+class AllowlistEntry {
+  const AllowlistEntry(this.key, this.reason);
+
+  /// `suite` or `suite::full test name`.
+  final String key;
+
+  /// Why this really runs code (mandatory).
+  final String reason;
+
+  String get suite => key.contains('::') ? key.substring(0, key.indexOf('::')) : key;
+}
+
+/// An allowlist entry that frees something the detector or a pattern flagged:
+/// what the reviewer is overriding.
+class AllowlistOverride {
+  const AllowlistOverride(this.entry, this.reason, this.flags);
+  final String entry, reason;
+
+  /// The reasons the suite was flagged (patterns and detection).
+  final List<String> flags;
+
+  Map<String, Object?> toJson() => {'entry': entry, 'reason': reason, 'flags': flags};
+}
+
 /// The reviewed list of tests that run code although their suite looks like a
 /// source scanner. See [parse].
 class RuntimeAllowlist {
-  const RuntimeAllowlist._(this.suites, this.tests);
-  const RuntimeAllowlist.empty() : this._(const {}, const {});
+  const RuntimeAllowlist._(this.suites, this.tests, this.entries);
+  const RuntimeAllowlist.empty() : this._(const {}, const {}, const []);
 
   /// Whole suites, and single tests (`suite::full name`).
   final Set<String> suites, tests;
 
-  /// One entry per line: `test/x_test.dart` (every test of that suite) or
-  /// `test/x_test.dart::group full test name` (only that test). Blank lines
-  /// and lines starting with `#` are ignored.
+  /// Every entry with its reason, in file order.
+  final List<AllowlistEntry> entries;
+
+  /// One entry per line, with a mandatory reason after `#`:
+  /// `test/x_test.dart  # why it runs code` (every test of that suite) or
+  /// `test/x_test.dart::group full test name  # why` (only that test). The
+  /// reason starts at the first whitespace-`#`-whitespace, so a `#` inside a
+  /// test name (`issue #12`) is part of the name. Blank lines and lines that
+  /// start with `#` are ignored. A line without a reason is a
+  /// [FormatException] naming the line.
   factory RuntimeAllowlist.parse(String text) {
     final suites = <String>{}, tests = <String>{};
-    for (final raw in text.split('\n')) {
-      final line = raw.trim();
+    final entries = <AllowlistEntry>[];
+    final lines = text.split('\n');
+    for (var n = 0; n < lines.length; n++) {
+      final line = lines[n].trim();
       if (line.isEmpty || line.startsWith('#')) continue;
-      (line.contains('::') ? tests : suites).add(line);
+      final at = RegExp(r'\s#(?:\s|$)').firstMatch(line);
+      final key = at == null ? line : line.substring(0, at.start).trim();
+      final reason = at == null ? '' : line.substring(at.end).trim();
+      if (reason.isEmpty) {
+        throw FormatException(
+            'runtime allowlist line ${n + 1}: "$key" has no reason; write "$key  # why this runs code"');
+      }
+      (key.contains('::') ? tests : suites).add(key);
+      entries.add(AllowlistEntry(key, reason));
     }
-    return RuntimeAllowlist._(suites, tests);
+    return RuntimeAllowlist._(suites, tests, entries);
   }
 
   int get length => suites.length + tests.length;
@@ -236,6 +273,8 @@ class GuardReport {
     this.allowlistSha256,
     this.allowlistEntries = 0,
     this.allowlistUnknownSuites = const [],
+    this.allowlistOverrides = const [],
+    this.allowlistUnflagged = const [],
   });
 
   /// `detected` (patterns plus automatic detection) or `no-guards-asserted`
@@ -254,6 +293,12 @@ class GuardReport {
   /// Allowlist entries naming a suite that is not in the export.
   final List<String> allowlistUnknownSuites;
 
+  /// Entries that override a flag, with the flag reasons and the reviewer's reason.
+  final List<AllowlistOverride> allowlistOverrides;
+
+  /// Entries whose suite nothing flagged (they free nothing).
+  final List<String> allowlistUnflagged;
+
   Map<String, Object?> toJson() => {
         'policy': policy,
         'patterns': patterns,
@@ -271,6 +316,8 @@ class GuardReport {
                 'sha256': allowlistSha256,
                 'entries': allowlistEntries,
                 'unknownSuites': allowlistUnknownSuites,
+                'overrides': [for (final o in allowlistOverrides) o.toJson()],
+                'unflagged': allowlistUnflagged,
               },
       };
 }

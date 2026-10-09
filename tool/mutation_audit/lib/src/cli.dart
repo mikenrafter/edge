@@ -62,6 +62,20 @@ Future<int> runCli(
       ..writeln(auditUsage());
     return 64;
   }
+  // The reviewed allowlist is read first: a line without a reason is a usage
+  // error, and nothing should have been exported or run by then.
+  var allowlist = const RuntimeAllowlist.empty();
+  String? allowlistSha;
+  if (config.runtimeAllowlist != null) {
+    try {
+      final bytes = File(config.runtimeAllowlist!).readAsBytesSync();
+      allowlist = RuntimeAllowlist.parse(utf8.decode(bytes, allowMalformed: true));
+      allowlistSha = sha256.convert(bytes).toString();
+    } on FormatException catch (e) {
+      errSink.writeln(e.message);
+      return 64;
+    }
+  }
   final processes = runner ?? const SystemProcessRunner();
   // Results are staged inside the output directory while the body runs and
   // published (renamed) only after the export has been removed and no signal
@@ -99,14 +113,18 @@ Future<int> runCli(
               '(they are detected automatically) and, for tests that really run code, list them in '
               '--runtime-allowlist.');
         }
-        RuntimeAllowlist allowlist = const RuntimeAllowlist.empty();
-        String? allowlistSha;
-        if (config.runtimeAllowlist != null) {
-          final bytes = File(config.runtimeAllowlist!).readAsBytesSync();
-          allowlist = RuntimeAllowlist.parse(utf8.decode(bytes, allowMalformed: true));
-          allowlistSha = sha256.convert(bytes).toString();
-        }
         final guards = GuardMatcher(config.guardPatterns, detector: detector, allowlist: allowlist);
+        // What each allowlist entry overrides, or that it frees nothing.
+        final overrides = <AllowlistOverride>[];
+        final unflagged = <String>[];
+        for (final e in allowlist.entries) {
+          final flags = suites.contains(e.suite) ? guards.flagReasons(e.suite) : const <String>[];
+          if (flags.isEmpty) {
+            if (suites.contains(e.suite)) unflagged.add(e.key);
+          } else {
+            overrides.add(AllowlistOverride(e.key, e.reason, flags));
+          }
+        }
 
         final setup = config.setupCmd ?? defaultSetupCommand(export.path);
         if (setup.isNotEmpty) {
@@ -162,6 +180,8 @@ Future<int> runCli(
               allowlistPath: config.runtimeAllowlist,
               allowlistSha256: allowlistSha,
               allowlistEntries: allowlist.length,
+              allowlistOverrides: overrides,
+              allowlistUnflagged: unflagged,
               allowlistUnknownSuites: [
                 for (final s in allowlist.suiteNames)
                   if (!File('${export.path}/$s').existsSync()) s

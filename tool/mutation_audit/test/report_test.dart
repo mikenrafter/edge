@@ -215,6 +215,8 @@ void main() {
             allowlistSha256: 'ab',
             allowlistEntries: 2,
             allowlistUnknownSuites: ['test/gone_test.dart'],
+            allowlistOverrides: [AllowlistOverride('test/b_test.dart', 'drives the engine', ['may read source: x'])],
+            allowlistUnflagged: ['test/c_test.dart'],
           ),
         ),
         const [],
@@ -225,12 +227,17 @@ void main() {
       expect(g['sourceScanningSuites'], 1);
       expect((g['sourceScanning'] as List).single, {'suite': 'test/b_test.dart', 'reasons': ['reads files under lib/']});
       expect(g['allowlist'], {
-        'path': 'review/runtime.txt', 'sha256': 'ab', 'entries': 2, 'unknownSuites': ['test/gone_test.dart']
+        'path': 'review/runtime.txt', 'sha256': 'ab', 'entries': 2, 'unknownSuites': ['test/gone_test.dart'],
+        'overrides': [
+          {'entry': 'test/b_test.dart', 'reason': 'drives the engine', 'flags': ['may read source: x']}
+        ],
+        'unflagged': ['test/c_test.dart'],
       });
       final md = m.renderMarkdown();
       expect(md, contains('1 of 3 suites'));
       expect(md, contains('review/runtime.txt'));
       expect(md, contains('test/gone_test.dart'));
+      expect(md, contains('`test/b_test.dart`: drives the engine (flagged: may read source: x)'));
     });
 
     test('mutants keep the order they were given', () {

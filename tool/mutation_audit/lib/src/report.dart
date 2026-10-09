@@ -297,7 +297,11 @@ String _guardLine(GuardReport? g) {
       : 'runtime allowlist `${g.allowlistPath}` (${g.allowlistEntries} entries, sha256 `${g.allowlistSha256}`)'
           '${g.allowlistUnknownSuites.isEmpty ? '' : ', entries naming suites not in the export: ${g.allowlistUnknownSuites.map((s) => '`$s`').join(', ')}'}';
   return '- Source-scanning suites: ${g.sourceScanning.length} of ${g.effectiveSuites.length} suites '
-      '(failures there are never kills; the list and the reasons are in results.json); $allow';
+      '(failures there are never kills; the list and the reasons are in results.json); $allow'
+      '${g.allowlistOverrides.isEmpty ? '' : '\n  - Allowlist overrides (reviewed, counted as runtime):\n${[
+          for (final o in g.allowlistOverrides) '    - `${o.entry}`: ${o.reason} (flagged: ${o.flags.first}${o.flags.length > 1 ? ' and ${o.flags.length - 1} more' : ''})'
+        ].join('\n')}'}'
+      '${g.allowlistUnflagged.isEmpty ? '' : '\n  - Allowlist entries that free nothing (not flagged): ${g.allowlistUnflagged.map((s) => '`$s`').join(', ')}'}';
 }
 
 String _seconds(Duration d) => '${(d.inMilliseconds / 1000).toStringAsFixed(1)} s';

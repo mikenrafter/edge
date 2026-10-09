@@ -460,7 +460,7 @@ void main() {
 
     test('the same failure counts once the reviewed allowlist says the test runs code', () async {
       final s = StreamBuilder().loaded('test/scan_test.dart').fail('test/scan_test.dart', 'wiring').done(success: false);
-      final c = await classify(s, exitCode: 1, guards: guards(allowlist: 'test/scan_test.dart::wiring'));
+      final c = await classify(s, exitCode: 1, guards: guards(allowlist: 'test/scan_test.dart::wiring  # runs code'));
       expect(c.status, MutantStatus.killed);
       expect(c.killingTests, ['test/scan_test.dart::wiring']);
       expect(c.discounted, isEmpty);
@@ -472,7 +472,7 @@ void main() {
           .fail('test/scan_test.dart', 'wiring')
           .fail('test/scan_test.dart', 'behaviour')
           .done(success: false);
-      final c = await classify(s, exitCode: 1, guards: guards(allowlist: 'test/scan_test.dart::behaviour'));
+      final c = await classify(s, exitCode: 1, guards: guards(allowlist: 'test/scan_test.dart::behaviour  # runs code'));
       expect(c.status, MutantStatus.killed);
       expect(c.killingTests, ['test/scan_test.dart::behaviour']);
       expect(c.guardTests, ['test/scan_test.dart::wiring']);

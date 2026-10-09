@@ -112,44 +112,40 @@ c. it, or a helper it imports, may read source text. Each reachable Dart file is
    - `[cwd]` `Directory.current`, `Uri.base`: the bases of paths built at run time;
    - `[unparsable]` a file with syntax errors.
 
-   Files under a source root (`lib/helper.dart` reached by `package:` or relative import) are the
-   product, and the product reads files at run time (database, exports, preferences). They are
-   inspected for what only a source reader shows (`[source-path]`, `[Platform.script]`,
-   `[unparsable]`) and not for non-literal `File(path)` / read calls / `[cwd]`: otherwise any test that
-   reaches the app's data layer would be a "scanner" (793 of 1004 suites on edge). A helper in `lib/`
-   that takes the path as a parameter is judged at the call site, because the test code that passes
-   the path is inspected in full (a constant that resolves under a source root is a site wherever it
-   is handed to).
-
-   A literal path to something that is clearly not source (`test/fixtures/x.json`, `/tmp/x`,
-   `pubspec.yaml`) is not a site. Comments and `import`/`export`/`part` URIs are not sites. When in
-   doubt the rule says scanning; the allowlist below is the only way to grant runtime credit. A
-   reason lists up to three sites per file and counts the rest. `Process.run` and friends are not
-   inspected: a test that shells out to read source is not detected.
+   The rules apply STRICTLY to every file reached, files under `lib/`, `tool/` and the other source
+   roots included: a helper there that builds a path at run time may read source whatever its callers
+   show (`File(['lib','a.dart'].join('/'))` behind a zero-argument call). The price is that a test
+   that reaches the app's data layer (which reads files at run time) is flagged; runtime credit for
+   such suites comes only from the reviewed allowlist below.
 
 A suite file that is not in the export cannot be checked and counts as source-scanning. The rules are
 wide on purpose: a runtime suite wrongly taken for a scanner only loses kill credit, a scanner
-taken for runtime would inflate the score. On this repository (1004 suites) 252 are detected, a
-superset of the 129 the earlier text-based detector found (no suite was lost): the 63 that import
-the shared scanners, the suites that read `lib/`, and the suites that build a path at run time or
-read through a helper.
+taken for runtime would inflate the score.
 
 ### The reviewed runtime allowlist
 
-`--runtime-allowlist <file>` lists tests that really run code although their suite scans source.
-One entry per line; `#` starts a comment line; blank lines are ignored:
+`--runtime-allowlist <file>` lists tests that really run code although the detector (or a pattern)
+flags their suite. One entry per line, and EVERY entry needs a reason after `#`; `#` at the start of a
+line is a comment; blank lines are ignored:
 
 ```
-# reviewed 2026-10-09: pumps the widget, the grep further down is a different test
-test/ecg_tap_runtime_test.dart::ecg tap runtime starts the session
-# a whole suite that only greps lib/ for a helper name but otherwise runs code
-test/some_runtime_test.dart
+# reviewed 2026-10-09
+test/ecg_tap_runtime_test.dart::ecg tap runtime starts the session  # pumps the widget; the grep below is another test
+test/some_runtime_test.dart  # reaches db.dart, which reads its database file; reads no source
 ```
 
-`suite` frees every test of that suite; `suite::full test name` frees that test only (the rest of the
-suite stays a guard). Matching is exact (no globs, no prefixes); it also overrides `--guard-pattern`.
-The report records the file's path and sha256, the number of entries, and entries that name a suite
-that is not in the export (a stale or mistyped line).
+`suite  # reason` frees every test of that suite; `suite::full test name  # reason` frees that test
+only (the rest of the suite stays a guard). The reason starts at the first whitespace-`#`-whitespace
+(a `#` inside a test name such as `issue #12` is fine). A line without a reason is a usage error
+(exit 64, before anything is exported). Matching is exact (no globs, no prefixes) and also overrides
+`--guard-pattern`.
+
+Review workflow: run once, read `meta.guards.allowlist.overrides` in `results.json` (and the
+"Allowlist overrides" lines of `summary.md`): each override lists the entry, your reason and the flag
+reasons the detector gave (file:line and rule), so you see exactly what you are overriding. Entries
+whose suite nothing flagged are listed under `unflagged` (they free nothing), entries naming a suite
+that is not in the export under `unknownSuites`. The report also records the file's path and sha256
+and the number of entries.
 
 ### `--no-guards`
 

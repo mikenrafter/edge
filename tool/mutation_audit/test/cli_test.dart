@@ -127,7 +127,7 @@ void main() {
     test('--runtime-allowlist turns a reviewed test into a kill, and the file is recorded by hash', () async {
       final pinned = await addScan();
       final list = File(p.join(out.path, '..', 'runtime_${DateTime.now().microsecondsSinceEpoch}.txt'))
-        ..writeAsStringSync('# reviewed\ntest/scan_test.dart::wiring greps lib\ntest/ghost_test.dart\n');
+        ..writeAsStringSync('# reviewed\ntest/scan_test.dart::wiring greps lib  # drives the real parser, the grep is elsewhere\ntest/ghost_test.dart  # stale\n');
       addTearDown(list.deleteSync);
       final code = await runCli(args(['--setup-cmd', '', '--runtime-allowlist', list.path], pinned),
           runner: scanFails(), out: stdout_, err: err);
@@ -140,6 +140,40 @@ void main() {
       expect(allow['entries'], 2);
       expect(allow['sha256'], matches(RegExp(r'^[0-9a-f]{64}$')));
       expect(allow['unknownSuites'], ['test/ghost_test.dart'], reason: 'a stale entry is visible');
+    });
+
+    test('the report shows what the allowlist overrides: the entry, the reviewer\'s reason and the flags', () async {
+      final pinned = await addScan();
+      final list = File(p.join(out.path, '..', 'runtime_${DateTime.now().microsecondsSinceEpoch}.txt'))
+        ..writeAsStringSync('test/scan_test.dart::wiring greps lib  # drives the real parser\n'
+            'test/a_test.dart  # not flagged at all\n');
+      addTearDown(list.deleteSync);
+      final code = await runCli(args(['--setup-cmd', '', '--runtime-allowlist', list.path], pinned),
+          runner: scanFails(), out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      final allow = ((results()['meta'] as Map)['guards'] as Map)['allowlist'] as Map;
+      final overrides = (allow['overrides'] as List).cast<Map<String, Object?>>();
+      expect(overrides, hasLength(1));
+      expect(overrides.single['entry'], 'test/scan_test.dart::wiring greps lib');
+      expect(overrides.single['reason'], 'drives the real parser');
+      expect((overrides.single['flags'] as List).join(' '), contains('may read source: test/scan_test.dart:'));
+      expect(allow['unflagged'], ['test/a_test.dart'], reason: 'frees nothing');
+      final md = File(p.join(out.path, 'summary.md')).readAsStringSync();
+      expect(md, contains('test/scan_test.dart::wiring greps lib'));
+      expect(md, contains('drives the real parser'));
+    });
+
+    test('an allowlist line without a reason is a usage error (64) before anything runs', () async {
+      final pinned = await addScan();
+      final list = File(p.join(out.path, '..', 'runtime_${DateTime.now().microsecondsSinceEpoch}.txt'))
+        ..writeAsStringSync('test/scan_test.dart::wiring greps lib\n');
+      addTearDown(list.deleteSync);
+      final runner = scanFails();
+      final code = await runCli(args(['--setup-cmd', '', '--runtime-allowlist', list.path], pinned),
+          runner: runner, out: stdout_, err: err);
+      expect(code, 64);
+      expect(err.toString(), contains('reason'));
+      expect(runner.calls, isEmpty);
     });
 
     test('--no-guards is refused when the export has a source-scanning suite: exit 64, nothing run', () async {

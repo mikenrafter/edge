@@ -59,8 +59,16 @@ class GuardMatcher {
 
   /// Why [test] is a guard (empty: it is a runtime test).
   List<String> reasons(TestOutcome test) {
+    final out = flagReasons(test.suite);
+    if (out.isEmpty || allowlist.allows(test)) return const [];
+    return out;
+  }
+
+  /// Why the suite [suitePath] is flagged, patterns and detection, whatever
+  /// the allowlist says (what an allowlist entry would be overriding).
+  List<String> flagReasons(String suitePath) {
     final out = <String>[];
-    final segments = test.suite.split('/').where((s) => s.isNotEmpty).toList();
+    final segments = suitePath.split('/').where((s) => s.isNotEmpty).toList();
     if (segments.isNotEmpty) {
       for (var n = 0; n < _globs.length; n++) {
         final (withSlash, glob) = _globs[n];
@@ -72,8 +80,7 @@ class GuardMatcher {
         if (hit) out.add('matches guard pattern ${patterns[n]}');
       }
     }
-    out.addAll(detector?.reasons(test.suite) ?? const []);
-    if (out.isEmpty || allowlist.allows(test)) return const [];
+    out.addAll(detector?.reasons(suitePath) ?? const []);
     return out;
   }
 

@@ -135,32 +135,58 @@ void main() {
         TestOutcome(suite: suite, name: name, result: TestResult.failure, skipped: false);
 
     test('a suite line allows every test of the suite, and only that suite', () {
-      final a = RuntimeAllowlist.parse('test/a_test.dart\n');
+      final a = RuntimeAllowlist.parse('test/a_test.dart  # pumps the widget\n');
       expect(a.allows(at('test/a_test.dart', 'anything')), isTrue);
       expect(a.allows(at('test/b_test.dart', 'anything')), isFalse);
     });
 
     test('a suite::name line allows that test only', () {
-      final a = RuntimeAllowlist.parse('test/a_test.dart::group runtime one\n');
+      final a = RuntimeAllowlist.parse('test/a_test.dart::group runtime one  # runs the engine\n');
       expect(a.allows(at('test/a_test.dart', 'group runtime one')), isTrue);
       expect(a.allows(at('test/a_test.dart', 'group another')), isFalse);
       expect(a.allows(at('test/b_test.dart', 'group runtime one')), isFalse);
     });
 
     test('names may contain colons and spaces; the first :: separates', () {
-      final a = RuntimeAllowlist.parse('test/a_test.dart::parses a::b and c: d\n');
+      final a = RuntimeAllowlist.parse('test/a_test.dart::parses a::b and c: d  # runtime\n');
       expect(a.allows(at('test/a_test.dart', 'parses a::b and c: d')), isTrue);
     });
 
+    test('every entry needs a reason: "path  # reason"', () {
+      for (final bad in [
+        'test/a_test.dart\n',
+        'test/a_test.dart::one test\n',
+        'test/a_test.dart #\n',
+        'test/a_test.dart  #   \n',
+        'test/a_test.dart#reason\n',
+      ]) {
+        expect(() => RuntimeAllowlist.parse(bad), throwsFormatException, reason: bad);
+      }
+    });
+
+    test('the format error names the line', () {
+      expect(() => RuntimeAllowlist.parse('# ok\ntest/a_test.dart  # fine\ntest/b_test.dart\n'),
+          throwsA(isA<FormatException>().having((e) => e.message, 'message', allOf(contains('line 3'), contains('test/b_test.dart')))));
+    });
+
+    test('the reason is kept with its entry', () {
+      final a = RuntimeAllowlist.parse('test/a_test.dart  # pumps the widget\ntest/b_test.dart::n  # runs the codec\n');
+      expect([for (final e in a.entries) (e.key, e.reason)],
+          [('test/a_test.dart', 'pumps the widget'), ('test/b_test.dart::n', 'runs the codec')]);
+      expect([for (final e in a.entries) e.suite], ['test/a_test.dart', 'test/b_test.dart']);
+    });
+
     test('comments, blank lines, CRLF and surrounding whitespace are ignored', () {
-      final a = RuntimeAllowlist.parse('# reviewed 2026-10-09 by me\r\n\r\n  test/a_test.dart  \r\n   # another\n');
+      final a = RuntimeAllowlist.parse('# reviewed 2026-10-09 by me\r\n\r\n  test/a_test.dart   # why  \r\n   # another\n');
       expect(a.length, 1);
+      expect(a.entries.single.reason, 'why');
       expect(a.allows(at('test/a_test.dart', 'x')), isTrue);
     });
 
-    test('a hash inside a test name is not a comment', () {
-      final a = RuntimeAllowlist.parse('test/a_test.dart::issue #12 regression\n');
+    test('a hash inside a test name is not the reason separator', () {
+      final a = RuntimeAllowlist.parse('test/a_test.dart::issue #12 regression  # real engine\n');
       expect(a.allows(at('test/a_test.dart', 'issue #12 regression')), isTrue);
+      expect(a.entries.single.reason, 'real engine');
     });
 
     test('empty text allows nothing', () {
@@ -169,7 +195,7 @@ void main() {
     });
 
     test('suite names are matched exactly (no prefix, no glob)', () {
-      final a = RuntimeAllowlist.parse('test/a_test.dart\ntest/*.dart\n');
+      final a = RuntimeAllowlist.parse('test/a_test.dart  # r\ntest/*.dart  # r\n');
       expect(a.allows(at('test/a_test.dart.bak', 'x')), isFalse);
       expect(a.allows(at('test/b_test.dart', 'x')), isFalse);
     });
@@ -201,20 +227,20 @@ void main() {
 
     test('the allowlist turns a whole detected suite into runtime', () {
       final g = GuardMatcher(const [],
-          detector: SourceScanDetector(root: root.path), allowlist: RuntimeAllowlist.parse('test/scan_test.dart'));
+          detector: SourceScanDetector(root: root.path), allowlist: RuntimeAllowlist.parse('test/scan_test.dart  # runs code'));
       expect(g.matches(at('test/scan_test.dart')), isFalse);
     });
 
     test('a per-test allowlist entry frees that test; the rest of the suite stays a guard', () {
       final g = GuardMatcher(const [],
           detector: SourceScanDetector(root: root.path),
-          allowlist: RuntimeAllowlist.parse('test/scan_test.dart::the runtime one'));
+          allowlist: RuntimeAllowlist.parse('test/scan_test.dart::the runtime one  # runs code'));
       expect(g.matches(at('test/scan_test.dart', 'the runtime one')), isFalse);
       expect(g.matches(at('test/scan_test.dart', 'greps source')), isTrue);
     });
 
     test('the allowlist overrides patterns as well', () {
-      final g = GuardMatcher(['test/guards/**'], allowlist: RuntimeAllowlist.parse('test/guards/x_test.dart'));
+      final g = GuardMatcher(['test/guards/**'], allowlist: RuntimeAllowlist.parse('test/guards/x_test.dart  # runs code'));
       expect(g.matches(at('test/guards/x_test.dart')), isFalse);
       expect(g.matches(at('test/guards/y_test.dart')), isTrue);
     });

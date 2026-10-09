@@ -115,30 +115,42 @@ void main() {
     });
   });
 
-  group('code under a source root is inspected for source reads only', () {
-    test('lib/ code that reads a user-chosen file at run time does not make its importers scanners', () {
-      write('pubspec.yaml', 'name: demo\n');
-      write('lib/io.dart', "import 'dart:io';\nString load(String path) => File(path).readAsStringSync();\nString b() => Directory.current.path;\n");
+  group('code under a source root is inspected like any other (strict)', () {
+    setUp(() => write('pubspec.yaml', 'name: demo\n'));
+
+    test('a tool/ helper that builds the path at run time is a site, whatever its callers show', () {
+      write('tool/h.dart', "import 'dart:io';\nString read() => File(['lib', 'a.dart'].join('/')).readAsStringSync();\n");
+      write('test/t_test.dart', "import '../tool/h.dart';\nvoid main() { read(); }\n");
+      final why = SourceScanDetector(root: root.path).reasons('test/t_test.dart');
+      expect(why.join(' '), contains('tool/h.dart:2'));
+    });
+
+    test('lib/ code that reads a path it is given is a site', () {
+      write('lib/io.dart', "import 'dart:io';\nString load(String path) => File(path).readAsStringSync();\n");
       write('test/runtime_test.dart', "import 'package:demo/io.dart';\nvoid main() { load('test/fixtures/x.json'); }\n");
-      expect(SourceScanDetector(root: root.path).reasons('test/runtime_test.dart'), isEmpty);
+      expect(SourceScanDetector(root: root.path).reasons('test/runtime_test.dart').join(' '), contains('lib/io.dart:2'));
     });
 
-    test('lib/ code that reads a literal source path does', () {
-      write('pubspec.yaml', 'name: demo\n');
+    test('lib/ code with Directory.current is a site too', () {
+      write('lib/b.dart', 'String b() => Directory.current.path;\n');
+      write('test/b_test.dart', "import 'package:demo/b.dart';\nvoid main() {}\n");
+      expect(SourceScanDetector(root: root.path).reasons('test/b_test.dart'), isNotEmpty);
+    });
+
+    test('lib/ code that reads a literal source path, uses Platform.script or does not parse is a site', () {
       write('lib/io.dart', "import 'dart:io';\nString me() => File('lib/a.dart').readAsStringSync();\n");
-      write('test/scan_test.dart', "import 'package:demo/io.dart';\nvoid main() { me(); }\n");
-      final why = SourceScanDetector(root: root.path).reasons('test/scan_test.dart');
-      expect(why.join(' '), contains('lib/io.dart:2'));
-    });
-
-    test('lib/ code with Platform.script or a syntax error does', () {
-      write('pubspec.yaml', 'name: demo\n');
       write('lib/s.dart', 'Object where() => Platform.script;\n');
       write('lib/bad.dart', 'void f( {{{\n');
-      write('test/s_test.dart', "import 'package:demo/s.dart';\nvoid main() {}\n");
-      write('test/bad_test.dart', "import 'package:demo/bad.dart';\nvoid main() {}\n");
-      expect(SourceScanDetector(root: root.path).reasons('test/s_test.dart'), isNotEmpty);
-      expect(SourceScanDetector(root: root.path).reasons('test/bad_test.dart'), isNotEmpty);
+      for (final n in ['io', 's', 'bad']) {
+        write('test/${n}_test.dart', "import 'package:demo/$n.dart';\nvoid main() {}\n");
+        expect(SourceScanDetector(root: root.path).reasons('test/${n}_test.dart'), isNotEmpty, reason: n);
+      }
+    });
+
+    test('lib/ code that does no file-system access keeps its importers runtime suites', () {
+      write('lib/pure.dart', "import 'dart:convert';\nint f(int x) => x + 1;\n");
+      write('test/p_test.dart', "import 'package:demo/pure.dart';\nvoid main() {}\n");
+      expect(SourceScanDetector(root: root.path).reasons('test/p_test.dart'), isEmpty);
     });
   });
 }
