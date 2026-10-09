@@ -129,6 +129,86 @@ void main() {
       await refuses(link);
     });
 
+    group('every creation path, not just an explicit exportDir', () {
+      test('a parentDir inside the checkout is refused, and nothing is created there', () async {
+        final inside = Directory(p.join(fx.root, 'tmp_here'))..createSync();
+        final before = inside.listSync().length;
+        await expectLater(DisposableExport.create(repo: fx.root, sha: firstSha, parentDir: inside.path),
+            throwsA(isA<UnsafeExportTarget>()));
+        expect(inside.listSync(), hasLength(before));
+        expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
+      });
+
+      test('the checkout itself as parentDir', () async {
+        await expectLater(DisposableExport.create(repo: fx.root, sha: firstSha, parentDir: fx.root),
+            throwsA(isA<UnsafeExportTarget>()));
+        expect(Directory(fx.root).listSync().map((e) => p.basename(e.path)), isNot(contains(startsWith('mutation_audit_'))));
+      });
+
+      test('a symlinked parentDir that resolves into the checkout', () async {
+        final inside = Directory(p.join(fx.root, 'tmp_here'))..createSync();
+        final link = p.join(fx.parent, 'tmp_link');
+        Link(link).createSync(inside.path);
+        await expectLater(DisposableExport.create(repo: fx.root, sha: firstSha, parentDir: link),
+            throwsA(isA<UnsafeExportTarget>()));
+        expect(inside.listSync(), isEmpty);
+      });
+
+      test('a parentDir that does not exist yet but would be inside the checkout', () async {
+        await expectLater(
+            DisposableExport.create(repo: fx.root, sha: firstSha, parentDir: p.join(fx.root, 'not', 'yet')),
+            throwsA(isA<UnsafeExportTarget>()));
+        expect(Directory(p.join(fx.root, 'not')).existsSync(), isFalse);
+      });
+    });
+
+    group('other worktrees of the same repository are developer checkouts too', () {
+      late String linked;
+      setUp(() async {
+        linked = p.join(fx.parent, 'linked_wt');
+        await fx.git(['worktree', 'add', '--detach', linked, 'HEAD']);
+      });
+
+      test('an exportDir inside a linked worktree is refused', () async {
+        await expectLater(
+            DisposableExport.create(repo: fx.root, sha: firstSha, exportDir: p.join(linked, 'sub')),
+            throwsA(isA<UnsafeExportTarget>()));
+      });
+
+      test('a parentDir inside a linked worktree is refused', () async {
+        await expectLater(DisposableExport.create(repo: fx.root, sha: firstSha, parentDir: linked),
+            throwsA(isA<UnsafeExportTarget>()));
+        expect(Directory(linked).listSync().map((e) => p.basename(e.path)), isNot(contains(startsWith('mutation_audit_'))));
+      });
+
+      test('a directory that contains a linked worktree is refused', () async {
+        final outer = scratch('mutaudit_outer_');
+        made.add(outer);
+        final inner = p.join(outer.path, 'exp', 'wt');
+        await fx.git(['worktree', 'add', '--detach', inner, 'HEAD']);
+        await expectLater(
+            DisposableExport.create(repo: fx.root, sha: firstSha, exportDir: p.join(outer.path, 'exp')),
+            throwsA(isA<UnsafeExportTarget>()));
+      });
+
+      test('auditing from a linked worktree protects the main checkout as well', () async {
+        await expectLater(
+            DisposableExport.create(repo: linked, sha: firstSha, exportDir: p.join(fx.root, 'sub')),
+            throwsA(isA<UnsafeExportTarget>()));
+        await expectLater(
+            DisposableExport.create(repo: linked, sha: firstSha, parentDir: fx.root),
+            throwsA(isA<UnsafeExportTarget>()));
+      });
+
+      test('a system-temp style location beside them is fine', () async {
+        final parent = scratch('mutaudit_parent_');
+        made.add(parent);
+        final e = await DisposableExport.create(repo: fx.root, sha: firstSha, parentDir: parent.path);
+        addTearDown(e.dispose);
+        expect(p.isWithin(parent.path, e.path), isTrue);
+      });
+    });
+
     test('a fresh directory elsewhere is accepted', () async {
       final target = p.join(scratch('mutaudit_elsewhere_').path, 'x');
       made.add(Directory(p.dirname(target)));

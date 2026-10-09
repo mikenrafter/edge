@@ -47,9 +47,11 @@ class DisposableExport {
 
   /// Exports [sha] (any rev git resolves) of [repo]. The directory is created
   /// under [parentDir] (default: the system temp dir), or is [exportDir]
-  /// when given. Throws [UnsafeExportTarget] when the target is the repo, a
-  /// parent of it or inside it (after resolving symlinks), [ExportFailed]
-  /// when git cannot export it. The repo is not modified.
+  /// when given. Throws [UnsafeExportTarget] when the final export path -- on
+  /// every creation path, whatever TMPDIR or parentDir say -- is, contains or
+  /// lies inside the repo or any other worktree of it (after resolving
+  /// symlinks), [ExportFailed] when git cannot export it. The repo is not
+  /// modified.
   static Future<DisposableExport> create({
     required String repo,
     required String sha,
@@ -62,26 +64,44 @@ class DisposableExport {
     } on FileSystemException catch (e) {
       throw ExportFailed('cannot read repository $repo: ${e.message}');
     }
-    if (exportDir != null) {
-      final target = _resolveLoosely(exportDir);
-      if (p.equals(target, repoPath) || p.isWithin(repoPath, target) || p.isWithin(target, repoPath)) {
-        throw UnsafeExportTarget('$exportDir is, contains or lies inside the developer checkout $repoPath');
-      }
-    }
     final resolved = await _git(repoPath, ['rev-parse', '--verify', '--quiet', '$sha^{commit}']);
     if (resolved.exitCode != 0) {
       throw ExportFailed('cannot resolve "$sha" in $repoPath: ${_text(resolved.stderr)}');
     }
     final full = _text(resolved.stdout);
 
+    // Developer checkouts: the repository and every other worktree of it. The
+    // final export path is validated on every creation path (explicit
+    // exportDir, parentDir, the system temp dir -- TMPDIR may point anywhere).
+    final protected = await _developerCheckouts(repoPath);
+    void check(String target, {required bool whole}) {
+      for (final dev in protected) {
+        final inside = p.equals(target, dev) || p.isWithin(dev, target);
+        // The export itself must also not contain a checkout. A parent
+        // directory (checked before anything is created in it) may.
+        final contains = whole && p.isWithin(target, dev);
+        if (inside || contains) {
+          throw UnsafeExportTarget('$target is, contains or lies inside the developer checkout $dev');
+        }
+      }
+    }
+
     Directory? created;
     final String path;
     if (exportDir != null) {
       path = _resolveLoosely(exportDir);
+      check(path, whole: true);
     } else {
       final parent = parentDir == null ? Directory.systemTemp : Directory(parentDir);
+      check(_resolveLoosely(parent.path), whole: false);
       created = parent.createTempSync('mutation_audit_');
       path = created.resolveSymbolicLinksSync();
+      try {
+        check(path, whole: true);
+      } on UnsafeExportTarget {
+        created.deleteSync(recursive: true);
+        rethrow;
+      }
     }
     final added = await _git(repoPath, ['worktree', 'add', '--detach', path, full]);
     if (added.exitCode != 0) {
@@ -90,6 +110,19 @@ class DisposableExport {
       throw ExportFailed('git worktree add failed: ${_text(added.stderr)}');
     }
     return DisposableExport._(repoPath, full, path);
+  }
+
+  /// [repoPath] and every worktree git lists for it (the main one included),
+  /// as resolved paths.
+  static Future<List<String>> _developerCheckouts(String repoPath) async {
+    final out = <String>{repoPath};
+    final listed = await _git(repoPath, ['worktree', 'list', '--porcelain']);
+    if (listed.exitCode == 0) {
+      for (final line in '${listed.stdout}'.split('\n')) {
+        if (line.startsWith('worktree ')) out.add(_resolveLoosely(line.substring('worktree '.length).trim()));
+      }
+    }
+    return out.toList();
   }
 
   /// Removes the worktree registration (`git worktree remove --force` and
