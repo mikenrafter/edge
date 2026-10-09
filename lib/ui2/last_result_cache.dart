@@ -46,7 +46,9 @@ class _Entry {
   final String? sig;
 
   /// Store identity when it was taken; a replacement invalidates the entry.
-  final ({int wipeEpoch, int openCount}) generation;
+  /// Mutable for exactly one reason: a put made while the store was closed is
+  /// restamped once its own write-through has opened the store (see [put]).
+  ({int wipeEpoch, int openCount}) generation;
 }
 
 class LastResultCache {
@@ -94,10 +96,22 @@ class LastResultCache {
   Future<CachedResult<T>?> read<T>(String key) async {
     final mem = get<T>(key);
     if (mem != null) return mem;
-    final generation = LocalDb.storeGeneration;
+    // The generation is taken INSIDE the queued read, after the store is open.
+    // Taken before, a closed store's read opened it, moved the generation, and
+    // the fence below then threw away the row it had just read.
+    ({int wipeEpoch, int openCount})? taken;
     try {
-      final row = await _run(() => LocalDb.lastResult(key));
-      if (row == null || generation != LocalDb.storeGeneration) return null;
+      final row = await _run(() async {
+        await LocalDb.instance;
+        taken = LocalDb.storeGeneration;
+        return LocalDb.lastResult(key);
+      });
+      final generation = taken;
+      if (row == null ||
+          generation == null ||
+          generation != LocalDb.storeGeneration) {
+        return null;
+      }
       final v = jsonDecode(row.payload);
       if (v is! T) return null;
       ReadPerf.lastResultRead(key, row.payload, v);
@@ -114,16 +128,34 @@ class LastResultCache {
   /// it in memory and in the table (NULL when omitted).
   void put<T>(String key, T value, {String? sig}) {
     final at = _now();
-    _store(key, value, at, LocalDb.storeGeneration, sig);
+    final putGeneration = LocalDb.storeGeneration;
+    final entry = _store(key, value, at, putGeneration, sig);
     final json = _encode(value);
     if (json == null) return;
     ReadPerf.lastResultPut(key, json);
-    _enqueue(() => LocalDb.putLastResult(
-        key, at.millisecondsSinceEpoch, json, maxRows,
-        sig: sig));
+    _enqueue(() async {
+      // Opens the store if the put came first. That open moves the generation,
+      // and it is the only thing allowed to: see the restamp below.
+      await LocalDb.instance;
+      final opened = LocalDb.storeGeneration;
+      await LocalDb.putLastResult(key, at.millisecondsSinceEpoch, json, maxRows,
+          sig: sig);
+      // Bind the entry to the generation this SUCCESSFUL write-through used,
+      // when (and only when) it is the generation right after the put's own
+      // open, nothing replaced the store while it wrote, and the entry is still
+      // this put's (a newer put for the key keeps its own stamp and value). A
+      // wipe, merge, rebuild or reopen that crossed the write leaves the old
+      // stamp, so the entry misses. An unconditional restamp would revive it.
+      if (putGeneration != opened &&
+          opened == LocalDb.generationAfterFirstOpen(putGeneration) &&
+          LocalDb.storeGeneration == opened &&
+          identical(_m[key], entry)) {
+        entry.generation = opened;
+      }
+    });
   }
 
-  void _store(
+  _Entry _store(
     String key,
     Object? value,
     DateTime at,
@@ -131,10 +163,11 @@ class LastResultCache {
     String? sig,
   ) {
     _m.remove(key);
-    _m[key] = _Entry(value, at, generation, sig);
+    final entry = _m[key] = _Entry(value, at, generation, sig);
     while (_m.length > capacity) {
       _m.remove(_m.keys.first);
     }
+    return entry;
   }
 
   /// A Map the table can hold, or null (anything else stays in memory only).

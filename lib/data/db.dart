@@ -9285,6 +9285,16 @@ class LocalDb {
   static ({int wipeEpoch, int openCount}) get storeGeneration =>
       (wipeEpoch: _wipeEpoch, openCount: _openCount);
 
+  /// The generation a store that was closed at [before] has right after ONE
+  /// plain open and nothing else: an open counts once in each part. A cache that
+  /// stamped a value while the store was closed uses it to tell "the lazy open
+  /// my own write-through triggered" from a wipe, merge or rebuild that crossed
+  /// it. Kept beside [_open] and [_markStoreReplaced] because it is their
+  /// arithmetic.
+  static ({int wipeEpoch, int openCount}) generationAfterFirstOpen(
+    ({int wipeEpoch, int openCount}) before,
+  ) => (wipeEpoch: before.wipeEpoch + 1, openCount: before.openCount + 1);
+
   /// The only owner of the in-memory wipe epoch. Called after a store-changing
   /// transaction commits, so a failed transaction never invalidates readers.
   static void _markStoreReplaced() {
