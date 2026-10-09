@@ -1,0 +1,7 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.33.0","pid":2225472,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"test/c_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading test/c_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":1}
+{"count":1,"time":9,"type":"allSuites"}
+{"testID":1,"error":"Failed to load \"test/c_test.dart\": Bad state: load time","stackTrace":"test/c_test.dart 2:15  main\n","isFailure":false,"type":"error","time":478}
+{"testID":1,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":481}
+{"success":false,"type":"done","time":484}

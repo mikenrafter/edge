@@ -1,0 +1,5 @@
+# Own analysis for this standalone tool: the app's flutter_lints do not apply.
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true

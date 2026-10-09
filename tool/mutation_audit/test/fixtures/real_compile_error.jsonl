@@ -1,0 +1,7 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.33.0","pid":2225411,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"test/b_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading test/b_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":1}
+{"count":1,"time":10,"type":"allSuites"}
+{"testID":1,"error":"Failed to load \"test/b_test.dart\":\ntest/b_test.dart:2:9: Error: A value of type 'String' can't be assigned to a variable of type 'int'.\nint x = 'nope';\n        ^","stackTrace":"package:test_core/src/runner/vm/platform.dart 605:7   VMPlatform._compileToKernel\n===== asynchronous gap ===========================\npackage:test_core/src/runner/vm/platform.dart 567:9   VMPlatform._spawnIsolate\n===== asynchronous gap ===========================\npackage:test_core/src/runner/vm/platform.dart 173:17  VMPlatform._loadSuite\n===== asynchronous gap ===========================\npackage:test_core/src/runner/vm/platform.dart 81:15   VMPlatform.load\n===== asynchronous gap ===========================\npackage:test_core/src/runner/loader.dart 313:25       Loader.loadFile.<fn>\n===== asynchronous gap ===========================\npackage:test_core/src/runner/load_suite.dart 112:21   new LoadSuite.<fn>.<fn>\n","isFailure":false,"type":"error","time":304}
+{"testID":1,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":309}
+{"success":false,"type":"done","time":317}

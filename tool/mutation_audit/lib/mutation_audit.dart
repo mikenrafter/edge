@@ -1,0 +1,16 @@
+/// In-house AST mutation audit (design 05, section 4). See README.md.
+library;
+
+export 'src/applier.dart';
+export 'src/audit_runner.dart';
+export 'src/classifier.dart';
+export 'src/cli.dart';
+export 'src/command.dart';
+export 'src/config.dart';
+export 'src/export.dart';
+export 'src/generator.dart';
+export 'src/mutant.dart';
+export 'src/process_runner.dart';
+export 'src/report.dart';
+export 'src/reporter_parser.dart';
+export 'src/selection.dart';

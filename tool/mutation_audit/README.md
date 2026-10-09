@@ -1,0 +1,83 @@
+# mutation_audit
+
+The pilot's in-house mutation audit (design 05, section 4; conventions in
+`edge.research/design/05-c2a-mutation-notes.md`). It generates mutants from the
+AST with `package:analyzer`, runs the tests against each one in a disposable
+export of a pinned commit, and classifies the outcome from the JSON test reporter.
+
+Standalone Dart package: it is not a dependency of the app, and the app's
+`flutter analyze` skips it (`analysis_options.yaml` excludes `tool/mutation_audit/**`).
+
+**Status: red phase.** The public API is in place with throwing stubs
+(`UnimplementedError`) and the tests describe the whole contract; they fail until
+the green phase lands.
+
+## Running the tests
+
+From the repository root, inside the repo flake (it provides the Dart SDK):
+
+```
+nix develop . -c bash -c 'cd tool/mutation_audit && dart pub get --offline && dart test'
+# or, from tool/mutation_audit:
+nix develop ../.. -c dart test
+nix develop ../.. -c dart analyze
+```
+
+The export tests use the real `git` binary on throwaway repositories under the
+system temp directory. No test reads the clock or spawns the test runner: the
+process runner is a fake that answers from the file contents it sees.
+
+## Command line
+
+```
+dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
+  [--test-cmd "<cmd>"] [--tests <file>...] [--max-mutants N] [--sample N --seed S] \
+  [--timeout seconds] [--guard-pattern <glob>...] [--allow-override <path>...] \
+  [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] --out <dir>
+```
+
+`--test-cmd` defaults to `flutter test --reporter json` for a Flutter package and
+`dart test --reporter json` otherwise (`--reporter json` is added when missing).
+`--setup-cmd` runs once in the export before the baseline (default: `flutter pub get`
+/ `dart pub get`; `""` skips it). Exit codes: 0 ran, 64 usage, 65 baseline failed or
+path override refused, 70 export/internal error, 130 interrupted.
+
+## Mutation operators (one documented rule each)
+
+| id | rule |
+|---|---|
+| `relational` | `<`<->`<=`, `>`<->`>=`, `==`<->`!=` on a binary expression |
+| `int-literal` | a decimal integer literal that is a direct operand of a comparison (parentheses looked through; not under a unary minus; not hex, not double): +1 and -1 |
+| `negate-condition` | the condition of an `if` / `while` / ternary becomes `!(cond)` (not `do-while`, `for`, collection `if`) |
+| `logical` | `&&`<->`||` |
+| `remove-return` | a `return ...;` that is a direct statement of an if-branch (then or else) is replaced by `;`, only when the outermost `if` has a following statement in its block |
+
+Never mutated: comments, string literals (interpolations included), `import` /
+`export` / `part` directives (conditional ones too), annotations. A mutant id is
+`<file>:<UTF-8 byte offset>:<operator id>:<FNV-1a 32 of the replacement, 8 hex>`.
+Order is byte offset, operator id, replacement text. `--max-mutants` keeps the first
+N; `--sample N --seed S` draws N with a seeded PRNG of this package and keeps the
+original order.
+
+## Outcome classification
+
+Precedence, first match wins:
+
+1. run timed out -> `timeout`
+2. a suite failed to load with a compiler diagnostic -> `compile-invalid` (nothing else in the run counts)
+3. failed tests: ambiguous ones (known flaky, or no `error` event) are re-run alone once; a failure that passes alone is dropped. Confirmed failures that match a guard pattern are guard failures; any other confirmed failure -> `killed` (assertion or exception both count; the report says which); only guard failures -> `killed-by-guard-only`
+4. a load error left (exception at load, missing file) -> `load-failure`
+5. no `done` event, or a non-zero exit with nothing to blame -> `load-failure`
+6. at least one non-skipped test passed -> `survived`; otherwise `skipped`
+
+Score = killed / (killed + survived); everything else is outside the denominator.
+
+## Safety
+
+The audit runs in `git worktree add --detach` of the pinned sha under the system temp
+directory, one mutant at a time; it refuses any target that is, contains or lies inside
+the developer checkout, refuses a result directory inside the export, and refuses an active
+path override (`pubspec_overrides.yaml`, `dependency_overrides` with `path:`, or `source: path`
+in the lock) unless `--allow-override` names it. The baseline must pass first. Each mutant is
+restored byte for byte and the restore is re-read. The export is removed on success, failure
+and Ctrl-C.

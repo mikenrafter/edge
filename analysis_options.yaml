@@ -9,6 +9,13 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+# tool/mutation_audit is a standalone Dart package with its own pubspec and its
+# own analysis (design 05, section 4). Without a `dart pub get` in it, this
+# analysis would see its package:analyzer / package:args imports as unresolved.
+analyzer:
+  exclude:
+    - tool/mutation_audit/**
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`

@@ -1,0 +1,20 @@
+name: mutation_audit
+description: >-
+  In-house AST mutation audit for the OpenStrap test pilot (design 05, section 4).
+  Generates mutants with package:analyzer, runs a pinned export of a commit one
+  mutant at a time, and classifies the outcome from the JSON test reporter.
+  Standalone: not part of the app's pubspec and not analysed by `flutter analyze`.
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  analyzer: ^10.0.1
+  args: ^2.7.0
+  glob: ^2.1.2
+  path: ^1.9.1
+  yaml: ^3.1.2
+
+dev_dependencies:
+  test: ^1.25.0
