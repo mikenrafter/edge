@@ -26,7 +26,8 @@ a virtual clock (no sleeps). Two files use real children, bounded by timeouts: `
 shell scripts that ignore SIGTERM and hold the pipes) and `sigint_e2e_test.dart` (the real
 tool, a real SIGINT / SIGTERM, a throwaway repo; Linux only). Four more use real bubblewrap
 (`sandbox_real_test.dart`: a fake test command writes everywhere a run can write and the next run
-must see none of it; `sandbox_flutter_test.dart`: one real `flutter test` of a one-file package inside
+must see none of it, the root holds only what was bound, and a host pathname Unix socket (server in the
+test process, with a control showing it is reachable unsandboxed) cannot be connected to, written or read; `sandbox_flutter_test.dart`: one real `flutter test` of a one-file package inside
 the sandbox, skipped with the reason when `flutter` or `bwrap` is missing or the package cannot be
 resolved offline; the sandboxed variants of `sigint_e2e_test.dart`; the control that shows the same
 script leaks without the sandbox). They skip, naming the reason, where bubblewrap cannot run.
@@ -130,12 +131,21 @@ c. it, or a helper it imports, may read source text. Each reachable Dart file is
      "not there" is evidence, not a clean pass. A relative URI that leaves the export counts too. `dart:`,
      hosted and git packages and packages outside the export are not part of the repository and are
      ignored;
+   - `[package-mapping]` an import of a `package:` the detector cannot map to a directory. Which
+     directory `package:demo/h.dart` runs is decided by the resolved `.dart_tool/package_config.json`
+     (`rootUri` + `packageUri`, e.g. `src/` instead of `lib/`), which setup writes and the compiler uses;
+     it is AUTHORITATIVE and overrides whatever the pubspec suggests. The pubspecs only say which
+     packages are expected to be in the export (the audited package, path dependencies inside it). If the
+     config is missing, is not JSON, does not list such a package, lists it twice with different roots, or
+     gives a root that is not a file location, importing that package is scanning evidence: there is no
+     way to tell what code runs. Packages the config places outside the export, and packages nothing says
+     are ours (hosted, git), are not part of the repository and are ignored;
    - `[unparsable]` a file with syntax errors.
 
    The detection runs AFTER setup, on the prepared tree: setup (`pub get`, code generation) may create
    helpers the pinned commit does not contain, and a generated scanner is found as any other. The
-   package config (`.dart_tool/package_config.json`) is read as well, so a package that setup placed
-   inside the export is followed. Consequence: `--no-guards` is judged after setup (a refusal is exit 64
+   package config (`.dart_tool/package_config.json`) is read as well (below), so a package that setup
+   placed inside the export is followed. Consequence: `--no-guards` is judged after setup (a refusal is exit 64
    after the setup command has run).
 
    The rules apply STRICTLY to every file reached, files under `lib/`, `tool/` and the other source
@@ -365,29 +375,50 @@ unsandboxed (it needs the network), then the mutant is applied on the host and t
 launched as
 
 ```
-bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --unshare-ipc --unshare-net \
-      --die-with-parent --new-session \
-      --tmpfs /tmp --tmpfs /var/tmp --tmpfs $HOME [--tmpfs $XDG_RUNTIME_DIR] \
-      --ro-bind <toolchain path under HOME> <same>... \
-      --overlay-src <export> --tmp-overlay <export> \
-      --setenv HOME $HOME --setenv XDG_{CACHE,CONFIG,DATA,STATE}_HOME /tmp/xdg/... --setenv TMPDIR /tmp ... \
+bwrap --dev /dev --proc /proc --unshare-pid --unshare-ipc --unshare-net --die-with-parent --new-session \
+      --tmpfs /tmp --tmpfs /var/tmp --tmpfs /run --tmpfs /dev/shm --tmpfs $HOME \
+      --ro-bind <bind> <bind>...   --symlink <target> <link>... \
+      --overlay-src <export> --tmp-overlay <export> --remount-ro / \
+      --setenv HOME $HOME --setenv XDG_{CACHE,CONFIG,DATA,STATE,RUNTIME}_HOME /tmp/xdg/... --setenv TMPDIR /tmp ... \
       --chdir <export> -- <test command>
 ```
 
-- **The host is read-only** (`--ro-bind / /`): the developer checkout, the out directory, sibling
-  repositories and the SDKs cannot be written. (Their text is readable, as it always was.)
+- **The root is a minimal read-only tmpfs; the host is NOT bound.** An earlier version used
+  `--ro-bind / /`, but a read-only mount does not stop `connect(2)`: every pathname Unix socket on the
+  host stayed reachable, so one run could change a host service's state and a later run observe it
+  (and `Socket.connect` needs no process launch for that). Now the run sees only the binds below, plus
+  the export. Everything else (the developer checkout, the out directory, `/var`, `/home`, `/nix/var`
+  where the Nix daemon socket lives, `/run`, other users' files) does not exist in the sandbox.
+- **The bind list** is found by `Sandbox.discover` from the machine and is recorded in
+  `meta.isolation.binds` (read-only binds at the same path) and `meta.isolation.symlinks`:
+  - the base system: `/nix/store` (not `/nix`), `/usr`, `/bin`, `/sbin`, `/lib`, `/lib32`, `/lib64`,
+    `/libx32` when they exist; a directory is bound, a link (a merged `/bin`) is recreated as a link;
+  - from `/etc` only `passwd`, `group`, `nsswitch.conf`, `hosts`, `localtime`, `os-release`,
+    `ld.so.cache`, `ld.so.conf`, `ld.so.conf.d`;
+  - the toolchain: the pub cache (`PUB_CACHE`, else `~/.pub-cache`), `FLUTTER_ROOT`, every `PATH` entry
+    (resolved; an entry that is only a link into something bound, like `/run/current-system/sw/bin`
+    into the store, is recreated as a link; entries in `/run`, `/proc`, `/sys`, `/dev`, relative ones and
+    missing ones are skipped), the SDK around the program of the test command when it is outside the
+    store (the directory above its `bin/`), the package roots `.dart_tool/package_config.json` names
+    outside the export, and the sibling paths of allowed overrides. Add more with `--sandbox-ro <path>`
+    (any location now, not only under `$HOME`). `$HOME` itself and `/` are never bound.
+  - On the machine this was developed on (NixOS, `nix develop`) that is: `/bin`, `/lib64`, `/usr`,
+    `/etc/group`, `/etc/hosts`, `/etc/localtime`, `/etc/nsswitch.conf`, `/etc/os-release`, `/etc/passwd`,
+    `/nix/store`, `~/.pub-cache`, `~/.local/share/flatpak/exports/bin` (a `PATH` entry), and four links
+    for the profile `PATH` entries (`/run/current-system/sw/bin`, `/etc/profiles/per-user/<u>/bin`,
+    `~/.nix-profile/bin`, `/nix/var/nix/profiles/per-user/<u>/.../bin`).
+  - Consequence: `--test-cmd "nix develop ... -c ..."` cannot work inside (no Nix daemon); start the tool
+    from the development shell instead, as described above. Git commands in the export fail too (the
+    worktree's gitdir is in the developer checkout, which is not there).
 - **The export is an overlay.** The run sees the export with the current mutant applied; every write it
   makes (tracked, untracked or ignored files, `build/`, `.dart_tool/`, empty directories) goes to memory
   and is discarded when the sandbox ends. The caches that used to be excluded from the restore are no
-  longer a channel: they are rebuilt from the export every time.
-- **`/tmp`, `/var/tmp`, `$HOME` and the session's runtime directory are empty tmpfs mounts**, and
-  `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` point into `/tmp/xdg`,
-  `TMPDIR`/`TMP`/`TEMP` to `/tmp`. A fixed absolute path (`/tmp/shared-marker`) or `~/.config/x` is
-  written into a fresh tmpfs. Only what the toolchain must READ under `$HOME` is bound back, read-only,
-  found by the tool itself: the pub cache (`PUB_CACHE`, else `~/.pub-cache`), `FLUTTER_ROOT`, every
-  `PATH` entry under `$HOME`, the package roots `.dart_tool/package_config.json` names outside the export
-  and the sibling paths of allowed overrides; add more with `--sandbox-ro <path>`. What is bound is
-  listed in `meta.isolation.readOnlyUnderHome`. A path that does not exist on the host is skipped.
+  longer a channel: they are rebuilt from the export every time. The root itself is remounted read-only
+  (`--remount-ro /`), so nothing can be created outside the export and the tmpfs mounts.
+- **`/tmp`, `/var/tmp`, `/run`, `/dev/shm` and `$HOME` are empty tmpfs mounts**, `--unshare-ipc` hides the
+  host's SysV IPC, and `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`,
+  `XDG_RUNTIME_DIR` point into `/tmp/xdg`, `TMPDIR`/`TMP`/`TEMP` to `/tmp`. A fixed absolute path
+  (`/tmp/shared-marker`) or `~/.config/x` is written into a fresh tmpfs.
   `FLUTTER_SUPPRESS_ANALYTICS` and `DART_SUPPRESS_ANALYTICS` are set (a fresh `$HOME` would make Flutter
   print its first-run banner into the JSON stream).
 - **Own PID namespace** (`--unshare-pid`, `--die-with-parent`): when the sandbox's init exits the kernel
@@ -400,16 +431,19 @@ bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --unshare-ipc --unshar
   (checked by a real `flutter test`).
 - `--new-session` stops a test from injecting input into the terminal.
 
-What `flutter test` needed bound back read-only, measured with a one-file Flutter package on a nix
-machine: the pub cache (`~/.pub-cache`; without it the test fails to compile: "Error when reading
-'/home/dev/.pub-cache/hosted/pub.dev/test_api-.../lib/backend.dart'"). The Flutter SDK lives in
-`/nix/store` and is readable through `--ro-bind / /`; its cache is not written there. Nothing else:
-`$HOME`, `~/.config/flutter`, `~/.dart-tool` and `/tmp` are fresh and Flutter recreates what it wants in
-them.
+What `flutter test` needed, measured with a one-file Flutter package on a nix machine: the base system
+and `/nix/store` (the Flutter SDK lives there, readable, and its cache is not written), the `PATH`
+entries, and the pub cache (without it the test fails to compile: "Error when reading
+'/home/dev/.pub-cache/hosted/pub.dev/test_api-.../lib/backend.dart'"). Not needed: `/etc` beyond the
+few files above, `/sys`, `/var`, `$HOME` content (`~/.config/flutter`, `~/.dart-tool` are fresh and Flutter
+recreates what it wants in them).
 
 **Before anything is exported** the tool runs a probe sandbox: `bwrap --version`, then a real sandbox
-that writes to its export, to `/tmp` and to `$HOME` and checks that none of it arrived on the host. If
-bubblewrap is missing or the probe fails the audit stops with exit 70 and says why. `--no-sandbox` is the
+that writes to its export, to `/tmp` and to `$HOME` and checks that none of it arrived on the host, then
+the program of the test command inside the minimal root: `flutter --version` / `dart --version` must
+succeed (any other program must at least be found). If bubblewrap is missing, the probe fails or the
+program does not run in the minimal root the audit stops with exit 70 and says why (for the last case:
+what to put on `PATH`, in `FLUTTER_ROOT` or in `--sandbox-ro`). `--no-sandbox` is the
 explicit way out: the tests then run directly, `meta.isolation.mode` is `none`, every mutant has
 `unisolated: true` in `results.json`, the summary says `Isolation: NONE` and tags every kill `unisolated`
 (something an earlier run left could have caused the failure), and each run gets its own `TMPDIR`
@@ -458,7 +492,7 @@ pinned commit carried.
 
 ## Report
 
-`results.json`: `meta` (tool version, repo, sha, `isolation` (`mode`: `bubblewrap` | `none`, `network`, `readOnlyUnderHome`, `bwrap`), `dependencies`, `dependenciesBeforeSetup`, command,
+`results.json`: `meta` (tool version, repo, sha, `isolation` (`mode`: `bubblewrap` | `none`, `network`, `binds`, `symlinks`, `bwrap`), `dependencies`, `dependenciesBeforeSetup`, command,
 `env`, `files`, `tests`, `guardPatterns`, `guardPolicy`, `guards`, timeout, limits, `baseline`, times), `counts`
 (every status, zero included), `score`, and `mutants`: per mutant id, file, line, column, operator,
 original and mutated text, `status`, `killingTests` (keys), `killers` (`test`, `kind`: `assertion` or

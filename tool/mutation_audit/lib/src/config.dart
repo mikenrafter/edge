@@ -92,8 +92,10 @@ class AuditConfig {
   /// `.packages`. They are exempt from the "export is clean after setup" check.
   final List<String> setupLeaves;
 
-  /// Extra host paths the sandboxed toolchain may read under `$HOME` (only
-  /// paths under `$HOME` need it: the rest of the host is visible read-only).
+  /// Extra host paths the sandboxed toolchain may read (mounted read-only at
+  /// the same path). The root of the sandbox is minimal: only these, the
+  /// base system, the pub cache, `FLUTTER_ROOT`, `PATH` entries and the package
+  /// config roots are there.
   final List<String> sandboxReadOnly;
 
   /// Where results.json and summary.md go (never inside the export).
@@ -234,8 +236,9 @@ ArgParser _parser() => ArgParser()
           '.dart_tool, build, .flutter-plugins*, .packages (e.g. pubspec.lock when the project does not commit it).')
   ..addMultiOption('sandbox-ro',
       splitCommas: false,
-      help: 'A host path under \$HOME the sandboxed toolchain must read (mounted read-only). The pub cache, '
-          'FLUTTER_ROOT, PATH entries and the package config roots are found by themselves.')
+      help: 'A host path the sandboxed toolchain must read (mounted read-only at the same path; the sandbox root is '
+          'minimal). The base system, the pub cache, FLUTTER_ROOT, PATH entries and the package config roots are '
+          'found by themselves.')
   ..addOption('out', help: 'Directory for results.json and summary.md (outside the export).');
 
 /// `--files a b c` means `--files a --files b --files c`: the list options take
