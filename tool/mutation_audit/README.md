@@ -24,7 +24,12 @@ system temp directory. The audit logic is tested against a fake process runner t
 answers from the file contents it sees, and the process runner against a fake host with
 a virtual clock (no sleeps). Two files use real children, bounded by timeouts: `process_runner_real_test.dart` (small
 shell scripts that ignore SIGTERM and hold the pipes) and `sigint_e2e_test.dart` (the real
-tool, a real SIGINT / SIGTERM, a throwaway repo; Linux only). Neither starts `flutter test`.
+tool, a real SIGINT / SIGTERM, a throwaway repo; Linux only). Four more use real bubblewrap
+(`sandbox_real_test.dart`: a fake test command writes everywhere a run can write and the next run
+must see none of it; `sandbox_flutter_test.dart`: one real `flutter test` of a one-file package inside
+the sandbox, skipped with the reason when `flutter` or `bwrap` is missing or the package cannot be
+resolved offline; the sandboxed variants of `sigint_e2e_test.dart`; the control that shows the same
+script leaks without the sandbox). They skip, naming the reason, where bubblewrap cannot run.
 
 ## Command line
 
@@ -33,15 +38,20 @@ dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
   [--test-cmd "<cmd>"] [--tests <file>...] [--max-mutants N] [--sample N --seed S] \
   [--timeout seconds] [--guard-pattern <glob>...] [--scanner <glob>...] \
   [--runtime-allowlist <file>] [--no-guards] [--allow-override <path>...] \
-  [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] [--cache-dir <path>...] --out <dir>
+  [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] [--setup-leaves <glob>...] \
+  [--no-sandbox] [--sandbox-ro <path>...] --out <dir>
 ```
 
-`--test-cmd` defaults to `flutter test --reporter json` for a Flutter package and
+`--test-cmd` defaults to `flutter test --no-pub --reporter json` for a Flutter package and
 `dart test --reporter json` otherwise (`--reporter json` is added when missing).
 `--setup-cmd` runs once in the export before the baseline (default: `flutter pub get`
-/ `dart pub get`; `""` skips it). Exit codes: 0 ran, 64 usage (including `--no-guards` on an export
-that has source-scanning suites), 65 baseline failed or path override refused, 70
-export/internal error, 130 interrupted (SIGINT or SIGTERM).
+/ `dart pub get`; `""` skips it); it runs OUTSIDE the sandbox, because it needs the network.
+Everything after it runs inside (see "Isolation"). `--no-pub` is in the default Flutter command because
+Flutter may start an implicit `pub get` on its own, which can only fail or re-resolve in a sandbox with
+no network; put it in a custom `--test-cmd` too. Exit codes: 0 ran, 64 usage (including `--no-guards` on
+an export that has source-scanning suites), 65 baseline failed or path override refused, 70
+export/internal error (also: no usable bubblewrap, the export left the pinned commit, a sandboxed run
+changed the host export), 130 interrupted (SIGINT or SIGTERM).
 
 `--env KEY=VALUE` (repeatable) sets variables for every child process on top of the
 parent's environment; the default is `TZ=UTC`, which the tests of both repos assume.
@@ -59,7 +69,8 @@ nix develop /path/to/edge -c dart run mutation_audit --repo /path/to/edge --sha 
   --max-mutants 5 --out /tmp/mutation/edge
 ```
 
-(or put `nix develop <repo> -c` inside `--test-cmd` and `--setup-cmd`). A fresh export has no
+(or put `nix develop <repo> -c` inside `--test-cmd` and `--setup-cmd`). The tests run in
+bubblewrap (`bwrap` on `PATH`; both repo flakes put it there). A fresh export has no
 package config: the setup command (`flutter pub get` / `dart pub get`) runs in it first.
 Results go to `--out`, which must be outside the export.
 
@@ -113,7 +124,19 @@ c. it, or a helper it imports, may read source text. Each reachable Dart file is
      alias, a tear-off): a subprocess (`grep`, `cat`, `git`) reads whatever it is told to, and its
      arguments are not followed;
    - `[cwd]` `Directory.current`, `Uri.base`: the bases of paths built at run time;
+   - `[unresolved-import]` an `import` / `export` / `part` (any URI of a conditional one) that names a
+     file the export does not have: a relative URI, `package:<the audited package>/...`, a path
+     dependency or a package the package config places inside the export. The file could be a scanner, so
+     "not there" is evidence, not a clean pass. A relative URI that leaves the export counts too. `dart:`,
+     hosted and git packages and packages outside the export are not part of the repository and are
+     ignored;
    - `[unparsable]` a file with syntax errors.
+
+   The detection runs AFTER setup, on the prepared tree: setup (`pub get`, code generation) may create
+   helpers the pinned commit does not contain, and a generated scanner is found as any other. The
+   package config (`.dart_tool/package_config.json`) is read as well, so a package that setup placed
+   inside the export is followed. Consequence: `--no-guards` is judged after setup (a refusal is exit 64
+   after the setup command has run).
 
    The rules apply STRICTLY to every file reached, files under `lib/`, `tool/` and the other source
    roots included: a helper there that builds a path at run time may read source whatever its callers
@@ -250,6 +273,12 @@ the failure is `unresolved` too.
 
 ## Timeouts and cancellation
 
+With the sandbox (the default) the child that is started, timed and stopped is the `bwrap` process: its
+descendants are visible from the host's `/proc`, so everything below applies to the whole tree in the
+sandbox, and the sandbox's own PID namespace removes whatever is left when its init exits (see
+"Isolation"). On a timeout or a cancel the bubblewrap process and its family are stopped as described, and
+a captured process that survives the last SIGKILL still ends the audit (exit 70).
+
 `--timeout` bounds each run (setup, baseline, mutant, rerun) until the process has exited
 AND its stdout/stderr have closed: a wrapper that exits early while a child keeps the pipes open
 still times out. The child is started under `setsid` when the system has it (Linux), so it leads a
@@ -326,31 +355,85 @@ parent directory inside a checkout is refused before anything is created in it. 
 directory must be outside the export. The baseline must pass first. Each mutant is restored byte
 for byte and the restore is re-read. The export is removed on success, failure, Ctrl-C and SIGTERM.
 
-### Nothing carries over between runs
+### Isolation: every test run in its own bubblewrap sandbox
 
-All runs of an audit (mutants and confirming reruns) share one export, so what a test run leaves in
-it could reach the next run and turn a non-kill into a kill or the reverse. Three things prevent that:
+All runs of an audit (the baseline, every mutant, every confirming rerun) share one export, so what a
+test run leaves behind could reach the next run and turn a non-kill into a kill or the reverse (a
+SQLite file in `build/`, a marker under `$HOME` or `/tmp`, a socket, a process). Putting files back
+afterwards cannot find all of that, so the runs cannot write to it in the first place: setup runs
+unsandboxed (it needs the network), then the mutant is applied on the host and the test command is
+launched as
 
-- **Export state.** After setup and the baseline the export is snapshotted: `git status
-  --porcelain=v1 --untracked-files=all` must be empty (else exit 70, naming the files: setup must not
-  change tracked files or leave untracked, non-ignored ones; declare such a file with `--cache-dir`),
-  HEAD is recorded, and a content-hash manifest is taken of the ignored files outside the caches. After
-  EVERY run (mutant or rerun) the export is put back: tracked files and the index from HEAD
-  (`git restore --source=HEAD --staged --worktree`, the file carrying the mutation excluded while a
-  rerun still needs it), untracked non-ignored files and directories removed (`git clean -fd`,
-  never `-x`), ignored files outside the caches that a run ADDED deleted. Ignored files outside the
-  caches that a run CHANGED or REMOVED cannot be put back (no copy is kept), a moved HEAD cannot be
-  undone, and a tree that is still dirty after the restore means it did not work: each of these stops
-  the audit with exit 70 (the mutated file is still restored first, no results are published).
-- **Caches** are the declared channel between runs and are not looked at: `.dart_tool`, `build`,
-  `.flutter-plugins`, `.flutter-plugins-dependencies`, `.packages`, plus every `--cache-dir <path or
-  glob>` (repeatable, repo-relative, anchored at the root: `lib/build/x` is not covered by `build`).
-- **Temporary files.** Every run gets a fresh `TMPDIR` (also `TMP` and `TEMP`, which `Directory.systemTemp`
-  follows) in a directory of its own under the system temp directory, outside the export; it is
-  deleted when the run ends. These override any `--env TMPDIR=...`. `HOME` is not changed.
+```
+bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid --unshare-ipc --unshare-net \
+      --die-with-parent --new-session \
+      --tmpfs /tmp --tmpfs /var/tmp --tmpfs $HOME [--tmpfs $XDG_RUNTIME_DIR] \
+      --ro-bind <toolchain path under HOME> <same>... \
+      --overlay-src <export> --tmp-overlay <export> \
+      --setenv HOME $HOME --setenv XDG_{CACHE,CONFIG,DATA,STATE}_HOME /tmp/xdg/... --setenv TMPDIR /tmp ... \
+      --chdir <export> -- <test command>
+```
 
-`results.json` has `stateRestored` per mutant (how many files its runs left changed and had to be put
-back; 0 means the tests left nothing) and `meta.stateCaches`; `summary.md` counts them.
+- **The host is read-only** (`--ro-bind / /`): the developer checkout, the out directory, sibling
+  repositories and the SDKs cannot be written. (Their text is readable, as it always was.)
+- **The export is an overlay.** The run sees the export with the current mutant applied; every write it
+  makes (tracked, untracked or ignored files, `build/`, `.dart_tool/`, empty directories) goes to memory
+  and is discarded when the sandbox ends. The caches that used to be excluded from the restore are no
+  longer a channel: they are rebuilt from the export every time.
+- **`/tmp`, `/var/tmp`, `$HOME` and the session's runtime directory are empty tmpfs mounts**, and
+  `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` point into `/tmp/xdg`,
+  `TMPDIR`/`TMP`/`TEMP` to `/tmp`. A fixed absolute path (`/tmp/shared-marker`) or `~/.config/x` is
+  written into a fresh tmpfs. Only what the toolchain must READ under `$HOME` is bound back, read-only,
+  found by the tool itself: the pub cache (`PUB_CACHE`, else `~/.pub-cache`), `FLUTTER_ROOT`, every
+  `PATH` entry under `$HOME`, the package roots `.dart_tool/package_config.json` names outside the export
+  and the sibling paths of allowed overrides; add more with `--sandbox-ro <path>`. What is bound is
+  listed in `meta.isolation.readOnlyUnderHome`. A path that does not exist on the host is skipped.
+  `FLUTTER_SUPPRESS_ANALYTICS` and `DART_SUPPRESS_ANALYTICS` are set (a fresh `$HOME` would make Flutter
+  print its first-run banner into the JSON stream).
+- **Own PID namespace** (`--unshare-pid`, `--die-with-parent`): when the sandbox's init exits the kernel
+  kills every process left in it, a TERM-ignoring grandchild that let go of the pipes included. That is
+  the primary cleanup; the identity-based cleanup of "Timeouts and cancellation" below runs unchanged on
+  the bubblewrap process and what it can see below it, as defence in depth, and a survivor still ends the
+  audit.
+- **New IPC and network namespaces** (`--unshare-net`): no network, and the host's loopback services are
+  not reachable. `flutter_tester` talks to the VM service over the namespace's own loopback, which works
+  (checked by a real `flutter test`).
+- `--new-session` stops a test from injecting input into the terminal.
+
+What `flutter test` needed bound back read-only, measured with a one-file Flutter package on a nix
+machine: the pub cache (`~/.pub-cache`; without it the test fails to compile: "Error when reading
+'/home/dev/.pub-cache/hosted/pub.dev/test_api-.../lib/backend.dart'"). The Flutter SDK lives in
+`/nix/store` and is readable through `--ro-bind / /`; its cache is not written there. Nothing else:
+`$HOME`, `~/.config/flutter`, `~/.dart-tool` and `/tmp` are fresh and Flutter recreates what it wants in
+them.
+
+**Before anything is exported** the tool runs a probe sandbox: `bwrap --version`, then a real sandbox
+that writes to its export, to `/tmp` and to `$HOME` and checks that none of it arrived on the host. If
+bubblewrap is missing or the probe fails the audit stops with exit 70 and says why. `--no-sandbox` is the
+explicit way out: the tests then run directly, `meta.isolation.mode` is `none`, every mutant has
+`unisolated: true` in `results.json`, the summary says `Isolation: NONE` and tags every kill `unisolated`
+(something an earlier run left could have caused the failure), and each run gets its own `TMPDIR`
+(`TMP`, `TEMP`) in a directory deleted afterwards, the one thing that can be done cheaply without a
+sandbox. The score is still computed; read it knowing that.
+
+**The sandbox is checked from the host.** The per-run restore of earlier versions is gone, but a cheap
+tripwire stays: before each run the tool takes a view of the export (HEAD, `git status
+--porcelain --untracked-files=all --ignored`, the size and modification time of the ignored entries git
+lists, the modification time of the root and of the directories directly in it, which also shows an empty
+directory git cannot see, and the hash of the mutated file) and compares it after the run. Any difference
+means the sandbox did not hold: exit 70, naming the difference and the run (`the run of mutant <id>`,
+`the rerun of <test>`, `the baseline run`); the mutated file is restored first and no results are
+published. A write deeper inside an ignored directory that does not move the modification time of
+anything directly under the root is out of this check's sight (the overlay is what keeps it out of the
+host).
+
+**HEAD is pinned.** `--sha` is resolved once; the export's HEAD must be that commit before setup, after
+setup, after the baseline and after EVERY run (also with `--no-sandbox`). A setup command or a test that
+checks out or commits something else stops the audit with exit 70 naming both commits. After setup the
+export must also be clean (`git status` empty apart from `.dart_tool`, `build`, `.flutter-plugins*`,
+`.packages` and whatever `--setup-leaves <glob>` declares, e.g. `pubspec.lock` in a project that does
+not commit it), otherwise exit 70 naming the files: every run starts from the pinned commit plus one
+mutant.
 
 ### Dependency configuration and path overrides
 
@@ -375,14 +458,14 @@ pinned commit carried.
 
 ## Report
 
-`results.json`: `meta` (tool version, repo, sha, `dependencies`, `dependenciesBeforeSetup`, command,
+`results.json`: `meta` (tool version, repo, sha, `isolation` (`mode`: `bubblewrap` | `none`, `network`, `readOnlyUnderHome`, `bwrap`), `dependencies`, `dependenciesBeforeSetup`, command,
 `env`, `files`, `tests`, `guardPatterns`, `guardPolicy`, `guards`, timeout, limits, `baseline`, times), `counts`
 (every status, zero included), `score`, and `mutants`: per mutant id, file, line, column, operator,
 original and mutated text, `status`, `killingTests` (keys), `killers` (`test`, `kind`: `assertion` or
 `exception` in the mutant run, `confirmedKind`: the same for the confirming rerun, null if none),
 `guardTests` (keys), `discounted` (`test`, `reasons`: failures not counted as kills and why), `reruns`
 (`test`, `confirmed`, `result`: `failed-again` | `passed-alone` | `unresolved`, `kind`: how the rerun
-failed, `detail`), `durationMs`, `detail`. `summary.md` has the same, with sections for Killed
+failed, `detail`), `unisolated` (true for every mutant of a `--no-sandbox` audit), `durationMs`, `detail`. `summary.md` has the same, with sections for Killed
 (each killing test with its kind), Survivors, Killed by guards only, Compile-invalid, Timeouts, Load
 failures, Unconfirmed, and a per-file table.
 

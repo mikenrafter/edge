@@ -138,11 +138,13 @@ bool _isFlutterPackage(String repoPath) {
   return flutter is YamlMap && flutter['sdk'] == 'flutter';
 }
 
-/// The test command for the repository at [repoPath]: `flutter test --reporter
-/// json` when its pubspec.yaml depends on the flutter SDK, else `dart test
-/// --reporter json`.
+/// The test command for the repository at [repoPath]: `flutter test --no-pub
+/// --reporter json` when its pubspec.yaml depends on the flutter SDK, else
+/// `dart test --reporter json`. `--no-pub`: the setup command has resolved the
+/// packages, and the sandboxed runs have no network, so an implicit `pub get`
+/// (which Flutter may start on its own) could only fail or re-resolve.
 String defaultTestCommand(String repoPath) =>
-    _isFlutterPackage(repoPath) ? 'flutter test --reporter json' : 'dart test --reporter json';
+    _isFlutterPackage(repoPath) ? 'flutter test --no-pub --reporter json' : 'dart test --reporter json';
 
 /// The package-config command a fresh export needs before its tests can run:
 /// `flutter pub get` when the pubspec depends on the flutter SDK, else

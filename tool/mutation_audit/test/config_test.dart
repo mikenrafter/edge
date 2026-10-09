@@ -112,7 +112,7 @@ void main() {
 
     test('a flutter repo defaults to flutter test', () {
       File(p.join(repo.path, 'pubspec.yaml')).writeAsStringSync('name: app\ndependencies:\n  flutter:\n    sdk: flutter\n');
-      expect(parseAuditArgs(required()).testCmd, 'flutter test --reporter json');
+      expect(parseAuditArgs(required()).testCmd, 'flutter test --no-pub --reporter json');
     });
 
     test('every option', () {

@@ -233,7 +233,7 @@ void main() {
 
     test('a flutter package gets flutter', () {
       pubspec('name: app\ndependencies:\n  flutter:\n    sdk: flutter\n');
-      expect(defaultTestCommand(dir.path), 'flutter test --reporter json');
+      expect(defaultTestCommand(dir.path), 'flutter test --no-pub --reporter json');
       expect(defaultSetupCommand(dir.path), 'flutter pub get');
     });
 
