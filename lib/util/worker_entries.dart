@@ -179,6 +179,14 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
         'parts); meets the contract (WorkerInit.ensure first, sendable '
         'in/out)',
   ),
+  WorkerEntry(
+    #decodeDayPayloadsHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'BundleStore decode: stored payload_json texts to frozen compact '
+        'graphs or projections, sized in the worker; meets the contract '
+        '(WorkerInit.ensure first, sendable texts in, @SendableShape frozen '
+        'JSON graphs out)',
+  ),
 ];
 
 /// Fingerprinted unresolved invocations. Shrink-only.

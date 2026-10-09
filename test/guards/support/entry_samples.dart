@@ -31,6 +31,7 @@ import 'package:openstrap_edge/compute/derive_prepare.dart';
 import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
+import 'package:openstrap_edge/data/bundle_store.dart';
 import 'package:openstrap_edge/data/sample_heavy.dart';
 import 'package:openstrap_edge/data/sample_import.dart' show SampleCarved;
 import 'package:openstrap_edge/ecg/ecg_export.dart';
@@ -208,6 +209,24 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       ]);
       const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
       await _sameInWorker(() => ecgFormatPageHeavy(inputs, page));
+    },
+  ),
+  'decodeDayPayloadsHeavy': (
+    roundTrip: () async {
+      // Stored payload texts in; frozen compact graphs, node counts and byte
+      // estimates out. The @SendableShape round trip (frozen graph arrives
+      // frozen) is test/step2/sendable_decodeDayPayloadsHeavy_test.dart.
+      const chunk = DecodeChunkInput(
+        payloadJson: [
+          '{"scalars":{"rhr":50.5},"series":{"hr_curve":{"t0":1,"dt":60,"v":[60,61,62]}}}',
+          '{not json',
+        ],
+        projections: ['full', 'cycleScalars'],
+      );
+      await _sameInWorker(
+        () => decodeDayPayloadsHeavy(bundleWorkerInputs, chunk),
+        json: (DecodedChunk c) => [c.graphs, c.estimatedBytes, c.nodes],
+      );
     },
   ),
   '_writeZipHeavy': (

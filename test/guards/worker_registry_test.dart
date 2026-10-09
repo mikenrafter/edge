@@ -33,6 +33,9 @@ const kExpected = <String, Dispatcher>{
   'encodeSampleSignalsHeavy': Dispatcher.run,
   'carveSamplePartHeavy': Dispatcher.run,
   'reconstructSamplePartsHeavy': Dispatcher.run,
+  // BundleStore (lib/data/bundle_store.dart, design 02 step 2 P2.2): stored
+  // payload text to frozen compact graphs.
+  'decodeDayPayloadsHeavy': Dispatcher.run,
 };
 
 void main() {
