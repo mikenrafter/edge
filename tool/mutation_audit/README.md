@@ -197,19 +197,30 @@ AND its stdout/stderr have closed: a wrapper that exits early while a child keep
 still times out. The child is started under `setsid` when the system has it (Linux), so it leads a
 session of its own; on a timeout the runner
 
-1. collects the family first: the child, its descendants, and every process of its session (this
-   finds children that were reparented), scanning `/proc` (or `ps` where there is none);
-2. sends SIGTERM to each of them by pid (never a process group, never a name match, never init);
-3. waits up to 5 s, polling for exits, then sends a real SIGKILL to survivors, rescanning a few
-   times for processes forked meanwhile;
-4. waits at most 2 s for the output streams to close, then stops reading and reports
+1. works from a captured family, by process identity (pid AND start time, from
+   `/proc/<pid>/stat` field 22; `ps -o lstart` where there is no `/proc`). The family is sampled
+   once a second while the child runs, once more the moment the child exits (its session is read
+   then, while the kernel still holds its number), and at the start of cleanup. A captured process is
+   never forgotten while it lives: every rescan is the captured set that is still alive plus the
+   descendants of any such member, so a child reparented to init (or in a session of its own) when its
+   parent dies on SIGTERM is still found. The child's session is scanned only while the child is alive
+   (and once, right after its exit), never by a dead child's number;
+2. sends SIGTERM to each member (never a process group, never a name match, never init);
+3. waits up to 5 s, polling, then sends a real SIGKILL to survivors, rescanning first;
+4. before every signal re-reads the target's start time and skips it if it changed: a pid that was
+   handed out again is another process and is never signalled. (Between that read and the kill there
+   remains a window of microseconds that no portable API closes.);
+5. waits at most 2 s for the output streams to close, then stops reading and reports
    `outputComplete: false` instead of hanging.
 
 The end-to-end signal test starts the tool as `dart bin/mutation_audit.dart`; run it that way (or
 from a compiled executable) when the signal has to reach the tool itself.
 
-Without `setsid` (macOS) only descendants of the child can be found; a child that daemonised away
-is out of reach.
+Weaker guarantees: without `setsid` (macOS) there is no session of its own, so only processes seen as
+descendants in a sample (or at cleanup) are found: a child forked and reparented between two samples,
+or one that daemonised away, is out of reach. Where `/proc` is missing, `ps -o lstart` has a
+resolution of one second, so a pid reused by a process started within the same second as the
+captured one is not told apart, and `ps` gives no session ids.
 
 SIGINT and SIGTERM are caught before the export is created. They cancel a token that is handed to the
 audit loop and every child run: no further mutant is written, the active process tree is stopped as
