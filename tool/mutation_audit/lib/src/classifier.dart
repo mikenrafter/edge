@@ -128,7 +128,9 @@ class Classification {
 ///    passes alone is dropped (recorded, not confirmed). Confirmed failures
 ///    that match [guards] are guard failures, the rest kill: any kill ->
 ///    killed; only guard failures -> killedByGuardOnly.
-/// 4. load errors left (exception at load, missing file) -> loadFailure.
+/// 4. load errors left (exception at load, missing file), or a failed
+///    `setUpAll` / `tearDownAll` hook (the environment broke; hooks are never
+///    tests, so never kills) -> loadFailure.
 /// 5. no `done` event, or a non-zero exit with nothing else to blame ->
 ///    loadFailure.
 /// 6. at least one non-skipped test passed -> survived; otherwise skipped.
@@ -194,6 +196,13 @@ Future<Classification> classifyRun(
         status: MutantStatus.loadFailure,
         reruns: reruns,
         detail: _firstMessageLine(run.loadErrors.first.message));
+  }
+  if (run.setupFailures.isNotEmpty) {
+    final f = run.setupFailures.first;
+    return Classification(
+        status: MutantStatus.loadFailure,
+        reruns: reruns,
+        detail: '${f.suite}: ${f.name} failed: ${_firstMessageLine(f.message)}');
   }
   if (!run.sawDone || (failed.isEmpty && outcome.exitCode != 0)) {
     final why = outcome.stderr.trim().isNotEmpty

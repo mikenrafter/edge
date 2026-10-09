@@ -100,6 +100,14 @@ void main() {
           throwsA(isA<BaselineFailedError>().having((e) => e.message, 'message', contains('Bad state: x'))));
     });
 
+    test('a baseline whose setUpAll fails is not a baseline', () async {
+      final runner = FakeProcessRunner((call) => outcomeOf(
+          StreamBuilder().loaded('test/a_test.dart').pass('test/a_test.dart', 'ok').throws('test/a_test.dart', 'g (setUpAll)', 'Bad state: nope').done(success: false),
+          exitCode: 1));
+      await expectLater(AuditRunner(runner: runner).runBaseline(config(), root.path),
+          throwsA(isA<BaselineFailedError>().having((e) => e.message, 'message', contains('g (setUpAll)'))));
+    });
+
     test('a baseline that ran no test is not a baseline', () async {
       final runner = FakeProcessRunner((call) => outcomeOf(StreamBuilder().done()));
       await expectLater(AuditRunner(runner: runner).runBaseline(config(), root.path), throwsA(isA<BaselineFailedError>()));

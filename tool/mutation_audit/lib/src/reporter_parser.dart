@@ -51,11 +51,23 @@ class LoadError {
   final String suite, message;
 }
 
+/// A `setUpAll` / `tearDownAll` pseudo-test that failed. The reporter lists
+/// each as a test named `(setUpAll)` or `<group> (setUpAll)`; its failure says
+/// the environment broke, not that a test noticed the mutant, so it is never a
+/// kill. (When `setUpAll` fails the tests of that group are not run at all.)
+class SetupFailure {
+  const SetupFailure(this.suite, this.name, this.message);
+  final String suite, name, message;
+}
+
+final _hookName = RegExp(r'(^|\s)\((setUpAll|tearDownAll)\)$');
+
 /// A whole reporter stream.
 class ReporterRun {
   const ReporterRun({
     required this.tests,
     required this.loadErrors,
+    this.setupFailures = const [],
     required this.sawDone,
     required this.doneSuccess,
     required this.nonJsonLines,
@@ -64,6 +76,10 @@ class ReporterRun {
   /// Finished tests that are neither hidden nor `loading ...`, in finish order.
   final List<TestOutcome> tests;
   final List<LoadError> loadErrors;
+
+  /// Failed `setUpAll` / `tearDownAll` hooks. Hooks (passing or failing) are
+  /// not in [tests]: a hook that passed is no evidence that a test passed.
+  final List<SetupFailure> setupFailures;
 
   /// A `done` event arrived, and its `success` flag.
   final bool sawDone, doneSuccess;
@@ -86,6 +102,7 @@ ReporterRun parseReporterStream(Iterable<String> lines, {String? root}) {
   final started = <int, _Started>{};
   final tests = <TestOutcome>[];
   final loadErrors = <LoadError>[];
+  final setupFailures = <SetupFailure>[];
   final nonJson = <String>[];
   var sawDone = false, doneSuccess = false;
 
@@ -136,6 +153,10 @@ ReporterRun parseReporterStream(Iterable<String> lines, {String? root}) {
           if (result != TestResult.success) {
             loadErrors.add(LoadError(suite, t.errors.map((e) => e.message).join('\n')));
           }
+        } else if (_hookName.hasMatch(t.name)) {
+          if (result != TestResult.success) {
+            setupFailures.add(SetupFailure(suite, t.name, t.errors.map((e) => e.message).join('\n')));
+          }
         } else if (decoded['hidden'] == true && result == TestResult.success) {
           // plumbing, not a test
         } else {
@@ -157,6 +178,7 @@ ReporterRun parseReporterStream(Iterable<String> lines, {String? root}) {
   return ReporterRun(
     tests: tests,
     loadErrors: loadErrors,
+    setupFailures: setupFailures,
     sawDone: sawDone,
     doneSuccess: doneSuccess,
     nonJsonLines: nonJson,

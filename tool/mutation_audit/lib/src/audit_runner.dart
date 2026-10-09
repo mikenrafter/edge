@@ -38,6 +38,10 @@ class AuditRunner {
     for (final e in run.loadErrors) {
       throw BaselineFailedError('a suite does not load: ${e.suite}: ${e.message.split('\n').first}');
     }
+    for (final f in run.setupFailures) {
+      throw BaselineFailedError(
+          'the baseline fails in a hook: ${f.suite}: ${f.name}: ${f.message.split('\n').first}');
+    }
     for (final t in run.tests) {
       if (t.failed) {
         final why = t.errors.isEmpty ? '' : ': ${t.errors.first.message.split('\n').first}';

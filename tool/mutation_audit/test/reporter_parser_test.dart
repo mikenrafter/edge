@@ -82,6 +82,39 @@ void main() {
     });
   });
 
+  group('setUpAll / tearDownAll failures (real run)', () {
+    test('they are setup failures, not tests; the group whose setUpAll failed ran nothing', () {
+      final run = parseReporterStream(fixture('real_setup_all.jsonl'));
+      expect(run.tests.map((t) => t.key), ['test/a_test.dart::h t3', 'test/a_test.dart::top']);
+      expect(run.setupFailures.map((f) => (f.suite, f.name)),
+          [('test/a_test.dart', 'g (setUpAll)'), ('test/a_test.dart', 'h (tearDownAll)')]);
+      expect(run.setupFailures.first.message, contains('Bad state: boom setup'));
+      expect(run.loadErrors, isEmpty);
+    });
+
+    test('a passing hook is not a test either (it must not count as a test that passed)', () {
+      final s = StreamBuilder().test('test/a_test.dart', 'g (setUpAll)').done();
+      final run = parseReporterStream(s.build());
+      expect(run.tests, isEmpty);
+      expect(run.setupFailures, isEmpty);
+    });
+
+    test('top-level hooks have the bare name; failures by assertion count the same', () {
+      final s = StreamBuilder()
+          .fail('test/a_test.dart', '(setUpAll)')
+          .throws('test/a_test.dart', '(tearDownAll)')
+          .done(success: false);
+      final run = parseReporterStream(s.build());
+      expect(run.tests, isEmpty);
+      expect(run.setupFailures, hasLength(2));
+    });
+
+    test('an ordinary test that merely mentions the word is a test', () {
+      final s = StreamBuilder().fail('test/a_test.dart', 'setUpAll is documented').done(success: false);
+      expect(parseReporterStream(s.build()).tests, hasLength(1));
+    });
+  });
+
   group('shapes the real runs do not show', () {
     test('a passing run', () {
       final run = parseReporterStream(passing().build());

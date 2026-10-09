@@ -299,6 +299,60 @@ void main() {
     });
   });
 
+  group('setUpAll / tearDownAll failures are never kills', () {
+    test('a failing setUpAll is a load failure even though other tests passed', () async {
+      final s = StreamBuilder()
+          .loaded(suite)
+          .pass(suite, 'ok')
+          .throws(suite, 'g (setUpAll)', 'Bad state: boom setup')
+          .done(success: false);
+      final c = await classify(s, exitCode: 1);
+      expect(c.status, MutantStatus.loadFailure);
+      expect(c.killingTests, isEmpty);
+      expect(c.detail, contains('g (setUpAll)'));
+      expect(c.detail, contains('boom setup'));
+    });
+
+    test('a failing tearDownAll is a load failure, not a kill and not a survivor', () async {
+      final s = StreamBuilder()
+          .loaded(suite)
+          .pass(suite, 'ok')
+          .throws(suite, 'h (tearDownAll)', 'Bad state: boom td')
+          .done(success: false);
+      final c = await classify(s, exitCode: 1);
+      expect(c.status, MutantStatus.loadFailure);
+    });
+
+    test('a real failing test next to it still kills, and the hook is not listed as a killer', () async {
+      final s = StreamBuilder()
+          .loaded(suite)
+          .throws(suite, '(setUpAll)', 'Bad state: x')
+          .fail(suite, 'real')
+          .done(success: false);
+      final c = await classify(s, exitCode: 1);
+      expect(c.status, MutantStatus.killed);
+      expect(c.killingTests, ['$suite::real']);
+    });
+
+    test('hooks are never re-run alone or sent to the flaky logic', () async {
+      var reruns = 0;
+      final s = StreamBuilder().loaded(suite).throws(suite, '(setUpAll)').done(success: false);
+      final c = await classify(s, exitCode: 1, rerun: (t) async {
+        reruns++;
+        return null;
+      });
+      expect(reruns, 0);
+      expect(c.status, MutantStatus.loadFailure);
+    });
+
+    test('a hook failing in a source-guard suite is no guard kill either', () async {
+      final s = StreamBuilder().loaded('test/guards/g_test.dart').throws('test/guards/g_test.dart', '(setUpAll)').done(success: false);
+      final c = await classify(s, exitCode: 1, guards: GuardMatcher(['test/guards/**']));
+      expect(c.status, MutantStatus.loadFailure);
+      expect(c.guardTests, isEmpty);
+    });
+  });
+
   test('MutantStatus ids are the report vocabulary', () {
     expect(MutantStatus.values.map((s) => s.id), [
       'killed',

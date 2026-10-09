@@ -1,0 +1,21 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.31.1","pid":2265829,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"test/a_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading test/a_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":4}
+{"count":1,"time":29,"type":"allSuites"}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":960}
+{"group":{"id":2,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":4,"line":null,"column":null,"url":null},"type":"group","time":966}
+{"group":{"id":3,"suiteID":0,"parentID":2,"name":"g","metadata":{"skip":false,"skipReason":null},"testCount":2,"line":3,"column":3,"url":"file:///tmp/probe_sua/test/a_test.dart"},"type":"group","time":968}
+{"test":{"id":4,"name":"g (setUpAll)","suiteID":0,"groupIDs":[2,3],"metadata":{"skip":false,"skipReason":null},"line":4,"column":5,"url":"file:///tmp/probe_sua/test/a_test.dart"},"type":"testStart","time":968}
+{"testID":4,"error":"Bad state: boom setup","stackTrace":"test/a_test.dart 4:19  main.<fn>.<fn>\n","isFailure":false,"type":"error","time":1024}
+{"testID":4,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":1025}
+{"test":{"id":5,"name":"g (tearDownAll)","suiteID":0,"groupIDs":[2,3],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":1026}
+{"testID":5,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":1029}
+{"group":{"id":6,"suiteID":0,"parentID":2,"name":"h","metadata":{"skip":false,"skipReason":null},"testCount":1,"line":8,"column":3,"url":"file:///tmp/probe_sua/test/a_test.dart"},"type":"group","time":1030}
+{"test":{"id":7,"name":"h t3","suiteID":0,"groupIDs":[2,6],"metadata":{"skip":false,"skipReason":null},"line":10,"column":5,"url":"file:///tmp/probe_sua/test/a_test.dart"},"type":"testStart","time":1030}
+{"testID":7,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":1041}
+{"test":{"id":8,"name":"h (tearDownAll)","suiteID":0,"groupIDs":[2,6],"metadata":{"skip":false,"skipReason":null},"line":9,"column":5,"url":"file:///tmp/probe_sua/test/a_test.dart"},"type":"testStart","time":1042}
+{"testID":8,"error":"Bad state: boom td","stackTrace":"test/a_test.dart 9:22  main.<fn>.<fn>\n","isFailure":false,"type":"error","time":1050}
+{"testID":8,"result":"error","skipped":false,"hidden":false,"type":"testDone","time":1050}
+{"test":{"id":9,"name":"top","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":12,"column":3,"url":"file:///tmp/probe_sua/test/a_test.dart"},"type":"testStart","time":1051}
+{"testID":9,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":1053}
+{"success":false,"type":"done","time":1077}
