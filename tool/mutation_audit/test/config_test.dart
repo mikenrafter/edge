@@ -36,6 +36,16 @@ void main() {
       expect(parseAuditArgs(required()).setupLeaves, isEmpty);
     });
 
+    test('--heartbeat is seconds between "still running" lines: 60 by default, 0 disables it', () {
+      expect(parseAuditArgs(required()).heartbeat, const Duration(seconds: 60));
+      expect(parseAuditArgs(required(['--heartbeat', '15'])).heartbeat, const Duration(seconds: 15));
+      expect(parseAuditArgs(required(['--heartbeat', '0'])).heartbeat, Duration.zero);
+      for (final bad in ['-1', 'often', '1.5', '']) {
+        expect(() => parseAuditArgs(required(['--heartbeat', bad])), throwsA(isA<UsageError>().having((e) => e.message, 'message', contains('--heartbeat'))),
+            reason: bad);
+      }
+    });
+
     test('--cache-dir is gone: the sandbox discards writes, nothing is a cache any more', () {
       expect(() => parseAuditArgs(required(['--cache-dir', 'build'])), throwsA(isA<UsageError>()));
     });

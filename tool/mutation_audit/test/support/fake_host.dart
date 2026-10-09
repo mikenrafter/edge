@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:mutation_audit/mutation_audit.dart';
@@ -141,6 +142,9 @@ class FakeHost implements ProcessHost {
   }
 
   void print(String line) => _out.add('$line\n'.codeUnits);
+
+  /// Raw bytes on stdout, with no newline added (a chunk may end mid-line).
+  void write(String text) => _out.add(utf8.encode(text));
 
   /// The root exits by itself.
   void rootExits(int code) {
