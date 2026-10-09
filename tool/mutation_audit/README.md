@@ -47,7 +47,17 @@ dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
 `dart test --reporter json` otherwise (`--reporter json` is added when missing).
 `--setup-cmd` runs once in the export before the baseline (default: `flutter pub get`
 / `dart pub get`; `""` skips it); it runs OUTSIDE the sandbox, because it needs the network.
-Everything after it runs inside (see "Isolation"). `--no-pub` is in the default Flutter command because
+Everything after it runs inside (see "Isolation"). After setup, a package config that names a package
+with a build hook (`hook/build.dart`: native assets) gets one more run outside the sandbox, the
+"warm-up": the test command with its suites replaced by a file that does not exist
+(`test/mutation_audit_warmup_does_not_exist_test.dart`). The test tool builds the hooks, finds no suite and
+stops with a failing exit (ignored); no project test code runs. Only a timeout (exit 70, `warmup.log`) matters.
+Why: edge depends on `sqlite3` 3.x, whose hook downloads a prebuilt `libsqlite3.so` from GitHub into
+`.dart_tool/hooks_runner/shared/` the first time a test runs; in a fresh export that happened in the
+no-network sandbox and the baseline died with "Building native assets failed ... Failed host lookup:
+'github.com'". The sandbox only has to find the file in the export, where the warm-up left it (a hook
+that needs more than a download, such as a C compiler, is out of scope). `--no-sandbox` skips the warm-up.
+`--no-pub` is in the default Flutter command because
 Flutter may start an implicit `pub get` on its own, which can only fail or re-resolve in a sandbox with
 no network; put it in a custom `--test-cmd` too. Exit codes: 0 ran, 64 usage (including `--no-guards` on
 an export that has source-scanning suites), 65 baseline failed or path override refused, 70
@@ -465,6 +475,11 @@ entries, and the pub cache (without it the test fails to compile: "Error when re
 '/home/dev/.pub-cache/hosted/pub.dev/test_api-.../lib/backend.dart'"). Not needed: `/etc` beyond the
 few files above, `/sys`, `/var`, `$HOME` content (`~/.config/flutter`, `~/.dart-tool` are fresh and Flutter
 recreates what it wants in them).
+
+**A failed baseline, setup, warm-up or probe is never silent.** The whole output of the run (command,
+exit code, stdout, stderr) is saved to `<out>/baseline.log`, `setup.log`, `warmup.log` or `probe.log`
+(the export is removed afterwards; this is the only copy), and the error shows the last 40 lines (stderr,
+or stdout when stderr is empty) and the log path. Nothing else is written to `--out` in that case.
 
 **Before anything is exported** the tool runs a probe sandbox: `bwrap --version`, then a real sandbox
 that writes to its export, to `/tmp` and to `$HOME` and checks that none of it arrived on the host, then

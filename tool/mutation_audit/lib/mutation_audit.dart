@@ -12,6 +12,7 @@ export 'src/export_integrity.dart';
 export 'src/generator.dart';
 export 'src/guards.dart';
 export 'src/mutant.dart';
+export 'src/native_assets.dart';
 export 'src/process_runner.dart';
 export 'src/report.dart';
 export 'src/sandbox.dart';

@@ -17,6 +17,7 @@ import 'mutant.dart';
 import 'process_runner.dart';
 import 'report.dart';
 import 'run_log.dart';
+import 'native_assets.dart';
 import 'sandbox.dart';
 import 'selection.dart';
 import 'source_facts.dart' show defaultSourceRoots;
@@ -30,8 +31,11 @@ class GuardPolicyError implements Exception {
 }
 
 class _SetupFailed implements Exception {
-  _SetupFailed(this.message, {this.argv = const [], this.outcome});
+  _SetupFailed(this.message, {this.argv = const [], this.outcome, this.log = 'setup.log'});
   final String message;
+
+  /// The file in the output directory that gets the run's output.
+  final String log;
   final List<String> argv;
   final ProcessOutcome? outcome;
 }
@@ -144,6 +148,27 @@ Future<int> runCli(
           }
           if (done.exitCode != 0) {
             throw _SetupFailed('"$setup" failed (exit code ${done.exitCode})', argv: setupArgv, outcome: done);
+          }
+        }
+        // The sandbox has no network, and a build hook may need it (sqlite3's
+        // downloads a prebuilt library): the hooks are built now, outside it.
+        // The run is expected to end with "suite not found"; only a timeout or
+        // a cancel matters.
+        final hooks = config.noSandbox ? const <String>[] : packagesWithBuildHooks(export.path);
+        if (hooks.isNotEmpty) {
+          final warmup = buildWarmupCommand(config.testCmd);
+          final done = await processes.run(warmup,
+              workingDirectory: export.path, environment: config.env, timeout: config.timeout, cancel: cancel);
+          if (done.cleanupFailed) {
+            throw CleanupFailedError('"${warmup.join(' ')}" left processes that SIGKILL did not remove '
+                '(${done.survivors.join(', ')})');
+          }
+          if (done.cancelled || cancel.isCancelled) throw InterruptedError();
+          if (done.timedOut) {
+            throw _SetupFailed(
+                'building the native assets of ${hooks.join(', ')} ("${warmup.join(' ')}") timed out after '
+                '${config.timeout.inSeconds} s and was stopped',
+                argv: warmup, outcome: done, log: 'warmup.log');
           }
         }
         await integrity.requirePinned('after setup');
@@ -296,7 +321,7 @@ Future<int> runCli(
     errSink.writeln(e.message);
     return 70;
   } on _SetupFailed catch (e) {
-    errSink.writeln(_withSavedLog(e.message, config.outDir, 'setup.log', e.argv, e.outcome));
+    errSink.writeln(_withSavedLog(e.message, config.outDir, e.log, e.argv, e.outcome));
     return 70;
   } on CleanupFailedError catch (e) {
     errSink.writeln('${e.message}; the audit was stopped');

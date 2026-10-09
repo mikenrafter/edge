@@ -75,6 +75,19 @@ List<String> buildTestCommand(
   return argv;
 }
 
+/// A suite that does not exist. The warm-up run names it: the test tool builds
+/// the build hooks of the dependencies before it loads a suite, finds this one
+/// missing and stops, so no project test code runs.
+const warmupSuite = 'test/mutation_audit_warmup_does_not_exist_test.dart';
+
+/// [testCmd] with its suite and name selectors dropped and [warmupSuite] as the
+/// only suite (`--reporter json` is added like for any test run).
+List<String> buildWarmupCommand(String testCmd) {
+  final argv = _withoutSelectors(splitCommand(testCmd));
+  final hasReporter = argv.any((a) => a == '--reporter' || a == '-r' || a.startsWith('--reporter='));
+  return [...argv, if (!hasReporter) ...const ['--reporter', 'json'], warmupSuite];
+}
+
 /// Options that take a value, from `flutter test --help` (Flutter 3.41.6) and
 /// `dart test --help` (package:test 1.31.1). Everything else is a flag. The
 /// two tools differ: `--coverage` is a flag for flutter and takes a directory

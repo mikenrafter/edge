@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'native_assets.dart';
 import 'process_runner.dart';
 import 'run_log.dart';
 
@@ -293,33 +294,12 @@ class Sandbox {
   /// (hosted packages in the pub cache, path dependencies elsewhere). Empty
   /// when there is no package config yet.
   static List<String> packageRoots(String exportPath) {
-    final file = File(p.join(exportPath, '.dart_tool', 'package_config.json'));
-    if (!file.existsSync()) return const [];
-    final Object? doc;
-    try {
-      doc = jsonDecode(file.readAsStringSync());
-    } on FormatException {
-      return const [];
-    }
-    final packages = doc is Map ? doc['packages'] : null;
-    if (packages is! List) return const [];
-    final base = Uri.directory(p.join(exportPath, '.dart_tool'));
-    final out = <String>{};
-    for (final pkg in packages) {
-      final root = pkg is Map ? pkg['rootUri'] : null;
-      if (root is! String) continue;
-      final Uri uri;
-      try {
-        uri = base.resolve(root);
-      } on FormatException {
-        continue;
-      }
-      if (uri.scheme != 'file') continue;
-      final path = p.normalize(uri.toFilePath());
-      if (path == p.normalize(exportPath) || p.isWithin(p.normalize(exportPath), path)) continue;
-      out.add(path);
-    }
-    return out.toList()..sort();
+    final export = p.normalize(exportPath);
+    return {
+      for (final e in packageConfigEntries(exportPath))
+        if (e.path != export && !p.isWithin(export, e.path)) e.path,
+    }.toList()
+      ..sort();
   }
 
   /// Runs a tiny command in a real sandbox and checks that it holds: bubblewrap

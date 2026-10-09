@@ -8,6 +8,7 @@ import 'package:test/test.dart';
 import 'support/events.dart';
 import 'support/fakes.dart';
 import 'support/git_fixture.dart';
+import 'support/package_config.dart';
 
 const lib = 'bool lt(int a, int b) => a < b;\nbool gt(int a, int b) => a > b;\n';
 
@@ -152,6 +153,55 @@ void main() {
       expect(runner.calls, isEmpty);
       expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
       expect(out.listSync(), isEmpty);
+    });
+  });
+
+  group('build hooks are built before the sandbox, which has no network', () {
+    /// Setup writes a package config in which `native` has a build hook, like `pub get`.
+    FakeProcessRunner withHooks({ProcessOutcome Function(Call call)? warmup, bool hooks = true}) => FakeProcessRunner((call) {
+          if (call.argv.length >= 2 && call.argv[1] == 'pub') {
+            if (hooks) {
+              Directory(p.join(call.cwd, '.dart_tool', 'native', 'hook')).createSync(recursive: true);
+              File(p.join(call.cwd, '.dart_tool', 'native', 'hook', 'build.dart')).writeAsStringSync('');
+              writeConfig(call.cwd, {'demo': ('../', 'lib/'), 'native': ('native', 'lib/')});
+            }
+            return const ProcessOutcome(exitCode: 0);
+          }
+          if (call.argv.contains(warmupSuite)) return warmup?.call(call) ?? const ProcessOutcome(exitCode: 1);
+          final src = File(p.join(call.cwd, 'lib/a.dart')).readAsStringSync();
+          return src.contains('a <= b') ? outcomeOf(failing('lt boundary'), exitCode: 1) : outcomeOf(passing());
+        });
+
+    test('one warm-up run between setup and the baseline: outside the sandbox, with the network, on a suite that does not exist', () async {
+      final runner = withHooks();
+      expect(await run(runner, ['--max-mutants', '1']), 0, reason: err.toString());
+      expect(runner.calls.map((c) => c.argv.take(2).join(' ')), ['dart pub', 'dart test', 'bwrap --dev', 'bwrap --dev']);
+      final warm = runner.calls[1];
+      expect(warm.argv, ['dart', 'test', '--reporter', 'json', warmupSuite]);
+      expect(warm.argv.contains('--unshare-net'), isFalse);
+      expect(warm.cwd, runner.calls.first.cwd);
+      expect(warm.timeout, isNotNull);
+      expect(File(p.join(out.path, 'setup.log')).existsSync(), isFalse, reason: 'its failing exit is expected');
+    });
+
+    test('no hook in the package config, no warm-up', () async {
+      final runner = withHooks(hooks: false);
+      expect(await run(runner, ['--max-mutants', '1']), 0, reason: err.toString());
+      expect(runner.calls.any((c) => c.argv.contains(warmupSuite)), isFalse);
+    });
+
+    test('--no-sandbox has the network anyway: no warm-up', () async {
+      final runner = withHooks();
+      expect(await run(runner, ['--no-sandbox', '--max-mutants', '1']), 0, reason: err.toString());
+      expect(runner.calls.any((c) => c.argv.contains(warmupSuite)), isFalse);
+    });
+
+    test('a warm-up that times out stops the audit before the baseline, with its log', () async {
+      final runner = withHooks(warmup: (_) => const ProcessOutcome(exitCode: -9, timedOut: true, stderr: 'still downloading\n'));
+      expect(await run(runner, ['--max-mutants', '1']), 70);
+      expect(err.toString(), allOf(contains('timed out'), contains('warmup.log'), contains('still downloading')));
+      expect(File(p.join(out.path, 'warmup.log')).readAsStringSync(), contains('still downloading'));
+      expect(runner.calls.where(wrapped), isEmpty);
     });
   });
 
