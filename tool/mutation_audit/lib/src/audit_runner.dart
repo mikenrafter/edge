@@ -80,10 +80,11 @@ class AuditRunner {
     required String root,
     required List<Mutant> mutants,
     CancelToken? cancel,
+    GuardMatcher? guards,
   }) async {
     final baseline = await runBaseline(config, root, cancel: cancel);
     final applier = applierFor(root);
-    final guards = GuardMatcher(config.guardPatterns);
+    final matcher = guards ?? GuardMatcher(config.guardPatterns);
     final flaky = config.flakyTests.toSet();
     final results = <MutantResult>[];
 
@@ -108,7 +109,7 @@ class AuditRunner {
         );
         if (outcome.cancelled || (cancel?.isCancelled ?? false)) throw InterruptedError();
         final classification =
-            await classifyRun(outcome, guards: guards, flakyTests: flaky, rerun: alone, root: root);
+            await classifyRun(outcome, guards: matcher, flakyTests: flaky, rerun: alone, root: root);
         if (cancel?.isCancelled ?? false) throw InterruptedError();
         results.add(MutantResult(
             mutant: mutant, classification: classification, duration: outcome.elapsed));

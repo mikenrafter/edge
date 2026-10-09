@@ -43,7 +43,6 @@ void main() {
         '--files', 'lib/a.dart',
         '--test-cmd', 'dart test',
         '--out', out.path,
-        if (!extra.contains('--guard-pattern') && !extra.contains('--tests')) '--no-guards',
         ...extra,
       ];
 
@@ -69,21 +68,118 @@ void main() {
     expect(err.toString(), contains('Usage'));
   });
 
-  test('a whole-suite audit that does not classify its source guards is a usage error', () async {
-    final runner = tests();
-    final code = await runCli(
-        ['--repo', fx.root, '--sha', sha, '--files', 'lib/a.dart', '--out', out.path],
-        runner: runner, out: stdout_, err: err);
-    expect(code, 64);
-    expect(err.toString(), contains('--no-guards'));
-    expect(runner.calls, isEmpty);
-    expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
-  });
+  group('source guards are detected in the export', () {
+    const scanSource = "import 'dart:io';\nvoid main() { File('lib/a.dart').readAsStringSync(); }\n";
 
-  test('the report says how the source guards were classified', () async {
-    await run(tests());
-    final json = jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map<String, dynamic>;
-    expect((json['meta'] as Map)['guardPolicy'], 'none-declared');
+    /// The scanning suite fails when `<=` is in lib/a.dart; the runtime one when `>=` is.
+    FakeProcessRunner scanFails() => FakeProcessRunner((call) {
+          if (call.argv.length >= 2 && call.argv[1] == 'pub') return const ProcessOutcome(exitCode: 0);
+          final src = File(p.join(call.cwd, 'lib/a.dart')).readAsStringSync();
+          final b = StreamBuilder().loaded('test/a_test.dart');
+          if (src.contains('a <= b')) b.fail('test/scan_test.dart', 'wiring greps lib');
+          if (src.contains('a >= b')) b.fail('test/a_test.dart', 'gt boundary');
+          return outcomeOf(b.pass('test/a_test.dart', 'ok').done(success: !(src.contains('a <= b') || src.contains('a >= b'))),
+              exitCode: src.contains('a <= b') || src.contains('a >= b') ? 1 : 0);
+        });
+
+    Future<String> addScan() async {
+      await fx.commit({'test/scan_test.dart': scanSource}, 'scanner');
+      return fx.head();
+    }
+
+    Map<String, Object?> status(Map<String, dynamic> json, String change) => (json['mutants'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((m) => '${m['original']}->${m['mutated']}' == change)
+        .cast<String, Object?>();
+
+    Map<String, dynamic> results() =>
+        jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map<String, dynamic>;
+
+    test('a failure in a suite that reads lib/ is guard-only, however the suites were chosen', () async {
+      final pinned = await addScan();
+      for (final tests in [const <String>[], const ['--tests', 'test'], const ['--tests', 'test/scan_test.dart', 'test/a_test.dart']]) {
+        File(p.join(out.path, 'results.json')).existsSync() ? File(p.join(out.path, 'results.json')).deleteSync() : null;
+        final code = await runCli(args([...tests, '--setup-cmd', ''], pinned),
+            runner: scanFails(), out: stdout_, err: err, now: () => DateTime.utc(2026));
+        expect(code, 0, reason: '$tests: $err');
+        final lt = status(results(), '<-><=');
+        expect(lt['status'], 'killed-by-guard-only', reason: '$tests');
+        expect(lt['killingTests'], isEmpty);
+        final d = (lt['discounted'] as List).single as Map;
+        expect(d['test'], 'test/scan_test.dart::wiring greps lib');
+        expect((d['reasons'] as List).join(' '), contains('reads files under lib'));
+        expect(status(results(), '>->>=')['status'], 'killed', reason: 'a runtime failure still kills');
+      }
+    });
+
+    test('the report says what was detected', () async {
+      final pinned = await addScan();
+      await runCli(args(['--setup-cmd', ''], pinned), runner: scanFails(), out: stdout_, err: err);
+      final g = (results()['meta'] as Map)['guards'] as Map;
+      expect(g['policy'], 'detected');
+      expect(g['effectiveSuites'], 2);
+      expect(g['sourceScanningSuites'], 1);
+      expect((g['sourceScanning'] as List).single['suite'], 'test/scan_test.dart');
+      expect(g['allowlist'], isNull);
+      expect(File(p.join(out.path, 'summary.md')).readAsStringSync(), contains('1 of 2 suites'));
+    });
+
+    test('--runtime-allowlist turns a reviewed test into a kill, and the file is recorded by hash', () async {
+      final pinned = await addScan();
+      final list = File(p.join(out.path, '..', 'runtime_${DateTime.now().microsecondsSinceEpoch}.txt'))
+        ..writeAsStringSync('# reviewed\ntest/scan_test.dart::wiring greps lib\ntest/ghost_test.dart\n');
+      addTearDown(list.deleteSync);
+      final code = await runCli(args(['--setup-cmd', '', '--runtime-allowlist', list.path], pinned),
+          runner: scanFails(), out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      final lt = status(results(), '<-><=');
+      expect(lt['status'], 'killed');
+      expect(lt['killingTests'], ['test/scan_test.dart::wiring greps lib']);
+      final allow = ((results()['meta'] as Map)['guards'] as Map)['allowlist'] as Map;
+      expect(allow['path'], list.path);
+      expect(allow['entries'], 2);
+      expect(allow['sha256'], matches(RegExp(r'^[0-9a-f]{64}$')));
+      expect(allow['unknownSuites'], ['test/ghost_test.dart'], reason: 'a stale entry is visible');
+    });
+
+    test('--no-guards is refused when the export has a source-scanning suite: exit 64, nothing run', () async {
+      final pinned = await addScan();
+      final runner = scanFails();
+      final code = await runCli(args(['--setup-cmd', '', '--no-guards'], pinned),
+          runner: runner, out: stdout_, err: err);
+      expect(code, 64);
+      expect(err.toString(), contains('test/scan_test.dart'));
+      expect(err.toString(), contains('--no-guards'));
+      expect(runner.calls, isEmpty);
+      expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
+    });
+
+    test('--no-guards is accepted when nothing is detected, and recorded as asserted', () async {
+      final code = await run(scanFails(), ['--setup-cmd', '', '--no-guards']);
+      expect(code, 0, reason: err.toString());
+      expect(((results()['meta'] as Map)['guards'] as Map)['policy'], 'no-guards-asserted');
+    });
+
+    test('--scanner names an extra shared scanner module', () async {
+      await fx.commit({
+        'test/support/my_grep.dart': '// scans source\n',
+        'test/grep_test.dart': "import 'support/my_grep.dart';\nvoid main() {}\n",
+      }, 'custom scanner');
+      final pinned = await fx.head();
+      final plain = await runCli(args(['--setup-cmd', '', '--no-guards'], pinned),
+          runner: scanFails(), out: stdout_, err: err);
+      expect(plain, 0, reason: 'without --scanner nothing marks the helper as a scanner');
+      err.clear();
+      final named = await runCli(args(['--setup-cmd', '', '--no-guards', '--scanner', 'test/support/my_grep.dart'], pinned),
+          runner: scanFails(), out: stdout_, err: err);
+      expect(named, 64);
+    });
+
+    test('a selector that names no test file is an error, not a smaller suite', () async {
+      final code = await run(scanFails(), ['--setup-cmd', '', '--tests', 'test/nope_test.dart']);
+      expect(code, 70);
+      expect(err.toString(), contains('nope_test.dart'));
+    });
   });
 
   test('a whole audit: results written outside the export, export gone, checkout untouched', () async {

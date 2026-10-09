@@ -1,6 +1,7 @@
 import 'package:glob/glob.dart';
 import 'package:path/path.dart' as p;
 
+import 'guards.dart';
 import 'process_runner.dart';
 import 'reporter_parser.dart';
 
@@ -38,31 +39,45 @@ enum MutantStatus {
   final String id;
 }
 
-/// Matches source-guard tests: globs against the suite path. A pattern without
-/// a `/` matches the file name only; one with a `/` matches the path or any
-/// suffix of it (so `test/guards/**` matches `/abs/repo/test/guards/a_test.dart`).
+/// Decides which failing tests are source guards, whose failures never count
+/// as kills. A test is a guard when its suite
+///
+/// - matches a [patterns] glob (against the suite path; a pattern without a
+///   `/` matches the file name only; one with a `/` matches the path or any
+///   suffix of it, so `test/guards/**` matches `/abs/repo/test/guards/a_test.dart`), or
+/// - is source-scanning per [detector] (imports a shared scanner, reads
+///   files under `lib/`),
+///
+/// unless the reviewed [allowlist] says that test runs code.
 class GuardMatcher {
-  GuardMatcher(this.patterns)
+  GuardMatcher(this.patterns, {this.detector, this.allowlist = const RuntimeAllowlist.empty()})
       : _globs = [for (final pattern in patterns) (pattern.contains('/'), Glob(pattern, context: p.posix))];
   final List<String> patterns;
+  final SourceScanDetector? detector;
+  final RuntimeAllowlist allowlist;
   final List<(bool, Glob)> _globs;
 
-  bool matches(TestOutcome test) {
+  /// Why [test] is a guard (empty: it is a runtime test).
+  List<String> reasons(TestOutcome test) {
+    final out = <String>[];
     final segments = test.suite.split('/').where((s) => s.isNotEmpty).toList();
-    if (segments.isEmpty) return false;
-    for (final (withSlash, glob) in _globs) {
-      if (!withSlash) {
-        if (glob.matches(segments.last)) return true;
-        continue;
-      }
-      // The path itself or any suffix of it (an absolute prefix is not part of
-      // the pattern's business).
-      for (var i = 0; i < segments.length; i++) {
-        if (glob.matches(segments.sublist(i).join('/'))) return true;
+    if (segments.isNotEmpty) {
+      for (var n = 0; n < _globs.length; n++) {
+        final (withSlash, glob) = _globs[n];
+        final hit = !withSlash
+            ? glob.matches(segments.last)
+            // The path itself or any suffix of it (an absolute prefix is not
+            // part of the pattern's business).
+            : [for (var i = 0; i < segments.length; i++) segments.sublist(i).join('/')].any(glob.matches);
+        if (hit) out.add('matches guard pattern ${patterns[n]}');
       }
     }
-    return false;
+    out.addAll(detector?.reasons(test.suite) ?? const []);
+    if (out.isEmpty || allowlist.allows(test)) return const [];
+    return out;
   }
+
+  bool matches(TestOutcome test) => reasons(test).isNotEmpty;
 }
 
 /// Runs one failed test alone (same mutant, same working tree) and returns the
@@ -128,7 +143,7 @@ class Classification {
   const Classification({
     required this.status,
     this.killers = const [],
-    this.guardTests = const [],
+    this.discounted = const [],
     this.reruns = const [],
     this.detail = '',
   });
@@ -141,8 +156,12 @@ class Classification {
   /// Keys (`suite::name`) of [killers].
   List<String> get killingTests => [for (final k in killers) k.key];
 
-  /// Keys of confirmed failures of guard tests.
-  final List<String> guardTests;
+  /// Confirmed failures that were NOT counted as kills because the test is a
+  /// source guard, with the reasons.
+  final List<DiscountedFailure> discounted;
+
+  /// Keys of [discounted].
+  List<String> get guardTests => [for (final d in discounted) d.key];
   final List<RerunRecord> reruns;
 
   /// One line saying why (the first compiler diagnostic, the load error, ...).
@@ -194,7 +213,7 @@ Future<Classification> classifyRun(
   var passedAfterRerun = 0;
   final reruns = <RerunRecord>[];
   final killing = <KillingTest>[];
-  final guardFailures = <String>[];
+  final guardFailures = <DiscountedFailure>[];
   final unresolved = <RerunRecord>[];
   for (final t in failed) {
     RerunRecord? record;
@@ -211,8 +230,9 @@ Future<Classification> classifyRun(
       if (record.result == RerunResult.unresolved) unresolved.add(record);
       if (!record.confirmed) continue;
     }
-    if (guards?.matches(t) ?? false) {
-      guardFailures.add(t.key);
+    final why = guards?.reasons(t) ?? const <String>[];
+    if (why.isNotEmpty) {
+      guardFailures.add(DiscountedFailure(t.key, why));
     } else {
       killing.add(KillingTest(t.key, _kindOf(t), confirmedKind: record?.kind));
     }
@@ -221,7 +241,7 @@ Future<Classification> classifyRun(
     return Classification(
       status: MutantStatus.killed,
       killers: killing,
-      guardTests: guardFailures,
+      discounted: guardFailures,
       reruns: reruns,
       detail: _firstLine(failed.firstWhere((t) => t.key == killing.first.key).errors),
     );
@@ -231,14 +251,14 @@ Future<Classification> classifyRun(
     // not a survivor or a guard-only result either.
     return Classification(
       status: MutantStatus.unconfirmed,
-      guardTests: guardFailures,
+      discounted: guardFailures,
       reruns: reruns,
       detail: '${unresolved.first.testKey}: ${unresolved.first.detail}',
     );
   }
   if (guardFailures.isNotEmpty) {
     return Classification(
-        status: MutantStatus.killedByGuardOnly, guardTests: guardFailures, reruns: reruns);
+        status: MutantStatus.killedByGuardOnly, discounted: guardFailures, reruns: reruns);
   }
 
   if (run.loadErrors.isNotEmpty) {

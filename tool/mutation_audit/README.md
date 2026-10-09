@@ -31,15 +31,16 @@ tool, a real SIGINT / SIGTERM, a throwaway repo; Linux only). Neither starts `fl
 ```
 dart run mutation_audit --repo <path> --sha <rev> --files <glob>... \
   [--test-cmd "<cmd>"] [--tests <file>...] [--max-mutants N] [--sample N --seed S] \
-  [--timeout seconds] (--guard-pattern <glob>... | --no-guards) [--allow-override <path>...] \
+  [--timeout seconds] [--guard-pattern <glob>...] [--scanner <glob>...] \
+  [--runtime-allowlist <file>] [--no-guards] [--allow-override <path>...] \
   [--flaky-test <suite::name>...] [--setup-cmd "<cmd>"] --out <dir>
 ```
 
 `--test-cmd` defaults to `flutter test --reporter json` for a Flutter package and
 `dart test --reporter json` otherwise (`--reporter json` is added when missing).
 `--setup-cmd` runs once in the export before the baseline (default: `flutter pub get`
-/ `dart pub get`; `""` skips it). Exit codes: 0 ran, 64 usage (including a whole-suite audit
-whose source guards are not classified), 65 baseline failed or path override refused, 70
+/ `dart pub get`; `""` skips it). Exit codes: 0 ran, 64 usage (including `--no-guards` on an export
+that has source-scanning suites), 65 baseline failed or path override refused, 70
 export/internal error, 130 interrupted (SIGINT or SIGTERM).
 
 `--env KEY=VALUE` (repeatable) sets variables for every child process on top of the
@@ -62,27 +63,65 @@ nix develop /path/to/edge -c dart run mutation_audit --repo /path/to/edge --sha 
 package config: the setup command (`flutter pub get` / `dart pub get`) runs in it first.
 Results go to `--out`, which must be outside the export.
 
-## Source guards: classify them or say there are none
+## Source guards: found in the export, never counted as kills
 
 A source guard is a test that reads source text (`File('lib/...').readAsStringSync()`, the
-`test/support/dart_source*.dart` scanner) instead of running code. When a mutant makes one fail,
-that is not runtime coverage, so such failures are reported as `killed-by-guard-only` and stay out
-of the score.
+`test/support/dart_source*.dart` scanners) instead of running code. When a mutant makes one fail,
+that is not runtime coverage. Whoever picks the tests (`--tests test` is the whole suite; a file
+list can mix runtime and scanning suites) the tool decides for itself, from the pinned export, which
+suites are source-scanning, and their failures are never kills: they are reported as
+`killed-by-guard-only` (or as `discounted` next to the real killers of a killed mutant), with the
+reasons.
 
-A whole-suite audit (no `--tests`) therefore has to say how its guards are classified, or the
-tool refuses to start (exit 64):
+The effective suite set is resolved first: `--tests` entries (files, directories, globs; none means
+`test`) are expanded to `*_test.dart` files in the export; an entry that names nothing is an error.
 
-- `--guard-pattern <glob>...`: suites matching any glob are guards. A pattern without `/` matches
-  the file name; one with `/` matches the path or any suffix of it.
-- `--no-guards`: the author states that no test of this suite scans source text. Recorded in the
-  report as `guardPolicy: none-declared`. Cannot be combined with `--guard-pattern`.
-- an explicit `--tests` list needs neither (`guardPolicy: subset`); the author picked the tests.
+A suite is source-scanning when any of these holds:
 
-The report records the policy (`meta.guardPolicy`, `meta.guardPatterns`; Markdown "Source guards").
+a. it matches a `--guard-pattern` (additional globs; the file-name patterns below are a good
+   start for edge);
+b. it imports (directly, or through helper files of the repository, followed transitively and never
+   into `lib/`) a shared source scanner: `**/dart_source*.dart` by default (edge:
+   `test/support/dart_source.dart`, `test/support/dart_source_lexical.dart`), plus `--scanner <glob>...`;
+c. it, or a helper it imports, reads files under a source root: a string literal that starts with
+   `lib/` (or `./lib/`, `../lib/`, `${...}/lib/`), `File(...)` / `Directory(...)` / `p.join(...)` given
+   `'lib'`. The source roots are `lib` plus the top-level directory of every file being mutated.
+   `import` / `export` / `part` lines are not reads.
 
-Defaults for this repository, found by grepping `test/` for tests that read `lib/` text and by the
-naming convention of the guard tests (`<!-- guard-patterns:edge -->` is read by a test that checks
-these globs against real file names):
+A suite file that is not in the export cannot be checked and counts as source-scanning. The rules are
+wide on purpose: a runtime suite wrongly taken for a scanner only loses kill credit, a scanner
+taken for runtime would inflate the score. On this repository (1004 suites) 129 are detected,
+among them all 62 that import the shared scanners and `test/ecg_tap_runtime_test.dart`.
+
+### The reviewed runtime allowlist
+
+`--runtime-allowlist <file>` lists tests that really run code although their suite scans source.
+One entry per line; `#` starts a comment line; blank lines are ignored:
+
+```
+# reviewed 2026-10-09: pumps the widget, the grep further down is a different test
+test/ecg_tap_runtime_test.dart::ecg tap runtime starts the session
+# a whole suite that only greps lib/ for a helper name but otherwise runs code
+test/some_runtime_test.dart
+```
+
+`suite` frees every test of that suite; `suite::full test name` frees that test only (the rest of the
+suite stays a guard). Matching is exact (no globs, no prefixes); it also overrides `--guard-pattern`.
+The report records the file's path and sha256, the number of entries, and entries that name a suite
+that is not in the export (a stale or mistyped line).
+
+### `--no-guards`
+
+An assertion for repositories without source scanners (`openstrap-analytics` reads only data
+fixtures). It is checked: if the detector finds any source-scanning suite the tool exits 64 and
+names some. It cannot be combined with `--guard-pattern` or `--runtime-allowlist`.
+
+The report (`meta.guards`, Markdown "Source-scanning suites") has the policy (`detected` or
+`no-guards-asserted`), patterns, scanner globs, source roots, how many suites are covered and how many
+are source-scanning (the list with reasons is in `results.json`), and the allowlist.
+
+File-name patterns for `--guard-pattern` that match edge's guard tests by convention
+(`<!-- guard-patterns:edge -->` is read by a test that checks these globs against real file names):
 
 <!-- guard-patterns:edge -->
 ```
@@ -96,15 +135,6 @@ test/guards/**
 no_*_test.dart
 ```
 <!-- /guard-patterns:edge -->
-
-These are file-level: a guard that lives inside a mostly-runtime test file is not caught, and
-a matched file loses all of its tests as kill credit (the safe direction: the score can only go
-down). Test files that use the shared source scanner but are not matched are listed with
-`grep -rlE "support/dart_source(_lexical)?\.dart" test | sort`; when mutating code those files
-cover, either pass `--tests` with the runtime tests you mean, or add the file to `--guard-pattern`.
-
-`openstrap-analytics` has no test that scans source text (its file reads are data fixtures), so
-audit it with `--no-guards`.
 
 ## Mutation operators (one documented rule each)
 
@@ -185,7 +215,9 @@ SIGINT and SIGTERM are caught before the export is created. They cancel a token 
 audit loop and every child run: no further mutant is written, the active process tree is stopped as
 above, the mutated file is restored and verified, and only then is the export removed (the signal
 never abandons work that is still running in the export). No results are written for an interrupted
-audit; the exit code is 130. Because the child is in its own session, the terminal's Ctrl-C reaches
+audit (the result files are written as `*.tmp` and renamed into place only if no signal has arrived;
+a signal anywhere, the removal of the export included, is exit 130); the signal handlers stay
+installed until the export is gone. Because the child is in its own session, the terminal's Ctrl-C reaches
 the tool only; a `kill -9` of the tool itself cannot clean up and leaves the children running.
 
 ## Safety
@@ -222,11 +254,13 @@ pinned commit carried.
 ## Report
 
 `results.json`: `meta` (tool version, repo, sha, `dependencies`, `dependenciesBeforeSetup`, command,
-`env`, `files`, `tests`, `guardPatterns`, `guardPolicy`, timeout, limits, `baseline`, times), `counts`
+`env`, `files`, `tests`, `guardPatterns`, `guardPolicy`, `guards`, timeout, limits, `baseline`, times), `counts`
 (every status, zero included), `score`, and `mutants`: per mutant id, file, line, column, operator,
 original and mutated text, `status`, `killingTests` (keys), `killers` (`test`, `kind`: `assertion` or
-`exception`), `guardTests`, `reruns` (`test`, `confirmed`, `result`: `failed-again` | `passed-alone` |
-`unresolved`, `detail`), `durationMs`, `detail`. `summary.md` has the same, with sections for Killed
+`exception` in the mutant run, `confirmedKind`: the same for the confirming rerun, null if none),
+`guardTests` (keys), `discounted` (`test`, `reasons`: failures not counted as kills and why), `reruns`
+(`test`, `confirmed`, `result`: `failed-again` | `passed-alone` | `unresolved`, `kind`: how the rerun
+failed, `detail`), `durationMs`, `detail`. `summary.md` has the same, with sections for Killed
 (each killing test with its kind), Survivors, Killed by guards only, Compile-invalid, Timeouts, Load
 failures, Unconfirmed, and a per-file table.
 

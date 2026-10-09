@@ -1,18 +1,29 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:crypto/crypto.dart';
 
 import 'audit_runner.dart';
 import 'applier.dart';
+import 'classifier.dart' show GuardMatcher;
 import 'command.dart';
 import 'config.dart';
 import 'export.dart';
 import 'generator.dart';
+import 'guards.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
 import 'report.dart';
 import 'selection.dart';
 
 const _toolVersion = '0.1.0';
+
+/// `--no-guards` while the export has source-scanning suites.
+class GuardPolicyError implements Exception {
+  GuardPolicyError(this.message);
+  final String message;
+}
 
 class _SetupFailed implements Exception {
   _SetupFailed(this.message);
@@ -60,6 +71,33 @@ Future<int> runCli(
         final before = await resolveDependencyConfig(export.path,
             repo: export.repo, allowedOverrides: config.allowOverrides);
 
+        // Source guards: found by reading the export, before anything runs.
+        final files = expandFileGlobs(export.path, config.files);
+        final suites = expandTestSelectors(export.path, config.tests);
+        final sourceRoots = {'lib', ...files.map((f) => f.split('/').first).where((d) => !d.endsWith('.dart'))}.toList();
+        final scannerGlobs = [...defaultScannerGlobs, ...config.scanners];
+        final detector =
+            SourceScanDetector(root: export.path, sourceRoots: sourceRoots, scannerGlobs: scannerGlobs);
+        final scanning = {
+          for (final s in suites)
+            if (detector.reasons(s).isNotEmpty) s: detector.reasons(s),
+        };
+        if (config.noGuards && scanning.isNotEmpty) {
+          final shown = scanning.entries.take(5).map((e) => '  ${e.key}: ${e.value.first}').join('\n');
+          throw GuardPolicyError('--no-guards is refused: ${scanning.length} of ${suites.length} suites '
+              'scan source text, e.g.\n$shown\nTheir failures can never be kills. Drop --no-guards '
+              '(they are detected automatically) and, for tests that really run code, list them in '
+              '--runtime-allowlist.');
+        }
+        RuntimeAllowlist allowlist = const RuntimeAllowlist.empty();
+        String? allowlistSha;
+        if (config.runtimeAllowlist != null) {
+          final bytes = File(config.runtimeAllowlist!).readAsBytesSync();
+          allowlist = RuntimeAllowlist.parse(utf8.decode(bytes, allowMalformed: true));
+          allowlistSha = sha256.convert(bytes).toString();
+        }
+        final guards = GuardMatcher(config.guardPatterns, detector: detector, allowlist: allowlist);
+
         final setup = config.setupCmd ?? defaultSetupCommand(export.path);
         if (setup.isNotEmpty) {
           final done = await processes.run(splitCommand(setup),
@@ -83,7 +121,7 @@ Future<int> runCli(
                 repo: export.repo, allowedOverrides: config.allowOverrides);
 
         final candidates = <Mutant>[];
-        for (final file in expandFileGlobs(export.path, config.files)) {
+        for (final file in files) {
           final source = File('${export.path}/$file').readAsStringSync();
           candidates.addAll(generateMutants(source, file: file));
         }
@@ -91,7 +129,7 @@ Future<int> runCli(
             maxMutants: config.maxMutants, sample: config.sample, seed: config.seed);
 
         final run = await AuditRunner(runner: processes)
-            .run(config: config, root: export.path, mutants: selected, cancel: cancel);
+            .run(config: config, root: export.path, mutants: selected, cancel: cancel, guards: guards);
         final results = AuditResults(
           AuditMeta(
             toolVersion: _toolVersion,
@@ -104,6 +142,21 @@ Future<int> runCli(
             tests: config.tests,
             guardPatterns: config.guardPatterns,
             guardPolicy: config.guardPolicy,
+            guards: GuardReport(
+              policy: config.guardPolicy,
+              patterns: config.guardPatterns,
+              scannerGlobs: scannerGlobs,
+              sourceRoots: sourceRoots,
+              effectiveSuites: suites,
+              sourceScanning: scanning,
+              allowlistPath: config.runtimeAllowlist,
+              allowlistSha256: allowlistSha,
+              allowlistEntries: allowlist.length,
+              allowlistUnknownSuites: [
+                for (final s in allowlist.suiteNames)
+                  if (!File('${export.path}/$s').existsSync()) s
+              ]..sort(),
+            ),
             timeoutSeconds: config.timeout.inSeconds,
             maxMutants: config.maxMutants,
             sample: config.sample,
@@ -126,6 +179,9 @@ Future<int> runCli(
         return 0;
       },
     );
+  } on GuardPolicyError catch (e) {
+    errSink.writeln(e.message);
+    return 64;
   } on PathOverrideRefused catch (e) {
     errSink.writeln(e.message);
     return 65;

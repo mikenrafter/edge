@@ -5,6 +5,7 @@ import 'package:path/path.dart' as p;
 
 import 'classifier.dart';
 import 'export.dart';
+import 'guards.dart';
 import 'mutant.dart';
 import 'process_runner.dart';
 
@@ -53,6 +54,7 @@ class AuditMeta {
     required this.candidateMutants,
     this.env = const {},
     this.guardPolicy = 'unspecified',
+    this.guards,
     this.dependenciesBeforeSetup,
   });
   final String toolVersion, repo, sha, testCmd;
@@ -76,6 +78,9 @@ class AuditMeta {
 
   /// `patterns`, `none-declared` or `subset` (see [AuditConfig.guardPolicy]).
   final String guardPolicy;
+
+  /// What was detected and what was allowlisted (null: not recorded).
+  final GuardReport? guards;
 }
 
 /// The whole result of one audit.
@@ -120,6 +125,7 @@ class AuditResults {
           'tests': meta.tests,
           'guardPatterns': meta.guardPatterns,
           'guardPolicy': meta.guardPolicy,
+          'guards': meta.guards?.toJson(),
           'timeoutSeconds': meta.timeoutSeconds,
           'maxMutants': meta.maxMutants,
           'sample': meta.sample,
@@ -145,6 +151,9 @@ class AuditResults {
                 for (final k in r.classification.killers) {'test': k.key, 'kind': k.kind.id, 'confirmedKind': k.confirmedKind?.id}
               ],
               'guardTests': r.classification.guardTests,
+              'discounted': [
+                for (final d in r.classification.discounted) {'test': d.key, 'reasons': d.reasons}
+              ],
               'reruns': [
                 for (final x in r.classification.reruns)
                   {
@@ -181,6 +190,7 @@ class AuditResults {
       ..writeln('- Files: ${meta.files.map((f) => '`$f`').join(', ')}')
       ..writeln('- Source guards: ${meta.guardPolicy}'
           '${meta.guardPatterns.isEmpty ? '' : ' (${meta.guardPatterns.map((g) => '`$g`').join(', ')})'}')
+      ..writeln(_guardLine(meta.guards))
       ..writeln('- Baseline: ${meta.baseline.passed ? 'passed' : 'FAILED'}, '
           '${meta.baseline.testsRun} tests, ${_seconds(meta.baseline.duration)}')
       ..writeln('- Mutants: ${meta.candidateMutants} candidates, ${results.length} run '
@@ -225,13 +235,15 @@ class AuditResults {
       for (final r in rows) {
         final m = r.mutant;
         final c = r.classification;
+        String why(DiscountedFailure d) => '${d.key} (${d.reasons.join('; ')})';
         final extra = killers
             ? [
                 for (final k in c.killers)
-                  '${k.key} (${k.kind.id}${k.confirmedKind == null ? '' : '; rerun: ${k.confirmedKind!.id}'})'
+                  '${k.key} (${k.kind.id}${k.confirmedKind == null ? '' : '; rerun: ${k.confirmedKind!.id}'})',
+                for (final d in c.discounted) 'discounted: ${why(d)}',
               ].join('<br>')
             : tests
-            ? c.guardTests.join('<br>')
+            ? c.discounted.map(why).join('<br>')
             : [
                 if (c.detail.isNotEmpty) c.detail,
                 for (final x in c.reruns)
@@ -270,6 +282,16 @@ class AuditResults {
     }
     return b.toString();
   }
+}
+
+String _guardLine(GuardReport? g) {
+  if (g == null) return '- Source-scanning suites: not recorded';
+  final allow = g.allowlistPath == null
+      ? 'no runtime allowlist'
+      : 'runtime allowlist `${g.allowlistPath}` (${g.allowlistEntries} entries, sha256 `${g.allowlistSha256}`)'
+          '${g.allowlistUnknownSuites.isEmpty ? '' : ', entries naming suites not in the export: ${g.allowlistUnknownSuites.map((s) => '`$s`').join(', ')}'}';
+  return '- Source-scanning suites: ${g.sourceScanning.length} of ${g.effectiveSuites.length} suites '
+      '(failures there are never kills; the list and the reasons are in results.json); $allow';
 }
 
 String _seconds(Duration d) => '${(d.inMilliseconds / 1000).toStringAsFixed(1)} s';

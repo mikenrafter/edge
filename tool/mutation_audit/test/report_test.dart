@@ -35,7 +35,7 @@ MutantResult result(Mutant m, MutantStatus s,
       classification: Classification(
           status: s,
           killers: killers ?? [for (final k in killing) KillingTest(k, FailureKind.assertion)],
-          guardTests: guard,
+          discounted: [for (final g in guard) DiscountedFailure(g, const ['matches guard pattern test/guards/**'])],
           reruns: reruns,
           detail: detail),
       duration: Duration(milliseconds: ms),
@@ -164,6 +164,7 @@ void main() {
           {'test': 'test/a_test.dart::lt boundary', 'kind': 'assertion', 'confirmedKind': null}
         ],
         'guardTests': <Object?>[],
+        'discounted': <Object?>[],
         'reruns': <Object?>[],
         'durationMs': 100,
         'detail': '',
@@ -184,6 +185,51 @@ void main() {
       ]);
       expect(ms[1]['killingTests'], ['test/a_test.dart::gt boundary', 'test/b_test.dart::gt other']);
       expect(ms[2]['killers'], isEmpty);
+    });
+
+    test('discounted failures are listed with their reasons', () {
+      final ms = (json['mutants'] as List).cast<Map<String, Object?>>();
+      expect(ms[3]['discounted'], [
+        {'test': 'test/guards/g_test.dart::no heavy calc', 'reasons': ['matches guard pattern test/guards/**']}
+      ]);
+      expect(ms[0]['discounted'], isEmpty);
+    });
+
+    test('meta carries what was detected and which allowlist was used', () {
+      final m = AuditResults(
+        AuditMeta(
+          toolVersion: '0.1.0', repo: '/r', sha: sha, dependencies: meta().dependencies,
+          testCmd: 'dart test', files: const ['lib/a.dart'], tests: const [], guardPatterns: const [],
+          timeoutSeconds: 1, maxMutants: null, sample: null, seed: null,
+          baseline: const BaselineSummary(passed: true, testsRun: 1, duration: Duration.zero),
+          startedAt: DateTime.utc(2026), finishedAt: DateTime.utc(2026), candidateMutants: 0,
+          guards: const GuardReport(
+            policy: 'detected',
+            patterns: ['test/guards/**'],
+            scannerGlobs: ['**/dart_source*.dart'],
+            sourceRoots: ['lib'],
+            effectiveSuites: ['test/a_test.dart', 'test/b_test.dart', 'test/c_test.dart'],
+            sourceScanning: {'test/b_test.dart': ['reads files under lib/']},
+            allowlistPath: 'review/runtime.txt',
+            allowlistSha256: 'ab',
+            allowlistEntries: 2,
+            allowlistUnknownSuites: ['test/gone_test.dart'],
+          ),
+        ),
+        const [],
+      );
+      final g = ((m.toJson()['meta'] as Map)['guards'] as Map).cast<String, Object?>();
+      expect(g['policy'], 'detected');
+      expect(g['effectiveSuites'], 3);
+      expect(g['sourceScanningSuites'], 1);
+      expect((g['sourceScanning'] as List).single, {'suite': 'test/b_test.dart', 'reasons': ['reads files under lib/']});
+      expect(g['allowlist'], {
+        'path': 'review/runtime.txt', 'sha256': 'ab', 'entries': 2, 'unknownSuites': ['test/gone_test.dart']
+      });
+      final md = m.renderMarkdown();
+      expect(md, contains('1 of 3 suites'));
+      expect(md, contains('review/runtime.txt'));
+      expect(md, contains('test/gone_test.dart'));
     });
 
     test('mutants keep the order they were given', () {
@@ -257,9 +303,26 @@ void main() {
       expect(killed, contains('test/b_test.dart::gt other (assertion; rerun: exception)'));
     });
 
+    test('a kill that also had discounted failures says so, with the reasons', () {
+      final r = AuditResults(meta(), [
+        MutantResult(
+          mutant: mutant(1, '<', '<='),
+          classification: Classification(
+            status: MutantStatus.killed,
+            killers: const [KillingTest('test/a_test.dart::real', FailureKind.assertion)],
+            discounted: const [DiscountedFailure('test/s_test.dart::greps', ['reads files under lib/'])],
+          ),
+          duration: Duration.zero,
+        ),
+      ]).renderMarkdown();
+      final killed = r.substring(r.indexOf('## Killed\n'), r.indexOf('## Survivors'));
+      expect(killed, contains('discounted: test/s_test.dart::greps (reads files under lib/)'));
+    });
+
     test('guard-only mutants are listed apart from kills and survivors', () {
       expect(md, contains('## Killed by guards only'));
       expect(md, contains('test/guards/g_test.dart::no heavy calc'));
+      expect(md, contains('matches guard pattern test/guards/**'), reason: 'the reason is shown');
     });
 
     test('compile-invalid, timeout and load-failure mutants have their own sections', () {

@@ -14,14 +14,11 @@ void main() {
   });
   tearDown(() => repo.deleteSync(recursive: true));
 
-  /// The required options, plus `--no-guards` unless [extra] already says how
-  /// source guards are classified (a whole-suite audit has to).
   List<String> required([List<String> extra = const []]) => [
         '--repo', repo.path,
         '--sha', 'abc1234',
         '--files', 'lib/**.dart',
         '--out', '/tmp/out',
-        if (!extra.any(const {'--no-guards', '--guard-pattern', '--tests'}.contains)) '--no-guards',
         ...extra,
       ];
 
@@ -45,45 +42,49 @@ void main() {
       expect(c.env, {'TZ': 'UTC'});
     });
 
-    group('source guards must be classified for a whole-suite audit', () {
+    group('source guards are detected, not declared', () {
       List<String> bare([List<String> extra = const []]) =>
           ['--repo', repo.path, '--sha', 's', '--files', 'lib/a.dart', '--out', '/o', ...extra];
 
-      test('no --tests, no --guard-pattern, no --no-guards: usage error that says what to pass', () {
-        expect(
-            () => parseAuditArgs(bare()),
-            throwsA(isA<UsageError>()
-                .having((e) => e.message, 'message', allOf(contains('--guard-pattern'), contains('--no-guards')))));
+      test('nothing to declare: a plain command line is valid, with or without --tests', () {
+        expect(parseAuditArgs(bare()).guardPolicy, 'detected');
+        expect(parseAuditArgs(bare(['--tests', 'test'])).guardPolicy, 'detected');
+        expect(parseAuditArgs(bare(['--tests', 'test/a_test.dart'])).guardPolicy, 'detected');
       });
 
-      test('--guard-pattern is enough', () {
+      test('--guard-pattern adds patterns on top of the detector', () {
         final c = parseAuditArgs(bare(['--guard-pattern', 'test/guards/**']));
         expect(c.guardPatterns, ['test/guards/**']);
         expect(c.noGuards, isFalse);
-        expect(c.guardPolicy, 'patterns');
+        expect(c.guardPolicy, 'detected');
       });
 
-      test('--no-guards is enough, and is recorded as such', () {
+      test('--no-guards is an assertion that the detector will check', () {
         final c = parseAuditArgs(bare(['--no-guards']));
         expect(c.noGuards, isTrue);
-        expect(c.guardPatterns, isEmpty);
-        expect(c.guardPolicy, 'none-declared');
+        expect(c.guardPolicy, 'no-guards-asserted');
       });
 
-      test('an explicit --tests subset needs no classification (the subset is the author\'s choice)', () {
-        final c = parseAuditArgs(bare(['--tests', 'test/a_test.dart']));
-        expect(c.guardPolicy, 'subset');
-        expect(c.noGuards, isFalse);
-      });
-
-      test('--no-guards together with --guard-pattern contradicts itself', () {
+      test('--no-guards contradicts --guard-pattern and --runtime-allowlist', () {
+        final list = File(p.join(repo.path, 'runtime.txt'))..writeAsStringSync('test/a_test.dart\n');
         expect(() => parseAuditArgs(bare(['--no-guards', '--guard-pattern', 'x'])), throwsA(isA<UsageError>()));
-        expect(() => parseAuditArgs(bare(['--no-guards', '--tests', 'test/a_test.dart', '--guard-pattern', 'x'])),
+        expect(() => parseAuditArgs(bare(['--no-guards', '--runtime-allowlist', list.path])),
             throwsA(isA<UsageError>()));
       });
 
-      test('--no-guards with --tests is accepted', () {
-        expect(parseAuditArgs(bare(['--no-guards', '--tests', 'test/a_test.dart'])).guardPolicy, 'none-declared');
+      test('--runtime-allowlist names a file that must exist', () {
+        final list = File(p.join(repo.path, 'runtime.txt'))..writeAsStringSync('test/a_test.dart\n');
+        expect(parseAuditArgs(bare(['--runtime-allowlist', list.path])).runtimeAllowlist, list.path);
+        expect(parseAuditArgs(bare()).runtimeAllowlist, isNull);
+        expect(() => parseAuditArgs(bare(['--runtime-allowlist', p.join(repo.path, 'nope.txt')])),
+            throwsA(isA<UsageError>().having((e) => e.message, 'message', contains('nope.txt'))));
+      });
+
+      test('--scanner repeats and takes every following word', () {
+        final c = parseAuditArgs(bare(['--scanner', 'test/support/a.dart', 'test/support/b.dart', '--timeout', '9']));
+        expect(c.scanners, ['test/support/a.dart', 'test/support/b.dart']);
+        expect(c.timeout, const Duration(seconds: 9));
+        expect(parseAuditArgs(bare()).scanners, isEmpty);
       });
 
       test('a --no-guards flag does not swallow the next word', () {
@@ -233,7 +234,7 @@ void main() {
     final u = auditUsage();
     for (final o in [
       '--repo', '--sha', '--files', '--test-cmd', '--tests', '--max-mutants', '--sample', '--seed',
-      '--timeout', '--guard-pattern', '--no-guards', '--allow-override', '--flaky-test', '--setup-cmd', '--env', '--out',
+      '--timeout', '--guard-pattern', '--no-guards', '--runtime-allowlist', '--scanner', '--allow-override', '--flaky-test', '--setup-cmd', '--env', '--out',
     ]) {
       expect(u, contains(o));
     }

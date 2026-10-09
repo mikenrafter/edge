@@ -9,6 +9,7 @@ export 'src/command.dart';
 export 'src/config.dart';
 export 'src/export.dart';
 export 'src/generator.dart';
+export 'src/guards.dart';
 export 'src/mutant.dart';
 export 'src/process_runner.dart';
 export 'src/report.dart';

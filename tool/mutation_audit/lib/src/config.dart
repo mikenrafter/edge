@@ -27,6 +27,8 @@ class AuditConfig {
     this.timeout = const Duration(seconds: 300),
     this.guardPatterns = const [],
     this.noGuards = false,
+    this.runtimeAllowlist,
+    this.scanners = const [],
     this.allowOverrides = const [],
     this.flakyTests = const [],
     this.setupCmd,
@@ -52,15 +54,17 @@ class AuditConfig {
   /// text, so none is classified as a guard.
   final bool noGuards;
 
-  /// How source guards were classified: `patterns` (`--guard-pattern`),
-  /// `none-declared` (`--no-guards`) or `subset` (an explicit `--tests` list,
-  /// nothing classified). Recorded in the report: a source guard that fails
-  /// is not runtime coverage, and a run that never classified any cannot say.
-  String get guardPolicy => noGuards
-      ? 'none-declared'
-      : guardPatterns.isNotEmpty
-          ? 'patterns'
-          : 'subset';
+  /// Path of the reviewed list of source-scanning-looking tests that run code.
+  final String? runtimeAllowlist;
+
+  /// Extra shared source scanner modules (globs, root-relative).
+  final List<String> scanners;
+
+  /// `detected`: suites that match a pattern, import a shared scanner or read
+  /// files under `lib/` are source guards, whatever `--tests` selected;
+  /// `no-guards-asserted`: `--no-guards`, accepted only because nothing was
+  /// detected. Recorded in the report.
+  String get guardPolicy => noGuards ? 'no-guards-asserted' : 'detected';
 
   /// Test keys (`suite::name`) known to be flaky: failures are re-run alone.
   final List<String> flakyTests;
@@ -142,10 +146,12 @@ AuditConfig parseAuditArgs(List<String> args) {
     throw UsageError('--no-guards contradicts --guard-pattern: pick one');
   }
   final tests = list('tests');
-  if (tests.isEmpty && guardPatterns.isEmpty && !noGuards) {
-    throw UsageError('a whole-suite audit must say which tests are source guards: pass '
-        '--guard-pattern <glob>... (their failures are not kills), or --no-guards to state that '
-        'no test scans source text, or limit the run with --tests');
+  final allowlist = r['runtime-allowlist'] as String?;
+  if (noGuards && allowlist != null) {
+    throw UsageError('--no-guards contradicts --runtime-allowlist: pick one');
+  }
+  if (allowlist != null && !File(allowlist).existsSync()) {
+    throw UsageError('--runtime-allowlist $allowlist is not a file');
   }
   return AuditConfig(
     repo: repo,
@@ -160,6 +166,8 @@ AuditConfig parseAuditArgs(List<String> args) {
     timeout: Duration(seconds: number('timeout', min: 1) ?? 300),
     guardPatterns: guardPatterns,
     noGuards: noGuards,
+    runtimeAllowlist: allowlist,
+    scanners: list('scanner'),
     allowOverrides: list('allow-override'),
     flakyTests: r['flaky-test'] as List<String>,
     setupCmd: r['setup-cmd'] as String?,
@@ -183,7 +191,12 @@ ArgParser _parser() => ArgParser()
       splitCommas: false, help: 'Globs of source-guard tests; their failures are not kills.')
   ..addFlag('no-guards',
       negatable: false,
-      help: 'State that no test scans source text (needed for a whole-suite audit without --guard-pattern).')
+      help: 'Assert that no suite scans source text (checked against the export; refused if one does).')
+  ..addOption('runtime-allowlist',
+      help: 'File of reviewed tests that run code although their suite scans source: '
+          'one "suite" or "suite::full test name" per line.')
+  ..addMultiOption('scanner',
+      splitCommas: false, help: 'Extra shared source scanner modules (globs, repo-relative).')
   ..addMultiOption('allow-override',
       splitCommas: false, help: 'A path override that may stay (the audited sibling).')
   ..addMultiOption('flaky-test', splitCommas: false, help: 'A test key suite::name to re-run when it fails.')
@@ -193,7 +206,9 @@ ArgParser _parser() => ArgParser()
 
 /// `--files a b c` means `--files a --files b --files c`: the list options take
 /// every following word up to the next option.
-const _variadic = {'--files', '--tests', '--guard-pattern', '--allow-override', '--flaky-test', '--env'};
+const _variadic = {
+  '--files', '--tests', '--guard-pattern', '--scanner', '--allow-override', '--flaky-test', '--env',
+};
 
 List<String> _spreadVariadic(List<String> args) {
   final out = <String>[];

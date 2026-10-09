@@ -4,6 +4,7 @@ import 'package:mutation_audit/mutation_audit.dart';
 import 'package:test/test.dart';
 
 import 'support/events.dart';
+import 'support/git_fixture.dart';
 
 const suite = 'test/a_test.dart';
 
@@ -426,6 +427,81 @@ void main() {
           flaky: {'test/guards/x_guard_test.dart::g'},
           rerun: (t) async => passesAlone(t));
       expect(c.status, MutantStatus.survived);
+    });
+  });
+
+  group('source-scanning suites never produce kills', () {
+    late Directory repo;
+    setUp(() {
+      repo = scratch('mutaudit_cls_');
+      for (final e in {
+        'lib/a.dart': 'int a = 1;\n',
+        'test/scan_test.dart': "import 'dart:io';\nvoid main() { File('lib/a.dart').readAsStringSync(); }\n",
+        'test/runtime_test.dart': "import 'package:test/test.dart';\nvoid main() {}\n",
+      }.entries) {
+        File('${repo.path}/${e.key}')
+          ..createSync(recursive: true)
+          ..writeAsStringSync(e.value);
+      }
+    });
+    tearDown(() => repo.deleteSync(recursive: true));
+
+    GuardMatcher guards({String allowlist = ''}) => GuardMatcher(const [],
+        detector: SourceScanDetector(root: repo.path), allowlist: RuntimeAllowlist.parse(allowlist));
+
+    test('a failure in a suite that reads lib/ is guard-only, with the reason recorded', () async {
+      final s = StreamBuilder().loaded('test/scan_test.dart').fail('test/scan_test.dart', 'wiring').done(success: false);
+      final c = await classify(s, exitCode: 1, guards: guards());
+      expect(c.status, MutantStatus.killedByGuardOnly);
+      expect(c.killingTests, isEmpty);
+      expect(c.guardTests, ['test/scan_test.dart::wiring']);
+      expect(c.discounted.single.reasons.join(' '), contains('reads files under lib'));
+    });
+
+    test('the same failure counts once the reviewed allowlist says the test runs code', () async {
+      final s = StreamBuilder().loaded('test/scan_test.dart').fail('test/scan_test.dart', 'wiring').done(success: false);
+      final c = await classify(s, exitCode: 1, guards: guards(allowlist: 'test/scan_test.dart::wiring'));
+      expect(c.status, MutantStatus.killed);
+      expect(c.killingTests, ['test/scan_test.dart::wiring']);
+      expect(c.discounted, isEmpty);
+    });
+
+    test('a per-test entry frees only that test: its sibling stays discounted', () async {
+      final s = StreamBuilder()
+          .loaded('test/scan_test.dart')
+          .fail('test/scan_test.dart', 'wiring')
+          .fail('test/scan_test.dart', 'behaviour')
+          .done(success: false);
+      final c = await classify(s, exitCode: 1, guards: guards(allowlist: 'test/scan_test.dart::behaviour'));
+      expect(c.status, MutantStatus.killed);
+      expect(c.killingTests, ['test/scan_test.dart::behaviour']);
+      expect(c.guardTests, ['test/scan_test.dart::wiring']);
+    });
+
+    test('runtime and scanning failures together: the runtime one kills, the scanning one is listed as discounted', () async {
+      final s = StreamBuilder()
+          .loaded('x')
+          .fail('test/scan_test.dart', 'wiring')
+          .fail('test/runtime_test.dart', 'real')
+          .done(success: false);
+      final c = await classify(s, exitCode: 1, guards: guards());
+      expect(c.status, MutantStatus.killed);
+      expect(c.killingTests, ['test/runtime_test.dart::real']);
+      expect(c.guardTests, ['test/scan_test.dart::wiring']);
+    });
+
+    test('a suite that is not in the export is discounted too: it cannot be checked', () async {
+      final s = StreamBuilder().loaded('x').fail('test/ghost_test.dart', 'who knows').done(success: false);
+      final c = await classify(s, exitCode: 1, guards: guards());
+      expect(c.status, MutantStatus.killedByGuardOnly);
+      expect(c.discounted.single.reasons.single, contains('cannot be checked'));
+    });
+
+    test('absolute suite paths from the reporter are checked after being made relative', () async {
+      final abs = '${repo.path}/test/scan_test.dart';
+      final s = StreamBuilder().loaded(abs).fail(abs, 'wiring').done(success: false);
+      final c = await classifyRun(outcomeOf(s, exitCode: 1), guards: guards(), root: repo.path);
+      expect(c.status, MutantStatus.killedByGuardOnly);
     });
   });
 
