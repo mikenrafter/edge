@@ -67,7 +67,7 @@ void main() {
     final plain = await runner.run(testCmd, workingDirectory: pkg.path, timeout: const Duration(minutes: 2));
     expect(parseReporterStream(plain.stdoutLines, root: pkg.path).doneSuccess, isTrue, reason: plain.stderr);
     final afterPlain = tree(pkg.path);
-    final sandbox = Sandbox.discover(pkg.path);
+    final sandbox = Sandbox.discover(pkg.path, command: testCmd);
     final boxed = SandboxedProcessRunner(runner, sandbox);
     final inside = await boxed.run(testCmd, workingDirectory: pkg.path, timeout: const Duration(minutes: 2));
     final parsed = parseReporterStream(inside.stdoutLines, root: pkg.path);
@@ -80,23 +80,32 @@ void main() {
     expect(before, isNotEmpty);
     // ignore: avoid_print
     print('flutter test, one file: unsandboxed ${plain.elapsed.inMilliseconds} ms, sandboxed ${inside.elapsed.inMilliseconds} ms; '
-        'read-only under HOME: ${sandbox.readOnly}');
+        'read-only under HOME: ${sandbox.binds}');
     // The JSON stream is clean: the first-run banner of a fresh HOME is suppressed.
     expect(inside.stdoutLines.where((l) => !l.startsWith('{')), isEmpty);
   });
 
-  test('the pub cache has to be bound back: without it the same run cannot load its test', () async {
+  test('the pub cache has to be bound: without it the same run cannot load its test', () async {
     if (skip != null) return;
-    final bare = Sandbox(exportPath: pkg.path, home: Sandbox.discover(pkg.path).home, readOnly: const []);
+    final full = Sandbox.discover(pkg.path, command: testCmd);
     final home = Platform.environment['HOME'];
     final cache = Platform.environment['PUB_CACHE'] ?? (home == null ? null : '$home/.pub-cache');
-    if (cache == null || !p.isWithin(bare.home, cache)) {
-      markTestSkipped('the pub cache is outside HOME here: nothing hides it');
+    if (cache == null || !full.binds.contains(cache)) {
+      markTestSkipped('the pub cache is not a bind of its own here: nothing hides it');
       return;
     }
+    final bare = Sandbox(
+        exportPath: pkg.path,
+        home: full.home,
+        binds: [for (final b in full.binds) if (b != cache) b],
+        symlinks: full.symlinks);
+    // Without the cache flutter reports the missing package files; it may then
+    // linger under load, so the run is bounded and judged by what it printed.
     final o = await SandboxedProcessRunner(runner, bare)
-        .run(testCmd, workingDirectory: pkg.path, timeout: const Duration(minutes: 2));
+        .run(testCmd, workingDirectory: pkg.path, timeout: const Duration(seconds: 45));
     final parsed = parseReporterStream(o.stdoutLines, root: pkg.path);
-    expect(parsed.loadErrors, isNotEmpty);
+    expect(parsed.sawDone && parsed.doneSuccess, isFalse, reason: 'the test cannot pass without the pub cache');
+    expect('${o.stdoutLines.join('\n')}\n${o.stderr}', contains('.pub-cache'),
+        reason: 'it names the files it could not read\nexit ${o.exitCode}');
   });
 }

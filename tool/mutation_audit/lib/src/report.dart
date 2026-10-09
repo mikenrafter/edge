@@ -41,14 +41,15 @@ class BaselineSummary {
 
 /// How the test runs were isolated.
 class IsolationInfo {
-  const IsolationInfo({required this.mode, this.network = false, this.readOnlyUnderHome = const [], this.bwrap});
+  const IsolationInfo({required this.mode, this.network = false, this.binds = const [], this.symlinks = const {}, this.bwrap});
 
   /// `--no-sandbox`: nothing separates one run from the next, so every kill is
   /// `unisolated` (something an earlier run left could have caused it).
   const IsolationInfo.none()
       : mode = 'none',
         network = true,
-        readOnlyUnderHome = const [],
+        binds = const [],
+        symlinks = const {},
         bwrap = null;
 
   /// `bubblewrap` or `none`.
@@ -57,8 +58,12 @@ class IsolationInfo {
   /// The runs could reach the network.
   final bool network;
 
-  /// Host paths under `$HOME` the toolchain was given read-only.
-  final List<String> readOnlyUnderHome;
+  /// The host paths bound into the sandbox, read-only (the whole root: nothing
+  /// else of the host is there).
+  final List<String> binds;
+
+  /// Symbolic links created in the sandbox (link -> target).
+  final Map<String, String> symlinks;
 
   /// `bwrap --version`, when known.
   final String? bwrap;
@@ -68,7 +73,8 @@ class IsolationInfo {
   Map<String, Object?> toJson() => {
         'mode': mode,
         'network': network,
-        'readOnlyUnderHome': readOnlyUnderHome,
+        'binds': binds,
+        'symlinks': symlinks,
         'bwrap': bwrap,
       };
 }
@@ -341,8 +347,8 @@ class AuditResults {
 String _isolationLine(IsolationInfo i) => i.sandboxed
     ? '- Isolation: ${i.mode}${i.bwrap == null ? '' : ' (${i.bwrap})'}: every run in its own sandbox (read-only host, '
         'overlay export discarded after the run, fresh /tmp and HOME, own pid namespace'
-        '${i.network ? '' : ', no network'}); read-only under HOME: '
-        '${i.readOnlyUnderHome.isEmpty ? 'nothing' : i.readOnlyUnderHome.map((c) => '`$c`').join(', ')}'
+        '${i.network ? '' : ', no network'}); read-only binds: '
+        '${i.binds.isEmpty ? 'nothing' : i.binds.map((c) => '`$c`').join(', ')}'
     : '- Isolation: NONE (--no-sandbox): nothing separates one run from the next, so every kill is unisolated '
         '(an earlier run could have left the state that made a test fail)';
 

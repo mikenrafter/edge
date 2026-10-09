@@ -85,7 +85,7 @@ Future<int> runCli(
   String? bwrapVersion;
   if (!config.noSandbox) {
     try {
-      bwrapVersion = await (sandboxProbe ?? () => Sandbox.probe())();
+      bwrapVersion = await (sandboxProbe ?? () => Sandbox.probe(command: splitCommand(config.testCmd)))();
     } on SandboxUnavailable catch (e) {
       errSink.writeln(e.message);
       return 70;
@@ -184,7 +184,7 @@ Future<int> runCli(
         // toolchain must read are known.
         final Sandbox? sandbox = config.noSandbox
             ? null
-            : Sandbox.discover(export.path, environment: sandboxEnvironment, extraReadOnly: [
+            : Sandbox.discover(export.path, environment: sandboxEnvironment, command: splitCommand(config.testCmd), extraReadOnly: [
                 for (final o in deps.pathOverrides)
                   if (o.resolvedPath != null) o.resolvedPath!,
                 ...config.sandboxReadOnly,
@@ -244,7 +244,8 @@ Future<int> runCli(
                 : IsolationInfo(
                     mode: 'bubblewrap',
                     network: !sandbox.unshareNet,
-                    readOnlyUnderHome: sandbox.readOnly,
+                    binds: sandbox.binds,
+                    symlinks: sandbox.symlinks,
                     bwrap: bwrapVersion),
           ),
           run.results,

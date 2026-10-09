@@ -135,7 +135,7 @@ void main() {
       final argv = runner.calls.last.argv;
       expect(argv.sublist(argv.indexOf(extra.path) - 1, argv.indexOf(extra.path) + 2), ['--ro-bind', extra.path, extra.path]);
       expect(argv, contains(pubCache.path));
-      expect(((results()['meta'] as Map)['isolation'] as Map)['readOnlyUnderHome'], containsAll([extra.path, pubCache.path]));
+      expect(((results()['meta'] as Map)['isolation'] as Map)['binds'], containsAll([extra.path, pubCache.path]));
     });
   });
 

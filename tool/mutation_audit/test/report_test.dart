@@ -206,7 +206,7 @@ void main() {
             startedAt: DateTime.utc(2026),
             finishedAt: DateTime.utc(2026),
             candidateMutants: 1,
-            isolation: const IsolationInfo(mode: 'bubblewrap', readOnlyUnderHome: ['/home/dev/.pub-cache'], bwrap: 'bubblewrap 0.12.0'),
+            isolation: const IsolationInfo(mode: 'bubblewrap', binds: ['/nix/store', '/home/dev/.pub-cache'], symlinks: {'/lib64': 'usr/lib64'}, bwrap: 'bubblewrap 0.12.0'),
           ),
           [
             MutantResult(
@@ -220,7 +220,8 @@ void main() {
       expect(isolation, {
         'mode': 'bubblewrap',
         'network': false,
-        'readOnlyUnderHome': ['/home/dev/.pub-cache'],
+        'binds': ['/nix/store', '/home/dev/.pub-cache'],
+        'symlinks': {'/lib64': 'usr/lib64'},
         'bwrap': 'bubblewrap 0.12.0',
       });
       expect(((j['mutants'] as List).single as Map)['unisolated'], isFalse);

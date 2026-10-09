@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -20,17 +21,21 @@ class SandboxUnavailable implements Exception {
 /// Why bubblewrap and not "put the files back afterwards": a test run can
 /// leave state in places no restore knows about (a cache directory, `$HOME`,
 /// a fixed path under `/tmp`, a socket, a process). Here the run never has a
-/// writable view of any of them:
+/// writable view of any of them, and it does not even see most of the host:
 ///
-/// - the whole host is `--ro-bind / /`: the developer checkout, the out
-///   directory, the sibling repositories and the SDKs cannot be written;
+/// - the root is a MINIMAL, read-only tmpfs. The host is not bound (`--ro-bind
+///   / /` would leave every pathname Unix socket on it connectable: a read-only
+///   mount does not stop `connect(2)`, so a run could change a host service's
+///   state and a later run observe it). Only [binds] are mounted, read-only,
+///   and [symlinks] recreated: the Nix store (not `/nix`: the daemon socket is
+///   in `/nix/var`), `/usr`, `/bin` and friends, a few `/etc` files, the
+///   toolchain (pub cache, SDK, `PATH` entries) and whatever [discover] was
+///   told to add;
 /// - the export is an overlay (`--overlay-src` + `--tmp-overlay`): the run
 ///   sees the export with the mutant already applied on the host, and every
 ///   write it makes lands in memory and disappears with the sandbox;
-/// - `/tmp`, `/var/tmp`, `$HOME` and the desktop session's runtime directory
-///   are fresh tmpfs mounts; only what the toolchain must READ under `$HOME`
-///   (the pub cache, SDKs on `PATH`, packages the package config names) is
-///   bound back, read-only;
+/// - `/tmp`, `/var/tmp`, `/run`, `/dev/shm` and `$HOME` are fresh tmpfs
+///   mounts (`/run` is where the desktop session's sockets live);
 /// - new PID namespace: when the sandbox's init exits the kernel kills every
 ///   process left in it, a TERM-ignoring grandchild included;
 /// - new IPC and network namespaces (loopback only: `flutter_tester` talks to
@@ -40,27 +45,28 @@ class Sandbox {
     this.bwrap = 'bwrap',
     required this.exportPath,
     required this.home,
-    this.readOnly = const [],
-    this.runtimeDir,
+    this.binds = const [],
+    this.symlinks = const {},
     this.unshareNet = true,
-    this.tmpDirs = const ['/tmp', '/var/tmp'],
+    this.tmpDirs = const ['/tmp', '/var/tmp', '/run'],
   });
 
   final String bwrap;
   final String exportPath;
 
-  /// `$HOME` inside the sandbox: an empty tmpfs (plus [readOnly] paths under it).
+  /// `$HOME` inside the sandbox: an empty tmpfs (plus [binds] under it).
   final String home;
 
-  /// Paths the toolchain must read. Only those under [home] are bound (the
-  /// rest of the host is visible read-only anyway); the order does not matter.
-  final List<String> readOnly;
+  /// Host paths bound read-only at the same path. The only part of the host
+  /// the run can see besides the export.
+  final List<String> binds;
 
-  /// Where the desktop session keeps its sockets; hidden when set.
-  final String? runtimeDir;
+  /// Symbolic links created in the sandbox: link -> target (as `readlink`
+  /// shows it).
+  final Map<String, String> symlinks;
   final bool unshareNet;
 
-  /// Directories replaced by an empty tmpfs (they must exist on the host).
+  /// Directories replaced by an empty tmpfs.
   final List<String> tmpDirs;
 
   /// Where the XDG base directories go: inside the `/tmp` tmpfs.
@@ -68,18 +74,16 @@ class Sandbox {
 
   /// The argv that runs [argv] in the sandbox, in [workingDirectory].
   List<String> wrap(List<String> argv, {required String workingDirectory}) {
-    final binds = _homeBinds();
     final xdg = {
       'XDG_CACHE_HOME': '$_xdgRoot/cache',
       'XDG_CONFIG_HOME': '$_xdgRoot/config',
       'XDG_DATA_HOME': '$_xdgRoot/data',
       'XDG_STATE_HOME': '$_xdgRoot/state',
+      'XDG_RUNTIME_DIR': '$_xdgRoot/runtime',
     };
-    final runtime = runtimeDir;
     final env = <String, String>{
       'HOME': home,
       ...xdg,
-      if (runtime != null) 'XDG_RUNTIME_DIR': runtime,
       'TMPDIR': '/tmp',
       'TMP': '/tmp',
       'TEMP': '/tmp',
@@ -89,7 +93,6 @@ class Sandbox {
     };
     return [
       bwrap,
-      '--ro-bind', '/', '/',
       '--dev', '/dev',
       '--proc', '/proc',
       '--unshare-pid',
@@ -98,13 +101,18 @@ class Sandbox {
       '--die-with-parent',
       '--new-session',
       for (final t in tmpDirs) ...['--tmpfs', t],
+      '--tmpfs', '/dev/shm',
       '--tmpfs', home,
-      if (runtime != null) ...['--tmpfs', runtime],
-      for (final b in binds) ...['--ro-bind', b, b],
+      // After the tmpfs mounts: a bind or a link under /tmp, /run or HOME
+      // needs the directory that replaced the host's.
+      for (final b in _binds()) ...['--ro-bind', b, b],
+      for (final l in symlinks.entries) ...['--symlink', l.value, l.key],
       for (final d in xdg.values) ...['--dir', d],
-      // Last among the mounts: the export may live under /tmp or HOME, which
-      // the tmpfs mounts above replaced.
+      // The export may live under /tmp or HOME, which the tmpfs mounts above
+      // replaced: it is mounted after them.
       '--overlay-src', exportPath, '--tmp-overlay', exportPath,
+      // The new root is a tmpfs of ours: nothing may be created in it.
+      '--remount-ro', '/',
       for (final e in env.entries) ...['--setenv', e.key, e.value],
       '--chdir', workingDirectory,
       '--',
@@ -112,12 +120,15 @@ class Sandbox {
     ];
   }
 
-  /// [readOnly] under [home], normalised, without duplicates and without paths
-  /// inside another bound path, parents first.
-  List<String> _homeBinds() => pruneNested([
-        for (final r in readOnly)
-          if (p.isAbsolute(r) && p.isWithin(p.normalize(home), p.normalize(r))) p.normalize(r),
-      ]);
+  /// [binds] normalised, without duplicates, without paths inside another
+  /// bound path, never `/` or `$HOME` (or what contains it), shallowest first.
+  List<String> _binds() {
+    final h = p.normalize(home);
+    return pruneNested([
+      for (final b in binds)
+        if (p.isAbsolute(b) && p.normalize(b) != '/' && p.normalize(b) != h && !p.isWithin(p.normalize(b), h)) p.normalize(b),
+    ]);
+  }
 
   /// [paths] without duplicates and without any path inside another one,
   /// shallowest first.
@@ -132,46 +143,104 @@ class Sandbox {
     return kept;
   }
 
-  /// A sandbox for [exportPath] with what the toolchain on this machine needs
-  /// to read under `$HOME`: the pub cache (`PUB_CACHE`, else `~/.pub-cache`),
+  /// Directories of the base system a dynamically linked program or a script
+  /// (`#!/bin/sh`, `#!/usr/bin/env`) needs: bound when they are directories,
+  /// recreated when they are links (a merged `/bin`, `/lib64`). The Nix store
+  /// is bound, but not `/nix`.
+  static const systemRoots = ['/nix/store', '/usr', '/bin', '/sbin', '/lib', '/lib32', '/lib64', '/libx32'];
+
+  /// The only `/etc` entries bound: who the user is, how names resolve, the
+  /// time zone and the dynamic linker's cache.
+  static const etcEntries = [
+    'passwd', 'group', 'nsswitch.conf', 'hosts', 'localtime', 'os-release', 'ld.so.cache', 'ld.so.conf', 'ld.so.conf.d',
+  ];
+
+  /// A sandbox for [exportPath] with a minimal root: [systemRoots], [etcEntries]
+  /// and what the toolchain on this machine needs, found from [environment]
+  /// (default: the process's): the pub cache (`PUB_CACHE`, else `~/.pub-cache`),
   /// `FLUTTER_ROOT`, every `PATH` entry, the roots the export's package config
-  /// names, and [extraReadOnly]. [exists] answers whether a host path exists
-  /// (a seam for tests; default: the file system); what is missing is left out
-  /// because bubblewrap cannot mount it.
+  /// names, the SDK of the executable of [command] when it is outside the
+  /// store, and [extraReadOnly]. A `PATH` entry that is only a link into
+  /// something bound (`/run/current-system/sw/bin`) is recreated as a link.
+  /// [host] answers what exists on the machine (a seam for tests); what is
+  /// missing is left out because bubblewrap cannot mount it.
   static Sandbox discover(
     String exportPath, {
     Map<String, String>? environment,
     List<String> extraReadOnly = const [],
+    List<String> command = const [],
     String bwrap = 'bwrap',
-    bool Function(String path)? exists,
+    HostPaths? host,
   }) {
     final env = environment ?? Platform.environment;
-    bool there(String path) =>
-        exists != null ? exists(path) : FileSystemEntity.typeSync(path) != FileSystemEntityType.notFound;
+    final h = host ?? const SystemHostPaths();
     final configured = env['HOME'];
-    final home = configured != null && configured.isNotEmpty && p.isAbsolute(configured) && there(configured)
-        ? p.normalize(configured)
-        : '/tmp/home';
+    final home = configured != null && configured.isNotEmpty && p.isAbsolute(configured) ? p.normalize(configured) : '/tmp/home';
+
+    final binds = <String>[];
+    final symlinks = <String, String>{};
+    final roots = <String>[];
+    for (final d in systemRoots) {
+      final target = h.linkTarget(d);
+      if (target != null) {
+        symlinks[d] = target;
+        roots.add(d);
+      } else if (h.exists(d)) {
+        binds.add(d);
+        roots.add(d);
+      }
+    }
+    for (final f in etcEntries) {
+      if (h.exists('/etc/$f')) binds.add('/etc/$f');
+    }
+    bool covered(String path) => roots.any((r) => path == r || p.isWithin(r, path));
+    // Runtime state, never a toolchain.
+    bool state(String path) => const ['/run', '/proc', '/sys', '/dev'].any((r) => path == r || p.isWithin(r, path));
+
+    void need(String path) {
+      if (!p.isAbsolute(path)) return;
+      final given = p.normalize(path);
+      if (!h.exists(given)) return;
+      final real = h.realpath(given);
+      if (real == null || real == '/' || real == home || p.isWithin(real, home)) return;
+      if (covered(real)) {
+        if (given != real && !covered(given)) symlinks[given] = real;
+        return;
+      }
+      if (state(real)) return;
+      binds.add(real);
+      if (given != real && !covered(given)) symlinks[given] = real;
+    }
+
     final cache = env['PUB_CACHE'];
-    final candidates = <String>[
-      if (cache != null && cache.isNotEmpty) cache else p.join(home, '.pub-cache'),
-      if ((env['FLUTTER_ROOT'] ?? '').isNotEmpty) env['FLUTTER_ROOT']!,
-      for (final e in (env['PATH'] ?? '').split(':')) if (e.isNotEmpty) e,
-      ...packageRoots(exportPath),
-      ...extraReadOnly,
-    ];
-    final runtime = env['XDG_RUNTIME_DIR'];
-    return Sandbox(
-      bwrap: bwrap,
-      exportPath: exportPath,
-      home: home,
-      readOnly: pruneNested([
-        for (final c in candidates)
-          if (p.isAbsolute(c) && p.isWithin(home, p.normalize(c)) && there(c)) p.normalize(c)
-      ]),
-      runtimeDir: runtime != null && runtime.isNotEmpty && p.isAbsolute(runtime) && there(runtime) ? runtime : null,
-      tmpDirs: [for (final t in const ['/tmp', '/var/tmp']) if (t == '/tmp' || there(t)) t],
-    );
+    need(cache != null && cache.isNotEmpty ? cache : p.join(home, '.pub-cache'));
+    final flutterRoot = env['FLUTTER_ROOT'];
+    if (flutterRoot != null && flutterRoot.isNotEmpty) need(flutterRoot);
+    final path = (env['PATH'] ?? '').split(':').where((e) => e.isNotEmpty).toList();
+    for (final e in path) {
+      need(e);
+    }
+    for (final r in packageRoots(exportPath)) {
+      need(r);
+    }
+    for (final r in extraReadOnly) {
+      need(r);
+    }
+    if (command.isNotEmpty) {
+      final exe = command.first;
+      final candidates = exe.contains('/') ? [exe] : [for (final e in path) p.join(e, exe)];
+      for (final c in candidates) {
+        if (!p.isAbsolute(c) || !h.exists(c)) continue;
+        final real = h.realpath(c);
+        if (real != null && !covered(real)) {
+          // The SDK around bin/flutter, bin/dart: its scripts read their siblings.
+          final dir = p.dirname(real);
+          need(p.basename(dir) == 'bin' ? p.dirname(dir) : dir);
+        }
+        break;
+      }
+    }
+    return Sandbox(bwrap: bwrap, exportPath: exportPath, home: home, binds: pruneNested(binds), symlinks: symlinks);
   }
 
   /// Package roots outside [exportPath] named by `.dart_tool/package_config.json`
@@ -211,7 +280,7 @@ class Sandbox {
   /// is installed, user namespaces are allowed, and a write to the export, to
   /// `/tmp` and to `$HOME` is gone on the host afterwards. Throws
   /// [SandboxUnavailable] with the reason otherwise. Returns `bwrap --version`.
-  static Future<String> probe({String bwrap = 'bwrap', Map<String, String>? environment}) async {
+  static Future<String> probe({String bwrap = 'bwrap', Map<String, String>? environment, List<String> command = const []}) async {
     final String version;
     try {
       final v = await Process.run(bwrap, ['--version']);
@@ -225,7 +294,7 @@ class Sandbox {
     final mark = p.basename(dir.path);
     try {
       final export = dir.resolveSymbolicLinksSync();
-      final sandbox = discover(export, environment: environment, bwrap: bwrap);
+      final sandbox = discover(export, environment: environment, bwrap: bwrap, command: command);
       final script = 'echo x > "\$PWD/probe-export" && echo x > "/tmp/$mark" && echo x > "\$HOME/$mark" && echo ok';
       final ProcessResult r;
       try {
@@ -247,15 +316,80 @@ class Sandbox {
         File('/tmp/$mark').deleteSync(recursive: false);
         throw SandboxUnavailable('the probe sandbox let a write through to ${leaked.join(', ')}; refusing to rely on it');
       }
+      if (command.isNotEmpty) await _probeToolchain(sandbox, export, command.first);
       return version;
     } finally {
       dir.deleteSync(recursive: true);
     }
   }
 
+  /// The test command's program must run in the minimal root: `--version` for
+  /// `flutter` and `dart`, else it must at least be found.
+  static Future<void> _probeToolchain(Sandbox sandbox, String export, String program) async {
+    final name = p.basename(program);
+    final toolchain = name == 'flutter' || name == 'dart';
+    final argv = sandbox.wrap(
+        toolchain ? [program, '--version'] : ['sh', '-c', 'command -v "\$0" >/dev/null', program],
+        workingDirectory: export);
+    final ProcessResult r;
+    try {
+      r = await Process.run(argv.first, argv.sublist(1), workingDirectory: export)
+          .timeout(const Duration(seconds: 120));
+    } on ProcessException catch (e) {
+      throw SandboxUnavailable('the probe sandbox could not be started: ${e.message}');
+    } on TimeoutException {
+      throw SandboxUnavailable('"$program --version" did not finish in the probe sandbox');
+    }
+    if (r.exitCode != 0) {
+      throw SandboxUnavailable('"$program"${toolchain ? ' --version' : ''} does not run in the minimal sandbox root '
+          '(exit ${r.exitCode}: ${_first(r.stderr)}); what it needs from the host must be on PATH, in FLUTTER_ROOT '
+          'or listed with --sandbox-ro. The binds were: ${sandbox.binds.join(', ')}');
+    }
+  }
+
   static String _first(Object? text) {
     final t = '$text'.trim();
     return t.isEmpty ? 'no message' : t.split('\n').first;
+  }
+}
+
+/// What the host looks like to [Sandbox.discover]: a seam so the bind list can
+/// be tested without a particular machine.
+abstract class HostPaths {
+  bool exists(String path);
+
+  /// The path with every symbolic link resolved, or null when it does not exist.
+  String? realpath(String path);
+
+  /// Where [path] points when it is a symbolic link itself, else null.
+  String? linkTarget(String path);
+}
+
+/// The machine this process runs on.
+class SystemHostPaths implements HostPaths {
+  const SystemHostPaths();
+
+  @override
+  bool exists(String path) =>
+      FileSystemEntity.typeSync(path) != FileSystemEntityType.notFound || FileSystemEntity.isLinkSync(path);
+
+  @override
+  String? realpath(String path) {
+    try {
+      return File(path).resolveSymbolicLinksSync();
+    } on FileSystemException {
+      return null;
+    }
+  }
+
+  @override
+  String? linkTarget(String path) {
+    if (!FileSystemEntity.isLinkSync(path)) return null;
+    try {
+      return Link(path).targetSync();
+    } on FileSystemException {
+      return null;
+    }
   }
 }
 

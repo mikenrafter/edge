@@ -188,6 +188,119 @@ echo looked
     });
   }, skip: skip);
 
+  group('the root is minimal', () {
+    test('the sandbox sees only what was bound: the root, /etc, /nix, /run, /dev/shm and HOME hold nothing else', () async {
+      final sb = Sandbox.discover(root);
+      final o = await sh(
+          SandboxedProcessRunner(runner, sb),
+          r'''
+echo "root=$(ls -A / | tr '\n' ' ')"
+echo "nix=$(ls -A /nix 2>/dev/null | tr '\n' ' ')"
+[ -e /nix/var/nix/daemon-socket ] && echo DAEMONSOCKET || echo nodaemon
+find / -xdev -type s 2>/dev/null | head -1 | sed 's/^/SOCKET /'
+echo "etc=$(ls -A /etc 2>/dev/null | tr '\n' ' ')"
+echo "run=$(ls -A /run 2>/dev/null | tr '\n' ' ')"
+echo "shm=$(ls -A /dev/shm 2>/dev/null | tr '\n' ' ')"
+echo "home=$(ls -A "$HOME" 2>/dev/null | tr '\n' ' ')"
+touch /mutaudit_root_write 2>/dev/null && echo ROOTWRITE || echo rootro
+''');
+      String field(String k) => o.stdoutLines.firstWhere((l) => l.startsWith('$k=')).substring(k.length + 1).trim();
+      const allowedRoot = {'bin', 'dev', 'etc', 'home', 'lib', 'lib32', 'lib64', 'libx32', 'nix', 'proc', 'run', 'sbin', 'tmp', 'usr', 'var'};
+      expect(field('root').split(' ').where((e) => e.isNotEmpty && !allowedRoot.contains(e)), isEmpty, reason: field('root'));
+      expect(field('nix').split(' ').toSet().difference({'store', 'var'}), isEmpty, reason: field('nix'));
+      expect(o.stdoutLines, contains('nodaemon'), reason: 'the Nix daemon socket is in /nix/var, which is not bound');
+      expect(o.stdoutLines.where((l) => l.startsWith('SOCKET')), isEmpty, reason: 'no Unix socket file anywhere the run can see');
+      final etc = field('etc').split(' ').where((e) => e.isNotEmpty).toSet();
+      final boundEtc = {
+        for (final b in [...sb.binds, ...sb.symlinks.keys])
+          if (b.startsWith('/etc/')) b.substring(5).split('/').first,
+      };
+      expect(etc.difference(boundEtc), isEmpty,
+          reason: 'only bound /etc entries: $etc');
+      expect(
+          field('run').split(' ').where((e) => e.isNotEmpty).toSet().difference({
+            for (final b in sb.symlinks.keys)
+              if (b.startsWith('/run/')) b.substring(5).split('/').first,
+          }),
+          isEmpty,
+          reason: 'nothing in /run but the links made on purpose: ${field('run')}');
+      expect(field('shm'), isEmpty);
+      final home = Platform.environment['HOME'];
+      final underHome = {
+        for (final b in [...sb.binds, ...sb.symlinks.keys])
+          if (home != null && p.isWithin(home, b)) p.split(p.relative(b, from: home)).first,
+      };
+      expect(field('home').split(' ').where((e) => e.isNotEmpty).toSet().difference(underHome), isEmpty, reason: field('home'));
+      expect(o.stdoutLines, contains('rootro'));
+      expect(File('/mutaudit_root_write').existsSync(), isFalse);
+    });
+  }, skip: skip);
+
+  group('host Unix sockets are out of reach', () {
+    // A pathname socket on the host, in a directory the sandbox does not bind.
+    // (A read-only bind does not stop connect(2): the old `--ro-bind / /`
+    // let a run change a service's state and a later run observe it.)
+    String? socatSkip() => Process.runSync('sh', ['-c', 'command -v socat']).exitCode == 0 ? null : 'socat is not installed';
+    String? runtimeDir() {
+      final d = Platform.environment['XDG_RUNTIME_DIR'] ?? '/run/user/${Process.runSync('id', ['-u']).stdout.toString().trim()}';
+      return Directory(d).existsSync() ? d : null;
+    }
+
+    late Directory dir;
+    late ServerSocket server;
+    final received = <String>[];
+    var connections = 0;
+
+    setUp(() async {
+      received.clear();
+      connections = 0;
+      dir = Directory(p.join(runtimeDir() ?? Directory.systemTemp.path, 'mutaudit_sock_$id'))..createSync();
+      server = await ServerSocket.bind(InternetAddress(p.join(dir.path, 'sock'), type: InternetAddressType.unix), 0);
+      server.listen((c) {
+        connections++;
+        c.done.catchError((Object _) {});
+        c.listen((d) => received.add(String.fromCharCodes(d)), onError: (Object _) {}, cancelOnError: true);
+        // A reading client gets a greeting; a writing one has gone by then.
+        Future<void>.delayed(const Duration(milliseconds: 150), () async {
+          try {
+            c.write('GREETING-$id\n');
+            await c.flush();
+            c.destroy();
+          } on Object {
+            // the client is gone
+          }
+        });
+      });
+    });
+    tearDown(() async {
+      await server.close();
+      if (dir.existsSync()) dir.deleteSync(recursive: true);
+    });
+
+    Future<ProcessOutcome> write(ProcessRunner r) => sh(r, 'echo MUTANT-RUN-ONE | socat -T 3 -u - UNIX-CONNECT:${dir.path}/sock');
+    Future<ProcessOutcome> read(ProcessRunner r) => sh(r, 'socat -T 3 -u UNIX-CONNECT:${dir.path}/sock -');
+
+    test('control: without the sandbox a run connects, writes, and a later run reads the greeting', () async {
+      final one = await write(runner);
+      expect(one.exitCode, 0, reason: one.stderr);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(received.join(), contains('MUTANT-RUN-ONE'));
+      final two = await read(runner);
+      expect(two.stdoutLines.join(), contains('GREETING-$id'));
+    }, skip: socatSkip() ?? skip);
+
+    test('sandboxed: run 1 cannot connect or write, run 2 cannot read; the server never saw either', () async {
+      final one = await write(sandboxed());
+      expect(one.exitCode, isNot(0), reason: 'connect must fail');
+      final two = await read(sandboxed());
+      expect(two.exitCode, isNot(0));
+      expect(two.stdoutLines.join(), isNot(contains('GREETING')));
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(connections, 0, reason: 'nothing reached the host service');
+      expect(received, isEmpty);
+    }, skip: socatSkip() ?? skip);
+  });
+
   group('processes', () {
     int? findProcess(String marker) {
       for (final e in Directory('/proc').listSync(followLinks: false)) {
@@ -287,6 +400,19 @@ echo looked
 
     test('passes with the real thing and reports the version', () async {
       expect(await Sandbox.probe(), startsWith('bubblewrap'));
+    }, skip: skip);
+
+    test('a real dart --version runs in the minimal root; flutter too when it is on PATH', () async {
+      expect(await Sandbox.probe(command: ['dart', 'test']), startsWith('bubblewrap'));
+      if (Process.runSync('sh', ['-c', 'command -v flutter']).exitCode == 0) {
+        expect(await Sandbox.probe(command: ['flutter', 'test']), startsWith('bubblewrap'));
+      }
+    }, skip: skip);
+
+    test('a test command whose program the minimal root cannot find is "unavailable", naming the program and the way out', () async {
+      await expectLater(
+          Sandbox.probe(command: ['definitely-not-a-program-$id', 'test']),
+          throwsA(isA<SandboxUnavailable>().having((e) => e.message, 'message', allOf(contains('definitely-not-a-program'), contains('--sandbox-ro')))));
     }, skip: skip);
 
     test('a missing bwrap is "unavailable", and says how to go on', () async {

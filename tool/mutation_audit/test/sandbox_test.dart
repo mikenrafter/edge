@@ -7,6 +7,33 @@ import 'package:test/test.dart';
 
 import 'support/fakes.dart';
 
+/// A host described by a set of paths and links: [Sandbox.discover] without a
+/// particular machine.
+class FakeHost implements HostPaths {
+  FakeHost(Iterable<String> paths, [this.links = const {}]) : paths = paths.toSet();
+  final Set<String> paths;
+  final Map<String, String> links;
+
+  @override
+  bool exists(String path) => realpath(path) != null || links.containsKey(path);
+
+  @override
+  String? linkTarget(String path) => links[path];
+
+  @override
+  String? realpath(String path) {
+    var cur = path;
+    for (var i = 0; i < 20; i++) {
+      final hit = links.entries.where((e) => cur == e.key || cur.startsWith('${e.key}/')).toList()
+        ..sort((a, b) => b.key.length.compareTo(a.key.length));
+      if (hit.isEmpty) break;
+      final e = hit.first;
+      cur = p.normalize(p.join(e.value, cur.substring(e.key.length).replaceFirst('/', '')));
+    }
+    return paths.any((x) => x == cur || x.startsWith('$cur/')) ? cur : null;
+  }
+}
+
 /// The bubblewrap command line, without running anything. What the sandbox
 /// really does is pinned in sandbox_real_test.dart.
 void main() {
@@ -14,18 +41,18 @@ void main() {
   const home = '/home/dev';
 
   Sandbox sandbox({
-    List<String> readOnly = const [],
+    List<String> binds = const [],
+    Map<String, String> symlinks = const {},
     bool net = true,
-    String? runtime = '/run/user/1000',
     String path = export,
-    List<String> tmpDirs = const ['/tmp', '/var/tmp'],
+    List<String> tmpDirs = const ['/tmp', '/var/tmp', '/run'],
   }) =>
       Sandbox(
           bwrap: 'bwrap',
           exportPath: path,
           home: home,
-          readOnly: readOnly,
-          runtimeDir: runtime,
+          binds: binds,
+          symlinks: symlinks,
           unshareNet: net,
           tmpDirs: tmpDirs);
 
@@ -47,11 +74,57 @@ void main() {
     return -1;
   }
 
+  group('the root is minimal: the host is not bound', () {
+    test('there is no bind of / (host sockets, other users\' files and services stay out of reach)', () {
+      final a = wrap(sandbox(binds: ['/nix/store', '/usr']));
+      for (var i = 0; i + 1 < a.length; i++) {
+        if (a[i] == '--ro-bind' || a[i] == '--bind') expect(a[i + 1], isNot('/'), reason: 'argument $i');
+      }
+      expect(at(a, ['--ro-bind', '/', '/']), -1);
+    });
+
+    test('only what is listed is bound, read-only, and the new root itself is remounted read-only after all mounts', () {
+      final a = wrap(sandbox(binds: ['/nix/store', '/usr', '/etc/passwd']));
+      final bound = <String>[
+        for (var i = 0; i + 2 < a.length; i++)
+          if (a[i] == '--ro-bind') a[i + 1],
+      ];
+      expect(bound.where((b) => !b.startsWith('/nix') && !b.startsWith('/usr') && !b.startsWith('/etc')), isEmpty);
+      expect(bound, containsAll(['/nix/store', '/usr', '/etc/passwd']));
+      expect(a.indexOf('--remount-ro'), greaterThan(a.indexOf('--tmp-overlay')));
+      expect(a[a.indexOf('--remount-ro') + 1], '/');
+    });
+
+    test('symbolic links are created, after the tmpfs mounts that may hold them', () {
+      final a = wrap(sandbox(symlinks: {'/run/current-system/sw/bin': '/nix/store/abc-system-path/bin', '/lib64': 'usr/lib64'}));
+      final i = at(a, ['--symlink', '/nix/store/abc-system-path/bin', '/run/current-system/sw/bin']);
+      expect(i, isNonNegative);
+      expect(i, greaterThan(at(a, ['--tmpfs', '/run'])));
+      expect(at(a, ['--symlink', 'usr/lib64', '/lib64']), isNonNegative);
+    });
+
+    test('nested binds are folded into their parent, duplicates dropped', () {
+      final a = wrap(sandbox(binds: ['/nix/store/abc-x', '/nix/store', '/nix/store/', '/opt/sdk']));
+      final bound = [for (var i = 0; i + 2 < a.length; i++) if (a[i] == '--ro-bind') a[i + 1]];
+      expect(bound, ['/nix/store', '/opt/sdk']);
+    });
+
+    test('binds under HOME or /tmp come after the tmpfs that replaces those directories', () {
+      final a = wrap(sandbox(binds: ['/home/dev/.pub-cache', '/tmp/tools']));
+      expect(at(a, ['--ro-bind', '/home/dev/.pub-cache', '/home/dev/.pub-cache']), greaterThan(at(a, ['--tmpfs', home])));
+      expect(at(a, ['--ro-bind', '/tmp/tools', '/tmp/tools']), greaterThan(at(a, ['--tmpfs', '/tmp'])));
+    });
+
+    test('HOME itself is never bound', () {
+      final a = wrap(sandbox(binds: [home, '$home/']));
+      expect(at(a, ['--ro-bind', home, home]), -1);
+    });
+  });
+
   group('the fixed part', () {
-    test('the host is read-only, /dev and /proc are fresh, and every namespace that matters is new', () {
+    test('/dev and /proc are fresh, and every namespace that matters is new', () {
       final a = wrap(sandbox());
       expect(a.first, 'bwrap');
-      expect(at(a, ['--ro-bind', '/', '/']), isNonNegative);
       expect(at(a, ['--dev', '/dev']), isNonNegative);
       expect(at(a, ['--proc', '/proc']), isNonNegative);
       for (final f in ['--unshare-pid', '--unshare-ipc', '--unshare-net', '--die-with-parent', '--new-session']) {
@@ -64,36 +137,34 @@ void main() {
     });
 
     test('nothing is bound writable: every bind is read-only', () {
-      final a = wrap(sandbox(readOnly: ['/home/dev/.pub-cache', '/home/dev/flutter']));
+      final a = wrap(sandbox(binds: ['/nix/store', '/home/dev/.pub-cache']));
       for (final w in ['--bind', '--bind-try', '--dev-bind', '--dev-bind-try', '--bind-fd']) {
         expect(a, isNot(contains(w)), reason: w);
       }
-      expect(a.where((x) => x == '--ro-bind').length, greaterThanOrEqualTo(3));
+      expect(a.where((x) => x == '--ro-bind').length, 2);
     });
 
-    test('/tmp, /var/tmp and HOME are fresh, empty tmpfs', () {
+    test('/tmp, /var/tmp, /run, /dev/shm and HOME are fresh, empty tmpfs; /dev/shm after /dev', () {
       final a = wrap(sandbox());
-      expect(at(a, ['--tmpfs', '/tmp']), isNonNegative);
-      expect(at(a, ['--tmpfs', '/var/tmp']), isNonNegative);
-      expect(at(a, ['--tmpfs', home]), isNonNegative);
+      for (final d in ['/tmp', '/var/tmp', '/run', '/dev/shm', home]) {
+        expect(at(a, ['--tmpfs', d]), isNonNegative, reason: d);
+      }
+      expect(at(a, ['--tmpfs', '/dev/shm']), greaterThan(at(a, ['--dev', '/dev'])));
     });
 
-    test('a temporary directory the host lacks is not mounted (the host root is read-only: it could not be created)', () {
-      final a = wrap(sandbox(tmpDirs: ['/tmp']));
-      expect(a, isNot(contains('/var/tmp')));
-    });
-
-    test('the runtime directory (sockets of the desktop session) is hidden too', () {
-      expect(at(wrap(sandbox()), ['--tmpfs', '/run/user/1000']), isNonNegative);
-      expect(wrap(sandbox(runtime: null)), isNot(contains('/run/user/1000')));
+    test('the runtime directory of the desktop session is inside /run, which is empty', () {
+      final a = wrap(sandbox());
+      expect(a, isNot(contains('/run/user/1000')));
+      final i = at(a, ['--setenv', 'XDG_RUNTIME_DIR']);
+      expect(i, isNonNegative);
+      expect(a[i + 2], startsWith('/tmp/'));
     });
   });
 
   group('the export', () {
     test('is an overlay whose writes go to memory: --overlay-src then --tmp-overlay on the same path', () {
       final a = wrap(sandbox());
-      final i = at(a, ['--overlay-src', export, '--tmp-overlay', export]);
-      expect(i, isNonNegative);
+      expect(at(a, ['--overlay-src', export, '--tmp-overlay', export]), isNonNegative);
     });
 
     test('is mounted after the tmpfs that may hide its parent (/tmp, HOME)', () {
@@ -122,21 +193,7 @@ void main() {
     });
   });
 
-  group('HOME', () {
-    test('read-only toolchain paths under HOME are re-bound after the tmpfs; others are dropped', () {
-      final a = wrap(sandbox(readOnly: ['/home/dev/.pub-cache', '/opt/flutter', '/home/dev/.pub-cache/hosted/x', '/home/dev/sdk']));
-      final tm = at(a, ['--tmpfs', home]);
-      expect(at(a, ['--ro-bind', '/home/dev/.pub-cache', '/home/dev/.pub-cache']), greaterThan(tm));
-      expect(at(a, ['--ro-bind', '/home/dev/sdk', '/home/dev/sdk']), greaterThan(tm));
-      expect(a, isNot(contains('/opt/flutter')), reason: 'outside HOME it is visible already');
-      expect(a, isNot(contains('/home/dev/.pub-cache/hosted/x')), reason: 'inside a path that is bound already');
-    });
-
-    test('HOME itself being listed does not expose it', () {
-      final a = wrap(sandbox(readOnly: [home, '$home/']));
-      expect(at(a, ['--ro-bind', home, home]), -1);
-    });
-
+  group('environment', () {
     test('HOME, the XDG directories and TMPDIR point into the sandbox', () {
       final a = wrap(sandbox());
       String env(String k) {
@@ -146,58 +203,120 @@ void main() {
       }
 
       expect(env('HOME'), home);
-      for (final k in ['XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME']) {
+      for (final k in ['XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR']) {
         expect(env(k), startsWith('/tmp/'), reason: k);
         expect(a, contains(env(k)), reason: '$k exists: a --dir creates it');
       }
       for (final k in ['TMPDIR', 'TMP', 'TEMP']) {
         expect(env(k), '/tmp', reason: k);
       }
-      expect(env('XDG_RUNTIME_DIR'), '/run/user/1000');
       expect(env('FLUTTER_SUPPRESS_ANALYTICS'), 'true');
     });
   });
 
-  group('discover reads the toolchain from the environment', () {
-    test('the pub cache, FLUTTER_ROOT and PATH entries under HOME are read-only binds; the rest is not', () {
-      final s = Sandbox.discover(export, environment: {
-        'HOME': home,
-        'PUB_CACHE': '/home/dev/cache/pub',
-        'FLUTTER_ROOT': '/home/dev/flutter',
-        'PATH': '/home/dev/flutter/bin:/usr/bin:/home/dev/.local/bin',
-        'XDG_RUNTIME_DIR': '/run/user/1000',
-      }, extraReadOnly: ['/home/dev/sibling'], exists: (_) => true);
-      expect(s.home, home);
-      expect(s.readOnly, containsAll(['/home/dev/cache/pub', '/home/dev/flutter', '/home/dev/.local/bin', '/home/dev/sibling']));
-      expect(s.readOnly, isNot(contains('/usr/bin')));
-      expect(s.runtimeDir, '/run/user/1000');
+  group('discover builds the root from the host', () {
+    // A NixOS-like host: the store, /etc entries that are links into it, a
+    // /bin with /bin/sh, the system profile reached through /run/current-system.
+    final nixos = FakeHost([
+      '/nix/store', '/nix/store/sys-path/bin', '/nix/store/flutter/bin/flutter', '/nix/store/flutter',
+      '/usr', '/usr/bin', '/bin', '/etc', '/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/hosts', '/etc/shadow',
+      '/etc/litellm', '/home/dev', '/home/dev/.pub-cache', '/run', '/run/user/1000', '/run/wrappers/bin', '/nix/var/nix/daemon-socket',
+    ], {
+      '/run/current-system': '/nix/store/system',
+      '/run/current-system/sw': '/nix/store/sys-path',
+    });
+    final env = {
+      'HOME': home,
+      'PATH': '/nix/store/flutter/bin:/run/current-system/sw/bin:/run/wrappers/bin:/gone/bin:relative/bin',
+      'XDG_RUNTIME_DIR': '/run/user/1000',
+    };
+    Sandbox found({Map<String, String>? environment, FakeHost? host, List<String> extra = const [], List<String> command = const []}) =>
+        Sandbox.discover(export, environment: environment ?? env, host: host ?? nixos, extraReadOnly: extra, command: command);
+
+    test('the Nix store is bound, not /nix (the daemon socket lives in /nix/var)', () {
+      final s = found();
+      expect(s.binds, contains('/nix/store'));
+      expect(s.binds, isNot(contains('/nix')));
+      expect(s.binds.where((b) => b.startsWith('/nix/var')), isEmpty);
     });
 
-    test('without PUB_CACHE the default ~/.pub-cache is used', () {
-      final s = Sandbox.discover(export, environment: {'HOME': home, 'PATH': '/usr/bin'}, exists: (_) => true);
-      expect(s.readOnly, ['/home/dev/.pub-cache']);
+    test('/usr and /bin are bound when they are directories; a link such as /lib64 or a merged /bin is recreated as a link', () {
+      final s = found(host: FakeHost([...nixos.paths, '/lib64'], {...nixos.links, '/sbin': 'usr/sbin', '/lib': 'usr/lib'}));
+      expect(s.binds, containsAll(['/usr', '/bin']));
+      expect(s.symlinks['/sbin'], 'usr/sbin');
+      expect(s.symlinks['/lib'], 'usr/lib');
+      expect(s.binds, isNot(contains('/sbin')));
+      expect(s.binds, contains('/lib64'));
+    });
+
+    test('of /etc only the allow-listed entries that exist are bound: users, groups, name service, hosts', () {
+      final s = found();
+      expect(s.binds, containsAll(['/etc/passwd', '/etc/group', '/etc/nsswitch.conf', '/etc/hosts']));
+      expect(s.binds, isNot(contains('/etc')));
+      expect(s.binds, isNot(contains('/etc/shadow')));
+      expect(s.binds, isNot(contains('/etc/litellm')));
+      expect(s.binds.where((b) => b.startsWith('/etc/')).length, 4, reason: 'localtime etc. are absent on this host');
+    });
+
+    test('a PATH entry inside the store needs nothing; one reached through a link is recreated as a link', () {
+      final s = found();
+      expect(s.binds, isNot(contains('/nix/store/flutter/bin')));
+      expect(s.symlinks['/run/current-system/sw/bin'], '/nix/store/sys-path/bin');
+    });
+
+    test('PATH entries that do not exist, are relative, or are runtime state (/run) are not bound', () {
+      final s = found();
+      expect(s.binds.any((b) => b.startsWith('/gone') || b.startsWith('relative') || b.startsWith('/run')), isFalse);
+      expect(s.binds, isNot(contains('/run/wrappers/bin')));
+    });
+
+    test('a PATH entry outside the store and the system directories is bound where it is', () {
+      final s = found(
+          host: FakeHost([...nixos.paths, '/opt/tools/bin'], nixos.links),
+          environment: {...env, 'PATH': '/opt/tools/bin:/usr/bin'});
+      expect(s.binds, contains('/opt/tools/bin'));
+      expect(s.binds, isNot(contains('/usr/bin')), reason: 'inside /usr, which is bound');
+    });
+
+    test('the pub cache (PUB_CACHE, else ~/.pub-cache) and FLUTTER_ROOT are bound', () {
+      expect(found().binds, contains('/home/dev/.pub-cache'));
+      final s = found(
+          host: FakeHost([...nixos.paths, '/srv/pub', '/opt/flutter'], nixos.links),
+          environment: {...env, 'PUB_CACHE': '/srv/pub', 'FLUTTER_ROOT': '/opt/flutter'});
+      expect(s.binds, containsAll(['/srv/pub', '/opt/flutter']));
+      expect(s.binds, isNot(contains('/home/dev/.pub-cache')));
+    });
+
+    test('extra read-only paths are bound wherever they are (an allowed sibling outside HOME is no longer visible by itself)', () {
+      final s = found(host: FakeHost([...nixos.paths, '/srv/sibling'], nixos.links), extra: ['/srv/sibling', '/gone/sibling']);
+      expect(s.binds, contains('/srv/sibling'));
+      expect(s.binds, isNot(contains('/gone/sibling')));
+    });
+
+    test('the executable of the test command: found on PATH, its SDK (the directory above bin/) is bound when outside the store', () {
+      final host = FakeHost([...nixos.paths, '/opt/flutter/bin', '/opt/flutter/bin/flutter', '/opt/flutter/packages'], nixos.links);
+      final s = found(host: host, environment: {...env, 'PATH': '/opt/flutter/bin:/usr/bin'}, command: ['flutter', 'test']);
+      expect(s.binds, contains('/opt/flutter'));
+      expect(s.binds, isNot(contains('/opt/flutter/bin')), reason: 'folded into /opt/flutter');
+    });
+
+    test('HOME is never bound whole and does not have to exist on the host', () {
+      final s = found(host: FakeHost(['/nix/store']), environment: {'HOME': '/home/nobody', 'PATH': ''});
+      expect(s.home, '/home/nobody');
+      expect(s.binds, isNot(contains('/home/nobody')));
     });
 
     test('without HOME the sandbox gets one inside /tmp', () {
-      final s = Sandbox.discover(export, environment: {'PATH': '/usr/bin'});
-      expect(s.home, startsWith('/tmp/'));
+      expect(found(environment: {'PATH': ''}).home, startsWith('/tmp/'));
     });
 
-    test('a HOME that does not exist on the host is replaced (it could not be mounted over)', () {
-      final s = Sandbox.discover(export, environment: {'HOME': home, 'PATH': '/usr/bin'}, exists: (_) => false);
-      expect(s.home, startsWith('/tmp/'));
+    test('what is not on the host is not bound', () {
+      final s = found(host: FakeHost([]), environment: {'HOME': home, 'PATH': '/usr/bin', 'FLUTTER_ROOT': '/opt/flutter'});
+      expect(s.binds, isEmpty);
+      expect(s.symlinks, isEmpty);
     });
 
-    test('what is not on the host is not bound: read-only paths, /var/tmp, the runtime directory', () {
-      final s = Sandbox.discover(export,
-          environment: {'HOME': home, 'PATH': '/home/dev/gone/bin', 'XDG_RUNTIME_DIR': '/run/user/1000'},
-          exists: (path) => path == home);
-      expect(s.readOnly, isEmpty);
-      expect(s.tmpDirs, ['/tmp']);
-      expect(s.runtimeDir, isNull);
-    });
-
-    test('package roots outside the export that the package config names are read-only binds', () {
+    test('package roots outside the export that the package config names are bound; the pub cache covers its packages', () {
       final dir = Directory.systemTemp.createTempSync('mutaudit_pc_');
       addTearDown(() => dir.deleteSync(recursive: true));
       final tool = Directory(p.join(dir.path, '.dart_tool'))..createSync();
@@ -210,16 +329,14 @@ void main() {
           {'name': 'inside', 'rootUri': '../vendor/x', 'packageUri': 'lib/'},
         ],
       }));
-      final s = Sandbox.discover(dir.path, environment: {'HOME': home, 'PATH': ''}, exists: (_) => true);
-      expect(s.readOnly, contains('/home/dev/.pub-cache'));
-      expect(s.readOnly, isNot(contains('/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0')),
-          reason: 'inside the pub cache, which is bound whole');
-      final other = Sandbox.discover(dir.path, environment: {'HOME': home, 'PATH': '', 'PUB_CACHE': '/home/dev/elsewhere'}, exists: (_) => true);
-      expect(other.readOnly, contains('/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0'),
-          reason: 'a package root of its own is bound when nothing above it is');
       expect(Sandbox.packageRoots(dir.path),
           unorderedEquals(['/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0', p.normalize(p.join(dir.path, '..', 'sibling'))]),
           reason: 'the export itself and what lies inside it are visible already');
+      final host = FakeHost([...nixos.paths, '/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0', p.normalize(p.join(dir.path, '..', 'sibling'))], nixos.links);
+      final s = Sandbox.discover(dir.path, environment: env, host: host);
+      expect(s.binds, contains('/home/dev/.pub-cache'));
+      expect(s.binds, isNot(contains('/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0')));
+      expect(s.binds, contains(p.normalize(p.join(dir.path, '..', 'sibling'))));
     });
   });
 
