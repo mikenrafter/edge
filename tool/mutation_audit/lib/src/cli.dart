@@ -53,7 +53,8 @@ Future<int> runCli(
       interrupts: interrupts ?? _sigint(),
       body: (export) async {
         final startedAt = clock();
-        final deps = await resolveDependencyConfig(export.path,
+        // Preflight: refuse a pinned commit that already carries an override.
+        final before = await resolveDependencyConfig(export.path,
             repo: export.repo, allowedOverrides: config.allowOverrides);
 
         final setup = config.setupCmd ?? defaultSetupCommand(export.path);
@@ -64,6 +65,12 @@ Future<int> runCli(
             throw _SetupFailed('"$setup" failed (exit code ${done.exitCode}): ${done.stderr.trim()}');
           }
         }
+        // Setup may have created or rewritten the lock, the overrides file or
+        // the package config: check again and record what is really in use.
+        final deps = setup.isEmpty
+            ? before
+            : await resolveDependencyConfig(export.path,
+                repo: export.repo, allowedOverrides: config.allowOverrides);
 
         final candidates = <Mutant>[];
         for (final file in expandFileGlobs(export.path, config.files)) {
@@ -81,6 +88,7 @@ Future<int> runCli(
             repo: export.repo,
             sha: export.sha,
             dependencies: deps,
+            dependenciesBeforeSetup: before,
             testCmd: config.testCmd,
             files: config.files,
             tests: config.tests,

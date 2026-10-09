@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:mutation_audit/mutation_audit.dart';
 import 'package:path/path.dart' as p;
 import 'package:test/test.dart';
@@ -197,6 +198,80 @@ void main() {
     expect(code, 65);
     expect(err.toString(), contains('not an allowed sibling'));
     expect(runner.calls, isEmpty);
+  });
+
+  group('the dependency config is re-read after setup', () {
+    const lockGit = '''
+packages:
+  analytics:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: abc123
+      resolved-ref: "0123456789abcdef0123456789abcdef01234567"
+      url: "https://github.com/OpenStrap/analytics"
+    source: git
+    version: "0.1.0"
+''';
+
+    /// A runner whose setup call writes [files] into the export, like pub would.
+    FakeProcessRunner settingUp(Map<String, String> files) => FakeProcessRunner((call) {
+          if (call.argv.length >= 2 && call.argv[1] == 'pub') {
+            for (final e in files.entries) {
+              File(p.join(call.cwd, e.key))
+                ..createSync(recursive: true)
+                ..writeAsStringSync(e.value);
+            }
+            return const ProcessOutcome(exitCode: 0);
+          }
+          return outcomeOf(passing());
+        });
+
+    test('the report carries what setup resolved, not the preflight', () async {
+      const config = '{"configVersion":2,"packages":[{"name":"analytics","rootUri":"file:///x","packageUri":"lib/"}]}';
+      final runner = settingUp({'pubspec.lock': lockGit, '.dart_tool/package_config.json': config});
+      expect(await run(runner, ['--max-mutants', '1']), 0, reason: err.toString());
+      final meta = (jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map)['meta'] as Map;
+      final deps = meta['dependencies'] as Map;
+      expect(deps['pubspecLockSha256'], sha256.convert(utf8.encode(lockGit)).toString());
+      expect(deps['packageConfigSha256'], sha256.convert(utf8.encode(config)).toString());
+      expect((deps['gitDependencies'] as List).single['resolvedRef'], '0123456789abcdef0123456789abcdef01234567');
+      final before = meta['dependenciesBeforeSetup'] as Map;
+      expect(before['pubspecLockSha256'], isNull, reason: 'the export had no lock before setup');
+      expect(before['packageConfigSha256'], isNull);
+    });
+
+    test('a lock that setup created with a path package is refused, before the baseline', () async {
+      final runner = settingUp({
+        'pubspec.lock': '''
+packages:
+  analytics:
+    dependency: "direct main"
+    description:
+      path: "../analytics"
+      relative: true
+    source: path
+    version: "0.1.0"
+'''
+      });
+      expect(await run(runner), 65);
+      expect(err.toString(), contains('pubspec.lock'));
+      expect(runner.calls, hasLength(1), reason: 'only the setup command ran');
+      expect(File(p.join(out.path, 'results.json')).existsSync(), isFalse);
+    });
+
+    test('a pubspec_overrides.yaml that setup wrote is refused too', () async {
+      final runner = settingUp({'pubspec_overrides.yaml': 'dependency_overrides:\n  analytics:\n    path: ../analytics\n'});
+      expect(await run(runner), 65);
+      expect(runner.calls, hasLength(1));
+    });
+
+    test('with --setup-cmd "" the preflight is the whole story and is recorded once', () async {
+      final runner = tests();
+      expect(await run(runner, ['--setup-cmd', '', '--max-mutants', '1']), 0, reason: err.toString());
+      final meta = (jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map)['meta'] as Map;
+      expect(meta['dependencies'], meta['dependenciesBeforeSetup']);
+    });
   });
 
   test('an unknown sha exits 70 and leaves nothing behind', () async {

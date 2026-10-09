@@ -250,16 +250,22 @@ class DependencyConfig {
     required this.overridesFileSha256,
     required this.pathOverrides,
     required this.gitDependencies,
+    this.packageConfigSha256,
   });
 
   /// SHA-256 of pubspec.lock / pubspec_overrides.yaml, null when absent.
   final String? lockSha256, overridesFileSha256;
+
+  /// SHA-256 of `.dart_tool/package_config.json`: what Pub actually resolved
+  /// (it exists only once setup has run), null when absent.
+  final String? packageConfigSha256;
   final List<PathOverride> pathOverrides;
   final List<GitDependency> gitDependencies;
 
   Map<String, Object?> toJson() => {
         'pubspecLockSha256': lockSha256,
         'pubspecOverridesSha256': overridesFileSha256,
+        'packageConfigSha256': packageConfigSha256,
         'pathOverrides': [for (final o in pathOverrides) o.toJson()],
         'gitDependencies': [for (final g in gitDependencies) g.toJson()],
       };
@@ -344,6 +350,7 @@ Future<DependencyConfig> resolveDependencyConfig(
   return DependencyConfig(
     lockSha256: hashOf('pubspec.lock'),
     overridesFileSha256: hashOf('pubspec_overrides.yaml'),
+    packageConfigSha256: hashOf(p.join('.dart_tool', 'package_config.json')),
     pathOverrides: recorded,
     gitDependencies: git,
   );

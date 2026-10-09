@@ -52,9 +52,15 @@ class AuditMeta {
     required this.candidateMutants,
     this.env = const {},
     this.guardPolicy = 'unspecified',
+    this.dependenciesBeforeSetup,
   });
   final String toolVersion, repo, sha, testCmd;
+
+  /// What the export resolved its dependencies from AFTER the setup command
+  /// (the lock Pub wrote, the package config it resolved), and what the pinned
+  /// commit carried BEFORE it. Both were checked against the override policy.
   final DependencyConfig dependencies;
+  final DependencyConfig? dependenciesBeforeSetup;
   final List<String> files, tests, guardPatterns;
   final int timeoutSeconds;
   final int? maxMutants, sample, seed;
@@ -106,6 +112,7 @@ class AuditResults {
           'repo': meta.repo,
           'sha': meta.sha,
           'dependencies': meta.dependencies.toJson(),
+          'dependenciesBeforeSetup': meta.dependenciesBeforeSetup?.toJson(),
           'testCmd': meta.testCmd,
           'env': meta.env,
           'files': meta.files,
@@ -174,7 +181,8 @@ class AuditResults {
       ..writeln('- Timeout: ${meta.timeoutSeconds} s per run; environment ${_env(meta.env)}')
       ..writeln('- Started ${meta.startedAt.toUtc().toIso8601String()}, '
           'finished ${meta.finishedAt.toUtc().toIso8601String()}')
-      ..writeln('- Dependencies: pubspec.lock `${meta.dependencies.lockSha256 ?? 'absent'}`, '
+      ..writeln('- Dependencies (after setup): pubspec.lock `${meta.dependencies.lockSha256 ?? 'absent'}`, '
+          'package_config.json `${meta.dependencies.packageConfigSha256 ?? 'absent'}`, '
           'pubspec_overrides.yaml `${meta.dependencies.overridesFileSha256 ?? 'absent'}`');
     for (final g in meta.dependencies.gitDependencies) {
       b.writeln('  - git `${g.package}` `${g.url}` at `${g.resolvedRef}`');
