@@ -259,7 +259,8 @@ session of its own; on a timeout the runner
    `/proc/<pid>/stat` field 22; `ps -o lstart` where there is no `/proc`). The family is sampled
    once a second while the child runs, once more the moment the child exits (its session is read
    then, while the kernel still holds its number), and at the start of cleanup. A captured process is
-   never forgotten while it lives: every rescan is the captured set that is still alive plus the
+   never forgotten while it lives (members are keyed by pid AND start time, so a genuine descendant that
+   was handed the pid of a captured process that exited is a new member, not a refused signal to an old one): every rescan is the captured set that is still alive plus the
    descendants of any such member, so a child reparented to init (or in a session of its own) when its
    parent dies on SIGTERM is still found.
 

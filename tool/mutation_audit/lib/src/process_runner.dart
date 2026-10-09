@@ -325,7 +325,11 @@ class _Family {
   /// Set when the child's exit was seen: from then on its pid is not trusted.
   bool rootExited = false;
 
-  final Map<int, ProcIdentity> _captured = {};
+  /// Keyed by pid AND start time: a pid that a later, genuine descendant got
+  /// is another process and gets its own entry (an obsolete identity is never
+  /// kept in its place, which would make every signal to it refused).
+  final Map<String, ProcIdentity> _captured = {};
+  static String _key(ProcIdentity i) => '${i.pid}:${i.start}';
   Future<void> _busy = Future<void>.value();
 
   /// Resolves when the scans started so far are done.
@@ -354,9 +358,11 @@ class _Family {
     }
 
     final members = <int, ProcIdentity>{};
-    for (final e in _captured.entries) {
-      final now = snap[e.key];
-      if (now != null && now.start == e.value.start && still(e.key, e.value.start)) members[e.key] = now;
+    for (final captured in _captured.values) {
+      final now = snap[captured.pid];
+      if (now != null && now.start == captured.start && still(captured.pid, captured.start)) {
+        members[captured.pid] = now;
+      }
     }
     final rootNow = snap[rootPid];
     final rootAlive = !rootExited &&
@@ -404,11 +410,14 @@ class _Family {
         if (members.containsKey(p.pid)) grew = true;
       }
     }
-    for (final e in members.entries) {
-      _captured.putIfAbsent(e.key, () => e.value);
+    for (final m in members.values) {
+      _captured.putIfAbsent(_key(m), () => m);
     }
     // In capture order: parents before the processes they started.
-    return [for (final pid in _captured.keys) if (members.containsKey(pid)) _captured[pid]!];
+    return [
+      for (final c in _captured.values)
+        if (members[c.pid]?.start == c.start) c,
+    ];
   }
 }
 

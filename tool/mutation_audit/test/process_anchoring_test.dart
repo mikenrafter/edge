@@ -128,4 +128,41 @@ void main() {
       expect(host.procs.values.where((p) => p.alive), isEmpty);
     });
   });
+
+  group('captured members are keyed by pid AND start time', () {
+    test('a genuine descendant that got the pid of a captured process that exited is adopted and signalled', () async {
+      late FakeProc first, second;
+      host.script = (h) {
+        h.root.holdsOutput = true;
+        first = h.spawn();
+        // Captured by the 1 s sample, exits at 2 s; at 3 s its number goes to a
+        // new child of the root.
+        h.at(const Duration(seconds: 2), () => h.exits(first.pid));
+        h.at(const Duration(seconds: 3), () {
+          second = h.reusePid(first.pid, ppid: FakeHost.rootPid, sid: FakeHost.rootPid)..holdsOutput = true;
+        });
+      };
+      final o = await run(timeout: const Duration(seconds: 10));
+      expect(o.timedOut, isTrue);
+      expect(signalled()[second.pid], isNotNull, reason: 'the new process is ours');
+      expect(second.alive, isFalse);
+      expect(host.refused, isEmpty, reason: 'no signal went out with the obsolete identity');
+      expect(o.outputComplete, isTrue);
+    });
+
+    test('and the old identity is never signalled once it is gone', () async {
+      late FakeProc first, second;
+      host.script = (h) {
+        h.root.holdsOutput = true;
+        first = h.spawn();
+        h.at(const Duration(seconds: 2), () => h.exits(first.pid));
+        h.at(const Duration(seconds: 3), () {
+          second = h.reusePid(first.pid, ppid: FakeHost.rootPid, sid: FakeHost.rootPid)..holdsOutput = true;
+        });
+      };
+      await run(timeout: const Duration(seconds: 10));
+      expect(host.signals.where((s) => s.$1 == first.pid).length, 1, reason: 'one TERM, to the live process');
+      expect(second.alive, isFalse);
+    });
+  });
 }
