@@ -156,6 +156,18 @@ void main() {
       expect(run.loadErrors, isEmpty);
     });
 
+    test('suite paths inside the root are made relative to it', () {
+      final s = StreamBuilder()
+          .pass('/tmp/export-1/test/a_test.dart', 'ok')
+          .fail('/elsewhere/b_test.dart', 'bad')
+          .loadError('/tmp/export-1/test/c_test.dart', 'Failed to load')
+          .done(success: false);
+      final run = parseReporterStream(s.build(), root: '/tmp/export-1');
+      expect(run.tests.map((t) => t.key), ['test/a_test.dart::ok', '/elsewhere/b_test.dart::bad']);
+      expect(run.loadErrors.single.suite, 'test/c_test.dart');
+      expect(parseReporterStream(s.build()).tests.first.suite, '/tmp/export-1/test/a_test.dart');
+    });
+
     test('an empty stream parses to an empty run', () {
       final run = parseReporterStream(const []);
       expect(run.tests, isEmpty);

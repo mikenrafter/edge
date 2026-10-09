@@ -262,6 +262,17 @@ void main() {
     });
   });
 
+  group('test keys do not depend on where the export is', () {
+    test('absolute suite paths from the runner become root-relative keys', () async {
+      final abs = '${root.path}/test/a_test.dart';
+      final runner = FakeProcessRunner((call) => current().contains('a <= b')
+          ? outcomeOf(StreamBuilder().loaded(abs).fail(abs, 'lt boundary').done(success: false), exitCode: 1)
+          : outcomeOf(StreamBuilder().loaded(abs).pass(abs, 'lt boundary').done()));
+      final run = await AuditRunner(runner: runner).run(config: config(), root: root.path, mutants: [mutant('<', '<=')]);
+      expect(run.results.single.classification.killingTests, ['test/a_test.dart::lt boundary']);
+    });
+  });
+
   group('guards', () {
     test('only guard tests failing is killed-by-guard-only', () async {
       final runner = FakeProcessRunner((call) => current() != source

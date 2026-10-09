@@ -34,7 +34,7 @@ class AuditRunner {
     if (outcome.timedOut) {
       throw BaselineFailedError('the baseline run timed out after ${config.timeout.inSeconds} s');
     }
-    final run = parseReporterStream(outcome.stdoutLines);
+    final run = parseReporterStream(outcome.stdoutLines, root: root);
     for (final e in run.loadErrors) {
       throw BaselineFailedError('a suite does not load: ${e.suite}: ${e.message.split('\n').first}');
     }
@@ -77,7 +77,7 @@ class AuditRunner {
         timeout: config.timeout,
         environment: config.env,
       );
-      for (final t in parseReporterStream(outcome.stdoutLines).tests) {
+      for (final t in parseReporterStream(outcome.stdoutLines, root: root).tests) {
         if (t.key == failed.key) return t;
       }
       return null;
@@ -93,7 +93,7 @@ class AuditRunner {
           environment: config.env,
         );
         final classification =
-            await classifyRun(outcome, guards: guards, flakyTests: flaky, rerun: alone);
+            await classifyRun(outcome, guards: guards, flakyTests: flaky, rerun: alone, root: root);
         results.add(MutantResult(
             mutant: mutant, classification: classification, duration: outcome.elapsed));
       } finally {

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:path/path.dart' as p;
+
 /// Result of one test as the JSON reporter states it.
 enum TestResult { success, failure, error }
 
@@ -75,7 +77,11 @@ class ReporterRun {
 /// print, allSuites, done). Never throws on odd input: lines that are not JSON
 /// objects go to [ReporterRun.nonJsonLines]; events about unknown test ids are
 /// ignored; a test that started but never finished is not in [ReporterRun.tests].
-ReporterRun parseReporterStream(Iterable<String> lines) {
+///
+/// With [root] (the directory the tests ran in), suite paths inside it are
+/// reported relative to it: Flutter prints absolute paths, and a test key must
+/// not depend on where the disposable export happened to be.
+ReporterRun parseReporterStream(Iterable<String> lines, {String? root}) {
   final suites = <int, String>{};
   final started = <int, _Started>{};
   final tests = <TestOutcome>[];
@@ -101,7 +107,9 @@ ReporterRun parseReporterStream(Iterable<String> lines) {
       case 'suite':
         final suite = decoded['suite'];
         if (suite is Map<String, dynamic> && suite['id'] is int) {
-          suites[suite['id'] as int] = '${suite['path'] ?? ''}';
+          final path = '${suite['path'] ?? ''}';
+          suites[suite['id'] as int] =
+              root != null && p.isWithin(root, path) ? p.relative(path, from: root) : path;
         }
       case 'testStart':
         final test = decoded['test'];

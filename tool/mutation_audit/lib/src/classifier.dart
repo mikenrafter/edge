@@ -111,16 +111,20 @@ class Classification {
 /// 5. no `done` event, or a non-zero exit with nothing else to blame ->
 ///    loadFailure.
 /// 6. at least one non-skipped test passed -> survived; otherwise skipped.
+///
+/// [root] is the directory the tests ran in: suite paths are made relative to
+/// it, so test keys do not depend on where the export lives.
 Future<Classification> classifyRun(
   ProcessOutcome outcome, {
   GuardMatcher? guards,
   Set<String> flakyTests = const {},
   SingleTestRunner? rerun,
+  String? root,
 }) async {
   if (outcome.timedOut) {
     return const Classification(status: MutantStatus.timeout, detail: 'the test run timed out');
   }
-  final run = parseReporterStream(outcome.stdoutLines);
+  final run = parseReporterStream(outcome.stdoutLines, root: root);
 
   final compile = [for (final e in run.loadErrors) if (_isCompileError(e.message)) e];
   if (compile.isNotEmpty) {
