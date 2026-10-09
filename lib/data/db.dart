@@ -10339,7 +10339,30 @@ class LocalDb {
   @visibleForTesting
   static List<String> get salvageTablesForTest => _salvageTables;
 
+  /// Pages [_mergeFromDbFileBody] has committed, process-wide. The wrapper
+  /// below reads it to learn whether ANY page landed, whatever the body then did.
+  static int _mergePagesCommitted = 0;
+
+  /// [_mergeFromDbFileBody], then `_markStoreReplaced()` on EVERY exit once any
+  /// page committed. The body commits page by page, so a later table, a
+  /// follow-up write or `src.close()` can throw after rows were durably
+  /// replaced; an unmoved generation would then let a cache keyed on
+  /// (day, version, computed_at) serve the old payload for a replacement written
+  /// at an equal computed_at.
   static Future<Map<String, int>> _mergeFromDbFile(
+    String path, {
+    List<String>? only,
+    bool tolerant = false,
+  }) async {
+    final committedBefore = _mergePagesCommitted;
+    try {
+      return await _mergeFromDbFileBody(path, only: only, tolerant: tolerant);
+    } finally {
+      if (_mergePagesCommitted != committedBefore) _markStoreReplaced();
+    }
+  }
+
+  static Future<Map<String, int>> _mergeFromDbFileBody(
     String path, {
     List<String>? only,
     bool tolerant = false,
@@ -10604,6 +10627,7 @@ class LocalDb {
               }
               await flush();
             });
+            _mergePagesCommitted++;
             // Advance past the last row this page actually delivered. Read the
             // cursor BEFORE dropping the page, and stop on a short page rather
             // than issuing one more query to discover the end.
@@ -10644,8 +10668,6 @@ class LocalDb {
     // Last, so it can never be mistaken for a table row count by anything that
     // walks this map in order.
     if (importedDays != null) counts['_days'] = importedDays.length;
-    // Invalidate generation only after every committed page and follow-up write.
-    _markStoreReplaced();
     return counts;
   }
 
