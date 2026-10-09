@@ -202,7 +202,7 @@ class LocalRepositoryImpl extends LocalRepository {
   static const int _bundleMemoCap = 32;
   static final LinkedHashMap<String, Map<String, dynamic>> _bundleMemo =
       LinkedHashMap<String, Map<String, dynamic>>();
-  static int _bundleMemoEpoch = 0;
+  static ({int wipeEpoch, int openCount})? _bundleMemoGeneration;
 
   /// Actual payload decodes of a day_result bundle (a memo hit adds none).
   @visibleForTesting
@@ -229,9 +229,10 @@ class LocalRepositoryImpl extends LocalRepository {
   /// The memoised decode itself: shared, so it is READ ONLY. Only a walk that
   /// copies what it keeps may use it.
   static Map<String, dynamic>? _decodeDayShared(Map<String, dynamic> row) {
-    if (_bundleMemoEpoch != LocalDb.wipeEpoch) {
+    final generation = LocalDb.storeGeneration;
+    if (_bundleMemoGeneration != generation) {
       _bundleMemo.clear();
-      _bundleMemoEpoch = LocalDb.wipeEpoch;
+      _bundleMemoGeneration = generation;
     }
     final at = row['computed_at'];
     final key =

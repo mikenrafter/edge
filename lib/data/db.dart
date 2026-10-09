@@ -185,6 +185,8 @@ abstract final class DerivedFingerprint {
 class LocalDb {
   static Database? _db;
   static String dbName = 'openstrap.db';
+  static int _wipeEpoch = 0;
+  static int _openCount = 0;
 
   /// The wall clock, in epoch ms, that the compute-job queue, [putDayResult]
   /// and the baseline writes stamp rows and compare due times with. Tests
@@ -410,7 +412,7 @@ class LocalDb {
   /// pass it: sqflite throws `ArgumentError('onCreate must be null if no
   /// version is specified')` BEFORE opening anything when `onCreate` is given
   /// without `version` (sqflite_common database_mixin.dart).
-  static const int schemaVersion = 70;
+  static const int schemaVersion = 71;
 
   /// SQLite caps host parameters per statement (`SQLITE_MAX_VARIABLE_NUMBER` —
   /// only 999 on the builds shipped with older Android/iOS). Any `IN (?, ?, …)`
@@ -462,7 +464,7 @@ class LocalDb {
   static Future<Database> _open() async {
     final dir = await getDatabasesPath();
     final path = p.join(dir, dbName);
-    return openDatabase(
+    final opened = await openDatabase(
       path,
       onConfigure: (db) async {
         // WRITE PERFORMANCE. The default rollback journal (journal_mode=delete)
@@ -525,6 +527,7 @@ class LocalDb {
         await _createAlarmSchedule(db);
         await _createWakeTables(db);
         await _ensureCoachViews(db);
+        await _ensureStoreRevisions(db);
       },
       onUpgrade: (db, oldV, newV) async {
         if (oldV < 2) await _createEvents(db);
@@ -1280,12 +1283,20 @@ class LocalDb {
           // derived reads them. _repairOpenSchema re-runs it on every open.
           await _ensureEcgPhase1Columns(db);
         }
+        if (oldV < 71) {
+          // Side-table revisions avoid rewriting large payload rows and need
+          // no backfill; legacy rows read as revision zero until next write.
+          await _ensureStoreRevisions(db);
+        }
       },
       onOpen: (db) async {
         await _repairOpenSchema(db);
       },
       version: schemaVersion,
     );
+    _openCount++;
+    _markStoreReplaced();
+    return opened;
   }
 
   static Future<void> _repairOpenSchema(Database db) async {
@@ -1388,6 +1399,7 @@ class LocalDb {
     // Views LAST — they depend on metric_series / day_result / baselines / sessions
     // / notifications all existing. DROP+CREATE so a shape change takes effect.
     await _ensureCoachViews(db);
+    await _ensureStoreRevisions(db);
     await _dropRawStore(db);
   }
 
@@ -4934,15 +4946,7 @@ class LocalDb {
         readiness REAL
       )
     ''');
-    // baselines — rolling personal baselines, so a derivation pass reuses stored
-    // state instead of refolding full history each time.
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS baselines (
-        key TEXT PRIMARY KEY,
-        payload_json TEXT NOT NULL,
-        updated_at INTEGER NOT NULL
-      )
-    ''');
+    await _createBaselines(db);
     // metric_series — long-format scalars for trends / sparklines.
     await db.execute('''
       CREATE TABLE IF NOT EXISTS metric_series (
@@ -4956,6 +4960,18 @@ class LocalDb {
       'CREATE INDEX IF NOT EXISTS idx_metric_series_key ON metric_series(key, date)',
     );
     await _createMetricSeriesVersion(db);
+  }
+
+  /// Rolling personal baselines, kept separate so revision setup can ensure
+  /// only the source table it needs during a cheap schema rung.
+  static Future<void> _createBaselines(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS baselines (
+        key TEXT PRIMARY KEY,
+        payload_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
   }
 
   /// metric_series_version — which build's maths produced a day's scalars.
@@ -5114,6 +5130,69 @@ class LocalDb {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_day_result_day ON day_result(day_id, algo_version)',
     );
+  }
+
+  /// Revision identity for payload rows. The small side table avoids an ALTER
+  /// or backfill across the large day and baseline payload stores.
+  static Future<void> _ensureStoreRevisions(Database db) async {
+    // Sparse legacy fixtures and partially merged databases may report a
+    // schema version whose source table is absent; triggers require its DDL.
+    await _createBaselines(db);
+    await _createDayResult(db);
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS store_rev (
+        id INTEGER PRIMARY KEY AUTOINCREMENT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS row_rev (
+        kind TEXT NOT NULL,
+        k1 TEXT NOT NULL,
+        k2 INTEGER NOT NULL DEFAULT 0,
+        rev INTEGER NOT NULL,
+        PRIMARY KEY (kind, k1, k2)
+      ) WITHOUT ROWID
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS day_result_rev_insert
+      AFTER INSERT ON day_result BEGIN
+        INSERT INTO store_rev (id) VALUES (NULL);
+        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)
+          VALUES ('day_result', NEW.day_id, NEW.algo_version, last_insert_rowid());
+        DELETE FROM store_rev;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS day_result_rev_delete
+      AFTER DELETE ON day_result BEGIN
+        DELETE FROM row_rev
+          WHERE kind = 'day_result' AND k1 = OLD.day_id AND k2 = OLD.algo_version;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS baselines_rev_insert
+      AFTER INSERT ON baselines BEGIN
+        INSERT INTO store_rev (id) VALUES (NULL);
+        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)
+          VALUES ('baselines', NEW.key, 0, last_insert_rowid());
+        DELETE FROM store_rev;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS baselines_rev_update
+      AFTER UPDATE OF payload_json ON baselines BEGIN
+        INSERT INTO store_rev (id) VALUES (NULL);
+        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)
+          VALUES ('baselines', NEW.key, 0, last_insert_rowid());
+        DELETE FROM store_rev;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS baselines_rev_delete
+      AFTER DELETE ON baselines BEGIN
+        DELETE FROM row_rev WHERE kind = 'baselines' AND k1 = OLD.key AND k2 = 0;
+      END
+    ''');
   }
 
   /// journal_metric — the numeric half of a journal entry.
@@ -9160,15 +9239,22 @@ class LocalDb {
     return rows.isEmpty ? null : _withDate(rows.first);
   }
 
-  // ── P2.1 RED STUBS (design 02 step 2, revision identity and write seam) ────
-  // Throwing placeholders so the red tests compile and fail on behaviour. The
-  // green commit replaces each body; none of these may ship as written.
-
   /// Payload-free read of the served `day_result` row for [dayId]: every column
   /// except `payload_json`, plus `rev` (`COALESCE(row_rev.rev, 0)`), under
   /// [_servedAlgoCeiling]. Null when absent.
-  static Future<Map<String, dynamic>?> dayResultMeta(String dayId) async =>
-      throw UnimplementedError('P2.1: LocalDb.dayResultMeta');
+  static Future<Map<String, dynamic>?> dayResultMeta(String dayId) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT r.day_id, r.algo_version, r.computed_at, r.finalized, '
+      'r.skipped, r.partial, r.rhr, r.rmssd, r.readiness, r.window_json, '
+      'COALESCE(v.rev, 0) AS rev, r.day_id AS date '
+      'FROM day_result r $_servedDayJoin '
+      "LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id "
+      'AND v.k2 = r.algo_version WHERE r.day_id = ?',
+      [dayId],
+    );
+    return rows.isEmpty ? null : rows.first;
+  }
 
   /// The stored payload of exactly ([dayId], [algoVersion]), provided the row's
   /// revision still equals [expectedRev] (the one the caller's meta read saw).
@@ -9176,17 +9262,82 @@ class LocalDb {
     String dayId,
     int algoVersion, {
     required int expectedRev,
-  }) async => throw UnimplementedError('P2.1: LocalDb.dayPayload');
+  }) async {
+    final db = await instance;
+    final rows = await db.rawQuery(
+      'SELECT r.payload_json, COALESCE(v.rev, 0) AS rev '
+      'FROM day_result r LEFT JOIN row_rev v '
+      "ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version "
+      'WHERE r.day_id = ? AND r.algo_version = ?',
+      [dayId, algoVersion],
+    );
+    if (rows.isEmpty) return const DayPayloadAbsent();
+    final rev = (rows.first['rev'] as num).toInt();
+    if (rev != expectedRev) return DayPayloadStale(currentRev: rev);
+    return DayPayloadOk(
+      payloadJson: rows.first['payload_json'] as String,
+      rev: rev,
+    );
+  }
 
   /// `(wipeEpoch, openCount)`: changes whenever the store was wiped, rebuilt,
   /// merged into or reopened. Read synchronously on every cache lookup.
   static ({int wipeEpoch, int openCount}) get storeGeneration =>
-      throw UnimplementedError('P2.1: LocalDb.storeGeneration');
+      (wipeEpoch: _wipeEpoch, openCount: _openCount);
+
+  /// The only owner of the in-memory wipe epoch. Called after a store-changing
+  /// transaction commits, so a failed transaction never invalidates readers.
+  static void _markStoreReplaced() {
+    _wipeEpoch++;
+  }
 
   /// The demo-data delete, moved here from `DemoDataGenerator.purge` so every
   /// `day_result` write sits inside `LocalDb`.
-  static Future<void> purgeDemoRows() async =>
-      throw UnimplementedError('P2.1: LocalDb.purgeDemoRows');
+  static Future<void> purgeDemoRows() async {
+    final db = await instance;
+    await db.transaction((txn) async {
+      final dayRows = await txn.query(
+        'metric_series_version',
+        columns: ['date', 'algo_version'],
+        where: 'source = ?',
+        whereArgs: ['demo'],
+      );
+      for (final row in dayRows) {
+        final date = row['date'] as String;
+        await txn.delete(
+          'day_result',
+          where: 'day_id = ? AND algo_version = ?',
+          whereArgs: [date, row['algo_version']],
+        );
+        await txn.delete('metric_series', where: 'date = ?', whereArgs: [date]);
+        await txn.delete(
+          'metric_series_version',
+          where: 'date = ?',
+          whereArgs: [date],
+        );
+      }
+      final sessionRows = await txn.query(
+        'sessions',
+        columns: ['id'],
+        where: 'source = ?',
+        whereArgs: ['demo'],
+      );
+      for (final row in sessionRows) {
+        final id = row['id'] as String;
+        await txn.delete('sessions', where: 'id = ?', whereArgs: [id]);
+        await txn.delete(
+          'workout_route',
+          where: 'session_id = ?',
+          whereArgs: [id],
+        );
+        await txn.delete(
+          'workout_split',
+          where: 'session_id = ?',
+          whereArgs: [id],
+        );
+      }
+    });
+  }
 
   /// The most recent day (highest day_id label), latest version, or null.
   static Future<Map<String, dynamic>?> latestDayResult() async {
@@ -9851,11 +10002,6 @@ class LocalDb {
     return deleted;
   }
 
-  /// Bumped by every [wipeAll]. An in-memory copy of stored results
-  /// (`LastResultCache`) is only good for the epoch it was taken in, so a
-  /// "Delete everything" cannot leave a deleted result on screen.
-  static int wipeEpoch = 0;
-
   /// Empty EVERY table — the honest reading of "Delete everything".
   ///
   /// Enumerated from `sqlite_master`, never from a hand-written list. The
@@ -9877,9 +10023,6 @@ class LocalDb {
   /// the tail of a destructive user action). Views are `type='view'` and are
   /// not matched; the sqlite/Android internal tables are skipped by name.
   static Future<int> wipeAll() async {
-    // Anything cached in memory from before this point described data that is
-    // now gone (see [wipeEpoch]).
-    wipeEpoch++;
     final db = await instance;
     final rows = await db.rawQuery(
       "SELECT name FROM sqlite_master WHERE type = 'table' "
@@ -9892,6 +10035,7 @@ class LocalDb {
         if (t is String) deleted += await txn.delete(t);
       }
     });
+    _markStoreReplaced();
     return deleted;
   }
 
@@ -10500,6 +10644,8 @@ class LocalDb {
     // Last, so it can never be mistaken for a table row count by anything that
     // walks this map in order.
     if (importedDays != null) counts['_days'] = importedDays.length;
+    // Invalidate generation only after every committed page and follow-up write.
+    _markStoreReplaced();
     return counts;
   }
 

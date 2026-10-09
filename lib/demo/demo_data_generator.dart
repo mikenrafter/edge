@@ -209,42 +209,7 @@ class DemoDataGenerator {
         'sex': null,
       });
     }
-    final db = await LocalDb.instance;
-    await db.transaction((txn) async {
-      final dayRows = await txn.query(
-        'metric_series_version',
-        columns: ['date', 'algo_version'],
-        where: 'source = ?',
-        whereArgs: ['demo'],
-      );
-      for (final row in dayRows) {
-        final date = row['date'] as String;
-        // The provenance stamp identifies one immutable version, not every
-        // version on the date. Earlier real/imported results must survive.
-        await txn.delete('day_result',
-            where: 'day_id = ? AND algo_version = ?',
-            whereArgs: [date, row['algo_version']]);
-        // Scalar storage has no history or per-key provenance. Clear the demo
-        // cache and leave metrics absent rather than guessing an earlier source.
-        await txn.delete('metric_series', where: 'date = ?', whereArgs: [date]);
-        await txn.delete('metric_series_version',
-            where: 'date = ?', whereArgs: [date]);
-      }
-      final sessionRows = await txn.query(
-        'sessions',
-        columns: ['id'],
-        where: 'source = ?',
-        whereArgs: ['demo'],
-      );
-      for (final row in sessionRows) {
-        final id = row['id'] as String;
-        await txn.delete('sessions', where: 'id = ?', whereArgs: [id]);
-        await txn.delete('workout_route',
-            where: 'session_id = ?', whereArgs: [id]);
-        await txn.delete('workout_split',
-            where: 'session_id = ?', whereArgs: [id]);
-      }
-    });
+    await LocalDb.purgeDemoRows();
 
     // Two caches outside this table set are populated FROM day_result/sessions
     // as a side effect of merely viewing the app while demo rows exist, and

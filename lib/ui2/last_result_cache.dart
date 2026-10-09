@@ -40,13 +40,13 @@ class CachedResult<T> {
 }
 
 class _Entry {
-  _Entry(this.value, this.cachedAt, this.epoch, this.sig);
+  _Entry(this.value, this.cachedAt, this.generation, this.sig);
   final Object? value;
   final DateTime cachedAt;
   final String? sig;
 
-  /// [LocalDb.wipeEpoch] when it was taken; an older one is gone with the wipe.
-  final int epoch;
+  /// Store identity when it was taken; a replacement invalidates the entry.
+  final ({int wipeEpoch, int openCount}) generation;
 }
 
 class LastResultCache {
@@ -83,7 +83,7 @@ class LastResultCache {
   CachedResult<T>? get<T>(String key) {
     final e = _m.remove(key);
     if (e == null) return null;
-    if (e.epoch != LocalDb.wipeEpoch) return null;
+    if (e.generation != LocalDb.storeGeneration) return null;
     _m[key] = e;
     final v = e.value;
     return v is T ? CachedResult<T>(v, e.cachedAt, sig: e.sig) : null;
@@ -94,16 +94,16 @@ class LastResultCache {
   Future<CachedResult<T>?> read<T>(String key) async {
     final mem = get<T>(key);
     if (mem != null) return mem;
-    final epoch = LocalDb.wipeEpoch;
+    final generation = LocalDb.storeGeneration;
     try {
       final row = await _run(() => LocalDb.lastResult(key));
-      if (row == null || epoch != LocalDb.wipeEpoch) return null;
+      if (row == null || generation != LocalDb.storeGeneration) return null;
       final v = jsonDecode(row.payload);
       if (v is! T) return null;
       ReadPerf.lastResultRead(key, row.payload, v);
       final at = DateTime.fromMillisecondsSinceEpoch(row.computedAt);
       // A newer result put while the table was read stays.
-      if (!_m.containsKey(key)) _store(key, v, at, epoch, row.sig);
+      if (!_m.containsKey(key)) _store(key, v, at, generation, row.sig);
       return CachedResult<T>(v, at, sig: row.sig);
     } catch (_) {
       return null; // unreadable or corrupt: a miss
@@ -114,7 +114,7 @@ class LastResultCache {
   /// it in memory and in the table (NULL when omitted).
   void put<T>(String key, T value, {String? sig}) {
     final at = _now();
-    _store(key, value, at, LocalDb.wipeEpoch, sig);
+    _store(key, value, at, LocalDb.storeGeneration, sig);
     final json = _encode(value);
     if (json == null) return;
     ReadPerf.lastResultPut(key, json);
@@ -123,9 +123,15 @@ class LastResultCache {
         sig: sig));
   }
 
-  void _store(String key, Object? value, DateTime at, int epoch, String? sig) {
+  void _store(
+    String key,
+    Object? value,
+    DateTime at,
+    ({int wipeEpoch, int openCount}) generation,
+    String? sig,
+  ) {
     _m.remove(key);
-    _m[key] = _Entry(value, at, epoch, sig);
+    _m[key] = _Entry(value, at, generation, sig);
     while (_m.length > capacity) {
       _m.remove(_m.keys.first);
     }
