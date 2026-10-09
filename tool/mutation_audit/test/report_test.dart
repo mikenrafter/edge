@@ -79,7 +79,7 @@ AuditResults sample() => AuditResults(meta(), [
       result(mutant(7, '<', '<='), MutantStatus.loadFailure, detail: 'Bad state: load time'),
       result(mutant(8, '<', '<='), MutantStatus.skipped),
       result(mutant(9, '>', '>='), MutantStatus.survived,
-          reruns: [const RerunRecord('test/a_test.dart::flaky', confirmed: false)]),
+          reruns: [const RerunRecord('test/a_test.dart::flaky', result: RerunResult.passedAlone)]),
     ]);
 
 void main() {
@@ -93,6 +93,7 @@ void main() {
         'timeout': 1,
         'load-failure': 1,
         'skipped': 1,
+        'unconfirmed': 0,
       });
       expect(AuditResults(meta(), const []).counts.values, everyElement(0));
       expect(AuditResults(meta(), const []).counts.keys, MutantStatus.values.map((s) => s.id));
@@ -171,7 +172,7 @@ void main() {
       expect(ms[3]['guardTests'], ['test/guards/g_test.dart::no heavy calc']);
       expect(ms[4]['detail'], contains('Error: nope'));
       expect(ms.last['reruns'], [
-        {'test': 'test/a_test.dart::flaky', 'confirmed': false}
+        {'test': 'test/a_test.dart::flaky', 'confirmed': false, 'result': 'passed-alone', 'detail': ''}
       ]);
     });
 
@@ -242,6 +243,27 @@ void main() {
       expect(md, contains('## Timeouts'));
       expect(md, contains('## Load failures'));
       expect(md, contains('Bad state: load time'));
+    });
+
+    test('unconfirmed mutants have a section that says why, and stay out of the score', () {
+      final results = AuditResults(meta(), [
+        result(mutant(1, '<', '<='), MutantStatus.killed, killing: ['test/a_test.dart::k']),
+        result(mutant(2, '>', '>='), MutantStatus.unconfirmed, detail: 'test/a_test.dart::flaky: the rerun timed out', reruns: [
+          const RerunRecord('test/a_test.dart::flaky', result: RerunResult.unresolved, detail: 'the rerun timed out'),
+        ]),
+      ]);
+      expect(results.counts['unconfirmed'], 1);
+      expect(results.score, 1.0, reason: 'unconfirmed is outside killed / (killed + survived)');
+      final text = results.renderMarkdown();
+      expect(text, contains('## Unconfirmed'));
+      final section = text.substring(text.indexOf('## Unconfirmed'));
+      expect(section, contains('lib/a.dart:2'));
+      expect(section, contains('the rerun timed out'));
+      expect(section, contains('not confirmed'));
+      final json = results.toJson()['mutants'] as List;
+      expect((json[1] as Map)['status'], 'unconfirmed');
+      expect(((json[1] as Map)['reruns'] as List).single,
+          {'test': 'test/a_test.dart::flaky', 'confirmed': false, 'result': 'unresolved', 'detail': 'the rerun timed out'});
     });
 
     test('a per-file table of kills and survivors', () {

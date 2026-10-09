@@ -8,6 +8,8 @@ class ProcessOutcome {
     this.stdoutLines = const [],
     this.stderr = '',
     this.timedOut = false,
+    this.cancelled = false,
+    this.outputComplete = true,
     this.elapsed = Duration.zero,
   });
 
@@ -17,6 +19,14 @@ class ProcessOutcome {
 
   /// The run was stopped because it exceeded its timeout.
   final bool timedOut;
+
+  /// The run was stopped because the audit was cancelled (Ctrl-C).
+  final bool cancelled;
+
+  /// Both output streams were read to their end. False when the runner had to
+  /// stop waiting for them (a surviving process still held them open), so
+  /// [stdoutLines] may be cut short.
+  final bool outputComplete;
   final Duration elapsed;
 }
 

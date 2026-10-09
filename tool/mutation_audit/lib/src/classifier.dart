@@ -27,7 +27,12 @@ enum MutantStatus {
   loadFailure('load-failure'),
 
   /// The run finished but no test actually ran (all skipped, or none).
-  skipped('skipped');
+  skipped('skipped'),
+
+  /// A test failed, but the rerun that had to confirm the failure did not show
+  /// it failing again (it timed out, did not load, did not run the test, ...).
+  /// Not a kill, not a survivor: outside the score.
+  unconfirmed('unconfirmed');
 
   const MutantStatus(this.id);
   final String id;
@@ -60,17 +65,36 @@ class GuardMatcher {
   }
 }
 
-/// Runs one failed test alone (same mutant, same working tree) and returns its
-/// outcome, or null when it did not run at all.
-typedef SingleTestRunner = Future<TestOutcome?> Function(TestOutcome failed);
+/// Runs one failed test alone (same mutant, same working tree) and returns the
+/// whole process outcome: exit status, timeout, reporter stream and all.
+typedef SingleTestRunner = Future<ProcessOutcome> Function(TestOutcome failed);
 
 /// What re-running an ambiguous failure alone showed.
-class RerunRecord {
-  const RerunRecord(this.testKey, {required this.confirmed});
-  final String testKey;
+enum RerunResult {
+  /// The test ran alone and failed again, with an error event.
+  failedAgain('failed-again'),
 
-  /// The test failed again alone (a real failure) or passed (flaky).
-  final bool confirmed;
+  /// The test ran alone, to the end of a complete run, and passed: flaky.
+  passedAlone('passed-alone'),
+
+  /// The rerun did not settle it (timeout, no load, test not run, incomplete).
+  unresolved('unresolved');
+
+  const RerunResult(this.id);
+  final String id;
+}
+
+/// One rerun and what it showed.
+class RerunRecord {
+  const RerunRecord(this.testKey, {required this.result, this.detail = ''});
+  final String testKey;
+  final RerunResult result;
+
+  /// Why the rerun is [RerunResult.unresolved] (empty otherwise).
+  final String detail;
+
+  /// Only a repeated, attributable failure of this test confirms a kill.
+  bool get confirmed => result == RerunResult.failedAgain;
 }
 
 /// How a killing test failed: an assertion (`TestFailure`, the reporter's
@@ -124,10 +148,13 @@ class Classification {
 ///    (`<file>:<line>:<col>: Error:` or `Compilation failed`) -> compileInvalid
 ///    (the mutant is not code; nothing else in the run counts).
 /// 3. failed tests -> each one that is in [flakyTests] or has no error event
-///    (not attributable) is first re-run alone through [rerun]; a failure that
-///    passes alone is dropped (recorded, not confirmed). Confirmed failures
-///    that match [guards] are guard failures, the rest kill: any kill ->
-///    killed; only guard failures -> killedByGuardOnly.
+///    (not attributable) is first re-run alone through [rerun] ([interpretRerun]):
+///    a failure that passes alone is dropped (recorded); one that does not
+///    demonstrably fail again (the rerun timed out, did not compile or load,
+///    did not run the test, was incomplete, or there is no [rerun]) is
+///    unresolved. Confirmed failures that match [guards] are guard failures,
+///    the rest kill: any kill -> killed; otherwise any unresolved failure ->
+///    unconfirmed; otherwise only guard failures -> killedByGuardOnly.
 /// 4. load errors left (exception at load, missing file), or a failed
 ///    `setUpAll` / `tearDownAll` hook (the environment broke; hooks are never
 ///    tests, so never kills) -> loadFailure.
@@ -160,16 +187,21 @@ Future<Classification> classifyRun(
   final reruns = <RerunRecord>[];
   final killing = <KillingTest>[];
   final guardFailures = <String>[];
+  final unresolved = <RerunRecord>[];
   for (final t in failed) {
-    var confirmed = true;
     final ambiguous = flakyTests.contains(t.key) || t.errors.isEmpty;
-    if (ambiguous && rerun != null) {
-      final again = await rerun(t);
-      confirmed = again == null || again.failed;
-      reruns.add(RerunRecord(t.key, confirmed: confirmed));
-      if (!confirmed) passedAfterRerun++;
+    if (ambiguous) {
+      // A failure is a kill only when it is attributable (it carried an error
+      // event) or when running that test alone shows it failing again. Not
+      // being able to run it alone is not confirmation.
+      final record = rerun == null
+          ? RerunRecord(t.key, result: RerunResult.unresolved, detail: 'no rerun available')
+          : interpretRerun(await rerun(t), t, root: root);
+      reruns.add(record);
+      if (record.result == RerunResult.passedAlone) passedAfterRerun++;
+      if (record.result == RerunResult.unresolved) unresolved.add(record);
+      if (!record.confirmed) continue;
     }
-    if (!confirmed) continue;
     if (guards?.matches(t) ?? false) {
       guardFailures.add(t.key);
     } else {
@@ -184,6 +216,16 @@ Future<Classification> classifyRun(
       guardTests: guardFailures,
       reruns: reruns,
       detail: _firstLine(failed.firstWhere((t) => t.key == killing.first.key).errors),
+    );
+  }
+  if (unresolved.isNotEmpty) {
+    // A failure we could not confirm may be a kill or noise: not a kill, and
+    // not a survivor or a guard-only result either.
+    return Classification(
+      status: MutantStatus.unconfirmed,
+      guardTests: guardFailures,
+      reruns: reruns,
+      detail: '${unresolved.first.testKey}: ${unresolved.first.detail}',
     );
   }
   if (guardFailures.isNotEmpty) {
@@ -214,6 +256,43 @@ Future<Classification> classifyRun(
   final passed = run.tests.where((t) => !t.failed && !t.skipped).length + passedAfterRerun;
   return Classification(
       status: passed > 0 ? MutantStatus.survived : MutantStatus.skipped, reruns: reruns);
+}
+
+/// What running [failed] alone ([again], the whole process outcome) shows.
+///
+/// - [RerunResult.failedAgain] only when the test ran (not skipped) and failed
+///   with at least one error event, and the run did not time out or get
+///   cancelled and nothing failed to compile or load;
+/// - [RerunResult.passedAlone] only when it ran, passed, and the run was
+///   complete (output read to the end, a successful `done` event);
+/// - everything else is [RerunResult.unresolved], with the reason.
+RerunRecord interpretRerun(ProcessOutcome again, TestOutcome failed, {String? root}) {
+  RerunRecord unresolved(String why) =>
+      RerunRecord(failed.key, result: RerunResult.unresolved, detail: why);
+  if (again.cancelled) return unresolved('the rerun was cancelled');
+  if (again.timedOut) return unresolved('the rerun timed out');
+  final run = parseReporterStream(again.stdoutLines, root: root);
+  for (final e in run.loadErrors) {
+    return unresolved(_isCompileError(e.message)
+        ? 'the rerun did not compile: ${_diagnostic(e.message)}'
+        : 'the suite did not load in the rerun: ${_firstMessageLine(e.message)}');
+  }
+  if (run.setupFailures.isNotEmpty) {
+    final f = run.setupFailures.first;
+    return unresolved('${f.name} failed in the rerun: ${_firstMessageLine(f.message)}');
+  }
+  final same = [for (final t in run.tests) if (t.key == failed.key && !t.skipped) t];
+  if (same.isEmpty) return unresolved('the test did not run in the rerun');
+  if (same.any((t) => t.failed)) {
+    return same.any((t) => t.failed && t.errors.isNotEmpty)
+        ? RerunRecord(failed.key, result: RerunResult.failedAgain)
+        : unresolved('the test failed again without an error event');
+  }
+  if (!again.outputComplete || !run.sawDone || !run.doneSuccess) {
+    return unresolved('the rerun passed but its output is incomplete '
+        '(${!again.outputComplete ? 'output not read to the end' : 'no successful done event'})');
+  }
+  return RerunRecord(failed.key, result: RerunResult.passedAlone);
 }
 
 final _compilerDiagnostic = RegExp(r':\d+:\d+: Error:');

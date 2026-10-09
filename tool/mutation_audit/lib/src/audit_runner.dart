@@ -74,18 +74,12 @@ class AuditRunner {
     final flaky = config.flakyTests.toSet();
     final results = <MutantResult>[];
 
-    Future<TestOutcome?> alone(TestOutcome failed) async {
-      final outcome = await runner.run(
-        buildTestCommand(config.testCmd, tests: [failed.suite], fullName: failed.name),
-        workingDirectory: root,
-        timeout: config.timeout,
-        environment: config.env,
-      );
-      for (final t in parseReporterStream(outcome.stdoutLines, root: root).tests) {
-        if (t.key == failed.key) return t;
-      }
-      return null;
-    }
+    Future<ProcessOutcome> alone(TestOutcome failed) => runner.run(
+          buildTestCommand(config.testCmd, tests: [failed.suite], fullName: failed.name),
+          workingDirectory: root,
+          timeout: config.timeout,
+          environment: config.env,
+        );
 
     for (final mutant in mutants) {
       final applied = await applier.apply(mutant);

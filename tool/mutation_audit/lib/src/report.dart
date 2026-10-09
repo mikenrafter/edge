@@ -94,7 +94,7 @@ class AuditResults {
   /// The JSON document: `meta` (SHAs, dependency config, command, options,
   /// baseline, times), `counts`, `score`, and `mutants`: per mutant `id`,
   /// `file`, `line`, `column`, `operator`, `original`, `mutated`, `status`,
-  /// `killingTests` (keys), `killers` (`test`, `kind`: assertion | exception), `guardTests`, `reruns` (`test`, `confirmed`),
+  /// `killingTests` (keys), `killers` (`test`, `kind`: assertion | exception), `guardTests`, `reruns` (`test`, `confirmed`: failed again alone, `result`: failed-again | passed-alone | unresolved, `detail`),
   /// `durationMs`, `detail`.
   Map<String, Object?> toJson() => {
         'meta': {
@@ -133,7 +133,8 @@ class AuditResults {
               ],
               'guardTests': r.classification.guardTests,
               'reruns': [
-                for (final x in r.classification.reruns) {'test': x.testKey, 'confirmed': x.confirmed}
+                for (final x in r.classification.reruns)
+                  {'test': x.testKey, 'confirmed': x.confirmed, 'result': x.result.id, 'detail': x.detail}
               ],
               'durationMs': r.duration.inMilliseconds,
               'detail': r.classification.detail,
@@ -143,11 +144,12 @@ class AuditResults {
 
   /// The Markdown summary: header with SHAs and command, a counts table by
   /// status, the score, then killed (with the kind of each killing test), survivors, killed-by-guard-only, compile-invalid,
-  /// timeout and load-failure mutants as tables (file:line, operator, change),
+  /// timeout, load-failure and unconfirmed (a failure whose rerun did not
+  /// confirm it) mutants as tables (file:line, operator, change),
   /// and per file killed/survived counts. The score is a percentage with one
   /// decimal (`50.0%`), or the words `no score` when it is undefined.
   /// Section headings: `## Killed`, `## Survivors`, `## Killed by guards only`,
-  /// `## Compile-invalid`, `## Timeouts`, `## Load failures`, `## By file`.
+  /// `## Compile-invalid`, `## Timeouts`, `## Load failures`, `## Unconfirmed`, `## By file`.
   String renderMarkdown() {
     final b = StringBuffer();
     final s = score;
@@ -205,7 +207,12 @@ class AuditResults {
             ? c.guardTests.join('<br>')
             : [
                 if (c.detail.isNotEmpty) c.detail,
-                for (final x in c.reruns) 'rerun ${x.testKey}: ${x.confirmed ? 'failed again' : 'passed alone'}',
+                for (final x in c.reruns)
+                  'rerun ${x.testKey}: ${switch (x.result) {
+                    RerunResult.failedAgain => 'failed again',
+                    RerunResult.passedAlone => 'passed alone',
+                    RerunResult.unresolved => 'not confirmed (${x.detail})',
+                  }}',
               ].join('<br>');
         b.writeln('| ${m.file}:${m.line} | ${m.operator.id} | `${_cell(m.original)}` -> `${_cell(m.mutated)}` '
             '| ${_cell(extra)} |');
@@ -218,6 +225,7 @@ class AuditResults {
     section('Compile-invalid', MutantStatus.compileInvalid);
     section('Timeouts', MutantStatus.timeout);
     section('Load failures', MutantStatus.loadFailure);
+    section('Unconfirmed', MutantStatus.unconfirmed);
 
     b
       ..writeln()

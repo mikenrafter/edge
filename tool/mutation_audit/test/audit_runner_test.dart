@@ -256,6 +256,51 @@ void main() {
       expect(current(), source);
     });
 
+    test('a rerun that times out leaves the mutant unconfirmed, never killed', () async {
+      final runner = FakeProcessRunner((call) {
+        if (current() == source) return outcomeOf(StreamBuilder().loaded('test/a_test.dart').pass('test/a_test.dart', 'flaky one').done());
+        if (call.argv.contains('--name')) {
+          return outcomeOf(StreamBuilder().loaded('test/a_test.dart').unfinished('test/a_test.dart', 'flaky one'),
+              exitCode: -9, timedOut: true);
+        }
+        return outcomeOf(StreamBuilder().loaded('test/a_test.dart').fail('test/a_test.dart', 'flaky one').done(success: false), exitCode: 1);
+      });
+      final run = await AuditRunner(runner: runner).run(
+          config: config(flaky: ['test/a_test.dart::flaky one'], timeout: const Duration(seconds: 5)),
+          root: root.path,
+          mutants: [mutant('<', '<=')]);
+      final c = run.results.single.classification;
+      expect(c.status, MutantStatus.unconfirmed);
+      expect(c.killingTests, isEmpty);
+      expect(c.reruns.single.result, RerunResult.unresolved);
+      expect(c.reruns.single.detail, contains('timed out'));
+      expect(runner.calls.last.timeout, const Duration(seconds: 5), reason: 'the rerun is bounded too');
+      expect(current(), source);
+    });
+
+    test('a rerun that never ran the test (empty output) is unconfirmed, never killed', () async {
+      final runner = FakeProcessRunner((call) {
+        if (current() == source) return outcomeOf(StreamBuilder().loaded('test/a_test.dart').pass('test/a_test.dart', 'flaky one').done());
+        if (call.argv.contains('--name')) return const ProcessOutcome(exitCode: 1, stderr: 'boom');
+        return outcomeOf(StreamBuilder().loaded('test/a_test.dart').fail('test/a_test.dart', 'flaky one').done(success: false), exitCode: 1);
+      });
+      final run = await AuditRunner(runner: runner).run(
+          config: config(flaky: ['test/a_test.dart::flaky one']), root: root.path, mutants: [mutant('<', '<=')]);
+      expect(run.results.single.classification.status, MutantStatus.unconfirmed);
+    });
+
+    test('the rerun runs the failed suite alone with the exact, anchored name', () async {
+      final runner = FakeProcessRunner((call) {
+        if (current() == source) return outcomeOf(StreamBuilder().loaded('test/a_test.dart').pass('test/a_test.dart', 'g (x)').done());
+        return outcomeOf(StreamBuilder().loaded('test/a_test.dart').fail('test/a_test.dart', 'g (x)').done(success: false), exitCode: 1);
+      });
+      await AuditRunner(runner: runner).run(
+          config: config(flaky: ['test/a_test.dart::g (x)'], testCmd: 'dart test test/other_test.dart'),
+          root: root.path,
+          mutants: [mutant('<', '<=')]);
+      expect(runner.calls.last.argv, ['dart', 'test', '--reporter', 'json', 'test/a_test.dart', '--name', r'^g \(x\)$']);
+    });
+
     test('a failure that repeats alone is a kill', () async {
       final runner = FakeProcessRunner((call) {
         if (current() != source) {

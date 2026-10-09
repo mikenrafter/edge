@@ -178,6 +178,8 @@ ProcessOutcome outcomeOf(
   StreamBuilder stream, {
   int exitCode = 0,
   bool timedOut = false,
+  bool cancelled = false,
+  bool outputComplete = true,
   String stderr = '',
   Duration elapsed = const Duration(seconds: 1),
 }) =>
@@ -186,6 +188,8 @@ ProcessOutcome outcomeOf(
       stdoutLines: stream.build(),
       stderr: stderr,
       timedOut: timedOut,
+      cancelled: cancelled,
+      outputComplete: outputComplete,
       elapsed: elapsed,
     );
 
@@ -196,3 +200,7 @@ StreamBuilder passing([String suite = 'test/a_test.dart']) =>
 /// A run in which [name] fails by assertion.
 StreamBuilder failing(String name, [String suite = 'test/a_test.dart']) =>
     StreamBuilder().loaded(suite).pass(suite, 'g passes').fail(suite, name).done(success: false);
+
+/// A complete run in which only [name] ran and passed.
+StreamBuilder passingWith(String name, [String suite = 'test/a_test.dart']) =>
+    StreamBuilder().loaded(suite).pass(suite, name).done();
