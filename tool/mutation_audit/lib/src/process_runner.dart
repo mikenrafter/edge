@@ -320,27 +320,65 @@ class _Family {
 
   Future<List<ProcIdentity>> _scan(bool atRootExit) async {
     final snap = await host.snapshot();
+    // A /proc walk is not atomic: entries are read one after the other, so a
+    // pid can appear as its old owner while a child of its new owner is also
+    // in the table. Nothing in the table is trusted on its own: a member is
+    // kept, and an anchor used, only when its start time is read again now
+    // (after the whole walk) and is the one captured.
+    bool still(int pid, String start) {
+      final fresh = host.identityOf(pid);
+      return fresh != null && fresh.start == start;
+    }
+
     final members = <int, ProcIdentity>{};
     for (final e in _captured.entries) {
       final now = snap[e.key];
-      if (now != null && now.start == e.value.start) members[e.key] = now;
+      if (now != null && now.start == e.value.start && still(e.key, e.value.start)) members[e.key] = now;
     }
     final rootNow = snap[rootPid];
-    final rootAlive = !rootExited && rootNow != null && (rootStart == null || rootNow.start == rootStart);
+    final rootAlive = !rootExited &&
+        rootNow != null &&
+        (rootStart == null || rootNow.start == rootStart) &&
+        still(rootPid, rootNow.start);
     if (rootAlive) members[rootPid] = rootNow;
-    if (ownsSession && (rootAlive || atRootExit)) {
-      for (final p in snap.values) {
-        if (p.sid == rootPid && p.pid != rootPid) members.putIfAbsent(p.pid, () => p);
+
+    // A candidate joins only when it is anchored to a member re-validated
+    // above (or to the adopted ones, validated as they join) and did not start
+    // before that anchor.
+    void adopt(ProcIdentity candidate, ProcIdentity anchor) {
+      if (members.containsKey(candidate.pid)) return;
+      if (!_notBefore(candidate.start, anchor.start)) return;
+      if (!still(candidate.pid, candidate.start)) return;
+      members[candidate.pid] = candidate;
+    }
+
+    if (ownsSession) {
+      // The session is the root's while the root's identity holds. Right after
+      // its exit (the one scan that reads the session while its members still
+      // hold the number) it is read only if nothing has taken the root's pid
+      // since: a newcomer that called setsid would own a session of that number.
+      final anchorStart = rootAlive ? rootNow.start : rootStart;
+      final exitScan = atRootExit && !rootAlive && snap[rootPid] == null && host.identityOf(rootPid) == null;
+      if (rootAlive || exitScan) {
+        for (final p in snap.values) {
+          if (p.sid != rootPid || p.pid == rootPid) continue;
+          if (anchorStart == null) {
+            if (still(p.pid, p.start)) members.putIfAbsent(p.pid, () => p);
+          } else {
+            adopt(p, ProcIdentity(rootPid, anchorStart, 0, 0));
+          }
+        }
       }
     }
     var grew = true;
     while (grew) {
       grew = false;
       for (final p in snap.values) {
-        if (!members.containsKey(p.pid) && members.containsKey(p.ppid)) {
-          members[p.pid] = p;
-          grew = true;
-        }
+        if (members.containsKey(p.pid)) continue;
+        final parent = members[p.ppid];
+        if (parent == null) continue;
+        adopt(p, parent);
+        if (members.containsKey(p.pid)) grew = true;
       }
     }
     for (final e in members.entries) {
@@ -349,6 +387,27 @@ class _Family {
     // In capture order: parents before the processes they started.
     return [for (final pid in _captured.keys) if (members.containsKey(pid)) _captured[pid]!];
   }
+}
+
+/// [a] started no earlier than [b]: start times are clock ticks since boot on
+/// Linux (numbers), `ps` dates elsewhere (compared as dates; a form that is
+/// not understood is not held against the candidate).
+bool _notBefore(String a, String b) {
+  final x = int.tryParse(a), y = int.tryParse(b);
+  if (x != null && y != null) return x >= y;
+  final dx = _psDate(a), dy = _psDate(b);
+  return dx == null || dy == null || !dx.isBefore(dy);
+}
+
+/// `Thu Oct  9 12:00:00 2026` (ps -o lstart).
+DateTime? _psDate(String s) {
+  final m = RegExp(r'^\w{3} (\w{3})\s+(\d+) (\d+):(\d+):(\d+) (\d{4})$').firstMatch(s.trim());
+  if (m == null) return null;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  final month = months.indexOf(m.group(1)!);
+  if (month < 0) return null;
+  return DateTime.utc(int.parse(m.group(6)!), month + 1, int.parse(m.group(2)!), int.parse(m.group(3)!),
+      int.parse(m.group(4)!), int.parse(m.group(5)!));
 }
 
 enum _Ended { finished, timeout, cancelled }

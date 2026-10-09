@@ -225,11 +225,21 @@ class FakeHost implements ProcessHost {
     return p != null && p.alive ? _identity(p) : null;
   }
 
+  /// Alters what [snapshot] returns (a real /proc walk is not atomic: entries
+  /// are read one after the other, so the table can mix generations).
+  Map<int, ProcIdentity> Function(Map<int, ProcIdentity> real)? snapshotFilter;
+
+  /// The identity of [p] as it is now (for a filter that wants a stale copy).
+  ProcIdentity identityNow(FakeProc p) => _identity(p);
+
   @override
-  Future<Map<int, ProcIdentity>> snapshot() async => {
-        for (final p in procs.values)
-          if (p.alive) p.pid: _identity(p),
-      };
+  Future<Map<int, ProcIdentity>> snapshot() async {
+    final real = {
+      for (final p in procs.values)
+        if (p.alive) p.pid: _identity(p),
+    };
+    return snapshotFilter?.call(real) ?? real;
+  }
 }
 
 class _Child implements ChildProcess {

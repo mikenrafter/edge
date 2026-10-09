@@ -259,8 +259,16 @@ session of its own; on a timeout the runner
    then, while the kernel still holds its number), and at the start of cleanup. A captured process is
    never forgotten while it lives: every rescan is the captured set that is still alive plus the
    descendants of any such member, so a child reparented to init (or in a session of its own) when its
-   parent dies on SIGTERM is still found. The child's session is scanned only while the child is alive
-   (and once, right after its exit), never by a dead child's number;
+   parent dies on SIGTERM is still found.
+
+   Every adoption is anchored. A process joins the family only as the child of a member (or, for a
+   session scan, of the child's session) and only if (a) that anchor's start time is read AGAIN after
+   the whole process-table walk and is still the one captured, (b) the candidate's start time is not
+   earlier than the anchor's, and (c) the candidate's own identity re-reads the same. A `/proc` walk is
+   not atomic (an old parent entry can sit beside a child of the process that took its pid), and the
+   checks above reject that mix. The child's session is scanned only while the child is alive, and
+   once right after its exit, and then only if no other process holds the child's pid by then (a
+   newcomer that started a session would own a session of the same number);
 2. sends SIGTERM to each member (never a process group, never a name match, never init);
 3. waits up to 5 s, polling, then sends a real SIGKILL to survivors, rescanning first;
 4. before every signal re-reads the target's start time and skips it if it changed: a pid that was
