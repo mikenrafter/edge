@@ -409,15 +409,288 @@ class _Ic {
   }
 }
 
-/// Every law in this file that runs on [_specGen] is registered here, so the
-/// coverage test below can ask whether the generator really reaches the
-/// situations the laws talk about.
-final List<String> _specLawNames = [];
+/// What a law's generator must reach for the law to mean anything: minimum
+/// counts of situations over the law's default cases, and the observer that
+/// recognises them in one generated input.
+class _Reach<T> {
+  const _Reach(this.needs, this.observe);
+  final Map<String, int> needs;
+  final void Function(T arg, void Function(String) bump) observe;
+}
+
+class _Registered {
+  _Registered(this.name, this.needs, this.measure);
+  final String name;
+  final Map<String, int> needs;
+  final Map<String, int> Function() measure;
+}
+
+/// Every law in this file is registered here (through [_law] or [_lawWith]), so
+/// the generator-reach test can ask whether each law's OWN generator really
+/// produces the situations the law talks about.
+final List<_Registered> _registry = [];
+
+void _lawWith<T>(String name, Gen<T> gen, void Function(T) body,
+    {required _Reach<T> reach, List<T> examples = const [], int? cases}) {
+  _registry.add(_Registered(name, reach.needs, () {
+    final got = <String, int>{for (final k in reach.needs.keys) k: 0};
+    final r = runProperty<T>(
+      name: name,
+      gen: gen,
+      config: PropertyConfig(
+          cases: cases ?? 200, budget: const Duration(seconds: 30)),
+      body: (v) => reach.observe(v, (k) => got[k] = (got[k] ?? 0) + 1),
+    );
+    if (!r.passed) fail(r.failure!.report);
+    return got;
+  }));
+  forAll<T>(name, gen, body, examples: examples, cases: cases);
+}
 
 void _law(String name, void Function(_Spec) body,
-    {List<_Spec> examples = const [], int? cases}) {
-  _specLawNames.add(name);
-  forAll<_Spec>(name, _specGen, body, examples: examples, cases: cases);
+    {List<_Spec> examples = const [], int? cases}) =>
+    _lawWith<_Spec>(name, _specGen, body,
+        reach: _specReach, examples: examples, cases: cases);
+
+/// The situations a plain chart law must meet (counted on usable charts).
+void _observeChart(_Chart c, void Function(String) bump) {
+  if (!_usable(c.scale)) {
+    bump('unusable scale');
+    return;
+  }
+  final l = c.layout;
+  if (c.scale.width < c.scale.iconWidth) {
+    bump('usable plot narrower than one icon');
+  }
+  _observeShape(c, bump);
+  if (l.items.any((i) => i.focused)) bump('focused icon placed');
+  if (l.items.any((i) =>
+      i.focused && i.memberIds.length > 1 && i.memberIds.first != i.id)) {
+    bump('focus on a non-oldest member (shown in place of the oldest)');
+  }
+  if (c.vis.any((v) => v.isRange && !v.startsInside)) {
+    bump('range clipped on the left');
+  }
+  if (c.vis.any((v) => v.isRange && !v.endsInside)) {
+    bump('range clipped on the right');
+  }
+  final nights = {
+    for (final v in c.vis)
+      if (v.isNight) v.a.id
+  };
+  if (nights.isNotEmpty) bump('main sleep visible');
+  if (l.unplaced.any(nights.contains)) bump('main sleep given up');
+  if (c.vis.any((v) => v.a.kind == AnnotationKind.algoVersion)) {
+    bump('algorithm-version mark visible');
+  }
+  if (c.vis.isNotEmpty) {
+    bump(_fitting(c).fits
+        ? 'L9 sweep: everything fits'
+        : 'L9 sweep: nothing fits, icons dropped');
+  }
+}
+
+/// Clusters and drops: the two things layout does beyond placing icons.
+void _observeShape(_Chart c, void Function(String) bump) {
+  if (!_usable(c.scale)) return;
+  final l = c.layout;
+  if (l.items.any((i) => i.memberIds.length > 1)) bump('multi-member cluster');
+  if (l.unplaced.isNotEmpty) bump('icon given up (unplaced)');
+}
+
+final _specReach = _Reach<_Spec>(const {
+  'multi-member cluster': 40,
+  'icon given up (unplaced)': 25,
+  'focused icon placed': 35,
+  'focus on a non-oldest member (shown in place of the oldest)': 8,
+  'range clipped on the left': 22,
+  'range clipped on the right': 35,
+  'main sleep visible': 45,
+  'main sleep given up': 5,
+  'algorithm-version mark visible': 40,
+  'usable plot narrower than one icon': 6,
+  'unusable scale': 20,
+  'L9 sweep: everything fits': 45,
+  'L9 sweep: nothing fits, icons dropped': 22,
+}, (spec, bump) => _observeChart(_build(spec), bump));
+
+final _reachL7 = _Reach<(_Spec, (int, int))>(const {
+  'scaled by a power of two other than 1': 100,
+  'shifted by a non-zero offset': 110,
+  'scaled and shifted together': 95,
+  'multi-member cluster': 35,
+  'icon given up (unplaced)': 28,
+}, (arg, bump) {
+  final (spec, (k, m)) = arg;
+  if (k != 0) bump('scaled by a power of two other than 1');
+  if (m != 0) bump('shifted by a non-zero offset');
+  if (k != 0 && m != 0) bump('scaled and shifted together');
+  _observeShape(_build(spec, snap: true), bump);
+});
+
+final _reachL7g = _Reach<(_Spec, (double, double))>(const {
+  'transform is not the identity': 120,
+  'chart in generic position (compared)': 85,
+  'multi-member cluster': 21,
+  'icon given up (unplaced)': 17,
+}, (arg, bump) {
+  final (spec, (a, b)) = arg;
+  if (a != 1 || b != 0) bump('transform is not the identity');
+  final c = _build(spec);
+  if (!_usable(c.scale)) return;
+  if (_generic(c)) {
+    bump('chart in generic position (compared)');
+    _observeShape(c, bump);
+  }
+});
+
+final _reachL8 = _Reach<(_Spec, (double?, double?))>(const {
+  'cursor missing or non-finite': 18,
+  'nearest within reach (pick returned)': 38,
+  'nearest out of reach (pick is null)': 20,
+  'tie at the nearest distance': 40,
+  'tie between a point and a range': 22,
+  'cursor inside a range': 12,
+  'inclusive reach boundary checked (reach == distance)': 38,
+}, (arg, bump) {
+  final (spec, (cursor, reach)) = arg;
+  final c = _build(spec);
+  if (cursor == null || !cursor.isFinite) {
+    bump('cursor missing or non-finite');
+    return;
+  }
+  if (c.vis.isEmpty) return;
+  final n = _nearest(c, cursor);
+  if (reach == null || n.d <= reach) {
+    bump('nearest within reach (pick returned)');
+  } else {
+    bump('nearest out of reach (pick is null)');
+  }
+  if (n.tie) bump('tie at the nearest distance');
+  if (n.mixedTie) bump('tie between a point and a range');
+  if (n.best.isRange && n.d == 0) bump('cursor inside a range');
+  // The body re-runs the pick with reach == distance on every such case.
+  if (reach == null || n.d <= reach) {
+    bump('inclusive reach boundary checked (reach == distance)');
+  }
+});
+
+final _reachL12 = _Reach<(_Spec, double?)>(const {
+  'null cursor': 27,
+  'NaN cursor': 27,
+  'positive infinity cursor': 27,
+  'negative infinity cursor': 27,
+  'annotations are visible (so null means something)': 80,
+}, (arg, bump) {
+  final (spec, cursor) = arg;
+  if (cursor == null) bump('null cursor');
+  if (cursor != null && cursor.isNaN) bump('NaN cursor');
+  if (cursor == double.infinity) bump('positive infinity cursor');
+  if (cursor == double.negativeInfinity) bump('negative infinity cursor');
+  if (_build(spec).vis.isNotEmpty) {
+    bump('annotations are visible (so null means something)');
+  }
+});
+
+final _reachL8s = _Reach<(_Spec, ((int, bool), (int, int)))>(const {
+  'nothing to step through': 19,
+  'step within a multi-member cluster': 12,
+  'step across icons': 20,
+  'clamped at the last stop': 8,
+  'clamped at the first stop': 7,
+  'forward from no focus': 12,
+  'back from no focus': 17,
+}, (arg, bump) {
+  final (spec, ((size, forward), (curMode, curIdx))) = arg;
+  final c = _build(spec);
+  if (!_usable(c.scale)) return;
+  final l = c.layout;
+  final seq = [for (final i in l.items) ...i.memberIds];
+  if (seq.isEmpty) {
+    bump('nothing to step through');
+    return;
+  }
+  final owner = <String, int>{
+    for (var k = 0; k < l.items.length; k++)
+      for (final m in l.items[k].memberIds) m: k
+  };
+  final delta = forward ? size : -size;
+  final cur = _stepCurrent(l, curMode, curIdx);
+  final at = cur == null ? -1 : seq.indexOf(cur);
+  final int target;
+  if (at >= 0) {
+    target = at + delta;
+  } else {
+    target = delta > 0 ? delta - 1 : seq.length + delta;
+    bump(delta > 0 ? 'forward from no focus' : 'back from no focus');
+  }
+  if (target > seq.length - 1) bump('clamped at the last stop');
+  if (target < 0) bump('clamped at the first stop');
+  if (at >= 0) {
+    final j = target.clamp(0, seq.length - 1);
+    if (j != at) {
+      if (owner[seq[at]] == owner[seq[j]]) {
+        bump('step within a multi-member cluster');
+      } else {
+        bump('step across icons');
+      }
+    }
+  }
+});
+
+/// The current focus of a stepping case: 0 none, 1 any stop, 2 an id that is
+/// on no icon, 3-4 a stop inside a multi-member cluster (any stop when the
+/// chart has none), so steps within a cluster are common.
+String? _stepCurrent(AnnotationLayout l, int mode, int idx) {
+  final seq = [for (final i in l.items) ...i.memberIds];
+  if (seq.isEmpty) return mode == 2 ? 'ghost' : null;
+  switch (mode) {
+    case 1:
+      return seq[idx % seq.length];
+    case 2:
+      return 'ghost';
+    case 3 || 4:
+      final inCluster = [
+        for (final i in l.items)
+          if (i.memberIds.length > 1) ...i.memberIds
+      ];
+      final pool = inCluster.isEmpty ? seq : inCluster;
+      return pool[idx % pool.length];
+    default:
+      return null;
+  }
+}
+
+/// The annotation a scrub at [cursor] px is ON or NEAREST to: distance 0 on a
+/// range, otherwise to its nearest edge (a point: to its x); at equal distance a
+/// point beats a range, then the older. [tie]: another annotation is equally
+/// near; [mixedTie]: one of them is a range where the winner is a point.
+({_V best, double d, bool tie, bool mixedTie}) _nearest(
+    _Chart c, double cursor) {
+  double dist(_V v) => v.isRange
+      ? (cursor < v.x ? v.x - cursor : cursor > v.right! ? cursor - v.right! : 0)
+      : (v.x - cursor).abs();
+  bool before(_V a, _V b) {
+    if (a.isRange != b.isRange) return !a.isRange;
+    return _cmpTime(a.a, b.a) < 0;
+  }
+
+  var best = c.vis.first;
+  for (final v in c.vis) {
+    final dv = dist(v), db = dist(best);
+    if (dv < db || (dv == db && before(v, best))) best = v;
+  }
+  final d = dist(best);
+  final tied = [
+    for (final v in c.vis)
+      if (!identical(v, best) && dist(v) == d) v
+  ];
+  return (
+    best: best,
+    d: d,
+    tie: tied.isNotEmpty,
+    mixedTie: tied.any((v) => v.isRange != best.isRange)
+  );
 }
 
 void main() {
@@ -634,7 +907,7 @@ void main() {
     //  * generic: any positive a, any b, within a pixel tolerance, on charts
     //    where no decision sits within 0.01 px of its threshold.
 
-    forAll<(_Spec, (int, int))>(
+    _lawWith<(_Spec, (int, int))>(
         'L7 a power-of-two scaling and on-grid shift leave the layout equal',
         G.pair(_specGen, G.pair(G.intIn(-2, 3), G.intIn(-4000, 4000))),
         (arg) {
@@ -652,10 +925,10 @@ void main() {
               annotations: moved.items, scale: moved.scale, cursorPx: cursor),
           pickAnnotationFocus(
               annotations: base.items, scale: base.scale, cursorPx: cursor));
-    }, examples: [for (final s in _forced) (s, (1, 40))]);
+    }, reach: _reachL7, examples: [for (final s in _forced) (s, (1, 40))]);
 
     var genericChecked = 0, genericSkipped = 0;
-    forAll<(_Spec, (double, double))>(
+    _lawWith<(_Spec, (double, double))>(
         'L7g a positive affine map leaves the layout equal within a pixel',
         G.pair(
           G.triple(
@@ -683,7 +956,7 @@ void main() {
       final d = _diff(base.layout, moved.layout, 1e-3);
       _ok(d == null, () => 'v -> ${a}v + $b changed the layout: $d\n'
           '${_dump(base.layout)}--- moved ---\n${_dump(moved.layout)}');
-    }, examples: [
+    }, reach: _reachL7g, examples: [
       for (final s in _forced) (s, (86400.0 / 300, 1.7e9)),
     ]);
 
@@ -706,7 +979,7 @@ void main() {
         G.doubleIn(0, 150, boundaries: const [0, 12, 24], integerBias: .8),
         nullProbability: .4);
 
-    forAll<(_Spec, (double?, double?))>(
+    _lawWith<(_Spec, (double?, double?))>(
         'L8 the focus pick is the nearest within reach, ties to a point then older',
         G.pair(_specGen, G.pair(cursorGen, reachGen)), (arg) {
       final (spec, (cursor, reach)) = arg;
@@ -718,22 +991,9 @@ void main() {
         expect(got, isNull, reason: 'no cursor or nothing visible');
         return;
       }
-      // Distance: ON a range is 0; otherwise to its nearest edge / the point.
-      double dist(_V v) => v.isRange
-          ? (cursor < v.x ? v.x - cursor : cursor > v.right! ? cursor - v.right! : 0)
-          : (v.x - cursor).abs();
-      // Rank at equal distance: a point before a range, then the older one.
-      bool before(_V a, _V b) {
-        if (a.isRange != b.isRange) return !a.isRange;
-        return _cmpTime(a.a, b.a) < 0;
-      }
-
-      var best = c.vis.first;
-      for (final v in c.vis) {
-        final dv = dist(v), db = dist(best);
-        if (dv < db || (dv == db && before(v, best))) best = v;
-      }
-      final bd = dist(best);
+      final n = _nearest(c, cursor);
+      final best = n.best;
+      final bd = n.d;
       if (reach != null && bd > reach) {
         expect(got, isNull, reason: 'nearest is ${best.a.id} at $bd > reach $reach');
         return;
@@ -742,13 +1002,13 @@ void main() {
       // Reach is inclusive.
       expect(pick(bd), best.a.id, reason: 'reach == distance still picks');
       if (bd > 1e-3) expect(pick(bd - 1e-3), isNull, reason: 'just inside it does not');
-    }, examples: [
+    }, reach: _reachL8, examples: [
       for (final s in _forced) (s, (0.0, null)),
       for (final s in _forced) (s, (150.0, 12.0)),
       for (final s in _forced) (s, (double.nan, 5.0)),
     ]);
 
-    forAll<(_Spec, double?)>(
+    _lawWith<(_Spec, double?)>(
         'L12 a missing or non-finite cursor focuses nothing',
         G.pair(
             _specGen,
@@ -769,22 +1029,18 @@ void main() {
                 reach: reach),
             isNull);
       }
-    }, examples: [for (final s in _forced) (s, null)]);
+    }, reach: _reachL12, examples: [for (final s in _forced) (s, null)]);
 
-    forAll<(_Spec, ((int, bool), (int, int)))>(
+    _lawWith<(_Spec, ((int, bool), (int, int)))>(
         'L8s stepping moves by delta through the icons and clamps at the ends',
-        G.pair(_specGen, G.pair(G.pair(G.intIn(1, 3), G.boolean()), G.pair(G.intIn(0, 2), G.intIn(0, 99)))),
+        G.pair(_specGen, G.pair(G.pair(G.intIn(1, 3), G.boolean()), G.pair(G.intIn(0, 4), G.intIn(0, 99)))),
         (arg) {
       final (spec, ((size, forward), (curMode, curIdx))) = arg;
       final c = _build(spec);
       final l = c.layout;
       final seq = [for (final i in l.items) ...i.memberIds];
       final delta = forward ? size : -size;
-      final String? cur = switch (curMode) {
-        1 => seq.isEmpty ? null : seq[curIdx % seq.length],
-        2 => 'ghost',
-        _ => null,
-      };
+      final cur = _stepCurrent(l, curMode, curIdx);
       final got = stepAnnotationFocus(l, cur, delta);
       if (seq.isEmpty) {
         expect(got, isNull, reason: 'nothing to step through');
@@ -803,7 +1059,7 @@ void main() {
         expect(j, math.max(seq.length + delta, 0),
             reason: 'back from nothing starts at the last');
       }
-    }, examples: [
+    }, reach: _reachL8s, examples: [
       for (final s in _forced) (s, ((1, true), (0, 0))),
       for (final s in _forced) (s, ((2, false), (1, 3))),
     ]);
@@ -973,76 +1229,14 @@ void main() {
   // by never being exercised. Counted per law, over exactly the 200 generated
   // cases that law runs by default (its own seed), forced scenarios excluded.
   group('generator reach', () {
-    const need = {
-      'multi-member cluster': 40,
-      'icon given up (unplaced)': 25,
-      'focused icon placed': 35,
-      'focus on a non-oldest member (shown in place of the oldest)': 8,
-      'range clipped on the left': 22,
-      'range clipped on the right': 35,
-      'main sleep visible': 45,
-      'main sleep given up': 5,
-      'algorithm-version mark visible': 40,
-      'usable plot narrower than one icon': 6,
-      'unusable scale': 20,
-      'L9 sweep: everything fits': 45,
-      'L9 sweep: nothing fits, icons dropped': 22,
-    };
     test('every law sees every situation in its default cases', () {
-      expect(_specLawNames, isNotEmpty);
+      expect(_registry, isNotEmpty);
       final weak = <String>[];
-      for (final name in _specLawNames) {
-        final got = <String, int>{for (final k in need.keys) k: 0};
-        void bump(String k) => got[k] = got[k]! + 1;
-        final r = runProperty<_Spec>(
-          name: name,
-          gen: _specGen,
-          config: const PropertyConfig(budget: Duration(seconds: 30)),
-          body: (spec) {
-            final c = _build(spec);
-            if (!_usable(c.scale)) {
-              bump('unusable scale');
-              return;
-            }
-            final l = c.layout;
-            if (c.scale.width < c.scale.iconWidth) {
-              bump('usable plot narrower than one icon');
-            }
-            if (l.items.any((i) => i.memberIds.length > 1)) {
-              bump('multi-member cluster');
-            }
-            if (l.unplaced.isNotEmpty) bump('icon given up (unplaced)');
-            if (l.items.any((i) => i.focused)) bump('focused icon placed');
-            if (l.items.any((i) =>
-                i.focused && i.memberIds.length > 1 && i.memberIds.first != i.id)) {
-              bump('focus on a non-oldest member (shown in place of the oldest)');
-            }
-            if (c.vis.any((v) => v.isRange && !v.startsInside)) {
-              bump('range clipped on the left');
-            }
-            if (c.vis.any((v) => v.isRange && !v.endsInside)) {
-              bump('range clipped on the right');
-            }
-            final nights = {
-              for (final v in c.vis)
-                if (v.isNight) v.a.id
-            };
-            if (nights.isNotEmpty) bump('main sleep visible');
-            if (l.unplaced.any(nights.contains)) bump('main sleep given up');
-            if (c.vis.any((v) => v.a.kind == AnnotationKind.algoVersion)) {
-              bump('algorithm-version mark visible');
-            }
-            if (c.vis.isNotEmpty) {
-              bump(_fitting(c).fits
-                  ? 'L9 sweep: everything fits'
-                  : 'L9 sweep: nothing fits, icons dropped');
-            }
-          },
-        );
-        expect(r.passed, isTrue, reason: r.failure?.report);
-        for (final e in need.entries) {
+      for (final law in _registry) {
+        final got = law.measure();
+        for (final e in law.needs.entries) {
           if (got[e.key]! < e.value) {
-            weak.add('"$name": ${e.key} in ${got[e.key]} cases, need ${e.value}');
+            weak.add('"${law.name}": ${e.key} in ${got[e.key]} cases, need ${e.value}');
           }
         }
       }
