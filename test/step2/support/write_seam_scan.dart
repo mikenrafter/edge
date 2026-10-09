@@ -335,9 +335,9 @@ class TableListSite {
 
 final _listDecl = RegExp(r'=\s*(?:const\s*)?[\[{]');
 
-/// Assignments of a literal list or set of plain strings (`static const x =
-/// [...]`, `Set<String> y = {...}`) whose items include `'day_result'` or
-/// `'baselines'`.
+/// Assignments of a literal list or set of plain strings, such as
+/// `static const x = [...]` or `Set<String> y = {...}`, whose items include
+/// `'day_result'` or `'baselines'`.
 List<TableListSite> scanTableLists(String src) {
   final text = blankComments(src);
   final code = codeOnly(src);
