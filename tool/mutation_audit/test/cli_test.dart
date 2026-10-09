@@ -218,6 +218,75 @@ void main() {
     });
   });
 
+  group('detection runs on the prepared tree (after setup)', () {
+    const scanner = "import 'dart:io';\nString src() => File('lib/a.dart').readAsStringSync();\n";
+    const pure = 'int helper() => 1;\n';
+
+    Future<String> pinGenTest() async {
+      await fx.commit({
+        '.gitignore': 'test/support/generated.dart\n',
+        'test/gen_test.dart': "import 'support/generated.dart';\nvoid main() {}\n",
+      }, 'a test that imports a file setup generates');
+      return fx.head();
+    }
+
+    /// Setup writes [generated] (when not null); `gen_test.dart` fails when `<=` is applied.
+    FakeProcessRunner generating(String? generated) => FakeProcessRunner((call) {
+          if (call.argv.length >= 2 && call.argv[1] == 'pub') {
+            if (generated != null) {
+              File(p.join(call.cwd, 'test/support/generated.dart'))
+                ..createSync(recursive: true)
+                ..writeAsStringSync(generated);
+            }
+            return const ProcessOutcome(exitCode: 0);
+          }
+          final src = File(p.join(call.cwd, 'lib/a.dart')).readAsStringSync();
+          final b = StreamBuilder().loaded('test/gen_test.dart').pass('test/a_test.dart', 'ok');
+          if (src.contains('a <= b')) b.fail('test/gen_test.dart', 'reads lib');
+          return outcomeOf(b.done(success: !src.contains('a <= b')), exitCode: src.contains('a <= b') ? 1 : 0);
+        });
+
+    Map<String, dynamic> lt() => ((jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map)['mutants'] as List)
+        .cast<Map<String, dynamic>>()
+        .firstWhere((m) => '${m['original']}->${m['mutated']}' == '<-><=');
+
+    test('a helper that setup generates and that scans source makes its suite a guard, with the real reason', () async {
+      final pinned = await pinGenTest();
+      final code = await runCli(args(const ['--tests', 'test/gen_test.dart'], pinned), runner: generating(scanner), out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      expect(lt()['status'], 'killed-by-guard-only');
+      final reasons = ((lt()['discounted'] as List).single as Map)['reasons'].toString();
+      expect(reasons, contains('may read source'));
+      expect(reasons, contains('test/support/generated.dart'));
+      expect(reasons, isNot(contains('unresolved-import')), reason: 'the file existed when the detection ran');
+    });
+
+    test('a generated helper that does nothing suspicious leaves the suite a runtime suite: its failure kills', () async {
+      final pinned = await pinGenTest();
+      final code = await runCli(args(const ['--tests', 'test/gen_test.dart'], pinned), runner: generating(pure), out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      expect(lt()['status'], 'killed', reason: 'detected before setup the import would have looked unresolved');
+    });
+
+    test('an import still unresolved after setup is scanning evidence (rule unresolved-import)', () async {
+      final pinned = await pinGenTest();
+      final code = await runCli(args(const ['--tests', 'test/gen_test.dart'], pinned), runner: generating(null), out: stdout_, err: err);
+      expect(code, 0, reason: err.toString());
+      expect(lt()['status'], 'killed-by-guard-only');
+      expect(((lt()['discounted'] as List).single as Map)['reasons'].toString(), contains('[unresolved-import]'));
+    });
+
+    test('--no-guards is judged on the prepared tree too: refused when setup generated a scanner', () async {
+      final pinned = await pinGenTest();
+      final runner = generating(scanner);
+      final code = await runCli(args(const ['--tests', 'test/gen_test.dart', '--no-guards'], pinned), runner: runner, out: stdout_, err: err);
+      expect(code, 64);
+      expect(err.toString(), contains('test/support/generated.dart'));
+      expect(runner.calls.where((c) => c.argv.length > 1 && c.argv[1] != 'pub'), isEmpty, reason: 'no baseline ran');
+      expect(await fx.worktrees(), isNot(contains('mutation_audit_')));
+    });
+  });
+
   test('a whole audit: results written outside the export, export gone, checkout untouched', () async {
     File(p.join(fx.root, 'lib/a.dart')).writeAsStringSync('// local edit\n$lib');
     final statusBefore = await fx.status();

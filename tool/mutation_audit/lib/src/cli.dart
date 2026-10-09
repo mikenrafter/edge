@@ -114,37 +114,11 @@ Future<int> runCli(
         final before = await resolveDependencyConfig(export.path,
             repo: export.repo, allowedOverrides: config.allowOverrides);
 
-        // Source guards: found by reading the export, before anything runs.
+        // Which files and suites the audit covers (a typo fails before setup).
         final files = expandFileGlobs(export.path, config.files);
         final suites = expandTestSelectors(export.path, config.tests);
         final sourceRoots = {...defaultSourceRoots, ...files.map((f) => f.split('/').first).where((d) => !d.endsWith('.dart'))}.toList();
         final scannerGlobs = [...defaultScannerGlobs, ...config.scanners];
-        final detector =
-            SourceScanDetector(root: export.path, sourceRoots: sourceRoots, scannerGlobs: scannerGlobs);
-        final scanning = {
-          for (final s in suites)
-            if (detector.reasons(s).isNotEmpty) s: detector.reasons(s),
-        };
-        if (config.noGuards && scanning.isNotEmpty) {
-          final shown = scanning.entries.take(5).map((e) => '  ${e.key}: ${e.value.first}').join('\n');
-          throw GuardPolicyError('--no-guards is refused: ${scanning.length} of ${suites.length} suites '
-              'scan source text, e.g.\n$shown\nTheir failures can never be kills. Drop --no-guards '
-              '(they are detected automatically) and, for tests that really run code, list them in '
-              '--runtime-allowlist.');
-        }
-        final guards = GuardMatcher(config.guardPatterns, detector: detector, allowlist: allowlist);
-        // What each allowlist entry overrides, or that it frees nothing.
-        final overrides = <AllowlistOverride>[];
-        final unflagged = <String>[];
-        for (final e in allowlist.entries) {
-          final flags = suites.contains(e.suite) ? guards.flagReasons(e.suite) : const <String>[];
-          if (flags.isEmpty) {
-            if (suites.contains(e.suite)) unflagged.add(e.key);
-          } else {
-            overrides.add(AllowlistOverride(e.key, e.reason, flags));
-          }
-        }
-
         final setup = config.setupCmd ?? defaultSetupCommand(export.path);
         if (setup.isNotEmpty) {
           final done = await processes.run(splitCommand(setup),
@@ -173,6 +147,37 @@ Future<int> runCli(
                 repo: export.repo, allowedOverrides: config.allowOverrides);
         // From here every run starts from this tree plus one mutant.
         await integrity.requireClean('after setup');
+
+        // Source guards, found by reading the PREPARED tree: setup may have
+        // generated helpers (a scanner among them) that the pinned commit
+        // does not contain, and an import of a file that is still missing is
+        // evidence by itself.
+        final detector =
+            SourceScanDetector(root: export.path, sourceRoots: sourceRoots, scannerGlobs: scannerGlobs);
+        final scanning = {
+          for (final s in suites)
+            if (detector.reasons(s).isNotEmpty) s: detector.reasons(s),
+        };
+        if (config.noGuards && scanning.isNotEmpty) {
+          final shown = scanning.entries.take(5).map((e) => '  ${e.key}: ${e.value.first}').join('\n');
+          throw GuardPolicyError('--no-guards is refused: ${scanning.length} of ${suites.length} suites '
+              'scan source text, e.g.\n$shown\nTheir failures can never be kills. Drop --no-guards '
+              '(they are detected automatically) and, for tests that really run code, list them in '
+              '--runtime-allowlist.');
+        }
+        final guards = GuardMatcher(config.guardPatterns, detector: detector, allowlist: allowlist);
+        // What each allowlist entry overrides, or that it frees nothing.
+        final overrides = <AllowlistOverride>[];
+        final unflagged = <String>[];
+        for (final e in allowlist.entries) {
+          final flags = suites.contains(e.suite) ? guards.flagReasons(e.suite) : const <String>[];
+          if (flags.isEmpty) {
+            if (suites.contains(e.suite)) unflagged.add(e.key);
+          } else {
+            overrides.add(AllowlistOverride(e.key, e.reason, flags));
+          }
+        }
+
 
         // Everything from here on runs in the sandbox (setup could not: it
         // needs the network). The package config exists now, so the roots the

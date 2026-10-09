@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:glob/glob.dart';
@@ -108,42 +109,61 @@ class SourceScanDetector {
         final facts = analyseSourceReads(file.readAsStringSync(), sourceRoots: sourceRoots);
         // Every URI of every directive, conditional ones included, whatever
         // lies behind it: location never proves a file does not read source.
-        final imports = <String>[
-          for (final uri in facts.uris)
-            if (_resolve(path, uri) case final next?) next,
-        ];
+        final imports = <String>[];
         // Strict everywhere, files under a source root included: a helper there
         // that builds a path at run time may read source whatever its callers
         // show. Runtime credit comes only from the reviewed allowlist.
-        final sites = facts.sites;
+        final sites = [...facts.sites];
+        for (final uri in facts.uris) {
+          final r = _resolve(path, uri);
+          if (r.file != null) imports.add(r.file!);
+          if (r.missing != null) {
+            // A file that is not there is a file nobody read: it could be a
+            // scanner. (Detection runs after setup, so a generated helper is
+            // there by now; what is missing then is missing for good.)
+            sites.add(SourceSite(facts.uriLines[uri] ?? 1, 'unresolved-import',
+                "'$uri' names a file that is not in the export (${r.missing}); what it does is unknown"));
+          }
+        }
         return _FileFacts(sites, imports);
       });
 
-  /// The root-relative Dart file [uri] (written in [from]) names, if it is in
-  /// the export: relative URIs, `package:<this package>/...` (-> lib/),
-  /// `package:<path dependency inside the export>/...`. Other packages and
-  /// `dart:` are not part of the repository.
-  String? _resolve(String from, String uri) {
+  /// What [uri] (written in [from]) names: the root-relative Dart file when it
+  /// is in the export (relative URIs, `package:<this package>/...` and the
+  /// packages the pubspecs and the package config place inside the export), or
+  /// `missing` with the reason when it should be there and is not (the file is
+  /// absent, or lies outside the export). `dart:`, other packages (hosted, git,
+  /// outside the export) and other schemes are not part of the repository:
+  /// both fields null.
+  ({String? file, String? missing}) _resolve(String from, String uri) {
+    const ignored = (file: null, missing: null);
     String? next;
-    if (uri.startsWith('dart:')) return null;
+    if (uri.startsWith('dart:')) return ignored;
     if (uri.startsWith('package:')) {
       final rest = uri.substring('package:'.length);
       final slash = rest.indexOf('/');
-      if (slash < 0) return null;
+      if (slash < 0) return ignored;
       final dir = _packages[rest.substring(0, slash)];
-      if (dir == null) return null;
-      next = _relative(p.join(dir, 'lib', rest.substring(slash + 1)));
+      if (dir == null) return ignored;
+      next = _relative(p.join(dir, rest.substring(slash + 1)));
     } else if (!uri.contains(':') || uri.startsWith('file:')) {
       next = _relative(p.join(p.dirname(from), uri.startsWith('file:') ? Uri.parse(uri).toFilePath() : uri));
+      if (next == null) return (file: null, missing: 'it lies outside the export');
+    } else {
+      return ignored;
     }
-    if (next == null || !next.endsWith('.dart')) return null;
-    return File(p.join(root, next)).existsSync() ? next : null;
+    if (next == null) return (file: null, missing: 'it lies outside the export');
+    if (!next.endsWith('.dart')) return ignored;
+    return File(p.join(root, next)).existsSync() ? (file: next, missing: null) : (file: null, missing: 'no such file');
   }
 
-  /// Package name -> directory (root-relative; `.` for the audited package)
-  /// for the audited package and every path dependency that lies inside the
-  /// export. Hosted and git packages are not in the export; a path dependency
-  /// that points out of it is refused elsewhere (path overrides).
+  /// Package name -> its package directory (root-relative, `lib` included) for
+  /// the audited package, every path dependency that lies inside the export
+  /// (pubspec.yaml and pubspec_overrides.yaml) and every package the package
+  /// config names inside the export (`.dart_tool/package_config.json`: setup
+  /// writes it, so generated packages are there). Hosted and git packages are
+  /// not in the export; a path dependency that points out of it is refused
+  /// elsewhere (path overrides).
   late final Map<String, String> _packages = () {
     final out = <String, String>{};
     Object? load(String name) {
@@ -157,7 +177,7 @@ class SourceScanDetector {
     }
 
     final main = load('pubspec.yaml');
-    if (main is YamlMap && main['name'] is String) out[main['name'] as String] = '.';
+    if (main is YamlMap && main['name'] is String) out[main['name'] as String] = 'lib';
     for (final doc in [main, load('pubspec_overrides.yaml')]) {
       if (doc is! YamlMap) continue;
       for (final section in ['dependencies', 'dev_dependencies', 'dependency_overrides']) {
@@ -168,8 +188,27 @@ class SourceScanDetector {
           final path = spec is YamlMap ? spec['path'] : null;
           if (e.key is! String || path is! String) continue;
           final rel = _relative(p.join(root, path));
-          if (rel != null && rel.isNotEmpty) out.putIfAbsent(e.key as String, () => rel);
+          if (rel != null && rel.isNotEmpty) out.putIfAbsent(e.key as String, () => p.join(rel, 'lib'));
         }
+      }
+    }
+    final config = File(p.join(root, '.dart_tool', 'package_config.json'));
+    if (config.existsSync()) {
+      try {
+        final doc = jsonDecode(config.readAsStringSync());
+        final packages = doc is Map ? doc['packages'] : null;
+        if (packages is List) {
+          final base = Uri.directory(p.join(root, '.dart_tool'));
+          for (final pkg in packages) {
+            if (pkg is! Map || pkg['name'] is! String || pkg['rootUri'] is! String) continue;
+            final dir = base.resolve(pkg['rootUri'] as String);
+            if (dir.scheme != 'file') continue;
+            final lib = _relative(p.join(dir.toFilePath(), (pkg['packageUri'] as String?) ?? 'lib/'));
+            if (lib != null) out.putIfAbsent(pkg['name'] as String, () => lib);
+          }
+        }
+      } on FormatException {
+        // an unreadable config names nothing
       }
     }
     return out;

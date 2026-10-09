@@ -124,8 +124,8 @@ void main() {
       expect(why("import 'package:away/h.dart';\nimport 'package:other/o.dart';\nimport 'package:test/test.dart';"), isEmpty);
     });
 
-    test('a package: URI whose file is missing is ignored', () {
-      expect(why("import 'package:demo/missing.dart';"), isEmpty);
+    test('a package: URI of this package whose file is missing is scanning evidence (detector_unresolved_test.dart)', () {
+      expect(why("import 'package:demo/missing.dart';").join(' '), contains('unresolved-import'));
     });
 
     test('no pubspec: package: URIs are ignored', () {

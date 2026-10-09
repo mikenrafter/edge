@@ -20,8 +20,11 @@ class SourceSite {
 
 /// What reading one Dart file as an AST showed.
 class SourceFacts {
-  const SourceFacts(this.sites, [this.uris = const []]);
+  const SourceFacts(this.sites, [this.uris = const [], this.uriLines = const {}]);
   final List<SourceSite> sites;
+
+  /// The line of the first directive that names each of [uris].
+  final Map<String, int> uriLines;
 
   /// Every URI of every import, export and part directive, the URIs of
   /// conditional configurations (`if (dart.library.io) 'b.dart'`) included.
@@ -64,11 +67,11 @@ SourceFacts analyseSourceReads(String text, {required List<String> sourceRoots})
           'syntax error (${first.message}); the file cannot be checked')
     ]);
   }
-  final scope = _Scope();
+  final scope = _Scope(parsed.lineInfo);
   parsed.unit.accept(scope);
   final finder = _Finder(scope, sourceRoots.toSet(), parsed.lineInfo);
   parsed.unit.accept(finder);
-  return SourceFacts(finder.sites, scope.uris);
+  return SourceFacts(finder.sites, scope.uris, scope.uriLines);
 }
 
 const _fsClasses = {'File', 'Directory', 'Link'};
@@ -86,11 +89,17 @@ class _Scope extends RecursiveAstVisitor<void> {
   final Set<String> fsAliases = {..._fsClasses};
   final Set<String> processAliases = {'Process'};
 
+  _Scope(this._lineInfo);
+  final LineInfo _lineInfo;
+
   final List<String> uris = [];
+  final Map<String, int> uriLines = {};
 
   void _uri(StringLiteral? uri) {
     final v = uri?.stringValue;
-    if (v != null && !uris.contains(v)) uris.add(v);
+    if (v == null || uris.contains(v)) return;
+    uris.add(v);
+    uriLines[v] = _lineInfo.getLocation(uri!.offset).lineNumber;
   }
 
   @override
