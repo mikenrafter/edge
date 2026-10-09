@@ -125,7 +125,10 @@ void main() {
     });
 
     test('paths under HOME that the toolchain reads are bound read-only: --sandbox-ro and an allowed sibling', () async {
-      final home = Directory.systemTemp.createTempSync('mutaudit_home_').resolveSymbolicLinksSync();
+      // Not under /tmp, which the sandbox replaces and never binds into.
+      final realHome = Platform.environment['HOME']!;
+      final home = Directory(p.join(realHome, '.mutaudit_cli_home_$pid')).path;
+      Directory(home).createSync();
       addTearDown(() => Directory(home).deleteSync(recursive: true));
       final extra = Directory(p.join(home, 'tools'))..createSync();
       final pubCache = Directory(p.join(home, '.pub-cache'))..createSync();

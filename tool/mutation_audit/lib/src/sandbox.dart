@@ -49,7 +49,11 @@ class Sandbox {
     this.symlinks = const {},
     this.unshareNet = true,
     this.tmpDirs = const ['/tmp', '/var/tmp', '/run'],
+    this.skipped = const {},
   });
+
+  /// Paths [discover] would have bound and did not, with the reason.
+  final Map<String, String> skipped;
 
   final String bwrap;
   final String exportPath;
@@ -143,6 +147,9 @@ class Sandbox {
     return kept;
   }
 
+  /// Replaced by an empty tmpfs or kernel state in the sandbox: never bound.
+  static const _volatileRoots = ['/tmp', '/var/tmp', '/run', '/dev/shm', '/proc', '/sys', '/dev'];
+
   /// Directories of the base system a dynamically linked program or a script
   /// (`#!/bin/sh`, `#!/usr/bin/env`) needs: bound when they are directories,
   /// recreated when they are links (a merged `/bin`, `/lib64`). The Nix store
@@ -194,37 +201,57 @@ class Sandbox {
       if (h.exists('/etc/$f')) binds.add('/etc/$f');
     }
     bool covered(String path) => roots.any((r) => path == r || p.isWithin(r, path));
-    // Runtime state, never a toolchain.
-    bool state(String path) => const ['/run', '/proc', '/sys', '/dev'].any((r) => path == r || p.isWithin(r, path));
+    final skipped = <String, String>{};
 
-    void need(String path) {
+    /// Why [real] must not be bound (null: it may be). The directories the
+    /// sandbox replaces with an empty tmpfs, kernel state, and anything that
+    /// would cover them are never bound; HOME is an empty tmpfs too, and only
+    /// what was asked for explicitly may be bound back into it.
+    String? refusal(String real, {required bool explicit}) {
+      if (real == '/') return 'it is the whole root';
+      for (final r in _volatileRoots) {
+        if (real == r || p.isWithin(r, real)) return 'it is under $r, which the sandbox replaces with an empty tmpfs (or kernel state)';
+        if (p.isWithin(real, r)) return 'it contains $r, which the sandbox replaces with an empty tmpfs (or kernel state)';
+      }
+      if (real == home || p.isWithin(real, home)) return 'it contains HOME, which is an empty tmpfs in the sandbox';
+      if (p.isWithin(home, real) && !explicit) {
+        return 'it is under HOME, which is an empty tmpfs in the sandbox (only the pub cache, FLUTTER_ROOT, --sandbox-ro and package roots are bound there)';
+      }
+      return null;
+    }
+
+    void need(String path, {bool explicit = false}) {
       if (!p.isAbsolute(path)) return;
       final given = p.normalize(path);
       if (!h.exists(given)) return;
       final real = h.realpath(given);
-      if (real == null || real == '/' || real == home || p.isWithin(real, home)) return;
+      if (real == null) return;
       if (covered(real)) {
         if (given != real && !covered(given)) symlinks[given] = real;
         return;
       }
-      if (state(real)) return;
+      final why = refusal(real, explicit: explicit);
+      if (why != null) {
+        skipped[given] = given == real ? why : '$why ($given is $real)';
+        return;
+      }
       binds.add(real);
       if (given != real && !covered(given)) symlinks[given] = real;
     }
 
     final cache = env['PUB_CACHE'];
-    need(cache != null && cache.isNotEmpty ? cache : p.join(home, '.pub-cache'));
+    need(cache != null && cache.isNotEmpty ? cache : p.join(home, '.pub-cache'), explicit: true);
     final flutterRoot = env['FLUTTER_ROOT'];
-    if (flutterRoot != null && flutterRoot.isNotEmpty) need(flutterRoot);
+    if (flutterRoot != null && flutterRoot.isNotEmpty) need(flutterRoot, explicit: true);
     final path = (env['PATH'] ?? '').split(':').where((e) => e.isNotEmpty).toList();
     for (final e in path) {
       need(e);
     }
     for (final r in packageRoots(exportPath)) {
-      need(r);
+      need(r, explicit: true);
     }
     for (final r in extraReadOnly) {
-      need(r);
+      need(r, explicit: true);
     }
     if (command.isNotEmpty) {
       final exe = command.first;
@@ -240,7 +267,21 @@ class Sandbox {
         break;
       }
     }
-    return Sandbox(bwrap: bwrap, exportPath: exportPath, home: home, binds: pruneNested(binds), symlinks: symlinks);
+    final bound = pruneNested(binds);
+    // A read-only bind does not stop connect(2) on a Unix socket in it, nor an
+    // open of a FIFO: nothing that holds one is bound. (The Nix store and /usr
+    // are immutable system directories and are not scanned.)
+    for (final b in bound) {
+      if (b == '/nix/store' || p.isWithin('/nix/store', b) || b == '/usr' || p.isWithin('/usr', b)) continue;
+      final special = h.specialFile(b);
+      if (special != null) {
+        throw SandboxUnavailable('$b would be bound into the sandbox but holds a Unix socket or FIFO ($special): a read-only '
+            'bind does not stop connect(2), so a run could reach a host service through it. Remove it, or take $b off '
+            'PATH / FLUTTER_ROOT / --sandbox-ro');
+      }
+    }
+    return Sandbox(
+        bwrap: bwrap, exportPath: exportPath, home: home, binds: bound, symlinks: symlinks, skipped: skipped);
   }
 
   /// Package roots outside [exportPath] named by `.dart_tool/package_config.json`
@@ -363,6 +404,10 @@ abstract class HostPaths {
 
   /// Where [path] points when it is a symbolic link itself, else null.
   String? linkTarget(String path);
+
+  /// The first Unix socket or FIFO at or below [path] (not following links),
+  /// or null when there is none.
+  String? specialFile(String path);
 }
 
 /// The machine this process runs on.
@@ -380,6 +425,35 @@ class SystemHostPaths implements HostPaths {
     } on FileSystemException {
       return null;
     }
+  }
+
+  @override
+  String? specialFile(String path) {
+    bool special(String x) {
+      final type = FileSystemEntity.typeSync(x, followLinks: false);
+      return type == FileSystemEntityType.unixDomainSock || type == FileSystemEntityType.pipe;
+    }
+
+    if (special(path)) return path;
+    final stack = <String>[if (FileSystemEntity.typeSync(path, followLinks: false) == FileSystemEntityType.directory) path];
+    while (stack.isNotEmpty) {
+      final dir = stack.removeLast();
+      final List<FileSystemEntity> entries;
+      try {
+        entries = Directory(dir).listSync(followLinks: false);
+      } on FileSystemException {
+        continue; // unreadable here means unreadable in the sandbox too
+      }
+      for (final e in entries) {
+        if (e is Link) continue;
+        if (e is Directory) {
+          stack.add(e.path);
+        } else if (special(e.path)) {
+          return e.path;
+        }
+      }
+    }
+    return null;
   }
 
   @override

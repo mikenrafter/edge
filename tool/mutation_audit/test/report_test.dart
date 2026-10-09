@@ -222,6 +222,7 @@ void main() {
         'network': false,
         'binds': ['/nix/store', '/home/dev/.pub-cache'],
         'symlinks': {'/lib64': 'usr/lib64'},
+        'skipped': <String, String>{},
         'bwrap': 'bubblewrap 0.12.0',
       });
       expect(((j['mutants'] as List).single as Map)['unisolated'], isFalse);

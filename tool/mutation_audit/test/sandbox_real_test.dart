@@ -191,13 +191,16 @@ echo looked
   group('the root is minimal', () {
     test('the sandbox sees only what was bound: the root, /etc, /nix, /run, /dev/shm and HOME hold nothing else', () async {
       final sb = Sandbox.discover(root);
+      // Every bind target except the immutable store, scanned from inside.
+      final binds = [for (final b in sb.binds) if (!b.startsWith('/nix/store') && !b.startsWith('/usr')) b];
       final o = await sh(
           SandboxedProcessRunner(runner, sb),
+          'BINDS="${binds.join(' ')}"\n'
           r'''
 echo "root=$(ls -A / | tr '\n' ' ')"
 echo "nix=$(ls -A /nix 2>/dev/null | tr '\n' ' ')"
 [ -e /nix/var/nix/daemon-socket ] && echo DAEMONSOCKET || echo nodaemon
-find / -xdev -type s 2>/dev/null | head -1 | sed 's/^/SOCKET /'
+for b in $BINDS; do find "$b" \( -type s -o -type p \) 2>/dev/null | head -1 | sed 's/^/SOCKET /'; done
 echo "etc=$(ls -A /etc 2>/dev/null | tr '\n' ' ')"
 echo "run=$(ls -A /run 2>/dev/null | tr '\n' ' ')"
 echo "shm=$(ls -A /dev/shm 2>/dev/null | tr '\n' ' ')"
@@ -209,7 +212,7 @@ touch /mutaudit_root_write 2>/dev/null && echo ROOTWRITE || echo rootro
       expect(field('root').split(' ').where((e) => e.isNotEmpty && !allowedRoot.contains(e)), isEmpty, reason: field('root'));
       expect(field('nix').split(' ').toSet().difference({'store', 'var'}), isEmpty, reason: field('nix'));
       expect(o.stdoutLines, contains('nodaemon'), reason: 'the Nix daemon socket is in /nix/var, which is not bound');
-      expect(o.stdoutLines.where((l) => l.startsWith('SOCKET')), isEmpty, reason: 'no Unix socket file anywhere the run can see');
+      expect(o.stdoutLines.where((l) => l.startsWith('SOCKET')), isEmpty, reason: 'no Unix socket or FIFO in any bind target');
       final etc = field('etc').split(' ').where((e) => e.isNotEmpty).toSet();
       final boundEtc = {
         for (final b in [...sb.binds, ...sb.symlinks.keys])
@@ -289,6 +292,18 @@ touch /mutaudit_root_write 2>/dev/null && echo ROOTWRITE || echo rootro
       expect(two.stdoutLines.join(), contains('GREETING-$id'));
     }, skip: socatSkip() ?? skip);
 
+    test('a directory with the socket that is a PATH entry (what auto-binding would pick up) is skipped, and the socket stays unreachable', () async {
+      final sb = Sandbox.discover(root, environment: {...Platform.environment, 'PATH': '${dir.path}:${Platform.environment['PATH']}'});
+      expect(sb.binds.where((b) => b == dir.path || p.isWithin(dir.path, b) || p.isWithin(b, dir.path)), isEmpty);
+      expect(sb.skipped.keys, contains(dir.path));
+      final runnerBoxed = SandboxedProcessRunner(runner, sb);
+      expect((await write(runnerBoxed)).exitCode, isNot(0));
+      expect((await read(runnerBoxed)).exitCode, isNot(0));
+      await Future<void>.delayed(const Duration(seconds: 1));
+      expect(connections, 0);
+      expect(received, isEmpty);
+    }, skip: socatSkip() ?? skip);
+
     test('sandboxed: run 1 cannot connect or write, run 2 cannot read; the server never saw either', () async {
       final one = await write(sandboxed());
       expect(one.exitCode, isNot(0), reason: 'connect must fail');
@@ -300,6 +315,49 @@ touch /mutaudit_root_write 2>/dev/null && echo ROOTWRITE || echo rootro
       expect(received, isEmpty);
     }, skip: socatSkip() ?? skip);
   });
+
+  group('a bind that holds a socket or a FIFO is refused (read-only does not stop connect)', () {
+    // An explicit --sandbox-ro under HOME is allowed as a place, so the content decides.
+    late Directory under;
+    setUp(() {
+      final home = Platform.environment['HOME'];
+      if (home == null || !Directory(home).existsSync()) {
+        markTestSkipped('no HOME to put the directory in');
+        return;
+      }
+      under = Directory(p.join(home, '.mutaudit_test_ro_$id'))..createSync();
+    });
+    tearDown(() {
+      if (under.existsSync()) under.deleteSync(recursive: true);
+    });
+
+    test('a Unix socket deep inside', () async {
+      final deep = Directory(p.join(under.path, 'a', 'b'))..createSync(recursive: true);
+      final server = await ServerSocket.bind(InternetAddress(p.join(deep.path, 's'), type: InternetAddressType.unix), 0);
+      addTearDown(server.close);
+      expect(() => Sandbox.discover(root, extraReadOnly: [under.path]),
+          throwsA(isA<SandboxUnavailable>().having((e) => e.message, 'message', allOf(contains(under.path), contains('socket')))));
+    });
+
+    test('a FIFO', () {
+      expect(Process.runSync('mkfifo', [p.join(under.path, 'pipe')]).exitCode, 0);
+      expect(() => Sandbox.discover(root, extraReadOnly: [under.path]), throwsA(isA<SandboxUnavailable>()));
+    });
+
+    test('the same directory without them is bound', () {
+      File(p.join(under.path, 'tool')).writeAsStringSync('x');
+      expect(Sandbox.discover(root, extraReadOnly: [under.path]).binds, contains(under.path));
+    });
+
+    test('and the probe fails with the message, so the audit exits 70 before anything is exported', () async {
+      final server = await ServerSocket.bind(InternetAddress(p.join(under.path, 's'), type: InternetAddressType.unix), 0);
+      addTearDown(server.close);
+      // The probe discovers from the process environment: put the directory on PATH via the explicit hook.
+      await expectLater(
+          Sandbox.probe(environment: {...Platform.environment, 'FLUTTER_ROOT': under.path}),
+          throwsA(isA<SandboxUnavailable>().having((e) => e.message, 'message', contains('socket'))));
+    });
+  }, skip: skip);
 
   group('processes', () {
     int? findProcess(String marker) {

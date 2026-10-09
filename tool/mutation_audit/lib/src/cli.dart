@@ -246,6 +246,7 @@ Future<int> runCli(
                     network: !sandbox.unshareNet,
                     binds: sandbox.binds,
                     symlinks: sandbox.symlinks,
+                    skipped: sandbox.skipped,
                     bwrap: bwrapVersion),
           ),
           run.results,
@@ -293,6 +294,9 @@ Future<int> runCli(
     errSink.writeln('${e.message}; the audit was stopped');
     return 70;
   } on ExportStateError catch (e) {
+    errSink.writeln('${e.message}; the audit was stopped');
+    return 70;
+  } on SandboxUnavailable catch (e) {
     errSink.writeln('${e.message}; the audit was stopped');
     return 70;
   } on RestoreFailedError catch (e) {

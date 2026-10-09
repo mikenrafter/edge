@@ -41,7 +41,7 @@ class BaselineSummary {
 
 /// How the test runs were isolated.
 class IsolationInfo {
-  const IsolationInfo({required this.mode, this.network = false, this.binds = const [], this.symlinks = const {}, this.bwrap});
+  const IsolationInfo({required this.mode, this.network = false, this.binds = const [], this.symlinks = const {}, this.skipped = const {}, this.bwrap});
 
   /// `--no-sandbox`: nothing separates one run from the next, so every kill is
   /// `unisolated` (something an earlier run left could have caused it).
@@ -50,6 +50,7 @@ class IsolationInfo {
         network = true,
         binds = const [],
         symlinks = const {},
+        skipped = const {},
         bwrap = null;
 
   /// `bubblewrap` or `none`.
@@ -65,6 +66,9 @@ class IsolationInfo {
   /// Symbolic links created in the sandbox (link -> target).
   final Map<String, String> symlinks;
 
+  /// Paths that would have been bound and were not, with the reason.
+  final Map<String, String> skipped;
+
   /// `bwrap --version`, when known.
   final String? bwrap;
 
@@ -75,6 +79,7 @@ class IsolationInfo {
         'network': network,
         'binds': binds,
         'symlinks': symlinks,
+        'skipped': skipped,
         'bwrap': bwrap,
       };
 }

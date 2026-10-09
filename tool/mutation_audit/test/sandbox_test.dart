@@ -10,9 +10,24 @@ import 'support/fakes.dart';
 /// A host described by a set of paths and links: [Sandbox.discover] without a
 /// particular machine.
 class FakeHost implements HostPaths {
-  FakeHost(Iterable<String> paths, [this.links = const {}]) : paths = paths.toSet();
+  FakeHost(Iterable<String> paths, [this.links = const {}, this.specials = const {}]) : paths = paths.toSet();
   final Set<String> paths;
   final Map<String, String> links;
+
+  /// Sockets and FIFOs that exist, by path.
+  final Set<String> specials;
+
+  /// The roots [specialFile] was asked about.
+  final List<String> scanned = [];
+
+  @override
+  String? specialFile(String path) {
+    scanned.add(path);
+    for (final s in specials) {
+      if (s == path || s.startsWith('$path/')) return s;
+    }
+    return null;
+  }
 
   @override
   bool exists(String path) => realpath(path) != null || links.containsKey(path);
@@ -300,6 +315,91 @@ void main() {
       expect(s.binds, isNot(contains('/opt/flutter/bin')), reason: 'folded into /opt/flutter');
     });
 
+    group('places that are never bound (and recorded as skipped)', () {
+      Sandbox with_(List<String> pathEntries, {List<String> more = const [], Map<String, String> extraEnv = const {}, List<String> extra = const [], List<String> command = const []}) =>
+          found(
+              host: FakeHost([...nixos.paths, '/', ...pathEntries, ...more], nixos.links),
+              environment: {...env, 'PATH': pathEntries.join(':'), ...extraEnv},
+              extra: extra,
+              command: command);
+
+      test('a PATH entry that is, or is under, /tmp, /var/tmp, /run, /dev/shm, /proc, /sys, /dev', () {
+        final entries = ['/tmp/tools', '/tmp', '/var/tmp/x/bin', '/dev/shm/bin', '/run/foo/bin', '/proc/self/cwd', '/sys/x', '/dev/x'];
+        final s = with_(entries);
+        for (final e in entries) {
+          expect(s.binds, isNot(contains(e)), reason: e);
+          expect(s.skipped.keys, contains(e), reason: e);
+        }
+        expect(s.skipped['/tmp/tools'], contains('/tmp'));
+      });
+
+      test('a path that CONTAINS one of them (/var holds /var/tmp; / holds everything) would cover the fresh tmpfs', () {
+        final s = with_(['/var', '/'], more: ['/var/tmp']);
+        expect(s.binds, isNot(contains('/var')));
+        expect(s.binds, isNot(contains('/')));
+        expect(s.skipped.keys, containsAll(['/var', '/']));
+      });
+
+      test('a PATH entry under HOME, HOME itself and the directory above it', () {
+        final s = with_(['/home/dev/bin', '/home/dev', '/home'], more: ['/home/dev/bin']);
+        expect(s.binds, isNot(anyOf(contains('/home/dev/bin'), contains('/home/dev'), contains('/home'))));
+        expect(s.skipped.keys, containsAll(['/home/dev/bin', '/home/dev', '/home']));
+        expect(s.skipped['/home/dev/bin'], contains('HOME'));
+      });
+
+      test('the explicit toolchain stays possible under HOME: the pub cache, FLUTTER_ROOT, --sandbox-ro, package roots', () {
+        final s = with_(['/usr/bin'], more: ['/home/dev/flutter', '/home/dev/sibling'],
+            extraEnv: {'FLUTTER_ROOT': '/home/dev/flutter'}, extra: ['/home/dev/sibling']);
+        expect(s.binds, containsAll(['/home/dev/.pub-cache', '/home/dev/flutter', '/home/dev/sibling']));
+        expect(s.skipped, isEmpty);
+      });
+
+      test('but not under /tmp and the like, whoever asks', () {
+        final s = with_(['/usr/bin'], more: ['/tmp/sib'], extra: ['/tmp/sib']);
+        expect(s.binds, isNot(contains('/tmp/sib')));
+        expect(s.skipped.keys, contains('/tmp/sib'));
+      });
+
+      test('the SDK found for the test command is held to the same rule', () {
+        final s = with_(['/home/dev/sdk/bin'], more: ['/home/dev/sdk/bin/flutter'], command: ['flutter']);
+        expect(s.binds, isNot(contains('/home/dev/sdk')));
+        expect(s.skipped.keys, contains('/home/dev/sdk'));
+      });
+
+      test('the skipped entries are in the report', () {
+        final s = with_(['/tmp/tools']);
+        expect(IsolationInfo(mode: 'bubblewrap', skipped: s.skipped).toJson()['skipped'], {'/tmp/tools': s.skipped['/tmp/tools']});
+      });
+    });
+
+    group('a bind that holds a Unix socket or a FIFO is refused', () {
+      test('a PATH directory with a socket in it: discovery fails and names the directory and the socket', () {
+        final host = FakeHost([...nixos.paths, '/opt/tools/bin', '/opt/tools/bin/daemon.sock'], nixos.links, {'/opt/tools/bin/daemon.sock'});
+        expect(() => found(host: host, environment: {...env, 'PATH': '/opt/tools/bin'}),
+            throwsA(isA<SandboxUnavailable>().having((e) => e.message, 'message', allOf(contains('/opt/tools/bin'), contains('daemon.sock'), contains('socket')))));
+      });
+
+      test('a FIFO deeper in the pub cache, an explicit --sandbox-ro, FLUTTER_ROOT: all refused', () {
+        for (final (what, e, extra) in [
+          ('pub cache', <String, String>{}, <String>[]),
+          ('flutter root', {'FLUTTER_ROOT': '/opt/flutter'}, <String>[]),
+          ('extra', <String, String>{}, ['/srv/sib']),
+        ]) {
+          final host = FakeHost([...nixos.paths, '/opt/flutter', '/srv/sib', '/home/dev/.pub-cache/hosted/x/fifo'], nixos.links,
+              {'/home/dev/.pub-cache/hosted/x/fifo', '/opt/flutter/bin/cache/pipe', '/srv/sib/a/b/s'});
+          expect(() => found(host: host, environment: {...env, ...e}, extra: extra), throwsA(isA<SandboxUnavailable>()), reason: what);
+        }
+      });
+
+      test('what is under /nix/store or /usr is not scanned (immutable, system)', () {
+        final host = FakeHost([...nixos.paths], nixos.links, {'/nix/store/flutter/x.sock', '/usr/lib/y.sock'});
+        final s = found(host: host);
+        expect(s.binds, contains('/usr'));
+        expect(host.scanned, isNot(anyOf(contains('/nix/store'), contains('/usr'))));
+        expect(host.scanned, contains('/home/dev/.pub-cache'));
+      });
+    });
+
     test('HOME is never bound whole and does not have to exist on the host', () {
       final s = found(host: FakeHost(['/nix/store']), environment: {'HOME': '/home/nobody', 'PATH': ''});
       expect(s.home, '/home/nobody');
@@ -324,19 +424,19 @@ void main() {
         'configVersion': 2,
         'packages': [
           {'name': 'hosted', 'rootUri': 'file:///home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0', 'packageUri': 'lib/'},
-          {'name': 'sibling', 'rootUri': '../../sibling', 'packageUri': 'lib/'},
+          {'name': 'sibling', 'rootUri': 'file:///srv/sibling', 'packageUri': 'lib/'},
           {'name': 'self', 'rootUri': '../', 'packageUri': 'lib/'},
           {'name': 'inside', 'rootUri': '../vendor/x', 'packageUri': 'lib/'},
         ],
       }));
       expect(Sandbox.packageRoots(dir.path),
-          unorderedEquals(['/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0', p.normalize(p.join(dir.path, '..', 'sibling'))]),
+          unorderedEquals(['/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0', '/srv/sibling']),
           reason: 'the export itself and what lies inside it are visible already');
-      final host = FakeHost([...nixos.paths, '/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0', p.normalize(p.join(dir.path, '..', 'sibling'))], nixos.links);
+      final host = FakeHost([...nixos.paths, '/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0', '/srv/sibling'], nixos.links);
       final s = Sandbox.discover(dir.path, environment: env, host: host);
       expect(s.binds, contains('/home/dev/.pub-cache'));
       expect(s.binds, isNot(contains('/home/dev/.pub-cache/hosted/pub.dev/hosted-1.0.0')));
-      expect(s.binds, contains(p.normalize(p.join(dir.path, '..', 'sibling'))));
+      expect(s.binds, contains('/srv/sibling'));
     });
   });
 
