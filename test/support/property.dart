@@ -23,8 +23,9 @@
 //    command. Shrinkers are domain-preserving: a candidate is always something
 //    the generator itself could have produced.
 //  • BUDGET. A property that takes longer than its wall budget (default 2 s)
-//    fails. The budget is the ONLY use of a real clock; it is injectable for
-//    the harness's own tests.
+//    fails. Shrinking counts against the same budget: when it runs out the
+//    best failing input so far is reported, marked "over budget (shrinking)". The budget is the ONLY
+//    use of a real clock; it is injectable for the harness's own tests.
 //
 // GENERATOR VERSION. A seed only means something for the generator that drew
 // it. When a property's generator changes shape, bump its `genVersion`; the
@@ -40,10 +41,25 @@ import 'package:flutter_test/flutter_test.dart';
 
 // ── randomness ──────────────────────────────────────────────────────────────
 
-/// splitmix64: tiny, fast, and identical on every Dart VM version (unlike
-/// `dart:math` Random, whose stream is not promised to be stable).
+/// True on dart2js, where `1` and `1.0` are the same value.
+const bool _onJs = identical(1, 1.0);
+
+/// splitmix64 (Steele, Lea, Flood; the public-domain reference generator):
+/// tiny, fast, and identical on every Dart VM version (unlike `dart:math`
+/// Random, whose stream is not promised to be stable). The first outputs for
+/// seeds 0 and 1234567 are pinned in property_test.dart against values computed
+/// independently.
+///
+/// ASSUMPTION: a Dart VM `int` is a 64-bit two's-complement integer whose `+`
+/// and `*` wrap, and `>>>` is a logical shift. That is what the arithmetic
+/// below relies on. This harness is VM-only and must not be compiled for the
+/// web (ints are doubles there); the constructor refuses to run on JS.
 class Rng {
-  Rng(int seed) : _s = seed;
+  Rng(int seed) : _s = seed {
+    if (_onJs) {
+      throw UnsupportedError('test/support/property.dart needs 64-bit VM ints');
+    }
+  }
   int _s;
 
   static const int _gamma = 0x9E3779B97F4A7C15;
@@ -59,6 +75,10 @@ class Rng {
     _s += _gamma;
     return mix(_s);
   }
+
+  /// The next raw 64-bit output (a signed Dart int; same bits as the
+  /// reference's unsigned value).
+  int next64() => _next();
 
   /// A uniform int in `[0, bound)`. `bound` must be in `1 .. 2^53`.
   int nextInt(int bound) {
@@ -458,6 +478,7 @@ class PropertyFailure {
     required this.replay,
     required this.shrinkSteps,
     required this.report,
+    this.shrinkOverBudget = false,
   });
   final FailureKind kind;
   final int seed;
@@ -473,6 +494,10 @@ class PropertyFailure {
   /// Body runs spent shrinking.
   final int shrinkSteps;
   final String report;
+
+  /// Shrinking stopped because the property's wall budget ran out; [input] is
+  /// the best (smallest) failing input found so far, not necessarily minimal.
+  final bool shrinkOverBudget;
 }
 
 class PropertyResult {
@@ -531,7 +556,11 @@ PropertyResult runProperty<T>({
       "--plain-name '${name.replaceAll("'", r"'\''")}'";
 
   PropertyFailure fail(FailureKind kind, String caseId, String input,
-      String error, {int shrinkSteps = 0, int accepted = 0, String? original}) {
+      String error,
+      {int shrinkSteps = 0,
+      int accepted = 0,
+      String? original,
+      bool overBudget = false}) {
     final replay = replayFor(kind == FailureKind.budget ? null : caseId);
     final b = StringBuffer()
       ..writeln('Property "$name" FAILED (${kind.name})')
@@ -543,6 +572,10 @@ PropertyResult runProperty<T>({
       b.writeln(shrinkSteps > 0
           ? '  input (shrunk: $accepted accepted of $shrinkSteps tried): $input'
           : '  input: $input');
+      if (overBudget) {
+        b.writeln('  over budget (shrinking): stopped after ${config.budget.inMilliseconds} '
+            'ms; this is the best failing input so far, not necessarily minimal');
+      }
       if (original != null && original != input) {
         b.writeln('  original input: $original');
       }
@@ -557,19 +590,26 @@ PropertyResult runProperty<T>({
         error: error,
         replay: replay,
         shrinkSteps: shrinkSteps,
-        report: b.toString());
+        report: b.toString(),
+        shrinkOverBudget: overBudget);
   }
 
   PropertyFailure shrunk(String caseId, T original, String error) {
     var cur = original;
     var err = error;
     var tried = 0, accepted = 0;
+    var overBudget = false;
     try {
       outer:
       while (true) {
         var progressed = false;
         for (final c in gen.shrink(cur)) {
           if (tried >= config.shrinkLimit) break outer;
+          // The wall budget covers shrinking too (a replay is exempt).
+          if (config.caseOnly == null && clock() > config.budget) {
+            overBudget = true;
+            break outer;
+          }
           tried++;
           final e = attempt(c);
           if (e != null) {
@@ -586,7 +626,10 @@ PropertyResult runProperty<T>({
       // A shrinker that throws ends shrinking; the best input so far stands.
     }
     return fail(FailureKind.counterexample, caseId, gen.show(cur), err,
-        shrinkSteps: tried, accepted: accepted, original: gen.show(original));
+        shrinkSteps: tried,
+        accepted: accepted,
+        original: gen.show(original),
+        overBudget: overBudget);
   }
 
   PropertyResult done(int cases, int forced, [PropertyFailure? f]) =>

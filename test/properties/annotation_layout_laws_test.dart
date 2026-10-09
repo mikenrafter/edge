@@ -351,10 +351,78 @@ String? _diff(AnnotationLayout a, AnnotationLayout b, double tol) {
   return null;
 }
 
+/// An icon as the layout builds it at some cluster threshold.
+class _Ic {
+  _Ic(this.ids, this.night, this.focus);
+  final List<String> ids;
+  final bool night, focus;
+}
+
+/// The icons the layout builds at the FIRST cluster threshold
+/// `iconWidth + k * badgeWidth` under which every footprint fits the plot, or,
+/// when none does, at the last threshold it tries (all points in one cluster
+/// reach it). Icons come out left to right.
+({bool fits, double t, List<_Ic> icons}) _fitting(_Chart c) {
+  final iw = c.scale.iconWidth, bw = c.scale.badgeWidth;
+  final ordinary = [
+    for (final v in c.vis)
+      if (v.ordinary) v
+  ]..sort(_cmpX);
+  final solos = [
+    for (final v in c.vis)
+      if (!v.ordinary) v
+  ];
+  final f = c.visibleFocus;
+  var t = iw;
+  for (;; t += bw) {
+    final groups = <List<_V>>[];
+    var anchor = 0.0;
+    for (final p in ordinary) {
+      if (groups.isEmpty || p.x - anchor >= t) {
+        groups.add([p]);
+        anchor = p.x;
+      } else {
+        groups.last.add(p);
+      }
+    }
+    final need = solos.length * iw +
+        [for (final g in groups) iw + (g.length > 1 ? bw : 0)]
+            .fold<double>(0, (a, b) => a + b);
+    // The footprints are whole pixels, so an exact fit is exact on both sides.
+    final fits = need <= c.scale.width + 1e-9;
+    if (fits || t > c.scale.width + iw) {
+      final shown = <(_V, _Ic)>[];
+      for (final g in [...groups, for (final v in solos) [v]]) {
+        final members = [...g]..sort((a, b) => _cmpTime(a.a, b.a));
+        final head = f != null && members.any((m) => m.a.id == f)
+            ? c.visById[f]!
+            : members.first;
+        shown.add((
+          head,
+          _Ic([for (final m in members) m.a.id], members.any((m) => m.isNight),
+              f != null && members.any((m) => m.a.id == f))
+        ));
+      }
+      shown.sort((a, b) => _cmpX(a.$1, b.$1));
+      return (fits: fits, t: t, icons: [for (final e in shown) e.$2]);
+    }
+  }
+}
+
+/// Every law in this file that runs on [_specGen] is registered here, so the
+/// coverage test below can ask whether the generator really reaches the
+/// situations the laws talk about.
+final List<String> _specLawNames = [];
+
+void _law(String name, void Function(_Spec) body,
+    {List<_Spec> examples = const [], int? cases}) {
+  _specLawNames.add(name);
+  forAll<_Spec>(name, _specGen, body, examples: examples, cases: cases);
+}
+
 void main() {
   group('layout laws', () {
-    forAll<_Spec>('L1 placed icons never overlap and stay inside the plot',
-        _specGen, (spec) {
+    _law('L1 placed icons never overlap and stay inside the plot', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final iw = c.scale.iconWidth, bw = c.scale.badgeWidth;
@@ -374,9 +442,7 @@ void main() {
       }
     }, examples: _forced);
 
-    forAll<_Spec>(
-        'L2 every visible occurrence is in exactly one icon or unplaced',
-        _specGen, (spec) {
+    _law('L2 every visible occurrence is in exactly one icon or unplaced', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final visIds = [for (final v in c.vis) v.a.id]..sort();
@@ -396,8 +462,7 @@ void main() {
       expect(l.shades.map((s) => s.id).toList()..sort(), rangeIds.toList()..sort());
     }, examples: _forced);
 
-    forAll<_Spec>('L3 a point is drawn at its true x, a range at its clipped ends',
-        _specGen, (spec) {
+    _law('L3 a point is drawn at its true x, a range at its clipped ends', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final s = c.scale;
@@ -449,8 +514,7 @@ void main() {
       }
     }
 
-    forAll<_Spec>('L4 the main sleep is never clustered, last dropped, outranks focus',
-        _specGen, (spec) {
+    _law('L4 the main sleep is never clustered, last dropped, outranks focus', (spec) {
       final c = _build(spec);
       nightLaw(c, c.layout, 'focus ${c.focus}');
       // Focus on an ordinary visible item: the night still outranks it.
@@ -464,8 +528,7 @@ void main() {
       }
     }, examples: _forced);
 
-    forAll<_Spec>('L5 the label is the focused one, else the main sleep, else none',
-        _specGen, (spec) {
+    _law('L5 the label is the focused one, else the main sleep, else none', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final night = ([
@@ -492,8 +555,7 @@ void main() {
       }
     }, examples: _forced);
 
-    forAll<_Spec>('L6 a valid range never clusters and keeps a shade', _specGen,
-        (spec) {
+    _law('L6 a valid range never clusters and keeps a shade', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final ranges = {
@@ -516,7 +578,7 @@ void main() {
       }
     }, examples: _forced);
 
-    forAll<_Spec>('L6b an algorithm-version mark never clusters', _specGen, (spec) {
+    _law('L6b an algorithm-version mark never clusters', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final marks = {
@@ -533,9 +595,7 @@ void main() {
       }
     }, examples: _forced);
 
-    forAll<_Spec>(
-        'L0 an unusable scale lays out nothing and does not throw', _specGen,
-        (spec) {
+    _law('L0 an unusable scale lays out nothing and does not throw', (spec) {
       final c = _build(spec);
       if (_usable(c.scale)) return;
       final l = c.layout;
@@ -546,8 +606,7 @@ void main() {
       expect(l.labelText, isNull, reason: 'and invents nothing');
     }, examples: _forced);
 
-    forAll<_Spec>('L11 a range shade spans its visible clipped extent',
-        _specGen, (spec) {
+    _law('L11 a range shade spans its visible clipped extent', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final s = c.scale;
@@ -751,14 +810,13 @@ void main() {
 
     // ── L9: cluster formation ───────────────────────────────────────────────
 
-    forAll<_Spec>('L9 clusters are the greedy runs of ordinary points under the first width that fits',
-        _specGen, (spec) {
+    _law('L9 clusters are the greedy runs of ordinary points under the first width that fits',
+        (spec) {
       final c = _build(spec);
-      // Nothing is visible on an unusable scale (L0); the sweep below needs a
-      // finite width to terminate.
+      // Nothing is visible on an unusable scale (L0); the sweep needs a finite
+      // width to terminate.
       if (!_usable(c.scale)) return;
       final l = c.layout;
-      final iw = c.scale.iconWidth, bw = c.scale.badgeWidth;
       final ordinary = [
         for (final v in c.vis)
           if (v.ordinary) v
@@ -778,53 +836,65 @@ void main() {
         }
       }
 
-      // Clusters are the greedy sweep from each cluster's first point at the
-      // first threshold iconWidth + k * badgeWidth under which every icon fits
-      // (k = 0: nothing needed to widen). When one fits, nothing is dropped.
-      final solos = c.vis.length - ordinary.length;
-      for (var t = iw;; t += bw) {
-        final groups = <List<_V>>[];
-        var anchor = 0.0;
-        for (final p in ordinary) {
-          if (groups.isEmpty || p.x - anchor >= t) {
-            groups.add([p]);
-            anchor = p.x;
-          } else {
-            groups.last.add(p);
-          }
+      String key(Iterable<String> ids) => ids.join(',');
+      final fit = _fitting(c);
+      final placedKeys = {for (final i in l.items) key(i.memberIds)};
+      if (fit.fits) {
+        // Clusters are the greedy sweep from each cluster's first point at the
+        // first threshold iconWidth + k * badgeWidth under which every icon
+        // fits (k = 0: nothing needed to widen). Nothing is dropped.
+        final want = [for (final ic in fit.icons) key(ic.ids)]..sort();
+        final got = [for (final i in l.items) key(i.memberIds)]..sort();
+        expect(got, want,
+            reason: 'first threshold that fits is ${fit.t} px\n${_dump(l)}');
+        expect(l.unplaced, isEmpty);
+        for (final i in l.items.where((i) => i.memberIds.length > 1)) {
+          final xs = [for (final m in i.memberIds) c.visById[m]!.x];
+          _ok(xs.reduce(math.max) - xs.reduce(math.min) < fit.t,
+              () => 'cluster ${i.memberIds} is wider than ${fit.t} px');
         }
-        final need = solos * iw +
-            [for (final g in groups) iw + (g.length > 1 ? bw : 0)]
-                .fold<double>(0, (a, b) => a + b);
-        // The footprints are whole pixels, so an exact fit is exact on both sides.
-        if (need <= c.scale.width + 1e-9) {
-          String key(List<String> ids) => ids.join(',');
-          final want = [
-            for (final g in groups)
-              key([for (final v in g) v.a.id]
-                ..sort((x, y) => _cmpTime(c.byId[x]!, c.byId[y]!))),
-            for (final v in c.vis)
-              if (!v.ordinary) v.a.id,
-          ]..sort();
-          final got = [for (final i in l.items) key(i.memberIds)]..sort();
-          expect(got, want,
-              reason: 'first threshold that fits is $t px\n${_dump(l)}');
-          expect(l.unplaced, isEmpty);
-          for (final i in l.items.where((i) => i.memberIds.length > 1)) {
-            final xs = [for (final m in i.memberIds) c.visById[m]!.x];
-            _ok(xs.reduce(math.max) - xs.reduce(math.min) < t,
-                () => 'cluster ${i.memberIds} is wider than $t px');
-          }
-          break;
+        return;
+      }
+
+      // Nothing fits even with every point in one cluster: icons are given up,
+      // from the right, the focused icon only after every other, the main
+      // sleep after that. Each icon is placed or unplaced whole.
+      expect(l.unplaced, isNotEmpty,
+          reason: 'footprints exceed ${c.scale.width} px, something must go\n${_dump(l)}');
+      bool dropped(_Ic ic) {
+        final inPlaced = placedKeys.contains(key(ic.ids));
+        final inUnplaced = ic.ids.every(l.unplaced.contains);
+        _ok(inPlaced != inUnplaced,
+            () => 'icon ${ic.ids} is neither wholly placed nor wholly unplaced\n${_dump(l)}');
+        return inUnplaced;
+      }
+
+      final candidates = [
+        for (final ic in fit.icons)
+          if (!ic.night && !ic.focus) ic
+      ]; // already in left-to-right order
+      final flags = [for (final ic in candidates) dropped(ic)];
+      for (var k = 1; k < flags.length; k++) {
+        _ok(!flags[k - 1] || flags[k],
+            () => 'an icon was kept to the right of one given up: $flags\n${_dump(l)}');
+      }
+      final allCandidatesGone = flags.every((f) => f);
+      for (final ic in fit.icons) {
+        final gone = dropped(ic);
+        if (ic.focus && !ic.night && gone) {
+          _ok(allCandidatesGone,
+              () => 'the focused icon went before the others\n${_dump(l)}');
         }
-        if (t > c.scale.width + iw) break; // nothing fits: icons get given up
+        if (ic.night && gone) {
+          _ok(fit.icons.where((o) => !o.night).every(dropped),
+              () => 'the main sleep went before every other icon\n${_dump(l)}');
+        }
       }
     }, examples: _forced);
 
     // ── L10: representative and membership ─────────────────────────────────
 
-    forAll<_Spec>('L10 the shown member is the focused one, else the oldest; focus keeps membership',
-        _specGen, (spec) {
+    _law('L10 the shown member is the focused one, else the oldest; focus keeps membership', (spec) {
       final c = _build(spec);
       final l = c.layout;
       final f = c.visibleFocus;
@@ -856,8 +926,7 @@ void main() {
 
     // ── L13: stepping order ────────────────────────────────────────────────
 
-    forAll<_Spec>('L13 stepping visits icons left to right, a cluster oldest to newest',
-        _specGen, (spec) {
+    _law('L13 stepping visits icons left to right, a cluster oldest to newest', (spec) {
       final c = _build(spec);
       final l = c.layout;
       for (var k = 1; k < l.items.length; k++) {
@@ -889,8 +958,7 @@ void main() {
 
     // ── beyond the numbered laws ────────────────────────────────────────────
 
-    forAll<_Spec>('L14 the order the annotations arrive in changes nothing',
-        _specGen, (spec) {
+    _law('L14 the order the annotations arrive in changes nothing', (spec) {
       final c = _build(spec);
       final n = c.items.length;
       final rotated = [...c.items.skip(n ~/ 2), ...c.items.take(n ~/ 2)];
@@ -899,6 +967,87 @@ void main() {
         _ok(d == null, () => 'reordered input changed the layout: $d');
       }
     }, examples: _forced);
+  });
+
+  // The generators must actually REACH what the laws are about, or a law passes
+  // by never being exercised. Counted per law, over exactly the 200 generated
+  // cases that law runs by default (its own seed), forced scenarios excluded.
+  group('generator reach', () {
+    const need = {
+      'multi-member cluster': 40,
+      'icon given up (unplaced)': 25,
+      'focused icon placed': 35,
+      'focus on a non-oldest member (shown in place of the oldest)': 8,
+      'range clipped on the left': 22,
+      'range clipped on the right': 35,
+      'main sleep visible': 45,
+      'main sleep given up': 5,
+      'algorithm-version mark visible': 40,
+      'usable plot narrower than one icon': 6,
+      'unusable scale': 20,
+      'L9 sweep: everything fits': 45,
+      'L9 sweep: nothing fits, icons dropped': 22,
+    };
+    test('every law sees every situation in its default cases', () {
+      expect(_specLawNames, isNotEmpty);
+      final weak = <String>[];
+      for (final name in _specLawNames) {
+        final got = <String, int>{for (final k in need.keys) k: 0};
+        void bump(String k) => got[k] = got[k]! + 1;
+        final r = runProperty<_Spec>(
+          name: name,
+          gen: _specGen,
+          config: const PropertyConfig(budget: Duration(seconds: 30)),
+          body: (spec) {
+            final c = _build(spec);
+            if (!_usable(c.scale)) {
+              bump('unusable scale');
+              return;
+            }
+            final l = c.layout;
+            if (c.scale.width < c.scale.iconWidth) {
+              bump('usable plot narrower than one icon');
+            }
+            if (l.items.any((i) => i.memberIds.length > 1)) {
+              bump('multi-member cluster');
+            }
+            if (l.unplaced.isNotEmpty) bump('icon given up (unplaced)');
+            if (l.items.any((i) => i.focused)) bump('focused icon placed');
+            if (l.items.any((i) =>
+                i.focused && i.memberIds.length > 1 && i.memberIds.first != i.id)) {
+              bump('focus on a non-oldest member (shown in place of the oldest)');
+            }
+            if (c.vis.any((v) => v.isRange && !v.startsInside)) {
+              bump('range clipped on the left');
+            }
+            if (c.vis.any((v) => v.isRange && !v.endsInside)) {
+              bump('range clipped on the right');
+            }
+            final nights = {
+              for (final v in c.vis)
+                if (v.isNight) v.a.id
+            };
+            if (nights.isNotEmpty) bump('main sleep visible');
+            if (l.unplaced.any(nights.contains)) bump('main sleep given up');
+            if (c.vis.any((v) => v.a.kind == AnnotationKind.algoVersion)) {
+              bump('algorithm-version mark visible');
+            }
+            if (c.vis.isNotEmpty) {
+              bump(_fitting(c).fits
+                  ? 'L9 sweep: everything fits'
+                  : 'L9 sweep: nothing fits, icons dropped');
+            }
+          },
+        );
+        expect(r.passed, isTrue, reason: r.failure?.report);
+        for (final e in need.entries) {
+          if (got[e.key]! < e.value) {
+            weak.add('"$name": ${e.key} in ${got[e.key]} cases, need ${e.value}');
+          }
+        }
+      }
+      expect(weak, isEmpty, reason: weak.join('\n'));
+    });
   });
 
   group('regressions', () {

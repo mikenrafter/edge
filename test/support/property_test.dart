@@ -83,6 +83,35 @@ void main() {
       expect([for (var i = 0; i < 50; i++) r.nextBool(1)], everyElement(true));
     });
 
+    test('next64 is SplitMix64: the first outputs match the reference values',
+        () {
+      // Computed independently with python3, masking every step to 64 bits:
+      //   s = (s + 0x9E3779B97F4A7C15) & M
+      //   z = ((s ^ (s >> 30)) * 0xBF58476D1CE4E5B9) & M
+      //   z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & M;  out = z ^ (z >> 31)
+      // Seed 0 starts 0xE220A8397B1DCDAF, the published SplitMix64 test value.
+      // Dart's signed int holds the same 64 bits, so compare as hex.
+      String hex(int v) =>
+          (v >>> 32).toRadixString(16).padLeft(8, '0') +
+          (v & 0xFFFFFFFF).toRadixString(16).padLeft(8, '0');
+      final z = Rng(0);
+      expect([for (var i = 0; i < 5; i++) hex(z.next64())], [
+        'e220a8397b1dcdaf',
+        '6e789e6aa1b965f4',
+        '06c45d188009454f',
+        'f88bb8a8724c81ec',
+        '1b39896a51a8749b',
+      ]);
+      final k = Rng(1234567);
+      expect([for (var i = 0; i < 5; i++) hex(k.next64())], [
+        '599ed017fb08fc85',
+        '2c73f08458540fa5',
+        '883ebce5a3f27c77',
+        '3fbef740e9177b3f',
+        'e3b8346708cb5ecd',
+      ]);
+    });
+
     test('the stream is pinned: a replay command stays valid across SDKs', () {
       final r = Rng(1);
       expect([for (var i = 0; i < 5; i++) r.nextInt(1000)],
@@ -97,6 +126,29 @@ void main() {
       final buckets = {for (var i = 0; i < 2000; i++) r.nextInt(16)};
       expect(buckets.length, 16);
     });
+  });
+
+  group('rng ranges', () {
+    forAll<(int, int)>(
+        'rng draws stay in range: nextInt(bound) in [0, bound), nextDouble in [0, 1)',
+        G.pair(
+            G.intIn(-(1 << 40), 1 << 40),
+            G.intIn(0, 9)),
+        (arg) {
+      final (seed, pick) = arg;
+      const bounds = [1, 2, 3, 7, 1000, 1 << 20, (1 << 53) - 1, 1 << 53];
+      final r = Rng(seed);
+      for (var i = 0; i < 40; i++) {
+        final b = bounds[(pick + i) % bounds.length];
+        final n = r.nextInt(b);
+        expect(n >= 0 && n < b, isTrue, reason: 'nextInt($b) = $n');
+        final d = r.nextDouble();
+        expect(d >= 0 && d < 1, isTrue, reason: 'nextDouble() = $d');
+        final k = r.intIn(0, b - 1);
+        expect(k >= 0 && k < b, isTrue, reason: 'intIn(0, ${b - 1}) = $k');
+      }
+      expect(Rng(seed).nextInt(1), 0);
+    }, examples: const [(0, 0), (-1, 7), (1 << 40, 3)]);
   });
 
   group('seeds', () {
@@ -580,6 +632,53 @@ void main() {
       expect(r.casesRun, lessThan(200));
       expect(r.failure!.report, contains('2000 ms'));
       expect(r.failure!.report, contains('budget'));
+    });
+
+    test('shrinking counts against the budget and reports the best so far', () {
+      // The clock reads past the budget after the 6th reading: the failure at
+      // case 0 is found, shrinking gets a few attempts, then stops.
+      var reads = 0;
+      final r = runProperty<List<int>>(
+        name: 'slow shrink',
+        gen: G.listOf(G.intIn(0, 1000), minLen: 40, maxLen: 50),
+        body: (_) => throw StateError('always'),
+        config: const PropertyConfig(seed: 1),
+        elapsed: () => Duration(milliseconds: 500 * reads++),
+      );
+      final f = r.failure!;
+      expect(f.kind, FailureKind.counterexample);
+      expect(f.shrinkOverBudget, isTrue);
+      expect(f.report, contains('over budget (shrinking)'));
+      expect(f.shrinkSteps, lessThanOrEqualTo(6),
+          reason: 'unbudgeted, this shrink takes dozens of runs');
+      // The best-so-far input is still a valid, failing input of the domain.
+      final len = RegExp(', ').allMatches(f.input).length + 1;
+      expect(len, inInclusiveRange(40, 50));
+    });
+
+    test('shrinking inside the budget is not marked', () {
+      final r = runProperty<int>(
+        name: 'quick shrink',
+        gen: G.intIn(500, 1000),
+        body: (_) => throw StateError('always'),
+        config: const PropertyConfig(seed: 1),
+        elapsed: () => const Duration(milliseconds: 1),
+      );
+      expect(r.failure!.shrinkOverBudget, isFalse);
+      expect(r.failure!.report, isNot(contains('over budget')));
+      expect(r.failure!.input, '500');
+    });
+
+    test('a single-case replay keeps shrinking whatever the clock says', () {
+      final r = runProperty<int>(
+        name: 'replay shrink',
+        gen: G.intIn(500, 1000),
+        body: (_) => throw StateError('always'),
+        config: const PropertyConfig(seed: 1, caseOnly: '0'),
+        elapsed: () => const Duration(hours: 1),
+      );
+      expect(r.failure!.shrinkOverBudget, isFalse);
+      expect(r.failure!.input, '500');
     });
 
     test('a property inside its budget passes', () {
