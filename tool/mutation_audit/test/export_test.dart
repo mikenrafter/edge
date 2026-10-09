@@ -368,27 +368,29 @@ packages:
       expect(c.gitDependencies, isNotEmpty, reason: 'the sibling packages are pinned from git');
     });
 
+    String sibling() => p.join(fx.parent, 'analytics');
+
     test('pubspec_overrides.yaml with a path is refused, and hashed when allowed', () async {
       write('pubspec.yaml', 'name: demo\n');
-      write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ../analytics\n');
+      write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ${sibling()}\n');
       await expectLater(resolveDependencyConfig(export.path, repo: fx.root), throwsA(isA<PathOverrideRefused>()));
-      final c = await resolveDependencyConfig(export.path,
-          repo: fx.root, allowedOverrides: [p.join(fx.parent, 'analytics')]);
+      final c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [sibling()]);
       expect(c.overridesFileSha256, matches(RegExp(r'^[0-9a-f]{64}$')));
       expect(c.pathOverrides.single.package, 'analytics');
       expect(c.pathOverrides.single.source, 'pubspec_overrides.yaml');
+      expect(c.pathOverrides.single.resolvedPath, sibling());
     });
 
     test('the allowed path may be given relative to the repo', () async {
       write('pubspec.yaml', 'name: demo\n');
-      write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ../analytics\n');
+      write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ${sibling()}\n');
       final c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: ['../analytics']);
       expect(c.pathOverrides, hasLength(1));
     });
 
     test('an override to somewhere else than the allowed path is still refused', () async {
       write('pubspec.yaml', 'name: demo\n');
-      write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ../other\n');
+      write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ${p.join(fx.parent, 'other')}\n');
       await expectLater(
           resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: ['../analytics']),
           throwsA(isA<PathOverrideRefused>()));
@@ -397,10 +399,122 @@ packages:
     test('every override must be allowed, not just one', () async {
       write('pubspec.yaml', 'name: demo\n');
       write('pubspec_overrides.yaml',
-          'dependency_overrides:\n  analytics:\n    path: ../analytics\n  protocol:\n    path: ../protocol\n');
+          'dependency_overrides:\n  analytics:\n    path: ${sibling()}\n  protocol:\n    path: ${p.join(fx.parent, 'protocol')}\n');
       await expectLater(
           resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: ['../analytics']),
           throwsA(isA<PathOverrideRefused>()));
+    });
+
+    group('a relative override is resolved against the export, as Pub does', () {
+      test('../analytics in the export is not the developer repo\'s ../analytics', () async {
+        // The export lives in its own temp directory: `../analytics` from there
+        // is a different place than `../analytics` from the developer checkout.
+        write('pubspec.yaml', 'name: demo\n');
+        write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ../analytics\n');
+        final e = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: ['../analytics'])
+            .then<Object?>((_) => null, onError: (Object e) => e);
+        expect(e, isA<PathOverrideRefused>());
+        final message = (e as PathOverrideRefused).message;
+        expect(message, contains(p.join(p.dirname(export.resolveSymbolicLinksSync()), 'analytics')),
+            reason: 'names where Pub would really look');
+        expect(message, contains(sibling()), reason: 'and what was authorised');
+      });
+
+      test('it passes when the export really is beside the authorised sibling', () async {
+        final beside = Directory(p.join(fx.parent, 'exports', 'one'))..createSync(recursive: true);
+        File(p.join(beside.path, 'pubspec.yaml')).writeAsStringSync('name: demo\n');
+        File(p.join(beside.path, 'pubspec_overrides.yaml'))
+            .writeAsStringSync('dependency_overrides:\n  analytics:\n    path: ../../analytics\n');
+        final c = await resolveDependencyConfig(beside.path, repo: fx.root, allowedOverrides: [sibling()]);
+        expect(c.pathOverrides.single.resolvedPath, sibling());
+      });
+
+      test('spellings are canonicalised: .., ., a trailing slash and a symlink', () async {
+        Directory(sibling()).createSync();
+        final link = p.join(fx.parent, 'analytics_link');
+        Link(link).createSync(sibling());
+        write('pubspec.yaml', 'name: demo\n');
+        write('pubspec_overrides.yaml',
+            'dependency_overrides:\n  analytics:\n    path: ${p.join(fx.parent, 'x', '..', '.', 'analytics_link')}/\n');
+        final c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [sibling()]);
+        expect(c.pathOverrides.single.resolvedPath, sibling());
+        final d = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [link]);
+        expect(d.pathOverrides, hasLength(1));
+      });
+
+      test('the lock file\'s relative path package is resolved against the export too', () async {
+        write('pubspec.yaml', 'name: demo\n');
+        write('pubspec.lock', '''
+packages:
+  analytics:
+    dependency: "direct main"
+    description:
+      path: "../analytics"
+      relative: true
+    source: path
+    version: "0.1.0"
+''');
+        await expectLater(resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: ['../analytics']),
+            throwsA(isA<PathOverrideRefused>()));
+      });
+    });
+
+    group('the audited sibling is recorded with its git state', () {
+      setUp(() {
+        write('pubspec.yaml', 'name: demo\n');
+        write('pubspec_overrides.yaml', 'dependency_overrides:\n  analytics:\n    path: ${sibling()}\n');
+      });
+
+      Future<String> initSibling() async {
+        Directory(sibling()).createSync();
+        File(p.join(sibling(), 'a.dart')).writeAsStringSync('one\n');
+        for (final args in [
+          ['init', '-q', '-b', 'main'],
+          ['add', '-A'],
+          ['-c', 'user.name=t', '-c', 'user.email=t@e.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'x'],
+        ]) {
+          await Process.run('git', args, workingDirectory: sibling());
+        }
+        return ((await Process.run('git', ['rev-parse', 'HEAD'], workingDirectory: sibling())).stdout as String).trim();
+      }
+
+      test('HEAD sha and a clean tree', () async {
+        final head = await initSibling();
+        final c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [sibling()]);
+        expect(c.pathOverrides.single.gitHead, head);
+        expect(c.pathOverrides.single.dirty, isFalse);
+        expect(c.toJson()['pathOverrides'], [
+          {
+            'package': 'analytics',
+            'path': sibling(),
+            'source': 'pubspec_overrides.yaml',
+            'resolvedPath': sibling(),
+            'gitHead': head,
+            'dirty': false,
+          }
+        ]);
+      });
+
+      test('a modified or untracked file makes it dirty', () async {
+        await initSibling();
+        File(p.join(sibling(), 'a.dart')).writeAsStringSync('two\n');
+        var c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [sibling()]);
+        expect(c.pathOverrides.single.dirty, isTrue);
+        await Process.run('git', ['checkout', '--', 'a.dart'], workingDirectory: sibling());
+        File(p.join(sibling(), 'new.dart')).writeAsStringSync('x\n');
+        c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [sibling()]);
+        expect(c.pathOverrides.single.dirty, isTrue);
+      });
+
+      test('a sibling that is not a git repository (or does not exist) records null, not a guess', () async {
+        var c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [sibling()]);
+        expect(c.pathOverrides.single.gitHead, isNull);
+        expect(c.pathOverrides.single.dirty, isNull);
+        Directory(sibling()).createSync();
+        c = await resolveDependencyConfig(export.path, repo: fx.root, allowedOverrides: [sibling()]);
+        expect(c.pathOverrides.single.gitHead, isNull);
+        expect(c.pathOverrides.single.dirty, isNull);
+      });
     });
 
     test('dependency_overrides with a path in pubspec.yaml is refused', () async {
@@ -421,8 +535,8 @@ packages:
   analytics:
     dependency: "direct main"
     description:
-      path: "../analytics"
-      relative: true
+      path: "${sibling()}"
+      relative: false
     source: path
     version: "0.1.0"
 ''');

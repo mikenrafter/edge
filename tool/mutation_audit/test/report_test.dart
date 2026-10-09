@@ -203,6 +203,31 @@ void main() {
       expect(md, contains('ab' * 32));
     });
 
+    test('names the audited sibling with its HEAD and whether it was dirty', () {
+      final withSibling = AuditResults(
+        AuditMeta(
+          toolVersion: '0.1.0', repo: '/dev/edge', sha: sha,
+          dependencies: DependencyConfig(lockSha256: null, overridesFileSha256: null, gitDependencies: const [], pathOverrides: [
+            PathOverride('analytics', '/w/analytics', 'pubspec_overrides.yaml',
+                resolvedPath: '/w/analytics', gitHead: 'c' * 40, dirty: true),
+            PathOverride('protocol', '/w/protocol', 'pubspec_overrides.yaml', resolvedPath: '/w/protocol'),
+          ]),
+          testCmd: 'dart test', files: const ['lib/a.dart'], tests: const [], guardPatterns: const [],
+          timeoutSeconds: 1, maxMutants: null, sample: null, seed: null,
+          baseline: const BaselineSummary(passed: true, testsRun: 1, duration: Duration.zero),
+          startedAt: DateTime.utc(2026), finishedAt: DateTime.utc(2026), candidateMutants: 0,
+        ),
+        const [],
+      );
+      final text = withSibling.renderMarkdown();
+      expect(text, contains('c' * 40));
+      expect(text, contains('DIRTY'));
+      expect(text, contains('git state unknown'));
+      final overrides = (withSibling.toJson()['meta'] as Map)['dependencies'] as Map;
+      expect((overrides['pathOverrides'] as List).first, containsPair('gitHead', 'c' * 40));
+      expect((overrides['pathOverrides'] as List).first, containsPair('dirty', true));
+    });
+
     test('has a count for each status and the score as a percentage', () {
       expect(md, matches(RegExp(r'killed\W+2\b')));
       expect(md, matches(RegExp(r'killed-by-guard-only\W+1\b')));

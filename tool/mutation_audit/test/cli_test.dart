@@ -144,8 +144,9 @@ void main() {
   });
 
   test('--allow-override lets the audited sibling through and records it', () async {
+    final sibling = p.join(fx.parent, 'analytics');
     await fx.commit({
-      'pubspec.yaml': 'name: demo\nenvironment:\n  sdk: ^3.0.0\ndependency_overrides:\n  analytics:\n    path: ../analytics\n',
+      'pubspec.yaml': 'name: demo\nenvironment:\n  sdk: ^3.0.0\ndependency_overrides:\n  analytics:\n    path: $sibling\n',
     }, 'override');
     final pinned = await fx.head();
     final runner = tests();
@@ -158,7 +159,26 @@ void main() {
     expect(code, 0, reason: err.toString());
     final json = jsonDecode(File(p.join(out.path, 'results.json')).readAsStringSync()) as Map<String, dynamic>;
     final deps = (json['meta'] as Map)['dependencies'] as Map;
-    expect((deps['pathOverrides'] as List).single['package'], 'analytics');
+    final override = (deps['pathOverrides'] as List).single as Map;
+    expect(override['package'], 'analytics');
+    expect(override['resolvedPath'], sibling);
+  });
+
+  test('a relative override is resolved against the export, so ../analytics is refused even if --allow-override names it', () async {
+    await fx.commit({
+      'pubspec.yaml': 'name: demo\nenvironment:\n  sdk: ^3.0.0\ndependency_overrides:\n  analytics:\n    path: ../analytics\n',
+    }, 'override');
+    final pinned = await fx.head();
+    final runner = tests();
+    final code = await runCli(
+      args(['--allow-override', '../analytics', '--setup-cmd', ''], pinned),
+      runner: runner,
+      out: stdout_,
+      err: err,
+    );
+    expect(code, 65);
+    expect(err.toString(), contains('not an allowed sibling'));
+    expect(runner.calls, isEmpty);
   });
 
   test('an unknown sha exits 70 and leaves nothing behind', () async {

@@ -209,13 +209,30 @@ class InterruptedError implements Exception {
 
 /// One path dependency that redirects a package to a directory.
 class PathOverride {
-  const PathOverride(this.package, this.path, this.source);
+  const PathOverride(this.package, this.path, this.source,
+      {this.resolvedPath, this.gitHead, this.dirty});
   final String package, path;
 
   /// `pubspec_overrides.yaml`, `pubspec.yaml` or `pubspec.lock`.
   final String source;
-  Map<String, Object?> toJson() =>
-      {'package': package, 'path': path, 'source': source};
+
+  /// Where Pub resolves [path]: against the export, canonical.
+  final String? resolvedPath;
+
+  /// The sibling's git HEAD and whether its working tree has uncommitted
+  /// changes (untracked files included). Null when [resolvedPath] is not the
+  /// top level of a git repository: unknown, never guessed.
+  final String? gitHead;
+  final bool? dirty;
+
+  Map<String, Object?> toJson() => {
+        'package': package,
+        'path': path,
+        'source': source,
+        'resolvedPath': resolvedPath,
+        'gitHead': gitHead,
+        'dirty': dirty,
+      };
 }
 
 /// A dependency resolved from git, as the lock file pins it.
@@ -249,12 +266,15 @@ class DependencyConfig {
 }
 
 /// Reads the dependency configuration of the export at [exportPath] and
-/// refuses ([PathOverrideRefused]) when a path override is active, unless its
-/// target, resolved against [repo] (where it was written), is one of
-/// [allowedOverrides] (absolute or relative to [repo], resolved the same way).
-/// Path overrides are: entries of pubspec_overrides.yaml, `dependency_overrides`
+/// refuses ([PathOverrideRefused]) when a path override is active, unless it
+/// points at one of [allowedOverrides] (absolute, or relative to [repo], the
+/// developer checkout). A relative override is resolved against the EXPORT --
+/// where Pub reads it -- not against [repo]; both sides are canonicalised
+/// (`..`, `.`, trailing slashes, symlinks) before they are compared. Path
+/// overrides are: entries of pubspec_overrides.yaml, `dependency_overrides`
 /// entries of pubspec.yaml with a `path:`, and `source: path` packages in
-/// pubspec.lock. Git pins are only recorded.
+/// pubspec.lock. Git pins are only recorded. For each allowed override the
+/// sibling's git HEAD and dirty flag are recorded.
 Future<DependencyConfig> resolveDependencyConfig(
   String exportPath, {
   required String repo,
@@ -305,18 +325,43 @@ Future<DependencyConfig> resolveDependencyConfig(
     }
   }
 
-  String target(String path) => p.normalize(p.absolute(p.join(repo, path)));
-  final allowed = {for (final a in allowedOverrides) target(a)};
+  final allowed = {for (final a in allowedOverrides) _resolveLoosely(p.join(repo, a))};
+  final recorded = <PathOverride>[];
   for (final o in overrides) {
-    if (!allowed.contains(target(o.path))) {
+    // Pub resolves a relative path against the project it reads it in: the export.
+    final where = _resolveLoosely(p.join(exportPath, o.path));
+    if (!allowed.contains(where)) {
       throw PathOverrideRefused(
-          '${o.source} redirects ${o.package} to ${o.path}; pass --allow-override for the audited sibling');
+          '${o.source} redirects ${o.package} to ${o.path}, which Pub resolves (relative to the '
+          'export $exportPath) to $where; that is not an allowed sibling'
+          '${allowed.isEmpty ? '' : ' (allowed: ${allowed.join(', ')})'}; '
+          'pass --allow-override with the absolute path of the audited sibling');
     }
+    final state = await _gitState(where);
+    recorded.add(PathOverride(o.package, o.path, o.source,
+        resolvedPath: where, gitHead: state?.$1, dirty: state?.$2));
   }
   return DependencyConfig(
     lockSha256: hashOf('pubspec.lock'),
     overridesFileSha256: hashOf('pubspec_overrides.yaml'),
-    pathOverrides: overrides,
+    pathOverrides: recorded,
     gitDependencies: git,
   );
+}
+
+/// HEAD and dirtiness of the git repository whose top level is [dir]; null
+/// when [dir] is not such a top level (not a repository, missing, or only a
+/// subdirectory of one).
+Future<(String, bool)?> _gitState(String dir) async {
+  if (!Directory(dir).existsSync()) return null;
+  try {
+    final top = await _git(dir, ['rev-parse', '--show-toplevel']);
+    if (top.exitCode != 0 || !p.equals(_resolveLoosely(_text(top.stdout)), dir)) return null;
+    final head = await _git(dir, ['rev-parse', 'HEAD']);
+    final status = await _git(dir, ['status', '--porcelain']);
+    if (head.exitCode != 0 || status.exitCode != 0) return null;
+    return (_text(head.stdout), _text(status.stdout).isNotEmpty);
+  } on ProcessException {
+    return null;
+  }
 }

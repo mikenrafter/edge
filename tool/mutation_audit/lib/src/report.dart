@@ -173,7 +173,9 @@ class AuditResults {
       b.writeln('  - git `${g.package}` `${g.url}` at `${g.resolvedRef}`');
     }
     for (final o in meta.dependencies.pathOverrides) {
-      b.writeln('  - path override (${o.source}) `${o.package}` -> `${o.path}`');
+      b.writeln('  - path override (${o.source}) `${o.package}` -> `${o.path}`'
+          '${o.resolvedPath == null ? '' : ', resolved `${o.resolvedPath}`'}'
+          ', ${o.gitHead == null ? 'git state unknown' : 'HEAD `${o.gitHead}`, ${o.dirty == true ? 'DIRTY' : 'clean'}'}');
     }
     b
       ..writeln('- Score: ${s == null ? 'no score' : '${(s * 100).toStringAsFixed(1)}%'} '
