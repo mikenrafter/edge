@@ -166,13 +166,128 @@ void main() {
       host.script = (h) {
         reparented = h.spawn(holdsOutput: true);
         descendant = h.spawn(holdsOutput: true);
-        h.at(const Duration(milliseconds: 500), () => reparented.ppid = 1);
+        h.at(const Duration(milliseconds: 200), () => reparented.ppid = 1);
       };
-      final o = await run(timeout: const Duration(seconds: 1));
+      final o = await run(timeout: const Duration(seconds: 5));
       expect(o.timedOut, isTrue);
       expect(o.outputComplete, isFalse, reason: 'the reparented child still holds the pipes; the runner gave up waiting');
       expect(signalled().containsKey(descendant.pid), isTrue);
       expect(signalled().containsKey(reparented.pid), isFalse);
+    });
+  });
+
+  group('the family is remembered across the whole cleanup', () {
+    test('no session of its own: a polite root exits on SIGTERM, its TERM-ignoring child is reparented and still gets SIGKILL', () async {
+      setUpHost(ownsSession: false);
+      late FakeProc stubborn;
+      host.script = (h) => stubborn = h.spawn(ignoresTerm: true, holdsOutput: true);
+      final o = await run(timeout: const Duration(seconds: 10));
+      expect(o.timedOut, isTrue);
+      expect(stubborn.alive, isFalse, reason: 'reparented to init when the root died, but captured before that');
+      expect(signalled()[stubborn.pid], [term, kill]);
+      expect(o.outputComplete, isTrue);
+    });
+
+    test('a descendant that made its own session is still found after the root is gone', () async {
+      late FakeProc own;
+      host.script = (h) => own = h.spawn(ignoresTerm: true, holdsOutput: true, sid: 777);
+      final o = await run(timeout: const Duration(seconds: 10));
+      expect(own.alive, isFalse);
+      expect(signalled()[own.pid], [term, kill]);
+      expect(o.outputComplete, isTrue);
+    });
+
+    test('a grandchild of a captured process that exits is reached through the captured set', () async {
+      setUpHost(ownsSession: false);
+      late FakeProc mid, leaf;
+      host.script = (h) {
+        mid = h.spawn(holdsOutput: false); // polite
+        leaf = h.spawn(parent: mid.pid, ignoresTerm: true, holdsOutput: true);
+      };
+      await run(timeout: const Duration(seconds: 10));
+      expect(leaf.alive, isFalse);
+      expect(signalled()[leaf.pid], [term, kill]);
+    });
+  });
+
+  group('sampling while the child runs', () {
+    test('no session: a child captured while the root lived is still ours after the root exits and it is reparented', () async {
+      setUpHost(ownsSession: false);
+      late FakeProc child;
+      host.script = (h) {
+        child = h.spawn(ignoresTerm: true, holdsOutput: true);
+        h.at(const Duration(seconds: 3), () => h.rootExits(0)); // reparents the child to init
+      };
+      final o = await run(timeout: const Duration(seconds: 20));
+      expect(o.timedOut, isTrue);
+      expect(child.alive, isFalse);
+      expect(signalled()[child.pid], [term, kill]);
+    });
+
+    test('no session: a child forked and reparented between two samples is out of reach (documented limit)', () async {
+      setUpHost(ownsSession: false);
+      late FakeProc quick;
+      host.script = (h) {
+        h.at(const Duration(milliseconds: 1200), () {
+          quick = h.spawn(ignoresTerm: true, holdsOutput: true);
+          quick.ppid = 1; // already reparented when the next sample looks
+        });
+      };
+      final o = await run(timeout: const Duration(seconds: 10));
+      expect(quick.alive, isTrue);
+      expect(o.outputComplete, isFalse);
+    });
+
+    test('the sampler stops with the run: no alarm is left behind', () async {
+      host.script = (h) => h.at(const Duration(seconds: 5), () => h.rootExits(0));
+      await run();
+      expect(host.clock.pending, 0);
+    });
+  });
+
+  group('process identity: a reused pid is never signalled', () {
+    test('the root exits early, its pid is handed to an unrelated process that starts its own session', () async {
+      late FakeProc orphan, stranger;
+      host.script = (h) {
+        orphan = h.spawn(ignoresTerm: true, holdsOutput: true);
+        h.at(const Duration(seconds: 1), () => h.rootExits(0));
+        // Later the number 100 is reused, and the newcomer calls setsid(): sid == 100.
+        h.at(const Duration(seconds: 3), () => stranger = h.reusePid(FakeHost.rootPid, sid: FakeHost.rootPid));
+      };
+      final o = await run(timeout: const Duration(seconds: 10));
+      expect(o.timedOut, isTrue);
+      expect(stranger.alive, isTrue);
+      expect(signalled().containsKey(FakeHost.rootPid), isFalse, reason: 'same pid, different start time');
+      expect(signalled()[orphan.pid], [term, kill], reason: 'the real session member was captured while the root was alive');
+      expect(o.outputComplete, isTrue);
+    });
+
+    test('a captured process exits on its own, its pid is reused: the SIGKILL round skips it', () async {
+      late FakeProc quitter, stranger;
+      host.script = (h) {
+        h.root.ignoresTerm = true; // forces a SIGKILL round
+        quitter = h.spawn(holdsOutput: false);
+        // Gone by the time SIGTERM arrives (10 s), its pid is reused at 12 s.
+        h.at(const Duration(seconds: 2), () => h.exits(quitter.pid));
+        h.at(const Duration(seconds: 12), () => stranger = h.reusePid(quitter.pid, ppid: 1));
+      };
+      await run(timeout: const Duration(seconds: 10));
+      expect(stranger.alive, isTrue, reason: 'an unrelated process that merely got the number');
+      expect(signalled().containsKey(quitter.pid), isFalse);
+      expect(signalled()[FakeHost.rootPid], [term, kill]);
+    });
+
+    test('a captured process dies during the grace period and its pid is reused: no SIGKILL to the newcomer', () async {
+      late FakeProc polite, stranger;
+      host.script = (h) {
+        h.root.ignoresTerm = true;
+        polite = h.spawn(holdsOutput: false);
+        // SIGTERM kills it at 10 s; at 11 s the number is taken by someone else.
+        h.at(const Duration(seconds: 11), () => stranger = h.reusePid(polite.pid, ppid: 1));
+      };
+      await run(timeout: const Duration(seconds: 10));
+      expect(signalled()[polite.pid], [term]);
+      expect(stranger.alive, isTrue);
     });
   });
 

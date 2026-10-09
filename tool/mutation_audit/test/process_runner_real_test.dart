@@ -80,6 +80,35 @@ wait''');
     expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
   }, timeout: const Timeout(Duration(seconds: 20)));
 
+  test('identity is checked before a signal: a stale start time is refused, the real one is honoured', () async {
+    final sleeper = await Process.start('sleep', ['120']);
+    addTearDown(() => sleeper.kill(ProcessSignal.sigkill));
+    const host = SystemProcessHost();
+    final real = host.identityOf(sleeper.pid)!;
+    final stale = ProcIdentity(real.pid, '${real.start}0', real.ppid, real.sid);
+    expect(host.signal(stale, ProcessSignal.sigkill), isFalse, reason: 'same pid, another start time: another process');
+    expect(host.identityOf(sleeper.pid), isNotNull);
+    expect((await host.snapshot())[sleeper.pid]!.start, real.start);
+    expect(host.signal(real, ProcessSignal.sigterm), isTrue);
+    await sleeper.exitCode.timeout(const Duration(seconds: 5));
+    expect(host.signal(real, ProcessSignal.sigkill), isFalse, reason: 'gone');
+    expect(host.identityOf(sleeper.pid), isNull);
+  });
+
+  test('a polite parent exits on SIGTERM, its TERM-ignoring child is reparented: still killed', () async {
+    final path = script('''
+( trap '' TERM; exec sleep 120 ) &
+echo "gc=\$!"
+wait''');
+    final outcome = await runner.run(['sh', path], workingDirectory: dir.path, timeout: const Duration(seconds: 1));
+    final gc = grandchild(outcome);
+    addTearDown(() => Process.killPid(gc, ProcessSignal.sigkill));
+    expect(outcome.timedOut, isTrue);
+    expect(dead(gc), isTrue);
+    expect(outcome.outputComplete, isTrue);
+    expect(outcome.elapsed, lessThan(const Duration(seconds: 6)));
+  }, timeout: const Timeout(Duration(seconds: 20)));
+
   group('a timeout stops the whole tree, with a TERM that is ignored', () {
     test('the wrapper exits at once, a TERM-ignoring child keeps the pipe open', () async {
       final path = script('''

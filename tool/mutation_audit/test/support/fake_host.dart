@@ -80,6 +80,10 @@ class FakeProc {
   bool holdsOutput;
   bool alive = true;
 
+  /// When it started (a counter: a different value for the same pid means a
+  /// different process, as with the start time in /proc/<pid>/stat).
+  int started = 0;
+
   /// Cannot be killed at all (uninterruptible sleep).
   bool unkillable = false;
 }
@@ -100,6 +104,7 @@ class FakeHost implements ProcessHost {
   /// Unrelated processes (never to be signalled) are added by the test.
   FakeProc bystander({int? pid, int? ppid, int? sid}) {
     final p = FakeProc(pid ?? _nextPid++, ppid ?? 1, sid ?? 1);
+    p.started = _startCounter++;
     procs[p.pid] = p;
     return p;
   }
@@ -113,10 +118,24 @@ class FakeHost implements ProcessHost {
   List<String>? argv;
   int starts = 0;
 
+  int _startCounter = 1;
+
+  /// The pid [pid] is handed out again to an unrelated process (the old one
+  /// must be gone): same number, new start time, no relation to the root
+  /// except what [ppid] / [sid] say.
+  FakeProc reusePid(int pid, {int ppid = 1, int? sid}) {
+    final old = procs[pid];
+    if (old != null && old.alive) throw StateError('pid $pid is still in use');
+    final p = FakeProc(pid, ppid, sid ?? 1)..started = _startCounter++;
+    procs[pid] = p;
+    return p;
+  }
+
   /// A new process forked by [parent] (default: the root).
   FakeProc spawn({int? parent, bool ignoresTerm = false, bool holdsOutput = false, int? sid}) {
     final p = FakeProc(_nextPid++, parent ?? rootPid, sid ?? (ownsSession ? rootPid : 1),
-        ignoresTerm: ignoresTerm, holdsOutput: holdsOutput);
+        ignoresTerm: ignoresTerm, holdsOutput: holdsOutput)
+      ..started = _startCounter++;
     procs[p.pid] = p;
     return p;
   }
@@ -171,45 +190,46 @@ class FakeHost implements ProcessHost {
     if (argv.first == 'missing') throw const ProcessException('missing', [], 'No such file');
     starts++;
     this.argv = argv;
-    root = FakeProc(rootPid, 1, ownsSession ? rootPid : 1, holdsOutput: true);
+    root = FakeProc(rootPid, 1, ownsSession ? rootPid : 1, holdsOutput: true)..started = _startCounter++;
     procs[rootPid] = root;
     script?.call(this);
     return _Child(this);
   }
 
+  /// Signals delivered, and those refused because the pid now belongs to
+  /// another process (different start time).
+  final List<ProcIdentity> refused = [];
+
   @override
-  void signal(int pid, ProcessSignal signal) {
-    signals.add((pid, signal));
-    final p = procs[pid];
-    if (p == null || !p.alive || p.unkillable) return;
-    if (signal == ProcessSignal.sigterm && p.ignoresTerm) return;
-    _die(pid, signal == ProcessSignal.sigkill ? -9 : -15);
+  bool signal(ProcIdentity target, ProcessSignal signal) {
+    final p = procs[target.pid];
+    if (p == null || !p.alive || '${p.started}' != target.start) {
+      refused.add(target);
+      return false;
+    }
+    signals.add((target.pid, signal));
+    if (p.unkillable) return true;
+    if (signal == ProcessSignal.sigterm && p.ignoresTerm) return true;
+    _die(target.pid, signal == ProcessSignal.sigkill ? -9 : -15);
+    return true;
   }
 
   @override
   Alarm alarm(Duration after) => clock.alarm(after);
 
+  ProcIdentity _identity(FakeProc p) => ProcIdentity(p.pid, '${p.started}', p.ppid, p.sid);
+
   @override
-  Future<Set<int>> family(int root, {required bool rootAlive, required bool ownsSession}) async {
-    final members = <int>{};
-    if (rootAlive && procs[root]?.alive == true) members.add(root);
-    if (ownsSession) {
-      for (final p in procs.values) {
-        if (p.alive && p.sid == root) members.add(p.pid);
-      }
-    }
-    var grew = true;
-    while (grew) {
-      grew = false;
-      for (final p in procs.values) {
-        if (p.alive && !members.contains(p.pid) && members.contains(p.ppid)) {
-          members.add(p.pid);
-          grew = true;
-        }
-      }
-    }
-    return members;
+  ProcIdentity? identityOf(int pid) {
+    final p = procs[pid];
+    return p != null && p.alive ? _identity(p) : null;
   }
+
+  @override
+  Future<Map<int, ProcIdentity>> snapshot() async => {
+        for (final p in procs.values)
+          if (p.alive) p.pid: _identity(p),
+      };
 }
 
 class _Child implements ChildProcess {

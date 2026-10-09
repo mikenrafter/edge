@@ -81,9 +81,23 @@ abstract class ChildProcess {
   Stream<List<int>> get stderr;
   Future<int> get exitCode;
 
-  /// Started in a session of its own, so that [ProcessHost.family] can find
-  /// processes that were reparented (a wrapper that exited, leaving a child).
+  /// Started in a session of its own, so that processes it leaves behind (a
+  /// wrapper that exited) can be found by session id while it is alive.
   bool get ownsSession;
+}
+
+/// Who a process is, not just which number it has: the pid, its start time (an
+/// opaque token, `/proc/<pid>/stat` field 22 on Linux) and its parent and
+/// session when it was seen. A pid handed out again later has another start
+/// time, so it is another process.
+class ProcIdentity {
+  const ProcIdentity(this.pid, this.start, this.ppid, this.sid);
+  final int pid;
+  final String start;
+  final int ppid, sid;
+
+  @override
+  String toString() => 'pid $pid (start $start)';
 }
 
 /// Everything the runner needs from the operating system. Faked in tests.
@@ -95,31 +109,42 @@ abstract class ProcessHost {
     Map<String, String>? environment,
   });
 
-  /// Live processes that belong to [root]: itself while [rootAlive], its
-  /// descendants, and (when [ownsSession]) every process of its session, even
-  /// reparented ones. Only these are ever signalled: no negative pids, no
-  /// name matching, nothing that is not in the root's tree or session.
-  Future<Set<int>> family(int root, {required bool rootAlive, required bool ownsSession});
+  /// Every live process, by pid.
+  Future<Map<int, ProcIdentity>> snapshot();
 
-  void signal(int pid, ProcessSignal signal);
+  /// The identity of [pid] now, or null when there is no such process.
+  ProcIdentity? identityOf(int pid);
+
+  /// Sends [signal] to [target] only if the process with that pid still has
+  /// the start time that was captured; returns whether it was sent. Positive
+  /// pids only: no process group, no name matching, never init.
+  bool signal(ProcIdentity target, ProcessSignal signal);
+
   Alarm alarm(Duration after);
 }
 
 /// Spawns real processes (the only place the tool touches real time).
 ///
 /// The child is started under `setsid` when that exists, so it leads a session
-/// of its own and everything it starts (reparented or not) can be found by
-/// session id. On a timeout or a cancel, the family is collected FIRST (before
-/// any signal can make processes reparent), every member gets SIGTERM, those
-/// still there after [termGrace] get SIGKILL (rescanned a few times for
-/// processes forked meanwhile), and then the streams get at most [drainGrace]
-/// to close before the runner stops waiting for them.
+/// of its own. The runner keeps a captured set of process identities (pid and
+/// start time): sampled every [sampleEvery] while the child runs, once more the
+/// moment the child exits (its session is read then, while the kernel still
+/// holds its number), and again at the start of cleanup. Cleanup never forgets a
+/// captured process: each rescan is the captured set that is still alive (same
+/// start time) plus the descendants of any such member. Every member gets
+/// SIGTERM, those still alive after [termGrace] get SIGKILL, and every signal
+/// is sent only after re-reading the process's start time, so a pid that was
+/// handed out again in the meantime is never signalled. (Between that read and
+/// the kill there is a window of microseconds that no portable API closes.)
+/// Then the streams get at most [drainGrace] to close before the runner stops
+/// waiting for them.
 class SystemProcessRunner implements ProcessRunner {
   const SystemProcessRunner({
     this.host = const SystemProcessHost(),
     this.termGrace = const Duration(seconds: 5),
     this.drainGrace = const Duration(seconds: 2),
     this.pollEvery = const Duration(milliseconds: 100),
+    this.sampleEvery = const Duration(seconds: 1),
   });
 
   final ProcessHost host;
@@ -131,6 +156,9 @@ class SystemProcessRunner implements ProcessRunner {
   final Duration drainGrace;
 
   final Duration pollEvery;
+
+  /// How often the family is captured while the child runs.
+  final Duration sampleEvery;
 
   @override
   Future<ProcessOutcome> run(
@@ -153,13 +181,28 @@ class SystemProcessRunner implements ProcessRunner {
 
     final stdout = _Collector(child.stdout);
     final stderr = _Collector(child.stderr);
-    var exited = false;
+    final family = _Family(host, child.pid, host.identityOf(child.pid)?.start, child.ownsSession);
     final exit = child.exitCode.then((code) {
-      exited = true;
+      family.rootExited = true;
+      // Read the session now: its members hold the number, so it cannot have
+      // been reused yet. Later scans work from what was captured here.
+      if (child.ownsSession) family.refresh(atRootExit: true).ignore();
       return code;
     });
     final finished = Future.wait<Object?>([exit, stdout.closed, stderr.closed]);
     final deadline = timeout == null ? null : host.alarm(timeout);
+    var sampling = true;
+    Alarm? sampler;
+    void sample() {
+      if (!sampling) return;
+      final alarm = sampler = host.alarm(sampleEvery);
+      alarm.fired.then((_) {
+        if (!sampling) return;
+        family.refresh().then((_) => sample(), onError: (Object _) => sample());
+      });
+    }
+
+    sample();
 
     // Whole-run bound: the process AND its streams.
     final winner = await Future.any<_Ended>([
@@ -168,8 +211,11 @@ class SystemProcessRunner implements ProcessRunner {
       if (cancel != null) cancel.whenCancelled.then((_) => _Ended.cancelled),
     ]);
     deadline?.cancel();
+    sampling = false;
+    sampler?.cancel();
 
     if (winner == _Ended.finished) {
+      await family.idle();
       return ProcessOutcome(
         exitCode: await exit,
         stdoutLines: stdout.lines(),
@@ -178,7 +224,7 @@ class SystemProcessRunner implements ProcessRunner {
       );
     }
 
-    await _stop(child, rootAlive: () => !exited);
+    await _stop(family);
     // The root is gone (or unkillable); the streams get a bounded time to close.
     final code = await _withinDrain(exit) ?? -9;
     await _withinDrain(Future.wait<Object?>([stdout.closed, stderr.closed]));
@@ -206,20 +252,19 @@ class SystemProcessRunner implements ProcessRunner {
     }
   }
 
-  /// SIGTERM the family, give it [termGrace], SIGKILL what is left.
-  Future<void> _stop(ChildProcess child, {required bool Function() rootAlive}) async {
-    Future<Set<int>> family() =>
-        host.family(child.pid, rootAlive: rootAlive(), ownsSession: child.ownsSession);
-
-    for (final pid in (await family()).toList().reversed) {
-      host.signal(pid, ProcessSignal.sigterm);
+  /// SIGTERM the captured family, give it [termGrace], SIGKILL what is left.
+  Future<void> _stop(_Family family) async {
+    await family.idle();
+    final first = await family.refresh();
+    for (final member in first.reversed) {
+      host.signal(member, ProcessSignal.sigterm);
     }
     final grace = host.alarm(termGrace);
     var graceOver = false;
     unawaited(grace.fired.then((_) => graceOver = true));
     try {
       while (!graceOver) {
-        if ((await family()).isEmpty) return;
+        if ((await family.refresh()).isEmpty) return;
         final tick = host.alarm(pollEvery);
         await Future.any<void>([tick.fired, grace.fired]);
         tick.cancel();
@@ -227,16 +272,82 @@ class SystemProcessRunner implements ProcessRunner {
     } finally {
       grace.cancel();
     }
-    // Survivors ignored SIGTERM. Rescan: something may have forked since.
+    // Survivors ignored SIGTERM. The captured set is rescanned (plus whatever
+    // the survivors forked meanwhile) before each round.
     for (var round = 0; round < 5; round++) {
-      final left = await family();
+      final left = await family.refresh();
       if (left.isEmpty) return;
-      for (final pid in left) {
-        host.signal(pid, ProcessSignal.sigkill);
+      for (final member in left.reversed) {
+        host.signal(member, ProcessSignal.sigkill);
       }
       final tick = host.alarm(pollEvery);
       await tick.fired;
     }
+  }
+}
+
+/// The processes that belong to one child: captured by identity and never
+/// forgotten while they live.
+class _Family {
+  _Family(this.host, this.rootPid, this.rootStart, this.ownsSession);
+
+  final ProcessHost host;
+  final int rootPid;
+
+  /// The child's start time as read right after it was started (null if it
+  /// could not be read).
+  final String? rootStart;
+  final bool ownsSession;
+
+  /// Set when the child's exit was seen: from then on its pid is not trusted.
+  bool rootExited = false;
+
+  final Map<int, ProcIdentity> _captured = {};
+  Future<void> _busy = Future<void>.value();
+
+  /// Resolves when the scans started so far are done.
+  Future<void> idle() => _busy;
+
+  /// Captures what belongs to the child now and returns the members that are
+  /// alive: captured ones with an unchanged start time, the child itself while
+  /// it runs, its session while it runs (or [atRootExit]: the one scan right
+  /// after the exit), and every descendant of a member. Scans are serialised.
+  Future<List<ProcIdentity>> refresh({bool atRootExit = false}) {
+    final scan = _busy.then((_) => _scan(atRootExit));
+    _busy = scan.then<void>((_) {}, onError: (Object _) {});
+    return scan;
+  }
+
+  Future<List<ProcIdentity>> _scan(bool atRootExit) async {
+    final snap = await host.snapshot();
+    final members = <int, ProcIdentity>{};
+    for (final e in _captured.entries) {
+      final now = snap[e.key];
+      if (now != null && now.start == e.value.start) members[e.key] = now;
+    }
+    final rootNow = snap[rootPid];
+    final rootAlive = !rootExited && rootNow != null && (rootStart == null || rootNow.start == rootStart);
+    if (rootAlive) members[rootPid] = rootNow;
+    if (ownsSession && (rootAlive || atRootExit)) {
+      for (final p in snap.values) {
+        if (p.sid == rootPid && p.pid != rootPid) members.putIfAbsent(p.pid, () => p);
+      }
+    }
+    var grew = true;
+    while (grew) {
+      grew = false;
+      for (final p in snap.values) {
+        if (!members.containsKey(p.pid) && members.containsKey(p.ppid)) {
+          members[p.pid] = p;
+          grew = true;
+        }
+      }
+    }
+    for (final e in members.entries) {
+      _captured.putIfAbsent(e.key, () => e.value);
+    }
+    // In capture order: parents before the processes they started.
+    return [for (final pid in _captured.keys) if (members.containsKey(pid)) _captured[pid]!];
   }
 }
 
@@ -271,14 +382,21 @@ class _Collector {
   List<String> lines() => const LineSplitter().convert(text());
 }
 
-/// The real thing: `Process.start`, `/proc` (or `pgrep -P`), `kill`.
+/// The real thing: `Process.start`, `/proc` (or `ps`), `kill`.
+///
+/// On Linux the identity of a process is its start time from
+/// `/proc/<pid>/stat` (field 22, clock ticks since boot), re-read before every
+/// signal. Where there is no `/proc` (macOS) `ps -o lstart` is used: its
+/// resolution is one second, so a pid reused by a process started in the same
+/// second as the one captured is not told apart, and `ps` gives no session id
+/// (and `setsid` does not exist there either).
 class SystemProcessHost implements ProcessHost {
   const SystemProcessHost();
 
   static bool? _setsid;
 
   /// util-linux `setsid` exists (Linux; macOS has none: then only descendants
-  /// of the child can be found).
+  /// of the child can be found, from the samples taken while it ran).
   static bool get hasSetsid => _setsid ??= () {
         try {
           return Process.runSync('setsid', ['--version']).exitCode == 0;
@@ -286,6 +404,8 @@ class SystemProcessHost implements ProcessHost {
           return false;
         }
       }();
+
+  static bool get _hasProc => Directory('/proc/self').existsSync();
 
   @override
   Future<ChildProcess> start(
@@ -304,78 +424,80 @@ class SystemProcessHost implements ProcessHost {
   }
 
   @override
-  void signal(int pid, ProcessSignal signal) {
-    // Positive pids only: a pid from this runner's own family scan.
-    if (pid > 1) Process.killPid(pid, signal);
-  }
-
-  @override
   Alarm alarm(Duration after) => _TimerAlarm(after);
 
   @override
-  Future<Set<int>> family(int root, {required bool rootAlive, required bool ownsSession}) async {
-    final table = await _processTable();
-    final members = <int>{};
-    // The root's pid may have been reused once it exited and was reaped:
-    // it is only a member while it is known to be alive.
-    if (rootAlive && table.containsKey(root)) members.add(root);
-    if (ownsSession) {
-      for (final e in table.entries) {
-        if (e.value.sid == root) members.add(e.key);
-      }
-    }
-    var grew = true;
-    while (grew) {
-      grew = false;
-      for (final e in table.entries) {
-        if (!members.contains(e.key) && members.contains(e.value.ppid)) {
-          members.add(e.key);
-          grew = true;
-        }
-      }
-    }
-    return members;
+  bool signal(ProcIdentity target, ProcessSignal signal) {
+    if (target.pid <= 1) return false;
+    final now = identityOf(target.pid);
+    if (now == null || now.start != target.start) return false;
+    return Process.killPid(target.pid, signal);
   }
 
-  /// pid -> parent and session of every live (non-zombie) process.
-  Future<Map<int, _Entry>> _processTable() async {
-    if (Directory('/proc/self').existsSync()) {
-      final table = <int, _Entry>{};
+  @override
+  ProcIdentity? identityOf(int pid) {
+    if (_hasProc) {
+      try {
+        return _fromStat(pid, File('/proc/$pid/stat').readAsStringSync());
+      } on FileSystemException {
+        return null;
+      }
+    }
+    try {
+      final r = Process.runSync('ps', ['-p', '$pid', '-o', 'pid=,ppid=,stat=,lstart=']);
+      for (final line in LineSplitter.split(r.stdout as String)) {
+        final id = _fromPs(line);
+        if (id != null && id.pid == pid) return id;
+      }
+    } on ProcessException {
+      // no ps
+    }
+    return null;
+  }
+
+  @override
+  Future<Map<int, ProcIdentity>> snapshot() async {
+    final table = <int, ProcIdentity>{};
+    if (_hasProc) {
       for (final entity in Directory('/proc').listSync(followLinks: false)) {
         final pid = int.tryParse(entity.path.substring(entity.path.lastIndexOf('/') + 1));
         if (pid == null) continue;
         try {
-          final stat = File('${entity.path}/stat').readAsStringSync();
-          // "pid (comm) S ppid pgrp session ..." and comm may hold spaces and parens.
-          final rest = stat.substring(stat.lastIndexOf(')') + 2).split(' ');
-          if (rest[0] == 'Z' || rest[0] == 'X') continue;
-          table[pid] = _Entry(int.parse(rest[1]), int.parse(rest[3]));
+          final id = _fromStat(pid, File('${entity.path}/stat').readAsStringSync());
+          if (id != null) table[pid] = id;
         } on FileSystemException {
           continue; // exited meanwhile
         }
       }
       return table;
     }
-    // No /proc: the whole table from ps (pid, ppid; the session is unknown).
     try {
-      final r = await Process.run('ps', ['-A', '-o', 'pid=,ppid=,stat=']);
-      final table = <int, _Entry>{};
+      final r = await Process.run('ps', ['-A', '-o', 'pid=,ppid=,stat=,lstart=']);
       for (final line in LineSplitter.split(r.stdout as String)) {
-        final f = line.trim().split(RegExp(r'\s+'));
-        if (f.length < 3 || f[2].startsWith('Z')) continue;
-        final pid = int.tryParse(f[0]), ppid = int.tryParse(f[1]);
-        if (pid != null && ppid != null) table[pid] = _Entry(ppid, -1);
+        final id = _fromPs(line);
+        if (id != null) table[id.pid] = id;
       }
-      return table;
     } on ProcessException {
-      return {};
+      // no ps: nothing can be found
     }
+    return table;
   }
-}
 
-class _Entry {
-  const _Entry(this.ppid, this.sid);
-  final int ppid, sid;
+  /// "pid (comm) S ppid pgrp session ... starttime(22) ..."; comm may hold
+  /// spaces and parentheses. Zombies and dead processes are not processes.
+  static ProcIdentity? _fromStat(int pid, String stat) {
+    final rest = stat.substring(stat.lastIndexOf(')') + 2).split(' ');
+    if (rest.length < 20 || rest[0] == 'Z' || rest[0] == 'X') return null;
+    return ProcIdentity(pid, rest[19], int.parse(rest[1]), int.parse(rest[3]));
+  }
+
+  static ProcIdentity? _fromPs(String line) {
+    final f = line.trim().split(RegExp(r'\s+'));
+    if (f.length < 5 || f[2].startsWith('Z')) return null;
+    final pid = int.tryParse(f[0]), ppid = int.tryParse(f[1]);
+    if (pid == null || ppid == null) return null;
+    return ProcIdentity(pid, f.sublist(3).join(' '), ppid, -1);
+  }
 }
 
 class _RealChild implements ChildProcess {
