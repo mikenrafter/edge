@@ -58,6 +58,11 @@ enum ProjectionId {
   /// `scalars.{skin_temp_z, rhr, rmssd}` and nothing else (Cycle, Q6). A key
   /// absent from the stored scalars stays absent.
   cycleScalars,
+
+  /// `{skipped, scalars.readiness, sleep.accounting.value.tst_sec, flags}` and
+  /// nothing else: what the freshness refresh reads (P2.3). A key absent from
+  /// the stored payload stays absent.
+  freshness,
 }
 
 /// The stored row a read is about: a served day, or one baseline.
@@ -788,7 +793,11 @@ class BundleStore {
 
   /// Fills the cache for [sources] at low priority. An absent source is
   /// skipped; a lane over its limits refuses the whole warm.
-  Future<WarmResult> warm(Iterable<BundleSource> sources) async {
+  ///
+  /// P2.3: [maxSourceBytes] caps the source text a warm may decode (sources are
+  /// taken in order until the next would pass it; the rest are skipped, not
+  /// refused). RED STUB: ignored until the green commit.
+  Future<WarmResult> warm(Iterable<BundleSource> sources, {int? maxSourceBytes}) async {
     final prepared = <_Prepared>[];
     for (final source in sources) {
       final p = await _prepare(source, ProjectionId.full);

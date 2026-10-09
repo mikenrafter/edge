@@ -31,6 +31,7 @@ import '../wake/wake_stores.dart';
 import '../widget/widget_service.dart';
 import 'artifact_warmer.dart';
 import 'power_source.dart';
+import 'publish_gate.dart';
 import 'recalc_state.dart';
 import 'revision_coalescer.dart';
 
@@ -66,6 +67,7 @@ class DeriveCoordinator {
     required bool Function() healthShareConsent,
     required Future<void> Function() maybeReclaimDiskSpace,
     PeriodicCalculationPolicy? calculationPolicy,
+    PublishGate? publishGate,
   })  : _engine = engine,
         _profileOf = profile,
         _log = log,
@@ -80,7 +82,8 @@ class DeriveCoordinator {
         _telemetryConsent = telemetryConsent,
         _healthShareConsent = healthShareConsent,
         _maybeReclaimDiskSpace = maybeReclaimDiskSpace,
-        _policyOverride = calculationPolicy;
+        _policyOverride = calculationPolicy,
+        _publishGateOverride = publishGate;
 
   // The engine is resolved on use: AppState builds it lazily (it reads the
   // `_background` flag both of its constructors have set by then).
@@ -103,6 +106,15 @@ class DeriveCoordinator {
   final bool Function() _healthShareConsent;
   final Future<void> Function() _maybeReclaimDiskSpace;
   final PeriodicCalculationPolicy? _policyOverride;
+  final PublishGate? _publishGateOverride;
+
+  /// P2.3 stub: the serialised publish loop every freshness write and revision
+  /// bump goes through.
+  PublishGate get publishGate =>
+      _publishGateOverride ?? (throw UnimplementedError('P2.3 PublishGate'));
+
+  /// P2.3 stub: request a publish and wait until the gate is idle.
+  Future<void> publishNow() => throw UnimplementedError('P2.3 publishNow');
 
   // The host is gone, or this coordinator has been disposed (which, under
   // AppState, only ever happens after the host flag is set).
