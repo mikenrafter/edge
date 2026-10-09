@@ -142,7 +142,7 @@ void main() {
     test('kAlgoVersion and both sibling pins are exactly what the PRV '
         'diagnostics change set (v103) and its empty-input repin (v104)', () {
       expect(kAlgoVersion, 104);
-      expect(kAnalyticsPin, '0fc57682b988c44cb5943c6e39a0746167388d46');
+      expect(kAnalyticsPin, 'bf79e847a8a6ec6dd949bb8fbb7b7ad2ca05d108');
       expect(kProtocolPin, 'bc7d8d0df706e40a2546ffde4545263f09d0fecb');
     });
 

@@ -2022,7 +2022,10 @@ const int kAlgoVersion = 104;
 // REPIN @ 0fc5768 (same branch, on bf1be19): the diagnostics' artifact fraction
 // is absent when the corrector saw no beats (no "100% artifacts" beside zero
 // beats). Verdicts unchanged; the persisted output changed, so v104 (§3.4).
-const String kAnalyticsPin = '0fc57682b988c44cb5943c6e39a0746167388d46';
+// REPIN @ bf79e84 (same branch, on 0fc5768 via the test-only fa77ab4): the
+// checkpoint readers refuse impossible saved state instead of restoring it.
+// No output change for any valid input, so no kAlgoVersion bump.
+const String kAnalyticsPin = 'bf79e847a8a6ec6dd949bb8fbb7b7ad2ca05d108';
 // Repinned to analytics main's tip, which carries BOTH PR #72 (hrv_freq
 // Welch gap guard) and PR #73 (overreachingConjunction rhr quantum guard) —
 // the two independent kAlgoVersion bumps above (93 and 94). Verified both

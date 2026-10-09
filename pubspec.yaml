@@ -541,7 +541,15 @@ dependencies:
       # 1.0 `1 - cleanFraction` gives an empty series. Verdicts unchanged; the
       # persisted output changed, so kAlgoVersion 104 (§3.4). Verified:
       #   `git show 0fc5768:lib/src/onehz/clinical/irregular_diagnostics.dart | grep diagnosticArtifactFraction`
-      ref: 0fc57682b988c44cb5943c6e39a0746167388d46
+      #
+      # REPIN @ bf79e84 (same branch, on fa77ab4 = 0fc5768 + test-only property
+      # laws): checkpoint readers refuse impossible saved state (IntHistogram
+      # count overflow, IrregularScreenState and RrCorrector counters out of
+      # their stage bounds) with FormatException; add/merge throw StateError on
+      # int64 overflow. No output change for any valid input, so no kAlgoVersion
+      # bump. Verified:
+      #   `git show bf79e84:lib/src/onehz/foundations/rr_correction_stream.dart | grep "invalid normalFinal"`
+      ref: bf79e847a8a6ec6dd949bb8fbb7b7ad2ca05d108
 
   # BLE — flutter_blue_plus is the maintained cross-platform GATT client.
   flutter_blue_plus: ^1.36.8
