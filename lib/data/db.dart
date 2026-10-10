@@ -185,6 +185,13 @@ abstract final class DerivedFingerprint {
 
 /// Test seam, an interface and not a function field so the heavy-calc guard
 /// resolves the call.
+/// A freshness run's failure, carried as a value across zones.
+final class _FreshnessFailed {
+  const _FreshnessFailed(this.error, this.stackTrace);
+  final Object error;
+  final StackTrace stackTrace;
+}
+
 abstract interface class FreshnessWriteProbe {
   Future<void> beforeWrite();
 }
@@ -11820,7 +11827,7 @@ class LocalDb {
   static FreshnessWriteProbe? debugBeforeFreshnessWrite;
 
   static bool _freshnessRunning = false;
-  static Completer<void>? _freshnessNext;
+  static Completer<Object?>? _freshnessNext;
 
   /// THE owner of the `compute_freshness` rows `capture`, `today` and
   /// `crossday`. Runs never overlap: a call made while one is running joins ONE
@@ -11829,19 +11836,32 @@ class LocalDb {
   /// returns after a run that began after it was made. The gate, getToday,
   /// startup and the demo clear all come through here.
   static Future<void> refreshComputeFreshness() {
+    // The completers are the owner's too: a completer delivers through the zone
+    // it was made in, so one made by a caller whose zone stopped would strand
+    // every later caller that joins it. They carry the outcome as a VALUE (null
+    // or a [_FreshnessFailed]): an error future does not cross into another
+    // error zone, it would surface as uncaught in the root zone instead.
     if (_freshnessRunning) {
-      return (_freshnessNext ??= Completer<void>()).future;
+      return _joinFreshness(_freshnessNext ??= Zone.root.run<Completer<Object?>>(Completer<Object?>.new));
     }
-    final first = Completer<void>();
+    final first = Zone.root.run<Completer<Object?>>(Completer<Object?>.new);
     // The loop is process-wide state, not the first caller's: it runs in the
     // root zone, so a caller's zone (a fake-async or guarded zone that stops
     // scheduling, or a zone torn down mid-run) can never strand the latch below
     // and with it every later caller. Callers still resume in their own zones.
     unawaited(Zone.root.runUnary(_freshnessLoop, first));
-    return first.future;
+    return _joinFreshness(first);
   }
 
-  static Future<void> _freshnessLoop(Completer<void> first) async {
+  /// Runs in the caller's zone: rethrows a failed run's error there.
+  static Future<void> _joinFreshness(Completer<Object?> run) async {
+    final outcome = await run.future;
+    if (outcome is _FreshnessFailed) {
+      Error.throwWithStackTrace(outcome.error, outcome.stackTrace);
+    }
+  }
+
+  static Future<void> _freshnessLoop(Completer<Object?> first) async {
     _freshnessRunning = true;
     var current = first;
     try {
@@ -11849,9 +11869,9 @@ class LocalDb {
         try {
           debugFreshnessRuns++;
           await _computeAndWriteFreshness();
-          current.complete();
+          current.complete(null);
         } catch (e, st) {
-          current.completeError(e, st);
+          current.complete(_FreshnessFailed(e, st));
         }
         final next = _freshnessNext;
         if (next == null) break;

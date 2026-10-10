@@ -31,6 +31,19 @@ class _FailOnce implements FreshnessWriteProbe {
   }
 }
 
+class _ParkFirst implements FreshnessWriteProbe {
+  final reached = Completer<void>();
+  final release = Completer<void>();
+  int calls = 0;
+  @override
+  Future<void> beforeWrite() async {
+    if (calls++ == 0) {
+      reached.complete();
+      await release.future;
+    }
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   p21RestoreClockAfterEach();
@@ -66,6 +79,30 @@ void main() {
       );
       final today = jsonDecode((await p23FreshnessRows(db))['today']!) as Map;
       expect(today['overnight_day'], p23Day(1));
+    });
+
+    test('a trailing request made in a stopped zone does not strand a live '
+        'caller that joins the same trailing run (Sol r3)', () async {
+      await p23Row(db, p23Day(1), p23Payload(sleep: true), computedAt: 900);
+      final probe = _ParkFirst();
+      LocalDb.debugBeforeFreshnessWrite = probe;
+
+      final active = LocalDb.refreshComputeFreshness();
+      await probe.reached.future;
+
+      fakeAsync((async) {
+        unawaited(LocalDb.refreshComputeFreshness());
+        async.flushMicrotasks();
+      }); // the trailing run's handle was requested from a zone that is gone
+
+      final live = LocalDb.refreshComputeFreshness();
+      probe.release.complete();
+      await active;
+      await live.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => fail('the live joiner is stranded by a stopped zone'),
+      );
+      expect(probe.calls, 2, reason: 'one trailing run served both joiners');
     });
   });
 
