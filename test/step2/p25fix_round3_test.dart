@@ -128,6 +128,23 @@ void main() {
       expect(healthCalls, isEmpty, reason: 'and the bulk pass never started');
     });
 
+    test('a wipe during the legacy STEPS purge: no purge stamp in the new store '
+        '(Sol r4)', () async {
+      await seed(days);
+      final methods = <String>[];
+      onHealth = (n) async {
+        if (n == 1) await LocalDb.wipeAll(); // the day's first call is the purge
+      };
+
+      final done = await export();
+      methods.addAll(healthCalls);
+
+      expect(done, 0);
+      expect(methods, hasLength(1), reason: 'the pass stopped at the purge');
+      expect(await cursor('health_steps_purged_through'), isEmpty);
+      expect(await cursor('health_export_through'), isEmpty);
+    });
+
     test('a wipe mid-day stops that day: no later write goes out', () async {
       await seed(days);
       var wiped = -1;

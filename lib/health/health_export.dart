@@ -459,6 +459,7 @@ class HealthExporter {
     String date,
     DateTime dayStart,
     DateTime dayEnd,
+    StoreGeneration generation,
   ) async {
     _stepsPurgedThrough ??= await LocalDb.getCursor(_kStepsPurgeCursor) ?? '';
     if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
@@ -471,8 +472,15 @@ class HealthExporter {
         endTime: dayEnd,
       );
       if (Prefs.getBool(Prefs.demoModeEnabled, false)) return;
+      // A wipe during the delete: the stamp belongs to the old store, never
+      // the new one; the pass stops.
+      _requireSameStore(generation);
+      if (!await LocalDb.setCursorUnlessReplaced(_kStepsPurgeCursor, date, generation)) {
+        throw const _StoreReplacedDuringExport();
+      }
       _stepsPurgedThrough = date;
-      await LocalDb.setCursor(_kStepsPurgeCursor, date);
+    } on _StoreReplacedDuringExport {
+      rethrow;
     } catch (e) {
       // Leave the cursor where it is so the next pass retries this day.
       debugPrint('[health] purge legacy steps $date: $e');
@@ -1092,7 +1100,7 @@ class HealthExporter {
 
     // One-shot cleanup of the fabricated step samples earlier versions wrote.
     // Outside the success accounting on purpose — see the method doc.
-    await _purgeLegacyStepsIfNeeded(date, dayStart, dayEnd);
+    await _purgeLegacyStepsIfNeeded(date, dayStart, dayEnd, generation);
     _requireSameStore(generation);
 
     // Idempotency: remove OUR previously-written samples for this day (HealthKit /
