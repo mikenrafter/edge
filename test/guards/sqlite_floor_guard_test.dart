@@ -40,11 +40,16 @@ import 'package:flutter_test/flutter_test.dart';
 /// (name, version, pattern). Patterns run on the joined text of one SQL literal.
 final List<(String, String, RegExp)> _features = [
   ('window function (OVER)', '3.25', RegExp(r'\bOVER\s*\(', caseSensitive: false)),
+  // A named window (`OVER w … WINDOW w AS (…)`) has no parenthesis after OVER;
+  // its WINDOW clause is the unambiguous part.
+  ('named window (WINDOW … AS)', '3.25',
+      RegExp(r'\bWINDOW\s+\w+\s+AS\s*\(', caseSensitive: false)),
   ('aggregate FILTER (WHERE', '3.30', RegExp(r'\bFILTER\s*\(\s*WHERE\b', caseSensitive: false)),
   ('upsert (DO UPDATE)', '3.24', RegExp(r'\bON\s+CONFLICT\b[^;]*\bDO\s+UPDATE\b', caseSensitive: false)),
   ('RETURNING', '3.35', RegExp(r'\bRETURNING\b', caseSensitive: false)),
   ('IIF()', '3.32', RegExp(r'\bIIF\s*\(', caseSensitive: false)),
-  ("JSON operator (-> / ->>)", '3.38', RegExp(r"->>?\s*['\x22]")),
+  // A path ('$.a') or an array index (0) operand; `a -> b` prose stays unflagged.
+  ("JSON operator (-> / ->>)", '3.38', RegExp(r"->>?\s*(['\x22]|\d)")),
   ('DROP COLUMN', '3.35', RegExp(r'\bDROP\s+COLUMN\b', caseSensitive: false)),
   ('RENAME COLUMN', '3.25', RegExp(r'\bRENAME\s+COLUMN\b', caseSensitive: false)),
   ('NULLS FIRST/LAST', '3.30', RegExp(r'\bNULLS\s+(FIRST|LAST)\b', caseSensitive: false)),
@@ -198,6 +203,10 @@ void main() {
     test('sees SQL split across adjacent literals and triple-quoted SQL', () {
       expect(scan("'SELECT a, ROW_NUMBER() ' 'OVER (ORDER BY a) FROM t'"), isNotEmpty);
       expect(scan("'''\n  SELECT COUNT(*) OVER () FROM t\n'''"), isNotEmpty);
+      expect(scan("'SELECT ROW_NUMBER() OVER w FROM t WINDOW w AS (ORDER BY a)'"),
+          isNotEmpty, reason: 'a named window');
+      expect(scan("'SELECT payload ->> 0 FROM t'"), isNotEmpty,
+          reason: 'a JSON operator with an index operand');
     });
 
     test('does not flag Dart code, comments, or prose', () {
