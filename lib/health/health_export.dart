@@ -27,7 +27,7 @@ import 'package:health/health.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/db.dart';
-import '../data/series_codec.dart';
+import '../data/bundle_store.dart';
 import '../state/prefs.dart';
 import 'health_heart_rate_batch.dart';
 import 'health_sleep_session.dart';
@@ -672,8 +672,19 @@ class HealthExporter {
 
       /// One day's bundle, or null if it is missing or undecodable. Never hold
       /// two of these at once.
-      Future<Map<String, dynamic>?> bundleFor(String date) async =>
-          _decode((await LocalDb.dayResult(date))?['payload_json']);
+      final oneShotBundles = <String, Map<String, dynamic>?>{};
+      Future<Map<String, dynamic>?> bundleFor(String date) async {
+        if (oneShotBundles.containsKey(date)) return oneShotBundles[date];
+        final reads = await BundleStore.shared.readStream(
+          [BundleSource.day(date)],
+          chunkRows: 8,
+        );
+        final read = reads.single;
+        final bundle = read is BundleOk ? materialiseBundleView(read.view) : null;
+        oneShotBundles.clear();
+        oneShotBundles[date] = bundle;
+        return bundle;
+      }
 
       late final Future<int> Function(String? androidSleepAlreadyWritten)
       exportBulk;
@@ -1378,13 +1389,6 @@ class HealthExporter {
   // and a divergence here would hand macOS the Health Connect spellings.
   HealthWorkoutActivityType _activity(String? type) =>
       healthActivityForType(type, ios: isApple);
-
-  /// Decode a stored day bundle, normalizing the compact curve format back to
-  /// plain [{t,v}] lists. Hypnogram segments are never encoded (no `t` key), so
-  /// today only the sleep export reads through here — but every day_result
-  /// reader goes through the codec so a future one cannot silently miss it.
-  static Map<String, dynamic>? _decode(Object? json) =>
-      SeriesCodec.decodePayloadJson(json);
 
   static Map<String, dynamic>? _sub(Map<String, dynamic>? b, String path) {
     var cur = b;

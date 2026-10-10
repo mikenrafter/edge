@@ -21,12 +21,12 @@
 // table.
 import 'dart:async' show Completer, Zone;
 import 'dart:collection';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../compute/derive_perf.dart' show ReadPerf;
 import '../data/db.dart';
+import '../data/json_payload_lane.dart';
 
 class CachedResult<T> {
   const CachedResult(this.value, this.cachedAt, {this.sig});
@@ -125,13 +125,14 @@ class LastResultCache {
           generation != LocalDb.storeGeneration) {
         return null;
       }
-      final v = jsonDecode(row.payload);
-      if (v is! T) return null;
+      final v = await JsonPayloadLane.shared.decode(
+        'last_result|$key', row.computedAt, row.payload, cache: false);
+      if (v == null || v is! T) return null;
       ReadPerf.lastResultRead(key, row.payload, v);
       final at = DateTime.fromMillisecondsSinceEpoch(row.computedAt);
       // A newer result put while the table was read stays.
       if (!_m.containsKey(key)) _store(key, v, at, generation, row.sig);
-      return CachedResult<T>(v, at, sig: row.sig);
+      return CachedResult<T>(v as T, at, sig: row.sig);
     } catch (_) {
       return null; // unreadable or corrupt: a miss
     }
@@ -147,10 +148,11 @@ class LastResultCache {
     // later change to it is a reopen or a replacement, never a catch-up.
     final storeWasClosed = !LocalDb.isStoreOpen;
     final entry = _store(key, value, at, putGeneration, sig);
-    final json = _encode(value);
-    if (json == null) return;
-    ReadPerf.lastResultPut(key, json);
+    if (value is! Map) return;
     _enqueue(() async {
+      final json = await JsonPayloadLane.shared.encode(value);
+      if (json == null) return;
+      ReadPerf.lastResultPut(key, json);
       await debugWriteThroughGate?.beforeWriteThrough();
       // Opens the store if the put came first. That open moves the generation,
       // and it is the only thing allowed to: see the restamp below.
@@ -189,15 +191,6 @@ class LastResultCache {
     return entry;
   }
 
-  /// A Map the table can hold, or null (anything else stays in memory only).
-  static String? _encode(Object? value) {
-    if (value is! Map) return null;
-    try {
-      return jsonEncode(value);
-    } catch (_) {
-      return null;
-    }
-  }
 
   // Table I/O is one queue, reads included: two first opens of the database at
   // once would hold two connections to one file. It runs in the root zone, so

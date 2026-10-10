@@ -48,9 +48,9 @@ const seams = [
     'the re-derive path merges a previous bundle into a fresh one',
   ),
   Seam(
-    'lib/health/health_export.dart',
-    '_decode',
-    'the Apple Health sleep export reads hypnogram out of a bundle',
+    'lib/data/bundle_store.dart',
+    '_bundleExpand',
+    'the Apple Health sleep export now reads through BundleStore and expands its view here',
   ),
 ];
 

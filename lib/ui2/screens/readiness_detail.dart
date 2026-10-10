@@ -5,12 +5,10 @@
 // parallel percentile view of the same four inputs. Presenting the second as
 // if it decomposed the first would be a small lie that is very hard to catch.
 
-import 'dart:convert' show jsonDecode;
 
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../../data/db.dart';
 import '../../data/local_repository.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/metric.dart';
@@ -75,14 +73,10 @@ class ReadinessData {
   /// The absence diagnostic off a stored day bundle. Read straight from
   /// `day_result` the way `InvestigateData.load` reads `imported` — no
   /// repository accessor exists and this is the only screen that wants it.
-  static Future<Map<String, dynamic>?> _absentDiag(String? day) async {
+  static Future<Map<String, dynamic>?> _absentDiag(LocalRepository repo, String? day) async {
     if (day == null) return null;
-    final payload = (await LocalDb.dayResult(day))?['payload_json'];
-    if (payload is! String || !payload.contains('"readiness_absent_diag"')) {
-      return null;
-    }
-    final b = jsonDecode(payload);
-    final diag = b is Map ? b['readiness_absent_diag'] : null;
+    final block = await repo.getDayBlock(day, const ['readiness_absent_diag']);
+    final diag = block['readiness_absent_diag'];
     return diag is Map ? diag.cast<String, dynamic>() : null;
   }
 
@@ -137,7 +131,7 @@ class ReadinessData {
       absentDiag: readiness.value != null
           ? null
           : await _absentDiag(
-              (today['status'] as Map?)?['today_day']?.toString()),
+              repo, (today['status'] as Map?)?['today_day']?.toString()),
     );
   }
 }

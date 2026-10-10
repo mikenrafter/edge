@@ -1193,13 +1193,6 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "data/db.dart",
-      "symbol": "LocalDb.recentDayDiagnostics",
-      "element": "SeriesCodec.decodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "data/local_repository_impl.dart",
       "symbol": "LocalRepositoryImpl._encodeTrace",
       "element": "SeriesCodec.encodeCurve",
@@ -1333,13 +1326,6 @@
     },
     {
       "rule": "heavyOriginOutsideHeavy",
-      "file": "health/health_export.dart",
-      "symbol": "HealthExporter._decode",
-      "element": "SeriesCodec.decodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
       "file": "health/health_rhr_seed.dart",
       "symbol": "RhrSeedImporter.seed",
       "element": "BaselineState.toJson",
@@ -1385,13 +1371,6 @@
       "file": "state/app_state.dart",
       "symbol": "AppState._liveRaw",
       "element": "pedometer",
-      "count": 1
-    },
-    {
-      "rule": "heavyOriginOutsideHeavy",
-      "file": "state/app_state.dart",
-      "symbol": "AppState._maybeNotifyRecoveryReady",
-      "element": "SeriesCodec.decodePayloadJson",
       "count": 1
     },
     {
@@ -1789,13 +1768,6 @@
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "data/db.dart",
-      "symbol": "LocalDb.recentDayDiagnostics",
-      "element": "SeriesCodec.decodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/db.dart",
       "symbol": "LocalDb.reencodeLegacyDayResults",
       "element": "jsonDecode",
       "count": 1
@@ -1858,13 +1830,6 @@
     },
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "data/local_repository_impl.dart",
-      "symbol": "LocalRepositoryImpl.sleepWindows",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "health/health_export.dart",
       "symbol": "HealthExporter.exportAll",
       "element": "jsonEncode",
@@ -1880,28 +1845,7 @@
     {
       "rule": "storedPayloadDecodeOutsideHeavy",
       "file": "state/app_state.dart",
-      "symbol": "AppState._maybeNotifyRecoveryReady",
-      "element": "SeriesCodec.decodePayloadJson",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "state/app_state.dart",
       "symbol": "AppState._readCrossdaySummary",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "ui2/screens/investigate.dart",
-      "symbol": "InvestigateData.load",
-      "element": "jsonDecode",
-      "count": 1
-    },
-    {
-      "rule": "storedPayloadDecodeOutsideHeavy",
-      "file": "ui2/screens/readiness_detail.dart",
-      "symbol": "ReadinessData._absentDiag",
       "element": "jsonDecode",
       "count": 1
     },

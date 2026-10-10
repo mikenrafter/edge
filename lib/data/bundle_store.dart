@@ -234,6 +234,12 @@ Object? _bundleViewOwned(BundleView view, Object? root, String path) {
   return copy;
 }
 
+/// A caller-owned expanded bundle for consumers that need the legacy shape.
+/// This is deliberately outside [BundleView]'s projection accessor surface:
+/// exporting a whole day is explicit and the cached graph never escapes.
+Map<String, dynamic> materialiseBundleView(BundleView view) =>
+    _bundleViewMaterialise(view, view._root);
+
 Object? _bundleViewCurve(BundleView view, Object? root, String path) {
   final value = _bundleAtPath(root, path);
   if (identical(value, _bundleMissing)) return null;
@@ -676,6 +682,7 @@ class BundleStore {
     List<BundleSource> sources, {
     ProjectionId projection = ProjectionId.full,
     int chunkRows = maxChunkRows,
+    bool cacheResults = true,
   }) async {
     if (sources.isEmpty) return const [];
     final results = List<BundleRead?>.filled(sources.length, null);
@@ -690,7 +697,7 @@ class BundleStore {
         results[i] = const BundleAbsent();
         continue;
       }
-      final early = _cachedOrJoined(item);
+      final early = cacheResults ? _cachedOrJoined(item) : null;
       if (early != null) {
         joined[i] = early.then<Object>((r) => r, onError: (Object e, StackTrace st) => (e, st));
       } else {
@@ -757,7 +764,7 @@ class BundleStore {
           final waits = <int, Future<BundleRead>>{};
           var started = false;
           for (final item in batch) {
-            final early = _cachedOrJoined(item.source);
+            final early = cacheResults ? _cachedOrJoined(item.source) : null;
             if (early != null) {
               _release(item.read.reservation);
               waits[item.index] = early;
@@ -768,6 +775,7 @@ class BundleStore {
               item.read.text!,
               warm: false,
               schedule: false,
+              cacheResult: cacheResults,
               reservation: item.read.reservation,
             );
             started = true;
@@ -824,6 +832,13 @@ class BundleStore {
     }
     return [for (final result in results) result ?? const BundleAbsent()];
   }
+
+  /// Streams stored bundles through the lane in bounded chunks without filling
+  /// or consulting the retained bundle cache. Intended for one-pass consumers.
+  Future<List<BundleRead>> readStream(
+    List<BundleSource> sources, {
+    int chunkRows = maxChunkRows,
+  }) => readAll(sources, chunkRows: chunkRows, cacheResults: false);
 
   /// Fills the cache for [sources] at low priority. An absent source is
   /// skipped; a lane over its limits refuses the whole warm.
@@ -1022,9 +1037,10 @@ class BundleStore {
     String payload, {
     required bool warm,
     bool schedule = true,
+    bool cacheResult = true,
     _Reservation? reservation,
   }) {
-    final flight = _BundleFlight(source, payload, warm);
+    final flight = _BundleFlight(source, payload, warm, cacheResult);
     _flights[source.key] = flight;
     _pending.add(flight);
     _release(reservation);
@@ -1142,7 +1158,7 @@ class BundleStore {
               nodes: decoded.nodes[i] - 1,
               sourceBytes: i < decoded.sourceBytes.length ? decoded.sourceBytes[i] : null,
             );
-            if (view.estimatedBytes <= oversizeBytes) _put(f.source.key, view);
+            if (f.cacheResult && view.estimatedBytes <= oversizeBytes) _put(f.source.key, view);
             if (identical(_flights[f.source.key], f)) _flights.remove(f.source.key);
             f.done.complete(BundleOk(view: view, key: f.source.key, asOfMs: f.source.asOfMs));
           }
@@ -1257,10 +1273,11 @@ final class _Prepared {
 }
 
 final class _BundleFlight {
-  _BundleFlight(this.source, this.payload, this.warm);
+  _BundleFlight(this.source, this.payload, this.warm, this.cacheResult);
   final _Prepared source;
   final String payload;
   final bool warm;
+  final bool cacheResult;
   final Completer<BundleRead> done = Completer<BundleRead>();
   int get sourceBytes => payload.length;
 }

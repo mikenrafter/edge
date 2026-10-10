@@ -20,7 +20,6 @@
 // "locked" — Beats, Vitals, Sleep, Readiness and every metric drill-down each
 // carry a plain row down to it.
 
-import 'dart:convert' show jsonDecode;
 import 'dart:math' show sqrt;
 
 import 'package:flutter/material.dart';
@@ -124,7 +123,8 @@ class InvestigateData {
     final heart = await repo.getDayHeart(day);
     final wear = await repo.getDayWear(day);
     final lungs = await repo.getDayLungs(day);
-    final row = await LocalDb.dayResult(day);
+    final row = await LocalDb.dayResultMeta(day);
+    final block = await repo.getDayBlock(day, const ['imported', 'source', 'steps']);
     final win = lungs['sleep_window'];
     final series =
         spec.suppress != null ? const <double>[] : seriesOf(await repo.getChart(spec.chartKey));
@@ -140,21 +140,10 @@ class InvestigateData {
     // onto the bundle itself; a day derived here has neither.
     String? importedFrom;
     var steps = const <String, dynamic>{};
-    final payload = row?['payload_json'];
-    // The `contains` guard is what keeps every other key off the decode; the
-    // steps split needs the bundle, so that key pays for it deliberately.
-    if (payload is String &&
-        (key == 'steps' || payload.contains('"imported"'))) {
-      final b = jsonDecode(payload);
-      if (b is Map) {
-        if (b['imported'] == true) {
-          importedFrom = b['source']?.toString() ?? 'an import';
-        }
-        if (b['steps'] is Map) {
-          steps = (b['steps'] as Map).cast<String, dynamic>();
-        }
-      }
+    if (block['imported'] == true) {
+      importedFrom = block['source']?.toString() ?? 'an import';
     }
+    if (block['steps'] is Map) steps = (block['steps'] as Map).cast<String, dynamic>();
 
     return InvestigateData(
       day: day,

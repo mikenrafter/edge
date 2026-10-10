@@ -32,6 +32,7 @@ import 'package:openstrap_edge/compute/onehz_pipeline.dart';
 import 'package:openstrap_edge/compute/profile.dart';
 import 'package:openstrap_edge/compute/substrate.dart';
 import 'package:openstrap_edge/data/bundle_store.dart';
+import 'package:openstrap_edge/data/json_payload_lane.dart';
 import 'package:openstrap_edge/data/sample_heavy.dart';
 import 'package:openstrap_edge/data/sample_import.dart' show SampleCarved;
 import 'package:openstrap_edge/ecg/ecg_export.dart';
@@ -209,6 +210,27 @@ final Map<String, EntrySample> kEntrySamples = <String, EntrySample>{
       ]);
       const inputs = WorkerInputs(nowEpochMs: 1, zoneId: 'UTC', localeTag: 'en');
       await _sameInWorker(() => ecgFormatPageHeavy(inputs, page));
+    },
+  ),
+  'decodeJsonPayloadsHeavy': (
+    roundTrip: () async {
+      const input = JsonPayloadsInput(
+        values: ['{"x":1}', '{bad'],
+        encode: false,
+      );
+      await expectIsolateRoundTrip<JsonPayloadsInput>(
+        input,
+        project: (r) => [r.values, r.encode],
+      );
+      final result = decodeJsonPayloadsHeavy(bundleWorkerInputs, input);
+      await expectIsolateRoundTrip<JsonPayloadsResult>(
+        result,
+        project: (r) => r.values,
+      );
+      await _sameInWorker(
+        () => decodeJsonPayloadsHeavy(bundleWorkerInputs, input),
+        json: (JsonPayloadsResult r) => r.values,
+      );
     },
   ),
   'decodeDayPayloadsHeavy': (

@@ -5163,6 +5163,7 @@ class LocalDb {
     // schema version whose source table is absent; triggers require its DDL.
     await _createBaselines(db);
     await _createDayResult(db);
+    await _createPrimitiveArtifacts(db);
     await db.execute('''
       CREATE TABLE IF NOT EXISTS store_rev (
         id INTEGER PRIMARY KEY AUTOINCREMENT
@@ -5216,6 +5217,58 @@ class LocalDb {
       AFTER DELETE ON baselines BEGIN
         DELETE FROM row_rev WHERE kind = 'baselines' AND k1 = OLD.key AND k2 = 0;
       END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS wake_day_features_rev_insert
+      AFTER INSERT ON wake_day_features BEGIN
+        INSERT INTO store_rev (id) VALUES (NULL);
+        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)
+          VALUES ('wake_day_features', NEW.day_id, NEW.algo_version, last_insert_rowid());
+        DELETE FROM store_rev;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS wake_day_features_rev_update
+      AFTER UPDATE OF payload_json ON wake_day_features BEGIN
+        INSERT INTO store_rev (id) VALUES (NULL);
+        INSERT OR REPLACE INTO row_rev (kind, k1, k2, rev)
+          VALUES ('wake_day_features', NEW.day_id, NEW.algo_version, last_insert_rowid());
+        DELETE FROM store_rev;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS wake_day_features_rev_delete
+      AFTER DELETE ON wake_day_features BEGIN
+        DELETE FROM row_rev
+          WHERE kind = 'wake_day_features' AND k1 = OLD.day_id AND k2 = OLD.algo_version;
+      END
+    ''');
+
+    // Existing wake rows predate this source's revision triggers. Assign their
+    // first stable revisions in SQL, without rewriting the stored JSON text.
+    await db.execute('''
+      INSERT INTO store_rev (id)
+      SELECT NULL
+      FROM wake_day_features w
+      LEFT JOIN row_rev v
+        ON v.kind = 'wake_day_features' AND v.k1 = w.day_id AND v.k2 = w.algo_version
+      WHERE v.rev IS NULL
+      ORDER BY w.day_id, w.algo_version
+    ''');
+    await db.execute('''
+      INSERT OR IGNORE INTO row_rev (kind, k1, k2, rev)
+      SELECT 'wake_day_features', missing.day_id, missing.algo_version,
+             seq.seq - missing.total + missing.n
+      FROM (
+        SELECT w.day_id, w.algo_version,
+               ROW_NUMBER() OVER (ORDER BY w.day_id, w.algo_version) AS n,
+               COUNT(*) OVER () AS total
+        FROM wake_day_features w
+        LEFT JOIN row_rev v
+          ON v.kind = 'wake_day_features' AND v.k1 = w.day_id AND v.k2 = w.algo_version
+        WHERE v.rev IS NULL
+      ) AS missing
+      JOIN sqlite_sequence AS seq ON seq.name = 'store_rev'
     ''');
   }
 
@@ -9483,11 +9536,7 @@ class LocalDb {
   static Future<List<Map<String, dynamic>>> sleepWindowRows(int limit) async {
     final db = await instance;
     return db.rawQuery(
-      'SELECT r.day_id AS day_id, r.window_json AS window_json '
-      'FROM day_result r '
-      '$_servedDayJoin '
-      'WHERE r.skipped = 0 '
-      'ORDER BY r.day_id DESC LIMIT ?',
+      "SELECT r.day_id AS day_id, r.window_json AS window_json, v.rev AS rev FROM day_result r $_servedDayJoin LEFT JOIN row_rev v ON v.kind = 'day_result' AND v.k1 = r.day_id AND v.k2 = r.algo_version WHERE r.skipped = 0 ORDER BY r.day_id DESC LIMIT ?",
       [limit],
     );
   }
@@ -11008,34 +11057,37 @@ class LocalDb {
 
   /// Recent latest-version day rows with lightweight status fields used by the
   /// metrics diagnostics view.
-  static Future<List<Map<String, dynamic>>> recentDayDiagnostics(
-    int limit,
-  ) async {
-    final rows = await recentDayResults(limit);
+  static Future<List<Map<String, dynamic>>> recentDayDiagnostics(int limit) async {
+    final rows = await recentDayResultMetas(limit);
     final rawByDay = await decodedRecTsMaxByDay();
     final out = <Map<String, dynamic>>[];
-    for (final row in rows) {
-      final decoded =
-          SeriesCodec.decodePayloadJson(row['payload_json']) ??
-          const <String, dynamic>{};
-      final scalars = ((decoded['scalars'] as Map?) ?? const {})
-          .cast<String, dynamic>();
-      final dayId = row['day_id'] as String? ?? '';
-      out.add({
-        'day_id': dayId,
-        'computed_at': row['computed_at'],
-        'algo_version': row['algo_version'],
-        'finalized': row['finalized'],
-        'raw_max_rec_ts': rawByDay[dayId],
-        'skipped': decoded['skipped'] == true,
-        'skip_reason': decoded['reason'],
-        'rhr': row['rhr'] ?? scalars['rhr'],
-        'rmssd': row['rmssd'] ?? scalars['rmssd'],
-        'readiness': row['readiness'] ?? scalars['readiness'],
-        'strain': scalars['strain'],
-        'tst_min': scalars['tst_min'],
-        'resp_rate': scalars['resp_rate'],
-      });
+    for (var start = 0; start < rows.length; start += 8) {
+      final chunk = rows.skip(start).take(8).toList();
+      final reads = await BundleStore.shared.readAll([
+        for (final row in chunk) BundleSource.day(row['date'] as String),
+      ]);
+      for (var i = 0; i < chunk.length; i++) {
+        final row = chunk[i];
+        final read = reads[i];
+        final decoded = read is BundleOk ? read.view.debugFrozenRoot as Map : const <String, dynamic>{};
+        final scalars = decoded['scalars'] is Map ? decoded['scalars'] as Map : const <String, dynamic>{};
+        final dayId = row['date'] as String? ?? '';
+        out.add({
+          'day_id': dayId,
+          'computed_at': row['computed_at'],
+          'algo_version': row['algo_version'],
+          'finalized': row['finalized'],
+          'raw_max_rec_ts': rawByDay[dayId],
+          'skipped': decoded['skipped'] == true,
+          'skip_reason': decoded['reason'],
+          'rhr': row['rhr'] ?? scalars['rhr'],
+          'rmssd': row['rmssd'] ?? scalars['rmssd'],
+          'readiness': row['readiness'] ?? scalars['readiness'],
+          'strain': scalars['strain'],
+          'tst_min': scalars['tst_min'],
+          'resp_rate': scalars['resp_rate'],
+        });
+      }
     }
     return out;
   }
@@ -12225,14 +12277,10 @@ class LocalDb {
     int? algoVersion,
   ]) async {
     final db = await instance;
-    final rows = await db.query(
-      'wake_day_features',
-      where: algoVersion == null
-          ? 'day_id = ?'
-          : 'day_id = ? AND algo_version = ?',
-      whereArgs: algoVersion == null ? [dayId] : [dayId, algoVersion],
-      orderBy: algoVersion == null ? 'algo_version DESC' : null,
-      limit: 1,
+    final args = algoVersion == null ? <Object?>[dayId] : <Object?>[dayId, algoVersion];
+    final rows = await db.rawQuery(
+      "SELECT w.*, v.rev AS rev FROM wake_day_features w LEFT JOIN row_rev v ON v.kind = 'wake_day_features' AND v.k1 = w.day_id AND v.k2 = w.algo_version WHERE w.day_id = ?${algoVersion == null ? '' : ' AND w.algo_version = ?'} ${algoVersion == null ? 'ORDER BY w.algo_version DESC ' : ''}LIMIT 1",
+      args,
     );
     return rows.isEmpty ? null : rows.first;
   }

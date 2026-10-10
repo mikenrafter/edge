@@ -5,6 +5,8 @@ import 'package:clock/clock.dart';
 
 import '../data/db.dart';
 import '../data/bundle_store.dart';
+import '../data/json_payload_lane.dart';
+import '../compute/derivation_engine.dart' show kAlgoVersion;
 
 abstract interface class PublishGateSteps {
   Future<void> refreshFreshness();
@@ -52,6 +54,26 @@ final class LocalPublishGateSteps implements PublishGateSteps {
         if (ids.contains('${source.kind}|${source.k1}')) source,
     ];
     await _store.warm(sources);
+    final jsonRows = <({String key, int? revision, Object? text})>[];
+    final rows = await LocalDb.sleepWindowRows(14);
+    jsonRows.addAll([
+      for (final row in rows) (
+        key: 'window|${row['day_id']}',
+        revision: (row['rev'] as num?)?.toInt(),
+        text: row['window_json'],
+      ),
+    ]);
+    if (set.wakeDay != null) {
+      final row = await LocalDb.wakeDayFeatures(set.wakeDay!, kAlgoVersion);
+      if (row != null) {
+        jsonRows.add((
+          key: 'wake|${set.wakeDay}|${row['algo_version']}',
+          revision: (row['rev'] as num?)?.toInt(),
+          text: row['payload_json'],
+        ));
+      }
+    }
+    await JsonPayloadLane.shared.warm(jsonRows);
   }
 
   @override
@@ -228,7 +250,6 @@ class PublishGate {
   }
 
   Future<void> _warmSet(Set<String> sources) async {
-    if (sources.isEmpty) return;
     try {
       await _steps.warm(sources).timeout(_warmBudget);
     } catch (e) {

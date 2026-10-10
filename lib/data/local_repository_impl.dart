@@ -32,6 +32,7 @@ import 'package:openstrap_analytics/onehz.dart' as ana;
 
 import 'circadian_artifact.dart';
 import 'bundle_store.dart';
+import 'json_payload_lane.dart';
 import 'day_label.dart';
 import 'db.dart';
 import '../health/health_export.dart';
@@ -147,9 +148,9 @@ class LocalRepositoryImpl extends LocalRepository {
 
   Future<Map<String, dynamic>?> _wakeFeatures(String dayId) async {
     final row = await LocalDb.wakeDayFeatures(dayId, kAlgoVersion);
-    final out = await BundleStore.shared.decodeStoredPayload(row?['payload_json']);
-    ReadPerf.payload(row?['payload_json'], out);
-    return out;
+    final out = row == null ? null : await JsonPayloadLane.shared.decode(
+      'wake|$dayId|${row['algo_version']}', (row['rev'] as num?)?.toInt(), row['payload_json']);
+    return out is Map ? out.cast<String, dynamic>() : null;
   }
 
   String _todayLocalLabel() => LocalDb.localDayLabelNow();
@@ -185,6 +186,14 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>?> _readBundle(String date) async {
     final read = await BundleStore.shared.read(BundleSource.day(date));
     return read is BundleOk ? _readerMap(read) : null;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getDayBlock(String day, List<String> keys) async {
+    if (keys.isEmpty) return const {};
+    final bundle = await _readBundle(day);
+    if (bundle == null) return const {};
+    return {for (final key in keys) if (bundle.containsKey(key)) key: bundle[key]};
   }
 
   /// The reader-facing map of a store read. Books the read to the calling
@@ -1814,8 +1823,17 @@ class LocalRepositoryImpl extends LocalRepository {
   @override
   Future<List<Map<String, dynamic>>> sleepWindows({int days = 60}) async {
     final rows = await LocalDb.sleepWindowRows(days);
+    final decoded = await JsonPayloadLane.shared.decodeMany([
+      for (final row in rows)
+        (
+          key: 'window|${row['day_id']}',
+          revision: (row['rev'] as num?)?.toInt(),
+          text: row['window_json'],
+        ),
+    ]);
     final out = <Map<String, dynamic>>[];
-    for (final r in rows) {
+    for (var i = 0; i < rows.length; i++) {
+      final r = rows[i];
       final date = r['day_id'] as String?;
       if (date == null || date.isEmpty) continue;
       // `window_json` comes in TWO shapes and always has. The derivation
@@ -1826,13 +1844,8 @@ class LocalRepositoryImpl extends LocalRepository {
       // anyone. Take the envelope's `value` when there is one, else the map
       // itself. (`value` is the string '—' on a night with no sleep, so it
       // only counts when it is a Map.)
-      Map<String, dynamic>? env;
-      try {
-        final decoded = jsonDecode((r['window_json'] as String?) ?? '{}');
-        if (decoded is Map) env = decoded.cast<String, dynamic>();
-      } catch (_) {
-        env = null;
-      }
+      final raw = decoded[i];
+      final env = raw is Map ? raw.cast<String, dynamic>() : null;
       final v = env?['value'];
       final val = v is Map
           ? v.cast<String, dynamic>()
@@ -3921,8 +3934,10 @@ class LocalRepositoryImpl extends LocalRepository {
   Future<Map<String, dynamic>?> getDayCalorieCurve(String day) async {
     final row = await LocalDb.lastResult('kcal_minutes|$day');
     if (row == null) return null;
-    final p = jsonDecode(row.payload);
-    if (p is! Map) return null;
+    final decoded = await JsonPayloadLane.shared.decode(
+      'kcal|$day', row.computedAt, row.payload, cache: false);
+    if (decoded is! Map) return null;
+    final p = decoded;
     return {
       'minutes': [
         for (final m in (p['minutes'] as List? ?? const []))

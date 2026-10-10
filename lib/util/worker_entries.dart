@@ -180,6 +180,12 @@ const List<WorkerEntry> kWorkerEntries = <WorkerEntry>[
         'in/out)',
   ),
   WorkerEntry(
+    #decodeJsonPayloadsHeavy,
+    dispatcher: Dispatcher.run,
+    reason: 'generic stored JSON decode/encode lane; WorkerInit.ensure first, '
+        '@SendableShape JSON values in and out with round-trip tests',
+  ),
+  WorkerEntry(
     #decodeDayPayloadsHeavy,
     dispatcher: Dispatcher.run,
     reason: 'BundleStore decode: stored payload_json texts to frozen compact '

@@ -117,7 +117,6 @@ import '../gps/route_tracker.dart';
 import '../gps/screen_wake.dart';
 import '../data/local_repository_impl.dart';
 import '../data/bundle_store.dart';
-import '../data/series_codec.dart';
 import '../notify/battery_forecast.dart';
 import '../notify/buzz_sequence.dart';
 import '../haptics/haptic_slots.dart'
@@ -2901,17 +2900,15 @@ class AppState extends ChangeNotifier {
       // Sleep hours from the day's bundle accounting (tst), for the body copy.
       String slept = '';
       try {
-        final payload = SeriesCodec.decodePayloadJson(
-          (row['payload_json'] ?? '{}').toString(),
-        );
-        if (payload != null) {
-          final acct = ((payload['sleep'] as Map?)?['accounting'] as Map?);
-          final tstSec = ((acct?['value'] as Map?)?['tst_sec'] as num?)
-              ?.toDouble();
-          if (tstSec != null && tstSec > 0) {
-            final m = (tstSec / 60).round();
-            slept = ', slept ${m ~/ 60}h ${m % 60}m';
-          }
+        final payload = await (repo ?? LocalRepositoryImpl(
+          getProfileMap: () => user,
+        )).getDayBlock(dayId, const ['sleep']);
+        final acct = ((payload['sleep'] as Map?)?['accounting'] as Map?);
+        final tstSec = ((acct?['value'] as Map?)?['tst_sec'] as num?)
+            ?.toDouble();
+        if (tstSec != null && tstSec > 0) {
+          final m = (tstSec / 60).round();
+          slept = ', slept ${m ~/ 60}h ${m % 60}m';
         }
       } catch (_) {
         /* body just omits the slept-for clause */

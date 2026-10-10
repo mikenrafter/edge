@@ -36,6 +36,7 @@ const kExpected = <String, Dispatcher>{
   // BundleStore (lib/data/bundle_store.dart, design 02 step 2 P2.2): stored
   // payload text to frozen compact graphs.
   'decodeDayPayloadsHeavy': Dispatcher.run,
+  'decodeJsonPayloadsHeavy': Dispatcher.run,
 };
 
 void main() {
