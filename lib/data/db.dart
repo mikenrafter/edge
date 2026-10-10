@@ -1548,12 +1548,22 @@ class LocalDb {
   }
 
   /// Replaces [key]'s row and drops the oldest rows (by `computed_at`) beyond
-  /// [maxRows], in one transaction.
-  static Future<void> putLastResult(
+  /// [maxRows], in one transaction. With [unlessReplacedSince] the write is
+  /// refused (false) when the store was wiped, merged into or rebuilt after
+  /// that generation was read; the check is made inside the transaction.
+  static Future<bool> putLastResult(
       String key, int computedAt, String payload, int maxRows,
-      {String? sig}) async {
+      {String? sig,
+      ({int wipeEpoch, int openCount})? unlessReplacedSince}) async {
     final db = await instance;
+    var written = false;
     await db.transaction((txn) async {
+      // Fenced INSIDE the write transaction: a wipe that landed while the
+      // caller was encoding must not be followed by the pre-wipe artifact.
+      if (unlessReplacedSince != null && storeReplacedSince(unlessReplacedSince)) {
+        return;
+      }
+      written = true;
       await txn.insert(
           'last_result',
           {
@@ -1569,6 +1579,7 @@ class LocalDb {
           'LIMIT ?)',
           [maxRows]);
     });
+    return written;
   }
 
   /// Removes [key]'s row (none is fine).
@@ -9375,6 +9386,13 @@ class LocalDb {
   /// merged into or reopened. Read synchronously on every cache lookup.
   static ({int wipeEpoch, int openCount}) get storeGeneration =>
       (wipeEpoch: _wipeEpoch, openCount: _openCount);
+
+  /// True when the store was wiped, merged into or rebuilt since [since]. A
+  /// plain open moves both parts of the generation by one (see
+  /// [generationAfterFirstOpen]) and is NOT a replacement; a replacement moves
+  /// the wipe epoch without a matching open.
+  static bool storeReplacedSince(({int wipeEpoch, int openCount}) since) =>
+      (_wipeEpoch - since.wipeEpoch) != (_openCount - since.openCount);
 
   /// The generation a store that was closed at [before] has right after ONE
   /// plain open and nothing else: an open counts once in each part. A cache that

@@ -171,8 +171,15 @@ class LastResultCache {
       // and it is the only thing allowed to: see the restamp below.
       await LocalDb.instance;
       final opened = LocalDb.storeGeneration;
-      await LocalDb.putLastResult(key, at.millisecondsSinceEpoch, json, maxRows,
-          sig: sig);
+      // Fenced against the generation the put saw, inside the write transaction:
+      // a wipe, merge or rebuild during the encode refuses the pre-wipe artifact
+      // instead of inserting it into the emptied table (the memory entry misses
+      // on its own old stamp). A plain open - the first open this write-through
+      // triggers, or an ordinary reopen - is not a replacement and is allowed.
+      final wrote = await LocalDb.putLastResult(
+          key, at.millisecondsSinceEpoch, json, maxRows,
+          sig: sig, unlessReplacedSince: putGeneration);
+      if (!wrote) return;
       // Bind the entry to the generation this SUCCESSFUL write-through used,
       // when (and only when) it is the generation right after the put's own
       // open, nothing replaced the store while it wrote, and the entry is still

@@ -277,6 +277,15 @@ class _AsyncMutex {
   }
 }
 
+/// The store was wiped, merged into, rebuilt or reopened while an export pass
+/// was running: the pass stops and writes nothing more (no cursor, no retry
+/// state) into the new store.
+final class _StoreReplacedDuringExport implements Exception {
+  const _StoreReplacedDuringExport();
+  @override
+  String toString() => 'the store was replaced during the health export';
+}
+
 /// Which platform the EXPORT path (the Android priority-sleep scan and the
 /// per-day Android sleep write) branches on. An interface so a test can drive
 /// the Android path on a desktop host; everything else keeps asking
@@ -695,15 +704,43 @@ class HealthExporter {
       final oneShotBundles = <String, Map<String, dynamic>?>{};
       String? retainedDate;
       Map<String, dynamic>? retainedBundle;
+      BundleKey? retainedKey; // what the retained bundle was read at
+      BundleKey? lastReadKey;
+      // A retained night whose row was re-derived while the bulk pass ran: its
+      // sleep session has to be written again.
+      String? rederivedDate;
+      // The store this export started on. A wipe, merge, rebuild or reopen
+      // during the pass aborts it: nothing may be exported from a store that
+      // is no longer the one the pass listed.
+      final exportGeneration = LocalDb.storeGeneration;
+      void requireSameStore() {
+        if (LocalDb.storeGeneration != exportGeneration) {
+          throw const _StoreReplacedDuringExport();
+        }
+      }
+
       Future<Map<String, dynamic>?> bundleFor(String date) async {
-        if (date == retainedDate) return retainedBundle;
+        requireSameStore();
+        if (date == retainedDate) {
+          // Payload-free check before reuse: the bulk pass is long, and the row
+          // may have been re-derived or deleted meanwhile.
+          final now = await BundleStore.shared.sourceKey(BundleSource.day(date));
+          requireSameStore();
+          if (now == retainedKey) return retainedBundle;
+          retainedDate = null;
+          retainedBundle = null;
+          retainedKey = null;
+          if (now != null) rederivedDate = date;
+        }
         if (oneShotBundles.containsKey(date)) return oneShotBundles[date];
         final reads = await BundleStore.shared.readStream(
           [BundleSource.day(date)],
           chunkRows: 8,
         );
+        requireSameStore();
         final read = reads.single;
         final bundle = read is BundleOk ? bundleReaderMap(read.view) : null;
+        lastReadKey = read is BundleOk ? read.key : null;
         oneShotBundles.clear();
         oneShotBundles[date] = bundle;
         return bundle;
@@ -739,6 +776,7 @@ class HealthExporter {
             if (bundle == null || bundle['skipped'] == true) continue;
             retainedDate = day.date;
             retainedBundle = bundle;
+            retainedKey = lastReadKey;
             priorityDay = MapEntry(day.date, bundle);
             break;
           }
@@ -820,6 +858,8 @@ class HealthExporter {
                 return 0;
               }
               return bulkDone;
+            } on _StoreReplacedDuringExport {
+              rethrow; // no retry stamp into a store that is no longer ours
             } catch (e) {
               debugPrint('[health] write priority Android sleep session: $e');
               await recordPriorityFailure();
@@ -847,6 +887,10 @@ class HealthExporter {
             if (!finalized) prefixContiguous = false;
             continue;
           }
+          // The priority night's sleep was written from the bundle read earlier;
+          // a re-derive since means that write is stale.
+          final sleepWritten =
+              date == androidSleepAlreadyWritten && rederivedDate != date;
 
           final entry = (retryState[date] as Map?)?.cast<String, dynamic>();
           var attempts = (entry?['attempts'] as num?)?.toInt() ?? 0;
@@ -875,7 +919,7 @@ class HealthExporter {
                 ? null
                 : DateTime.fromMillisecondsSinceEpoch(lastAttemptMs),
             backoff: _backoffFor(attempts),
-            prioritySleepAlreadyWritten: date == androidSleepAlreadyWritten,
+            prioritySleepAlreadyWritten: sleepWritten,
             lastSuccess: okMs == null
                 ? null
                 : DateTime.fromMillisecondsSinceEpoch(okMs),
@@ -892,7 +936,7 @@ class HealthExporter {
             ok = await _exportDay(
               date,
               bundle,
-              androidSleepAlreadyWritten: date == androidSleepAlreadyWritten,
+              androidSleepAlreadyWritten: sleepWritten,
             ); // delete-then-write (idempotent)
             // Suppression is not an export failure or a success. Leave all
             // progress/retry stamps untouched when demo mode interrupts a pass.
@@ -960,7 +1004,11 @@ class HealthExporter {
         return done;
       };
 
-      return exportPriorityOrBulk();
+      try {
+        return await exportPriorityOrBulk();
+      } on _StoreReplacedDuringExport {
+        return 0; // stop quietly: the next pass lists the new store afresh
+      }
     } catch (e) {
       debugPrint('[health] exportAll: $e');
       return 0;

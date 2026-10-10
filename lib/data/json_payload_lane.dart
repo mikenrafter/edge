@@ -267,6 +267,12 @@ class JsonPayloadLane {
   }) async {
     final out = List<JsonDecoded?>.filled(rows.length, null);
     final generation = LocalDb.storeGeneration;
+    // A store replaced at ANY point makes the whole answer absence: nothing
+    // decoded or cached before it may be shown (deleted data never returns).
+    List<JsonDecoded?> absent() {
+      _dropOtherGenerations(LocalDb.storeGeneration); // what chunk 1 cached
+      return List<JsonDecoded?>.filled(rows.length, null);
+    }
     _dropOtherGenerations(generation);
     // The state each row is being decoded from; replaced once if its row moved.
     final states = [for (final row in rows) row.state];
@@ -279,7 +285,11 @@ class JsonPayloadLane {
         pending.add(i);
       }
     }
+    if (pending.isEmpty) return out;
 
+    // Rows verified against storage by the most recent await. Everything else in
+    // [out] (cache hits, earlier chunks) is re-read once more before returning.
+    var verified = <int>{};
     for (var attempt = 0; attempt < 2 && pending.isNotEmpty; attempt++) {
       final moved = <int>[];
       for (final chunk in _chunks(pending, states)) {
@@ -287,25 +297,27 @@ class JsonPayloadLane {
           values: [for (final i in chunk) states[i].text],
           encode: false,
         ));
-        if (LocalDb.storeGeneration != generation) return out; // wiped: absence
+        if (LocalDb.storeGeneration != generation) return absent();
         final now = await Future.wait([
           for (final i in chunk) rows[i].source.current(),
         ]);
         // Nothing is awaited between here and the publish below.
-        if (LocalDb.storeGeneration != generation) return out;
+        if (LocalDb.storeGeneration != generation) return absent();
+        verified = {};
         for (var j = 0; j < chunk.length; j++) {
           final i = chunk[j];
           final current = now[j];
           if (current == null) continue; // deleted: absence
-          final revision = states[i].revision;
-          if (revision != null && current.revision != revision) {
+          if (!_sameRow(states[i], current)) {
             states[i] = current; // changed: decode what is there now, once
             moved.add(i);
             continue;
           }
           final value = decoded.values[j];
           out[i] = JsonDecoded(value, states[i]);
+          verified.add(i);
           final size = j < decoded.sizes.length ? decoded.sizes[j] : null;
+          final revision = states[i].revision;
           if (cache && revision != null && states[i].text is String && size != null) {
             _publish(rows[i].source.key, generation, revision, value, size);
           }
@@ -313,7 +325,34 @@ class JsonPayloadLane {
       }
       pending = attempt == 0 ? moved : const [];
     }
+
+    // The entries not verified by the last await were verified before awaits
+    // that came after them: check them again against storage.
+    final stale = [
+      for (var i = 0; i < rows.length; i++)
+        if (out[i] != null && !verified.contains(i)) i,
+    ];
+    if (stale.isNotEmpty) {
+      final now = await Future.wait([for (final i in stale) rows[i].source.current()]);
+      if (LocalDb.storeGeneration != generation) return absent();
+      for (var j = 0; j < stale.length; j++) {
+        final current = now[j];
+        if (current == null || !_sameRow(out[stale[j]]!.state, current)) {
+          out[stale[j]] = null; // gone or moved since it was decoded: absence
+        }
+      }
+    }
     return out;
+  }
+
+  /// Whether [now] is the row that was decoded from [then]. A row with no
+  /// revision (rows written before `row_rev` existed are not backfilled) is
+  /// compared by its stored text; gaining or losing a revision is a change.
+  static bool _sameRow(JsonRowState then, JsonRowState now) {
+    if (then.revision != null || now.revision != null) {
+      return then.revision == now.revision;
+    }
+    return then.text == now.text;
   }
 
   /// Chunks of at most [maxChunkRows] rows and [BundleStore.chunkSourceBytes] of

@@ -621,6 +621,12 @@ class BundleStore {
     return prepared?.key.rev;
   }
 
+  /// The current full-bundle identity (generation, algo version and revision) of
+  /// [source], from metadata only; null when the row is gone. A holder of an
+  /// earlier read compares this with that read's [BundleOk.key] before reusing it.
+  Future<BundleKey?> sourceKey(BundleSource source) async =>
+      (await _prepare(source, ProjectionId.full))?.key;
+
   /// Decodes a non-revisioned small payload on the same worker entry. P2.3
   /// replaces these compatibility readers with keyed projections.
   Future<Map<String, dynamic>?> decodeStoredPayload(Object? value) async {
