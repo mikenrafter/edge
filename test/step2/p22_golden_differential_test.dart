@@ -37,9 +37,42 @@ import 'support/p22_support.dart';
 const _name = 'p22_golden.db';
 const _goldenPath = 'test/step2/golden/p22_reader_outputs.json';
 
+/// Start (UTC) of the day the golden was recorded on. Today's seed row is
+/// stamped from today's real day start, so its epoch seconds move by a day
+/// every day; both sides are rewritten relative to their own day start.
+const _recordedDayStart = 1791504000; // 2026-10-09T00:00:00Z
+
+final _epoch = RegExp(r'\b1[0-9]{9}\b');
+
+/// Epoch seconds within a day either side of [dayStart] become `<T+offset>`.
+String _relative(String s, int dayStart) => s.replaceAllMapped(_epoch, (m) {
+      final offset = int.parse(m[0]!) - dayStart;
+      if (offset < -86400 || offset >= 2 * 86400) return m[0]!;
+      return '<T${offset < 0 ? '' : '+'}$offset>';
+    });
+
+int _dayStartUtc(String day) =>
+    DateTime.parse('${day}T00:00:00Z').millisecondsSinceEpoch ~/ 1000;
+
+/// getCycle counts `cycle_day` / `days_until_next` (top level) and today's
+/// overlay `cycle_day` from today; shift them back to the recording day by the
+/// number of days that have passed since. Other overlay rows are fixed dates.
+String _cycleToRecordedDay(String s, int daysSince) => s
+    .replaceFirstMapped(RegExp(r'"cycle_day":(-?\d+)'),
+        (m) => '"cycle_day":${int.parse(m[1]!) - daysSince}')
+    .replaceFirstMapped(RegExp(r'"days_until_next":(-?\d+)'),
+        (m) => '"days_until_next":${int.parse(m[1]!) + daysSince}')
+    .replaceAllMapped(RegExp(r'"date":"<TODAY>","cycle_day":(-?\d+)'),
+        (m) => '"date":"<TODAY>","cycle_day":${int.parse(m[1]!) - daysSince}');
+
 Future<String> _run(Future<Object?> Function() read, String today) async {
   try {
-    return jsonEncode(await read()).replaceAll(today, '<TODAY>');
+    final dayStart = _dayStartUtc(today);
+    final json = _cycleToRecordedDay(
+      jsonEncode(await read()).replaceAll(today, '<TODAY>'),
+      (dayStart - _recordedDayStart) ~/ 86400,
+    );
+    return _relative(json, dayStart);
   } catch (e) {
     return 'ERROR ${e.runtimeType}';
   }
@@ -97,7 +130,8 @@ void main() {
     }
 
     final want = (jsonDecode(File(_goldenPath).readAsStringSync()) as Map)
-        .cast<String, String>();
+        .cast<String, String>()
+        .map((k, v) => MapEntry(k, _relative(v, _recordedDayStart)));
     expect(got.keys.toList(), want.keys.toList(), reason: 'same readers, same order');
     for (final k in want.keys) {
       expect(got[k], want[k], reason: 'reader output changed: $k');
