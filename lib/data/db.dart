@@ -4551,6 +4551,24 @@ class LocalDb {
     }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  /// [setCursor] that is refused (false) when the store was wiped, merged into
+  /// or rebuilt since [since]; the check is made inside the write transaction,
+  /// so a progress stamp never lands in a store other than the one it is about.
+  static Future<bool> setCursorUnlessReplaced(
+    String name,
+    String value,
+    ({int wipeEpoch, int openCount}) since,
+  ) async {
+    final db = await instance;
+    var wrote = false;
+    await db.transaction((txn) async {
+      if (storeReplacedSince(since)) return;
+      wrote = true;
+      await setCursor(name, value, txn: txn);
+    });
+    return wrote;
+  }
+
   /// Drop a sync-cursor row so a later [getCursor] sees it as unset again.
   /// Used when forgetting a device whose cursor must not outlive the row it
   /// was tracking — a re-paired device otherwise inherits stale progress.

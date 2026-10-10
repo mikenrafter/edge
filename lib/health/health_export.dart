@@ -286,6 +286,14 @@ final class _StoreReplacedDuringExport implements Exception {
   String toString() => 'the store was replaced during the health export';
 }
 
+/// Stops an export pass whose store was wiped, merged into, rebuilt or
+/// reopened since [generation] was read.
+void _requireSameStore(StoreGeneration generation) {
+  if (LocalDb.storeGeneration != generation) {
+    throw const _StoreReplacedDuringExport();
+  }
+}
+
 /// Which platform the EXPORT path (the Android priority-sleep scan and the
 /// per-day Android sleep write) branches on. An interface so a test can drive
 /// the Android path on a desktop host; everything else keeps asking
@@ -713,8 +721,12 @@ class HealthExporter {
       // during the pass aborts it: nothing may be exported from a store that
       // is no longer the one the pass listed.
       final exportGeneration = LocalDb.storeGeneration;
-      void requireSameStore() {
-        if (LocalDb.storeGeneration != exportGeneration) {
+      void requireSameStore() => _requireSameStore(exportGeneration);
+
+      /// A progress stamp (cursor, retry state), written only into the store
+      /// this pass listed: refused inside the write transaction otherwise.
+      Future<void> stamp(String name, String value) async {
+        if (!await LocalDb.setCursorUnlessReplaced(name, value, exportGeneration)) {
           throw const _StoreReplacedDuringExport();
         }
       }
@@ -730,6 +742,8 @@ class HealthExporter {
           retainedDate = null;
           retainedBundle = null;
           retainedKey = null;
+          // The priority read also filled the one-shot slot with the OLD map.
+          oneShotBundles.remove(date);
           if (now != null) rederivedDate = date;
         }
         if (oneShotBundles.containsKey(date)) return oneShotBundles[date];
@@ -835,7 +849,7 @@ class HealthExporter {
                 'last_ms': nowMs,
                 'finalized': pendingPriorityDay.finalized,
               };
-              await LocalDb.setCursor(_kRetryCursor, jsonEncode(retryState));
+              await stamp(_kRetryCursor, jsonEncode(retryState));
             }
 
             var bulkDone = 0;
@@ -846,9 +860,12 @@ class HealthExporter {
                 // day — so one entry is equivalent to the whole list, without
                 // holding 400 decoded bundles to re-derive the same answer.
                 newestFirstDays: [priorityDay],
-                write: (bundle) async =>
-                    !Prefs.getBool(Prefs.demoModeEnabled, false) &&
-                    await _androidSleep.replace(bundle),
+                write: (bundle) async {
+                  if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
+                  final wrote = await _androidSleep.replace(bundle);
+                  requireSameStore(); // a wipe during the write: no stamp, no bulk
+                  return wrote;
+                },
                 exportBulk: (androidSleepAlreadyWritten) async {
                   bulkDone = await exportBulk(androidSleepAlreadyWritten);
                 },
@@ -936,6 +953,7 @@ class HealthExporter {
             ok = await _exportDay(
               date,
               bundle,
+              generation: exportGeneration,
               androidSleepAlreadyWritten: sleepWritten,
             ); // delete-then-write (idempotent)
             // Suppression is not an export failure or a success. Leave all
@@ -993,10 +1011,10 @@ class HealthExporter {
         }
         if (Prefs.getBool(Prefs.demoModeEnabled, false)) return 0;
         if (newCursor != cursor) {
-          await LocalDb.setCursor('health_export_through', newCursor);
+          await stamp('health_export_through', newCursor);
         }
         if (retryStateDirty) {
-          await LocalDb.setCursor(_kRetryCursor, jsonEncode(retryState));
+          await stamp(_kRetryCursor, jsonEncode(retryState));
         }
         debugPrint(
           '[health] exported $done day(s); finalized-cursor=$newCursor',
@@ -1017,10 +1035,12 @@ class HealthExporter {
   }
 
   /// Write one day's metrics. DELETES our prior samples for the day window first
-  /// (so a re-derive overwrites instead of duplicating). Best-effort; never throws.
+  /// (so a re-derive overwrites instead of duplicating). Best-effort; never throws,
+  /// except [_StoreReplacedDuringExport] (the pass stops, see [_requireSameStore]).
   Future<bool> _exportDay(
     String date,
     Map<String, dynamic> b, {
+    required StoreGeneration generation,
     bool androidSleepAlreadyWritten = false,
   }) async {
     if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
@@ -1050,6 +1070,7 @@ class HealthExporter {
         debugPrint('[health] write Android sleep session: $e');
         success = false;
       }
+      _requireSameStore(generation);
     }
     if (isApple) {
       if (Prefs.getBool(Prefs.demoModeEnabled, false)) return false;
@@ -1066,11 +1087,13 @@ class HealthExporter {
         debugPrint('[health] write Apple sleep session: $e');
         success = false;
       }
+      _requireSameStore(generation);
     }
 
     // One-shot cleanup of the fabricated step samples earlier versions wrote.
     // Outside the success accounting on purpose — see the method doc.
     await _purgeLegacyStepsIfNeeded(date, dayStart, dayEnd);
+    _requireSameStore(generation);
 
     // Idempotency: remove OUR previously-written samples for this day (HealthKit /
     // Health Connect only let an app delete its own data), then re-write fresh.
@@ -1095,7 +1118,9 @@ class HealthExporter {
     // per-session instead of day-wide.
     var workoutCleared = true;
     for (final t in _rewriteTypes) {
-      if (await _deleteOwnSamples(t, dayStart, dayEnd)) continue;
+      final cleared = await _deleteOwnSamples(t, dayStart, dayEnd);
+      _requireSameStore(generation);
+      if (cleared) continue;
       debugPrint('[health] delete ${t.name} did not clear the day');
       success = false;
       if (t == HealthDataType.WORKOUT) workoutCleared = false;
@@ -1139,6 +1164,7 @@ class HealthExporter {
         debugPrint('[health] write ${type.name}: $e');
         success = false;
       }
+      _requireSameStore(generation);
     }
 
     // Nightly cardiac/respiratory scalars (single sample at the sleep midpoint).
@@ -1220,6 +1246,7 @@ class HealthExporter {
           debugPrint('[health] write energy bucket $i: $e');
           success = false;
         }
+        _requireSameStore(generation);
       }
     }
 
@@ -1247,6 +1274,7 @@ class HealthExporter {
           debugPrint('[health] write basal energy bucket $i: $e');
           success = false;
         }
+        _requireSameStore(generation);
       }
     }
 
@@ -1309,6 +1337,7 @@ class HealthExporter {
           unit: HealthDataUnit.BEATS_PER_MINUTE,
         ),
       );
+      _requireSameStore(generation);
       if (!wroteHeartRate) {
         debugPrint('[health] write continuous heart rate returned false');
         success = false;
